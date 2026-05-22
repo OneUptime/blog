@@ -37,8 +37,12 @@ on:
   workflow_dispatch:
     inputs:
       module:
-        description: 'Specific module to test (empty for all)'
+        description: 'Specific module path to test (empty for all)'
         required: false
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   discover-modules:
@@ -48,11 +52,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: find
+        env:
+          MODULE_INPUT: ${{ github.event.inputs.module || '' }}
         run: |
-          # Find all modules that have tests
-          MODULES=$(find modules -name "*.tftest.hcl" -exec dirname {} \; | \
-            sort -u | sed 's|/tests$||' | \
-            jq -R -s -c 'split("\n") | map(select(length > 0))')
+          if [ -n "$MODULE_INPUT" ]; then
+            MODULES=$(printf '%s\n' "$MODULE_INPUT" | \
+              jq -R -s -c 'split("\n") | map(select(length > 0))')
+          else
+            # Find all modules that have tests
+            MODULES=$(find modules -name "*.tftest.hcl" -exec dirname {} \; | \
+              sort -u | sed 's|/tests$||' | \
+              jq -R -s -c 'split("\n") | map(select(length > 0))')
+          fi
           echo "modules=$MODULES" >> $GITHUB_OUTPUT
 
   test-module:
@@ -92,14 +103,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Slack Notification
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Terraform continuous tests failed! Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Terraform continuous tests failed! Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 ```
 
 ## Drift Detection
@@ -113,6 +122,11 @@ name: Drift Detection
 on:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
 
 jobs:
   detect-drift:
@@ -221,8 +235,8 @@ jobs:
             .terraform.lock.hcl | grep version | awk '{print $3}' | tr -d '"')
 
           # Get latest version from registry
-          LATEST=$(curl -s https://registry.terraform.io/v1/providers/hashicorp/aws | \
-            jq -r '.version')
+          LATEST=$(curl -s https://registry.terraform.io/v1/providers/hashicorp/aws/versions | \
+            jq -r '.versions[].version' | sort -V | tail -n1)
 
           echo "Current: $CURRENT, Latest: $LATEST"
           if [ "$CURRENT" != "$LATEST" ]; then
@@ -243,7 +257,7 @@ jobs:
       - name: Test with New Provider
         working-directory: modules/${{ matrix.module }}
         run: |
-          # Update provider constraint temporarily
+          # Update provider selections within the configured constraints
           terraform init -upgrade
           terraform test -verbose
 ```
@@ -302,15 +316,20 @@ func TestSmokeProduction(t *testing.T) {
 Run smoke tests on a frequent schedule:
 
 ```yaml
-smoke-tests:
-  name: Smoke Tests
-  runs-on: ubuntu-latest
+name: Smoke Tests
+
+on:
   schedule:
     - cron: '*/30 * * * *'  # Every 30 minutes
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
-    - run: cd test && go test -v -run TestSmoke -timeout 5m ./...
+
+jobs:
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+      - run: cd test && go test -v -run TestSmoke -timeout 5m ./...
 ```
 
 ## Monitoring Test Results Over Time
@@ -350,17 +369,38 @@ Running tests continuously creates real cloud resources. Keep costs in check:
 
 ```yaml
 # Run different test levels at different frequencies
-unit-tests:
+name: Scheduled Terraform Tests
+
+on:
   schedule:
     - cron: '0 */4 * * *'  # Every 4 hours (free, no resources)
-
-integration-tests:
-  schedule:
     - cron: '0 2 * * *'    # Daily (creates resources)
-
-full-e2e:
-  schedule:
     - cron: '0 2 * * 0'    # Weekly (expensive)
+
+jobs:
+  unit-tests:
+    if: github.event.schedule == '0 */4 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform test
+
+  integration-tests:
+    if: github.event.schedule == '0 2 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform test
+
+  full-e2e:
+    if: github.event.schedule == '0 2 * * 0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform test
 ```
 
 Continuous testing is about catching problems before they become incidents. The investment in automation pays for itself the first time you catch a provider regression or drift before it hits a deployment. Start with nightly regression tests and drift detection, then expand to provider compatibility and smoke tests as your needs grow.
