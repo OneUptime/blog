@@ -16,7 +16,7 @@ In Terraform, the state file is the source of truth about what resources exist a
 
 The key point is that state isolation is not the same as infrastructure isolation. Two workspaces can still create resources that collide - for example, both trying to create a resource with the same name. State isolation just means Terraform tracks them separately.
 
-```hcl
+```bash
 # When you switch workspaces, Terraform uses a different state file
 
 # The configuration stays the same - only the state changes
@@ -41,9 +41,9 @@ terraform {
     key    = "infrastructure/terraform.tfstate"
     region = "us-east-1"
 
-    # Enable state locking with DynamoDB
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    # Enable native S3 state locking
+    use_lockfile = true
+    encrypt      = true
   }
 }
 
@@ -55,7 +55,7 @@ terraform {
 
 ### Azure Backend
 
-Azure stores workspace states in separate blob containers or with different keys:
+The AzureRM backend stores state as blobs in a configured container. It supports multiple named workspaces, with each workspace using a separate backend-managed blob key:
 
 ```hcl
 # backend.tf
@@ -68,8 +68,8 @@ terraform {
   }
 }
 
-# Each workspace gets its own state blob within the container
-# The workspace name is prepended to the key automatically
+# Each workspace gets its own state blob within the container.
+# Terraform derives a separate blob name from the configured key and workspace.
 ```
 
 ### Terraform Cloud
@@ -194,7 +194,8 @@ resource "aws_iam_policy" "dev_state_access" {
         ]
         Resource = [
           # Only allow access to the dev workspace state
-          "arn:aws:s3:::my-terraform-state/env:/dev/*"
+          "arn:aws:s3:::my-terraform-state/env:/dev/*",
+          "arn:aws:s3:::my-terraform-state/env:/dev/*.tflock"
         ]
       },
       {
@@ -203,19 +204,10 @@ resource "aws_iam_policy" "dev_state_access" {
           "s3:ListBucket"
         ]
         Resource = "arn:aws:s3:::my-terraform-state"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
-        ]
-        Resource = "arn:aws:dynamodb:us-east-1:*:table/terraform-locks"
         Condition = {
-          "ForAllValues:StringEquals" = {
-            "dynamodb:LeadingKeys" = [
-              "my-terraform-state/env:/dev/infrastructure/terraform.tfstate"
+          StringLike = {
+            "s3:prefix" = [
+              "env:/dev/*"
             ]
           }
         }
@@ -302,7 +294,7 @@ First, do not hardcode environment names in your configuration. Always use `terr
 
 Third, watch out for shared resources. If your dev and staging workspaces both need to reference the same DNS zone or container registry, create those shared resources in a separate Terraform project rather than trying to manage them across workspaces.
 
-Finally, always use state locking. Without it, two people running Terraform in the same workspace at the same time can corrupt the state file. DynamoDB for S3 backends and blob leases for Azure backends are the standard approaches.
+Finally, always use state locking. Without it, two people running Terraform in the same workspace at the same time can corrupt the state file. Native S3 lock files for S3 backends and blob leases for Azure backends are the standard approaches.
 
 ## Wrapping Up
 
