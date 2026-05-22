@@ -31,10 +31,10 @@ You can install the Sentinel CLI by downloading it from the HashiCorp releases p
 ```bash
 # Download the Sentinel CLI (adjust version and OS as needed)
 
-wget https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_linux_amd64.zip
+wget https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_linux_amd64.zip
 
 # Unzip and move to your PATH
-unzip sentinel_0.24.0_linux_amd64.zip
+unzip sentinel_0.40.0_linux_amd64.zip
 sudo mv sentinel /usr/local/bin/
 ```
 
@@ -44,7 +44,7 @@ Every Sentinel policy has a specific structure. At its core, a policy is a file 
 
 Here is the simplest possible Sentinel policy:
 
-```python
+```sentinel
 # my-first-policy.sentinel
 # This policy always passes - it's the "hello world" of Sentinel
 
@@ -61,7 +61,7 @@ Let us write something more practical. We will create a policy that ensures all 
 
 First, you need to import the `tfplan/v2` module, which gives you access to the planned Terraform changes:
 
-```python
+```sentinel
 # restrict-instance-types.sentinel
 # This policy ensures only approved EC2 instance types are used
 
@@ -75,8 +75,9 @@ allowed_types = [
     "t3.medium",
 ]
 
-# Find all AWS instances in the plan that are being created or updated
+# Find all managed AWS instances in the plan that are being created, updated, or replaced
 ec2_instances = filter tfplan.resource_changes as _, rc {
+    rc.mode is "managed" and
     rc.type is "aws_instance" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -93,7 +94,7 @@ Let us break down what is happening here:
 
 1. We import the `tfplan/v2` module and alias it as `tfplan`
 2. We define a list of allowed instance types
-3. We filter the planned resource changes to find only AWS instances being created or updated
+3. We filter the planned resource changes to find only managed AWS instances being created, updated, or replaced
 4. The main rule checks that every instance uses an instance type from our allowed list
 
 ## Breaking It Down Further
@@ -104,13 +105,13 @@ The `import` statement brings in data from Terraform. The `tfplan/v2` import is 
 
 ### Filters
 
-The `filter` expression lets you narrow down a collection to only the items you care about. In our example, we filter resource changes to find only `aws_instance` resources that are being created or updated.
+The `filter` expression lets you narrow down a collection to only the items you care about. In our example, we filter resource changes to find only managed `aws_instance` resources that are being created, updated, or replaced.
 
 ### Rules
 
 Rules are boolean expressions that evaluate to either `true` or `false`. The `main` rule is special because it determines the overall policy result. You can also define helper rules to keep your logic organized:
 
-```python
+```sentinel
 # Using helper rules for better organization
 import "tfplan/v2" as tfplan
 
@@ -121,6 +122,7 @@ allowed_types = [
 ]
 
 ec2_instances = filter tfplan.resource_changes as _, rc {
+    rc.mode is "managed" and
     rc.type is "aws_instance" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -142,7 +144,7 @@ main = rule {
 
 Sentinel provides two quantifiers: `all` and `any`. The `all` quantifier requires every item in a collection to satisfy a condition. The `any` quantifier requires at least one item to satisfy it.
 
-```python
+```sentinel
 # all - every item must match
 main = rule {
     all ec2_instances as _, instance {
@@ -169,9 +171,11 @@ my-policy/
     restrict-instance-types/
       pass.hcl
       fail.hcl
+      mock-tfplan-pass.sentinel
+      mock-tfplan-fail.sentinel
 ```
 
-The test files define mock data and expected results:
+The test files define mock data and expected results. For example, a passing test can reference a mock `tfplan/v2` module stored in the same directory as the test file:
 
 ```hcl
 # test/restrict-instance-types/pass.hcl
@@ -187,6 +191,23 @@ test {
     rules = {
         main = true
     }
+}
+```
+
+```sentinel
+# test/restrict-instance-types/mock-tfplan-pass.sentinel
+
+resource_changes = {
+    "aws_instance.example": {
+        "mode": "managed",
+        "type": "aws_instance",
+        "change": {
+            "actions": ["create"],
+            "after": {
+                "instance_type": "t3.micro",
+            },
+        },
+    },
 }
 ```
 
