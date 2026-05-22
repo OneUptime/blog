@@ -15,9 +15,11 @@ Sometimes you need to tell Terraform to stop managing a resource without actuall
 When you run `terraform state rm`, Terraform deletes the resource entry from its state file. After removal:
 
 - Terraform no longer knows about the resource
-- Running `terraform plan` will not show the resource
+- Running `terraform plan` will not show the existing resource as managed
 - Running `terraform destroy` will not try to delete it
 - The actual infrastructure resource continues to exist unchanged
+
+If the resource block is still present in your configuration, a later `terraform plan` will usually propose creating a new replacement object for the forgotten state entry.
 
 This is fundamentally different from `terraform destroy`, which removes the resource from both state and the real world.
 
@@ -183,11 +185,11 @@ terraform state list | xargs -I {} terraform state rm {}
 
 ## The -dry-run Flag
 
-Unfortunately, `terraform state rm` does not have a built-in dry-run option. Simulate one by listing first:
+Use `-dry-run` to see which resource instances match an address without removing them:
 
 ```bash
 # Preview what would be removed
-terraform state list module.networking
+terraform state rm -dry-run module.networking
 
 # Output shows what state rm will remove:
 # module.networking.aws_vpc.main
@@ -205,7 +207,11 @@ Terraform creates a backup before each state modification:
 ```bash
 # Default backup location
 ls terraform.tfstate.backup
+```
 
+For local state, you can specify a custom backup location:
+
+```bash
 # Specify a custom backup location
 terraform state rm -backup=./backups/pre-removal.tfstate aws_instance.web
 ```
