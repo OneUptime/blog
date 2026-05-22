@@ -52,7 +52,7 @@ min(-5, -1, -3)  # Returns: -5
 > min(1.5, 0.3, 2.1)
 0.3
 
-# Using the splat operator to expand a list
+# Using function argument expansion with a list
 > min([100, 50, 75]...)
 50
 ```
@@ -108,8 +108,8 @@ variable "storage_gb" {
 }
 
 locals {
-  # gp3 IOPS limit: 16000, or 500 IOPS per GB (whichever is less)
-  max_iops_by_type = 16000
+  # gp3 IOPS limit: 80000, or 500 IOPS per GB (whichever is less)
+  max_iops_by_type = 80000
   max_iops_by_size = var.storage_gb * 500
 
   # Take the smallest of: requested, type limit, size limit
