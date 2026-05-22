@@ -12,11 +12,12 @@ Terraform's string directives let you embed control flow - loops and conditional
 
 ## Directive Syntax Overview
 
-String directives use `%{ }` (percent-brace) instead of `${ }` (dollar-brace). There are three directives:
+String directives use `%{ }` (percent-brace) instead of `${ }` (dollar-brace). There are two block directive types, with an optional `else` branch for conditionals:
 
 | Directive | Purpose |
 |-----------|---------|
 | `%{ if condition }` | Conditional inclusion |
+| `%{ else }` | Optional alternative branch for conditionals |
 | `%{ for item in collection }` | Iteration |
 | `%{ endif }` / `%{ endfor }` | Closing the block |
 
@@ -68,8 +69,8 @@ locals {
         ssl_certificate_key /etc/ssl/private/${var.domain}.key;
 
         # Redirect HTTP to HTTPS
-        if ($$scheme = http) {
-            return 301 https://$$host$$request_uri;
+        if ($scheme = http) {
+            return 301 https://$host$request_uri;
         }
     %{ endif }
 
@@ -77,7 +78,7 @@ locals {
             proxy_pass http://localhost:${var.app_port};
     %{ if var.enable_websockets }
             proxy_http_version 1.1;
-            proxy_set_header Upgrade $$http_upgrade;
+            proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
     %{ endif }
         }
@@ -214,7 +215,7 @@ The tilde placement matters:
 # ~} strips whitespace AFTER the directive (trailing)
 %{ for item in list ~}
 
-# {~ strips whitespace BEFORE the directive (leading)
+# %{~ strips whitespace BEFORE the directive (leading)
 %{~ endfor }
 
 # Both: strips whitespace on both sides
@@ -295,14 +296,14 @@ variable "alarm_endpoints" {
 }
 
 locals {
-  # Be careful with commas in JSON generation
+  # Be careful with commas and escaping in JSON generation
   alarm_config = <<-EOT
     {
       "endpoints": [
     %{ for idx, ep in var.alarm_endpoints ~}
         {
-          "protocol": "${ep.protocol}",
-          "endpoint": "${ep.endpoint}"
+          "protocol": ${jsonencode(ep.protocol)},
+          "endpoint": ${jsonencode(ep.endpoint)}
         }%{ if idx < length(var.alarm_endpoints) - 1 },%{ endif }
     %{ endfor ~}
       ]
