@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, AWS, VPN, Networking, Infrastructure as Code
 
-Description: Learn how to configure AWS Site-to-Site VPN tunnels dynamically with Terraform using dynamic blocks for scalable and consistent VPN management.
+Description: Learn how to configure AWS Site-to-Site VPN tunnels dynamically with Terraform using expressions and `for_each` for scalable and consistent VPN management.
 
 ---
 
-AWS Site-to-Site VPN connections come with two tunnels by default for redundancy. Configuring these tunnels in Terraform involves setting pre-shared keys, CIDR ranges, phase 1 and phase 2 encryption settings, and Dead Peer Detection parameters. Dynamic blocks let you manage these settings consistently across multiple VPN connections.
+AWS Site-to-Site VPN connections come with two tunnels by default for redundancy. Configuring these tunnels in Terraform involves setting pre-shared keys, CIDR ranges, phase 1 and phase 2 encryption settings, and Dead Peer Detection parameters. Terraform expressions and `for_each` let you manage these settings consistently across multiple VPN connections.
 
 ## Basic VPN Connection
 
@@ -314,7 +314,8 @@ resource "aws_cloudwatch_metric_alarm" "vpn_tunnel_status" {
   threshold           = 1
 
   dimensions = {
-    VpnId = each.value.vpn_id
+    VpnId           = each.value.vpn_id
+    TunnelIpAddress = each.value.ip
   }
 
   alarm_actions = [var.sns_topic_arn]
