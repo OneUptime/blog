@@ -95,7 +95,7 @@ A resource is behaving unexpectedly and you want to see what Terraform thinks ab
 # Check just the problematic resource
 terraform plan -target=aws_ecs_service.api
 
-# See the full detail with refresh
+# Check whether remote drift would update Terraform state
 terraform plan -target=aws_ecs_service.api -refresh-only
 ```
 
@@ -222,7 +222,8 @@ Terraform prints a warning when you use `-target`:
 Warning: Resource targeting is in effect
 
 You are creating a plan with the -target option, which means that the result
-of this plan may not represent all of the changes needed to reach desired state.
+of this plan may not represent all of the changes requested by the current
+configuration.
 ```
 
 Do not ignore this. It is a reminder that you might be missing changes.
