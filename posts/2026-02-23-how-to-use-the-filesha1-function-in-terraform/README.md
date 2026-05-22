@@ -8,7 +8,7 @@ Description: Learn how to use the filesha1 function in Terraform to compute SHA-
 
 ---
 
-The `filesha1` function computes the SHA-1 hash of a file's contents and returns it as a hexadecimal string. SHA-1 produces a 40-character hex string (160-bit hash) that is widely used for content addressing, versioning, and change detection. If you have worked with Git, you are already familiar with SHA-1 - it is the algorithm Git uses for commit and object hashes.
+The `filesha1` function computes the SHA-1 hash of a file's contents and returns it as a hexadecimal string. SHA-1 produces a 40-character hex string (160-bit hash) that is widely used for content addressing, versioning, and change detection. If you have worked with Git, you are already familiar with SHA-1 - it is the default algorithm Git uses for commit and object hashes, although Git also supports SHA-256 repositories.
 
 ## What Is the filesha1 Function?
 
@@ -32,7 +32,7 @@ SHA-1 sits between MD5 and SHA-256 in terms of both hash length and computationa
 locals {
   path = "${path.module}/example.txt"
 
-  # MD5 - 32 hex chars, fastest, used by S3 ETags
+  # MD5 - 32 hex chars, fastest, often used for simple S3 ETag change detection
   md5    = filemd5(local.path)
 
   # SHA-1 - 40 hex chars, middle ground
@@ -75,7 +75,7 @@ Using `substr` to take the first 8 characters gives you a short version string s
 
 ## Change Detection for Deployment Scripts
 
-Track when deployment scripts change to trigger redeployment:
+Record when deployment scripts change so the deployment group metadata shows the script version:
 
 ```hcl
 locals {
@@ -95,13 +95,9 @@ resource "aws_codedeploy_deployment_group" "app" {
   deployment_group_name = "production"
   service_role_arn      = aws_iam_role.codedeploy.arn
 
-  # Tag with script version for tracking
-  ec2_tag_set {
-    ec2_tag_filter {
-      key   = "ScriptVersion"
-      type  = "KEY_AND_VALUE"
-      value = substr(local.scripts_version, 0, 12)
-    }
+  # Tag the deployment group with the script version for tracking
+  tags = {
+    ScriptVersion = substr(local.scripts_version, 0, 12)
   }
 }
 ```
@@ -323,8 +319,8 @@ resource "aws_ecs_task_definition" "app" {
 # - Cache invalidation
 # - Unique name generation
 
-# filesha1 reads the file at plan time
-# The file must exist when terraform plan runs
+# filesha1 reads files during Terraform configuration evaluation
+# The file must already exist on disk before Terraform takes any actions
 
 # filesha1 handles binary files correctly
 # No need to worry about encoding issues
@@ -334,6 +330,6 @@ resource "aws_ecs_task_definition" "app" {
 
 ## Summary
 
-The `filesha1` function computes the SHA-1 hash of a local file, returning a 40-character hex string. It fills a useful middle ground between the shorter MD5 hash (used for S3 ETags) and the longer SHA-256 hash (used for Lambda deployments). SHA-1 is a natural choice for content versioning, Git-like content addressing, and generating unique but deterministic identifiers from file contents. While it should not be used for security-critical hashing, it is reliable for change detection and configuration tracking.
+The `filesha1` function computes the SHA-1 hash of a local file, returning a 40-character hex string. It fills a useful middle ground between the shorter MD5 hash (often used for simple S3 ETag change detection) and the longer SHA-256 hash (used for Lambda deployments). SHA-1 is a natural choice for content versioning, Git-like content addressing, and generating unique but deterministic identifiers from file contents. While it should not be used for security-critical hashing, it is reliable for change detection and configuration tracking.
 
 For related hashing functions, see our posts on the [filemd5 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filemd5-function-in-terraform/view) and the [filesha256 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filesha256-function-in-terraform/view).
