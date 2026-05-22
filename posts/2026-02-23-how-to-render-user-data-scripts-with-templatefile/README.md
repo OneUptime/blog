@@ -20,7 +20,7 @@ The `templatefile` function reads a file from disk and renders it as a template.
 templatefile(path, vars)
 ```
 
-The path is relative to the root module directory, and the vars argument is a map of values that become available inside the template.
+If you pass a relative path, Terraform resolves it relative to the current working directory. Use `${path.module}` when you want the path to be relative to the module containing the template. The vars argument is a map of values that become available inside the template.
 
 ## Why Use templatefile for User Data?
 
@@ -84,7 +84,7 @@ Now reference it in your Terraform configuration:
 # main.tf
 
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = var.ami_id
   instance_type = "t3.micro"
 
   # Render the user data script with dynamic values
@@ -247,6 +247,8 @@ runcmd:
   - systemctl enable myapp
 ```
 
+For more complex YAML, consider building the YAML structure in Terraform and rendering it with `yamlencode` so Terraform handles quoting and escaping for you.
+
 ```hcl
 # main.tf
 
@@ -306,9 +308,9 @@ Run `terraform plan` or `terraform apply` and check the output. This saves you f
 
 There are a few things that trip people up regularly:
 
-1. Dollar signs in bash scripts conflict with Terraform interpolation. If your script uses `$HOME` or `$(command)`, you need to escape them as `$${HOME}` or `$$(command)` inside the template.
+1. Shell variables that use `${...}` conflict with Terraform interpolation. If your script needs a literal `${HOME}`, escape it as `$${HOME}` inside the template. Plain shell forms like `$HOME` and `$(command)` do not need escaping.
 
-2. All variables in the vars map must be used in the template file. If you pass a variable that the template does not reference, Terraform will throw an error in older versions, though newer versions are more lenient.
+2. Every variable referenced in the template file must be present in the vars map. Extra keys in the vars map are fine, but missing keys referenced by the template will cause an error.
 
 3. The template file path must be known at plan time. You cannot use a dynamic path that depends on a resource attribute.
 
