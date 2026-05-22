@@ -92,7 +92,7 @@ func (r *SecurityGroupResource) Create(ctx context.Context, req resource.CreateR
     createReq := &api.CreateSecurityGroupRequest{
         Name:         plan.Name.ValueString(),
         AllowedCIDRs: cidrs,
-        ExposedPorts: intSliceToIntSlice(ports),
+        ExposedPorts: ports,
     }
 
     sg, err := r.client.CreateSecurityGroup(ctx, createReq)
@@ -108,12 +108,16 @@ func (r *SecurityGroupResource) Create(ctx context.Context, req resource.CreateR
     resp.Diagnostics.Append(diags...)
     plan.AllowedCIDRs = cidrList
 
-    if len(sg.ExposedPorts) > 0 {
+    if sg.ExposedPorts != nil {
         portList, diags := types.ListValueFrom(ctx, types.Int64Type, sg.ExposedPorts)
         resp.Diagnostics.Append(diags...)
         plan.ExposedPorts = portList
     } else {
         plan.ExposedPorts = types.ListNull(types.Int64Type)
+    }
+
+    if resp.Diagnostics.HasError() {
+        return
     }
 
     resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -309,18 +313,17 @@ plan.Tags = types.SetValueMust(types.StringType, []attr.Value{})
 In your Read operation, handle the API response correctly:
 
 ```go
-func setCollectionFromAPI(ctx context.Context, apiTags []string) types.Set {
+func setCollectionFromAPI(ctx context.Context, apiTags []string) (types.Set, diag.Diagnostics) {
     if apiTags == nil {
         // API returned nil - attribute is not set
-        return types.SetNull(types.StringType)
+        return types.SetNull(types.StringType), nil
     }
     if len(apiTags) == 0 {
         // API returned empty list - attribute is set but empty
-        return types.SetValueMust(types.StringType, []attr.Value{})
+        return types.SetValue(types.StringType, []attr.Value{})
     }
     // API returned values
-    tagSet, _ := types.SetValueFrom(ctx, types.StringType, apiTags)
-    return tagSet
+    return types.SetValueFrom(ctx, types.StringType, apiTags)
 }
 ```
 
@@ -340,8 +343,8 @@ Add validators to collection attributes to validate individual elements:
         // Validate each element
         listvalidator.ValueStringsAre(
             stringvalidator.RegexMatches(
-                regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$`),
-                "must be a valid CIDR block",
+                regexp.MustCompile(`^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)/(3[0-2]|[12]?\d)$`),
+                "must be valid IPv4 CIDR notation",
             ),
         ),
     },
