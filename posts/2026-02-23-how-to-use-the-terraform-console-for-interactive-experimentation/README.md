@@ -30,7 +30,7 @@ You see a `>` prompt where you can type expressions. Terraform evaluates each ex
 >
 ```
 
-Type `exit` or press Ctrl+D to leave the console.
+Type `exit` or press Ctrl+C or Ctrl+D to leave the console.
 
 ## Prerequisites
 
@@ -224,7 +224,8 @@ true
 }
 
 > yamlencode({name = "web", replicas = 3})
-"\"name\": \"web\"\n\"replicas\": 3\n"
+"name": "web"
+"replicas": 3
 
 > urlencode("hello world")
 "hello+world"
@@ -281,7 +282,7 @@ variable "instance_types" {
 > var.instance_types["medium"]
 "t3.medium"
 
-> lookup(var.instance_types, "small")
+> lookup(var.instance_types, "small", "t3.micro")
 "t3.micro"
 ```
 
@@ -401,7 +402,7 @@ SUBNET=$(echo 'cidrsubnet("10.0.0.0/16", 8, 5)' | terraform console)
 echo "The subnet is: $SUBNET"
 ```
 
-This is useful for integrating Terraform expressions into shell scripts.
+When you pipe multiple newline-separated expressions to the console, Terraform prints only the output from the final expression unless an earlier expression returns an error. This is useful for integrating Terraform expressions into shell scripts.
 
 ## Using the Console for Debugging
 
@@ -428,7 +429,8 @@ toset([
 ### Checking Type Conversions
 
 ```text
-> type(42)  # Not a real function, but you can test conversions
+> type(42)
+number
 > tostring(42)
 "42"
 > tonumber("42")
@@ -437,10 +439,10 @@ toset([
 
 ## Limitations
 
-- The console does not support multi-line input. Each expression must be on a single line.
+- The console evaluates one complete expression at a time.
 - You cannot define new variables or resources in the console. It only evaluates expressions against existing configuration and state.
 - Some expressions that work in `.tf` files (like `count.index`) do not work in the console because they require a resource context.
-- The console evaluates against the state as it exists, not against planned changes.
+- By default, the console evaluates against the state as it exists, not against planned changes. Use `terraform console -plan` if you need Terraform to create a plan first and evaluate expressions against the planned state.
 
 ## Practical Use Cases
 
