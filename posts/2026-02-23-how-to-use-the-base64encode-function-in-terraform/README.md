@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's base64encode function to encode string
 
 ---
 
-Base64 encoding is a way to represent binary or text data as ASCII characters. In infrastructure as code, you need it more often than you might think. Cloud provider APIs expect user data in base64, Kubernetes secrets must be base64-encoded, and various configuration systems use base64 for safe transport of structured data. Terraform's `base64encode` function handles this conversion for you.
+Base64 encoding is a way to represent binary or text data as ASCII characters. In infrastructure as code, you need it more often than you might think. Some cloud provider APIs expect user data in base64, Kubernetes Secret `data` fields must be base64-encoded, and various configuration systems use base64 for safe transport of structured data. Terraform's `base64encode` function handles this conversion for you.
 
 ## Function Syntax
 
@@ -133,7 +133,7 @@ locals {
 resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs22.x"
   role          = aws_iam_role.lambda.arn
 
   filename = "lambda.zip"
@@ -178,21 +178,26 @@ resource "aws_instance" "web" {
 }
 ```
 
-## Encoding for API Gateway
+## Encoding for API Gateway Binary Payloads
 
-API Gateway integrations sometimes need base64-encoded request or response templates:
+API Gateway integrations sometimes convert binary request or response payloads to and from base64. In Terraform, this is controlled with `content_handling`; the mapping templates themselves are not base64-encoded:
 
 ```hcl
-resource "aws_api_gateway_integration_response" "mock" {
+resource "aws_api_gateway_integration" "upload" {
   rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.health.id
-  http_method = aws_api_gateway_method.health.http_method
-  status_code = "200"
+  resource_id = aws_api_gateway_resource.upload.id
+  http_method = aws_api_gateway_method.upload.http_method
 
-  response_templates = {
-    "application/json" = jsonencode({
-      status  = "healthy"
-      version = var.app_version
+  type                    = "AWS"
+  integration_http_method = "POST"
+  uri                     = aws_lambda_function.processor.invoke_arn
+
+  content_handling     = "CONVERT_TO_TEXT"
+  passthrough_behavior = "WHEN_NO_MATCH"
+
+  request_templates = {
+    "application/octet-stream" = jsonencode({
+      body = "$input.body"
     })
   }
 }
