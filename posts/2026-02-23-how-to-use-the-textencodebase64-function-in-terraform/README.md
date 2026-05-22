@@ -43,7 +43,7 @@ Terraform supports a range of character encodings, including:
 - ISO-8859-1 (Latin-1)
 - Windows-1252
 
-The exact list depends on the Go standard library's encoding support, which covers most common character encodings.
+The encoding name must be an IANA-registered character encoding name or alias. Terraform supports only a subset of those registered encodings, and the exact list can vary between Terraform versions.
 
 ## Why You Need This
 
