@@ -84,40 +84,77 @@ resource "aws_lambda_function" "resource_scheduler" {
   filename      = "scheduler.zip"
 }
 
-# Stop dev resources at 7 PM
-resource "aws_cloudwatch_event_rule" "stop_dev" {
-  name                = "stop-dev-resources"
-  description         = "Stop dev resources at 7 PM EST"
-  schedule_expression = "cron(0 0 ? * MON-FRI *)"  # 7 PM EST = midnight UTC
+resource "aws_iam_role" "scheduler_target" {
+  name = "resource-scheduler-target"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "scheduler.amazonaws.com"
+      }
+    }]
+  })
 }
 
-resource "aws_cloudwatch_event_target" "stop_dev" {
-  rule      = aws_cloudwatch_event_rule.stop_dev.name
-  target_id = "stop-dev"
-  arn       = aws_lambda_function.resource_scheduler.arn
+resource "aws_iam_role_policy" "scheduler_invoke_lambda" {
+  name = "invoke-resource-scheduler"
+  role = aws_iam_role.scheduler_target.id
 
-  input = jsonencode({
-    action      = "stop"
-    environment = "dev"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = "lambda:InvokeFunction"
+      Effect   = "Allow"
+      Resource = aws_lambda_function.resource_scheduler.arn
+    }]
   })
+}
+
+# Stop dev resources at 7 PM
+resource "aws_scheduler_schedule" "stop_dev" {
+  name                         = "stop-dev-resources"
+  description                  = "Stop dev resources at 7 PM Eastern time"
+  schedule_expression          = "cron(0 19 ? * MON-FRI *)"
+  schedule_expression_timezone = "America/New_York"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.resource_scheduler.arn
+    role_arn = aws_iam_role.scheduler_target.arn
+
+    input = jsonencode({
+      action      = "stop"
+      environment = "dev"
+    })
+  }
 }
 
 # Start dev resources at 7 AM
-resource "aws_cloudwatch_event_rule" "start_dev" {
-  name                = "start-dev-resources"
-  description         = "Start dev resources at 7 AM EST"
-  schedule_expression = "cron(0 12 ? * MON-FRI *)"  # 7 AM EST = noon UTC
-}
+resource "aws_scheduler_schedule" "start_dev" {
+  name                         = "start-dev-resources"
+  description                  = "Start dev resources at 7 AM Eastern time"
+  schedule_expression          = "cron(0 7 ? * MON-FRI *)"
+  schedule_expression_timezone = "America/New_York"
 
-resource "aws_cloudwatch_event_target" "start_dev" {
-  rule      = aws_cloudwatch_event_rule.start_dev.name
-  target_id = "start-dev"
-  arn       = aws_lambda_function.resource_scheduler.arn
+  flexible_time_window {
+    mode = "OFF"
+  }
 
-  input = jsonencode({
-    action      = "start"
-    environment = "dev"
-  })
+  target {
+    arn      = aws_lambda_function.resource_scheduler.arn
+    role_arn = aws_iam_role.scheduler_target.arn
+
+    input = jsonencode({
+      action      = "start"
+      environment = "dev"
+    })
+  }
 }
 ```
 
@@ -210,8 +247,20 @@ on:
 jobs:
   estimate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Terraform Plan
         run: |
@@ -241,7 +290,7 @@ jobs:
 
             *Powered by Infracost*`;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
