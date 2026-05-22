@@ -29,7 +29,7 @@ Install Infracost on your system:
 brew install infracost
 
 # Linux
-curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/infracost/cli/master/scripts/install.sh | sh
 
 # Verify installation
 infracost --version
@@ -124,34 +124,15 @@ Monthly cost will increase by $60.74
 +---------------------------+-------+---------+
 ```
 
-## Setting Cost Policies
+## Setting Cost Guardrails
 
-Infracost supports policies that can block deployments based on cost thresholds. Create an `infracost.yml` policy file:
+Infracost Cloud supports guardrails that can warn reviewers or block pull requests based on cost thresholds. For example, create a guardrail in Infracost Cloud with:
 
-```yaml
-# infracost.yml
-version: 0.1
+- A cost change threshold to flag PRs that add more than $500/month
+- A cost change percentage threshold to flag PRs that increase costs by more than 20%
+- A monthly cost threshold to flag PRs that push total costs above $5,000/month
 
-projects:
-  - path: .
-
-policies:
-  # Fail if monthly cost exceeds the budget
-  - name: max_monthly_cost
-    description: Monthly cost must not exceed $5,000
-    resource_type: "*"
-    evaluation:
-      monthly_cost:
-        max: 5000
-
-  # Warn if a single resource costs more than $500/month
-  - name: expensive_resources
-    description: Individual resources should not exceed $500/month
-    resource_type: "*"
-    evaluation:
-      monthly_cost:
-        max: 500
-```
+When a guardrail triggers, Infracost can add details to the PR comment, notify stakeholders, or fail the Infracost status check so your branch protection rules block the merge until it is reviewed.
 
 ## GitHub Actions Integration
 
@@ -399,19 +380,20 @@ infracost breakdown --path .
 # JSON format (for programmatic processing)
 infracost breakdown --path . --format json
 
-# HTML format (for reports)
-infracost breakdown --path . --format html --out-file report.html
+# Generate JSON first, then convert it to other output formats
+infracost breakdown --path . --format json --out-file infracost.json
 
 # Slack message format
-infracost breakdown --path . --format slack-message
+infracost output --path infracost.json --format slack-message
 
 # Diff output for PRs
-infracost diff --path . --compare-to base.json --format diff
+infracost diff --path . --compare-to base.json --format json --out-file infracost-diff.json
+infracost output --path infracost-diff.json --format diff
 ```
 
 ## Supported Resources
 
-Infracost supports pricing for hundreds of resource types across AWS, Azure, and GCP. For resources it cannot price (like IAM roles or security groups that are free), it reports them as "$0.00" or skips them.
+Infracost supports pricing for hundreds of resource types across AWS, Azure, and GCP. For resources that have no direct cost, such as many IAM roles or security groups, it reports them as free. For unsupported resources, it shows them as skipped when you use `--show-skipped`.
 
 Check coverage for a specific provider:
 
