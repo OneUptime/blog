@@ -99,8 +99,8 @@ spec:
 
 This configuration does three things:
 
-1. Requests to `/api/*` go to the `api-service` on port 8080
-2. Requests to `/web/*` go to `web-frontend` on port 3000
+1. Requests with paths starting with `/api` go to the `api-service` on port 8080
+2. Requests with paths starting with `/web` go to `web-frontend` on port 3000
 3. Everything else falls through to `web-frontend` as a default
 
 ```mermaid
@@ -268,7 +268,7 @@ spec:
       retryOn: 5xx,reset,connect-failure
 ```
 
-This gives each request a 30-second overall timeout with up to 3 retry attempts. Each retry attempt has a 10-second timeout, and retries happen on 5xx errors, connection resets, and connection failures.
+This gives each request a 30-second overall timeout with up to 3 retry attempts. Each attempt, including the initial call and any retries, has a 10-second timeout, and retries happen on 5xx errors, connection resets, and connection failures.
 
 ## Verifying HTTP Configuration
 
@@ -284,6 +284,9 @@ kubectl get virtualservice
 
 # Test with curl
 export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$GATEWAY_URL" ]; then
+  export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 curl -v -H "Host: app.example.com" "http://$GATEWAY_URL/"
 ```
 
