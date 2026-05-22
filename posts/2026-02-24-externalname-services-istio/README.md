@@ -23,13 +23,17 @@ metadata:
 spec:
   type: ExternalName
   externalName: mydb.us-east-1.rds.amazonaws.com
+  ports:
+  - name: tcp-postgres
+    protocol: TCP
+    port: 5432
 ```
 
 Without Istio, when a pod resolves `external-database.my-app.svc.cluster.local`, Kubernetes DNS returns a CNAME record pointing to `mydb.us-east-1.rds.amazonaws.com`. The pod then resolves that hostname and connects to the actual IP.
 
 ## How Istio Handles ExternalName Services
 
-Istio intercepts DNS resolution and traffic routing. When a pod in the mesh tries to connect to an ExternalName service, the Envoy sidecar needs to know how to handle it.
+Istio intercepts traffic routing. DNS resolution still happens in the application unless Istio DNS proxying is enabled. When a pod in the mesh tries to connect to an ExternalName service, the Envoy sidecar needs to know how to handle it.
 
 In older versions of Istio, ExternalName services were not well supported and often caused confusing behavior. In recent versions, Istio handles them better, but there are still gotchas.
 
@@ -46,9 +50,9 @@ kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep ou
 
 ## The Problem with ExternalName and mTLS
 
-One common issue: when you have an ExternalName service and strict mTLS, Istio might try to use mTLS to connect to the external service. Obviously, the external service does not have an Istio sidecar and cannot do mTLS.
+One common issue: when you have an ExternalName service and strict mTLS, Istio might try to use Istio mutual TLS to connect to the external service. Obviously, the external service does not have an Istio sidecar and cannot do Istio mTLS.
 
-You need to disable mTLS for external destinations:
+You need to configure TLS mode for the ExternalName service host. If your application already uses TLS, or if the external service expects plaintext, disable Istio TLS origination:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -57,13 +61,13 @@ metadata:
   name: external-database-tls
   namespace: my-app
 spec:
-  host: mydb.us-east-1.rds.amazonaws.com
+  host: external-database.my-app.svc.cluster.local
   trafficPolicy:
     tls:
-      mode: SIMPLE
+      mode: DISABLE
 ```
 
-`SIMPLE` means Istio originates TLS (like a regular HTTPS client) rather than mTLS. If the external service does not use TLS at all, set it to `DISABLE`.
+If the application sends plaintext and the external service expects TLS immediately on the connection, use `SIMPLE` instead. `SIMPLE` means Istio originates TLS (like a regular HTTPS client) rather than Istio mTLS.
 
 ## Replacing ExternalName with ServiceEntry
 
@@ -105,14 +109,14 @@ spec:
           time: 7200s
           interval: 75s
     tls:
-      mode: SIMPLE
+      mode: DISABLE
     outlierDetection:
       consecutiveGatewayErrors: 3
       interval: 30s
       baseEjectionTime: 60s
 ```
 
-If you still want pods to use the friendly name `external-database` instead of the full AWS hostname, create an internal Service that routes to the ServiceEntry:
+If you still want pods to use the friendly name `external-database` instead of the full AWS hostname, create an ExternalName Service as a DNS alias:
 
 ```yaml
 apiVersion: v1
@@ -123,6 +127,10 @@ metadata:
 spec:
   type: ExternalName
   externalName: mydb.us-east-1.rds.amazonaws.com
+  ports:
+  - name: tcp-postgres
+    protocol: TCP
+    port: 5432
 ```
 
 The ServiceEntry handles the Istio-level configuration, and the ExternalName service provides the DNS alias for application convenience.
@@ -171,7 +179,7 @@ With this setup, your application calls `http://api.stripe.com:80` and Istio upg
 
 ## Authorization for External Services
 
-Control which workloads can access external services:
+If you route external HTTP traffic through an Istio egress gateway, use AuthorizationPolicy on the gateway workload to control which sources can use it:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -182,27 +190,28 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: my-backend
+      istio: egressgateway
   action: ALLOW
   rules:
-  - to:
-    - operation:
-        hosts:
-        - "mydb.us-east-1.rds.amazonaws.com"
-        - "api.stripe.com"
   - from:
     - source:
         namespaces:
         - my-app
+    to:
+    - operation:
+        hosts:
+        - "api.stripe.com"
 ```
+
+For raw TCP destinations such as databases, match on ports or route through a dedicated egress gateway path instead of relying on HTTP host matching.
 
 ## Handling DNS Resolution
 
 ExternalName services rely on DNS resolution. If the external hostname changes IP frequently (which is common with cloud services), Istio's DNS resolution behavior matters.
 
-With `resolution: DNS` in a ServiceEntry, Istio resolves the hostname and caches the result. The cache TTL depends on the DNS response TTL. For services with short TTLs (like AWS ALBs), this works fine. For services with long TTLs, the proxy might hold onto stale IPs.
+With `resolution: DNS` in a ServiceEntry, Istio resolves the configured hostname periodically and uses those results for proxied requests. This resolution is independent of the application's own DNS lookup, and Istio's proxy DNS resolution interval is fixed at 30 seconds.
 
-You can force more frequent resolution by using DNS proxy:
+DNS proxying does not change how the Istio proxy resolves `resolution: DNS` ServiceEntries, but it can let applications resolve ServiceEntry hostnames that are not known to kube-dns:
 
 ```yaml
 apiVersion: networking.istio.io/v1
