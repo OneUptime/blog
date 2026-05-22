@@ -22,7 +22,7 @@ The null_resource with its triggers argument lets you run provisioners whenever 
 # main.tf
 
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.4.0"
   required_providers {
     null = {
       source  = "hashicorp/null"
@@ -90,8 +90,8 @@ resource "aws_instance" "app" {
 }
 
 variable "ami_id" {
-  type    = string
-  default = "ami-12345678"
+  description = "AMI ID for the selected region"
+  type        = string
 }
 
 resource "null_resource" "configure_app" {
@@ -268,9 +268,15 @@ resource "null_resource" "step_3" {
 resource "terraform_data" "build_info" {
   input = {
     version    = var.deploy_version
-    built_at   = timestamp()
+    built_at   = var.build_timestamp
     commit_sha = var.commit_sha
   }
+}
+
+variable "build_timestamp" {
+  description = "Build timestamp in RFC 3339 format"
+  type        = string
+  default     = "2026-02-23T00:00:00Z"
 }
 
 variable "commit_sha" {
