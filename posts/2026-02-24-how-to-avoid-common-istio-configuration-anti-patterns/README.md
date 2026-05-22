@@ -193,7 +193,7 @@ spec:
 Retries seem helpful until they cause a retry storm that takes down your entire system:
 
 ```yaml
-# BAD: Too many retries with no backoff awareness
+# BAD: Too many retries without a per-try timeout
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -210,9 +210,9 @@ spec:
         retryOn: 5xx,retriable-status-codes
 ```
 
-With 10 retry attempts and multiple callers, a single failing backend can receive 10x its normal traffic, making the failure worse.
+With 10 retry attempts and multiple callers, a single failing backend can receive up to 11 requests for each original request, making the failure worse.
 
-The fix: use conservative retry settings with circuit breakers:
+The fix: use conservative retry settings with per-try timeouts:
 
 ```yaml
 apiVersion: networking.istio.io/v1
