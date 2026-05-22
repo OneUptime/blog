@@ -42,7 +42,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Terraform Init
         run: terraform init -no-color
@@ -126,6 +126,7 @@ resource "aws_db_instance" "main" {
 
 ```yaml
 # GitHub Actions with Vault
+# Requires the workflow or job to grant `id-token: write` permissions.
 - name: Import Secrets from Vault
   uses: hashicorp/vault-action@v3
   with:
@@ -173,7 +174,7 @@ The benefit of this approach is that the CI/CD pipeline only needs IAM permissio
 
 ## Using SOPS for Encrypted Variable Files
 
-Mozilla SOPS lets you encrypt variable files and commit them to Git:
+SOPS lets you encrypt variable files and commit them to Git:
 
 ```bash
 # Encrypt a tfvars file with SOPS using AWS KMS
@@ -190,9 +191,9 @@ In your pipeline, decrypt before applying:
 # GitHub Actions with SOPS
 - name: Install SOPS
   run: |
-    wget -q https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-    chmod +x sops-v3.8.1.linux.amd64
-    sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+    wget -q https://github.com/getsops/sops/releases/download/v3.11.0/sops-v3.11.0.linux.amd64
+    chmod +x sops-v3.11.0.linux.amd64
+    sudo mv sops-v3.11.0.linux.amd64 /usr/local/bin/sops
 
 - name: Decrypt variables
   run: |
@@ -217,6 +218,9 @@ Terraform tries to mask sensitive values in output, but there are gaps. Add extr
     # Register each secret as a masked value
     echo "::add-mask::$TF_VAR_db_password"
     echo "::add-mask::$TF_VAR_api_key"
+  env:
+    TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+    TF_VAR_api_key: ${{ secrets.API_KEY }}
 
 - name: Terraform Plan
   run: |
@@ -224,6 +228,9 @@ Terraform tries to mask sensitive values in output, but there are gaps. Add extr
     terraform plan -no-color -out=tfplan 2>&1 | \
       sed 's/password = .*/password = [REDACTED]/' | \
       sed 's/api_key = .*/api_key = [REDACTED]/'
+  env:
+    TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+    TF_VAR_api_key: ${{ secrets.API_KEY }}
 ```
 
 ## Encrypting State Files
@@ -239,7 +246,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true  # Enable server-side encryption
     kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/abc123"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true  # Enable native S3 state locking
   }
 }
 ```
@@ -275,7 +282,7 @@ resource "aws_s3_bucket_policy" "state" {
             "arn:aws:iam::123456789012:role/terraform-admin"
           ]
         }
-        Action = ["s3:GetObject", "s3:PutObject"]
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         Resource = "${aws_s3_bucket.terraform_state.arn}/*"
       }
     ]
@@ -308,7 +315,7 @@ resource "aws_lambda_function" "app" {
 }
 ```
 
-Dynamic secrets are created fresh each time Terraform runs and expire after a TTL. Even if the state file is compromised, the credentials are already invalid.
+Dynamic secrets are created fresh each time Terraform runs and expire after a TTL. This reduces the exposure window if the state file is compromised, but the credentials may still be valid until the TTL expires. Long-running workloads also need a runtime refresh strategy instead of relying on Terraform to inject expiring credentials once.
 
 ## Secret Rotation Strategy
 
@@ -326,6 +333,12 @@ jobs:
   rotate:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.4
+
       - name: Generate new database password
         id: newpass
         run: |
