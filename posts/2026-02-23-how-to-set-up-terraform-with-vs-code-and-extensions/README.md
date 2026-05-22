@@ -22,10 +22,15 @@ brew install --cask visual-studio-code
 # Windows (via winget)
 winget install Microsoft.VisualStudioCode
 
-# Linux (Debian/Ubuntu)
-sudo apt-get install code
+# Linux (Debian/Ubuntu) - install the downloaded official .deb package
+sudo apt install ./<file>.deb
 
-# Linux (RHEL/CentOS) - download from https://code.visualstudio.com
+# Or, after configuring Microsoft's apt repository
+sudo apt update
+sudo apt install code
+
+# Linux (RHEL/Fedora/CentOS) - after adding Microsoft's yum repository
+sudo dnf install code
 ```
 
 ## The Essential Extension: HashiCorp Terraform
@@ -75,16 +80,16 @@ Open VS Code settings (`Cmd+,` or `Ctrl+,`) and search for "terraform". Here are
     "editor.tabSize": 2
   },
 
-  // Enable validation on save
+  // Enable enhanced validation
   "terraform.validation.enableEnhancedValidation": true
 }
 ```
 
 The `formatOnSave` setting is particularly useful. Every time you save a `.tf` file, it automatically runs `terraform fmt` to ensure consistent formatting.
 
-### Setting the Terraform Path
+### Setting Terraform and Language Server Paths
 
-If the extension cannot find your Terraform binary, set the path explicitly:
+If the extension cannot find the Terraform Language Server, set the path explicitly:
 
 ```json
 {
@@ -92,7 +97,13 @@ If the extension cannot find your Terraform binary, set the path explicitly:
 }
 ```
 
-The extension uses `terraform-ls` (Terraform Language Server), which it usually manages automatically. But if you need to specify a custom path, this setting is available.
+The extension uses `terraform-ls` (Terraform Language Server), which it usually manages automatically. If the language server cannot find your Terraform CLI binary, set that path separately:
+
+```json
+{
+  "terraform.languageServer.terraform.path": "/usr/local/bin/terraform"
+}
+```
 
 ## Recommended Additional Extensions
 
@@ -149,7 +160,7 @@ code --install-extension usernamehw.errorlens
 
 ## Configuring the Integrated Terminal
 
-VS Code's integrated terminal is where you will run Terraform commands. Configure it for a smooth experience:
+VS Code's integrated terminal is where you will run Terraform commands. Configure it for a smooth experience. If you set `TF_PLUGIN_CACHE_DIR`, create the directory first with `mkdir -p ~/.terraform.d/plugin-cache`:
 
 ```json
 {
