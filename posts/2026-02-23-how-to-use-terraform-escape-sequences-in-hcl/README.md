@@ -61,8 +61,8 @@ locals {
   # This is especially important for shell scripts in user_data
   user_data_script = <<-EOF
     #!/bin/bash
-    # Use $$ to produce a literal $ in the output
-    HOSTNAME=$$(hostname)
+    # Command substitution does not need escaping
+    HOSTNAME=$(hostname)
     echo "Host is $${HOSTNAME}"
 
     # Terraform interpolation still works with single $
@@ -71,7 +71,7 @@ locals {
 }
 ```
 
-The `$$` and `%%` escaping only applies when followed by `{`. A lone `$` or `%` does not need escaping:
+The `$${` and `%%{` escaping only applies to those exact opening sequences. A lone `$` or `%` does not need escaping:
 
 ```hcl
 locals {
@@ -111,11 +111,11 @@ EOF
 }
 ```
 
-The `<<-` (with dash) variant strips leading whitespace from each line, which lets you indent the heredoc content with your Terraform code. The closing marker determines the indentation level - everything is stripped up to the column of the closing `EOF`.
+The `<<-` (with dash) variant strips leading whitespace from each line, which lets you indent the heredoc content with your Terraform code. Terraform finds the line in the sequence with the smallest number of leading spaces and trims that many spaces from all lines.
 
 ## Heredocs and Interpolation
 
-Heredocs support interpolation by default. To disable it, use single quotes around the marker:
+Heredocs support interpolation by default. Terraform does not have a quoted heredoc marker to disable interpolation; escape literal template sequences with `$${` and `%%{`:
 
 ```hcl
 locals {
@@ -125,15 +125,15 @@ Server: ${var.server_name}
 Port: ${var.port}
 EOF
 
-  # Without interpolation - use single quotes
-  no_interpolation = <<'EOF'
-This ${is_not_interpolated}
-Neither is this ${variable}
+  # Literal template sequences
+  no_interpolation = <<EOF
+This $${is_not_interpolated}
+Neither is this $${variable}
 EOF
 }
 ```
 
-The single-quoted heredoc marker (`<<'EOF'`) is useful when you are embedding scripts or templates that use `${}` syntax themselves and you do not want Terraform to interpret them.
+Escaping the opening sequence is useful when you are embedding scripts or templates that use `${}` syntax themselves and you do not want Terraform to interpret them.
 
 ## Escaping in JSON Strings
 
@@ -188,7 +188,7 @@ resource "null_resource" "example" {
 
 ## Template Files and Escaping
 
-The `templatefile()` function reads a separate file and processes it as a template. Inside template files, the same `$$` and `%%` escaping rules apply:
+The `templatefile()` function reads a separate file and processes it as a template. Inside template files, the same `$${` and `%%{` escaping rules apply:
 
 ```hcl
 # main.tf
@@ -279,15 +279,15 @@ locals {
 Here are situations that commonly cause confusion:
 
 ```hcl
-# Pitfall 1: Forgetting $$ in user_data scripts
+# Pitfall 1: Forgetting $${ in user_data scripts
 # WRONG - Terraform tries to interpolate ${HOME}
 user_data = "export PATH=${HOME}/bin:$PATH"
 
 # CORRECT
-user_data = "export PATH=$${HOME}/bin:$$PATH"
+user_data = "export PATH=$${HOME}/bin:$PATH"
 
 # Pitfall 2: JSON inside HCL strings
-# WRONG - unescaped quotes
+# WRONG - hard to read and easy to escape incorrectly
 policy = "{\"Statement\": [{\"Effect\": \"Allow\"}]}"
 
 # CORRECT - use jsonencode
@@ -313,4 +313,4 @@ pattern = "foo$${bar}"  # If you need literal ${bar}
 
 ## Summary
 
-Escape sequences in Terraform HCL cover three areas: standard string escapes (`\n`, `\t`, `\\`, `\"`), template sequence escapes (`$$` for literal `$` before `{`, `%%` for literal `%` before `{`), and heredoc strings for multi-line content. The most common source of confusion is the `$$` escaping needed in shell scripts and templates. When in doubt, use `jsonencode()` for JSON, heredocs for multi-line strings, and `templatefile()` for complex templates. For more on handling JSON in Terraform, see our post on [handling complex JSON policies](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-complex-json-policies-in-terraform/view).
+Escape sequences in Terraform HCL cover three areas: standard string escapes (`\n`, `\t`, `\\`, `\"`), template sequence escapes (`$${` for literal `${`, `%%{` for literal `%{`), and heredoc strings for multi-line content. The most common source of confusion is the `$${` escaping needed for literal shell-style `${...}` references in scripts and templates. When in doubt, use `jsonencode()` for JSON, heredocs for multi-line strings, and `templatefile()` for complex templates. For more on handling JSON in Terraform, see our post on [handling complex JSON policies](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-complex-json-policies-in-terraform/view).
