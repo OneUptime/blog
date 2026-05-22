@@ -77,7 +77,7 @@ variable "allowed_regions" {
 locals {
   # If you pass duplicates, they are removed
   tags = toset(["web", "api", "web", "api"])
-  # Result: ["api", "web"] (deduplicated and sorted)
+  # Result: a set containing "api" and "web" (deduplicated, unordered)
 }
 ```
 
@@ -330,10 +330,10 @@ Here is when to use which:
 ```hcl
 locals {
   # List to set
-  unique_items = toset(["a", "b", "a", "c"])  # set: ["a", "b", "c"]
+  unique_items = toset(["a", "b", "a", "c"])  # set containing "a", "b", and "c"
 
   # Set to list
-  ordered_items = tolist(toset(["c", "a", "b"]))  # list: ["a", "b", "c"]
+  list_items = tolist(toset(["c", "a", "b"]))  # list order is not the original input order
 
   # Map from list of objects
   server_map = { for s in var.servers : s.name => s }
