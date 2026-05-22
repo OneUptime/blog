@@ -34,7 +34,7 @@ A typical JWT payload with custom claims looks like this:
 }
 ```
 
-Istio can access any of these claims in AuthorizationPolicy conditions using the `request.auth.claims` attribute.
+Istio can access string and list-of-string claims in AuthorizationPolicy conditions using the `request.auth.claims` attribute, including nested string fields.
 
 ## Validating a Simple String Claim
 
@@ -77,7 +77,7 @@ The `request.auth.claims[role]` syntax accesses the `role` field from the JWT pa
 
 ## Validating Array Claims
 
-JWT tokens often have array claims like `groups` or `permissions`. Istio handles these correctly - if the claim is an array, the condition matches if any element in the array matches any of the specified values:
+JWT tokens often have list-of-string claims like `groups` or `permissions`. Istio handles these correctly - if the claim is a list, the condition matches if any element in the list matches any of the specified values:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -103,7 +103,7 @@ If the user's token has `"groups": ["engineering", "sales"]`, this matches becau
 
 ## Validating Nested Claims
 
-For nested objects in the JWT payload, use dot notation to access nested fields:
+For nested objects in the JWT payload, use bracket notation to access nested string fields:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -191,7 +191,7 @@ Rules are OR-ed together. Within each rule, conditions are AND-ed.
 
 ## Using notValues for Exclusion
 
-You can also use `notValues` to deny access based on specific claim values:
+You can also use `notValues` to exclude specific claim values when writing an ALLOW policy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -213,7 +213,7 @@ spec:
           notValues: ["free", "trial"]
 ```
 
-This allows access to anyone whose org plan is NOT "free" or "trial".
+This rule matches authenticated requests whose org plan is NOT "free" or "trial".
 
 ## Multi-Tenant Access Control
 
@@ -358,7 +358,7 @@ When claims validation isn't working as expected, decode the token and verify th
 
 ```bash
 # Decode the JWT payload
-echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson' <<< "$TOKEN"
 
 # Check what Envoy sees
 kubectl logs deploy/my-service -c istio-proxy -n my-app | grep -i "rbac\|denied\|jwt"
@@ -369,10 +369,10 @@ istioctl analyze -n my-app
 
 Common mistakes with claims validation:
 
-1. **String vs number types** - If your claim is a number (`"tenant_id": 42`), but your policy specifies it as a string `"42"`, it won't match. Istio treats all values as strings in the policy, but the JWT claim types matter.
+1. **String vs number types** - AuthorizationPolicy conditions support JWT claims of type string or list of strings. If your claim is a number (`"tenant_id": 42`), use a string value in the token (`"tenant_id": "42"`) before matching it in policy.
 
 2. **Claim path errors** - `request.auth.claims[groups]` is correct. `request.auth.claims.groups` is not the right syntax for AuthorizationPolicy conditions.
 
-3. **Missing requestPrincipals** - If you have `when` conditions but forget to include `requestPrincipals: ["*"]` in the `from` source, the condition might not work as expected because the JWT might not be processed.
+3. **Missing RequestAuthentication or JWT requirement** - `request.auth.claims` requires a RequestAuthentication policy for the workload. Include `requestPrincipals: ["*"]` in the `from` source when the rule should require a validated JWT, not just match claims when a JWT is present.
 
 Custom claims validation in Istio is a powerful way to build fine-grained access control without adding authentication logic to your application code. The mesh handles it all at the proxy level, and your services just receive pre-validated, pre-authorized requests.
