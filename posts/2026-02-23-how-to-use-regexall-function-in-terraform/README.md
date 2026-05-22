@@ -12,7 +12,7 @@ While the `regex` function stops at the first match, `regexall` keeps going and 
 
 ## What Does regexall Do?
 
-The `regexall` function applies a regular expression to a string and returns a list of all matches, not just the first one. If there are no matches, it returns an empty list instead of throwing an error.
+The `regexall` function applies a regular expression to a string and returns a list of all matches, not just the first one. If the pattern is valid but there are no matches, it returns an empty list instead of throwing an error.
 
 ```hcl
 # Basic syntax
@@ -20,7 +20,7 @@ The `regexall` function applies a regular expression to a string and returns a l
 regexall(pattern, string)
 ```
 
-This is a key difference from `regex` - you do not need to wrap `regexall` in `can()` or `try()` because it always returns a list (empty if no matches).
+This is a key difference from `regex` - you do not need to wrap `regexall` in `can()` or `try()` just to handle a no-match result, because it returns an empty list when nothing matches.
 
 ## Basic Examples
 
@@ -70,7 +70,7 @@ locals {
 
 ## Validation Without Errors
 
-Unlike `regex`, `regexall` never throws an error on no match. This makes it ideal for validation conditions.
+Unlike `regex`, `regexall` does not throw an error on no match. This makes it ideal for validation conditions.
 
 ```hcl
 variable "password" {
@@ -151,9 +151,9 @@ locals {
 }
 ```
 
-## Validating CIDR Blocks
+## Extracting CIDR Blocks
 
-Check that a string contains valid CIDR notation.
+Extract strings that look like CIDR notation.
 
 ```hcl
 variable "cidr_blocks" {
@@ -163,7 +163,7 @@ variable "cidr_blocks" {
 }
 
 locals {
-  # Extract all CIDR blocks
+  # Extract all CIDR-looking strings
   cidrs = regexall("[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+", var.cidr_blocks)
   # Result: ["10.0.0.0/16", "172.16.0.0/12", "192.168.0.0/24"]
 }
@@ -195,9 +195,9 @@ locals {
   dot_count  = length(regexall("\\.", local.domain))
   # Result: 3
 
-  # Validate that a version has exactly 2 dots (major.minor.patch)
+  # Check that a version has exactly 2 dots (major.minor.patch shape)
   version       = "1.2.3"
-  is_valid_semver = length(regexall("\\.", local.version)) == 2
+  has_semver_dot_count = length(regexall("\\.", local.version)) == 2
   # Result: true
 }
 ```
@@ -236,7 +236,7 @@ locals {
 
 ## Using regexall for Boolean Checks
 
-Since an empty list is falsy in many contexts, you can use `regexall` for pattern existence checks.
+Terraform does not coerce lists to booleans, so use `length(regexall(...)) > 0` for pattern existence checks.
 
 ```hcl
 variable "instance_name" {
@@ -267,7 +267,7 @@ locals {
     upstream_port 9090;
   EOT
 
-  # Extract all port numbers (1-5 digits after specific keywords or colons)
+  # Extract all 2-5 digit numbers
   ports = regexall("[0-9]{2,5}", local.nginx_config)
   # Result: ["80", "443", "8080", "9090"]
 
@@ -295,10 +295,10 @@ locals {
 }
 ```
 
-Use `regex` when you need exactly one match and want an error if it is missing. Use `regexall` when you need all matches or want safe no-match handling.
+Use `regex` when you only need the first match and want an error if it is missing. Use `regexall` when you need all matches or want safe no-match handling.
 
 For more on `regex`, see [how to use the regex function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-regex-function-in-terraform/view).
 
 ## Summary
 
-The `regexall` function is the safer, more versatile cousin of `regex`. It returns all matches as a list and never throws an error on no match. This makes it ideal for counting patterns, extracting multiple values, validating inputs, and any situation where you do not know in advance how many matches exist. Combined with `length()`, it provides clean boolean checks for pattern existence without needing `can()` or `try()`.
+The `regexall` function is the safer, more versatile cousin of `regex`. It returns all matches as a list and does not throw an error when a valid pattern has no matches. This makes it ideal for counting patterns, extracting multiple values, validating inputs, and any situation where you do not know in advance how many matches exist. Combined with `length()`, it provides clean boolean checks for pattern existence without needing `can()` or `try()` for no-match cases.
