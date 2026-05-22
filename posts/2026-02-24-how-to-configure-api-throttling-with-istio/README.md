@@ -41,34 +41,36 @@ spec:
       value:
         name: envoy.filters.http.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-          stat_prefix: http_local_rate_limiter
-          token_bucket:
-            max_tokens: 100
-            tokens_per_fill: 100
-            fill_interval: 60s
-          filter_enabled:
-            runtime_key: local_rate_limit_enabled
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
-          filter_enforced:
-            runtime_key: local_rate_limit_enforced
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
-          response_headers_to_add:
-          - append_action: OVERWRITE_IF_EXISTS_OR_ADD
-            header:
-              key: x-local-rate-limit
-              value: "true"
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: http_local_rate_limiter
+            token_bucket:
+              max_tokens: 100
+              tokens_per_fill: 100
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            response_headers_to_add:
+            - append: false
+              header:
+                key: x-local-rate-limit
+                value: "true"
 ```
 
 This allows 100 requests per 60 seconds per pod. When the limit is hit, clients get a 429 Too Many Requests response.
 
 ## Route-Specific Rate Limits
 
-You probably do not want the same rate limit on every endpoint. Your health check endpoint should not count toward API limits. You can use per-route configuration:
+You probably do not want the same rate limit on every endpoint. Your health check endpoint should not count toward API limits. After the local rate limit filter is in the HTTP filter chain, you can use per-route configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -93,29 +95,31 @@ spec:
       value:
         typed_per_filter_config:
           envoy.filters.http.local_ratelimit:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-            stat_prefix: http_local_rate_limiter
-            token_bucket:
-              max_tokens: 50
-              tokens_per_fill: 50
-              fill_interval: 60s
-            filter_enabled:
-              runtime_key: local_rate_limit_enabled
-              default_value:
-                numerator: 100
-                denominator: HUNDRED
-            filter_enforced:
-              runtime_key: local_rate_limit_enforced
-              default_value:
-                numerator: 100
-                denominator: HUNDRED
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: http_local_rate_limiter
+              token_bucket:
+                max_tokens: 50
+                tokens_per_fill: 50
+                fill_interval: 60s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
 ```
 
 ## Global Rate Limiting
 
 For proper distributed rate limiting, you need a global rate limit service. This is an external gRPC service that all Envoy sidecars talk to. The most common implementation is Envoy's own rate limit service.
 
-First, deploy the rate limit service:
+First, deploy the rate limit service. This example assumes Redis is already running and reachable as `redis.default.svc.cluster.local:6379`:
 
 ```yaml
 apiVersion: apps/v1
@@ -232,33 +236,16 @@ spec:
           "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
           domain: my-api-ratelimit
           failure_mode_deny: false
+          timeout: 10s
           rate_limit_service:
             grpc_service:
               envoy_grpc:
                 cluster_name: outbound|8081||ratelimit.default.svc.cluster.local
+                authority: ratelimit.default.svc.cluster.local
             transport_api_version: V3
-  - applyTo: CLUSTER
-    match:
-      cluster:
-        service: ratelimit.default.svc.cluster.local
-    patch:
-      operation: ADD
-      value:
-        name: rate_limit_cluster
-        type: STRICT_DNS
-        connect_timeout: 10s
-        lb_policy: ROUND_ROBIN
-        http2_protocol_options: {}
-        load_assignment:
-          cluster_name: rate_limit_cluster
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: ratelimit.default.svc.cluster.local
-                    port_value: 8081
 ```
+
+This adds the global rate limit filter. Envoy will call the rate limit service only when a route or virtual host has rate limit actions, like the configuration in the next section.
 
 The `failure_mode_deny: false` setting means that if the rate limit service is down, requests are allowed through. Set it to `true` if you want to block requests when the rate limiter is unavailable.
 
@@ -320,23 +307,36 @@ Premium clients get 1000 requests per minute while everyone else gets 100.
 
 ## Adding Rate Limit Headers to Responses
 
-Good APIs tell clients about their rate limit status. You can configure Envoy to include rate limit headers:
+Good APIs tell clients about their rate limit status. For global rate limiting, enable Envoy's `X-RateLimit-*` header support on the rate limit filter:
 
 ```yaml
-response_headers_to_add:
-- append_action: OVERWRITE_IF_EXISTS_OR_ADD
-  header:
-    key: x-ratelimit-limit
-    value: "100"
-- append_action: OVERWRITE_IF_EXISTS_OR_ADD
-  header:
-    key: x-ratelimit-remaining
-    value: "%DYNAMIC_METADATA(envoy.filters.http.ratelimit:remaining)%"
+typed_config:
+  "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+  domain: my-api-ratelimit
+  enable_x_ratelimit_headers: DRAFT_VERSION_03
+  rate_limit_service:
+    grpc_service:
+      envoy_grpc:
+        cluster_name: outbound|8081||ratelimit.default.svc.cluster.local
+        authority: ratelimit.default.svc.cluster.local
+    transport_api_version: V3
 ```
 
 ## Monitoring Rate Limits
 
-Check your rate limiting stats through Envoy's stats endpoint:
+In Istio, local rate limit stats are disabled by default. Enable them with `proxyStatsMatcher` on the workload:
+
+```yaml
+template:
+  metadata:
+    annotations:
+      proxy.istio.io/config: |-
+        proxyStatsMatcher:
+          inclusionRegexps:
+          - ".*http_local_rate_limit.*"
+```
+
+Then check your rate limiting stats through Envoy's stats endpoint:
 
 ```bash
 # Check local rate limit stats
@@ -345,8 +345,8 @@ kubectl exec <pod-name> -c istio-proxy -- \
   curl -s localhost:15000/stats | grep rate_limit
 
 # Look for these metrics
-# http_local_rate_limiter.http_local_rate_limiter.rate_limited: 42
-# http_local_rate_limiter.http_local_rate_limiter.ok: 1580
+# http_local_rate_limiter.http_local_rate_limit.rate_limited: 42
+# http_local_rate_limiter.http_local_rate_limit.ok: 1580
 ```
 
 You can also expose these as Prometheus metrics and build dashboards to track how often rate limits are being hit.
