@@ -10,6 +10,8 @@ Description: Learn how to design, organize, and deploy multi-stack CDKTF archite
 
 As infrastructure grows, a single stack becomes unwieldy. Hundreds of resources in one state file means slow plans, large blast radius, and tangled dependencies. Multi-stack architectures solve this by splitting infrastructure into focused, independently deployable units. This guide covers patterns for designing multi-stack CDKTF applications, managing cross-stack data flow, and deploying them effectively.
 
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. These patterns are most useful for existing CDKTF projects.
+
 ## Why Multi-Stack?
 
 A single CDKTF stack works fine for small projects. But as your infrastructure grows, you hit problems:
@@ -31,12 +33,13 @@ Split by infrastructure layer, with higher layers depending on lower ones:
 import { Construct } from "constructs";
 import { App, TerraformStack, S3Backend, TerraformOutput } from "cdktf";
 import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
+import { Vpc } from "@cdktf/provider-aws/lib/vpc";
 
 // Layer 1: Foundation - rarely changes
 class NetworkStack extends TerraformStack {
   public readonly vpcId: string;
-  public readonly publicSubnetIds: string[];
-  public readonly privateSubnetIds: string[];
+  public readonly publicSubnetIds!: string[];
+  public readonly privateSubnetIds!: string[];
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -46,7 +49,6 @@ class NetworkStack extends TerraformStack {
       key: "network/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-lock",
     });
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
@@ -64,8 +66,8 @@ class NetworkStack extends TerraformStack {
 
 // Layer 2: Data - changes occasionally
 class DataStack extends TerraformStack {
-  public readonly dbEndpoint: string;
-  public readonly cacheEndpoint: string;
+  public readonly dbEndpoint!: string;
+  public readonly cacheEndpoint!: string;
 
   constructor(
     scope: Construct,
@@ -79,7 +81,6 @@ class DataStack extends TerraformStack {
       key: "data/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-lock",
     });
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
@@ -107,7 +108,6 @@ class ComputeStack extends TerraformStack {
       key: "compute/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-lock",
     });
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
@@ -141,9 +141,9 @@ For microservices, each service gets its own stack:
 ```typescript
 // Shared infrastructure
 class SharedStack extends TerraformStack {
-  public readonly vpcId: string;
-  public readonly ecsClusterId: string;
-  public readonly albArn: string;
+  public readonly vpcId!: string;
+  public readonly ecsClusterId!: string;
+  public readonly albArn!: string;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -177,7 +177,6 @@ class ServiceStack extends TerraformStack {
       key: `services/${config.name}/terraform.tfstate`,
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-lock",
     });
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
