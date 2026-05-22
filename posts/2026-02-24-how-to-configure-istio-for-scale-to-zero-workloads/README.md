@@ -37,8 +37,8 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "10"
         autoscaling.knative.dev/target: "100"
         autoscaling.knative.dev/scale-down-delay: "30s"
     spec:
@@ -52,7 +52,7 @@ spec:
             memory: 128Mi
 ```
 
-The `minScale: "0"` annotation enables scale-to-zero. The `scale-down-delay` gives the system a buffer before scaling down, preventing flapping when traffic is intermittent.
+The `min-scale: "0"` annotation allows the revision to scale to zero when scale-to-zero is enabled for the cluster. The `scale-down-delay` gives the system a buffer before scaling down, preventing flapping when traffic is intermittent.
 
 When traffic arrives and there are zero pods:
 
@@ -88,8 +88,8 @@ data:
 
 Key settings:
 
-- `scale-to-zero-grace-period`: How long to wait after the last request before scaling to zero. Set this based on your traffic patterns. If requests come in bursts every few minutes, a longer grace period avoids unnecessary cold starts.
-- `target-burst-capacity`: How much burst capacity to maintain. Setting this to a positive value means the activator stays in the request path even when pods are running, which allows faster handling of sudden traffic spikes.
+- `scale-to-zero-grace-period`: The maximum time Knative waits for the scale-from-zero routing machinery to be in place before removing the last pod. Use `scale-down-delay`, `scale-to-zero-pod-retention-period`, and the stable window when you want to keep pods around longer to avoid unnecessary cold starts.
+- `target-burst-capacity`: How much burst capacity to maintain. Setting this to `0` keeps the activator in the path only for scale-from-zero, setting it to `-1` keeps the activator always in the path, and other values may put the activator in the path depending on revision scale and load.
 - `max-scale-up-rate`: How fast pods can scale up. A higher value means faster response to traffic but potentially more resource usage.
 
 ## Using KEDA for Scale-to-Zero with Istio
@@ -147,14 +147,15 @@ spec:
     metadata:
       host: amqp://rabbitmq.default:5672
       queueName: work-queue
-      queueLength: "5"
+      mode: QueueLength
+      value: "5"
 ```
 
 The queue acts as the buffer, and KEDA scales the processor pods based on queue depth.
 
 ## Istio Configuration for Scale-to-Zero
 
-When using scale-to-zero with Istio, configure the VirtualService to handle the case where no pods are running:
+When using scale-to-zero with Istio, configure the VirtualService to tolerate the scale-up window after a request buffer, such as the Knative activator, has triggered pod creation:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -176,7 +177,7 @@ spec:
       retryOn: 503,connect-failure,reset
 ```
 
-The generous timeout and retry configuration gives pods time to start up before the request fails. The `retryOn` setting includes 503 and connect-failure, which are the errors you'll see when there are no backend pods.
+The generous timeout and retry configuration gives newly created pods time to become reachable before the request fails. The `retryOn` setting includes 503 and connect-failure, which are common errors during endpoint churn. Retries alone do not trigger scale-up or buffer HTTP requests when there are no backend pods; you still need Knative's activator or another request-buffering component.
 
 ## DestinationRule Configuration
 
@@ -206,7 +207,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-Increase `connectTimeout` to allow for pod startup time. Set `outlierDetection` thresholds high enough that pods aren't ejected during the startup phase when they might return a few errors.
+Increase `connectTimeout` only if connection establishment to ready endpoints can be slow; it does not make Istio wait for pods that do not exist yet. Set `outlierDetection` thresholds high enough that newly ready pods aren't ejected after a small number of transient errors.
 
 ## Sidecar Startup Optimization
 
@@ -219,7 +220,9 @@ metadata:
       holdApplicationUntilProxyStarts: true
       terminationDrainDuration: 2s
     sidecar.istio.io/proxyCPU: "50m"
+    sidecar.istio.io/proxyCPULimit: "100m"
     sidecar.istio.io/proxyMemory: "64Mi"
+    sidecar.istio.io/proxyMemoryLimit: "128Mi"
 ```
 
 The `holdApplicationUntilProxyStarts` annotation prevents race conditions where the application starts before the sidecar is ready. While this adds a small amount to startup time, it prevents the more disruptive scenario where the application tries to make outbound calls and fails because Envoy isn't configured yet.
@@ -251,19 +254,19 @@ Cold start requests will show as outliers in the latency distribution.
 
 ## PeerAuthentication Considerations
 
-If you're using strict mTLS, scale-to-zero can cause issues because the Knative activator or other request buffers might not have the right certificates. Use PERMISSIVE mode for namespaces with scale-to-zero services:
+If you're using strict mTLS with Knative and Istio, make sure the `knative-serving` namespace participates in the mesh and can receive both plaintext and mTLS traffic. Knative's Istio installation guidance recommends enabling sidecar injection for `knative-serving` and setting PERMISSIVE mode in that namespace:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: default
+  namespace: knative-serving
 spec:
   mtls:
     mode: PERMISSIVE
 ```
 
-Or apply it only to the specific services that scale to zero.
+For custom request buffers outside Knative, apply the mTLS policy only as narrowly as needed for the buffer-to-workload traffic path.
 
 Scale-to-zero with Istio is achievable, but it requires coordination between the autoscaler, the request buffer, and the sidecar proxy. Knative provides the most integrated experience, while KEDA gives you more flexibility with event sources. Either way, tuning timeouts, retries, and sidecar startup behavior is essential for a smooth cold start experience.
