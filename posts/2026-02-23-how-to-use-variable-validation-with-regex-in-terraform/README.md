@@ -36,7 +36,7 @@ Most cloud providers have strict rules for resource names. Here are common patte
 
 ### S3 Bucket Names
 
-S3 buckets must be 3-63 characters, lowercase letters, numbers, hyphens, and periods only. They cannot start or end with a hyphen.
+S3 buckets must be 3-63 characters, lowercase letters, numbers, hyphens, and periods only. They must start and end with a lowercase letter or number, cannot contain adjacent periods or periods next to hyphens, cannot be formatted like an IP address, and cannot use AWS-reserved prefixes or suffixes.
 
 ```hcl
 variable "bucket_name" {
@@ -44,8 +44,15 @@ variable "bucket_name" {
   description = "S3 bucket name"
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name))
-    error_message = "Bucket name must be 3-63 characters, lowercase alphanumeric, hyphens, and periods. Cannot start or end with a hyphen."
+    condition = (
+      can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name)) &&
+      !can(regex("\\.\\.", var.bucket_name)) &&
+      !can(regex("(\\.-|-\\.)", var.bucket_name)) &&
+      !can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$", var.bucket_name)) &&
+      !can(regex("^(xn--|sthree-|amzn-s3-demo-)", var.bucket_name)) &&
+      !can(regex("(-s3alias|--ol-s3|\\.mrap|--x-s3|--table-s3)$", var.bucket_name))
+    )
+    error_message = "Bucket name must follow Amazon S3 general purpose bucket naming rules."
   }
 }
 ```
@@ -70,7 +77,7 @@ variable "project_name" {
 
 ### Kubernetes Resource Names
 
-Kubernetes names must follow DNS subdomain naming rules:
+Kubernetes namespace names must be valid RFC 1123 DNS labels:
 
 ```hcl
 variable "k8s_namespace" {
@@ -114,7 +121,7 @@ variable "vpc_cidr" {
   validation {
     # Match IPv4 CIDR notation
     condition     = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", var.vpc_cidr))
-    error_message = "Must be a valid IPv4 CIDR block (e.g., 10.0.0.0/16)."
+    error_message = "Must use IPv4 CIDR notation (e.g., 10.0.0.0/16)."
   }
 }
 ```
@@ -142,7 +149,7 @@ variable "kms_key_arn" {
   description = "KMS key ARN for encryption"
 
   validation {
-    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]{36}$", var.kms_key_arn))
+    condition     = can(regex("^arn:(aws|aws-cn|aws-us-gov):kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]{36}$", var.kms_key_arn))
     error_message = "Must be a valid KMS key ARN (e.g., arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012)."
   }
 }
@@ -156,7 +163,7 @@ variable "execution_role_arn" {
   description = "IAM role ARN for task execution"
 
   validation {
-    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.execution_role_arn))
+    condition     = can(regex("^arn:(aws|aws-cn|aws-us-gov):iam::[0-9]{12}:role/.+$", var.execution_role_arn))
     error_message = "Must be a valid IAM role ARN (e.g., arn:aws:iam::123456789012:role/my-role)."
   }
 }
@@ -170,9 +177,9 @@ variable "app_version" {
   description = "Application version in semantic versioning format"
 
   validation {
-    # Match semver: MAJOR.MINOR.PATCH with optional pre-release suffix
-    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?$", var.app_version))
-    error_message = "Version must follow semantic versioning (e.g., 1.2.3 or 1.2.3-beta.1)."
+    # Match SemVer 2.0.0: MAJOR.MINOR.PATCH with optional pre-release and build metadata
+    condition     = can(regex("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$", var.app_version))
+    error_message = "Version must follow semantic versioning (e.g., 1.2.3, 1.2.3-beta.1, or 1.2.3+build.1)."
   }
 }
 ```
@@ -186,7 +193,7 @@ variable "container_image" {
 
   validation {
     # Match registry/repo:tag or repo:tag patterns
-    condition     = can(regex("^[a-zA-Z0-9._/-]+:[a-zA-Z0-9._-]+$", var.container_image))
+    condition     = can(regex("^([a-z0-9.-]+(:[0-9]+)?/)?[a-z0-9._/-]+:[a-zA-Z0-9._-]+$", var.container_image))
     error_message = "Must be a valid Docker image reference (e.g., nginx:latest or 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.0.0)."
   }
 }
