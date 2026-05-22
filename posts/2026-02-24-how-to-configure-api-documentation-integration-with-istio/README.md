@@ -391,20 +391,21 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
+  action: DENY
   rules:
     - to:
         - operation:
             paths: ["/docs*", "/specs*", "/api-reference*"]
       from:
         - source:
-            ipBlocks:
+            notRemoteIpBlocks:
               - "10.0.0.0/8"
               - "192.168.0.0/16"
 ```
 
-This restricts documentation access to internal IP ranges only.
+This blocks documentation access from outside the internal IP ranges when the gateway uses `X-Forwarded-For` or PROXY protocol to determine the original client IP and gateway topology is configured with the appropriate trusted proxies. If your ingress preserves the packet source address with `externalTrafficPolicy: Local`, use `notIpBlocks` instead.
 
-Alternatively, use JWT authentication:
+Alternatively, use JWT authentication. This assumes you have a `RequestAuthentication` policy validating JWTs for the ingress gateway:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -416,16 +417,20 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
+  action: DENY
   rules:
     - to:
         - operation:
             paths: ["/docs*"]
       from:
         - source:
-            requestPrincipals: ["*"]
+            notRequestPrincipals: ["*"]
+    - to:
+        - operation:
+            paths: ["/docs*"]
       when:
         - key: request.auth.claims[role]
-          values: ["developer", "admin"]
+          notValues: ["developer", "admin"]
 ```
 
 ## CORS for Documentation
@@ -465,7 +470,8 @@ Track how often your documentation is accessed using Istio's built-in metrics:
 # Check documentation request volume
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  curl -s 'localhost:9090/api/v1/query?query=istio_requests_total{destination_service="swagger-ui.default.svc.cluster.local"}'
+  curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=istio_requests_total{destination_service="swagger-ui.default.svc.cluster.local"}'
 ```
 
 This helps you understand which API versions and endpoints developers are most interested in, which can inform your deprecation and migration decisions.
