@@ -8,7 +8,7 @@ Description: Configure health-based load balancing in Istio to automatically rou
 
 ---
 
-A load balancer that keeps sending traffic to a failing pod is worse than no load balancer at all. Health-based load balancing solves this by continuously monitoring endpoint health and removing unhealthy ones from the rotation. In Istio, this is primarily done through outlier detection, a mechanism where Envoy tracks error rates and latencies for each endpoint and ejects those that cross your thresholds.
+A load balancer that keeps sending traffic to a failing pod is worse than no load balancer at all. Health-based load balancing solves this by continuously monitoring endpoint health and removing unhealthy ones from the rotation. In Istio, this is primarily done through outlier detection, a mechanism where Envoy tracks endpoint failures and other outlier signals, then ejects endpoints that cross your thresholds.
 
 ## Outlier Detection Basics
 
@@ -17,7 +17,7 @@ Outlier detection is Istio's approach to passive health checking. Instead of act
 Here is a basic outlier detection configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -37,7 +37,7 @@ spec:
 Here is what each field does:
 
 - `consecutive5xxErrors`: How many consecutive 5xx errors before Envoy ejects the host. Setting this to 5 means an endpoint needs to fail 5 times in a row.
-- `interval`: How often Envoy checks for outliers. Every 10 seconds in this case.
+- `interval`: How often Envoy runs outlier detection analysis and checks ejected hosts for recovery. Every 10 seconds in this case.
 - `baseEjectionTime`: How long a host stays ejected. The actual ejection time increases with each subsequent ejection (baseEjectionTime * number of ejections).
 - `maxEjectionPercent`: Maximum percentage of hosts that can be ejected at once. This prevents all endpoints from being removed.
 
@@ -46,7 +46,7 @@ Here is what each field does:
 Besides 5xx errors, you might want to detect gateway-level errors like connection failures and timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service-dr
@@ -64,7 +64,7 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-Gateway errors include 502, 503, and 504 responses, plus connection-level errors. These often indicate a pod that's completely down rather than just returning application errors.
+For HTTP traffic, gateway errors include 502, 503, and 504 responses. For opaque TCP traffic, connect timeouts and connection failures qualify as gateway errors. These often indicate a pod that's completely down rather than just returning application errors.
 
 The `consecutiveGatewayErrors` field specifically catches these infrastructure-level failures, while `consecutive5xxErrors` catches all server errors including 500s.
 
@@ -121,7 +121,7 @@ This two-layer approach catches both full pod failures (Kubernetes handles it) a
 For production environments, you probably want more nuanced settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: critical-service-dr
@@ -147,14 +147,14 @@ spec:
 
 The `minHealthPercent` field is important and often overlooked. It sets the minimum percentage of healthy endpoints required for outlier detection to be active. If healthy endpoints drop below this threshold, Envoy disables outlier detection and routes to all endpoints, including unhealthy ones. This prevents a cascading failure where all endpoints are ejected.
 
-Setting it to 50 means if more than half your endpoints are ejected, the system considers something globally wrong (maybe a downstream dependency is broken) and starts routing to all endpoints again.
+Setting it to 50 means if fewer than half your endpoints are healthy, the system considers something globally wrong (maybe a downstream dependency is broken) and starts routing to all endpoints again.
 
 ## Per-Subset Health Configuration
 
 Different service subsets might need different health thresholds. A canary deployment might need stricter checks:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -182,7 +182,7 @@ spec:
           maxEjectionPercent: 100
 ```
 
-The canary subset has much stricter settings: only 2 consecutive errors triggers ejection, and we allow ejecting 100% of canary pods. If the canary is broken, we want all traffic to go to stable.
+The canary subset has much stricter settings: only 2 consecutive errors triggers ejection, and we allow ejecting 100% of canary pods. If the canary is broken, traffic routed to the canary subset should stop using those endpoints; with a VirtualService that sends most traffic to stable, the stable subset keeps serving its share.
 
 ## Monitoring Outlier Detection
 
@@ -197,16 +197,16 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/clusters | gre
 istioctl proxy-config endpoints <pod-name> --cluster "outbound|80||payment-service.default.svc.cluster.local"
 ```
 
-Endpoints that have been ejected will show up with a `UNHEALTHY` status.
+Endpoints that have been ejected show up in the `OUTLIER CHECK` column, and Envoy's cluster admin output marks them with `failed_outlier_check`.
 
-For Prometheus monitoring, use these queries:
+For Prometheus monitoring, make sure your proxy stats matcher includes `.*outlier_detection.*`, then use these queries:
 
 ```promql
 # Number of ejected hosts
 envoy_cluster_outlier_detection_ejections_active{cluster_name="outbound|80||payment-service.default.svc.cluster.local"}
 
 # Total ejection events over time
-rate(envoy_cluster_outlier_detection_ejections_total{cluster_name="outbound|80||payment-service.default.svc.cluster.local"}[5m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total{cluster_name="outbound|80||payment-service.default.svc.cluster.local"}[5m])
 ```
 
 ## Handling the Ejection-Recovery Cycle
