@@ -37,7 +37,7 @@ If you skip the port naming or use an unrecognized prefix, Istio will fall back 
 TCP routing in Istio uses the `tcp` section of a VirtualService instead of the `http` section. Here is a basic example that routes all TCP traffic to a specific service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: redis-route
@@ -55,14 +55,14 @@ spec:
               number: 6379
 ```
 
-TCP routing is simpler than HTTP routing because you cannot match on headers, paths, or methods. Your matching options are limited to port numbers and source labels.
+TCP routing is simpler than HTTP routing because you cannot match on headers, paths, or methods. Your matching options are limited to L4 attributes such as destination port, destination subnet, source labels, source namespace, and gateway.
 
 ## TCP Traffic Shifting
 
 One of the most useful TCP features in Istio is traffic shifting. You can gradually migrate traffic between versions of a TCP service by adjusting weights:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: database-migration
@@ -89,7 +89,7 @@ spec:
 You need a corresponding DestinationRule that defines the subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: db-subsets
@@ -112,7 +112,7 @@ Keep in mind that TCP traffic shifting works at the connection level, not the re
 For TCP services, connection pooling configuration is handled through DestinationRules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis-pool
@@ -130,7 +130,7 @@ spec:
           probes: 9
 ```
 
-The `maxConnections` setting limits how many TCP connections the sidecar will open to the upstream service. If you hit this limit, new connection attempts will be queued or rejected depending on your outlier detection configuration.
+The `maxConnections` setting limits how many TCP connections the sidecar will open to an upstream host. If you hit this limit, new connection attempts can overflow the connection circuit breaker and be rejected.
 
 The `tcpKeepalive` section enables TCP keepalive probes, which is important for long-lived connections that might sit idle. Without keepalives, intermediate network devices (load balancers, firewalls) might silently drop idle connections.
 
@@ -139,7 +139,7 @@ The `tcpKeepalive` section enables TCP keepalive probes, which is important for 
 Outlier detection for TCP services works differently than for HTTP. Since there are no HTTP status codes to evaluate, Istio uses connection errors as the signal:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis-outlier
@@ -161,7 +161,7 @@ For TCP, `consecutive5xxErrors` counts consecutive connection failures (connecti
 To expose a TCP service through the Istio ingress gateway, configure the Gateway with the TCP protocol:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: tcp-gateway
@@ -177,7 +177,7 @@ spec:
       hosts:
         - "*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: mongo-external
@@ -260,7 +260,7 @@ A few things to keep in mind about TCP routing limitations in Istio:
 - No retries (Istio does not retry TCP connections)
 - No fault injection (no way to inject delays or errors at the TCP level)
 - No request-level metrics (you get connection-level metrics instead)
-- No request-level tracing (TCP connections show up as single spans)
+- No request-level tracing (Istio distributed tracing is for L7 protocols, not opaque TCP streams)
 
 These are fundamental limitations of working at the TCP layer, not Istio-specific restrictions. If you need any of these features, you need to use a protocol that Istio understands at a higher level, like HTTP or gRPC.
 
@@ -277,10 +277,10 @@ Look for your service in the cluster list and verify the correct protocol is det
 
 ```bash
 kubectl exec -it deploy/redis -c istio-proxy -- \
-  pilot-agent request GET stats | grep tcp
+  pilot-agent request GET stats | grep -E 'redis|upstream_cx|downstream_cx'
 ```
 
-This gives you metrics like `tcp.upstream_cx_total`, `tcp.upstream_cx_active`, and `tcp.upstream_cx_connect_fail`, which tell you whether connections are being established and maintained correctly.
+This gives you Envoy stats such as `cluster.<name>.upstream_cx_total`, `cluster.<name>.upstream_cx_active`, and `cluster.<name>.upstream_cx_connect_fail`, which tell you whether connections are being established and maintained correctly.
 
 ## Summary
 
