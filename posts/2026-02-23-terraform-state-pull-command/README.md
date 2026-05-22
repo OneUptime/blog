@@ -292,20 +292,22 @@ terraform state pull | python3 -m json.tool > /dev/null && echo "Valid JSON"
 # Search for specific strings in state
 terraform state pull | jq -r '.. | strings' | grep -i "password"
 
-# Convert to YAML (if you prefer that format)
+# Convert to YAML (requires PyYAML)
 terraform state pull | python3 -c "import sys,json,yaml; print(yaml.dump(json.load(sys.stdin)))"
 ```
 
 ## Important Notes
 
-**Read-only operation.** `terraform state pull` never modifies state. It is completely safe to run at any time.
+**Read-only operation.** `terraform state pull` never modifies state.
 
 **Sensitive data exposure.** The raw JSON contains all attribute values, including sensitive ones like passwords and keys. Be careful where you pipe or save this output.
 
 **Network dependency.** For remote backends, this command requires network access to the backend. If the backend is unavailable, the command fails.
 
-**State locking.** `terraform state pull` acquires a read lock on the state. If another operation is actively writing state, pull will wait (or fail, depending on the backend).
+**State locking.** Terraform locks state for operations that could write state. Since `terraform state pull` is read-only, it does not protect you from reading a state snapshot immediately before or after another operation changes it.
+
+**Raw state format.** The raw state file format can change between Terraform versions. For long-lived integrations, prefer the machine-readable output from `terraform show -json` after pulling or otherwise saving a state file.
 
 ## Summary
 
-The `terraform state pull` command is a read-only gateway to your raw state data. It enables backups, debugging, auditing, cross-environment comparisons, and compliance checking. Combined with `jq`, it becomes a powerful analysis tool. Since it never modifies state, it is safe to use freely. For the reverse operation - uploading state to a backend - see [terraform state push](https://oneuptime.com/blog/post/2026-02-23-terraform-state-push-command/view). For friendlier resource inspection, use [terraform state show](https://oneuptime.com/blog/post/2026-02-23-terraform-state-show-command/view).
+The `terraform state pull` command is a read-only gateway to your raw state data. It enables backups, debugging, auditing, cross-environment comparisons, and compliance checking. Combined with `jq`, it becomes a powerful analysis tool. Since it never modifies state, it is safe to run when you handle the output carefully. For the reverse operation - uploading state to a backend - see [terraform state push](https://oneuptime.com/blog/post/2026-02-23-terraform-state-push-command/view). For friendlier resource inspection, use [terraform state show](https://oneuptime.com/blog/post/2026-02-23-terraform-state-show-command/view).
