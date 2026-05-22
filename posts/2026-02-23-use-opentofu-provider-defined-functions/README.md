@@ -81,13 +81,7 @@ output "arn_resource" {
 ```hcl
 # Build an ARN from components
 locals {
-  constructed_arn = provider::aws::arn_build({
-    partition = "aws"
-    service   = "s3"
-    region    = ""
-    account   = ""
-    resource  = "my-bucket/prefix/*"
-  })
+  constructed_arn = provider::aws::arn_build("aws", "s3", "", "", "my-bucket/prefix/*")
 }
 
 output "constructed_arn" {
@@ -112,13 +106,7 @@ resource "aws_iam_policy" "bucket_access" {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
         Resource = [
-          provider::aws::arn_build({
-            partition = "aws"
-            service   = "s3"
-            region    = ""
-            account   = ""
-            resource  = "${var.bucket_name}/*"
-          })
+          provider::aws::arn_build("aws", "s3", "", "", "${var.bucket_name}/*")
         ]
       }
     ]
@@ -197,7 +185,7 @@ terraform {
     }
     google = {
       source  = "hashicorp/google"
-      version = ">= 5.20.0"
+      version = ">= 5.23.0"
     }
   }
 }
@@ -206,14 +194,14 @@ locals {
   # AWS provider function
   aws_arn = provider::aws::arn_parse("arn:aws:s3:::my-bucket")
 
-  # Google provider function (hypothetical example)
-  gcp_project = provider::google::project_parse("projects/my-project")
+  # Google provider function
+  gcp_region = provider::google::region_from_zone("us-central1-a")
 }
 ```
 
 ## Provider Functions with Aliases
 
-When using provider aliases, reference the alias in the function call:
+When using provider aliases, provider functions still use the provider's local name from `required_providers`. Aliases select provider configurations for resources and modules, not function names:
 
 ```hcl
 provider "aws" {
@@ -225,15 +213,9 @@ provider "aws" {
   region = "us-west-2"
 }
 
-# Functions from the default provider
+# Function calls use the provider local name, regardless of aliases
 locals {
-  east_arn = provider::aws::arn_build({
-    partition = "aws"
-    service   = "s3"
-    region    = "us-east-1"
-    account   = ""
-    resource  = "east-bucket"
-  })
+  east_arn = provider::aws::arn_build("aws", "ec2", "us-east-1", "123456789012", "vpc/vpc-1234567890abcdef0")
 }
 ```
 
