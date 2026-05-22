@@ -54,7 +54,7 @@ First, create a Slack app that handles slash commands and interactive messages.
 ```python
 # chatops_bot.py - Terraform ChatOps bot using Flask and Slack SDK
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from slack_sdk import WebClient
 from slack_sdk.signature import SignatureVerifier
 import subprocess
@@ -65,6 +65,7 @@ import os
 app = Flask(__name__)
 slack_client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
 verifier = SignatureVerifier(signing_secret=os.environ["SLACK_SIGNING_SECRET"])
+TERRAFORM_DIR = "/opt/terraform/infrastructure"
 
 # Allowed channels for Terraform operations
 
@@ -132,17 +133,13 @@ def handle_slash_command():
 
 def run_terraform_plan(channel_id, user_id, environment):
     """Execute terraform plan and post results to Slack."""
-    workspace = ENVIRONMENTS[environment]["workspace"]
-
-    result = subprocess.run(
-        ["terraform", "plan", "-no-color",
-         f"-var-file=environments/{environment}.tfvars"],
-        capture_output=True, text=True,
-        cwd="/opt/terraform/infrastructure"
+    result = run_terraform_command(
+        environment,
+        ["plan", "-no-color", "-input=false", f"-var-file=environments/{environment}.tfvars"]
     )
 
     # Summarize the plan output
-    output = result.stdout
+    output = result.stdout if result.returncode == 0 else result.stderr
     summary = extract_plan_summary(output)
 
     # Post the plan to Slack with approval buttons
@@ -157,7 +154,7 @@ def run_terraform_plan(channel_id, user_id, environment):
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"```{summary}```"}
+            "text": {"type": "mrkdwn", "text": f"```{summary[:2900]}```"}
         }
     ]
 
@@ -198,6 +195,67 @@ def extract_plan_summary(plan_output):
         if "Plan:" in line or "No changes" in line:
             return line
     return "Plan completed. Check full output for details."
+
+def run_terraform_command(environment, args):
+    """Run a Terraform command in the workspace for the environment."""
+    workspace = ENVIRONMENTS[environment]["workspace"]
+    env = os.environ.copy()
+    env["TF_WORKSPACE"] = workspace
+    env["TF_IN_AUTOMATION"] = "1"
+
+    return subprocess.run(
+        ["terraform", *args],
+        capture_output=True, text=True,
+        env=env,
+        cwd=TERRAFORM_DIR
+    )
+
+def post_approval_request(channel_id, user_id, environment):
+    """Post an approval request for a protected environment."""
+    blocks = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"<@{user_id}> requested approval to apply Terraform changes to {environment}."}
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Approve Apply"},
+                    "style": "primary",
+                    "action_id": "approve_apply",
+                    "value": json.dumps({
+                        "environment": environment,
+                        "requester": user_id
+                    })
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Reject"},
+                    "style": "danger",
+                    "action_id": "reject_apply",
+                    "value": environment
+                }
+            ]
+        }
+    ]
+
+    slack_client.chat_postMessage(
+        channel=channel_id,
+        blocks=blocks,
+        text=f"Approval requested for Terraform apply to {environment}"
+    )
+    return f"Approval requested for {environment}."
+
+def get_terraform_status(environment):
+    """Return the selected Terraform workspace for the environment."""
+    result = run_terraform_command(environment, ["workspace", "show"])
+
+    if result.returncode != 0:
+        return f"Could not get Terraform status for {environment}: {result.stderr}"
+
+    return f"{environment} is using Terraform workspace: {result.stdout.strip()}"
 ```
 
 ## Handling Approvals with Interactive Messages
@@ -208,11 +266,10 @@ When someone clicks the Approve button in Slack, the bot receives an interaction
 @app.route("/slack/interactions", methods=["POST"])
 def handle_interaction():
     """Handle button clicks and other interactive components."""
-    payload = json.loads(request.form["payload"])
-
     if not verifier.is_valid_request(request.get_data(), request.headers):
         return "Invalid request", 401
 
+    payload = json.loads(request.form["payload"])
     action = payload["actions"][0]
     action_id = action["action_id"]
     approver_id = payload["user"]["id"]
@@ -253,11 +310,9 @@ def handle_interaction():
 
 def run_terraform_apply(channel_id, user_id, environment):
     """Execute terraform apply and post results to Slack."""
-    result = subprocess.run(
-        ["terraform", "apply", "-auto-approve", "-no-color",
-         f"-var-file=environments/{environment}.tfvars"],
-        capture_output=True, text=True,
-        cwd="/opt/terraform/infrastructure"
+    result = run_terraform_command(
+        environment,
+        ["apply", "-auto-approve", "-no-color", "-input=false", f"-var-file=environments/{environment}.tfvars"]
     )
 
     status = "succeeded" if result.returncode == 0 else "failed"
@@ -274,7 +329,7 @@ def run_terraform_apply(channel_id, user_id, environment):
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"```{output[-3000:]}```"}
+            "text": {"type": "mrkdwn", "text": f"```{output[-2900:]}```"}
         }
     ]
 
@@ -287,7 +342,7 @@ def run_terraform_apply(channel_id, user_id, environment):
 
 ## Managing Slack Resources with Terraform
 
-You can also use Terraform to manage the Slack workspace itself, creating channels and configuring webhooks.
+You can also use Terraform to manage the Slack workspace itself and create notification topics that a separate notification service can publish from.
 
 ```hcl
 # Configure notifications channel using Slack provider
@@ -296,6 +351,10 @@ terraform {
     slack = {
       source  = "pablovarela/slack"
       version = "~> 1.2"
+    }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
     }
   }
 }
@@ -312,15 +371,9 @@ resource "slack_conversation" "infra_notifications" {
   is_private = false
 }
 
-# Create a webhook for CI/CD notifications
+# Create a topic for CI/CD notifications
 resource "aws_sns_topic" "terraform_notifications" {
   name = "terraform-notifications"
-}
-
-resource "aws_sns_topic_subscription" "slack_webhook" {
-  topic_arn = aws_sns_topic.terraform_notifications.arn
-  protocol  = "https"
-  endpoint  = var.slack_webhook_url
 }
 ```
 
@@ -343,6 +396,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: hashicorp/setup-terraform@v4
+
       - name: Parse command
         id: parse
         run: |
@@ -353,17 +408,23 @@ jobs:
           echo "environment=$ENV" >> $GITHUB_OUTPUT
 
       - name: Terraform Plan
+        id: plan
         if: steps.parse.outputs.action == 'plan'
         run: |
-          terraform init
-          terraform plan -no-color > plan_output.txt 2>&1
+          terraform init -input=false
+          terraform plan -no-color -input=false \
+            -var-file="environments/${{ steps.parse.outputs.environment }}.tfvars" \
+            > plan_output.txt 2>&1
 
       - name: Post plan to Slack
+        if: steps.parse.outputs.action == 'plan'
         run: |
           PLAN=$(cat plan_output.txt | tail -20)
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"text\": \"Terraform Plan for ${{ steps.parse.outputs.environment }}:\n```${PLAN}```\"}"
+          jq -n --arg text "Terraform Plan for ${{ steps.parse.outputs.environment }}:\n\`\`\`${PLAN}\`\`\`" \
+            '{text: $text}' |
+            curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d @-
 ```
 
 ## Best Practices
