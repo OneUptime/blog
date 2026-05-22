@@ -42,7 +42,7 @@ Terraform types map to JSON types:
 | Terraform Type | JSON Type |
 |---|---|
 | map/object | object |
-| list/tuple | array |
+| list/set/tuple | array |
 | string | string |
 | number | number |
 | bool | boolean |
@@ -208,13 +208,11 @@ resource "aws_iam_policy" "dynamic" {
 ## API Gateway Request Templates
 
 ```hcl
-resource "aws_api_gateway_integration" "lambda" {
+resource "aws_api_gateway_integration" "mock" {
   rest_api_id             = aws_api_gateway_rest_api.main.id
   resource_id             = aws_api_gateway_resource.proxy.id
   http_method             = aws_api_gateway_method.proxy.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.api.invoke_arn
+  type                    = "MOCK"
 
   request_templates = {
     "application/json" = jsonencode({
@@ -234,10 +232,13 @@ resource "kubernetes_service" "app" {
     namespace = var.namespace
 
     annotations = {
-      # Some annotations expect JSON values
-      "service.beta.kubernetes.io/aws-load-balancer-attributes" = jsonencode({
-        "load_balancing.cross_zone.enabled" = "true"
+      # Use jsonencode only for annotations whose consuming tool expects JSON
+      "example.com/app-config" = jsonencode({
+        tier     = "frontend"
+        replicas = 3
       })
+
+      "service.beta.kubernetes.io/aws-load-balancer-attributes" = "load_balancing.cross_zone.enabled=true"
 
       "service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags" = join(",", [
         for key, value in var.tags : "${key}=${value}"
@@ -316,11 +317,13 @@ resource "aws_cloudwatch_event_target" "lambda" {
       instance = "$.detail.instance-id"
       state    = "$.detail.state"
     }
-    input_template = jsonencode({
-      instance_id = "<instance>"
-      new_state   = "<state>"
-      timestamp   = "<aws.events.event.ingestion-time>"
-    })
+    input_template = <<-EOF
+      {
+        "instance_id": <instance>,
+        "new_state": <state>,
+        "timestamp": <aws.events.event.ingestion-time>
+      }
+    EOF
   }
 }
 ```
