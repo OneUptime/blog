@@ -32,6 +32,7 @@ package test
 import (
     "testing"
 
+    "github.com/gruntwork-io/terratest/modules/random"
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
 )
@@ -42,7 +43,7 @@ func TestNetworking(t *testing.T) {
     opts := &terraform.Options{
         TerraformDir: "../modules/networking",
         Vars: map[string]interface{}{
-            "name_prefix": "test-net-" + randomId(),
+            "name_prefix": "test-net-" + random.UniqueId(),
             "vpc_cidr":    "10.0.0.0/16",
         },
     }
@@ -60,7 +61,7 @@ func TestCompute(t *testing.T) {
     opts := &terraform.Options{
         TerraformDir: "../modules/compute",
         Vars: map[string]interface{}{
-            "name_prefix":   "test-comp-" + randomId(),
+            "name_prefix":   "test-comp-" + random.UniqueId(),
             "instance_type": "t3.micro",
         },
     }
@@ -78,8 +79,8 @@ func TestDatabase(t *testing.T) {
     opts := &terraform.Options{
         TerraformDir: "../modules/database",
         Vars: map[string]interface{}{
-            "name_prefix":     "test-db-" + randomId(),
-            "instance_class":  "db.t3.micro",
+            "name_prefix":       "test-db-" + random.UniqueId(),
+            "instance_class":    "db.t3.micro",
             "allocated_storage": 20,
         },
     }
@@ -99,7 +100,7 @@ go test -v -timeout 30m ./...
 # Limit parallelism to 4 tests at a time
 go test -v -timeout 30m -parallel 4 ./...
 
-# Run specific test in parallel with count
+# Disable test caching while limiting parallelism
 go test -v -timeout 30m -parallel 2 -count=1 ./...
 ```
 
@@ -188,9 +189,12 @@ var cidrCounter uint32
 // UniqueCIDR returns a unique /16 CIDR block for testing
 func UniqueCIDR() string {
     n := atomic.AddUint32(&cidrCounter, 1)
+    if n > 255 {
+        panic("exhausted available 10.x.0.0/16 test CIDR blocks")
+    }
+
     // Use 10.x.0.0/16 where x increments per test
-    second := n % 256
-    return fmt.Sprintf("10.%d.0.0/16", second)
+    return fmt.Sprintf("10.%d.0.0/16", n)
 }
 ```
 
@@ -205,6 +209,10 @@ name: Parallel Terraform Tests
 on:
   pull_request:
     paths: ['modules/**']
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   # Unit tests - fast, run all in parallel
@@ -294,6 +302,8 @@ func TestMain(m *testing.M) {
     }
 
     terraform.InitAndApply(nil, sharedOpts)
+    sharedVpcId := terraform.Output(nil, sharedOpts, "vpc_id")
+    os.Setenv("SHARED_VPC_ID", sharedVpcId)
 
     // Run all tests
     exitCode := m.Run()
@@ -321,7 +331,25 @@ func TestServiceB(t *testing.T) {
 
 ## Native Terraform Test Parallelism
 
-Terraform's built-in test framework runs test files sequentially by default, but you can run multiple test files in parallel using CI matrix strategies:
+Terraform's built-in test framework runs `run` blocks sequentially by default. To run independent `run` blocks in parallel within a test file, set `parallel = true` in a `test` block or on individual `run` blocks, and give runs that use the same module separate `state_key` values:
+
+```hcl
+test {
+  parallel = true
+}
+
+run "unit" {
+  command   = plan
+  state_key = "unit"
+}
+
+run "security" {
+  command   = plan
+  state_key = "security"
+}
+```
+
+You can also split multiple test files across CI matrix jobs:
 
 ```yaml
 # Run each test file as a separate job
