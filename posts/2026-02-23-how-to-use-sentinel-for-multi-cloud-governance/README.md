@@ -26,7 +26,7 @@ Sentinel solves this by providing a single policy layer that evaluates all Terra
 
 The first step is identifying which cloud provider a resource belongs to:
 
-```python
+```sentinel
 # lib/cloud-detection.sentinel
 
 # Helper functions for multi-cloud policies
@@ -63,7 +63,7 @@ is_gcp = func(resource_type) {
 
 Tags (or labels in GCP) are the most fundamental governance mechanism. Here is a policy that enforces consistent tagging across all three clouds:
 
-```python
+```sentinel
 # multi-cloud-tagging.sentinel
 # Enforces consistent tagging across AWS, Azure, and GCP
 
@@ -76,19 +76,22 @@ required_tags = ["Environment", "Team", "Owner", "CostCenter"]
 get_tags = func(resource) {
     after = resource.change.after
 
+    # Check tags_all (AWS with default_tags)
+    tags_all = after["tags_all"] else null
+    if tags_all is not null {
+        return tags_all
+    }
+
     # AWS and Azure use "tags"
-    if after.tags is not null and after.tags is not undefined {
-        return after.tags
+    tags = after["tags"] else null
+    if tags is not null {
+        return tags
     }
 
     # GCP uses "labels"
-    if after.labels is not null and after.labels is not undefined {
-        return after.labels
-    }
-
-    # Check tags_all (AWS with default_tags)
-    if after.tags_all is not null and after.tags_all is not undefined {
-        return after.tags_all
+    labels = after["labels"] else null
+    if labels is not null {
+        return labels
     }
 
     return null
@@ -103,7 +106,7 @@ taggable_types = [
     # Azure
     "azurerm_resource_group", "azurerm_virtual_machine",
     "azurerm_linux_virtual_machine", "azurerm_storage_account",
-    "azurerm_sql_database", "azurerm_virtual_network",
+    "azurerm_mssql_database", "azurerm_virtual_network",
     # GCP
     "google_compute_instance", "google_storage_bucket",
     "google_sql_database_instance", "google_compute_network",
@@ -146,7 +149,7 @@ main = rule {
 
 Encryption requirements should be consistent, even though the configuration varies by cloud:
 
-```python
+```sentinel
 # multi-cloud-encryption.sentinel
 # Enforces encryption across AWS, Azure, and GCP
 
@@ -162,11 +165,11 @@ encryption_map = {
     "aws_efs_file_system":  {"attr": "encrypted", "type": "bool"},
     "aws_s3_bucket_server_side_encryption_configuration": {"attr": "rule", "type": "present"},
     # Azure
-    "azurerm_storage_account":       {"attr": "enable_https_traffic_only", "type": "bool"},
-    "azurerm_managed_disk":          {"attr": "encryption_settings", "type": "present"},
-    "azurerm_sql_database":          {"attr": "transparent_data_encryption_enabled", "type": "bool"},
+    "azurerm_storage_account":       {"attr": "https_traffic_only_enabled", "type": "bool"},
+    "azurerm_managed_disk":          {"attr": "disk_encryption_set_id", "type": "present"},
+    "azurerm_mssql_database":        {"attr": "transparent_data_encryption_enabled", "type": "bool"},
     # GCP
-    "google_sql_database_instance":  {"attr": "settings", "type": "nested_encryption"},
+    "google_sql_database_instance":  {"attr": "encryption_key_name", "type": "present"},
     "google_compute_disk":           {"attr": "disk_encryption_key", "type": "present"},
 }
 
@@ -182,7 +185,7 @@ validate_encryption = func(resource) {
     attr = config["attr"]
     check_type = config["type"]
 
-    value = resource.change.after[attr]
+    value = resource.change.after[attr] else null
 
     if check_type is "bool" {
         if value is not true {
@@ -200,7 +203,6 @@ validate_encryption = func(resource) {
         return true
     }
 
-    # For nested checks, just verify the attribute exists
     return true
 }
 
@@ -215,14 +217,37 @@ main = rule {
 
 Network security rules look very different across clouds, but the intent is the same:
 
-```python
+```sentinel
 # multi-cloud-network-security.sentinel
 # Prevents overly permissive network rules across all clouds
 
 import "tfplan/v2" as tfplan
+import "strings"
 
 # Restricted ports (same across all clouds)
 restricted_ports = [22, 3389, 3306, 5432, 6379, 27017]
+
+port_range_contains = func(port_range, port) {
+    if port_range is "*" {
+        return true
+    }
+
+    port_str = string(port)
+    if port_range is port_str {
+        return true
+    }
+
+    parts = strings.split(port_range, "-")
+    if length(parts) is 2 {
+        start = int(parts[0])
+        end = int(parts[1])
+        if start <= port and port <= end {
+            return true
+        }
+    }
+
+    return false
+}
 
 # --- AWS Security Group Rules ---
 aws_sg_rules = filter tfplan.resource_changes as _, rc {
@@ -233,13 +258,15 @@ aws_sg_rules = filter tfplan.resource_changes as _, rc {
 
 check_aws_rules = func() {
     for aws_sg_rules as address, rule {
-        cidr = rule.change.after.cidr_blocks
-        if cidr is not null and cidr contains "0.0.0.0/0" {
+        cidr = rule.change.after.cidr_blocks else []
+        ipv6_cidr = rule.change.after.ipv6_cidr_blocks else []
+        if cidr contains "0.0.0.0/0" or ipv6_cidr contains "::/0" {
+            protocol = rule.change.after.protocol else ""
             from = rule.change.after.from_port
             to = rule.change.after.to_port
 
-            if from is 0 and to is 65535 {
-                print("AWS:", address, "- all ports open to internet")
+            if protocol is "-1" {
+                print("AWS:", address, "- all protocols open to internet")
                 return false
             }
 
@@ -263,22 +290,36 @@ azure_nsg_rules = filter tfplan.resource_changes as _, rc {
 }
 
 check_azure_rules = func() {
-    for azure_nsg_rules as address, rule {
-        source = rule.change.after.source_address_prefix
-        if source is "*" or source is "0.0.0.0/0" or source is "Internet" {
-            port_range = rule.change.after.destination_port_range
+    public_sources = ["*", "0.0.0.0/0", "Internet"]
 
-            if port_range is "*" {
+    for azure_nsg_rules as address, rule {
+        source = rule.change.after.source_address_prefix else null
+        sources = rule.change.after.source_address_prefixes else []
+        is_public = source in public_sources or any sources as _, source {
+            source in public_sources
+        }
+
+        if is_public {
+            port_range = rule.change.after.destination_port_range else null
+            port_ranges = rule.change.after.destination_port_ranges else []
+
+            if port_range is "*" or port_ranges contains "*" {
                 print("Azure:", address, "- all ports open to internet")
                 return false
             }
 
             # Check restricted ports
             for restricted_ports as port {
-                port_str = string(port)
-                if port_range is port_str {
+                if port_range is not null and port_range_contains(port_range, port) {
                     print("Azure:", address, "- port", port, "open to internet")
                     return false
+                }
+
+                for port_ranges as _, port_range_item {
+                    if port_range_contains(port_range_item, port) {
+                        print("Azure:", address, "- port", port, "open to internet")
+                        return false
+                    }
                 }
             }
         }
@@ -308,7 +349,7 @@ check_gcp_rules = func() {
                     if allow.ports is not null {
                         for allow.ports as _, port_range {
                             for restricted_ports as port {
-                                if port_range is string(port) {
+                                if port_range_contains(port_range, port) {
                                     print("GCP:", address, "- port", port, "open to internet")
                                     return false
                                 }
@@ -335,7 +376,7 @@ main = rule {
 
 Control compute sizes across all three clouds:
 
-```python
+```sentinel
 # multi-cloud-compute.sentinel
 # Restricts compute instance sizes across all clouds
 
@@ -389,11 +430,12 @@ main = rule {
 
 Restrict deployments to approved regions across all clouds:
 
-```python
+```sentinel
 # multi-cloud-regions.sentinel
 # Restricts regions across all cloud providers
 
 import "tfplan/v2" as tfplan
+import "strings"
 
 # Approved regions per cloud
 approved_regions = {
@@ -407,20 +449,26 @@ get_region = func(resource) {
     after = resource.change.after
 
     # Try various region attributes
-    if after.region is not null and after.region is not "" {
-        return after.region
+    region = after["region"] else null
+    if region is not null and region is not "" {
+        return region
     }
-    if after.location is not null and after.location is not "" {
-        return after.location
+
+    location = after["location"] else null
+    if location is not null and location is not "" {
+        return location
     }
-    if after.availability_zone is not null {
-        az = after.availability_zone
+
+    availability_zone = after["availability_zone"] else null
+    if availability_zone is not null {
+        az = availability_zone
         # Remove zone suffix to get region
         return az[0:length(az)-1]
     }
-    if after.zone is not null {
+
+    zone = after["zone"] else null
+    if zone is not null {
         # GCP zone format: us-central1-a
-        zone = after.zone
         parts = strings.split(zone, "-")
         if length(parts) >= 3 {
             return parts[0] + "-" + parts[1]
@@ -437,8 +485,6 @@ get_cloud = func(resource_type) {
     if resource_type matches "^google_.*" { return "gcp" }
     return "unknown"
 }
-
-import "strings"
 
 # Get all resources
 all_resources = filter tfplan.resource_changes as _, rc {
@@ -500,7 +546,7 @@ sentinel-policies/
 
 Some things simply cannot be unified. When that happens, use conditional logic:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get all resources
