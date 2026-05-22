@@ -16,7 +16,7 @@ You can place the `connection` block in two locations:
 
 Resource-Level Connection
 
-When defined at the resource level, all provisioners in that resource share the same connection settings.
+When defined at the resource level, all remote provisioners in that resource share the same connection settings.
 
 ```hcl
 resource "aws_instance" "web" {
@@ -86,13 +86,13 @@ resource "aws_instance" "web" {
 
 ## SSH Connection Arguments
 
-SSH is the most common connection type. Here are all the available arguments.
+SSH is the most common connection type. Here are some commonly used arguments.
 
 ```hcl
 connection {
   type        = "ssh"          # Connection protocol
   user        = "ubuntu"       # Remote user
-  private_key = file("~/.ssh/key.pem")  # SSH private key content
+  private_key = file(pathexpand("~/.ssh/key.pem"))  # SSH private key content
   host        = self.public_ip # Target host
   port        = 22             # SSH port (default: 22)
   timeout     = "5m"           # Connection timeout (default: 5m)
@@ -279,7 +279,7 @@ connection {
 }
 ```
 
-When using an SSH agent, the agent forwards authentication for both the bastion and the target.
+When using an SSH agent, Terraform can use keys loaded in the agent for SSH authentication to the bastion and the target.
 
 ## The self Reference
 
@@ -334,7 +334,7 @@ export TF_LOG=DEBUG
 terraform apply
 ```
 
-This shows the exact SSH commands, connection attempts, and error messages.
+This shows detailed Terraform logs, including connection attempts and error messages.
 
 ### Common Problems
 
