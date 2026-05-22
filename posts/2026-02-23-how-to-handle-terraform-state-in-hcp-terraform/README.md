@@ -87,11 +87,12 @@ Every successful apply creates a new state version. This gives you a complete hi
 
 ```bash
 # List recent state versions
-WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
+TFC_ORG="your-org"
+WORKSPACE_NAME="production-networking"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/state-versions?page[size]=10" \
+  "https://app.terraform.io/api/v2/state-versions?filter%5Borganization%5D%5Bname%5D=${TFC_ORG}&filter%5Bworkspace%5D%5Bname%5D=${WORKSPACE_NAME}&page%5Bsize%5D=10" \
   | jq '.data[] | {
     id: .id,
     serial: .attributes.serial,
@@ -129,7 +130,7 @@ diff <(jq -r '.resources[].instances[].attributes.id // .resources[].type + "." 
 
 ## Rolling Back State
 
-If a bad apply corrupted your state, you can roll back to a previous version:
+If a bad apply corrupted your state, you can roll back to a previous version. HCP Terraform requires the workspace to be locked by the user or team token performing the rollback.
 
 ### Method 1: Through the UI
 
@@ -154,33 +155,33 @@ terraform state push old-state.json
 ### Method 3: Through the API
 
 ```bash
-# Roll back by creating a new state version from an old one
+# Roll back by duplicating a previous state version
 WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
+ROLLBACK_STATE_VERSION_ID="sv-old-version-id"
 
-# Download the old state
-OLD_STATE_URL=$(curl -s \
-  --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/state-versions/sv-old-version-id" \
-  | jq -r '.data.attributes["hosted-state-download-url"]')
-
-OLD_STATE=$(curl -s "$OLD_STATE_URL" | base64)
-OLD_SERIAL=$(curl -s "$OLD_STATE_URL" | jq '.serial')
-
-# Create a new state version with the old state content
-# Note: increment the serial number
-NEW_SERIAL=$((OLD_SERIAL + 1))
-
+# Lock the workspace first
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --request POST \
+  --data '{"reason": "Rollback state"}' \
+  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/actions/lock"
+
+# Create a new state version from the old one
+curl \
+  --header "Authorization: Bearer $TFC_TOKEN" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request PATCH \
   --data "{
     \"data\": {
       \"type\": \"state-versions\",
-      \"attributes\": {
-        \"serial\": ${NEW_SERIAL},
-        \"md5\": \"$(echo -n $OLD_STATE | base64 -d | md5sum | cut -d' ' -f1)\",
-        \"state\": \"${OLD_STATE}\"
+      \"relationships\": {
+        \"rollback-state-version\": {
+          \"data\": {
+            \"type\": \"state-versions\",
+            \"id\": \"${ROLLBACK_STATE_VERSION_ID}\"
+          }
+        }
       }
     }
   }" \
@@ -288,7 +289,7 @@ The `tfe_outputs` approach is preferred because it only exposes outputs, while `
 
 ### State Access Permissions
 
-To share state between workspaces, the consuming workspace needs state read access. This is controlled through team permissions:
+To share state between workspaces, the token used by the consuming workspace needs permission to read outputs or state from the source workspace. This is controlled through team permissions:
 
 ```hcl
 # Grant the CI team read access to networking workspace state
@@ -416,7 +417,7 @@ output "database_password" {
   sensitive = true
 }
 
-# Use lifecycle to prevent sensitive attributes from appearing in plans
+# Use lifecycle to ignore future password drift when the password is managed elsewhere
 resource "aws_db_instance" "main" {
   # ...
 
