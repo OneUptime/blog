@@ -22,25 +22,6 @@ Enabling GuardDuty in a single account is straightforward:
 resource "aws_guardduty_detector" "main" {
   enable = true
 
-  # Enable optional data sources
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
-
   # Set finding publishing frequency
   # Options: FIFTEEN_MINUTES, ONE_HOUR, SIX_HOURS
   finding_publishing_frequency = "FIFTEEN_MINUTES"
@@ -50,6 +31,25 @@ resource "aws_guardduty_detector" "main" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+}
+
+# Enable optional detector features
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
 }
 ```
 
@@ -73,24 +73,30 @@ resource "aws_guardduty_organization_configuration" "main" {
 
   auto_enable_organization_members = "ALL"
   detector_id                      = aws_guardduty_detector.main.id
+}
 
-  datasources {
-    s3_logs {
-      auto_enable = true
-    }
-    kubernetes {
-      audit_logs {
-        auto_enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          auto_enable = true
-        }
-      }
-    }
-  }
+resource "aws_guardduty_organization_configuration_feature" "s3_data_events" {
+  provider = aws.security_account
+
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "eks_audit_logs" {
+  provider = aws.security_account
+
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "ebs_malware_protection" {
+  provider = aws.security_account
+
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  auto_enable = "ALL"
 }
 ```
 
@@ -274,7 +280,7 @@ resource "aws_guardduty_ipset" "trusted" {
   activate    = true
   detector_id = aws_guardduty_detector.main.id
   format      = "TXT"
-  location    = "s3://${aws_s3_object.trusted_ips.bucket}/${aws_s3_object.trusted_ips.key}"
+  location    = "https://s3.amazonaws.com/${aws_s3_object.trusted_ips.bucket}/${aws_s3_object.trusted_ips.key}"
   name        = "trusted-ips"
 }
 
@@ -289,7 +295,7 @@ resource "aws_guardduty_threatintelset" "custom" {
   activate    = true
   detector_id = aws_guardduty_detector.main.id
   format      = "TXT"
-  location    = "s3://${aws_s3_object.threat_ips.bucket}/${aws_s3_object.threat_ips.key}"
+  location    = "https://s3.amazonaws.com/${aws_s3_object.threat_ips.bucket}/${aws_s3_object.threat_ips.key}"
   name        = "custom-threat-intel"
 }
 ```
@@ -335,6 +341,6 @@ resource "aws_guardduty_publishing_destination" "s3" {
 
 ## Summary
 
-GuardDuty with Terraform gives you automated, consistent threat detection across your AWS environment. The setup involves enabling the detector with all data sources, configuring organization-wide enrollment, building a notification pipeline through EventBridge and SNS, and optionally adding automated response for high-severity findings. Once running, GuardDuty works in the background analyzing billions of events to surface actual threats.
+GuardDuty with Terraform gives you automated, consistent threat detection across your AWS environment. The setup involves enabling the detector with the right features, configuring organization-wide enrollment, building a notification pipeline through EventBridge and SNS, and optionally adding automated response for high-severity findings. Once running, GuardDuty works in the background analyzing billions of events to surface actual threats.
 
 For a complete security monitoring stack, combine this with [CloudTrail logging](https://oneuptime.com/blog/post/2026-02-23-how-to-implement-cloudtrail-logging-with-terraform/view) and [Security Hub](https://oneuptime.com/blog/post/2026-02-23-how-to-implement-security-hub-with-terraform/view).
