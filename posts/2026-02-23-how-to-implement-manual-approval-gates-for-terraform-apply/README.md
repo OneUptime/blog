@@ -31,8 +31,17 @@ You can also configure this with the GitHub API:
 
 gh api repos/myorg/infrastructure/environments/production \
   --method PUT \
-  --field wait_timer=0 \
-  --field reviewers='[{"type":"Team","id":12345}]'
+  --input - <<'JSON'
+{
+  "wait_timer": 0,
+  "reviewers": [
+    {
+      "type": "Team",
+      "id": 12345
+    }
+  ]
+}
+JSON
 ```
 
 ### Step 2: Configure the Workflow
@@ -71,12 +80,15 @@ jobs:
           cd terraform
           terraform init -no-color
           terraform plan -no-color -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          exit_code=${PIPESTATUS[0]}
 
           # Exit code 2 means there are changes to apply
-          if [ ${PIPESTATUS[0]} -eq 2 ]; then
+          if [ $exit_code -eq 2 ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
-          else
+          elif [ $exit_code -eq 0 ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            exit $exit_code
           fi
 
       - name: Upload plan
@@ -153,7 +165,7 @@ plan:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
-# Gate with specific approvers
+# Gate with a blocking manual job
 approve:
   stage: approve
   script:
@@ -170,11 +182,11 @@ apply:
     - cd $TF_ROOT
     - terraform init -no-color
     - terraform apply -no-color -auto-approve tfplan
-  dependencies:
-    - plan
   needs:
-    - plan
-    - approve  # Waits for manual approval
+    - job: plan
+      artifacts: true
+    - job: approve  # Waits for manual approval
+      artifacts: false
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
@@ -287,6 +299,8 @@ stages:
           runOnce:
             deploy:
               steps:
+                - checkout: self
+
                 - download: current
                   artifact: terraform-plan
 
@@ -362,7 +376,7 @@ jobs:
   apply-staging:
     environment:
       name: staging
-      # Wait timer of 10 minutes, then auto-approve
+      # Configure a 10-minute wait timer on this environment in GitHub settings
 
   apply-production:
     environment:
