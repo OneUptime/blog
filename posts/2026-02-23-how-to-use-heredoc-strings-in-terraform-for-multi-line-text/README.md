@@ -74,7 +74,7 @@ resource "aws_instance" "web" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
 
-  # The <<- strips leading whitespace based on the closing delimiter
+  # The <<- strips common leading whitespace from the heredoc lines
   user_data = <<-EOT
     #!/bin/bash
     echo "This script has no leading spaces"
@@ -83,7 +83,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-With `<<-`, Terraform strips the leading whitespace from all lines. Specifically, it looks at the indentation of the closing delimiter and removes that much indentation from every line. In the example above, `EOT` is indented by 2 spaces, so 2 spaces are stripped from the start of every content line.
+With `<<-`, Terraform strips common leading whitespace from all lines. Specifically, it finds the line with the smallest number of leading spaces and removes that many spaces from the start of every content line. In the example above, all content lines have 4 spaces of indentation, so 4 spaces are stripped from the start of every content line.
 
 This is incredibly useful because it lets you keep your heredoc content indented nicely within your Terraform code while producing clean output.
 
@@ -93,8 +93,8 @@ Let's be precise about the `<<-` behavior:
 
 ```hcl
 locals {
-  # The closing EOT has 2 spaces of indentation
-  # So Terraform strips up to 2 spaces from each line
+  # The least-indented content line has 2 spaces of indentation
+  # So Terraform strips 2 spaces from each line
   text = <<-EOT
     Line with 4 spaces becomes "  Line with 4 spaces" (2 stripped)
   Line with 2 spaces becomes "Line with 2 spaces" (2 stripped)
@@ -153,7 +153,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-If you need to include a literal `${` in the output (common when writing shell scripts with variable substitution), escape it with `$${ }`:
+If you need to include a literal `${` in the output (common when writing shell scripts with variable substitution), escape it by writing `$${`:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -165,8 +165,8 @@ resource "aws_instance" "web" {
     # Terraform interpolation - resolved at plan time
     echo "Hostname: ${var.hostname}"
 
-    # Shell variable - $${} prevents Terraform from interpreting it
-    CURRENT_DATE=$$(date +%Y-%m-%d)
+    # Shell variable - $${...} prevents Terraform from interpreting shell braces
+    CURRENT_DATE=$(date +%Y-%m-%d)
     echo "Date: $${CURRENT_DATE}"
 
     # Loop using shell syntax - need to escape the dollar sign
@@ -314,7 +314,7 @@ resource "null_resource" "setup" {
       DB_HOST="${aws_db_instance.main.address}"
 
       while ! pg_isready -h "$${DB_HOST}" -p 5432 2>/dev/null; do
-        RETRY_COUNT=$$((RETRY_COUNT + 1))
+        RETRY_COUNT=$((RETRY_COUNT + 1))
         if [ "$${RETRY_COUNT}" -ge "$${MAX_RETRIES}" ]; then
           echo "ERROR: Database not ready after $${MAX_RETRIES} attempts"
           exit 1
@@ -395,4 +395,4 @@ Here, `OUTER` is the Terraform heredoc delimiter, and `INNER` is the shell hered
 
 ## Summary
 
-Heredoc strings are the go-to approach for embedding multi-line text in Terraform configurations. Use `<<-` (with the dash) almost always so you can indent the content to match your code. Remember to escape shell variables with `$${ }` when mixing Terraform interpolation with shell scripts. For anything longer than about 20 lines, consider moving the content to a separate template file using the `templatefile` function.
+Heredoc strings are the go-to approach for embedding multi-line text in Terraform configurations. Use `<<-` (with the dash) almost always so you can indent the content to match your code. Remember to escape shell variables that use `${...}` syntax by writing `$${...}` when mixing Terraform interpolation with shell scripts. For anything longer than about 20 lines, consider moving the content to a separate template file using the `templatefile` function.
