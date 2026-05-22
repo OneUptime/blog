@@ -24,7 +24,7 @@ The pools are per-cluster, meaning each upstream service (or subset of a service
 TCP settings control the lower-level connection behavior. Here is a DestinationRule with TCP connection pool configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-pool
@@ -42,7 +42,7 @@ spec:
           probes: 9
 ```
 
-**maxConnections**: The maximum number of TCP connections to the upstream service. This is the hard cap. If all connections are in use, new requests either queue (for HTTP) or fail (for raw TCP). Setting this too low causes queuing and increased latency. Setting it too high can overwhelm the upstream service.
+**maxConnections**: The maximum number of HTTP/1.1 or TCP connections to the upstream service. This is enforced as a circuit breaker threshold, although Envoy may temporarily exceed it in some cases, such as ensuring a selected endpoint has at least one connection. If all connections are in use, new requests either queue (for HTTP) or fail (for raw TCP). Setting this too low causes queuing and increased latency. Setting it too high can overwhelm the upstream service.
 
 **connectTimeout**: How long Envoy waits for a TCP connection to be established before giving up. For services within the same cluster, 30ms to 100ms is reasonable. For external services, you might need 1s to 5s.
 
@@ -53,7 +53,7 @@ spec:
 HTTP settings build on top of the TCP settings and control HTTP-specific behavior:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-pool
@@ -74,13 +74,13 @@ spec:
         idleTimeout: 300s
 ```
 
-**http1MaxPendingRequests**: For HTTP/1.1 connections, this is the maximum number of requests that can be queued waiting for a connection from the pool. If the pool is full (all `maxConnections` connections are active) and there are already `http1MaxPendingRequests` requests waiting, the next request gets a 503 response.
+**http1MaxPendingRequests**: The maximum number of requests that can be queued waiting for a ready connection from the pool. Despite the field name, Istio applies this to both HTTP/1.1 and HTTP/2. If there are already `http1MaxPendingRequests` requests waiting, the next request gets a 503 response.
 
-**http2MaxRequests**: For HTTP/2, this is the maximum number of concurrent requests. HTTP/2 multiplexes many requests over a single connection, so this is effectively the total request concurrency rather than a connection count.
+**http2MaxRequests**: The maximum number of active requests to the destination. Despite the field name, Istio applies this to both HTTP/1.1 and HTTP/2. HTTP/2 multiplexes many requests over a single connection, so this is a request concurrency limit rather than a connection count.
 
 **maxRequestsPerConnection**: After this many requests have been served over a single connection, the connection is closed and a new one is created. This is useful for:
 - Preventing memory growth from long-lived connections
-- Distributing load when new endpoints are added (old connections will not discover new endpoints)
+- Distributing load when new endpoints are added (long-lived connections may keep traffic on existing endpoints until they are drained)
 - Working around servers that have per-connection limits
 
 **maxRetries**: The maximum number of concurrent retries across all requests to this service. This prevents a retry storm from consuming all available connections.
@@ -94,7 +94,7 @@ spec:
 You can configure different connection pool settings for different subsets of a service. This is useful when different versions of a service have different capacity characteristics:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-pool
@@ -161,6 +161,8 @@ rate(envoy_cluster_upstream_rq_pending_overflow{cluster_name=~"outbound.*my-serv
 envoy_cluster_upstream_cx_active{cluster_name=~"outbound.*my-service.*"}
 ```
 
+Depending on your Istio configuration, you may need to include these Envoy cluster stats with `proxyStatsMatcher` before they appear in Prometheus.
+
 ## Connection Pool and Circuit Breaking
 
 Connection pool settings interact closely with circuit breaking. When the connection pool overflows (all connections are in use and the pending queue is full), it acts like a circuit breaker. Envoy returns a 503 with an `UO` (upstream overflow) response flag.
@@ -183,12 +185,12 @@ There is no one-size-fits-all answer for connection pool sizes, but here are som
 
 **Account for multiple callers**: If 10 services each call the same upstream, each with `maxConnections: 100`, the upstream could see up to 1000 concurrent connections. Coordinate pool sizes across callers.
 
-**Factor in retries**: If retries are enabled, each retry consumes a connection. A burst of failures can quickly fill the pool with retry requests.
+**Factor in retries**: If retries are enabled, each retry consumes request capacity and upstream resources, and may consume connection capacity when a ready connection is not available. A burst of failures can quickly fill the pool with retry requests.
 
 Here is a practical example for a typical web service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-service-pool
