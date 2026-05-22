@@ -27,7 +27,7 @@ Each import serves a different purpose, and many policies use multiple imports t
 
 The `tfplan/v2` import is the most commonly used import. It gives you access to the planned resource changes, which means you can see what Terraform is about to create, update, or destroy.
 
-```python
+```sentinel
 # Import the plan data
 
 import "tfplan/v2" as tfplan
@@ -63,7 +63,7 @@ Use `tfplan` when you want to validate what Terraform is about to do. This is th
 
 The `tfconfig/v2` import gives you access to the raw Terraform configuration. This is useful when you need to check how resources are defined rather than what their planned values will be.
 
-```python
+```sentinel
 # Import the configuration data
 import "tfconfig/v2" as tfconfig
 
@@ -98,7 +98,7 @@ Use `tfconfig` when you need to check the structure of the configuration itself,
 
 The `tfconfig` import also lets you inspect module calls:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Get all module calls
@@ -117,7 +117,7 @@ main = rule {
 
 You can also access variable definitions:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Check that required variables have descriptions
@@ -134,7 +134,7 @@ main = rule {
 
 The `tfstate/v2` import provides access to the current Terraform state. This is the state before the plan is applied. It is useful when your policy needs to consider what already exists.
 
-```python
+```sentinel
 # Import the state data
 import "tfstate/v2" as tfstate
 
@@ -167,7 +167,7 @@ Use `tfstate` when you need to validate existing infrastructure or when your pol
 
 Here is an example that limits the total number of instances:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfstate/v2" as tfstate
 
@@ -204,7 +204,7 @@ main = rule {
 
 The `tfrun` import provides metadata about the current Terraform run. This includes information about the workspace, the organization, and the user who triggered the run.
 
-```python
+```sentinel
 # Import run metadata
 import "tfrun"
 
@@ -216,12 +216,8 @@ is_production = tfrun.workspace.name matches ".*-prod$"
 
 # Limit certain operations in production
 main = rule {
-    if is_production {
-        # Only allow runs triggered by specific methods
-        tfrun.source is "tfe-api" or tfrun.source is "tfe-ui"
-    } else {
-        true
-    }
+    not is_production or
+    tfrun.is_destroy is false
 }
 ```
 
@@ -230,15 +226,15 @@ Key properties available:
 - `tfrun.workspace.name` - Workspace name
 - `tfrun.workspace.auto_apply` - Whether auto-apply is enabled
 - `tfrun.organization.name` - Organization name
-- `tfrun.source` - How the run was triggered
+- `tfrun.created_by` - The user name of the HCP Terraform user for the run
 - `tfrun.is_destroy` - Whether this is a destroy operation
-- `tfrun.cost_estimation` - Cost estimation data if enabled
+- `tfrun.cost_estimate` - Cost estimation data if available
 
 ### Using Cost Estimation Data
 
 If cost estimation is enabled, you can access it through `tfrun`:
 
-```python
+```sentinel
 import "tfrun"
 
 # Set a monthly cost limit
@@ -246,7 +242,7 @@ max_monthly_cost = 1000.00
 
 # Check the estimated cost increase
 main = rule {
-    float(tfrun.cost_estimation.proposed_monthly_cost) <= max_monthly_cost
+    float(tfrun.cost_estimate.proposed_monthly_cost) <= max_monthly_cost
 }
 ```
 
@@ -273,20 +269,20 @@ Here is a quick reference for which import to use:
 **Use tfrun when:**
 - Making decisions based on workspace or organization
 - Checking cost estimates
-- Controlling who can trigger operations
+- Checking who triggered a run
 - Differentiating between environments
 
 ## Import Versioning
 
 You may have noticed the `/v2` suffix on three of the imports. This indicates the version of the import. The v2 imports provide a more consistent and feature-rich API compared to v1. Always use v2 unless you have a specific reason not to.
 
-Note that `tfrun` does not have a version suffix because its structure has remained stable.
+Note that `tfrun` does not have a version suffix.
 
 ## Practical Example Using Multiple Imports
 
 Here is a more complete example that uses three imports together:
 
-```python
+```sentinel
 # multi-import-policy.sentinel
 # Enforces different rules based on workspace environment
 
@@ -312,14 +308,9 @@ approved_modules = rule {
 
 # Production gets stricter instance type rules
 instance_type_rule = rule {
-    if is_production {
-        all ec2_instances as _, inst {
-            inst.change.after.instance_type in ["t3.small", "t3.medium"]
-        }
-    } else {
-        all ec2_instances as _, inst {
-            inst.change.after.instance_type in ["t3.micro", "t3.small", "t3.medium", "t3.large"]
-        }
+    all ec2_instances as _, inst {
+        (is_production and inst.change.after.instance_type in ["t3.small", "t3.medium"]) or
+        (not is_production and inst.change.after.instance_type in ["t3.micro", "t3.small", "t3.medium", "t3.large"])
     }
 }
 
