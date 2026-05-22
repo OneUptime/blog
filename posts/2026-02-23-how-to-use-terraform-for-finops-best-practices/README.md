@@ -158,7 +158,7 @@ resource "aws_autoscaling_group" "workers" {
         instance_type = "c6i.xlarge"
       }
       override {
-        instance_type = "c6g.xlarge"
+        instance_type = "c5.xlarge"
       }
       override {
         instance_type = "m6i.xlarge"
@@ -248,16 +248,22 @@ on:
 jobs:
   cost-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: infracost/actions/setup@v3
+        with:
+          path: head
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+      - uses: infracost/actions/diff@v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
-      - run: infracost diff --path . --format json --out-file /tmp/infracost.json
-      - uses: infracost/actions/comment@v1
-        with:
-          path: /tmp/infracost.json
-          behavior: update
+          base-path: base
+          head-path: head
 ```
 
 ### Anomaly Detection
@@ -339,7 +345,7 @@ module "finops" {
 
 ## Best Practices
 
-Implement tagging before anything else as it is the foundation of FinOps. Use Infracost in every CI/CD pipeline. Create budgets at organization, account, and team levels. Right-size instances based on actual utilization data. Use Spot Instances and Savings Plans for predictable workloads. Automate shutdown of non-production resources. Review costs monthly with engineering and finance teams. Track FinOps metrics like cost per customer, waste percentage, and savings achieved.
+Implement tagging before anything else as it is the foundation of FinOps. Use Infracost in every CI/CD pipeline. Create budgets at organization, account, and team levels. Right-size instances based on actual utilization data. Use Savings Plans for predictable workloads and Spot Instances for fault-tolerant, flexible workloads. Automate shutdown of non-production resources. Review costs monthly with engineering and finance teams. Track FinOps metrics like cost per customer, waste percentage, and savings achieved.
 
 ## Conclusion
 
