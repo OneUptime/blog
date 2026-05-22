@@ -176,7 +176,6 @@ spec:
       labels:
         app: api-gateway
       annotations:
-        sidecar.istio.io/userVolume: '[{"name":"wasm-plugins","emptyDir":{}}]'
         sidecar.istio.io/userVolumeMount: '[{"name":"wasm-plugins","mountPath":"/var/lib/wasm"}]'
     spec:
       initContainers:
@@ -208,14 +207,14 @@ spec:
   imagePullPolicy: Always        # Always pull, even if cached
 ```
 
-For development, use `Always` so changes are picked up immediately. For production, use `IfNotPresent` with versioned tags to avoid unnecessary pulls.
+The default is `IfNotPresent`, except for OCI images tagged `latest`, where Istio defaults to `Always`. If a `sha256` is set or the OCI URL uses a digest, Istio uses `IfNotPresent` regardless of the configured policy. For development, use `Always` so changes are picked up whenever the WasmPlugin resource is created or changed. For production, use `IfNotPresent` with versioned tags to avoid unnecessary pulls.
 
 ## Verifying Plugin Deployment
 
 After applying the WasmPlugin resource, verify it was deployed correctly:
 
 ```bash
-# Check the WasmPlugin resource status
+# Check the WasmPlugin resource
 kubectl get wasmplugin -n my-app auth-filter -o yaml
 
 # Check if the proxy loaded the plugin
@@ -256,7 +255,7 @@ Apply the updated resource:
 kubectl apply -f wasmplugin.yaml
 ```
 
-Envoy will download the new version and hot-reload the plugin without restarting the proxy pod. This is one of the big advantages of Wasm plugins - you can update filter logic without restarting workloads.
+The Istio agent will download the new version and update Envoy without restarting the proxy pod. This is one of the big advantages of Wasm plugins - you can update filter logic without restarting workloads.
 
 ## Deploying to Multiple Workloads
 
