@@ -45,7 +45,7 @@ variable "cidr_block" {
 
   # Validate CIDR format and size
   validation {
-    condition     = can(cidrhost(var.cidr_block, 0)) && tonumber(split("/", var.cidr_block)[1]) >= 16 && tonumber(split("/", var.cidr_block)[1]) <= 24
+    condition     = can(cidrhost(var.cidr_block, 0)) && can(regex("/(1[6-9]|2[0-4])$", var.cidr_block))
     error_message = "CIDR block must be valid and have a prefix between /16 and /24."
   }
 }
@@ -145,7 +145,7 @@ run "empty_environment_rejected" {
 }
 ```
 
-The `expect_failures` block is the key feature here. It tells Terraform that this test run should fail, and specifically that the failure should come from the listed variable's validation. If the validation passes when it should not, the test fails.
+The `expect_failures` attribute is the key feature here. It tells Terraform that this test run should fail, and specifically that the failure should come from the listed variable's validation. If the validation passes when it should not, the test fails.
 
 ## Testing Complex Validation Rules
 
@@ -369,10 +369,11 @@ func TestVariableValidation(t *testing.T) {
         opts := &terraform.Options{
             TerraformDir: "../modules/mymodule",
             Vars: map[string]interface{}{
-                "environment": "dev",
+                "environment":   "dev",
+                "instance_type": "t3.micro",
+                "cidr_block":    "10.0.0.0/16",
             },
         }
-        defer terraform.Destroy(t, opts)
         // If InitAndPlan succeeds, validation passed
         terraform.InitAndPlan(t, opts)
     })
@@ -382,7 +383,9 @@ func TestVariableValidation(t *testing.T) {
         opts := &terraform.Options{
             TerraformDir: "../modules/mymodule",
             Vars: map[string]interface{}{
-                "environment": "invalid",
+                "environment":   "invalid",
+                "instance_type": "t3.micro",
+                "cidr_block":    "10.0.0.0/16",
             },
         }
         // InitAndPlan should fail because of validation
