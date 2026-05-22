@@ -53,9 +53,10 @@ Each provider directory has its own backend configuration pointing to a differen
 
 terraform {
   backend "s3" {
-    bucket = "terraform-state-aws"
-    key    = "networking/terraform.tfstate"
-    region = "us-east-1"
+    bucket       = "terraform-state-aws"
+    key          = "networking/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 
@@ -113,7 +114,11 @@ jobs:
       - name: Detect Changes
         id: changes
         run: |
-          CHANGED=$(git diff --name-only origin/main...HEAD)
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          else
+            CHANGED=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
+          fi
 
           echo "aws=$(echo "$CHANGED" | grep -q '^infrastructure/aws/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "azure=$(echo "$CHANGED" | grep -q '^infrastructure/azure/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -228,6 +233,14 @@ resource "azurerm_virtual_network" "main" {
   address_space       = ["10.1.0.0/16"]
 }
 
+resource "azurerm_local_network_gateway" "aws" {
+  name                = "aws-vpn"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  gateway_address     = data.terraform_remote_state.aws_networking.outputs.vpn_gateway_ip
+  address_space       = data.terraform_remote_state.aws_networking.outputs.vpc_cidr_blocks
+}
+
 # VPN connection referencing AWS networking details
 resource "azurerm_virtual_network_gateway_connection" "aws" {
   name                = "aws-vpn"
@@ -238,8 +251,7 @@ resource "azurerm_virtual_network_gateway_connection" "aws" {
   type                       = "IPsec"
 
   # AWS VPN endpoint from remote state
-  peer_virtual_network_gateway_id = null
-  local_network_gateway_id        = azurerm_local_network_gateway.aws.id
+  local_network_gateway_id = azurerm_local_network_gateway.aws.id
 
   shared_key = var.vpn_shared_key
 }
@@ -258,7 +270,7 @@ apply:
     - uses: actions/checkout@v4
     - uses: hashicorp/setup-terraform@v3
 
-    # Step 1: Networking across all clouds (can be parallel)
+    # Step 1: Networking across all clouds
     - name: Apply AWS Networking
       working-directory: infrastructure/aws/networking
       run: terraform init && terraform apply -auto-approve
@@ -311,8 +323,8 @@ variable "node_count" {
 }
 
 # modules/kubernetes-cluster/main.tf
-# Each provider has its own implementation file
-# that gets included based on the provider variable
+# Select provider-specific resources with count/for_each conditions
+# or call separate aws, azure, and gcp submodules from the root module.
 ```
 
 ## Multi-Cloud State Locking
@@ -320,18 +332,20 @@ variable "node_count" {
 Each cloud's state uses its own locking mechanism:
 
 ```hcl
-# AWS uses DynamoDB for locking
+# AWS uses S3 native lock files for locking
 terraform {
   backend "s3" {
     bucket         = "terraform-state-aws"
     key            = "networking/terraform.tfstate"
-    dynamodb_table = "terraform-locks"
+    region         = "us-east-1"
+    use_lockfile   = true
   }
 }
 
 # Azure uses blob lease locking (built into azurerm backend)
 terraform {
   backend "azurerm" {
+    resource_group_name  = "terraform-state"
     storage_account_name = "tfstateazure"
     container_name       = "tfstate"
     key                  = "networking/terraform.tfstate"
@@ -339,7 +353,7 @@ terraform {
   }
 }
 
-# GCP uses Cloud Storage object versioning
+# GCP backend supports state locking, and object versioning helps recovery
 terraform {
   backend "gcs" {
     bucket = "terraform-state-gcp"
