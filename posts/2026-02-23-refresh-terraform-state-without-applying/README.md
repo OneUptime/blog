@@ -166,9 +166,10 @@ Be careful with this. Auto-approving means you won't catch unexpected changes. A
 set -euo pipefail
 
 # Run refresh-only plan and capture output
+set +e
 terraform plan -refresh-only -detailed-exitcode -out=refresh.plan
-
 EXIT_CODE=$?
+set -e
 
 if [ $EXIT_CODE -eq 0 ]; then
   echo "No drift detected."
@@ -208,7 +209,7 @@ It's important to understand the limits of refresh:
 If a resource was deleted outside Terraform, refreshing will update the state to show it as gone:
 
 ```bash
-# After refresh, the resource is marked as tainted or removed
+# After refresh, the resource is recorded as missing
 terraform plan
 # Output: aws_instance.web_server will be created (was deleted outside Terraform)
 ```
