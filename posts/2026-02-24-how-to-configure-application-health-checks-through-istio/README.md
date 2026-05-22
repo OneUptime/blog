@@ -8,7 +8,7 @@ Description: Set up application-level health checks that flow through Istio's pr
 
 ---
 
-Application health checks in an Istio mesh work differently than in a plain Kubernetes cluster. The Envoy sidecar proxy sits between the kubelet and your application, which means health check traffic goes through the proxy (or gets rewritten to bypass it). Understanding these paths helps you configure health checks that accurately reflect your application's state.
+Application health checks in an Istio mesh work differently than in a plain Kubernetes cluster. The Istio sidecar sits between the kubelet and your application, which means health check traffic goes through the proxy (or gets rewritten to the sidecar agent). Understanding these paths helps you configure health checks that accurately reflect your application's state.
 
 ## The Two Paths for Health Checks
 
@@ -16,10 +16,10 @@ There are two distinct paths for health check traffic in an Istio-enabled pod:
 
 **Path 1: Through the Sidecar Agent (Probe Rewriting)**
 
-The kubelet sends the probe to port 15021 on the Istio agent. The agent forwards it to your application. This path is used when probe rewriting is enabled (the default).
+The kubelet sends the rewritten application probe to the Istio agent's status port, which is usually port 15020. The agent forwards it to your application. This path is used when probe rewriting is enabled (the default).
 
 ```text
-kubelet -> port 15021 (istio-agent) -> port 8080 (your app)
+kubelet -> port 15020 (istio-agent) -> port 8080 (your app)
 ```
 
 **Path 2: Through the Envoy Proxy**
@@ -143,7 +143,7 @@ containers:
       periodSeconds: 5
 ```
 
-Istio rewrites gRPC probes the same way as HTTP probes. The agent on port 15021 makes the gRPC health check call to your container.
+Istio rewrites gRPC probes the same way as HTTP probes. The agent on port 15020 makes the gRPC health check call to your container.
 
 ## TCP Health Checks
 
@@ -157,7 +157,7 @@ livenessProbe:
   periodSeconds: 10
 ```
 
-With Istio, TCP probes have a limitation: Envoy starts listening on application ports almost immediately, so the probe might pass even when your application is not ready. TCP probes are mostly useful as a basic "is something listening on this port" check. For application-level health, use HTTP or gRPC probes.
+With Istio probe rewriting enabled, the sidecar agent performs the TCP port check while avoiding traffic redirection through Envoy. If probe rewriting is disabled, TCP probes have a limitation: Envoy starts listening on application ports almost immediately, so the probe might pass even when your application is not ready. TCP probes are mostly useful as a basic "is something listening on this port" check. For application-level health, use HTTP or gRPC probes.
 
 ## Multi-Container Pod Health Checks
 
@@ -286,10 +286,14 @@ kubectl describe pod <pod-name> | grep -A15 "Conditions"
 
 # Test the health endpoint through the sidecar agent
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -v http://localhost:15021/app-health/web-app/livez
+  curl -v http://localhost:15020/app-health/web-app/livez
 
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -v http://localhost:15021/app-health/web-app/readyz
+  curl -v http://localhost:15020/app-health/web-app/readyz
+
+# Check the sidecar proxy's own readiness endpoint
+kubectl exec -it <pod-name> -c istio-proxy -- \
+  curl -v http://localhost:15021/healthz/ready
 
 # Test the health endpoint directly (bypassing Istio)
 kubectl exec -it <pod-name> -c web-app -- curl -v http://localhost:8080/healthz
