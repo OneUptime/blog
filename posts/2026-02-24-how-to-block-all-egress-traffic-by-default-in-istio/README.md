@@ -8,7 +8,7 @@ Description: How to configure Istio to block all outbound traffic by default and
 
 ---
 
-Blocking all egress traffic by default is a fundamental step toward a zero-trust network. If a pod gets compromised, it should not be able to phone home to a command-and-control server or exfiltrate data to an arbitrary endpoint. Istio makes this possible with its `REGISTRY_ONLY` outbound traffic policy.
+Blocking unknown egress traffic by default is a useful step toward a zero-trust network. If a pod gets compromised, it should not be able to phone home to a command-and-control server or exfiltrate data to an arbitrary endpoint. Istio makes this possible for sidecar-managed traffic with its `REGISTRY_ONLY` outbound traffic policy.
 
 This guide walks through enabling the default-deny egress policy, handling the fallout, and building a maintainable allow-list system.
 
@@ -41,12 +41,10 @@ Apply the change:
 istioctl install -f istio-config.yaml
 ```
 
-Or if you prefer not to reinstall:
+Or update the setting with `istioctl` while preserving the flags you used for the original installation:
 
 ```bash
-kubectl get configmap istio -n istio-system -o json | \
-  jq '.data.mesh = (.data.mesh | sub("mode: ALLOW_ANY"; "mode: REGISTRY_ONLY"))' | \
-  kubectl apply -f -
+istioctl install <flags-you-used-to-install-Istio> --set meshConfig.outboundTrafficPolicy.mode=REGISTRY_ONLY
 ```
 
 After a few seconds, the sidecars pick up the new configuration. Now test again:
@@ -64,7 +62,7 @@ In REGISTRY_ONLY mode, the sidecar proxy only creates routing entries for servic
 - All Kubernetes services in the cluster
 - All Istio ServiceEntry resources
 
-If a pod tries to connect to an address that does not match any registry entry, the sidecar has no route for it. The connection fails with a 502 or a TCP reset.
+If a pod tries to connect to an address that does not match any registry entry, the sidecar has no route for it. The connection fails with a 502 or a TCP reset. Istio documents this as a way to fail unknown destinations; it is not a complete outbound firewall and can be bypassed by traffic that does not go through the sidecar.
 
 ```mermaid
 flowchart TD
@@ -96,7 +94,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-After applying this, pods can reach these three hosts but nothing else.
+After applying this, pods can reach these three hosts through the sidecar, while other unknown external hosts remain blocked.
 
 ## Discovering External Dependencies Before Switching
 
@@ -149,7 +147,7 @@ However, some applications check connectivity by resolving DNS first. They might
 
 ## Common Services You Will Need to Allow
 
-Most clusters need these external services even for basic operations:
+Many clusters need to allow cloud metadata services for workload authentication, and some workloads may also need direct access to container registry APIs:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -189,7 +187,7 @@ spec:
   - address: 169.254.169.254
 ```
 
-The cloud metadata service (169.254.169.254) is used by many cloud SDKs for authentication. If you block it, service accounts and IAM roles won't work.
+The cloud metadata service (169.254.169.254) is used by many cloud SDKs for authentication. If you block it, service accounts and IAM roles may stop working. Container image pulls themselves are usually performed by kubelet on the node, not by application pods through an Istio sidecar, so only add registry ServiceEntries when workloads call those registry APIs directly.
 
 ## Per-Namespace Exceptions
 
@@ -278,16 +276,14 @@ spec:
           kubernetes.io/metadata.name: istio-system
 ```
 
-This denies all egress except to pods in the same namespace, DNS, and the istio-system namespace. External traffic must go through the egress gateway (which lives in istio-system).
+This denies all egress except to pods in the same namespace, DNS, and pods in the istio-system namespace. If you also configure Istio routing through an egress gateway, this kind of NetworkPolicy can help ensure application pods cannot bypass that gateway.
 
 ## Rollback Plan
 
 If things go wrong after switching to REGISTRY_ONLY, you can revert quickly:
 
 ```bash
-kubectl get configmap istio -n istio-system -o json | \
-  jq '.data.mesh = (.data.mesh | sub("mode: REGISTRY_ONLY"; "mode: ALLOW_ANY"))' | \
-  kubectl apply -f -
+istioctl install <flags-you-used-to-install-Istio> --set meshConfig.outboundTrafficPolicy.mode=ALLOW_ANY
 ```
 
 The change propagates to sidecars within seconds. No pod restarts needed.
