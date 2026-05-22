@@ -96,7 +96,7 @@ terraform {
   required_providers {
     servicenow = {
       source  = "tylerhatton/servicenow"
-      version = "~> 0.10"
+      version = "~> 0.11"
     }
     aws = {
       source  = "hashicorp/aws"
@@ -117,20 +117,12 @@ resource "aws_instance" "app_server" {
   instance_type = var.instance_type
 }
 
-# Register it in the CMDB as a configuration item
-resource "servicenow_cmdb_ci_server" "app_server_ci" {
+# Register it in the CMDB as a server configuration item
+resource "servicenow_server" "app_server_ci" {
   name          = "app-server-${var.environment}"
   ip_address    = aws_instance.app_server.private_ip
   serial_number = aws_instance.app_server.id
-  category      = "Virtual Machine"
-  environment   = var.environment
-
-  # Custom attributes
-  attributes = {
-    "u_terraform_workspace" = terraform.workspace
-    "u_managed_by"          = "terraform"
-    "u_last_updated"        = timestamp()
-  }
+  description   = "Managed by Terraform workspace ${terraform.workspace} for ${var.environment}"
 
   # When the instance is destroyed, the CMDB record goes with it
   depends_on = [aws_instance.app_server]
@@ -205,13 +197,19 @@ class CMDBSync:
         state = json.loads(result.stdout)
         resources = []
 
-        for module in state.get("values", {}).get("root_module", {}).get("resources", []):
-            resources.append({
-                "type": module["type"],
-                "name": module["name"],
-                "provider": module["provider_name"],
-                "attributes": module["values"]
-            })
+        def collect_resources(module):
+            for resource in module.get("resources", []):
+                resources.append({
+                    "type": resource["type"],
+                    "name": resource["name"],
+                    "provider": resource["provider_name"],
+                    "attributes": resource["values"]
+                })
+            for child in module.get("child_modules", []):
+                collect_resources(child)
+
+        root_module = state.get("values", {}).get("root_module", {})
+        collect_resources(root_module)
         return resources
 
     def upsert_ci(self, resource):
@@ -269,6 +267,11 @@ A robust integration includes CMDB validation as part of your CI/CD pipeline. Be
 name: Terraform with CMDB Integration
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
   pull_request:
     paths:
       - 'terraform/**'
@@ -289,7 +292,7 @@ jobs:
       - name: Validate against CMDB policies
         run: |
           # Check that all planned resources have CMDB classification
-          python scripts/validate_cmdb_compliance.py plan.json
+          python scripts/validate_cmdb_compliance.py terraform/plan.json
 
       - name: Apply and sync CMDB
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -297,7 +300,7 @@ jobs:
           cd terraform
           terraform apply -auto-approve tfplan
           # Sync state to CMDB after successful apply
-          python scripts/cmdb_sync.py
+          python ../scripts/cmdb_sync.py
 ```
 
 ## Handling CMDB Relationships
