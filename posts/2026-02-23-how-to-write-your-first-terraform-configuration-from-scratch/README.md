@@ -40,7 +40,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -51,7 +51,7 @@ The `terraform` block does two things:
 1. Sets the minimum Terraform version with `required_version`
 2. Declares which providers you need and where to find them
 
-The `~> 5.0` version constraint means "any 5.x version". This gives you patch updates without unexpected major version changes.
+The `~> 6.0` version constraint means "any 6.x version". This gives you minor and patch updates without unexpected major version changes.
 
 ## Step 2 - Configure the Provider
 
@@ -82,7 +82,7 @@ Resources are the most important element in Terraform. A resource block declares
 ```hcl
 # Create an S3 bucket
 resource "aws_s3_bucket" "my_bucket" {
-  bucket = "my-first-terraform-bucket-2026"
+  bucket = "my-first-terraform-bucket-yourname-2026"
 
   tags = {
     Name        = "My First Terraform Bucket"
@@ -110,6 +110,8 @@ Let us break down the resource block syntax:
 
 The second resource references the first one with `aws_s3_bucket.my_bucket.id`. This is how Terraform knows about dependencies between resources.
 
+S3 bucket names must be globally unique, so replace `my-first-terraform-bucket-yourname-2026` with a name that is unique to you.
+
 ## Step 4 - Add Variables
 
 Variables make your configuration reusable. Create a file called `variables.tf`:
@@ -120,7 +122,7 @@ Variables make your configuration reusable. Create a file called `variables.tf`:
 variable "bucket_name" {
   type        = string
   description = "Name of the S3 bucket to create"
-  default     = "my-first-terraform-bucket-2026"
+  default     = "my-first-terraform-bucket-yourname-2026"
 }
 
 variable "environment" {
@@ -179,7 +181,7 @@ output "bucket_arn" {
 }
 
 output "bucket_region" {
-  value       = aws_s3_bucket.my_bucket.region
+  value       = aws_s3_bucket.my_bucket.bucket_region
   description = "The region of the created S3 bucket"
 }
 ```
@@ -229,8 +231,8 @@ Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
 
 Outputs:
 
-bucket_arn = "arn:aws:s3:::my-first-terraform-bucket-2026"
-bucket_name = "my-first-terraform-bucket-2026"
+bucket_arn = "arn:aws:s3:::my-first-terraform-bucket-yourname-2026"
+bucket_name = "my-first-terraform-bucket-yourname-2026"
 bucket_region = "us-east-1"
 ```
 
