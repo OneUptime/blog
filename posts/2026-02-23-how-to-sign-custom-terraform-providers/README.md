@@ -80,11 +80,9 @@ The private key needs to be available in your CI environment for automated signi
 # Export the private key
 gpg --armor --export-secret-keys ABCDEF1234567890 > private-key.asc
 
-# Encode it for safe storage as a CI secret
-base64 < private-key.asc > private-key-base64.txt
-
-# IMPORTANT: Delete the plaintext private key file after storing it securely
-rm private-key.asc
+# IMPORTANT: Store this ASCII-armored private key securely as a CI secret.
+# After setting the CI secret, delete the plaintext private key file:
+# rm private-key.asc
 ```
 
 ## Registering the Key with Terraform Registry
@@ -126,11 +124,15 @@ builds:
     binary: '{{ .ProjectName }}_v{{ .Version }}'
 
 archives:
-  - format: zip
+  - formats:
+      - zip
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
-# Generate checksums for all archives
+# Generate checksums for all archives and the Terraform Registry manifest
 checksum:
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
 
@@ -153,7 +155,7 @@ release:
 ```
 
 The signing configuration tells GoReleaser to:
-1. Sign the `SHA256SUMS` file (which contains checksums for all binaries)
+1. Sign the `SHA256SUMS` file (which contains checksums for the release archives and manifest)
 2. Use the GPG key identified by the `GPG_FINGERPRINT` environment variable
 3. Create a detached signature file (`SHA256SUMS.sig`)
 
@@ -198,8 +200,9 @@ jobs:
 
       # Run GoReleaser with the GPG fingerprint
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v7
         with:
+          version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -210,12 +213,12 @@ jobs:
 
 Add these secrets to your GitHub repository:
 
-1. **GPG_PRIVATE_KEY** - The base64-encoded private key from `private-key-base64.txt`
+1. **GPG_PRIVATE_KEY** - The ASCII-armored private key from `private-key.asc`
 2. **PASSPHRASE** - The passphrase for your GPG key
 
 ```bash
 # To set secrets via the GitHub CLI:
-gh secret set GPG_PRIVATE_KEY < private-key-base64.txt
+gh secret set GPG_PRIVATE_KEY < private-key.asc
 gh secret set PASSPHRASE
 ```
 
@@ -263,7 +266,7 @@ gpg --full-generate-key
 # Keep the old key until all supported releases signed with it are still in use
 
 # Update CI secrets with the new private key
-gh secret set GPG_PRIVATE_KEY < new-private-key-base64.txt
+gh secret set GPG_PRIVATE_KEY < new-private-key.asc
 ```
 
 ### Key Revocation
@@ -307,7 +310,7 @@ Make sure the public key registered with the Terraform Registry matches the priv
 
 **Back up your key securely.** Losing the signing key means you cannot release new versions until you set up a new one.
 
-**Use strong key parameters.** RSA 4096-bit or Ed25519 keys provide good security.
+**Use strong key parameters.** RSA 4096-bit keys provide good security and are accepted by the Terraform Registry.
 
 **Plan for key rotation.** Set expiration dates and have a process for rotating keys before they expire.
 
