@@ -45,9 +45,9 @@ variable "app_version" {
   default = "latest"
 }
 
-variable "base_ami" {
+variable "base_ami_name" {
   type    = string
-  default = "ami-0c55b159cbfafe1f0"
+  default = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
 }
 
 # Source configuration for the AMI builder
@@ -55,7 +55,16 @@ source "amazon-ebs" "app_server" {
   ami_name      = "app-server-${var.app_version}-{{timestamp}}"
   instance_type = "t3.medium"
   region        = var.aws_region
-  source_ami    = var.base_ami
+
+  source_ami_filter {
+    filters = {
+      name                = var.base_ami_name
+      root-device-type    = "ebs"
+      virtualization-type = "hvm"
+    }
+    owners      = ["099720109477"]
+    most_recent = true
+  }
 
   ssh_username = "ubuntu"
 
@@ -65,7 +74,7 @@ source "amazon-ebs" "app_server" {
     AppVersion  = var.app_version
     BuildTime   = "{{timestamp}}"
     ManagedBy   = "packer"
-    BaseAMI     = var.base_ami
+    BaseAMIName = var.base_ami_name
   }
 
   # Tag the snapshot too
@@ -91,8 +100,9 @@ build {
   provisioner "shell" {
     inline = [
       "sudo apt-get install -y nginx",
-      "sudo apt-get install -y python3 python3-pip",
-      "sudo pip3 install gunicorn flask",
+      "sudo apt-get install -y python3 python3-pip python3-venv",
+      "sudo python3 -m venv /opt/app/venv",
+      "sudo /opt/app/venv/bin/pip install gunicorn flask",
     ]
   }
 
@@ -112,7 +122,7 @@ build {
   # Install monitoring agent
   provisioner "shell" {
     inline = [
-      "wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb",
+      "wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb",
       "sudo dpkg -i amazon-cloudwatch-agent.deb",
       "rm amazon-cloudwatch-agent.deb",
     ]
@@ -189,7 +199,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Rolling update configuration
@@ -240,7 +250,7 @@ resource "aws_instance" "app" {
 
 ## Building Multiple Image Types
 
-For complex environments, you may need different images for different roles.
+For complex environments, you may need different images for different roles. Tag those AMIs with a role in their Packer templates so Terraform can select the right image.
 
 ```hcl
 # Data sources for each image type
