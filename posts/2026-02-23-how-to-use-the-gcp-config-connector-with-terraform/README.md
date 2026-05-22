@@ -49,6 +49,11 @@ resource "google_container_cluster" "primary" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
+  # Kubernetes Engine Monitoring is required for the Config Connector add-on
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+  }
+
   # Use a separately managed node pool
   remove_default_node_pool = true
   initial_node_count       = 1
@@ -114,17 +119,18 @@ provider "kubernetes" {
 
 data "google_client_config" "default" {}
 
-# Create the ConfigConnectorContext resource
-resource "kubernetes_manifest" "config_connector_context" {
+# Create the ConfigConnector resource
+resource "kubernetes_manifest" "config_connector" {
   manifest = {
     apiVersion = "core.cnrm.cloud.google.com/v1beta1"
-    kind       = "ConfigConnectorContext"
+    kind       = "ConfigConnector"
     metadata = {
-      name      = "configconnectorcontext.core.cnrm.cloud.google.com"
-      namespace = "default"
+      name = "configconnector.core.cnrm.cloud.google.com"
     }
     spec = {
+      mode                 = "cluster"
       googleServiceAccount = google_service_account.config_connector.email
+      stateIntoSpec        = "Absent"
     }
   }
 
@@ -169,6 +175,8 @@ kind: SQLInstance
 metadata:
   name: my-application-db
   namespace: default
+  annotations:
+    cnrm.cloud.google.com/project-id: "my-project"
 spec:
   databaseVersion: POSTGRES_14
   region: us-central1
@@ -179,7 +187,7 @@ spec:
       startTime: "03:00"
     ipConfiguration:
       privateNetworkRef:
-        name: my-vpc-network
+        external: projects/my-project/global/networks/my-vpc-network
 ```
 
 You can also manage these manifests through Terraform using the kubernetes_manifest resource:
@@ -280,12 +288,19 @@ resource "google_monitoring_alert_policy" "config_connector_errors" {
   combiner     = "OR"
 
   conditions {
-    display_name = "Config Connector reconciliation errors"
+    display_name = "Config Connector controller restarts"
     condition_threshold {
-      filter          = "resource.type=\"k8s_container\" AND resource.labels.container_name=\"manager\" AND resource.labels.namespace_name=\"cnrm-system\""
+      filter          = "metric.type=\"kubernetes.io/container/restart_count\" AND resource.type=\"k8s_container\" AND resource.labels.namespace_name=\"cnrm-system\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "300s"
+
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.labels.namespace_name"]
+      }
     }
   }
 
@@ -295,7 +310,7 @@ resource "google_monitoring_alert_policy" "config_connector_errors" {
 
 ## Best Practices
 
-Use namespace-level Config Connector contexts to isolate different teams or applications. Each namespace can have its own GCP service account with appropriately scoped permissions. Always set the deletion policy annotation on Config Connector resources to prevent accidental deletion of cloud resources when Kubernetes resources are removed. Use Terraform to manage the foundational infrastructure and Config Connector for resources that are tightly coupled to application workloads.
+If you configure Config Connector in namespaced mode, use namespace-level ConfigConnectorContext resources to isolate different teams or applications. Each namespace can have its own GCP service account with appropriately scoped permissions. Set the deletion policy annotation on Config Connector resources that should survive deletion of their Kubernetes resources. Use Terraform to manage the foundational infrastructure and Config Connector for resources that are tightly coupled to application workloads.
 
 Store Config Connector manifests alongside application code in the same repository. This keeps infrastructure definitions close to the applications that use them and enables GitOps workflows with tools like Argo CD or Flux.
 
