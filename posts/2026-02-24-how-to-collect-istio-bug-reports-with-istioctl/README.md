@@ -21,13 +21,11 @@ istioctl bug-report
 This collects data from the entire mesh and creates a compressed tar.gz file in the current directory:
 
 ```text
-Creating an Istio bug report...
-Collecting cluster information...
-Collecting Istio control plane information...
-Collecting proxy information for pods in namespace: default
-Collecting proxy information for pods in namespace: istio-system
+Target cluster context: my-cluster
+Running with the following config...
+Running Istio analyze on all namespaces and report as below:
 ...
-Bug report captured successfully. Archive: bug-report.tar.gz
+Creating an archive at /current/directory/bug-report.tar.gz.
 ```
 
 The file can be quite large depending on your mesh size. For a medium-sized mesh with a few hundred pods, expect 50-200MB.
@@ -39,13 +37,14 @@ The bug report archive contains several directories of information:
 ### Cluster Information
 
 ```text
-cluster-info/
-  nodes.yaml
-  namespaces.yaml
-  pods.yaml
-  services.yaml
-  endpoints.yaml
-  events.yaml
+cluster/
+  cluster-context
+  kubectl-version
+  k8s-cluster-resources
+  k8s-resources
+  crs
+  events
+  secrets
 ```
 
 General Kubernetes cluster state that provides context for the Istio-specific data.
@@ -53,48 +52,51 @@ General Kubernetes cluster state that provides context for the Istio-specific da
 ### Istio Control Plane
 
 ```text
-istio-system/
-  istiod-*/
-    logs.txt
-    config_dump.json
-    proxy-status.json
-  istio-ingressgateway-*/
-    logs.txt
-    config_dump.json
-    stats.txt
+istio/
+  istio-system/
+    istiod-*/
+      discovery.log
+      debug/
+        syncz
+        configz
+        endpointz
+      metrics
+proxies/
+  istio-system/
+    istio-ingressgateway-*/
+      istio-proxy.log
+      config_dump?include_eds
+      stats/
+        prometheus
 ```
 
-Istiod logs, gateway logs, and control plane configuration. This is the most important data for control plane issues.
+Istiod logs, gateway logs, control plane debug endpoints, and gateway proxy data. This is the most important data for control plane issues.
 
 ### Per-Pod Proxy Data
 
 ```text
-default/
-  httpbin-abc123/
-    istio-proxy-logs.txt
-    config_dump.json
-    stats.txt
-    proxy-status.json
+proxies/
+  default/
+    httpbin-abc123/
+      istio-proxy.log
+      config_dump?include_eds
+      clusters
+      listeners
+      stats/
+        prometheus
+      server_info
 ```
 
-For each pod with a sidecar, the report collects proxy logs, full Envoy configuration dump, statistics, and sync status.
+For each selected pod with a sidecar, the report collects proxy logs, Envoy admin output such as configuration, clusters, listeners, server info, and Prometheus-format statistics.
 
 ### Istio Resources
 
 ```text
-istio-resources/
-  virtualservices.yaml
-  destinationrules.yaml
-  gateways.yaml
-  serviceentries.yaml
-  sidecars.yaml
-  authorizationpolicies.yaml
-  peerauthentications.yaml
-  telemetry.yaml
-  envoyfilters.yaml
+cluster/
+  crs
 ```
 
-All Istio custom resources across all namespaces.
+Istio custom resources are collected into the `cluster/crs` file.
 
 ## Scoping the Bug Report
 
@@ -106,7 +108,7 @@ Collecting data from the entire mesh takes time and creates huge archives. Scope
 istioctl bug-report --include default,production
 ```
 
-Only collects data from the `default` and `production` namespaces (plus `istio-system` which is always included).
+Only targets proxy logs and namespace-scoped resources from the `default` and `production` namespaces. The Istio control plane namespace is still included for control plane data.
 
 ### By Time Duration
 
@@ -121,10 +123,10 @@ Only collects logs from the last 30 minutes. This keeps log volumes manageable a
 If you know which pods are affected:
 
 ```bash
-istioctl bug-report --include "default/httpbin-.*,default/sleep-.*"
+istioctl bug-report --include "default//httpbin-*,default//sleep-*"
 ```
 
-The include pattern uses regex, so you can match multiple pods.
+The include pattern uses Istio's filter syntax with `*` glob matching, so you can match multiple pods.
 
 ### Excluding Namespaces
 
@@ -139,14 +141,16 @@ istioctl bug-report --exclude monitoring,logging
 ### Output Directory
 
 ```bash
-istioctl bug-report --dir /tmp/istio-debug
+istioctl bug-report --output-dir /tmp/istio-debug
 ```
 
-### Output Filename
+### Temporary Directory
 
 ```bash
-istioctl bug-report --filename my-mesh-debug.tar.gz
+istioctl bug-report --dir /tmp/istio-debug-work
 ```
+
+The `--dir` flag controls temporary artifact storage while the report is being collected.
 
 ### Full Secrets
 
@@ -172,46 +176,48 @@ cd bug-report
 ```bash
 # Istiod logs - look for errors
 
-grep -i error istio-system/istiod-*/logs.txt
+grep -i error istio/istio-system/istiod-*/discovery.log
 
-# Proxy sync status
-cat istio-system/proxy-status.json | python3 -m json.tool
+# Proxy sync status from Istiod debug output
+for f in istio/istio-system/istiod-*/debug/syncz; do
+  python3 -m json.tool "$f"
+done
 ```
 
 ### Check Specific Pod Issues
 
 ```bash
 # Pod proxy logs
-cat default/httpbin-abc123/istio-proxy-logs.txt | tail -100
+cat proxies/default/httpbin-abc123/istio-proxy.log | tail -100
 
 # Look for NACKs (config rejections)
-grep -i nack default/httpbin-abc123/istio-proxy-logs.txt
+grep -i nack proxies/default/httpbin-abc123/istio-proxy.log
 
 # Check if the pod was receiving config updates
-grep "Received" default/httpbin-abc123/istio-proxy-logs.txt
+grep "Received" proxies/default/httpbin-abc123/istio-proxy.log
 ```
 
 ### Check Configuration
 
 ```bash
-# Look at all VirtualServices
-cat istio-resources/virtualservices.yaml
+# Look at all collected custom resources
+cat cluster/crs
 
-# Check for conflicting DestinationRules
-cat istio-resources/destinationrules.yaml
+# Search collected custom resources for DestinationRules
+grep -n "kind: DestinationRule" cluster/crs
 ```
 
 ### Check Stats for Errors
 
 ```bash
 # Look for 5xx errors
-grep "rq_5xx" default/httpbin-abc123/stats.txt
+grep "rq_5xx" proxies/default/httpbin-abc123/stats/prometheus
 
 # Check circuit breaker state
-grep "circuit_breaker" default/httpbin-abc123/stats.txt
+grep "circuit_breaker" proxies/default/httpbin-abc123/stats/prometheus
 
 # Check upstream connection failures
-grep "upstream_cx_connect_fail" default/httpbin-abc123/stats.txt
+grep "upstream_cx_connect_fail" proxies/default/httpbin-abc123/stats/prometheus
 ```
 
 ## Using Bug Reports for Offline Analysis
@@ -219,13 +225,13 @@ grep "upstream_cx_connect_fail" default/httpbin-abc123/stats.txt
 Even if you're not filing a bug, the report is useful for offline analysis. For example, you can run `istioctl analyze` against the collected configs:
 
 ```bash
-istioctl analyze istio-resources/*.yaml --use-kube=false
+istioctl analyze cluster/crs --use-kube=false
 ```
 
 Or you can feed the config dumps into tools like Envoy's config validation:
 
 ```bash
-python3 -m json.tool default/httpbin-abc123/config_dump.json > formatted-config.json
+python3 -m json.tool 'proxies/default/httpbin-abc123/config_dump?include_eds' > formatted-config.json
 ```
 
 ## Automated Collection in CI/CD
@@ -236,11 +242,12 @@ If you want to collect bug reports automatically when tests fail:
 #!/bin/bash
 # Run at the end of integration tests if they fail
 
-if [ $TEST_EXIT_CODE -ne 0 ]; then
+if [ "${TEST_EXIT_CODE:-0}" -ne 0 ]; then
   istioctl bug-report \
     --duration 15m \
-    --dir /artifacts/istio-debug \
-    --filename "test-failure-$(date +%Y%m%d-%H%M%S).tar.gz"
+    --output-dir /artifacts/istio-debug
+  mv /artifacts/istio-debug/bug-report.tar.gz \
+    "/artifacts/istio-debug/test-failure-$(date +%Y%m%d-%H%M%S).tar.gz"
 fi
 ```
 
@@ -255,8 +262,9 @@ Before sharing a bug report externally, consider scrubbing sensitive information
 tar xzf bug-report.tar.gz
 
 # Remove or redact sensitive files
-find bug-report -name "*.yaml" -exec sed -i 's/password:.*/password: REDACTED/g' {} \;
-find bug-report -name "*.yaml" -exec sed -i 's/token:.*/token: REDACTED/g' {} \;
+grep -rlE 'password:|token:' bug-report/ | xargs -r sed -i \
+  -e 's/password:.*/password: REDACTED/g' \
+  -e 's/token:.*/token: REDACTED/g'
 
 # Re-archive
 tar czf bug-report-scrubbed.tar.gz bug-report/
@@ -275,9 +283,9 @@ istioctl bug-report --include default --duration 10m
 ```
 
 Then in the report, check:
-- `config_dump.json` for the affected pods
-- `stats.txt` for error counters
-- `istio-proxy-logs.txt` for connection errors
+- `config_dump?include_eds` for the affected pods
+- `stats/prometheus` for error counters
+- `istio-proxy.log` for connection errors
 
 ### For Performance Issues
 
@@ -288,7 +296,7 @@ istioctl bug-report --duration 2h
 ```
 
 Check:
-- Memory and CPU stats in pod descriptions
+- Resource requests, limits, and restart state in `cluster/k8s-resources`
 - `pilot_xds_push_time` and `pilot_proxy_convergence_time` in Istiod stats
 - Envoy stats for high latency (`upstream_rq_time`)
 
@@ -300,7 +308,7 @@ If you hit issues during an Istio upgrade:
 istioctl bug-report --include istio-system
 ```
 
-Focus on Istiod logs showing version mismatches and proxy-status showing revision differences.
+Focus on Istiod logs showing version mismatches and the `debug/syncz` output showing proxy revision differences.
 
 ## Summary
 
