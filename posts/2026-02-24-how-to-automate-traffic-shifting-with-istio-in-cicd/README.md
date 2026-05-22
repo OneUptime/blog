@@ -19,6 +19,7 @@ Instead of hardcoding weight progressions in your CI pipeline, use a reusable sc
 ```bash
 #!/bin/bash
 # traffic-shift.sh
+set -euo pipefail
 
 # Usage: ./traffic-shift.sh <namespace> <virtualservice> <target-subset> <step-size> <interval> <max-error-rate>
 
@@ -56,7 +57,7 @@ while [ $CURRENT_WEIGHT -lt 100 ]; do
 
   # Check error rate
   ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-    --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"my-app-${TARGET_SUBSET}\",response_code=~\"5..\"}[2m])) / sum(rate(istio_requests_total{destination_workload=\"my-app-${TARGET_SUBSET}\"}[2m])) * 100" \
+    --data-urlencode "query=sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"my-app-${TARGET_SUBSET}\",destination_workload_namespace=\"${NAMESPACE}\",response_code=~\"5..\"}[2m])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"my-app-${TARGET_SUBSET}\",destination_workload_namespace=\"${NAMESPACE}\"}[2m])) * 100" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   echo "Current error rate: ${ERROR_RATE}%"
@@ -74,6 +75,8 @@ done
 
 echo "Traffic shift complete. All traffic now goes to $TARGET_SUBSET"
 ```
+
+This assumes your VirtualService has a single HTTP route for the service and that the `stable` and target subsets already exist in a DestinationRule for `my-app`.
 
 ## Using the Script in GitHub Actions
 
@@ -211,17 +214,17 @@ check_metrics() {
 
   # Error rate
   local error_rate=$(curl -s "$prometheus_url/api/v1/query" \
-    --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${workload}\",response_code=~\"5..\",namespace=\"${namespace}\"}[2m])) / sum(rate(istio_requests_total{destination_workload=\"${workload}\",namespace=\"${namespace}\"}[2m])) * 100" \
+    --data-urlencode "query=sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${workload}\",destination_workload_namespace=\"${namespace}\",response_code=~\"5..\"}[2m])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${workload}\",destination_workload_namespace=\"${namespace}\"}[2m])) * 100" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   # P99 latency
   local p99=$(curl -s "$prometheus_url/api/v1/query" \
-    --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"${workload}\",namespace=\"${namespace}\"}[2m])) by (le))" \
+    --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_workload=\"${workload}\",destination_workload_namespace=\"${namespace}\"}[2m])) by (le))" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   # Request rate (to ensure we have enough traffic for meaningful metrics)
   local rps=$(curl -s "$prometheus_url/api/v1/query" \
-    --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${workload}\",namespace=\"${namespace}\"}[2m]))" \
+    --data-urlencode "query=sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${workload}\",destination_workload_namespace=\"${namespace}\"}[2m]))" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   echo "Error rate: ${error_rate}%, P99: ${p99}ms, RPS: ${rps}"
@@ -312,7 +315,8 @@ notify_slack() {
 
   curl -s -X POST "$SLACK_WEBHOOK_URL" \
     -H 'Content-Type: application/json' \
-    -d "{\"attachments\":[{\"color\":\"$color\",\"text\":\"$message\"}]}"
+    -d "$(jq -n --arg color "$color" --arg text "$message" \
+      '{attachments:[{color:$color,text:$text}]}')"
 }
 
 # In the shift loop:
