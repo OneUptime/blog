@@ -40,10 +40,9 @@ metadata:
   name: allow-frontend-to-backend
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: reviews
+  selector:
+    matchLabels:
+      app: reviews
   action: ALLOW
   rules:
     - from:
@@ -52,7 +51,7 @@ spec:
               - "cluster.local/ns/bookinfo/sa/bookinfo-productpage"
 ```
 
-This policy says: only the productpage service (identified by its ServiceAccount) can connect to the reviews service. All other sources are denied.
+This policy says: only the productpage service (identified by its ServiceAccount) can connect to reviews workloads. All other sources are denied.
 
 Apply it:
 
@@ -82,10 +81,9 @@ metadata:
   name: allow-from-monitoring
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: productpage
+  selector:
+    matchLabels:
+      app: productpage
   action: ALLOW
   rules:
     - from:
@@ -108,10 +106,9 @@ metadata:
   name: restrict-ports
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: reviews
+  selector:
+    matchLabels:
+      app: reviews
   action: ALLOW
   rules:
     - from:
@@ -137,10 +134,9 @@ metadata:
   name: deny-external
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: ratings
+  selector:
+    matchLabels:
+      app: ratings
   action: DENY
   rules:
     - from:
@@ -162,10 +158,9 @@ metadata:
   name: allow-internal-ips
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: productpage
+  selector:
+    matchLabels:
+      app: productpage
   action: ALLOW
   rules:
     - from:
@@ -202,10 +197,9 @@ metadata:
   name: allow-productpage-ingress
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: productpage
+  selector:
+    matchLabels:
+      app: productpage
   action: ALLOW
   rules:
     - from:
@@ -219,10 +213,9 @@ metadata:
   name: allow-productpage-to-reviews
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: reviews
+  selector:
+    matchLabels:
+      app: reviews
   action: ALLOW
   rules:
     - from:
@@ -236,10 +229,9 @@ metadata:
   name: allow-reviews-to-ratings
   namespace: bookinfo
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: ratings
+  selector:
+    matchLabels:
+      app: ratings
   action: ALLOW
   rules:
     - from:
@@ -263,12 +255,12 @@ Output:
 ```text
 NAMESPACE    POLICY NAME                      ACTION    SCOPE
 bookinfo     deny-all                         ALLOW     Namespace
-bookinfo     allow-productpage-ingress        ALLOW     Namespace
-bookinfo     allow-productpage-to-reviews     ALLOW     Namespace
-bookinfo     allow-reviews-to-ratings         ALLOW     Namespace
+bookinfo     allow-productpage-ingress        ALLOW     WorkloadSelector
+bookinfo     allow-productpage-to-reviews     ALLOW     WorkloadSelector
+bookinfo     allow-reviews-to-ratings         ALLOW     WorkloadSelector
 ```
 
-If a policy is not showing up, check that the namespace is enrolled in ambient mode and that the policy's targetRefs match actual services.
+If a policy is not showing up, check that the namespace is enrolled in ambient mode and that the policy's selector labels match actual workloads.
 
 ## Debugging Policy Denials
 
@@ -301,13 +293,13 @@ Understanding the evaluation order is important:
 
 This means:
 - A DENY rule always wins over an ALLOW rule
-- If you have any ALLOW policies in a namespace, traffic that does not match any ALLOW rule is implicitly denied
+- If you have any ALLOW policies for a workload, traffic to that workload that does not match any ALLOW rule is implicitly denied
 - If you have no policies at all, everything is allowed
 
 ## Performance Considerations
 
-L4 policy evaluation in ztunnel is fast because it only checks connection metadata (source identity, destination port), not packet content. The performance impact is negligible compared to the TLS encryption overhead, which is already happening.
+L4 policy evaluation in ztunnel is fast because it only checks connection metadata (source identity, destination port), not packet content. The performance impact is typically low compared to the TLS encryption overhead, which is already happening.
 
-You can have dozens of policies per namespace without noticeable latency impact. The policies are compiled into an efficient lookup structure in ztunnel's memory.
+You can usually have dozens of policies per namespace without noticeable latency impact, but test under your own workload and traffic profile.
 
 L4 policies in ambient mode give you a solid security foundation without the overhead of L7 proxies. For many microservice architectures, controlling which services can talk to which other services at the identity level is sufficient. When you need HTTP-aware policies, add waypoint proxies to specific namespaces.
