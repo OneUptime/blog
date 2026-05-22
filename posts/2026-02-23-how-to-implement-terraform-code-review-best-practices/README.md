@@ -63,6 +63,10 @@ on:
       - '**.tf'
       - '**.tfvars'
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -75,7 +79,9 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -no-color -out=tfplan 2>&1 | tee plan.txt
+        run: |
+          set -o pipefail
+          terraform plan -no-color -out=tfplan 2>&1 | tee plan.txt
         continue-on-error: true
 
       - name: Post Plan to PR
@@ -88,12 +94,16 @@ jobs:
               ? plan.substring(0, 60000) + '\n... (truncated)'
               : plan;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Terraform Plan Output\n```\n${truncated}\n````
+              body: `## Terraform Plan Output\n~~~\n${truncated}\n~~~`
             });
+
+      - name: Fail if Terraform Plan Failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
 ```
 
 ## Create a Terraform Review Checklist
@@ -165,7 +175,7 @@ repos:
       - id: terraform_fmt
       - id: terraform_validate
       - id: terraform_tflint
-      - id: terraform_tfsec
+      - id: terraform_trivy
       - id: terraform_docs
         args:
           - --hook-config=--path-to-file=README.md
@@ -185,7 +195,7 @@ resource "github_branch_protection" "main" {
     contexts = [
       "terraform-fmt",
       "terraform-validate",
-      "tfsec",
+      "trivy",
       "checkov",
       "terraform-plan"
     ]
