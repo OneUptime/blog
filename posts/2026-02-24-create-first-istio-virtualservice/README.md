@@ -14,7 +14,7 @@ If you have never created a VirtualService before, this guide walks you through 
 
 ## What a VirtualService Does
 
-In plain Kubernetes, when Service A calls Service B, the request goes to one of Service B's pods selected randomly by kube-proxy. That is it. No control over which version of Service B handles the request, no ability to route based on the request content, no way to split traffic between versions.
+In plain Kubernetes, when Service A calls Service B, the request is load-balanced to one of Service B's pods by the cluster's service proxy implementation, such as kube-proxy. That is it. No control over which version of Service B handles the request, no ability to route based on the request content, no way to split traffic between versions.
 
 A VirtualService intercepts that routing decision and lets you define rules. You can say "send 90% of traffic to v1 and 10% to v2" or "route requests with header X-Debug=true to the debug version."
 
@@ -33,7 +33,7 @@ The VirtualService rules live in the Istio control plane and are pushed to every
 Before creating a VirtualService, you need:
 
 - A running Kubernetes cluster with Istio installed
-- At least one service deployed with sidecar injection enabled
+- Workloads that send traffic deployed with sidecar injection enabled
 - `kubectl` configured to access your cluster
 
 Verify Istio is running:
@@ -57,7 +57,7 @@ kubectl create namespace bookstore
 kubectl label namespace bookstore istio-injection=enabled
 ```
 
-Deploy version 1 of the service:
+Deploy both versions of the service:
 
 ```yaml
 apiVersion: apps/v1
@@ -194,12 +194,15 @@ Check that the VirtualService was created:
 kubectl get virtualservice -n bookstore
 ```
 
-Verify the proxy received the configuration:
+Deploy a test pod and verify its proxy received the configuration:
 
 ```bash
-# Pick a pod in the namespace
+# Deploy a test pod
+kubectl run test-client --image=curlimages/curl -n bookstore --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/test-client -n bookstore --timeout=60s
 
-POD=$(kubectl get pods -n bookstore -l app=reviews -o jsonpath='{.items[0].metadata.name}')
+# Use the client pod to inspect the outbound route configuration
+POD=test-client
 
 # Check routes
 istioctl proxy-config routes $POD -n bookstore
@@ -208,10 +211,6 @@ istioctl proxy-config routes $POD -n bookstore
 Send test traffic and verify it all goes to v1:
 
 ```bash
-# Deploy a test pod
-kubectl run test-client --image=curlimages/curl -n bookstore --restart=Never -- sleep 3600
-
-# Send requests
 for i in $(seq 1 10); do
   kubectl exec test-client -n bookstore -- curl -s reviews:9080/reviews/1 | head -1
 done
@@ -335,9 +334,9 @@ This adds a 5-second delay to 10% of requests. Useful for testing how your appli
 
 **Forgetting the DestinationRule.** If you reference a subset in a VirtualService but have not created the corresponding DestinationRule, requests will fail with 503 errors.
 
-**Mismatched host names.** The `hosts` field in the VirtualService must match how clients address the service. If clients use the full FQDN (`reviews.bookstore.svc.cluster.local`), make sure the VirtualService matches.
+**Mismatched host names.** The `hosts` field in the VirtualService must match the service host. Short names like `reviews` are interpreted relative to the VirtualService's namespace, so use the full FQDN (`reviews.bookstore.svc.cluster.local`) when there is any ambiguity.
 
-**Not having sidecar injection.** VirtualService rules are enforced by the sidecar proxy. If your pods do not have sidecars, the rules have no effect.
+**Not having sidecar injection.** VirtualService rules are enforced by the sidecar proxy. If the pods sending traffic do not have sidecars, the rules have no effect on those requests.
 
 **Applying to the wrong namespace.** A VirtualService in namespace A does not automatically affect traffic in namespace B. The VirtualService should be in the same namespace as the service, or you need to use the full service hostname.
 
