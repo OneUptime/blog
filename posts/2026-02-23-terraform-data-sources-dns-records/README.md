@@ -14,7 +14,7 @@ This guide covers practical techniques for reading DNS records using Terraform d
 
 ## Reading DNS Records from Route53
 
-The `aws_route53_record` data source is the most direct way to query a specific DNS record from Route53. You need to know the hosted zone ID, the record name, and the record type.
+The `aws_route53_records` data source is the most direct way to query existing DNS records from Route53. You need to know the hosted zone ID, then you can filter the returned record sets by record name and type.
 
 ```hcl
 # First, look up the hosted zone
@@ -23,20 +23,26 @@ data "aws_route53_zone" "main" {
   name = "example.com"
 }
 
-# Then read a specific A record from that zone
-data "aws_route53_record" "web" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "www.example.com"
-  type    = "A"
+# Then read records from that zone
+data "aws_route53_records" "web" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^www\\.example\\.com\\.?$"
+}
+
+locals {
+  web_record = one([
+    for record in data.aws_route53_records.web.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "www.example.com" && record.type == "A"
+  ])
 }
 
 # Use the record's values in an output
 output "web_record_values" {
-  value = data.aws_route53_record.web.records
+  value = [for record in local.web_record.resource_records : record.value]
 }
 ```
 
-The data source returns different attributes depending on the record type. For standard records, you get the `records` list. For alias records, you get `alias` block details.
+The data source returns record set objects. For standard records, you get the `resource_records` list. For alias records, you get `alias_target` details.
 
 ## Querying Different Record Types
 
@@ -44,15 +50,21 @@ The data source returns different attributes depending on the record type. For s
 
 ```hcl
 # Look up an A record to get its IP addresses
-data "aws_route53_record" "server_a" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "api.example.com"
-  type    = "A"
+data "aws_route53_records" "server_a" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^api\\.example\\.com\\.?$"
+}
+
+locals {
+  server_a_record = one([
+    for record in data.aws_route53_records.server_a.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "api.example.com" && record.type == "A"
+  ])
 }
 
 output "api_ips" {
   # Returns a list of IP addresses
-  value = data.aws_route53_record.server_a.records
+  value = [for record in local.server_a_record.resource_records : record.value]
 }
 ```
 
@@ -60,15 +72,21 @@ output "api_ips" {
 
 ```hcl
 # Look up a CNAME record
-data "aws_route53_record" "cdn_cname" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "cdn.example.com"
-  type    = "CNAME"
+data "aws_route53_records" "cdn_cname" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^cdn\\.example\\.com\\.?$"
+}
+
+locals {
+  cdn_cname_record = one([
+    for record in data.aws_route53_records.cdn_cname.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "cdn.example.com" && record.type == "CNAME"
+  ])
 }
 
 output "cdn_target" {
   # Returns the CNAME target
-  value = data.aws_route53_record.cdn_cname.records[0]
+  value = local.cdn_cname_record.resource_records[0].value
 }
 ```
 
@@ -76,15 +94,21 @@ output "cdn_target" {
 
 ```hcl
 # Look up MX records for email configuration
-data "aws_route53_record" "mail_mx" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "example.com"
-  type    = "MX"
+data "aws_route53_records" "mail_mx" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^example\\.com\\.?$"
+}
+
+locals {
+  mail_mx_record = one([
+    for record in data.aws_route53_records.mail_mx.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "example.com" && record.type == "MX"
+  ])
 }
 
 output "mail_servers" {
   # Returns MX record values like ["10 mail1.example.com", "20 mail2.example.com"]
-  value = data.aws_route53_record.mail_mx.records
+  value = [for record in local.mail_mx_record.resource_records : record.value]
 }
 ```
 
@@ -92,14 +116,20 @@ output "mail_servers" {
 
 ```hcl
 # Look up TXT records - common for domain verification
-data "aws_route53_record" "spf" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "example.com"
-  type    = "TXT"
+data "aws_route53_records" "spf" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^example\\.com\\.?$"
+}
+
+locals {
+  spf_record = one([
+    for record in data.aws_route53_records.spf.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "example.com" && record.type == "TXT"
+  ])
 }
 
 output "txt_values" {
-  value = data.aws_route53_record.spf.records
+  value = [for record in local.spf_record.resource_records : record.value]
 }
 ```
 
@@ -180,14 +210,22 @@ output "dns_results" {
 ### Conditional Resource Creation Based on DNS
 
 ```hcl
-# Check if a DNS record already exists before creating resources
-data "dns_a_record_set" "check_existing" {
-  host = "api.example.com"
+# Check if a Route53 record already exists before creating resources
+data "aws_route53_records" "check_existing" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^api\\.example\\.com\\.?$"
+}
+
+locals {
+  existing_api_records = [
+    for record in data.aws_route53_records.check_existing.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "api.example.com" && record.type == "A"
+  ]
 }
 
 # Only create the record if it does not already point somewhere
 resource "aws_route53_record" "api" {
-  count = length(data.dns_a_record_set.check_existing.addrs) == 0 ? 1 : 0
+  count = length(local.existing_api_records) == 0 ? 1 : 0
 
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "api.example.com"
@@ -201,16 +239,20 @@ resource "aws_route53_record" "api" {
 
 ```hcl
 # Look up the existing DNS record for a service
-data "aws_route53_record" "lb_record" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "app.example.com"
-  type    = "A"
+data "aws_route53_records" "lb_record" {
+  zone_id    = data.aws_route53_zone.main.zone_id
+  name_regex = "^app\\.example\\.com\\.?$"
 }
 
 # Use the DNS data to find the associated load balancer
 data "aws_lb" "app" {
   # If the record is an alias to an ALB, we can look up the ALB
   name = "app-load-balancer"
+}
+
+data "aws_lb_listener" "app" {
+  load_balancer_arn = data.aws_lb.app.arn
+  port              = 443
 }
 
 # Create a new listener rule on the discovered load balancer
@@ -277,10 +319,16 @@ data "aws_route53_zone" "private" {
 }
 
 # Read a record from the private zone
-data "aws_route53_record" "internal_db" {
-  zone_id = data.aws_route53_zone.private.zone_id
-  name    = "database.internal.example.com"
-  type    = "A"
+data "aws_route53_records" "internal_db" {
+  zone_id    = data.aws_route53_zone.private.zone_id
+  name_regex = "^database\\.internal\\.example\\.com\\.?$"
+}
+
+locals {
+  internal_db_record = one([
+    for record in data.aws_route53_records.internal_db.resource_record_sets : record
+    if trimsuffix(record.name, ".") == "database.internal.example.com" && record.type == "A"
+  ])
 }
 
 # Use the internal database IP in another resource
@@ -289,7 +337,7 @@ resource "aws_security_group_rule" "allow_db" {
   from_port         = 5432
   to_port           = 5432
   protocol          = "tcp"
-  cidr_blocks       = [for ip in data.aws_route53_record.internal_db.records : "${ip}/32"]
+  cidr_blocks       = [for record in local.internal_db_record.resource_records : "${record.value}/32"]
   security_group_id = aws_security_group.app.id
 }
 ```
@@ -298,9 +346,9 @@ resource "aws_security_group_rule" "allow_db" {
 
 A few things to keep in mind when using DNS data sources:
 
-1. The `aws_route53_record` data source will fail if the record does not exist. Plan for this in your configuration.
+1. Use `aws_route53_records` for Route53 lookups and filter the returned `resource_record_sets` by name and type.
 2. The `dns` provider performs live DNS lookups, so results depend on your DNS resolver and record TTLs.
-3. When querying alias records in Route53, the `records` attribute will be empty. Check the `alias` block instead.
+3. When querying alias records in Route53, check the `alias_target` details instead of `resource_records`.
 4. DNS propagation delays mean recently created records might not be visible to the `dns` provider immediately.
 
 ## Conclusion
