@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, IAM, Data Source, Infrastructure as Code
 
-Description: Learn how to use the aws_iam_policy_document data source to define IAM policies natively in HCL with full validation and policy merging support.
+Description: Learn how to use the aws_iam_policy_document data source to define IAM policies natively in HCL with structural validation and policy merging support.
 
 ---
 
-Writing IAM policies as raw JSON inside Terraform has always been a pain point. The `aws_iam_policy_document` data source gives you a proper HCL-native way to define IAM policies. It validates your policy structure, supports merging multiple policy fragments, and catches errors before you ever hit the AWS API.
+Writing IAM policies as raw JSON inside Terraform has always been a pain point. The `aws_iam_policy_document` data source gives you a proper HCL-native way to define IAM policies. It validates your policy structure, supports merging multiple policy fragments, and catches many structural errors before you ever hit the AWS API.
 
 This guide covers how to replace JSON-based IAM policies with the data source approach, including advanced use cases like policy merging and dynamic statement generation.
 
@@ -261,7 +261,7 @@ resource "aws_iam_policy" "app" {
 
 This pattern is great for building a library of reusable policy fragments. You define base policies once and compose them as needed for each application.
 
-The difference between `source_policy_documents` and `override_policy_documents` matters. Source documents get merged, and if there are conflicting statement IDs, the last one wins. Override documents take priority and can replace statements from the base document.
+The difference between `source_policy_documents` and `override_policy_documents` matters. Source documents get merged, but statements in source documents must have unique statement IDs. Override documents take priority and can replace statements from the base document when they use the same non-blank `sid`.
 
 ## Dynamic Statements
 
@@ -281,7 +281,7 @@ data "aws_iam_policy_document" "dynamic_buckets" {
   dynamic "statement" {
     for_each = var.bucket_access
     content {
-      sid    = "Access${replace(title(statement.key), "-", "")}"
+      sid    = "Access${replace(title(statement.key), "/[^A-Za-z0-9]/", "")}"
       effect = "Allow"
 
       actions = statement.value.actions
@@ -327,7 +327,7 @@ The `aws_iam_policy_document` data source and `jsonencode` both avoid raw JSON s
 
 | Feature | aws_iam_policy_document | jsonencode |
 |---------|------------------------|------------|
-| Terraform validation | Full structural validation | Basic HCL validation |
+| Terraform validation | Structural validation | Basic HCL validation |
 | Policy merging | Built-in | Manual with concat |
 | Learning curve | Higher (custom syntax) | Lower (just HCL maps) |
 | Condition syntax | Named blocks | Nested maps |
@@ -346,4 +346,4 @@ A few tips for working with `aws_iam_policy_document`:
 
 ## Wrapping Up
 
-The `aws_iam_policy_document` data source is the most robust way to write IAM policies in Terraform. It validates your policy structure at plan time, supports merging for composable policies, and provides clean syntax for conditions and principals. While `jsonencode` works for simple cases, the data source scales better as your IAM requirements grow. Adopt it as your default approach for IAM policies, and you will spend less time debugging policy JSON.
+The `aws_iam_policy_document` data source is the most robust way to write IAM policies in Terraform. It validates your policy structure at plan time, supports merging for composable policies, and provides clean syntax for conditions and principals. While `jsonencode` works for simple cases, the data source scales better as your IAM requirements grow. Adopt it as your default approach for IAM policies, and you will spend less time debugging policy JSON structure.
