@@ -35,9 +35,9 @@ locals {
 
   # Different date formats
   date_only     = formatdate("YYYY-MM-DD", local.now)        # "2026-02-23"
-  time_only     = formatdate("HH:mm:ss", local.now)          # "14:30:05"
+  time_only     = formatdate("hh:mm:ss", local.now)          # "14:30:05"
   human_date    = formatdate("MMMM DD, YYYY", local.now)     # "February 23, 2026"
-  compact       = formatdate("YYYYMMDDHHmmss", local.now)    # "20260223143005"
+  compact       = formatdate("YYYYMMDDhhmmss", local.now)    # "20260223143005"
   with_day      = formatdate("EEE, MMM DD YYYY", local.now)  # "Mon, Feb 23 2026"
 }
 ```
@@ -65,7 +65,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-Important caveat: because `timestamp()` returns a different value on every evaluation, these tags will show as changed on every `terraform plan`, even when nothing else is different. If this annoys you, consider using `plantimestamp()` instead (available in Terraform 1.5+).
+Important caveat: because `timestamp()` returns a different value on every evaluation, these tags will show as changed on every `terraform plan`, even when nothing else is different. If you need a stable creation timestamp, consider using the Time Provider's `time_static` resource instead.
 
 ## Forcing Resource Recreation
 
@@ -87,7 +87,7 @@ resource "null_resource" "deployment" {
 }
 ```
 
-By putting `timestamp()` in the triggers map, you guarantee the resource is "tainted" on every plan, causing it to be destroyed and recreated.
+By putting `timestamp()` in the triggers map, you guarantee the resource is planned for replacement on every apply, causing it to be destroyed and recreated.
 
 ## Time-Based Resource Names
 
@@ -96,7 +96,7 @@ Creating unique names for one-off resources like snapshots or backups:
 ```hcl
 resource "aws_db_snapshot" "pre_migration" {
   db_instance_identifier = aws_db_instance.main.identifier
-  db_snapshot_identifier = "pre-migration-${formatdate("YYYY-MM-DD-HHmmss", timestamp())}"
+  db_snapshot_identifier = "pre-migration-${formatdate("YYYY-MM-DD-hhmmss", timestamp())}"
 
   tags = {
     Name    = "Pre-migration snapshot"
@@ -105,7 +105,7 @@ resource "aws_db_snapshot" "pre_migration" {
 }
 
 resource "aws_ami_from_instance" "backup" {
-  name               = "backup-${formatdate("YYYYMMDD-HHmmss", timestamp())}"
+  name               = "backup-${formatdate("YYYYMMDD-hhmmss", timestamp())}"
   source_instance_id = aws_instance.web.id
 
   tags = {
@@ -119,20 +119,20 @@ resource "aws_ami_from_instance" "backup" {
 
 This is the most important thing to understand about `timestamp()`. The function is evaluated at the time of evaluation, which means:
 
-1. During `terraform plan`, it returns the time when the plan runs
-2. During `terraform apply`, it returns the time when the apply runs
-3. These are different times, so the actual applied value differs from what the plan showed
+1. During `terraform plan`, its result cannot be predicted and is usually shown as known after apply
+2. During `terraform apply`, Terraform takes the timestamp once while applying the plan
+3. If you need a timestamp that is known during planning, use `plantimestamp()` in Terraform 1.5+
 
 ```hcl
 # Demonstration of the timing behavior
 output "deploy_time" {
   value = timestamp()
-  # Plan output:  "2026-02-23T14:30:00Z"  (time of plan)
-  # Apply output: "2026-02-23T14:32:15Z"  (time of apply, ~2 min later)
+  # Plan output:  (known after apply)
+  # Apply output: "2026-02-23T14:32:15Z"  (time of apply)
 }
 ```
 
-This means you should not rely on the exact value shown in the plan matching what gets applied.
+This means you should not rely on `timestamp()` producing an exact value during planning.
 
 ## Using timestamp with timeadd
 
@@ -154,10 +154,10 @@ locals {
 
 output "dates" {
   value = {
-    now       = formatdate("YYYY-MM-DD HH:mm", local.now)
-    tomorrow  = formatdate("YYYY-MM-DD HH:mm", local.tomorrow)
+    now       = formatdate("YYYY-MM-DD hh:mm", local.now)
+    tomorrow  = formatdate("YYYY-MM-DD hh:mm", local.tomorrow)
     expiry    = formatdate("YYYY-MM-DD", local.expiry_date)
-    hour_ago  = formatdate("YYYY-MM-DD HH:mm", local.one_hour_ago)
+    hour_ago  = formatdate("YYYY-MM-DD hh:mm", local.one_hour_ago)
   }
 }
 ```
@@ -205,17 +205,18 @@ resource "aws_instance" "web" {
 }
 ```
 
-### Strategy 2: Use plantimestamp() instead
+### Strategy 2: Use time_static instead
 
 ```hcl
-# Available in Terraform 1.5+
+resource "time_static" "deployed_at" {}
+
 resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
 
   tags = {
     Name       = "web-server"
-    DeployedAt = plantimestamp()  # Stable within a plan-apply cycle
+    DeployedAt = time_static.deployed_at.rfc3339
   }
 }
 ```
@@ -262,7 +263,7 @@ You can use timestamps to create time-based queries:
 locals {
   # Get logs from the last 24 hours
   log_start_time = timeadd(timestamp(), "-24h")
-  log_start_formatted = formatdate("YYYY-MM-DD'T'HH:mm:ss'Z'", local.log_start_time)
+  log_start_formatted = formatdate("YYYY-MM-DD'T'hh:mm:ss'Z'", local.log_start_time)
 }
 ```
 
@@ -272,12 +273,12 @@ Here are the pitfalls people fall into:
 
 1. Using `timestamp()` in resource names that should not change. If a resource name includes a timestamp and the timestamp changes, Terraform will try to destroy and recreate the resource.
 
-2. Not understanding that `timestamp()` returns different values on plan and apply. If you save the plan to a file and apply it later, the applied value will still differ.
+2. Not understanding that `timestamp()` is not known during plan. If you save the plan to a file and apply it later, Terraform will take the timestamp during apply.
 
-3. Using `timestamp()` in count or for_each conditions. Since the value changes every time, it can cause unexpected resource creation or destruction.
+3. Using `timestamp()` in `count` or `for_each` conditions. Since the value is not known during planning, Terraform cannot reliably determine the resource instances to plan.
 
 4. Putting `timestamp()` in module inputs without understanding that the downstream module will see a changed value on every plan.
 
 ## Summary
 
-The `timestamp()` function returns the current UTC time as an RFC 3339 string. It is straightforward but has an important behavioral characteristic: it returns a new value on every evaluation, which means resources referencing it will show as changed on every plan. Use it intentionally for triggers that should fire on every apply, time-stamped resource names for one-off resources, and deployment metadata. For stable timestamp tagging, prefer `plantimestamp()` when your Terraform version supports it.
+The `timestamp()` function returns the current UTC time as an RFC 3339 string. It is straightforward but has an important behavioral characteristic: it returns a new value on every evaluation, which means resources referencing it will show as changed on every plan. Use it intentionally for triggers that should fire on every apply, time-stamped resource names for one-off resources, and deployment metadata. For stable timestamp tagging, prefer the Time Provider's `time_static` resource.
