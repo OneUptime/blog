@@ -51,7 +51,7 @@ spec:
           address:
             socket_address:
               address: 0.0.0.0
-              port_value: 15021
+              port_value: 18021
           filter_chains:
             - filters:
                 - name: envoy.filters.network.http_connection_manager
@@ -78,7 +78,7 @@ spec:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 ```
 
-This creates a listener on port 15021 that responds directly with a 200 OK for any request to `/healthz`. The response comes from Envoy itself without reaching your application. This is useful for Kubernetes liveness probes that should check the proxy health rather than the application.
+This creates a listener on port 18021 that responds directly with a 200 OK for any request to `/healthz`. The response comes from Envoy itself without reaching your application. This is useful for custom Kubernetes probes that should get a direct response from the proxy rather than the application. For basic proxy health checks, prefer Istio's built-in health check port before adding a custom listener.
 
 ## Adding a Custom TCP Listener
 
@@ -306,24 +306,21 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
-    - applyTo: LISTENER
+    - applyTo: LISTENER_FILTER
       match:
         context: GATEWAY
         listener:
-          portNumber: 8080
+          portNumber: 8443
+          listenerFilter: envoy.filters.listener.tls_inspector
       patch:
-        operation: MERGE
+        operation: INSERT_BEFORE
         value:
-          listener_filters:
-            - name: envoy.filters.listener.proxy_protocol
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
-            - name: envoy.filters.listener.tls_inspector
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
+          name: envoy.filters.listener.proxy_protocol
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
 ```
 
-This adds the proxy protocol listener filter to the ingress gateway, which is needed when the gateway sits behind a load balancer that uses the PROXY protocol to pass client IP information.
+This inserts the proxy protocol listener filter before the TLS inspector on the ingress gateway, which is needed when the gateway sits behind a load balancer that uses the PROXY protocol to pass client IP information.
 
 ## Verifying Custom Listeners
 
@@ -357,7 +354,7 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -v telnet://localhost:9999
 ```yaml
 metadata:
   annotations:
-    traffic.sidecar.istio.io/includeInboundPorts: "8080,9999"
+    traffic.sidecar.istio.io/includeInboundPorts: "18021,9999,8443,8081"
 ```
 
 **Cluster references**: If your listener routes traffic to a cluster (like `inbound|9999||`), that cluster must exist. Istio creates clusters based on Service definitions, so make sure there is a Service port for the backend you are routing to.
