@@ -157,9 +157,9 @@ This deletes the token from the credentials file. The token itself is not revoke
 # 3. Delete the token to revoke it server-side
 ```
 
-## Non-Interactive Login
+## Headless and Automated Login
 
-In environments where a browser is not available (SSH sessions, containers, CI/CD), `terraform login` still works but in a non-interactive mode:
+In environments where a browser is not available but you still have an interactive terminal (SSH sessions or containers), `terraform login` can still work by printing the URL:
 
 ```bash
 # In a headless environment, terraform login prints the URL
@@ -173,7 +173,7 @@ terraform login
 #   Enter a value:
 ```
 
-You visit the URL on another machine, generate the token, and paste it back. But for automation, there is a better approach - pre-create the credentials file:
+You visit the URL on another machine, generate the token, and paste it back. For unattended automation such as CI/CD, do not use `terraform login`; pre-create the credentials file instead:
 
 ```bash
 # Create credentials file directly for automation
