@@ -153,9 +153,9 @@ output "missing_tags" {
 }
 ```
 
-## Dynamic Block Generation from Maps
+## Listing Configured Map Keys
 
-When creating dynamic blocks, `keys` helps you iterate over a map's entries.
+When passing maps into resource arguments, `keys` helps you list the configured entries.
 
 ```hcl
 variable "environment_variables" {
@@ -217,7 +217,7 @@ locals {
     for name in keys(var.services) :
     name => var.services[name].port
   }
-  # Result: {api = 8080, admin = 8081, grpc = 9090}
+  # Result: {admin = 8081, api = 8080, grpc = 9090}
 }
 ```
 
@@ -282,7 +282,7 @@ While `length(var.instances)` works directly on maps, `keys` is still useful whe
 
 ## Real-World Scenario: DNS Records from Map
 
-Here is a complete example using `keys` to create DNS records from a map configuration.
+Here is an example using `keys` to create DNS records from a map configuration.
 
 ```hcl
 variable "dns_records" {
