@@ -54,6 +54,11 @@ variable "instance_count" {
   default = 2
 }
 
+variable "instance_type" {
+  type    = string
+  default = "t3.micro"
+}
+
 # Use variables in the provider configuration
 provider "aws" {
   region = var.region
@@ -85,6 +90,11 @@ variable "project_name" {
 variable "environment" {
   type    = string
   default = "prod"
+}
+
+variable "db_password" {
+  type      = string
+  sensitive = true
 }
 
 resource "aws_s3_bucket" "data" {
@@ -299,7 +309,7 @@ locals {
 
 There are a few places where `var` references are not allowed:
 
-- Inside `variable` blocks themselves (a variable cannot reference another variable in its default value)
+- In `variable` default values (a variable cannot reference another variable in its default value)
 - In `backend` configuration blocks (backend config is evaluated before variables)
 - In `provider` `version` constraints
 
