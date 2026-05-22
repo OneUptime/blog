@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, AWS, API Gateway, Serverless, Infrastructure as Code
 
-Description: Learn how to use Terraform dynamic blocks to configure AWS API Gateway resources, methods, integrations, and responses from structured variable data.
+Description: Learn how to use Terraform `for_each` expressions and dynamic blocks to configure AWS API Gateway resources, methods, integrations, and responses from structured variable data.
 
 ---
 
-AWS API Gateway is one of those services where Terraform configurations grow rapidly. Every API endpoint needs a resource, a method, an integration, and response mappings. When you have dozens of endpoints, dynamic blocks and `for_each` become essential for keeping the configuration manageable.
+AWS API Gateway is one of those services where Terraform configurations grow rapidly. Every API endpoint needs a resource, a method, an integration, and response mappings. When you have dozens of endpoints, `for_each` expressions and dynamic blocks become essential for keeping the configuration manageable.
 
 ## The API Gateway Configuration Challenge
 
@@ -30,7 +30,7 @@ Start with a structured variable that describes your API:
 variable "api_routes" {
   description = "API Gateway route configurations"
   type = map(object({
-    path          = string
+    path_part     = string  # Last path segment, such as "users" or "{id}"
     http_method   = string
     authorization = optional(string, "NONE")
     authorizer_id = optional(string)
@@ -76,7 +76,7 @@ resource "aws_api_gateway_resource" "routes" {
 
   rest_api_id = aws_api_gateway_rest_api.main.id
   parent_id   = aws_api_gateway_rest_api.main.root_resource_id
-  path_part   = each.value.path
+  path_part   = each.value.path_part
 }
 
 # Create methods for each route
@@ -109,7 +109,7 @@ resource "aws_api_gateway_integration" "routes" {
 
 ## Dynamic Method Responses
 
-Each route can have multiple response codes. This is where dynamic blocks come in:
+Each route can have multiple response codes. This is where `for_each` and `flatten` come in:
 
 ```hcl
 # Create method responses dynamically
@@ -149,7 +149,8 @@ variable "http_api_routes" {
     route_key     = string  # "GET /users", "POST /orders"
     integration = object({
       type                = string  # "AWS_PROXY"
-      uri                 = string  # Lambda function ARN or HTTP URL
+      uri                 = string  # Lambda invoke ARN or HTTP URL
+      method              = optional(string, "POST")
       payload_format      = optional(string, "2.0")
       connection_type     = optional(string, "INTERNET")
       timeout_milliseconds = optional(number, 30000)
@@ -181,6 +182,7 @@ resource "aws_apigatewayv2_integration" "routes" {
 
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = each.value.integration.type
+  integration_method     = each.value.integration.method
   integration_uri        = each.value.integration.uri
   payload_format_version = each.value.integration.payload_format
   connection_type        = each.value.integration.connection_type
@@ -212,7 +214,6 @@ variable "stage_route_settings" {
   type = map(object({
     throttling_burst_limit = optional(number)
     throttling_rate_limit  = optional(number)
-    logging_level          = optional(string)
     detailed_metrics       = optional(bool, false)
   }))
   default = {}
@@ -228,6 +229,7 @@ resource "aws_apigatewayv2_stage" "main" {
     for_each = var.access_log_arn != null ? [1] : []
     content {
       destination_arn = var.access_log_arn
+      format          = var.access_log_format
     }
   }
 
@@ -238,7 +240,6 @@ resource "aws_apigatewayv2_stage" "main" {
       route_key              = route_settings.key
       throttling_burst_limit = route_settings.value.throttling_burst_limit
       throttling_rate_limit  = route_settings.value.throttling_rate_limit
-      logging_level          = route_settings.value.logging_level
       detailed_metrics_enabled = route_settings.value.detailed_metrics
     }
   }
@@ -300,21 +301,21 @@ http_api_routes = {
     route_key = "GET /users"
     integration = {
       type = "AWS_PROXY"
-      uri  = "arn:aws:lambda:us-east-1:123456789:function:list-users"
+      uri  = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:list-users/invocations"
     }
   }
   "get-user" = {
     route_key = "GET /users/{id}"
     integration = {
       type = "AWS_PROXY"
-      uri  = "arn:aws:lambda:us-east-1:123456789:function:get-user"
+      uri  = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:get-user/invocations"
     }
   }
   "create-user" = {
     route_key = "POST /users"
     integration = {
       type = "AWS_PROXY"
-      uri  = "arn:aws:lambda:us-east-1:123456789:function:create-user"
+      uri  = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:create-user/invocations"
     }
     authorization = {
       type           = "JWT"
@@ -326,7 +327,7 @@ http_api_routes = {
     route_key = "DELETE /users/{id}"
     integration = {
       type = "AWS_PROXY"
-      uri  = "arn:aws:lambda:us-east-1:123456789:function:delete-user"
+      uri  = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:delete-user/invocations"
     }
     authorization = {
       type           = "JWT"
@@ -339,4 +340,4 @@ http_api_routes = {
 
 ## Summary
 
-API Gateway resources are naturally repetitive, making them a perfect fit for dynamic generation. Use `for_each` on resource blocks to create multiple endpoints, dynamic blocks for optional nested configurations like CORS and authorization, and locals to flatten complex data for response mappings. Whether you are using REST APIs or HTTP APIs, the pattern is the same: define routes as structured data and let Terraform generate the resources. For more API-related patterns, see our guide on [handling complex JSON policies in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-complex-json-policies-in-terraform/view).
+API Gateway resources are naturally repetitive, making them a perfect fit for dynamic generation. Use `for_each` on resource blocks to create multiple endpoints, dynamic blocks for optional or repeated nested configurations like access log settings and route settings, and locals to flatten complex data for response mappings. Whether you are using REST APIs or HTTP APIs, the pattern is the same: define routes as structured data and let Terraform generate the resources. For more API-related patterns, see our guide on [handling complex JSON policies in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-complex-json-policies-in-terraform/view).
