@@ -86,6 +86,8 @@ resource "aws_flow_log" "main" {
 For long-term storage and cost efficiency, send flow logs to S3:
 
 ```hcl
+data "aws_region" "current" {}
+
 # S3 bucket for flow log storage
 resource "aws_s3_bucket" "flow_logs" {
   bucket = "${var.account_id}-vpc-flow-logs"
@@ -146,9 +148,55 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "flow_logs" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
+      sse_algorithm = "AES256"
     }
   }
+}
+
+# Allow VPC Flow Logs delivery to write to the bucket
+resource "aws_s3_bucket_policy" "flow_logs" {
+  bucket = aws_s3_bucket.flow_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSLogDeliveryWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "delivery.logs.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.flow_logs.arn}/AWSLogs/aws-account-id=${var.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = var.account_id
+            "s3:x-amz-acl"      = "bucket-owner-full-control"
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:logs:${data.aws_region.current.id}:${var.account_id}:*"
+          }
+        }
+      },
+      {
+        Sid    = "AWSLogDeliveryAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "delivery.logs.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.flow_logs.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = var.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:logs:${data.aws_region.current.id}:${var.account_id}:*"
+          }
+        }
+      }
+    ]
+  })
 }
 
 # Flow log to S3
@@ -447,13 +495,78 @@ module "flow_logs" {
 
 ## Querying Flow Logs with Athena
 
-For S3-based flow logs, set up Athena for SQL queries:
+For S3-based flow logs, create an Athena database and save SQL queries for a Hive-compatible Parquet table:
 
 ```hcl
-# Athena database and table for flow logs
+# Athena database for flow logs
 resource "aws_athena_database" "flow_logs" {
   name   = "vpc_flow_logs"
   bucket = aws_s3_bucket.athena_results.id
+}
+
+resource "aws_athena_named_query" "create_flow_logs_table" {
+  name     = "create-vpc-flow-logs-table"
+  database = aws_athena_database.flow_logs.name
+  query    = <<-SQL
+    CREATE EXTERNAL TABLE IF NOT EXISTS vpc_flow_logs_parquet (
+      version int,
+      account_id string,
+      interface_id string,
+      srcaddr string,
+      dstaddr string,
+      srcport int,
+      dstport int,
+      protocol bigint,
+      packets bigint,
+      bytes bigint,
+      start bigint,
+      `end` bigint,
+      action string,
+      log_status string,
+      vpc_id string,
+      subnet_id string,
+      instance_id string,
+      tcp_flags int,
+      type string,
+      pkt_srcaddr string,
+      pkt_dstaddr string,
+      region string,
+      az_id string,
+      sublocation_type string,
+      sublocation_id string,
+      pkt_src_aws_service string,
+      pkt_dst_aws_service string,
+      flow_direction string,
+      traffic_path int
+    )
+    PARTITIONED BY (
+      `aws-account-id` string,
+      `aws-service` string,
+      `aws-region` string,
+      `year` string,
+      `month` string,
+      `day` string,
+      `hour` string
+    )
+    ROW FORMAT SERDE
+      'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+    STORED AS INPUTFORMAT
+      'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+    OUTPUTFORMAT
+      'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+    LOCATION
+      's3://${aws_s3_bucket.flow_logs.bucket}/AWSLogs/'
+    TBLPROPERTIES (
+      'EXTERNAL' = 'true',
+      'skip.header.line.count' = '1'
+    )
+  SQL
+}
+
+resource "aws_athena_named_query" "repair_partitions" {
+  name     = "repair-vpc-flow-logs-partitions"
+  database = aws_athena_database.flow_logs.name
+  query    = "MSCK REPAIR TABLE vpc_flow_logs_parquet"
 }
 
 resource "aws_athena_named_query" "top_talkers" {
@@ -461,9 +574,11 @@ resource "aws_athena_named_query" "top_talkers" {
   database = aws_athena_database.flow_logs.name
   query    = <<-SQL
     SELECT srcaddr, dstaddr, sum(bytes) as total_bytes
-    FROM vpc_flow_logs
+    FROM vpc_flow_logs_parquet
     WHERE action = 'ACCEPT'
-    AND date = current_date
+    AND year = date_format(current_date, '%Y')
+    AND month = date_format(current_date, '%m')
+    AND day = date_format(current_date, '%d')
     GROUP BY srcaddr, dstaddr
     ORDER BY total_bytes DESC
     LIMIT 20
@@ -475,9 +590,9 @@ resource "aws_athena_named_query" "rejected_connections" {
   database = aws_athena_database.flow_logs.name
   query    = <<-SQL
     SELECT srcaddr, dstport, count(*) as attempts
-    FROM vpc_flow_logs
+    FROM vpc_flow_logs_parquet
     WHERE action = 'REJECT'
-    AND date >= date_add('day', -7, current_date)
+    AND CAST(date_parse(year || '-' || month || '-' || day, '%Y-%m-%d') AS date) >= date_add('day', -7, current_date)
     GROUP BY srcaddr, dstport
     ORDER BY attempts DESC
     LIMIT 50
