@@ -19,6 +19,8 @@ Static secrets in Terraform have well-known problems. They end up in state files
 - Providing audit logging for every secret access
 - Enabling secret rotation without changing Terraform configurations
 
+Vault does not remove the need to protect Terraform state. Any secrets Terraform reads from Vault can still be written to state and plan files, so use a secure remote backend, encryption, and strict access controls for those artifacts.
+
 ## Setting Up the Vault Provider
 
 Configure Terraform to connect to your Vault instance:
@@ -30,11 +32,11 @@ terraform {
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 3.25"
+      version = "~> 5.9"
     }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -82,10 +84,11 @@ data "vault_kv_secret_v2" "database" {
 
 # Use the secret in a resource
 resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.t3.medium"
-  db_name        = "myapp"
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.t3.medium"
+  allocated_storage = 20
+  db_name           = "myapp"
 
   username = data.vault_kv_secret_v2.database.data["username"]
   password = data.vault_kv_secret_v2.database.data["password"]
@@ -102,6 +105,12 @@ data "vault_generic_secret" "database" {
 }
 
 resource "aws_db_instance" "main" {
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.t3.medium"
+  allocated_storage = 20
+  db_name           = "myapp"
+
   username = data.vault_generic_secret.database.data["username"]
   password = data.vault_generic_secret.database.data["password"]
 }
@@ -152,7 +161,7 @@ EOF
 data "vault_aws_access_credentials" "deploy" {
   backend = "aws"
   role    = "terraform-deploy"
-  type    = "iam_user"
+  type    = "creds"
 }
 
 # Use the dynamic credentials for the AWS provider
@@ -163,7 +172,7 @@ provider "aws" {
 }
 ```
 
-These credentials are temporary and automatically revoked by Vault after the TTL expires. Each Terraform run gets its own unique credentials, making audit trailing straightforward.
+These credentials are temporary and automatically revoked by Vault after the TTL expires. Terraform does not renew this lease, so very long plans or applies can fail if the credentials expire before the run finishes. Each Terraform run gets its own unique credentials, making audit trailing straightforward.
 
 ## Dynamic Database Credentials
 
@@ -320,11 +329,8 @@ If Terraform runs on AWS (EC2, ECS, Lambda), use IAM auth:
 provider "vault" {
   address = "https://vault.example.com:8200"
 
-  auth_login {
-    path = "auth/aws/login"
-    parameters = {
-      role = "terraform-role"
-    }
+  auth_login_aws {
+    role = "terraform-role"
   }
 }
 ```
