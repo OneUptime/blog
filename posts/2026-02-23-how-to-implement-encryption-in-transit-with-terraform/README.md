@@ -116,7 +116,7 @@ resource "aws_lb_listener" "http_redirect" {
 }
 ```
 
-The `ssl_policy` is critical. Use `ELBSecurityPolicy-TLS13-1-2-2021-06` to require TLS 1.3 with a fallback to TLS 1.2. Avoid older policies that allow TLS 1.0 or 1.1.
+The `ssl_policy` is critical. Use `ELBSecurityPolicy-TLS13-1-2-2021-06` to support TLS 1.3 while requiring TLS 1.2 or newer. Avoid older policies that allow TLS 1.0 or 1.1.
 
 ## S3 Bucket - Enforce SSL-Only Access
 
@@ -138,7 +138,8 @@ resource "aws_s3_bucket_policy" "enforce_ssl" {
         ]
         Condition = {
           Bool = {
-            "aws:SecureTransport" = "false"
+            "aws:SecureTransport"       = "false"
+            "aws:PrincipalIsAWSService" = "false"
           }
         }
       },
@@ -154,6 +155,9 @@ resource "aws_s3_bucket_policy" "enforce_ssl" {
         Condition = {
           NumericLessThan = {
             "s3:TlsVersion" = 1.2
+          }
+          Bool = {
+            "aws:PrincipalIsAWSService" = "false"
           }
         }
       }
@@ -238,6 +242,10 @@ Note: Enabling transit encryption on ElastiCache requires clients to connect via
 ## CloudFront with Modern TLS
 
 ```hcl
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 resource "aws_cloudfront_distribution" "main" {
   # ... origin configuration ...
 
@@ -246,7 +254,8 @@ resource "aws_cloudfront_distribution" "main" {
   default_root_object = "index.html"
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.main.arn
+    # CloudFront viewer certificates from ACM must be in us-east-1
+    acm_certificate_arn      = aws_acm_certificate_validation.cloudfront.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -258,13 +267,7 @@ resource "aws_cloudfront_distribution" "main" {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "main-origin"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
+    cache_policy_id  = data.aws_cloudfront_cache_policy.caching_optimized.id
   }
 
   # Use HTTPS to origin as well
@@ -364,12 +367,18 @@ resource "aws_organizations_policy" "require_tls" {
         Resource  = "*"
         Condition = {
           Bool = {
-            "aws:SecureTransport" = "false"
+            "aws:SecureTransport"       = "false"
+            "aws:PrincipalIsAWSService" = "false"
           }
         }
       }
     ]
   })
+}
+
+resource "aws_organizations_policy_attachment" "require_tls_root" {
+  policy_id = aws_organizations_policy.require_tls.id
+  target_id = aws_organizations_organization.main.roots[0].id
 }
 ```
 
