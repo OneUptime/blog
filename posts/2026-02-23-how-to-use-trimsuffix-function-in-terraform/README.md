@@ -168,7 +168,7 @@ resource "aws_acm_certificate" "main" {
 
 ## Processing Container Image Tags
 
-Strip image tags or digests to get the base image name.
+Strip known image tag suffixes to get the base image name.
 
 ```hcl
 variable "images" {
@@ -181,7 +181,7 @@ variable "images" {
 }
 
 locals {
-  # This approach uses split, but for known suffixes trimsuffix works well
+  # For known suffixes, trimsuffix works well
   # Remove ":latest" from images that use the latest tag
   images_without_latest = [
     for img in var.images :
@@ -268,7 +268,7 @@ locals {
 
 The function simply returns the string unchanged if the suffix does not match, so chaining is safe.
 
-## Combining trimsuffix with trimsuffix in for Expressions
+## Combining trimsuffix with for Expressions
 
 Process lists where items might have different suffixes.
 
