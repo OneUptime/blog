@@ -42,7 +42,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -53,8 +53,6 @@ metadata:
 spec:
   host: api.stripe.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     connectionPool:
       tcp:
         maxConnections: 50
@@ -63,7 +61,7 @@ spec:
         http1MaxPendingRequests: 20
 ```
 
-The ServiceEntry registers `api.stripe.com` with the mesh. The DestinationRule applies TLS (SIMPLE mode - client verifies server cert) and limits connections to 50 with a 5-second connect timeout.
+The ServiceEntry registers `api.stripe.com` with the mesh for applications that already use HTTPS. The DestinationRule limits connections to 50 with a 5-second connect timeout.
 
 ## TLS Origination for External Services
 
@@ -233,7 +231,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -246,8 +244,6 @@ spec:
   trafficPolicy:
     loadBalancer:
       simple: ROUND_ROBIN
-    tls:
-      mode: SIMPLE
 ```
 
 When `cdn.example.com` resolves to multiple IPs, Envoy load balances across them using the configured algorithm.
@@ -283,4 +279,4 @@ kubectl delete destinationrule stripe-api-dr
 kubectl delete serviceentry stripe-api
 ```
 
-Configuring DestinationRules for external services gives you the same traffic management capabilities that you have for internal services. Connection pooling prevents overwhelming external APIs, TLS origination simplifies application code, and circuit breaking protects your application when external dependencies fail. Always pair your ServiceEntries with DestinationRules to get the most out of Istio's external traffic management.
+Configuring DestinationRules for external services gives you the same traffic management capabilities that you have for internal services. Connection pooling prevents overwhelming external APIs, TLS origination simplifies application code, and circuit breaking protects your application when external dependencies fail. When you need custom traffic policies, pair your ServiceEntries with DestinationRules to get the most out of Istio's external traffic management.
