@@ -21,10 +21,10 @@ You can technically route gRPC traffic with HTTPRoute by matching on the HTTP/2 
 
 ## Prerequisites
 
-GRPCRoute is part of the experimental Gateway API channel:
+GRPCRoute is GA and has been part of the Gateway API Standard Channel since v1.1.0:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd?ref=v1.5.1" | kubectl apply -f -
 ```
 
 Verify the CRD:
@@ -35,7 +35,7 @@ kubectl get crd grpcroutes.gateway.networking.k8s.io
 
 ## Setting Up the Gateway
 
-The Gateway needs an HTTP or HTTPS listener. gRPC runs over HTTP/2, so you use the same listener types as for HTTP traffic:
+The Gateway needs an HTTP or HTTPS listener. gRPC runs over HTTP/2, so you use the same listener types as for HTTP traffic. With HTTPS, HTTP/2 is negotiated with ALPN; with cleartext HTTP, the implementation needs to support h2c:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -88,7 +88,7 @@ spec:
 Route all gRPC traffic to a single backend:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-route
@@ -127,7 +127,7 @@ service OrderService {
 You can route each gRPC service to a different backend:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-service-routing
@@ -157,7 +157,7 @@ spec:
 You can get even more granular and route individual methods:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-method-routing
@@ -194,10 +194,10 @@ This lets you route read-heavy methods like `ListUsers` to a dedicated service o
 
 ## Routing by gRPC Metadata (Headers)
 
-gRPC metadata is equivalent to HTTP/2 headers. You can route based on metadata values:
+gRPC metadata is sent as HTTP/2 headers. You can route based on metadata values:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-header-routing
@@ -234,7 +234,7 @@ spec:
 Match on both service name and metadata:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: combined-grpc-routing
@@ -267,7 +267,7 @@ High-priority order requests go to a dedicated service, while normal order reque
 Canary deployments work with GRPCRoute just like HTTPRoute:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-canary
@@ -297,7 +297,7 @@ spec:
 Add or modify gRPC metadata before forwarding to the backend:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-with-headers
@@ -380,10 +380,10 @@ Test gRPC connectivity with grpcurl:
 ```bash
 # List available services
 
-grpcurl -plaintext <gateway-ip>:80 list
+grpcurl -plaintext -authority api.example.com <gateway-ip>:80 list
 
 # Call a specific method
-grpcurl -plaintext -d '{"id": "123"}' <gateway-ip>:80 myapp.UserService/GetUser
+grpcurl -plaintext -authority api.example.com -d '{"id": "123"}' <gateway-ip>:80 myapp.UserService/GetUser
 ```
 
 If using TLS:
@@ -400,6 +400,6 @@ kubectl exec -it deploy/grpc-gateway-istio -c istio-proxy -n production -- curl 
 
 ## Mesh-Internal gRPC Routing
 
-GRPCRoute can also be used for mesh-internal routing (not just at the gateway). Create a GRPCRoute with a mesh parentRef or use it with a mesh-internal gateway to control how gRPC traffic flows between services within the mesh.
+GRPCRoute can also be used for mesh-internal routing (not just at the gateway). Create a GRPCRoute with a `Service` parentRef or use it with a mesh-internal gateway to control how gRPC traffic flows between services within the mesh.
 
 GRPCRoute gives you first-class gRPC routing in the Gateway API. The service and method matching makes configurations much more readable than equivalent HTTPRoute path patterns, and it aligns perfectly with how gRPC developers think about their services.
