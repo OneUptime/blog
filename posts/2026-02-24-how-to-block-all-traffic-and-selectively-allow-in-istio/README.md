@@ -79,7 +79,7 @@ for ns in default production staging; do
 done
 ```
 
-After applying, all inter-service communication in those namespaces stops. Services will get 403 responses when trying to call each other.
+After applying, workloads in those namespaces reject requests that are not explicitly allowed. HTTP callers will typically see 403 responses; non-HTTP traffic is denied at the proxy.
 
 ## Step 3: Add Allow Rules
 
@@ -150,7 +150,7 @@ kubectl apply -f allow-policies/
 
 ## Step 4: Allow Health Checks and Monitoring
 
-Do not forget about Kubernetes health checks and monitoring. Kubelet probes bypass the sidecar (Istio rewrites them), so they should work without explicit policies. But Prometheus scraping needs to be allowed:
+Do not forget about Kubernetes health checks and monitoring. Istio rewrites HTTP, TCP, and gRPC probes so the kubelet talks to the sidecar agent on port 15020, which should work without explicit workload authorization policies. But Prometheus scraping needs to be allowed:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -221,7 +221,7 @@ Before implementing default-deny in production, map out all the communication pa
 ```bash
 # Install Kiali if not already installed
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/kiali.yaml
 
 # Access the dashboard
 istioctl dashboard kiali
@@ -239,7 +239,7 @@ kubectl logs deploy/api-service -c istio-proxy --tail=100 | grep "outbound"
 
 Going from allow-all to deny-all overnight is risky. Here is a safer approach:
 
-**Phase 1: Audit mode.** Deploy the policies but use a shadow/dry-run approach. Istio does not have a native dry-run mode for AuthorizationPolicy, but you can use Envoy access logging to see what would be denied without actually denying it. Add all your ALLOW policies first.
+**Phase 1: Audit mode.** Deploy the policies with the experimental `istio.io/dry-run: "true"` annotation to see what would be denied without actually denying it. Check the dry-run result in Envoy proxy logs or Prometheus metrics. Add all your ALLOW policies first.
 
 **Phase 2: Enable deny-all in staging.** Apply the default-deny policy in staging and run your test suite. Fix any missing allow rules.
 
