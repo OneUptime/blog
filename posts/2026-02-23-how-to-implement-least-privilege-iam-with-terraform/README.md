@@ -290,17 +290,30 @@ resource "aws_iam_policy" "abac_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Allow access only to resources tagged with the same project
-        Sid    = "ProjectBasedAccess"
+        # Allow read access only to objects tagged with the same project
+        Sid    = "ProjectBasedReadAccess"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:PutObject",
         ]
-        Resource = "*"
+        Resource = "arn:aws:s3:::project-data/*"
         Condition = {
           StringEquals = {
             "s3:ExistingObjectTag/Project" = "$${aws:PrincipalTag/Project}"
+          }
+        }
+      },
+      {
+        # Allow writes only when the request tags the object for the same project
+        Sid    = "ProjectBasedWriteAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+        ]
+        Resource = "arn:aws:s3:::project-data/*"
+        Condition = {
+          StringEquals = {
+            "s3:RequestObjectTag/Project" = "$${aws:PrincipalTag/Project}"
           }
         }
       },
@@ -363,18 +376,12 @@ resource "aws_iam_policy" "guardrails" {
         Resource = "*"
       },
       {
-        Sid    = "DenyPublicS3"
+        Sid    = "DenyS3PublicAccessBlockChanges"
         Effect = "Deny"
         Action = [
           "s3:PutBucketPublicAccessBlock",
         ]
-        Resource = "*"
-        Condition = {
-          Bool = {
-            "s3:PublicAccessBlockConfiguration/BlockPublicAcls"     = "false"
-            "s3:PublicAccessBlockConfiguration/BlockPublicPolicy"   = "false"
-          }
-        }
+        Resource = "arn:aws:s3:::*"
       }
     ]
   })
@@ -383,12 +390,12 @@ resource "aws_iam_policy" "guardrails" {
 
 ## Auditing with IAM Access Analyzer
 
-AWS IAM Access Analyzer can help you identify unused permissions. While Access Analyzer is not a Terraform resource, you can create an analyzer with Terraform.
+AWS IAM Access Analyzer can help you identify unused permissions. You can create an unused access analyzer with Terraform.
 
 ```hcl
 resource "aws_accessanalyzer_analyzer" "account" {
-  analyzer_name = "account-analyzer"
-  type          = "ACCOUNT"
+  analyzer_name = "account-unused-access-analyzer"
+  type          = "ACCOUNT_UNUSED_ACCESS"
 
   tags = {
     ManagedBy = "terraform"
