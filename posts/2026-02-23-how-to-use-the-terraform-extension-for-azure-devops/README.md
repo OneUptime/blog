@@ -8,7 +8,7 @@ Description: Install and configure the Terraform extension for Azure DevOps to u
 
 ---
 
-Azure DevOps has a Terraform extension published by Microsoft DevLabs that adds native Terraform tasks to your pipelines. Instead of running raw CLI commands in script tasks, you get purpose-built tasks for init, plan, validate, and apply with built-in authentication for Azure, AWS, and GCP providers. The extension also handles common pain points like passing plan files between stages and configuring backend authentication.
+Azure DevOps has a Terraform extension published by Microsoft DevLabs that adds native Terraform tasks to your pipelines. Instead of running raw CLI commands in script tasks, you get purpose-built tasks for init, plan, validate, and apply with built-in authentication for Azure, AWS, GCP, and OCI providers. The extension also helps with common pain points like configuring backend authentication and works with pipeline artifacts for passing plan files between stages.
 
 This post walks through installing the extension, configuring it, and building pipelines that take advantage of its features.
 
@@ -43,14 +43,14 @@ For Azure (most common):
 1. Go to Project Settings, then Service connections
 2. Click "New service connection"
 3. Select "Azure Resource Manager"
-4. Choose "Service principal (automatic)" for the simplest setup
+4. Choose "Workload identity federation (automatic)" for the simplest secretless setup
 5. Select your subscription and give it a name like "azure-terraform-prod"
 
 For AWS:
 
 1. Create a new service connection
-2. Select "AWS" (requires the AWS Tools extension)
-3. Enter your access key and secret key
+2. Select "AWS for Terraform"
+3. Enter your access key, secret key, and region
 4. Name it "aws-terraform-prod"
 
 ## Basic Pipeline with Terraform Tasks
@@ -94,7 +94,7 @@ stages:
               terraformVersion: $(terraformVersion)
 
           # Initialize Terraform
-          - task: TerraformTaskV4@4
+          - task: TerraformTask@5
             displayName: 'Terraform Init'
             inputs:
               provider: 'azurerm'
@@ -107,7 +107,7 @@ stages:
               backendAzureRmKey: $(backendAzureRmKey)
 
           # Validate the configuration
-          - task: TerraformTaskV4@4
+          - task: TerraformTask@5
             displayName: 'Terraform Validate'
             inputs:
               provider: 'azurerm'
@@ -125,7 +125,7 @@ stages:
             inputs:
               terraformVersion: $(terraformVersion)
 
-          - task: TerraformTaskV4@4
+          - task: TerraformTask@5
             displayName: 'Terraform Init'
             inputs:
               provider: 'azurerm'
@@ -138,7 +138,7 @@ stages:
               backendAzureRmKey: $(backendAzureRmKey)
 
           # Plan with the service connection handling authentication
-          - task: TerraformTaskV4@4
+          - task: TerraformTask@5
             displayName: 'Terraform Plan'
             inputs:
               provider: 'azurerm'
@@ -179,7 +179,7 @@ stages:
                     artifactName: 'terraform-plan'
                     targetPath: $(workingDirectory)
 
-                - task: TerraformTaskV4@4
+                - task: TerraformTask@5
                   displayName: 'Terraform Init'
                   inputs:
                     provider: 'azurerm'
@@ -192,7 +192,7 @@ stages:
                     backendAzureRmKey: $(backendAzureRmKey)
 
                 # Apply the exact plan that was reviewed
-                - task: TerraformTaskV4@4
+                - task: TerraformTask@5
                   displayName: 'Terraform Apply'
                   inputs:
                     provider: 'azurerm'
@@ -208,7 +208,7 @@ stages:
 
 The biggest advantage of the extension over raw script tasks is automatic authentication. When you specify a service connection, the extension sets the appropriate environment variables for the provider:
 
-For Azure, it sets `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID`, and `ARM_TENANT_ID`.
+For Azure, it sets the relevant `ARM_*` environment variables for the service connection, such as `ARM_CLIENT_ID`, `ARM_SUBSCRIPTION_ID`, `ARM_TENANT_ID`, and either a client secret or OIDC token depending on the service connection type.
 
 For AWS, it sets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
 
@@ -228,10 +228,10 @@ This ensures consistent versions across all pipeline runs regardless of what the
 
 ### Output Variables
 
-The extension can capture Terraform outputs as pipeline variables:
+The extension can run `terraform output` and expose the path to a JSON file containing the outputs:
 
 ```yaml
-- task: TerraformTaskV4@4
+- task: TerraformTask@5
   name: terraformOutput
   displayName: 'Terraform Output'
   inputs:
@@ -240,9 +240,10 @@ The extension can capture Terraform outputs as pipeline variables:
     workingDirectory: $(workingDirectory)
     environmentServiceNameAzureRM: $(backendServiceArm)
 
-# Use the output in a subsequent step
-- script: |
-    echo "VPC ID: $(terraformOutput.vpc_id)"
+# Read the JSON output in a subsequent step
+- bash: |
+    vpc_id=$(jq -r '.vpc_id.value' "$(terraformOutput.jsonOutputVariablesPath)")
+    echo "VPC ID: $vpc_id"
 ```
 
 ## Multi-Environment Pipeline
@@ -269,7 +270,7 @@ stages:
             inputs:
               terraformVersion: '1.7.5'
 
-          - task: TerraformTaskV4@4
+          - task: TerraformTask@5
             displayName: 'Init'
             inputs:
               provider: 'azurerm'
@@ -281,7 +282,7 @@ stages:
               backendAzureRmContainerName: 'tfstate'
               backendAzureRmKey: ${{ parameters.stateKey }}
 
-          - task: TerraformTaskV4@4
+          - task: TerraformTask@5
             displayName: 'Plan'
             inputs:
               provider: 'azurerm'
@@ -310,7 +311,7 @@ stages:
                 - download: current
                   artifact: plan-${{ parameters.environment }}
                   path: $(workingDirectory)
-                - task: TerraformTaskV4@4
+                - task: TerraformTask@5
                   displayName: 'Init'
                   inputs:
                     provider: 'azurerm'
@@ -321,7 +322,7 @@ stages:
                     backendAzureRmStorageAccountName: 'tfstatemyorg'
                     backendAzureRmContainerName: 'tfstate'
                     backendAzureRmKey: ${{ parameters.stateKey }}
-                - task: TerraformTaskV4@4
+                - task: TerraformTask@5
                   displayName: 'Apply'
                   inputs:
                     provider: 'azurerm'
@@ -334,13 +335,13 @@ stages:
 ## Troubleshooting Common Issues
 
 **Issue: "The term 'terraform' is not recognized"**
-The `TerraformInstaller` task must run before any `TerraformTaskV4` task in the same job. If you are using a deployment job, make sure the installer step is inside the deployment strategy.
+The `TerraformInstaller` task must run before any `TerraformTask` task in the same job. If you are using a deployment job, make sure the installer step is inside the deployment strategy.
 
 **Issue: "Error acquiring the state lock"**
 A previous pipeline run was cancelled or failed mid-operation. Use `terraform force-unlock` in a manual pipeline step to release the lock.
 
 **Issue: Service connection permissions**
-The service principal behind the service connection needs the right permissions. For Azure, it typically needs Contributor on the target subscription and Storage Blob Data Contributor on the state storage account.
+The identity behind the service connection needs the right permissions. For Azure, it typically needs Contributor on the target subscription and Storage Blob Data Contributor on the state storage account.
 
 ## Conclusion
 
