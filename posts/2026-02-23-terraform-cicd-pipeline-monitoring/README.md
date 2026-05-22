@@ -50,6 +50,10 @@ jobs:
         run: |
           START=$(date +%s)
           terraform plan -out=tfplan -no-color 2>&1 | tee plan.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            exit $EXIT_CODE
+          fi
           DURATION=$(($(date +%s) - START))
           echo "plan_duration=$DURATION" >> "$GITHUB_ENV"
 
@@ -70,6 +74,10 @@ jobs:
         run: |
           START=$(date +%s)
           terraform apply -auto-approve tfplan -no-color 2>&1 | tee apply.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            exit $EXIT_CODE
+          fi
           DURATION=$(($(date +%s) - START))
           echo "apply_duration=$DURATION" >> "$GITHUB_ENV"
 
@@ -87,13 +95,13 @@ jobs:
               \"series\": [
                 {
                   \"metric\": \"terraform.pipeline.init_duration\",
-                  \"points\": [[$(date +%s), ${{ env.init_duration }}]],
+                  \"points\": [[$(date +%s), ${{ env.init_duration || 0 }}]],
                   \"type\": \"gauge\",
                   \"tags\": [\"env:production\", \"status:${STATUS}\"]
                 },
                 {
                   \"metric\": \"terraform.pipeline.plan_duration\",
-                  \"points\": [[$(date +%s), ${{ env.plan_duration }}]],
+                  \"points\": [[$(date +%s), ${{ env.plan_duration || 0 }}]],
                   \"type\": \"gauge\",
                   \"tags\": [\"env:production\", \"status:${STATUS}\"]
                 },
@@ -142,13 +150,13 @@ If you use Prometheus, push metrics to a Pushgateway:
     cat << EOF | curl --data-binary @- "${{ secrets.PROMETHEUS_PUSHGATEWAY_URL }}/metrics/job/terraform/environment/production"
     # HELP terraform_plan_duration_seconds Duration of terraform plan
     # TYPE terraform_plan_duration_seconds gauge
-    terraform_plan_duration_seconds ${{ env.plan_duration }}
+    terraform_plan_duration_seconds ${{ env.plan_duration || 0 }}
     # HELP terraform_apply_duration_seconds Duration of terraform apply
     # TYPE terraform_apply_duration_seconds gauge
-    terraform_apply_duration_seconds ${{ env.apply_duration }}
+    terraform_apply_duration_seconds ${{ env.apply_duration || 0 }}
     # HELP terraform_resources_total Total resources in plan
     # TYPE terraform_resources_total gauge
-    terraform_resources_total ${{ env.total_resources }}
+    terraform_resources_total ${{ env.total_resources || 0 }}
     # HELP terraform_pipeline_success Pipeline success status
     # TYPE terraform_pipeline_success gauge
     terraform_pipeline_success $([ "${{ job.status }}" = "success" ] && echo 1 || echo 0)
@@ -165,26 +173,33 @@ Set up alerts for pipeline failures that need immediate attention:
   if: failure()
   run: |
     # Get error details from apply output
-    ERROR=$(grep -A 5 "Error:" apply.txt | head -20)
+    ERROR=$(grep -A 5 "Error:" apply.txt | head -20 || true)
 
     # Page the on-call engineer via PagerDuty
-    curl -X POST "https://events.pagerduty.com/v2/enqueue" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"routing_key\": \"${{ secrets.PAGERDUTY_ROUTING_KEY }}\",
-        \"event_action\": \"trigger\",
-        \"payload\": {
-          \"summary\": \"Terraform apply failed in production\",
-          \"severity\": \"critical\",
-          \"source\": \"github-actions\",
-          \"custom_details\": {
-            \"error\": \"$(echo "$ERROR" | head -5)\",
-            \"commit\": \"${{ github.sha }}\",
-            \"actor\": \"${{ github.actor }}\",
-            \"run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+    jq -n \
+      --arg routing_key "${{ secrets.PAGERDUTY_ROUTING_KEY }}" \
+      --arg error "$ERROR" \
+      --arg commit "${{ github.sha }}" \
+      --arg actor "${{ github.actor }}" \
+      --arg run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+      '{
+        routing_key: $routing_key,
+        event_action: "trigger",
+        payload: {
+          summary: "Terraform apply failed in production",
+          severity: "critical",
+          source: "github-actions",
+          custom_details: {
+            error: $error,
+            commit: $commit,
+            actor: $actor,
+            run_url: $run_url
           }
         }
-      }"
+      }' | \
+    curl -X POST "https://events.pagerduty.com/v2/enqueue" \
+      -H "Content-Type: application/json" \
+      -d @-
 ```
 
 ## Drift Monitoring
@@ -220,6 +235,8 @@ jobs:
             DRIFTED_RESOURCES=$(grep -c "will be" drift.txt || echo 0)
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
             echo "drifted_count=$DRIFTED_RESOURCES" >> "$GITHUB_OUTPUT"
+          elif [ $EXIT_CODE -eq 1 ]; then
+            exit 1
           else
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
             echo "drifted_count=0" >> "$GITHUB_OUTPUT"
@@ -260,7 +277,7 @@ Create a dashboard that shows pipeline health at a glance. Here is a Grafana das
         "title": "Apply Success Rate (24h)",
         "type": "stat",
         "targets": [{
-          "expr": "sum(rate(terraform_pipeline_success[24h])) / sum(rate(terraform_pipeline_total[24h])) * 100"
+          "expr": "avg_over_time(terraform_pipeline_success{environment='production'}[24h]) * 100"
         }]
       },
       {
@@ -299,9 +316,9 @@ Maintain a record of every Terraform operation for compliance:
       --arg action "apply" \
       --arg status "${{ job.status }}" \
       --arg run_id "${{ github.run_id }}" \
-      --arg resources_added "${{ env.adds }}" \
-      --arg resources_changed "${{ env.changes }}" \
-      --arg resources_destroyed "${{ env.destroys }}" \
+      --arg resources_added "${{ env.adds || 0 }}" \
+      --arg resources_changed "${{ env.changes || 0 }}" \
+      --arg resources_destroyed "${{ env.destroys || 0 }}" \
       '{
         timestamp: $timestamp,
         actor: $actor,
