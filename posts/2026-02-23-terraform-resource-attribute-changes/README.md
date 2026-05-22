@@ -202,21 +202,21 @@ If any change would force replacement of this resource, Terraform errors out ins
 
 Sometimes a provider update changes how an attribute works, or deprecates an attribute in favor of a new one.
 
-### Attribute Renames
+### Attribute Alternatives
 
 ```hcl
-# Old attribute name (deprecated)
+# EC2-Classic or default VPC: security group names
 resource "aws_instance" "web" {
-  security_groups = ["sg-0abc123"]  # Deprecated in favor of vpc_security_group_ids
+  security_groups = ["web-sg"]  # For EC2-Classic or default VPC security group names
 }
 
-# New attribute name
+# For VPC instances, use security group IDs instead
 resource "aws_instance" "web" {
   vpc_security_group_ids = ["sg-0abc123"]
 }
 ```
 
-When migrating, run `terraform plan` to verify the change is in-place and does not force replacement.
+When changing between alternative attributes, run `terraform plan` to verify the change is in-place and does not force replacement.
 
 ### Attribute Type Changes
 
@@ -263,6 +263,8 @@ Terraform will show the change in the plan but mask the actual values:
   }
 ```
 
+The AWS provider still stores the `password` value in Terraform state, so protect access to your state backend.
+
 ## Handling Attribute Conflicts
 
 Some attributes are mutually exclusive. Setting one requires unsetting another:
@@ -270,7 +272,7 @@ Some attributes are mutually exclusive. Setting one requires unsetting another:
 ```hcl
 resource "aws_instance" "web" {
   # You cannot set both security_groups and vpc_security_group_ids
-  # Use one or the other based on whether you are in EC2-Classic or VPC
+  # Use one or the other based on whether you are in EC2-Classic/default VPC or a nondefault VPC
   vpc_security_group_ids = ["sg-0abc123"]
 
   # Do NOT also set:
