@@ -8,7 +8,7 @@ Description: Configure consistent hash-based load balancing in Istio for session
 
 ---
 
-Consistent hash load balancing in Istio ensures that requests with the same characteristics (like user ID, session cookie, or source IP) always land on the same backend pod. This is critical for services that store state in memory, maintain caches per user, or need session affinity for any reason.
+Consistent hash load balancing in Istio provides soft session affinity so that requests with the same characteristics (like user ID, session cookie, or source IP) usually land on the same backend pod while the endpoint set and proxy view of endpoints remain stable. This is critical for services that store state in memory, maintain caches per user, or need session affinity for any reason.
 
 Unlike simple algorithms where every request is independently routed, consistent hashing maps each request to a specific backend based on a hash key. As long as the hash key stays the same and the set of backends does not change, the request goes to the same pod every time.
 
@@ -127,7 +127,8 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-user-id
-        minimumRingSize: 2048
+        ringHash:
+          minimumRingSize: 2048
 ```
 
 The default is 1024. For services with many endpoints, you might want to increase this to get more even distribution. For small services (3-5 pods), the default is fine.
@@ -147,7 +148,7 @@ spec:
   ports:
   - name: http
     port: 8080
-    targetPort: 8080
+    targetPort: 80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -167,7 +168,7 @@ spec:
       - name: app
         image: nginx:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
@@ -199,7 +200,7 @@ The VirtualService here is simple because the routing logic does not need subset
 
 ## Testing Session Affinity
 
-Deploy a curl pod and verify that the same cookie always hits the same backend:
+Deploy a curl pod and verify that Istio generates and reuses the affinity cookie:
 
 ```bash
 kubectl run curl-test --image=curlimages/curl -it --rm -- sh
@@ -211,19 +212,19 @@ First request (no cookie):
 curl -v http://user-sessions:8080/
 ```
 
-Look for the `Set-Cookie: SERVERID=...` header in the response. Then send subsequent requests with that cookie:
+Look for the `Set-Cookie: SERVERID=...` header in the response. Then send subsequent requests with that cookie value:
 
 ```bash
-curl -b "SERVERID=abc123" http://user-sessions:8080/
-curl -b "SERVERID=abc123" http://user-sessions:8080/
-curl -b "SERVERID=abc123" http://user-sessions:8080/
+curl -b "SERVERID=<value-from-set-cookie>" http://user-sessions:8080/
+curl -b "SERVERID=<value-from-set-cookie>" http://user-sessions:8080/
+curl -b "SERVERID=<value-from-set-cookie>" http://user-sessions:8080/
 ```
 
-All three should hit the same backend pod.
+All three should use the same hash key and should route to the same backend while the set of pods is stable. To prove the backend is the same with a real application, return the pod name in the response or compare the sidecar access logs.
 
 ## What Happens When Pods Scale
 
-When a new pod is added, only a fraction of the hash ring's keys get remapped to the new pod. Most sessions stay on their original pod. When a pod is removed (scaled down or crashed), only the sessions mapped to that pod need to move.
+When a new pod is added, only a fraction of the hash ring's keys get remapped to the new pod. Most sessions stay on their original pod, but Istio treats this as soft affinity: any host addition or removal can still break affinity for some requests. When a pod is removed (scaled down or crashed), sessions mapped to that pod need to move.
 
 This is much better than simple modulo-based hashing, where adding or removing a backend changes the mapping for almost every session.
 
