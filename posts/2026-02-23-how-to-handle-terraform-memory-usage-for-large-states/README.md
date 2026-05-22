@@ -73,8 +73,8 @@ The most effective way to reduce memory usage is to reduce the size of each stat
 terraform state list | wc -l
 
 # If over 500, consider splitting
-# Move resources to a new state
-terraform state mv -state-out=networking.tfstate \
+# For local state files, move resources to a new state file
+terraform state mv -state=terraform.tfstate -state-out=networking.tfstate \
   'module.networking' 'module.networking'
 ```
 
@@ -91,9 +91,9 @@ For GitHub Actions, use a larger runner:
 ```yaml
 jobs:
   terraform:
-    runs-on: ubuntu-latest-8-cores  # Larger runner with more RAM
+    runs-on: ubuntu-24.04-16core  # Label for a configured larger runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: terraform plan
 ```
 
@@ -113,7 +113,7 @@ If running Terraform in Docker, increase the memory limit:
 
 ```bash
 # Run with 4 GB memory limit
-docker run --memory=4g hashicorp/terraform:1.7 plan
+docker run --memory=4g hashicorp/terraform:latest plan
 ```
 
 ### Go Runtime Tuning
@@ -128,7 +128,7 @@ export GOGC=50
 terraform plan
 ```
 
-The default `GOGC` value is 100. Setting it to 50 makes the garbage collector run twice as often, which can reduce peak memory by 20-30% at the cost of some CPU overhead.
+The default `GOGC` value is 100. Setting it to 50 makes the garbage collector run at a lower heap growth target, which can reduce peak heap usage in some runs at the cost of additional CPU overhead.
 
 ## Reducing State File Size
 
@@ -148,7 +148,7 @@ terraform state rm module.deprecated_service
 
 ### Avoid Storing Large Values in State
 
-Some resources store large blobs in state. For example, `aws_lambda_function` stores the deployment package hash, and `aws_s3_bucket_object` can reference large files. Use external storage instead:
+Some resources store large values or file metadata in state. For example, `aws_lambda_function` stores deployment package metadata, and `aws_s3_object` can manage files in S3. Use external storage instead:
 
 ```hcl
 # Instead of embedding the Lambda zip in Terraform
@@ -159,7 +159,7 @@ resource "aws_lambda_function" "api" {
   s3_bucket = aws_s3_bucket.deployments.id
   s3_key    = "lambda/api-handler-${var.version}.zip"
 
-  runtime = "nodejs18.x"
+  runtime = "nodejs22.x"
   handler = "index.handler"
   role    = aws_iam_role.lambda.arn
 }
@@ -167,31 +167,32 @@ resource "aws_lambda_function" "api" {
 
 ### Clean Up State Cruft
 
-Over time, state files accumulate metadata that may no longer be relevant. You can compact the state:
+Terraform does not provide a general-purpose state compaction command. `terraform state pull` and `terraform state push` are useful when you must inspect or manually repair state, but do not rely on pulling and pushing the same state as a way to reduce file size:
 
 ```bash
-# Pull state, then push it back
-# This effectively re-serializes it, removing any cruft
+# Pull state for inspection or backup before a manual repair
 terraform state pull > state.json
-terraform state push state.json
+
+# Push only after a deliberate, reviewed manual state edit
+terraform state push repaired-state.json
 ```
 
 ## Using -target to Reduce Plan Memory
 
-When you need to make a quick change and memory is tight, use `-target` to limit what Terraform loads:
+When you need to make a quick change and memory is tight, `-target` can limit the planning scope:
 
 ```bash
 # Only plan for specific resources
 terraform plan -target=module.api_gateway
 
-# This loads less of the dependency graph into memory
+# Terraform focuses planning on the target and its dependencies
 ```
 
-This is a workaround, not a permanent solution. But it can unblock you when a full plan runs out of memory.
+This is a workaround, not a permanent solution. Terraform still reads the configuration and state, and targeted plans can miss unrelated drift. But it can unblock you when a full plan runs out of memory.
 
 ## Optimizing Provider Memory Usage
 
-Each provider plugin runs as a separate process. If you have many providers, each one consumes memory independently. Minimize the number of providers you use:
+Provider plugins run as separate processes from Terraform CLI. If you have many different providers, each one consumes memory independently. Minimize the number of providers you use:
 
 ```hcl
 # Check your required_providers block
@@ -210,10 +211,10 @@ terraform {
 }
 ```
 
-Also, avoid using multiple aliases for the same provider unless necessary. Each alias creates a separate provider instance:
+Also, avoid using multiple aliases for the same provider unless necessary. Each alias creates a separate provider configuration:
 
 ```hcl
-# Each alias is a separate process consuming memory
+# Each alias is a separate provider configuration
 provider "aws" {
   alias  = "us_east"
   region = "us-east-1"
@@ -230,7 +231,7 @@ provider "aws" {
 }
 ```
 
-If you only need cross-region references occasionally, consider using data sources instead of separate provider instances.
+If you only need cross-region references occasionally, keep the aliased configurations limited to the resources or data sources that actually require them.
 
 ## Monitoring Memory in Production Pipelines
 
