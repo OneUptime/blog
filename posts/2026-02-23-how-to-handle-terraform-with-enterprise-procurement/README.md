@@ -14,7 +14,7 @@ In this guide, we will cover how to navigate the enterprise procurement process 
 
 ## Understanding the Procurement Landscape
 
-Enterprise procurement for Terraform typically involves several categories of purchases. Terraform Cloud or Enterprise licenses, third-party module registries, policy-as-code tools, testing frameworks, and consulting services. Each has different procurement considerations.
+Enterprise procurement for Terraform typically involves several categories of purchases. HCP Terraform or Terraform Enterprise licenses, third-party module registries, policy-as-code tools, testing frameworks, and consulting services. Each has different procurement considerations.
 
 ## Building the Business Case
 
@@ -125,12 +125,12 @@ Compare different licensing options clearly:
 # Terraform licensing options comparison
 
 options:
-  terraform_oss:
-    name: "Terraform Open Source"
+  terraform_community:
+    name: "Terraform Community Edition"
     cost: "Free"
     features:
       - "Core Terraform functionality"
-      - "All providers and modules"
+      - "Public providers and modules"
       - "Community support"
     limitations:
       - "No remote state management UI"
@@ -140,44 +140,45 @@ options:
       - "Self-managed CI/CD required"
     best_for: "Small teams, simple setups"
 
-  terraform_cloud_free:
-    name: "Terraform Cloud (Free Tier)"
-    cost: "Free for up to 5 users"
+  hcp_terraform_free:
+    name: "HCP Terraform (Free Tier)"
+    cost: "Free for up to 500 managed resources"
     features:
       - "Remote state management"
       - "Remote operations"
       - "Private module registry"
       - "VCS integration"
+      - "SSO and policy enforcement"
     limitations:
-      - "5 user limit"
-      - "No SSO"
-      - "Limited policy features"
-      - "No audit logging"
+      - "500 managed resource limit"
+      - "Audit trails require Standard or Premium"
+      - "Advanced governance features require paid editions"
     best_for: "Small teams getting started"
 
-  terraform_cloud_team:
-    name: "Terraform Cloud (Team & Governance)"
-    cost: "$20/user/month"
+  hcp_terraform_paid:
+    name: "HCP Terraform (Paid Editions)"
+    cost: "Usage-based or contracted pricing by managed resources"
     features:
       - "Everything in free tier"
-      - "Team management"
-      - "Sentinel policy enforcement"
+      - "Larger organization support"
+      - "Team-based permissions"
       - "Cost estimation"
-      - "Audit logging"
+      - "Audit trails in Standard and Premium editions"
+      - "Continuous validation and drift detection in Standard and Premium editions"
     limitations:
-      - "No SSO"
-      - "No custom agents"
+      - "Pricing depends on managed resource usage and plan"
+      - "Some advanced features require Premium"
     best_for: "Growing teams needing governance"
 
   terraform_enterprise:
     name: "Terraform Enterprise"
-    cost: "Custom pricing (typically $500-750/user/year)"
+    cost: "Custom pricing (contact HashiCorp sales)"
     features:
-      - "Everything in Cloud"
-      - "Self-hosted option"
+      - "Self-hosted distribution of HCP Terraform"
       - "SSO/SAML"
-      - "Custom agents"
-      - "Clustering and HA"
+      - "Audit logging"
+      - "Private networking and job scaling"
+      - "Air-gapped and active/active architecture options"
       - "Premium support"
     limitations:
       - "Higher cost"
@@ -194,41 +195,43 @@ Prepare answers to common security questionnaire items:
 # Pre-prepared answers for security review
 
 data_handling:
-  q: "Where is our data stored?"
-  a: >
-    Terraform state files are stored in our AWS S3 buckets
-    with AES-256 encryption. If using Terraform Cloud,
-    state is stored in HashiCorp's infrastructure with
-    SOC 2 Type II compliance.
+  - q: "Where is our data stored?"
+    a: >
+      Terraform state files are stored in our AWS S3 buckets
+      with server-side encryption when using an S3 backend.
+      If using HCP Terraform, state is stored in HashiCorp's
+      infrastructure with SOC 2 Type II compliance.
 
-  q: "Is data encrypted at rest and in transit?"
-  a: >
-    Yes. State files use AES-256 encryption at rest.
-    All API communication uses TLS 1.2+.
+  - q: "Is data encrypted at rest and in transit?"
+    a: >
+      Yes. HCP Terraform encrypts state at rest and protects
+      state with TLS in transit.
 
-  q: "Can we bring our own encryption keys?"
-  a: >
-    For self-hosted Terraform Enterprise, yes.
-    For Terraform Cloud, encryption is managed by HashiCorp.
+  - q: "Can we bring our own encryption keys?"
+    a: >
+      HCP Terraform Premium supports hold your own key (HYOK)
+      for state and plan files. For HCP Terraform without HYOK,
+      encryption is managed by HashiCorp.
 
 authentication:
-  q: "Does it support SSO?"
-  a: >
-    Terraform Enterprise supports SAML SSO with
-    Okta, Azure AD, and other identity providers.
-    Terraform Cloud Team tier supports GitHub/GitLab SSO.
+  - q: "Does it support SSO?"
+    a: >
+      Terraform Enterprise supports SAML SSO with
+      Okta, Microsoft Entra ID, and other identity providers.
+      HCP Terraform also supports single sign-on.
 
-  q: "Does it support MFA?"
-  a: >
-    Yes, through the SSO identity provider.
-    Native MFA is also available.
+  - q: "Does it support MFA?"
+    a: >
+      Yes, through the SSO identity provider.
+      HCP Terraform also supports multi-factor authentication
+      through HashiCorp Cloud Platform account settings.
 
 compliance:
-  q: "What compliance certifications does the vendor have?"
-  a: >
-    HashiCorp holds SOC 2 Type II certification.
-    Terraform Enterprise can be deployed within
-    HIPAA-compliant infrastructure.
+  - q: "What compliance certifications does the vendor have?"
+    a: >
+      HashiCorp has a SOC 2 Type 2 report and ISO 27001,
+      ISO 27017, and ISO 27018 certifications covering
+      Terraform and HCP Terraform.
 ```
 
 ## Procurement Timeline Planning
@@ -284,11 +287,11 @@ phases:
       - Purchase order creation
       - Account provisioning
 
-  total_expected: "16 weeks"
-  tips:
-    - "Start security review in parallel with vendor evaluation"
-    - "Have legal review draft contracts early"
-    - "Get executive sponsorship before starting"
+total_expected: "16 weeks"
+tips:
+  - "Start security review in parallel with vendor evaluation"
+  - "Have legal review draft contracts early"
+  - "Get executive sponsorship before starting"
 ```
 
 ## Negotiation Strategies
