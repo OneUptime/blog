@@ -17,7 +17,9 @@ Start by enabling Security Hub with the compliance standards you need:
 ```hcl
 # Enable Security Hub
 
-resource "aws_securityhub_account" "main" {}
+resource "aws_securityhub_account" "main" {
+  enable_default_standards = false
+}
 
 # Enable AWS Foundational Security Best Practices
 resource "aws_securityhub_standards_subscription" "aws_foundational" {
@@ -28,7 +30,7 @@ resource "aws_securityhub_standards_subscription" "aws_foundational" {
 
 # Enable CIS AWS Foundations Benchmark
 resource "aws_securityhub_standards_subscription" "cis" {
-  standards_arn = "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
+  standards_arn = "arn:aws:securityhub:${var.region}::standards/cis-aws-foundations-benchmark/v/1.4.0"
 
   depends_on = [aws_securityhub_account.main]
 }
@@ -84,7 +86,7 @@ resource "aws_securityhub_member" "accounts" {
 
   account_id = each.key
   email      = each.value.email
-  invite     = true
+  invite     = false
 
   depends_on = [aws_securityhub_account.security]
 }
@@ -140,12 +142,7 @@ resource "aws_securityhub_product_subscription" "macie" {
   depends_on = [aws_securityhub_account.main]
 }
 
-# Enable Firewall Manager integration
-resource "aws_securityhub_product_subscription" "firewall_manager" {
-  product_arn = "arn:aws:securityhub:${var.region}::product/aws/firewall-manager"
-
-  depends_on = [aws_securityhub_account.main]
-}
+# Firewall Manager sends findings automatically after both services are enabled.
 ```
 
 ## Disable Specific Controls
