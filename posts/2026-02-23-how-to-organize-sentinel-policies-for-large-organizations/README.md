@@ -85,7 +85,7 @@ sentinel-policies/
 
 Reusable functions prevent code duplication across policies:
 
-```python
+```sentinel
 # lib/common-functions.sentinel
 
 # Shared helper functions for all policies
@@ -130,10 +130,10 @@ get_environment = func(workspace_name) {
 
 Then use these functions in your policies:
 
-```python
+```sentinel
 # global/enforce-tags.sentinel
 import "tfplan/v2" as tfplan
-import "lib/common-functions" as common
+import "common-functions" as common
 
 required_tags = ["Environment", "Team", "Owner"]
 
@@ -171,10 +171,14 @@ policy "enforce-encryption" {
     source            = "./global/enforce-encryption.sentinel"
     enforcement_level = "hard-mandatory"
 }
+
+module "common-functions" {
+    source = "./lib/common-functions.sentinel"
+}
 ```
 
 ```hcl
-# sentinel-security.hcl for security-sensitive workspaces
+# sentinel.hcl for a security policy set applied to security-sensitive workspaces
 
 policy "network-security" {
     source            = "./security/network-security.sentinel"
@@ -188,7 +192,7 @@ policy "restrict-public-access" {
 ```
 
 ```hcl
-# sentinel-hipaa.hcl for HIPAA workspaces
+# sentinel.hcl for a HIPAA policy set applied to HIPAA workspaces
 
 policy "hipaa-encryption" {
     source            = "./compliance/hipaa/hipaa-encryption.sentinel"
@@ -235,7 +239,7 @@ Every policy change should go through a pull request with:
 
 For large organizations, making policies configurable reduces the need for duplicate policies:
 
-```python
+```sentinel
 # configurable-tagging.sentinel
 # A single policy that accepts configuration
 
@@ -280,7 +284,7 @@ policy "enforce-tags-platform" {
 
 Each policy should have clear documentation:
 
-```python
+```sentinel
 # Policy: enforce-tags
 # Version: 1.3
 # Author: Platform Team
@@ -305,8 +309,10 @@ Each policy should have clear documentation:
 
 Track policy effectiveness over time:
 
-```python
+```sentinel
 # Add structured output to policies for reporting
+import "tfrun"
+
 print("=== Policy Check: enforce-tags ===")
 print("Workspace:", tfrun.workspace.name)
 print("Resources checked:", length(resources))
