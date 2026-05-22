@@ -28,7 +28,7 @@ Infracost is the most popular tool for estimating Terraform costs before deploym
 brew install infracost
 
 # or download directly
-curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/infracost/cli/master/scripts/install.sh | sh
 
 # Authenticate with the Infracost API
 infracost auth login
@@ -173,46 +173,36 @@ jobs:
 
 Set up cost policies to enforce budget limits.
 
-```yaml
-# infracost-policy.yml
-# Infracost cost policy configuration
+```rego
+# infracost-policy.rego
+# Infracost policy configuration using Open Policy Agent
 
-version: 0.1
+package infracost
 
-policies:
-  # Warn if monthly cost increase exceeds $500
-  - name: warn-on-large-cost-increase
-    description: Warn when a PR increases monthly costs by more than $500
-    resource_type: total_monthly_cost
-    condition:
-      operator: percentage_increase
-      threshold: 25  # 25% increase
-    action: warn
+# Fail if the monthly cost increase exceeds $500
+deny[out] {
+  max_diff = 500.0
+  actual_diff = to_number(input.diffTotalMonthlyCost)
 
-  # Block if monthly cost exceeds $10,000
-  - name: block-excessive-costs
-    description: Block PRs that would push monthly costs above $10,000
-    resource_type: total_monthly_cost
-    condition:
-      operator: greater_than
-      threshold: 10000
-    action: deny
+  out := {
+    "msg": sprintf("Monthly cost increase must be less than $%.2f (actual diff is $%.2f)", [max_diff, actual_diff]),
+    "failed": actual_diff > max_diff
+  }
+}
 
-  # Warn on specific expensive resources
-  - name: warn-expensive-instances
-    description: Warn when creating instances larger than m5.xlarge
-    resource_type: aws_instance
-    condition:
-      attribute: instance_type
-      not_in:
-        - t3.micro
-        - t3.small
-        - t3.medium
-        - t3.large
-        - m5.large
-        - m5.xlarge
-    action: warn
+# Fail if the total monthly cost exceeds $10,000
+deny[out] {
+  max_total = 10000.0
+  actual_total = to_number(input.totalMonthlyCost)
+
+  out := {
+    "msg": sprintf("Total monthly cost must be less than $%.2f (actual total is $%.2f)", [max_total, actual_total]),
+    "failed": actual_total > max_total
+  }
+}
 ```
+
+Add `--policy-path infracost-policy.rego` to the `infracost comment github` command in CI so policy failures are included in the pull request comment and can fail the job.
 
 ```hcl
 # infracost-usage.yml referenced by infracost
@@ -256,7 +246,6 @@ locals {
     Environment = var.environment
     Owner       = var.team_owner
     ManagedBy   = "terraform"
-    CreatedDate = formatdate("YYYY-MM-DD", timestamp())
   }
 }
 
@@ -378,7 +367,7 @@ resource "helm_release" "kubecost" {
   repository = "https://kubecost.github.io/cost-analyzer/"
   chart      = "cost-analyzer"
   namespace  = "kubecost"
-  version    = "1.100.0"
+  version    = "2.9.6"
 
   create_namespace = true
 
@@ -393,15 +382,15 @@ resource "helm_release" "kubecost" {
     value = "15d"
   }
 
-  # Enable cloud cost integration
+  # Enable cloud usage and reconciliation pipelines after configuring a cloud integration
   set {
-    name  = "kubecostProductConfigs.cloudCost.enabled"
+    name  = "kubecostModel.etlCloudUsage"
     value = "true"
   }
 
   set {
-    name  = "kubecostProductConfigs.cloudCost.provider"
-    value = "AWS"
+    name  = "kubecostModel.etlAssetReconciliationEnabled"
+    value = "true"
   }
 
   depends_on = [module.eks]
