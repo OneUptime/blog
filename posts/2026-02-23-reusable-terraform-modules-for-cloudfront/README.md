@@ -152,8 +152,18 @@ variable "custom_error_responses" {
   default = []
 }
 
-variable "web_acl_id" {
-  description = "WAF web ACL ID to associate with the distribution"
+variable "logging_config" {
+  description = "Access logging configuration"
+  type = object({
+    bucket          = string
+    include_cookies = optional(bool, false)
+    prefix          = optional(string, "")
+  })
+  default = null
+}
+
+variable "web_acl_arn" {
+  description = "WAFv2 web ACL ARN to associate with the distribution"
   type        = string
   default     = null
 }
@@ -216,7 +226,7 @@ resource "aws_cloudfront_distribution" "this" {
   default_root_object = var.default_root_object
   aliases             = var.aliases
   price_class         = var.price_class
-  web_acl_id          = var.web_acl_id
+  web_acl_id          = var.web_acl_arn
 
   # S3 origin (if configured)
   dynamic "origin" {
@@ -315,6 +325,17 @@ resource "aws_cloudfront_distribution" "this" {
       response_code         = custom_error_response.value.response_code
       response_page_path    = custom_error_response.value.response_page_path
       error_caching_min_ttl = custom_error_response.value.error_caching_min_ttl
+    }
+  }
+
+  # Access logging
+  dynamic "logging_config" {
+    for_each = var.logging_config != null ? [var.logging_config] : []
+
+    content {
+      bucket          = logging_config.value.bucket
+      include_cookies = logging_config.value.include_cookies
+      prefix          = logging_config.value.prefix
     }
   }
 
