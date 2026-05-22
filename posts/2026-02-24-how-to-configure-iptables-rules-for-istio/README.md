@@ -8,14 +8,14 @@ Description: Learn how to configure and customize iptables rules that Istio uses
 
 ---
 
-Istio relies on iptables rules inside each pod's network namespace to redirect traffic through the Envoy sidecar. While these rules are set up automatically by the `istio-init` container, there are plenty of situations where you need to customize them. Maybe you want to skip certain ports, exclude external IP ranges, or troubleshoot why traffic isn't flowing correctly.
+Istio relies on iptables rules inside each pod's network namespace to redirect traffic through the Envoy sidecar. In the default sidecar setup without the Istio CNI node agent, these rules are set up automatically by the `istio-init` container. There are plenty of situations where you need to customize them. Maybe you want to skip certain ports, exclude external IP ranges, or troubleshoot why traffic isn't flowing correctly.
 
 ## Default iptables Configuration
 
-When Istio injects the sidecar, the init container runs the `istio-iptables` command with a set of default arguments. You can see these by inspecting a pod's spec:
+When Istio injects the sidecar without CNI mode, the init container runs the `istio-iptables` command with a set of default arguments. You can see these by inspecting a pod's spec:
 
 ```bash
-kubectl get pod <pod-name> -o jsonpath='{.spec.initContainers[?(@.name=="istio-init")].command}' | python3 -m json.tool
+kubectl get pod <pod-name> -o jsonpath='{.spec.initContainers[?(@.name=="istio-init")].args}' | python3 -m json.tool
 ```
 
 The default configuration creates NAT table rules that redirect inbound traffic to port 15006 (Envoy's inbound listener) and outbound traffic to port 15001 (Envoy's outbound listener).
@@ -76,8 +76,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "3306,5432"
     spec:
@@ -128,7 +133,7 @@ metadata:
     traffic.sidecar.istio.io/includeOutboundIPRanges: "10.96.0.0/12"
 ```
 
-## Global Configuration Through MeshConfig
+## Global Configuration Through IstioOperator or Helm Values
 
 For cluster-wide settings, you can configure the default iptables behavior in the IstioOperator or Helm values:
 
@@ -206,6 +211,6 @@ The structure mirrors the IPv4 rules. If you're excluding IP ranges, remember to
 
 ## Alternatives to iptables
 
-If you want to avoid iptables entirely, Istio supports the CNI plugin mode, which sets up the network rules at the CNI level instead of using an init container. This removes the need for the `NET_ADMIN` capability on the init container. We cover this in a separate post.
+If you want to avoid a privileged init container in every workload, Istio supports the CNI plugin mode, which sets up the pod's traffic redirection during the Kubernetes network setup phase instead of using an init container. This removes the need for the `NET_ADMIN` capability on the init container, but sidecar mode still uses iptables for redirection by default. We cover this in a separate post.
 
 Knowing how the iptables rules work gives you the ability to fine-tune traffic interception at a granular level. Whether you need to bypass the proxy for certain external services, troubleshoot connectivity problems, or just understand what is happening under the hood, the iptables configuration is where it all starts.
