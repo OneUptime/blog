@@ -50,7 +50,7 @@ variable "tsig_key_name" {
 variable "tsig_key_secret" {
   type      = string
   sensitive = true
-  default   = "placeholder"
+  default   = "cGxhY2Vob2xkZXI="
 }
 
 variable "domain" {
