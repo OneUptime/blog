@@ -23,14 +23,14 @@ The pipeline-driven approach is more common with Azure DevOps because it gives y
 
 ## Setting Up the Token
 
-Store your HCP Terraform API token as a secret variable:
+Store your HCP Terraform user or team API token as a secret variable:
 
 ### Pipeline Variable Group
 
 1. In Azure DevOps, go to **Pipelines** > **Library**
 2. Click **+ Variable group**
 3. Name it "Terraform Credentials"
-4. Add variable: `TF_API_TOKEN` with your HCP Terraform token
+4. Add variable: `TF_API_TOKEN` with your HCP Terraform user or team token
 5. Click the lock icon to make it a secret
 6. Save
 
@@ -44,12 +44,14 @@ For a more controlled approach, create a service connection:
 4. Set:
    - Server URL: `https://app.terraform.io`
    - Username: (leave empty)
-   - Password/Token Key: Your HCP Terraform API token
+   - Password/Token Key: Your HCP Terraform user or team token
 5. Name it "HCP Terraform"
 
 ## Basic Pipeline Configuration
 
 ### Terraform Configuration
+
+Create the target HCP Terraform workspaces (`app-staging` and `app-production`) before running these pipelines.
 
 ```hcl
 # infrastructure/main.tf
@@ -57,10 +59,7 @@ For a more controlled approach, create a service connection:
 terraform {
   cloud {
     organization = "your-org"
-
-    workspaces {
-      name = "app-production"
-    }
+    # TF_WORKSPACE selects app-staging or app-production in the pipeline.
   }
 
   required_version = ">= 1.5.0"
@@ -88,7 +87,7 @@ trigger:
       - main
   paths:
     include:
-      - infrastructure/*
+      - infrastructure/**
 
 pr:
   branches:
@@ -96,7 +95,7 @@ pr:
       - main
   paths:
     include:
-      - infrastructure/*
+      - infrastructure/**
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -109,6 +108,8 @@ variables:
     value: '1.7.0'
   - name: workingDirectory
     value: 'infrastructure'
+  - name: TF_WORKSPACE
+    value: 'app-production'
 
 stages:
   - stage: Validate
@@ -215,7 +216,7 @@ trigger:
       - main
   paths:
     include:
-      - infrastructure/*
+      - infrastructure/**
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -444,30 +445,22 @@ Add plan output as a PR comment:
   displayName: 'Terraform Plan'
 
 - script: |
-    PLAN_OUTPUT=$(cat /tmp/plan.txt | head -c 50000)
+    PLAN_OUTPUT=$(head -c 50000 /tmp/plan.txt)
+    COMMENT_CONTENT=$(printf '## Terraform Plan\n\n```\n%s\n```' "$PLAN_OUTPUT")
 
     # Use Azure DevOps REST API to post PR comment
-    COMMENT_JSON=$(cat <<EOF
-    {
-      "comments": [
-        {
-          "parentCommentId": 0,
-          "content": "## Terraform Plan\n\n```\n${PLAN_OUTPUT}\n```",
-          "commentType": 1
-        }
-      ],
-      "status": 1
-    }
-    EOF
-    )
+    COMMENT_JSON=$(jq -n --arg content "$COMMENT_CONTENT" \
+      '{comments: [{parentCommentId: 0, content: $content, commentType: 1}], status: 1}')
 
     curl -s -X POST \
       -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $(System.AccessToken)" \
+      -H "Authorization: Bearer $SYSTEM_ACCESSTOKEN" \
       -d "$COMMENT_JSON" \
-      "$(System.CollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.ID)/pullRequests/$(System.PullRequest.PullRequestId)/threads?api-version=7.0"
+      "$(System.CollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.ID)/pullRequests/$(System.PullRequest.PullRequestId)/threads?api-version=7.1"
   displayName: 'Post Plan to PR'
   condition: eq(variables['Build.Reason'], 'PullRequest')
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 ```
 
 ## Security Considerations
@@ -490,7 +483,7 @@ Configure branch policies to require successful builds:
 
 ### Exclusive Lock
 
-Prevent concurrent applies by using an exclusive lock:
+Prevent concurrent applies by adding an Exclusive lock check to the environment and targeting it from a deployment job:
 
 ```yaml
 - deployment: Apply
@@ -502,7 +495,7 @@ Prevent concurrent applies by using an exclusive lock:
           # ... terraform apply
 ```
 
-The `deployment` job type with an environment automatically provides an exclusive lock per environment.
+The `deployment` job targets the environment, and the Exclusive lock check on that environment enforces that only one run uses it at a time. If queued runs should all deploy in order, set `lockBehavior: sequential` at the stage or pipeline level.
 
 ## Troubleshooting
 
@@ -518,7 +511,7 @@ jobs:
 
 **Terraform version mismatch**: The `TerraformInstaller` task downloads the specified version. Make sure it matches what your workspace expects.
 
-**Permission denied on script**: Use `chmod +x` if running custom scripts, or use inline `script` tasks instead of `bash` tasks.
+**Permission denied on script**: Use `chmod +x` if running custom scripts, or use inline `script` or `bash` steps instead of executing a checked-in file.
 
 ## Summary
 
