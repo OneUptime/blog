@@ -4,26 +4,29 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Planning, Multi-Module
 
-Description: Learn how to use Terragrunt plan-all and run-all plan to generate execution plans across multiple modules with proper dependency ordering and output management.
+Description: Learn how to use Terragrunt plan-all, run-all plan, and run --all plan to generate execution plans across multiple modules with proper dependency ordering and output management.
 
 ---
 
-Before you apply changes to your infrastructure, you need to see what will change. In a multi-module Terragrunt project, running `terraform plan` one module at a time is tedious and error-prone. The `plan-all` command (and its modern equivalent `run-all plan`) lets you generate plans for every module in your environment at once.
+Before you apply changes to your infrastructure, you need to see what will change. In a multi-module Terragrunt project, running `terraform plan` one module at a time is tedious and error-prone. The legacy `plan-all` command, the deprecated `run-all plan` command, and the current `run --all plan` command let you generate plans for every module in your environment at once.
 
-## plan-all vs run-all plan
+## plan-all vs run --all plan
 
-Terragrunt originally had a set of dedicated commands: `plan-all`, `apply-all`, and `destroy-all`. These are now deprecated in favor of the more flexible `run-all` command:
+Terragrunt originally had a set of dedicated commands: `plan-all`, `apply-all`, and `destroy-all`. These were superseded by `run-all`, which is now deprecated in favor of the more flexible `run --all` command:
 
 ```bash
-# Legacy command (deprecated but still works)
+# Legacy command (availability depends on your Terragrunt version)
 
 terragrunt plan-all
 
-# Modern equivalent (recommended)
+# Deprecated command
 terragrunt run-all plan
+
+# Modern equivalent (recommended)
+terragrunt run --all plan
 ```
 
-Both do the same thing. Use `run-all plan` for new projects. The rest of this post uses the modern syntax, but everything applies to `plan-all` as well.
+Use `run --all plan` for new projects. The rest of this post uses the modern syntax, but the workflow is the same as the older multi-module planning commands.
 
 ## Basic Usage
 
@@ -31,12 +34,12 @@ Navigate to a directory containing multiple Terragrunt modules and run:
 
 ```bash
 cd live/dev
-terragrunt run-all plan
+terragrunt run --all plan
 ```
 
 Terragrunt will:
 
-1. Find all `terragrunt.hcl` files recursively in `live/dev/`
+1. Find Terragrunt units recursively in `live/dev/`
 2. Build the dependency graph
 3. Run `terraform plan` on each module in dependency order
 4. Output the plan for each module, prefixed with its path
@@ -92,7 +95,7 @@ dependency "vpc" {
 }
 ```
 
-Without mock outputs, `run-all plan` would fail on the first run because the VPC state does not exist yet.
+Without mock outputs, `run --all plan` would fail on the first run because the VPC state does not exist yet.
 
 ## Saving Plans
 
@@ -100,14 +103,14 @@ You can pass `-out` to save the plan for each module:
 
 ```bash
 # Save plans to files
-terragrunt run-all plan -out=tfplan
+terragrunt run --all -- plan -out=tfplan
 ```
 
-Each module gets its own `tfplan` file in its `.terragrunt-cache` directory. You can later apply these saved plans:
+Each module gets its own `tfplan` file in that unit's Terraform working directory, which is often under `.terragrunt-cache` when the unit uses a remote `source`. You can later apply these saved plans:
 
 ```bash
 # Apply the saved plans
-terragrunt run-all apply tfplan
+terragrunt run --all -- apply tfplan
 ```
 
 This is the safest approach for CI/CD - plan and review first, then apply the exact plan that was reviewed.
@@ -118,14 +121,14 @@ Sometimes you only want to plan certain modules:
 
 ```bash
 # Plan only networking modules
-terragrunt run-all plan --terragrunt-include-dir "*/vpc" --terragrunt-include-dir "*/subnets"
+terragrunt run --all --queue-include-dir "*/vpc" --queue-include-dir "*/subnets" -- plan
 
 # Plan everything except monitoring
-terragrunt run-all plan --terragrunt-exclude-dir "*/monitoring"
+terragrunt run --all --queue-exclude-dir "*/monitoring" -- plan
 
 # Plan a specific group of modules
 cd live/dev/networking
-terragrunt run-all plan
+terragrunt run --all plan
 ```
 
 ## Reducing Noise
@@ -136,14 +139,14 @@ With many modules, plan output gets long. Here are strategies to manage it:
 
 ```bash
 # Only show errors from Terragrunt itself (Terraform output still shows)
-terragrunt run-all plan --terragrunt-log-level error
+terragrunt run --all --log-level error -- plan
 ```
 
 ### Save Output to File
 
 ```bash
 # Capture all output for review
-terragrunt run-all plan 2>&1 | tee plan-output.txt
+terragrunt run --all plan 2>&1 | tee plan-output.txt
 
 # Search for specific changes
 grep "will be" plan-output.txt
@@ -153,7 +156,7 @@ grep "will be" plan-output.txt
 
 ```bash
 # Use Terraform's compact plan output
-terragrunt run-all plan -compact-warnings
+terragrunt run --all -- plan -compact-warnings
 ```
 
 ## Parallelism Control
@@ -162,13 +165,13 @@ By default, independent modules are planned in parallel. Control this with:
 
 ```bash
 # Plan with limited parallelism (useful for rate limiting)
-terragrunt run-all plan --terragrunt-parallelism 2
+terragrunt run --all --parallelism 2 -- plan
 
 # Plan sequentially for easier output reading
-terragrunt run-all plan --terragrunt-parallelism 1
+terragrunt run --all --parallelism 1 -- plan
 ```
 
-Sequential planning (`--terragrunt-parallelism 1`) makes the output much easier to read since modules do not interleave their output.
+Sequential planning (`--parallelism 1`) makes the output much easier to read since modules do not interleave their output.
 
 ## CI/CD Pipeline Pattern
 
@@ -202,7 +205,7 @@ jobs:
         id: plan
         run: |
           cd live/dev
-          terragrunt run-all plan --terragrunt-non-interactive 2>&1 | tee plan.txt
+          terragrunt run --all --non-interactive -- plan 2>&1 | tee plan.txt
         continue-on-error: true
 
       - name: Comment PR with plan
@@ -227,7 +230,7 @@ You can check if any module has changes:
 ```bash
 # Plan with -detailed-exitcode
 # Exit code 0 = no changes, 1 = error, 2 = changes detected
-terragrunt run-all plan -detailed-exitcode
+terragrunt run --all -- plan -detailed-exitcode
 
 echo $?  # Check exit code
 ```
@@ -240,29 +243,27 @@ Pass extra variables during planning:
 
 ```bash
 # Override a variable for all modules
-terragrunt run-all plan -var="image_tag=v2.0.0"
+terragrunt run --all -- plan -var="image_tag=v2.0.0"
 
 # Use a specific tfvars file
-terragrunt run-all plan -var-file=overrides.tfvars
+terragrunt run --all -- plan -var-file=overrides.tfvars
 ```
 
-Note that these extra arguments are passed to every module. If a module does not have the specified variable, it will show a warning.
+Note that these extra arguments are passed to every module. If a module does not have a variable provided with `-var`, Terraform will fail with an error. If an undeclared variable is provided through a variable definition file, Terraform will show a warning.
 
 ## Common Issues
 
-**Slow plans**: If planning is slow, it is usually because each module initializes independently, downloading providers and modules. Use a provider cache:
+**Slow plans**: If planning is slow, it is usually because each module initializes independently, downloading providers and modules. With `run --all`, use Terragrunt's provider cache server rather than setting `TF_PLUGIN_CACHE_DIR`, which can cause concurrent access issues:
 
 ```bash
-# Set up a shared provider cache
-export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
-mkdir -p $TF_PLUGIN_CACHE_DIR
-terragrunt run-all plan
+# Enable Terragrunt's provider cache server
+terragrunt run --all --provider-cache -- plan
 ```
 
 **Rate limiting**: Planning many modules against cloud APIs can trigger rate limits. Reduce parallelism:
 
 ```bash
-terragrunt run-all plan --terragrunt-parallelism 2
+terragrunt run --all --parallelism 2 -- plan
 ```
 
 **Mock output type mismatches**: If your mock outputs do not match the expected types, the plan may fail. Ensure mocks have the correct structure:
@@ -281,6 +282,6 @@ mock_outputs = {
 
 ## Conclusion
 
-Running plans across multiple modules is one of the first things you will do with Terragrunt's `run-all` command. It gives you visibility into what will change across your entire environment before you commit to any changes. Use mock outputs for first-time plans, control parallelism for readability and rate limiting, and integrate with CI/CD for automated plan reviews on pull requests.
+Running plans across multiple modules is one of the first things you will do with Terragrunt's `run --all` command. It gives you visibility into what will change across your entire environment before you commit to any changes. Use mock outputs for first-time plans, control parallelism for readability and rate limiting, and integrate with CI/CD for automated plan reviews on pull requests.
 
 For applying the planned changes, see [How to Use Terragrunt apply-all for Multi-Module Apply](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terragrunt-apply-all-for-multi-module-apply/view).
