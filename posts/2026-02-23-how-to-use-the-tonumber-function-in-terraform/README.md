@@ -8,7 +8,7 @@ Description: Learn how to use the tonumber function in Terraform to convert stri
 
 ---
 
-Terraform variables, outputs, and data sources often pass values around as strings, even when the underlying data is numeric. Port numbers might come from a data source as strings, environment variables are always strings, and map values stored as strings sometimes need to be used as numbers. The `tonumber` function handles these conversions.
+Terraform variables, outputs, and data sources often pass values around as strings, even when the underlying data is numeric. Port numbers might come from a data source as strings, environment variables arrive from the shell as strings, and map values stored as strings sometimes need to be used as numbers. The `tonumber` function handles these conversions.
 
 ## What is tonumber?
 
@@ -37,14 +37,14 @@ tonumber(value)
 
 Here are the common scenarios:
 
-1. **Values from environment variables** (always strings in Terraform)
+1. **Values from environment variables** (often provided as strings)
 2. **Map lookups** where all values are strings but some represent numbers
 3. **Data source outputs** that return strings
 4. **String interpolation results** that need to be used in numeric contexts
 
 ## Converting Environment Variables
 
-Environment variables in Terraform are always strings:
+Environment variable values come from the shell as strings, so you can declare the variable as a string and convert it explicitly when needed:
 
 ```hcl
 variable "port" {
@@ -311,7 +311,7 @@ When you want to output a numeric value that was derived from strings:
 
 ```hcl
 output "total_capacity" {
-  value       = sum([for v in values(var.scaling_config) : tonumber(v) if can(regex("desired$", v))])
+  value       = sum([for k, v in var.scaling_config : tonumber(v) if can(regex("desired$", k))])
   description = "Total desired capacity across all ASGs"
 }
 ```
@@ -323,15 +323,11 @@ output "total_capacity" {
 > tonumber(42)
 42
 
-# Scientific notation
-> tonumber("1e3")
-1000
+# Strings must contain decimal representations of numbers
+# tonumber("1e3")    # Error!
 
-> tonumber("1.5e2")
-150
-
-# Leading/trailing whitespace may cause issues
-# tonumber(" 42 ")  # May error depending on version
+# Leading/trailing whitespace is not a decimal representation
+# tonumber(" 42 ")  # Error!
 ```
 
 ## Summary
