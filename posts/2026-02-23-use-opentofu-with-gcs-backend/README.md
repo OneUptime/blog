@@ -8,7 +8,7 @@ Description: Learn how to configure Google Cloud Storage as a backend for OpenTo
 
 ---
 
-Google Cloud Storage (GCS) is the go-to backend for teams running infrastructure on Google Cloud Platform. The GCS backend in OpenTofu supports remote state storage with built-in locking, encryption, and versioning. This guide covers setting it up from scratch.
+Google Cloud Storage (GCS) is the go-to backend for teams running infrastructure on Google Cloud Platform. The GCS backend in OpenTofu supports remote state storage with state locking, and GCS provides encryption and optional object versioning for state recovery. This guide covers setting it up from scratch.
 
 ## Prerequisites
 
@@ -223,9 +223,11 @@ terraform {
 }
 ```
 
+The caller must have `roles/iam.serviceAccountTokenCreator` on the service account being impersonated.
+
 ## State Locking
 
-The GCS backend uses Cloud Storage object locking. Locking is enabled automatically and does not require any additional resources:
+The GCS backend supports state locking. Locking is enabled automatically and does not require any additional resources:
 
 ```bash
 # Locking happens automatically
@@ -305,15 +307,14 @@ gcloud kms keys add-iam-policy-binding "state-encryption" \
 ```hcl
 terraform {
   backend "gcs" {
-    bucket               = "my-project-id-opentofu-state"
-    prefix               = "production"
-    encryption_key       = ""  # For CSEK
-    # Or use the default bucket encryption with CMEK
+    bucket             = "my-project-id-opentofu-state"
+    prefix             = "production"
+    kms_encryption_key = "projects/my-project-id/locations/us-central1/keyRings/opentofu/cryptoKeys/state-encryption"
   }
 }
 ```
 
-Set the default encryption on the bucket:
+Or set the default encryption on the bucket:
 
 ```bash
 gcloud storage buckets update "gs://my-project-id-opentofu-state" \
@@ -382,7 +383,7 @@ GCS versioning lets you recover previous state:
 
 ```bash
 # List object versions
-gcloud storage objects list "gs://my-project-id-opentofu-state/production/network/" \
+gcloud storage ls "gs://my-project-id-opentofu-state/production/network/" \
   --all-versions
 
 # Download a specific version
@@ -401,11 +402,17 @@ tofu state push restored-state.json
 **Enable audit logging** to track who accessed or modified state:
 
 ```bash
-# Enable data access logging for the project
-gcloud projects add-iam-audit-config my-project-id \
-  --service="storage.googleapis.com" \
-  --log-type="DATA_READ" \
-  --log-type="DATA_WRITE"
+# Enable data access logging for Cloud Storage in the project
+gcloud projects get-iam-policy my-project-id > /tmp/policy.yaml
+
+# Add or update this section in /tmp/policy.yaml:
+# auditConfigs:
+# - auditLogConfigs:
+#   - logType: DATA_READ
+#   - logType: DATA_WRITE
+#   service: storage.googleapis.com
+
+gcloud projects set-iam-policy my-project-id /tmp/policy.yaml
 ```
 
 **Use a dedicated GCP project for state storage** in enterprise environments. This isolates state access from workload permissions.
