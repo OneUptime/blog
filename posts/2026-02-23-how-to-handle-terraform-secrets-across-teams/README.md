@@ -24,7 +24,11 @@ Terraform state stores the actual values of all resources, including sensitive o
 # This resource creates a secret, but the value is stored in state
 
 resource "aws_db_instance" "main" {
-  password = var.database_password
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
+  username          = "dbadmin"
+  password          = var.database_password
   # The password is visible in the state file!
 }
 ```
@@ -42,13 +46,12 @@ api_key           = "sk_live_abc123def456"
 
 ### In Plan Output
 
-Terraform plan can display sensitive values in its output:
+Terraform plan can display values that are not marked as sensitive. Many provider-declared sensitive arguments, such as RDS passwords, are redacted automatically, but you should still mark your own sensitive variables and outputs:
 
 ```text
 # terraform plan output might show:
-~ resource "aws_db_instance" "main" {
-    ~ password = "old_password" -> "new_password"
-  }
+Changes to Outputs:
+  + api_token = "sk_live_abc123def456"
 ```
 
 ### In Provider Configuration
@@ -77,9 +80,10 @@ data "aws_secretsmanager_secret_version" "db_password" {
 }
 
 resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  engine_version = "14.1"
-  instance_class = "db.r5.large"
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.r5.large"
+  username          = "dbadmin"
 
   # Use the secret value
   password = data.aws_secretsmanager_secret_version.db_password.secret_string
@@ -152,10 +156,11 @@ data "vault_generic_secret" "database" {
 
 # Use Vault secrets in resources
 resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  instance_class = "db.r5.large"
-  username       = data.vault_generic_secret.database.data["username"]
-  password       = data.vault_generic_secret.database.data["password"]
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.r5.large"
+  username          = data.vault_generic_secret.database.data["username"]
+  password          = data.vault_generic_secret.database.data["password"]
 }
 
 # Generate dynamic credentials through Vault
@@ -181,11 +186,6 @@ For secrets that do not need to be known in advance, generate them within Terraf
 resource "random_password" "database" {
   length  = 32
   special = true
-
-  # Prevent Terraform from regenerating on every apply
-  lifecycle {
-    ignore_changes = all
-  }
 }
 
 # Store it in Secrets Manager
@@ -200,7 +200,11 @@ resource "aws_secretsmanager_secret_version" "database_password" {
 
 # Use it in the database
 resource "aws_db_instance" "main" {
-  password = random_password.database.result
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
+  username          = "dbadmin"
+  password          = random_password.database.result
 }
 
 # Application retrieves it from Secrets Manager at runtime
@@ -221,7 +225,7 @@ terraform {
     encrypt        = true
     # Use a customer-managed KMS key
     kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -289,10 +293,10 @@ output "database_connection_string" {
 
 # Mark local values as sensitive
 locals {
-  api_credentials = {
+  api_credentials = sensitive({
     key    = data.aws_secretsmanager_secret_version.api_key.secret_string
     secret = data.aws_secretsmanager_secret_version.api_secret.secret_string
-  }
+  })
 }
 ```
 
@@ -357,7 +361,7 @@ Add a pre-commit hook as well:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.0
+    rev: v8.24.2
     hooks:
       - id: gitleaks
 ```
