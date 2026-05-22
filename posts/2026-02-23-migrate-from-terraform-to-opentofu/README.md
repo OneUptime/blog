@@ -29,7 +29,7 @@ grep -r "backend" *.tf
 terraform providers
 ```
 
-OpenTofu 1.6.x is compatible with Terraform 1.6.x configurations. If you are running Terraform 1.5 or earlier, the compatibility is even better since OpenTofu forked at that point. If you are on a newer Terraform version, check the OpenTofu compatibility documentation for any gaps.
+OpenTofu 1.6.2 is largely compatible with Terraform 1.6.x configurations, and the official migration path recommends migrating to OpenTofu 1.6.2 first before upgrading OpenTofu further. If you are running Terraform 1.5 or earlier, use the corresponding OpenTofu migration guide since OpenTofu forked from Terraform 1.5.6. If you are on a newer Terraform version, check the OpenTofu compatibility documentation for the version-specific migration path.
 
 ## Step 1: Install OpenTofu
 
@@ -40,7 +40,10 @@ Install OpenTofu alongside Terraform so you can test without removing your exist
 brew install opentofu
 
 # Linux (Debian/Ubuntu)
-curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh | sh -s -- --install-method standalone
+curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+chmod +x install-opentofu.sh
+./install-opentofu.sh --install-method standalone
+rm -f install-opentofu.sh
 
 # Verify
 tofu --version
@@ -118,7 +121,7 @@ Run `tofu init` against your existing configuration:
 tofu init
 
 # This will:
-# - Download providers from the OpenTofu registry
+# - Download providers and modules from the OpenTofu registry
 # - Configure the backend
 # - Set up the working directory
 ```
@@ -196,11 +199,11 @@ terraform {
 ```
 
 ```bash
-# Initialize OpenTofu with the new backend
-tofu init
+# Initialize OpenTofu with the new backend without trying to use the old one
+tofu init -reconfigure
 
-# When prompted, migrate the state to the new backend
-# Type "yes" to confirm
+# Push the state you pulled from Terraform Cloud into the new backend
+tofu state push local-state.json
 
 # Verify the state was migrated
 tofu state list
@@ -306,22 +309,26 @@ The technical migration is one part; the team transition is another. Here is a c
 
 ## Potential Issues and Solutions
 
-**Provider not found in OpenTofu registry**: Some providers may not be in the OpenTofu registry yet. You can configure direct downloads:
+**Provider not found in OpenTofu registry**: Some providers may not be in the OpenTofu registry yet. If the provider is available from another registry, use a fully-qualified provider source address:
 
 ```hcl
-provider_installation {
-  direct {
-    exclude = []
+terraform {
+  required_providers {
+    example = {
+      source  = "registry.terraform.io/example/example"
+      version = "~> 1.0"
+    }
   }
 }
 ```
 
+For local or network mirrors, configure `provider_installation` in the OpenTofu CLI configuration file, such as `~/.tofurc` on Linux and macOS, rather than in a `.tf` configuration file.
+
 **State file version mismatch**: If you upgraded Terraform past the version OpenTofu supports, the state file format may be incompatible. Downgrade Terraform first, run an apply, then migrate to OpenTofu.
 
-**Module registry references**: Modules sourced from `registry.terraform.io` will automatically be resolved by OpenTofu. But if you have hardcoded references, update them:
+**Module registry references**: Registry shorthand module sources are resolved through the OpenTofu public registry. But if you have hardcoded references to a private or Terraform-specific registry hostname, update them:
 
 ```hcl
-# Both of these work in OpenTofu
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"  # Works
   version = "5.1.0"
