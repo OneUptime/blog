@@ -132,8 +132,8 @@ run "webapp_needs_private_subnets" {
   }
 }
 
-# The webapp team needs NAT gateway IPs for allowlisting
-run "webapp_needs_nat_ips" {
+# The webapp team needs NAT gateways for outbound traffic
+run "webapp_needs_nat_gateways" {
   command = apply
 
   assert {
@@ -254,7 +254,7 @@ terraform {
 }
 
 # In your module README or contract doc:
-# v2.0 - Breaking: removed deprecated network_id output, use vpc_id
+# v2.0 - Deprecated: network_id output, use vpc_id
 # v2.1 - Added: nat_gateway_ids output
 # v2.2 - Added: vpc_cidr output
 ```
@@ -276,8 +276,8 @@ run "deprecated_outputs_still_work" {
 
   # Old output name should still work during deprecation period
   assert {
-    condition     = output.vpc_id != ""
-    error_message = "vpc_id must still be available"
+    condition     = output.network_id != ""
+    error_message = "network_id must still be available during the deprecation period"
   }
 }
 ```
