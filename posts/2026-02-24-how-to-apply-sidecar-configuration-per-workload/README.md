@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Sidecar, Kubernetes, Service Mesh, Envoy
 
-Description: Learn how to apply Istio Sidecar resource configurations on a per-workload basis to control egress traffic and reduce proxy memory usage.
+Description: Learn how to apply Istio Sidecar resource configurations on a per-workload basis to scope egress configuration and reduce proxy memory usage.
 
 ---
 
@@ -22,7 +22,7 @@ This has real consequences:
 - **CPU usage**: Configuration updates propagate to every proxy, even when irrelevant
 - **Push latency**: istiod takes longer to push updates because it's sending larger config bundles
 
-The Sidecar resource fixes this by letting you declare exactly which services a workload needs to reach.
+The Sidecar resource fixes this by letting you declare which services should be included in a workload's outbound proxy configuration.
 
 ## The Sidecar Resource Basics
 
@@ -31,7 +31,7 @@ The Istio Sidecar resource is a networking API object. You apply it in a namespa
 Here's the basic structure:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-sidecar
@@ -50,10 +50,10 @@ The `workloadSelector` field uses label matching, just like Kubernetes selectors
 
 ## Applying a Sidecar to a Specific Workload
 
-Say you have a frontend service that only needs to talk to an API gateway and a Redis cache. You can create a Sidecar resource that limits the frontend's proxy to only those destinations:
+Say you have a frontend service that only needs proxy configuration for an API gateway and a Redis cache. You can create a Sidecar resource that scopes the frontend's outbound proxy configuration to those destinations:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
@@ -69,7 +69,7 @@ spec:
         - "istio-system/*"
 ```
 
-After applying this, the frontend's Envoy proxy only receives configuration for the API gateway, Redis, and services in the istio-system namespace (which you generally always want to include for things like telemetry and control plane communication).
+After applying this, the frontend's Envoy proxy only receives outbound service configuration for the API gateway, Redis, and services in the istio-system namespace (which you generally want to include for Istio add-ons and services in the control plane namespace).
 
 Apply it with:
 
@@ -90,7 +90,7 @@ Here's an example of a namespace-wide default combined with a workload-specific 
 ```yaml
 # Default for the namespace - allow same namespace + istio-system
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -102,7 +102,7 @@ spec:
         - "istio-system/*"
 ---
 # Override for the payment service - also needs access to external APIs
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: payment-sidecar
@@ -123,7 +123,7 @@ spec:
 The Sidecar resource also lets you configure inbound traffic. This is useful when you want to explicitly declare which ports your workload listens on:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-sidecar
@@ -175,7 +175,7 @@ istioctl proxy-config all deploy/frontend -n production -o json | wc -c
 When workloads need to talk to services in other namespaces, you specify them in the egress hosts using the `namespace/host` format:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: order-service-sidecar
@@ -192,17 +192,17 @@ spec:
         - "inventory/inventory-service.inventory.svc.cluster.local"
 ```
 
-The `./*` shorthand means "all services in the current namespace." You can also use `~/*` to mean the same thing, or specify a full namespace name.
+The `./*` shorthand means "all services in the current namespace." You can also specify a full namespace name, use `*/*` for services exported to the Sidecar's namespace from any namespace, or use `~/*` for hosts that are not associated with a namespace.
 
 ## Common Mistakes to Avoid
 
 A few things that trip people up when working with per-workload Sidecar configurations:
 
-**Forgetting istio-system**: If you don't include `istio-system/*` in your egress hosts, your workload might lose access to telemetry endpoints or the control plane. Always include it unless you have a specific reason not to.
+**Forgetting istio-system**: If you don't include `istio-system/*` in your egress hosts, your workload might miss configuration for Istio add-ons or services in the control plane namespace. Include it unless you have a specific reason not to.
 
 **Conflicting selectors**: If two workload-specific Sidecars match the same pod labels, Istio's behavior is undefined. Make sure your label selectors are distinct.
 
-**Overly restrictive egress**: If you lock down egress too tightly, new service dependencies will break until you update the Sidecar resource. Have a process for updating these when service dependencies change.
+**Overly restrictive egress**: If you scope egress configuration too tightly, new service dependencies might be treated as unmatched traffic or fail until you update the Sidecar resource, depending on your mesh outbound traffic policy and routing. Have a process for updating these when service dependencies change.
 
 **Not including ServiceEntry hosts**: If your workload calls external services that you've registered with ServiceEntry, make sure the Sidecar's egress hosts include those as well.
 
