@@ -273,7 +273,7 @@ For more on the `join` function, see [how to use the join function in Terraform]
 
 ## Tag Generation
 
-Generate tag maps for multiple resources programmatically.
+Generate tag values for multiple resources programmatically.
 
 ```hcl
 variable "service_names" {
@@ -292,15 +292,14 @@ locals {
 }
 ```
 
-## formatlist with Count
+## formatlist with Availability Zone Suffixes
 
-Use `formatlist` alongside the `range` function to generate numbered sequences.
+Use `formatlist` with a list of suffixes to generate related names.
 
 ```hcl
 locals {
-  # Generate 10 availability zone-aware subnet names
+  # Generate availability zone-aware subnet names
   az_suffixes    = ["a", "b", "c"]
-  subnet_types   = ["public", "private"]
 
   # Create names like "subnet-public-a", "subnet-private-b", etc.
   public_subnets = formatlist("subnet-public-%s", local.az_suffixes)
