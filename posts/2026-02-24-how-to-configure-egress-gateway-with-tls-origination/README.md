@@ -32,7 +32,7 @@ sequenceDiagram
     Sidecar->>App: HTTP response
 ```
 
-The connection between the sidecar and the egress gateway uses Istio's internal mTLS. The egress gateway then originates a new TLS connection to the external service. This means traffic is encrypted at every hop.
+The connection between the sidecar and the egress gateway uses Istio's internal mTLS. The egress gateway then originates a new TLS connection to the external service. This means traffic is encrypted after it leaves the application pod and remains encrypted on the external hop.
 
 ## Step 1: Register the External Service
 
@@ -52,15 +52,15 @@ spec:
     name: http
     protocol: HTTP
   - number: 443
-    name: tls
-    protocol: TLS
+    name: https
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
 ## Step 2: Create the Egress Gateway
 
-Define a Gateway resource that the egress gateway will use to accept HTTP traffic:
+Define a Gateway resource that the egress gateway will use to accept HTTP traffic over Istio mutual TLS:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -74,13 +74,15 @@ spec:
   servers:
   - port:
       number: 80
-      name: http
-      protocol: HTTP
+      name: https-port-for-tls-origination
+      protocol: HTTPS
     hosts:
     - "api.external.com"
+    tls:
+      mode: ISTIO_MUTUAL
 ```
 
-Note that this Gateway listens on HTTP (port 80), not HTTPS. The egress gateway receives plain HTTP from sidecars and then originates TLS outbound.
+Note that this Gateway listens on port 80, but uses Istio mutual TLS for the connection from sidecars. The egress gateway receives HTTP requests over the internal mTLS connection and then originates TLS outbound.
 
 ## Step 3: Create the VirtualService
 
@@ -142,7 +144,7 @@ spec:
         sni: api.external.com
 ```
 
-The `mode: SIMPLE` means standard one-way TLS. The `sni` field is needed so the external server knows which certificate to present.
+The `mode: SIMPLE` means standard one-way TLS. Setting `sni` explicitly ensures the external server receives the expected server name during the TLS handshake.
 
 ## Step 5: Secure the Internal Hop
 
@@ -179,7 +181,7 @@ Your app sends HTTP on port 80. The sidecar routes it to the egress gateway. The
 Verify it is working by checking the egress gateway logs:
 
 ```bash
-kubectl logs -n istio-system deploy/istio-egressgateway --tail=10
+kubectl logs -n istio-system -l istio=egressgateway -c istio-proxy --tail=10
 ```
 
 You should see log entries showing outbound connections to `api.external.com:443`.
@@ -262,8 +264,8 @@ spec:
     name: http
     protocol: HTTP
   - number: 443
-    name: tls
-    protocol: TLS
+    name: https
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
