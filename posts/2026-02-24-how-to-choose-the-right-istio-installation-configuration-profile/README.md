@@ -14,26 +14,29 @@ Istio ships with several predefined installation profiles, and picking the right
 
 An Istio profile is a predefined set of configuration values that determines which components get installed and how they're configured. Think of profiles as presets - they give you a reasonable starting point that you can then customize.
 
-List the available profiles:
+After downloading and extracting an Istio release, list the profile files included with that release:
 
 ```bash
-istioctl profile list
+find manifests/profiles -maxdepth 1 -name '*.yaml' -exec basename {} .yaml \; | sort
 ```
 
-As of Istio 1.24, you'll see:
+As of Istio 1.24, the documented deployment profiles include:
 
 ```text
+ambient
 default
 demo
 empty
 minimal
-openshift
+preview
 remote
 ```
 
+Istio also includes platform profiles such as `openshift` for platform-specific defaults.
+
 ## Profile Comparison
 
-Here's a side-by-side comparison of what each profile installs:
+Here's a side-by-side comparison of what each sidecar-focused profile installs through `istioctl`:
 
 | Component | default | demo | minimal | empty | remote | openshift |
 |-----------|---------|------|---------|-------|--------|-----------|
@@ -45,13 +48,14 @@ Here's a side-by-side comparison of what each profile installs:
 You can see the exact differences between any two profiles:
 
 ```bash
-istioctl profile diff default demo
+diff -u <(istioctl manifest generate --set profile=default) \
+        <(istioctl manifest generate --set profile=demo)
 ```
 
-And dump a full profile to see every setting:
+And render the full manifest for a profile to see what it would install:
 
 ```bash
-istioctl profile dump demo
+istioctl manifest generate --set profile=demo
 ```
 
 ## The Default Profile
@@ -77,7 +81,7 @@ The default profile doesn't install an egress gateway because most clusters don'
 Resource allocations in the default profile are reasonable for production:
 
 ```bash
-istioctl profile dump default | grep -A 5 resources
+istioctl manifest generate --set profile=default | grep -A 5 resources
 ```
 
 ## The Demo Profile
@@ -100,7 +104,7 @@ When to use it:
 - Testing features that require the egress gateway
 - When you want to see all of Istio's capabilities
 
-The demo profile uses lower resource limits to fit on smaller clusters:
+The demo profile uses lower resource requests to fit on smaller clusters:
 
 ```yaml
 # Demo profile sets lower resource requests
@@ -111,7 +115,7 @@ resources:
     memory: 40Mi
 ```
 
-Do NOT use the demo profile in production. The lower resource limits will cause performance issues under real traffic, and the verbose logging generates a lot of data.
+Do NOT use the demo profile in production. The lower resource requests can lead to performance issues under real traffic, and the verbose logging generates a lot of data.
 
 ## The Minimal Profile
 
@@ -338,10 +342,10 @@ This removes the egress gateway (which demo had but default doesn't) and adjusts
 After installation, verify that the installed components match what you expected:
 
 ```bash
-istioctl verify-install
+kubectl get deployments,daemonsets -n istio-system
 ```
 
-This compares the running installation against the profile and reports any discrepancies.
+If you want `istioctl` to verify the control plane during installation or upgrade, add the `--verify` flag to your install command.
 
 Also check resource usage to make sure the profile fits your cluster:
 
