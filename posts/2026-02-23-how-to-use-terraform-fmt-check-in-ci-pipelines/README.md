@@ -20,7 +20,7 @@ When you run it with the `-check` flag, it does not modify files. Instead, it ex
 # Check formatting without modifying files
 
 # Exit code 0 = all files formatted correctly
-# Exit code 3 = files need formatting
+# Non-zero exit code = files need formatting or another error occurred
 terraform fmt -check -recursive
 ```
 
@@ -75,6 +75,9 @@ jobs:
   fmt-check:
     name: Check Terraform Formatting
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout code
@@ -98,7 +101,7 @@ jobs:
         with:
           script: |
             // Post a helpful comment on the PR
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -217,22 +220,22 @@ Some tools generate Terraform files that might not match canonical formatting. I
 
 ```bash
 # Exclude generated directories
-terraform fmt -check -recursive \
-  | grep -v "generated/" \
-  | grep -v ".terraform/"
+find . -type f \( -name "*.tf" -o -name "*.tfvars" -o -name "*.tftest.hcl" \) \
+  -not -path "./generated/*" \
+  -not -path "*/.terraform/*" \
+  -exec terraform fmt -check -diff {} +
 ```
 
 ### tfvars Files
 
-By default, `terraform fmt` checks `.tf` files but not `.tfvars` files. If you want consistent formatting in your variable files too, you need to explicitly include them.
+`terraform fmt` checks `.tf` files and `.tfvars` files by default, so your variable files are covered by the same formatting check.
 
 ```bash
-# Check both .tf and .tfvars files
+# Check .tf and .tfvars files
 terraform fmt -check -recursive
-# terraform fmt already handles .tfvars files in recent versions
 ```
 
-Actually, as of Terraform 1.0+, `terraform fmt` does handle `.tfvars` files. But if you are on an older version, you might need to handle them separately.
+JSON variants such as `.tf.json` and `.tfvars.json` are not modified by `terraform fmt`.
 
 ## Integrating with Other Validation Steps
 
@@ -261,7 +264,7 @@ jobs:
 
       # Step 4: Lint with tflint (catches provider-specific issues)
       - name: Lint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: |
           tflint --init
           tflint --recursive
