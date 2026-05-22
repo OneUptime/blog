@@ -33,28 +33,30 @@ terraform state mv -state-out=other.tfstate aws_instance.web aws_instance.web
 
 Under the hood, `terraform state mv` reads the resource from the source address, writes it to the destination address, and removes the original entry. If anything goes wrong during this process, you get an error.
 
-## Error: Invalid Source Address
+## Error: Invalid Address
 
 ```text
-Error: Invalid target address
+Error: Invalid source address
 
   Cannot move to
   "aws_instance.web[0]": resource instance keys are not
-  allowed in the source address.
+  allowed in this context.
 ```
 
-This happens when you use index notation incorrectly. The source and destination must be compatible addresses:
+This happens when you use address syntax that does not match the resource or module you are moving. The source and destination must be compatible addresses:
 
 ```bash
-# Wrong - you cannot move a specific instance to a non-indexed address
+# Wrong - shell quoting can strip or reinterpret the instance key
+terraform state mv aws_instance.web["key"] aws_instance.web_key
+
+# Right - quote addresses with brackets and string keys
+terraform state mv 'aws_instance.web["key"]' aws_instance.web_key
+
+# Right - move a count instance to a new single-instance resource
 terraform state mv 'aws_instance.web[0]' aws_instance.web_primary
 
-# Right - move a specific instance
-terraform state mv 'aws_instance.web[0]' aws_instance.web_primary
-
-# Note: the error message can be misleading. Make sure to quote
-# addresses with brackets to prevent shell expansion
-terraform state mv 'aws_instance.web["key"]' 'aws_instance.web_key'
+# Right - move between two indexed resource instances
+terraform state mv 'aws_instance.web[0]' 'aws_instance.web_primary[0]'
 ```
 
 Always quote addresses containing brackets. Without quotes, your shell may interpret `[0]` as a glob pattern.
@@ -129,10 +131,13 @@ A common mistake is forgetting that the resource type must match the configurati
 
 ```hcl
 # If your new module has this resource defined:
-# module "web_server" {
-#   resource "aws_instance" "main" { ... }
-# }
+# modules/web_server/main.tf
+resource "aws_instance" "main" {
+  # ...
+}
+```
 
+```bash
 # Then the destination must use "main", not "this" or "web"
 terraform state mv aws_instance.web module.web_server.aws_instance.main
 ```
@@ -172,13 +177,19 @@ Make sure the total count matches, and double-check which index maps to which ke
 
 ## Error: Moving to a Different State File
 
-When moving resources between state files, both states must be initialized:
+When moving resources between local state files, use `-state` for the source file and `-state-out` for the destination file:
 
 ```bash
-# Move from current state to another state file
-terraform state mv -state-out=../other-project/terraform.tfstate \
+# Move from one local state file to another local state file
+terraform state mv \
+  -state=./terraform.tfstate \
+  -state-out=../other-project/terraform.tfstate \
   aws_instance.web aws_instance.web
+```
 
+If the destination uses a remote backend, work with a local copy and push the updated state back to that backend:
+
+```bash
 # If the destination is a remote backend, you need to pull it first
 cd ../other-project
 terraform state pull > local-copy.tfstate
@@ -192,6 +203,8 @@ terraform state mv -state-out=../other-project/local-copy.tfstate \
 cd ../other-project
 terraform state push local-copy.tfstate
 ```
+
+If the source is also a remote backend, pull the source state to a local file, pass it with `-state=source-copy.tfstate`, and push the updated source copy back to the source backend after the move.
 
 ## Error: State Lock Conflicts
 
@@ -262,7 +275,7 @@ If a `terraform state mv` goes wrong, here is how to recover:
 
 set -euo pipefail
 
-BACKUP_FILE=$1
+BACKUP_FILE="${1:-}"
 
 if [ -z "$BACKUP_FILE" ]; then
   echo "Usage: ./recover-state.sh <backup-file>"
