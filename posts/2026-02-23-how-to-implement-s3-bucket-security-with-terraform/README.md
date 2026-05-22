@@ -46,7 +46,7 @@ Each setting does something different:
 
 ## Enable Server-Side Encryption
 
-Every S3 bucket should have encryption enabled:
+Amazon S3 encrypts new objects with SSE-S3 by default, but sensitive buckets should explicitly configure encryption with your own KMS key:
 
 ```hcl
 resource "aws_s3_bucket" "data" {
@@ -102,8 +102,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = aws_kms_key.s3.arn
+      sse_algorithm = "AES256"
     }
   }
 }
@@ -117,12 +116,43 @@ resource "aws_s3_bucket_public_access_block" "access_logs" {
   restrict_public_buckets = true
 }
 
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket_policy" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowS3ServerAccessLogDelivery"
+        Effect = "Allow"
+        Principal = {
+          Service = "logging.s3.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.access_logs.arn}/data-bucket/*"
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = aws_s3_bucket.data.arn
+          }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      }
+    ]
+  })
+}
+
 # Enable logging on the data bucket
 resource "aws_s3_bucket_logging" "data" {
   bucket = aws_s3_bucket.data.id
 
   target_bucket = aws_s3_bucket.access_logs.id
   target_prefix = "data-bucket/"
+
+  depends_on = [aws_s3_bucket_policy.access_logs]
 }
 ```
 
@@ -148,7 +178,8 @@ resource "aws_s3_bucket_policy" "data" {
         ]
         Condition = {
           Bool = {
-            "aws:SecureTransport" = "false"
+            "aws:SecureTransport"        = "false"
+            "aws:PrincipalIsAWSService" = "false"
           }
         }
       },
@@ -164,6 +195,9 @@ resource "aws_s3_bucket_policy" "data" {
         Condition = {
           NumericLessThan = {
             "s3:TlsVersion" = 1.2
+          }
+          Bool = {
+            "aws:PrincipalIsAWSService" = "false"
           }
         }
       },
@@ -192,6 +226,9 @@ resource "aws_s3_bucket_policy" "data" {
           StringNotEquals = {
             "aws:sourceVpce" = aws_vpc_endpoint.s3.id
           }
+          Bool = {
+            "aws:PrincipalIsAWSService" = "false"
+          }
         }
       }
     ]
@@ -210,6 +247,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
   rule {
     id     = "archive-and-expire"
     status = "Enabled"
+    filter {}
 
     # Move to Intelligent-Tiering after 30 days
     transition {
@@ -242,6 +280,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
   rule {
     id     = "abort-incomplete-uploads"
     status = "Enabled"
+    filter {}
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
@@ -260,6 +299,14 @@ resource "aws_s3_bucket" "compliance" {
   object_lock_enabled = true
 }
 
+resource "aws_s3_bucket_versioning" "compliance" {
+  bucket = aws_s3_bucket.compliance.id
+
+  versioning_configuration {
+    status = "Enabled"  # Required for Object Lock
+  }
+}
+
 resource "aws_s3_bucket_object_lock_configuration" "compliance" {
   bucket = aws_s3_bucket.compliance.id
 
@@ -269,14 +316,8 @@ resource "aws_s3_bucket_object_lock_configuration" "compliance" {
       days = 365
     }
   }
-}
 
-resource "aws_s3_bucket_versioning" "compliance" {
-  bucket = aws_s3_bucket.compliance.id
-
-  versioning_configuration {
-    status = "Enabled"  # Required for Object Lock
-  }
+  depends_on = [aws_s3_bucket_versioning.compliance]
 }
 ```
 
@@ -290,6 +331,7 @@ resource "aws_s3_bucket_replication_configuration" "data" {
   rule {
     id     = "replicate-all"
     status = "Enabled"
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.data_replica.arn
@@ -334,11 +376,16 @@ resource "aws_cloudtrail" "s3_data_events" {
 }
 
 # Detect public access attempts
+resource "aws_s3_bucket_metric" "data_requests" {
+  bucket = aws_s3_bucket.data.id
+  name   = "EntireBucket"
+}
+
 resource "aws_cloudwatch_metric_alarm" "s3_public_access" {
   alarm_name          = "s3-public-access-attempt"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "4xxError"
+  metric_name         = "4xxErrors"
   namespace           = "AWS/S3"
   period              = 300
   statistic           = "Sum"
@@ -347,7 +394,7 @@ resource "aws_cloudwatch_metric_alarm" "s3_public_access" {
 
   dimensions = {
     BucketName = aws_s3_bucket.data.id
-    FilterId   = "AllRequests"
+    FilterId   = aws_s3_bucket_metric.data_requests.name
   }
 
   alarm_actions = [aws_sns_topic.security_alerts.arn]
