@@ -200,8 +200,7 @@ locals {
 
   # Read overrides (module-specific)
   overrides_path = "${get_terragrunt_dir()}/overrides.hcl"
-  has_overrides  = fileexists(local.overrides_path)
-  overrides      = local.has_overrides ? read_terragrunt_config(local.overrides_path) : { locals = {} }
+  overrides      = read_terragrunt_config(local.overrides_path, { locals = {} })
 
   # Merge defaults with overrides
   config = merge(
@@ -252,23 +251,26 @@ EOF
 
 ## Error Handling
 
-If the file does not exist, `read_terragrunt_config()` will throw an error. Handle optional files with `fileexists()`:
+If the file does not exist, `read_terragrunt_config()` will throw an error unless you provide a default value as the second argument:
 
 ```hcl
 locals {
   optional_path = "${get_terragrunt_dir()}/optional.hcl"
 
-  # Check if the file exists before reading
-  optional_config = fileexists(local.optional_path) ? read_terragrunt_config(local.optional_path) : null
+  # Return this default config if the file does not exist
+  optional_config = read_terragrunt_config(local.optional_path, {
+    locals = {
+      some_value = "default"
+    }
+  })
 
-  # Use a default if the file does not exist
-  optional_value = local.optional_config != null ? local.optional_config.locals.some_value : "default"
+  optional_value = local.optional_config.locals.some_value
 }
 ```
 
 ## Caching Behavior
 
-Terragrunt caches the results of `read_terragrunt_config()` calls. If multiple modules read the same file, it is only parsed once. This means you do not need to worry about performance when many modules read the same `env.hcl` or `region.hcl`.
+Terragrunt parses the target file when you call `read_terragrunt_config()`. This is usually fine for small static files like `env.hcl` or `region.hcl`, but be careful when the files you read contain expensive computed locals, such as `run_cmd()` calls, because those computations can add overhead during parsing.
 
 ## Real-World Root Configuration
 
