@@ -15,7 +15,7 @@ Not all versions of a service need the same circuit breaking settings. A canary 
 Subsets in Istio are named groups of service instances, usually defined by Kubernetes labels like `version: v1` or `version: v2`. You define them in a DestinationRule and reference them in VirtualService routing.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -36,7 +36,7 @@ spec:
 Each subset can have its own `trafficPolicy` that overrides the top-level settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -95,7 +95,7 @@ The stable version gets higher limits because it handles the bulk of traffic. Th
 Use a VirtualService to direct traffic to the subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -124,7 +124,7 @@ spec:
 The most common use case. The canary gets strict circuit breaking so any issues are caught fast:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-service
@@ -164,14 +164,14 @@ spec:
           maxEjectionPercent: 100
 ```
 
-The canary has `consecutive5xxErrors: 1` and `maxEjectionPercent: 100`. A single error ejects the canary pod, and all canary pods can be ejected. If the canary is broken, it gets removed from the pool entirely and all traffic goes to stable.
+The canary has `consecutive5xxErrors: 1` and `maxEjectionPercent: 100`. A single 5xx response from a canary endpoint can eject that endpoint, and all canary endpoints can be ejected. If every canary endpoint is ejected, traffic routed to the canary subset has no healthy canary endpoint to use; Istio does not automatically reroute that 5% of traffic to the stable subset.
 
 ### Blue-Green Deployments
 
 During a blue-green switch, both versions need circuit breaking but with different characteristics:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -216,7 +216,7 @@ Both get the same settings because either one could be the active deployment.
 Some services have different performance tiers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: search-service
@@ -260,10 +260,10 @@ Premium tier gets higher limits and more sensitive outlier detection. Standard t
 
 ## How Subset-Level Settings Override Top-Level
 
-When you define a `trafficPolicy` at both the top level and the subset level, the subset-level policy completely replaces the top-level policy for that subset. It does not merge them.
+When you define a `trafficPolicy` at both the top level and the subset level, the subset inherits the top-level policy and overrides the corresponding settings that are specified at the subset level.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: example
@@ -281,14 +281,14 @@ spec:
       labels:
         version: v1
       trafficPolicy:
-        # This REPLACES the top-level policy entirely
+        # This overrides the top-level connectionPool setting
         connectionPool:
           tcp:
             maxConnections: 200
-        # outlierDetection is NOT inherited - you need to specify it again
+        # outlierDetection is inherited from the top-level trafficPolicy
 ```
 
-In this example, subset v1 has `maxConnections: 200` but no outlier detection at all, because the subset policy replaces the top-level policy entirely. If you want outlier detection on v1, you need to specify it explicitly in the subset.
+In this example, subset v1 has `maxConnections: 200` and still inherits the top-level outlier detection settings. If you want different outlier detection behavior on v1, specify `outlierDetection` explicitly in the subset.
 
 ## Monitoring Per-Subset Circuit Breaking
 
