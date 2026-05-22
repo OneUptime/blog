@@ -123,13 +123,8 @@ resource "helm_release" "crossplane" {
   name       = "crossplane"
   repository = "https://charts.crossplane.io/stable"
   chart      = "crossplane"
-  version    = "1.14.0"
+  version    = "1.20.0"
   namespace  = kubernetes_namespace.crossplane_system.metadata[0].name
-
-  set {
-    name  = "args"
-    value = "{--enable-composition-revisions}"
-  }
 
   depends_on = [kubernetes_namespace.crossplane_system]
 }
@@ -141,8 +136,32 @@ Install and configure the AWS provider for Crossplane using Terraform.
 
 ```hcl
 # crossplane-providers.tf
-# Install the AWS provider for Crossplane
-resource "kubernetes_manifest" "aws_provider" {
+# Annotate provider service accounts for IRSA
+resource "kubernetes_manifest" "aws_provider_runtime_config" {
+  manifest = {
+    apiVersion = "pkg.crossplane.io/v1beta1"
+    kind       = "DeploymentRuntimeConfig"
+
+    metadata = {
+      name = "aws-irsa"
+    }
+
+    spec = {
+      serviceAccountTemplate = {
+        metadata = {
+          annotations = {
+            "eks.amazonaws.com/role-arn" = aws_iam_role.crossplane.arn
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [helm_release.crossplane]
+}
+
+# Install the AWS S3 provider for Crossplane
+resource "kubernetes_manifest" "aws_s3_provider" {
   manifest = {
     apiVersion = "pkg.crossplane.io/v1"
     kind       = "Provider"
@@ -152,11 +171,35 @@ resource "kubernetes_manifest" "aws_provider" {
     }
 
     spec = {
-      package = "xpkg.upbound.io/upbound/provider-aws-s3:v1.0.0"
+      package = "xpkg.upbound.io/upbound/provider-aws-s3:v1.16.0"
+      runtimeConfigRef = {
+        name = "aws-irsa"
+      }
     }
   }
 
-  depends_on = [helm_release.crossplane]
+  depends_on = [kubernetes_manifest.aws_provider_runtime_config]
+}
+
+# Install the AWS RDS provider for the database Composition
+resource "kubernetes_manifest" "aws_rds_provider" {
+  manifest = {
+    apiVersion = "pkg.crossplane.io/v1"
+    kind       = "Provider"
+
+    metadata = {
+      name = "provider-aws-rds"
+    }
+
+    spec = {
+      package = "xpkg.upbound.io/upbound/provider-aws-rds:v1.16.0"
+      runtimeConfigRef = {
+        name = "aws-irsa"
+      }
+    }
+  }
+
+  depends_on = [kubernetes_manifest.aws_provider_runtime_config]
 }
 
 # Create an IAM role for Crossplane to use
@@ -176,6 +219,9 @@ resource "aws_iam_role" "crossplane" {
           StringLike = {
             "${module.eks.oidc_provider}:sub" = "system:serviceaccount:crossplane-system:provider-aws-*"
           }
+          StringEquals = {
+            "${module.eks.oidc_provider}:aud" = "sts.amazonaws.com"
+          }
         }
       }
     ]
@@ -186,6 +232,11 @@ resource "aws_iam_role" "crossplane" {
 resource "aws_iam_role_policy_attachment" "crossplane_s3" {
   role       = aws_iam_role.crossplane.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "crossplane_rds" {
+  role       = aws_iam_role.crossplane.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
 }
 
 # Create a ProviderConfig for AWS
@@ -205,7 +256,12 @@ resource "kubernetes_manifest" "aws_provider_config" {
     }
   }
 
-  depends_on = [kubernetes_manifest.aws_provider]
+  depends_on = [
+    kubernetes_manifest.aws_s3_provider,
+    kubernetes_manifest.aws_rds_provider,
+    aws_iam_role_policy_attachment.crossplane_s3,
+    aws_iam_role_policy_attachment.crossplane_rds
+  ]
 }
 ```
 
@@ -279,7 +335,24 @@ resource "kubernetes_manifest" "database_xrd" {
   depends_on = [helm_release.crossplane]
 }
 
-# Create a Composition that implements the XRD
+# Install the function used by the Composition pipeline
+resource "kubernetes_manifest" "function_patch_and_transform" {
+  manifest = {
+    apiVersion = "pkg.crossplane.io/v1"
+    kind       = "Function"
+
+    metadata = {
+      name = "function-patch-and-transform"
+    }
+
+    spec = {
+      package = "xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2"
+    }
+  }
+
+  depends_on = [helm_release.crossplane]
+}
+
 resource "kubernetes_manifest" "database_composition" {
   manifest = {
     apiVersion = "apiextensions.crossplane.io/v1"
@@ -298,29 +371,50 @@ resource "kubernetes_manifest" "database_composition" {
         kind       = "Database"
       }
 
-      resources = [
+      mode = "Pipeline"
+      pipeline = [
         {
-          name = "rds-instance"
-          base = {
-            apiVersion = "rds.aws.upbound.io/v1beta1"
-            kind       = "Instance"
-            spec = {
-              forProvider = {
-                region         = var.aws_region
-                instanceClass  = "db.t3.micro"
-                engine         = "postgres"
-                engineVersion  = "15"
-                allocatedStorage = 20
-                skipFinalSnapshot = true
+          step = "patch-and-transform"
+          functionRef = {
+            name = "function-patch-and-transform"
+          }
+          input = {
+            apiVersion = "pt.fn.crossplane.io/v1beta1"
+            kind       = "Resources"
+            resources = [
+              {
+                name = "rds-instance"
+                base = {
+                  apiVersion = "rds.aws.upbound.io/v1beta1"
+                  kind       = "Instance"
+                  spec = {
+                    forProvider = {
+                      region                   = var.aws_region
+                      instanceClass            = "db.t3.micro"
+                      engine                   = "postgres"
+                      engineVersion            = "15"
+                      allocatedStorage         = 20
+                      username                 = "appuser"
+                      manageMasterUserPassword = true
+                      skipFinalSnapshot        = true
+                    }
+                    providerConfigRef = {
+                      name = "default"
+                    }
+                  }
+                }
               }
-            }
+            ]
           }
         }
       ]
     }
   }
 
-  depends_on = [kubernetes_manifest.database_xrd]
+  depends_on = [
+    kubernetes_manifest.database_xrd,
+    kubernetes_manifest.function_patch_and_transform
+  ]
 }
 ```
 
@@ -401,6 +495,12 @@ resource "aws_iam_role" "app_roles" {
         Federated = module.eks.oidc_provider_arn
       }
       Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${module.eks.oidc_provider}:aud" = "sts.amazonaws.com"
+          "${module.eks.oidc_provider}:sub" = "system:serviceaccount:${each.key}:${each.key}"
+        }
+      }
     }]
   })
 }
