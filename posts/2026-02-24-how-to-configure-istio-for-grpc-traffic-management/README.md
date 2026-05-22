@@ -168,7 +168,7 @@ Verify load balancing is working by checking which pods receive traffic:
 
 ```bash
 for i in $(seq 1 20); do
-  grpcurl -plaintext order-service:50051 order.OrderService/GetOrder
+  grpcurl -plaintext -d '{"order_id": "123"}' order-service:50051 order.OrderService/GetOrder
 done
 
 # Check access logs across pods
@@ -319,7 +319,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
       - name: order-service
@@ -338,7 +344,7 @@ spec:
           periodSeconds: 20
 ```
 
-This uses the native Kubernetes gRPC probe (available since Kubernetes 1.24). The probe calls the gRPC Health Check service on your application.
+This uses the native Kubernetes gRPC probe (beta and enabled by default in Kubernetes 1.24, and stable since Kubernetes 1.27). The probe calls the gRPC Health Check service on your application.
 
 ## Ingress Gateway for gRPC
 
