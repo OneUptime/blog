@@ -98,7 +98,7 @@ variable "project_name" {
 locals {
   # Create a suffix from the reversed project name (first 4 chars)
   suffix = substr(strrev(var.project_name), 0, 4)
-  # "eciv" (from "ecivrse-tnemyap" reversed)
+  # "eciv" (from "ecivres-tnemyap" reversed)
 
   unique_name = "${var.project_name}-${local.suffix}"
   # "payment-service-eciv"
