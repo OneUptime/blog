@@ -16,7 +16,7 @@ Make sure you have:
 
 - A Debian 12 system with root or sudo access
 - An internet connection
-- `curl` and `gnupg` installed (usually present by default)
+- `curl`, `wget`, `gnupg`, and `lsb-release` installed or available through APT
 
 Confirm your Debian version:
 
@@ -39,7 +39,7 @@ Using the official repository is the cleanest approach. It integrates with APT f
 ```bash
 # Update package list and install required tools
 sudo apt-get update
-sudo apt-get install -y gnupg software-properties-common curl
+sudo apt-get install -y gnupg software-properties-common curl wget lsb-release
 ```
 
 ### Step 2 - Add the HashiCorp GPG Key
@@ -47,7 +47,8 @@ sudo apt-get install -y gnupg software-properties-common curl
 ```bash
 # Download and install the HashiCorp GPG key
 wget -O- https://apt.releases.hashicorp.com/gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  gpg --dearmor | \
+  sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
 ```
 
 Verify the key fingerprint:
@@ -63,7 +64,7 @@ gpg --no-default-keyring \
 
 ```bash
 # Add the HashiCorp APT repository for Debian
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
   https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
   sudo tee /etc/apt/sources.list.d/hashicorp.list
 ```
@@ -90,7 +91,7 @@ terraform -version
 Expected output:
 
 ```text
-Terraform v1.7.x
+Terraform v1.15.x
 on linux_amd64
 ```
 
@@ -101,18 +102,20 @@ This method gives you full control over the version and does not require adding 
 ### Step 1 - Download Terraform
 
 ```bash
-# Set the desired version
-TERRAFORM_VERSION="1.7.5"
+# Set the desired version and architecture
+TERRAFORM_VERSION="1.15.2"
+TERRAFORM_ARCH="linux_amd64"
 
 # Download the zip file
-curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
 ```
 
 For ARM64 systems (like Raspberry Pi 4 running Debian 12):
 
 ```bash
-# ARM64 download
-curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_arm64.zip"
+# Use the ARM64 archive
+TERRAFORM_ARCH="linux_arm64"
+curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
 ```
 
 ### Step 2 - Extract and Install
@@ -122,7 +125,7 @@ curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terrafor
 sudo apt-get install -y unzip
 
 # Extract the binary
-unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+unzip "terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
 
 # Move it to /usr/local/bin
 sudo mv terraform /usr/local/bin/
@@ -138,7 +141,7 @@ terraform -version
 
 ```bash
 # Remove the downloaded archive
-rm -f "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+rm -f "terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
 ```
 
 ## Testing the Installation
@@ -183,6 +186,9 @@ cd ~ && rm -rf ~/terraform-test
 While you are at it, enable tab completion for Terraform commands:
 
 ```bash
+# Ensure your Bash configuration file exists
+touch ~/.bashrc
+
 # Generate the autocomplete configuration
 terraform -install-autocomplete
 
@@ -193,6 +199,9 @@ source ~/.bashrc
 If you are using Zsh instead of Bash:
 
 ```bash
+# Ensure your Zsh configuration file exists
+touch ~/.zshrc
+
 # For Zsh, reload the Zsh configuration
 source ~/.zshrc
 ```
@@ -219,11 +228,12 @@ apt-cache policy terraform
 Repeat the download steps with the new version number:
 
 ```bash
-TERRAFORM_VERSION="1.8.0"
-curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+TERRAFORM_VERSION="1.15.2"
+TERRAFORM_ARCH="linux_amd64"
+curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
+unzip "terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
 sudo mv terraform /usr/local/bin/terraform
-rm -f "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+rm -f "terraform_${TERRAFORM_VERSION}_${TERRAFORM_ARCH}.zip"
 terraform -version
 ```
 
@@ -303,7 +313,8 @@ If you get GPG verification errors during `apt-get update`:
 ```bash
 # Re-download and install the GPG key
 wget -O- https://apt.releases.hashicorp.com/gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  gpg --dearmor | \
+  sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
 ```
 
 ### "lsb_release: command not found"
@@ -315,7 +326,7 @@ If `lsb_release` is not available:
 sudo apt-get install -y lsb-release
 
 # Or manually specify the codename
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
   https://apt.releases.hashicorp.com bookworm main" | \
   sudo tee /etc/apt/sources.list.d/hashicorp.list
 ```
