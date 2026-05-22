@@ -67,7 +67,7 @@ env0 supports multiple credential methods:
 ```text
 Organization Settings > Credentials > Add Credential
 
-Type: AWS Assumed Role
+Type: AWS OIDC
 Role ARN: arn:aws:iam::123456789012:role/env0-terraform
 Duration: 3600
 ```
@@ -86,12 +86,16 @@ resource "aws_iam_role" "env0_terraform" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = "arn:aws:iam::123456789012:oidc-provider/app.env0.com"
+          Federated = "arn:aws:iam::123456789012:oidc-provider/login.app.env0.com/"
         }
-        Action = "sts:AssumeRoleWithWebIdentity"
+        Action = [
+          "sts:AssumeRoleWithWebIdentity",
+          "sts:TagSession"
+        ]
         Condition = {
           StringEquals = {
-            "app.env0.com:aud" = "your-env0-organization-id"
+            "login.app.env0.com/:aud" = "hoMiq9PdkRh9LUvVpH4wIErWg50VSG1b"
+            "login.app.env0.com/:sub" = "auth0|your-env0-organization-sub"
           }
         }
       }
@@ -105,9 +109,8 @@ resource "aws_iam_role" "env0_terraform" {
 ```text
 Organization Settings > Credentials > Add Credential
 
-Type: GCP Service Account
-Project ID: my-gcp-project
-Service Account: terraform@my-gcp-project.iam.gserviceaccount.com
+Type: GCP OIDC
+JSON configuration file content: { ... } # downloaded from GCP Workload Identity Federation
 ```
 
 ## Environment Lifecycle Management
@@ -115,19 +118,18 @@ Service Account: terraform@my-gcp-project.iam.gserviceaccount.com
 This is where env0 really shines. Set policies on how long environments can live:
 
 ```text
-Template Settings > Environment Lifecycle:
+Organization or Project Settings > Policies and Environment Settings > Scheduling:
 
   TTL:
     Default: 8 hours
     Maximum: 72 hours
-    Allow extension: Yes (up to maximum)
 
   Schedule:
     Auto-deploy: Weekdays 8 AM UTC
     Auto-destroy: Weekdays 8 PM UTC
 
-  Inactivity:
-    Destroy after: 24 hours of no commits
+  Notifications:
+    Warning emails before auto-destroy
 ```
 
 This prevents forgotten environments from running up cloud bills. A developer spins up a test environment, and it automatically destroys itself at the end of the workday.
@@ -172,14 +174,14 @@ package env0
 
 # Deny if estimated monthly cost exceeds budget
 deny[msg] {
-  input.plan.cost_estimation.monthly > 5000
-  msg := sprintf("Estimated monthly cost $%.2f exceeds $5000 budget", [input.plan.cost_estimation.monthly])
+  input.costEstimation.totalMonthlyCost > 5000
+  msg := sprintf("Estimated monthly cost $%.2f exceeds $5000 budget", [input.costEstimation.totalMonthlyCost])
 }
 
 # Require approval for changes over $500/month
-require_approval[msg] {
-  input.plan.cost_estimation.delta > 500
-  msg := sprintf("Cost increase of $%.2f requires manager approval", [input.plan.cost_estimation.delta])
+pending[msg] {
+  input.costEstimation.monthlyCostDiff > 500
+  msg := sprintf("Cost increase of $%.2f requires manager approval", [input.costEstimation.monthlyCostDiff])
 }
 ```
 
@@ -196,10 +198,18 @@ deny[msg] {
 }
 
 # Require encryption on all S3 buckets
+has_s3_encryption[bucket_name] {
+  resource := input.plan.resource_changes[_]
+  resource.type == "aws_s3_bucket_server_side_encryption_configuration"
+  bucket_name := resource.change.after.bucket
+}
+
 deny[msg] {
   resource := input.plan.resource_changes[_]
   resource.type == "aws_s3_bucket"
-  not resource.change.after.server_side_encryption_configuration
+  resource.change.actions[_] == "create"
+  bucket_name := resource.change.after.bucket
+  not has_s3_encryption[bucket_name]
   msg := sprintf("S3 bucket %s must have server-side encryption enabled", [resource.address])
 }
 ```
@@ -210,48 +220,54 @@ Define multi-step workflows beyond the standard plan-apply:
 
 ```yaml
 # env0.yml - Custom flow definition
+version: 2
 deploy:
   steps:
-    setup:
-      - name: Install tools
-        run: |
-          pip install checkov
-          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+    terraformInit:
+      before:
+        - name: Install tools
+          run: |
+            pip install checkov
+            curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
 
-    pre-plan:
-      - name: Security scan
-        run: |
-          tfsec . --format json --out tfsec-results.json
-          checkov -d . --output json > checkov-results.json
+    terraformPlan:
+      before:
+        - name: Security scan
+          run: |
+            tfsec . --format json --out tfsec-results.json
+            checkov -d . --output json > checkov-results.json
 
-      - name: Validate naming conventions
-        run: python scripts/validate-names.py
+        - name: Validate naming conventions
+          run: python scripts/validate-names.py
 
-    post-plan:
-      - name: Cost check
-        run: |
-          # Parse plan output for cost estimation
-          terraform show -json $ENV0_PLAN_FILE | python scripts/cost-check.py
+      after:
+        - name: Require approval after cost check
+          run: |
+            python scripts/cost-check.py
+            echo ENV0_REQUIRES_APPROVAL=true >> $ENV0_ENV
 
-    post-apply:
-      - name: Run smoke tests
-        run: |
-          python scripts/smoke-test.py --endpoint $TF_VAR_endpoint
+    terraformApply:
+      after:
+        - name: Run smoke tests
+          run: |
+            python scripts/smoke-test.py --endpoint $TF_VAR_endpoint
 
-      - name: Notify team
-        run: |
-          curl -X POST $SLACK_WEBHOOK \
-            -d '{"text": "Environment deployed successfully: $ENV0_ENVIRONMENT_NAME"}'
+        - name: Notify team
+          run: |
+            curl -X POST $SLACK_WEBHOOK \
+              -H "Content-Type: application/json" \
+              -d "{\"text\":\"Environment deployed successfully: $ENV0_ENVIRONMENT_NAME\"}"
 
 destroy:
   steps:
-    pre-destroy:
-      - name: Backup data
-        run: python scripts/pre-destroy-backup.py
+    terraformDestroy:
+      before:
+        - name: Backup data
+          run: python scripts/pre-destroy-backup.py
 
-    post-destroy:
-      - name: Cleanup DNS
-        run: python scripts/cleanup-dns.py
+      after:
+        - name: Cleanup DNS
+          run: python scripts/cleanup-dns.py
 ```
 
 ## Self-Service Infrastructure
@@ -325,9 +341,9 @@ Dashboard > Cost:
 Enable scheduled drift detection:
 
 ```text
-Template Settings > Drift Detection:
+Environment Settings > Drift Detection:
   Enabled: Yes
-  Schedule: Every 6 hours
+  Schedule: 0 */6 * * *
   Auto-remediate: No (alert only)
   Notification: Slack #infrastructure-alerts
 ```
@@ -336,7 +352,7 @@ When drift is detected, env0 can:
 - Send a notification
 - Create a new plan showing the drift
 - Auto-apply to remediate (if configured)
-- Open a PR with the required changes
+- Remediate drift manually from the drift detection deployment
 
 ## Integrating with Existing CI/CD
 
@@ -345,9 +361,11 @@ env0 can be triggered from your existing pipelines:
 ```yaml
 # .github/workflows/deploy.yml
 - name: Trigger env0 deployment
+  env:
+    ENV0_BASIC_AUTH: ${{ secrets.ENV0_BASIC_AUTH }}
   run: |
     curl -X POST "https://api.env0.com/environments/${ENV0_ENVIRONMENT_ID}/deployments" \
-      -H "Authorization: Bearer ${ENV0_API_KEY}" \
+      -H "Authorization: Basic ${ENV0_BASIC_AUTH}" \
       -H "Content-Type: application/json" \
       -d '{
         "deploymentType": "deploy",
