@@ -14,7 +14,7 @@ This guide covers how to query public and private hosted zones, use their attrib
 
 ## Basic Hosted Zone Lookup
 
-The `aws_route53_zone` data source supports looking up zones by name, zone ID, tags, or a combination of attributes.
+The `aws_route53_zone` data source supports looking up zones by name, zone ID, tags, or filters such as `private_zone` and `vpc_id`.
 
 ### By Domain Name
 
@@ -22,7 +22,8 @@ The `aws_route53_zone` data source supports looking up zones by name, zone ID, t
 # Look up a hosted zone by its domain name
 
 data "aws_route53_zone" "main" {
-  name = "example.com"
+  name         = "example.com"
+  private_zone = false
 }
 
 # The trailing dot is optional - Terraform handles both formats
@@ -108,7 +109,8 @@ The most common use case for zone data sources is creating records:
 ```hcl
 # Look up the zone
 data "aws_route53_zone" "main" {
-  name = "example.com"
+  name         = "example.com"
+  private_zone = false
 }
 
 # Create an A record pointing to a load balancer
@@ -219,7 +221,8 @@ One of the most practical uses of zone data sources is DNS-based certificate val
 ```hcl
 # Look up the zone
 data "aws_route53_zone" "main" {
-  name = "example.com"
+  name         = "example.com"
+  private_zone = false
 }
 
 # Request a certificate
@@ -236,11 +239,13 @@ resource "aws_acm_certificate" "wildcard" {
 # Create the validation DNS records
 resource "aws_route53_record" "validation" {
   for_each = {
-    for dvo in aws_acm_certificate.wildcard.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
+    for record_name, records in {
+      for dvo in aws_acm_certificate.wildcard.domain_validation_options : dvo.resource_record_name => {
+        name   = dvo.resource_record_name
+        record = dvo.resource_record_value
+        type   = dvo.resource_record_type
+      }...
+    } : record_name => records[0]
   }
 
   zone_id         = data.aws_route53_zone.main.zone_id
