@@ -267,16 +267,15 @@ resource "aws_lb" "app" {
 }
 ```
 
-## Reading Security Group Rules
+## Reading Security Group Details
 
-Once you have looked up a security group, you can inspect its rules:
+Once you have looked up a security group, you can inspect its metadata:
 
 ```hcl
 data "aws_security_group" "existing" {
   name = "legacy-app-sg"
 }
 
-# The data source exposes ingress and egress rules
 output "sg_details" {
   value = {
     id          = data.aws_security_group.existing.id
@@ -299,13 +298,12 @@ data "aws_security_group" "app" {
 }
 
 # Add a new ingress rule to it
-resource "aws_security_group_rule" "allow_monitoring" {
-  type              = "ingress"
-  from_port         = 9090
-  to_port           = 9090
-  protocol          = "tcp"
-  cidr_blocks       = ["10.0.0.0/8"]
+resource "aws_vpc_security_group_ingress_rule" "allow_monitoring" {
   security_group_id = data.aws_security_group.app.id
+  cidr_ipv4         = "10.0.0.0/8"
+  from_port         = 9090
+  ip_protocol       = "tcp"
+  to_port           = 9090
   description       = "Allow Prometheus scraping"
 }
 ```
