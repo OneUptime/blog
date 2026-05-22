@@ -26,12 +26,8 @@ spec:
   selector:
     matchLabels:
       app: my-service
-  targetRef:
-    kind: Gateway
-    group: gateway.networking.k8s.io
-    name: my-gateway
   url: oci://ghcr.io/my-org/my-plugin:v1.0
-  sha256: abc123def456...
+  sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   imagePullPolicy: IfNotPresent
   imagePullSecret: my-registry-secret
   pluginName: my_custom_plugin
@@ -49,11 +45,11 @@ spec:
     env:
       - name: MY_ENV_VAR
         value: "my-value"
-        valueFrom: HOST
+        valueFrom: INLINE
   type: HTTP
 ```
 
-## Selector and Target Ref
+## Selector and Target Refs
 
 ```yaml
 spec:
@@ -66,13 +62,13 @@ Same as other Istio resources. Matches workload pods by labels. If omitted, appl
 
 ```yaml
 spec:
-  targetRef:
-    kind: Gateway
-    group: gateway.networking.k8s.io
-    name: my-gateway
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: my-gateway
 ```
 
-For Gateway API integration. Mutually exclusive with `selector`.
+For Gateway API integration and waypoint policies. Mutually exclusive with `selector`.
 
 ## URL
 
@@ -105,7 +101,7 @@ url: file:///opt/wasm/my-plugin.wasm
 
 ```yaml
 spec:
-  sha256: "a1b2c3d4e5f6..."
+  sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 ```
 
 An optional SHA256 hash of the Wasm binary for integrity verification. If provided, Istio verifies the downloaded binary matches this hash before loading it. This is a good security practice for production deployments.
@@ -120,9 +116,9 @@ spec:
 Controls when the Wasm binary is fetched:
 
 - `IfNotPresent` - download only if not already cached (default)
-- `Always` - always download, even if cached
+- `Always` - pull from the source when the WasmPlugin resource is created or changed, even if cached
 
-Use `Always` during development when you are pushing updates to the same tag. Use `IfNotPresent` in production with versioned tags.
+The default is `IfNotPresent`, except for OCI images tagged `latest`, where Istio defaults to `Always`. Use `Always` during development when you are pushing updates to the same tag. Use `IfNotPresent` in production with versioned tags.
 
 ## Image Pull Secret
 
@@ -140,7 +136,7 @@ spec:
   pluginName: my_custom_plugin
 ```
 
-A unique name for the plugin within the Wasm VM. This is used to identify the plugin in logs and metrics. If not set, a name is derived from the resource metadata.
+The plugin name used in the Envoy configuration. This used to be called `rootID`, and some Wasm modules require it to select which plugin to execute.
 
 ## Plugin Config
 
@@ -194,7 +190,7 @@ spec:
   priority: 10
 ```
 
-When multiple WasmPlugins are in the same phase, `priority` determines the order. Lower values run first. Default is 0. If two plugins have the same priority, the order is not guaranteed.
+When multiple WasmPlugins are in the same phase, `priority` determines the order. Higher values run first. Default is 0. If two plugins have the same priority, the order is derived deterministically from the plugin name and namespace.
 
 ## Match
 
@@ -227,7 +223,8 @@ spec:
 Controls what happens when the Wasm plugin fails to load or crashes:
 
 - `FAIL_CLOSE` - reject all traffic if the plugin cannot be loaded (safer but more disruptive)
-- `FAIL_OPEN` - allow traffic to pass through without the plugin (default, less disruptive but less safe)
+- `FAIL_OPEN` - allow traffic to pass through without the plugin (less disruptive but less safe)
+- `FAIL_RELOAD` - create a new plugin instance for a new request after a runtime error; other failure types fall back to fail closed
 
 For security-critical plugins (authentication, authorization), you should use `FAIL_CLOSE`. For non-critical plugins (logging, metrics), `FAIL_OPEN` is usually fine.
 
@@ -259,7 +256,7 @@ vmConfig:
 Each environment variable has:
 
 - `name` - the variable name visible inside the Wasm VM
-- `value` - a static string value (used when `valueFrom` is not `HOST`)
+- `value` - a static string value (used when `valueFrom` is `INLINE`)
 - `valueFrom` - set to `HOST` to inherit the value from the proxy container's environment, or `INLINE` for the static `value`
 
 This is how you pass dynamic configuration into your Wasm plugin. For example, injecting the pod name or namespace for logging purposes.
@@ -293,7 +290,7 @@ spec:
     matchLabels:
       app: my-api
   url: oci://ghcr.io/my-org/rate-limiter:v2.1.0
-  sha256: "abc123..."
+  sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   imagePullPolicy: IfNotPresent
   phase: AUTHZ
   priority: 5
@@ -325,7 +322,7 @@ spec:
     matchLabels:
       istio: ingressgateway
   url: oci://ghcr.io/my-org/custom-auth:v1.0.0
-  sha256: "def456..."
+  sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   imagePullPolicy: IfNotPresent
   imagePullSecret: ghcr-credentials
   phase: AUTHN
