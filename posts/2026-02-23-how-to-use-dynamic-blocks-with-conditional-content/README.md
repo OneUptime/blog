@@ -15,27 +15,29 @@ Dynamic blocks in Terraform generate repeated nested blocks from a collection. B
 The simplest form of conditional content is deciding whether a dynamic block appears at all. You do this by controlling the `for_each` argument:
 
 ```hcl
-variable "enable_encryption" {
+variable "enable_https_ingress" {
   type    = bool
   default = true
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
-  bucket = aws_s3_bucket.main.id
+resource "aws_security_group" "example" {
+  name   = "conditional-ingress-sg"
+  vpc_id = var.vpc_id
 
-  # Only create this rule block if encryption is enabled
-  dynamic "rule" {
-    for_each = var.enable_encryption ? [1] : []
+  # Only create this ingress block if HTTPS ingress is enabled
+  dynamic "ingress" {
+    for_each = var.enable_https_ingress ? [1] : []
     content {
-      apply_server_side_encryption_by_default {
-        sse_algorithm = "aws:kms"
-      }
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
     }
   }
 }
 ```
 
-When `enable_encryption` is false, the empty list means no `rule` block is generated.
+When `enable_https_ingress` is false, the empty list means no `ingress` block is generated.
 
 ## Conditional Attributes Inside Dynamic Blocks
 
@@ -111,14 +113,14 @@ resource "aws_lb_listener" "main" {
         host        = redirect.value.redirect_host
         port        = redirect.value.redirect_port
         protocol    = redirect.value.redirect_protocol
-        status_code = redirect.value.redirect_status
+        status_code = coalesce(redirect.value.redirect_status, "HTTP_301")
       }
     }
   }
 }
 ```
 
-The redirect block only exists when the action type is "redirect". For "forward" actions, `target_group_arn` is set and the redirect block is absent.
+The redirect block only exists when the action type is "redirect". For "forward" actions, `target_group_arn` is set and the redirect block is absent. The `coalesce()` call provides the required redirect status code if the action does not specify one.
 
 ## Combining Multiple Conditional Dynamic Blocks
 
@@ -223,13 +225,11 @@ locals {
   current_settings = local.env_settings[var.environment]
 }
 
-resource "aws_db_instance" "main" {
-  engine               = "postgres"
-  instance_class       = "db.${local.current_settings.instance_type}"
-  multi_az             = local.current_settings.multi_az
-  backup_retention_period = local.current_settings.backup_retention
+resource "aws_db_parameter_group" "main" {
+  name   = "${var.environment}-postgres-params"
+  family = "postgres16"
 
-  # Conditional parameter group settings based on environment
+  # Conditional parameter settings based on environment
   dynamic "parameter" {
     for_each = var.environment == "production" ? var.production_db_params : var.default_db_params
     content {
@@ -237,6 +237,18 @@ resource "aws_db_instance" "main" {
       value = parameter.value.value
     }
   }
+}
+
+resource "aws_db_instance" "main" {
+  allocated_storage       = 20
+  engine                  = "postgres"
+  instance_class          = "db.${local.current_settings.instance_type}"
+  multi_az                = local.current_settings.multi_az
+  backup_retention_period = local.current_settings.backup_retention
+  username                = var.db_username
+  password                = var.db_password
+  parameter_group_name    = aws_db_parameter_group.main.name
+  skip_final_snapshot     = true
 }
 ```
 
