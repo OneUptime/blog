@@ -47,11 +47,14 @@ resource "aws_instance" "web" {
 
 # RDS instance with workspace-specific identifier
 resource "aws_db_instance" "main" {
-  identifier     = "myapp-db-${terraform.workspace}"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.t3.micro"
-  db_name        = "myapp_${replace(terraform.workspace, "-", "_")}"
+  identifier                  = "myapp-db-${terraform.workspace}"
+  allocated_storage           = 20
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.t3.micro"
+  db_name                     = "myapp_${replace(terraform.workspace, "-", "_")}"
+  username                    = "app_admin"
+  manage_master_user_password = true
 
   tags = {
     Environment = terraform.workspace
@@ -83,6 +86,7 @@ locals {
       enable_monitoring = false
       min_capacity     = 1
       max_capacity     = 2
+      vpc_cidr         = "10.0.0.0/16"
     }
     staging = {
       instance_type    = "t3.small"
@@ -91,6 +95,7 @@ locals {
       enable_monitoring = true
       min_capacity     = 2
       max_capacity     = 4
+      vpc_cidr         = "10.1.0.0/16"
     }
     prod = {
       instance_type    = "t3.large"
@@ -99,6 +104,7 @@ locals {
       enable_monitoring = true
       min_capacity     = 3
       max_capacity     = 10
+      vpc_cidr         = "10.2.0.0/16"
     }
   }
 
@@ -119,10 +125,13 @@ resource "aws_instance" "web" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "db-${terraform.workspace}"
-  instance_class = local.config.db_instance_class
-  engine         = "postgres"
-  engine_version = "15.4"
+  identifier                  = "db-${terraform.workspace}"
+  allocated_storage           = 20
+  instance_class              = local.config.db_instance_class
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  username                    = "app_admin"
+  manage_master_user_password = true
 }
 
 resource "aws_autoscaling_group" "web" {
@@ -196,12 +205,13 @@ While you cannot use interpolation in backend blocks directly, the workspace mec
 #   }
 # }
 
-# Instead, the S3 backend automatically prefixes with the workspace:
+# Instead, the S3 backend automatically prefixes non-default workspaces:
 terraform {
   backend "s3" {
     bucket = "my-state-bucket"
     key    = "app/terraform.tfstate"
     region = "us-east-1"
+    # Workspace "default" stores at: app/terraform.tfstate
     # Workspace "dev" stores at: env:/dev/app/terraform.tfstate
     # Workspace "prod" stores at: env:/prod/app/terraform.tfstate
   }
@@ -319,11 +329,31 @@ variable "environment" {
   description = "Environment name (dev, staging, prod)"
 }
 
+variable "instance_class" {
+  type        = string
+  description = "RDS instance class"
+}
+
+variable "multi_az" {
+  type        = bool
+  description = "Whether to deploy the database across multiple Availability Zones"
+}
+
+variable "backup_retention" {
+  type        = number
+  description = "Backup retention period in days"
+}
+
 # modules/database/main.tf
 resource "aws_db_instance" "this" {
-  identifier     = "db-${var.environment}"
-  instance_class = var.instance_class
-  multi_az       = var.multi_az
+  identifier                  = "db-${var.environment}"
+  allocated_storage           = 20
+  instance_class              = var.instance_class
+  engine                      = "postgres"
+  username                    = "app_admin"
+  manage_master_user_password = true
+  multi_az                    = var.multi_az
+  backup_retention_period     = var.backup_retention
 
   tags = {
     Environment = var.environment
