@@ -163,8 +163,8 @@ variable "container_secrets" {
   description = "Secrets to inject from SSM Parameter Store"
   type        = map(string)  # name => SSM parameter ARN
   default = {
-    DB_PASSWORD = "arn:aws:ssm:us-east-1:123456789:parameter/prod/db-password"
-    API_KEY     = "arn:aws:ssm:us-east-1:123456789:parameter/prod/api-key"
+    DB_PASSWORD = "arn:aws:ssm:us-east-1:123456789012:parameter/prod/db-password"
+    API_KEY     = "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api-key"
   }
 }
 
@@ -222,7 +222,7 @@ variable "eb_env_vars" {
 resource "aws_elastic_beanstalk_environment" "main" {
   name                = "my-app-prod"
   application         = aws_elastic_beanstalk_application.main.name
-  solution_stack_name = "64bit Amazon Linux 2023 v4.0.0 running Ruby 3.2"
+  solution_stack_name = "64bit Amazon Linux 2023 v4.13.0 running Ruby 4.0"
 
   # Instance settings
   setting {
@@ -305,12 +305,8 @@ resource "kubernetes_deployment" "app" {
             }
           }
 
-          # Or use env_from to load the entire ConfigMap at once
-          env_from {
-            config_map_ref {
-              name = kubernetes_config_map.app.metadata[0].name
-            }
-          }
+          # Alternatively, replace the dynamic env block above with env_from
+          # to load the entire ConfigMap at once.
         }
       }
     }
