@@ -12,7 +12,7 @@ AWS Reserved Instances (RIs) offer up to 72% savings compared to on-demand prici
 
 ## Understanding Reserved Instances
 
-Reserved Instances are a billing construct, not a specific resource. When you purchase an RI for a specific instance type in a specific region, AWS automatically applies the discount to matching on-demand instances. You do not need to modify your Terraform configuration for the discount to apply.
+Reserved Instances are a billing construct, not a specific resource. When you purchase an RI for a specific instance type in a specific Region or Availability Zone, AWS automatically applies the discount to matching on-demand instances. You do not need to modify your Terraform configuration for the discount to apply.
 
 ```hcl
 # This instance automatically benefits from an RI purchase
@@ -31,10 +31,10 @@ resource "aws_instance" "web" {
 
 ## Purchasing Reserved Instances with Terraform
 
-While direct RI purchase through Terraform is limited, you can use the AWS provider to manage EC2 Reserved Instance listings:
+Terraform does not provide a first-party AWS provider resource for purchasing EC2 Reserved Instances. If you need guaranteed EC2 capacity in addition to RI billing discounts, use EC2 On-Demand Capacity Reservations. Capacity Reservations reserve capacity in an Availability Zone, but they are not Reserved Instance purchases and do not provide RI discounts by themselves:
 
 ```hcl
-# Purchase an EC2 Reserved Instance
+# Reserve EC2 capacity, not an EC2 Reserved Instance discount
 resource "aws_ec2_capacity_reservation" "web" {
   instance_type           = "t3.large"
   instance_platform       = "Linux/UNIX"
@@ -66,40 +66,47 @@ resource "aws_instance" "web" {
 
 ## Tracking RI Coverage with Terraform
 
-Set up monitoring to track whether your instances are covered by RIs:
+Set up AWS Budgets to track whether your instances are covered by RIs:
 
 ```hcl
-# CloudWatch alarm for RI coverage
-resource "aws_cloudwatch_metric_alarm" "ri_coverage" {
-  alarm_name          = "ri-coverage-below-threshold"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Coverage"
-  namespace           = "AWS/EC2"
-  period              = 86400
-  statistic           = "Average"
-  threshold           = 80  # Alert if RI coverage drops below 80%
+# Budget for RI coverage monitoring
+resource "aws_budgets_budget" "ri_coverage" {
+  name         = "ri-coverage-budget"
+  budget_type  = "RI_COVERAGE"
+  limit_amount = "100"
+  limit_unit   = "PERCENTAGE"
+  time_unit    = "MONTHLY"
 
-  alarm_description = "RI coverage has dropped below 80%"
-  alarm_actions     = [aws_sns_topic.cost_alerts.arn]
+  cost_filter {
+    name   = "Service"
+    values = ["Amazon EC2"]
+  }
+
+  notification {
+    comparison_operator        = "LESS_THAN"
+    threshold                  = 80  # Alert if RI coverage drops below 80%
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = ["finops@company.com"]
+  }
 }
 
 # Budget for RI utilization monitoring
 resource "aws_budgets_budget" "ri_utilization" {
   name         = "ri-utilization-budget"
   budget_type  = "RI_UTILIZATION"
-  limit_amount = "80"  # Alert if utilization drops below 80%
+  limit_amount = "100"
   limit_unit   = "PERCENTAGE"
   time_unit    = "MONTHLY"
 
   cost_filter {
     name   = "Service"
-    values = ["Amazon Elastic Compute Cloud - Compute"]
+    values = ["Amazon EC2"]
   }
 
   notification {
     comparison_operator        = "LESS_THAN"
-    threshold                  = 80
+    threshold                  = 80  # Alert if RI utilization drops below 80%
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
     subscriber_email_addresses = ["finops@company.com"]
@@ -135,17 +142,29 @@ variable "ri_instance_types" {
   }
 }
 
+locals {
+  ri_instances = merge([
+    for name, config in var.ri_instance_types : {
+      for index in range(config.count) : "${name}-${index}" => {
+        name  = name
+        type  = config.type
+        az    = config.az
+        index = index
+      }
+    }
+  ]...)
+}
+
 # Create instances matching RI specifications
 resource "aws_instance" "ri_covered" {
-  for_each = var.ri_instance_types
+  for_each = local.ri_instances
 
-  count             = each.value.count
   ami               = var.ami_id
   instance_type     = each.value.type
   availability_zone = each.value.az
 
   tags = {
-    Name            = "${each.key}-server"
+    Name            = "${each.value.name}-server-${each.value.index}"
     RICovered       = "true"
     RIInstanceType  = each.value.type
   }
@@ -158,7 +177,7 @@ When you need to change instance types, plan the RI modification alongside:
 
 ```hcl
 # Document RI modifications needed
-# Step 1: Modify RI from t3.large to t3.xlarge (AWS Console)
+# Step 1: Modify or purchase enough RI coverage for t3.xlarge (AWS Console or API)
 # Step 2: Update Terraform configuration
 
 variable "web_instance_type" {
@@ -185,9 +204,13 @@ Track RDS RI coverage similarly:
 
 ```hcl
 resource "aws_db_instance" "primary" {
-  identifier     = "app-db"
-  engine         = "postgres"
-  instance_class = "db.r5.large"  # Must match RDS RI purchase
+  identifier                  = "app-db"
+  engine                      = "postgres"
+  instance_class              = "db.r5.large"  # Must match RDS RI purchase
+  allocated_storage           = 20
+  username                    = "app_user"
+  manage_master_user_password = true
+  skip_final_snapshot         = true
 
   tags = {
     RICovered = "true"
@@ -198,7 +221,7 @@ resource "aws_db_instance" "primary" {
 resource "aws_budgets_budget" "rds_ri_utilization" {
   name         = "rds-ri-utilization"
   budget_type  = "RI_UTILIZATION"
-  limit_amount = "80"
+  limit_amount = "100"
   limit_unit   = "PERCENTAGE"
   time_unit    = "MONTHLY"
 
