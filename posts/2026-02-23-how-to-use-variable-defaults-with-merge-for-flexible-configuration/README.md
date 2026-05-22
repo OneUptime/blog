@@ -329,9 +329,9 @@ services = {
 }
 ```
 
-## Validation with Merged Values
+## Validation with Defaulted Values
 
-Validate the final merged configuration, not just the overrides:
+Validate the final defaulted configuration, not just the overrides:
 
 ```hcl
 variable "config" {
@@ -354,7 +354,7 @@ variable "config" {
 }
 ```
 
-Because optional attributes have defaults, the validation runs against the complete merged object.
+Because optional attributes have defaults, the validation runs against the complete defaulted object.
 
 ## When Not to Use merge
 
