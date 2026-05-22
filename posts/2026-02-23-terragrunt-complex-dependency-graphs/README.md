@@ -42,7 +42,7 @@ dependencies {
 }
 ```
 
-Both types affect the execution order during `run-all` commands.
+Both types affect the execution order during `run --all` commands.
 
 ## Visualizing the Dependency Graph
 
@@ -51,13 +51,13 @@ Before optimizing, visualize what you have:
 ```bash
 # Print the dependency graph
 cd infrastructure/dev
-terragrunt graph-dependencies
+terragrunt dag graph
 
 # Output as DOT format and render to an image
-terragrunt graph-dependencies | dot -Tpng -o dependency-graph.png
+terragrunt dag graph | dot -Tpng -o dependency-graph.png
 
 # Or output as text
-terragrunt graph-dependencies --terragrunt-graph-root .
+terragrunt list -l --dependencies
 ```
 
 This gives you a clear picture of which modules depend on which, and where potential bottlenecks are.
@@ -153,12 +153,12 @@ inputs = {
 }
 ```
 
-Be careful with cross-environment dependencies. They create coupling between environments and can cause `run-all` to process more modules than you expect. Use `--terragrunt-ignore-external-dependencies` when you want to run an environment in isolation:
+Be careful with cross-environment dependencies. They create coupling between environments and can cause `run --all` to prompt about external dependencies. By default, current Terragrunt excludes external dependencies unless you explicitly include them:
 
 ```bash
 # Only process modules within dev, ignoring dependencies on shared-services
 cd infrastructure/dev
-terragrunt run-all plan --terragrunt-ignore-external-dependencies
+terragrunt run --all plan
 ```
 
 ## Avoiding Dependency Cycles
@@ -270,15 +270,15 @@ This simplifies the graph from a many-to-many relationship to a hub-and-spoke pa
 
 ```bash
 # Default parallelism processes modules as fast as the graph allows
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Limit parallelism if you hit API rate limits
-terragrunt run-all apply --terragrunt-parallelism 3
+terragrunt run --all apply --parallelism 3
 ```
 
 ### Using Mock Outputs to Speed Up Plans
 
-Mock outputs prevent Terragrunt from running `terraform output` on dependency modules during plan:
+Mock outputs let Terragrunt continue when dependency outputs are not available during commands such as `plan`:
 
 ```hcl
 dependency "vpc" {
@@ -297,10 +297,11 @@ Instead of running the entire graph, target specific subtrees:
 
 ```bash
 # Only run modules in the networking layer
-terragrunt run-all plan \
-  --terragrunt-include-dir "dev/vpc" \
-  --terragrunt-include-dir "dev/subnets" \
-  --terragrunt-include-dir "dev/security-groups"
+terragrunt run --all \
+  --filter "dev/vpc" \
+  --filter "dev/subnets" \
+  --filter "dev/security-groups" \
+  -- plan
 ```
 
 ## Dependency Ordering for Destroy
@@ -309,15 +310,15 @@ Destroy operations reverse the dependency order. Module D (which depends on A, B
 
 ```bash
 # Destroys in reverse dependency order
-terragrunt run-all destroy --terragrunt-non-interactive
+terragrunt run --all destroy --non-interactive
 ```
 
-If you need to destroy a single module that other modules depend on, Terragrunt will warn you. You can force it:
+If you need to destroy a single module that other modules depend on, enable Terragrunt's destroy dependency check so it warns you about affected dependents:
 
 ```bash
 # Destroy just the VPC (dangerous if other modules reference it)
 cd dev/vpc
-terragrunt destroy
+terragrunt run --destroy-dependencies-check -- destroy
 ```
 
 ## Documenting Your Dependency Graph
@@ -346,9 +347,8 @@ Generate a dependency document automatically:
 # scripts/generate-dependency-docs.sh
 echo "# Infrastructure Dependencies"
 echo ""
-echo '```mermaid'
-echo "graph TD"
-terragrunt graph-dependencies 2>/dev/null | while read line; do
+echo '```dot'
+terragrunt dag graph 2>/dev/null | while read line; do
   echo "  $line"
 done
 echo '```'
@@ -356,4 +356,4 @@ echo '```'
 
 ## Summary
 
-Complex dependency graphs are manageable when you follow a few principles: visualize the graph regularly, break cycles by extracting shared resources, use mock outputs to speed up plans, and keep the graph as shallow as possible. Diamond dependencies work fine, but deep linear chains should be restructured for parallelism. For more on dependency-related features, see our guides on [mock outputs](https://oneuptime.com/blog/post/2026-02-23-terragrunt-mock-outputs/view) and [selective execution](https://oneuptime.com/blog/post/2026-02-23-terragrunt-skip-flag-selective-execution/view).
+Complex dependency graphs are manageable when you follow a few principles: visualize the graph regularly, break cycles by extracting shared resources, use mock outputs when dependency outputs are not available during plan, and keep the graph as shallow as possible. Diamond dependencies work fine, but deep linear chains should be restructured for parallelism. For more on dependency-related features, see our guides on [mock outputs](https://oneuptime.com/blog/post/2026-02-23-terragrunt-mock-outputs/view) and [selective execution](https://oneuptime.com/blog/post/2026-02-23-terragrunt-skip-flag-selective-execution/view).
