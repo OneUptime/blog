@@ -8,7 +8,7 @@ Description: Learn how to accurately estimate CPU, memory, and network resources
 
 ---
 
-Adding Istio to your cluster is not free in terms of resources. Every pod gets an Envoy sidecar, the control plane needs its own compute, and network latency goes up slightly. If you do not plan for these resource increases, you will run into scheduling failures, OOM kills, and unhappy developers wondering why their pods are slower.
+Adding Istio to your cluster is not free in terms of resources. In sidecar mode, every injected workload pod gets an Envoy sidecar, the control plane needs its own compute, and network latency goes up slightly. If you do not plan for these resource increases, you will run into scheduling failures, OOM kills, and unhappy developers wondering why their pods are slower.
 
 This guide gives you concrete numbers and formulas to estimate what Istio will cost in terms of cluster resources.
 
@@ -24,7 +24,7 @@ For a small cluster (under 100 pods):
 resources:
   requests:
     cpu: 500m
-    memory: 512Mi
+    memory: 2Gi
   limits:
     cpu: 2000m
     memory: 2Gi
@@ -36,7 +36,7 @@ For a medium cluster (100-500 pods):
 resources:
   requests:
     cpu: 1000m
-    memory: 1Gi
+    memory: 2Gi
   limits:
     cpu: 4000m
     memory: 4Gi
@@ -48,7 +48,7 @@ For a large cluster (500+ pods):
 resources:
   requests:
     cpu: 2000m
-    memory: 2Gi
+    memory: 4Gi
   limits:
     cpu: 8000m
     memory: 8Gi
@@ -66,7 +66,7 @@ spec:
         resources:
           requests:
             cpu: 1000m
-            memory: 1Gi
+            memory: 2Gi
           limits:
             cpu: 4000m
             memory: 4Gi
@@ -90,7 +90,7 @@ If your gateway handles heavy traffic (thousands of requests per second), increa
 
 ## Sidecar Proxy Resources
 
-This is where most of the resource overhead comes from. Every pod in the mesh gets an Envoy sidecar container, and each one consumes CPU and memory.
+This is where most of the resource overhead comes from. In sidecar mode, every injected workload pod in the mesh gets an Envoy sidecar container, and each one consumes CPU and memory.
 
 ### Baseline Sidecar Resources
 
@@ -105,7 +105,7 @@ resources:
     memory: 128Mi
   limits:
     cpu: 2000m
-    memory: 1Gi
+    memory: 1024Mi
 ```
 
 In practice, a typical sidecar at rest uses about 30-50MB of memory and minimal CPU. Under load, this goes up based on:
@@ -219,20 +219,15 @@ Before enabling Istio:
 
 ```bash
 # From inside a pod, measure latency to another service
-kubectl exec -it client-pod -- curl -w "@curl-format.txt" -o /dev/null -s http://server-service:8080/health
-```
-
-Create a file called `curl-format.txt`:
-
-```text
-     time_namelookup:  %{time_namelookup}s\n
-        time_connect:  %{time_connect}s\n
-     time_appconnect:  %{time_appconnect}s\n
-    time_pretransfer:  %{time_pretransfer}s\n
-       time_redirect:  %{time_redirect}s\n
-  time_starttransfer:  %{time_starttransfer}s\n
-                     ----------\n
-          time_total:  %{time_total}s\n
+kubectl exec -it client-pod -- curl -w "\
+     time_namelookup:  %{time_namelookup}s\n\
+        time_connect:  %{time_connect}s\n\
+     time_appconnect:  %{time_appconnect}s\n\
+    time_pretransfer:  %{time_pretransfer}s\n\
+       time_redirect:  %{time_redirect}s\n\
+  time_starttransfer:  %{time_starttransfer}s\n\
+                     ----------\n\
+          time_total:  %{time_total}s\n" -o /dev/null -s http://server-service:8080/health
 ```
 
 Run the same test after enabling Istio and compare the results.
@@ -241,7 +236,7 @@ Run the same test after enabling Istio and compare the results.
 
 mTLS adds a small amount of overhead to each packet due to TLS encryption. This is typically less than 5% increase in bandwidth. For most workloads, this is negligible.
 
-However, if you enable access logging, the additional telemetry data sent to backends like Zipkin or Jaeger can add up. Estimate about 500 bytes per request for trace data.
+However, if you enable distributed tracing, the additional telemetry data sent to backends like Zipkin or Jaeger can add up. Estimate the extra traffic based on your sampling rate and the average size of the spans your workloads generate.
 
 ## Disk Space
 
@@ -257,10 +252,10 @@ Create a simple spreadsheet with these columns:
 
 | Component | Count | CPU Request | Memory Request | Total CPU | Total Memory |
 |---|---|---|---|---|---|
-| istiod | 2 (HA) | 1000m | 1Gi | 2000m | 2Gi |
+| istiod | 2 (HA) | 1000m | 2Gi | 2000m | 4Gi |
 | Ingress Gateway | 2 (HA) | 200m | 256Mi | 400m | 512Mi |
 | Sidecar Proxies | 200 | 100m | 128Mi | 20000m | 25.6Gi |
-| **Total** | | | | **22.4 cores** | **28.1Gi** |
+| **Total** | | | | **22.4 cores** | **30.1Gi** |
 
 Compare these totals against your current cluster capacity:
 
