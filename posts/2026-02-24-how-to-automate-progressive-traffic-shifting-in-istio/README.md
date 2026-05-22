@@ -14,12 +14,13 @@ The solution is to automate the entire traffic shifting process. You define the 
 
 ## Approaches to Automation
 
-There are two main ways to automate progressive traffic shifting with Istio:
+There are three main ways to automate progressive traffic shifting with Istio:
 
 1. **Use a dedicated tool like Flagger** that integrates with Istio natively
 2. **Write custom automation** with scripts or a Kubernetes operator
+3. **Use Argo Rollouts** with Istio traffic routing
 
-Both work. Flagger is the more mature option and handles most common scenarios. Custom scripts give you more flexibility but require more maintenance.
+All three work. Flagger is a mature option and handles most common scenarios. Custom scripts give you more flexibility but require more maintenance.
 
 ## Approach 1: Automating with Flagger
 
@@ -161,7 +162,7 @@ metrics:
 
 ## Approach 2: Custom Automation Script
 
-If you do not want to add another tool to your cluster, a simple script can automate the shifting process. Here is a bash script that progressively shifts traffic:
+If you do not want to add another tool to your cluster, a simple script can automate the shifting process. This assumes Prometheus is reachable at `http://localhost:9090` and that your Istio `DestinationRule` already defines `v1` and `v2` subsets. Here is a bash script that progressively shifts traffic:
 
 ```bash
 #!/bin/bash
@@ -256,7 +257,7 @@ This shifts traffic in 10% increments every 5 minutes, rolling back if the error
 
 ## Approach 3: Using Argo Rollouts with Istio
 
-Argo Rollouts is another option that integrates with Istio for progressive delivery:
+Argo Rollouts is another option that integrates with Istio for progressive delivery. This rollout assumes the referenced VirtualService and the stable and canary Services already exist:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -324,7 +325,7 @@ spec:
     - name: canary
       rules:
         - alert: CanaryRollbackTriggered
-          expr: flagger_canary_status{status="failed"} == 1
+          expr: flagger_canary_status == 2
           for: 1m
           labels:
             severity: warning
