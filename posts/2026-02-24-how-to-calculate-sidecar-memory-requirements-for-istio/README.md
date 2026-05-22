@@ -64,7 +64,7 @@ kubectl top pods --containers --all-namespaces | grep istio-proxy
 kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/memory
 
 # Check the allocated and heap size
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/server_info | grep -i memory
+kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats?filter=server.memory
 ```
 
 You can also use Prometheus queries if you have metrics collection set up:
@@ -117,14 +117,14 @@ metadata:
 spec:
   egress:
     - hosts:
-        - "./api-service.backend.svc.cluster.local"
-        - "./auth-service.auth.svc.cluster.local"
+        - "backend/api-service.backend.svc.cluster.local"
+        - "auth/auth-service.auth.svc.cluster.local"
         - "istio-system/*"
 ```
 
 This tells Istio to only push endpoints for the services that this workload actually needs. In a mesh with 2,000 endpoints where a service only needs 20, this can cut sidecar memory from 60+ MB down to 45 MB.
 
-Apply a default mesh-wide Sidecar resource as a starting point:
+Apply a default mesh-wide Sidecar resource in your Istio root namespace as a starting point:
 
 ```yaml
 apiVersion: networking.istio.io/v1
