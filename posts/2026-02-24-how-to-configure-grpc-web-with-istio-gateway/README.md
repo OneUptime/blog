@@ -12,7 +12,7 @@ Browsers cannot speak native gRPC because they do not support HTTP/2 trailers, w
 
 ## How gRPC-Web Works
 
-A gRPC-Web client (typically running in a browser) sends requests using either `application/grpc-web` or `application/grpc-web-text` content types. The request format is similar to native gRPC but with a different framing. The Envoy proxy at the gateway receives the gRPC-Web request, converts it to native gRPC, forwards it to the backend, and then converts the response back to gRPC-Web format.
+A gRPC-Web client (typically running in a browser) sends requests using content types such as `application/grpc-web+proto` or `application/grpc-web-text`. The request format is similar to native gRPC but with a different framing. The Envoy proxy at the gateway receives the gRPC-Web request, converts it to native gRPC, forwards it to the backend, and then converts the response back to gRPC-Web format.
 
 The conversion is transparent to both the browser client and the backend service. The backend just sees a normal gRPC call.
 
@@ -77,14 +77,7 @@ The `http` section handles both regular HTTP and gRPC-Web traffic. Envoy automat
 
 ## Enabling the gRPC-Web Filter
 
-In recent Istio versions, the gRPC-Web filter is enabled by default on the ingress gateway. You can verify:
-
-```bash
-kubectl exec -it deploy/istio-ingressgateway -n istio-system -- \
-  pilot-agent request GET config_dump | grep -A5 "grpc_web"
-```
-
-If it is not enabled, you can add it with an EnvoyFilter:
+Envoy supports gRPC-Web through the `envoy.filters.http.grpc_web` HTTP filter. In Istio, add that filter to the ingress gateway with an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -112,6 +105,13 @@ spec:
           name: envoy.filters.http.grpc_web
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+```
+
+You can verify that it has been applied:
+
+```bash
+kubectl exec -it deploy/istio-ingressgateway -n istio-system -- \
+  pilot-agent request GET config_dump | grep -A5 "grpc_web"
 ```
 
 ## Handling CORS
@@ -213,7 +213,7 @@ stream.on('error', (err) => {
 });
 ```
 
-The `grpcwebtext` mode uses base64 encoding, which is necessary for server streaming over HTTP/1.1. If you are only using unary calls, `grpcweb` mode (binary) is more efficient.
+The `grpcwebtext` mode uses base64 encoding and is the mode supported by the `grpc-web` client for server streaming. If you are only using unary calls, `grpcweb` mode (binary) is more efficient.
 
 ## Multiple Services Behind One Gateway
 
@@ -234,6 +234,19 @@ spec:
     - match:
         - uri:
             prefix: "/users.UserService/"
+      corsPolicy:
+        allowOrigins:
+          - exact: "https://app.example.com"
+        allowMethods:
+          - POST
+          - OPTIONS
+        allowHeaders:
+          - content-type
+          - x-grpc-web
+          - authorization
+        exposeHeaders:
+          - grpc-status
+          - grpc-message
       route:
         - destination:
             host: user-service.default.svc.cluster.local
@@ -274,7 +287,7 @@ Common issues with gRPC-Web through Istio:
 kubectl logs deploy/istio-ingressgateway -n istio-system | grep "OPTIONS"
 ```
 
-**Content type mismatch.** The client must send `application/grpc-web` or `application/grpc-web-text`. If it sends `application/grpc`, Envoy expects native gRPC and the browser cannot handle the response.
+**Content type mismatch.** The client must send a gRPC-Web content type such as `application/grpc-web+proto` or `application/grpc-web-text`. If it sends `application/grpc`, Envoy expects native gRPC and the browser cannot handle the response.
 
 **TLS issues.** gRPC-Web from browsers typically requires HTTPS. Make sure your TLS certificate is valid and the Gateway TLS mode is configured correctly.
 
@@ -290,4 +303,4 @@ curl -v \
   https://api.example.com/mypackage.MyService/MyMethod
 ```
 
-gRPC-Web through Istio's ingress gateway is a solid way to connect browser applications to gRPC backends. The key pieces are the gRPC-Web Envoy filter (usually enabled by default), proper CORS configuration, and TLS setup. Once those are in place, your browser clients can make gRPC calls as naturally as REST calls.
+gRPC-Web through Istio's ingress gateway is a solid way to connect browser applications to gRPC backends. The key pieces are the gRPC-Web Envoy filter, proper CORS configuration, and TLS setup. Once those are in place, your browser clients can make gRPC calls as naturally as REST calls.
