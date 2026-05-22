@@ -203,19 +203,19 @@ resource "aws_sns_topic" "alerts" {
 }
 ```
 
-## Dynamic Backend Configuration
+## Workspace-Aware Backend Paths
 
-Each workspace can use a different backend key. With the S3 backend, workspaces automatically get separate state paths:
+With the S3 backend, workspaces automatically get separate state paths under the same backend configuration:
 
 ```hcl
 # backend.tf
 terraform {
   backend "s3" {
-    bucket         = "my-company-terraform-state"
-    key            = "app/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "my-company-terraform-state"
+    key          = "app/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
@@ -260,7 +260,7 @@ You can combine workspaces with `.tfvars` files for values that do not fit neatl
 ```bash
 # Apply with workspace-specific variables
 terraform workspace select staging
-terraform apply -var-file="config/${terraform.workspace}.tfvars"
+terraform apply -var-file="config/staging.tfvars"
 ```
 
 Since `terraform.workspace` is not available in the CLI command, use a wrapper script:
@@ -323,22 +323,15 @@ locals {
   workspace_valid  = contains(local.valid_workspaces, terraform.workspace)
 }
 
-# This check runs during plan
-resource "null_resource" "workspace_check" {
-  count = local.workspace_valid ? 0 : 1
+# This precondition runs during plan
+resource "terraform_data" "workspace_check" {
+  input = terraform.workspace
 
-  provisioner "local-exec" {
-    command = "echo 'ERROR: Invalid workspace ${terraform.workspace}. Valid workspaces: ${join(", ", local.valid_workspaces)}' && exit 1"
-  }
-}
-
-# Alternative: use a validation in a variable
-variable "project_name" {
-  type = string
-
-  validation {
-    condition     = contains(["dev", "staging", "production"], terraform.workspace)
-    error_message = "Workspace must be dev, staging, or production."
+  lifecycle {
+    precondition {
+      condition     = local.workspace_valid
+      error_message = "Workspace must be dev, staging, or production."
+    }
   }
 }
 ```
