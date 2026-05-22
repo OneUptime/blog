@@ -155,12 +155,16 @@ class ChangeRequestGenerator:
         }
 
 def main():
-    # Generate the Terraform plan in JSON format
-    result = subprocess.run(
-        ["terraform", "show", "-json", "tfplan"],
-        capture_output=True, text=True
-    )
-    plan = json.loads(result.stdout)
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], encoding="utf-8") as plan_file:
+            plan = json.load(plan_file)
+    else:
+        # Generate the Terraform plan in JSON format
+        result = subprocess.run(
+            ["terraform", "show", "-json", "tfplan"],
+            capture_output=True, text=True, check=True
+        )
+        plan = json.loads(result.stdout)
 
     generator = ChangeRequestGenerator(plan)
     cr = generator.generate_change_request(
@@ -172,9 +176,15 @@ def main():
 
     # Submit to ServiceNow or your change management system
     if cr["requires_cab"]:
-        print(f"\nThis change requires CAB approval (risk: {cr['risk_level']})")
+        print(
+            f"This change requires CAB approval (risk: {cr['risk_level']})",
+            file=sys.stderr
+        )
     else:
-        print(f"\nThis change can be auto-approved (risk: {cr['risk_level']})")
+        print(
+            f"This change can be auto-approved (risk: {cr['risk_level']})",
+            file=sys.stderr
+        )
 
 if __name__ == "__main__":
     main()
@@ -281,6 +291,7 @@ class ServiceNowChangeRequest:
             auth=self.auth,
             headers=self.headers
         )
+        response.raise_for_status()
         result = response.json()["result"][0]
 
         payload = {
@@ -289,12 +300,13 @@ class ServiceNowChangeRequest:
             "close_notes": notes
         }
 
-        requests.patch(
+        response = requests.patch(
             f"{self.base_url}/change_request/{result['sys_id']}",
             json=payload,
             auth=self.auth,
             headers=self.headers
         )
+        response.raise_for_status()
 ```
 
 ## CI/CD Pipeline with CAB Gate
@@ -319,6 +331,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Terraform Plan
         run: |
@@ -330,14 +344,14 @@ jobs:
       - name: Assess risk and generate change request
         id: assess
         run: |
-          RISK=$(python3 scripts/generate_change_request.py plan.json | jq -r '.risk_level')
+          RISK=$(python3 scripts/generate_change_request.py terraform/plan.json | jq -r '.risk_level')
           echo "risk_level=$RISK" >> $GITHUB_OUTPUT
 
       - name: Submit change request to ServiceNow
         id: submit_cr
         if: steps.assess.outputs.risk_level == 'high' || steps.assess.outputs.risk_level == 'critical'
         run: |
-          CR_NUMBER=$(python3 scripts/submit_to_servicenow.py plan.json)
+          CR_NUMBER=$(python3 scripts/submit_to_servicenow.py terraform/plan.json)
           echo "change_number=$CR_NUMBER" >> $GITHUB_OUTPUT
 
       - name: Upload plan artifact
