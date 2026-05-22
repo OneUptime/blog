@@ -12,7 +12,7 @@ HTTPRoute is the workhorse of the Kubernetes Gateway API. It handles all HTTP an
 
 ## Basic HTTPRoute
 
-At minimum, an HTTPRoute needs a parent Gateway reference and at least one backend:
+For service routing, an HTTPRoute needs a parent Gateway reference and at least one backend:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -79,7 +79,7 @@ spec:
       port: 80
 ```
 
-Rules are evaluated in order, and the first match wins. Put more specific rules before less specific ones.
+HTTPRoute gives precedence to the most specific match: exact paths, then the longest prefix path, method matches, and then rules with more header or query parameter matches. If there is still a tie within the same HTTPRoute, the first matching rule wins.
 
 ## Header Matching
 
