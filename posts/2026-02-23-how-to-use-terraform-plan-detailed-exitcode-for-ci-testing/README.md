@@ -57,7 +57,7 @@ esac
 
 ## Drift Detection in CI
 
-One of the best uses for `-detailed-exitcode` is detecting configuration drift. Run a scheduled pipeline that checks whether your deployed infrastructure matches your Terraform state:
+One of the best uses for `-detailed-exitcode` is detecting configuration drift. Run a scheduled pipeline that checks whether your deployed infrastructure has changed outside Terraform:
 
 ```bash
 #!/bin/bash
@@ -66,18 +66,17 @@ One of the best uses for `-detailed-exitcode` is detecting configuration drift. 
 
 set -e
 
-# Initialize without modifying backend
 terraform init -input=false
 
-# Refresh state to get current infrastructure
-terraform refresh -input=false
-
-# Plan with detailed exit code
-terraform plan -detailed-exitcode -input=false -out=tfplan
+# Plan with detailed exit code. Temporarily disable exit-on-error
+# because exit code 2 means drift was detected, not that the command failed.
+set +e
+terraform plan -refresh-only -detailed-exitcode -input=false -out=tfplan
 EXIT_CODE=$?
+set -e
 
 if [ $EXIT_CODE -eq 2 ]; then
-  echo "DRIFT DETECTED: Infrastructure has drifted from configuration"
+  echo "DRIFT DETECTED: Remote infrastructure has changed outside Terraform"
 
   # Show what changed
   terraform show tfplan
@@ -114,6 +113,10 @@ on:
     paths:
       - 'terraform/**'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
   TF_WORKING_DIR: terraform
   TF_VERSION: 1.7.0
@@ -140,8 +143,10 @@ jobs:
         id: plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          set +e
           terraform plan -detailed-exitcode -input=false -out=tfplan 2>&1 | tee plan_output.txt
           EXIT_CODE=${PIPESTATUS[0]}
+          set -e
 
           if [ $EXIT_CODE -eq 0 ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -372,7 +377,7 @@ A few things to be aware of:
 
 2. **The terraform wrapper.** Some CI tools (like the HashiCorp GitHub Action) wrap the terraform binary. This wrapper can swallow the exit codes. Always disable it when you need raw exit codes.
 
-3. **Refresh-only mode.** In Terraform 1.x, you can run `terraform plan -refresh-only -detailed-exitcode` to check for drift without generating a change plan.
+3. **Refresh-only mode.** In Terraform 1.x, you can run `terraform plan -refresh-only -detailed-exitcode` to check for drift without proposing infrastructure changes.
 
 4. **Parallel plans.** If you run multiple plans in parallel, make sure each one uses a separate working directory or plan file to avoid conflicts.
 
