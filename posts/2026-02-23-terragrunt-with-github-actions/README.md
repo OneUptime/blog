@@ -44,7 +44,7 @@ concurrency:
 env:
   TF_IN_AUTOMATION: true
   TF_INPUT: false
-  TERRAGRUNT_NON_INTERACTIVE: true
+  TG_NON_INTERACTIVE: true
 
 permissions:
   id-token: write     # Needed for OIDC
@@ -57,25 +57,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
           terraform_wrapper: false  # Important for Terragrunt compatibility
 
       - name: Setup Terragrunt
         run: |
           # Download and install Terragrunt
-          TERRAGRUNT_VERSION="0.55.0"
+          TERRAGRUNT_VERSION="1.0.5"
           curl -sL "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
-            -o /usr/local/bin/terragrunt
-          chmod +x /usr/local/bin/terragrunt
+            -o terragrunt
+          chmod +x terragrunt
+          sudo mv terragrunt /usr/local/bin/terragrunt
           terragrunt --version
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
           aws-region: us-east-1
@@ -84,11 +85,15 @@ jobs:
         id: plan
         working-directory: infrastructure/dev
         run: |
-          terragrunt run-all plan --terragrunt-non-interactive -no-color 2>&1 | tee plan-output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set +e
+          terragrunt run --all --non-interactive -- plan -no-color 2>&1 | tee plan-output.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
 
       - name: Post Plan to PR
-        uses: actions/github-script@v7
+        if: always()
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -101,11 +106,11 @@ jobs:
 
             const body = `## Terragrunt Plan
 
-            ```
-            ${output}
-            ```
+\`\`\`
+${output}
+\`\`\`
 
-            *Pushed by: @${context.actor}*`;
+*Pushed by: @${context.actor}*`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -120,23 +125,24 @@ jobs:
     environment: production    # Requires manual approval if configured
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
           terraform_wrapper: false
 
       - name: Setup Terragrunt
         run: |
-          TERRAGRUNT_VERSION="0.55.0"
+          TERRAGRUNT_VERSION="1.0.5"
           curl -sL "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
-            -o /usr/local/bin/terragrunt
-          chmod +x /usr/local/bin/terragrunt
+            -o terragrunt
+          chmod +x terragrunt
+          sudo mv terragrunt /usr/local/bin/terragrunt
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
           aws-region: us-east-1
@@ -144,8 +150,7 @@ jobs:
       - name: Terragrunt Apply
         working-directory: infrastructure/dev
         run: |
-          terragrunt run-all apply \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- apply \
             -auto-approve \
             -no-color
 ````
@@ -159,7 +164,6 @@ Instead of storing AWS access keys as secrets, use OIDC federation. This gives y
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # IAM role that GitHub Actions will assume
@@ -179,7 +183,7 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Lock down to specific repo and branch
+          # Lock down to a specific repo
           "token.actions.githubusercontent.com:sub" = "repo:your-org/your-repo:*"
         }
       }
@@ -199,21 +203,22 @@ resource "aws_iam_role_policy_attachment" "admin" {
 Provider downloads can add minutes to every run. Use GitHub Actions cache:
 
 ```yaml
-      - name: Cache Terraform Providers
-        uses: actions/cache@v4
+      - name: Cache Terragrunt Providers and Modules
+        uses: actions/cache@v5
         with:
           path: |
-            ~/.terraform.d/plugin-cache
             /tmp/terragrunt-cache
+            /tmp/terragrunt-provider-cache
           key: terraform-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
           restore-keys: |
             terraform-${{ runner.os }}-
 
-      - name: Set Plugin Cache
+      - name: Set Terragrunt Cache
         run: |
-          mkdir -p ~/.terraform.d/plugin-cache
-          echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
-          export TERRAGRUNT_DOWNLOAD="/tmp/terragrunt-cache"
+          mkdir -p /tmp/terragrunt-cache /tmp/terragrunt-provider-cache
+          echo "TG_DOWNLOAD_DIR=/tmp/terragrunt-cache" >> "$GITHUB_ENV"
+          echo "TG_PROVIDER_CACHE=1" >> "$GITHUB_ENV"
+          echo "TG_PROVIDER_CACHE_DIR=/tmp/terragrunt-provider-cache" >> "$GITHUB_ENV"
 ```
 
 ## Multi-Environment Workflow
@@ -231,19 +236,18 @@ jobs:
       fail-fast: false    # Plan all environments even if one fails
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ... setup steps ...
 
       - name: Plan ${{ matrix.environment }}
         working-directory: infrastructure/${{ matrix.environment }}
         run: |
-          terragrunt run-all plan \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- plan \
             -no-color 2>&1 | tee plan-${{ matrix.environment }}.txt
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plan-${{ matrix.environment }}
           path: infrastructure/${{ matrix.environment }}/plan-${{ matrix.environment }}.txt
@@ -251,9 +255,14 @@ jobs:
 
 ## Detecting Changed Modules
 
-For large repos, running `run-all` on every PR is wasteful. Here's how to only plan changed modules:
+For large repos, running `run --all` on every PR is wasteful. Here's how to only plan changed modules:
 
 ```yaml
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - name: Get Changed Files
         id: changes
         run: |
@@ -276,7 +285,7 @@ For large repos, running `run-all` on every PR is wasteful. Here's how to only p
             if [ -n "$module" ]; then
               echo "Planning: $module"
               cd "$module"
-              terragrunt plan --terragrunt-non-interactive -no-color
+              terragrunt plan --non-interactive -no-color
               cd "$GITHUB_WORKSPACE"
             fi
           done <<< "${{ steps.changes.outputs.modules }}"
@@ -284,7 +293,7 @@ For large repos, running `run-all` on every PR is wasteful. Here's how to only p
 
 ## Using Saved Plans
 
-For extra safety, save the plan file and use it during apply to make sure exactly what was reviewed gets applied:
+For extra safety, save the plan file and use it during apply in the same workflow run to make sure exactly what was reviewed gets applied:
 
 ```yaml
   plan:
@@ -294,12 +303,11 @@ For extra safety, save the plan file and use it during apply to make sure exactl
       - name: Plan and Save
         working-directory: infrastructure/dev
         run: |
-          terragrunt run-all plan \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- plan \
             -out=tfplan
 
       - name: Upload Plan Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: terraform-plan
           path: infrastructure/dev/**/tfplan
@@ -312,7 +320,7 @@ For extra safety, save the plan file and use it during apply to make sure exactl
     steps:
       # ... setup ...
       - name: Download Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: terraform-plan
           path: infrastructure/dev
@@ -320,8 +328,7 @@ For extra safety, save the plan file and use it during apply to make sure exactl
       - name: Apply Saved Plan
         working-directory: infrastructure/dev
         run: |
-          terragrunt run-all apply \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- apply \
             tfplan
 ```
 
@@ -336,8 +343,7 @@ If your Terragrunt configuration needs secrets (like database passwords), pass t
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_api_key: ${{ secrets.API_KEY }}
         run: |
-          terragrunt run-all apply \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- apply \
             -auto-approve
 ```
 
@@ -372,14 +378,14 @@ jobs:
         working-directory: infrastructure/${{ inputs.environment }}/${{ inputs.module_path }}
         run: |
           if [ "${{ inputs.action }}" == "destroy" ]; then
-            terragrunt run-all destroy --terragrunt-non-interactive -auto-approve
+            terragrunt run --all --non-interactive -- destroy -auto-approve
           elif [ "${{ inputs.action }}" == "apply" ]; then
-            terragrunt run-all apply --terragrunt-non-interactive -auto-approve
+            terragrunt run --all --non-interactive -- apply -auto-approve
           else
-            terragrunt run-all plan --terragrunt-non-interactive
+            terragrunt run --all --non-interactive -- plan
           fi
 ```
 
 ## Summary
 
-GitHub Actions and Terragrunt work well together once you've sorted out authentication (use OIDC), caching (plugin cache directory), and the plan-review-apply workflow. The concurrency controls in GitHub Actions prevent parallel applies from conflicting, and environment protection rules give you the approval gates you need for production. For the GitLab equivalent of this setup, see our [Terragrunt with GitLab CI guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-gitlab-ci/view).
+GitHub Actions and Terragrunt work well together once you've sorted out authentication (use OIDC), caching (Terragrunt provider cache), and the plan-review-apply workflow. The concurrency controls in GitHub Actions prevent parallel applies from conflicting, and environment protection rules give you the approval gates you need for production. For the GitLab equivalent of this setup, see our [Terragrunt with GitLab CI guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-gitlab-ci/view).
