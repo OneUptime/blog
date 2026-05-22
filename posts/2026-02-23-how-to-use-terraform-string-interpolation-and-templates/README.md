@@ -73,7 +73,7 @@ Only use `${ }` when you are combining an expression with other text in a string
 
 ## Interpolating Different Types
 
-Terraform automatically converts non-string types to strings during interpolation:
+Terraform automatically converts primitive non-string values to strings during interpolation:
 
 ```hcl
 variable "port" {
@@ -345,8 +345,6 @@ For more on heredoc syntax, see our post on [heredoc strings in Terraform](https
 
 ```yaml
 # templates/docker-compose.yml.tftpl
-version: '3.8'
-
 services:
 %{ for service in services ~}
   ${service.name}:
