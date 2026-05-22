@@ -33,7 +33,7 @@ resource "aws_config_config_rule" "no_root_access_keys" {
 }
 ```
 
-### 1.5-1.8: MFA and Password Policy
+### 1.5, 1.8-1.10: MFA and Password Policy
 
 ```hcl
 # CIS 1.8: Ensure IAM password policy requires minimum length of 14
@@ -73,7 +73,7 @@ resource "aws_config_config_rule" "root_mfa" {
 }
 ```
 
-### 1.16: Ensure IAM Policies Are Attached to Groups or Roles
+### 1.15: Ensure IAM Policies Are Attached to Groups or Roles
 
 ```hcl
 resource "aws_config_config_rule" "no_policies_on_users" {
@@ -90,7 +90,7 @@ resource "aws_config_config_rule" "no_policies_on_users" {
 
 ## Section 2: Storage
 
-### 2.1.1-2.1.2: S3 Bucket Security
+### 2.1.1-2.1.5: S3 Bucket Security
 
 ```hcl
 # Module for CIS-compliant S3 buckets
@@ -102,7 +102,7 @@ resource "aws_s3_bucket" "compliant" {
   }
 }
 
-# CIS 2.1.1: Ensure S3 bucket policy denies HTTP requests
+# CIS 2.1.2: Ensure S3 bucket policy denies HTTP requests
 resource "aws_s3_bucket_policy" "deny_http" {
   bucket = aws_s3_bucket.compliant.id
 
@@ -128,7 +128,7 @@ resource "aws_s3_bucket_policy" "deny_http" {
   })
 }
 
-# CIS 2.1.2: Ensure S3 bucket encryption
+# Enable S3 bucket encryption
 resource "aws_s3_bucket_server_side_encryption_configuration" "compliant" {
   bucket = aws_s3_bucket.compliant.id
 
@@ -141,7 +141,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "compliant" {
   }
 }
 
-# Block public access
+# CIS 2.1.5: Block public access at the bucket level
 resource "aws_s3_bucket_public_access_block" "compliant" {
   bucket = aws_s3_bucket.compliant.id
 
@@ -151,7 +151,7 @@ resource "aws_s3_bucket_public_access_block" "compliant" {
   restrict_public_buckets = true
 }
 
-# Account-level S3 public access block
+# CIS 2.1.4: Account-level S3 public access block
 resource "aws_s3_account_public_access_block" "account" {
   block_public_acls       = true
   block_public_policy     = true
@@ -289,32 +289,48 @@ resource "aws_s3_bucket_logging" "cloudtrail" {
 
 ## Section 4: Monitoring
 
-### 4.1-4.14: CloudWatch Metric Filters and Alarms
+### 4.3-4.14: CloudWatch Metric Filters and Alarms
 
-CIS requires metric filters and alarms for specific security events. Here is a reusable pattern:
+CIS requires metric filters and alarms for specific security events. Here is a reusable pattern that also includes two common CIS v1.2 monitoring checks:
 
 ```hcl
 locals {
   cis_alarms = {
-    "unauthorized-api-calls" = {
-      pattern     = "{ ($.errorCode = \"*UnauthorizedAccess*\") || ($.errorCode = \"AccessDenied*\") }"
-      description = "CIS 4.1 - Unauthorized API calls"
-    }
-    "console-without-mfa" = {
-      pattern     = "{ ($.eventName = \"ConsoleLogin\") && ($.additionalEventData.MFAUsed != \"Yes\") }"
-      description = "CIS 4.2 - Console login without MFA"
-    }
     "root-account-usage" = {
       pattern     = "{ $.userIdentity.type = \"Root\" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != \"AwsServiceEvent\" }"
       description = "CIS 4.3 - Root account usage"
     }
+    "unauthorized-api-calls" = {
+      pattern     = "{ ($.errorCode = \"*UnauthorizedOperation\") || ($.errorCode = \"AccessDenied*\") }"
+      description = "CIS v1.2 3.1 - Unauthorized API calls"
+    }
+    "console-without-mfa" = {
+      pattern     = "{ ($.eventName = \"ConsoleLogin\") && ($.additionalEventData.MFAUsed != \"Yes\") && ($.userIdentity.type = \"IAMUser\") && ($.responseElements.ConsoleLogin = \"Success\") }"
+      description = "CIS v1.2 3.2 - Console login without MFA"
+    }
     "iam-policy-changes" = {
-      pattern     = "{ ($.eventName=DeleteGroupPolicy) || ($.eventName=DeleteRolePolicy) || ($.eventName=DeleteUserPolicy) || ($.eventName=PutGroupPolicy) || ($.eventName=PutRolePolicy) || ($.eventName=PutUserPolicy) || ($.eventName=CreatePolicy) || ($.eventName=DeletePolicy) || ($.eventName=CreatePolicyVersion) || ($.eventName=DeletePolicyVersion) || ($.eventName=AttachRolePolicy) || ($.eventName=DetachRolePolicy) || ($.eventName=AttachUserPolicy) || ($.eventName=DetachUserPolicy) || ($.eventName=AttachGroupPolicy) || ($.eventName=DetachGroupPolicy) }"
+      pattern     = "{ ($.eventSource=iam.amazonaws.com) && (($.eventName=DeleteGroupPolicy) || ($.eventName=DeleteRolePolicy) || ($.eventName=DeleteUserPolicy) || ($.eventName=PutGroupPolicy) || ($.eventName=PutRolePolicy) || ($.eventName=PutUserPolicy) || ($.eventName=CreatePolicy) || ($.eventName=DeletePolicy) || ($.eventName=CreatePolicyVersion) || ($.eventName=DeletePolicyVersion) || ($.eventName=AttachRolePolicy) || ($.eventName=DetachRolePolicy) || ($.eventName=AttachUserPolicy) || ($.eventName=DetachUserPolicy) || ($.eventName=AttachGroupPolicy) || ($.eventName=DetachGroupPolicy)) }"
       description = "CIS 4.4 - IAM policy changes"
     }
     "cloudtrail-changes" = {
       pattern     = "{ ($.eventName = CreateTrail) || ($.eventName = UpdateTrail) || ($.eventName = DeleteTrail) || ($.eventName = StartLogging) || ($.eventName = StopLogging) }"
       description = "CIS 4.5 - CloudTrail configuration changes"
+    }
+    "console-auth-failures" = {
+      pattern     = "{ ($.eventName = ConsoleLogin) && ($.errorMessage = \"Failed authentication\") }"
+      description = "CIS 4.6 - Console authentication failures"
+    }
+    "kms-key-changes" = {
+      pattern     = "{ ($.eventSource = kms.amazonaws.com) && (($.eventName = DisableKey) || ($.eventName = ScheduleKeyDeletion)) }"
+      description = "CIS 4.7 - KMS key disabled or scheduled deletion"
+    }
+    "s3-bucket-policy-changes" = {
+      pattern     = "{ ($.eventSource = s3.amazonaws.com) && (($.eventName = PutBucketAcl) || ($.eventName = PutBucketPolicy) || ($.eventName = PutBucketCors) || ($.eventName = PutBucketLifecycle) || ($.eventName = PutBucketReplication) || ($.eventName = DeleteBucketPolicy) || ($.eventName = DeleteBucketCors) || ($.eventName = DeleteBucketLifecycle) || ($.eventName = DeleteBucketReplication)) }"
+      description = "CIS 4.8 - S3 bucket policy changes"
+    }
+    "config-changes" = {
+      pattern     = "{ ($.eventSource = config.amazonaws.com) && (($.eventName = StopConfigurationRecorder) || ($.eventName = DeleteDeliveryChannel) || ($.eventName = PutDeliveryChannel) || ($.eventName = PutConfigurationRecorder)) }"
+      description = "CIS 4.9 - AWS Config configuration changes"
     }
     "security-group-changes" = {
       pattern     = "{ ($.eventName = AuthorizeSecurityGroupIngress) || ($.eventName = AuthorizeSecurityGroupEgress) || ($.eventName = RevokeSecurityGroupIngress) || ($.eventName = RevokeSecurityGroupEgress) || ($.eventName = CreateSecurityGroup) || ($.eventName = DeleteSecurityGroup) }"
@@ -324,6 +340,14 @@ locals {
       pattern     = "{ ($.eventName = CreateNetworkAcl) || ($.eventName = CreateNetworkAclEntry) || ($.eventName = DeleteNetworkAcl) || ($.eventName = DeleteNetworkAclEntry) || ($.eventName = ReplaceNetworkAclEntry) || ($.eventName = ReplaceNetworkAclAssociation) }"
       description = "CIS 4.11 - NACL changes"
     }
+    "network-gateway-changes" = {
+      pattern     = "{ ($.eventName = CreateCustomerGateway) || ($.eventName = DeleteCustomerGateway) || ($.eventName = AttachInternetGateway) || ($.eventName = CreateInternetGateway) || ($.eventName = DeleteInternetGateway) || ($.eventName = DetachInternetGateway) }"
+      description = "CIS 4.12 - Network gateway changes"
+    }
+    "route-table-changes" = {
+      pattern     = "{ ($.eventSource = ec2.amazonaws.com) && (($.eventName = CreateRoute) || ($.eventName = CreateRouteTable) || ($.eventName = ReplaceRoute) || ($.eventName = ReplaceRouteTableAssociation) || ($.eventName = DeleteRouteTable) || ($.eventName = DeleteRoute) || ($.eventName = DisassociateRouteTable)) }"
+      description = "CIS 4.13 - Route table changes"
+    }
     "vpc-changes" = {
       pattern     = "{ ($.eventName = CreateVpc) || ($.eventName = DeleteVpc) || ($.eventName = ModifyVpcAttribute) || ($.eventName = AcceptVpcPeeringConnection) || ($.eventName = CreateVpcPeeringConnection) || ($.eventName = DeleteVpcPeeringConnection) || ($.eventName = RejectVpcPeeringConnection) || ($.eventName = AttachClassicLinkVpc) || ($.eventName = DetachClassicLinkVpc) || ($.eventName = DisableVpcClassicLink) || ($.eventName = EnableVpcClassicLink) }"
       description = "CIS 4.14 - VPC changes"
@@ -331,7 +355,7 @@ locals {
   }
 }
 
-# Create metric filters and alarms for each CIS control
+# Create metric filters and alarms for each listed control
 resource "aws_cloudwatch_log_metric_filter" "cis" {
   for_each = local.cis_alarms
 
@@ -340,9 +364,10 @@ resource "aws_cloudwatch_log_metric_filter" "cis" {
   pattern        = each.value.pattern
 
   metric_transformation {
-    name      = each.key
-    namespace = "CISBenchmark"
-    value     = "1"
+    name          = each.key
+    namespace     = "LogMetrics"
+    value         = "1"
+    default_value = "0"
   }
 }
 
@@ -353,7 +378,7 @@ resource "aws_cloudwatch_metric_alarm" "cis" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   metric_name         = each.key
-  namespace           = "CISBenchmark"
+  namespace           = "LogMetrics"
   period              = 300
   statistic           = "Sum"
   threshold           = 1
@@ -369,7 +394,7 @@ resource "aws_sns_topic" "cis_alarms" {
 
 ## Section 5: Networking
 
-### 5.1: Ensure No Network ACLs Allow 0.0.0.0/0 to Admin Ports
+### 5.2-5.4: Ensure No Unrestricted Admin Port Access
 
 ```hcl
 # Config rule for unrestricted SSH
@@ -408,10 +433,10 @@ resource "aws_default_security_group" "default" {
 }
 ```
 
-### 5.2: Ensure VPC Flow Logging
+### 3.9: Ensure VPC Flow Logging
 
 ```hcl
-# CIS 5.2: VPC Flow Logs enabled
+# CIS 3.9: VPC Flow Logs enabled
 resource "aws_flow_log" "cis" {
   vpc_id                   = aws_vpc.main.id
   traffic_type             = "ALL"
@@ -421,7 +446,7 @@ resource "aws_flow_log" "cis" {
   max_aggregation_interval = 60
 
   tags = {
-    CISBenchmark = "5.2"
+    CISBenchmark = "3.9"
   }
 }
 ```
@@ -433,8 +458,12 @@ Use Security Hub to continuously validate CIS compliance:
 ```hcl
 resource "aws_securityhub_account" "main" {}
 
+data "aws_partition" "current" {}
+
+data "aws_region" "current" {}
+
 resource "aws_securityhub_standards_subscription" "cis" {
-  standards_arn = "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
+  standards_arn = "arn:${data.aws_partition.current.partition}:securityhub:${data.aws_region.current.name}::standards/cis-aws-foundations-benchmark/v/1.4.0"
 
   depends_on = [aws_securityhub_account.main]
 }
