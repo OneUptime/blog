@@ -10,7 +10,7 @@ Description: How to configure Istio service mesh for Redis connections in Kubern
 
 Redis is used everywhere - caching, session storage, message queues, rate limiting, you name it. When you are running Redis in Kubernetes with Istio, the latency-sensitive nature of Redis means you need to get the configuration right or your application performance will suffer.
 
-Redis uses its own text-based protocol (RESP) over TCP. Istio treats it as TCP traffic, which works well, but there are a few gotchas around connection handling, Sentinel, and Redis Cluster mode that you should know about.
+Redis uses its own binary-safe serialization protocol (RESP) over TCP. Istio treats it as TCP traffic, which works well, but there are a few gotchas around connection handling, Sentinel, and Redis Cluster mode that you should know about.
 
 ## Basic Redis Setup with Istio
 
@@ -137,7 +137,7 @@ The tricky part with Sentinel is that it returns IP addresses of Redis instances
 
 Redis Cluster splits data across multiple nodes, and each node knows about the others. When a client sends a command to the wrong node, that node responds with a MOVED or ASK redirect containing the address of the correct node.
 
-For Redis Cluster in Kubernetes, use a headless Service so each node has a stable DNS name:
+For Redis Cluster in Kubernetes, use a StatefulSet with a headless Service so each node has a stable DNS name:
 
 ```yaml
 apiVersion: v1
@@ -158,7 +158,7 @@ spec:
       targetPort: 16379
 ```
 
-Port 16379 is the Redis Cluster bus port, used for node-to-node communication. Both ports need to be declared with the `tcp-` prefix.
+Port 16379 is the default Redis Cluster bus port when Redis listens on 6379, used for node-to-node communication. Both ports need to be declared with the `tcp-` prefix.
 
 The DestinationRule for Redis Cluster:
 
@@ -271,7 +271,7 @@ spec:
         - "cache/*"
 ```
 
-4. If mTLS overhead is a concern for extremely high-throughput Redis workloads, you can selectively disable it - though this is rarely necessary:
+4. If mTLS overhead is a concern for extremely high-throughput Redis workloads, you can selectively disable it - though this is rarely necessary. Use a matching client-side `DestinationRule` if clients should send plaintext; the `PeerAuthentication` below only disables inbound mTLS for the Redis workload:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -284,7 +284,7 @@ spec:
     matchLabels:
       app: redis
   mtls:
-    mode: PERMISSIVE
+    mode: DISABLE
 ```
 
 ## Monitoring Redis Through Istio
@@ -299,8 +299,8 @@ istio_tcp_connections_opened_total{destination_service="redis.cache.svc.cluster.
 # Bytes transferred
 istio_tcp_sent_bytes_total{destination_service="redis.cache.svc.cluster.local"}
 
-# Connection duration
-istio_tcp_connection_duration_seconds{destination_service="redis.cache.svc.cluster.local"}
+# Connections closed
+istio_tcp_connections_closed_total{destination_service="redis.cache.svc.cluster.local"}
 ```
 
 These metrics help you spot connection leaks, unusual traffic patterns, and throughput changes.
