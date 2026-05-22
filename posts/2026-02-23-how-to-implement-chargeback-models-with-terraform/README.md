@@ -32,13 +32,11 @@ variable "chargeback_tags" {
     project       = string
     environment   = string
   })
-}
 
-# Validate that the cost center format is correct
-variable "cost_center_pattern" {
-  description = "Regex pattern for valid cost center codes"
-  type        = string
-  default     = "^CC-[0-9]{4}$"
+  validation {
+    condition     = can(regex("^CC-[0-9]{4}$", var.chargeback_tags.cost_center))
+    error_message = "Cost center codes must match the CC-1234 format."
+  }
 }
 
 locals {
@@ -248,6 +246,14 @@ resource "aws_cloudwatch_event_target" "chargeback_report" {
   arn       = aws_lambda_function.chargeback_report.arn
 }
 
+resource "aws_lambda_permission" "allow_eventbridge_chargeback" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.chargeback_report.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.monthly_chargeback.arn
+}
+
 # SNS topic for chargeback notifications
 resource "aws_sns_topic" "chargeback" {
   name = "chargeback-reports"
@@ -273,19 +279,33 @@ resource "aws_ce_cost_category" "shared_allocation" {
   rule_version = "CostCategoryExpression.v1"
 
   # Tag-based allocation for team-owned resources
-  rule {
-    value = "Direct-Allocation"
-    rule {
-      tags {
-        key           = "Team"
-        values        = [for t in keys(var.teams) : t]
-        match_options = ["EQUALS"]
+  dynamic "rule" {
+    for_each = var.shared_cost_allocation
+    content {
+      value = rule.key
+      rule {
+        tags {
+          key           = "Team"
+          values        = [rule.key]
+          match_options = ["EQUALS"]
+        }
       }
     }
   }
 
   # Everything else is shared infrastructure
   default_value = "Shared-Pool"
+
+  split_charge_rule {
+    source  = "Shared-Pool"
+    targets = keys(var.shared_cost_allocation)
+    method  = "FIXED"
+
+    parameter {
+      type   = "ALLOCATION_PERCENTAGES"
+      values = [for percentage in values(var.shared_cost_allocation) : tostring(percentage)]
+    }
+  }
 }
 
 # Variables defining allocation percentages for shared costs
@@ -325,7 +345,7 @@ resource "aws_budgets_budget" "team_budgets" {
 
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:Team$${each.key}"]
+    values = [format("user:Team$%s", each.key)]
   }
 
   notification {
