@@ -43,14 +43,8 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "app-origin"
     viewer_protocol_policy = "redirect-to-https"
+    cache_policy_id        = aws_cloudfront_cache_policy.api.id
     compress               = true
-
-    forwarded_values {
-      query_string = true
-      cookies {
-        forward = "all"
-      }
-    }
 
     # Lambda@Edge for request/response processing
     lambda_function_association {
@@ -72,18 +66,8 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "app-origin"
     viewer_protocol_policy = "redirect-to-https"
+    cache_policy_id        = aws_cloudfront_cache_policy.static.id
     compress               = true
-
-    min_ttl     = 0
-    default_ttl = 86400     # 1 day
-    max_ttl     = 31536000  # 1 year
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
   }
 
   viewer_certificate {
@@ -169,8 +153,13 @@ resource "aws_iot_policy" "edge_gateway" {
       },
       {
         Effect   = "Allow"
-        Action   = ["iot:Publish", "iot:Subscribe", "iot:Receive"]
+        Action   = ["iot:Publish", "iot:Receive"]
         Resource = ["arn:aws:iot:*:*:topic/edge/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iot:Subscribe"]
+        Resource = ["arn:aws:iot:*:*:topicfilter/edge/*"]
       }
     ]
   })
@@ -233,12 +222,12 @@ Monitor your edge functions to ensure they perform well across all locations:
 
 ```hcl
 # edge/monitoring.tf
-# Monitor edge function performance
+# Monitor CloudFront and edge function performance
 
-resource "aws_cloudwatch_metric_alarm" "edge_errors" {
+resource "aws_cloudwatch_metric_alarm" "cloudfront_5xx_errors" {
   provider = aws.us_east_1
 
-  alarm_name          = "edge-function-errors-${var.environment}"
+  alarm_name          = "cloudfront-5xx-errors-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
   metric_name         = "5xxErrorRate"
@@ -256,13 +245,15 @@ resource "aws_cloudwatch_metric_alarm" "edge_errors" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "origin_latency" {
+  provider = aws.us_east_1
+
   alarm_name          = "edge-origin-latency-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "OriginLatency"
   namespace           = "AWS/CloudFront"
   period              = 300
-  statistic           = "p90"
+  extended_statistic  = "p90"
   threshold           = 2000  # 2 seconds
 
   dimensions = {
