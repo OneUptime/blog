@@ -12,13 +12,13 @@ When you start sharing Terraform modules across teams or projects, versioning be
 
 ## Why Version Your Terraform Modules?
 
-Imagine you have a VPC module that ten different teams reference. Someone pushes a breaking change to the module repository. Without versioning, every team pulls the latest code on their next `terraform init`, and suddenly deployments start failing everywhere.
+Imagine you have a VPC module that ten different teams reference. Someone pushes a breaking change to the module repository. Without versioning, teams can pull the latest code on a fresh or upgraded `terraform init`, and suddenly deployments start failing everywhere.
 
 Versioning solves this by letting consumers pin to a specific release. Teams upgrade on their own schedule, test against new versions, and roll back if something goes wrong.
 
 ## Setting Up Your Module Repository
 
-First, your module needs to live in its own Git repository. While you can use monorepos, individual repositories per module give you the cleanest versioning story.
+In this approach, your module lives in its own Git repository. While you can use monorepos, individual repositories per module give you the cleanest versioning story.
 
 ```hcl
 # A typical module repository structure
@@ -61,7 +61,7 @@ resource "aws_subnet" "public" {
 
 ## Creating Your First Git Tag
 
-Once your module is in a working state, create a tag. Terraform expects tags to follow semantic versioning, and the convention is to prefix with `v`.
+Once your module is in a working state, create a tag. For direct Git module sources, Terraform can use any Git ref that `git checkout` supports, such as a branch, commit SHA, or tag. For release tags, use semantic versioning; the Terraform Registry requires semantic version tags and allows an optional `v` prefix.
 
 ```bash
 # Make sure your changes are committed
@@ -114,8 +114,7 @@ module "vpc" {
   availability_zones = ["us-east-1a", "us-east-1b"]
 }
 
-# Pin to a minor version range using a branch (not recommended)
-# Better to pin exact versions and upgrade deliberately
+# Pin to another exact version
 module "vpc_staging" {
   source = "git::https://github.com/myorg/terraform-aws-vpc.git?ref=v1.1.0"
 
@@ -151,6 +150,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -159,12 +161,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       # Determine version bump from commit messages
       - name: Determine version
         id: version
         run: |
           # Get the latest tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+            COMMIT_RANGE="HEAD"
+          else
+            COMMIT_RANGE="${LATEST_TAG}..HEAD"
+          fi
           echo "Latest tag: $LATEST_TAG"
 
           # Parse current version
@@ -173,11 +186,11 @@ jobs:
           PATCH=$(echo $LATEST_TAG | sed 's/v//' | cut -d. -f3)
 
           # Check commit messages since last tag for version hints
-          if git log $LATEST_TAG..HEAD --pretty=format:"%s" | grep -q "BREAKING"; then
+          if git log "$COMMIT_RANGE" --pretty=format:"%s" | grep -q "BREAKING"; then
             MAJOR=$((MAJOR + 1))
             MINOR=0
             PATCH=0
-          elif git log $LATEST_TAG..HEAD --pretty=format:"%s" | grep -q "feat"; then
+          elif git log "$COMMIT_RANGE" --pretty=format:"%s" | grep -q "feat"; then
             MINOR=$((MINOR + 1))
             PATCH=0
           else
