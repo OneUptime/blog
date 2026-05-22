@@ -92,7 +92,7 @@ provider_installation {
 }
 ```
 
-Alternatively, configure it in the project's CLI configuration:
+Alternatively, point Terraform at a specific CLI configuration file:
 
 ```bash
 # Set the CLI config file location
@@ -103,7 +103,7 @@ export TF_CLI_CONFIG_FILE="/opt/terraform/terraform.rc"
 
 For larger organizations, set up an internal network mirror that hosts providers:
 
-```bash
+```nginx
 # Set up a simple HTTPS server to host providers
 # The directory structure must match the Terraform provider protocol
 
@@ -192,15 +192,17 @@ module "vpc" {
 Terraform Enterprise (the self-hosted version of Terraform Cloud) has an official air-gapped installation mode:
 
 ```bash
-# Download the airgap bundle on a connected machine
+# Download the airgap bundle and installer bootstrapper on a connected machine
 # (Requires a Terraform Enterprise license)
-curl -o terraform-enterprise-airgap.airgap \
-  "https://install.terraform.io/airgap/latest.airgap?license=YOUR_LICENSE"
+# Use the temporary airgap bundle URL provided in your setup email.
+wget --content-disposition "<airgap-bundle-url>"
+curl -o replicated.tar.gz "https://install.terraform.io/ptfe/stable"
 
 # Transfer to the air-gapped environment
 
-# Install using the Replicated installer
-sudo bash install.sh airgap
+# Install using the Replicated installer bootstrapper
+tar xzf replicated.tar.gz
+sudo ./install.sh airgap
 ```
 
 Configure the air-gapped TFE instance:
@@ -250,11 +252,14 @@ terraform {
     bucket                      = "terraform-state"
     key                         = "production/terraform.tfstate"
     region                      = "us-east-1"
-    endpoint                    = "https://minio.internal.example.com"
-    force_path_style            = true
+    endpoints = {
+      s3 = "https://minio.internal.example.com"
+    }
+    use_path_style              = true
     skip_credentials_validation = true
     skip_metadata_api_check     = true
     skip_region_validation      = true
+    skip_requesting_account_id  = true
     encrypt                     = true
   }
 }
