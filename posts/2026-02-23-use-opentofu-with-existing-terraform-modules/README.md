@@ -8,11 +8,11 @@ Description: Learn how to use your existing Terraform modules with OpenTofu, inc
 
 ---
 
-Terraform modules are one of the most valuable assets in any infrastructure codebase. When migrating to OpenTofu, you do not want to rewrite them. The good news is that OpenTofu is fully compatible with Terraform modules. Public registry modules, private modules, and Git-sourced modules all work with minimal or no changes.
+Terraform modules are one of the most valuable assets in any infrastructure codebase. When migrating to OpenTofu, you do not want to rewrite them. The good news is that OpenTofu is broadly compatible with Terraform modules. Public registry modules, private modules, and Git-sourced modules usually work with minimal or no changes.
 
 ## How Module Compatibility Works
 
-Modules in Terraform are just directories containing `.tf` files. There is nothing Terraform-specific about the module format itself. OpenTofu reads the same HCL syntax, supports the same resource types, and uses the same provider plugins. A module that works with Terraform will work with OpenTofu.
+Modules in Terraform are just directories containing `.tf` files. There is nothing Terraform-specific about the module format itself. OpenTofu reads the same HCL syntax, supports the same module structure, and uses compatible provider plugins. A module that works with Terraform 1.6-era language features will usually work with OpenTofu.
 
 The only potential issues arise from:
 - Module source URLs that point to Terraform-specific registries
@@ -21,7 +21,7 @@ The only potential issues arise from:
 
 ## Using Registry Modules
 
-Public modules from the Terraform Registry work with OpenTofu out of the box:
+Many public modules originally published for Terraform are available through the OpenTofu Registry and work with OpenTofu out of the box:
 
 ```hcl
 # This module source works with both Terraform and OpenTofu
@@ -42,7 +42,7 @@ module "vpc" {
 }
 ```
 
-When you run `tofu init`, OpenTofu resolves registry module sources through its own registry (registry.opentofu.org), which mirrors the vast majority of modules from the Terraform Registry.
+When you run `tofu init`, OpenTofu resolves registry module sources through its own registry (registry.opentofu.org), which hosts a broad collection of public modules.
 
 ```bash
 # Initialize and download modules
@@ -75,7 +75,7 @@ module "database" {
 }
 ```
 
-Git modules do not go through any registry. OpenTofu clones the repository directly, which means there are zero compatibility concerns.
+Git modules do not go through any registry. OpenTofu clones the repository directly, so the source address itself is compatible. You still need the module code to use language features and provider versions that OpenTofu supports.
 
 ## Using Local Modules
 
@@ -132,13 +132,15 @@ module "compute" {
 For OpenTofu to access this, configure credentials:
 
 ```bash
-# Create or edit ~/.terraformrc (OpenTofu reads this too)
-cat > ~/.terraformrc << 'EOF'
+# Create or edit ~/.tofurc
+cat > ~/.tofurc << 'EOF'
 credentials "app.terraform.io" {
   token = "your-api-token-here"
 }
 EOF
 ```
+
+OpenTofu can also read `~/.terraformrc` for backward compatibility if no OpenTofu-specific CLI configuration file is present.
 
 ### Using Artifactory or Other Module Registries
 
@@ -151,14 +153,12 @@ module "networking" {
 }
 ```
 
-Configure the provider installation to point to your registry:
+Configure credentials for the registry host if the module registry requires authentication:
 
 ```hcl
-# .terraformrc
-provider_installation {
-  network_mirror {
-    url = "https://artifactory.mycompany.com/api/terraform/providers/"
-  }
+# ~/.tofurc
+credentials "artifactory.mycompany.com" {
+  token = "your-api-token-here"
 }
 ```
 
@@ -192,7 +192,7 @@ terraform {
 }
 ```
 
-OpenTofu recognizes these constraints and maps them to its own version. OpenTofu 1.6.0 reports compatibility with Terraform ~1.6.0, so modules requiring Terraform 1.3+ will work.
+OpenTofu keeps the `terraform` block name for compatibility, but `required_version` is evaluated against the OpenTofu CLI version. A module requiring `>= 1.3.0` will work with current OpenTofu 1.x releases because those releases satisfy the same version constraint syntax.
 
 However, if a module specifies something like:
 
@@ -206,7 +206,7 @@ You may need to update the constraint or fork the module.
 
 ### Features Not Yet in OpenTofu
 
-If a module uses Terraform-specific features added after the fork (like certain import block behaviors), it will not work with OpenTofu:
+If a module uses Terraform-specific language features added after the fork, it will not work with OpenTofu until OpenTofu implements compatible behavior:
 
 ```bash
 # You will see an error during init or plan
@@ -275,17 +275,19 @@ Sticking with the standard source format is recommended because it keeps your co
 
 ## Managing Module Versions
 
-Use a lock file to ensure reproducible module downloads:
+Use exact module version constraints and a lock file for reproducible provider downloads:
 
 ```bash
 # The .terraform.lock.hcl file tracks provider versions
-# Module versions are tracked in .terraform/modules/modules.json
+# Remote module version selections are not recorded in the lock file
 
 # Update all modules to latest allowed versions
 tofu init -upgrade
 
-# This updates module downloads and the lock file
+# This updates module downloads and may update the provider lock file
 ```
+
+For registry modules, use an exact `version` value if you need OpenTofu to select the same module version every time.
 
 ## Monorepo Modules with Multiple Stacks
 
