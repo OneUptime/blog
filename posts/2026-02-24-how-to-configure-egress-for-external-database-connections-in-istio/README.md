@@ -19,7 +19,7 @@ Most egress guides focus on HTTP/HTTPS traffic because it is the most common. Da
 - They use TCP, not HTTP
 - Connections are long-lived (connection pools keep them open for minutes or hours)
 - They use database-specific ports (5432, 3306, 27017, 6379)
-- Some use TLS, others use STARTTLS, and some use no encryption
+- Some use TLS immediately, others negotiate TLS after the connection starts, and some use no encryption
 - Connection timeouts and idle timeouts need tuning
 
 Istio handles TCP traffic through the sidecar proxy, but it cannot inspect the application-layer protocol. This means you get TCP-level metrics (bytes in/out, connection count) but not query-level metrics.
@@ -176,7 +176,7 @@ spec:
   - "*.abc123.mongodb.net"
   ports:
   - number: 27017
-    name: tcp-mongo
+    name: tls-mongo
     protocol: TLS
   resolution: NONE
   location: MESH_EXTERNAL
@@ -244,7 +244,7 @@ Note the port name changes to `tls-redis` and the protocol to `TLS`.
 
 ### Redis Cluster Mode
 
-Redis cluster mode returns multiple node endpoints. You may need to allow all of them:
+Redis cluster mode returns multiple node endpoints. For raw TCP Redis, list the endpoints your client may connect to:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -253,12 +253,14 @@ metadata:
   name: redis-cluster
 spec:
   hosts:
-  - "*.abc123.use1.cache.amazonaws.com"
+  - "my-redis.abc123.use1.cache.amazonaws.com"
+  - "my-redis-0001-001.abc123.use1.cache.amazonaws.com"
+  - "my-redis-0001-002.abc123.use1.cache.amazonaws.com"
   ports:
   - number: 6379
     name: tcp-redis
     protocol: TCP
-  resolution: NONE
+  resolution: DNS
   location: MESH_EXTERNAL
 ```
 
@@ -393,7 +395,7 @@ kubectl exec deploy/my-app -- nslookup mydb.cluster-abc123.us-east-1.rds.amazona
 
 **Connection resets after idle time.** Increase TCP keepalive settings in the DestinationRule. Also check if the database has its own idle timeout setting.
 
-**TLS handshake failures.** If the database requires TLS and you set `protocol: TCP`, the sidecar might interfere with the TLS negotiation. Try `protocol: TLS` instead.
+**TLS handshake failures.** Check the database client's TLS settings and certificate trust configuration. Use `protocol: TCP` for protocols such as PostgreSQL and MySQL that negotiate TLS after the connection starts. Use `protocol: TLS` only when the client starts the connection with a standard TLS ClientHello that Istio can match by SNI.
 
 **Port not open on egress gateway.** If routing through an egress gateway, make sure the database port is exposed on the egress gateway service.
 
@@ -403,4 +405,4 @@ kubectl get svc istio-egressgateway -n istio-system -o yaml | grep -A3 ports
 
 ## Summary
 
-Configuring egress for external databases in Istio requires ServiceEntry resources with TCP or TLS protocol settings and proper port naming. Use `protocol: TCP` for unencrypted connections and `protocol: TLS` for encrypted ones. Add DestinationRules with TCP keepalive settings to prevent idle connection drops. For auditing, route database traffic through the egress gateway, making sure to expose the database ports on the gateway service. Monitor TCP connection counts and bytes transferred to track database usage patterns.
+Configuring egress for external databases in Istio requires ServiceEntry resources with TCP or TLS protocol settings and proper port naming. Use `protocol: TCP` for opaque database protocols, including protocols that negotiate TLS after the connection starts, and `protocol: TLS` when the client starts with a standard TLS ClientHello that Istio can match by SNI. Add DestinationRules with TCP keepalive settings to prevent idle connection drops. For auditing, route database traffic through the egress gateway, making sure to expose the database ports on the gateway service. Monitor TCP connection counts and bytes transferred to track database usage patterns.
