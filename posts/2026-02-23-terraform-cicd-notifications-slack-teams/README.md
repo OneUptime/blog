@@ -42,22 +42,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Plan
         id: plan
         working-directory: infrastructure
         run: |
-          terraform init
-          terraform plan -out=tfplan -detailed-exitcode -no-color 2>&1 | tee plan.txt
+          terraform init -input=false
+          terraform plan -out=tfplan -detailed-exitcode -input=false -no-color 2>&1 | tee plan.txt
           EXIT_CODE=${PIPESTATUS[0]}
 
           # Extract summary line
-          SUMMARY=$(grep -E "^Plan:|^No changes" plan.txt | tail -1)
+          SUMMARY=$(grep -E "^Plan:|^No changes" plan.txt | tail -1 || true)
           echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
 
           if [ $EXIT_CODE -eq 2 ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          elif [ $EXIT_CODE -eq 1 ]; then
+            exit 1
           else
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           fi
@@ -65,61 +67,72 @@ jobs:
       # Send Slack notification with plan summary
       - name: Notify Slack - Plan
         if: steps.plan.outputs.has_changes == 'true'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"blocks\": [
+          PAYLOAD=$(jq -n \
+            --arg pr_url "${{ github.event.pull_request.html_url }}" \
+            --arg pr_number "#${{ github.event.pull_request.number }}" \
+            --arg pr_title "$PR_TITLE" \
+            --arg author "${{ github.actor }}" \
+            --arg summary "${{ steps.plan.outputs.summary }}" \
+            --arg pipeline_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '{
+              blocks: [
                 {
-                  \"type\": \"header\",
-                  \"text\": {
-                    \"type\": \"plain_text\",
-                    \"text\": \"Terraform Plan - Changes Detected\"
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: "Terraform Plan - Changes Detected"
                   }
                 },
                 {
-                  \"type\": \"section\",
-                  \"fields\": [
+                  type: "section",
+                  fields: [
                     {
-                      \"type\": \"mrkdwn\",
-                      \"text\": \"*PR:* <${{ github.event.pull_request.html_url }}|#${{ github.event.pull_request.number }}> ${{ github.event.pull_request.title }}\"
+                      type: "mrkdwn",
+                      text: ("*PR:* <" + $pr_url + "|" + $pr_number + "> " + $pr_title)
                     },
                     {
-                      \"type\": \"mrkdwn\",
-                      \"text\": \"*Author:* ${{ github.actor }}\"
+                      type: "mrkdwn",
+                      text: ("*Author:* " + $author)
                     }
                   ]
                 },
                 {
-                  \"type\": \"section\",
-                  \"text\": {
-                    \"type\": \"mrkdwn\",
-                    \"text\": \"```${{ steps.plan.outputs.summary }}```\"
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: ("```" + $summary + "```")
                   }
                 },
                 {
-                  \"type\": \"actions\",
-                  \"elements\": [
+                  type: "actions",
+                  elements: [
                     {
-                      \"type\": \"button\",
-                      \"text\": {
-                        \"type\": \"plain_text\",
-                        \"text\": \"View PR\"
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "View PR"
                       },
-                      \"url\": \"${{ github.event.pull_request.html_url }}\"
+                      url: $pr_url
                     },
                     {
-                      \"type\": \"button\",
-                      \"text\": {
-                        \"type\": \"plain_text\",
-                        \"text\": \"View Pipeline\"
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "View Pipeline"
                       },
-                      \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                      url: $pipeline_url
                     }
                   ]
                 }
               ]
-            }"
+            }')
+
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
 ```
 
 ### Apply Notifications
@@ -131,16 +144,18 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Apply
         id: apply
         working-directory: infrastructure
         run: |
-          terraform init
-          terraform apply -auto-approve -no-color 2>&1 | tee apply.txt
-          SUMMARY=$(grep -E "^Apply complete!" apply.txt | tail -1)
+          terraform init -input=false
+          terraform apply -auto-approve -input=false -no-color 2>&1 | tee apply.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          SUMMARY=$(grep -E "^Apply complete!" apply.txt | tail -1 || true)
           echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
+          exit $EXIT_CODE
 
       # Success notification
       - name: Notify Slack - Apply Success
@@ -187,46 +202,50 @@ jobs:
         run: |
           # Get the last 20 lines of apply output for context
           ERROR_CONTEXT=$(tail -20 infrastructure/apply.txt | head -15)
-
-          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"blocks\": [
+          PAYLOAD=$(jq -n \
+            --arg context "$ERROR_CONTEXT" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '{
+              blocks: [
                 {
-                  \"type\": \"header\",
-                  \"text\": {
-                    \"type\": \"plain_text\",
-                    \"text\": \"Terraform Apply FAILED\"
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: "Terraform Apply FAILED"
                   }
                 },
                 {
-                  \"type\": \"section\",
-                  \"text\": {
-                    \"type\": \"mrkdwn\",
-                    \"text\": \"*Environment:* production\\n*Applied by:* ${{ github.actor }}\\n\\n```$(echo \"$ERROR_CONTEXT\" | head -10)```\"
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: ("*Environment:* production\n*Applied by:* ${{ github.actor }}\n\n```" + $context + "```")
                   }
                 },
                 {
-                  \"type\": \"actions\",
-                  \"elements\": [
+                  type: "actions",
+                  elements: [
                     {
-                      \"type\": \"button\",
-                      \"text\": {
-                        \"type\": \"plain_text\",
-                        \"text\": \"View Logs\"
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "View Logs"
                       },
-                      \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
-                      \"style\": \"danger\"
+                      url: $url,
+                      style: "danger"
                     }
                   ]
                 }
               ]
-            }"
+            }')
+
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
 ```
 
 ## Microsoft Teams Notifications
 
-Teams uses Adaptive Cards through incoming webhooks:
+Teams can use Adaptive Cards through incoming webhooks:
 
 ```yaml
 # Teams notification for apply results
@@ -245,40 +264,53 @@ Teams uses Adaptive Cards through incoming webhooks:
     curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
       -H "Content-Type: application/json" \
       -d "{
-        \"@type\": \"MessageCard\",
-        \"@context\": \"http://schema.org/extensions\",
-        \"themeColor\": \"$([ '$STATUS' = 'success' ] && echo '00FF00' || echo 'FF0000')\",
-        \"summary\": \"$TITLE\",
-        \"sections\": [{
-          \"activityTitle\": \"$TITLE\",
-          \"facts\": [
+        \"type\": \"message\",
+        \"attachments\": [
+          {
+            \"contentType\": \"application/vnd.microsoft.card.adaptive\",
+            \"contentUrl\": null,
+            \"content\": {
+              \"\$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\",
+              \"type\": \"AdaptiveCard\",
+              \"version\": \"1.2\",
+              \"body\": [
+                {
+                  \"type\": \"TextBlock\",
+                  \"text\": \"$TITLE\",
+                  \"weight\": \"Bolder\",
+                  \"size\": \"Medium\",
+                  \"color\": \"$COLOR\"
+                },
+                {
+                  \"type\": \"FactSet\",
+                  \"facts\": [
             {
-              \"name\": \"Environment\",
+              \"title\": \"Environment\",
               \"value\": \"production\"
             },
             {
-              \"name\": \"Applied by\",
+              \"title\": \"Applied by\",
               \"value\": \"${{ github.actor }}\"
             },
             {
-              \"name\": \"Commit\",
+              \"title\": \"Commit\",
               \"value\": \"$(echo ${{ github.sha }} | cut -c1-7)\"
             },
             {
-              \"name\": \"Status\",
+              \"title\": \"Status\",
               \"value\": \"$STATUS\"
             }
-          ],
-          \"markdown\": true
-        }],
-        \"potentialAction\": [
-          {
-            \"@type\": \"OpenUri\",
-            \"name\": \"View Pipeline\",
-            \"targets\": [{
-              \"os\": \"default\",
-              \"uri\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-            }]
+                  ]
+                }
+              ],
+              \"actions\": [
+                {
+                  \"type\": \"Action.OpenUrl\",
+                  \"title\": \"View Pipeline\",
+                  \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                }
+              ]
+            }
           }
         ]
       }"
@@ -300,20 +332,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Check for Drift
         id: drift
         working-directory: infrastructure
         run: |
-          terraform init
-          terraform plan -detailed-exitcode -no-color 2>&1 | tee drift.txt
+          terraform init -input=false
+          terraform plan -detailed-exitcode -input=false -no-color 2>&1 | tee drift.txt
           EXIT_CODE=${PIPESTATUS[0]}
 
           if [ $EXIT_CODE -eq 2 ]; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
-            SUMMARY=$(grep -E "^Plan:" drift.txt)
+            SUMMARY=$(grep -E "^Plan:" drift.txt | tail -1 || true)
             echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
+          elif [ $EXIT_CODE -eq 1 ]; then
+            exit 1
           else
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
           fi
@@ -358,9 +392,9 @@ The most common complaint about CI/CD notifications is too much noise. Be select
       exit 0
     fi
 
-    # Don't notify for formatting-only changes
-    ONLY_FORMAT=$(git diff --name-only HEAD~1 | grep -v '\.tf$' | wc -l)
-    if [ "$ONLY_FORMAT" -eq 0 ]; then
+    # Don't notify when only formatting or documentation files changed
+    ONLY_TRIVIAL=$(git diff --name-only HEAD~1 | grep -Ev '\.(md|txt)$' | wc -l)
+    if [ "$ONLY_TRIVIAL" -eq 0 ]; then
       echo "notify=false" >> "$GITHUB_OUTPUT"
       exit 0
     fi
