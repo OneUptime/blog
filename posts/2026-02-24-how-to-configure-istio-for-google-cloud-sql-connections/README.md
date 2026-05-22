@@ -31,6 +31,9 @@ metadata:
   name: backend-api
   namespace: app
 spec:
+  selector:
+    matchLabels:
+      app: backend-api
   template:
     metadata:
       labels:
@@ -50,7 +53,7 @@ spec:
             - name: DB_NAME
               value: "mydb"
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.3
           args:
             - "--port=5432"
             - "my-project:us-central1:my-instance"
@@ -83,24 +86,7 @@ spec:
   resolution: DNS
 ```
 
-And for the actual SQL connection tunnel:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: ServiceEntry
-metadata:
-  name: cloud-sql-instance
-  namespace: app
-spec:
-  hosts:
-    - "*.cloud-sql-proxy.googleapis.com"
-  ports:
-    - number: 3307
-      name: tcp-cloudsql
-      protocol: TCP
-  location: MESH_EXTERNAL
-  resolution: NONE
-```
+The proxy also needs outbound TCP access to Cloud SQL on port `3307`. If your mesh uses `REGISTRY_ONLY` outbound traffic policy, allow that egress path with your egress gateway, firewall, or NetworkPolicy design. Do not rely on a wildcard raw TCP ServiceEntry for this path, because Istio cannot recover a wildcard hostname from opaque TCP traffic the way it can from HTTP hosts or TLS SNI.
 
 ## Approach 2: Direct Connection via Private IP
 
@@ -129,7 +115,7 @@ spec:
 
 Replace `10.20.30.40` with your Cloud SQL private IP. The `resolution: STATIC` tells Istio to use the specified IP address directly instead of DNS resolution. The `hosts` field is a logical name you choose for the service.
 
-Your application connects to this using the hostname you defined:
+Your application can connect using the hostname you defined only if that name resolves in your cluster DNS, or if you have enabled Istio DNS capture for ServiceEntry hosts:
 
 ```yaml
 env:
@@ -165,34 +151,31 @@ spec:
         maxConnections: 100
         connectTimeout: 10s
         idleTimeout: 1800s
-    tls:
-      mode: SIMPLE
 ```
 
-If your Cloud SQL instance requires SSL (which it should), use `SIMPLE` TLS mode. Cloud SQL supports server-side SSL certificates that the Istio proxy can validate.
+If your Cloud SQL instance requires SSL/TLS, configure TLS in the database client or driver. Do not use Istio `tls.mode: SIMPLE` for native PostgreSQL or MySQL connections: those protocols negotiate TLS inside the database protocol, while Istio TLS origination starts TLS immediately on the upstream TCP connection.
 
-To use the Cloud SQL server CA certificate:
+For PostgreSQL, mount the Cloud SQL server CA certificate into the application container and configure the client with settings such as:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: cloud-sql-postgres
-  namespace: app
-spec:
-  host: cloud-sql-postgres.database.internal
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-      caCertificates: /etc/cloud-sql-certs/server-ca.pem
+env:
+  - name: PGSSLMODE
+    value: "verify-ca"
+  - name: PGSSLROOTCERT
+    value: "/etc/cloud-sql-certs/server-ca.pem"
 ```
 
-Mount the Cloud SQL server CA certificate into the sidecar:
+Mount the Cloud SQL server CA certificate into the application container:
 
 ```yaml
-annotations:
-  sidecar.istio.io/userVolume: '[{"name":"cloud-sql-certs","secret":{"secretName":"cloud-sql-server-ca"}}]'
-  sidecar.istio.io/userVolumeMount: '[{"name":"cloud-sql-certs","mountPath":"/etc/cloud-sql-certs","readOnly":true}]'
+volumeMounts:
+  - name: cloud-sql-certs
+    mountPath: /etc/cloud-sql-certs
+    readOnly: true
+volumes:
+  - name: cloud-sql-certs
+    secret:
+      secretName: cloud-sql-server-ca
 ```
 
 ## Cloud SQL for MySQL
@@ -222,27 +205,31 @@ spec:
 
 ## Access Control
 
-Control which services can connect to Cloud SQL:
+Control which services can connect to a private-IP Cloud SQL instance with Kubernetes NetworkPolicy or cloud firewall rules. Istio AuthorizationPolicy does not enforce outbound access control from sidecars.
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
   name: cloud-sql-egress
   namespace: app
 spec:
-  action: ALLOW
-  rules:
-    - from:
-        - source:
-            principals:
-              - cluster.local/ns/app/sa/backend-api
-              - cluster.local/ns/app/sa/worker
-      to:
-        - operation:
-            hosts:
-              - cloud-sql-postgres.database.internal
-            ports: ["5432"]
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - backend-api
+          - worker
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.20.30.40/32
+      ports:
+        - protocol: TCP
+          port: 5432
 ```
 
 ## Handling Cloud SQL Restarts and Maintenance
