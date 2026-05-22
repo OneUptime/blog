@@ -69,7 +69,7 @@ locals {
 }
 
 resource "aws_vpc_dhcp_options" "main" {
-  domain_name_servers = var.dns_servers
+  domain_name_servers = local.dns_servers_reversed
 
   tags = {
     Name = "main-dhcp"
@@ -122,9 +122,9 @@ output "rollback_targets" {
 }
 ```
 
-## Reversing Route Table Priorities
+## Reversing Route Table Order
 
-Network routes sometimes need to be applied in reverse order for proper precedence.
+AWS route priority is based on the most specific matching route, not the order routes are created. You can still use `reverse` when you want to iterate over or display route definitions from least specific to most specific.
 
 ```hcl
 variable "route_cidrs" {
@@ -138,7 +138,7 @@ variable "route_cidrs" {
 }
 
 locals {
-  # Some systems want least specific first for route table ordering
+  # Iterate from least specific to most specific for display or generation
   routes_least_specific_first = reverse(var.route_cidrs)
   # ["10.0.0.0/8", "10.0.0.0/16", "10.0.1.0/24"]
 }
