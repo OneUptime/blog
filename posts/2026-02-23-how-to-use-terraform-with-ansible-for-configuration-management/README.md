@@ -146,11 +146,9 @@ For tighter integration, you can use Terraform's local-exec provisioner to run A
 
 ```hcl
 # Trigger Ansible after infrastructure is ready
-resource "null_resource" "ansible_provisioner" {
+resource "terraform_data" "ansible_provisioner" {
   # Re-run when any instance changes
-  triggers = {
-    instance_ids = join(",", aws_instance.app_servers[*].id)
-  }
+  triggers_replace = aws_instance.app_servers[*].id
 
   # Wait for instances to be reachable
   provisioner "local-exec" {
@@ -269,9 +267,12 @@ resource "aws_instance" "ansible_controller" {
   user_data = <<-EOF
     #!/bin/bash
     apt-get update
-    apt-get install -y python3-pip git
-    pip3 install ansible boto3 botocore
-    ansible-galaxy collection install amazon.aws
+    apt-get install -y python3-pip python3-venv git
+    python3 -m venv /opt/ansible-venv
+    /opt/ansible-venv/bin/pip install --upgrade pip
+    /opt/ansible-venv/bin/pip install ansible boto3 botocore
+    /opt/ansible-venv/bin/ansible-galaxy collection install amazon.aws
+    ln -sf /opt/ansible-venv/bin/ansible* /usr/local/bin/
   EOF
 
   tags = {
@@ -280,7 +281,7 @@ resource "aws_instance" "ansible_controller" {
   }
 }
 
-# IAM role allowing the controller to discover and manage instances
+# IAM role allowing the controller to discover instances
 resource "aws_iam_role" "ansible" {
   name = "ansible-controller-role"
 
@@ -294,6 +295,11 @@ resource "aws_iam_role" "ansible" {
       }
     }]
   })
+}
+
+resource "aws_iam_instance_profile" "ansible" {
+  name = "ansible-controller-${var.environment}"
+  role = aws_iam_role.ansible.name
 }
 
 resource "aws_iam_role_policy_attachment" "ansible_ec2" {
