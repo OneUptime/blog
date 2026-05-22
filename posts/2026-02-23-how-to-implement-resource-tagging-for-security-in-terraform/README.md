@@ -42,7 +42,7 @@ locals {
 
   # Common tags applied to all resources
   common_tags = merge(local.required_tags, {
-    CreatedDate = formatdate("YYYY-MM-DD", timestamp())
+    CreatedDate = var.created_date
     Repository  = var.repository_url
   })
 }
@@ -50,7 +50,7 @@ locals {
 
 ## Use Default Tags
 
-The AWS provider supports default tags, which automatically apply to every resource:
+The AWS provider supports default tags, which automatically apply to supported taggable resources:
 
 ```hcl
 provider "aws" {
@@ -69,7 +69,7 @@ provider "aws" {
 }
 ```
 
-With default tags, every resource created by this provider automatically gets these tags. You can add resource-specific tags on top:
+With default tags, supported taggable resources created by this provider automatically get these tags. Resource-level tags take precedence when the same key is set in both places. You can add resource-specific tags on top:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -84,6 +84,8 @@ resource "aws_instance" "web" {
 }
 # This instance gets both default tags and the resource-specific tags
 ```
+
+Auto Scaling Groups are a notable exception to provider-level default tags, so apply shared tags directly to `aws_autoscaling_group` resources.
 
 ## Enforce Tags with SCP
 
@@ -195,7 +197,7 @@ resource "aws_iam_policy" "team_resource_access" {
         ]
         Resource = "*"
         Condition = {
-          ForAnyValue:StringEquals = {
+          "ForAnyValue:StringEquals" = {
             "aws:TagKeys" = ["Team", "Environment", "DataClass"]
           }
         }
@@ -231,22 +233,26 @@ resource "aws_config_config_rule" "required_tags" {
     compliance_resource_types = [
       "AWS::EC2::Instance",
       "AWS::S3::Bucket",
-      "AWS::RDS::DBInstance",
-      "AWS::Lambda::Function",
-      "AWS::ECS::Service"
+      "AWS::RDS::DBInstance"
     ]
   }
 
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Auto-remediate missing tags (tag with a default value and alert)
+# Auto-remediate missing tags with a custom SSM Automation document.
+# AWS-SetRequiredTags does not work as a remediation for the REQUIRED_TAGS rule.
 resource "aws_config_remediation_configuration" "tag_compliance" {
   config_rule_name = aws_config_config_rule.required_tags.name
 
   target_type    = "SSM_DOCUMENT"
-  target_id      = "AWS-SetRequiredTags"
+  target_id      = aws_ssm_document.set_required_tags.name
   target_version = "1"
+
+  parameter {
+    name           = "ResourceId"
+    resource_value = "RESOURCE_ID"
+  }
 
   parameter {
     name         = "RequiredTags"
@@ -357,21 +363,23 @@ resource "aws_instance" "web" {
 Periodically audit for resources that slipped through without proper tags:
 
 ```hcl
-# Use AWS Resource Groups to find untagged resources
-resource "aws_resourcegroups_group" "untagged_instances" {
-  name = "untagged-ec2-instances"
+# Use AWS Config to find resources missing required tags
+resource "aws_config_config_rule" "ec2_team_tag" {
+  name = "ec2-team-tag-required"
 
-  resource_query {
-    query = jsonencode({
-      ResourceTypeFilters = ["AWS::EC2::Instance"]
-      TagFilters = [
-        {
-          Key    = "Team"
-          Values = []
-        }
-      ]
-    })
-    type = "TAG_FILTERS_1_0"
+  source {
+    owner             = "AWS"
+    source_identifier = "REQUIRED_TAGS"
+  }
+
+  input_parameters = jsonencode({
+    tag1Key = "Team"
+  })
+
+  scope {
+    compliance_resource_types = [
+      "AWS::EC2::Instance"
+    ]
   }
 }
 ```
