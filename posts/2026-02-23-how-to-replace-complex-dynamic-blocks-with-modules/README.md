@@ -31,7 +31,7 @@ resource "aws_lb" "main" {
   internal           = var.internal
   load_balancer_type = "application"
   security_groups    = var.security_group_ids
-  subnets            = var.subnet_ids
+  subnets            = var.subnet_mappings == null ? var.subnet_ids : null
 
   dynamic "access_logs" {
     for_each = var.access_logs_bucket != null ? [1] : []
@@ -404,7 +404,7 @@ module "test_alb" {
 }
 ```
 
-Run `terraform validate` on the test directory to check for structural errors.
+Run `terraform init -backend=false` and then `terraform validate` on the test directory to check for structural errors.
 
 ## Summary
 
