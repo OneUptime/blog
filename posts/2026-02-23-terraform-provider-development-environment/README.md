@@ -12,7 +12,7 @@ Setting up the right development environment is the first step to building a Ter
 
 ## Installing Go
 
-Terraform providers are written in Go, and you need Go 1.21 or later. The Terraform Plugin Framework requires recent Go features, so make sure you have an up-to-date version.
+Terraform providers are written in Go, and you need Go 1.25 or later for current Terraform Plugin Framework releases. The Terraform Plugin Framework follows Go's support policy and requires recent Go features, so make sure you have an up-to-date version.
 
 ```bash
 # On macOS with Homebrew
@@ -24,13 +24,14 @@ sudo apt-get update
 sudo apt-get install -y golang-go
 
 # Or download directly from go.dev
-wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.25.9.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go1.25.9.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # Verify the installation
 go version
-# Expected: go version go1.22.0 linux/amd64
+# Expected: go version go1.25.9 linux/amd64
 ```
 
 Set up your Go workspace. The default Go module system handles dependencies without a GOPATH, but you still need a few environment variables configured.
@@ -76,7 +77,8 @@ go mod edit -module github.com/yourorg/terraform-provider-yourservice
 
 # Update import paths throughout the codebase
 # Replace the scaffolding module path with your own
-find . -type f -name "*.go" -exec sed -i '' 's|github.com/hashicorp/terraform-provider-scaffolding-framework|github.com/yourorg/terraform-provider-yourservice|g' {} +
+find . -type f -name "*.go" -exec sed -i.bak 's|github.com/hashicorp/terraform-provider-scaffolding-framework|github.com/yourorg/terraform-provider-yourservice|g' {} +
+find . -type f -name "*.bak" -delete
 
 # Download dependencies
 go mod tidy
@@ -254,7 +256,7 @@ go build -gcflags="all=-N -l" -o terraform-provider-yourservice
 # Step 2: Run the provider in debug mode
 ./terraform-provider-yourservice -debug
 # Output: Provider started, to attach Terraform set the TF_REATTACH_PROVIDERS env var:
-# TF_REATTACH_PROVIDERS='{"yourorg/yourservice":{"Protocol":"grpc","ProtocolVersion":6,...}}'
+# TF_REATTACH_PROVIDERS='{"registry.terraform.io/yourorg/yourservice":{"Protocol":"grpc","Pid":12345,...}}'
 
 # Step 3: In another terminal, set the reattach variable and run Terraform
 export TF_REATTACH_PROVIDERS='<paste the value from step 2>'
@@ -340,7 +342,7 @@ go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
 
 # Add a generate directive to your codebase
 # In main.go or a separate generate.go:
-// //go:generate tfplugindocs
+# //go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 
 # Generate the docs
 go generate ./...
