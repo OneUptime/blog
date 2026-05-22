@@ -42,8 +42,9 @@ Verify VNet creation with proper subnets and address spaces:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/azure"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -54,7 +55,8 @@ import (
 func TestVirtualNetwork(t *testing.T) {
     t.Parallel()
 
-    uniqueId := random.UniqueId()
+    ctx := context.Background()
+    uniqueId := random.UniqueID()
     resourceGroupName := fmt.Sprintf("rg-test-%s", uniqueId)
 
     opts := &terraform.Options{
@@ -81,26 +83,30 @@ func TestVirtualNetwork(t *testing.T) {
     vnetName := terraform.Output(t, opts, "vnet_name")
 
     // Verify the VNet exists using the Azure API
-    vnetExists := azure.VirtualNetworkExists(t, vnetName, resourceGroupName, "")
+    vnetExists := azure.VirtualNetworkExistsContext(t, ctx, vnetName, resourceGroupName, "")
     assert.True(t, vnetExists, "VNet should exist")
 
     // Verify the address space
-    vnet, err := azure.GetVirtualNetworkE(vnetName, resourceGroupName, "")
+    vnet, err := azure.GetVirtualNetworkContextE(ctx, vnetName, resourceGroupName, "")
     assert.NoError(t, err)
-    assert.Contains(t, *vnet.VirtualNetworkPropertiesFormat.AddressSpace.AddressPrefixes,
+    addressPrefixes := []string{}
+    for _, prefix := range vnet.Properties.AddressSpace.AddressPrefixes {
+        addressPrefixes = append(addressPrefixes, *prefix)
+    }
+    assert.Contains(t, addressPrefixes,
         "10.0.0.0/16", "VNet should have the correct address space")
 
     // Verify subnets exist
-    subnetExists := azure.SubnetExists(t, "app", vnetName, resourceGroupName, "")
+    subnetExists := azure.SubnetExistsContext(t, ctx, "app", vnetName, resourceGroupName, "")
     assert.True(t, subnetExists, "App subnet should exist")
 
-    dataSubnetExists := azure.SubnetExists(t, "data", vnetName, resourceGroupName, "")
+    dataSubnetExists := azure.SubnetExistsContext(t, ctx, "data", vnetName, resourceGroupName, "")
     assert.True(t, dataSubnetExists, "Data subnet should exist")
 
     // Check subnet address prefixes
-    appSubnet, err := azure.GetSubnetE("app", vnetName, resourceGroupName, "")
+    appSubnet, err := azure.GetSubnetContextE(ctx, "app", vnetName, resourceGroupName, "")
     assert.NoError(t, err)
-    assert.Equal(t, "10.0.1.0/24", *appSubnet.SubnetPropertiesFormat.AddressPrefix)
+    assert.Equal(t, "10.0.1.0/24", *appSubnet.Properties.AddressPrefix)
 }
 ```
 
@@ -113,8 +119,9 @@ Verify VM creation, configuration, and connectivity:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
     "time"
 
     "github.com/gruntwork-io/terratest/modules/azure"
@@ -129,7 +136,8 @@ import (
 func TestVirtualMachine(t *testing.T) {
     t.Parallel()
 
-    uniqueId := random.UniqueId()
+    ctx := context.Background()
+    uniqueId := random.UniqueID()
     resourceGroupName := fmt.Sprintf("rg-vm-test-%s", uniqueId)
 
     // Generate an SSH key pair for the test
@@ -154,20 +162,19 @@ func TestVirtualMachine(t *testing.T) {
     vmName := terraform.Output(t, opts, "vm_name")
 
     // Verify the VM exists
-    vmExists := azure.VirtualMachineExists(t, vmName, resourceGroupName, "")
+    vmExists := azure.VirtualMachineExistsContext(t, ctx, vmName, resourceGroupName, "")
     assert.True(t, vmExists, "VM should exist")
 
     // Get VM details and verify configuration
-    vm, err := azure.GetVirtualMachineE(vmName, resourceGroupName, "")
+    vm, err := azure.GetVirtualMachineContextE(ctx, vmName, resourceGroupName, "")
     require.NoError(t, err)
 
     assert.Equal(t, "Standard_B1s",
-        string(vm.VirtualMachineProperties.HardwareProfile.VMSize))
+        string(*vm.Properties.HardwareProfile.VMSize))
 
     // Verify the VM is running
-    instanceView := azure.GetVirtualMachineInstanceView(t, vmName, resourceGroupName, "")
     powerState := ""
-    for _, status := range *instanceView.Statuses {
+    for _, status := range vm.Properties.InstanceView.Statuses {
         if *status.Code == "PowerState/running" {
             powerState = "running"
         }
@@ -204,8 +211,10 @@ Verify storage account creation with correct configuration:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "strings"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/azure"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -217,7 +226,8 @@ import (
 func TestStorageAccount(t *testing.T) {
     t.Parallel()
 
-    uniqueId := random.UniqueId()
+    ctx := context.Background()
+    uniqueId := strings.ToLower(random.UniqueID())
     resourceGroupName := fmt.Sprintf("rg-storage-test-%s", uniqueId)
     // Storage account names must be 3-24 chars, lowercase alphanumeric only
     storageAccountName := fmt.Sprintf("sttest%s", uniqueId)
@@ -239,28 +249,28 @@ func TestStorageAccount(t *testing.T) {
     terraform.InitAndApply(t, opts)
 
     // Verify the storage account exists
-    exists := azure.StorageAccountExists(t, storageAccountName, resourceGroupName, "")
+    exists := azure.StorageAccountExistsContext(t, ctx, storageAccountName, resourceGroupName, "")
     assert.True(t, exists, "Storage account should exist")
 
     // Get storage account properties
-    account, err := azure.GetStorageAccountE(storageAccountName, resourceGroupName, "")
+    account, err := azure.GetStorageAccountContextE(ctx, storageAccountName, resourceGroupName, "")
     require.NoError(t, err)
 
     // Verify account tier
     assert.Equal(t, "Standard",
-        string(account.Sku.Tier))
+        string(*account.SKU.Tier))
 
     // Verify HTTPS is enforced
-    assert.True(t, *account.AccountProperties.EnableHTTPSTrafficOnly,
+    assert.True(t, *account.Properties.EnableHTTPSTrafficOnly,
         "HTTPS should be enforced")
 
     // Verify TLS version
     assert.Equal(t, "TLS1_2",
-        string(account.AccountProperties.MinimumTLSVersion),
+        string(*account.Properties.MinimumTLSVersion),
         "Minimum TLS version should be 1.2")
 
     // Verify blob containers exist
-    containerExists := azure.StorageBlobContainerExists(t, "data",
+    containerExists := azure.StorageBlobContainerExistsContext(t, ctx, "data",
         storageAccountName, resourceGroupName, "")
     assert.True(t, containerExists, "Data container should exist")
 }
@@ -275,12 +285,13 @@ Verify database creation and connectivity:
 package test
 
 import (
-    "testing"
-    "fmt"
     "database/sql"
+    "fmt"
+    "strings"
+    "testing"
     "time"
 
-    _ "github.com/denisenkom/go-mssqldb"  // SQL Server driver
+    _ "github.com/microsoft/go-mssqldb"  // SQL Server driver
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
     "github.com/gruntwork-io/terratest/modules/retry"
@@ -290,7 +301,7 @@ import (
 func TestAzureSQLDatabase(t *testing.T) {
     t.Parallel()
 
-    uniqueId := random.UniqueId()
+    uniqueId := strings.ToLower(random.UniqueID())
     resourceGroupName := fmt.Sprintf("rg-sql-test-%s", uniqueId)
 
     opts := &terraform.Options{
@@ -354,8 +365,9 @@ Verify NSG rules are correctly configured:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/azure"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -367,7 +379,8 @@ import (
 func TestNetworkSecurityGroup(t *testing.T) {
     t.Parallel()
 
-    uniqueId := random.UniqueId()
+    ctx := context.Background()
+    uniqueId := random.UniqueID()
     resourceGroupName := fmt.Sprintf("rg-nsg-test-%s", uniqueId)
 
     opts := &terraform.Options{
@@ -404,27 +417,17 @@ func TestNetworkSecurityGroup(t *testing.T) {
 
     nsgName := terraform.Output(t, opts, "nsg_name")
 
-    // Verify the NSG exists
-    exists := azure.NetworkSecurityGroupExists(t, nsgName, resourceGroupName, "")
-    assert.True(t, exists)
-
     // Get NSG rules
-    nsg, err := azure.GetNetworkSecurityGroupE(nsgName, resourceGroupName, "")
+    rules, err := azure.GetAllNSGRulesContextE(ctx, resourceGroupName, nsgName, "")
     require.NoError(t, err)
 
-    rules := *nsg.SecurityRules
-    assert.GreaterOrEqual(t, len(rules), 2, "Should have at least 2 rules")
+    assert.GreaterOrEqual(t, len(rules.SummarizedRules), 2, "Should have at least 2 rules")
 
     // Verify HTTPS rule exists
-    foundHttps := false
-    for _, rule := range rules {
-        if *rule.Name == "AllowHTTPS" {
-            foundHttps = true
-            assert.Equal(t, "Allow", string(rule.SecurityRulePropertiesFormat.Access))
-            assert.Equal(t, int32(100), *rule.SecurityRulePropertiesFormat.Priority)
-        }
-    }
-    assert.True(t, foundHttps, "Should have an HTTPS allow rule")
+    httpsRule := rules.FindRuleByName("AllowHTTPS")
+    assert.Equal(t, "AllowHTTPS", httpsRule.Name, "Should have an HTTPS allow rule")
+    assert.Equal(t, "Allow", httpsRule.Access)
+    assert.Equal(t, int32(100), httpsRule.Priority)
 }
 ```
 
@@ -437,8 +440,10 @@ Verify Key Vault creation and secret management:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "strings"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/azure"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -449,7 +454,8 @@ import (
 func TestKeyVault(t *testing.T) {
     t.Parallel()
 
-    uniqueId := random.UniqueId()
+    ctx := context.Background()
+    uniqueId := strings.ToLower(random.UniqueID())
     resourceGroupName := fmt.Sprintf("rg-kv-test-%s", uniqueId)
 
     opts := &terraform.Options{
@@ -469,11 +475,7 @@ func TestKeyVault(t *testing.T) {
     vaultName := terraform.Output(t, opts, "vault_name")
 
     // Verify Key Vault exists
-    exists := azure.KeyVaultExists(t, vaultName, resourceGroupName, "")
-    assert.True(t, exists, "Key Vault should exist")
-
-    // Get Key Vault properties
-    kv, err := azure.GetKeyVaultE(t, vaultName, resourceGroupName, "")
+    kv, err := azure.GetKeyVaultContextE(t, ctx, resourceGroupName, vaultName, "")
     assert.NoError(t, err)
 
     // Verify soft delete is enabled (required by Azure)
@@ -481,7 +483,7 @@ func TestKeyVault(t *testing.T) {
         "Soft delete should be enabled")
 
     // Verify SKU
-    assert.Equal(t, "standard", string(kv.Properties.Sku.Name))
+    assert.Equal(t, "standard", string(*kv.Properties.SKU.Name))
 }
 ```
 
