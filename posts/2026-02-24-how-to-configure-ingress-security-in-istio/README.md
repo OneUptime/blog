@@ -118,7 +118,7 @@ spec:
 
 ## JWT Authentication at the Gateway
 
-Validate JWT tokens at the ingress gateway so that only authenticated requests enter the mesh:
+Validate presented JWT tokens at the ingress gateway:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -257,6 +257,7 @@ metadata:
   name: security-headers
   namespace: istio-system
 spec:
+  priority: 10
   workloadSelector:
     labels:
       istio: ingressgateway
@@ -298,6 +299,7 @@ metadata:
   name: gateway-rate-limit
   namespace: istio-system
 spec:
+  priority: 10
   workloadSelector:
     labels:
       istio: ingressgateway
@@ -344,6 +346,8 @@ This limits all traffic through the gateway to 100 requests per 60 seconds per g
 ## Monitoring Ingress Security
 
 Track security-related metrics at the gateway:
+
+Local rate-limit counters may require enabling Envoy stats matching with `proxyStatsMatcher` on the gateway; otherwise many Envoy stats are not emitted by default.
 
 ```bash
 # Check authorization policy denials
