@@ -177,10 +177,11 @@ locals {
   # Assign each member to a shard based on their name hash
   member_shards = {
     for member in local.team_members :
-    member => tonumber(
+    member => parseint(
       # Take the first 4 hex chars of the SHA-1 and convert to decimal
       # Then mod by the number of shards
-      "0x${substr(sha1(member), 0, 4)}"
+      substr(sha1(member), 0, 4),
+      16
     ) % 3
   }
 }
@@ -220,10 +221,10 @@ resource "aws_instance" "web" {
 
 ## sha1 vs filesha1
 
-Similar to `md5` and `filemd5`, Terraform provides `filesha1` as a convenience function that combines `file()` and `sha1()`:
+Similar to `md5` and `filemd5`, Terraform provides `filesha1` as a convenience function for hashing file contents. For UTF-8 text files, it produces the same result as combining `file()` and `sha1()`:
 
 ```hcl
-# These are equivalent
+# These are equivalent for UTF-8 text files
 output "hash_a" {
   value = sha1(file("${path.module}/script.sh"))
 }
@@ -233,7 +234,7 @@ output "hash_b" {
 }
 ```
 
-Use `filesha1` when you only need the hash and not the file content itself. It is slightly more efficient.
+Use `filesha1` when you only need the hash and not the file content itself. Unlike `file()`, it can hash binary files as well as UTF-8 text files.
 
 ## Comparing SHA-1 with Other Hash Functions
 
