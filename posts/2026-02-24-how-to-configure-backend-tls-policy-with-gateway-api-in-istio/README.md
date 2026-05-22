@@ -18,14 +18,14 @@ BackendTLSPolicy tells the gateway:
 - What hostname to use for SNI when connecting to the backend
 - Which CA certificates to use for validating the backend's certificate
 
-Without BackendTLSPolicy, the gateway connects to backends using whatever protocol the Service port implies. With it, the gateway establishes a TLS connection to the backend and validates its certificate.
+Without BackendTLSPolicy, Gateway API does not specify validated upstream TLS for that backend. With it, the gateway establishes a TLS connection to the backend and validates its certificate.
 
 ## Prerequisites
 
-BackendTLSPolicy is part of the experimental Gateway API channel:
+BackendTLSPolicy has been part of the Gateway API Standard channel since v1.4.0. Install a current Standard channel release of the Gateway API CRDs:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 ```
 
 Verify:
@@ -39,7 +39,7 @@ kubectl get crd backendtlspolicies.gateway.networking.k8s.io
 Here's a basic setup where the gateway connects to a backend service over TLS:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: backend-tls
@@ -123,7 +123,7 @@ spec:
 **BackendTLSPolicy:**
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: secure-backend-tls
@@ -217,10 +217,10 @@ This is sometimes called "TLS re-encryption" or "TLS bridging."
 
 ## Using Well-Known CAs
 
-If your backend uses a certificate from a well-known CA (like Let's Encrypt), you can reference the system trust bundle instead of providing a specific CA:
+If your backend uses a certificate from a well-known CA (like Let's Encrypt), and your Gateway API implementation supports it, you can reference the system trust bundle instead of providing a specific CA:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: public-backend-tls
@@ -235,14 +235,14 @@ spec:
     hostname: api.external-service.com
 ```
 
-The `wellKnownCACertificates: System` setting uses the system's trusted CA bundle, which includes certificates from well-known CAs.
+The `wellKnownCACertificates: System` setting tells the implementation to use its configured system trust bundle, which typically includes certificates from well-known CAs.
 
 ## Multiple Backend Services
 
 Apply BackendTLSPolicy to multiple services:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: payments-backend-tls
@@ -259,7 +259,7 @@ spec:
       kind: ConfigMap
     hostname: payment-processor.internal
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: auth-backend-tls
@@ -295,7 +295,7 @@ If the backend is within the mesh and has a sidecar, you can skip BackendTLSPoli
 
 ## Interaction with DestinationRule
 
-If you also have an Istio DestinationRule for the same service with TLS settings, be aware of how they interact:
+If you also have an Istio DestinationRule for the same service with TLS settings, be aware that DestinationRule TLS settings also apply to outbound traffic from gateways:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -311,7 +311,7 @@ spec:
       caCertificates: /etc/certs/ca.pem
 ```
 
-When both BackendTLSPolicy and DestinationRule configure TLS, the Gateway API policy takes precedence for gateway-initiated connections. DestinationRule TLS settings apply to sidecar-to-sidecar communication.
+Avoid configuring both BackendTLSPolicy and DestinationRule TLS origination for the same gateway-to-backend hop unless you have verified the generated Envoy configuration for your Istio version. Otherwise, you can end up with conflicting TLS origination settings or unexpected double encryption.
 
 ## Checking BackendTLSPolicy Status
 
@@ -371,7 +371,7 @@ Look for `transportSocket` with TLS configuration and `validationContext` with t
 # From inside the gateway pod, test TLS to the backend
 
 kubectl exec -it deploy/web-gateway-istio -c istio-proxy -n production -- \
-  openssl s_client -connect secure-backend.production:443 -servername secure-backend.production.svc.cluster.local -CAfile /etc/ssl/certs/ca-certificates.crt
+  openssl s_client -connect secure-backend.production:443 -servername secure-backend.production.svc.cluster.local -verify_return_error
 ```
 
 BackendTLSPolicy completes the end-to-end TLS picture in the Gateway API. Together with TLS termination on the listener side and Istio's mTLS for mesh traffic, you have full control over encryption at every hop in the request path.
