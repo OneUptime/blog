@@ -8,13 +8,13 @@ Description: Learn how to use each.key and each.value in Terraform for_each loop
 
 ---
 
-The `for_each` meta-argument in Terraform lets you create multiple instances of a resource from a map or set. Inside the resource block, `each.key` and `each.value` give you access to the current item being iterated over. These two references are how you customize each resource instance.
+The `for_each` meta-argument in Terraform lets you create multiple instances of a resource from a map or set of strings. Inside the resource block, `each.key` and `each.value` give you access to the current item being iterated over. These two references are how you customize each resource instance.
 
 This post covers how `each.key` and `each.value` work, what they return for different input types, and practical patterns for using them.
 
 ## The Basics
 
-When you use `for_each`, Terraform iterates over a map or set and creates one resource instance per item. Inside the block, you get two references:
+When you use `for_each`, Terraform iterates over a map or set of strings and creates one resource instance per item. Inside the block, you get two references:
 
 - **each.key** - The map key (for maps) or the set element (for sets)
 - **each.value** - The map value (for maps) or the set element (for sets)
@@ -33,7 +33,7 @@ resource "aws_iam_user" "team" {
 
 ## for_each with a Set
 
-When the input is a set, both `each.key` and `each.value` return the same thing - the current element:
+When the input is a set of strings, both `each.key` and `each.value` return the same thing - the current element:
 
 ```hcl
 variable "environments" {
@@ -53,7 +53,7 @@ resource "aws_s3_bucket" "env" {
 }
 ```
 
-If you have a list, you need to convert it to a set first:
+If you have a list of strings, you need to convert it to a set first:
 
 ```hcl
 variable "subnet_cidrs" {
