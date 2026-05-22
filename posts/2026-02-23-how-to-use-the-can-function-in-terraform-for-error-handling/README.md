@@ -8,11 +8,11 @@ Description: Learn how to use the can function in Terraform to test expressions 
 
 ---
 
-Input validation is critical in Terraform, especially when writing reusable modules that accept complex variables. You need to verify that values match expected formats, types, and constraints without crashing the plan if they do not. The `can` function lets you test whether an expression would succeed, returning `true` or `false` instead of raising an error.
+Input validation is critical in Terraform, especially when writing reusable modules that accept complex variables. You need to verify that values match expected formats, types, and constraints without crashing the plan if they do not. The `can` function lets you test whether an expression would succeed, returning `true` or `false` for dynamic errors.
 
 ## What is the can Function?
 
-The `can` function evaluates an expression and returns `true` if it succeeds or `false` if it produces an error. It never raises an error itself.
+The `can` function evaluates an expression and returns `true` if it succeeds or `false` if it produces a dynamic error. It cannot catch errors Terraform can prove are invalid before evaluation, such as malformed references or references to undeclared top-level objects.
 
 ```hcl
 # Test if an expression is valid
@@ -117,7 +117,7 @@ variable "kms_key_arn" {
 
 ## Using can for Conditional Logic
 
-Beyond validation, `can` is useful for conditional logic based on data availability:
+Beyond validation, `can` can be used for conditional logic based on data availability, though Terraform's documentation recommends using it mainly for variable validation and preferring `try` for fallback values elsewhere:
 
 ```hcl
 variable "config" {
@@ -213,7 +213,7 @@ locals {
   is_number  = can(tonumber(var.flexible_input))
   is_bool    = can(tobool(var.flexible_input))
   is_list    = can(tolist(var.flexible_input))
-  is_map     = can(length(var.flexible_input)) && !can(tolist(var.flexible_input))
+  is_map     = can(tomap(var.flexible_input))
 }
 ```
 
@@ -379,4 +379,4 @@ false
 
 ## Summary
 
-The `can` function is Terraform's primary tool for non-destructive error checking. Its main role is in `validation` blocks for variable constraints, but it is equally valuable for checking data availability, testing type compatibility, and building conditional logic around optional configuration. Think of `can` as the "question" and `try` as the "answer" - use `can` to ask "will this work?" and `try` to say "do this, or else do that." For the value-returning companion, see the [try function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-try-function-in-terraform-for-safe-access/view).
+The `can` function is Terraform's primary tool for turning dynamic errors into boolean checks. Its main role is in `validation` blocks for variable constraints, and it can also help with checking data availability, testing type compatibility, and building conditional logic around optional configuration. Think of `can` as the "question" and `try` as the "answer" - use `can` to ask "will this work?" and `try` to say "do this, or else do that." For the value-returning companion, see the [try function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-try-function-in-terraform-for-safe-access/view).
