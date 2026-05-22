@@ -112,7 +112,7 @@ terraform {
 ```
 
 The advantages of using KMS:
-- Key material never leaves the KMS service
+- KMS key material never leaves the KMS service unencrypted
 - Key access is controlled by IAM policies
 - Key usage is audited via CloudTrail
 - Key rotation can be automated
@@ -124,7 +124,7 @@ terraform {
   encryption {
     key_provider "gcp_kms" "main" {
       kms_encryption_key = "projects/my-project/locations/us-central1/keyRings/opentofu/cryptoKeys/state-key"
-      key_length         = 256
+      key_length         = 32
     }
 
     method "aes_gcm" "main" {
@@ -279,7 +279,7 @@ terraform {
 }
 ```
 
-With `enforced = true`, OpenTofu will refuse to read or write state without encryption. This prevents someone from accidentally removing the encryption configuration and writing unencrypted state.
+With `enforced = true`, OpenTofu will refuse to read or write state with an unencrypted method. This is especially useful when the encryption method is provided through environment configuration, because the checked-in configuration can still fail closed if the environment variable is missing.
 
 ## CI/CD Integration
 
@@ -327,9 +327,9 @@ Confirm that your state is actually encrypted:
 # For S3:
 aws s3 cp s3://my-state-bucket/production/terraform.tfstate ./raw-state.bin
 
-# Try to read it as JSON (should fail or show encrypted content)
+# Try to read it as state JSON (should show encrypted content, not plain state values)
 cat raw-state.bin
-# Output will be binary/encrypted data, not readable JSON
+# Output will be encrypted state data, not readable plain state values
 
 # Through OpenTofu (with the key), it's readable
 tofu state pull | python3 -m json.tool | head -20
