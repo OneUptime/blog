@@ -160,7 +160,7 @@ This takes 15 minutes and gives developers a mental model of what Istio does to 
 
 ## Document Port Naming Requirements
 
-This is the single most impactful change for developers. Istio needs service port names to follow a convention, and if developers create services without proper port names, features like metrics and routing break silently.
+This is one of the most impactful changes for developers. Istio can detect HTTP and HTTP/2 automatically, but explicit protocol selection is more reliable. Developers should use Kubernetes `appProtocol` or service port names that follow Istio's convention so features like metrics and routing use the right protocol.
 
 Share a clear reference:
 
@@ -176,6 +176,11 @@ spec:
   - name: http-web
     port: 80
     targetPort: 8080
+
+  # HTTP/2 traffic - use http2 or http2-<suffix>
+  - name: http2-web
+    port: 8081
+    targetPort: 8081
 
   # HTTPS traffic - use https or https-<suffix>
   - name: https-secure
@@ -209,14 +214,16 @@ Add this as a linting rule in CI/CD to catch issues early:
 #!/bin/bash
 # lint-port-names.sh - Add to CI pipeline
 
-VALID_PREFIXES="http|https|grpc|tcp|tls|mongo|redis|mysql"
+VALID_PROTOCOLS="^(http|http2|https|grpc|grpc-web|tcp|tls|mongo|redis|mysql)(-.+)?$"
 
-kubectl get services -A -o json | jq -r '
+kubectl get services -A -o json | jq -r --arg valid_protocols "$VALID_PROTOCOLS" '
   .items[] |
-  .metadata.namespace + "/" + .metadata.name + ": " +
-  (.spec.ports[] | .name // "UNNAMED") ' | \
-  grep -v -E "($VALID_PREFIXES)" | \
-  grep -v "istio-system"
+  select(.metadata.namespace != "istio-system") |
+  .metadata.namespace as $namespace |
+  .metadata.name as $service |
+  .spec.ports[]? |
+  select((.name // "") | test($valid_protocols) | not) |
+  "\($namespace)/\($service): \(.name // "UNNAMED")"'
 ```
 
 ## Establish Office Hours
