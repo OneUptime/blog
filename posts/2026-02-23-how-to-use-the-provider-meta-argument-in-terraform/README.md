@@ -121,7 +121,7 @@ resource "aws_vpc" "secondary" {
   }
 }
 
-# DynamoDB global table requires tables in both regions
+# Regional DynamoDB tables can use provider aliases too
 resource "aws_dynamodb_table" "primary" {
   name         = "orders"
   billing_mode = "PAY_PER_REQUEST"
@@ -179,7 +179,7 @@ resource "aws_acm_certificate" "cdn" {
   }
 }
 
-# Validation record can be in any region
+# Route 53 validation records are not regional
 resource "aws_route53_record" "cert_validation" {
   for_each = {
     for dvo in aws_acm_certificate.cdn.domain_validation_options : dvo.domain_name => {
@@ -203,7 +203,7 @@ resource "aws_acm_certificate_validation" "cdn" {
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
-# CloudFront distribution - uses default provider region for origin
+# CloudFront distribution - global resource using the certificate from us-east-1
 resource "aws_cloudfront_distribution" "main" {
   # ...
   viewer_certificate {
