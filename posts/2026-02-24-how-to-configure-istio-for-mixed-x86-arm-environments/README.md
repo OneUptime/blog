@@ -34,7 +34,7 @@ node-arm-2   Ready    <none>   5d    v1.28.0   arm64
 
 Istio publishes multi-arch images, so the control plane components will run on either architecture. However, you probably want istiod running on specific nodes for predictability.
 
-Create an IstioOperator configuration that uses node affinity to pin control plane components:
+Create an IstioOperator configuration that uses node affinity to prefer specific nodes for control plane components:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -90,7 +90,7 @@ kubectl label namespace default istio-injection=enabled
 
 When a pod is scheduled to an ARM node, the kubelet pulls the arm64 Envoy image. When it is on an x86 node, it pulls the amd64 image. This happens transparently.
 
-But there is a catch. If you are using custom Envoy filters or Wasm plugins, those need to be compiled for both architectures. More on that later.
+But there is a catch. If you are using native Envoy extensions or helper images for Wasm plugin distribution, those artifacts need to support both architectures. More on that later.
 
 ## Setting Up Architecture-Aware Scheduling
 
@@ -110,6 +110,8 @@ spec:
     metadata:
       labels:
         app: legacy-api
+        arch-variant: x86
+        version: amd64
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64
@@ -132,6 +134,8 @@ spec:
     metadata:
       labels:
         app: modern-service
+        arch-variant: arm
+        version: arm64
     spec:
       nodeSelector:
         kubernetes.io/arch: arm64
@@ -186,32 +190,12 @@ This configuration splits traffic 50/50 between x86 and ARM versions of a servic
 
 ## Monitoring Cross-Architecture Performance
 
-You want to compare how your services perform on each architecture. Use Istio metrics with custom labels to track this. Add a Telemetry resource:
+You want to compare how your services perform on each architecture. Use Istio metrics with workload labels to track this. If you label the architecture-specific deployments with `version: arm64` and `version: amd64` as shown above, Istio exposes that label as `destination_version` in Prometheus metrics.
 
-```yaml
-apiVersion: telemetry.istio.io/v1alpha1
-kind: Telemetry
-metadata:
-  name: arch-metrics
-  namespace: istio-system
-spec:
-  metrics:
-  - providers:
-    - name: prometheus
-    overrides:
-    - match:
-        metric: REQUEST_DURATION
-        mode: CLIENT_AND_SERVER
-      tagOverrides:
-        node_arch:
-          operation: UPSERT
-          value: "downstream_peer.labels['kubernetes.io/arch'].value"
-```
-
-Then in your Prometheus queries, you can filter by architecture:
+Then in your Prometheus queries, you can filter by architecture-specific workload version:
 
 ```text
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{node_arch="arm64"}[5m])) by (le, destination_service))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_version="arm64", reporter="destination"}[5m])) by (le, destination_service))
 ```
 
 ## Handling Architecture-Specific Issues
@@ -243,7 +227,16 @@ kind: Deployment
 metadata:
   name: compute-service-arm
 spec:
+  selector:
+    matchLabels:
+      app: compute-service
+      arch-variant: arm
   template:
+    metadata:
+      labels:
+        app: compute-service
+        arch-variant: arm
+        version: arm64
     spec:
       nodeSelector:
         kubernetes.io/arch: arm64
@@ -260,7 +253,16 @@ kind: Deployment
 metadata:
   name: compute-service-x86
 spec:
+  selector:
+    matchLabels:
+      app: compute-service
+      arch-variant: x86
   template:
+    metadata:
+      labels:
+        app: compute-service
+        arch-variant: x86
+        version: amd64
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64
