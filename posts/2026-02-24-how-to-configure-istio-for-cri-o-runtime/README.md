@@ -48,41 +48,48 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-The `openshift` profile configures Istio with the right security context constraints (SCCs) for OpenShift.
+The `openshift` profile configures Istio with the platform-specific chart settings for OpenShift, including the Istio CNI settings used to avoid privileged workload init containers.
 
 ## Security Context Constraints on OpenShift
 
 CRI-O on OpenShift enforces stricter security policies than Docker or containerd on vanilla Kubernetes. The Istio init container needs `NET_ADMIN` and `NET_RAW` capabilities to set up iptables rules. On OpenShift, this requires a specific SCC:
 
 ```bash
-oc adm policy add-scc-to-group anyuid system:serviceaccounts:istio-system
-oc adm policy add-scc-to-group privileged system:serviceaccounts:istio-system
+oc adm policy add-scc-to-user privileged -z default -n my-namespace
 ```
 
-Or better, use the Istio CNI plugin to avoid needing privileged init containers:
+Apply that to the workload service account in each namespace that uses `istio-init`. Or better, use the Istio CNI plugin to avoid needing privileged init containers:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
+  profile: openshift
   components:
     cni:
+      namespace: kube-system
       enabled: true
   values:
     cni:
       cniBinDir: /var/lib/cni/bin
-      cniConfDir: /etc/cni/net.d
+      cniConfDir: /etc/cni/multus/net.d
       chained: false
+      cniConfFileName: istio-cni.conf
       excludeNamespaces:
       - istio-system
       - kube-system
       - openshift-operators
+      provider: multus
+    pilot:
+      cni:
+        enabled: true
+        provider: multus
 ```
 
 The CNI paths may differ on CRI-O/OpenShift compared to other setups. Verify the correct paths:
 
 ```bash
-ls /etc/cni/net.d/
+ls /etc/cni/multus/net.d/ || ls /etc/cni/net.d/
 ls /opt/cni/bin/ || ls /var/lib/cni/bin/
 ```
 
@@ -104,7 +111,7 @@ On the node, edit `/etc/containers/registries.conf`:
 
 ```toml
 [[registry]]
-prefix = "docker.io/istio"
+prefix = "registry.istio.io"
 location = "my-mirror.example.com/istio"
 ```
 
@@ -134,11 +141,11 @@ kubectl logs deploy/my-app -c istio-proxy --tail=50
 ls /var/log/pods/<namespace>_<pod-name>_<pod-uid>/istio-proxy/
 ```
 
-CRI-O's log rotation is configured in `/etc/crio/crio.conf`:
+CRI-O still has a `log_size_max` setting in `/etc/crio/crio.conf`, but current CRI-O marks it as deprecated. Configure container log rotation through the kubelet configuration file instead:
 
-```toml
-[crio.runtime]
-log_size_max = 8192
+```yaml
+containerLogMaxSize: 10Mi
+containerLogMaxFiles: 5
 ```
 
 Make sure this isn't set too low, or you might miss important Istio sidecar logs during debugging.
@@ -240,7 +247,7 @@ Or use the CNI plugin instead.
 
 ```bash
 crictl images | grep istio
-crictl pull docker.io/istio/proxyv2:1.20.0
+crictl pull registry.istio.io/proxyv2:1.30.0
 ```
 
 Check CRI-O logs on the node:
