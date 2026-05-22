@@ -17,19 +17,19 @@ The CLI is distributed as a standalone binary. Download it from the HashiCorp re
 ```bash
 # Linux (amd64)
 
-curl -o sentinel.zip https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_linux_amd64.zip
+curl -o sentinel.zip https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_linux_amd64.zip
 unzip sentinel.zip
 sudo mv sentinel /usr/local/bin/
 rm sentinel.zip
 
 # macOS (amd64)
-curl -o sentinel.zip https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_darwin_amd64.zip
+curl -o sentinel.zip https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_darwin_amd64.zip
 unzip sentinel.zip
 sudo mv sentinel /usr/local/bin/
 rm sentinel.zip
 
 # macOS (arm64 / Apple Silicon)
-curl -o sentinel.zip https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_darwin_arm64.zip
+curl -o sentinel.zip https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_darwin_arm64.zip
 unzip sentinel.zip
 sudo mv sentinel /usr/local/bin/
 rm sentinel.zip
@@ -66,22 +66,34 @@ sentinel test -verbose
 # Run only tests matching a pattern
 sentinel test -run "pass" enforce-tags.sentinel
 
-# Run tests with a specific configuration file
-sentinel test -config sentinel.hcl
+# Run tests in a specific directory
+sentinel test ./security-policies/
 ```
 
 ### Understanding Test Output
 
-Normal output:
+Normal output (trimmed):
 
 ```text
 $ sentinel test
 PASS - enforce-tags.sentinel
+  PASS - test/enforce-tags/pass-tagged.hcl
+  PASS - test/enforce-tags/fail-untagged.hcl
+  PASS - test/enforce-tags/pass-empty.hcl
+
 PASS - restrict-instance-types.sentinel
+  PASS - test/restrict-instance-types/pass-t3-micro.hcl
+  PASS - test/restrict-instance-types/fail-p3-xlarge.hcl
+
 FAIL - enforce-encryption.sentinel
+  PASS - test/enforce-encryption/pass-encrypted.hcl
+  FAIL - test/enforce-encryption/fail-unencrypted.hcl
+    expected "main" to be false, got: true
+
+3 tests completed in 18.214ms
 ```
 
-Verbose output:
+Verbose output (trimmed):
 
 ```text
 $ sentinel test -verbose
@@ -97,7 +109,7 @@ PASS - restrict-instance-types.sentinel
 FAIL - enforce-encryption.sentinel
   PASS - test/enforce-encryption/pass-encrypted.hcl
   FAIL - test/enforce-encryption/fail-unencrypted.hcl
-    expected "main" to be false, got true
+    expected "main" to be false, got: true
 ```
 
 The last line tells you exactly what went wrong. The test expected the `main` rule to be `false`, but the policy returned `true`. This means your policy is not catching the unencrypted case.
@@ -122,9 +134,13 @@ The `-trace` flag shows the evaluation of each rule:
 $ sentinel apply -trace -config test/enforce-tags/pass.hcl enforce-tags.sentinel
 Pass - enforce-tags.sentinel
 
-Trace:
-  TRUE - enforce-tags.sentinel:20:1 - Rule "main"
-    TRUE - enforce-tags.sentinel:21:5 - all resources as _, rc { ... }
+Execution trace. The information below will show the values of all
+the rules evaluated. Note that some rules may be missing if
+short-circuit logic was taken.
+
+enforce-tags.sentinel:20:1 - Rule "main"
+  Value:
+    true
 ```
 
 This trace output is incredibly helpful for understanding why a policy passes or fails. It shows you exactly which rules were evaluated and what their results were.
@@ -143,8 +159,8 @@ sentinel fmt *.sentinel
 # Check formatting without modifying files
 sentinel fmt -check enforce-tags.sentinel
 
-# Show a diff of what would change
-sentinel fmt -diff enforce-tags.sentinel
+# Preview the formatted output without modifying the file
+sentinel fmt -write=false enforce-tags.sentinel
 ```
 
 ### Before formatting:
@@ -161,9 +177,9 @@ rc.change.after.tags is not null
 
 ```python
 main = rule {
-    all resources as _, rc {
-        rc.change.after.tags is not null
-    }
+	all resources as _, rc {
+		rc.change.after.tags is not null
+	}
 }
 ```
 
@@ -251,9 +267,7 @@ instances = filter tfplan.resource_changes as _, rc {
 
 main = rule {
     all instances as _, inst {
-        az = inst.change.after.availability_zone
-        region = az[0:length(az)-1]
-        region in allowed_regions
+        inst.change.after.availability_zone[0:length(inst.change.after.availability_zone) - 1] in allowed_regions
     }
 }
 ```
@@ -326,23 +340,23 @@ test {
 }
 ```
 
-### Environment Variables
+### Parameters
 
-You can set environment variables for your Sentinel tests:
+You can set parameter values for quick `apply` runs:
 
 ```bash
-# Set a variable for testing
-SENTINEL_VAR_environment=production sentinel test
+# Set a parameter value for testing
+sentinel apply -param environment=production environment-policy.sentinel
 ```
 
 ### Working with Multiple Policy Directories
 
 ```bash
 # Test policies in a specific directory
-sentinel test -dir ./security-policies/
+sentinel test ./security-policies/
 
-# Test with a specific config
-sentinel test -config ./security-policies/sentinel.hcl
+# Apply with a specific config
+sentinel apply -config ./security-policies/sentinel.hcl
 ```
 
 ## Integrating with Editors
