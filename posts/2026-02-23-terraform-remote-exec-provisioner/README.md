@@ -69,7 +69,7 @@ provisioner "remote-exec" {
 }
 ```
 
-Each command is executed separately. If any command returns a non-zero exit code, the provisioner fails and subsequent commands are skipped.
+Terraform combines the `inline` commands into a temporary script and executes that script on the remote system. The remote shell runs the lines in order, and the provisioner fails if the script exits with a non-zero status. If you need strict fail-fast behavior for every line, add `set -e` or chain commands with `&&`.
 
 ### script
 
@@ -88,7 +88,7 @@ provisioner "remote-exec" {
 }
 ```
 
-Terraform copies the script to the remote machine and executes it. The script must be executable and have a proper shebang line (`#!/bin/bash`).
+Terraform copies the script to the remote machine and executes it. For SSH targets, Terraform uploads the file as a temporary script and marks it executable on the remote host. Add a proper shebang line, such as `#!/bin/bash`, when the script needs a specific interpreter.
 
 Here is what `scripts/setup.sh` might look like:
 
@@ -305,7 +305,7 @@ provisioner "file" {
 # Run the setup script which reads from the env file
 provisioner "remote-exec" {
   inline = [
-    "set -a && source /tmp/app.env && set +a",
+    "set -a && . /tmp/app.env && set +a",
     "sudo -E /opt/app/setup.sh",
   ]
 
