@@ -41,6 +41,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -121,6 +125,11 @@ Use `include` to add environment-specific settings:
 ```yaml
 jobs:
   deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
     strategy:
       matrix:
         include:
@@ -214,7 +223,7 @@ jobs:
         run: |
           cd environments/dev
           terraform init -no-color
-          terraform apply -no-color -auto-approve tfplan
+          terraform apply -no-color tfplan
 
   # Phase 3: Apply staging (after dev succeeds)
   apply-staging:
@@ -232,7 +241,7 @@ jobs:
         run: |
           cd environments/staging
           terraform init -no-color
-          terraform apply -no-color -auto-approve tfplan
+          terraform apply -no-color tfplan
 
   # Phase 4: Apply production (after staging succeeds, with approval)
   apply-production:
@@ -250,7 +259,7 @@ jobs:
         run: |
           cd environments/production
           terraform init -no-color
-          terraform apply -no-color -auto-approve tfplan
+          terraform apply -no-color tfplan
 ```
 
 ## Dynamic Matrix from Configuration File
@@ -361,12 +370,17 @@ apply:
     matrix:
       - ENVIRONMENT: dev
         REGION: [us-east-1, eu-west-1]
+  needs:
+    - job: plan
+      parallel:
+        matrix:
+          - ENVIRONMENT: ['$[[ matrix.ENVIRONMENT ]]']
+            REGION: ['$[[ matrix.REGION ]]']
+      artifacts: true
   script:
     - cd environments/$ENVIRONMENT
     - terraform init -no-color -backend-config="key=${ENVIRONMENT}/${REGION}/terraform.tfstate"
-    - terraform apply -no-color -auto-approve tfplan
-  dependencies:
-    - plan
+    - terraform apply -no-color tfplan
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
@@ -401,6 +415,7 @@ When one matrix job fails, you need visibility into which environment was affect
 ```yaml
 jobs:
   deploy:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         environment: [dev, staging, production]
