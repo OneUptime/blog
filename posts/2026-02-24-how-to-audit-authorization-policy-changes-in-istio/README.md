@@ -93,7 +93,6 @@ data:
       host elasticsearch.logging.svc.cluster.local
       port 9200
       index_name istio-audit
-      type_name _doc
     </match>
 ```
 
@@ -128,15 +127,13 @@ spec:
         - -c
         - |
           echo "Watching for AuthorizationPolicy changes..."
-          kubectl get authorizationpolicies --all-namespaces --watch -o json | while read -r line; do
-            TYPE=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin).get('type','UNKNOWN'))" 2>/dev/null)
-            NAME=$(echo "$line" | python3 -c "import sys,json; obj=json.load(sys.stdin).get('object',{}); print(obj.get('metadata',{}).get('name','unknown'))" 2>/dev/null)
-            NS=$(echo "$line" | python3 -c "import sys,json; obj=json.load(sys.stdin).get('object',{}); print(obj.get('metadata',{}).get('namespace','unknown'))" 2>/dev/null)
-
+          kubectl get authorizationpolicies --all-namespaces --watch --output-watch-events \
+            -o go-template='{{.type}} {{.object.metadata.namespace}} {{.object.metadata.name}}{{"\n"}}' |
+          while read -r TYPE NS NAME; do
             if [ "$TYPE" = "ADDED" ] || [ "$TYPE" = "MODIFIED" ] || [ "$TYPE" = "DELETED" ]; then
               echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ${TYPE}: AuthorizationPolicy ${NS}/${NAME}"
               # Send to your alerting webhook
-              curl -s -X POST "http://alertmanager.monitoring:9093/api/v1/alerts" \
+              curl -s -X POST "http://alertmanager.monitoring:9093/api/v2/alerts" \
                 -H "Content-Type: application/json" \
                 -d "[{\"labels\":{\"alertname\":\"IstioAuthPolicyChange\",\"type\":\"${TYPE}\",\"policy\":\"${NAME}\",\"namespace\":\"${NS}\"},\"annotations\":{\"summary\":\"Authorization policy ${TYPE}: ${NS}/${NAME}\"}}]" || true
             fi
@@ -160,6 +157,9 @@ rules:
 - apiGroups: ["security.istio.io"]
   resources: ["authorizationpolicies"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -182,7 +182,7 @@ If you manage Istio policies through GitOps, every change has a Git commit with 
 Set up a Flux notification for policy changes:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: istio-policy-changes
@@ -214,7 +214,7 @@ This produces log entries like:
 enforced_by=shadow_engine action=ALLOW source=10.0.0.5 destination=my-app:8080 matched_policy=allow-frontend
 ```
 
-For production, you probably don't want debug logging on all the time. Instead, configure access logging to include RBAC information:
+For production, you probably don't want debug logging on all the time. Instead, configure access logging to capture denied requests:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -244,9 +244,9 @@ groups:
   - alert: SuddenAuthDenialIncrease
     expr: |
       (
-        sum(rate(istio_requests_total{response_code="403"}[5m])) by (destination_workload, namespace)
+        sum(rate(istio_requests_total{response_code="403"}[5m])) by (destination_workload, destination_workload_namespace)
         -
-        sum(rate(istio_requests_total{response_code="403"}[5m] offset 1h)) by (destination_workload, namespace)
+        sum(rate(istio_requests_total{response_code="403"}[5m] offset 1h)) by (destination_workload, destination_workload_namespace)
       ) > 10
     for: 5m
     labels:
@@ -257,10 +257,10 @@ groups:
   # Alert when previously working routes start failing
   - alert: NewAuthDenials
     expr: |
-      sum(rate(istio_requests_total{response_code="403"}[5m])) by (source_workload, destination_workload, namespace)
+      sum(rate(istio_requests_total{response_code="403"}[5m])) by (source_workload, source_workload_namespace, destination_workload, destination_workload_namespace)
       > 0
       unless
-      sum(rate(istio_requests_total{response_code="403"}[5m] offset 1h)) by (source_workload, destination_workload, namespace)
+      sum(rate(istio_requests_total{response_code="403"}[5m] offset 1h)) by (source_workload, source_workload_namespace, destination_workload, destination_workload_namespace)
       > 0
     for: 5m
     labels:
