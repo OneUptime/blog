@@ -12,7 +12,7 @@ Terraform 1.x brought stability guarantees, new features, and improved performan
 
 ## Why Upgrade from 0.12
 
-Terraform 0.12 reached end of life and no longer receives security updates or bug fixes. Version 1.x offers significant improvements including import blocks, moved blocks, the check block, provider-defined functions, and the stability guarantee that 1.x configurations will work with all future 1.x releases. Additionally, many providers have dropped support for Terraform versions below 1.0.
+Terraform 0.12 reached end of life and no longer receives security updates or bug fixes. Version 1.x offers significant improvements including import blocks, moved blocks, the check block, provider-defined functions in Terraform 1.8 and later, and the stability guarantee that 1.x configurations will work with all future 1.x releases. Additionally, many providers have dropped support for Terraform versions below 1.0.
 
 ## The Upgrade Path
 
@@ -43,10 +43,11 @@ This command updates your configuration to add the `required_providers` block:
 ```hcl
 # Before (0.12)
 provider "aws" {
-  region = "us-east-1"
+  region  = "us-east-1"
+  version = "~> 3.0"
 }
 
-# After (0.13) - added required_providers
+# After (0.13) - moved provider requirements into required_providers
 terraform {
   required_providers {
     aws = {
@@ -125,12 +126,6 @@ variable "cidrs" {
   type    = list(string)
   default = ["10.0.0.0/16", "10.1.0.0/16"]
 }
-
-# The "count" meta-argument on modules is now available
-module "vpc" {
-  count  = var.create_vpc ? 1 : 0
-  source = "./modules/vpc"
-}
 ```
 
 ## Step 4: Upgrade 0.15 to 1.0
@@ -185,7 +180,7 @@ check "health" {
 
 ### Syntax Errors After Upgrade
 
-Some 0.12 syntax patterns do not work in later versions:
+Some 0.12 syntax patterns are deprecated and should be modernized for later versions:
 
 ```hcl
 # 0.12 - interpolation-only expressions (deprecated)
@@ -199,10 +194,10 @@ resource "aws_instance" "web" {
 }
 ```
 
-Use `terraform fmt` to clean up:
+Use `terraform fmt` after making syntax updates:
 
 ```bash
-# Format and fix common syntax issues
+# Format configuration files
 terraform fmt -recursive
 ```
 
@@ -230,7 +225,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 4.0"  # Requires Terraform >= 0.13
+      version = ">= 4.0"  # Uses Terraform 0.13+ provider source syntax
     }
   }
 }
@@ -245,7 +240,7 @@ terraform {
 
 set -e
 
-TERRAFORM_VERSIONS=("0.13.7" "0.14.11" "0.15.5" "1.0.11" "1.9.8")
+TERRAFORM_VERSIONS=("0.13.7" "0.14.11" "0.15.5" "1.0.11" "1.15.0")
 
 for version in "${TERRAFORM_VERSIONS[@]}"; do
   echo "=========================================="
@@ -261,13 +256,23 @@ for version in "${TERRAFORM_VERSIONS[@]}"; do
     cp terraform.tfstate "terraform.tfstate.backup.${version}"
   fi
 
+  # Add provider source addresses during the 0.13 upgrade
+  if [[ "$version" == 0.13.* ]]; then
+    terraform 0.13upgrade -yes .
+  fi
+
   # Initialize and upgrade
   terraform init -upgrade
 
   # Run plan
-  if terraform plan -detailed-exitcode; then
+  set +e
+  terraform plan -detailed-exitcode
+  plan_exit=$?
+  set -e
+
+  if [ "$plan_exit" -eq 0 ]; then
     echo "No changes detected - upgrade to $version successful"
-  else
+  elif [ "$plan_exit" -eq 2 ]; then
     echo "Changes detected after upgrading to $version"
     echo "Review the plan output before continuing"
     read -p "Continue? (y/n): " confirm
@@ -276,6 +281,9 @@ for version in "${TERRAFORM_VERSIONS[@]}"; do
       exit 1
     fi
     terraform apply -auto-approve
+  else
+    echo "Plan failed while upgrading to $version"
+    exit 1
   fi
 
   echo "Completed upgrade to $version"
@@ -304,7 +312,7 @@ tfenv install latest
 tfenv use 0.13.7
 
 # Use a .terraform-version file in your project
-echo "1.9.8" > .terraform-version
+echo "1.15.0" > .terraform-version
 ```
 
 ## Testing the Upgrade
