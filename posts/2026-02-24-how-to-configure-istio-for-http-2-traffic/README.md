@@ -8,13 +8,13 @@ Description: How to configure Istio for HTTP/2 traffic including service port na
 
 ---
 
-HTTP/2 brings significant performance improvements over HTTP/1.1: multiplexed streams, header compression, server push, and binary framing. Istio supports HTTP/2 natively through Envoy, and in many cases, the sidecar-to-sidecar communication already uses HTTP/2 for mTLS connections. But getting the full benefit of HTTP/2 from your clients through the ingress gateway and between services requires proper configuration.
+HTTP/2 brings significant performance improvements over HTTP/1.1: multiplexed streams, header compression, server push, and binary framing. Istio supports HTTP/2 natively through Envoy, and sidecar-to-sidecar communication can use HTTP/2 when the application protocol is HTTP/2 or gRPC, or when HTTP/2 upgrades are configured. mTLS encrypts the proxy-to-proxy connection, but it does not by itself change HTTP/1.1 traffic into HTTP/2. Getting the full benefit of HTTP/2 from your clients through the ingress gateway and between services requires proper configuration.
 
 This guide covers how to configure Istio for HTTP/2 traffic end-to-end.
 
 ## Port Naming for HTTP/2
 
-Just like HTTP/1.1, Istio relies on port naming to identify HTTP/2 traffic. Use the `http2` or `h2` prefix:
+Just like HTTP/1.1, Istio relies on port naming to identify HTTP/2 traffic. Use the `http2` prefix:
 
 ```yaml
 apiVersion: v1
@@ -53,13 +53,13 @@ This tells Istio to use HTTP/2 when connecting to the upstream service.
 
 ## How Istio Handles HTTP/2 Internally
 
-Inside the mesh, Istio already uses HTTP/2 for communication between sidecars when mTLS is enabled. The flow looks like this:
+Inside the mesh, Istio uses mTLS to encrypt communication between sidecars when mutual TLS is enabled. The HTTP protocol on that connection is based on protocol detection, explicit service port protocol, or upgrade settings. For HTTP/2 workloads, the flow looks like this:
 
 ```text
-App (HTTP/1.1 or HTTP/2) -> Client Sidecar (HTTP/2 over mTLS) -> Server Sidecar -> App
+App (HTTP/2) -> Client Sidecar (HTTP/2 over mTLS) -> Server Sidecar -> App
 ```
 
-Even if your application speaks HTTP/1.1, the sidecar-to-sidecar connection uses HTTP/2. This means you get multiplexing between proxies without changing your application. But if your application supports HTTP/2, you can get end-to-end HTTP/2 including the application-to-proxy legs.
+If your application speaks HTTP/1.1, Istio can keep the backend connection as HTTP/1.1 unless you configure an HTTP/2 upgrade. If your application supports HTTP/2, you can get end-to-end HTTP/2 including the application-to-proxy legs.
 
 ## Configuring HTTP/2 at the Ingress Gateway
 
@@ -168,7 +168,13 @@ kind: Deployment
 metadata:
   name: h2-service
 spec:
+  selector:
+    matchLabels:
+      app: h2-service
   template:
+    metadata:
+      labels:
+        app: h2-service
     spec:
       containers:
       - name: h2-service
@@ -220,7 +226,7 @@ kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "http2"
 ```
 
-Look for `h2.tx_flush_timeout` or `h2.stream_refused` which indicate flow control problems.
+Look for `http2.tx_flush_timeout` or `http2.stream_refused_errors` which indicate flow control or refused-stream problems.
 
 ## Monitoring HTTP/2 Performance
 
@@ -301,4 +307,4 @@ kubectl exec deploy/my-service -c istio-proxy -- \
 
 ## Wrapping Up
 
-Istio handles HTTP/2 well, and most of the configuration is about telling Istio that your services speak HTTP/2 through proper port naming. The sidecar-to-sidecar communication already uses HTTP/2, so you are getting multiplexing benefits even with HTTP/1.1 applications. For full end-to-end HTTP/2, make sure your ports are named correctly, set appropriate connection pool limits (fewer connections, more concurrent requests), and verify with curl or proxy stats that HTTP/2 is actually being negotiated.
+Istio handles HTTP/2 well, and most of the configuration is about telling Istio that your services speak HTTP/2 through proper port naming. Sidecar-to-sidecar traffic can use HTTP/2 when the service protocol is HTTP/2 or gRPC, or when HTTP/2 upgrades are enabled. For full end-to-end HTTP/2, make sure your ports are named correctly, set appropriate connection pool limits (fewer connections, more concurrent requests), and verify with curl or proxy stats that HTTP/2 is actually being negotiated.
