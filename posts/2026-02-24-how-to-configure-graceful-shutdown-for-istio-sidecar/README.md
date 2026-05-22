@@ -14,13 +14,14 @@ When Kubernetes terminates a pod, the Istio sidecar needs to shut down gracefull
 
 To configure graceful shutdown properly, you need to understand what happens when Kubernetes decides to terminate a pod:
 
-1. Kubernetes sends SIGTERM to all containers in the pod simultaneously
-2. The pod is removed from Service endpoints (but this propagation takes time)
-3. PreStop hooks run (if configured)
-4. Containers have `terminationGracePeriodSeconds` to finish (default: 30s)
-5. If still running, Kubernetes sends SIGKILL
+1. The pod is marked as terminating and the grace period starts
+2. PreStop hooks run before the TERM signal is sent to each container (if configured)
+3. The control plane updates EndpointSlices for the terminating pod, setting the endpoint's `ready` condition to `false` (but this propagation takes time)
+4. Kubernetes sends TERM to the containers. Without native sidecar containers, the order is arbitrary
+5. Containers have `terminationGracePeriodSeconds` to finish (default: 30s)
+6. If still running, Kubernetes sends SIGKILL
 
-The problem with Istio is step 1. Both the application and the sidecar get SIGTERM at the same time. The sidecar starts draining connections while the application might still be trying to process requests that arrived just before the shutdown started.
+The problem with Istio is step 4. Unless you are using Kubernetes native sidecar containers, the application and the sidecar can receive TERM in an arbitrary order. The sidecar may start draining connections while the application is still processing requests that arrived just before the shutdown started.
 
 ## Configuring Termination Drain Duration
 
@@ -57,9 +58,9 @@ spec:
 
 The `terminationDrainDuration` should always be less than `terminationGracePeriodSeconds`. If the drain duration is 20 seconds and the grace period is 30 seconds, Envoy has 20 seconds to drain and then Kubernetes waits up to 10 more seconds before force-killing everything.
 
-## Adding a PreStop Hook to the Sidecar
+## Adding a PreStop Hook to the Application
 
-A preStop hook delays the sidecar shutdown, giving the application time to stop accepting new requests and finish processing existing ones:
+A preStop hook on the application container delays the application's TERM signal, giving the control plane time to stop routing new traffic before the application shuts down:
 
 ```yaml
 apiVersion: apps/v1
@@ -101,6 +102,11 @@ spec:
     global:
       proxy:
         lifecycle:
+          postStart:
+            exec:
+              command:
+              - pilot-agent
+              - wait
           preStop:
             exec:
               command:
@@ -116,7 +122,7 @@ The `holdApplicationUntilProxyStarts` setting is equally important for startup. 
 The biggest challenge is the race condition between endpoint removal and traffic delivery. Here's what can go wrong:
 
 1. Pod receives SIGTERM
-2. Pod is still in the endpoints list for a few seconds
+2. Some clients or proxies still have stale endpoint information for a few seconds
 3. New request arrives at the pod
 4. Sidecar accepts the request
 5. Application has already stopped listening
