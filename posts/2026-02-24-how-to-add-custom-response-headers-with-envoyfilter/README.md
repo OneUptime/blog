@@ -12,7 +12,7 @@ Adding custom response headers is one of the most common things people do with E
 
 ## Why Not Use VirtualService?
 
-Istio's VirtualService resource does let you set headers, but it has limitations. VirtualService headers are applied during routing, which means they work well for request headers but can be finicky with response headers in certain configurations. EnvoyFilter operates at a lower level and gives you more predictable behavior, especially for response headers on inbound traffic.
+Istio's VirtualService resource does let you set request and response headers during routing, and it is usually the best choice for route-level header changes. EnvoyFilter operates at a lower level and gives you more control when you need to patch inbound sidecar traffic directly or use logic that VirtualService header operations cannot express.
 
 ## Adding a Simple Response Header
 
@@ -44,10 +44,11 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_response(response_handle)
-              response_handle:headers():add("X-Powered-By", "MyService/2.0")
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_response(response_handle)
+                response_handle:headers():add("X-Powered-By", "MyService/2.0")
+              end
 ```
 
 This uses a Lua filter because it's the most flexible way to manipulate response headers. The `envoy_on_response` function runs for every response going through the proxy.
@@ -82,14 +83,15 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_response(response_handle)
-              response_handle:headers():add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-              response_handle:headers():add("X-Content-Type-Options", "nosniff")
-              response_handle:headers():add("X-Frame-Options", "DENY")
-              response_handle:headers():add("X-XSS-Protection", "1; mode=block")
-              response_handle:headers():add("Referrer-Policy", "strict-origin-when-cross-origin")
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_response(response_handle)
+                response_handle:headers():add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+                response_handle:headers():add("X-Content-Type-Options", "nosniff")
+                response_handle:headers():add("X-Frame-Options", "DENY")
+                response_handle:headers():add("X-XSS-Protection", "1; mode=block")
+                response_handle:headers():add("Referrer-Policy", "strict-origin-when-cross-origin")
+              end
 ```
 
 This is particularly useful when you have multiple services behind an ingress gateway and want consistent security headers across all of them without modifying each application.
@@ -124,12 +126,13 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_response(response_handle)
-              response_handle:headers():remove("server")
-              response_handle:headers():remove("x-powered-by")
-              response_handle:headers():remove("x-aspnet-version")
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_response(response_handle)
+                response_handle:headers():remove("server")
+                response_handle:headers():remove("x-powered-by")
+                response_handle:headers():remove("x-aspnet-version")
+              end
 ```
 
 ## Conditional Headers Based on Response Status
@@ -162,16 +165,17 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_response(response_handle)
-              local status = response_handle:headers():get(":status")
-              if status == "429" then
-                response_handle:headers():add("Retry-After", "60")
+          default_source_code:
+            inline_string: |
+              function envoy_on_response(response_handle)
+                local status = tonumber(response_handle:headers():get(":status"))
+                if status == 429 then
+                  response_handle:headers():add("Retry-After", "60")
+                end
+                if status ~= nil and status >= 500 then
+                  response_handle:headers():add("X-Error-Support", "https://support.example.com")
+                end
               end
-              if status >= "500" then
-                response_handle:headers():add("X-Error-Support", "https://support.example.com")
-              end
-            end
 ```
 
 ## Adding Headers at the Gateway Level
@@ -204,11 +208,12 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_response(response_handle)
-              response_handle:headers():add("X-Gateway", "istio-ingress")
-              response_handle:headers():add("Strict-Transport-Security", "max-age=31536000")
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_response(response_handle)
+                response_handle:headers():add("X-Gateway", "istio-ingress")
+                response_handle:headers():add("Strict-Transport-Security", "max-age=31536000")
+              end
 ```
 
 ## Using the Header Manipulation Filter (No Lua)
