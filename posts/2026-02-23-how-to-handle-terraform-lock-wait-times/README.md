@@ -14,17 +14,17 @@ This is one of the most common frustrations teams face with Terraform, especiall
 
 ## How Terraform Locking Works
 
-Every time you run `terraform plan`, `terraform apply`, or any operation that reads or modifies state, Terraform tries to acquire an exclusive lock on the state file. This prevents two people from applying changes at the same time, which would corrupt the state.
+Every time you run `terraform plan`, `terraform apply`, or another operation that could write state, Terraform tries to acquire an exclusive lock on the state file. This prevents two people from applying changes at the same time, which would corrupt the state.
 
 The locking mechanism depends on your backend:
 
-- **S3 + DynamoDB** - A DynamoDB item is created with a `LockID` key
-- **Azure Blob Storage** - Uses blob leases
-- **GCS** - Uses object locking
+- **S3** - Uses a `.tflock` lock file when `use_lockfile = true`; older configurations may still use a DynamoDB item with a `LockID` key
+- **Azure Blob Storage** - Uses Azure Blob Storage native locking and consistency capabilities
+- **GCS** - Supports state locking in the GCS backend
 - **Terraform Cloud** - Handles locking internally
 - **Consul** - Uses Consul's native locking
 
-When you try to acquire a lock and someone already holds it, Terraform will wait and retry. By default, Terraform does not give up easily - it keeps retrying, printing status messages about who holds the lock.
+When you try to acquire a lock and someone already holds it, Terraform will wait and retry for the duration set with `-lock-timeout`. If acquiring the lock takes longer than expected, Terraform prints status messages about the lock.
 
 ## Understanding Why Lock Wait Times Are Long
 
@@ -84,7 +84,7 @@ terraform {
     bucket         = "terraform-state"
     key            = "prod/networking/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -104,7 +104,7 @@ on:
 
 concurrency:
   group: terraform-prod-networking
-  cancel-in-progress: false  # Don't cancel running applies!
+  queue: max  # Queue multiple pending runs instead of replacing older pending runs
 
 jobs:
   apply:
@@ -117,7 +117,7 @@ jobs:
           terraform apply -auto-approve -lock-timeout=10m
 ```
 
-The `concurrency` block ensures only one apply runs at a time for a given state file. Additional runs queue up instead of competing for the lock.
+The `concurrency` block ensures only one apply runs at a time for a given state file. With `queue: max`, additional runs queue up instead of competing for the lock.
 
 For GitLab CI, use resource groups:
 
@@ -177,7 +177,7 @@ terraform force-unlock a1b2c3d4-5678-9abc-def0-123456789abc
 
 Before force-unlocking, always verify that no operation is actually running. Force-unlocking while an apply is in progress can corrupt your state.
 
-For DynamoDB-based locks, you can also check the lock directly:
+For legacy DynamoDB-based locks, you can also check the lock directly:
 
 ```bash
 # Check the DynamoDB lock table directly
@@ -193,7 +193,7 @@ Do not wait for engineers to complain about lock times. Monitor them proactively
 ```bash
 #!/bin/bash
 # check-terraform-locks.sh
-# Run on a schedule to detect stale locks
+# Run on a schedule to detect stale locks in a legacy DynamoDB lock table
 
 LOCK_TABLE="terraform-locks"
 MAX_AGE_MINUTES=30
@@ -225,7 +225,7 @@ Integrating this with a monitoring platform like [OneUptime](https://oneuptime.c
 Not every operation needs to hold the lock. If you just want to inspect the state, you can skip locking:
 
 ```bash
-# Read-only operations can skip the lock
+# Plans can skip the lock, but only do this when you accept the risk of a stale or racing plan
 terraform plan -lock=false
 
 # Pull state without locking
@@ -235,7 +235,7 @@ terraform state pull
 terraform state list
 ```
 
-This is safe for read-only operations because you are not modifying the state. Just do not use `-lock=false` with `terraform apply` unless you really know what you are doing.
+Pure inspection commands like `terraform state pull` and `terraform state list` are read-only. Be more careful with `terraform plan -lock=false`: it does not modify infrastructure, but it can race with another operation that is changing the same state. Do not use `-lock=false` with `terraform apply` unless you really know what you are doing.
 
 ## Putting It All Together
 
@@ -248,7 +248,7 @@ terraform {
     bucket         = "terraform-state"
     key            = "prod/COMPONENT/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -258,7 +258,7 @@ terraform {
 # CI/CD pipeline with proper concurrency control
 concurrency:
   group: terraform-${{ github.event.inputs.component }}-${{ github.event.inputs.environment }}
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   apply:
@@ -268,7 +268,7 @@ jobs:
 ```
 
 ```bash
-# Monitoring cron job for stale locks
+# Monitoring cron job for stale locks in a legacy DynamoDB lock table
 0 */1 * * * /opt/scripts/check-terraform-locks.sh
 ```
 
