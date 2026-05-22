@@ -12,7 +12,7 @@ Tagging is one of those things that starts simple and gets complicated fast. You
 
 ## What is the merge Function?
 
-The `merge` function takes two or more maps and combines them into a single map. If the same key exists in multiple maps, the last one wins.
+The `merge` function takes maps or objects and combines them into a single map or object. If the same key exists in multiple arguments, the last one wins.
 
 ```hcl
 # Combine two maps
@@ -262,7 +262,7 @@ locals {
 }
 ```
 
-## Dynamic Tag Generation with for and merge
+## Dynamic Tag Generation with lookup and merge
 
 Generate tags dynamically and merge them:
 
@@ -285,7 +285,6 @@ locals {
   auto_tags = {
     ServiceName  = var.service_name
     ServiceOwner = lookup(var.service_owners, var.service_name, "unknown")
-    CreatedAt    = timestamp()
   }
 
   final_tags = merge(local.common_tags, local.auto_tags)
@@ -382,7 +381,7 @@ locals {
 
 ## merge vs Object Spread
 
-Terraform does not have a spread operator like JavaScript, so `merge` is the standard way to combine maps. Some people try to use variable-length arguments or splat expressions, but `merge` is the correct approach.
+Terraform does not have a JavaScript-style object spread operator, so `merge` is the standard way to combine maps. If your maps are already in a list or tuple, use Terraform's function argument expansion syntax (`...`) with `merge`.
 
 ## Summary
 
