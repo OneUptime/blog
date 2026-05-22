@@ -26,7 +26,6 @@ kind: Pod
 metadata:
   labels:
     app: my-app
-  annotations:
     sidecar.istio.io/inject: "true"
 spec:
   containers:
@@ -80,17 +79,16 @@ The security models are different in important ways.
 
 ```yaml
 # In ambient mode, ztunnel handles mTLS at L4
-# Authorization at L4 uses source identity only
+# Authorization at L4 can use source identity and other L4 attributes
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend
   namespace: default
 spec:
-  targetRefs:
-    - kind: Service
-      group: ""
-      name: backend
+  selector:
+    matchLabels:
+      app: backend
   rules:
     - from:
         - source:
@@ -125,15 +123,15 @@ As of Istio's recent releases, ambient mode supports most of the features that s
 
 **Supported in both modes:**
 - mTLS encryption
-- L4 and L7 authorization policies
-- Traffic routing (VirtualService)
-- Telemetry and metrics
-- Multi-cluster support
+- L4 authorization policies, with L7 authorization available through sidecars or waypoints
+- Traffic routing, with Gateway API routes preferred for ambient mode and VirtualService support considered alpha in ambient mode
+- Telemetry and metrics, with L7 telemetry in ambient mode provided by waypoints
+- Multi-cluster support, which is stable in sidecar mode and available for ambient mode with current release-specific limitations
 
 **Better in sidecar mode:**
 - EnvoyFilter customization (more direct control over the proxy)
 - Per-pod proxy configuration via annotations
-- Wasm plugin deployment (attaches to the sidecar directly)
+- Mature sidecar-attached Wasm plugin deployment
 
 **Better in ambient mode:**
 - Resource efficiency
