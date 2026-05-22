@@ -30,8 +30,8 @@ Here is how the classic Istio resources map to Gateway API resources:
 | VirtualService (external) | HTTPRoute |
 | VirtualService (internal mesh) | HTTPRoute (with parentRefs to mesh) |
 | DestinationRule (subsets) | No direct equivalent (use Service selectors) |
-| DestinationRule (traffic policy) | Partially covered by BackendLBPolicy |
-| ServiceEntry | ServiceImport (limited) |
+| DestinationRule (traffic policy) | Limited related coverage through Gateway API policies such as BackendTrafficPolicy (experimental) |
+| ServiceEntry | No direct equivalent |
 | AuthorizationPolicy | No equivalent (still Istio-specific) |
 | PeerAuthentication | No equivalent (still Istio-specific) |
 | EnvoyFilter | No equivalent (still Istio-specific) |
@@ -45,7 +45,7 @@ Here is the same routing rule expressed in both APIs.
 **Istio Classic:**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -60,7 +60,7 @@ spec:
       hosts:
         - app.example.com
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
@@ -131,7 +131,7 @@ Both APIs support weighted traffic splitting for canary deployments.
 **Istio Classic:**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: canary
@@ -148,6 +148,20 @@ spec:
             host: reviews
             subset: v2
           weight: 10
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: reviews
+spec:
+  host: reviews
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ```
 
 **Gateway API:**
@@ -181,7 +195,7 @@ Both support header matching.
 **Istio Classic:**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: header-routing
@@ -201,6 +215,20 @@ spec:
         - destination:
             host: api-service
             subset: v1
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: api-service
+spec:
+  host: api-service
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ```
 
 **Gateway API:**
@@ -228,9 +256,9 @@ spec:
           port: 80
 ```
 
-## Features Only Available in Istio Classic APIs
+## Features Still Requiring Istio Classic APIs
 
-Several Istio features do not have Gateway API equivalents:
+Several Istio features do not have Gateway API equivalents, or are only partially represented:
 
 **Fault injection**: VirtualService supports injecting delays and HTTP errors for testing. The Gateway API does not have this.
 
@@ -252,10 +280,10 @@ http:
           host: reviews
 ```
 
-**Traffic mirroring**: VirtualService can mirror traffic to a secondary service. Not available in Gateway API.
+**Traffic mirroring**: VirtualService can mirror traffic to a secondary service by subset. Gateway API also supports request mirroring with the `RequestMirror` HTTPRoute filter, but the Gateway API form mirrors to a backend reference such as a Service rather than to an Istio DestinationRule subset.
 
 ```yaml
-# Only in Istio Classic
+# Istio Classic subset-based mirroring
 http:
   - route:
       - destination:
@@ -266,7 +294,7 @@ http:
       value: 100
 ```
 
-**DestinationRule traffic policies**: Circuit breaking, connection pool settings, load balancing algorithms, and outlier detection are configured through DestinationRule. The Gateway API has limited equivalents through BackendLBPolicy (experimental).
+**DestinationRule traffic policies**: Circuit breaking, connection pool settings, load balancing algorithms, and outlier detection are configured through DestinationRule. Gateway API policies such as BackendTrafficPolicy provide limited related coverage, but they are not a direct replacement for DestinationRule traffic policies.
 
 **EnvoyFilter**: Direct Envoy configuration is only possible through the Istio classic API. The Gateway API does not and will not have an equivalent.
 
@@ -315,7 +343,7 @@ Istio classic APIs are Istio-specific. If you move to a different service mesh o
 - You are building a platform and want to provide a standard API to your developers
 
 **Use Istio Classic APIs when:**
-- You need fault injection, traffic mirroring, or advanced traffic policies
+- You need fault injection, subset-based traffic mirroring, or advanced traffic policies
 - You need DestinationRule features (circuit breaking, connection pool settings)
 - You need EnvoyFilter for custom Envoy configuration
 - You have existing Istio configurations that would be costly to migrate
@@ -326,4 +354,4 @@ Istio classic APIs are Istio-specific. If you move to a different service mesh o
 
 ## Summary
 
-The Kubernetes Gateway API is the future standard for traffic management, and Istio fully supports it. For basic and moderate routing needs, the Gateway API provides a cleaner, more portable, and role-oriented configuration model. For advanced Istio features like fault injection, traffic mirroring, circuit breaking, and EnvoyFilter customization, you still need the classic APIs. Most teams will end up using a mix of both, and that is perfectly fine since Istio handles both APIs seamlessly.
+The Kubernetes Gateway API is the future standard for traffic management, and Istio supports it. For basic and moderate routing needs, the Gateway API provides a cleaner, more portable, and role-oriented configuration model. For advanced Istio features like fault injection, DestinationRule traffic policies, and EnvoyFilter customization, you still need the classic APIs. Most teams will end up using a mix of both, and that is perfectly fine since Istio handles both APIs seamlessly.
