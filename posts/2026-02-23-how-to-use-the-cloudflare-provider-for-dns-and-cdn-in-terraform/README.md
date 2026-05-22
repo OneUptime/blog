@@ -22,7 +22,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -51,7 +51,7 @@ variable "domain" {
 
 ```hcl
 # dns.tf - Create DNS records
-resource "cloudflare_record" "root" {
+resource "cloudflare_dns_record" "root" {
   zone_id = var.zone_id
   name    = "@"
   content = var.origin_ip
@@ -65,7 +65,7 @@ variable "origin_ip" {
   default = "203.0.113.10"
 }
 
-resource "cloudflare_record" "www" {
+resource "cloudflare_dns_record" "www" {
   zone_id = var.zone_id
   name    = "www"
   content = var.domain
@@ -73,7 +73,7 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
-resource "cloudflare_record" "api" {
+resource "cloudflare_dns_record" "api" {
   zone_id = var.zone_id
   name    = "api"
   content = var.api_origin
@@ -87,7 +87,7 @@ variable "api_origin" {
 }
 
 # Mail records (not proxied)
-resource "cloudflare_record" "mx_primary" {
+resource "cloudflare_dns_record" "mx_primary" {
   zone_id  = var.zone_id
   name     = "@"
   content  = "mail1.example.com"
@@ -95,7 +95,7 @@ resource "cloudflare_record" "mx_primary" {
   priority = 10
 }
 
-resource "cloudflare_record" "mx_secondary" {
+resource "cloudflare_dns_record" "mx_secondary" {
   zone_id  = var.zone_id
   name     = "@"
   content  = "mail2.example.com"
@@ -104,7 +104,7 @@ resource "cloudflare_record" "mx_secondary" {
 }
 
 # SPF record
-resource "cloudflare_record" "spf" {
+resource "cloudflare_dns_record" "spf" {
   zone_id = var.zone_id
   name    = "@"
   content = "v=spf1 include:_spf.google.com ~all"
@@ -116,34 +116,80 @@ resource "cloudflare_record" "spf" {
 
 ```hcl
 # zone-settings.tf - Configure zone-wide settings
-resource "cloudflare_zone_settings_override" "settings" {
-  zone_id = var.zone_id
+resource "cloudflare_zone_setting" "ssl" {
+  zone_id    = var.zone_id
+  setting_id = "ssl"
+  value      = "strict"
+}
 
-  settings {
-    # SSL/TLS settings
-    ssl                      = "strict"
-    always_use_https         = "on"
-    min_tls_version          = "1.2"
-    automatic_https_rewrites = "on"
+resource "cloudflare_zone_setting" "always_use_https" {
+  zone_id    = var.zone_id
+  setting_id = "always_use_https"
+  value      = "on"
+}
 
-    # Performance settings
-    minify {
-      css  = "on"
-      js   = "on"
-      html = "on"
-    }
-    brotli = "on"
+resource "cloudflare_zone_setting" "min_tls_version" {
+  zone_id    = var.zone_id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
 
-    # Security settings
-    security_level    = "medium"
-    browser_check     = "on"
-    challenge_ttl     = 1800
-    waf               = "on"
+resource "cloudflare_zone_setting" "automatic_https_rewrites" {
+  zone_id    = var.zone_id
+  setting_id = "automatic_https_rewrites"
+  value      = "on"
+}
 
-    # Caching settings
-    browser_cache_ttl = 14400
-    cache_level       = "aggressive"
+resource "cloudflare_zone_setting" "brotli" {
+  zone_id    = var.zone_id
+  setting_id = "brotli"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "minify" {
+  zone_id    = var.zone_id
+  setting_id = "minify"
+  value = {
+    css  = "on"
+    js   = "on"
+    html = "on"
   }
+}
+
+resource "cloudflare_zone_setting" "security_level" {
+  zone_id    = var.zone_id
+  setting_id = "security_level"
+  value      = "medium"
+}
+
+resource "cloudflare_zone_setting" "browser_check" {
+  zone_id    = var.zone_id
+  setting_id = "browser_check"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "challenge_ttl" {
+  zone_id    = var.zone_id
+  setting_id = "challenge_ttl"
+  value      = 1800
+}
+
+resource "cloudflare_zone_setting" "waf" {
+  zone_id    = var.zone_id
+  setting_id = "waf"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "browser_cache_ttl" {
+  zone_id    = var.zone_id
+  setting_id = "browser_cache_ttl"
+  value      = 14400
+}
+
+resource "cloudflare_zone_setting" "cache_level" {
+  zone_id    = var.zone_id
+  setting_id = "cache_level"
+  value      = "aggressive"
 }
 ```
 
@@ -152,39 +198,47 @@ resource "cloudflare_zone_settings_override" "settings" {
 ```hcl
 # ssl.tf - SSL certificate management
 # Full (strict) SSL ensures end-to-end encryption
-resource "cloudflare_zone_settings_override" "ssl" {
-  zone_id = var.zone_id
+resource "cloudflare_zone_setting" "strict_ssl" {
+  zone_id    = var.zone_id
+  setting_id = "ssl"
+  value      = "strict"
+}
 
-  settings {
-    ssl              = "strict"
-    min_tls_version  = "1.2"
-    tls_1_3          = "zrt"  # Zero Round Trip Time
-  }
+resource "cloudflare_zone_setting" "strict_min_tls_version" {
+  zone_id    = var.zone_id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
+
+resource "cloudflare_zone_setting" "tls_1_3" {
+  zone_id    = var.zone_id
+  setting_id = "tls_1_3"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "zero_rtt" {
+  zone_id    = var.zone_id
+  setting_id = "0rtt"
+  value      = "on"
 }
 ```
 
 ## Firewall Rules
 
 ```hcl
-# firewall.tf - Cloudflare firewall rules
-resource "cloudflare_filter" "block_bad_bots" {
-  zone_id     = var.zone_id
-  description = "Block known bad bots"
-  expression  = "(cf.client.bot) or (cf.threat_score gt 50)"
-}
+# firewall.tf - Cloudflare WAF custom rules
+resource "cloudflare_ruleset" "zone_custom_firewall" {
+  zone_id = var.zone_id
+  name    = "Zone custom firewall rules"
+  kind    = "zone"
+  phase   = "http_request_firewall_custom"
 
-resource "cloudflare_firewall_rule" "block_bad_bots" {
-  zone_id     = var.zone_id
-  description = "Block bad bots and high threat scores"
-  filter_id   = cloudflare_filter.block_bad_bots.id
-  action      = "block"
-  priority    = 1
-}
-
-resource "cloudflare_filter" "rate_limit_api" {
-  zone_id     = var.zone_id
-  description = "Rate limit API requests"
-  expression  = "(http.request.uri.path contains \"/api/\")"
+  rules = [{
+    ref         = "block_high_threat_score"
+    description = "Block high threat score requests except verified bots"
+    expression  = "(cf.threat_score gt 50 and not cf.client.bot)"
+    action      = "block"
+  }]
 }
 ```
 
@@ -197,7 +251,7 @@ resource "cloudflare_page_rule" "cache_static" {
   target   = "${var.domain}/static/*"
   priority = 1
 
-  actions {
+  actions = {
     cache_level       = "cache_everything"
     browser_cache_ttl = 86400
     edge_cache_ttl    = 604800
@@ -209,7 +263,7 @@ resource "cloudflare_page_rule" "no_cache_api" {
   target   = "${var.domain}/api/*"
   priority = 2
 
-  actions {
+  actions = {
     cache_level = "bypass"
   }
 }
@@ -226,9 +280,9 @@ output "nameservers" {
 
 output "dns_records" {
   value = {
-    root = cloudflare_record.root.hostname
-    www  = cloudflare_record.www.hostname
-    api  = cloudflare_record.api.hostname
+    root = cloudflare_dns_record.root.name
+    www  = cloudflare_dns_record.www.name
+    api  = cloudflare_dns_record.api.name
   }
 }
 ```
