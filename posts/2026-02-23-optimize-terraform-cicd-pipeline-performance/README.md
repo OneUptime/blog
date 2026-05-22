@@ -51,7 +51,7 @@ Typically, the breakdown looks like:
 
 ## Provider Caching
 
-Provider binaries are the biggest download during `terraform init`. The AWS provider alone is over 400MB. Caching them across pipeline runs is the single biggest performance win.
+Provider binaries are the biggest download during `terraform init`. Large providers such as the AWS provider can be hundreds of megabytes. Caching them across pipeline runs is the single biggest performance win.
 
 ### GitHub Actions Cache
 
@@ -190,9 +190,9 @@ Use `terraform state mv` to migrate resources to new state files:
 cd infrastructure/networking
 terraform init
 
-# Import existing resources into the new state
-terraform import aws_vpc.main vpc-12345
-terraform import aws_subnet.private[0] subnet-67890
+# Move resources from the old local state into this state
+terraform state mv -state=../terraform.tfstate -state-out=terraform.tfstate aws_vpc.main aws_vpc.main
+terraform state mv -state=../terraform.tfstate -state-out=terraform.tfstate 'aws_subnet.private[0]' 'aws_subnet.private[0]'
 ```
 
 ## Disable Checkpoint Calls
@@ -245,7 +245,7 @@ GitHub Actions offers larger runners with more CPU and RAM:
 ```yaml
 jobs:
   plan:
-    runs-on: ubuntu-latest-16-cores  # 16 cores, 64GB RAM
+    runs-on: ubuntu-24.04-16core  # Example larger-runner label configured for 16 cores
     steps:
       - name: Terraform Plan
         run: terraform plan -parallelism=50 -out=tfplan
@@ -261,12 +261,12 @@ FROM hashicorp/terraform:1.7.4
 
 # Pre-install commonly used providers
 RUN mkdir -p /root/.terraform.d/plugin-cache
+ENV TF_PLUGIN_CACHE_DIR=/root/.terraform.d/plugin-cache
 
-# Copy provider lock file and pre-download providers
-COPY .terraform.lock.hcl /tmp/
+# Copy provider requirements and lock file, then pre-download providers
+COPY *.tf .terraform.lock.hcl /tmp/
 WORKDIR /tmp
-RUN terraform init -backend=false && \
-    cp -r .terraform/providers/* /root/.terraform.d/plugin-cache/ || true
+RUN terraform init -backend=false
 ```
 
 ```yaml
