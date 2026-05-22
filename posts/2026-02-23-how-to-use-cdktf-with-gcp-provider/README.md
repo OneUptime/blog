@@ -257,12 +257,17 @@ const cluster = new ContainerCluster(this, "gke", {
   workloadIdentityConfig: {
     workloadPool: "your-project-id.svc.id.goog",
   },
+  addonsConfig: {
+    networkPolicyConfig: {
+      disabled: false,
+    },
+  },
   // Network policy for pod-to-pod communication control
   networkPolicy: {
     enabled: true,
     provider: "CALICO",
   },
-  // Enable binary authorization
+  // Use the regular release channel
   releaseChannel: {
     channel: "REGULAR",
   },
@@ -306,6 +311,24 @@ new ContainerNodePool(this, "primary-nodes", {
 import { SqlDatabaseInstance } from "@cdktf/provider-google/lib/sql-database-instance";
 import { SqlDatabase } from "@cdktf/provider-google/lib/sql-database";
 import { SqlUser } from "@cdktf/provider-google/lib/sql-user";
+import { ComputeGlobalAddress } from "@cdktf/provider-google/lib/compute-global-address";
+import { ServiceNetworkingConnection } from "@cdktf/provider-google/lib/service-networking-connection";
+
+// Reserve an internal IP range for private service access
+const privateIpAddress = new ComputeGlobalAddress(this, "private-ip-address", {
+  name: "private-ip-address",
+  purpose: "VPC_PEERING",
+  addressType: "INTERNAL",
+  prefixLength: 16,
+  network: network.id,
+});
+
+// Connect the VPC to Google's service networking producer network
+const privateVpcConnection = new ServiceNetworkingConnection(this, "private-vpc-connection", {
+  network: network.id,
+  service: "servicenetworking.googleapis.com",
+  reservedPeeringRanges: [privateIpAddress.name],
+});
 
 // Create a Cloud SQL PostgreSQL instance
 const sqlInstance = new SqlDatabaseInstance(this, "postgres", {
@@ -330,13 +353,14 @@ const sqlInstance = new SqlDatabaseInstance(this, "postgres", {
     },
     ipConfiguration: {
       ipv4Enabled: false,
-      privateNetwork: network.id,
+      privateNetwork: network.selfLink,
     },
     maintenanceWindow: {
       day: 7,
       hour: 4,
     },
   },
+  dependsOn: [privateVpcConnection],
 });
 
 // Create a database
