@@ -26,7 +26,7 @@ The conditional syntax in Terraform templates uses `%{if}`, `%{else}`, and `%{en
 %{endif}
 ```
 
-You can also use `%{if condition}...%{elseif other_condition}...%{else}...%{endif}` for multiple branches (available in Terraform 1.7+).
+For multiple branches, nest `%{if}` directives or use a Terraform conditional expression inside an interpolation.
 
 ## Basic Conditional Example
 
@@ -201,7 +201,13 @@ metadata:
   namespace: ${namespace}
 spec:
   replicas: ${replicas}
+  selector:
+    matchLabels:
+      app: ${app_name}
   template:
+    metadata:
+      labels:
+        app: ${app_name}
     spec:
       containers:
         - name: ${app_name}
@@ -358,9 +364,9 @@ content
 %{endif}
 
 # With tilde - clean output
-%{~if condition}
+%{if condition ~}
 content
-%{~endif}
+%{endif ~}
 ```
 
 The tilde strips the adjacent newline and whitespace, preventing blank lines in the output.
