@@ -52,7 +52,7 @@ spec:
       protocol: TCP
 ```
 
-Port 25 is used for server-to-server mail relay, port 587 is the submission port for authenticated clients, and port 465 is SMTP over implicit TLS. All three need the `tcp-` prefix because SMTP is server-first on all of them.
+Port 25 is used for server-to-server mail relay, port 587 is the submission port for authenticated clients, and port 465 is SMTP over implicit TLS. Ports 25 and 587 need the `tcp-` prefix because SMTP is server-first on those ports. Port 465 can also use `tcp-` if you want Istio to treat it as an opaque TCP stream.
 
 ## Running an SMTP Server Inside the Mesh
 
@@ -107,10 +107,10 @@ Many applications need to send emails through an SMTP relay. When your applicati
 
 If your application connects to an internal SMTP server (one that has its port named correctly with `tcp-` prefix), the sidecar on the client side will check the destination service's port name and use the right protocol. This should work without additional configuration.
 
-For external SMTP services, you need a ServiceEntry:
+For external SMTP services, create a ServiceEntry if your mesh uses `REGISTRY_ONLY` outbound traffic policy, or if you want Istio to explicitly classify the destination port as TCP:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-smtp
@@ -182,14 +182,14 @@ spec:
               - "25"
 ```
 
-This allows pods in the `default` and `notifications` namespaces to send mail via the submission port (587) and restricts relay access on port 25 to only the mail-relay service account.
+This allows pods in the `default` and `notifications` namespaces to send mail via the submission port (587) and restricts relay access on port 25 to only the mail-relay service account. Namespace and principal matches are derived from peer certificates, so use this policy with Istio mTLS enabled, preferably in `STRICT` mode.
 
 ## Connection Pooling for SMTP
 
 SMTP connections are relatively expensive to establish (DNS lookup, TCP handshake, TLS negotiation, authentication). Many applications maintain a pool of SMTP connections. Configure Istio to support this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: mail-server
@@ -214,7 +214,7 @@ The keepalive settings are important because SMTP connections might sit idle bet
 If your SMTP server needs to receive email from the internet, you need to expose it through the ingress gateway. Since SMTP is TCP, you cannot use the standard HTTP gateway configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: smtp-gateway
@@ -230,7 +230,7 @@ spec:
       hosts:
         - "*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: smtp-external
@@ -300,4 +300,4 @@ For SMTP-specific metrics (delivery rates, bounce rates, queue sizes), you need 
 
 ## Summary
 
-SMTP in Istio requires explicit `tcp-` port naming because SMTP is a server-first protocol that breaks Istio's protocol sniffing. Name your ports `tcp-smtp`, `tcp-submission`, or `tcp-smtps`. Use ServiceEntry with `tcp-` port names for external SMTP services. Apply authorization policies to control which services can send email, configure connection keepalives for pooled connections, and if all else fails, use the `excludeOutboundPorts` annotation to bypass the sidecar for SMTP traffic.
+SMTP in Istio requires explicit `tcp-` port naming on plain-text and STARTTLS ports because SMTP is a server-first protocol that breaks Istio's protocol sniffing. Name your ports `tcp-smtp`, `tcp-submission`, or `tcp-smtps`, and use `tls-smtps` only for implicit TLS on port 465. Use ServiceEntry with `tcp-` port names for external SMTP services when you need explicit outbound classification. Apply authorization policies to control which services can send email, configure connection keepalives for pooled connections, and if all else fails, use the `excludeOutboundPorts` annotation to bypass the sidecar for SMTP traffic.
