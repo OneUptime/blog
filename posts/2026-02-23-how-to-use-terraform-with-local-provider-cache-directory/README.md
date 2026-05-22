@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Cache, Offline Mode, CI/CD, Performance
+Tags: Terraform, Provider Cache, Provider Installation, CI/CD, Performance
 
-Description: Set up and manage a local provider cache directory in Terraform to enable faster initialization, offline operation, and shared caching.
+Description: Set up and manage a local provider cache directory in Terraform to enable faster initialization, fewer repeated downloads, and shared caching.
 
 ---
 
@@ -44,8 +44,8 @@ When you run `terraform init` with a cache configured, Terraform follows this pr
 1. Reads `required_providers` from your configuration
 2. Checks the lock file (`.terraform.lock.hcl`) for required checksums
 3. Looks in the cache directory for matching provider versions
-4. If found, creates a symbolic link from `.terraform/providers/` to the cached binary
-5. If not found, downloads the provider to the cache, then creates the symlink
+4. If found, copies it into `.terraform/providers/` or creates a symbolic link when possible
+5. If not found, downloads the provider to the cache, then copies or links it into the working directory
 
 The directory structure inside the cache mirrors the provider's registry path:
 
@@ -74,14 +74,14 @@ After setting up the cache, you can verify it is being used:
 # Run init and watch the output
 terraform init
 
-# Check that symlinks point to the cache
+# Check whether Terraform linked the provider from the cache
 ls -la .terraform/providers/registry.terraform.io/hashicorp/aws/5.30.0/darwin_arm64/
 
 # Output should show something like:
 # terraform-provider-aws_v5.30.0_x5 -> /Users/you/.terraform.d/plugin-cache/registry.terraform.io/hashicorp/aws/5.30.0/darwin_arm64/terraform-provider-aws_v5.30.0_x5
 ```
 
-If you see symlinks pointing to your cache directory, it is working.
+If you see symlinks pointing to your cache directory, it is working. On platforms or filesystems where Terraform copies providers instead, the same cached download is still being reused.
 
 ## Managing Cache Size
 
@@ -167,12 +167,6 @@ pipeline {
         }
     }
 
-    // Persist cache between builds
-    post {
-        always {
-            stash includes: '.terraform-plugin-cache/**', name: 'plugin-cache'
-        }
-    }
 }
 ```
 
@@ -192,7 +186,7 @@ sudo chmod 1777 "$SHARED_CACHE"
 export TF_PLUGIN_CACHE_DIR="$SHARED_CACHE"
 ```
 
-The sticky bit (1777) ensures users can create files but only delete their own entries. This prevents accidental cleanup by one person from breaking another's workflow.
+The sticky bit (1777) ensures users can create files but only delete their own entries. Terraform does not guarantee that the plugin cache is safe for concurrent `terraform init` runs, so use this pattern only where concurrent writes are unlikely or serialize initialization when sharing one writable cache.
 
 ## Cache vs Filesystem Mirror
 
