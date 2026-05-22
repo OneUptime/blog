@@ -12,7 +12,7 @@ Transient failures are a fact of life in distributed systems. A pod gets restart
 
 ## Default Retry Behavior
 
-Istio actually configures retries by default. Without any VirtualService, Envoy retries failed requests twice with a 25ms base interval. The default retry condition is `connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes`.
+Istio actually configures retries by default. Without a route-specific retry policy, Envoy retries failed requests twice with a 25ms base interval. The default retry condition is `connect-failure,refused-stream,unavailable,cancelled`.
 
 You can see this in action by checking the route config:
 
@@ -42,7 +42,7 @@ spec:
     retries:
       attempts: 3
       perTryTimeout: 2s
-      retryOn: "5xx,reset,connect-failure,retriable-status-codes"
+      retryOn: "5xx,reset,connect-failure"
 ```
 
 **attempts** - The total number of retry attempts. Setting this to 3 means the original request plus 3 retries, for a total of 4 attempts.
@@ -67,49 +67,41 @@ The `retryOn` field accepts several conditions. Here are the most commonly used 
 
 **reset** - Retry if the upstream connection is reset (TCP RST) before a response is received.
 
-**retriable-status-codes** - Retry on specific status codes. You need to pair this with the `retriable-status-codes` header or configure it via EnvoyFilter.
+**retriable-status-codes** - Retry on specific status codes. You need to pair this with the `x-envoy-retriable-status-codes` header or configure status codes in Envoy's retry policy.
 
 **retriable-headers** - Retry based on response headers.
 
 A practical combination for most services:
 
 ```yaml
-retryOn: "connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes"
+retryOn: "connect-failure,refused-stream,unavailable,cancelled"
 ```
 
 ## Retry Backoff
 
-By default, Envoy uses an exponential backoff for retries. The base interval is 25ms and it doubles with each retry, capped at 250ms. You can customize this through an EnvoyFilter if the defaults don't work for you:
+By default, Envoy uses a fully jittered exponential backoff for retries. The base interval is 25ms and the default maximum interval is 10 times the base interval, or 250ms. You can customize the minimum backoff directly in the VirtualService if the default doesn't work for you:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: VirtualService
 metadata:
-  name: retry-backoff
+  name: frontend-service
   namespace: production
 spec:
-  workloadSelector:
-    labels:
-      app: frontend
-  configPatches:
-  - applyTo: HTTP_ROUTE
-    match:
-      context: SIDECAR_OUTBOUND
-      routeConfiguration:
-        vhost:
-          route:
-            name: default
-    patch:
-      operation: MERGE
-      value:
-        route:
-          retryPolicy:
-            retryBackOff:
-              baseInterval: 100ms
-              maxInterval: 1s
+  hosts:
+  - frontend-service
+  http:
+  - route:
+    - destination:
+        host: frontend-service
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: "5xx,connect-failure"
+      backoff: 100ms
 ```
 
-This changes the backoff to start at 100ms and cap at 1 second.
+This changes the minimum backoff to 100ms. If you also need to customize Envoy's maximum backoff interval, use an EnvoyFilter to patch the route's `retry_policy.retry_back_off.max_interval`.
 
 ## Per-Route Retry Configuration
 
@@ -238,14 +230,14 @@ kubectl exec -it <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | gr
 
 Key metrics:
 
-- `envoy_cluster_upstream_rq_retry` - Total number of retries
-- `envoy_cluster_upstream_rq_retry_success` - Retries that succeeded
-- `envoy_cluster_upstream_rq_retry_overflow` - Retries rejected because the retry budget was exceeded
+- `cluster.<cluster>.upstream_rq_retry` - Total number of retries
+- `cluster.<cluster>.upstream_rq_retry_success` - Retries that succeeded
+- `cluster.<cluster>.upstream_rq_retry_overflow` - Retries rejected because the retry budget was exceeded
 
 In Prometheus, you can query:
 
 ```promql
-rate(envoy_cluster_upstream_rq_retry_success{cluster_name="outbound|80||catalog-service.production.svc.cluster.local"}[5m])
+rate(envoy_cluster_upstream_rq_retry_success{envoy_cluster_name="outbound|80||catalog-service.production.svc.cluster.local"}[5m])
 ```
 
 If `retry_success` is high, retries are doing their job - recovering from transient failures. If `retry_overflow` is high, you might need to increase your retry budget in the DestinationRule.
