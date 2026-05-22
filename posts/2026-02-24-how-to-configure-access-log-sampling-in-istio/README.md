@@ -16,13 +16,13 @@ The math is straightforward. If your mesh handles 10,000 requests per second and
 
 ## Understanding How Istio Access Logging Works
 
-Istio's data plane is built on Envoy proxies. Each sidecar proxy can emit access logs for every request it handles. By default, Istio configures these proxies through the `MeshConfig` or through the Telemetry API (introduced in Istio 1.12+). The Telemetry API is the recommended approach for newer Istio versions.
+Istio's data plane is built on Envoy proxies. Each sidecar proxy can emit access logs for every request it handles. Istio configures these proxies through the `MeshConfig` or through the Telemetry API, which became the recommended approach for access logging in newer Istio versions.
 
 ## Configuring Sampling with the Telemetry API
 
 The Telemetry API provides a clean way to configure access log sampling. You can apply it mesh-wide, per-namespace, or per-workload.
 
-Here's a mesh-wide configuration that samples 10% of access logs:
+Here's a mesh-wide configuration that logs only mTLS requests whose path contains `/api/`:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -38,9 +38,9 @@ spec:
         expression: "connection.mtls && request.url_path.contains('/api/')"
 ```
 
-The `filter` field uses Common Expression Language (CEL) to decide which requests get logged. This is not random sampling per se - it's conditional logging. But you can combine it with random sampling using the `randomSamplingPercentage` attribute.
+The `filter` field uses Common Expression Language (CEL) to decide which requests get logged. This is not random sampling per se - it's conditional logging. The `randomSamplingPercentage` field belongs to Istio tracing configuration, not access logging.
 
-For random percentage-based sampling, you can use an EnvoyFilter:
+For random percentage-based access log sampling, you need to configure Envoy's access log filter directly. The following example adds a sampled file access logger to HTTP connection managers. Use this carefully, because `EnvoyFilter` patches depend on Envoy and Istio proxy internals:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -59,10 +59,20 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            access_log_options:
-              access_log_flush_interval: 10s
+            access_log:
+              - name: envoy.access_loggers.file
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+                  path: /dev/stdout
+                filter:
+                  runtime_filter:
+                    runtime_key: access_log.sample
+                    percent_sampled:
+                      numerator: 10
+                      denominator: HUNDRED
 ```
 
 ## Using CEL Expressions for Smart Sampling
@@ -101,7 +111,7 @@ spec:
         expression: "response.duration > duration('1s')"
 ```
 
-Combine multiple conditions - log errors and a percentage of successful requests:
+Combine multiple conditions - log errors, failed connections, and successful requests for selected paths:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -114,11 +124,11 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || response.code == 0"
+        expression: "!has(response.code) || response.code >= 400"
     - providers:
         - name: envoy
       filter:
-        expression: "response.code < 400"
+        expression: "response.code < 400 && request.url_path.contains('/api/')"
       disabled: false
 ```
 
@@ -154,10 +164,6 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    defaultConfig:
-      proxyStatsMatcher:
-        inclusionRegexps:
-          - ".*"
 ```
 
 To control whether access logging is on or off at the mesh level:
@@ -182,8 +188,8 @@ After applying your configuration, verify that it's working correctly:
 
 kubectl get telemetry -A
 
-# Look at the actual Envoy configuration
-istioctl proxy-config log <pod-name> --level info
+# Look at the actual Envoy listener configuration
+istioctl proxy-config listener <pod-name> -o json
 
 # Watch logs from a specific pod's sidecar
 kubectl logs <pod-name> -c istio-proxy -f
@@ -201,7 +207,7 @@ Here's a strategy that works well for most production environments:
 
 1. Log 100% of errors (4xx and 5xx responses)
 2. Log 100% of slow requests (duration above your SLO threshold)
-3. Log 5-10% of successful requests for baseline visibility
+3. Log a small conditional subset of successful requests with Telemetry filters, or use an Envoy access log runtime filter if you need true random sampling
 4. Log 100% for critical services like authentication and payments
 5. Disable logging entirely for noisy internal endpoints like health checks
 
