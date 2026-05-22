@@ -20,14 +20,14 @@ The `templatefile` function reads a file and renders it as a template, replacing
 templatefile(path, vars)
 ```
 
-The file uses Terraform's template syntax: `${var_name}` for interpolation, `%{if}...%{endif}` for conditionals, and `%{for}...%{endfor}` for loops.
+The file uses Terraform's template syntax: `${var_name}` for interpolation, `%{ if condition }...%{ endif }` for conditionals, and `%{ for item in items }...%{ endfor }` for loops.
 
 ## Basic Example
 
 Let us start with a simple template.
 
 ```hcl
-# templates/greeting.tpl
+# templates/greeting.tftpl
 Hello, ${name}!
 You are deploying to the ${environment} environment.
 Your application will run on port ${port}.
@@ -36,7 +36,7 @@ Your application will run on port ${port}.
 ```hcl
 # main.tf
 locals {
-  greeting = templatefile("${path.module}/templates/greeting.tpl", {
+  greeting = templatefile("${path.module}/templates/greeting.tftpl", {
     name        = "DevOps Team"
     environment = "production"
     port        = 8080
@@ -57,7 +57,7 @@ output "greeting" {
 One of the most common uses is generating EC2 user data scripts.
 
 ```hcl
-# templates/user-data.sh.tpl
+# templates/user-data.sh.tftpl
 #!/bin/bash
 set -euo pipefail
 
@@ -93,7 +93,7 @@ resource "aws_instance" "app" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.medium"
 
-  user_data = templatefile("${path.module}/templates/user-data.sh.tpl", {
+  user_data = templatefile("${path.module}/templates/user-data.sh.tftpl", {
     hostname    = "app-server-01"
     packages    = ["nginx", "jq", "awscli", "htop"]
     environment = "production"
@@ -113,7 +113,7 @@ resource "aws_instance" "app" {
 ## Generating Nginx Configuration
 
 ```hcl
-# templates/nginx.conf.tpl
+# templates/nginx.conf.tftpl
 upstream backend {
     ${indent(4, join("\n", [for server in upstream_servers : "server ${server};"]))}
 }
@@ -138,7 +138,7 @@ server {
 ```hcl
 # main.tf
 resource "local_file" "nginx_config" {
-  content = templatefile("${path.module}/templates/nginx.conf.tpl", {
+  content = templatefile("${path.module}/templates/nginx.conf.tftpl", {
     upstream_servers = ["10.0.1.10:8080", "10.0.1.11:8080", "10.0.1.12:8080"]
     listen_port      = 80
     server_name      = "api.example.com"
@@ -152,7 +152,7 @@ resource "local_file" "nginx_config" {
 While Terraform has native IAM policy resources, sometimes a template is more readable for complex policies.
 
 ```hcl
-# templates/iam-policy.json.tpl
+# templates/iam-policy.json.tftpl
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -192,7 +192,7 @@ While Terraform has native IAM policy resources, sometimes a template is more re
 # main.tf
 resource "aws_iam_policy" "app" {
   name   = "app-policy"
-  policy = templatefile("${path.module}/templates/iam-policy.json.tpl", {
+  policy = templatefile("${path.module}/templates/iam-policy.json.tftpl", {
     bucket_name = aws_s3_bucket.app.id
     region      = data.aws_region.current.name
     account_id  = data.aws_caller_identity.current.account_id
@@ -205,7 +205,7 @@ resource "aws_iam_policy" "app" {
 Generate Kubernetes YAML from templates.
 
 ```hcl
-# templates/deployment.yaml.tpl
+# templates/deployment.yaml.tftpl
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -240,7 +240,7 @@ spec:
 ```hcl
 # main.tf
 resource "local_file" "k8s_deployment" {
-  content = templatefile("${path.module}/templates/deployment.yaml.tpl", {
+  content = templatefile("${path.module}/templates/deployment.yaml.tftpl", {
     app_name       = "myapp"
     namespace      = "production"
     version        = "2.1.0"
@@ -256,7 +256,7 @@ resource "local_file" "k8s_deployment" {
 
 ## Template File Location
 
-Templates are typically stored in a `templates/` directory within your module.
+Templates are typically stored in a `templates/` directory within your module. Terraform recommends the `*.tftpl` naming pattern for template files.
 
 ```text
 my-module/
@@ -264,19 +264,19 @@ my-module/
   variables.tf
   outputs.tf
   templates/
-    user-data.sh.tpl
-    config.yaml.tpl
-    policy.json.tpl
+    user-data.sh.tftpl
+    config.yaml.tftpl
+    policy.json.tftpl
 ```
 
 Always use `${path.module}` to reference templates relative to the module:
 
 ```hcl
 # Correct - works from any calling location
-templatefile("${path.module}/templates/config.tpl", { ... })
+templatefile("${path.module}/templates/config.tftpl", { ... })
 
 # Incorrect - breaks if called from a different directory
-templatefile("templates/config.tpl", { ... })
+templatefile("templates/config.tftpl", { ... })
 ```
 
 ## Escaping Special Characters
@@ -284,25 +284,25 @@ templatefile("templates/config.tpl", { ... })
 When your template contains literal `${}` or `%{}` that should not be treated as template syntax, escape them.
 
 ```hcl
-# templates/script.sh.tpl
+# templates/script.sh.tftpl
 
 #!/bin/bash
 # Terraform template variable (will be replaced)
 APP_NAME="${app_name}"
 
 # Bash variable (escaped - will NOT be replaced by Terraform)
-CURRENT_DATE=$${(date +%Y-%m-%d)}
+CURRENT_DATE=$(date +%Y-%m-%d)
 echo "Deploying $${APP_NAME} on $${CURRENT_DATE}"
 ```
 
-Use `$${` to produce a literal `${` in the output.
+Use `$${` to produce a literal `${` in the output, and `%%{` to produce a literal `%{`.
 
 ## Passing Complex Types
 
 You can pass lists, maps, and nested objects to templates.
 
 ```hcl
-# templates/config.yaml.tpl
+# templates/config.yaml.tftpl
 database:
   host: ${db.host}
   port: ${db.port}
@@ -314,7 +314,7 @@ ${join("\n", [for name, enabled in features : "  ${name}: ${enabled}"])}
 
 ```hcl
 locals {
-  config = templatefile("${path.module}/templates/config.yaml.tpl", {
+  config = templatefile("${path.module}/templates/config.yaml.tftpl", {
     db = {
       host = "db.internal"
       port = 5432
@@ -331,7 +331,7 @@ locals {
 
 ## templatefile vs templatestring
 
-Use `templatefile` when your template is stored in a separate file (best for complex templates). Use `templatestring` when the template is inline and simple. See our post on [templatestring](https://oneuptime.com/blog/post/2026-02-23-how-to-use-templatestring-function-in-terraform/view) for the inline approach.
+Use `templatefile` when your template is stored in a separate file (best for complex templates). Use Terraform string interpolation or heredoc strings when the template is inline and simple. Use `templatestring` when the template is already available as a string value, such as content fetched from a data source. See our post on [templatestring](https://oneuptime.com/blog/post/2026-02-23-how-to-use-templatestring-function-in-terraform/view) for that approach.
 
 ## Common Mistakes
 
@@ -342,7 +342,7 @@ Watch out for these issues:
 # If the template references ${name} but you do not pass it, you get an error
 
 # Mistake: passing extra variables that the template does not use
-# This also causes an error in Terraform
+# Terraform allows this, but it can make templates harder to maintain
 
 # Mistake: using Terraform variable syntax (var.name) in templates
 # Templates use their own namespace: ${name}, not ${var.name}
