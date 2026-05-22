@@ -156,9 +156,9 @@ resource "helm_release" "prometheus_stack" {
             receiver        = "slack"
             routes = [
               {
-                match = {
-                  severity = "critical"
-                }
+                matchers = [
+                  "severity=\"critical\""
+                ]
                 receiver        = "pagerduty"
                 repeat_interval = "1h"
               }
@@ -177,7 +177,7 @@ resource "helm_release" "prometheus_stack" {
             {
               name = "pagerduty"
               pagerduty_configs = [{
-                service_key = var.pagerduty_key
+                routing_key = var.pagerduty_key
               }]
             }
           ]
@@ -206,18 +206,23 @@ resource "helm_release" "loki" {
 
   values = [
     yamlencode({
-      # Simple scalable mode for medium clusters
-      deploymentMode = "SimpleScalable"
-
       loki = {
         auth_enabled = false
+
+        commonConfig = {
+          replication_factor = 2
+        }
 
         # Store logs in S3 for cost-effective long-term storage
         storage = {
           type = "s3"
+          bucketNames = {
+            chunks = var.loki_bucket_name
+            ruler  = var.loki_bucket_name
+            admin  = var.loki_bucket_name
+          }
           s3 = {
-            region     = var.aws_region
-            bucketnames = var.loki_bucket_name
+            region = var.aws_region
           }
         }
 
@@ -238,6 +243,12 @@ resource "helm_release" "loki" {
         limits_config = {
           retention_period = "30d"
           max_query_series = 5000
+        }
+
+        compactor = {
+          working_directory    = "/var/loki/compactor"
+          retention_enabled    = true
+          delete_request_store = "s3"
         }
       }
 
@@ -392,7 +403,8 @@ spec:
           expr: |
             container_memory_working_set_bytes{container!=""}
             /
-            container_spec_memory_limit_bytes{container!=""} > 0.9
+            on(namespace, pod, container)
+            (container_spec_memory_limit_bytes{container!=""} > 0) > 0.9
           for: 5m
           labels:
             severity: warning
@@ -443,6 +455,9 @@ resource "helm_release" "prometheus_stack" {
       # Node exporter runs on every node
       nodeExporter = {
         enabled = true
+      }
+
+      "prometheus-node-exporter" = {
         resources = {
           requests = {
             cpu    = "50m"
@@ -455,7 +470,11 @@ resource "helm_release" "prometheus_stack" {
       }
 
       # kube-state-metrics tracks Kubernetes object states
-      kube-state-metrics = {
+      kubeStateMetrics = {
+        enabled = true
+      }
+
+      "kube-state-metrics" = {
         resources = {
           requests = {
             cpu    = "50m"
