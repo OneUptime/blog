@@ -8,9 +8,9 @@ Description: A detailed comparison between Istio and AWS App Mesh covering featu
 
 ---
 
-If your workloads run on AWS, you have probably considered both Istio and AWS App Mesh for your service mesh needs. AWS App Mesh is Amazon's managed service mesh offering, while Istio is the open-source option you deploy and manage yourself. The choice between them comes down to how much control you need versus how much operational burden you want to carry.
+If your workloads run on AWS, you may have considered both Istio and AWS App Mesh for your service mesh needs. AWS App Mesh is Amazon's managed service mesh offering, while Istio is the open-source option you deploy and manage yourself. However, AWS has announced that App Mesh will be discontinued on September 30, 2026, and new customers have been unable to onboard since September 24, 2024. For new deployments, this makes App Mesh mainly relevant as a migration or legacy comparison point rather than a greenfield choice.
 
-This comparison is aimed at teams that are already on AWS and trying to decide which path makes more sense.
+This comparison is aimed at teams that are already on AWS and trying to decide which path makes more sense, especially teams that already use App Mesh or need to understand the trade-offs before migrating away from it.
 
 ## Managed vs Self-Managed
 
@@ -18,17 +18,17 @@ The most fundamental difference is the operational model. AWS App Mesh is a mana
 
 Istio is self-managed. You deploy istiod (the control plane) in your cluster, and your team is responsible for upgrades, scaling, monitoring, and troubleshooting. This gives you full control but adds operational burden.
 
-For small teams without dedicated platform engineers, the managed control plane of App Mesh is a significant advantage. For larger teams that need customization, Istio's self-managed model offers more flexibility.
+For existing App Mesh users, the managed control plane is a significant operational advantage while the service remains available. For larger teams that need customization, or for teams planning beyond the App Mesh end-of-support date, Istio's self-managed model offers more flexibility.
 
 ## Data Plane
 
-Both Istio and AWS App Mesh use Envoy as the data plane proxy. This means the actual proxy handling your traffic is the same. The difference is in how the proxy is configured and managed.
+Both Istio and AWS App Mesh use Envoy as the data plane proxy. This means the proxy technology handling your traffic is broadly the same, although the exact Envoy build, version, and generated configuration can differ. The difference is in how the proxy is configured and managed.
 
 In Istio, Envoy is configured by istiod through xDS APIs. You control the configuration through Istio CRDs (VirtualService, DestinationRule, etc.).
 
 In App Mesh, Envoy is configured by the App Mesh control plane. You define configuration through AWS App Mesh CRDs or the AWS API/CLI. The App Mesh controller translates these into Envoy configuration.
 
-Since both use Envoy, the raw data plane performance is essentially identical.
+Since both use Envoy, raw data plane performance is broadly comparable, but the real result depends on Envoy version, mesh configuration, workload shape, and resource limits.
 
 ## Platform Support
 
@@ -124,7 +124,7 @@ spec:
 
 ## Security
 
-Both provide mTLS between services. App Mesh integrates with AWS Certificate Manager for certificate management, which is convenient if you are already using ACM for other AWS services.
+Both provide mTLS between services. App Mesh can use private certificates stored in AWS Certificate Manager that are issued by AWS Private Certificate Authority, which is convenient if you are already using AWS Private CA for internal certificates.
 
 Istio's security model is more feature-rich. Istio provides:
 - Fine-grained authorization policies (based on headers, paths, methods, JWT claims)
@@ -158,7 +158,7 @@ Istio has a larger set of CRDs (VirtualService, DestinationRule, Gateway, Servic
 
 ## AWS Service Integration
 
-App Mesh integrates with other AWS services in ways that Istio cannot:
+App Mesh integrates with other AWS services in ways that Istio does not provide natively, although those integrations should now be weighed against the App Mesh end-of-support timeline:
 
 - **AWS Cloud Map** for service discovery (works across EKS, ECS, and EC2)
 - **AWS Certificate Manager** for certificate management
@@ -191,12 +191,12 @@ If multi-cloud or cloud portability is even a remote possibility, Istio is the s
 
 ## When to Choose AWS App Mesh
 
-Go with App Mesh when:
-- Your workloads are 100% on AWS and will stay there
-- You run a mix of EKS, ECS, and EC2 workloads that need to be meshed together
-- You prefer managed services and want to minimize operational overhead
+Do not choose App Mesh for a new greenfield service mesh deployment unless you have a very specific short-lived or migration-related reason. It may still matter when:
+- You are already an App Mesh customer and need to operate it until migration
+- You are comparing an existing App Mesh deployment against Istio
+- You run a mix of EKS, ECS, and EC2 workloads that are already meshed together
 - Your observability stack is built on CloudWatch and X-Ray
-- You manage infrastructure through CloudFormation or CDK
+- You manage existing App Mesh infrastructure through CloudFormation or CDK
 
 ## When to Choose Istio
 
@@ -210,4 +210,4 @@ Go with Istio when:
 
 ## Summary
 
-AWS App Mesh and Istio both use Envoy under the hood, so the data plane performance is comparable. The differences are in the control plane model (managed vs self-managed), platform support (AWS-wide vs Kubernetes-only), feature depth (App Mesh is simpler, Istio is richer), and portability (App Mesh is AWS-locked, Istio is portable). Pick App Mesh for simplicity in an all-AWS environment, and pick Istio for flexibility and feature depth.
+AWS App Mesh and Istio both use Envoy under the hood, so the data plane performance is comparable. The differences are in the control plane model (managed vs self-managed), platform support (AWS-wide vs Kubernetes-first), feature depth (App Mesh is simpler, Istio is richer), and portability (App Mesh is AWS-locked, Istio is portable). Because App Mesh is being discontinued on September 30, 2026, new deployments should generally avoid it and evaluate Istio, Amazon ECS Service Connect, Amazon VPC Lattice, or another current service-networking option instead. For existing App Mesh users, the comparison is still useful for understanding what you gain or lose when migrating.
