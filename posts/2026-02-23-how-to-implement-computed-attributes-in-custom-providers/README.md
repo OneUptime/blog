@@ -218,17 +218,33 @@ type unknownOnChangeModifier struct {
     dependentPaths []path.Path
 }
 
+func (m unknownOnChangeModifier) Description(ctx context.Context) string {
+    return "marks the value as unknown when a dependent attribute changes"
+}
+
+func (m unknownOnChangeModifier) MarkdownDescription(ctx context.Context) string {
+    return "marks the value as unknown when a dependent attribute changes"
+}
+
 func (m unknownOnChangeModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
     // If this is a create, the value is already unknown
-    if req.StateValue.IsNull() {
+    if req.State.Raw.IsNull() {
+        return
+    }
+
+    // If this is a destroy, leave the plan as null
+    if req.Plan.Raw.IsNull() {
         return
     }
 
     // Check if any dependent attribute is changing
     for _, depPath := range m.dependentPaths {
         var stateValue, planValue types.String
-        req.State.GetAttribute(ctx, depPath, &stateValue)
-        req.Plan.GetAttribute(ctx, depPath, &planValue)
+        resp.Diagnostics.Append(req.State.GetAttribute(ctx, depPath, &stateValue)...)
+        resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, depPath, &planValue)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
 
         if !stateValue.Equal(planValue) {
             // Dependent attribute is changing, mark this as unknown
@@ -272,10 +288,15 @@ func (r *ServerResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
     }
 
     var plan ServerResourceModel
+    var config ServerResourceModel
     resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+    resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
 
     // If region is not set, use the provider's default region
-    if plan.Region.IsUnknown() || plan.Region.IsNull() {
+    if config.Region.IsNull() {
         plan.Region = types.StringValue(r.client.DefaultRegion)
         resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
     }
