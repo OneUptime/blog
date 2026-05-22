@@ -18,9 +18,9 @@ When you deploy a Kubernetes Job in an Istio-enabled namespace, the pod gets an 
 
 This is the number one issue people hit when running Jobs with Istio.
 
-## Solution 1: Use Istio's Native Job Support (Istio 1.12+)
+## Solution 1: Call the Istio Sidecar Quit Endpoint
 
-Starting with Istio 1.12, there is built-in support for handling this. You can enable the `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` feature by setting the `ISTIO_QUIT_API` or using the holdApplicationUntilProxyStarts annotation together with the sidecar's `/quitquitquit` endpoint.
+Istio supports terminating the sidecar from the workload by calling the sidecar's `/quitquitquit` endpoint. The `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` setting, added in Istio 1.12, can also make Envoy exit during drain once active connections reach zero, but the job still needs to trigger sidecar shutdown when the workload is done.
 
 The simplest approach is to have your job container call the Envoy quit API when it finishes:
 
@@ -78,7 +78,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -91,9 +91,9 @@ spec:
 
 This is the easiest approach but you lose all Istio benefits for that job.
 
-## Solution 3: Use Istio 1.22+ Native Sidecar Containers
+## Solution 3: Use Kubernetes Native Sidecar Containers
 
-Istio 1.22 and later supports Kubernetes native sidecar containers (a feature that went stable in Kubernetes 1.29). With this, the sidecar is defined as an init container with `restartPolicy: Always`, and Kubernetes knows to stop it when the main containers exit:
+Istio supports Kubernetes native sidecar containers. The Kubernetes `SidecarContainers` feature is enabled by default as beta starting in Kubernetes 1.29, and Istio 1.27 enables native sidecars by default for eligible pods. With this, the sidecar is defined as an init container with `restartPolicy: Always`, and Kubernetes knows to stop it when the main containers exit:
 
 ```bash
 # Make sure your Istio installation uses native sidecars
@@ -108,7 +108,7 @@ With native sidecars enabled, Jobs work correctly without any workarounds. The s
 Batch jobs can run for a long time. The default Istio timeouts are too short:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: batch-api-vs
@@ -168,7 +168,7 @@ spec:
 Batch jobs often need to access databases or external APIs. Configure ServiceEntry resources to allow external access:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-db
@@ -183,7 +183,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-db-dr
@@ -199,10 +199,10 @@ spec:
 
 ## Handling Batch Job Authentication
 
-If your batch jobs need to call services inside the mesh, mTLS will handle authentication automatically. But if they need to call external services, you might need to configure authorization:
+If your batch jobs need to call services inside the mesh, mTLS can handle workload authentication automatically. To restrict which mesh services the job can call, configure authorization on the destination workload:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: batch-job-access
@@ -256,7 +256,7 @@ You can use Istio metrics to track how your batch jobs interact with other servi
 ```bash
 # See request patterns from batch jobs
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{source_workload_namespace="batch-jobs"}[5m])) by (source_workload, destination_service)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{source_workload_namespace="batch-jobs"}[5m])) by (source_workload, destination_service)'
 ```
 
 ## Troubleshooting Common Issues
