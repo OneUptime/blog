@@ -12,28 +12,30 @@ Every Envoy sidecar in your Istio mesh generates thousands of internal statistic
 
 ## The Default Behavior
 
-By default, Istio exposes these Envoy stats to Prometheus:
+By default, Istio configures Envoy to create and expose a minimal set of Envoy-native stats:
 
-- The standard `istio_*` metrics (requests total, duration, bytes, TCP)
-- Basic `envoy_server_*` metrics (uptime, memory, live status)
+- `cluster_manager`
+- `listener_manager`
+- `server`
+- `cluster.xds-grpc`
 
-Most of the detailed `envoy_cluster_*`, `envoy_listener_*`, and `envoy_http_*` stats are not exposed by default. You can see all of them by querying the Envoy admin interface directly:
+The standard `istio_*` metrics are generated separately by Istio's telemetry filters and are still exposed on the Prometheus endpoint. Most of the detailed `envoy_cluster_*`, `envoy_listener_*`, and `envoy_http_*` stats are not created by default. You can see the Envoy stats that are currently being recorded by querying the Envoy admin interface directly:
 
 ```bash
 kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | wc -l
 ```
 
-Depending on how many upstream services the pod communicates with, you might see 5000+ stats. Compare that to what Prometheus actually scrapes:
+Depending on how many upstream services the pod communicates with and which matchers you have enabled, you might see thousands of stats. Compare that to the Prometheus-formatted output:
 
 ```bash
 kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15020/stats/prometheus | wc -l
 ```
 
-The difference is the stats that Istio is filtering out.
+If a stat is missing from both endpoints, it is probably not being created by Envoy because it does not match the configured stats matcher.
 
 ## Enabling Specific Stats with proxyStatsMatcher
 
-The `proxyStatsMatcher` field in the mesh config or pod annotations controls which Envoy-native stats get exposed to Prometheus. You can specify stats by prefix, suffix, or regex.
+The `proxyStatsMatcher` field in the mesh config or pod annotations controls which additional Envoy-native stats are created and exposed. You can specify stats by prefix, suffix, or regex.
 
 ### Mesh-Wide Configuration
 
@@ -151,7 +153,7 @@ envoy_cluster_circuit_breakers_default_rq_pending_open
 # Is the max requests circuit breaker open?
 envoy_cluster_circuit_breakers_default_rq_open
 
-# Remaining capacity before circuit breaker trips
+# Remaining capacity before circuit breaker trips, if Envoy is configured with track_remaining
 envoy_cluster_circuit_breakers_default_remaining_cx
 envoy_cluster_circuit_breakers_default_remaining_pending
 envoy_cluster_circuit_breakers_default_remaining_rq
@@ -253,14 +255,14 @@ For listener (downstream) stats:
 listener.0.0.0.0_15006.downstream_cx_active
 ```
 
-When these are exported to Prometheus, dots become underscores and pipes become dots:
+When these are exported to Prometheus, Envoy extracts dynamic parts such as the cluster name into labels and uses the tag-extracted stat name as the metric name:
 ```text
-envoy_cluster_upstream_cx_active{cluster_name="outbound|8080||api-service.production.svc.cluster.local"}
+envoy_cluster_upstream_cx_active{envoy_cluster_name="outbound|8080||api-service.production.svc.cluster.local"}
 ```
 
 ## Customizing Stat Tags
 
-You can add custom tags (labels) to Envoy stats using `extraStatTags` in the mesh config:
+You can add extra labels to Istio telemetry using `extraStatTags` in the mesh config:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -272,11 +274,11 @@ spec:
         - "request_method"
 ```
 
-This only works if the tag is already being extracted somewhere in the Envoy configuration (like through a stats tag specifier in the bootstrap config). For most custom labeling needs, the Telemetry API is a better choice.
+This field applies to in-proxy Istio telemetry, not arbitrary Envoy-native stats, and current Istio documentation marks it as deprecated because `istio.stats` is now a native filter. For most custom labeling needs, the Telemetry API is a better choice.
 
 ## Using EnvoyFilter for Advanced Stats
 
-For complete control, use an EnvoyFilter to configure the stats sink directly:
+For advanced Envoy-native stat tagging, use an EnvoyFilter to patch the bootstrap stats configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -297,6 +299,8 @@ spec:
             use_all_default_tags: true
 ```
 
+The `BOOTSTRAP` patch point is deprecated in the EnvoyFilter API, so prefer `proxyStatsMatcher` and supported telemetry configuration where possible.
+
 ## Prometheus Configuration for Envoy Stats
 
 When you enable more Envoy stats, make sure Prometheus is configured to handle the increase. Consider adding metric relabeling to drop stats you don't actually need:
@@ -312,7 +316,7 @@ podMetricsEndpoints:
         regex: "envoy_(cluster|listener|server|http)_.*"
         action: keep
       # Drop high-cardinality cluster name label values we don't need
-      - sourceLabels: [cluster_name]
+      - sourceLabels: [envoy_cluster_name]
         regex: "outbound.*BlackHoleCluster.*"
         action: drop
 ```
@@ -322,20 +326,20 @@ podMetricsEndpoints:
 When you need to debug a specific issue, temporarily enable all relevant stats and then look for anomalies:
 
 ```bash
-# Enable all stats for a pod (temporary, revert when done)
-kubectl annotate pod <pod-name> \
-  proxy.istio.io/config='{"proxyStatsMatcher":{"inclusionRegexps":[".*"]}}' \
-  --overwrite
+# Enable all stats for a workload's new pods (temporary, revert when done)
+kubectl patch deployment <deployment-name> \
+  --type merge \
+  -p '{"spec":{"template":{"metadata":{"annotations":{"proxy.istio.io/config":"{\"proxyStatsMatcher\":{\"inclusionRegexps\":[\".*\"]}}"}}}}}'
 
-# Restart the pod to pick up the annotation
-kubectl delete pod <pod-name>
+# Restart pods to pick up the annotation
+kubectl rollout restart deployment <deployment-name>
 
 # After it's back up, dump all stats
 kubectl exec <pod-name> -c istio-proxy -- \
   curl -s localhost:15000/stats | grep -i "error\|fail\|timeout\|overflow\|reject"
 ```
 
-Remember to remove the annotation when you're done or the sidecar will export thousands of extra time series.
+Remember to remove the pod-template annotation and restart the workload when you're done or the sidecar will export thousands of extra time series.
 
 ## Storage Impact
 
