@@ -32,7 +32,7 @@ Each of these translates directly into a Sentinel policy.
 
 This is the single most important database security policy. A publicly accessible RDS instance combined with weak credentials is one of the most common causes of data breaches.
 
-```python
+```sentinel
 # deny-public-rds.sentinel
 
 # Prevent RDS instances from being publicly accessible
@@ -70,7 +70,7 @@ main = rule {
 
 The same logic applies to Aurora clusters:
 
-```python
+```sentinel
 # deny-public-aurora.sentinel
 # Prevent Aurora clusters from being publicly accessible
 
@@ -107,7 +107,7 @@ main = rule {
 
 Every database should have storage encryption enabled. This is non-negotiable for any environment handling sensitive data.
 
-```python
+```sentinel
 # require-rds-encryption.sentinel
 # Enforce encryption at rest for all RDS instances
 
@@ -162,7 +162,7 @@ main = rule {
 
 Backups are your safety net. This policy ensures automated backups are enabled with a minimum retention period:
 
-```python
+```sentinel
 # require-rds-backups.sentinel
 # Enforce minimum backup retention for RDS instances
 
@@ -204,7 +204,7 @@ main = rule {
 
 Accidental database deletion is a nightmare scenario. This policy ensures deletion protection is enabled for databases tagged as production:
 
-```python
+```sentinel
 # require-deletion-protection.sentinel
 # Require deletion protection on production databases
 
@@ -248,7 +248,7 @@ main = rule {
 
 If you are using Azure, the resource types are different but the security principles are the same:
 
-```python
+```sentinel
 # azure-sql-security.sentinel
 # Enforce security settings on Azure SQL databases
 
@@ -273,8 +273,8 @@ for sql_servers as address, server {
     }
 
     # Require Azure AD authentication
-    azuread_admin = server.change.after.azuread_administrator else null
-    if azuread_admin is null {
+    azuread_admin = server.change.after.azuread_administrator else []
+    if length(azuread_admin) is 0 {
         append(violations, address +
             " - Azure AD administrator must be configured")
     }
@@ -303,7 +303,7 @@ main = rule {
 
 For GCP Cloud SQL instances, enforce similar security standards:
 
-```python
+```sentinel
 # gcp-cloudsql-security.sentinel
 # Enforce security settings on Google Cloud SQL instances
 
@@ -321,27 +321,27 @@ violations = []
 for cloudsql_instances as address, instance {
     settings = instance.change.after.settings else []
 
-    if length(settings) > 0 {
+    if length(settings) is 0 {
+        append(violations, address + " - settings must be configured")
+    } else {
         setting = settings[0]
 
         # Check that IP configuration does not allow public access
         ip_config = setting.ip_configuration else []
-        if length(ip_config) > 0 {
+        if length(ip_config) is 0 {
+            append(violations, address + " - ip_configuration must be configured")
+        } else {
             ipv4_enabled = ip_config[0].ipv4_enabled else true
             if ipv4_enabled is true {
-                # Only flag if there is no private network configured
-                private_network = ip_config[0].private_network else ""
-                if private_network is "" {
-                    append(violations, address +
-                        " - must use private IP (configure private_network)")
-                }
+                append(violations, address +
+                    " - ipv4_enabled must be false to disable public IP")
             }
 
-            # Require SSL
-            require_ssl = ip_config[0].require_ssl else false
-            if require_ssl is not true {
+            # Require encrypted client connections
+            ssl_mode = ip_config[0].ssl_mode else ""
+            if ssl_mode not in ["ENCRYPTED_ONLY", "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"] {
                 append(violations, address +
-                    " - require_ssl must be true")
+                    " - ssl_mode must enforce encrypted connections")
             }
         }
 
@@ -400,10 +400,10 @@ policy "require-deletion-protection" {
 
 ## Testing Your Database Policies
 
-Write test cases with realistic mock data:
+Write test cases with realistic mock import data:
 
-```python
-# testdata/public-rds.sentinel
+```sentinel
+# testdata/mock-tfplan-v2-public-rds.sentinel
 # Mock data simulating a publicly accessible RDS instance
 
 resource_changes = {
@@ -422,6 +422,24 @@ resource_changes = {
             },
         },
     },
+}
+```
+
+Then reference that mock data from a policy test case:
+
+```hcl
+# test/deny-public-rds/fail-public-rds.hcl
+
+mock "tfplan/v2" {
+    module {
+        source = "../../testdata/mock-tfplan-v2-public-rds.sentinel"
+    }
+}
+
+test {
+    rules = {
+        main = false
+    }
 }
 ```
 
