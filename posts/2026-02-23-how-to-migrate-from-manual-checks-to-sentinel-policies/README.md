@@ -31,7 +31,7 @@ Before writing any Sentinel code, you need to document what you actually check t
 - RDS instances must not be publicly accessible
 - Resources must be deployed in approved regions
 
-Write these down in a structured format. For each rule, note whether it is a hard requirement (must block deployment) or a soft recommendation (should warn but allow).
+Write these down in a structured format. For each rule, note whether it is a hard requirement (must block deployment), an overrideable requirement, or an advisory recommendation (should warn but allow).
 
 ## Step 2: Categorize and Prioritize
 
@@ -39,28 +39,29 @@ Not every manual check should become a Sentinel policy on day one. Categorize yo
 
 **Tier 1 - Security critical:** Rules that prevent data breaches or compliance violations. These become hard-mandatory policies that block applies.
 
-**Tier 2 - Operational standards:** Rules that enforce consistency like naming conventions and tagging. These start as soft-mandatory (advisory) policies and graduate to hard-mandatory over time.
+**Tier 2 - Operational standards:** Rules that enforce consistency like naming conventions and tagging. These start as advisory policies and graduate to soft-mandatory or hard-mandatory over time.
 
 **Tier 3 - Best practices:** Recommendations that improve quality but are not strict requirements. These stay as advisory policies.
 
 ## Step 3: Write Your First Sentinel Policy
 
-Let us start with a common manual check - ensuring all AWS resources have required tags. Here is the Sentinel policy:
+Let us start with a common manual check - ensuring planned managed resources with a `tags` attribute have required tags. Here is the Sentinel policy:
 
-```python
+```sentinel
 # require-tags.sentinel
 
-# Enforce that all taggable resources have required tags
+# Enforce that planned managed resources with tags have required tags
 
 import "tfplan/v2" as tfplan
 
 # Define the tags every resource must have
 required_tags = ["environment", "owner", "cost-center"]
 
-# Get all resources that support tags
+# Get all planned managed resources that expose a tags attribute
 allResources = filter tfplan.resource_changes as _, rc {
     rc.mode is "managed" and
-    (rc.change.actions contains "create" or rc.change.actions contains "update")
+    (rc.change.actions contains "create" or rc.change.actions contains "update") and
+    (rc.change.after else {}) contains "tags"
 }
 
 # Check each resource for required tags
@@ -82,7 +83,7 @@ main = rule {
 
 Compare this to the manual version: instead of a reviewer eyeballing every resource in a plan output, this runs automatically and catches every single missing tag.
 
-## Step 4: Set Up the Policy in Terraform Cloud or Enterprise
+## Step 4: Set Up the Policy in HCP Terraform or Terraform Enterprise
 
 Sentinel policies live in policy sets. Create a repository structure for your policies:
 
@@ -120,7 +121,7 @@ policy "enforce-encryption" {
 }
 ```
 
-In Terraform Cloud, go to Settings, then Policy Sets, and connect this repository. Choose which workspaces the policies apply to - you can start with a single test workspace before rolling out broadly.
+In HCP Terraform, go to Settings, then Policy Sets, and connect this repository. Choose which workspaces the policies apply to - you can start with a single test workspace before rolling out broadly.
 
 ## Step 5: Write Tests Before Enforcing
 
@@ -174,7 +175,7 @@ sentinel test -run require-tags -verbose
 
 Here is the migration timeline that works well in practice:
 
-**Week 1-2:** Deploy all policies as advisory (soft-mandatory). They run and report results but do not block anything. This lets you catch false positives without disrupting deployments.
+**Week 1-2:** Deploy all policies as advisory. They run and report results but do not block anything. This lets you catch false positives without disrupting deployments.
 
 **Week 3-4:** Review the advisory results. Fix any false positives in your policies. Communicate the upcoming enforcement to your team.
 
@@ -189,7 +190,7 @@ Once your Sentinel policies are enforcing the same rules your reviewers checked 
 Update your team documentation to explain:
 
 - Which policies exist and what they enforce
-- How to check policy results in Terraform Cloud
+- How to check policy results in HCP Terraform
 - How to request exceptions or policy changes
 - Where the policy source code lives
 
@@ -197,7 +198,7 @@ Update your team documentation to explain:
 
 Manual checks often had informal exception processes - someone says "this is fine, ship it" in a Slack message. With Sentinel, you need a formal approach.
 
-For soft-mandatory policies, designated users can override failures in the Terraform Cloud UI. For hard-mandatory policies, the only option is to fix the code or update the policy.
+For soft-mandatory policies, designated users can override failures in the HCP Terraform UI. For hard-mandatory policies, failed runs stop; in standard Sentinel policy checks they cannot be overridden, while Sentinel policy evaluations can allow overrides if the policy set is configured to allow them.
 
 Create a process for policy exception requests. Use your policy repository's pull request workflow - if someone needs a new exception, they propose a policy change that gets reviewed and approved.
 
