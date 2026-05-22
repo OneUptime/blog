@@ -263,7 +263,7 @@ resource "kubectl_manifest" "postgres_cluster" {
 apiVersion: acid.zalan.do/v1
 kind: postgresql
 metadata:
-  name: app-database
+  name: myteam-app-database
   namespace: production
 spec:
   teamId: myteam
@@ -331,16 +331,17 @@ resource "kubectl_manifest" "olm_install" {
 }
 
 # Subscribe to an operator through OLM
-resource "kubectl_manifest" "redis_operator_subscription" {
+resource "kubectl_manifest" "quay_operator_subscription" {
   yaml_body = <<YAML
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
-  name: redis-operator
+  name: quay
   namespace: operators
 spec:
-  channel: stable
-  name: redis-operator
+  channel: stable-3.8
+  installPlanApproval: Automatic
+  name: project-quay
   source: operatorhubio-catalog
   sourceNamespace: olm
 YAML
@@ -355,17 +356,20 @@ After deploying an operator, verify it is running correctly:
 
 ```hcl
 # Check operator deployment status
-data "kubernetes_deployment" "operator_check" {
+data "kubernetes_resource" "operator_check" {
+  api_version = "apps/v1"
+  kind        = "Deployment"
+
   metadata {
-    name      = "cert-manager"
-    namespace = "cert-manager"
+    name      = "kube-prometheus-stack-operator"
+    namespace = "monitoring"
   }
 
-  depends_on = [helm_release.cert_manager]
+  depends_on = [helm_release.prometheus_operator]
 }
 
 output "operator_ready_replicas" {
-  value = data.kubernetes_deployment.operator_check.status[0].ready_replicas
+  value = try(data.kubernetes_resource.operator_check.object.status.readyReplicas, 0)
 }
 ```
 
