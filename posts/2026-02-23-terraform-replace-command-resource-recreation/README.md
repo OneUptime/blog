@@ -52,10 +52,10 @@ You can also use `-replace` with `terraform plan` to preview what would happen w
 terraform plan -replace="aws_instance.web"
 ```
 
-The plan output will show the resource marked with `# forces replacement`:
+The plan output will show the resource marked as replaced by request:
 
 ```text
-# aws_instance.web must be replaced
+# aws_instance.web will be replaced, as requested
 -/+ resource "aws_instance" "web" {
       ~ id            = "i-0abc123def456" -> (known after apply)
       ~ public_ip     = "54.123.45.67" -> (known after apply)
@@ -201,7 +201,7 @@ Key differences:
 - `taint` modifies the state file immediately, even before you apply. If you change your mind, you need to run `terraform untaint`.
 - `-replace` does not modify state until the apply runs. If you cancel the plan, nothing changes.
 - `-replace` works with `terraform plan`, so you can preview the replacement before committing.
-- `taint` is deprecated as of Terraform v1.x and may be removed in future versions.
+- `taint` is deprecated in favor of the `-replace` option.
 
 ## Combining -replace with Other Flags
 
