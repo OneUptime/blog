@@ -21,12 +21,12 @@ Your Sentinel policies should address both.
 
 ## Enforcing S3 Bucket Encryption
 
-S3 is one of the most common services where encryption gets overlooked. Here is a policy that enforces server-side encryption:
+S3 automatically applies baseline server-side encryption, but explicit encryption requirements and KMS key choices can still get overlooked. Here is a policy that enforces server-side encryption configuration:
 
-```python
+```sentinel
 # enforce-s3-encryption.sentinel
 
-# Requires server-side encryption on all S3 buckets
+# Requires an S3 server-side encryption configuration when buckets are created
 
 import "tfplan/v2" as tfplan
 
@@ -54,11 +54,11 @@ main = rule {
 
 For a more thorough check that validates the encryption algorithm:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Approved encryption algorithms
-allowed_algorithms = ["aws:kms", "AES256"]
+allowed_algorithms = ["aws:kms", "aws:kms:dsse", "AES256"]
 
 # Get encryption configurations
 encryption_configs = filter tfplan.resource_changes as _, rc {
@@ -104,7 +104,7 @@ main = rule {
 
 EBS volumes should always be encrypted, especially in production:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get EBS volumes being created
@@ -131,7 +131,7 @@ ebs_encrypted = rule {
     }
 }
 
-# Check EBS volumes attached to instances via root_block_device
+# Check root EBS volumes attached to instances via root_block_device
 instance_ebs_encrypted = rule {
     all ec2_instances as address, instance {
         root = instance.change.after.root_block_device
@@ -148,8 +148,27 @@ instance_ebs_encrypted = rule {
     }
 }
 
+# Check additional EBS volumes attached to instances via ebs_block_device
+attached_ebs_encrypted = rule {
+    all ec2_instances as address, instance {
+        devices = instance.change.after.ebs_block_device
+        if devices is not null and length(devices) > 0 {
+            all devices as _, device {
+                if device.encrypted is not true {
+                    print(address, "- attached EBS block devices must be encrypted")
+                    false
+                } else {
+                    true
+                }
+            }
+        } else {
+            true
+        }
+    }
+}
+
 main = rule {
-    ebs_encrypted and instance_ebs_encrypted
+    ebs_encrypted and instance_ebs_encrypted and attached_ebs_encrypted
 }
 ```
 
@@ -157,7 +176,7 @@ main = rule {
 
 Database encryption is critical for protecting sensitive application data:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get RDS instances
@@ -210,6 +229,14 @@ kms_key_required = rule {
             } else {
                 true
             }
+        } and
+        all rds_clusters as address, cluster {
+            if cluster.change.after.kms_key_id is null or cluster.change.after.kms_key_id is "" {
+                print(address, "- production RDS cluster must use a customer-managed KMS key")
+                false
+            } else {
+                true
+            }
         }
     } else {
         true
@@ -225,7 +252,7 @@ main = rule {
 
 ### Load Balancer HTTPS
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get ALB listeners
@@ -263,7 +290,7 @@ main = rule {
 
 ### Minimum TLS Version
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Minimum allowed TLS policy
@@ -302,7 +329,7 @@ main = rule {
 
 Here is a policy that covers multiple services at once:
 
-```python
+```sentinel
 # enforce-encryption-all.sentinel
 # Comprehensive encryption enforcement across services
 
@@ -323,12 +350,26 @@ encryption_requirements = {
 validate_encryption = func(resource, attr) {
     value = resource.change.after[attr]
 
-    if value is true {
-        return true
+    if resource.type is "aws_kinesis_firehose_delivery_stream" {
+        if value is not null and length(value) > 0 and value[0].enabled is true {
+            return true
+        }
+
+        print(resource.address, "- must have server_side_encryption enabled")
+        return false
     }
 
-    # Some resources use nested blocks instead of booleans
-    if value is not null and value is not false {
+    if resource.type is "aws_sqs_queue" {
+        if resource.change.after.sqs_managed_sse_enabled is true or
+           (resource.change.after.kms_master_key_id is not null and resource.change.after.kms_master_key_id is not "") {
+            return true
+        }
+
+        print(resource.address, "- must have SQS managed SSE or KMS encryption enabled")
+        return false
+    }
+
+    if value is true {
         return true
     }
 
@@ -354,7 +395,7 @@ main = rule {
 
 For organizations that require customer-managed KMS keys rather than AWS-managed ones:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Resources that should use customer-managed KMS keys
@@ -376,8 +417,24 @@ resources = filter tfplan.resource_changes as _, rc {
 validate_kms = func(resource) {
     kms_attr = kms_resources[resource.type]
 
-    if kms_attr is null {
-        # Handle special cases like S3 encryption config
+    if resource.type is "aws_s3_bucket_server_side_encryption_configuration" {
+        rules = resource.change.after.rule
+        if rules is null or length(rules) is 0 {
+            print(resource.address, "- must define S3 encryption rules")
+            return false
+        }
+
+        for rules as _, rule {
+            sse = rule.apply_server_side_encryption_by_default
+            if sse is null or length(sse) is 0 or
+               sse[0].sse_algorithm not in ["aws:kms", "aws:kms:dsse"] or
+               sse[0].kms_master_key_id is null or
+               sse[0].kms_master_key_id is "" {
+                print(resource.address, "- S3 encryption must use a customer-managed KMS key")
+                return false
+            }
+        }
+
         return true
     }
 
