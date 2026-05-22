@@ -21,7 +21,7 @@ Before starting the migration:
 ```bash
 # Install or update Terraform CLI
 
-terraform version  # Ensure 1.x or later
+terraform version  # Ensure 1.1 or later for the cloud block
 
 # Create an HCP Terraform account
 # Visit: https://app.terraform.io/signup
@@ -125,7 +125,7 @@ terraform plan
 
 Set up variables, environment variables, and permissions in HCP Terraform:
 
-```bash
+```hcl
 # Set workspace variables using the CLI
 # Or configure through the UI
 
@@ -161,11 +161,11 @@ For dynamic credentials (recommended):
 resource "tfe_workspace" "networking" {
   name         = "networking-production"
   organization = "my-org"
+}
 
-  # Enable dynamic credentials
-  setting_overwrites {
-    execution_mode = "remote"
-  }
+resource "tfe_workspace_settings" "networking" {
+  workspace_id   = tfe_workspace.networking.id
+  execution_mode = "remote"
 }
 
 # Set up the trust relationship in AWS
@@ -196,6 +196,21 @@ resource "aws_iam_role" "tfc" {
       }
     }]
   })
+}
+
+# Enable HCP Terraform dynamic credentials for AWS
+resource "tfe_variable" "aws_provider_auth" {
+  key          = "TFC_AWS_PROVIDER_AUTH"
+  value        = "true"
+  category     = "env"
+  workspace_id = tfe_workspace.networking.id
+}
+
+resource "tfe_variable" "aws_run_role_arn" {
+  key          = "TFC_AWS_RUN_ROLE_ARN"
+  value        = aws_iam_role.tfc.arn
+  category     = "env"
+  workspace_id = tfe_workspace.networking.id
 }
 ```
 
@@ -324,7 +339,7 @@ terraform {
 EOF
 
   # Migrate state
-  terraform init -migrate-state -input=false
+  terraform init -migrate-state -force-copy -input=false
 
   # Verify
   terraform plan
