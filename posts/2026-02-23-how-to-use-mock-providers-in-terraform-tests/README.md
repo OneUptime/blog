@@ -52,7 +52,7 @@ run "test_vpc_configuration" {
 }
 ```
 
-The empty `mock_provider "aws" {}` block tells Terraform to simulate all AWS resources and data sources. Resource attributes that you set in your configuration (like `cidr_block` and `tags`) are available in assertions. Computed attributes (like `id` and `arn`) get synthetic values.
+The empty `mock_provider "aws" {}` block tells Terraform to simulate all AWS resources and data sources. Resource attributes that you set in your configuration (like `cidr_block` and `tags`) are available in assertions. Computed attributes (like `id` and `arn`) get synthetic values during apply, or during plan if you configure the mock provider with `override_during = plan`.
 
 ## How Mock Providers Generate Values
 
@@ -64,7 +64,7 @@ When a resource attribute is computed by the provider (not set in your configura
 - **list** - generates an empty list
 - **map** - generates an empty map
 
-This matters for assertions. If you try to assert on a computed attribute like `aws_vpc.main.id`, you will get a synthetic value, not a real VPC ID.
+By default, Terraform generates these values during the apply operation and shows them as known after apply during the plan operation. You can set `override_during = plan` on the `mock_provider`, `mock_resource`, or `mock_data` block if a plan-only test needs those values. This matters for assertions. If you try to assert on a computed attribute like `aws_vpc.main.id`, you will get a synthetic value, not a real VPC ID.
 
 ## Overriding Mock Data
 
@@ -72,6 +72,8 @@ You can control what values mock providers return using `mock_data` blocks:
 
 ```hcl
 mock_provider "aws" {
+  override_during = plan
+
   # Override data for a specific data source
   mock_data "aws_ami" {
     defaults = {
@@ -82,7 +84,7 @@ mock_provider "aws" {
   }
 
   # Override data for a specific resource type
-  mock_data "aws_instance" {
+  mock_resource "aws_instance" {
     defaults = {
       id                = "i-0123456789abcdef0"
       private_ip        = "10.0.1.50"
@@ -177,12 +179,14 @@ run "test_multi_region" {
 }
 ```
 
-## Using Mock Providers with override_data
+## Using Mock Providers with mock_data
 
 For data sources that your module reads, you often need to provide specific mock values. The `mock_data` block lets you do this per data source type:
 
 ```hcl
 mock_provider "aws" {
+  override_during = plan
+
   # Mock the VPC data source
   mock_data "aws_vpc" {
     defaults = {
@@ -238,13 +242,13 @@ mock_provider "aws" {}
 # (Just don't include a mock_provider block for it)
 
 run "test_with_random_names" {
-  command = plan
+  command = apply
 
   variables {
     environment = "test"
   }
 
-  # random_id generates a real value even in plan mode
+  # random_id generates a real value during apply
   assert {
     condition     = length(random_id.suffix.hex) > 0
     error_message = "Random suffix should be generated"
@@ -349,7 +353,7 @@ Mock providers are powerful but have limits:
 
 3. **No cross-resource references from providers** - If a provider normally populates attributes based on other resources (like a subnet's VPC ID), mocks will not do this automatically.
 
-4. **Data source behavior differs** - Real data sources query APIs to find existing resources. Mocked data sources return whatever you configure in `mock_data`, or empty defaults.
+4. **Data source behavior differs** - Real data sources query APIs to find existing resources. Mocked data sources return whatever you configure in `mock_data`, or Terraform-generated values for computed attributes.
 
 Despite these limitations, mock providers are the right choice for unit tests that focus on configuration logic rather than provider behavior.
 
