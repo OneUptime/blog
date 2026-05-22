@@ -159,19 +159,19 @@ resource "aws_route" "private" {
 }
 
 # CORRECT: Use only separate route resources
-resource "aws_route_table" "main" {
+resource "aws_route_table" "separate" {
   vpc_id = aws_vpc.main.id
   # No inline routes
 }
 
 resource "aws_route" "public" {
-  route_table_id         = aws_route_table.main.id
+  route_table_id         = aws_route_table.separate.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.main.id
 }
 
-resource "aws_route" "private" {
-  route_table_id         = aws_route_table.main.id
+resource "aws_route" "private_separate" {
+  route_table_id         = aws_route_table.separate.id
   destination_cidr_block = "10.0.0.0/8"
   nat_gateway_id         = aws_nat_gateway.main.id
 }
@@ -257,12 +257,17 @@ resource "aws_instance" "web" {
 }
 ```
 
-### Using Dynamic Blocks to Avoid Conflicts
+### Using null to Avoid Conflicts
 
 ```hcl
 variable "enable_encryption" {
   type    = bool
   default = true
+}
+
+variable "kms_key_id" {
+  type    = string
+  default = null
 }
 
 resource "aws_ebs_volume" "data" {
@@ -346,7 +351,7 @@ variable "volume_config" {
     condition = (
       var.volume_config.type != "gp2" || var.volume_config.iops == null
     )
-    error_message = "IOPS cannot be set for gp2 volume type. Use gp3 or io1."
+    error_message = "IOPS cannot be set for gp2 volume type. Use gp3, io1, or io2."
   }
 
   validation {
