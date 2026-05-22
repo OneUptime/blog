@@ -25,7 +25,7 @@ A Sentinel policy can enforce an approved list of instance types, preventing the
 
 Here is a straightforward policy that restricts AWS EC2 instance types:
 
-```python
+```sentinel
 # restrict-instance-types.sentinel
 
 # Limits EC2 instances to approved types
@@ -49,15 +49,21 @@ ec2_instances = filter tfplan.resource_changes as _, rc {
 }
 
 # Validate each instance
+validate_instance_type = func(address, instance) {
+    instance_type = instance.change.after.instance_type else null
+
+    if instance_type not in allowed_types {
+        print(address, "uses", instance_type,
+              "which is not in the approved list:", allowed_types)
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all ec2_instances as address, instance {
-        if instance.change.after.instance_type not in allowed_types {
-            print(address, "uses", instance.change.after.instance_type,
-                  "which is not in the approved list:", allowed_types)
-            false
-        } else {
-            true
-        }
+        validate_instance_type(address, instance)
     }
 }
 ```
@@ -66,7 +72,7 @@ main = rule {
 
 Different environments typically need different instance sizes. Development might only need t3.micro, while production might need m5.xlarge:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfrun"
 
@@ -113,17 +119,22 @@ ec2_instances = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
+validate_instance_type = func(address, instance) {
+    instance_type = instance.change.after.instance_type else null
+
+    if instance_type not in allowed {
+        print(address, "uses", instance_type,
+              "which is not allowed in", env, "environment.",
+              "Allowed types:", allowed)
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all ec2_instances as address, instance {
-        type = instance.change.after.instance_type
-        if type not in allowed {
-            print(address, "uses", type,
-                  "which is not allowed in", env, "environment.",
-                  "Allowed types:", allowed)
-            false
-        } else {
-            true
-        }
+        validate_instance_type(address, instance)
     }
 }
 ```
@@ -132,10 +143,11 @@ main = rule {
 
 Sometimes it is easier to allow entire instance families rather than listing every size:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
+import "strings"
 
-# Allowed instance families (prefix-based matching)
+# Allowed instance families
 allowed_families = [
     "t3",    # Burstable general purpose
     "t3a",   # AMD burstable
@@ -145,12 +157,12 @@ allowed_families = [
     "c5",    # Compute optimized
 ]
 
-# Blocked instance families (never allowed regardless)
-blocked_families = [
-    "p3",    # GPU instances
-    "p4",    # GPU instances
-    "x1",    # Extreme memory
-    "u-",    # High memory
+# Blocked instance type prefixes (never allowed regardless)
+blocked_prefixes = [
+    "p3.",    # GPU instances
+    "p4.",    # GPU instances
+    "x1.",    # Extreme memory
+    "u-",     # High memory
 ]
 
 # Extract instance family from type (e.g., "t3" from "t3.large")
@@ -163,7 +175,31 @@ get_family = func(instance_type) {
     return instance_type
 }
 
-import "strings"
+uses_blocked_prefix = func(instance_type) {
+    for blocked_prefixes as prefix {
+        if strings.has_prefix(instance_type, prefix) {
+            return true
+        }
+    }
+
+    return false
+}
+
+validate_instance_family = func(address, instance) {
+    instance_type = instance.change.after.instance_type else ""
+    family = get_family(instance_type)
+
+    # Check it is not in the blocked list
+    if uses_blocked_prefix(instance_type) {
+        print(address, "uses blocked instance family:", family)
+        return false
+    } else if family not in allowed_families {
+        print(address, "uses unapproved instance family:", family)
+        return false
+    }
+
+    return true
+}
 
 ec2_instances = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_instance" and
@@ -172,18 +208,7 @@ ec2_instances = filter tfplan.resource_changes as _, rc {
 
 main = rule {
     all ec2_instances as address, instance {
-        family = get_family(instance.change.after.instance_type)
-
-        # Check it is not in the blocked list
-        if family in blocked_families {
-            print(address, "uses blocked instance family:", family)
-            false
-        } else if family not in allowed_families {
-            print(address, "uses unapproved instance family:", family)
-            false
-        } else {
-            true
-        }
+        validate_instance_family(address, instance)
     }
 }
 ```
@@ -192,7 +217,7 @@ main = rule {
 
 EC2 instances are not the only resources with instance types. RDS, ElastiCache, Elasticsearch, and other services also have instance class selections:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Allowed types per resource
@@ -230,9 +255,9 @@ validate = func(resource) {
     allowed = allowed_instance_types[resource.type]
 
     # Get the instance type value from the planned change
-    instance_type = resource.change.after[attr_name]
+    instance_type = resource.change.after[attr_name] else null
 
-    if instance_type is null or instance_type is undefined {
+    if instance_type is null {
         print(resource.address, "- could not determine instance type")
         return true  # Cannot validate without a value
     }
@@ -257,7 +282,7 @@ main = rule {
 
 Instead of maintaining a full list of allowed types, you can restrict by size category:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "strings"
 
@@ -295,23 +320,27 @@ ec2_instances = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
+validate_instance_size = func(address, instance) {
+    size = get_size(instance.change.after.instance_type else "")
+
+    if size in size_rank {
+        rank = size_rank[size]
+        if rank > max_size_rank {
+            print(address, "uses size", size,
+                  "which exceeds the maximum allowed size")
+            return false
+        }
+
+        return true
+    }
+
+    print(address, "uses unknown size:", size)
+    return false
+}
+
 main = rule {
     all ec2_instances as address, instance {
-        size = get_size(instance.change.after.instance_type)
-
-        if size in size_rank {
-            rank = size_rank[size]
-            if rank > max_size_rank {
-                print(address, "uses size", size,
-                      "which exceeds the maximum allowed size")
-                false
-            } else {
-                true
-            }
-        } else {
-            print(address, "uses unknown size:", size)
-            false
-        }
+        validate_instance_size(address, instance)
     }
 }
 ```
@@ -320,7 +349,7 @@ main = rule {
 
 If you deploy to multiple cloud providers, you need a policy that covers all of them:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # AWS allowed instance types
@@ -350,10 +379,13 @@ type_attr = {
 }
 
 # Merge all allowed types
-all_allowed = {}
-for aws_allowed as k, v { all_allowed[k] = v }
-for azure_allowed as k, v { all_allowed[k] = v }
-for gcp_allowed as k, v { all_allowed[k] = v }
+all_allowed = {
+    "aws_instance":                     aws_allowed["aws_instance"],
+    "azurerm_virtual_machine":          azure_allowed["azurerm_virtual_machine"],
+    "azurerm_linux_virtual_machine":    azure_allowed["azurerm_linux_virtual_machine"],
+    "azurerm_windows_virtual_machine":  azure_allowed["azurerm_windows_virtual_machine"],
+    "google_compute_instance":          gcp_allowed["google_compute_instance"],
+}
 
 # Filter resources
 compute_resources = filter tfplan.resource_changes as _, rc {
@@ -365,7 +397,7 @@ compute_resources = filter tfplan.resource_changes as _, rc {
 validate = func(resource) {
     attr = type_attr[resource.type]
     allowed = all_allowed[resource.type]
-    value = resource.change.after[attr]
+    value = resource.change.after[attr] else null
 
     if value not in allowed {
         print(resource.address, "uses", value, "- allowed:", allowed)
