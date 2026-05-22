@@ -91,19 +91,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "main" {
       id     = rule.value.id
       status = rule.value.status
 
-      # Filter block - handles both prefix-based and tag-based filtering
+      # Filter block - uses prefix directly, or an and block when tags are present
       filter {
-        # Use prefix if specified
-        prefix = rule.value.prefix
-
-        # Dynamic tag filter
-        dynamic "tag" {
-          for_each = rule.value.tags != null ? rule.value.tags : {}
+        dynamic "and" {
+          for_each = length(coalesce(rule.value.tags, {})) > 0 ? [1] : []
           content {
-            key   = tag.key
-            value = tag.value
+            prefix = rule.value.prefix
+            tags   = rule.value.tags
           }
         }
+
+        # When only prefix is used, set prefix directly
+        prefix = length(coalesce(rule.value.tags, {})) == 0 ? rule.value.prefix : null
       }
 
       # Dynamic transition blocks - can have multiple per rule
@@ -173,8 +172,8 @@ lifecycle_rules = [
     id     = "archive-backups"
     prefix = "backups/"
     transitions = [
-      { days = 7, storage_class = "STANDARD_IA" },
-      { days = 30, storage_class = "GLACIER" }
+      { days = 30, storage_class = "STANDARD_IA" },
+      { days = 90, storage_class = "GLACIER" }
     ]
     noncurrent_version_expiration_days = 90
     noncurrent_version_transitions = [
@@ -310,9 +309,9 @@ dynamic "rule" {
     status = rule.value.status
 
     filter {
-      # Simple prefix filter - when there are no tags
+      # Prefix-plus-tags or tag-based filter
       dynamic "and" {
-        for_each = rule.value.tags != null && length(rule.value.tags) > 0 ? [1] : []
+        for_each = length(coalesce(rule.value.tags, {})) > 0 ? [1] : []
         content {
           prefix = rule.value.prefix
           tags   = rule.value.tags
@@ -320,7 +319,7 @@ dynamic "rule" {
       }
 
       # When only prefix is used (no tags), set prefix directly
-      prefix = rule.value.tags == null || length(rule.value.tags) == 0 ? rule.value.prefix : null
+      prefix = length(coalesce(rule.value.tags, {})) == 0 ? rule.value.prefix : null
     }
 
     # ... transitions and expirations
@@ -349,9 +348,17 @@ variable "lifecycle_rules" {
   validation {
     condition = alltrue([
       for rule in var.lifecycle_rules :
-      length(rule.transitions) > 0 || rule.expiration_days != null || rule.abort_incomplete_multipart_upload_days != null
+      contains(["Enabled", "Disabled"], rule.status)
     ])
-    error_message = "Each lifecycle rule must have at least one transition, expiration, or abort incomplete multipart upload configuration."
+    error_message = "Each lifecycle rule status must be either Enabled or Disabled."
+  }
+
+  validation {
+    condition = alltrue([
+      for rule in var.lifecycle_rules :
+      length(rule.transitions) > 0 || rule.expiration_days != null || rule.noncurrent_version_expiration_days != null || length(rule.noncurrent_version_transitions) > 0 || rule.abort_incomplete_multipart_upload_days != null
+    ])
+    error_message = "Each lifecycle rule must have at least one current-version transition, expiration, noncurrent-version action, or abort incomplete multipart upload configuration."
   }
 }
 ```
