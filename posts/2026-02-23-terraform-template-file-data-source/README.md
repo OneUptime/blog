@@ -227,15 +227,12 @@ Template file (`templates/s3-policy.json.tpl`):
         "s3:DeleteObject"
       ],
       "Resource": [
-        "arn:aws:s3:::${bucket_name}/*"
-      ]
 %{ if restrict_prefix != "" }
-      ,"Condition": {
-        "StringLike": {
-          "s3:prefix": ["${restrict_prefix}/*"]
-        }
-      }
+        "arn:aws:s3:::${bucket_name}/${restrict_prefix}/*"
+%{ else }
+        "arn:aws:s3:::${bucket_name}/*"
 %{ endif }
+      ]
     }
 %{ endif }
   ]
@@ -260,8 +257,6 @@ resource "aws_iam_policy" "app_s3" {
 Template file (`templates/docker-compose.yml.tpl`):
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: ${app_image}:${app_tag}
@@ -367,12 +362,12 @@ WantedBy=multi-user.target
 | Feature | template_file (data source) | templatefile() (function) |
 |---|---|---|
 | Provider required | Yes (hashicorp/template) | No (built-in) |
-| Supports complex types | Strings only in vars | Any type (lists, maps, objects) |
+| Supports complex types | Primitive values only in vars | Any type (lists, maps, objects) |
 | Used in expressions | `data.template_file.x.rendered` | Directly in any expression |
 | Supports count/for_each | Yes | N/A (it is a function) |
 | Status | Legacy | Recommended |
 
-The biggest practical difference is that `templatefile()` supports complex types like lists and maps in variables, while `template_file` only supports string variables.
+The biggest practical difference is that `templatefile()` supports complex types like lists and maps in variables, while `template_file` only supports primitive values in `vars`.
 
 ## Migration from template_file to templatefile()
 
@@ -401,25 +396,25 @@ resource "aws_instance" "app" {
 
 ## Common Gotchas
 
-### Escaping Dollar Signs
+### Escaping Interpolation Sequences
 
-Since `${}` is the interpolation syntax, literal dollar signs in templates must be escaped:
+Since `${}` is the interpolation syntax, literal `${...}` sequences in templates must be escaped:
 
 ```bash
-# In template file, to get a literal $HOME:
-echo $${HOME}
+# A literal $HOME does not need escaping:
+echo $HOME
 
 # To get a literal ${variable}:
 echo $${variable}
 ```
 
-### Template Cannot Be Empty
+### Template File Must Exist
 
-An empty template file causes an error. Always have at least some content.
+Template files must already exist on disk at the beginning of a Terraform run. Functions do not participate in Terraform's dependency graph, so `templatefile()` cannot read a file that another resource generates during the same run.
 
 ### Type Mismatches
 
-With `template_file`, all vars must be strings. Passing a number or list causes an error. With `templatefile()`, any type works.
+With `template_file`, all vars must be primitive values. Passing a list or map causes an error. With `templatefile()`, any type works.
 
 ## Summary
 
