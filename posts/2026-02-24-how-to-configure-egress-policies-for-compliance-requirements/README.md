@@ -25,7 +25,7 @@ While each framework has its own language, the egress-related requirements boil 
 
 ## Requirement 1: Restrict Outbound Traffic
 
-PCI DSS Requirement 1.3.4 states you should not allow unauthorized outbound traffic. SOC 2 CC6.1 requires logical access controls. The Istio implementation:
+PCI DSS v4.0.1 Requirement 1.3.2 states that outbound traffic from the cardholder data environment should be restricted to only necessary traffic and all other traffic should be denied. SOC 2 CC6.1 requires logical access controls. The Istio implementation:
 
 ### Enable REGISTRY_ONLY Mode
 
@@ -101,7 +101,7 @@ spec:
 
 ## Requirement 2: Log All Outbound Connections
 
-SOC 2 CC7.2 and PCI DSS Requirement 10 require logging of all access to network resources. HIPAA requires audit controls.
+SOC 2 CC7.2 and PCI DSS Requirement 10 require logging and monitoring to support anomaly detection and forensic analysis. HIPAA requires audit controls.
 
 ### Enable Comprehensive Access Logging
 
@@ -222,7 +222,7 @@ data:
 
 ## Requirement 3: Encrypt Traffic in Transit
 
-PCI DSS Requirement 4.1 requires encryption of data in transit. HIPAA requires encryption of PHI in transit. GDPR Article 32 requires appropriate technical measures.
+PCI DSS v4.0.1 Requirement 4.2.1 requires strong cryptography and security protocols to safeguard PAN during transmission over open, public networks. HIPAA requires encryption of PHI in transit. GDPR Article 32 requires appropriate technical measures.
 
 ### Enforce mTLS Within the Mesh
 
@@ -239,9 +239,24 @@ spec:
 
 ### TLS for External Connections
 
-Use TLS origination at the egress gateway for external services:
+If workloads send HTTP and you want Istio to originate TLS for the external connection, configure the external service with an HTTP service port that targets 443 and a `DestinationRule` that originates TLS:
 
 ```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: stripe-api
+spec:
+  hosts:
+  - api.stripe.com
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -251,13 +266,13 @@ spec:
   trafficPolicy:
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: SIMPLE
         sni: api.stripe.com
 ```
 
-This ensures traffic is encrypted from the mesh to the external service. Combined with mesh-internal mTLS, data is encrypted at every hop.
+This ensures traffic is encrypted from the mesh to the external service. Combined with mesh-internal mTLS, data is encrypted on mesh-internal hops and on the external connection.
 
 ## Requirement 4: Monitor for Unauthorized Access
 
@@ -282,7 +297,7 @@ spec:
       for: 1m
       labels:
         severity: critical
-        compliance: true
+        compliance: "true"
       annotations:
         summary: "Workload {{ $labels.source_workload }} in {{ $labels.source_workload_namespace }} attempted unauthorized egress"
 
@@ -377,7 +392,7 @@ spec:
 
 Non-PCI workloads cannot access these services because the ServiceEntry is scoped to the `pci-scope` namespace.
 
-Use AuthorizationPolicy for additional enforcement:
+Use AuthorizationPolicy for additional enforcement of which namespace can use the egress gateway port. Keep the destination host allow list in the `ServiceEntry`, `Gateway`, and `VirtualService` configuration because `operation.hosts` only applies to HTTP requests:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -397,9 +412,8 @@ spec:
         - pci-scope
     to:
     - operation:
-        hosts:
-        - "api.stripe.com"
-        - "api.paypal.com"
+        ports:
+        - "443"
 ```
 
 ## Audit-Ready Configuration Summary
