@@ -8,7 +8,7 @@ Description: Learn how to configure HTTP redirects in Istio VirtualService for U
 
 ---
 
-HTTP redirects tell the client to go to a different URL. Unlike routing (where the proxy forwards the request), a redirect sends a 301 or 302 response back to the client, and the client makes a new request to the new URL. Istio VirtualService makes it easy to set up redirects for common scenarios like HTTP-to-HTTPS, domain migrations, and URL restructuring.
+HTTP redirects tell the client to go to a different URL. Unlike routing (where the proxy forwards the request), a redirect sends a 3xx response back to the client, and the client makes a new request to the new URL. Istio VirtualService makes it easy to set up redirects for common scenarios like HTTP-to-HTTPS, domain migrations, and URL restructuring.
 
 ## Basic Redirect
 
@@ -157,7 +157,7 @@ spec:
         redirectCode: 301
 ```
 
-Requests to `old-domain.com/anything` get redirected to `new-domain.com/anything`. The path is preserved unless you also specify a URI rewrite in the redirect.
+Requests to `old-domain.com/anything` get redirected to `new-domain.com/anything`. The path is preserved unless you also specify a `uri` in the redirect.
 
 ## Redirect with Both Domain and Path
 
@@ -194,7 +194,7 @@ Requests to `old-app.example.com/v1/api/users` get a 301 redirect to `api.exampl
 Istio supports different HTTP redirect status codes:
 
 - **301** - Permanent redirect. Browsers and search engines cache this. Use for permanent URL changes.
-- **302** - Temporary redirect (this is the default if you do not specify `redirectCode`). Not cached by default.
+- **302** - Temporary redirect. Not cached by default.
 - **303** - See Other. Used after a POST to redirect to a GET endpoint.
 - **307** - Temporary redirect that preserves the HTTP method. A POST stays a POST.
 - **308** - Permanent redirect that preserves the HTTP method.
@@ -307,7 +307,7 @@ Watch out for these common issues:
 
 3. **Protocol mismatches** - If you redirect HTTP to HTTPS but your HTTPS Gateway is not set up, users get a connection refused error.
 
-4. **SEO impact** - 301 redirects pass link authority to the new URL. 302 redirects do not. Use the right code for your situation.
+4. **SEO impact** - 301 redirects signal a permanent move. 302 redirects signal a temporary move. Use the right code for your situation.
 
 5. **Caching issues** - 301 redirects are cached aggressively by browsers. If you set up a 301 by mistake, users might keep getting redirected even after you remove the rule.
 
