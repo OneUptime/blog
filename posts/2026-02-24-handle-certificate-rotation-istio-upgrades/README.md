@@ -24,7 +24,7 @@ graph TD
     B --> E[Workload Certificate - Pod C]
 ```
 
-The root CA is the trust anchor. istiod acts as the intermediate CA, signing short-lived workload certificates for each sidecar proxy. These workload certificates are used for mTLS between services.
+The root CA is the trust anchor. With a plugged-in CA, istiod commonly uses an intermediate CA certificate and key to sign short-lived workload certificates for each sidecar proxy. With the default self-signed CA, Istio generates the signing CA itself. These workload certificates are used for mTLS between services.
 
 By default, workload certificates have a 24-hour lifetime and are automatically rotated by the sidecar proxy before they expire.
 
@@ -48,8 +48,8 @@ Before upgrading, document your certificate setup:
 
 kubectl get secret cacerts -n istio-system -o yaml 2>/dev/null
 
-# Check the current root cert
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -noout -text
+# Check the current root cert for the built-in CA
+kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -noout -text
 
 # Check workload cert details on a specific pod
 istioctl proxy-config secret deploy/my-app -n my-namespace -o json | jq '.dynamicActiveSecrets[0]'
@@ -93,16 +93,16 @@ kubectl get secret cacerts -n istio-system
 The secret should contain:
 
 ```bash
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data}' | jq 'keys'
+kubectl get secret cacerts -n istio-system -o json | jq -r '.data | keys[]'
 ```
 
 Expected keys: `ca-cert.pem`, `ca-key.pem`, `cert-chain.pem`, `root-cert.pem`
 
-If you are rotating to a new custom CA during the upgrade, you need to use the trust domain migration process (covered below).
+If you are rotating to a new custom CA during the upgrade, you need to use a staged root CA migration process (covered below).
 
 ## Scenario 3: Using cert-manager
 
-If you use cert-manager to manage Istio's CA certificate:
+If you use cert-manager to manage the CA material that is copied into Istio's `cacerts` secret:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -113,16 +113,18 @@ metadata:
 spec:
   isCA: true
   commonName: istio-ca
-  secretName: cacerts
+  secretName: istio-ca-source-tls
   issuerRef:
     name: root-issuer
     kind: ClusterIssuer
 ```
 
-cert-manager handles rotation independently of Istio. During an Istio upgrade:
+cert-manager's `Certificate` resource writes a Kubernetes TLS-style Secret, not Istio's four-key `cacerts` Secret. Use a sync step, operator, or Istio's Kubernetes CSR integration so Istio receives `ca-cert.pem`, `ca-key.pem`, `cert-chain.pem`, and `root-cert.pem`.
+
+cert-manager handles rotation of its managed certificate independently of Istio, but Istio still needs the updated CA material in the format it expects. During an Istio upgrade:
 
 1. Verify cert-manager is still running and healthy
-2. Check that the `cacerts` secret is present and valid
+2. Check that the `cacerts` secret is present, valid, and generated from the current cert-manager-managed material
 3. Confirm the new Istio version is compatible with your cert-manager setup
 
 ```bash
@@ -145,6 +147,25 @@ cat old-root-cert.pem new-root-cert.pem > combined-root-cert.pem
 
 ### Step 2: Update the CA Secret with Both Roots
 
+First distribute both roots while keeping the old signing CA in place. This lets existing workloads learn to trust the new root before any workload receives a certificate signed by it.
+
+```bash
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=old-ca-cert.pem \
+  --from-file=ca-key.pem=old-ca-key.pem \
+  --from-file=root-cert.pem=combined-root-cert.pem \
+  --from-file=cert-chain.pem=old-cert-chain.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Restart istiod so it redistributes the updated trust bundle:
+
+```bash
+kubectl rollout restart deployment/istiod -n istio-system
+```
+
+After proxies have received the combined trust bundle, switch the signing CA to the new CA while keeping both roots trusted:
+
 ```bash
 kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=new-ca-cert.pem \
@@ -160,12 +181,16 @@ kubectl create secret generic cacerts -n istio-system \
 kubectl rollout restart deployment/istiod -n istio-system
 ```
 
-istiod now signs new certificates with the new CA but trusts both old and new root CAs.
+istiod now signs new certificates with the new CA and distributes both old and new root CAs.
 
 ### Step 4: Restart All Workloads
 
 ```bash
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl rollout restart deployment -n $ns
+done
+
+for ns in $(kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'); do
   kubectl rollout restart deployment -n $ns
 done
 ```
@@ -203,12 +228,14 @@ kubectl logs -n my-app deploy/my-service -c istio-proxy --tail=100 | grep -i "tl
 Check certificate metrics:
 
 ```text
-# Cert expiration (seconds until expiry)
+# Cert expiration
+citadel_server_root_cert_expiry_seconds
+citadel_server_cert_chain_expiry_seconds
 citadel_server_root_cert_expiry_timestamp
 citadel_server_cert_chain_expiry_timestamp
 
 # Certificate signing errors
-citadel_server_csr_sign_error_count
+citadel_server_csr_sign_err_count
 ```
 
 Verify mTLS is working between services:
