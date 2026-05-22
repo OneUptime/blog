@@ -164,7 +164,7 @@ locals {
 }
 
 output "zone_distribution" {
-  value = "Distribution: ${join(", ", local.zone_allocations)} = ${sum(local.zone_allocations)} total"
+  value = "Distribution: ${join(", ", [for n in local.zone_allocations : tostring(n)])} = ${sum(local.zone_allocations)} total"
 }
 ```
 
@@ -372,7 +372,7 @@ locals {
 }
 
 output "packing" {
-  value = "Packed ${var.items} items into ${var.containers} containers: ${join(", ", local.container_contents)}"
+  value = "Packed ${var.items} items into ${var.containers} containers: ${join(", ", [for n in local.container_contents : tostring(n)])}"
   # Output: "Packed 47 items into 5 containers: 10, 10, 9, 9, 9"
 }
 ```
