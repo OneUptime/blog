@@ -102,7 +102,7 @@ When you need pattern-based replacement, wrap the search term in forward slashes
 
 ```hcl
 locals {
-  # Remove all non-alphanumeric characters
+  # Replace all non-alphanumeric characters with hyphens
   dirty_name = "my-app_name (v2.0)!"
   clean_name = replace(local.dirty_name, "/[^a-zA-Z0-9]/", "-")
   # Result: "my-app-name--v2-0--"
@@ -209,7 +209,7 @@ locals {
   # Git branch names often contain characters invalid in Docker tags
   docker_tag = lower(replace(
     replace(var.git_branch, "/", "-"),  # Slashes to hyphens
-    "/[^a-z0-9-]/", ""                  # Remove other invalid chars
+    "/[^a-z0-9-]/", ""                  # Keep lowercase letters, digits, and hyphens
   ))
   # Result: "feature-user-auth-v2"
 }
@@ -234,7 +234,7 @@ locals {
 
   # Mask all but the last 4 characters
   masked_key = "${replace(substr(local.api_key, 0, length(local.api_key) - 4), "/./", "*")}${substr(local.api_key, length(local.api_key) - 4, 4)}"
-  # Result: "**************cdef"
+  # Result: "***************cdef"
 }
 
 output "api_key_masked" {
