@@ -77,7 +77,7 @@ resource "aws_lambda_permission" "api_gateway" {
 }
 
 output "webhook_url" {
-  value = "${aws_apigatewayv2_stage.default.invoke_url}/webhook"
+  value = "${aws_apigatewayv2_stage.default.invoke_url}/webhook/{source}"
 }
 ```
 
@@ -92,6 +92,7 @@ import json
 import hmac
 import hashlib
 import os
+import base64
 import urllib.request
 
 TFC_TOKEN = os.environ["TFC_TOKEN"]
@@ -111,12 +112,14 @@ def handler(event, context):
     # Extract source from path parameter
     source = event.get("pathParameters", {}).get("source", "unknown")
     body = event.get("body", "")
+    body_bytes = base64.b64decode(body) if event.get("isBase64Encoded") else body.encode("utf-8")
 
     # Verify webhook signature
-    signature = event.get("headers", {}).get("x-webhook-signature", "")
+    headers = event.get("headers", {})
+    signature = headers.get("x-webhook-signature") or headers.get("x-hub-signature-256", "")
     expected = hmac.new(
         WEBHOOK_SECRET.encode(),
-        body.encode(),
+        body_bytes,
         hashlib.sha256
     ).hexdigest()
 
@@ -124,7 +127,7 @@ def handler(event, context):
         return {"statusCode": 401, "body": "Invalid signature"}
 
     # Parse the webhook payload
-    payload = json.loads(body)
+    payload = json.loads(body_bytes.decode("utf-8"))
 
     # Find the matching workspace
     workspace_name = WEBHOOK_WORKSPACE_MAP.get(source)
@@ -208,7 +211,8 @@ resource "aws_instance" "web_server" {
 # Notify external systems via webhook after creation
 resource "null_resource" "notify_deployment" {
   triggers = {
-    instance_id = aws_instance.web_server.id
+    instance_id            = aws_instance.web_server.id
+    deployment_webhook_url = var.deployment_webhook_url
   }
 
   provisioner "local-exec" {
@@ -231,7 +235,7 @@ resource "null_resource" "notify_deployment" {
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
-      curl -s -X POST "${var.deployment_webhook_url}" \
+      curl -s -X POST "${self.triggers.deployment_webhook_url}" \
         -H "Content-Type: application/json" \
         -d '{
           "event": "resource_destroyed",
