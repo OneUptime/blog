@@ -30,9 +30,9 @@ Both provider arguments use the fully qualified format: `registry.terraform.io/n
 
 ## Common Scenarios
 
-### Scenario 1: Migrating from Built-in Providers
+### Scenario 1: Migrating from Legacy Provider Addresses
 
-When Terraform 0.13 introduced the provider registry, built-in providers moved to `registry.terraform.io`. If you are upgrading from Terraform 0.12 or earlier:
+When Terraform 0.13 introduced provider source addresses, legacy unqualified provider addresses needed to be updated to their namespaced registry addresses. If you are upgrading from Terraform 0.12 or earlier:
 
 ```bash
 # Migrate from the legacy provider address to the registry address
@@ -216,7 +216,7 @@ terraform state replace-provider -auto-approve \
 
 ## Backup
 
-Terraform creates a backup before modifying state. Specify a custom backup location:
+Terraform creates a backup before modifying state. For local state, specify a custom backup location:
 
 ```bash
 # Create a custom backup
@@ -230,7 +230,7 @@ To restore if something goes wrong:
 
 ```bash
 # Restore from backup
-terraform state push terraform.tfstate.backup
+terraform state push ./provider-migration-backup.tfstate
 ```
 
 ## Multiple Provider Replacements
@@ -297,7 +297,7 @@ terraform init
 
 Here is what the raw state JSON looks like before and after:
 
-```json
+```text
 // Before
 {
   "type": "aws_instance",
