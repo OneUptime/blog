@@ -20,7 +20,7 @@ The `endswith` function takes two arguments: a string and a suffix. It returns `
 endswith(string, suffix)
 ```
 
-This function was introduced in Terraform 1.5, so make sure you are running at least that version.
+This function was introduced in Terraform 1.3, so make sure you are running at least that version.
 
 ## Basic Examples
 
