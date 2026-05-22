@@ -17,7 +17,7 @@ When a request arrives at a sidecar or gateway with a RequestAuthentication poli
 ## Top-Level Structure
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: my-jwt-auth
@@ -26,10 +26,6 @@ spec:
   selector:
     matchLabels:
       app: my-service
-  targetRef:
-    kind: Gateway
-    group: gateway.networking.k8s.io
-    name: my-gateway
   jwtRules:
     - issuer: "https://accounts.google.com"
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs"
@@ -51,15 +47,15 @@ The `selector` determines which workloads this policy applies to, matching again
 
 ```yaml
 spec:
-  targetRef:
-    kind: Gateway
-    group: gateway.networking.k8s.io
-    name: my-gateway
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: my-gateway
 ```
 
-The `targetRef` field is an alternative to `selector` for targeting Kubernetes Gateway API resources. When using the new Gateway API, you use `targetRef` instead of `selector` to attach the policy to a specific gateway. The `kind` can be `Gateway` or `Service`, and `group` specifies the API group.
+The `targetRefs` field is an alternative to `selector` for targeting specific resources. When using the new Gateway API, you use `targetRefs` instead of `selector` to attach the policy to a specific gateway. Supported targets include `Gateway` in the `gateway.networking.k8s.io` group, `GatewayClass` in the root namespace, `Service` with an empty or `core` group for waypoints, and `ServiceEntry` in the `networking.istio.io` group.
 
-Note that `selector` and `targetRef` are mutually exclusive - you use one or the other.
+Note that `selector` and `targetRefs` are mutually exclusive - you use one or the other.
 
 ## JWT Rules
 
@@ -106,7 +102,7 @@ jwtRules:
 
 `jwksUri` points to a remote endpoint that serves the JSON Web Key Set. Istio caches the keys and refreshes them periodically. This is the preferred approach because key rotation happens automatically.
 
-`jwks` provides the key set inline. This is useful for testing or when the issuer does not have a publicly accessible JWKS endpoint. If both are provided, `jwks` takes precedence.
+`jwks` provides the key set inline. This is useful for testing or when the issuer does not have a publicly accessible JWKS endpoint. Only one of `jwksUri` and `jwks` should be used.
 
 ### Audiences
 
@@ -119,7 +115,7 @@ jwtRules:
       - "another-audience"
 ```
 
-The `audiences` field specifies valid values for the `aud` claim in the JWT. If set, the token's `aud` must contain at least one of these values. If not set, the `aud` claim is not checked (any audience is accepted).
+The `audiences` field specifies valid values for the `aud` claim in the JWT. If set, the token's `aud` must contain at least one of these values. If not set, Istio accepts the service name as the audience.
 
 ### Token Location
 
@@ -147,7 +143,7 @@ jwtRules:
 
 `fromCookies` specifies cookie names that may contain the token.
 
-Istio checks these locations in order: headers first, then params, then cookies. The first token found is used.
+Requests with multiple tokens in different locations are not supported; the resulting principal is undefined.
 
 ### Forward Original Token
 
@@ -182,11 +178,11 @@ jwtRules:
         claim: "sub"
       - header: "x-jwt-email"
         claim: "email"
-      - header: "x-jwt-groups"
-        claim: "groups"
+      - header: "x-jwt-role"
+        claim: "role"
 ```
 
-The `outputClaimToHeaders` field extracts specific claims from the JWT and sets them as request headers. Each entry maps a `claim` name to a `header` name. This is cleaner than `outputPayloadToHeader` when you only need a few specific claims.
+The `outputClaimToHeaders` field extracts specific string, integer, or boolean claims from the JWT and sets them as request headers. Each entry maps a `claim` name to a unique `header` name, and nested claims are supported. This is cleaner than `outputPayloadToHeader` when you only need a few specific claims.
 
 ### Timeout
 
@@ -199,12 +195,26 @@ jwtRules:
 
 The `timeout` field sets the maximum time to wait when fetching the JWKS from the remote URI. Defaults to 5 seconds.
 
+### Space-Delimited Claims
+
+```yaml
+jwtRules:
+  - issuer: "https://my-issuer.example.com"
+    jwksUri: "https://my-issuer.example.com/.well-known/jwks.json"
+    spaceDelimitedClaims:
+      - "custom_scope"
+      - "provider.login.scope"
+      - "roles"
+```
+
+The `spaceDelimitedClaims` field lists custom JWT claim names that should be treated as space-delimited strings for authorization policy matching. The default `scope` and `permission` claims are always treated this way.
+
 ## Multiple Issuers
 
 You can configure multiple JWT rules for different identity providers:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: multi-issuer
@@ -239,7 +249,7 @@ Each rule is evaluated independently. The token's `iss` claim determines which r
 RequestAuthentication alone does not deny unauthenticated requests. You need AuthorizationPolicy for that:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: require-jwt
@@ -252,7 +262,7 @@ spec:
     - issuer: "https://my-issuer.example.com"
       jwksUri: "https://my-issuer.example.com/.well-known/jwks.json"
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-auth
