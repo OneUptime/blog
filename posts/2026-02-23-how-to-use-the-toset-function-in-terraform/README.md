@@ -8,7 +8,7 @@ Description: Learn how to use the toset function in Terraform to convert lists i
 
 ---
 
-If you have used `for_each` in Terraform, you have almost certainly used `toset`. It is one of the most frequently used type conversion functions because `for_each` requires either a map or a set - it does not accept plain lists. Beyond `for_each`, `toset` is also handy for deduplication and as input to set operation functions.
+If you have used `for_each` in Terraform, you have almost certainly used `toset`. It is one of the most frequently used type conversion functions because `for_each` requires either a map or a set of strings - it does not accept plain lists. Beyond `for_each`, `toset` is also handy for deduplication and as input to set operation functions.
 
 ## What is toset?
 
@@ -25,7 +25,7 @@ toset([
 ])
 ```
 
-Notice two things happened: the duplicate `"a"` was removed, and the elements were sorted (sets in Terraform display in lexicographic order).
+Notice two things happened: the duplicate `"a"` was removed, and Terraform displayed the set in its own order. Sets are unordered, so do not rely on the display order as part of your configuration logic.
 
 ## The Primary Use Case: for_each
 
@@ -37,7 +37,12 @@ variable "bucket_names" {
   default = ["logs", "artifacts", "backups"]
 }
 
-# for_each requires a map or set, not a list
+variable "project" {
+  type    = string
+  default = "my-app"
+}
+
+# for_each requires a map or set of strings, not a list
 resource "aws_s3_bucket" "main" {
   for_each = toset(var.bucket_names)
 
@@ -86,18 +91,21 @@ locals {
   # Result: toset(["eu-west-1", "us-east-1", "us-west-2"])
 }
 
-# Deploy to each unique region exactly once
+# Create one resource per unique region value
 resource "aws_s3_bucket" "regional" {
   for_each = local.unique_regions
 
-  provider = aws.by_region[each.value]
-  bucket   = "my-app-${each.value}"
+  bucket = "my-app-${each.value}"
+
+  tags = {
+    Region = each.value
+  }
 }
 ```
 
 ## Input for Set Operations
 
-Terraform's set functions (`setunion`, `setintersection`, `setsubtract`) work with sets. If your data starts as lists, convert them first:
+Terraform's set functions (`setunion`, `setintersection`, `setsubtract`) work with sets. Terraform can convert list arguments to sets for these functions, but if your data starts as lists, converting them first can make the intent explicit:
 
 ```hcl
 variable "team_a_access" {
@@ -166,14 +174,13 @@ variable "allowed_ports" {
   default = [22, 80, 443, 8080, 8443]
 }
 
-resource "aws_security_group_rule" "ingress" {
+resource "aws_vpc_security_group_ingress_rule" "ingress" {
   for_each = toset([for port in var.allowed_ports : tostring(port)])
 
-  type              = "ingress"
   from_port         = tonumber(each.value)
   to_port           = tonumber(each.value)
-  protocol          = "tcp"
-  cidr_blocks       = ["10.0.0.0/8"]
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "10.0.0.0/8"
   security_group_id = aws_security_group.main.id
   description       = "Allow port ${each.value}"
 }
@@ -230,8 +237,13 @@ locals {
 }
 
 # This will fail validation if there are duplicates
-resource "null_resource" "validate" {
-  count = local.has_duplicates ? "Duplicate instance names detected" : 0
+output "instance_names" {
+  value = var.instance_names
+
+  precondition {
+    condition     = !local.has_duplicates
+    error_message = "Duplicate instance names detected."
+  }
 }
 ```
 
@@ -261,7 +273,7 @@ Both remove duplicates, but they return different types:
   "b",
 ]
 
-# toset returns a set (sorted, unordered)
+# toset returns an unordered set
 > toset(["c", "a", "b", "a"])
 toset([
   "a",
@@ -287,13 +299,14 @@ toset([
 ])
 
 # For for_each, convert numbers to strings
-resource "aws_security_group_rule" "ports" {
+resource "aws_vpc_security_group_ingress_rule" "ports" {
   for_each = toset([for p in [80, 443, 8080] : tostring(p)])
 
-  type      = "ingress"
-  from_port = tonumber(each.value)
-  to_port   = tonumber(each.value)
-  protocol  = "tcp"
+  security_group_id = aws_security_group.main.id
+  from_port         = tonumber(each.value)
+  to_port           = tonumber(each.value)
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "10.0.0.0/8"
   # ...
 }
 ```
