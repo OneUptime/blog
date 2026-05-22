@@ -135,6 +135,10 @@ terraform output
 To reveal a specific sensitive output:
 
 ```bash
+# Show the value using the named output
+terraform output database_password
+# Prints: "my-secret-password-123"
+
 # Show the raw value
 terraform output -raw database_password
 # Prints: my-secret-password-123
@@ -144,7 +148,7 @@ terraform output -json database_password
 # Prints: "my-secret-password-123"
 ```
 
-This is by design - revealing the value requires an explicit action. The `-raw` and `-json` flags are considered intentional requests for the actual data.
+This is by design - revealing the value requires an explicit action. Specifying the sensitive output by name, or using the `-raw` or `-json` flags, is considered an intentional request for the actual data.
 
 ### Using in Scripts
 
