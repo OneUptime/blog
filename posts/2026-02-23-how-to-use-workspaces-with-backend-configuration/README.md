@@ -27,8 +27,8 @@ terraform {
     key            = "services/webapp/terraform.tfstate"
     region         = "us-east-1"
 
-    # State locking via DynamoDB
-    dynamodb_table = "terraform-state-locks"
+    # State locking via an S3 lock file
+    use_lockfile   = true
 
     # Encrypt state at rest
     encrypt        = true
@@ -52,7 +52,7 @@ terraform {
     bucket               = "company-terraform-state"
     key                  = "services/webapp/terraform.tfstate"
     region               = "us-east-1"
-    dynamodb_table       = "terraform-state-locks"
+    use_lockfile         = true
     encrypt              = true
 
     # Custom prefix instead of "env:"
@@ -180,22 +180,9 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name      = "Terraform State Locks"
-    ManagedBy = "terraform-bootstrap"
-  }
-}
+# S3 lockfile-based state locking is enabled with use_lockfile = true
+# in the backend configuration. Older Terraform versions used a DynamoDB
+# table for locking, but that locking method is now deprecated.
 ```
 
 ## Backend Configuration With Partial Configuration
@@ -208,7 +195,7 @@ terraform {
   backend "s3" {
     # Only specify what is common across all deployments
     key            = "services/webapp/terraform.tfstate"
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
