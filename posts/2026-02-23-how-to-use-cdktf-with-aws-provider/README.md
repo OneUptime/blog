@@ -8,7 +8,7 @@ Description: A complete guide to using CDKTF with the AWS provider to build and 
 
 ---
 
-AWS is the most popular cloud platform, and the Terraform AWS provider is one of the most comprehensive providers available. Using CDKTF with the AWS provider gives you the best of both worlds: the massive resource coverage of Terraform's AWS provider combined with the type safety and programming capabilities of TypeScript. This guide walks through setting up CDKTF for AWS and building real infrastructure.
+AWS is the most popular cloud platform, and the Terraform AWS provider is one of the most comprehensive providers available. Using CDKTF with the AWS provider gives you the resource coverage of Terraform's AWS provider combined with the type safety and programming capabilities of TypeScript. CDKTF is deprecated as of December 10, 2025, so new projects should evaluate that support status before adopting it. This guide walks through setting up CDKTF for AWS and building real infrastructure.
 
 ## Getting Started with CDKTF and AWS
 
@@ -39,6 +39,7 @@ export AWS_DEFAULT_REGION="us-east-1"
 
 # Option 3: Use AWS SSO
 aws sso login --profile your-profile
+export AWS_PROFILE="your-profile"
 ```
 
 ## Configuring the AWS Provider
@@ -47,7 +48,7 @@ The AWS provider has many configuration options. Here is a production-ready setu
 
 ```typescript
 import { Construct } from "constructs";
-import { App, TerraformStack, TerraformOutput } from "cdktf";
+import { TerraformStack, TerraformOutput } from "cdktf";
 import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
 
 class AwsStack extends TerraformStack {
@@ -78,8 +79,6 @@ Let us build a proper VPC setup with public and private subnets:
 import { Vpc } from "@cdktf/provider-aws/lib/vpc";
 import { Subnet } from "@cdktf/provider-aws/lib/subnet";
 import { InternetGateway } from "@cdktf/provider-aws/lib/internet-gateway";
-import { NatGateway } from "@cdktf/provider-aws/lib/nat-gateway";
-import { Eip } from "@cdktf/provider-aws/lib/eip";
 import { RouteTable } from "@cdktf/provider-aws/lib/route-table";
 import { Route } from "@cdktf/provider-aws/lib/route";
 import { RouteTableAssociation } from "@cdktf/provider-aws/lib/route-table-association";
@@ -106,6 +105,7 @@ class NetworkStack extends TerraformStack {
 
     // Define availability zones
     const azs = ["us-east-1a", "us-east-1b", "us-east-1c"];
+    const privateSubnetIds: string[] = [];
 
     // Create public and private subnets in each AZ
     azs.forEach((az, index) => {
@@ -125,6 +125,7 @@ class NetworkStack extends TerraformStack {
         availabilityZone: az,
         tags: { Name: `private-${az}` },
       });
+      privateSubnetIds.push(privateSubnet.id);
 
       // Public route table with internet gateway route
       const publicRt = new RouteTable(this, `public-rt-${index}`, {
@@ -160,7 +161,6 @@ Here is how to set up EC2 instances with proper security groups:
 ```typescript
 import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
 import { Instance } from "@cdktf/provider-aws/lib/instance";
-import { KeyPair } from "@cdktf/provider-aws/lib/key-pair";
 import { DataAwsAmi } from "@cdktf/provider-aws/lib/data-aws-ami";
 
 // Look up the latest Amazon Linux 2 AMI
@@ -285,6 +285,7 @@ new S3BucketLifecycleConfiguration(this, "bucket-lifecycle", {
     {
       id: "transition-to-ia",
       status: "Enabled",
+      filter: [{}],
       transition: [
         {
           days: 30,
@@ -437,4 +438,4 @@ cdktf deploy aws-stack
 cdktf destroy
 ```
 
-CDKTF with AWS gives you a powerful, type-safe way to manage your cloud infrastructure. The combination of the AWS provider's complete resource coverage and TypeScript's development experience makes it an excellent choice for teams already comfortable with programming. For more CDKTF topics, check out our guide on [CDKTF stacks](https://oneuptime.com/blog/post/2026-02-23-how-to-use-cdktf-stacks-for-deployment-units/view).
+CDKTF with AWS gives you a powerful, type-safe way to manage your cloud infrastructure, especially for existing CDKTF users who understand its deprecated support status. The combination of the AWS provider's complete resource coverage and TypeScript's development experience can be useful for teams already comfortable with programming. For more CDKTF topics, check out our guide on [CDKTF stacks](https://oneuptime.com/blog/post/2026-02-23-how-to-use-cdktf-stacks-for-deployment-units/view).
