@@ -80,20 +80,23 @@ SVG format is usually the best choice for large configurations because it scales
 
 ## Graph Types
 
-The `terraform graph` command supports a `-type` flag that controls what kind of graph it generates:
+The `terraform graph` command supports a `-type` flag that controls what kind of graph it generates. Without `-type`, Terraform produces a simplified resources-only dependency graph:
 
 ```bash
-# Plan graph (default) - shows resources and their dependencies
+# Simplified resource graph (default) - shows resources and their dependencies
+terraform graph
+
+# Plan graph - shows Terraform's planning graph with more runtime detail
 terraform graph -type=plan
 
-# Apply graph - shows the order resources will be created/modified
+# Apply graph - shows Terraform's apply graph with more runtime detail
 terraform graph -type=apply
 
-# Destroy graph - shows the order resources will be destroyed
+# Destroy graph - shows Terraform's destroy planning graph
 terraform graph -type=plan-destroy
 ```
 
-The destroy graph is particularly useful because destruction order is the reverse of creation order, and seeing it visually helps you understand cascade effects.
+The destroy graph is particularly useful because destruction generally follows the reverse dependency order from creation, and seeing it visually helps you understand cascade effects.
 
 ## A Practical Example
 
@@ -109,12 +112,27 @@ resource "aws_vpc" "main" {
   }
 }
 
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 resource "aws_subnet" "public" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.1.0/24"
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
     Name = "public-subnet"
+  }
+}
+
+resource "aws_subnet" "database" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = {
+    Name = "database-subnet"
   }
 }
 
@@ -162,8 +180,23 @@ resource "aws_security_group" "db" {
 }
 
 # compute.tf - EC2 instances
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 resource "aws_instance" "web" {
-  ami                    = "ami-0c55b159cbfafe1f0"
+  ami                    = data.aws_ami.amazon_linux.id
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.web.id]
@@ -174,36 +207,42 @@ resource "aws_instance" "web" {
 }
 
 # database.tf - RDS instance
+resource "aws_db_subnet_group" "main" {
+  name       = "main-db-subnet-group"
+  subnet_ids = [aws_subnet.public.id, aws_subnet.database.id]
+}
+
 resource "aws_db_instance" "main" {
-  allocated_storage      = 20
-  engine                 = "postgres"
-  engine_version         = "15.4"
-  instance_class         = "db.t3.micro"
-  db_name                = "myapp"
-  username               = "admin"
-  password               = var.db_password
-  vpc_security_group_ids = [aws_security_group.db.id]
+  allocated_storage           = 20
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.t3.micro"
+  db_name                     = "myapp"
+  username                    = "admin"
+  manage_master_user_password = true
+  db_subnet_group_name        = aws_db_subnet_group.main.name
+  vpc_security_group_ids      = [aws_security_group.db.id]
 }
 ```
 
 When you run `terraform graph | dot -Tpng > graph.png`, you get a diagram that clearly shows:
 
-- `aws_vpc.main` is the root - everything depends on it
-- `aws_subnet.public` and both security groups depend on the VPC
+- `aws_vpc.main` is the network foundation - the subnets, internet gateway, and security groups depend on it
+- `aws_subnet.public`, `aws_subnet.database`, and both security groups depend on the VPC
 - `aws_security_group.db` depends on `aws_security_group.web` (because of the security group reference)
-- `aws_instance.web` depends on both the subnet and the web security group
-- `aws_db_instance.main` depends on the DB security group
+- `aws_instance.web` depends on the AMI data source, the subnet, and the web security group
+- `aws_db_instance.main` depends on the DB security group and the DB subnet group
 
 ## Filtering the Graph for Clarity
 
-Large configurations produce very busy graphs. You can filter them with `grep` to focus on specific resources:
+Large configurations produce very busy graphs. You can filter them with shell tools to focus on specific resources:
 
 ```bash
 # Generate a graph and remove provider nodes for clarity
-terraform graph | grep -v "provider" | dot -Tpng > graph-no-providers.png
+terraform graph -type=plan | grep -v "provider" | dot -Tpng > graph-no-providers.png
 
 # Focus only on specific resource relationships
-terraform graph | grep -E "(aws_instance|aws_security_group|->)" | dot -Tpng > graph-filtered.png
+terraform graph | awk '/digraph|compound|newrank|subgraph|^[[:space:]]*}/ || /aws_instance|aws_security_group/' | dot -Tpng > graph-filtered.png
 ```
 
 For more advanced filtering, you can use a script:
@@ -283,11 +322,11 @@ When you look at a rendered terraform graph, keep these things in mind:
 
 **Arrows mean "depends on."** If resource A has an arrow pointing to resource B, it means A depends on B. Terraform will create B first and destroy A first.
 
-**Root nodes are created first.** Resources at the bottom of the graph (with no outgoing arrows) are created first because nothing depends on them creating something else.
+**Dependency nodes are created first.** Resources with no outgoing dependency arrows are created first because they do not depend on another Terraform node.
 
-**Leaf nodes are created last.** Resources at the top (with no incoming arrows) are created last because they depend on everything below them.
+**Dependent nodes are created later.** Resources with outgoing dependency arrows are created after the resources they point to.
 
-**Width indicates parallelism.** Resources at the same level with no dependencies between them can be created in parallel. A wider graph means more parallelism and faster applies.
+**Width suggests parallelism.** Resources with no dependency path between them can often be created in parallel. Terraform's actual concurrency is controlled by its graph walk and the `-parallelism` setting.
 
 ## Alternative Visualization Tools
 
