@@ -8,7 +8,7 @@ Description: Speed up Terraform initialization by optimizing how modules are dow
 
 ---
 
-Every time you run `terraform init`, Terraform downloads all the modules your configuration references. For projects that use many external modules, this can add significant time to your workflow. Some teams report init times of several minutes just for module downloads alone.
+When you run `terraform init` in a fresh working directory, Terraform downloads the modules your configuration references. Re-running `terraform init` with modules already installed will only install modules added since the last init, unless you use `-upgrade`. For projects that use many external modules, this can add significant time to your workflow. Some teams report init times of several minutes just for module downloads alone.
 
 The good news is there are several ways to reduce this overhead. This post covers practical strategies for making module downloads faster.
 
@@ -50,20 +50,20 @@ module "shared" {
 One of the simplest optimizations is pinning exact versions instead of using version ranges:
 
 ```hcl
-# Slower - Terraform must check the registry for the latest matching version
+# Less predictable - Terraform can select the newest 5.x version that matches
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
 }
 
-# Faster - Terraform knows exactly which version to get
+# More predictable - Terraform installs this specific version
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.0.0"
 }
 ```
 
-With an exact version pin, Terraform can skip the version resolution step and go straight to downloading (or finding in cache) the specific version.
+With an exact version pin, Terraform installs a specific version instead of selecting the newest version that matches a range. This makes module caching and repeatable CI runs more predictable, especially when combined with a cache key that changes only when your Terraform configuration changes.
 
 ## Use Local Modules Where Possible
 
@@ -139,7 +139,7 @@ When the cache hits, `terraform init` finds the modules already present and skip
 
 ## Set Up a Private Module Registry
 
-For organizations with many shared modules, a private registry eliminates the need to download from external sources:
+For organizations with many shared modules, a private registry eliminates the need to download from public sources:
 
 ```hcl
 # Using Terraform Cloud as a private registry
@@ -158,13 +158,19 @@ module "vpc" {
 }
 ```
 
-A private registry within your cloud provider's network is faster than downloading from the public internet.
+A private registry that is close to your CI runners can be faster than downloading from the public internet, while still giving you registry-style versioning.
 
 ## Use Git Shallow Clones for Git Modules
 
-When Terraform downloads a Git module, it clones the entire repository by default. For large repositories, this can be slow. Unfortunately, Terraform does not natively support shallow clones, but you can work around this.
+When Terraform downloads a Git module, it clones the repository. For large repositories, this can be slow. Terraform supports shallow clones for Git, GitHub, and Bitbucket module sources with the `depth` query parameter:
 
-One approach is to pre-clone modules and reference them as local paths:
+```hcl
+module "custom" {
+  source = "git::https://github.com/myorg/terraform-module.git?ref=v1.0.0&depth=1"
+}
+```
+
+When you use `depth`, the `ref` value must be a named branch or tag because Terraform passes it to Git's `--branch` option. If you need more control over the clone command, you can also pre-clone modules and reference them as local paths:
 
 ```bash
 #!/bin/bash
@@ -195,6 +201,7 @@ Vendoring means copying module source code directly into your repository. This e
 ```bash
 # Download a module for vendoring
 terraform init
+mkdir -p vendor
 cp -r .terraform/modules/vpc vendor/vpc
 ```
 
@@ -216,6 +223,7 @@ Update your vendored modules periodically:
 terraform init -upgrade
 
 # Copy updated modules to vendor directory
+mkdir -p vendor
 for module_dir in .terraform/modules/*/; do
   module_name=$(basename "$module_dir")
   if [ "$module_name" != "modules.json" ]; then
