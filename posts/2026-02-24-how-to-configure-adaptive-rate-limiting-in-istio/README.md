@@ -21,10 +21,10 @@ Traditional rate limiting says "allow 100 requests per minute, period." Adaptive
 
 ## Approach 1: Circuit Breaking as Adaptive Rate Limiting
 
-Istio's circuit breaking is inherently adaptive. It limits based on real-time connection and request metrics rather than fixed counters:
+Istio's circuit breaking can act as adaptive backpressure. It enforces connection and request limits against real-time usage rather than fixed per-time-window counters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: adaptive-backend
@@ -51,7 +51,7 @@ This configuration does several adaptive things:
 
 - `maxConnections: 100` limits concurrent TCP connections. When the backend is slow and connections pile up, new requests get rejected.
 - `http1MaxPendingRequests: 50` limits the queue depth. When the backend cannot keep up, excess requests fail fast instead of waiting.
-- `outlierDetection` ejects unhealthy pods. If a pod returns 5 consecutive 5xx errors, it gets removed from the load balancing pool for 30 seconds.
+- `outlierDetection` ejects unhealthy pods. If a pod returns 5 consecutive 5xx errors, it gets removed from the load balancing pool for at least 30 seconds.
 
 The adaptive part is that these limits respond to real-time conditions. When the backend is fast, connections cycle quickly and high throughput is possible. When the backend slows down, connections accumulate and the limits kick in earlier.
 
@@ -164,7 +164,7 @@ while True:
 
 ## Approach 3: Envoy Adaptive Concurrency Filter
 
-Envoy has an experimental adaptive concurrency filter that uses a gradient algorithm to dynamically adjust the allowed concurrency:
+Envoy has an adaptive concurrency filter that uses a gradient algorithm to dynamically adjust the allowed concurrency. Envoy documents this extension as having an unknown security posture, so use it only where downstream and upstream traffic are trusted:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -219,7 +219,7 @@ The `sample_aggregate_percentile` at 90 means it uses the p90 latency. The `conc
 The most robust setup combines multiple adaptive mechanisms:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: robust-backend
@@ -252,13 +252,13 @@ kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats |
 Look for:
 
 ```text
-http.adaptive_concurrency.gradient_controller.min_rtt_msecs: 5
-http.adaptive_concurrency.gradient_controller.limit: 150
-http.adaptive_concurrency.gradient_controller.burst_queue_size: 15
-http.adaptive_concurrency.rq_blocked: 42
+http.<stat_prefix>.adaptive_concurrency.gradient_controller.min_rtt_msecs: 5
+http.<stat_prefix>.adaptive_concurrency.gradient_controller.concurrency_limit: 150
+http.<stat_prefix>.adaptive_concurrency.gradient_controller.burst_queue_size: 15
+http.<stat_prefix>.adaptive_concurrency.gradient_controller.rq_blocked: 42
 ```
 
-The `limit` value shows the current dynamic concurrency limit. Plot this over time in Grafana to see how it responds to traffic changes.
+The `concurrency_limit` value shows the current dynamic concurrency limit. Plot this over time in Grafana to see how it responds to traffic changes.
 
 ## Testing Adaptive Behavior
 
@@ -269,7 +269,8 @@ Simulate backend degradation and watch the limits adjust:
 
 kubectl exec deploy/sleep -- sh -c 'while true; do curl -s -o /dev/null -w "%{http_code}\n" http://backend-service:8080/api; done'
 
-# In another terminal, add artificial latency to the backend
+# In another terminal, add artificial latency to the backend.
+# This requires the container to include tc and have NET_ADMIN capability.
 kubectl exec deploy/backend-service -- sh -c 'tc qdisc add dev eth0 root netem delay 200ms'
 ```
 
