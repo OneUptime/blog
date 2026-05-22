@@ -52,10 +52,10 @@ spec:
   rules:
     - from:
         - source:
-            principals: ["cluster.local/ns/*/sa/*"]
+            principals: ["cluster.local/ns/*"]
 ```
 
-This allows any service account from any namespace in the local cluster. The principal format `cluster.local/ns/*/sa/*` matches any workload with a valid SPIFFE identity in the mesh.
+This allows any service account from any namespace in the local cluster. The principal prefix match `cluster.local/ns/*` matches any workload with a valid SPIFFE identity in the local trust domain.
 
 ```bash
 kubectl apply -f authorization-policy.yaml
@@ -152,7 +152,7 @@ spec:
   rules:
     - from:
         - source:
-            principals: ["cluster.local/ns/*/sa/*"]
+            principals: ["cluster.local/ns/*"]
 ```
 
 The PeerAuthentication blocks non-mTLS traffic at the transport level. The AuthorizationPolicy blocks traffic that does not have a valid mesh identity at the application level. Together, they create two layers of protection.
@@ -175,7 +175,7 @@ spec:
   rules:
     - from:
         - source:
-            principals: ["cluster.local/ns/*/sa/*"]
+            principals: ["cluster.local/ns/*"]
 ```
 
 This applies only to pods with the `app: admin-api` label. Other services in the `default` namespace are unaffected.
