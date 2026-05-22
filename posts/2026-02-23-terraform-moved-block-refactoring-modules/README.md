@@ -222,9 +222,9 @@ Keep moved blocks for at least one release cycle or until you are confident that
 
 There are a few things the `moved` block cannot do:
 
-**Cross-state moves.** You cannot move resources between separate state files. For that, you still need `terraform state mv` with the `-state` flag or `terraform import`.
+**Cross-state moves.** You cannot move resources between separate state files with a `moved` block. For local state files, you can use `terraform state mv` with `-state` and `-state-out`. For separate backends or workspaces, you usually need to remove the object from one state and import it into the other.
 
-**Moving between different resource types.** You cannot move an `aws_instance` to become an `aws_launch_template`. The resource type must match.
+**Moving between different resource types.** In most cases, you cannot move an `aws_instance` to become an `aws_launch_template` because the resource schemas are different. Terraform 1.8 and later can support cross-type moves only when the provider explicitly implements state move support for that target resource type.
 
 **Conditional moves.** There is no way to conditionally apply a moved block. They always apply.
 
