@@ -147,7 +147,7 @@ variable "ssh_key_path" {
 resource "aws_key_pair" "deployer" {
   key_name   = "deployer-key"
   # chomp ensures no trailing newline in the key material
-  public_key = chomp(file(var.ssh_key_path))
+  public_key = chomp(file(pathexpand(var.ssh_key_path)))
 }
 ```
 
