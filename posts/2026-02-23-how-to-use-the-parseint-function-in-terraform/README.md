@@ -295,7 +295,7 @@ locals {
   via_tonumber = tonumber("42")  # Works
   # tonumber("FF") would fail - it does not understand hex
 
-  # parseint handles any base
+  # parseint handles bases 2 through 62
   via_parseint_dec = parseint("42", 10)   # Same as tonumber
   via_parseint_hex = parseint("FF", 16)   # 255
   via_parseint_bin = parseint("1010", 2)  # 10
@@ -306,7 +306,7 @@ Use `tonumber` for simple string-to-number conversion. Use `parseint` when the i
 
 ## Converting Between Bases
 
-While Terraform does not have a built-in function to format numbers in different bases, you can use `parseint` for the input side of base conversions:
+Terraform's `format` function can format integers as binary, octal, decimal, or hexadecimal strings, but `parseint` is what you use for the input side of base conversions:
 
 ```hcl
 variable "input_base" {
