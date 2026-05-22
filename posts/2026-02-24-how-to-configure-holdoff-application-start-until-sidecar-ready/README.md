@@ -33,7 +33,7 @@ That gap between t=0.7 and t=2.5 is the problem.
 
 ## Solution 1: holdApplicationUntilProxyStarts
 
-This is the simplest and most widely used solution. It tells Kubernetes to start the application container only after the sidecar reports ready.
+This is the simplest and most widely used solution. It tells Istio to inject the pod so the application container starts only after the sidecar reports ready.
 
 Enable it globally:
 
@@ -66,7 +66,7 @@ spec:
         image: my-app:latest
 ```
 
-How it works: Istio injects a `postStart` lifecycle hook on the sidecar container that blocks until the proxy is ready. Since Kubernetes waits for the postStart hook to complete before starting other containers, the application does not start until the proxy is up.
+How it works: Istio injects the sidecar at the start of the pod's container list and configures it to block the start of the other containers until the proxy is ready. In current Istio sidecar injection, this is implemented with a lifecycle hook on the sidecar that waits for proxy readiness. This is Istio-specific injection behavior, not a general Kubernetes container dependency mechanism.
 
 Verify it is working:
 
@@ -80,9 +80,9 @@ You should see a postStart hook that checks the proxy readiness.
 
 ## Solution 2: Native Sidecar Containers (Kubernetes 1.28+)
 
-Starting with Kubernetes 1.28, there is a proper solution for the sidecar ordering problem. Init containers can now have `restartPolicy: Always`, which makes them behave as sidecars that start before regular containers.
+Starting with Kubernetes 1.28, there is a proper solution for the sidecar ordering problem when the `SidecarContainers` feature gate is enabled. The feature is enabled by default starting in Kubernetes 1.29 and stable in Kubernetes 1.33. Init containers can have `restartPolicy: Always`, which makes them behave as sidecars that start before regular containers.
 
-Enable native sidecars in Istio:
+Enable native sidecars in Istio if your Istio version does not already enable them for eligible pods:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -105,7 +105,7 @@ t=2.0: istio-proxy is ready
 t=2.0: Application container starts
 ```
 
-This is the cleanest solution because:
+This is the cleanest solution when your Kubernetes and Istio versions support it because:
 - The application is guaranteed to start after the sidecar is ready
 - The sidecar properly terminates after all regular containers stop
 - No workarounds or lifecycle hooks needed
@@ -120,7 +120,7 @@ If it returns `Always`, native sidecars are active.
 
 ## Solution 3: Startup Probe with Sidecar Check
 
-If you cannot use either of the above solutions, you can add a startup probe to your application that checks if the sidecar is ready:
+If you cannot use either of the above solutions, you can add a startup probe to your application that checks if the sidecar is ready. This example assumes your application image includes `curl`:
 
 ```yaml
 apiVersion: apps/v1
@@ -188,7 +188,7 @@ func callWithRetry(url string, maxRetries int) (*http.Response, error) {
 
 Here is a quick decision tree:
 
-- **Kubernetes 1.28+ and Istio 1.20+**: Use native sidecars. This is the best option.
+- **Kubernetes with native sidecar support and an Istio version that supports native sidecar injection**: Use native sidecars. In Kubernetes 1.28, the feature gate must be enabled; in Kubernetes 1.29 and later, it is enabled by default. In Istio 1.27 and later, native sidecars are enabled by default for eligible pods.
 - **Older Kubernetes**: Use `holdApplicationUntilProxyStarts: true`.
 - **Cannot modify Istio config**: Use startup probes and application-level retry.
 
