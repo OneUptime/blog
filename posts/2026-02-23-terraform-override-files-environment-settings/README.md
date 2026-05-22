@@ -28,7 +28,7 @@ project/
   dev_override.tf      # Another override file
 ```
 
-The key behavior: override files do not add to the configuration - they replace matching blocks. If `main.tf` defines an `aws_instance` resource called `web` and `override.tf` also defines `aws_instance.web`, the override version replaces the original entirely.
+The key behavior: override files merge with matching top-level blocks. If `main.tf` defines an `aws_instance` resource called `web` and `override.tf` also defines `aws_instance.web`, Terraform combines them as one resource. Arguments in the override replace arguments with the same name in the original, while arguments that are not mentioned in the override stay in place.
 
 ```hcl
 # main.tf - Base configuration
@@ -46,11 +46,9 @@ resource "aws_instance" "web" {
 ```
 
 ```hcl
-# override.tf - Replaces the resource definition above
+# override.tf - Overrides selected arguments from the resource above
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t3.micro"
-  subnet_id     = aws_subnet.private.id
 
   tags = {
     Name        = "dev-web"
@@ -59,11 +57,11 @@ resource "aws_instance" "web" {
 }
 ```
 
-When Terraform loads this, it uses the override version. The base definition is completely replaced.
+When Terraform loads this, the final resource keeps the original `ami` and `subnet_id`, but uses the overridden `instance_type` and `tags`.
 
 ## Overriding Specific Attributes
 
-For top-level blocks like resources, the entire block gets replaced. But for nested blocks and arguments, you can override individual pieces. Here is how it works with provider blocks:
+For top-level blocks like resources, providers, variables, outputs, and modules, Terraform merges the matching block headers and replaces only the arguments you specify. Nested blocks are different: if an override includes a nested block of a given type, it replaces all nested blocks of that type from the original, except for special cases such as `lifecycle` inside `resource` blocks. Here is how it works with provider blocks:
 
 ```hcl
 # main.tf
@@ -87,8 +85,8 @@ One of the most practical uses is overriding settings for local development. Add
 
 ```gitignore
 # .gitignore
-override.tf
-*_override.tf
+/override.tf
+/*_override.tf
 ```
 
 ```hcl
@@ -115,9 +113,7 @@ provider "aws" {
 # Another developer's override.tf
 # Use smaller instances for personal dev environment
 resource "aws_instance" "app" {
-  ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t3.nano"     # Cheaper for dev work
-  subnet_id     = aws_subnet.private.id
 
   tags = {
     Name        = "john-dev-app"
@@ -173,13 +169,12 @@ terraform init
 
 ## Overriding Module Sources
 
-During module development, you often want to test with a local copy instead of the remote source:
+During module development, you often want to test with a local copy instead of the remote source. This works best when the original module block does not include a `version` argument, because override files cannot remove an argument from the original block:
 
 ```hcl
 # main.tf - Uses remote module in production
 module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "5.0.0"
+  source = "github.com/example/terraform-aws-vpc"
 
   name = "my-vpc"
   cidr = "10.0.0.0/16"
@@ -248,7 +243,7 @@ variable "enable_deletion_protection" {
 
 Understanding the merging rules prevents surprises:
 
-1. **Top-level blocks** (resource, data, module, provider) - The override replaces the entire block. You must redefine all required arguments.
+1. **Top-level blocks** (resource, data, module, provider) - The override merges into the matching block. Arguments with the same name are replaced, and arguments not mentioned in the override are preserved.
 
 2. **Terraform settings** - Merges at the attribute level. You can override just `required_version` without redefining `required_providers`.
 
@@ -309,7 +304,7 @@ jobs:
 
 Override files are one of several ways to handle environment differences. Here is when each approach fits:
 
-- **Override files**: Best for local development overrides, testing, and situations where you need to replace entire blocks. Avoid committing them to version control.
+- **Override files**: Best for local development overrides, testing, and situations where you need to patch selected parts of existing blocks. Avoid committing root-module override files to version control.
 - **tfvars files**: Best for changing variable values across environments. Cleaner than overrides for simple value changes.
 - **Workspaces**: Best when environments share the same structure but differ in sizing. Uses a single configuration with workspace-aware logic.
 - **Separate directories**: Best when environments have fundamentally different architectures.
@@ -320,9 +315,9 @@ A few things trip people up with override files:
 
 1. Forgetting to add override files to `.gitignore`. Accidentally committed overrides can break other developers and CI/CD.
 
-2. Overriding a resource without including all required arguments. The override replaces the entire block, so missing arguments cause errors.
+2. Assuming nested blocks merge like top-level arguments. Most nested blocks in an override replace all nested blocks of the same type from the original, so missing nested settings can change behavior.
 
-3. Having multiple override files that conflict. Terraform processes them in alphabetical order (`a_override.tf` before `b_override.tf`), and the last one wins for conflicting definitions.
+3. Having multiple override files that conflict. Terraform processes them in lexicographical order (`a_override.tf` before `b_override.tf`), and later overrides take precedence for conflicting arguments.
 
 4. Using override files as a primary configuration management strategy. They are best for exceptions and local customization, not as the main way to handle environment differences.
 
