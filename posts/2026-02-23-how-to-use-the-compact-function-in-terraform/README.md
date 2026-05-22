@@ -4,25 +4,25 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Functions
 
-Description: Learn how to use the compact function in Terraform to remove empty string elements from a list, with practical examples for cleaning up dynamic configurations.
+Description: Learn how to use the compact function in Terraform to remove empty string and null elements from a list, with practical examples for cleaning up dynamic configurations.
 
 ---
 
-When building dynamic Terraform configurations, you often end up with lists that contain empty string elements. These can come from conditional expressions, optional variables, or data transformations. The `compact` function provides a simple way to clean up these lists by removing all empty string values.
+When building dynamic Terraform configurations, you often end up with lists that contain empty string or null elements. These can come from conditional expressions, optional variables, or data transformations. The `compact` function provides a simple way to clean up these lists by removing all empty string and null values.
 
 This guide walks through the `compact` function, its behavior, and real-world scenarios where it becomes essential for writing clean Terraform code.
 
 ## What is the compact Function?
 
-The `compact` function takes a list of strings and returns a new list with all empty string elements removed. Non-empty strings are preserved in their original order.
+The `compact` function takes a list of strings and returns a new list with all empty string and null elements removed. Non-empty strings are preserved in their original order.
 
 ```hcl
-# Removes all empty strings from the list
+# Removes all empty strings and nulls from the list
 
 compact(list)
 ```
 
-It only works with lists of strings and only removes empty strings (`""`). It does not remove null values or whitespace-only strings.
+It works with lists of strings and removes empty strings (`""`) and null values. It does not remove whitespace-only strings.
 
 ## Basic Usage in Terraform Console
 
@@ -39,11 +39,15 @@ It only works with lists of strings and only removes empty strings (`""`). It do
 > compact(["", "", ""])
 []
 
+# Null values are also removed
+> compact(["a", null, "b"])
+["a", "b"]
+
 # Empty input returns empty output
 > compact([])
 []
 
-# Whitespace strings are NOT removed (only "" is removed)
+# Whitespace strings are NOT removed
 > compact(["a", " ", "b"])
 ["a", " ", "b"]
 ```
@@ -217,7 +221,7 @@ locals {
 }
 ```
 
-Both produce the same result. Use `compact` when you are specifically removing empty strings from a list of strings. Use filtered `for` expressions when you need more complex filtering logic or are working with non-string types.
+Both produce the same result. Use `compact` when you are specifically removing empty strings or nulls from a list of strings. Use filtered `for` expressions when you need more complex filtering logic or are working with non-string types.
 
 ## Combining compact with Other Functions
 
@@ -289,8 +293,8 @@ resource "aws_lambda_function" "app" {
 
 Keep these behaviors in mind:
 
-- **Only removes empty strings**: `compact` does not remove null values, whitespace-only strings, or zero-length strings in other types. It strictly removes `""` from a list of strings.
-- **Type requirement**: The input must be a list of strings. Passing a list of numbers or booleans will cause an error.
+- **Only removes empty strings and nulls**: `compact` does not remove whitespace-only strings or zero-length values in other types. It removes `""` and `null` from a list of strings.
+- **Type requirement**: The input must be a list of strings, or values Terraform can convert to strings. Passing values that cannot be converted to strings will cause an error.
 - **Order preservation**: The relative order of non-empty elements is preserved.
 
 ```hcl
@@ -298,8 +302,12 @@ Keep these behaviors in mind:
 > compact(["hello", "  ", "world"])
 ["hello", "  ", "world"]
 
-# Must be a string list
-# compact([1, 0, 2]) would cause a type error
+# Null is removed
+> compact(["hello", null, "world"])
+["hello", "world"]
+
+# Must be a string list or contain values convertible to strings
+# compact(["hello", [], "world"]) would cause a type error
 ```
 
 ## Summary
@@ -308,10 +316,10 @@ The `compact` function is a small but frequently needed tool in Terraform. It ex
 
 Key takeaways:
 
-- `compact` removes empty strings from a list of strings
-- It does not remove nulls, whitespace, or other falsy values
+- `compact` removes empty strings and nulls from a list of strings
+- It does not remove whitespace or other falsy values
 - Pairs naturally with conditional expressions that produce `""` for disabled options
 - Works well alongside `distinct`, `join`, and other list functions
-- Input must be a list of strings
+- Input must be a list of strings or values Terraform can convert to strings
 
 Reach for `compact` whenever you build lists dynamically and need to filter out the blanks.
