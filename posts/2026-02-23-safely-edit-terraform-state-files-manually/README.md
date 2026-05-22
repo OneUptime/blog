@@ -36,7 +36,7 @@ terraform state pull > terraform.tfstate.backup
 cp terraform.tfstate.backup terraform.tfstate.edit
 ```
 
-Always keep that backup copy untouched. If anything goes wrong during editing, you can push it back.
+Always keep that backup copy untouched. If anything goes wrong during editing, you can use it to restore the original state contents.
 
 ## Step 2: Understand the State File Structure
 
@@ -67,7 +67,6 @@ Terraform state files are JSON documents. Here's a simplified view of the struct
             "id": "i-0abc123def456",
             "ami": "ami-0123456789abcdef0",
             "instance_type": "t3.medium"
-            // ... more attributes
           }
         }
       ]
@@ -89,6 +88,8 @@ Open `terraform.tfstate.edit` in a text editor. Make only the changes you need. 
 
 ### Fixing a Resource Attribute
 
+For example, change only the incorrect value and leave the rest of the instance data intact:
+
 ```json
 {
   "mode": "managed",
@@ -100,7 +101,6 @@ Open `terraform.tfstate.edit` in a text editor. Make only the changes you need. 
       "schema_version": 1,
       "attributes": {
         "id": "sg-0abc123",
-        // Change this value if it's stored incorrectly
         "name": "corrected-sg-name",
         "vpc_id": "vpc-0def456"
       }
@@ -118,7 +118,6 @@ Sometimes after refactoring provider aliases, the state still references the old
   "mode": "managed",
   "type": "aws_s3_bucket",
   "name": "logs",
-  // Update the provider reference to match your new configuration
   "provider": "provider[\"registry.terraform.io/hashicorp/aws\"].west",
   "instances": [
     {
@@ -147,10 +146,8 @@ If a resource has a dependency that no longer exists and causes errors:
       "attributes": {
         "id": "i-0abc123"
       },
-      // Remove the broken dependency from this list
       "dependencies": [
         "aws_subnet.main"
-        // Removed: "aws_security_group.deleted_sg"
       ]
     }
   ]
@@ -165,7 +162,7 @@ This is the step people forget. Every time you modify a state file, you need to 
 {
   "version": 4,
   "terraform_version": "1.7.0",
-  "serial": 43,  // Was 42, incremented by 1
+  "serial": 43,
   "lineage": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
@@ -209,11 +206,22 @@ After pushing the modified state, run a plan to make sure everything looks right
 terraform plan
 ```
 
-If the plan shows no changes (or only expected changes), your manual edit was successful. If it shows unexpected creates or destroys, something went wrong and you should push your backup:
+If the plan shows no changes (or only expected changes), your manual edit was successful. If it shows unexpected creates or destroys, something went wrong and you should restore from your backup:
 
 ```bash
-# Restore the original state if something went wrong
-terraform state push terraform.tfstate.backup
+# Restore from the original contents if something went wrong
+cp terraform.tfstate.backup terraform.tfstate.restore
+
+# Edit terraform.tfstate.restore and increment its serial above the
+# current remote serial before pushing it back
+terraform state push terraform.tfstate.restore
+```
+
+If you are certain you need to overwrite the remote state with the backup exactly as it was, `terraform state push -force terraform.tfstate.backup` bypasses Terraform's lineage and serial safety checks. Use that only when you have confirmed nobody else has written state since your manual edit, because it overwrites the destination state.
+
+```bash
+# Force-restore only after confirming the overwrite is safe
+terraform state push -force terraform.tfstate.backup
 ```
 
 ## Safety Checklist
@@ -252,12 +260,12 @@ These commands handle the serial number, JSON formatting, and validation for you
 
 ## Locking State During Manual Edits
 
-If your backend supports locking (DynamoDB for S3, for example), you should be aware that `terraform state pull` does not acquire a lock. This means someone else could modify the state while you're editing.
+If your backend supports locking, you should be aware that `terraform state pull` does not acquire a lock because it only reads state. This means someone else could modify the state while you're editing.
 
-To work around this, you can use the `terraform force-unlock` command if you run into lock conflicts, or better yet, communicate with your team and establish a maintenance window for manual state surgery.
+Do not use `terraform force-unlock` to work around a normal lock conflict. Terraform's force-unlock command is for manually releasing a stuck lock when automatic unlocking failed, and it should only be used for your own lock. For manual state surgery, communicate with your team and establish a maintenance window before you pull, edit, and push state.
 
 ```bash
-# If you encounter a lock conflict after pushing
+# Only for a stuck lock you own after automatic unlocking failed
 terraform force-unlock LOCK_ID
 ```
 
