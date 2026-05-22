@@ -133,9 +133,8 @@ locals {
   account_principals = [for a in var.trusted_accounts : "arn:aws:iam::${a}:root"]
   role_principals    = var.trusted_roles
 
-  # Combine all principals
-  all_principals = concat(
-    local.service_principals,
+  # Combine AWS account and role principals
+  aws_principals = concat(
     local.account_principals,
     local.role_principals
   )
@@ -149,9 +148,22 @@ data "aws_iam_policy_document" "assume_role" {
     actions = ["sts:AssumeRole"]
     effect  = "Allow"
 
-    principals {
-      type = length(local.service_principals) > 0 ? "Service" : "AWS"
-      identifiers = local.all_principals
+    dynamic "principals" {
+      for_each = length(local.service_principals) > 0 ? [local.service_principals] : []
+
+      content {
+        type        = "Service"
+        identifiers = principals.value
+      }
+    }
+
+    dynamic "principals" {
+      for_each = length(local.aws_principals) > 0 ? [local.aws_principals] : []
+
+      content {
+        type        = "AWS"
+        identifiers = principals.value
+      }
     }
   }
 }
