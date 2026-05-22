@@ -14,11 +14,11 @@ This guide covers everything you need to know about setting up teams, assigning 
 
 ## Understanding the Permission Model
 
-HCP Terraform uses a layered permission system. At the top level, you have organization-level permissions. Below that, you have workspace-level and project-level permissions. Teams are the primary unit for grouping users and assigning access.
+HCP Terraform uses a layered permission system. At the top level, you have organization-level permissions. Below that, you have workspace-level and project-level permissions. Teams are the primary unit for grouping users and assigning access in standard HCP Terraform organizations. In HCP Europe organizations, user access is managed through HCP groups instead of teams.
 
-There are a few built-in groups to be aware of:
+There are a few team types to be aware of:
 
-- **Owners**: Full administrative access to everything. Every organization has this team by default.
+- **Owners**: Full administrative access to everything. Every standard HCP Terraform organization has this team by default.
 - **Custom Teams**: Teams you create with specific permissions tailored to roles in your organization.
 
 ## Creating Teams
@@ -102,7 +102,7 @@ resource "tfe_team" "developers" {
 
 ## Adding Members to Teams
 
-Once a team exists, you can add users to it:
+Once a team exists, you can add organization members to it. The user must already belong to the organization, or be invited with an organization membership first:
 
 ```hcl
 # Add a member to the platform team
@@ -243,10 +243,10 @@ resource "tfe_team_project_access" "dev_infra" {
 ```
 
 Project-level access presets are:
-- **Read**: View project and its workspaces
-- **Write**: Manage workspaces within the project
-- **Maintain**: Manage workspaces and project settings
-- **Admin**: Full control including team access management
+- **Read**: View the project and read access for its workspaces
+- **Write**: Read the project and perform day-to-day workspace actions such as planning and applying runs in the project
+- **Maintain**: Write access plus creating and deleting workspaces in the project
+- **Admin**: Full control including project settings, workspace moves, project deletion, and team access management
 - **Custom**: Fine-grained control over individual permissions
 
 ## Best Practices for Teams and Permissions
