@@ -120,7 +120,7 @@ This makes the same routing rules apply whether traffic enters through the HTTP 
 
 ## Mesh Gateway Binding
 
-There is a special gateway name called `mesh` that represents the Istio sidecar proxies within the mesh. If you want a VirtualService to apply to both external gateway traffic and internal mesh traffic:
+There is a special gateway name called `mesh` that represents the Istio sidecar proxies within the mesh. If you want a VirtualService to apply to both external gateway traffic and internal mesh traffic, include both the external host accepted by the Gateway and the internal service host:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -129,6 +129,7 @@ metadata:
   name: my-app-vs
 spec:
   hosts:
+  - "app.example.com"
   - "my-app.default.svc.cluster.local"
   gateways:
   - my-gateway
@@ -201,7 +202,7 @@ spec:
           number: 3000
 ```
 
-When multiple VirtualServices bind to the same gateway and host, Istio merges the rules. But be careful with rule ordering - more specific matches should come first. In practice, it is often clearer to put all routing rules for a single host in one VirtualService.
+When multiple VirtualServices bind to the same ingress gateway and host, Istio can merge the rules. But be careful with rule ordering across separate VirtualServices, especially when one rule is a catch-all prefix like `/`. In practice, it is often clearer to put all routing rules for a single host in one VirtualService with the more specific matches first.
 
 ## Debugging Binding Issues
 
@@ -210,10 +211,10 @@ If your VirtualService is not working with your Gateway, check these things:
 ```bash
 # Verify the Gateway exists
 
-kubectl get gateway my-gateway
+kubectl get gateway.networking.istio.io my-gateway
 
 # Verify the VirtualService references the right gateway
-kubectl get virtualservice my-app-vs -o yaml | grep -A 2 gateways
+kubectl get virtualservice.networking.istio.io my-app-vs -o yaml | grep -A 2 gateways
 
 # Check for configuration errors
 istioctl analyze
@@ -248,8 +249,11 @@ After applying both resources, test from outside the cluster:
 ```bash
 export GATEWAY_IP=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export GATEWAY_HOST=$(kubectl -n istio-system get service istio-ingressgateway \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+export GATEWAY_ADDR=${GATEWAY_IP:-$GATEWAY_HOST}
 
-curl -v -H "Host: app.example.com" "http://$GATEWAY_IP/"
+curl -v -H "Host: app.example.com" "http://$GATEWAY_ADDR/"
 ```
 
 If you get a 404 with an Istio-specific error page, the gateway is receiving traffic but there is no VirtualService matching. If you get a connection refused, the gateway itself is not configured correctly.
