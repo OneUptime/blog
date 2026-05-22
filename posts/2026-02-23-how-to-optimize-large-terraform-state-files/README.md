@@ -20,7 +20,7 @@ Every time you run `terraform plan` or `terraform apply`, Terraform:
 2. Deserializes the JSON
 3. Makes API calls to refresh every resource in the state
 4. Compares current state to desired state
-5. Uploads the updated state file
+5. Uploads the updated state file when changes are applied
 
 With a state file tracking 1,000 resources, step 3 alone can take 10+ minutes. The state file itself might be 20-50 MB of JSON, which is slow to parse and transfer.
 
@@ -156,14 +156,15 @@ terraform plan 2>&1 | grep "will be destroyed"
 # Remove orphaned resources from state (without destroying them)
 terraform state rm aws_instance.old_server
 
-# Remove resources that were manually deleted outside Terraform
-terraform refresh  # Updates state to match reality
+# Review resources that were manually changed or deleted outside Terraform
+terraform plan -refresh-only
+terraform apply -refresh-only  # Updates state after you review the refresh-only plan
 ```
 
-Clean up data sources that are adding bloat:
+Audit data sources that add refresh-time API calls:
 
 ```bash
-# List data sources in state (they don't need to be there in newer Terraform)
+# List data sources tracked in state
 terraform state list | grep 'data\.'
 ```
 
@@ -176,37 +177,35 @@ Skip the refresh phase when you know the state is current:
 terraform plan -refresh=false
 
 # Refresh only when needed
-terraform refresh  # Do this once, then use -refresh=false for subsequent plans
+terraform plan -refresh-only
+terraform apply -refresh-only  # Do this once, then use -refresh=false for subsequent plans
 ```
 
 This is safe during development but risky for production applies where you need to detect drift.
 
 ## Strategy 5: Optimize Backend Configuration
 
-### S3 Backend with DynamoDB
+### S3 Backend with State Locking
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "terraform-state"
-    key            = "production/networking.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
-
-    # Enable state file compression (implicit with S3)
-    # S3 transfers are already compressed with gzip
+    bucket       = "terraform-state"
+    key          = "production/networking.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
 
-### Use the HTTP Backend for Faster Transfers
+### Consider Managed Remote State
 
 If S3 latency is an issue, consider using Terraform Cloud or Enterprise which optimizes state operations.
 
-## Strategy 6: Reduce Resource Count with for_each and Modules
+## Strategy 6: Reduce Configuration Clutter with for_each and Modules
 
-Sometimes the resource count is high because of how the configuration is written. Refactor for efficiency:
+Sometimes the configuration is hard to maintain because similar resources are repeated in many separate blocks. Refactor for clarity:
 
 ```hcl
 # Before: individual resources (adds clutter to state)
@@ -224,7 +223,7 @@ resource "aws_route53_record" "web" {
   # ...
 }
 
-# After: consolidated with for_each (same resources, cleaner state)
+# After: consolidated with for_each (same remote objects, cleaner configuration)
 resource "aws_route53_record" "records" {
   for_each = var.dns_records
 
