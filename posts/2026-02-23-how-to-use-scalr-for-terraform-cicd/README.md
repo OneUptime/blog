@@ -107,11 +107,11 @@ resource "scalr_workspace" "prod_networking" {
   name           = "prod-networking"
   environment_id = scalr_environment.production.id
 
-  vcs_provider_id = scalr_vcs_provider.github.id
+  vcs_provider_id   = scalr_vcs_provider.github.id
+  working_directory = "environments/production/networking"
   vcs_repo {
     identifier = "myorg/infrastructure"
     branch     = "main"
-    path       = "environments/production/networking"
   }
 
   # Auto-apply after successful plan (disable for production)
@@ -132,14 +132,16 @@ Scalr manages cloud credentials at the environment or account level:
 ```hcl
 # Create a provider configuration for AWS
 resource "scalr_provider_configuration" "aws_production" {
-  name       = "aws-production"
-  account_id = scalr_account.main.id
+  name         = "aws-production"
+  account_id   = scalr_account.main.id
+  environments = [scalr_environment.production.id]
 
   aws {
-    account_type     = "regular"
-    credentials_type = "role_delegation"
-    role_arn         = "arn:aws:iam::123456789012:role/scalr-terraform"
-    external_id      = "scalr-external-id"
+    account_type        = "regular"
+    credentials_type    = "role_delegation"
+    trusted_entity_type = "aws_account"
+    role_arn            = "arn:aws:iam::123456789012:role/scalr-terraform"
+    external_id         = "scalr-external-id"
   }
 }
 
@@ -229,9 +231,25 @@ deny[reason] {
   resource.type == "aws_instance"
   resource.change.after.instance_type == "r6g.16xlarge"
 
-  not input.scalr.environment.name == "production"
+  not input.environment.name == "production"
 
   reason := sprintf("Instance type r6g.16xlarge is only allowed in production. Found in %s", [resource.address])
+}
+```
+
+Create a `scalr-policy.hcl` file in the policy repository to enable the policy files:
+
+```hcl
+version = "v1"
+
+policy "mandatory-tags" {
+  enabled           = true
+  enforcement_level = "hard-mandatory"
+}
+
+policy "cost-control" {
+  enabled           = true
+  enforcement_level = "soft-mandatory"
 }
 ```
 
@@ -263,9 +281,9 @@ resource "scalr_policy_group_linkage" "prod_policies" {
 Scalr manages state files and enables cross-workspace state sharing:
 
 ```hcl
-# In the networking workspace - output the VPC ID
-output "vpc_id" {
-  value = aws_vpc.main.id
+# In the networking workspace - output subnet IDs
+output "subnet_ids" {
+  value = aws_subnet.private[*].id
 }
 
 # In the compute workspace - reference networking state
@@ -274,7 +292,7 @@ data "terraform_remote_state" "networking" {
 
   config = {
     hostname     = "mycompany.scalr.io"
-    organization = "production"
+    organization = "env-xxxxxxxxxx"
     workspaces = {
       name = "prod-networking"
     }
@@ -293,14 +311,10 @@ Chain workspace runs so that changes cascade through dependencies:
 
 ```hcl
 # When networking changes, automatically trigger compute
-resource "scalr_workspace" "prod_compute" {
-  name           = "prod-compute"
-  environment_id = scalr_environment.production.id
-
-  # Trigger a run when networking workspace completes
-  run_triggers = [scalr_workspace.prod_networking.id]
-
-  # ... rest of config
+resource "scalr_run_trigger" "prod_compute_after_networking" {
+  # Trigger a run in prod-compute when prod-networking completes successfully
+  upstream_id   = scalr_workspace.prod_networking.id
+  downstream_id = scalr_workspace.prod_compute.id
 }
 ```
 
@@ -309,9 +323,15 @@ resource "scalr_workspace" "prod_compute" {
 Scalr includes a private module registry:
 
 ```hcl
+# Create a shared namespace for modules
+resource "scalr_module_namespace" "myorg" {
+  name      = "myorg"
+  is_shared = true
+}
+
 # Publish a module from VCS
 resource "scalr_module" "vpc" {
-  account_id      = scalr_account.main.id
+  namespace_id    = scalr_module_namespace.myorg.id
   vcs_provider_id = scalr_vcs_provider.github.id
 
   vcs_repo {
