@@ -146,15 +146,18 @@ jobs:
       - name: Cache Terraform providers
         uses: actions/cache@v4
         with:
-          path: ~/.terraform.d/plugin-cache
+          path: .terraform-plugin-cache
           key: terraform-providers-${{ hashFiles('**/.terraform.lock.hcl') }}
           restore-keys: |
             terraform-providers-
 
+      - name: Create Terraform plugin cache directory
+        run: mkdir -p .terraform-plugin-cache
+
       - name: Terraform Init
         run: terraform init
         env:
-          TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
+          TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
 
       - name: Terraform Plan
         run: terraform plan
@@ -195,6 +198,8 @@ export TF_PLUGIN_CACHE_DIR="/mnt/shared/terraform-plugin-cache"
 ```
 
 This works well on a fast network. On slower connections, a local cache is better because the overhead of network file access can negate the savings from caching.
+
+Be careful with concurrent use of the same cache directory. Terraform does not guarantee that the plugin cache is safe when multiple `terraform init` processes write to it at the same time.
 
 ## Combining Cache with Lock Files
 
