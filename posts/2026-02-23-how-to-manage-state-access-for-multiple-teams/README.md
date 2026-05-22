@@ -57,35 +57,37 @@ resource "aws_iam_policy" "platform_team_state" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowStateAccess"
+        Sid    = "AllowStateList"
+        Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = "arn:aws:s3:::org-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "platform-team/*"
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "AllowStateObjects"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:DeleteObject"
         ]
-        Resource = [
-          "arn:aws:s3:::org-terraform-state",
-          "arn:aws:s3:::org-terraform-state/platform-team/*"
-        ]
+        Resource = "arn:aws:s3:::org-terraform-state/platform-team/*"
       },
       {
-        Sid    = "AllowLocking"
+        Sid    = "AllowS3LockFiles"
         Effect = "Allow"
         Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
-        Resource = "arn:aws:dynamodb:us-east-1:*:table/terraform-locks"
-        Condition = {
-          "ForAllValues:StringLike" = {
-            "dynamodb:LeadingKeys" = [
-              "org-terraform-state/platform-team/*"
-            ]
-          }
-        }
+        Resource = "arn:aws:s3:::org-terraform-state/platform-team/*.tflock"
       }
     ]
   })
@@ -106,31 +108,47 @@ resource "aws_iam_policy" "app_team_read_platform" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ReadPlatformState"
+        Sid    = "ListPlatformNetworkingState"
         Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          "arn:aws:s3:::org-terraform-state",
-          "arn:aws:s3:::org-terraform-state/platform-team/networking/*"
-        ]
+        Action = "s3:ListBucket"
+        Resource = "arn:aws:s3:::org-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "platform-team/networking/*"
+            ]
+          }
+        }
+      },
+      {
+        Sid      = "ReadPlatformState"
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "arn:aws:s3:::org-terraform-state/platform-team/networking/*"
         # No PutObject or DeleteObject - read only
       },
       {
-        Sid    = "FullAccessOwnState"
+        Sid    = "ListOwnState"
+        Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = "arn:aws:s3:::org-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "app-team/*"
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "FullAccessOwnStateObjects"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:DeleteObject"
         ]
-        Resource = [
-          "arn:aws:s3:::org-terraform-state",
-          "arn:aws:s3:::org-terraform-state/app-team/*"
-        ]
+        Resource = "arn:aws:s3:::org-terraform-state/app-team/*"
       }
     ]
   })
@@ -143,25 +161,37 @@ Require additional conditions for production state access:
 
 ```hcl
 # iam-prod-restrictions.tf
-resource "aws_iam_policy" "prod_state_write" {
-  name        = "terraform-state-prod-write"
-  description = "Production state write access with MFA requirement"
+resource "aws_iam_policy" "prod_state_restrictions" {
+  name        = "terraform-state-prod-restrictions"
+  description = "Production state write restrictions with MFA requirement"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowProdStateWrite"
-        Effect = "Allow"
+        Sid    = "DenyProdStateWriteWithoutMFA"
+        Effect = "Deny"
         Action = [
-          "s3:PutObject"
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
         Resource = "arn:aws:s3:::org-terraform-state/*/prod/*"
         Condition = {
-          Bool = {
-            "aws:MultiFactorAuthPresent" = "true"
+          BoolIfExists = {
+            "aws:MultiFactorAuthPresent" = "false"
           }
-          StringEquals = {
+        }
+      },
+      {
+        Sid    = "DenyProdStateWriteForNonLeads"
+        Effect = "Deny"
+        Action = [
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::org-terraform-state/*/prod/*"
+        Condition = {
+          StringNotEquals = {
             "aws:PrincipalTag/team-role" = "lead"
           }
         }
@@ -173,7 +203,7 @@ resource "aws_iam_policy" "prod_state_write" {
 
 ## GCP IAM for Multi-Team State
 
-On Google Cloud, use IAM conditions with bucket prefixes:
+On Google Cloud, use IAM conditions with bucket prefixes for object access. Note that `storage.objects.list` is a bucket-level permission, so it cannot be restricted to a subset of objects with a `resource.name` condition.
 
 ```hcl
 # gcp-iam.tf - Team-specific access on GCS
@@ -184,7 +214,7 @@ resource "google_storage_bucket_iam_member" "platform_team_admin" {
 
   condition {
     title      = "Platform team prefix only"
-    expression = "resource.name.startsWith('projects/_/buckets/org-terraform-state/objects/platform-team/')"
+    expression = "resource.name == 'projects/_/buckets/org-terraform-state' || resource.name.startsWith('projects/_/buckets/org-terraform-state/objects/platform-team/')"
   }
 }
 
@@ -195,7 +225,7 @@ resource "google_storage_bucket_iam_member" "app_team_viewer" {
 
   condition {
     title      = "Read platform networking state"
-    expression = "resource.name.startsWith('projects/_/buckets/org-terraform-state/objects/platform-team/networking/')"
+    expression = "resource.name == 'projects/_/buckets/org-terraform-state' || resource.name.startsWith('projects/_/buckets/org-terraform-state/objects/platform-team/networking/')"
   }
 }
 ```
@@ -256,9 +286,11 @@ resource "tfe_team_access" "app_services" {
 
 # Configure remote state sharing
 resource "tfe_workspace_settings" "networking_prod" {
-  workspace_id   = tfe_workspace.networking_prod.id
+  workspace_id              = tfe_workspace.networking_prod.id
   # Allow specific workspaces to read this state
-  global_remote_state = false
+  global_remote_state       = false
+  project_remote_state      = false
+  remote_state_consumer_ids = [tfe_workspace.app_services_prod.id]
 }
 ```
 
@@ -275,6 +307,15 @@ data "terraform_remote_state" "networking" {
   config = {
     bucket = "org-terraform-state"
     key    = "platform-team/networking/prod/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
+data "terraform_remote_state" "database" {
+  backend = "s3"
+  config = {
+    bucket = "org-terraform-state"
+    key    = "database-team/rds/prod/terraform.tfstate"
     region = "us-east-1"
   }
 }
