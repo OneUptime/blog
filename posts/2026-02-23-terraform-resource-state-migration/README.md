@@ -23,10 +23,10 @@ You need state migration any time you change a resource schema in a way that is 
 - Adding a required attribute with a default value that should be populated for existing resources
 - Restructuring nested attributes
 
-You do NOT need state migration when:
+You typically do NOT need state migration when:
 - Adding a new optional attribute (existing state just has it as null)
 - Adding a new computed attribute (Read will populate it)
-- Removing an attribute (Terraform ignores extra state attributes)
+- Removing an attribute without preserving or transforming its old value, after following the provider's deprecation and removal process
 
 ## Plugin Framework State Migration
 
@@ -39,6 +39,7 @@ import (
     "context"
     "fmt"
     "strconv"
+    "strings"
 
     "github.com/hashicorp/terraform-plugin-framework/resource"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -179,17 +180,17 @@ func upgradeServerStateV0toV2(ctx context.Context, req resource.UpgradeStateRequ
     }
 
     // Transform: split address into host and port
-    var host string
-    var port int64
+    host := types.StringNull()
+    port := types.Int64Null()
 
-    if !oldState.Address.IsNull() {
+    if !oldState.Address.IsNull() && !oldState.Address.IsUnknown() {
         address := oldState.Address.ValueString()
         parts := strings.SplitN(address, ":", 2)
-        host = parts[0]
+        host = types.StringValue(parts[0])
         if len(parts) == 2 {
             p, err := strconv.ParseInt(parts[1], 10, 64)
             if err == nil {
-                port = p
+                port = types.Int64Value(p)
             }
         }
     }
@@ -199,8 +200,8 @@ func upgradeServerStateV0toV2(ctx context.Context, req resource.UpgradeStateRequ
         ID:            oldState.ID,
         Name:          oldState.Name,
         InstanceClass: oldState.ServerType,  // Renamed attribute
-        Host:          types.StringValue(host),
-        Port:          types.Int64Value(port),
+        Host:          host,
+        Port:          port,
         Region:        oldState.Region,
     }
 
@@ -216,8 +217,8 @@ func upgradeServerStateV1toV2(ctx context.Context, req resource.UpgradeStateRequ
     }
 
     // Transform: rename server_type to instance_class, convert port from string to int
-    var port int64
-    if !oldState.Port.IsNull() {
+    port := types.Int64Null()
+    if !oldState.Port.IsNull() && !oldState.Port.IsUnknown() {
         p, err := strconv.ParseInt(oldState.Port.ValueString(), 10, 64)
         if err != nil {
             resp.Diagnostics.AddError(
@@ -227,7 +228,7 @@ func upgradeServerStateV1toV2(ctx context.Context, req resource.UpgradeStateRequ
             )
             return
         }
-        port = p
+        port = types.Int64Value(p)
     }
 
     newState := ServerResourceModel{
@@ -235,7 +236,7 @@ func upgradeServerStateV1toV2(ctx context.Context, req resource.UpgradeStateRequ
         Name:          oldState.Name,
         InstanceClass: oldState.ServerType,  // Renamed
         Host:          oldState.Host,
-        Port:          types.Int64Value(port),  // Type changed
+        Port:          port,  // Type changed
         Region:        oldState.Region,
     }
 
@@ -248,6 +249,51 @@ func upgradeServerStateV1toV2(ctx context.Context, req resource.UpgradeStateRequ
 SDKv2 uses a different approach with `SchemaVersion` and `StateUpgraders`.
 
 ```go
+func resourceServerV0() *schema.Resource {
+    return &schema.Resource{
+        Schema: map[string]*schema.Schema{
+            "name": {
+                Type:     schema.TypeString,
+                Required: true,
+            },
+            "server_type": {
+                Type:     schema.TypeString,
+                Required: true,
+            },
+            "address": {
+                Type:     schema.TypeString,
+                Optional: true,
+                Computed: true,
+            },
+        },
+    }
+}
+
+func resourceServerV1() *schema.Resource {
+    return &schema.Resource{
+        Schema: map[string]*schema.Schema{
+            "name": {
+                Type:     schema.TypeString,
+                Required: true,
+            },
+            "server_type": {
+                Type:     schema.TypeString,
+                Required: true,
+            },
+            "host": {
+                Type:     schema.TypeString,
+                Optional: true,
+                Computed: true,
+            },
+            "port": {
+                Type:     schema.TypeString,
+                Optional: true,
+                Computed: true,
+            },
+        },
+    }
+}
+
 func resourceServer() *schema.Resource {
     return &schema.Resource{
         // Current schema version
@@ -280,24 +326,13 @@ func resourceServer() *schema.Resource {
             {
                 // Upgrade from version 0 to version 1
                 Version: 0,
-                Type: cty.Object(map[string]cty.Type{
-                    "id":          cty.String,
-                    "name":        cty.String,
-                    "server_type": cty.String,
-                    "address":     cty.String,
-                }),
+                Type:    resourceServerV0().CoreConfigSchema().ImpliedType(),
                 Upgrade: upgradeServerV0,
             },
             {
                 // Upgrade from version 1 to version 2
                 Version: 1,
-                Type: cty.Object(map[string]cty.Type{
-                    "id":          cty.String,
-                    "name":        cty.String,
-                    "server_type": cty.String,
-                    "host":        cty.String,
-                    "port":        cty.String,
-                }),
+                Type:    resourceServerV1().CoreConfigSchema().ImpliedType(),
                 Upgrade: upgradeServerV1,
             },
         },
@@ -311,7 +346,8 @@ func resourceServer() *schema.Resource {
 }
 
 func upgradeServerV0(ctx context.Context, rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
-    // Split address into host and port
+    // Split address into host and port. The v1 upgrader will handle the rename
+    // from server_type to instance_class.
     if address, ok := rawState["address"].(string); ok {
         parts := strings.SplitN(address, ":", 2)
         rawState["host"] = parts[0]
@@ -319,12 +355,6 @@ func upgradeServerV0(ctx context.Context, rawState map[string]interface{}, meta 
             rawState["port"] = parts[1]
         }
         delete(rawState, "address")
-    }
-
-    // Rename server_type to instance_class
-    if serverType, ok := rawState["server_type"]; ok {
-        rawState["instance_class"] = serverType
-        delete(rawState, "server_type")
     }
 
     return rawState, nil
@@ -364,15 +394,15 @@ func TestServerResourceStateUpgradeV0(t *testing.T) {
         "address":     "10.0.1.5:8080",
     }
 
-    // Run the migration
+    // Run the v0 to v1 migration
     v1State, err := upgradeServerV0(context.Background(), v0State, nil)
     if err != nil {
         t.Fatalf("unexpected error: %s", err)
     }
 
     // Verify the migration results
-    if v1State["instance_class"] != "t3.medium" {
-        t.Errorf("expected instance_class 't3.medium', got '%v'", v1State["instance_class"])
+    if v1State["server_type"] != "t3.medium" {
+        t.Errorf("expected server_type 't3.medium', got '%v'", v1State["server_type"])
     }
 
     if v1State["host"] != "10.0.1.5" {
@@ -384,10 +414,6 @@ func TestServerResourceStateUpgradeV0(t *testing.T) {
     }
 
     // Verify old attributes are removed
-    if _, exists := v1State["server_type"]; exists {
-        t.Error("server_type should have been removed")
-    }
-
     if _, exists := v1State["address"]; exists {
         t.Error("address should have been removed")
     }
@@ -406,32 +432,44 @@ func TestServerResourceStateUpgradeV0_NilAddress(t *testing.T) {
         t.Fatalf("unexpected error: %s", err)
     }
 
-    if v1State["instance_class"] != "t3.large" {
-        t.Errorf("expected instance_class 't3.large', got '%v'", v1State["instance_class"])
+    if v1State["server_type"] != "t3.large" {
+        t.Errorf("expected server_type 't3.large', got '%v'", v1State["server_type"])
     }
 }
 
-// Acceptance test that verifies the full migration path
-func TestAccServerResource_MigrateV0ToV2(t *testing.T) {
-    resource.Test(t, resource.TestCase{
-        Steps: []resource.TestStep{
-            // Step 1: Create with the current provider
-            {
-                Config: testAccServerConfig("test-migrate"),
-                Check: resource.ComposeTestCheckFunc(
-                    resource.TestCheckResourceAttr("yourservice_server.test", "instance_class", "t3.medium"),
-                    resource.TestCheckResourceAttr("yourservice_server.test", "host", "10.0.1.5"),
-                    resource.TestCheckResourceAttr("yourservice_server.test", "port", "8080"),
-                ),
-            },
-        },
-    })
+func TestServerResourceStateUpgradeV0ToV2(t *testing.T) {
+    // Create a mock v0 state
+    v0State := map[string]interface{}{
+        "id":          "server-789",
+        "name":        "test-server-3",
+        "server_type": "t3.medium",
+        "address":     "10.0.1.5:8080",
+    }
+
+    // Run the full SDKv2 migration chain
+    v1State, err := upgradeServerV0(context.Background(), v0State, nil)
+    if err != nil {
+        t.Fatalf("unexpected v0 migration error: %s", err)
+    }
+
+    v2State, err := upgradeServerV1(context.Background(), v1State, nil)
+    if err != nil {
+        t.Fatalf("unexpected v1 migration error: %s", err)
+    }
+
+    if v2State["instance_class"] != "t3.medium" {
+        t.Errorf("expected instance_class 't3.medium', got '%v'", v2State["instance_class"])
+    }
+
+    if v2State["port"] != 8080 {
+        t.Errorf("expected port 8080, got '%v'", v2State["port"])
+    }
 }
 ```
 
 ## Multi-Step Migration Chains
 
-When your schema has gone through many versions, migrations chain together. Terraform runs them sequentially: v0 to v1, v1 to v2, v2 to v3, and so on.
+When your SDKv2 schema has gone through many versions, migrations chain together. Terraform runs them sequentially: v0 to v1, v1 to v2, v2 to v3, and so on.
 
 ```go
 // Version history:
@@ -440,15 +478,17 @@ When your schema has gone through many versions, migrations chain together. Terr
 // v2: Renamed "server_type" to "instance_class", port changed to int
 // v3: Added "network" nested attribute, moved host/port into it
 
-// Each migration only needs to transform from version N to version N+1
-// Terraform chains them automatically
+// In SDKv2, each StateUpgrader only needs to transform from version N to version N+1.
+// Terraform chains the StateUpgraders automatically.
 ```
 
-The key insight is that each migration only needs to handle one version increment. If a resource is at v0 and the current schema is v3, Terraform runs v0-to-v1, then v1-to-v2, then v2-to-v3 in sequence.
+The key insight for SDKv2 is that each migration only needs to handle one version increment. If a resource is at v0 and the current schema is v3, Terraform runs v0-to-v1, then v1-to-v2, then v2-to-v3 in sequence.
+
+The Plugin Framework is different: the framework calls only the upgrader for the prior state version, so that upgrader must transform directly to the current schema version. If the current schema is v3, the v0 upgrader must handle v0-to-v3, the v1 upgrader must handle v1-to-v3, and so on.
 
 ## Best Practices
 
-Always increment SchemaVersion when making incompatible schema changes. Forgetting this causes Terraform to try reading old state with the new schema, which fails silently or produces corrupt state.
+Always increment `SchemaVersion` in SDKv2 or the schema `Version` in the Plugin Framework when making incompatible schema changes. Forgetting this causes Terraform to try reading old state with the new schema, which can return errors or produce incorrect state.
 
 Write migration functions that handle missing and null values. Old state might not have attributes that were added in intermediate versions.
 
