@@ -8,7 +8,7 @@ Description: Speed up Terraform operations by optimizing backend configuration, 
 
 ---
 
-Every Terraform operation starts by reading the state file from the backend. If the backend is slow, everything is slow. A 50 MB state file stored in an S3 bucket in a different region from your CI/CD runner adds seconds of latency to every plan and apply. Multiply that by dozens of runs per day, and you are looking at real productivity loss.
+Every Terraform plan or apply starts by reading the state file from the backend. If the backend is slow, everything is slow. A 50 MB state file stored in an S3 bucket in a different region from your CI/CD runner adds seconds of latency to every plan and apply. Multiply that by dozens of runs per day, and you are looking at real productivity loss.
 
 This guide covers how to optimize Terraform backend access for speed, reliability, and cost.
 
@@ -21,12 +21,12 @@ During a typical Terraform run, the backend is accessed multiple times:
 3. **State write**: After apply, the updated state is uploaded
 4. **Lock release**: The lock is released
 
-For an S3 backend with DynamoDB locking, this means:
+For an S3 backend with native S3 locking, this means:
 
-- 1 DynamoDB `PutItem` (acquire lock)
+- 1 S3 lock-file write (acquire lock)
 - 1 S3 `GetObject` (read state)
 - 1 S3 `PutObject` (write state, during apply)
-- 1 DynamoDB `DeleteItem` (release lock)
+- 1 S3 lock-file delete (release lock)
 
 Each of these operations has latency. The state read is usually the slowest because it transfers the most data.
 
@@ -61,7 +61,7 @@ The latency difference can be 50-200ms per request. For a plan that reads state 
 
 ### Enable Encryption with S3-Managed Keys
 
-SSE-S3 encryption has minimal performance overhead compared to KMS encryption, which requires an additional API call per state operation:
+SSE-S3 encryption has minimal performance overhead compared to KMS encryption, which requires AWS KMS permissions and can add KMS request overhead:
 
 ```hcl
 terraform {
@@ -76,7 +76,7 @@ terraform {
 }
 ```
 
-If you must use KMS, cache the key to reduce API calls:
+If you must use KMS, specify the key explicitly and make sure the Terraform credentials have `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` permissions:
 
 ```hcl
 terraform {
@@ -90,14 +90,28 @@ terraform {
 }
 ```
 
-### Use DynamoDB On-Demand for Locking
+### Use S3 Native Locking
 
-For DynamoDB tables used for state locking, on-demand capacity mode avoids throttling during bursts:
+For the S3 backend, use native S3 state locking when possible:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}
+```
+
+Older S3 backend configurations often used DynamoDB for state locking. That argument is deprecated, but if you are maintaining a legacy lock table, on-demand capacity mode helps absorb bursts:
 
 ```hcl
 resource "aws_dynamodb_table" "terraform_locks" {
   name         = "terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"  # On-demand, no throttling
+  billing_mode = "PAY_PER_REQUEST"  # On-demand capacity for bursty locking
   hash_key     = "LockID"
 
   attribute {
@@ -153,12 +167,12 @@ resource "aws_s3_object" "config" {
   content = file("large-config.json")  # Stored in state!
 }
 
-# Better: Use content_base64 or reference an external file
+# Better: Reference an external file
 resource "aws_s3_object" "config" {
   bucket = aws_s3_bucket.config.id
   key    = "config.json"
   source = "large-config.json"
-  etag   = filemd5("large-config.json")
+  source_hash = filemd5("large-config.json")
 }
 ```
 
@@ -180,7 +194,7 @@ terraform {
 Terraform Cloud benefits include:
 
 - State is stored close to execution infrastructure
-- Incremental state updates (only changed parts are transmitted)
+- Intermediate state versions are created during runs for recovery
 - Built-in locking without extra infrastructure
 - State versioning and rollback
 
@@ -196,8 +210,8 @@ terraform {
     container_name       = "production"
     key                  = "terraform.tfstate"
 
-    # Use SAS token instead of storage key for better security and performance
-    # SAS tokens can be scoped and cached
+    # Use SAS token or Microsoft Entra ID auth instead of storage keys
+    # for more scoped authentication
   }
 }
 ```
@@ -287,10 +301,10 @@ Backend failures (network issues, S3 outages) can block all Terraform operations
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
 
     # Enable versioning for state file recovery
     # (configured on the S3 bucket, not here)
@@ -313,6 +327,6 @@ If state gets corrupted, you can roll back to a previous version.
 
 ## Summary
 
-Backend optimization is about reducing latency between Terraform and state storage. Put state in the same region as your runners, keep state files small, use appropriate DynamoDB capacity for locking, and consider Terraform Cloud for managed optimization. These changes are easy to implement and provide consistent speed improvements across every Terraform operation.
+Backend optimization is about reducing latency between Terraform and state storage. Put state in the same region as your runners, keep state files small, use native backend locking where available, and consider Terraform Cloud for managed optimization. These changes are easy to implement and provide consistent speed improvements across every Terraform operation.
 
 For monitoring your Terraform backend infrastructure and overall service health, [OneUptime](https://oneuptime.com) provides comprehensive observability and alerting across your cloud stack.
