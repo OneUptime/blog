@@ -144,16 +144,19 @@ jobs:
         run: |
           terraform plan -out=tfplan -no-color 2>&1 | tee plan-output.txt
           terraform show -json tfplan > plan.json
+          date +%s > tfplan.created_at
 
       # Upload plan files as artifacts
       - name: Upload Plan Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
+          include-hidden-files: true
           path: |
             tfplan
             plan-output.txt
             plan.json
+            tfplan.created_at
             .terraform.lock.hcl
           retention-days: 5
 
@@ -176,7 +179,7 @@ jobs:
 
       # Apply the saved plan - no recalculation
       - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply tfplan
 ```
 
 ### GitLab CI
@@ -194,12 +197,13 @@ plan:
     - terraform init
     - terraform plan -out=tfplan -no-color | tee plan-output.txt
     - terraform show -json tfplan > plan.json
+    - date +%s > tfplan.created_at
   artifacts:
     paths:
       - tfplan
       - plan-output.txt
       - plan.json
-      - .terraform/
+      - tfplan.created_at
       - .terraform.lock.hcl
     expire_in: 1 week
 
@@ -210,7 +214,7 @@ apply:
     - plan
   script:
     - terraform init
-    - terraform apply -auto-approve tfplan
+    - terraform apply tfplan
   environment:
     name: production
   when: manual  # Require manual trigger
@@ -251,10 +255,15 @@ A saved plan can become stale if infrastructure changes between plan and apply. 
 But you should also add your own staleness checks:
 
 ```yaml
+# Generate timestamp during plan and upload it with the plan artifact
+- name: Record Plan Creation Time
+  run: date +%s > tfplan.created_at
+
+# Verify during apply
 - name: Check Plan Age
   run: |
-    # Get plan creation time from artifact metadata
-    PLAN_AGE_HOURS=$(( ($(date +%s) - $(stat -c %Y tfplan)) / 3600 ))
+    PLAN_CREATED_AT=$(cat tfplan.created_at)
+    PLAN_AGE_HOURS=$(( ($(date +%s) - PLAN_CREATED_AT) / 3600 ))
 
     if [ "$PLAN_AGE_HOURS" -gt 24 ]; then
       echo "ERROR: Plan is $PLAN_AGE_HOURS hours old. Please re-run plan."
