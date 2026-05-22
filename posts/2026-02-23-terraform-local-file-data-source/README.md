@@ -30,10 +30,13 @@ After reading the file, you can access:
 
 - `content` - The raw content of the file as a string
 - `content_base64` - The content encoded as base64
+- `content_base64sha256` - Base64-encoded SHA256 hash of the content
+- `content_base64sha512` - Base64-encoded SHA512 hash of the content
 - `content_md5` - MD5 hash of the content
 - `content_sha1` - SHA1 hash of the content
 - `content_sha256` - SHA256 hash of the content
-- `id` - The file path (same as `filename`)
+- `content_sha512` - SHA512 hash of the content
+- `id` - The hexadecimal SHA1 hash of the content
 
 ```hcl
 data "local_file" "certificate" {
@@ -150,9 +153,9 @@ resource "aws_instance" "web" {
 }
 ```
 
-### Using Base64 Content for Binary Files
+### Using Base64 Hashes for Binary Files
 
-When you need to upload binary content, use the base64 encoding:
+When you need a hash for binary content, use the base64-encoded SHA256 checksum:
 
 ```hcl
 data "local_file" "lambda_zip" {
@@ -163,10 +166,10 @@ resource "aws_lambda_function" "app" {
   function_name = "my-function"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
 
   # Use the content hash for change detection
-  source_code_hash = data.local_file.lambda_zip.content_base64
+  source_code_hash = data.local_file.lambda_zip.content_base64sha256
 
   filename = data.local_file.lambda_zip.filename
 }
@@ -179,7 +182,7 @@ data "local_file" "k8s_config" {
   filename = "${path.module}/manifests/deployment.yaml"
 }
 
-# Parse YAML (requires Terraform 1.0+)
+# Parse YAML
 
 locals {
   deployment = yamldecode(data.local_file.k8s_config.content)
