@@ -8,7 +8,7 @@ Description: Learn how to configure run tasks in HCP Terraform to integrate thir
 
 ---
 
-Run tasks let you plug external tools into the HCP Terraform run lifecycle. When Terraform plans your changes, run tasks send the plan data to external services for analysis. Security scanners can check for misconfigurations. Cost management tools can estimate spending. Compliance platforms can verify policy adherence. The external service responds with a pass, fail, or advisory result that HCP Terraform uses to gate the apply.
+Run tasks let you plug external tools into the HCP Terraform run lifecycle. When a run reaches a configured run task stage, HCP Terraform sends run data to external services for analysis. Security scanners can check for misconfigurations. Cost management tools can estimate spending. Compliance platforms can verify policy adherence. The external service responds with a passed, failed, or running result that HCP Terraform evaluates with the task's enforcement level.
 
 This guide covers how to configure run tasks, integrate common tools, and build custom run task handlers.
 
@@ -17,17 +17,18 @@ This guide covers how to configure run tasks, integrate common tools, and build 
 The lifecycle is:
 
 1. HCP Terraform starts a plan
-2. After the plan completes, it sends a webhook to each configured run task
-3. The webhook includes a callback URL and the plan details
-4. The external service processes the plan and sends results back via the callback
+2. When the run reaches a configured run task stage, it sends a webhook to each run task for that stage
+3. The webhook includes a callback URL and run details, including a plan JSON URL for post-plan, pre-apply, and post-apply tasks
+4. The external service processes the run data and sends results back via the callback
 5. HCP Terraform collects results from all run tasks
-6. If any mandatory run task fails, the apply is blocked
-7. If all pass (or only advisory tasks fail), the run proceeds
+6. If any mandatory run task fails before apply, the apply is blocked
+7. If all pass (or only advisory tasks fail before apply), the run proceeds
 
 Run tasks execute in a specific phase:
 - **Pre-plan** - Before Terraform creates the plan
 - **Post-plan** - After the plan, before apply confirmation
 - **Pre-apply** - After confirmation, before the apply starts
+- **Post-apply** - After the apply completes
 
 ## Creating a Run Task
 
@@ -64,7 +65,7 @@ resource "tfe_workspace_run_task" "prod_security" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.security_scan.id
   enforcement_level = "mandatory"   # "advisory" or "mandatory"
-  stage             = "post_plan"   # "pre_plan", "post_plan", or "pre_apply"
+  stages            = ["post_plan"] # "pre_plan", "post_plan", "pre_apply", or "post_apply"
 }
 ```
 
@@ -82,6 +83,7 @@ curl \
       "attributes": {
         "name": "security-scanner",
         "url": "https://scanner.example.com/terraform-callback",
+        "category": "task",
         "hmac-key": "your-hmac-key",
         "enabled": true
       }
@@ -103,7 +105,7 @@ resource "tfe_workspace_run_task" "security" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.security_scan.id
   enforcement_level = "mandatory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 
 # Cost estimation is advisory - shows info but does not block
@@ -111,7 +113,7 @@ resource "tfe_workspace_run_task" "cost" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.cost_estimator.id
   enforcement_level = "advisory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
@@ -125,7 +127,7 @@ Snyk provides a native HCP Terraform integration for scanning Terraform plans fo
 resource "tfe_organization_run_task" "snyk" {
   name         = "snyk-iac"
   organization = var.organization
-  url          = "https://api.snyk.io/v1/terraform-cloud"
+  url          = var.snyk_endpoint_url
   hmac_key     = var.snyk_hmac_key
   enabled      = true
 }
@@ -134,7 +136,7 @@ resource "tfe_workspace_run_task" "snyk_prod" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.snyk.id
   enforcement_level = "mandatory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
@@ -160,7 +162,7 @@ Infracost estimates the cost impact of infrastructure changes:
 resource "tfe_organization_run_task" "infracost" {
   name         = "infracost"
   organization = var.organization
-  url          = "https://dashboard.api.infracost.io/tfc/run-task"
+  url          = var.infracost_endpoint_url
   hmac_key     = var.infracost_hmac_key
   enabled      = true
 }
@@ -170,7 +172,7 @@ resource "tfe_workspace_run_task" "infracost_prod" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.infracost.id
   enforcement_level = "advisory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
@@ -292,7 +294,7 @@ resource "tfe_workspace_run_task" "security_all_prod" {
   workspace_id      = each.value
   task_id           = tfe_organization_run_task.security_scan.id
   enforcement_level = "mandatory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
