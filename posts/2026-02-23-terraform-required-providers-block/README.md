@@ -183,7 +183,7 @@ terraform {
 }
 ```
 
-For modules, using `>=` instead of `~>` gives the calling configuration more flexibility. The root module sets the exact constraint, and child modules just state the minimum they need.
+For modules, using `>=` instead of `~>` gives the calling configuration more flexibility. The root module sets the upper-bounded constraint, and child modules just state the minimum they need.
 
 ```hcl
 # Root module - strict version
@@ -191,7 +191,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.31"  # specific constraint
+      version = "~> 5.31.0"  # specific constraint
     }
   }
 }
