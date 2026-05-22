@@ -14,13 +14,13 @@ This guide covers what to back up, how to do it, and how to verify that your bac
 
 ## What Needs to Be Backed Up
 
-TFE stores data in three places, and all three need to be included in your backup strategy:
+For external-services deployments, TFE stores persistent application data in three places, and all three need to be included in your backup strategy:
 
 1. **PostgreSQL database**: Contains workspace configurations, user accounts, team memberships, organization settings, run metadata, and policy data.
 2. **Object storage**: Contains Terraform state files, plan outputs, configuration versions, and policy bundles.
 3. **TFE configuration**: Environment variables, TLS certificates, license file, and Docker Compose or Helm configuration.
 
-Missing any one of these makes a full recovery impossible.
+If you configured Terraform Enterprise with an external Vault server, include that Vault backup in the same recovery plan. Missing any one of these applicable components makes a full recovery impossible.
 
 ## Backing Up PostgreSQL
 
@@ -36,7 +36,7 @@ Missing any one of these makes a full recovery impossible.
 BACKUP_DIR="/opt/tfe-backups/postgres"
 RETENTION_DAYS=30
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="${BACKUP_DIR}/tfe_postgres_${TIMESTAMP}.sql.gz"
+BACKUP_FILE="${BACKUP_DIR}/tfe_postgres_${TIMESTAMP}.dump"
 
 # Database connection details
 DB_HOST="tfe-postgres.abc123.us-east-1.rds.amazonaws.com"
@@ -67,7 +67,7 @@ if [ $? -eq 0 ]; then
   aws s3 cp "${BACKUP_FILE}" "s3://tfe-backups-bucket/postgres/${TIMESTAMP}/"
 
   # Clean up old local backups
-  find "${BACKUP_DIR}" -name "*.sql.gz" -mtime +${RETENTION_DAYS} -delete
+  find "${BACKUP_DIR}" -name "*.dump" -mtime +${RETENTION_DAYS} -delete
 else
   echo "[${TIMESTAMP}] BACKUP FAILED" >> "${BACKUP_DIR}/backup.log"
   # Send an alert - this is critical
@@ -122,10 +122,23 @@ resource "aws_s3_bucket_versioning" "tfe_backup" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "tfe_primary" {
+  bucket = aws_s3_bucket.tfe_primary.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # Replication configuration on the primary bucket
 resource "aws_s3_bucket_replication_configuration" "tfe_replication" {
   bucket = aws_s3_bucket.tfe_primary.id
   role   = aws_iam_role.tfe_replication.arn
+
+  depends_on = [
+    aws_s3_bucket_versioning.tfe_primary,
+    aws_s3_bucket_versioning.tfe_backup
+  ]
 
   rule {
     id     = "replicate-all"
@@ -138,6 +151,13 @@ resource "aws_s3_bucket_replication_configuration" "tfe_replication" {
       # Encrypt replicated objects with a different KMS key
       encryption_configuration {
         replica_kms_key_id = aws_kms_key.backup_region.arn
+      }
+    }
+
+    # Required when source objects are encrypted with SSE-KMS.
+    source_selection_criteria {
+      sse_kms_encrypted_objects {
+        status = "Enabled"
       }
     }
   }
@@ -158,6 +178,7 @@ aws s3 sync \
 az storage blob copy start-batch \
   --destination-container tfe-objects-backup \
   --account-name tfebackupaccount \
+  --account-key "${DESTINATION_KEY}" \
   --source-container tfe-objects \
   --source-account-name tfestorageaccount \
   --source-account-key "${SOURCE_KEY}"
@@ -197,6 +218,11 @@ curl -s \
   https://tfe.example.com/api/v2/admin/organizations \
   > "${TEMP_DIR}/organizations.json"
 
+curl -s \
+  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
+  https://tfe.example.com/api/v2/admin/workspaces \
+  > "${TEMP_DIR}/workspaces.json"
+
 # Create encrypted archive
 tar czf - -C "${TEMP_DIR}" . | \
   openssl enc -aes-256-cbc -salt -pbkdf2 \
@@ -235,25 +261,22 @@ log "Starting full TFE backup"
 
 # Step 1: Back up PostgreSQL
 log "Backing up PostgreSQL database..."
-/opt/tfe-backups/scripts/backup-tfe-postgres.sh
-if [ $? -ne 0 ]; then
+if ! /opt/tfe-backups/scripts/backup-tfe-postgres.sh; then
   log "ERROR: PostgreSQL backup failed"
   exit 1
 fi
 
 # Step 2: Back up object storage
 log "Syncing object storage..."
-aws s3 sync s3://tfe-object-storage-prod s3://tfe-object-storage-backup \
-  --quiet 2>> "${LOG_FILE}"
-if [ $? -ne 0 ]; then
+if ! aws s3 sync s3://tfe-object-storage-prod s3://tfe-object-storage-backup \
+  --quiet 2>> "${LOG_FILE}"; then
   log "ERROR: Object storage sync failed"
   exit 1
 fi
 
 # Step 3: Back up configuration
 log "Backing up TFE configuration..."
-/opt/tfe-backups/scripts/backup-tfe-config.sh
-if [ $? -ne 0 ]; then
+if ! /opt/tfe-backups/scripts/backup-tfe-config.sh; then
   log "ERROR: Configuration backup failed"
   exit 1
 fi
@@ -265,7 +288,7 @@ Set up the cron job:
 
 ```bash
 # Run full backup daily at 2 AM
-echo "0 2 * * * /opt/tfe-backups/scripts/full-tfe-backup.sh" | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/tfe-backups/scripts/full-tfe-backup.sh") | crontab -
 ```
 
 ## Recovery Procedures
@@ -282,7 +305,7 @@ PGPASSWORD="${DB_PASSWORD}" pg_restore \
   --clean \
   --if-exists \
   --verbose \
-  "/opt/tfe-backups/postgres/tfe_postgres_20260223.sql.gz"
+  "/opt/tfe-backups/postgres/tfe_postgres_20260223_020000.dump"
 
 # Restore from an RDS snapshot
 aws rds restore-db-instance-from-db-snapshot \
