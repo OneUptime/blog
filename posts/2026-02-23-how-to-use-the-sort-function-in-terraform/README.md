@@ -49,7 +49,7 @@ Since `sort` uses lexicographic ordering (not numerical ordering), the results c
 ]
 ```
 
-Notice that `"10"` comes before `"2"` because the character `"1"` comes before `"2"` in the ASCII table. If you need numerical sorting, you will need to pad your numbers or use a different approach.
+Notice that `"10"` comes before `"2"` because the Unicode code point for `"1"` comes before the code point for `"2"`. If you need numerical sorting, you will need to pad your numbers or use a different approach.
 
 ```hcl
 # Zero-padded strings sort correctly
@@ -168,6 +168,7 @@ variable "instance_types" {
 }
 
 locals {
+  # keys already returns map keys in lexicographical order; sort makes that explicit
   sorted_env_names = sort(keys(var.instance_types))
   # Result: ["development", "production", "staging"]
 }
@@ -240,8 +241,8 @@ locals {
   # ["00022", "00080", "00443", "03306", "08080"]
 
   # Strip the padding back off
-  sorted_ports = [for p in local.sorted_padded : trimprefix(p, "0")]
-  # Note: This simplified trimming may need adjustment for your use case
+  sorted_ports = [for p in local.sorted_padded : tostring(tonumber(p))]
+  # ["22", "80", "443", "3306", "8080"]
 }
 ```
 
