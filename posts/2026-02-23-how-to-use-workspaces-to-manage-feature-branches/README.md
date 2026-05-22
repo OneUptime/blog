@@ -69,7 +69,7 @@ terraform {
     bucket               = "myapp-terraform-state"
     key                  = "terraform.tfstate"
     region               = "us-east-1"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
     workspace_key_prefix = "feature-envs"
   }
 }
@@ -113,7 +113,7 @@ resource "aws_subnet" "feature" {
   }
 }
 
-# Random integer to avoid CIDR conflicts between branches
+# Random integer to reduce CIDR overlap risk between branches
 resource "random_integer" "subnet" {
   min = 100
   max = 250
@@ -323,10 +323,15 @@ deploy_feature:
   stage: deploy
   script:
     - terraform apply -auto-approve
-    - echo "Environment URL:" $(terraform output -raw url)
+    - FEATURE_ENV_URL=$(terraform output -raw url)
+    - echo "Environment URL:" "$FEATURE_ENV_URL"
+    - echo "FEATURE_ENV_URL=$FEATURE_ENV_URL" > deploy.env
+  artifacts:
+    reports:
+      dotenv: deploy.env
   environment:
     name: review/$CI_COMMIT_REF_SLUG
-    url: $(terraform output -raw url)
+    url: $FEATURE_ENV_URL
     on_stop: destroy_feature
   only:
     - branches
