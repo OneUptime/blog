@@ -14,9 +14,9 @@ Ephemeral containers are a Kubernetes feature (GA since 1.25) that lets you add 
 
 Ephemeral containers are a special type of container that you can add to a running pod through the `kubectl debug` command. They differ from regular containers in several ways:
 
-- They're not part of the pod spec and aren't restarted if they exit
-- They can't have ports, readiness probes, or resource limits
-- They share the pod's network namespace and storage volumes
+- They're added under `spec.ephemeralContainers`, not `spec.containers`, and aren't restarted if they exit
+- They can't have ports, readiness probes, or resource requests or limits
+- They share the pod's network namespace; they don't automatically get the target container's filesystem or volume mounts
 - They're designed purely for debugging
 
 ## Basic Usage with Istio Pods
@@ -27,7 +27,7 @@ To add a debug container to an Istio-enabled pod:
 kubectl debug -it deploy/my-app --image=nicolaka/netshoot --target=my-app -- /bin/bash
 ```
 
-The `--target=my-app` flag makes the ephemeral container share the process namespace with your application container, so you can see your app's processes.
+The `--target=my-app` flag asks the runtime to run the ephemeral container in the process namespace of your application container, so you can see your app's processes when the container runtime supports it.
 
 This gives you a shell with networking tools (curl, nslookup, tcpdump, etc.) inside the pod's network namespace, which is the same namespace the Istio sidecar uses.
 
@@ -47,7 +47,7 @@ To see the iptables rules that Istio set up:
 kubectl debug -it deploy/my-app --image=nicolaka/netshoot -- iptables -t nat -L -n
 ```
 
-Note: You need the `NET_ADMIN` capability to view iptables rules. If your cluster doesn't allow this, you can still see the rules through the sidecar:
+Note: You generally need the `NET_ADMIN` capability to inspect iptables rules. If your cluster doesn't allow this for the debug container, try the sidecar container instead:
 
 ```bash
 kubectl exec -it deploy/my-app -c istio-proxy -- iptables -t nat -L -n
@@ -61,11 +61,11 @@ You can also target the sidecar container directly:
 kubectl debug -it deploy/my-app --image=nicolaka/netshoot --target=istio-proxy -- /bin/bash
 ```
 
-This is useful when you want to see the sidecar's processes or file system. From inside, you can inspect the Envoy configuration files:
+This is useful when you want to see the sidecar's processes. It does not give the debug container access to the sidecar's filesystem. To inspect files inside the sidecar container, use `kubectl exec`:
 
 ```bash
-ls /etc/istio/proxy/
-cat /etc/istio/proxy/envoy_bootstrap_tmpl.json
+kubectl exec -it deploy/my-app -c istio-proxy -- ls /etc/istio/proxy/
+kubectl exec -it deploy/my-app -c istio-proxy -- cat /etc/istio/proxy/envoy_bootstrap_tmpl.json
 ```
 
 ## Testing Connectivity from Inside the Mesh
@@ -77,9 +77,9 @@ kubectl debug -it deploy/my-app --image=curlimages/curl -- \
   curl -v http://other-service.default.svc.cluster.local:8080/health
 ```
 
-This request goes through the full Istio pipeline: iptables redirect, outbound listener, route matching, mTLS, etc. If it works here but not from your application, the problem is in your application code.
+This request goes through the Istio outbound path: iptables redirect, outbound listener, route matching, mTLS origination when configured, etc. If it works here but not from your application, the problem is likely in your application code or in differences between the debug container and application container.
 
-To test without going through the sidecar (to rule out Istio issues), use an IP that's excluded from capture:
+To test without going through the sidecar (to rule out Istio issues), use an IP range or port that you have explicitly excluded from sidecar capture. For example, if `10.96.0.15` is in `traffic.sidecar.istio.io/excludeOutboundIPRanges`:
 
 ```bash
 kubectl debug -it deploy/my-app --image=nicolaka/netshoot -- \
@@ -100,26 +100,26 @@ Check the DNS configuration:
 kubectl debug -it deploy/my-app --image=nicolaka/netshoot -- cat /etc/resolv.conf
 ```
 
-If DNS proxy is enabled, you'll see the nameserver pointing to the sidecar. Test resolution through the sidecar directly:
+If DNS proxy is enabled, DNS requests are redirected to the sidecar or ztunnel even though `/etc/resolv.conf` may still point at the cluster DNS server. Test normal resolution from the pod:
 
 ```bash
-kubectl debug -it deploy/my-app --image=nicolaka/netshoot -- dig @localhost my-service.default.svc.cluster.local
+kubectl debug -it deploy/my-app --image=nicolaka/netshoot -- dig my-service.default.svc.cluster.local
 ```
 
 ## Inspecting mTLS Traffic
 
-To verify that mTLS is working, you can use openssl from an ephemeral container:
+An ephemeral container sends application traffic into the local sidecar; it does not perform Istio mTLS itself. To inspect the certificates presented on an mTLS connection, run `openssl` from the `istio-proxy` container:
 
 ```bash
-kubectl debug -it deploy/my-app --image=nicolaka/netshoot -- \
+kubectl exec -it deploy/my-app -c istio-proxy -- \
   openssl s_client -connect other-service.default.svc.cluster.local:8080 -showcerts
 ```
 
 You can also check the certificates the sidecar is using:
 
 ```bash
-kubectl debug -it deploy/my-app --image=nicolaka/netshoot --target=istio-proxy -- \
-  cat /var/run/secrets/istio/root-cert.pem
+kubectl exec -it deploy/my-app -c istio-proxy -- \
+  pilot-agent request GET /certs
 ```
 
 ## Ephemeral Container Traffic and Istio
@@ -139,28 +139,25 @@ Direct localhost connections bypass Envoy's capture rules.
 
 ## Copying the Debug Profile
 
-If you frequently debug Istio pods, create a reusable debug profile:
+If you frequently debug Istio pods, create a reusable custom debug profile for `kubectl debug`:
 
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: debug-template
-spec:
-  ephemeralContainers:
-  - name: debug
-    image: nicolaka/netshoot
-    command: ["/bin/bash"]
-    stdin: true
-    tty: true
-    securityContext:
-      capabilities:
-        add:
-        - NET_ADMIN
-        - NET_RAW
+stdin: true
+tty: true
+securityContext:
+  capabilities:
+    add:
+    - NET_ADMIN
+    - NET_RAW
 ```
 
-You can use the `--profile` flag with kubectl debug for predefined profiles:
+You can apply the file with `--custom`:
+
+```bash
+kubectl debug -it deploy/my-app --image=nicolaka/netshoot --profile=general --custom=debug-profile.yaml -- /bin/bash
+```
+
+You can also use the `--profile` flag with kubectl debug for predefined profiles:
 
 ```bash
 kubectl debug -it deploy/my-app --image=nicolaka/netshoot --profile=netadmin -- /bin/bash
@@ -227,7 +224,7 @@ A few things to keep in mind:
 
 1. Ephemeral containers can't be removed once added to a pod
 2. They don't support resource limits, so be careful with memory-intensive tools
-3. The `--target` flag for process namespace sharing requires Kubernetes 1.25+
+3. The `--target` flag for process namespace sharing depends on container runtime support
 4. Some cluster security policies may restrict ephemeral container usage
 5. The ephemeral container doesn't have the same service account tokens as your application by default
 
