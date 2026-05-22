@@ -8,15 +8,15 @@ Description: Learn how to configure Envoy proxy concurrency settings in Istio to
 
 ---
 
-Envoy proxy runs as a sidecar alongside every pod in your Istio mesh, and one of the most impactful performance knobs you can turn is the concurrency setting. Concurrency controls how many worker threads Envoy uses to process requests, and getting it wrong can mean wasted CPU or bottlenecked traffic.
+In Istio sidecar mode, Envoy proxy runs alongside every pod in your mesh, and one of the most impactful performance knobs you can turn is the concurrency setting. Concurrency controls how many worker threads Envoy uses to process requests, and getting it wrong can mean wasted CPU or bottlenecked traffic.
 
-By default, Istio configures Envoy to use 2 worker threads. That works fine for most workloads, but if you're running high-throughput services or you've allocated significant CPU to your pods, you might want to tune this number.
+By default, Istio leaves concurrency unset and automatically determines it from the proxy container's CPU requests and limits. That works fine for most workloads, but if you're running high-throughput services or you've allocated significant CPU to your proxies, you might want to tune this number.
 
 ## What Concurrency Actually Controls
 
 Envoy uses an event-driven architecture. Each worker thread runs its own event loop and handles connections independently. When a request comes in, it gets assigned to one worker thread and stays on that thread for the duration of the connection.
 
-More worker threads means Envoy can handle more concurrent connections in parallel - up to a point. Each thread consumes memory and CPU, so there's a tradeoff. Setting concurrency to 0 tells Envoy to match the number of available CPU cores, which sounds great but can cause problems in containerized environments where CPU limits don't always map cleanly to cores.
+More worker threads means Envoy can handle more concurrent connections in parallel - up to a point. Each thread consumes memory and CPU, so there's a tradeoff. Leaving concurrency unset lets Istio size it from the proxy CPU requests and limits. Setting concurrency to 0 tells Envoy to use all cores on the machine, ignoring CPU requests and limits, which can cause problems in containerized environments.
 
 ## Configuring Concurrency Globally
 
@@ -104,7 +104,7 @@ This sets the Envoy sidecar for this specific deployment to use 8 worker threads
 
 ## Setting Concurrency to Zero
 
-When you set concurrency to 0, Envoy tries to detect the number of CPUs available and creates that many worker threads. In Kubernetes, this detection relies on the CPU limits set on the sidecar container.
+When you set concurrency to 0, Envoy uses all cores on the machine and ignores the CPU requests or limits set on the sidecar container. In Kubernetes, this can create many more worker threads than you intended if the node has far more cores than the proxy should use.
 
 ```yaml
 apiVersion: apps/v1
@@ -117,20 +117,19 @@ spec:
       annotations:
         proxy.istio.io/config: |
           concurrency: 0
-        sidecar.istio.io/proxyCPULimit: "4"
     spec:
       containers:
       - name: app
         image: my-app:latest
 ```
 
-With `concurrency: 0` and a CPU limit of 4, Envoy will create 4 worker threads. Be careful with this approach though - if you don't set explicit CPU limits on the sidecar, Envoy might see all the node's CPUs and create way more threads than you intended.
+With `concurrency: 0`, Envoy will create one worker thread for each core on the node. Be careful with this approach - for most Kubernetes sidecars, leaving concurrency unset is safer because Istio can size it from the proxy's CPU requests and limits.
 
 ## How to Choose the Right Value
 
 Here's a practical approach to picking the right concurrency value:
 
-**Start with 2 (the default).** For most services handling moderate traffic, 2 worker threads is plenty. Envoy is extremely efficient, and a single thread can handle thousands of concurrent connections.
+**Start with the automatic default.** For most services handling moderate traffic, Istio's automatically selected value is plenty. Envoy is extremely efficient, and a single thread can handle thousands of concurrent connections.
 
 **Monitor first.** Before changing anything, check your current Envoy resource usage:
 
@@ -173,7 +172,7 @@ kubectl exec -it <pod-name> -c istio-proxy -n <namespace> -- curl -s localhost:1
 Key metrics to watch in your monitoring system (Prometheus/Grafana):
 
 - `envoy_server_concurrency` - the configured number of worker threads
-- `envoy_server_total_connections` - total active connections
+- `envoy_server_total_connections` - total connections across Envoy hot-restart generations
 - `envoy_http_downstream_rq_time` - request latency
 - CPU usage of the istio-proxy container
 
@@ -181,7 +180,7 @@ If latency drops and throughput increases without a proportional spike in CPU us
 
 ## Common Pitfalls
 
-**Forgetting to set CPU limits.** When using `concurrency: 0`, Envoy looks at CPU limits to determine thread count. Without limits, it might detect all node CPUs and create dozens of threads.
+**Using `concurrency: 0` when you meant automatic sizing.** When `concurrency` is unset, Istio uses CPU requests and limits to determine thread count. When it is set to 0, Envoy uses all machine cores and ignores those requests and limits.
 
 **Not restarting pods.** Changing the MeshConfig or ConfigMap doesn't automatically update running sidecars. You need to restart your workloads.
 
@@ -191,7 +190,7 @@ If latency drops and throughput increases without a proportional spike in CPU us
 
 ## A Realistic Example
 
-Say you have a payment processing service that handles 10,000 requests per second. The default concurrency of 2 is causing occasional latency spikes during peak hours.
+Say you have a payment processing service that handles 10,000 requests per second. The automatically selected concurrency is causing occasional latency spikes during peak hours.
 
 ```yaml
 apiVersion: apps/v1
@@ -219,6 +218,6 @@ spec:
             memory: "1Gi"
 ```
 
-With this setup, each sidecar gets 4 worker threads backed by 4 CPU cores, giving you ample headroom for high-throughput traffic without wasting resources.
+With this setup, each sidecar gets 4 worker threads and a CPU limit of 4, giving you ample headroom for high-throughput traffic without wasting resources.
 
 Concurrency is one of those settings that most people never need to touch, but when you do need it, it makes a big difference. Start with monitoring, identify whether Envoy CPU is actually a bottleneck, and then adjust incrementally.
