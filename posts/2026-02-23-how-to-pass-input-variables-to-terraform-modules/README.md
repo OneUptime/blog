@@ -207,7 +207,7 @@ module "app" {
 }
 ```
 
-The `optional()` function (available in Terraform 1.3+) lets you define fields that have their own defaults within an object type, so callers do not need to specify every field.
+The `optional()` modifier (available in Terraform 1.3+) lets you define fields that have their own defaults within an object type, so callers do not need to specify every field.
 
 ### Lists of Objects
 
@@ -289,7 +289,7 @@ variable "cidr_block" {
 }
 ```
 
-Validation runs before any resources are planned, so callers get immediate feedback about invalid configurations.
+Validation runs while Terraform creates a plan, so callers get immediate feedback about invalid configurations before Terraform finishes planning.
 
 ## Passing Variables Through Multiple Levels
 
@@ -359,7 +359,7 @@ When Terraform plans or applies, it replaces the value with `(sensitive value)` 
 
 ## Nullable Variables
 
-By default, variables cannot be set to `null` unless you explicitly allow it:
+By default, variables can be set to `null`. Setting `nullable = true` makes that intent explicit, and setting `nullable = false` prevents callers from passing `null`:
 
 ```hcl
 variable "custom_domain" {
