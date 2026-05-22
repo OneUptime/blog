@@ -16,7 +16,7 @@ This guide walks through the different subcommands under `terraform providers`, 
 
 The `terraform providers` command inspects your Terraform configuration and state to display information about the providers in use. It does not make changes to your infrastructure or your state file. Think of it as a read-only diagnostic tool.
 
-There are three main subcommands:
+The most useful commands in this family are:
 
 - `terraform providers` (the base command) - shows the provider dependency tree
 - `terraform providers schema` - outputs the full schema for all providers
@@ -140,7 +140,7 @@ Mirroring makes sense in a few scenarios:
 terraform providers mirror -platform=linux_amd64 ./terraform-provider-cache
 
 # In your CI config, point Terraform at the local cache
-export TF_CLI_CONFIG_FILE=".terraformrc"
+export TF_CLI_CONFIG_FILE="ci.tfrc"
 ```
 
 ## Debugging Common Provider Issues
@@ -200,12 +200,12 @@ In automated pipelines, the providers command helps with validation and complian
 # Check that no unauthorized providers are in use
 ALLOWED_PROVIDERS="hashicorp/aws hashicorp/random hashicorp/null"
 
-terraform providers -json 2>/dev/null | jq -r '.providers[].namespace + "/" + .providers[].type' | while read provider; do
-  if ! echo "$ALLOWED_PROVIDERS" | grep -q "$provider"; then
+while read -r provider; do
+  if ! printf '%s\n' $ALLOWED_PROVIDERS | grep -Fxq "$provider"; then
     echo "ERROR: Unauthorized provider detected: $provider"
     exit 1
   fi
-done
+done < <(terraform providers schema -json | jq -r '.provider_schemas | keys[] | sub("^registry.terraform.io/"; "")')
 
 echo "All providers are authorized"
 ```
