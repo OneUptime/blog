@@ -45,6 +45,12 @@ In the sidecar approach, the gateway passes the encrypted traffic through, and t
 
 ## Setting Up Sidecar TLS Termination
 
+Istio's sidecar ingress TLS termination is an experimental feature. Enable it when installing Istio:
+
+```bash
+istioctl install --set profile=default --set values.pilot.env.ENABLE_TLS_ON_SIDECAR_INGRESS=true
+```
+
 ### Step 1: Create the Service Certificate Secret
 
 Create a Kubernetes secret with the service's TLS certificate:
@@ -105,9 +111,7 @@ spec:
 
 ### Step 4: Configure the Sidecar to Terminate TLS
 
-Now you need to tell the sidecar proxy to terminate TLS. You do this with a Sidecar resource and an EnvoyFilter, or by configuring the service to handle TLS directly.
-
-The simpler approach is to have your application handle TLS:
+Now you need to tell the sidecar proxy to terminate TLS. First, mount the TLS secret into the `istio-proxy` sidecar. Istio does not currently support `credentialName` in sidecar ingress TLS configuration, so the certificate and key must be available as files:
 
 ```yaml
 apiVersion: apps/v1
@@ -123,30 +127,44 @@ spec:
     metadata:
       labels:
         app: api-service
+      annotations:
+        sidecar.istio.io/userVolume: '{"tls-secret":{"secret":{"secretName":"api-service-tls","optional":true}}}'
+        sidecar.istio.io/userVolumeMount: '{"tls-secret":{"mountPath":"/etc/istio/tls-certs/","readOnly":true}}'
     spec:
       containers:
         - name: api-service
           image: myregistry/api-service:1.0.0
           ports:
-            - containerPort: 8443
-          env:
-            - name: TLS_CERT_PATH
-              value: /etc/tls/tls.crt
-            - name: TLS_KEY_PATH
-              value: /etc/tls/tls.key
-          volumeMounts:
-            - name: tls-certs
-              mountPath: /etc/tls
-              readOnly: true
-      volumes:
-        - name: tls-certs
-          secret:
-            secretName: api-service-tls
+            - containerPort: 8080
+```
+
+Then configure the sidecar ingress listener to accept TLS on the service's target port and forward decrypted traffic to the application:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: api-service-ingress-tls
+  namespace: default
+spec:
+  workloadSelector:
+    labels:
+      app: api-service
+  ingress:
+    - port:
+        number: 8443
+        protocol: HTTPS
+        name: external
+      defaultEndpoint: 127.0.0.1:8080
+      tls:
+        mode: SIMPLE
+        privateKey: /etc/istio/tls-certs/tls.key
+        serverCertificate: /etc/istio/tls-certs/tls.crt
 ```
 
 ### Step 5: Configure the Service Port
 
-Name the port correctly so Istio knows it is TLS:
+Name the port correctly so Istio knows it is HTTPS/TLS and sends the traffic to the sidecar ingress listener:
 
 ```yaml
 apiVersion: v1
@@ -159,10 +177,10 @@ spec:
   ports:
     - port: 8443
       targetPort: 8443
-      name: tls-api
+      name: https-api
 ```
 
-The `tls-` prefix tells Istio that this port carries TLS traffic and should not be intercepted for protocol detection.
+The `https-` or `tls-` prefix tells Istio that this port carries TLS traffic. On sidecars, Istio treats `https` and `tls` ports as encrypted data unless you explicitly configure sidecar ingress TLS termination as shown above.
 
 ## Alternative: Using DestinationRule for Originating TLS
 
@@ -210,7 +228,7 @@ Port 8443 uses standard TLS, while port 8080 uses Istio's automatic mutual TLS.
 
 ## Combining with Istio mTLS
 
-Istio's automatic mTLS works alongside your custom TLS configuration. By default, Istio enables mTLS between sidecars. If you want to disable Istio's mTLS for specific services that handle their own TLS:
+Istio's automatic mTLS works alongside your custom TLS configuration. By default, Istio sidecars automatically use mTLS when calling other workloads, while destination workloads accept both plaintext and mTLS in `PERMISSIVE` mode unless you configure stricter PeerAuthentication policies. If you require `STRICT` mTLS elsewhere and want this externally exposed port to terminate TLS at the sidecar, disable Istio mTLS for that specific workload port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -223,17 +241,17 @@ spec:
     matchLabels:
       app: api-service
   mtls:
-    mode: DISABLE
+    mode: STRICT
   portLevelMtls:
     8443:
       mode: DISABLE
 ```
 
-This tells Istio not to add its own mTLS on port 8443, which would double-encrypt the traffic.
+This tells Istio not to require Istio mTLS on port 8443, where the sidecar is expecting the external TLS handshake instead.
 
 ## Using EnvoyFilter for Advanced TLS at the Sidecar
 
-For more advanced scenarios where you need the sidecar itself (not the application) to terminate TLS, you can use an EnvoyFilter:
+For most sidecar ingress TLS termination scenarios, prefer the `Sidecar` ingress TLS configuration above. If you need custom Envoy behavior beyond what the `Sidecar` API supports, you can use an EnvoyFilter, but the exact patch depends on the listener generated for your Istio version and workload:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -259,17 +277,14 @@ spec:
             typedConfig:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
               commonTlsContext:
-                tlsCertificateSdsSecretConfigs:
-                  - name: api-service-tls
-                    sdsConfig:
-                      apiConfigSource:
-                        apiType: GRPC
-                        grpcServices:
-                          - envoyGrpc:
-                              clusterName: sds-grpc
+                tlsCertificates:
+                  - certificateChain:
+                      filename: /etc/istio/tls-certs/tls.crt
+                    privateKey:
+                      filename: /etc/istio/tls-certs/tls.key
 ```
 
-This is a more complex setup and should only be used when the simpler approaches do not meet your needs.
+This is a more complex setup and should only be used when the supported `Sidecar` TLS settings do not meet your needs. The certificate files still need to be mounted into the `istio-proxy` container.
 
 ## Verifying TLS at the Sidecar
 
@@ -309,6 +324,6 @@ If both Istio mTLS and your custom TLS are active, connections will fail. Disabl
 
 **Certificate not found:**
 
-Make sure the secret is in the same namespace as the pod (for application-level TLS) or in `istio-system` (for gateway-level TLS).
+Make sure the secret is in the same namespace as the pod and mounted into the `istio-proxy` sidecar using `sidecar.istio.io/userVolume` and `sidecar.istio.io/userVolumeMount`. Gateway TLS secrets belong in the gateway workload's namespace, which is often `istio-system` for the default ingress gateway.
 
 Sidecar TLS termination gives you fine-grained control over where encryption happens in your service mesh. It adds complexity compared to gateway-only termination, but for services with specific certificate requirements or compliance needs, it is the right approach.
