@@ -30,8 +30,8 @@ ORAS (OCI Registry as Storage) is the standard tool for pushing non-container OC
 brew install oras
 
 # Linux (amd64)
-curl -LO https://github.com/oras-project/oras/releases/download/v1.2.0/oras_1.2.0_linux_amd64.tar.gz
-tar -zxf oras_1.2.0_linux_amd64.tar.gz
+curl -LO https://github.com/oras-project/oras/releases/download/v1.3.2/oras_1.3.2_linux_amd64.tar.gz
+tar -zxf oras_1.3.2_linux_amd64.tar.gz
 sudo mv oras /usr/local/bin/
 
 # Verify installation
@@ -44,10 +44,11 @@ After building your Wasm binary, push it to your registry:
 
 ```bash
 # Build the plugin
-cargo build --target wasm32-wasi --release
+rustup target add wasm32-wasip1
+cargo build --target wasm32-wasip1 --release
 
 # Optimize (optional)
-wasm-opt -O3 target/wasm32-wasi/release/my_plugin.wasm -o my_plugin.wasm
+wasm-opt -O3 target/wasm32-wasip1/release/my_plugin.wasm -o my_plugin.wasm
 
 # Login to registry
 oras login registry.example.com
@@ -61,7 +62,7 @@ oras push registry.example.com/istio-plugins/my-plugin:latest \
   my_plugin.wasm:application/vnd.module.wasm.content.layer.v1+wasm
 ```
 
-The media type `application/vnd.module.wasm.content.layer.v1+wasm` is the standard media type for Wasm modules in OCI registries.
+The media type `application/vnd.module.wasm.content.layer.v1+wasm` is the Wasm OCI image-spec media type for the compiled module layer.
 
 ## Supported Registries
 
@@ -198,22 +199,22 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        targets: wasm32-wasi
+        targets: wasm32-wasip1
 
     - name: Build
-      run: cargo build --target wasm32-wasi --release
+      run: cargo build --target wasm32-wasip1 --release
 
     - name: Install wasm-opt
       run: |
         sudo apt-get update && sudo apt-get install -y binaryen
 
     - name: Optimize
-      run: wasm-opt -O3 target/wasm32-wasi/release/my_plugin.wasm -o my_plugin.wasm
+      run: wasm-opt -O3 target/wasm32-wasip1/release/my_plugin.wasm -o my_plugin.wasm
 
     - name: Install ORAS
       run: |
-        curl -LO https://github.com/oras-project/oras/releases/download/v1.2.0/oras_1.2.0_linux_amd64.tar.gz
-        tar -zxf oras_1.2.0_linux_amd64.tar.gz
+        curl -LO https://github.com/oras-project/oras/releases/download/v1.3.2/oras_1.3.2_linux_amd64.tar.gz
+        tar -zxf oras_1.3.2_linux_amd64.tar.gz
         sudo mv oras /usr/local/bin/
 
     - name: Login to Registry
@@ -244,10 +245,10 @@ file /tmp/verify/auth.wasm
 
 ## Caching Behavior
 
-Istio caches Wasm binaries to avoid downloading them repeatedly. The caching behavior depends on the `imagePullPolicy`:
+Istio caches Wasm binaries to avoid downloading them repeatedly. The caching behavior depends on the `imagePullPolicy`, unless the module is referenced by digest or the `sha256` field is set:
 
-- **IfNotPresent**: Download once and cache. Subsequent proxy starts use the cached version.
-- **Always**: Check the registry for updates on every proxy start. Downloads only if the digest has changed.
+- **IfNotPresent**: Use the cached module if it is already present locally; otherwise pull it.
+- **Always**: Pull from the source whenever the corresponding WasmPlugin resource is created or changed.
 
 You can force a re-pull by restarting the proxy pods:
 
