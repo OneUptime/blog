@@ -95,7 +95,7 @@ HashiCorp publishes their GPG public key. You need to import it once:
 
 ```bash
 # Download and import HashiCorp's GPG public key
-curl -sL https://www.hashicorp.com/security/hashicorp-security.asc | gpg --import
+curl -sL https://www.hashicorp.com/.well-known/pgp-key.txt | gpg --import
 ```
 
 You can verify the key fingerprint:
@@ -111,7 +111,7 @@ The key fingerprint should match what HashiCorp publishes on their security page
 C874 011F 0AB4 0511 0D02 1055 3436 5D94 72D7 468F
 ```
 
-Always cross-reference this with HashiCorp's official security page at https://www.hashicorp.com/security.
+Always cross-reference this with HashiCorp's official security page at https://www.hashicorp.com/en/trust/security.
 
 ### Verify the Signature
 
@@ -164,11 +164,11 @@ curl -sLO "${BASEURL}/${SIGFILE}"
 
 echo ""
 echo "Importing HashiCorp GPG key..."
-curl -sL https://www.hashicorp.com/security/hashicorp-security.asc | gpg --import 2>/dev/null
+curl -sL https://www.hashicorp.com/.well-known/pgp-key.txt | gpg --import 2>/dev/null
 
 echo ""
 echo "Verifying GPG signature..."
-if gpg --verify "${SIGFILE}" "${SUMSFILE}" 2>&1 | grep -q "Good signature"; then
+if gpg --verify "${SIGFILE}" "${SUMSFILE}"; then
     echo "GPG signature: VALID"
 else
     echo "GPG signature: INVALID - aborting!"
@@ -246,7 +246,7 @@ For even stronger verification in CI/CD, include the GPG check too:
     curl -sLO "https://releases.hashicorp.com/terraform/${VERSION}/terraform_${VERSION}_SHA256SUMS.sig"
 
     # Import GPG key and verify signature
-    curl -sL https://www.hashicorp.com/security/hashicorp-security.asc | gpg --import
+    curl -sL https://www.hashicorp.com/.well-known/pgp-key.txt | gpg --import
     gpg --verify "terraform_${VERSION}_SHA256SUMS.sig" "terraform_${VERSION}_SHA256SUMS"
 
     # Verify checksum
