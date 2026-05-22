@@ -13,7 +13,7 @@ The Telemetry API is Istio's way of letting you configure observability features
 ## Top-Level Structure
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: my-telemetry
@@ -22,10 +22,6 @@ spec:
   selector:
     matchLabels:
       app: my-service
-  targetRef:
-    kind: Service
-    group: ""
-    name: my-service
   tracing:
     - providers:
         - name: zipkin
@@ -52,13 +48,13 @@ Works like other Istio resources. If omitted, the telemetry config applies to al
 
 ```yaml
 spec:
-  targetRef:
-    kind: Gateway
-    group: gateway.networking.k8s.io
-    name: my-gateway
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: my-gateway
 ```
 
-The `targetRef` is for Gateway API integration, mutually exclusive with `selector`.
+The `targetRefs` field is for attaching the policy to resources such as Gateway API `Gateway` objects, and it is mutually exclusive with `selector`.
 
 ## Tracing Configuration
 
@@ -69,7 +65,7 @@ spec:
         - name: zipkin
       randomSamplingPercentage: 10.0
       disableSpanReporting: false
-      useRequestIdForTracePropagation: true
+      disableContextPropagation: false
       customTags:
         environment:
           literal:
@@ -111,13 +107,13 @@ disableSpanReporting: false
 
 When set to true, traces are still propagated (headers are forwarded) but no spans are reported to the backend. Useful when you want trace context to flow through a service without generating data.
 
-### Request ID for Trace Propagation
+### Context Propagation
 
 ```yaml
-useRequestIdForTracePropagation: true
+disableContextPropagation: false
 ```
 
-When true, the x-request-id header is used to correlate traces. This helps maintain trace continuity even when some services in the chain do not propagate tracing headers properly.
+When set to true, trace context headers such as `traceparent`, `tracestate`, and `X-B3-*` are not forwarded on proxied requests. Leave it false when you want trace context to continue through the selected workloads.
 
 ### Custom Tags
 
@@ -179,6 +175,8 @@ spec:
         - match:
             metric: ALL_METRICS
             mode: SERVER
+          disabled: false
+        - match:
             customMetric: my_custom_metric
           disabled: false
 ```
@@ -202,7 +200,6 @@ Overrides let you customize how specific metrics are generated.
 match:
   metric: REQUEST_COUNT
   mode: CLIENT
-  customMetric: ""
 ```
 
 The `metric` field can be:
@@ -219,7 +216,7 @@ The `metric` field can be:
 - `GRPC_REQUEST_MESSAGES` - the istio_request_messages_total metric
 - `GRPC_RESPONSE_MESSAGES` - the istio_response_messages_total metric
 
-The `customMetric` field matches custom metrics by name.
+The `customMetric` field matches custom metrics by name. It is mutually exclusive with `metric`.
 
 The `mode` is the same as tracing: `CLIENT_AND_SERVER`, `CLIENT`, or `SERVER`.
 
@@ -326,7 +323,7 @@ filter:
 ## Complete Example
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-telemetry
