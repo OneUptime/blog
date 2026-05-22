@@ -25,7 +25,7 @@ When you trigger a run in HCP Terraform, the plan output automatically renders i
 - Drift detection results showing resources that changed outside of Terraform
 - Output values that will be produced
 
-No configuration is needed to see structured output in the UI - it is enabled by default for all workspaces.
+No configuration is needed to see structured output in the UI for supported runs.
 
 ## Accessing Structured Output via API
 
@@ -36,22 +36,22 @@ The real power of structured output comes from programmatic access. You can retr
 
 RUN_ID="run-abc123"
 
-# First, get the plan ID
+# First, get the run and extract the plan ID
 PLAN_ID=$(curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | \
-  jq -r '.data.id')
+  "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
+  jq -r '.data.relationships.plan.data.id')
 
 # Get the JSON plan output
-curl -s \
+curl -s --location \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   "https://app.terraform.io/api/v2/plans/$PLAN_ID/json-output" | \
-  jq '.data.attributes'
+  jq '.'
 ```
 
-The JSON output follows the same schema as `terraform show -json`, making it compatible with existing tools.
+The JSON output follows the same schema as `terraform show -json`, making it compatible with existing tools. The plan JSON endpoint returns a temporary redirect to the JSON file, so use a client option such as `curl --location` to follow it.
 
 ## Understanding the JSON Plan Structure
 
@@ -59,7 +59,7 @@ The structured output contains several key sections:
 
 ```bash
 # Download the full JSON plan
-curl -s \
+curl -s --location \
   --header "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/plans/$PLAN_ID/json-output" -o plan.json
 
@@ -94,9 +94,11 @@ cat plan.json | jq '.resource_changes[] | {
   ],
   "output_changes": {
     "app_url": {
-      "actions": ["update"],
-      "before": "http://old-url.example.com",
-      "after": "http://new-url.example.com"
+      "change": {
+        "actions": ["update"],
+        "before": "http://old-url.example.com",
+        "after": "http://new-url.example.com"
+      }
     }
   }
 }
@@ -116,10 +118,10 @@ RUN_ID=$1
 # Get the plan JSON output
 PLAN_ID=$(curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | \
-  jq -r '.data.id')
+  "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
+  jq -r '.data.relationships.plan.data.id')
 
-PLAN_JSON=$(curl -s \
+PLAN_JSON=$(curl -s --location \
   --header "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/plans/$PLAN_ID/json-output")
 
@@ -163,7 +165,7 @@ HCP Terraform detects drift - changes made outside of Terraform - and reports th
 
 ```bash
 # Check for drift in a plan
-curl -s \
+curl -s --location \
   --header "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/plans/$PLAN_ID/json-output" | \
   jq '.resource_drift // [] | .[] | {
@@ -191,17 +193,17 @@ SLACK_WEBHOOK="https://hooks.slack.com/services/T00/B00/xxx"
 # Get plan details
 PLAN_ID=$(curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | \
-  jq -r '.data.id')
+  "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
+  jq -r '.data.relationships.plan.data.id')
 
-PLAN_JSON=$(curl -s \
+PLAN_JSON=$(curl -s --location \
   --header "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/plans/$PLAN_ID/json-output")
 
 # Extract summary
-ADD=$(echo "$PLAN_JSON" | jq '[.resource_changes[] | select(.change.actions == ["create"])] | length')
+ADD=$(echo "$PLAN_JSON" | jq '[.resource_changes[] | select(.change.actions | contains(["create"]))] | length')
 CHANGE=$(echo "$PLAN_JSON" | jq '[.resource_changes[] | select(.change.actions == ["update"])] | length')
-DESTROY=$(echo "$PLAN_JSON" | jq '[.resource_changes[] | select(.change.actions == ["delete"])] | length')
+DESTROY=$(echo "$PLAN_JSON" | jq '[.resource_changes[] | select(.change.actions | contains(["delete"]))] | length')
 
 # Build Slack message
 curl -s \
@@ -213,16 +215,23 @@ curl -s \
   "$SLACK_WEBHOOK"
 ```
 
-## Cost Estimation in Structured Output
+## Cost Estimation with Structured Output
 
-HCP Terraform includes cost estimation data in the structured output for supported resources:
+When cost estimation is enabled, HCP Terraform exposes cost estimation data for supported resources through the cost estimates API:
 
 ```bash
+# Get the cost estimate ID for a run
+COST_ESTIMATE_ID=$(curl -s \
+  --header "Authorization: Bearer $TF_TOKEN" \
+  --header "Content-Type: application/vnd.api+json" \
+  "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
+  jq -r '.data.relationships["cost-estimate"].data.id')
+
 # Get cost estimation for a run
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/cost-estimate" | \
+  "https://app.terraform.io/api/v2/cost-estimates/$COST_ESTIMATE_ID" | \
   jq '{
     monthly_cost: .data.attributes["proposed-monthly-cost"],
     delta: .data.attributes["delta-monthly-cost"],
@@ -266,10 +275,10 @@ get_changes() {
   local RUN_ID=$1
   PLAN_ID=$(curl -s \
     --header "Authorization: Bearer $TF_TOKEN" \
-    "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | \
-    jq -r '.data.id')
+    "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
+    jq -r '.data.relationships.plan.data.id')
 
-  curl -s \
+  curl -s --location \
     --header "Authorization: Bearer $TF_TOKEN" \
     "https://app.terraform.io/api/v2/plans/$PLAN_ID/json-output" | \
     jq '[.resource_changes[] | .address] | sort'
