@@ -83,8 +83,7 @@ let isReady = false;
 
 // Startup: connect to dependencies
 async function initialize() {
-  await connectToDatabase();
-  await connectToRedis();
+  // Connect to your dependencies here, such as a database or cache.
   isReady = true;
 }
 
@@ -147,20 +146,28 @@ const http = require('http');
 const express = require('express');
 const app = express();
 
+const server = http.createServer(app);
+let isShuttingDown = false;
+
+// Middleware to reject new requests during shutdown
+app.use((req, res, next) => {
+  if (isShuttingDown) {
+    res.status(503).json({ error: 'Server is shutting down' });
+    return;
+  }
+  next();
+});
+
 // Your routes here
 app.get('/api/users', (req, res) => {
   // ... handler
 });
-
-const server = http.createServer(app);
 
 server.listen(3000, () => {
   console.log('Server running on port 3000');
 });
 
 // Graceful shutdown
-let isShuttingDown = false;
-
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, starting graceful shutdown');
   isShuttingDown = true;
@@ -177,28 +184,19 @@ process.on('SIGTERM', () => {
     process.exit(1);
   }, 25000);
 });
-
-// Middleware to reject new requests during shutdown
-app.use((req, res, next) => {
-  if (isShuttingDown) {
-    res.status(503).json({ error: 'Server is shutting down' });
-    return;
-  }
-  next();
-});
 ```
 
-Add a preStop hook to give the sidecar time to drain:
+Add a preStop hook to delay SIGTERM briefly while endpoint updates and proxy routing changes propagate:
 
 ```yaml
-containers:
-- name: user-service
-  lifecycle:
-    preStop:
-      exec:
-        command: ["/bin/sh", "-c", "sleep 5"]
 spec:
   terminationGracePeriodSeconds: 30
+  containers:
+  - name: user-service
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
 ## Handling Sidecar Startup
@@ -208,9 +206,11 @@ Node.js apps start fast, often faster than the Istio sidecar. If your app tries 
 Option 1: Use holdApplicationUntilProxyStarts:
 
 ```yaml
-metadata:
-  annotations:
-    proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+spec:
+  template:
+    metadata:
+      annotations:
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
 ```
 
 Option 2: Add retry logic to your startup code:
@@ -345,7 +345,7 @@ Node.js runs on a single thread, so it is more susceptible to overload than mult
 
 Resource Tuning
 
-Node.js is single-threaded, so giving it more than 1 CPU core does not help a single process. If you need more throughput, use the cluster module or run more replicas:
+The main JavaScript event loop in a Node.js process is single-threaded, so giving one process more CPU does not automatically make request handlers run across multiple cores. If you need more throughput, use the cluster module, worker threads for CPU-heavy work, or run more replicas:
 
 ```yaml
 resources:
