@@ -83,6 +83,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check Required Files
         run: |
@@ -102,13 +104,13 @@ jobs:
               fi
             done
 
-            # Verify all variables have descriptions
-            cd "$module"
-            terraform-docs check . || {
-              echo "ERROR: Missing documentation in $module"
+            # Verify generated documentation is up to date
+            docker run --rm --volume "$(pwd):/workspace" -u "$(id -u)" \
+              quay.io/terraform-docs/terraform-docs:0.20.0 \
+              markdown table --output-file README.md --output-check "/workspace/$module" || {
+              echo "ERROR: README documentation is out of date in $module"
               exit 1
             }
-            cd -
           done
 
   security-check:
@@ -117,20 +119,26 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Security Scan
-        uses: aquasecurity/tfsec-action@v1.0.3
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          working_directory: modules/
+          scan-type: config
+          scan-ref: modules/
+          exit-code: '1'
+          severity: HIGH,CRITICAL
 
   lint-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Format Check
         run: terraform fmt -check -recursive modules/
 
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: |
           tflint --init
           cd modules && tflint --recursive
@@ -219,7 +227,7 @@ resource "tfe_registry_module" "networking" {
 
 ### Self-Hosted Registry Alternative
 
-If you do not use Terraform Cloud, set up a simple registry using S3 and API Gateway:
+If you do not use Terraform Cloud, a simpler alternative is to publish versioned module packages to S3 for direct consumption:
 
 ```hcl
 # Module publishing workflow
@@ -235,7 +243,7 @@ module "networking" {
 
 Governance should include testing standards:
 
-```hcl
+```go
 # tests/networking_test.go (using Terratest)
 # Every module must have at least:
 # 1. A validation test (terraform validate)
@@ -247,8 +255,8 @@ package test
 
 import (
   "testing"
+
   "github.com/gruntwork-io/terratest/modules/terraform"
-  "github.com/stretchr/io/terratest/modules/aws"
 )
 
 func TestNetworkingModule(t *testing.T) {
