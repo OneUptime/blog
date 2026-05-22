@@ -57,30 +57,42 @@ module "vpc" {
 }
 ```
 
-For private repositories, configure Git credentials in the workspace:
+For private repositories in HCP Terraform, use SSH-based module sources and assign an SSH key to the workspace:
 
 ```bash
-# Set Git credentials as environment variables in the workspace
-# For HTTPS access
+# Add an organization SSH key for cloning private Git modules
 curl -s \
   --request POST \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --data '{
     "data": {
-      "type": "vars",
+      "type": "ssh-keys",
       "attributes": {
-        "key": "GIT_SSH_COMMAND",
-        "value": "ssh -i /path/to/key -o StrictHostKeyChecking=no",
-        "category": "env",
-        "sensitive": true
+        "name": "github-module-key",
+        "value": "-----BEGIN RSA PRIVATE KEY-----\n..."
       }
     }
   }' \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars"
+  "https://app.terraform.io/api/v2/organizations/$ORG_NAME/ssh-keys"
+
+# Assign that SSH key to the workspace that clones the module
+curl -s \
+  --request PATCH \
+  --header "Authorization: Bearer $TF_TOKEN" \
+  --header "Content-Type: application/vnd.api+json" \
+  --data '{
+    "data": {
+      "type": "workspaces",
+      "attributes": {
+        "id": "sshkey-abc123"
+      }
+    }
+  }' \
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/relationships/ssh-key"
 ```
 
-Or use SSH:
+Use an SSH-based Git reference:
 
 ```hcl
 # SSH-based Git reference
@@ -132,7 +144,7 @@ for ORG in "${ORGS[@]}"; do
           }
         }
       }" \
-      "https://app.terraform.io/api/v2/organizations/$ORG/registry-modules"
+      "https://app.terraform.io/api/v2/organizations/$ORG/registry-modules/vcs"
 
     echo "Published to $ORG"
   else
@@ -148,20 +160,22 @@ The challenge with this approach is keeping versions synchronized across organiz
 Terraform Enterprise supports sharing registry modules across organizations within the same installation. If you run Terraform Enterprise, this is the cleanest solution:
 
 ```bash
-# Share a module with another organization (Terraform Enterprise only)
+# Share modules from one organization's registry with another organization
+# Terraform Enterprise admin API only
 curl -s \
-  --request POST \
+  --request PUT \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --data '{
     "data": {
-      "type": "registry-module-consumers",
+      "type": "registry-partnerships",
       "attributes": {
-        "organization": "org-app-team"
+        "module_consumers": ["org-app-team"],
+        "provider_consumers": []
       }
     }
   }' \
-  "https://app.terraform.io/api/v2/organizations/org-platform/registry-modules/private/org-platform/vpc/aws/consumers"
+  "https://tfe.example.com/api/v2/admin/organizations/org-platform/registry-partnerships"
 ```
 
 ## Option 5: Generic Module Source with S3/GCS
@@ -186,7 +200,7 @@ aws s3 cp module.zip \
   "s3://my-terraform-modules/vpc/aws/1.0.0/module.zip"
 ```
 
-This works across any organization since it is just an HTTPS download. Set up AWS credentials in each workspace to access the S3 bucket.
+This works across any organization because Terraform downloads the module archive from object storage. Set up AWS credentials in each workspace to access the S3 bucket.
 
 ## Recommended Architecture
 
@@ -209,7 +223,7 @@ For most multi-organization setups, here is what works well:
 # References platform team modules via Git
 module "networking" {
   # Pin to a specific version tag
-  source = "git::https://github.com/my-company/terraform-aws-networking.git?ref=v2.3.1"
+  source = "git::ssh://git@github.com/my-company/terraform-aws-networking.git?ref=v2.3.1"
 
   vpc_cidr     = "10.0.0.0/16"
   environment  = "production"
@@ -217,7 +231,7 @@ module "networking" {
 }
 
 module "database" {
-  source = "git::https://github.com/my-company/terraform-aws-rds.git?ref=v1.5.0"
+  source = "git::ssh://git@github.com/my-company/terraform-aws-rds.git?ref=v1.5.0"
 
   engine         = "postgres"
   engine_version = "15"
@@ -253,7 +267,7 @@ module "vpc" {
 
 ## Setting Up VCS Connections Across Organizations
 
-Each organization needs its own VCS provider connection to access module repositories:
+Each organization needs its own VCS provider connection if it publishes the module into its own private registry:
 
 ```bash
 # Configure a VCS provider for an organization
