@@ -42,6 +42,8 @@ Clear and actionable. The user knows exactly what values are accepted.
 
 When the same allowed list is used across multiple variables or validations, define it in a local to avoid repetition.
 
+Referencing locals in variable validation requires Terraform 1.9 or later.
+
 ```hcl
 locals {
   allowed_environments = ["dev", "staging", "production"]
@@ -133,7 +135,7 @@ variable "retention_days" {
   description = "Log retention in days"
 
   validation {
-    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.retention_days)
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.retention_days)
     error_message = "Retention days must be a value supported by CloudWatch Logs. See AWS docs for allowed values."
   }
 }
@@ -281,7 +283,7 @@ variable "log_level" {
 
   validation {
     # Ensure the value matches exactly one of the allowed levels
-    condition     = length([for level in ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"] : level if level == var.log_level]) == 1
+    condition     = try(one([for level in ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"] : level if level == var.log_level]) == var.log_level, false)
     error_message = "Log level must be one of: DEBUG, INFO, WARN, ERROR, FATAL. Got: '${var.log_level}'."
   }
 }
