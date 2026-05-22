@@ -16,10 +16,10 @@ In this guide, we will walk through setting up Istio to work with Knative, which
 
 Before we start, make sure you have:
 
-- A Kubernetes cluster (1.25+)
+- A Kubernetes cluster on a version supported by your Knative and Istio releases
 - kubectl configured
 - Helm 3 installed
-- Istio 1.20+ installed on the cluster
+- A supported Istio version for your Knative `net-istio` release installed on the cluster
 
 If you do not have Istio installed yet, here is the quick way:
 
@@ -30,19 +30,19 @@ kubectl label namespace default istio-injection=enabled
 
 ## Installing Knative with Istio
 
-Knative has two main components: Serving (for request-driven workloads) and Eventing (for event-driven workloads). We will focus on Serving here since that is the FaaS piece.
+Knative has Serving for request-driven workloads, Eventing for event-driven workloads, and Functions as a CLI workflow for building and deploying functions as containers. We will focus on Serving here since it is the cluster component that runs request-driven serverless workloads.
 
 First, install the Knative Serving CRDs and core components:
 
 ```bash
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-crds.yaml
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-core.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-crds.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-core.yaml
 ```
 
-Next, install the Knative Istio controller, which tells Knative to use Istio for networking instead of its default:
+Next, install the Knative Istio controller, which tells Knative to use Istio as the networking layer:
 
 ```bash
-kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.13.0/net-istio.yaml
+kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.22.0/net-istio.yaml
 ```
 
 Verify everything is running:
@@ -70,7 +70,10 @@ metadata:
   name: config-istio
   namespace: knative-serving
 data:
-  gateway.knative-serving.knative-ingress-gateway: "custom-gateway.istio-system.svc.cluster.local"
+  external-gateways: |
+    - name: knative-ingress-gateway
+      namespace: knative-serving
+      service: custom-ingressgateway.custom-ns.svc.cluster.local
 ```
 
 ## Deploying Your First Serverless Function
@@ -118,7 +121,7 @@ You will see a URL assigned to your function. That URL is routed through Istio's
 One of the biggest benefits of running FaaS on Istio is that you can apply the same traffic policies you use for regular services. For example, you can add a retry policy:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: hello-function-vs
@@ -139,7 +142,7 @@ spec:
 You can also apply a DestinationRule for circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: hello-function-dr
@@ -164,10 +167,10 @@ spec:
 
 Knative's scale-to-zero feature works by routing traffic through an activator component. When a function has zero replicas, the activator holds the request, triggers a scale-up, and forwards the request once a pod is ready.
 
-Istio needs to be configured to allow enough time for this cold start. Edit the mesh config:
+Istio needs to be configured to allow enough time for this cold start. Create or update a VirtualService timeout for mesh-internal calls:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: hello-function-cold-start
@@ -201,10 +204,29 @@ data:
 
 ## Enabling mTLS for Serverless Functions
 
-Since your functions run inside the mesh, you get mTLS for free. But you should verify it is actually working:
+Since Knative needs network communication between the `knative-serving` namespace and the namespaces where your services run, prepare the Knative control plane before requiring strict mTLS. Enable sidecar injection for the Knative system namespace:
+
+```bash
+kubectl label namespace knative-serving istio-injection=enabled --overwrite
+```
+
+Then allow permissive mTLS in `knative-serving` so Knative system components can communicate during the transition:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: knative-serving
+spec:
+  mtls:
+    mode: PERMISSIVE
+```
+
+After that, you can require mTLS for the namespace where your functions run:
+
+```yaml
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
