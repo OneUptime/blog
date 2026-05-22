@@ -16,7 +16,7 @@ Teams migrate for several reasons. Terraform supports multiple cloud providers, 
 
 ## Understanding the Migration Challenge
 
-CloudFormation stacks own the resources they create. If you simply delete a stack, it deletes all its resources. The migration must transfer resource management from CloudFormation to Terraform without deleting anything. This involves three main steps: writing equivalent Terraform configuration, importing existing resources into Terraform state, and then carefully removing the resources from CloudFormation without destroying them.
+CloudFormation stacks own the resources they create. If you simply delete a stack, CloudFormation deletes most resources unless a DeletionPolicy or resource-specific default changes that behavior. The migration must transfer resource management from CloudFormation to Terraform without deleting anything. This involves three main steps: writing equivalent Terraform configuration, importing existing resources into Terraform state, and then carefully removing the resources from CloudFormation without destroying them.
 
 ## Step 1: Inventory Your CloudFormation Stacks
 
@@ -128,7 +128,7 @@ resource "aws_instance" "web" {
 
 ## Step 4: Import Resources into Terraform
 
-Use import blocks to bring the existing resources under Terraform management:
+Use Terraform 1.5 or later import blocks to bring the existing resources under Terraform management:
 
 ```hcl
 # imports.tf
@@ -212,6 +212,10 @@ Apply the updated template:
 aws cloudformation update-stack \
   --stack-name my-app-stack \
   --template-body file://cf-template-with-retain.yaml
+
+# If the stack contains IAM resources, include the required capability, for example:
+# --capabilities CAPABILITY_IAM
+# or --capabilities CAPABILITY_NAMED_IAM for named IAM resources
 
 # Wait for the update to complete
 aws cloudformation wait stack-update-complete --stack-name my-app-stack
@@ -303,10 +307,13 @@ The cf2tf tool can automatically convert CloudFormation templates to Terraform:
 pip install cf2tf
 
 # Convert a CloudFormation template to Terraform
+cf2tf my-template.yaml > main.tf
+
+# Or write generated files to an output directory
 cf2tf my-template.yaml --output ./terraform-output
 
 # Review the generated Terraform code
-cat ./terraform-output/main.tf
+cat main.tf
 ```
 
 While the output needs review and cleanup, it provides a good starting point for large templates.
