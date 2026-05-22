@@ -81,6 +81,18 @@ resource "aws_s3_bucket_policy" "terraform_state" {
     Version = "2012-10-17"
     Statement = [
       {
+        # Platform team: list all state prefixes
+        Sid    = "PlatformTeamListAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:role/platform-team-role"
+          ]
+        }
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::company-terraform-state"
+      },
+      {
         # Platform team: full access to all state files
         Sid    = "PlatformTeamFullAccess"
         Effect = "Allow"
@@ -94,7 +106,30 @@ resource "aws_s3_bucket_policy" "terraform_state" {
           "s3:PutObject",
           "s3:DeleteObject"
         ]
-        Resource = "arn:aws:s3:::company-terraform-state/*"
+        Resource = [
+          "arn:aws:s3:::company-terraform-state/*",
+          "arn:aws:s3:::company-terraform-state/*.tflock"
+        ]
+      },
+      {
+        # Networking team: list only networking and shared state prefixes
+        Sid    = "NetworkingTeamListAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:role/networking-team-role"
+          ]
+        }
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::company-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix": [
+              "networking/*",
+              "shared/*"
+            ]
+          }
+        }
       },
       {
         # Networking team: access only to networking state
@@ -112,6 +147,22 @@ resource "aws_s3_bucket_policy" "terraform_state" {
         Resource = "arn:aws:s3:::company-terraform-state/networking/*"
       },
       {
+        # Networking team: remove S3 lockfiles when using use_lockfile
+        Sid    = "NetworkingTeamLockfileAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:role/networking-team-role"
+          ]
+        }
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::company-terraform-state/networking/*.tflock"
+      },
+      {
         # Networking team: read-only access to shared outputs
         Sid    = "NetworkingTeamReadShared"
         Effect = "Allow"
@@ -122,6 +173,18 @@ resource "aws_s3_bucket_policy" "terraform_state" {
         }
         Action = ["s3:GetObject"]
         Resource = "arn:aws:s3:::company-terraform-state/shared/*"
+      },
+      {
+        # CI/CD pipeline: list all state prefixes
+        Sid    = "CICDPipelineListAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:role/github-actions-terraform"
+          ]
+        }
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::company-terraform-state"
       },
       {
         # CI/CD pipeline: access to all state for plan/apply
@@ -137,20 +200,35 @@ resource "aws_s3_bucket_policy" "terraform_state" {
           "s3:PutObject"
         ]
         Resource = "arn:aws:s3:::company-terraform-state/*"
+      },
+      {
+        # CI/CD pipeline: remove S3 lockfiles when using use_lockfile
+        Sid    = "CICDPipelineLockfileAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:role/github-actions-terraform"
+          ]
+        }
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::company-terraform-state/*.tflock"
       }
     ]
   })
 }
 
-# DynamoDB table for state locking with scoped access
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
+# Enable S3-native state locking in each backend configuration.
+# DynamoDB-based S3 backend locking is deprecated in current Terraform.
+terraform {
+  backend "s3" {
+    bucket       = "company-terraform-state"
+    key          = "networking/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
@@ -172,12 +250,15 @@ resource "aws_iam_role" "networking_terraform" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::123456789012:role/github-actions"
+          Federated = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
         }
-        Action = "sts:AssumeRole"
+        Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "aws:RequestTag/Team": "networking"
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub": "repo:org/infra-repo:*"
           }
         }
       }
@@ -254,16 +335,24 @@ Create separate roles for planning (read-only) and applying (read-write):
 resource "aws_iam_role" "terraform_planner" {
   name = "terraform-planner"
 
-  # Can be assumed by any team member
+  # Can be assumed by GitHub Actions workflows in the infrastructure repo
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::123456789012:root"
+          Federated = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
         }
-        Action = "sts:AssumeRole"
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub": "repo:org/infra-repo:*"
+          }
+        }
       }
     ]
   })
@@ -272,6 +361,39 @@ resource "aws_iam_role" "terraform_planner" {
 resource "aws_iam_role_policy_attachment" "planner_readonly" {
   role       = aws_iam_role.terraform_planner.name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy" "planner_state_backend" {
+  name = "terraform-planner-state-backend"
+  role = aws_iam_role.terraform_planner.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::company-terraform-state"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "arn:aws:s3:::company-terraform-state/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::company-terraform-state/*.tflock"
+      }
+    ]
+  })
 }
 
 # Write role for terraform apply - more restricted access
@@ -285,9 +407,15 @@ resource "aws_iam_role" "terraform_applier" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::123456789012:role/github-actions"
+          Federated = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
         }
-        Action = "sts:AssumeRole"
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub": "repo:org/infra-repo:environment:production"
+          }
+        }
       }
     ]
   })
