@@ -14,7 +14,7 @@ This post covers strategies for splitting your configuration effectively.
 
 ## Terraform Reads All .tf Files
 
-Every file ending in `.tf` in the same directory is part of the same Terraform module. Terraform loads them all, merges them, and processes the combined result. The filenames do not matter to Terraform - they are for human organization only.
+Every file ending in `.tf` in the same directory is part of the same Terraform module. Terraform loads them all, merges them, and processes the combined result. Except for special override files such as `override.tf` and `*_override.tf`, the filenames do not matter to Terraform - they are for human organization only.
 
 ```text
 # All of these files are treated as one configuration
@@ -26,7 +26,7 @@ project/
   providers.tf
 ```
 
-Is functionally identical to having everything in a single `main.tf`. Terraform does not care how you split things up.
+Is functionally identical to having everything in a single `main.tf`. For normal configuration files, Terraform does not care how you split things up.
 
 ## The Standard File Layout
 
