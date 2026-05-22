@@ -156,13 +156,18 @@ locals {
     for pattern in local.valid_patterns :
     can(regex(pattern, terraform.workspace))
   ])
+}
 
-  # Force an error if the workspace name is invalid
-  validate_workspace_name = (
-    local.workspace_valid
-    ? true
-    : file("ERROR: Invalid workspace name '${terraform.workspace}'. Must match one of: ${join(", ", local.valid_patterns)}")
-  )
+# Force an error if the workspace name is invalid
+resource "terraform_data" "workspace_validation" {
+  input = terraform.workspace
+
+  lifecycle {
+    precondition {
+      condition     = local.workspace_valid
+      error_message = "Invalid workspace name '${terraform.workspace}'. Must match one of: ${join(", ", local.valid_patterns)}."
+    }
+  }
 }
 ```
 
@@ -289,12 +294,17 @@ The default workspace deserves special attention. Many teams want to block its u
 # Prevent any meaningful deployment to the default workspace
 locals {
   is_default = terraform.workspace == "default"
+}
 
-  block_default = (
-    local.is_default
-    ? file("ERROR: Please select a named workspace. The default workspace is not used in this project. Run: terraform workspace select <dev|staging|prod>")
-    : true
-  )
+resource "terraform_data" "default_workspace_guard" {
+  input = terraform.workspace
+
+  lifecycle {
+    precondition {
+      condition     = !local.is_default
+      error_message = "Please select a named workspace. The default workspace is not used in this project. Run: terraform workspace select <dev|staging|prod>."
+    }
+  }
 }
 ```
 
@@ -348,7 +358,7 @@ A few practical tips from experience:
 ```hcl
 # Workspace naming convention for this project:
 # - Permanent environments: dev, staging, prod
-# - Feature testing: test-<ticket-number> (e.g., test-INFRA-423)
+# - Feature testing: test-<ticket-number> (e.g., test-infra-423)
 # - Demos: demo-<customer>-<date> (e.g., demo-acme-2026-02-23)
 # - Load tests: load-<date> (e.g., load-2026-02)
 ```
