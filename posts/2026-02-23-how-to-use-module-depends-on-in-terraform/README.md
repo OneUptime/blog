@@ -141,9 +141,9 @@ When you add `depends_on` to a module, Terraform treats ALL resources in that mo
 
 1. **All resources wait.** Every resource inside the module waits for every resource in the dependency to complete, even if only one resource actually needs to wait.
 
-2. **Read operations are deferred.** Data sources inside the module are read during apply instead of during plan, because Terraform cannot be sure the dependency will not affect the data source results.
+2. **Read operations can be deferred.** Data sources inside the module may be read during apply instead of during plan, especially when the dependency has changes pending, because Terraform cannot be sure the dependency will not affect the data source results.
 
-3. **Plan output changes.** You might see "(known after apply)" for values that would normally be known during plan, because data sources are deferred.
+3. **Plan output changes.** You might see "(known after apply)" for values that would normally be known during plan, because Terraform must make a more conservative plan around the explicit dependency.
 
 ```hcl
 module "app" {
@@ -298,7 +298,7 @@ When you use `depends_on`:
 - Terraform creates all resources in the dependency first
 - Then creates all resources in the dependent module
 - During destroy, the order is reversed
-- Data sources in the dependent module are deferred to apply time
+- Data sources in the dependent module can be deferred to apply time when the dependency has changes pending
 
 This is a strong contract. Use it when you need it, but understand the performance implications.
 
