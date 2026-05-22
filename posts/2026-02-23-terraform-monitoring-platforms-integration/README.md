@@ -27,11 +27,19 @@ terraform {
   required_providers {
     datadog = {
       source  = "DataDog/datadog"
-      version = "~> 3.30"
+      version = "~> 4.0"
     }
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+    }
+    grafana = {
+      source  = "grafana/grafana"
+      version = "~> 4.0"
+    }
+    pagerduty = {
+      source  = "PagerDuty/pagerduty"
+      version = "~> 3.0"
     }
   }
 }
@@ -75,7 +83,7 @@ resource "datadog_monitor" "app_cpu" {
     @pagerduty-platform-team
   EOT
 
-  query = "avg(last_5m):avg:aws.ec2.cpuutilization{instance-id:${aws_instance.app.id}} > 85"
+  query = "avg(last_5m):avg:aws.ec2.cpuutilization{instance_id:${aws_instance.app.id}} > 85"
 
   monitor_thresholds {
     critical = 85
@@ -98,12 +106,12 @@ resource "datadog_monitor" "app_disk" {
   name    = "Low Disk Space on ${aws_instance.app.tags["Name"]}"
   type    = "metric alert"
   message = <<-EOT
-    Disk space is below 15% on ${aws_instance.app.tags["Name"]}.
+    Free disk space is below 15% on ${aws_instance.app.tags["Name"]}.
 
     @slack-infrastructure-alerts
   EOT
 
-  query = "avg(last_10m):avg:system.disk.free{host:${aws_instance.app.id}} < 15"
+  query = "avg(last_10m):(avg:system.disk.free{instance_id:${aws_instance.app.id}} by {host} / avg:system.disk.total{instance_id:${aws_instance.app.id}} by {host}) * 100 < 15"
 
   monitor_thresholds {
     critical = 10
@@ -196,6 +204,10 @@ provider "pagerduty" {
   token = var.pagerduty_token
 }
 
+data "pagerduty_vendor" "datadog" {
+  name = "Datadog"
+}
+
 # Create an on-call schedule
 resource "pagerduty_schedule" "platform_oncall" {
   name      = "Platform Team On-Call"
@@ -245,10 +257,16 @@ resource "pagerduty_service" "web_application" {
   }
 }
 
+resource "pagerduty_service_integration" "datadog" {
+  name    = "Datadog"
+  service = pagerduty_service.web_application.id
+  vendor  = data.pagerduty_vendor.datadog.id
+}
+
 # Connect Datadog to PagerDuty
 resource "datadog_integration_pagerduty_service_object" "web_app" {
   service_name = pagerduty_service.web_application.name
-  service_key  = pagerduty_service.web_application.id
+  service_key  = pagerduty_service_integration.datadog.integration_key
 }
 ```
 
