@@ -14,9 +14,9 @@ This post covers the practical steps for getting MySQL traffic flowing through I
 
 ## Port Naming Is Everything
 
-The single most important thing when running MySQL behind Istio is getting the port name right. Istio relies on port name prefixes to detect the protocol. For MySQL, you need the `tcp-` or `mysql` prefix.
+The single most important thing when running MySQL behind Istio is getting the port name right. Istio relies on port name prefixes to detect the protocol. For MySQL, use the `tcp-` prefix unless you have deliberately enabled Istio's experimental MySQL protocol support.
 
-Istio actually recognizes the `mysql` protocol natively for some metrics purposes, but the traffic handling is still TCP-level. Here is a MySQL Service definition:
+Istio supports opaque TCP proxying for MySQL. The `mysql` protocol name is experimental and requires the corresponding proxy environment variable; otherwise it is treated as opaque TCP. Here is a MySQL Service definition:
 
 ```yaml
 apiVersion: v1
@@ -92,7 +92,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-The `maxConnections: 50` should be lower than your MySQL `max_connections` setting (which defaults to 151 in MySQL 8.0). This gives Istio a hard cap before connections even reach MySQL. The `idleTimeout` of 1800 seconds should be less than MySQL's `wait_timeout` (which defaults to 28800 seconds) to avoid Istio holding connections that MySQL has already closed.
+The `maxConnections: 50` should be lower than your MySQL `max_connections` setting (which defaults to 151 in MySQL 8.0), but remember that this limit is applied by the Envoy proxy for a destination host and is not a single global limit across every client workload. The `idleTimeout` of 1800 seconds should be less than MySQL's `wait_timeout` (which defaults to 28800 seconds) to avoid Istio holding connections that MySQL has already closed.
 
 ## Read/Write Splitting with Multiple MySQL Instances
 
@@ -139,7 +139,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-Using `ROUND_ROBIN` load balancing across read replicas distributes queries evenly.
+Using `ROUND_ROBIN` load balancing across read replicas distributes new TCP connections across the available endpoints. Queries on an existing MySQL connection continue to use the same selected replica.
 
 ## Connecting to External MySQL
 
@@ -162,7 +162,9 @@ spec:
   resolution: DNS
 ```
 
-If the external MySQL requires TLS, add a DestinationRule:
+If the external MySQL requires TLS, normally configure TLS in the MySQL client or driver itself. MySQL does not start a standard TLS handshake as the first bytes on the connection; the server sends the initial MySQL handshake packet and the client then requests TLS during the MySQL handshake.
+
+Only use Istio TLS origination if the upstream endpoint is a TLS tunnel or proxy that expects TLS immediately when the TCP connection opens. In that case, add a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -177,7 +179,7 @@ spec:
       mode: SIMPLE
 ```
 
-The `SIMPLE` TLS mode tells the Istio proxy to initiate a TLS handshake with the external MySQL server. If you need to provide client certificates for mutual TLS authentication with the external database, use `MUTUAL` mode instead and reference your certificates.
+The `SIMPLE` TLS mode tells the Istio proxy to initiate a TLS handshake before forwarding application bytes. If you need to provide client certificates for mutual TLS authentication with a TLS-terminating upstream proxy, use `MUTUAL` mode instead and reference your certificates.
 
 ## Securing MySQL Access with Authorization Policies
 
@@ -213,7 +215,7 @@ MySQL has a somewhat unusual connection handshake. When a client connects, the M
 
 If you see intermittent connection failures or timeouts during the MySQL handshake, double-check that:
 
-1. The Service port name starts with `tcp-` or is literally `mysql`
+1. The Service port name starts with `tcp-`, or you have intentionally enabled and configured Istio's experimental `mysql` protocol support
 2. The DestinationRule has an adequate `connectTimeout`
 3. You have not set the port protocol to HTTP or gRPC anywhere
 
@@ -227,7 +229,7 @@ Look for the `filterChainMatch` section. For MySQL, you should see a TCP proxy f
 
 ## Monitoring MySQL Connections Through Istio
 
-Istio provides TCP-level metrics for MySQL connections even though it cannot parse the MySQL protocol itself. You can see connection counts, bytes sent/received, and connection duration:
+With the opaque TCP configuration shown above, Istio provides TCP-level metrics for MySQL connections rather than MySQL query-level metrics. You can see connection counts and bytes sent/received:
 
 ```bash
 istioctl dashboard prometheus
@@ -272,4 +274,4 @@ These annotations control the CPU and memory requests and limits for the Istio s
 
 ## Summary
 
-Configuring Istio for MySQL requires attention to port naming, connection pool limits, and timeout alignment between Istio and MySQL settings. The key steps are naming your ports with the `tcp-` prefix, setting up DestinationRules with appropriate connection limits, and using AuthorizationPolicies to lock down database access. For external MySQL instances, ServiceEntries and TLS DestinationRules handle the connectivity. Once everything is in place, you get encrypted connections, access control, and telemetry for all your MySQL traffic.
+Configuring Istio for MySQL requires attention to port naming, connection pool limits, and timeout alignment between Istio and MySQL settings. The key steps are naming your ports with the `tcp-` prefix, setting up DestinationRules with appropriate connection limits, and using AuthorizationPolicies to lock down database access. For external MySQL instances, ServiceEntries register the external host with the mesh, while MySQL client settings usually handle database TLS. Once everything is in place, you get mesh mTLS for in-cluster traffic, access control, and TCP telemetry for your MySQL traffic.
