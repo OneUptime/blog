@@ -82,6 +82,12 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   role       = aws_iam_role.lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
+
+# Required when the function is attached to your VPC
+resource "aws_iam_role_policy_attachment" "lambda_vpc_access" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
 ```
 
 Avoid using `AWSLambdaFullAccess` or wildcard permissions. Each function should have its own role with precisely scoped permissions.
@@ -95,7 +101,7 @@ resource "aws_lambda_function" "processor" {
   function_name = "order-processor"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   timeout       = 30
   memory_size   = 256
 
@@ -267,15 +273,8 @@ resource "aws_lambda_function_url" "processor" {
   }
 }
 
-# If you must use NONE auth, add your own validation in the function code
-# and restrict with resource-based policy
-resource "aws_lambda_permission" "allow_specific_account" {
-  statement_id           = "AllowSpecificAccount"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.processor.function_name
-  principal              = "arn:aws:iam::123456789012:root"
-  function_url_auth_type = "NONE"
-}
+# If you must use NONE auth, treat the URL as public and add your own
+# validation in the function code. IAM does not authenticate callers.
 ```
 
 ## Reserved Concurrency for Blast Radius Control
@@ -292,7 +291,7 @@ resource "aws_lambda_function" "processor" {
 
 ## Dead Letter Queues
 
-Make sure failed invocations do not silently disappear:
+For asynchronous invocations, make sure failed events do not silently disappear:
 
 ```hcl
 resource "aws_sqs_queue" "lambda_dlq" {
@@ -309,6 +308,8 @@ resource "aws_lambda_function" "processor" {
   }
 }
 ```
+
+If your Lambda function is invoked from SQS through an event source mapping, configure the dead letter queue on the SQS source queue instead.
 
 ## Code Signing
 
