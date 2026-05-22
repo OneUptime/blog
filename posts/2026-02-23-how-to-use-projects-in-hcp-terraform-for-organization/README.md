@@ -105,10 +105,9 @@ curl \
 ```hcl
 # Create a workspace inside a specific project
 resource "tfe_workspace" "networking_prod" {
-  name           = "networking-production"
-  organization   = "your-org"
-  project_id     = tfe_project.core_infra.id
-  execution_mode = "remote"
+  name         = "networking-production"
+  organization = "your-org"
+  project_id   = tfe_project.core_infra.id
 
   tag_names = ["production", "networking", "aws"]
 }
@@ -156,7 +155,7 @@ PROJECT_ID="$2"
 # Get all workspaces with the tag
 WORKSPACES=$(curl -s \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search[tags]=${TAG}&page[size]=100" \
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search%5Btags%5D=${TAG}&page%5Bsize%5D=100" \
   | jq -r '.data[] | .id + ":" + .attributes.name')
 
 for WS in $WORKSPACES; do
@@ -400,7 +399,7 @@ PROJECT_ID="prj-xxxxxxxxxxxxxxxx"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/projects/${PROJECT_ID}/workspaces" \
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?filter%5Bproject%5D%5Bid%5D=${PROJECT_ID}" \
   | jq '.data[] | {name: .attributes.name, status: .attributes["current-run"]}'
 ```
 
@@ -413,7 +412,7 @@ Projects and tags serve complementary purposes:
 | Hierarchy | Yes (each workspace in one project) | No (multiple tags per workspace) |
 | Permissions | Yes (team access at project level) | No |
 | Filtering | Yes | Yes |
-| Variable sets | Yes (scoped to project) | Yes (via workspace variable sets) |
+| Variable sets | Yes (scoped to project) | No |
 | API querying | Yes | Yes |
 
 Use projects for organizational structure and access control. Use tags for cross-cutting concerns like filtering and categorization.
