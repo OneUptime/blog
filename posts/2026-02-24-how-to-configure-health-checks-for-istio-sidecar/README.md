@@ -17,11 +17,11 @@ Without Istio, health checks are simple. The kubelet sends an HTTP request, TCP 
 1. If mTLS is in STRICT mode, the kubelet cannot make plain HTTP requests to your container because Envoy expects mTLS.
 2. The sidecar might not be ready yet when Kubernetes starts health checking, causing false failures during startup.
 
-Istio solves the first problem with probe rewriting. It intercepts your probe definitions and redirects them through the sidecar agent on port 15021, which can forward probes to your application without requiring mTLS.
+Istio solves the first problem with probe rewriting. It intercepts your probe definitions and redirects them through the sidecar agent on port 15020, which can forward probes to your application without requiring mTLS.
 
 ## Probe Rewriting in Detail
 
-Since Istio 1.10, probe rewriting is enabled by default. When the sidecar injector processes your pod, it modifies the probe configuration:
+In Istio's built-in configuration profiles, probe rewriting is enabled by default. When the sidecar injector processes your pod, it modifies the probe configuration:
 
 Original probe:
 ```yaml
@@ -36,10 +36,10 @@ Rewritten probe (what actually runs):
 livenessProbe:
   httpGet:
     path: /app-health/myapp/livez
-    port: 15021
+    port: 15020
 ```
 
-The sidecar agent on port 15021 receives the probe request and forwards it to your application on port 8080 at `/healthz`. This bypasses mTLS entirely.
+The sidecar agent on port 15020 receives the probe request and forwards it to your application on port 8080 at `/healthz`. This bypasses mTLS entirely.
 
 You can see the rewritten probes by looking at the actual pod spec (not the deployment spec):
 
@@ -97,7 +97,7 @@ spec:
 
 ## TCP Health Checks
 
-TCP probes also work with Istio, but they are less affected by the sidecar because they just check if a port is accepting connections:
+TCP probes also work with Istio, but they need special handling because they just check if a port is accepting connections:
 
 ```yaml
 livenessProbe:
@@ -107,7 +107,7 @@ livenessProbe:
   periodSeconds: 10
 ```
 
-With the sidecar present, TCP probes to your application port will succeed as soon as Envoy starts listening on that port. This means the probe might pass even if your application is not ready, because Envoy accepts the connection. For this reason, HTTP probes or gRPC probes are preferred over TCP probes in an Istio mesh.
+With probe rewriting enabled, Istio rewrites TCP probes so the sidecar agent checks the configured application port while avoiding traffic redirection. If probe rewriting is disabled, TCP probes to your application port can succeed as soon as Envoy is running, even if your application is not ready, because redirected TCP ports appear open. For this reason, HTTP probes or gRPC probes are usually easier to reason about in an Istio mesh.
 
 ## Exec Health Checks
 
@@ -130,21 +130,21 @@ The downside of exec probes is that they create a new process for every check, w
 
 You can control probe rewriting at different levels:
 
-**Per-pod annotation:**
+**Per-pod annotation in the pod template metadata:**
 ```yaml
 metadata:
   annotations:
     sidecar.istio.io/rewriteAppHTTPProbers: "true"
 ```
 
-**Globally in the mesh config:**
+**Globally at install time:**
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
+  values:
+    sidecarInjectorWebhook:
+      rewriteAppHTTPProbe: true
 ```
 
 To disable probe rewriting for a specific pod (useful for debugging):
@@ -188,7 +188,7 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-This makes the sidecar container a regular (non-init) container that blocks the application container from starting until the proxy is ready.
+This causes the sidecar injector to place the sidecar at the start of the pod's container list and block the application containers from starting until the proxy is ready.
 
 ## Health Check Ports and Protocol
 
@@ -212,7 +212,7 @@ containers:
         port: 8081
 ```
 
-Istio's probe rewriting handles this correctly. The rewritten probe still targets port 15021 on the sidecar agent, which knows to forward to port 8081 on your container.
+Istio's probe rewriting handles this correctly. The rewritten probe still targets port 15020 on the sidecar agent, which knows to forward to port 8081 on your container.
 
 ## Verifying Health Check Configuration
 
@@ -221,7 +221,7 @@ Check the current health check status:
 ```bash
 # See probe configuration in the pod spec
 
-kubectl get pod <pod-name> -o jsonpath='{.spec.containers[0].livenessProbe}' | python3 -m json.tool
+kubectl get pod <pod-name> -o json | jq '.spec.containers[0].livenessProbe'
 
 # Check probe events
 kubectl describe pod <pod-name> | grep -A5 "Events"
@@ -243,7 +243,7 @@ kubectl exec -it <pod-name> -c web-service -- curl -v http://localhost:8080/heal
 
 3. Test through the sidecar agent:
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15021/app-health/web-service/livez
+kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15020/app-health/web-service/livez
 ```
 
 4. Check the sidecar agent logs:
