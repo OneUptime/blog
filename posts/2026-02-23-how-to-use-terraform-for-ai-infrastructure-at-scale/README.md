@@ -102,8 +102,8 @@ resource "aws_sagemaker_endpoint_configuration" "model" {
     }
   }
 
-  # Shadow variant for A/B testing new models
-  dynamic "production_variants" {
+  # Shadow variant for testing new models
+  dynamic "shadow_production_variants" {
     for_each = var.shadow_model_name != null ? [1] : []
 
     content {
@@ -192,7 +192,7 @@ resource "aws_sfn_state_machine" "ml_pipeline" {
       ProcessData = {
         Type     = "Task"
         Resource = "arn:aws:states:::glue:startJobRun.sync"
-        Parameters = {
+        Arguments = {
           JobName = aws_glue_job.feature_engineering.name
         }
         Next = "TrainModel"
@@ -200,16 +200,35 @@ resource "aws_sfn_state_machine" "ml_pipeline" {
       TrainModel = {
         Type     = "Task"
         Resource = "arn:aws:states:::sagemaker:createTrainingJob.sync"
-        Parameters = {
+        Arguments = {
           TrainingJobName = "train-${var.model_name}"
           AlgorithmSpecification = {
             TrainingImage     = var.training_image
             TrainingInputMode = "File"
           }
+          InputDataConfig = [
+            {
+              ChannelName = "train"
+              DataSource = {
+                S3DataSource = {
+                  S3DataType             = "S3Prefix"
+                  S3Uri                  = "s3://${aws_s3_bucket.ml_data["features"].id}/"
+                  S3DataDistributionType = "FullyReplicated"
+                }
+              }
+            }
+          ]
+          OutputDataConfig = {
+            S3OutputPath = "s3://${aws_s3_bucket.ml_data["models"].id}/${var.model_name}/"
+          }
           ResourceConfig = {
             InstanceType  = "ml.p4d.24xlarge"
             InstanceCount = var.training_instance_count
             VolumeSizeInGB = 500
+          }
+          RoleArn = aws_iam_role.sagemaker.arn
+          StoppingCondition = {
+            MaxRuntimeInSeconds = 86400
           }
         }
         Next = "EvaluateModel"
@@ -221,8 +240,8 @@ resource "aws_sfn_state_machine" "ml_pipeline" {
       }
       DeployModel = {
         Type     = "Task"
-        Resource = "arn:aws:states:::sagemaker:createEndpoint"
-        Parameters = {
+        Resource = "arn:aws:states:::sagemaker:updateEndpoint"
+        Arguments = {
           EndpointName       = "model-${var.model_name}-${var.environment}"
           EndpointConfigName = aws_sagemaker_endpoint_configuration.model.name
         }
