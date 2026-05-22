@@ -12,7 +12,7 @@ While `yamldecode` lets you read YAML into Terraform, `yamlencode` does the oppo
 
 ## What Does yamlencode Do?
 
-The `yamlencode` function takes a Terraform value (map, list, string, number, bool) and returns a string containing the YAML representation of that value.
+The `yamlencode` function takes a Terraform value (such as a map, object, list, tuple, set, string, number, bool, or null) and returns a string containing the YAML representation of that value.
 
 ```hcl
 output "yaml_output" {
@@ -132,7 +132,6 @@ variable "services" {
 resource "local_file" "docker_compose" {
   filename = "${path.module}/generated/docker-compose.yaml"
   content = yamlencode({
-    version  = "3.8"
     services = var.services
   })
 }
@@ -274,7 +273,7 @@ resource "local_file" "pipeline" {
 
 ### Using with Kubernetes Provider
 
-Pass YAML to the Kubernetes provider's manifest resource:
+Pass the Terraform object to the Kubernetes provider's manifest resource:
 
 ```hcl
 locals {
