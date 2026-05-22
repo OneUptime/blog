@@ -162,7 +162,7 @@ locals {
 }
 
 output "api_key_hint" {
-  value = local.masked_key
+  value = nonsensitive(local.masked_key)
 }
 ```
 
@@ -250,7 +250,7 @@ locals {
   # Redis connection string
   redis_url = "redis://cache.internal:6379/0"
 
-  # Remove the protocol prefix (7 chars for "redis://")
+  # Remove the protocol prefix (8 chars for "redis://")
   without_protocol = substr(local.redis_url, 8, -1)
   # Result: "cache.internal:6379/0"
 }
