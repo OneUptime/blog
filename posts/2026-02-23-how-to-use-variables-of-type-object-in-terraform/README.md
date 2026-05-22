@@ -10,7 +10,7 @@ Description: Learn how to use object-type variables in Terraform to group relate
 
 Object variables in Terraform let you group related attributes into a single structured variable with defined keys and types. Instead of having five separate variables for your database configuration, you can have one `database` variable that holds the engine, version, instance class, storage, and multi-AZ setting together. This makes your module interfaces cleaner and your configurations easier to understand.
 
-This post covers how to declare object variables, use them in resources, provide values, and take advantage of features like optional attributes.
+This post covers how to declare object variables, use them in resources, provide values, and combine objects with maps and lists.
 
 ## Declaring Object Variables
 
@@ -57,7 +57,7 @@ variable "database" {
 }
 ```
 
-With a default, the caller can omit the variable entirely and get these values. But if they provide the variable at all, they must provide the complete object - you cannot partially override individual attributes (unless you use `optional()`, covered later in the post).
+With a default, the caller can omit the variable entirely and get these values. But if they provide the variable at all, they must provide the complete object - you cannot partially override individual attributes unless you use `optional()`.
 
 ## Using Object Variables in Resources
 
