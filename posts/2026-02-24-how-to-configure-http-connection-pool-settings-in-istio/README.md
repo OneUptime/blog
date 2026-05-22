@@ -29,9 +29,9 @@ graph TD
     E -->|No, at maxConnections| B
 ```
 
-## All HTTP Connection Pool Fields
+## Common HTTP Connection Pool Fields
 
-Here is the full set of HTTP connection pool options:
+Here are the commonly used HTTP connection pool options:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -55,7 +55,7 @@ Let me walk through each one.
 
 ## http1MaxPendingRequests
 
-This is the maximum number of HTTP/1.1 requests that can wait in a queue when all connections are busy. If there are no available connections and this queue is full, new requests immediately get a 503 response.
+This is the maximum number of requests that can wait in a queue when Envoy is waiting for a ready connection pool connection. Despite the `http1` name, Istio applies this setting to HTTP/1.1 and HTTP/2. If there are no available connections and this queue is full, new requests immediately get a 503 response.
 
 ```yaml
 connectionPool:
@@ -63,13 +63,13 @@ connectionPool:
     http1MaxPendingRequests: 100
 ```
 
-The default is 2^32 (essentially unlimited), which means without setting this, requests will queue indefinitely. That sounds safe but can actually be worse - a huge queue means requests wait so long that they time out at the client anyway, and your service is wasting resources on requests nobody is waiting for anymore.
+The default is 2^32-1 (essentially unlimited), which means without setting this, a very large number of requests can queue. That sounds safe but can actually be worse - a huge queue means requests wait so long that they time out at the client anyway, and your service is wasting resources on requests nobody is waiting for anymore.
 
-A good practice is to set this based on how much queueing latency is acceptable. If your p99 latency target is 500ms and each request takes about 50ms, a queue of 10 per connection is reasonable.
+A good practice is to set this based on how much queueing latency is acceptable. If your p99 latency target is 500ms and each request takes about 50ms, keep the queue small enough that queued requests can still complete within your latency budget.
 
 ## http2MaxRequests
 
-For HTTP/2 connections, this limits the total number of concurrent requests (across all connections to the service):
+This limits the total number of active requests to the destination:
 
 ```yaml
 connectionPool:
@@ -77,9 +77,9 @@ connectionPool:
     http2MaxRequests: 500
 ```
 
-HTTP/2 multiplexes many requests over a single connection, so this is not about connections but about total request concurrency. If you have 500 concurrent requests in flight and a 501st comes in, it either queues (if `http1MaxPendingRequests` allows) or gets rejected.
+HTTP/2 multiplexes many requests over a single connection, so this is not about connections but about total request concurrency. Istio applies this setting to HTTP/1.1 and HTTP/2. If you have 500 concurrent requests in flight and a 501st comes in, it is rejected by the active request circuit breaker.
 
-The default is 2^32 (unlimited). Set it based on what your service can actually handle concurrently.
+The default is 2^32-1 (unlimited). Set it based on what your service can actually handle concurrently.
 
 ## maxRequestsPerConnection
 
@@ -97,7 +97,7 @@ Why would you want to close connections? Two reasons:
 
 2. **Memory leaks**: Some services slowly leak memory per connection. Cycling connections prevents any single connection from accumulating too much state.
 
-Setting this to 0 (the default) means unlimited - connections are reused forever.
+Setting this to 0 (the default) means unlimited for this limit - connections can be reused until another condition closes them, such as the idle timeout.
 
 ## maxRetries
 
@@ -111,7 +111,7 @@ connectionPool:
 
 This is not the number of retry attempts per request (that is configured in VirtualService). This is the maximum number of in-flight retry requests at any given moment across all original requests. It prevents retry storms where a failing service gets even more traffic from retries.
 
-The default is 2^32 (unlimited), which means retries can pile up without limit. For a service with 100 client pods each retrying 3 times, you could get 300 concurrent retry requests hitting a service that is already struggling.
+The default is 2^32-1 (unlimited), which means retries can pile up without limit. For a service with 100 client pods each retrying 3 times, you could get 300 concurrent retry requests hitting a service that is already struggling.
 
 ## h2UpgradePolicy
 
@@ -168,14 +168,14 @@ spec:
 And here is the reasoning behind each number:
 
 - **200 TCP connections**: The service has 10 pods, each can handle about 50 concurrent connections, so 200 gives headroom without overwhelming any single pod.
-- **50 pending requests**: With 200 connections and 50ms average response time, 50 pending requests means about 250ms of queue time, which is acceptable.
+- **50 pending requests**: With 200 connections and 50ms average response time, a full queue of 50 pending requests would add about 12.5ms of queue time if the backend keeps up, which is acceptable.
 - **500 HTTP/2 requests**: The total concurrent request capacity across all pods.
 - **100 requests per connection**: Cycle connections often enough to get good load distribution.
 - **10 retries**: Allow retries but cap them to prevent amplification.
 
 ## Testing HTTP Pool Limits
 
-Use fortio to test what happens when limits are exceeded:
+Use fortio from a pod with an Istio sidecar to test what happens when limits are exceeded:
 
 ```bash
 kubectl run fortio --image=fortio/fortio --rm -it -- \
@@ -189,20 +189,21 @@ kubectl run fortio --image=fortio/fortio --rm -it -- \
   load -c 500 -qps 0 -t 30s http://api-service:8080/
 ```
 
-At 500 concurrent connections, you should start seeing 503 errors once the connection pool and pending queue are exhausted.
+At 500 concurrent connections, you should start seeing 503 errors once the connection pool and pending queue are exhausted, assuming requests stay in flight long enough to hit the limits.
 
 ## Monitoring HTTP Pool Metrics
 
 Check Envoy stats for HTTP pool overflow:
 
 ```bash
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep pending
+kubectl exec <pod> -c istio-proxy -- pilot-agent request GET stats | grep -E 'pending|active_overflow|retry_overflow'
 ```
 
 Look for:
 - `upstream_rq_pending_total` - Total requests that entered the pending queue
 - `upstream_rq_pending_overflow` - Requests rejected because the pending queue was full
 - `upstream_rq_pending_active` - Currently pending requests
+- `upstream_rq_active_overflow` - Requests rejected because the active request limit was reached
 - `upstream_rq_retry_overflow` - Retries rejected because maxRetries was reached
 
 ## Cleanup
