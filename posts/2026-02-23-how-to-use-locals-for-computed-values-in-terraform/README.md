@@ -27,6 +27,8 @@ variable "project" {
   default = "payments"
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   # Computed from two variables
   resource_prefix = "${var.project}-${var.environment}"
@@ -62,10 +64,10 @@ data "aws_availability_zones" "available" {
 locals {
   # Extract values from data sources
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.id
 
   # Compute a list of AZ names to use (limit to 3)
-  azs = slice(data.aws_availability_zones.available.names, 0, 3)
+  azs = slice(data.aws_availability_zones.available.names, 0, min(3, length(data.aws_availability_zones.available.names)))
 
   # Compute subnet CIDRs based on the number of AZs
   public_subnet_cidrs = [
@@ -101,11 +103,11 @@ resource "aws_subnet" "private" {
 }
 ```
 
-The subnet CIDRs are computed from the VPC CIDR and the number of available zones. If AWS adds or removes an AZ, the configuration adapts automatically.
+The subnet CIDRs are computed from the base CIDR block and the number of selected availability zones. If the selected AZ list changes, Terraform updates the computed values during planning.
 
 ## Computing Tags Dynamically
 
-Tags are one of the most common use cases for computed locals. You often want a base set of tags that includes computed values like timestamps or account IDs.
+Tags are one of the most common use cases for computed locals. You often want a base set of tags that includes computed values like workspace names or account IDs.
 
 ```hcl
 data "aws_caller_identity" "current" {}
@@ -265,11 +267,11 @@ variable "services" {
 locals {
   # Compute a list of all ports for security group rules
   service_ports = [for name, svc in var.services : svc.port]
-  # Result: [8080, 3000, 50051]
+  # Result: [8080, 50051, 3000]
 
   # Compute service names as an uppercase list
   service_names_upper = [for name, svc in var.services : upper(name)]
-  # Result: ["API", "WEB", "GRPC"]
+  # Result: ["API", "GRPC", "WEB"]
 
   # Compute a filtered map of HTTP-only services
   http_services = {
@@ -301,6 +303,8 @@ data "aws_subnets" "private" {
   }
 }
 
+data "aws_region" "current" {}
+
 locals {
   # Combine VPC data with user input
   vpc_cidr       = data.aws_vpc.existing.cidr_block
@@ -324,7 +328,7 @@ locals {
     },
     {
       name  = "AWS_REGION"
-      value = data.aws_region.current.name
+      value = data.aws_region.current.id
     }
   ]
 }
