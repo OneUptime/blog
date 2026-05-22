@@ -102,7 +102,7 @@ spec:
                   permissions:
                     - any: true
                   principals:
-                    - source_ip:
+                    - direct_remote_ip:
                         address_prefix: 10.244.0.0
                         prefix_len: 16
 ```
@@ -157,13 +157,13 @@ This modifies the existing TCP proxy filter to include custom access logging. It
 
 ## Adding an SNI-Based Filter
 
-For TLS traffic, you can add filters based on the SNI (Server Name Indication) header. This is useful for TLS passthrough scenarios:
+For TLS traffic, you can target filter chains based on the SNI (Server Name Indication) value. This is useful for TLS passthrough scenarios:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: sni-logging
+  name: sni-rate-limit
   namespace: istio-system
 spec:
   workloadSelector:
@@ -176,19 +176,23 @@ spec:
         listener:
           portNumber: 443
           filterChain:
+            sni: redis.example.com
             filter:
               name: envoy.filters.network.tcp_proxy
       patch:
         operation: INSERT_BEFORE
         value:
-          name: envoy.filters.network.sni_dynamic_forward_proxy
+          name: envoy.filters.network.local_ratelimit
           typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.sni_dynamic_forward_proxy.v3.FilterConfig
-            port_value: 443
-            dns_cache_config:
-              name: dynamic_forward_proxy_cache_config
-              dns_lookup_family: V4_ONLY
+            "@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit
+            stat_prefix: sni_tcp_local_rate_limiter
+            token_bucket:
+              max_tokens: 100
+              tokens_per_fill: 100
+              fill_interval: 60s
 ```
+
+This inserts the rate limit filter only into the gateway filter chain whose SNI match is `redis.example.com`.
 
 ## Modifying the TCP Proxy Filter
 
@@ -313,7 +317,7 @@ Keep this in mind when adding custom network filters. A misconfigured rate limit
 
 Network filters run for every connection and sometimes for every byte of data. Keep these guidelines in mind:
 
-- Avoid complex Lua processing at the network level (Lua network filters exist but are rare)
+- Avoid complex custom processing at the network level; use native or Wasm network filters carefully
 - Rate limit filters are lightweight and safe to use
 - Access logging adds minimal overhead
 - Protocol-specific filters (Mongo, MySQL, Redis) add some overhead for protocol parsing
