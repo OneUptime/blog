@@ -37,7 +37,7 @@ resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
 
   # The zip file containing the function code
   filename = "${path.module}/lambda/api.zip"
@@ -63,17 +63,17 @@ variable "lambda_functions" {
   default = {
     api = {
       handler = "api.handler"
-      runtime = "python3.9"
+      runtime = "python3.14"
       timeout = 30
     }
     processor = {
       handler = "processor.handler"
-      runtime = "python3.9"
+      runtime = "python3.14"
       timeout = 300
     }
     notifier = {
       handler = "notifier.handler"
-      runtime = "python3.9"
+      runtime = "python3.14"
       timeout = 60
     }
   }
@@ -102,14 +102,14 @@ resource "aws_lambda_layer_version" "dependencies" {
   layer_name          = "app-dependencies"
   filename            = "${path.module}/layers/dependencies.zip"
   source_code_hash    = filebase64sha256("${path.module}/layers/dependencies.zip")
-  compatible_runtimes = ["python3.9", "python3.10"]
+  compatible_runtimes = ["python3.14", "python3.13"]
 }
 
 resource "aws_lambda_function" "app" {
   function_name = "app"
   role          = aws_iam_role.lambda.arn
   handler       = "app.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.14"
 
   filename         = "${path.module}/lambda/app.zip"
   source_code_hash = filebase64sha256("${path.module}/lambda/app.zip")
@@ -153,8 +153,9 @@ resource "aws_lambda_function" "app" {
   function_name    = "my-app"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs24.x"
   filename         = "${path.module}/dist/app.zip"
+  publish          = true
   source_code_hash = local.app_hash
 }
 
@@ -209,7 +210,7 @@ resource "aws_lambda_function" "app" {
   function_name    = "app"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "python3.9"
+  runtime          = "python3.14"
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -234,7 +235,7 @@ resource "aws_lambda_function" "app" {
   function_name    = "app-${each.key}"
   role             = aws_iam_role.lambda[each.key].arn
   handler          = "index.handler"
-  runtime          = "python3.9"
+  runtime          = "python3.14"
   filename         = "${path.module}/lambda/app.zip"
   source_code_hash = local.code_hash
 
@@ -266,7 +267,7 @@ resource "aws_lambda_function" "app" {
   function_name    = "app"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "python3.9"
+  runtime          = "python3.14"
   filename         = "${path.module}/lambda/app.zip"
   source_code_hash = local.code_hash
 
