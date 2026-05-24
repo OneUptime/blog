@@ -51,7 +51,7 @@ output "response" {
 }
 ```
 
-By default, it has a 10-second timeout and follows redirects.
+By default, no explicit request timeout is set on the provider, so requests can hang for as long as the underlying TCP connection allows. The data source follows redirects.
 
 ## Fix 1: Increase the Timeout
 
@@ -70,14 +70,14 @@ data "http" "api_config" {
 }
 ```
 
-Note: The `request_timeout_ms` argument was added in version 3.2.0 of the HTTP provider. If you are on an older version, upgrade:
+Note: The `request_timeout_ms` argument was added in version 3.3.0 of the HTTP provider. If you are on an older version, upgrade:
 
 ```hcl
 terraform {
   required_providers {
     http = {
       source  = "hashicorp/http"
-      version = ">= 3.2.0"
+      version = ">= 3.3.0"
     }
   }
 }
