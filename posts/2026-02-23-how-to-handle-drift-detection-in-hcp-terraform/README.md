@@ -38,7 +38,7 @@ Drift detection runs do not apply any changes. They are read-only assessments.
 
 ## Enabling Drift Detection
 
-Drift detection is part of the workspace health assessment feature, available on the HCP Terraform Plus plan and above.
+Drift detection is part of the workspace health assessment feature, available on the HCP Terraform Standard edition and above.
 
 ### Through the UI
 
@@ -231,7 +231,7 @@ resource "tfe_notification_configuration" "drift_email" {
   enabled          = true
   destination_type = "email"
   triggers         = ["assessment:drifted"]
-  email_user_ids   = [data.tfe_organization_members.admins.members[*].user_id]
+  email_user_ids   = ["user-abc123", "user-def456"]
   workspace_id     = tfe_workspace.production.id
 }
 ```
