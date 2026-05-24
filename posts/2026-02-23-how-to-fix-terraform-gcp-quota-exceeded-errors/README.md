@@ -52,7 +52,9 @@ gcloud compute regions describe us-central1 \
 # Check a specific quota
 gcloud compute regions describe us-central1 \
   --project=my-project \
-  --format="value(quotas[metric=CPUS].limit, quotas[metric=CPUS].usage)"
+  --flatten="quotas" \
+  --filter="quotas.metric=CPUS" \
+  --format="value(quotas.limit, quotas.usage)"
 
 # List all project quotas
 gcloud compute project-info describe \
@@ -83,8 +85,8 @@ You can also request increases via gcloud:
 gcloud alpha services quota update \
   --service=compute.googleapis.com \
   --consumer=projects/my-project \
-  --metric=compute.googleapis.com/cpus_per_project \
-  --unit=1%2F%7Bproject%7D \
+  --metric=compute.googleapis.com/cpus \
+  --unit="1/{project}/{region}" \
   --dimensions=region=us-central1 \
   --value=48
 ```
@@ -178,9 +180,9 @@ Sometimes the quota is consumed by resources you forgot about:
 # Find all instances in a project
 gcloud compute instances list --project=my-project
 
-# Find all disks (including unattached ones)
+# Find all unattached disks
 gcloud compute disks list --project=my-project \
-  --filter="users:('') OR -users:*"
+  --filter="-users:*"
 
 # Find all static IPs (including unused ones)
 gcloud compute addresses list --project=my-project \
