@@ -178,7 +178,7 @@ resource "aws_cloudwatch_event_rule" "break_glass_usage" {
   description = "Detect any activity from break-glass accounts"
 
   event_pattern = jsonencode({
-    detail-type = ["AWS API Call via CloudTrail", "AWS Console Sign In via CloudTrail"]
+    "detail-type" = ["AWS API Call via CloudTrail", "AWS Console Sign In via CloudTrail"]
     detail = {
       userIdentity = {
         arn = [
