@@ -125,14 +125,14 @@ resource "google_workbench_instance" "ml_notebook" {
 
     # Metadata
     metadata = {
-      terraform     = "true"
-      idle-timeout  = "3600"
+      terraform            = "true"
+      idle-timeout-seconds = "3600"
     }
 
-    # VM image - use the Deep Learning VM
+    # VM image - use the managed Workbench image
     vm_image {
-      project = "deeplearning-platform-release"
-      family  = "tf-latest-gpu"
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
     }
   }
 
@@ -185,10 +185,10 @@ resource "google_workbench_instance" "data_exploration" {
 
     disable_public_ip = true
 
-    # Use the base Python image
+    # Use the managed Workbench image
     vm_image {
-      project = "deeplearning-platform-release"
-      family  = "common-cpu"
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
     }
   }
 
@@ -274,8 +274,8 @@ resource "google_workbench_instance" "team_notebooks" {
     disable_public_ip = true
 
     vm_image {
-      project = "deeplearning-platform-release"
-      family  = each.value.gpu ? "tf-latest-gpu" : "common-cpu"
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
     }
   }
 
@@ -349,8 +349,8 @@ resource "google_workbench_instance" "with_startup" {
     }
 
     vm_image {
-      project = "deeplearning-platform-release"
-      family  = "tf-latest-gpu"
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
     }
   }
 
@@ -365,7 +365,7 @@ resource "google_workbench_instance" "with_startup" {
 
 One of the biggest cost drivers with notebook instances is leaving them running overnight or over weekends. You can configure idle shutdown through instance metadata.
 
-The `idle-timeout` metadata key tells the instance to shut down after a period of inactivity. This is measured in seconds.
+The `idle-timeout-seconds` metadata key tells the instance to shut down after a period of inactivity. This is measured in seconds.
 
 ```hcl
 # Instance with aggressive idle shutdown
@@ -395,12 +395,12 @@ resource "google_workbench_instance" "cost_conscious" {
 
     metadata = {
       # Shut down after 30 minutes of inactivity
-      idle-timeout = "1800"
+      idle-timeout-seconds = "1800"
     }
 
     vm_image {
-      project = "deeplearning-platform-release"
-      family  = "common-cpu"
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
     }
   }
 
