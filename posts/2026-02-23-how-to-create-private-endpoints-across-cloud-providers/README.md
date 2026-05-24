@@ -302,12 +302,11 @@ Google Cloud uses Private Service Connect for accessing Google APIs and services
 
 # Reserve an internal IP for the private endpoint
 resource "google_compute_global_address" "private_service_connect" {
-  name          = "${var.project_name}-psc-address"
-  purpose       = "PRIVATE_SERVICE_CONNECT"
-  address_type  = "INTERNAL"
-  network       = google_compute_network.main.id
-  address       = "10.0.100.1"
-  prefix_length = 32
+  name         = "${var.project_name}-psc-address"
+  purpose      = "PRIVATE_SERVICE_CONNECT"
+  address_type = "INTERNAL"
+  network      = google_compute_network.main.id
+  address      = "10.0.100.1"
 }
 
 # Private Service Connect forwarding rule for Google APIs
@@ -388,8 +387,8 @@ resource "azurerm_subnet" "private_endpoints" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [var.pe_subnet_cidr]
 
-  # Required for private endpoints
-  private_endpoint_network_policies_enabled = true
+  # Disable network policies on the subnet hosting private endpoints
+  private_endpoint_network_policies = "Disabled"
 }
 
 # GCP - Dedicated subnet
@@ -398,7 +397,7 @@ resource "google_compute_subnetwork" "private_endpoints" {
   ip_cidr_range = var.pe_subnet_cidr
   region        = var.gcp_region
   network       = google_compute_network.main.id
-  purpose       = "PRIVATE"
+  purpose       = "PRIVATE_RFC_1918"
 }
 ```
 
