@@ -27,8 +27,14 @@ provider "grafana" {
   auth = var.grafana_auth
 }
 
-variable "grafana_url" { type = string }
-variable "grafana_auth" { type = string; sensitive = true }
+variable "grafana_url" {
+  type = string
+}
+
+variable "grafana_auth" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Creating Contact Points
@@ -68,8 +74,15 @@ resource "grafana_contact_point" "pagerduty" {
   }
 }
 
-variable "slack_webhook_url" { type = string; sensitive = true }
-variable "pagerduty_integration_key" { type = string; sensitive = true }
+variable "slack_webhook_url" {
+  type      = string
+  sensitive = true
+}
+
+variable "pagerduty_integration_key" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Notification Policy
@@ -125,7 +138,7 @@ resource "grafana_rule_group" "infrastructure" {
     # Query data
     data {
       ref_id         = "A"
-      datasource_uid = grafana_data_source.prometheus.uid
+      datasource_uid = data.grafana_data_source.prometheus.uid
 
       relative_time_range {
         from = 300
@@ -202,7 +215,7 @@ resource "grafana_rule_group" "infrastructure" {
 
     data {
       ref_id         = "A"
-      datasource_uid = grafana_data_source.prometheus.uid
+      datasource_uid = data.grafana_data_source.prometheus.uid
 
       relative_time_range {
         from = 300
@@ -218,19 +231,39 @@ resource "grafana_rule_group" "infrastructure" {
     data {
       ref_id         = "B"
       datasource_uid = "-100"
-      relative_time_range { from = 0; to = 0 }
+
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+
       model = jsonencode({
-        type = "reduce"; expression = "A"; reducer = "last"; refId = "B"
+        type       = "reduce"
+        expression = "A"
+        reducer    = "last"
+        refId      = "B"
       })
     }
 
     data {
       ref_id         = "C"
       datasource_uid = "-100"
-      relative_time_range { from = 0; to = 0 }
+
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+
       model = jsonencode({
-        type = "threshold"; expression = "B"; refId = "C"
-        conditions = [{ evaluator = { type = "gt"; params = [85] } }]
+        type       = "threshold"
+        expression = "B"
+        refId      = "C"
+        conditions = [{
+          evaluator = {
+            type   = "gt"
+            params = [85]
+          }
+        }]
       })
     }
 
