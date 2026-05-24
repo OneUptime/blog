@@ -351,7 +351,17 @@ resource "aws_instance" "production" {
       tags["LastModifiedBy"],
       tags["LastModifiedDate"],
     ]
+  }
+}
 
+# For resources where you want zero-downtime replacement, use
+# create_before_destroy instead. Note that this conflicts with
+# prevent_destroy, so the two cannot be combined on the same resource.
+resource "aws_instance" "zero_downtime" {
+  ami           = var.ami_id
+  instance_type = var.instance_type
+
+  lifecycle {
     # Create new resource before destroying old one
     # This avoids downtime but temporarily doubles cost
     create_before_destroy = true
