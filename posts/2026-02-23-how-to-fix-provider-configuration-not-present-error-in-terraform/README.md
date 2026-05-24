@@ -109,14 +109,16 @@ module "app" {
 }
 ```
 
-If you want to migrate the resources to a different provider configuration, you need to move them in the state:
+If you want to migrate the resources to a different provider source (for example, switching from the upstream registry to an internal mirror), use:
 
 ```bash
-# Move resources to use the new provider
+# Replace the provider source FQN for all matching resources in state
 terraform state replace-provider \
-  'module.app:provider["registry.terraform.io/hashicorp/aws"].west' \
-  'provider["registry.terraform.io/hashicorp/aws"]'
+  'registry.terraform.io/hashicorp/aws' \
+  'registry.acme.corp/acme/aws'
 ```
+
+Note that `terraform state replace-provider` only changes the provider source FQN; it does not retarget resources to a different alias or module-passed provider. If you need to migrate resources between aliased provider configurations, make sure the original provider configuration still exists, or remove the affected resources from state and re-import them under the new configuration.
 
 ## Cause 3: Removing a Module That Has Resources in State
 
