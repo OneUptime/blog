@@ -182,9 +182,9 @@ Scopes let you apply quotas to specific types of pods.
 
 ```hcl
 # scoped_quota.tf - Different limits for different pod priorities
-resource "kubernetes_resource_quota" "best_effort" {
+resource "kubernetes_resource_quota" "low_priority" {
   metadata {
-    name      = "best-effort-quota"
+    name      = "low-priority-quota"
     namespace = "development"
   }
 
@@ -193,7 +193,7 @@ resource "kubernetes_resource_quota" "best_effort" {
       pods = "20"
     }
 
-    # Only count pods with BestEffort QoS (no resource requests or limits)
+    # Only count pods assigned to the low-priority PriorityClass
     scope_selector {
       match_expression {
         scope_name = "PriorityClass"
