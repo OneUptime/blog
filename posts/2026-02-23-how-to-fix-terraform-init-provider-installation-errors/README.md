@@ -128,10 +128,10 @@ The version constraint in your configuration does not match any published versio
 **Fix**: Check what versions are actually available:
 
 ```bash
-# List available versions of a provider
-terraform version -json | jq .
+# See currently installed Terraform and provider versions
+terraform version
 
-# Or check the registry directly
+# Check available provider versions on the registry directly
 curl -s https://registry.terraform.io/v1/providers/hashicorp/aws/versions | jq '.versions[].version' | tail -20
 ```
 
@@ -201,7 +201,7 @@ terraform init
 ```yaml
 # GitHub Actions - cache the plugin directory
 - name: Cache Terraform Plugins
-  uses: actions/cache@v3
+  uses: actions/cache@v4
   with:
     path: ~/.terraform.d/plugin-cache
     key: terraform-plugins-${{ hashFiles('**/.terraform.lock.hcl') }}
