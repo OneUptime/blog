@@ -180,8 +180,8 @@ Before making a breaking change, deprecate the old behavior in a minor version:
 ```go
 // v1.5.0 - Deprecate the old attribute
 "size": schema.StringAttribute{
-    Optional:          true,
-    DeprecatedMessage: "The 'size' attribute is deprecated and will be removed in v2.0.0. Use 'cpu' and 'memory' instead.",
+    Optional:           true,
+    DeprecationMessage: "The 'size' attribute is deprecated and will be removed in v2.0.0. Use 'cpu' and 'memory' instead.",
 },
 // Add the new attributes alongside
 "cpu": schema.Int64Attribute{
