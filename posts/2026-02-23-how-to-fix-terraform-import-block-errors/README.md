@@ -31,13 +31,14 @@ When you run `terraform plan`, Terraform reads the actual state of `i-1234567890
 ## Error 1: Invalid Resource ID
 
 ```text
-Error: Cannot import to nonexistent resource address
+Error: Configuration for import target does not exist
 
   on imports.tf line 1:
    1: import {
 
-The target resource aws_instance.web does not exist in the
-configuration.
+The configuration for the given import target aws_instance.web_server
+does not exist. All target instances must have an associated
+configuration to be imported.
 ```
 
 The `to` address must match an existing resource block in your configuration:
