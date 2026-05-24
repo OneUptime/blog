@@ -262,7 +262,14 @@ This approach eliminates the scenario where multiple developers independently up
 
 ### Use Git Merge Strategies
 
-Configure Git to use a specific merge strategy for lock files:
+Configure Git to use a specific merge strategy for lock files. There is no built-in `ours` merge driver in Git, so you first need to define one in your Git config:
+
+```bash
+# Define the custom "ours" merge driver (run once per clone, or use --global)
+git config merge.ours.driver true
+```
+
+Then reference it in `.gitattributes`:
 
 ```text
 # .gitattributes
