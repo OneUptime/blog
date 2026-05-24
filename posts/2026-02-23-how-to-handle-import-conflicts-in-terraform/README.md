@@ -22,7 +22,7 @@ Import conflicts fall into several categories:
 
 Understanding which type of conflict you are facing is the first step toward resolving it.
 
-Resource Already Exists in State
+## Resource Already Exists in State
 
 The most common conflict occurs when you try to import a resource that is already tracked in the Terraform state:
 
