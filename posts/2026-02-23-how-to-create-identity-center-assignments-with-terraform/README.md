@@ -251,7 +251,7 @@ resource "aws_ssoadmin_account_assignment" "security_all_prod" {
   for_each = {
     for account in data.aws_organizations_organizational_unit_descendant_accounts.production.accounts :
     account.id => account
-    if account.status == "ACTIVE"
+    if account.state == "ACTIVE"
   }
 
   instance_arn       = local.instance_arn
