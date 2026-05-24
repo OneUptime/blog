@@ -223,7 +223,7 @@ resource "kubernetes_deployment" "app" {
     # Keep 5 old ReplicaSets for easy rollback
     revision_history_limit = 5
 
-    # Wait 60 seconds after a pod is ready before continuing the rollout
+    # Wait 10 seconds after a pod is ready before continuing the rollout
     min_ready_seconds = 10
 
     selector {
@@ -303,9 +303,11 @@ resource "kubernetes_secret" "app_secrets" {
     namespace = "default"
   }
 
+  # The provider base64-encodes these values automatically.
+  # Use `binary_data` if you need to supply already-encoded values.
   data = {
-    DATABASE_PASSWORD = base64encode("supersecretpassword")
-    API_KEY           = base64encode("myapikey123")
+    DATABASE_PASSWORD = "supersecretpassword"
+    API_KEY           = "myapikey123"
   }
 
   type = "Opaque"
