@@ -187,22 +187,24 @@ Self-service does not mean uncontrolled. Add policy enforcement to ensure templa
 
 package terraform.self_service
 
+import rego.v1
+
 # Deny production deployments without approval tag
-deny[msg] {
+deny contains msg if {
     input.environment == "production"
     not input.approved == true
     msg := "Production deployments require explicit approval"
 }
 
 # Enforce maximum instance size per environment
-deny[msg] {
+deny contains msg if {
     input.environment == "dev"
     input.instance_size == "large"
     msg := "Large instances are not allowed in dev environment"
 }
 
 # Require team ownership tag
-deny[msg] {
+deny contains msg if {
     not input.team
     msg := "Team ownership tag is required for all deployments"
 }
@@ -264,18 +266,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get changed tfvars file
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: 'deployments/**/*.tfvars'
+
       - name: Detect template type
         id: detect
         run: |
           # Parse the tfvars file to determine which template to use
-          TEMPLATE=$(grep "template" ${{ github.event.pull_request.changed_files[0] }} | cut -d'=' -f2 | tr -d ' "')
+          TFVARS_FILE="${{ steps.changed-files.outputs.all_changed_files }}"
+          TEMPLATE=$(grep "template" "$TFVARS_FILE" | cut -d'=' -f2 | tr -d ' "')
           echo "template=$TEMPLATE" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
         run: terraform init -backend-config="key=${{ steps.detect.outputs.template }}"
 
       - name: Terraform Plan
-        run: terraform plan -var-file=${{ github.event.pull_request.changed_files[0] }}
+        run: terraform plan -var-file="${{ steps.changed-files.outputs.all_changed_files }}"
 
       - name: Post plan as PR comment
         uses: actions/github-script@v7
