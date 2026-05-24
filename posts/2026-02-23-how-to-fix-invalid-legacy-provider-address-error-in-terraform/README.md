@@ -74,7 +74,10 @@ Changing 42 resources:
   aws_subnet.private[1]
   ...
 
-Do you approve? (yes/no)
+Do you want to make these changes?
+Only 'yes' will be accepted to continue.
+
+  Enter a value:
 ```
 
 Type `yes` and the state file is updated. You may need to do this for each provider in your configuration:
@@ -114,7 +117,8 @@ unzip terraform_0.13.7.zip -d /tmp/tf013
 **Step 2**: Run the 0.13 upgrade command
 
 ```bash
-# This adds the required_providers block and updates the state
+# This rewrites your configuration to add the required_providers block.
+# It does not modify the state file directly - that happens during init/apply.
 /tmp/tf013/terraform 0.13upgrade .
 ```
 
@@ -253,7 +257,6 @@ terraform {
     google   = { source = "hashicorp/google" }
     random   = { source = "hashicorp/random" }
     null     = { source = "hashicorp/null" }
-    template = { source = "hashicorp/template" }
     archive  = { source = "hashicorp/archive" }
     local    = { source = "hashicorp/local" }
     tls      = { source = "hashicorp/tls" }
