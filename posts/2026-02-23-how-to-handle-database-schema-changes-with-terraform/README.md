@@ -218,7 +218,7 @@ resource "aws_codebuild_project" "db_migration" {
       phases:
         install:
           commands:
-            - wget -qO- https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/10.0.0/flyway-commandline-10.0.0-linux-x64.tar.gz | tar xz
+            - wget -qO- https://download.red-gate.com/maven/release/org/flywaydb/flyway-commandline/10.0.0/flyway-commandline-10.0.0-linux-x64.tar.gz | tar xz
             - ln -s flyway-10.0.0/flyway /usr/local/bin/flyway
         build:
           commands:
