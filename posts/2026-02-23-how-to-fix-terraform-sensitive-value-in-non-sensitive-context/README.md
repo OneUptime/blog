@@ -218,14 +218,17 @@ Instead, use a more secure method to pass secrets:
 
 ```hcl
 resource "aws_instance" "web" {
-  # Pass via user_data (encrypted at rest in EC2)
+  # Pass via user_data - note that user_data is not encrypted and is
+  # readable from inside the instance via the metadata service, so this
+  # is only acceptable for low-sensitivity values or when the metadata
+  # service is locked down with IMDSv2 and restricted access.
   user_data = base64encode(jsonencode({
     db_password = var.db_password
   }))
 }
 ```
 
-Or use a secrets manager:
+For true secrets, use a secrets manager:
 
 ```hcl
 resource "aws_secretsmanager_secret_version" "db_password" {
