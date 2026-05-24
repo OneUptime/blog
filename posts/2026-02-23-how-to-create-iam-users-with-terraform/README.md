@@ -405,7 +405,7 @@ resource "null_resource" "key_rotation_reminder" {
     if config.programmatic_access
   }
 
-  # Trigger recreation every 90 days
+  # Trigger recreation when the calendar month changes
   triggers = {
     rotation_date = formatdate("YYYY-MM", timestamp())
   }
