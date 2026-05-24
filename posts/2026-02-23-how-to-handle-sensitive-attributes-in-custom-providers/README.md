@@ -217,7 +217,18 @@ func (p *ExampleProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 ## Write-Only Attributes
 
-Some attributes, like passwords, should only be sent to the API during create or update but never read back. Handle these carefully:
+For attributes like passwords that should never be persisted to state, the Plugin Framework supports first-class write-only arguments (Terraform 1.11+, terraform-plugin-framework v1.14+) via `WriteOnly: true`. Write-only values are sent to the provider during configuration but are not stored in plan or state, which is the recommended approach for credentials:
+
+```go
+"admin_password": schema.StringAttribute{
+    Required:  true,
+    WriteOnly: true,
+    Sensitive: true,
+    Description: "The admin password for the database. Not stored in state.",
+},
+```
+
+If you cannot use `WriteOnly` (for example, when targeting older Terraform versions), the fallback pattern is to send the value to the API during create or update but never overwrite it from the API response during read:
 
 ```go
 func (r *DatabaseResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
