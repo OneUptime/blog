@@ -211,7 +211,7 @@ Control which GCP services can be used:
 # Restrict which services can be enabled
 resource "google_organization_policy" "restrict_services" {
   org_id     = var.organization_id
-  constraint = "constraints/serviceuser.services"
+  constraint = "constraints/gcp.restrictServiceUsage"
 
   list_policy {
     deny {
@@ -263,12 +263,15 @@ resource "google_org_policy_custom_constraint" "require_vm_labels" {
 }
 
 # Apply the custom constraint as an organization policy
-resource "google_organization_policy" "enforce_vm_labels" {
-  org_id     = var.organization_id
-  constraint = "custom.requireVmLabels"
+# Custom constraints must be enforced via the V2 google_org_policy_policy resource
+resource "google_org_policy_policy" "enforce_vm_labels" {
+  name   = "organizations/${var.organization_id}/policies/custom.requireVmLabels"
+  parent = "organizations/${var.organization_id}"
 
-  boolean_policy {
-    enforced = true
+  spec {
+    rules {
+      enforce = "TRUE"
+    }
   }
 
   depends_on = [google_org_policy_custom_constraint.require_vm_labels]
@@ -332,7 +335,7 @@ resource "google_logging_metric" "org_policy_violations" {
   description = "Count of organization policy violation attempts"
   project     = var.project_id
 
-  filter = "protoPayload.status.code=7 AND protoPayload.status.message:\"orgpolicy\""
+  filter = "protoPayload.status.code=9 AND protoPayload.status.message:\"orgpolicy\""
 
   metric_descriptor {
     metric_kind = "DELTA"
