@@ -140,19 +140,19 @@ resource "google_filestore_instance" "enterprise" {
 
 ## Filestore with Snapshots
 
-Snapshots let you create point-in-time backups of your file shares.
+Snapshots let you create point-in-time backups of your file shares. Note that snapshots are only available on the Zonal, Regional, and Enterprise service tiers — Basic HDD and Basic SSD do not support snapshots.
 
 ```hcl
-# Filestore instance for production
+# Filestore instance for production (Enterprise tier supports snapshots)
 resource "google_filestore_instance" "production" {
   name     = "prod-nfs-${var.environment}"
   project  = var.project_id
-  location = var.zone
-  tier     = "BASIC_SSD"
+  location = var.region  # Enterprise tier is regional
+  tier     = "ENTERPRISE"
 
   file_shares {
     name        = "production_data"
-    capacity_gb = 2560
+    capacity_gb = 1024
   }
 
   networks {
@@ -169,7 +169,7 @@ resource "google_filestore_instance" "production" {
 resource "google_filestore_snapshot" "daily_snapshot" {
   name     = "daily-snapshot"
   instance = google_filestore_instance.production.name
-  location = var.zone
+  location = var.region  # Snapshot location matches the instance location
   project  = var.project_id
 
   description = "Daily snapshot for backup purposes"
