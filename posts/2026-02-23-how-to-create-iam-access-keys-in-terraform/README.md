@@ -180,12 +180,22 @@ variable "key_rotation_version" {
   default     = 1
 }
 
+# random_id changes whenever the rotation version changes
+resource "random_id" "key_rotation" {
+  byte_length = 8
+
+  keepers = {
+    rotation_version = var.key_rotation_version
+  }
+}
+
 resource "aws_iam_access_key" "rotatable" {
   user = aws_iam_user.service_account.name
 
-  # This lifecycle block ensures old key is destroyed and new one created
+  # When random_id is replaced, the access key is replaced too
   lifecycle {
     create_before_destroy = true
+    replace_triggered_by  = [random_id.key_rotation]
   }
 }
 ```
@@ -213,7 +223,7 @@ variable "service_accounts" {
     deploy = {
       policy_arns = [
         "arn:aws:iam::aws:policy/AmazonECS_FullAccess",
-        "arn:aws:iam::aws:policy/AmazonECR_FullAccess",
+        "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess",
       ]
       path = "/service-accounts/"
     }
