@@ -105,7 +105,7 @@ resource "google_dataflow_job" "gcs_to_bigquery" {
   name              = "gcs-to-bigquery-batch"
   project           = var.project_id
   region            = var.region
-  template_gcs_path = "gs://dataflow-templates/latest/GCS_Text_to_BigQuery"
+  template_gcs_path = "gs://dataflow-templates-${var.region}/latest/GCS_Text_to_BigQuery"
   temp_gcs_location = "${google_storage_bucket.dataflow_staging.url}/temp"
 
   # Template-specific parameters
@@ -156,7 +156,7 @@ resource "google_dataflow_flex_template_job" "pubsub_to_bigquery" {
   name                    = "pubsub-to-bigquery-stream"
   project                 = var.project_id
   region                  = var.region
-  container_spec_gcs_path = "gs://dataflow-templates/latest/flex/PubSub_to_BigQuery"
+  container_spec_gcs_path = "gs://dataflow-templates-${var.region}/latest/flex/PubSub_to_BigQuery_Flex"
 
   parameters = {
     inputTopic            = "projects/${var.project_id}/topics/${var.pubsub_topic}"
@@ -321,8 +321,8 @@ Third, the `on_delete` behavior matters. For batch jobs, "cancel" is fine since 
 Fourth, consider using `terraform import` for existing Dataflow jobs that were created outside of Terraform. The import command is:
 
 ```bash
-# Import an existing Dataflow job
-terraform import google_dataflow_job.my_job projects/my-project/locations/us-central1/jobs/job-id
+# Import an existing Dataflow job (project and region come from the provider/resource config)
+terraform import google_dataflow_job.my_job job-id
 ```
 
 ## Wrapping Up
