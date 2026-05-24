@@ -72,7 +72,7 @@ resource "aws_lambda_function" "example" {
   function_name = "my-function"
   role          = aws_iam_role.lambda_basic.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs20.x"
 }
 ```
 
