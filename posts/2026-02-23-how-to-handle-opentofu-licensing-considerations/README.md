@@ -24,7 +24,7 @@ The Mozilla Public License 2.0 is a weak copyleft license. Here is what that mea
 
 **File-level copyleft.** If you modify files that are part of the MPL-licensed codebase, you must release those modifications under the MPL 2.0 license. However, you can combine MPL-licensed code with proprietary code, as long as you keep them in separate files.
 
-**No patent retaliation.** The MPL 2.0 includes a patent grant from contributors, which means you get a license to any patents that cover the contributed code.
+**Patent grant.** The MPL 2.0 includes a patent grant from contributors, which means you get a license to any patents that cover the contributed code. Note that the license also includes a patent termination clause: if you initiate patent litigation against a contributor over the covered software, your rights under the license terminate.
 
 ```text
 # Quick summary of what you can do under MPL 2.0:
@@ -39,7 +39,7 @@ The Mozilla Public License 2.0 is a weak copyleft license. Here is what that mea
 
 ## Understanding BSL 1.1 (Terraform's Current License)
 
-The BSL 1.1 that Terraform now uses has an "Additional Use Grant" that defines what is and is not allowed. The key restriction is that you cannot provide a commercial offering that competes with HashiCorp's products. After four years, BSL-licensed code converts to the Apache 2.0 license.
+The BSL 1.1 that Terraform now uses has an "Additional Use Grant" that defines what is and is not allowed. The key restriction is that you cannot provide a commercial offering that competes with HashiCorp's products. After four years, BSL-licensed code converts to the MPL 2.0 license (HashiCorp specifies MPL 2.0 as the Change License in their BSL terms).
 
 This means:
 
@@ -147,7 +147,7 @@ Here is a practical checklist for handling licensing in your organization:
 - [ ] Usage does not constitute a competitive commercial offering
 - [ ] Legal team has reviewed the Additional Use Grant
 - [ ] Internal use vs. external offering boundaries are documented
-- [ ] Conversion date to Apache 2.0 is tracked for relevant versions
+- [ ] Conversion date to MPL 2.0 (the Change License) is tracked for relevant versions
 
 ### General
 - [ ] Provider licenses are individually reviewed
