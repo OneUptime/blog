@@ -169,9 +169,7 @@ resource "google_org_policy_policy" "vm_external_ip" {
   spec {
     rules {
       # Deny all external IPs by default
-      values {
-        denied_values = ["all"]
-      }
+      deny_all = "TRUE"
     }
   }
 }
@@ -233,9 +231,7 @@ resource "google_org_policy_policy" "conditional_external_ip" {
   spec {
     # Default rule: deny all
     rules {
-      values {
-        denied_values = ["all"]
-      }
+      deny_all = "TRUE"
     }
 
     # Exception for sandbox environments
@@ -295,16 +291,14 @@ resource "google_org_policy_policy" "project_external_ip_exception" {
 
 ## Listing Available Constraints
 
-You can discover available constraints using a data source.
+The full list of built-in (managed) constraints is in the [GCP Organization Policy constraints reference](https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints). You can also use gcloud to inspect policies and custom constraints in your organization:
 
-```hcl
-# List all available org policy constraints
-data "google_organization" "current" {
-  domain = var.org_domain
-}
+```bash
+# List the org policies currently set on the organization
+gcloud org-policies list --organization=ORG_ID
 
-# You can also query constraints in gcloud:
-# gcloud org-policies list --organization=ORG_ID
+# List any custom constraints defined in your organization
+gcloud org-policies list-custom-constraints --organization=ORG_ID
 ```
 
 ## A Comprehensive Security Baseline
