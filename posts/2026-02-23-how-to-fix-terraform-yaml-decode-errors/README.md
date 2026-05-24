@@ -184,12 +184,12 @@ description: |
   multiline string
 ```
 
-## Cause 6: Anchors and Aliases Not Supported
+## Cause 6: Anchor and Alias Limitations
 
-Terraform's `yamldecode()` does not support YAML anchors and aliases:
+Terraform's `yamldecode()` supports aliases to earlier anchors for values, including the merge key (`<<:`):
 
 ```yaml
-# This will fail in Terraform
+# This works in Terraform
 defaults: &defaults
   adapter: postgres
   host: localhost
@@ -203,7 +203,16 @@ production:
   database: prod_db
 ```
 
-You need to flatten the YAML manually before Terraform can parse it:
+However, there are two limitations to be aware of. First, cyclic data structures (where a reference to a collection appears inside that collection) are not allowed and will produce an error. Second, anchors cannot be used as mapping keys — only as values:
+
+```yaml
+# This will fail - aliases as keys
+description:
+  *name: "Name of the person"
+  *surname: "Family name"
+```
+
+If you hit either limitation, flatten the YAML manually or pre-process it with an external tool in your pipeline:
 
 ```yaml
 development:
@@ -216,8 +225,6 @@ production:
   host: localhost
   database: prod_db
 ```
-
-Or pre-process the YAML with an external tool in your pipeline.
 
 ## Cause 7: Type Conversion Issues
 
@@ -364,7 +371,7 @@ This avoids all the YAML syntax pitfalls because Terraform generates valid YAML 
 3. **Wrap yamldecode() in try()** - For external or user-provided YAML.
 4. **Quote ambiguous values** - Anything that might be interpreted as a boolean, null, or number.
 5. **Use consistent indentation** - 2 spaces is the most common convention.
-6. **Avoid advanced YAML features** - Anchors, aliases, and multi-document files are not supported.
+6. **Avoid advanced YAML features** - Multi-document files, anchors as mapping keys, and cyclic structures are not supported.
 
 ## Conclusion
 
