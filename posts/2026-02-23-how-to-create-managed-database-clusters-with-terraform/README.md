@@ -25,7 +25,7 @@ Make sure you have the following ready:
 
 ## Creating an Aurora PostgreSQL Cluster
 
-Aurora is the most popular managed relational database cluster on AWS. It provides up to five times the throughput of standard PostgreSQL with built-in replication and automatic failover.
+Aurora is the most popular managed relational database cluster on AWS. It provides up to three times the throughput of standard PostgreSQL with built-in replication and automatic failover.
 
 ### Network Foundation
 
