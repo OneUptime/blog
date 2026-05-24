@@ -327,7 +327,7 @@ resource "aws_cloudwatch_metric_alarm" "rotation_check" {
   for_each = var.rotation_policies
 
   alarm_name          = "${each.key}-rotation-${var.environment}"
-  comparison_operator = "LessThanThreshold"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   metric_name         = "SecretRotationAge"
   namespace           = "Custom/SecretRotation"
