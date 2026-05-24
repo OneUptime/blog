@@ -12,7 +12,7 @@ Amazon Neptune is a fully managed graph database service that supports both the 
 
 ## Understanding Neptune Architecture
 
-Neptune follows a similar architecture to Amazon Aurora. A Neptune cluster consists of a primary DB instance that handles read and write operations, up to 15 read replica instances, and a cluster storage volume that automatically replicates data six ways across three availability zones. The storage automatically grows as your data increases, up to 128 TB.
+Neptune follows a similar architecture to Amazon Aurora. A Neptune cluster consists of a primary DB instance that handles read and write operations, up to 15 read replica instances, and a cluster storage volume that automatically replicates data six ways across three availability zones. The storage automatically grows as your data increases, up to 128 TiB.
 
 Neptune supports two query languages: Gremlin for property graph traversals and SPARQL for RDF graph queries. You choose your query language based on your data model, but both can be used on the same cluster.
 
@@ -307,7 +307,7 @@ resource "aws_iam_role" "neptune_notebook_role" {
 
 resource "aws_iam_role_policy_attachment" "neptune_notebook_policy" {
   role       = aws_iam_role.neptune_notebook_role.name
-  policy_arn = "arn:aws:iam::aws:policy/NeptuneNotebookPolicy"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess"
 }
 ```
 
