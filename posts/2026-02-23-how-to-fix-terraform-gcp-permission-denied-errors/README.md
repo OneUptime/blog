@@ -118,7 +118,7 @@ roles/compute.admin  # Also needed for node pools
 roles/cloudsql.admin
 
 # IAM management
-roles/iam.admin
+roles/iam.securityAdmin
 roles/resourcemanager.projectIamAdmin
 
 # Service account management
