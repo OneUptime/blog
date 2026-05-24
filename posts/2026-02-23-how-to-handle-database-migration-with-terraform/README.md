@@ -359,21 +359,22 @@ resource "aws_db_instance" "target" {
 
 ## RDS Blue-Green Deployment
 
-For in-place version upgrades or engine parameter changes, use Blue-Green deployments.
+For in-place version upgrades or engine parameter changes, use Blue-Green deployments. The Terraform AWS provider does not expose a separate `aws_rds_blue_green_deployment` resource. Instead, you enable Blue/Green updates on the existing `aws_db_instance` via the `blue_green_update` block (available since AWS provider v4.42.0). When you then change a setting that supports it (such as `engine_version` or `parameter_group_name`), the provider performs the change internally via an RDS Blue/Green deployment so the only downtime is the brief switchover.
 
 ```hcl
-# Blue-Green deployment for safe database updates
-resource "aws_rds_blue_green_deployment" "upgrade" {
-  blue_green_deployment_name = "postgres-upgrade"
-  source_arn                 = aws_db_instance.target.arn
-
-  target_engine_version            = "16"  # Upgrade to PostgreSQL 16
-  target_db_parameter_group_name   = aws_db_parameter_group.pg16.name
-
-  tags = {
-    Name = "postgres-upgrade-bg"
-  }
-}
+# Add the blue_green_update block to the existing aws_db_instance.target
+# defined above, then bump engine_version and switch to the new parameter group.
+#
+# resource "aws_db_instance" "target" {
+#   ...existing arguments...
+#
+#   engine_version       = "16"  # Upgrade to PostgreSQL 16
+#   parameter_group_name = aws_db_parameter_group.pg16.name
+#
+#   blue_green_update {
+#     enabled = true
+#   }
+# }
 
 # New parameter group for the target version
 resource "aws_db_parameter_group" "pg16" {
