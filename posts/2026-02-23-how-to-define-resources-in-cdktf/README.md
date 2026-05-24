@@ -160,7 +160,7 @@ class InfraStack extends TerraformStack {
 }
 ```
 
-Resource References and Implicit Dependencies
+## Resource References and Implicit Dependencies
 
 One of the best things about defining resources in CDKTF is that references between resources automatically create implicit dependencies. When you write `vpcId: vpc.id`, CDKTF knows that the subnet depends on the VPC and will create them in the right order.
 
@@ -334,7 +334,7 @@ new InfraStack(app, "production", true);
 new InfraStack(app, "development", false);
 ```
 
-Resource Provisioners
+## Resource Provisioners
 
 You can add provisioners to resources for running scripts after creation:
 
