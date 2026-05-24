@@ -365,7 +365,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.31"  # Exact minor version constraint
+      version = "~> 5.31"  # Pessimistic constraint - allows 5.31 and later within 5.x
     }
   }
 }
