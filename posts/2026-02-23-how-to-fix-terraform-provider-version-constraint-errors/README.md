@@ -151,10 +151,10 @@ Provider registry.terraform.io/hashicorp/aws v5.30.0 does not have
 a package available for your current platform, linux_arm64.
 ```
 
-**Fix:** Check which versions support your platform:
+**Fix:** Generate lock entries for your platform (this will fail if no compatible package exists, revealing the problem):
 
 ```bash
-# List available versions and platforms
+# Generate lock file entries for a specific platform
 terraform providers lock -platform=linux_arm64
 ```
 
