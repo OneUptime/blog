@@ -168,8 +168,8 @@ Add to your `.vimrc`:
 
 ```vim
 " Auto-format Terraform files on save
-autocmd BufWritePre *.tf silent! execute '!terraform fmt %'
-autocmd BufWritePre *.tf edit
+autocmd BufWritePost *.tf silent! execute '!terraform fmt %'
+autocmd BufWritePost *.tf edit
 ```
 
 Or use a plugin like vim-terraform:
@@ -256,14 +256,12 @@ fmt-check:
 #!/bin/bash
 # .git/hooks/pre-commit
 
-# Format Terraform files
-terraform fmt -recursive
-
-# Stage any reformatted files
-git diff --name-only | grep '\.tf$' | xargs -r git add
-
-# Check if there are any formatting changes that were not staged
+# Check if any Terraform files need formatting
 if ! terraform fmt -check -recursive > /dev/null 2>&1; then
+    # Format the files and stage them
+    terraform fmt -recursive
+    git diff --name-only | grep '\.tf$' | xargs -r git add
+
     echo "Terraform files were reformatted. Changes have been staged."
     echo "Please review and commit again."
     exit 1
