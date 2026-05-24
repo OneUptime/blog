@@ -39,7 +39,7 @@ Health check logs are typically the highest volume and lowest value:
 resource "google_logging_project_exclusion" "health_checks" {
   name        = "exclude-health-checks"
   description = "Exclude load balancer health check log entries"
-  filter      = "resource.type=\"http_load_balancer\" AND httpRequest.requestUrl:\"/health\" OR httpRequest.requestUrl:\"/healthz\" OR httpRequest.requestUrl:\"/ready\""
+  filter      = "resource.type=\"http_load_balancer\" AND (httpRequest.requestUrl:\"/health\" OR httpRequest.requestUrl:\"/healthz\" OR httpRequest.requestUrl:\"/ready\")"
 }
 ```
 
@@ -81,17 +81,14 @@ resource "google_logging_project_exclusion" "gke_system" {
 
 ## Partial Exclusions (Sampling)
 
-You can exclude a percentage of matching logs instead of all of them:
+You can exclude a percentage of matching logs instead of all of them by including the `sample()` function in the filter. `sample(insertId, 0.9)` matches approximately 90% of log entries using a deterministic hash of the `insertId`, so the exclusion drops 90% and keeps the remaining 10%:
 
 ```hcl
 # Exclude 90% of successful request logs (keep 10% for sampling)
 resource "google_logging_project_exclusion" "sample_success_logs" {
   name        = "sample-success-requests"
   description = "Keep only 10% of successful request logs"
-  filter      = "resource.type=\"http_load_balancer\" AND httpRequest.status>=200 AND httpRequest.status<300"
-
-  # Exclude 90% (sample 10%)
-  disabled = false
+  filter      = "resource.type=\"http_load_balancer\" AND httpRequest.status>=200 AND httpRequest.status<300 AND sample(insertId, 0.9)"
 }
 ```
 
