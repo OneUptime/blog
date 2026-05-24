@@ -77,7 +77,7 @@ check "website_health" {
 }
 ```
 
-Note: Not all data source providers support retry. For the HTTP data source, you might need to accept the initial failure and re-run plan later.
+Note: Not all data source providers support retry. For data sources that do not support a retry block, you might need to accept the initial failure and re-run plan later.
 
 ## Error 2: Referencing Resources Not Yet Created
 
@@ -123,7 +123,7 @@ check "instance_running" {
 Check block conditions must be boolean expressions. Non-boolean values cause errors:
 
 ```hcl
-# Wrong - string comparison produces unexpected results
+# Wrong - condition must be a boolean expression
 
 check "valid_config" {
   assert {
@@ -133,7 +133,7 @@ check "valid_config" {
 }
 ```
 
-If `var.environment` is a string, this works because non-empty strings are truthy in Terraform. But it is better to be explicit:
+If `var.environment` is a string, this produces an error like `Invalid condition result: The condition expression must return either true or false, not a string.` You need to be explicit:
 
 ```hcl
 check "valid_config" {
