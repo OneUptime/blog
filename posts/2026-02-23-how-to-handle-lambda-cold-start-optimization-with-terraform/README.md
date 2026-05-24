@@ -34,7 +34,7 @@ resource "aws_lambda_function" "optimized" {
   function_name    = "optimized-function"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.function_code.output_base64sha256
 
   # Higher memory also means more CPU, which speeds up initialization
@@ -152,7 +152,7 @@ resource "aws_lambda_function" "critical_api" {
   function_name    = "critical-api-handler"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.api_code.output_base64sha256
 
   # Higher memory for faster cold starts
@@ -201,7 +201,7 @@ resource "aws_lambda_function" "vpc_function" {
   function_name    = "vpc-optimized-function"
   role             = aws_iam_role.lambda_vpc_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.function_code.output_base64sha256
   memory_size      = 1024
   timeout          = 30
@@ -292,7 +292,7 @@ resource "aws_lambda_layer_version" "dependencies" {
   layer_name          = "shared-dependencies"
   filename            = data.archive_file.dependencies.output_path
   source_code_hash    = data.archive_file.dependencies.output_base64sha256
-  compatible_runtimes = ["nodejs18.x"]
+  compatible_runtimes = ["nodejs20.x"]
 }
 
 # Lightweight function using the layer for dependencies
@@ -301,7 +301,7 @@ resource "aws_lambda_function" "lightweight" {
   function_name    = "lightweight-function"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.slim_code.output_base64sha256
   memory_size      = 1024
 
