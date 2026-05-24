@@ -36,7 +36,7 @@ provider "aws" {
 ```hcl
 # CloudWatch alarm for 99.9% availability SLA
 
-# This tracks the percentage of successful health checks
+# This tracks the percentage of successful requests (non-5xx) against total requests
 resource "aws_cloudwatch_metric_alarm" "sla_availability" {
   alarm_name          = "sla-availability-breach-risk"
   comparison_operator = "LessThanThreshold"
@@ -49,18 +49,18 @@ resource "aws_cloudwatch_metric_alarm" "sla_availability" {
 
   metric_query {
     id          = "availability"
-    expression  = "(successful / total) * 100"
+    expression  = "((total - errors) / total) * 100"
     label       = "Availability %"
     return_data = true
   }
 
   metric_query {
-    id = "successful"
+    id = "errors"
     metric {
-      metric_name = "HealthyHostCount"
+      metric_name = "HTTPCode_Target_5XX_Count"
       namespace   = "AWS/ApplicationELB"
       period      = 60
-      stat        = "Average"
+      stat        = "Sum"
       dimensions = {
         LoadBalancer = var.alb_arn_suffix
         TargetGroup  = var.target_group_arn_suffix
