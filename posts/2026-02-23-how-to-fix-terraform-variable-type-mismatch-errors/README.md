@@ -143,12 +143,14 @@ tags = {
   Environment = "production"
 }
 
-# This FAILS - mixed types
+# This FAILS - value cannot convert to string
 tags = {
-  Name  = "web-server"
-  Count = 3  # number, not string
+  Name    = "web-server"
+  Servers = ["web-1", "web-2"]  # list, not string
 }
 ```
+
+Note that Terraform will automatically convert `number` and `bool` values to strings when needed, so `{ Count = 3 }` against `map(string)` actually works (3 becomes "3"). The mismatch only fails when the value cannot be converted to the target type — like a list, object, or set.
 
 If you need mixed types, use an object:
 
@@ -219,14 +221,14 @@ variable "subnets" {
   }))
 }
 
-# This fails because tags has a number value
+# This fails because tags has a list value (which cannot convert to string)
 subnets = [
   {
     cidr = "10.0.1.0/24"
     az   = "us-east-1a"
     tags = {
-      Name  = "subnet-1"
-      Index = 1  # Should be "1" (string)
+      Name   = "subnet-1"
+      Owners = ["alice", "bob"]  # list, cannot convert to string
     }
   }
 ]
@@ -340,11 +342,11 @@ list(object({
 "10.0.1.0/24"
 ```
 
-You can also use the `type()` function in locals for debugging:
+Note that `type()` is only available inside `terraform console` — you cannot use it in regular configuration files (outputs, locals, etc.). For debugging types outside the console, use `jsonencode()` to dump the value's structure:
 
 ```hcl
-output "debug_type" {
-  value = type(var.config)
+output "debug_value" {
+  value = jsonencode(var.config)
 }
 ```
 
