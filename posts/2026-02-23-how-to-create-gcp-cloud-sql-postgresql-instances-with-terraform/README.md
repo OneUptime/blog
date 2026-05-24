@@ -54,7 +54,7 @@ A simple instance for development and testing:
 
 resource "google_sql_database_instance" "postgres_basic" {
   name             = "postgres-basic"
-  database_version = "POSTGRES_16"  # Latest supported version
+  database_version = "POSTGRES_16"  # Cloud SQL also supports POSTGRES_17 and POSTGRES_18
   region           = var.region
 
   deletion_protection = false  # Set to true for production
@@ -172,12 +172,12 @@ resource "google_sql_database_instance" "postgres_production" {
     # PostgreSQL performance tuning flags
     database_flags {
       name  = "shared_buffers"      # Main memory cache
-      value = "4096000"             # ~4GB in 8KB pages (for 16GB instance)
+      value = "524288"              # 4GB in 8KB pages (for 16GB instance)
     }
 
     database_flags {
       name  = "effective_cache_size"  # Estimate of OS cache available
-      value = "12288000"              # ~12GB in 8KB pages
+      value = "1572864"               # 12GB in 8KB pages
     }
 
     database_flags {
@@ -299,10 +299,11 @@ resource "google_sql_database_instance" "postgres_extensions" {
       private_network = google_compute_network.main.id
     }
 
-    # Enable the pg_stat_statements extension for query analysis
+    # pg_stat_statements is pre-loaded by default on Cloud SQL.
+    # Tune its behavior with the pg_stat_statements.* flags.
     database_flags {
-      name  = "cloudsql.enable_pg_stat_statements"
-      value = "on"
+      name  = "pg_stat_statements.track"
+      value = "all"
     }
 
     # Enable pgAudit for audit logging
@@ -325,7 +326,7 @@ resource "google_sql_database_instance" "postgres_extensions" {
 }
 ```
 
-After the instance is created, you still need to run `CREATE EXTENSION` in your database for each extension you want to use. The database flags above just make the extensions available. Extensions like `uuid-ossp`, `postgis`, `pg_trgm`, and `hstore` can be enabled directly with SQL.
+After the instance is created, you still need to run `CREATE EXTENSION` in your database for each extension you want to use. The `cloudsql.enable_*` flags above load the libraries into `shared_preload_libraries` so the extensions become available. Some extensions (like `pg_stat_statements`) are pre-loaded by Cloud SQL by default and only need the `CREATE EXTENSION` step. Extensions like `uuid-ossp`, `postgis`, `pg_trgm`, and `hstore` can be enabled directly with SQL.
 
 ## Connection Pooling with Cloud SQL Proxy
 
@@ -447,7 +448,7 @@ output "sql_proxy_service_account" {
 
 ## Best Practices
 
-**Use PostgreSQL 16 for new projects.** It offers better performance, improved logical replication, and enhanced security features compared to older versions.
+**Use a recent PostgreSQL major version for new projects.** Cloud SQL supports PostgreSQL 16, 17, and 18 (among others). Newer versions offer better performance, improved logical replication, and enhanced security features compared to older releases. Verify which versions are currently available in your region before pinning.
 
 **Tune `shared_buffers` and `effective_cache_size` based on your tier.** The defaults are conservative and designed for small instances. Production instances benefit significantly from tuning these.
 
