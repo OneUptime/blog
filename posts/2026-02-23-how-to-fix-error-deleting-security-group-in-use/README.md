@@ -102,10 +102,10 @@ The correct approach is to remove the security group reference from the dependen
 ```hcl
 # If this instance references the security group
 resource "aws_instance" "web" {
-  ami             = data.aws_ami.amazon_linux.id
-  instance_type   = "t3.micro"
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.micro"
   # Remove or replace the security group reference
-  security_groups = [aws_security_group.replacement_sg.id]
+  vpc_security_group_ids = [aws_security_group.replacement_sg.id]
 }
 
 # Then this security group can be deleted
