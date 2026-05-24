@@ -116,8 +116,8 @@ resource "random_shuffle" "backend_order" {
   input = var.backend_ips
 
   keepers = {
-    # Reshuffle weekly to distribute load
-    rotation_week = formatdate("YYYY-WW", timestamp())
+    # Reshuffle monthly to distribute load
+    rotation_month = formatdate("YYYY-MM", timestamp())
   }
 }
 
