@@ -229,8 +229,8 @@ locals {
 ```
 
 ```hcl
-# cidrhost() - netnum must not exceed the available host range
-# Wrong - requesting host 300 in a /24 (only 254 usable hosts)
+# cidrhost() - netnum must fit in the host bits of the prefix
+# Wrong - requesting host 300 in a /24 (valid range is 0-255)
 locals {
   host = cidrhost("10.0.1.0/24", 300)
 }
@@ -328,8 +328,8 @@ Here is a cheat sheet for frequently misused functions:
 | `element(list, index)` | 2 | Index out of bounds (use modulo) |
 | `coalesce(vals...)` | 1+ | Passing empty string (not the same as null) |
 | `format(spec, vals...)` | 1+ | Wrong format verb for the type |
-| `replace(string, substr, replacement)` | 3 | Forgetting it uses regex by default |
-| `flatten(list)` | 1 | Passing a non-nested list |
+| `replace(string, substr, replacement)` | 3 | Expecting regex by default (wrap substr in `/.../` for regex) |
+| `flatten(list)` | 1 | Expecting it to deduplicate (use `distinct()` instead) |
 
 ## Conclusion
 
