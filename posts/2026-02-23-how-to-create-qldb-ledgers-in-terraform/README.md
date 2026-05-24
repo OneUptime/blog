@@ -10,6 +10,8 @@ Description: Learn how to create and configure Amazon QLDB ledgers using Terrafo
 
 Amazon Quantum Ledger Database (QLDB) is a fully managed ledger database that provides a transparent, immutable, and cryptographically verifiable transaction log. Unlike traditional databases where you can modify or delete historical records, QLDB maintains a complete and verifiable history of every change made to your data. In this guide, we will walk through how to create and manage QLDB ledgers using Terraform.
 
+> Note: AWS announced the end-of-support for Amazon QLDB on July 31, 2025. Existing customers should plan a migration (AWS recommends Aurora PostgreSQL), and new projects should choose an alternative ledger or append-only design rather than starting on QLDB. The Terraform configurations below remain useful for managing pre-existing ledgers during a migration window.
+
 ## Understanding QLDB
 
 QLDB is designed for applications that need an authoritative data source, sometimes called a system of record. It uses an immutable journal that tracks every change to your data and lets you cryptographically verify that no modifications have been made to the journal. This makes it suitable for use cases like financial transaction records, supply chain tracking, insurance claims processing, HR and payroll records, and regulatory compliance.
@@ -418,7 +420,7 @@ resource "aws_cloudwatch_metric_alarm" "qldb_storage" {
   alarm_name          = "qldb-journal-storage"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "JournalStorage"
+  metric_name         = "journalStorage"
   namespace           = "AWS/QLDB"
   period              = 86400  # Daily check
   statistic           = "Maximum"
