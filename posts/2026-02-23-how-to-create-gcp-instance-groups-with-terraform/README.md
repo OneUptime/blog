@@ -307,12 +307,14 @@ resource "google_compute_region_instance_group_manager" "web_canary" {
 
   # Primary version - 80% of instances
   version {
+    name              = "primary"
     instance_template = google_compute_instance_template.web.self_link_unique
   }
 
   # Canary version - 20% of instances
   version {
-    instance_template  = google_compute_instance_template.web_v2.self_link_unique
+    name              = "canary"
+    instance_template = google_compute_instance_template.web_v2.self_link_unique
     target_size {
       fixed = 2  # Exactly 2 instances running v2
     }
