@@ -277,8 +277,7 @@ jobs:
         run: |
           # Run checkov against the workspace
           checkov -d ${{ matrix.workspace }} \
-            --output json \
-            --output-file compliance-results.json
+            --output json > compliance-results.json
 
       - name: Upload Results
         run: |
