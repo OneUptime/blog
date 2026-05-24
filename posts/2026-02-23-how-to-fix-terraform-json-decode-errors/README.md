@@ -151,11 +151,14 @@ xxd config.json | head -1
 Remove the BOM:
 
 ```bash
-# On Linux/Mac
+# On Linux (GNU sed)
 sed -i '1s/^\xEF\xBB\xBF//' config.json
 
-# Or convert the file encoding
-iconv -f UTF-8-BOM -t UTF-8 config.json > config_clean.json
+# On macOS (BSD sed requires an extension argument for -i)
+sed -i '' '1s/^\xEF\xBB\xBF//' config.json
+
+# Or use Python to strip a leading BOM if present
+python3 -c "import pathlib, sys; p=pathlib.Path('config.json'); d=p.read_bytes(); p.write_bytes(d[3:] if d.startswith(b'\xef\xbb\xbf') else d)"
 ```
 
 ## Cause 7: Empty or Whitespace-Only Input
