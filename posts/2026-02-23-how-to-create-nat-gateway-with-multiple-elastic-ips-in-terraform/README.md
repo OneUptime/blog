@@ -236,7 +236,36 @@ resource "aws_nat_gateway" "main_fe" {
 
 ## Configuring Additional Elastic IPs for a Single NAT Gateway
 
-In some cases you might need additional source IPs for a single NAT Gateway. While AWS NAT Gateways support only one primary Elastic IP, you can work around this with multiple NAT Gateways sharing the load. Alternatively, for EKS or similar setups that need predictable source IPs, you can use all the NAT Gateway EIPs:
+In some cases you might need additional source IPs for a single NAT Gateway to scale egress traffic and avoid SNAT port exhaustion. AWS NAT Gateways support up to 8 Elastic IPs per gateway (1 primary plus up to 7 secondary EIPs), and the Terraform `aws_nat_gateway` resource exposes this via `secondary_allocation_ids`:
+
+```hcl
+# Allocate secondary EIPs to attach to a single NAT Gateway
+resource "aws_eip" "nat_secondary" {
+  count  = 3
+  domain = "vpc"
+
+  tags = {
+    Name = "nat-eip-secondary-${count.index}"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+# NAT Gateway with multiple Elastic IPs attached
+resource "aws_nat_gateway" "multi_eip" {
+  allocation_id          = aws_eip.nat[0].id
+  subnet_id              = aws_subnet.public[0].id
+  secondary_allocation_ids = aws_eip.nat_secondary[*].id
+
+  tags = {
+    Name = "nat-gw-multi-eip"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+```
+
+For EKS or similar setups that need predictable source IPs across multi-AZ NAT Gateways, you can also expose all the per-AZ NAT Gateway EIPs for allowlisting:
 
 ```hcl
 # Output all NAT Gateway public IPs for allowlisting
