@@ -58,7 +58,7 @@ resource "tls_private_key" "rsa_2048" {
   rsa_bits  = 2048
 }
 
-# 3072-bit RSA - recommended by NIST for use through 2030
+# 3072-bit RSA - 128-bit security level, recommended by NIST for use beyond 2030
 resource "tls_private_key" "rsa_3072" {
   algorithm = "RSA"
   rsa_bits  = 3072
