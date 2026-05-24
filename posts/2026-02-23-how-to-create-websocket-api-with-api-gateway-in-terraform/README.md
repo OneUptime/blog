@@ -133,7 +133,7 @@ resource "aws_lambda_function" "connect" {
   function_name    = "websocket-connect"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = filebase64sha256("lambda/connect.zip")
 
   environment {
@@ -151,7 +151,7 @@ resource "aws_lambda_function" "disconnect" {
   function_name    = "websocket-disconnect"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = filebase64sha256("lambda/disconnect.zip")
 
   environment {
@@ -169,7 +169,7 @@ resource "aws_lambda_function" "send_message" {
   function_name    = "websocket-send-message"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = filebase64sha256("lambda/sendMessage.zip")
 
   environment {
@@ -187,7 +187,7 @@ resource "aws_lambda_function" "default" {
   function_name    = "websocket-default"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = filebase64sha256("lambda/default.zip")
 
   tags = { Name = "websocket-default" }
@@ -201,30 +201,34 @@ Connect the Lambda functions to the API Gateway:
 ```hcl
 # Integration for the connect handler
 resource "aws_apigatewayv2_integration" "connect" {
-  api_id           = aws_apigatewayv2_api.websocket.id
-  integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.connect.invoke_arn
+  api_id             = aws_apigatewayv2_api.websocket.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = aws_lambda_function.connect.invoke_arn
 }
 
 # Integration for the disconnect handler
 resource "aws_apigatewayv2_integration" "disconnect" {
-  api_id           = aws_apigatewayv2_api.websocket.id
-  integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.disconnect.invoke_arn
+  api_id             = aws_apigatewayv2_api.websocket.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = aws_lambda_function.disconnect.invoke_arn
 }
 
 # Integration for the send message handler
 resource "aws_apigatewayv2_integration" "send_message" {
-  api_id           = aws_apigatewayv2_api.websocket.id
-  integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.send_message.invoke_arn
+  api_id             = aws_apigatewayv2_api.websocket.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = aws_lambda_function.send_message.invoke_arn
 }
 
 # Integration for the default handler
 resource "aws_apigatewayv2_integration" "default" {
-  api_id           = aws_apigatewayv2_api.websocket.id
-  integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.default.invoke_arn
+  api_id             = aws_apigatewayv2_api.websocket.id
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+  integration_uri    = aws_lambda_function.default.invoke_arn
 }
 ```
 
