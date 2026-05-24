@@ -395,7 +395,7 @@ output "security_group_id" {
 
 ## DynamoDB Table Module
 
-For NoSQL workloads, a DynamoDB module with autoscaling and backup configuration:
+For NoSQL workloads, a DynamoDB module with point-in-time recovery and encryption configuration:
 
 ```hcl
 # modules/dynamodb/main.tf
