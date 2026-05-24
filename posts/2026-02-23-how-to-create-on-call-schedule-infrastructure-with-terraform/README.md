@@ -199,7 +199,6 @@ resource "pagerduty_schedule" "follow_the_sun" {
       type              = "daily_restriction"
       start_time_of_day = "14:00:00"
       duration_seconds  = 28800  # 8 hours
-      start_day_of_week = 1  # Monday
     }
   }
 
@@ -219,7 +218,6 @@ resource "pagerduty_schedule" "follow_the_sun" {
       type              = "daily_restriction"
       start_time_of_day = "08:00:00"
       duration_seconds  = 21600  # 6 hours
-      start_day_of_week = 1
     }
   }
 
@@ -239,7 +237,6 @@ resource "pagerduty_schedule" "follow_the_sun" {
       type              = "daily_restriction"
       start_time_of_day = "00:00:00"
       duration_seconds  = 28800  # 8 hours
-      start_day_of_week = 1
     }
   }
 }
