@@ -256,9 +256,9 @@ resource "pagerduty_service" "services" {
   description       = each.value.description
   escalation_policy = pagerduty_escalation_policy.team_escalation[each.value.team].id
 
-  # Auto-resolve after 4 hours if not acknowledged
+  # Auto-resolve an open incident after 4 hours
   auto_resolve_timeout    = 14400
-  # Alert creation timeout
+  # Re-trigger an acknowledged incident after 30 minutes if not resolved
   acknowledgement_timeout = 1800
 
   alert_creation = "create_alerts_and_incidents"
@@ -342,7 +342,7 @@ Create automated response actions that run when incidents are triggered:
 # automation.tf - Lambda function for automated incident response
 resource "aws_lambda_function" "incident_response" {
   function_name = "incident-response-${var.environment}"
-  runtime       = "python3.11"
+  runtime       = "python3.12"
   handler       = "handler.lambda_handler"
   role          = aws_iam_role.incident_response.arn
   timeout       = 60
