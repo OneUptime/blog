@@ -20,7 +20,7 @@ Before creating any Kubernetes resources, you need to configure the provider. Th
 # providers.tf - Configure the Kubernetes provider
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.3"
 
   required_providers {
     kubernetes = {
