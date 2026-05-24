@@ -163,7 +163,7 @@ resource "google_service_account" "app_gsa" {
   project      = var.project_id
 }
 
-# Grant the GCS SA permissions in GCP
+# Grant the GSA permissions in GCP
 resource "google_project_iam_member" "app_storage" {
   project = var.project_id
   role    = "roles/storage.objectViewer"
