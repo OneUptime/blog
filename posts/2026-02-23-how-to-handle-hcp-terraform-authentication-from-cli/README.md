@@ -128,12 +128,10 @@ This approach is useful when you need to script the setup or when `terraform log
 
 Credential helpers are external programs that Terraform calls to retrieve tokens. They integrate with system keychains and secret managers:
 
-```json
-// ~/.terraformrc or ~/.terraform.d/credentials.tfrc.json
-{
-  "credentials_helpers": {
-    "credstore": {}
-  }
+```hcl
+# ~/.terraformrc (HCL syntax)
+credentials_helper "credstore" {
+  args = []
 }
 ```
 
@@ -144,14 +142,11 @@ You can write a custom credential helper that pulls tokens from HashiCorp Vault,
 # terraform-credentials-vault
 # Custom credential helper that fetches tokens from Vault
 
-# Terraform calls this with "get" and passes the hostname via stdin
+# Terraform calls this with the verb as $1 and the hostname as $2
 COMMAND=$1
+HOSTNAME=$2
 
 if [ "$COMMAND" = "get" ]; then
-  # Read hostname from stdin
-  read -r INPUT
-  HOSTNAME=$(echo "$INPUT" | jq -r '.hostname')
-
   # Fetch the token from Vault
   TOKEN=$(vault kv get -field=token "secret/terraform/$HOSTNAME")
 
@@ -199,7 +194,7 @@ curl -s \
   --request POST \
   --header "Authorization: Bearer $ADMIN_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/teams/team-ID/authentication-token"
+  "https://app.terraform.io/api/v2/teams/team-ID/authentication-tokens"
 ```
 
 Use team tokens for: CI/CD pipelines that need access to specific workspaces.
