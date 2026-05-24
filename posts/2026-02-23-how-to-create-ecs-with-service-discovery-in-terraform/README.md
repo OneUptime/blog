@@ -380,10 +380,8 @@ resource "aws_ecs_service" "api" {
     registry_arn = aws_service_discovery_service.api.arn
   }
 
-  deployment_configuration {
-    minimum_healthy_percent = 50
-    maximum_percent         = 200
-  }
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
 
   tags = {
     Name = "api-service"
