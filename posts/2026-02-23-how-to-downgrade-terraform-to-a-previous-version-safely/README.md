@@ -79,15 +79,18 @@ terraform -version
 
 ### Using Homebrew (macOS)
 
-Homebrew does not make it easy to install older versions directly. The cleanest approach is to use tfenv instead. But if you want to stay with Homebrew:
+Homebrew does not make it easy to install older versions directly. The `hashicorp/tap` does not publish versioned formulas (there is no `terraform@1.5.7`), so you cannot just append a version. The cleanest approach is to use tfenv instead. But if you want to stay with Homebrew, you can use `brew extract` to extract an older version of the formula into a personal tap:
 
 ```bash
 # Uninstall current version
 brew uninstall hashicorp/tap/terraform
 
-# Install the specific version you need
-# You may need to find the specific formula commit
-brew install hashicorp/tap/terraform@1.5.7
+# Create a personal tap and extract the older formula version
+brew tap-new $USER/local-terraform
+brew extract --version=1.5.7 hashicorp/tap/terraform $USER/local-terraform
+
+# Install the extracted version
+brew install $USER/local-terraform/terraform@1.5.7
 ```
 
 In practice, I recommend switching to tfenv for any situation involving version management.
