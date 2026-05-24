@@ -269,8 +269,8 @@ resource "aws_db_proxy_default_target_group" "main" {
     # SQL to run when a connection is borrowed from the pool
     init_query = "SET application_name = 'rds_proxy'"
 
-    # Session pinning filters
-    session_pinning_filters = ["EXCLUDE_VARIABLE_SETS"]
+    # Session pinning filters (MySQL engine family only; omit or leave empty for PostgreSQL)
+    # session_pinning_filters = ["EXCLUDE_VARIABLE_SETS"]
   }
 }
 
@@ -329,8 +329,10 @@ data "aws_caller_identity" "current" {}
 
 ## Read-Only Proxy Endpoint
 
+Note: `READ_ONLY` proxy endpoints are only supported for proxies that target an RDS Multi-AZ DB cluster. They do not work for proxies pointing at a single `aws_db_instance` (as in the example above) or for Aurora clusters (Aurora has its own native reader endpoint).
+
 ```hcl
-# Read-only endpoint for read replicas
+# Read-only endpoint (requires the proxy to target an RDS Multi-AZ DB cluster)
 resource "aws_db_proxy_endpoint" "read_only" {
   db_proxy_name          = aws_db_proxy.main.name
   db_proxy_endpoint_name = "read-only"
