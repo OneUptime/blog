@@ -327,7 +327,7 @@ run "verify_no_wildcard_allow" {
   assert {
     condition = !anytrue([
       for s in jsondecode(data.aws_iam_policy_document.developer_policy.json).Statement :
-      s.Effect == "Allow" && s.Action == "*"
+      s.Effect == "Allow" && contains(s.Action, "*")
     ])
     error_message = "No Allow statement should use wildcard actions"
   }
