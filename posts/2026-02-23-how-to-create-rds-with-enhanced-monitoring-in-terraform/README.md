@@ -214,16 +214,18 @@ variable "staging_db_password" {
 Enhanced Monitoring metrics are published to CloudWatch Logs under the `RDSOSMetrics` log group. You can create metric filters and alarms based on this data.
 
 ```hcl
-# Metric filter for high swap usage (from Enhanced Monitoring logs)
+# Metric filter for swap activity (from Enhanced Monitoring logs)
+# The Enhanced Monitoring JSON exposes swap.total, swap.free, swap.cached,
+# swap.in, and swap.out (all in kilobytes). There is no swap.used field.
 resource "aws_cloudwatch_log_metric_filter" "rds_swap_usage" {
   name           = "rds-high-swap-usage"
   log_group_name = "RDSOSMetrics"
-  pattern        = "{ $.swap.total > 0 }"
+  pattern        = "{ $.swap.cached > 0 }"
 
   metric_transformation {
-    name      = "RDSSwapUsage"
+    name      = "RDSSwapCached"
     namespace = "CustomRDSMetrics"
-    value     = "$.swap.used"
+    value     = "$.swap.cached"
   }
 }
 
@@ -232,11 +234,11 @@ resource "aws_cloudwatch_metric_alarm" "rds_swap" {
   alarm_name          = "rds-high-swap-usage"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "RDSSwapUsage"
+  metric_name         = "RDSSwapCached"
   namespace           = "CustomRDSMetrics"
   period              = 60
   statistic           = "Average"
-  threshold           = 100000000  # 100 MB of swap used
+  threshold           = 102400  # 100 MB of swap cache memory (value is in KB)
   alarm_description   = "RDS instance using significant swap memory"
 
   alarm_actions = [aws_sns_topic.db_alerts.arn]
