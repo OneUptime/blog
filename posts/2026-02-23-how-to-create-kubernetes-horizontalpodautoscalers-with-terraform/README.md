@@ -92,11 +92,11 @@ resource "kubernetes_deployment" "web" {
         }
       }
     }
+  }
 
-    # Let HPA manage replicas
-    lifecycle {
-      ignore_changes = [spec[0].replicas]
-    }
+  # Let HPA manage replicas
+  lifecycle {
+    ignore_changes = [spec[0].replicas]
   }
 }
 
