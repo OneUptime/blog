@@ -140,12 +140,12 @@ resource "aws_db_parameter_group" "postgresql" {
   # Memory and performance
   parameter {
     name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"  # 25% of instance memory (PostgreSQL convention)
+    value = "{DBInstanceClassMemory/32768}"  # 25% of instance memory (in 8 KB pages)
   }
 
   parameter {
     name  = "effective_cache_size"
-    value = "{DBInstanceClassMemory*3/4}"  # 75% of instance memory
+    value = "{DBInstanceClassMemory*3/32768}"  # 75% of instance memory (in 8 KB pages)
   }
 
   parameter {
@@ -161,7 +161,7 @@ resource "aws_db_parameter_group" "postgresql" {
   # WAL settings for write performance
   parameter {
     name  = "wal_buffers"
-    value = "65536"  # 64 MB
+    value = "8192"  # 64 MB (in 8 KB pages)
   }
 
   parameter {
