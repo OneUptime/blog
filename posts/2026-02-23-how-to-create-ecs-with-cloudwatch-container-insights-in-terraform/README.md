@@ -42,14 +42,15 @@ provider "aws" {
 resource "aws_ecs_cluster" "main" {
   name = "production-cluster"
 
-  # Enable Container Insights
+  # Enable Container Insights.
+  # Use value = "enhanced" instead of "enabled" to turn on enhanced
+  # Container Insights with more detailed, granular metrics.
   setting {
     name  = "containerInsights"
     value = "enabled"
   }
 
-  # Optionally enable enhanced Container Insights
-  # for more detailed metrics with shorter collection intervals
+  # ECS Exec logging configuration (useful for debugging running tasks)
   configuration {
     execute_command_configuration {
       logging = "OVERRIDE"
@@ -374,17 +375,17 @@ resource "aws_cloudwatch_metric_alarm" "running_tasks_low" {
   }
 }
 
-# High network transmit errors
-resource "aws_cloudwatch_metric_alarm" "network_errors" {
-  alarm_name          = "ecs-network-tx-errors"
+# High outbound network traffic (useful for detecting unexpected spikes)
+resource "aws_cloudwatch_metric_alarm" "network_tx_high" {
+  alarm_name          = "ecs-network-tx-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "NetworkTxDropped"
+  metric_name         = "NetworkTxBytes"
   namespace           = "ECS/ContainerInsights"
   period              = 300
   statistic           = "Sum"
-  threshold           = 100
-  alarm_description   = "Network transmit drops exceed threshold"
+  threshold           = 1000000000 # 1 GB per 5 minutes
+  alarm_description   = "Network transmit bytes exceed threshold"
   alarm_actions       = [aws_sns_topic.ecs_alerts.arn]
 
   dimensions = {
