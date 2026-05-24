@@ -284,9 +284,9 @@ resource "aws_appautoscaling_policy" "redis_cpu_scaling" {
 
   target_tracking_scaling_policy_configuration {
     predefined_metric_specification {
-      predefined_metric_type = "ElastiCachePrimaryEngineCPUUtilization"
+      predefined_metric_type = "ElastiCacheReplicaEngineCPUUtilization"
     }
-    target_value = 65.0  # Scale when CPU exceeds 65%
+    target_value = 65.0  # Scale when replica CPU exceeds 65%
   }
 }
 ```
