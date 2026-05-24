@@ -16,11 +16,25 @@ Resource types change for several reasons. Providers may split a monolithic reso
 
 ## Using Moved Blocks
 
-Terraform 1.1 introduced moved blocks as the primary tool for handling resource renames and type changes:
+Terraform 1.1 introduced moved blocks for refactoring resource addresses without destroying and recreating resources. Originally limited to renames within the same resource type, Terraform 1.8 added support for cross-resource-type moves when the provider implements the required move handler:
 
 ```hcl
-# Resource type changed from aws_s3_bucket_object to aws_s3_object
+# Renaming a resource address (same type) — supported since Terraform 1.1
 
+moved {
+  from = aws_s3_bucket.old_name
+  to   = aws_s3_bucket.new_name
+}
+
+resource "aws_s3_bucket" "new_name" {
+  bucket = "my-bucket"
+}
+```
+
+For cross-resource-type moves (e.g., `aws_s3_bucket_object` to `aws_s3_object`), you need Terraform 1.8+ AND the provider must explicitly implement a move handler for that specific transition. Not every deprecated resource has a corresponding move handler, so always test before relying on this:
+
+```hcl
+# Cross-type move — requires provider support
 moved {
   from = aws_s3_bucket_object.file
   to   = aws_s3_object.file
@@ -46,6 +60,8 @@ Terraform will perform the following actions:
 
 Plan: 0 to add, 0 to change, 0 to destroy.
 ```
+
+If the provider does not implement a move handler for your transition, Terraform will plan a destroy and create instead. Fall back to `terraform state mv` or remove-and-import in that case.
 
 ## Handling Resource Splits
 
@@ -93,6 +109,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
     id     = "expire-old"
     status = "Enabled"
 
+    # Required by AWS provider v5+: a filter (or prefix) must be specified.
+    # An empty filter applies the rule to all objects in the bucket.
+    filter {}
+
     expiration {
       days = 90
     }
@@ -122,16 +142,25 @@ import {
 
 ## Using terraform state mv
 
-For resource type changes not supported by moved blocks, use the CLI:
+For renames or transitions not supported by moved blocks, use the CLI. `terraform state mv` only changes the resource address in state — it does not transform attributes, so the source and target must have compatible schemas. Use it freely for same-type renames or for module re-organisation:
 
 ```bash
-# Move a resource to a new type
+# Rename a resource within the same type
 terraform state mv \
-  'aws_elasticsearch_domain.search' \
-  'aws_opensearch_domain.search'
+  'aws_instance.web' \
+  'aws_instance.web_primary'
 ```
 
-This is necessary when the state schema between old and new types is compatible but moved blocks are not supported for the transition.
+When the source and target are different resource types with different schemas (for example, `aws_elasticsearch_domain` to `aws_opensearch_domain`), `terraform state mv` alone is not safe — the next plan will show drift because the attribute layouts do not match. The reliable approach for incompatible schemas is:
+
+```bash
+# 1. Remove the old resource from state (the underlying AWS resource is untouched)
+terraform state rm aws_elasticsearch_domain.search
+
+# 2. Add an import block (Terraform 1.5+) for the new resource type, or
+#    use `terraform import` to re-bind it
+terraform import aws_opensearch_domain.search my-domain
+```
 
 ## Handling Complex Resource Type Migrations
 
