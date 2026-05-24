@@ -139,8 +139,10 @@ import (
     "myorg/terraform-provider-internal/internal/provider"
 )
 
+var version string = "dev"
+
 func main() {
-    providerserver.Serve(context.Background(), provider.New, providerserver.ServeOpts{
+    providerserver.Serve(context.Background(), provider.New(version), providerserver.ServeOpts{
         Address: "registry.internal/myorg/internal-services",
     })
 }
