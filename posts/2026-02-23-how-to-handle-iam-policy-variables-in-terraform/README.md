@@ -73,7 +73,7 @@ resource "aws_iam_policy" "user_self_manage" {
 
 ## Using the aws_iam_policy_document Data Source
 
-The recommended approach for creating IAM policies in Terraform is to use the `aws_iam_policy_document` data source. This data source handles variable escaping automatically and provides a structured way to define policies.
+The recommended approach for creating IAM policies in Terraform is to use the `aws_iam_policy_document` data source. It provides a structured way to define policies, but you still need to escape IAM policy variables as `$${...}` because Terraform's string interpolation runs before the data source sees the value.
 
 ```hcl
 # Use the policy document data source for cleaner policy definitions
@@ -87,7 +87,7 @@ data "aws_iam_policy_document" "user_home_directory" {
       "s3:DeleteObject",
       "s3:ListBucket"
     ]
-    # Use the variable directly - the data source handles escaping
+    # Escape the IAM variable with $$ so Terraform passes through ${aws:username}
     resources = [
       "arn:aws:s3:::company-home-bucket/$${aws:username}/*",
       "arn:aws:s3:::company-home-bucket/$${aws:username}"
