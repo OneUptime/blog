@@ -171,18 +171,22 @@ jobs:
         working-directory: environments/production
 
       - name: Terraform Plan
+        id: plan
         run: terraform plan -no-color -out=tfplan
         working-directory: environments/production
 
       - name: Post Plan
         uses: actions/github-script@v7
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
+            const fence = '```';
             const output = `## EMERGENCY CHANGE - Plan Output
             Please review immediately.
-            ```
+            ${fence}
             ${process.env.PLAN_OUTPUT}
-            ````;
+            ${fence}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
