@@ -258,11 +258,6 @@ resource "aws_db_option_group" "oracle" {
     vpc_security_group_memberships = [aws_security_group.oracle_ssl.id]
   }
 
-  # Oracle Statspack (performance monitoring)
-  option {
-    option_name = "STATSPACK"
-  }
-
   # Oracle timezone file update
   option {
     option_name = "Timezone"
