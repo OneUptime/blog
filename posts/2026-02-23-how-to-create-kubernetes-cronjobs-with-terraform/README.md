@@ -55,7 +55,7 @@ resource "kubernetes_cron_job_v1" "db_backup" {
     schedule = "0 2 * * *"
 
     # Timezone (requires Kubernetes 1.27+)
-    # time_zone = "America/New_York"
+    # timezone = "America/New_York"
 
     # Keep 3 successful and 1 failed job for debugging
     successful_jobs_history_limit = 3
