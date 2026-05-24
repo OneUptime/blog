@@ -82,10 +82,8 @@ resource "aws_iam_access_key" "service" {
   # This key will be recreated when the rotation period expires
   lifecycle {
     create_before_destroy = true
+    replace_triggered_by  = [time_rotating.key_rotation]
   }
-
-  # Force recreation when rotation period expires
-  depends_on = [time_rotating.key_rotation]
 }
 
 # Store the new key in AWS Secrets Manager
@@ -129,6 +127,7 @@ resource "aws_iam_access_key" "primary" {
 
   lifecycle {
     create_before_destroy = true
+    replace_triggered_by  = [time_rotating.primary_key]
   }
 }
 
@@ -138,6 +137,7 @@ resource "aws_iam_access_key" "secondary" {
 
   lifecycle {
     create_before_destroy = true
+    replace_triggered_by  = [time_rotating.secondary_key]
   }
 }
 
