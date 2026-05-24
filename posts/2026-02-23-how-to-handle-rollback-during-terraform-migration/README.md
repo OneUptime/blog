@@ -259,14 +259,16 @@ Sometimes you need to roll back only part of a migration:
 ```bash
 # Roll back specific resources while keeping others
 # Example: Wave 3 failed but Waves 1 and 2 succeeded
+# Note: terraform state push always replaces the entire state, so partial
+# rollback must be done with state mv, state rm, and import.
 
-# Only restore state for Wave 3 resources
-terraform state rm module.compute.aws_instance.web  # Remove failed migration
-terraform state push --partial wave3-backup.json     # Restore original entries
-
-# Or manually move resources back
+# Move resources back to their original addresses
 terraform state mv module.compute.aws_instance.web aws_instance.web
 terraform state mv module.compute.aws_instance.api aws_instance.api
+
+# Or remove the failed migration entries and re-import the real resources
+terraform state rm module.compute.aws_instance.web
+terraform import aws_instance.web i-0123456789abcdef0
 ```
 
 ## Preventing the Need for Rollback
