@@ -36,7 +36,7 @@ resource "aws_lambda_function" "api" {
   function_name    = "api-handler"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.api.output_base64sha256
 
   # Higher memory = more CPU = faster initialization
@@ -226,7 +226,7 @@ resource "azurerm_linux_function_app" "api" {
     always_on = true
 
     application_stack {
-      node_version = "18"
+      node_version = "22"
     }
   }
 }
@@ -241,7 +241,7 @@ resource "google_cloudfunctions2_function" "api" {
   location = var.region
 
   build_config {
-    runtime     = "nodejs18"
+    runtime     = "nodejs22"
     entry_point = "handler"
 
     source {
@@ -277,7 +277,7 @@ resource "aws_lambda_layer_version" "dependencies" {
   layer_name          = "shared-dependencies"
   filename            = data.archive_file.layer.output_path
   source_code_hash    = data.archive_file.layer.output_base64sha256
-  compatible_runtimes = ["nodejs18.x"]
+  compatible_runtimes = ["nodejs22.x"]
 }
 
 # Slim function using layer for dependencies
@@ -286,7 +286,7 @@ resource "aws_lambda_function" "slim_api" {
   function_name    = "slim-api-handler"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.slim_api.output_base64sha256
   memory_size      = 1024
   architectures    = ["arm64"]
