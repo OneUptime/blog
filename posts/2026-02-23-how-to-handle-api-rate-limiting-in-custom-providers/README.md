@@ -103,6 +103,7 @@ package client
 
 import (
     "context"
+    "fmt"
     "math"
     "math/rand"
     "time"
@@ -240,6 +241,7 @@ import (
     "fmt"
     "io"
     "net/http"
+    "time"
 )
 
 // Client wraps the HTTP client with rate limit handling
