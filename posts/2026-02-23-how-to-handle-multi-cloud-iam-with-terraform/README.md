@@ -110,7 +110,7 @@ resource "aws_iam_role" "multi_cloud" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action = "sts:AssumeRole"
+        Action = "sts:AssumeRoleWithSAML"
         Effect = "Allow"
         Principal = {
           # Allow federation from your identity provider
