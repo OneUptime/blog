@@ -10,7 +10,7 @@ Description: Learn how to create ZIP deployment packages for AWS Lambda with Ter
 
 AWS Lambda requires your function code to be packaged as a ZIP file or container image. The Terraform archive provider makes it easy to create these ZIP packages as part of your infrastructure deployment. By using archive_file alongside the aws_lambda_function resource, you create a seamless deployment pipeline where code changes are automatically detected and deployed.
 
-In this guide, we will cover creating Lambda deployment packages with Terraform for Python, Node.js, and Go functions, including dependency management, Lambda layers, and multi-function deployments.
+In this guide, we will cover creating Lambda deployment packages with Terraform for Python and Node.js functions, including dependency management, Lambda layers, and multi-function deployments.
 
 ## Provider Setup
 
