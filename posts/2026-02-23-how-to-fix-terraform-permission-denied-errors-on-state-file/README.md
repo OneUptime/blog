@@ -102,6 +102,7 @@ The S3 backend requires specific IAM permissions for both the S3 bucket and the 
       "Sid": "DynamoDBLockAccess",
       "Effect": "Allow",
       "Action": [
+        "dynamodb:DescribeTable",
         "dynamodb:GetItem",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem"
@@ -253,7 +254,7 @@ The simplest role is **Storage Object Admin** on the bucket:
 
 ```bash
 # Grant access
-gsutil iam ch user:deploy@my-project.iam.gserviceaccount.com:roles/storage.objectAdmin gs://my-terraform-state
+gsutil iam ch serviceAccount:deploy@my-project.iam.gserviceaccount.com:roles/storage.objectAdmin gs://my-terraform-state
 
 # Verify access
 gsutil ls gs://my-terraform-state/
@@ -309,8 +310,11 @@ terraform {
     bucket         = "central-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    role_arn       = "arn:aws:iam::CENTRAL_ACCOUNT:role/terraform-state-access"
     dynamodb_table = "terraform-locks"
+
+    assume_role = {
+      role_arn = "arn:aws:iam::CENTRAL_ACCOUNT:role/terraform-state-access"
+    }
   }
 }
 ```
