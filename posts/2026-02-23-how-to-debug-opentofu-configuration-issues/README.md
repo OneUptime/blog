@@ -74,8 +74,9 @@ For AWS specifically, check the credential chain order:
 # 1. Provider configuration (static, not recommended)
 # 2. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
 # 3. Shared credentials file (~/.aws/credentials)
-# 4. EC2 instance profile / ECS task role
-# 5. Web identity token (for OIDC/SSO)
+# 4. Shared configuration file (~/.aws/config)
+# 5. Container credentials (ECS task role)
+# 6. EC2 instance profile credentials (IMDS)
 
 provider "aws" {
   region = "us-east-1"
@@ -347,8 +348,8 @@ tofu plan -no-color 2>&1 | tee plan-output.txt
 # Target a specific module for planning
 tofu plan -target=module.networking
 
-# Show module outputs
-tofu output -module=networking
+# Inspect module resources via the state
+tofu state list | grep '^module.networking'
 ```
 
 Common module issues include:
@@ -358,7 +359,7 @@ Common module issues include:
 - Relative path issues for local modules
 
 ```hcl
-# Use absolute source paths for local modules
+# Local module sources must be relative paths (./ or ../)
 module "networking" {
   source = "../../modules/networking"  # Relative to the calling config
 
