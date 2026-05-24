@@ -78,8 +78,8 @@ terraform console
 > length(module.networking.private_subnet_ids)
 3
 
-# Check what a local value resolves to
-> module.compute.local.cluster_name
+# Check a nested module output value
+> module.compute.module.cluster.cluster_name
 "myapp-production-cluster"
 ```
 
@@ -99,9 +99,9 @@ output "debug_subnet_ids" {
   value       = module.networking.private_subnet_ids
 }
 
-output "debug_subnet_types" {
-  description = "Debug: Types of subnet IDs"
-  value       = [for s in module.networking.private_subnet_ids : "${s} (${type(s)})"]
+output "debug_subnet_count" {
+  description = "Debug: Number of subnet IDs"
+  value       = length(module.networking.private_subnet_ids)
 }
 ```
 
