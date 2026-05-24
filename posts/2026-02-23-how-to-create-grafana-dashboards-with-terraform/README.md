@@ -27,8 +27,14 @@ provider "grafana" {
   auth = var.grafana_auth
 }
 
-variable "grafana_url" { type = string }
-variable "grafana_auth" { type = string; sensitive = true }
+variable "grafana_url" {
+  type = string
+}
+
+variable "grafana_auth" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Creating a Dashboard with JSON
@@ -141,7 +147,7 @@ resource "grafana_dashboard" "infrastructure" {
     }
   })
 
-  folder = grafana_folder.monitoring.id
+  folder = grafana_folder.monitoring.uid
 }
 
 resource "grafana_folder" "monitoring" {
@@ -204,7 +210,7 @@ resource "grafana_dashboard" "application" {
     ]
   })
 
-  folder = grafana_folder.monitoring.id
+  folder = grafana_folder.monitoring.uid
 }
 ```
 
