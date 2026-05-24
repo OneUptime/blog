@@ -189,32 +189,40 @@ Notice the difference: blocks use `name { }` while map attributes use `name = { 
 Other common examples of this mistake:
 
 ```hcl
-# WRONG - environment is an attribute in Lambda
-resource "aws_lambda_function" "example" {
-  function_name = "my-function"
-  # ...
+# WRONG - assume_role_policy is a string attribute, not a block
+resource "aws_iam_role" "example" {
+  name = "my-role"
 
-  environment {  # Error: unsupported block type
-    variables = {
-      ENV = "prod"
-    }
+  assume_role_policy {  # Error: unsupported block type
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
   }
 }
 
-# RIGHT - environment IS a block in Lambda (this one is actually correct)
-# But the variables inside it use = syntax
-resource "aws_lambda_function" "example" {
-  function_name = "my-function"
-  runtime       = "python3.11"
-  handler       = "lambda_function.handler"
-  role          = aws_iam_role.lambda.arn
-  filename      = "function.zip"
+# RIGHT - assume_role_policy takes a JSON string
+resource "aws_iam_role" "example" {
+  name = "my-role"
 
-  environment {
-    variables = {
-      ENV = "prod"
-    }
-  }
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
 }
 ```
 
