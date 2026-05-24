@@ -194,7 +194,7 @@ repos:
     hooks:
       - id: no-tfvars
         name: Check for .tfvars files
-        entry: bash -c 'if git diff --cached --name-only | grep -q "\.tfvars$" | grep -v "example"; then echo "ERROR: Do not commit .tfvars files"; exit 1; fi'
+        entry: bash -c 'if git diff --cached --name-only | grep "\.tfvars$" | grep -qv "example"; then echo "ERROR: Do not commit .tfvars files"; exit 1; fi'
         language: system
         pass_filenames: false
 ```
@@ -269,8 +269,8 @@ Be careful with outputs that derive from sensitive values:
 
 ```hcl
 # This will fail because it exposes a sensitive value
-output "database_endpoint" {
-  value = "${aws_db_instance.main.endpoint}:${aws_db_instance.main.port}"
+output "database_connection_url" {
+  value = "postgres://admin:${var.database_password}@${aws_db_instance.main.endpoint}/mydb"
 }
 
 # Mark derived outputs as sensitive too
@@ -279,6 +279,7 @@ output "database_connection_info" {
     endpoint = aws_db_instance.main.endpoint
     port     = aws_db_instance.main.port
     username = aws_db_instance.main.username
+    password = var.database_password
   }
   sensitive = true
 }
