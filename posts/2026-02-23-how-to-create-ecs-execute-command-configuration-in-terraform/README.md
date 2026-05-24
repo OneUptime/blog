@@ -418,11 +418,12 @@ aws ecs execute-command \
   --interactive \
   --command "/bin/sh"
 
-# Run a single command
+# Run a single command (--interactive is required; it is currently the only supported mode)
 aws ecs execute-command \
   --cluster exec-enabled-cluster \
   --task <task-id> \
   --container app \
+  --interactive \
   --command "cat /etc/hostname"
 
 # Check connectivity from inside the container
@@ -447,6 +448,9 @@ resource "aws_iam_policy" "ecs_exec_users" {
     Version = "2012-10-17"
     Statement = [
       {
+        # ECS starts the SSM session on the caller's behalf, so the
+        # principal only needs ecs:ExecuteCommand (and ecs:DescribeTasks
+        # to look up tasks).
         Effect = "Allow"
         Action = [
           "ecs:ExecuteCommand",
@@ -460,14 +464,6 @@ resource "aws_iam_policy" "ecs_exec_users" {
             "ecs:cluster" = aws_ecs_cluster.main.arn
           }
         }
-      },
-      {
-        # Required for the SSM session
-        Effect = "Allow"
-        Action = [
-          "ssm:StartSession"
-        ]
-        Resource = "arn:aws:ecs:us-east-1:*:task/${aws_ecs_cluster.main.name}/*"
       }
     ]
   })
