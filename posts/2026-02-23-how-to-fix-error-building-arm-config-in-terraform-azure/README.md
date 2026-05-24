@@ -95,11 +95,11 @@ echo "Client Secret: ${ARM_CLIENT_SECRET:0:5}..."  # Only show first 5 chars
 A common mistake is having extra whitespace or newlines in the values:
 
 ```bash
-# WRONG - trailing newline from command substitution
+# WRONG - default JSON output includes surrounding quotes
 export ARM_SUBSCRIPTION_ID=$(az account show --query id)
-# This may include quotes: "your-sub-id"
+# Value will be: "your-sub-id" (with literal double quotes)
 
-# CORRECT - strip quotes and whitespace
+# CORRECT - tsv output strips JSON quotes
 export ARM_SUBSCRIPTION_ID=$(az account show --query id --output tsv)
 ```
 
