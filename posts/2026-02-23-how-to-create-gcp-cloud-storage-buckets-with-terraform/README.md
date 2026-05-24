@@ -158,7 +158,7 @@ resource "google_storage_bucket" "managed" {
     }
   }
 
-  # Delete non-current versions after 30 days
+  # Keep only the 3 most recent noncurrent versions of each object
   lifecycle_rule {
     condition {
       num_newer_versions = 3
