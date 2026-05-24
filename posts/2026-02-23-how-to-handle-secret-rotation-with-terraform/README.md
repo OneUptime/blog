@@ -319,25 +319,35 @@ resource "aws_secretsmanager_secret_rotation" "api_key" {
 Track rotation success and failures:
 
 ```hcl
-# Alert on rotation failures
+# Alert on rotation failures via the rotation Lambda's error metric.
+# Secrets Manager itself does not publish a rotation-failure CloudWatch
+# metric (its only native metric is SecretCount), so monitor the
+# rotation function's errors instead. EventBridge rules on the
+# RotationFailed event are another option.
 resource "aws_cloudwatch_metric_alarm" "rotation_failure" {
   alarm_name          = "secret-rotation-failure"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "RotationFailed"
-  namespace           = "AWS/SecretsManager"
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
   period              = 86400  # Check daily
   statistic           = "Sum"
   threshold           = 0
 
+  dimensions = {
+    FunctionName = aws_lambda_function.rotation.function_name
+  }
+
   alarm_actions = [aws_sns_topic.security_alerts.arn]
-  alarm_description = "A secret rotation has failed"
+  alarm_description = "The rotation Lambda has reported errors"
 }
 
-# Alert on secrets approaching expiration
+# Alert on secrets approaching expiration. DaysSinceLastRotation is a
+# custom metric you publish yourself (e.g. from a scheduled Lambda that
+# inspects each secret's LastRotatedDate).
 resource "aws_cloudwatch_metric_alarm" "secret_expiring" {
   alarm_name          = "secret-expiring-soon"
-  comparison_operator = "LessThanThreshold"
+  comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "DaysSinceLastRotation"
   namespace           = "CustomMetrics/SecretsManager"
