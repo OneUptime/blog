@@ -311,8 +311,8 @@ If your organization already has a folder structure, import it into Terraform.
 # Import an existing folder
 terraform import google_folder.environments[\"Production\"] folders/FOLDER_ID
 
-# Import an organization IAM binding
-terraform import google_organization_iam_member.org_admins "ORG_ID roles/resourcemanager.organizationAdmin group:org-admins@example.com"
+# Import an organization IAM binding (note the for_each key on the resource)
+terraform import 'google_organization_iam_member.org_admins["group:org-admins@example.com"]' "ORG_ID roles/resourcemanager.organizationAdmin group:org-admins@example.com"
 ```
 
 ## Best Practices
