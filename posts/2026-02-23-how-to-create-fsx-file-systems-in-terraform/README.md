@@ -121,7 +121,7 @@ resource "aws_fsx_windows_file_system" "main" {
   # Maintenance window (UTC)
   weekly_maintenance_start_time = "7:01:00"
 
-  # Enable data deduplication to save storage
+  # DNS aliases for accessing the file system
   aliases = ["fsx.example.com"]
 
   tags = {
@@ -163,7 +163,7 @@ resource "aws_security_group" "fsx_lustre" {
 
   # Lustre traffic between nodes
   ingress {
-    from_port   = 1021
+    from_port   = 1018
     to_port     = 1023
     protocol    = "tcp"
     cidr_blocks = ["10.0.0.0/8"]
@@ -322,7 +322,8 @@ resource "aws_fsx_openzfs_file_system" "data_lake" {
   deployment_type = "SINGLE_AZ_1"
 
   # Throughput capacity in MB/s
-  throughput_capacity = 160
+  # Valid values for SINGLE_AZ_1: 64, 128, 256, 512, 1024, 2048, 3072, 4096
+  throughput_capacity = 128
 
   # Subnet placement
   subnet_ids = [var.subnet_ids[0]]
