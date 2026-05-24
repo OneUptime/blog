@@ -23,11 +23,9 @@ Extensions participate in the Lambda lifecycle through the Extensions API, which
 
 ## Creating an External Extension
 
-Let us build an external extension that captures telemetry data. First, create the extension code:
+Let us build an external extension that captures telemetry data. Create the extension script at `extensions/telemetry-extension`:
 
 ```python
-# extensions/telemetry-extension
-
 #!/usr/bin/env python3
 """
 External Lambda extension that captures telemetry data
@@ -38,7 +36,6 @@ import sys
 import os
 import json
 import urllib.request
-import signal
 
 # Lambda Extensions API base URL
 LAMBDA_EXTENSION_NAME = os.path.basename(__file__)
@@ -117,7 +114,7 @@ resource "aws_lambda_layer_version" "telemetry_extension" {
   layer_name          = "telemetry-extension"
   filename            = data.archive_file.telemetry_extension_layer.output_path
   source_code_hash    = data.archive_file.telemetry_extension_layer.output_base64sha256
-  compatible_runtimes = ["python3.9", "python3.10", "python3.11", "python3.12"]
+  compatible_runtimes = ["python3.10", "python3.11", "python3.12"]
   description         = "Telemetry collection extension for Lambda functions"
 }
 ```
@@ -269,7 +266,7 @@ resource "aws_lambda_layer_version" "internal_extension" {
   layer_name          = "internal-runtime-extension"
   filename            = data.archive_file.internal_extension_layer.output_path
   source_code_hash    = data.archive_file.internal_extension_layer.output_base64sha256
-  compatible_runtimes = ["python3.9", "python3.10", "python3.11", "python3.12"]
+  compatible_runtimes = ["python3.10", "python3.11", "python3.12"]
 }
 
 # Function using the internal extension via AWS_LAMBDA_EXEC_WRAPPER
@@ -312,7 +309,7 @@ resource "aws_lambda_layer_version" "versioned_extension" {
   source_code_hash = data.archive_file.telemetry_extension_layer.output_base64sha256
   description      = "Telemetry extension v${var.extension_version}"
 
-  compatible_runtimes = ["python3.9", "python3.10", "python3.11", "python3.12"]
+  compatible_runtimes = ["python3.10", "python3.11", "python3.12"]
 
   # Keep old versions available during rollback windows
   lifecycle {
