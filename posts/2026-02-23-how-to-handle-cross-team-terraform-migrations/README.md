@@ -125,7 +125,7 @@ echo "Verifying target state..."
 terraform -chdir="$TARGET_DIR" plan -detailed-exitcode
 TARGET_EXIT=$?
 
-if [ $SOURCE_EXIT -le 2 ] && [ $TARGET_EXIT -le 2 ]; then
+if { [ $SOURCE_EXIT -eq 0 ] || [ $SOURCE_EXIT -eq 2 ]; } && { [ $TARGET_EXIT -eq 0 ] || [ $TARGET_EXIT -eq 2 ]; }; then
   echo "Handoff successful"
 else
   echo "WARNING: Issues detected. Review plan output above."
