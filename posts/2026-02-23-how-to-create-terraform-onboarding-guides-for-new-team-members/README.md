@@ -88,8 +88,9 @@ Install the following tools:
 
 ### 1. Terraform
 ```bash
-## macOS
-brew install terraform
+## macOS (HashiCorp official tap)
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
 
 ## Verify installation
 terraform version
