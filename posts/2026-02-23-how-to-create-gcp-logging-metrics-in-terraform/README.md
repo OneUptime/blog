@@ -128,7 +128,7 @@ resource "google_logging_metric" "iam_changes" {
 resource "google_logging_metric" "auth_failures" {
   name        = "authentication-failures"
   description = "Count of failed authentication attempts"
-  filter      = "protoPayload.status.code=7 AND protoPayload.authenticationInfo.principalEmail!=\"\""
+  filter      = "protoPayload.status.code=16 AND protoPayload.authenticationInfo.principalEmail!=\"\""
 
   metric_descriptor {
     metric_kind = "DELTA"
