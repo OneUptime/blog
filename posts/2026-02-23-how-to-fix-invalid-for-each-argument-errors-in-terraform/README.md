@@ -205,7 +205,7 @@ resource "aws_eip" "servers" {
 Error: Invalid for_each argument
 
 The given "for_each" argument value is unsuitable: "for_each" supports maps
-and sets of strings, but you have provided a set containing type bool.
+and sets of strings, but you have provided a set containing type number.
 ```
 
 This happens when your set contains non-string values or null entries:
@@ -313,7 +313,8 @@ output "debug_for_each_value" {
 ```
 
 ```bash
-terraform plan -target=output.debug_for_each_value
+# Run terraform plan to see the planned output value
+terraform plan
 ```
 
 The key principle with `for_each` is simple: the keys must be known at plan time, they must be strings (or a map with string keys), and they cannot be sensitive. If you keep these rules in mind, most for_each errors become easy to diagnose and fix. When in doubt, define your resource set as an explicit variable rather than deriving it from computed values.
