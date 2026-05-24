@@ -307,16 +307,12 @@ echo "$TARGET_VERSION" > /opt/app/version
 
 ## Migration Path
 
-If you have existing `null_resource` resources and want to move to `terraform_data`:
+If you have existing `null_resource` resources and want to move to `terraform_data`, note that Terraform's `moved` block only supports moves between resources of the same type, so you cannot use it to migrate `null_resource` to `terraform_data` directly. Since `null_resource` represents no real infrastructure, the simplest approach is to replace the resource definition and accept the destroy/create cycle:
 
 ```hcl
-# Add a moved block
-moved {
-  from = null_resource.deploy
-  to   = terraform_data.deploy
-}
-
-# Replace the resource
+# Replace the null_resource definition with terraform_data.
+# Terraform will destroy null_resource.deploy and create terraform_data.deploy.
+# The provisioner will run once on creation.
 resource "terraform_data" "deploy" {
   triggers_replace = [
     filemd5("${path.module}/deploy.sh")
@@ -328,7 +324,14 @@ resource "terraform_data" "deploy" {
 }
 ```
 
-Note: The `moved` block from `null_resource` to `terraform_data` works because Terraform treats them as compatible types for state migration.
+If you want to avoid Terraform destroying the old `null_resource` (for example, if it has a `when = destroy` provisioner you do not want to run), remove it from state first and then apply with the new resource defined:
+
+```bash
+terraform state rm null_resource.deploy
+terraform apply
+```
+
+The new `terraform_data.deploy` will be created fresh in state, and its `local-exec` provisioner will run once on creation.
 
 ## Conclusion
 
