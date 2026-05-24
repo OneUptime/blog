@@ -253,7 +253,7 @@ resource "google_billing_budget" "with_pubsub" {
 resource "google_cloudfunctions_function" "budget_handler" {
   name        = "budget-alert-handler"
   description = "Processes budget alert notifications"
-  runtime     = "python310"
+  runtime     = "python312"
 
   available_memory_mb   = 128
   source_archive_bucket = google_storage_bucket.functions.name
