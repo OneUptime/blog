@@ -292,6 +292,7 @@ For CI/CD-driven rotation:
 NEW_KEY=$(curl -s -X POST "https://api.datadoghq.com/api/v2/api_keys" \
   -H "DD-API-KEY: ${CURRENT_API_KEY}" \
   -H "DD-APPLICATION-KEY: ${APP_KEY}" \
+  -H "Content-Type: application/json" \
   -d '{"data":{"type":"api_keys","attributes":{"name":"terraform-rotated"}}}' | jq -r '.data.attributes.key')
 
 # Update the secret store
