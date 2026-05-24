@@ -75,7 +75,7 @@ variable "slack_token" {
 resource "google_monitoring_notification_channel" "pagerduty" {
   display_name = "PagerDuty Integration"
   type         = "pagerduty"
-  labels = {
+  sensitive_labels {
     service_key = var.pagerduty_service_key
   }
 }
@@ -88,6 +88,8 @@ variable "pagerduty_service_key" {
 
 ## Webhook Notification Channel
 
+For `webhook_tokenauth`, the authentication token is embedded directly in the URL (for example, as a query parameter), so the entire URL is treated as a secret:
+
 ```hcl
 resource "google_monitoring_notification_channel" "webhook" {
   display_name = "Custom Webhook"
@@ -95,13 +97,32 @@ resource "google_monitoring_notification_channel" "webhook" {
   labels = {
     url = var.webhook_url
   }
+}
+
+variable "webhook_url" {
+  type      = string
+  sensitive = true
+}
+```
+
+If your endpoint uses HTTP basic authentication instead, use `webhook_basicauth` and supply the password through `sensitive_labels`:
+
+```hcl
+resource "google_monitoring_notification_channel" "webhook_basic" {
+  display_name = "Custom Webhook (Basic Auth)"
+  type         = "webhook_basicauth"
+  labels = {
+    url      = var.webhook_basic_url
+    username = var.webhook_username
+  }
   sensitive_labels {
-    password = var.webhook_token
+    password = var.webhook_password
   }
 }
 
-variable "webhook_url" { type = string }
-variable "webhook_token" {
+variable "webhook_basic_url" { type = string }
+variable "webhook_username" { type = string }
+variable "webhook_password" {
   type      = string
   sensitive = true
 }
