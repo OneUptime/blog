@@ -476,19 +476,17 @@ resource "azurerm_container_app" "api" {
 For complex environment configurations, use template files:
 
 ```hcl
-# Template file for ECS container definitions
-data "template_file" "container_definitions" {
-  template = file("${path.module}/templates/container-definitions.json.tpl")
-
-  vars = {
-    app_image      = "${aws_ecr_repository.app.repository_url}:${var.app_image_tag}"
-    environment    = var.environment
-    log_group      = aws_cloudwatch_log_group.app.name
-    region         = var.region
-    db_host        = aws_db_instance.main.address
-    db_secret_arn  = aws_secretsmanager_secret.db_password.arn
-    api_key_arn    = aws_ssm_parameter.api_key.arn
-  }
+# Render container definitions from a template file
+locals {
+  container_definitions = templatefile("${path.module}/templates/container-definitions.json.tpl", {
+    app_image     = "${aws_ecr_repository.app.repository_url}:${var.app_image_tag}"
+    environment   = var.environment
+    log_group     = aws_cloudwatch_log_group.app.name
+    region        = var.region
+    db_host       = aws_db_instance.main.address
+    db_secret_arn = aws_secretsmanager_secret.db_password.arn
+    api_key_arn   = aws_ssm_parameter.api_key.arn
+  })
 }
 ```
 
