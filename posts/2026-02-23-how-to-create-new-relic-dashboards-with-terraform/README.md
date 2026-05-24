@@ -216,7 +216,7 @@ resource "newrelic_one_dashboard" "database" {
       height = 3
       nrql_query {
         account_id = var.account_id
-        query      = "SELECT rate(count(*), 1 minute) FROM DatabaseQuery TIMESERIES"
+        query      = "SELECT rate(count(*), 1 minute) FROM Span WHERE category = 'datastore' TIMESERIES"
       }
     }
 
@@ -228,7 +228,7 @@ resource "newrelic_one_dashboard" "database" {
       height = 3
       nrql_query {
         account_id = var.account_id
-        query      = "SELECT average(duration) FROM DatabaseQuery FACET query LIMIT 10"
+        query      = "SELECT average(duration) FROM Span WHERE category = 'datastore' FACET db.statement LIMIT 10"
       }
     }
   }
