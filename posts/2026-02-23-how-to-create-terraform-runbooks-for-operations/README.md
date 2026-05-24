@@ -187,11 +187,24 @@ aws rds describe-db-instances \
   --db-instance-identifier production-replica \
   --query 'DBInstances[0].{
     Status: DBInstanceStatus,
-    ReplicaLag: StatusInfos[0].Normal
+    ReplicationStatus: StatusInfos[0].Status,
+    ReplicationNormal: StatusInfos[0].Normal
   }'
 
+## DB instance Status should be "available"
+## ReplicationStatus should be "replicating" and ReplicationNormal should be true
+
+## Check actual replication lag (in seconds) via CloudWatch
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/RDS \
+  --metric-name ReplicaLag \
+  --dimensions Name=DBInstanceIdentifier,Value=production-replica \
+  --statistics Average \
+  --start-time $(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 60
+
 ## Replication lag should be less than 5 seconds
-## Status should be "available"
 ```bash
 
 ### Step 2: Notify Stakeholders
