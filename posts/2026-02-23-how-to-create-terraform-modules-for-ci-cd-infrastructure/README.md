@@ -309,6 +309,21 @@ resource "aws_cloudwatch_log_group" "codebuild" {
   retention_in_days = 30
   tags              = var.tags
 }
+
+output "project_name" {
+  description = "Name of the CodeBuild project"
+  value       = aws_codebuild_project.this.name
+}
+
+output "project_arn" {
+  description = "ARN of the CodeBuild project"
+  value       = aws_codebuild_project.this.arn
+}
+
+output "role_arn" {
+  description = "ARN of the CodeBuild service role"
+  value       = aws_iam_role.codebuild.arn
+}
 ```
 
 ## Full Pipeline Module
