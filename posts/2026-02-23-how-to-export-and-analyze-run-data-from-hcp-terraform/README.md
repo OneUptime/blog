@@ -296,14 +296,16 @@ EXPORT_DIR="/var/data/terraform-reports"
 
 mkdir -p "$EXPORT_DIR"
 
-# Export runs from the last 7 days
+# Export runs and filter to the last 7 days client-side
+# (the org runs endpoint has no built-in date filter)
 SINCE=$(date -u -d "-7 days" +%Y-%m-%dT%H:%M:%SZ)
 
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/organizations/$ORG/runs?filter%5Bfrom%5D=$SINCE&page%5Bsize%5D=100" \
-  -o "$EXPORT_DIR/runs-$DATE.json"
+  "https://app.terraform.io/api/v2/organizations/$ORG/runs?page%5Bsize%5D=100" | \
+  jq --arg since "$SINCE" '{data: [.data[] | select(.attributes["created-at"] >= $since)]}' \
+  > "$EXPORT_DIR/runs-$DATE.json"
 
 # Generate the report
 python3 /opt/scripts/run-report.py "$EXPORT_DIR/runs-$DATE.json" \
@@ -343,7 +345,7 @@ For compliance, export detailed run information including who triggered each run
 # Export audit-ready run data
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/runs?page%5Bsize%5D=100&include=created-by" | \
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/runs?page%5Bsize%5D=100&include=created_by" | \
   jq '.data[] | {
     run_id: .id,
     status: .attributes.status,
