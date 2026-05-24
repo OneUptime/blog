@@ -417,7 +417,7 @@ output "tunnel_2_status" {
 
 **Use GLOBAL routing mode on your VPC.** This lets all regions benefit from learned routes, not just the region where the Cloud Router sits.
 
-**Monitor tunnel status.** Set up alerts for `vpn.googleapis.com/tunnel_being_created` and `vpn.googleapis.com/tunnel_established` metrics.
+**Monitor tunnel status.** Set up alerts on the `vpn.googleapis.com/tunnel_established` metric, which reports 1 when the tunnel is up and 0 when it is down.
 
 **Keep your on-premises configuration in sync.** The Terraform output for gateway IPs and BGP settings should be shared with your network team to configure the on-premises side.
 
