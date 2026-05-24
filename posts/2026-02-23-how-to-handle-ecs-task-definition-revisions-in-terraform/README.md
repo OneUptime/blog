@@ -136,15 +136,13 @@ resource "aws_ecs_service" "app" {
   desired_count   = 3
   launch_type     = "FARGATE"
 
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = data.aws_subnets.private.ids
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
-  }
-
-  deployment_configuration {
-    minimum_healthy_percent = 50
-    maximum_percent         = 200
   }
 
   # With this approach, Terraform always controls the task definition
@@ -362,15 +360,13 @@ resource "aws_ecs_service" "app_with_rollback" {
   desired_count = 3
   launch_type   = "FARGATE"
 
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = data.aws_subnets.private.ids
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
-  }
-
-  deployment_configuration {
-    minimum_healthy_percent = 50
-    maximum_percent         = 200
   }
 
   # Circuit breaker for automatic rollback on failed deployments
@@ -404,15 +400,13 @@ resource "aws_ecs_service" "app_circuit_breaker" {
   desired_count   = 3
   launch_type     = "FARGATE"
 
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = data.aws_subnets.private.ids
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
-  }
-
-  deployment_configuration {
-    minimum_healthy_percent = 50
-    maximum_percent         = 200
   }
 
   # Automatically roll back if new tasks fail to stabilize
@@ -444,7 +438,7 @@ output "task_family" {
 
 ## Best Practices
 
-When managing task definition revisions with Terraform, choose one strategy and stick with it. Mixing Terraform-managed and externally-managed revisions leads to confusion. If using CI/CD for deployments, the variable-driven image tag approach gives you the best of both worlds. Always enable the deployment circuit breaker for automatic rollback on failed deployments. Tag your task definitions with version information for easy identification. Clean up old revisions periodically to keep your task definition list manageable. Use the deployment configuration with minimum_healthy_percent and maximum_percent to control the rollout speed.
+When managing task definition revisions with Terraform, choose one strategy and stick with it. Mixing Terraform-managed and externally-managed revisions leads to confusion. If using CI/CD for deployments, the variable-driven image tag approach gives you the best of both worlds. Always enable the deployment circuit breaker for automatic rollback on failed deployments. Tag your task definitions with version information for easy identification. Clean up old revisions periodically to keep your task definition list manageable. Use the `deployment_minimum_healthy_percent` and `deployment_maximum_percent` attributes to control the rollout speed.
 
 ## Monitoring with OneUptime
 
