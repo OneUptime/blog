@@ -70,14 +70,11 @@ resource "google_cloud_tasks_queue" "rate_limited" {
 
     # Maximum number of tasks that can run concurrently
     max_concurrent_dispatches = 20
-
-    # Maximum burst size - allows temporary spikes above the rate
-    max_burst_size = 50
   }
 }
 ```
 
-The relationship between these settings matters. `max_dispatches_per_second` is the sustained rate. `max_burst_size` lets the queue temporarily exceed the sustained rate to handle spikes. `max_concurrent_dispatches` limits how many tasks can be running at the same time, which protects your backend from being overwhelmed.
+The relationship between these settings matters. `max_dispatches_per_second` is the sustained rate. `max_concurrent_dispatches` limits how many tasks can be running at the same time, which protects your backend from being overwhelmed. Cloud Tasks also tracks a `max_burst_size` that lets the queue temporarily exceed the sustained rate to handle spikes, but this is computed automatically from `max_dispatches_per_second` and cannot be set directly through Terraform.
 
 ## Queue with Retry Configuration
 
@@ -104,14 +101,14 @@ resource "google_cloud_tasks_queue" "with_retries" {
     # Exponential backoff configuration
     min_backoff = "1s"     # First retry after 1 second
     max_backoff = "300s"   # Cap backoff at 5 minutes
-    max_doublings = 4      # Double the backoff 4 times then stay at max
+    max_doublings = 4      # Double the backoff 4 times, then grow linearly
   }
 }
 ```
 
-With `max_doublings = 4` and `min_backoff = 1s`, the retry intervals would be: 1s, 2s, 4s, 8s, 16s, then stay at 16s (since max_doublings was reached) until max_backoff caps it. But since max_backoff is 300s, and we only doubled 4 times reaching 16s, the backoff stays at 16s for remaining retries.
+With `max_doublings = 4` and `min_backoff = 1s`, the retry interval starts at `min_backoff` and doubles `max_doublings` times: 1s, 2s, 4s, 8s, 16s. After the doublings are exhausted, the interval grows linearly by `2^max_doublings * min_backoff` (here, 16s) each retry: 32s, 48s, 64s, 80s, and so on, until it hits `max_backoff` (300s) and then stays there.
 
-If you want the full exponential curve, set `max_doublings` higher. For example, with `max_doublings = 8` and `min_backoff = 1s`: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s.
+If you want a longer exponential ramp before the linear phase kicks in, set `max_doublings` higher. For example, with `max_doublings = 8` and `min_backoff = 1s`, the doublings phase produces: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s.
 
 ## Email Processing Queue
 
@@ -158,7 +155,6 @@ resource "google_cloud_tasks_queue" "webhooks" {
     # Process webhooks at a steady rate
     max_dispatches_per_second = 200
     max_concurrent_dispatches = 50
-    max_burst_size            = 100
   }
 
   retry_config {
