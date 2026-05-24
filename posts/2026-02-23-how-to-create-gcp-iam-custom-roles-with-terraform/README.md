@@ -285,7 +285,12 @@ locals {
 
 # This will fail the plan if any permissions are invalid
 resource "null_resource" "permission_check" {
-  count = length(local.invalid_permissions) > 0 ? "Invalid permissions found" : 0
+  lifecycle {
+    precondition {
+      condition     = length(local.invalid_permissions) == 0
+      error_message = "Invalid permissions found: ${join(", ", local.invalid_permissions)}"
+    }
+  }
 }
 ```
 
