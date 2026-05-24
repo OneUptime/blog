@@ -255,10 +255,6 @@ resource "kubernetes_ingress_v1" "tls_ingress" {
 
       # Force HTTPS redirect
       "nginx.ingress.kubernetes.io/ssl-redirect" = "true"
-
-      # HSTS header
-      "nginx.ingress.kubernetes.io/hsts"         = "true"
-      "nginx.ingress.kubernetes.io/hsts-max-age" = "31536000"
     }
   }
 
