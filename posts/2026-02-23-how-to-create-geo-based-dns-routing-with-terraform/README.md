@@ -18,7 +18,7 @@ Route 53 determines the user's location based on the source IP of the DNS query.
 
 ## Prerequisites
 
-You need Terraform 1.0 or later, an AWS account with Route 53 permissions, and a hosted zone configured for your domain. You should also have endpoints deployed in multiple regions.
+You need Terraform 1.3 or later, an AWS account with Route 53 permissions, and a hosted zone configured for your domain. You should also have endpoints deployed in multiple regions.
 
 ## Basic Geolocation Routing Setup
 
