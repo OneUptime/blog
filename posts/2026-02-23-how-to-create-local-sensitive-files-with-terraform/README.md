@@ -14,7 +14,7 @@ In this guide, we will cover creating sensitive files with Terraform, understand
 
 ## Understanding local_sensitive_file vs local_file
 
-The key differences between local_sensitive_file and local_file are permission defaults and output handling. The sensitive file resource defaults to 0700 directory permissions and 0600 file permissions, meaning only the file owner can read or write the file. Additionally, the content is marked as sensitive in Terraform, so it will not appear in terraform plan or terraform apply output.
+The key differences between local_sensitive_file and local_file are permission defaults and output handling. The sensitive file resource defaults to 0700 permissions for both files and directories, meaning only the file owner can read, write, or execute the file. Additionally, the content is marked as sensitive in Terraform, so it will not appear in terraform plan or terraform apply output.
 
 ## Provider Setup
 
@@ -56,7 +56,7 @@ resource "local_sensitive_file" "db_credentials" {
     DB_SSL_MODE=require
   EOT
 
-  # Explicit permissions (these are defaults for sensitive files)
+  # Tighten the default 0700 file permission to 0600 for non-executable secrets
   file_permission      = "0600"
   directory_permission = "0700"
 }
@@ -282,4 +282,4 @@ resource "local_file" "gitignore" {
 
 ## Conclusion
 
-The local_sensitive_file resource is essential for securely writing credentials, keys, and other sensitive data to the filesystem as part of your Terraform workflow. Its default restrictive permissions (0600 for files, 0700 for directories) and sensitive content handling provide a baseline of security. Always combine this with encrypted Terraform state, .gitignore rules, and short-lived credentials for a comprehensive security posture. For non-sensitive file operations, see our guide on [creating local files](https://oneuptime.com/blog/post/2026-02-23-how-to-create-local-files-with-terraform/view).
+The local_sensitive_file resource is essential for securely writing credentials, keys, and other sensitive data to the filesystem as part of your Terraform workflow. Its default restrictive permissions (0700 for both files and directories) and sensitive content handling provide a baseline of security. Always combine this with encrypted Terraform state, .gitignore rules, and short-lived credentials for a comprehensive security posture. For non-sensitive file operations, see our guide on [creating local files](https://oneuptime.com/blog/post/2026-02-23-how-to-create-local-files-with-terraform/view).
