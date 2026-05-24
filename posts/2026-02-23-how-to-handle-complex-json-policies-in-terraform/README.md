@@ -179,7 +179,7 @@ data "aws_iam_policy_document" "conditional" {
 
     condition {
       test     = "StringEquals"
-      variable = "aws:sourceVpce"
+      variable = "aws:SourceVpce"
       values   = [var.vpc_endpoint_id]
     }
   }
@@ -390,10 +390,12 @@ Here is when to use each approach:
 
 ## Performance Considerations
 
-For large numbers of policies, the `aws_iam_policy_document` data source runs locally (no API calls), so performance is not a concern. However, be aware of IAM policy size limits:
+For large numbers of policies, the `aws_iam_policy_document` data source runs locally (no API calls), so performance is not a concern. However, be aware of IAM policy size limits (whitespace is not counted):
 
-- Inline policy: 2,048 characters (URL-encoded)
-- Managed policy: 6,144 characters (JSON)
+- Inline policy on a user: 2,048 characters
+- Inline policy on a group: 5,120 characters
+- Inline policy on a role: 10,240 characters
+- Customer-managed policy: 6,144 characters
 - For larger policies, split into multiple managed policies
 
 ## Summary
