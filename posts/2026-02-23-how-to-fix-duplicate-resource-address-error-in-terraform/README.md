@@ -20,13 +20,14 @@ A aws_instance resource named "web" was already declared at main.tf:5.
 Resource names must be unique per type in each module.
 ```
 
-Or the state-related variant:
+Or a related state conflict when using `moved` blocks:
 
 ```text
-Error: Duplicate resource address
+Error: Moved object still exists
 
-The resource address "aws_instance.web" is already used in the current state.
-Each resource must have a unique address.
+Each moved block must specify a single distinct object not also declared in
+the current configuration. The resource address aws_instance.web is mapped
+to by a moved block, but its declaration already exists in the configuration.
 ```
 
 This error means you have two resources with the same type and name in the same module. Terraform cannot tell them apart, so it refuses to proceed. Let us look at how this happens and how to fix it.
@@ -98,8 +99,7 @@ terraform validate
 If you call the same module multiple times without distinct names:
 
 ```hcl
-# WRONG - but this actually works since module names are different
-# The real issue is when you copy-paste and forget to change the name
+# WRONG: both module calls use the same name "web_server"
 module "web_server" {
   source        = "./modules/web-server"
   instance_type = "t3.micro"
@@ -253,11 +253,11 @@ terraform state mv 'aws_instance.web[1]' 'aws_instance.web["web-2"]'
 For large configurations, manually checking for duplicates is impractical. Use these approaches:
 
 ```bash
-# Find duplicate resource declarations in .tf files
-grep -rh 'resource "' *.tf | sort | uniq -d
+# Find duplicate resource declarations across .tf files
+grep -rh '^resource "' . --include='*.tf' | sort | uniq -d
 
-# Find all resource addresses in state
-terraform state list | sort | uniq -d
+# List all resource addresses currently in state (review for confusion)
+terraform state list
 
 # Compare configuration with state
 terraform plan -detailed-exitcode
