@@ -292,7 +292,7 @@ az monitor log-analytics query \
   --analytics-query "
     AzureDiagnostics
     | where ResourceProvider == 'MICROSOFT.KEYVAULT'
-    | where OperationName in ('KeyEncrypt', 'KeyDecrypt', 'KeyWrapKey', 'KeyUnwrapKey')
+    | where OperationName in ('KeyEncrypt', 'KeyDecrypt', 'KeyWrap', 'KeyUnwrap')
     | project TimeGenerated, OperationName, CallerIPAddress, identity_claim_upn_s
     | order by TimeGenerated desc
     | take 50
