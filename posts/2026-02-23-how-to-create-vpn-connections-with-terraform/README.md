@@ -86,8 +86,9 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
   # VPN port
   vpn_port = 443
 
-  # Enable self-service portal for users to download configs
-  self_service_portal = "enabled"
+  # Self-service portal (only functional with SAML/federated authentication;
+  # has no effect with certificate-only auth)
+  self_service_portal = "disabled"
 
   security_group_ids = [aws_security_group.vpn.id]
   vpc_id             = aws_vpc.main.id
