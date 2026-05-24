@@ -139,7 +139,8 @@ data "aws_iam_policy_document" "saml_group_trust" {
       identifiers = [aws_iam_saml_provider.corporate.arn]
     }
 
-    actions = ["sts:AssumeRoleWithSAML"]
+    # sts:TagSession is required so the IdP can pass session tags
+    actions = ["sts:AssumeRoleWithSAML", "sts:TagSession"]
 
     condition {
       test     = "StringEquals"
@@ -147,11 +148,13 @@ data "aws_iam_policy_document" "saml_group_trust" {
       values   = ["https://signin.aws.amazon.com/saml"]
     }
 
-    # Only allow users in the AWS-Admins group
+    # Only allow users whose IdP sent the Group session tag "AWS-Admins".
+    # The IdP must map the group claim to the SAML attribute
+    # https://aws.amazon.com/SAML/Attributes/PrincipalTag:Group
     condition {
       test     = "StringEquals"
-      variable = "SAML:sub_type"
-      values   = ["persistent"]
+      variable = "aws:PrincipalTag/Group"
+      values   = ["AWS-Admins"]
     }
   }
 }
