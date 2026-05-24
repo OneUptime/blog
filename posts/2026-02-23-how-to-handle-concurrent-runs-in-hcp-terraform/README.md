@@ -15,8 +15,8 @@ When multiple team members push changes at the same time, or when CI/CD pipeline
 HCP Terraform processes runs (plans and applies) using worker infrastructure. Your plan tier determines how many runs can execute simultaneously:
 
 - **Free tier:** 1 concurrent run
-- **Standard tier:** Varies by contract
-- **Plus tier:** Higher concurrency limits
+- **Standard tier:** Higher concurrency than Free
+- **Premium tier:** Higher concurrency limits
 - **Enterprise:** Configurable based on your deployment
 
 A "concurrent run" means an active plan or apply operation. Runs in other states (pending, queued, waiting for confirmation) do not count toward the limit.
@@ -204,10 +204,10 @@ Within a single workspace, runs queue automatically. Only one run can be active 
 # If Run 2 becomes irrelevant, you can discard it
 ```
 
-You can cancel queued runs that are no longer needed:
+You can discard queued runs that are no longer needed. Use the `discard` action for runs in `pending` or `needs confirmation` state; use `cancel` only for runs that are actively planning or applying:
 
 ```bash
-# Cancel a queued run
+# Discard a queued (pending) run
 curl -s \
   --request POST \
   --header "Authorization: Bearer $TF_TOKEN" \
@@ -215,7 +215,7 @@ curl -s \
   --data '{
     "comment": "Superseded by newer changes"
   }' \
-  "https://app.terraform.io/api/v2/runs/run-abc123/actions/cancel"
+  "https://app.terraform.io/api/v2/runs/run-abc123/actions/discard"
 ```
 
 ## Run Priorities
@@ -243,7 +243,7 @@ curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   "https://app.terraform.io/api/v2/organizations/my-org/runs?filter%5Bstatus%5D=planning&page%5Bsize%5D=100" | \
-  jq '[.data[] | select(.attributes["is-speculative"] == true)] | length'
+  jq '[.data[] | select(.attributes["plan-only"] == true)] | length'
 ```
 
 To manage this, configure your VCS integration to only trigger speculative plans on specific file changes:
@@ -265,17 +265,21 @@ Track your concurrency usage over time:
 
 ORG="my-company"
 
-# Get runs from the last 24 hours
+# The organization runs endpoint supports filter[timeframe] (integer year
+# or the string "year" for the past year), not arbitrary date ranges.
+# Pull recent runs and filter to the last 24 hours client-side with jq.
 SINCE=$(date -u -d "-24 hours" +%Y-%m-%dT%H:%M:%SZ)
 
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/organizations/$ORG/runs?filter%5Bfrom%5D=$SINCE&page%5Bsize%5D=100" | \
-  jq '{
-    total_runs: (.meta.pagination["total-count"]),
-    by_status: ([.data[].attributes.status] | group_by(.) | map({(.[0]): length}) | add)
-  }'
+  "https://app.terraform.io/api/v2/organizations/$ORG/runs?filter%5Btimeframe%5D=year&page%5Bsize%5D=100" | \
+  jq --arg since "$SINCE" '
+    [.data[] | select(.attributes["created-at"] >= $since)] as $recent
+    | {
+        total_runs: ($recent | length),
+        by_status: ([$recent[].attributes.status] | group_by(.) | map({(.[0]): length}) | add)
+      }'
 ```
 
 ## Summary
