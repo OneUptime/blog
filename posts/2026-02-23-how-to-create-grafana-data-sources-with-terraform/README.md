@@ -27,8 +27,14 @@ provider "grafana" {
   auth = var.grafana_auth
 }
 
-variable "grafana_url" { type = string }
-variable "grafana_auth" { type = string; sensitive = true }
+variable "grafana_url" {
+  type = string
+}
+
+variable "grafana_auth" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Prometheus Data Source
@@ -57,9 +63,8 @@ resource "grafana_data_source" "elasticsearch" {
   url  = "http://elasticsearch:9200"
 
   json_data_encoded = jsonencode({
-    esVersion  = "8.0.0"
-    timeField  = "@timestamp"
-    logLevelField = "level"
+    timeField       = "@timestamp"
+    logLevelField   = "level"
     logMessageField = "message"
   })
 }
@@ -83,8 +88,15 @@ resource "grafana_data_source" "cloudwatch" {
   })
 }
 
-variable "aws_access_key" { type = string; sensitive = true }
-variable "aws_secret_key" { type = string; sensitive = true }
+variable "aws_access_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "aws_secret_key" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## InfluxDB Data Source
@@ -106,7 +118,10 @@ resource "grafana_data_source" "influxdb" {
   })
 }
 
-variable "influxdb_token" { type = string; sensitive = true }
+variable "influxdb_token" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Loki Data Source
@@ -140,9 +155,11 @@ resource "grafana_data_source" "tempo" {
   url  = "http://tempo:3200"
 
   json_data_encoded = jsonencode({
-    tracesToLogs = {
+    tracesToLogsV2 = {
       datasourceUid = grafana_data_source.loki.uid
-      tags          = ["service.name"]
+      tags = [
+        { key = "service.name" }
+      ]
     }
     serviceMap = {
       datasourceUid = grafana_data_source.prometheus.uid
@@ -172,7 +189,10 @@ resource "grafana_data_source" "postgres" {
   })
 }
 
-variable "postgres_password" { type = string; sensitive = true }
+variable "postgres_password" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Multiple Data Sources at Scale
@@ -224,10 +244,22 @@ resource "grafana_data_source" "azure_monitor" {
   })
 }
 
-variable "azure_tenant_id" { type = string }
-variable "azure_client_id" { type = string }
-variable "azure_subscription_id" { type = string }
-variable "azure_client_secret" { type = string; sensitive = true }
+variable "azure_tenant_id" {
+  type = string
+}
+
+variable "azure_client_id" {
+  type = string
+}
+
+variable "azure_subscription_id" {
+  type = string
+}
+
+variable "azure_client_secret" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Data Source Health Checks
