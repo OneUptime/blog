@@ -165,11 +165,10 @@ resource "google_sql_database_instance" "mysql_production" {
 
     # Backup configuration
     backup_configuration {
-      enabled                        = true
-      binary_log_enabled             = true  # Required for point-in-time recovery
-      start_time                     = "03:00"  # 3 AM UTC
-      location                       = "us"
-      point_in_time_recovery_enabled = true
+      enabled            = true
+      binary_log_enabled = true  # Enables point-in-time recovery for MySQL
+      start_time         = "03:00"  # 3 AM UTC
+      location           = "us"
 
       backup_retention_settings {
         retained_backups = 30
@@ -346,8 +345,9 @@ resource "google_sql_user" "app" {
   host     = "%"
 
   password_policy {
-    complexity                  = "COMPLEXITY_DEFAULT"
-    disallow_username_substring = true
+    allowed_failed_attempts      = 5
+    enable_failed_attempts_check = true
+    enable_password_verification = true
   }
 }
 
@@ -388,7 +388,7 @@ resource "google_sql_database_instance" "mysql_ssl" {
       private_network = google_compute_network.main.id
 
       # Require SSL for all connections
-      require_ssl = true
+      ssl_mode = "ENCRYPTED_ONLY"
     }
 
     # Force SSL mode
