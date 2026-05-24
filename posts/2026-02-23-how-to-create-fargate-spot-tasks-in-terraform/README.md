@@ -8,11 +8,11 @@ Description: Learn how to use Fargate Spot with ECS in Terraform to run containe
 
 ---
 
-Fargate Spot lets you run ECS tasks on spare AWS compute capacity at up to 70% discount compared to standard Fargate pricing. The tradeoff is that your tasks can be interrupted with a 30-second warning when AWS needs the capacity back. For fault-tolerant workloads like batch processing, queue workers, and data pipelines, Fargate Spot is an excellent way to reduce costs. This guide shows you how to configure Fargate Spot tasks with Terraform.
+Fargate Spot lets you run ECS tasks on spare AWS compute capacity at up to 70% discount compared to standard Fargate pricing. The tradeoff is that your tasks can be interrupted with a two-minute warning when AWS needs the capacity back. For fault-tolerant workloads like batch processing, queue workers, and data pipelines, Fargate Spot is an excellent way to reduce costs. This guide shows you how to configure Fargate Spot tasks with Terraform.
 
 ## How Fargate Spot Works
 
-When you launch a task with Fargate Spot, AWS runs it on spare capacity. If that capacity is needed for on-demand customers, your task receives a SIGTERM signal followed by a 30-second grace period before being stopped. ECS will automatically try to replace interrupted tasks, but there is no guarantee of immediate capacity.
+When you launch a task with Fargate Spot, AWS runs it on spare capacity. If that capacity is needed for on-demand customers, AWS sends a two-minute warning as both a task state change event to EventBridge and a SIGTERM signal to the running task. After the duration defined by the container's `stopTimeout` (default 30 seconds, up to 120 seconds for Fargate), the task receives SIGKILL. ECS will automatically try to replace interrupted tasks, but there is no guarantee of immediate capacity.
 
 The key is designing your applications to handle interruptions gracefully by checkpointing progress, using message queues for work distribution, and making operations idempotent.
 
@@ -179,12 +179,12 @@ resource "aws_ecs_task_definition" "batch" {
         {
           # Set stop timeout to handle SIGTERM gracefully
           name  = "GRACEFUL_SHUTDOWN_TIMEOUT"
-          value = "25"  # 25 seconds, leaving 5 seconds buffer
+          value = "110"  # 110 seconds, leaving a 10 second buffer
         }
       ]
 
       # Handle SIGTERM for graceful shutdown
-      stopTimeout = 30  # Match Fargate Spot's 30-second warning
+      stopTimeout = 120  # Maximum allowed for Fargate (default is 30)
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -220,11 +220,6 @@ resource "aws_ecs_service" "batch" {
     subnets          = data.aws_subnets.private.ids
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
-  }
-
-  # Spread tasks across AZs for resilience
-  placement_constraints {
-    type = "distinctInstance"
   }
 
   tags = {
@@ -366,7 +361,7 @@ resource "aws_ecs_task_definition" "worker" {
         }
       ]
 
-      stopTimeout = 30
+      stopTimeout = 120
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -491,7 +486,7 @@ output "worker_service" {
 
 ## Best Practices
 
-When using Fargate Spot, design your applications to handle SIGTERM signals gracefully within the 30-second window. Use SQS queues for work distribution so interrupted tasks do not lose work. Set the container `stopTimeout` to 30 seconds to match the spot interruption warning period. Always maintain some standard Fargate capacity for critical services using the `base` parameter. Use auto scaling to automatically replace interrupted tasks and adjust capacity based on demand. Checkpoint long-running operations to S3 or a database so they can resume after interruption.
+When using Fargate Spot, design your applications to handle SIGTERM signals gracefully within the two-minute interruption window. Use SQS queues for work distribution so interrupted tasks do not lose work. Set the container `stopTimeout` to 120 seconds (the maximum allowed for Fargate) to give your application the longest possible grace period between SIGTERM and SIGKILL. Always maintain some standard Fargate capacity for critical services using the `base` parameter. Use auto scaling to automatically replace interrupted tasks and adjust capacity based on demand. Checkpoint long-running operations to S3 or a database so they can resume after interruption.
 
 ## Monitoring with OneUptime
 
