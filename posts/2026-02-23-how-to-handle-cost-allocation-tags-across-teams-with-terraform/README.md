@@ -183,7 +183,7 @@ resource "aws_s3_bucket" "api_data" {
   tags   = module.tags.tags
 }
 
-resource "aws_rds_instance" "api_db" {
+resource "aws_db_instance" "api_db" {
   identifier     = "api-db-${var.environment}"
   engine         = "postgres"
   instance_class = var.db_instance_class
