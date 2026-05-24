@@ -58,7 +58,7 @@ resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   filename      = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -97,7 +97,7 @@ resource "aws_lambda_function" "disabled" {
   function_name = "disabled-function"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   filename      = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -121,7 +121,7 @@ resource "aws_lambda_function" "db_query" {
   function_name = "database-query"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   filename      = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -206,7 +206,7 @@ resource "aws_lambda_function" "api_handler" {
   function_name    = "api-handler"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -223,7 +223,7 @@ resource "aws_lambda_function" "webhook_handler" {
   function_name    = "webhook-handler"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -240,7 +240,7 @@ resource "aws_lambda_function" "email_sender" {
   function_name    = "email-sender"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
@@ -368,7 +368,7 @@ You can use both together: reserved concurrency to guarantee and limit total cap
 
 ## Best Practices
 
-When configuring reserved concurrency, always leave enough unreserved concurrency for functions that do not have reservations (AWS recommends at least 100). Set reserved concurrency for database-connected functions to match your connection pool size. Use reserved concurrency of 0 as an emergency kill switch for misbehaving functions. Monitor the Throttles metric to detect when limits are too low. Document your concurrency budget so team members understand the allocation. Review and adjust reservations quarterly as traffic patterns change.
+When configuring reserved concurrency, always leave enough unreserved concurrency for functions that do not have reservations (AWS enforces a hard minimum of 100 unreserved concurrent executions, so you cannot reserve so much that less than 100 remains). Set reserved concurrency for database-connected functions to match your connection pool size. Use reserved concurrency of 0 as an emergency kill switch for misbehaving functions. Monitor the Throttles metric to detect when limits are too low. Document your concurrency budget so team members understand the allocation. Review and adjust reservations quarterly as traffic patterns change.
 
 ## Monitoring with OneUptime
 
