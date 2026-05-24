@@ -321,7 +321,7 @@ jobs:
           terraform apply -no-color -auto-approve
 ```
 
-Note that plans still acquire a brief read lock on the state. If an apply is running, plans will need to wait for the state refresh portion of the apply to complete.
+Note that plans still acquire the state lock (Terraform uses a single exclusive lock, not separate read/write locks). If an apply is running, plans will need to wait for it to complete or fail once the `-lock-timeout` is exceeded.
 
 ## Monitoring Concurrency Issues
 
