@@ -219,7 +219,7 @@ resource "google_identity_platform_tenant" "customer_a" {
   # Enable email link sign-in
   enable_email_link_signin = true
 
-  # Disable anonymous auth for this tenant
+  # If true, all sign-in is disabled for this tenant (not just anonymous)
   disable_auth = false
 
   depends_on = [google_identity_platform_config.auth]
@@ -281,33 +281,26 @@ resource "google_cloudfunctions2_function" "auth_blocking" {
   }
 }
 
-# Register the blocking function with Identity Platform
-resource "google_identity_platform_config" "auth_with_blocking" {
-  project = var.project_id
-
-  blocking_functions {
-    triggers {
-      event_type   = "beforeSignIn"
-      function_uri = google_cloudfunctions2_function.auth_blocking.service_config[0].uri
-    }
-
-    triggers {
-      event_type   = "beforeCreate"
-      function_uri = google_cloudfunctions2_function.auth_blocking.service_config[0].uri
-    }
-  }
-
-  sign_in {
-    email {
-      enabled           = true
-      password_required = true
-    }
-  }
-
-  depends_on = [
-    google_project_service.identity_toolkit,
-  ]
-}
+# Register the blocking function by adding a blocking_functions block to the
+# existing google_identity_platform_config.auth resource above. Identity Platform
+# config is a singleton per project, so you cannot declare a second
+# google_identity_platform_config resource - add the block inline instead:
+#
+#   resource "google_identity_platform_config" "auth" {
+#     # ... existing sign_in, mfa, authorized_domains, etc. ...
+#
+#     blocking_functions {
+#       triggers {
+#         event_type   = "beforeSignIn"
+#         function_uri = google_cloudfunctions2_function.auth_blocking.service_config[0].uri
+#       }
+#
+#       triggers {
+#         event_type   = "beforeCreate"
+#         function_uri = google_cloudfunctions2_function.auth_blocking.service_config[0].uri
+#       }
+#     }
+#   }
 ```
 
 ## Email Templates
@@ -369,7 +362,7 @@ output "identity_platform_config" {
   description = "Identity Platform configuration"
   value = {
     project_id = var.project_id
-    api_key    = google_identity_platform_config.auth.id
+    config_id  = google_identity_platform_config.auth.id
   }
 }
 
