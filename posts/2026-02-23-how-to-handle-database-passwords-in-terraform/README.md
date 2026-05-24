@@ -166,23 +166,21 @@ AWS Secrets Manager can automatically rotate RDS passwords:
 ```hcl
 # Create the RDS instance
 resource "aws_db_instance" "main" {
-  engine                  = "postgres"
-  engine_version          = "15.4"
-  instance_class          = "db.t3.medium"
-  db_name                 = "myapp"
-  username                = "admin"
-  password                = random_password.database.result
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.t3.medium"
+  db_name                     = "myapp"
+  username                    = "admin"
   manage_master_user_password = true  # AWS manages the password in Secrets Manager
+
+  # Note: `password` and `manage_master_user_password` are mutually exclusive.
+  # When manage_master_user_password is true, do not set `password`.
 
   vpc_security_group_ids = [aws_security_group.database.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
-
-  lifecycle {
-    ignore_changes = [password]
-  }
 }
 
-# AWS automatically creates a secret and rotates it
+# AWS automatically creates a secret and rotates it every 7 days by default
 # Access the secret ARN from the RDS instance
 output "master_password_secret_arn" {
   value = aws_db_instance.main.master_user_secret[0].secret_arn
