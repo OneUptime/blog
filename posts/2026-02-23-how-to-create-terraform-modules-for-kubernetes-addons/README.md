@@ -276,11 +276,6 @@ resource "helm_release" "kube_prometheus_stack" {
     value = "true"
   }
 
-  set {
-    name  = "grafana.adminPassword"
-    value = var.grafana_admin_password
-  }
-
   set_sensitive {
     name  = "grafana.adminPassword"
     value = var.grafana_admin_password
