@@ -347,7 +347,7 @@ def generate_quarterly_report():
     avoidance = calculate_cost_avoidance()
 
     report = {
-        "report_date": datetime.utcnow().strftime("%Y-%m-%d"),
+        "report_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "period": "Q1 2026",
         "executive_summary": {
             "roi_percentage": roi["roi_percentage"],
