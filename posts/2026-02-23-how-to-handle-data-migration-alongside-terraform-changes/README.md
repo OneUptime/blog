@@ -115,55 +115,39 @@ resource "null_resource" "migrate_s3_data" {
 
 ## Strategy 4: DynamoDB Migration
 
-For DynamoDB table changes that require recreation:
+For DynamoDB table changes that require recreation, use point-in-time recovery (PITR) to restore the data into a new table. AWS DMS supports DynamoDB only as a target, so DynamoDB-to-DynamoDB migration relies on DynamoDB's native backup and restore features:
 
 ```hcl
-# Use AWS DMS (Database Migration Service) managed by Terraform
-resource "aws_dms_replication_instance" "migration" {
-  replication_instance_id    = "dynamodb-migration"
-  replication_instance_class = "dms.t3.medium"
-  allocated_storage          = 50
-}
+# Step 1: Enable PITR on the source table so its data can be restored
+resource "aws_dynamodb_table" "app_v1" {
+  name         = "app-data-v1"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
 
-resource "aws_dms_endpoint" "source" {
-  endpoint_id   = "source-dynamodb"
-  endpoint_type = "source"
-  engine_name   = "dynamodb"
+  attribute {
+    name = "id"
+    type = "S"
+  }
 
-  dynamodb_settings {
-    service_access_role_arn = aws_iam_role.dms.arn
+  point_in_time_recovery {
+    enabled = true
   }
 }
 
-resource "aws_dms_endpoint" "target" {
-  endpoint_id   = "target-dynamodb"
-  endpoint_type = "target"
-  engine_name   = "dynamodb"
+# Step 2: Create the new table by restoring from the source table's PITR window
+resource "aws_dynamodb_table" "app_v2" {
+  name         = "app-data-v2"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
 
-  dynamodb_settings {
-    service_access_role_arn = aws_iam_role.dms.arn
+  attribute {
+    name = "id"
+    type = "S"
   }
-}
 
-resource "aws_dms_replication_task" "migration" {
-  migration_type           = "full-load"
-  replication_instance_arn = aws_dms_replication_instance.migration.replication_instance_arn
-  replication_task_id      = "dynamodb-migration"
-  source_endpoint_arn      = aws_dms_endpoint.source.endpoint_arn
-  target_endpoint_arn      = aws_dms_endpoint.target.endpoint_arn
-
-  table_mappings = jsonencode({
-    rules = [{
-      rule-type = "selection"
-      rule-id   = "1"
-      rule-name = "all-tables"
-      object-locator = {
-        schema-name = "%"
-        table-name  = "%"
-      }
-      rule-action = "include"
-    }]
-  })
+  # Restore data from the source table at the latest recoverable point
+  restore_source_name    = aws_dynamodb_table.app_v1.name
+  restore_to_latest_time = true
 }
 ```
 
@@ -260,9 +244,8 @@ Some Terraform changes force resource replacement, which destroys data:
 # This change forces RDS replacement - DATA LOSS!
 resource "aws_db_instance" "primary" {
   identifier = "app-db"
-  engine     = "postgres"
-  # Changing the storage type from gp2 to gp3 may force replacement
-  storage_type = "gp3"  # Was "gp2"
+  # Changing the engine forces replacement of the instance
+  engine = "mysql"  # Was "postgres"
 }
 ```
 
