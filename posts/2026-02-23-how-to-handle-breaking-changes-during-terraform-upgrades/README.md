@@ -255,20 +255,39 @@ terraform state push restored-state.json
 
 ## Gradual Adoption Strategy
 
-For large teams, adopt breaking changes gradually:
+For large teams, adopt breaking changes gradually. A single Terraform configuration can only use one version of a given provider, so gradual adoption means splitting your infrastructure across multiple root configurations (or workspaces) and upgrading them one at a time:
 
 ```hcl
-# Use provider aliases to run old and new versions side by side
-provider "aws" {
-  alias   = "new"
-  region  = "us-east-1"
-  version = "~> 5.0"
+# In each root module, pin the provider version in required_providers.
+# Upgrade one configuration at a time, validating each before moving on.
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
 }
 
-# Migrate resources one at a time to the new provider
-resource "aws_s3_object" "new_resource" {
-  provider = aws.new
-  # ...
+provider "aws" {
+  region = "us-east-1"
+}
+```
+
+If you genuinely need two provider versions in the same configuration during a migration, declare them under two different local names (each pointing at the same `source`):
+
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    aws_v4 = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"
+    }
+  }
 }
 ```
 
