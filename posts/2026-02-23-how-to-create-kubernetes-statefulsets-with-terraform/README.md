@@ -144,7 +144,7 @@ resource "kubernetes_stateful_set" "postgres" {
             }
           }
 
-          # Use the pod name as PGDATA to ensure each pod has its own data dir
+          # Use a subdirectory for PGDATA so initdb does not see lost+found on the PVC root
           env {
             name  = "PGDATA"
             value = "/var/lib/postgresql/data/pgdata"
@@ -357,7 +357,7 @@ resource "kubernetes_stateful_set" "rolling_update" {
       type = "RollingUpdate"
 
       rolling_update {
-        # Only update pods with ordinal >= 3 (useful for canary updates)
+        # partition = 0 updates all pods; set to a higher ordinal for canary-style updates
         partition = 0
       }
     }
