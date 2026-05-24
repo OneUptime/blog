@@ -89,28 +89,29 @@ credentials_helper "vault" {
 }
 ```
 
-The credential helper is an executable named `tofu-credentials-<name>` (or `terraform-credentials-<name>`) in your PATH. It receives a JSON request on stdin and returns credentials on stdout:
+The credential helper is an executable named `terraform-credentials-<name>` in your PATH. OpenTofu invokes it with a subcommand (`get`, `store`, or `forget`) followed by the hostname. For `get`, the helper writes the credentials JSON to stdout:
 
 ```bash
 #!/bin/bash
-# tofu-credentials-vault
+# terraform-credentials-vault
 # A simple credential helper that fetches tokens from Vault
 
-# Read the request
-REQUEST=$(cat)
-HOSTNAME=$(echo "$REQUEST" | jq -r '.hostname')
+SUBCOMMAND="$1"
+HOSTNAME="$2"
 
-# Fetch the token from Vault
-TOKEN=$(vault kv get -field=token "secret/registry/${HOSTNAME}")
+if [ "$SUBCOMMAND" = "get" ]; then
+  # Fetch the token from Vault
+  TOKEN=$(vault kv get -field=token "secret/registry/${HOSTNAME}")
 
-# Return the credentials
-echo "{\"token\": \"${TOKEN}\"}"
+  # Return the credentials as JSON on stdout
+  echo "{\"token\": \"${TOKEN}\"}"
+fi
 ```
 
 Make it executable:
 
 ```bash
-chmod +x /usr/local/bin/tofu-credentials-vault
+chmod +x /usr/local/bin/terraform-credentials-vault
 ```
 
 ## Private Module Registries
@@ -160,7 +161,7 @@ module "networking" {
 
 # GCS-based module source
 module "networking" {
-  source = "gcs::https://storage.googleapis.com/my-modules/networking/v1.2.0/module.zip"
+  source = "gcs::https://www.googleapis.com/storage/v1/my-modules/networking/v1.2.0/module.zip"
 }
 ```
 
