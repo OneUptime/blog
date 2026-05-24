@@ -338,14 +338,14 @@ terraform init -migrate-state
 
 ## The -reconfigure Flag
 
-If you want to start fresh with the new backend without migrating:
+If you want to switch to the new backend without migrating any existing state:
 
 ```bash
-# This discards the old state and starts with an empty state
+# This ignores the previous backend configuration and skips state migration
 terraform init -reconfigure
 ```
 
-This is dangerous for existing infrastructure because Terraform forgets about all managed resources. Only use this when you intentionally want to start over or when you have already manually moved the state file.
+This is dangerous for existing infrastructure because Terraform will not see any resources tracked in the old backend. The old state is not deleted - it remains in the old backend untouched - but the new backend starts empty (unless it already had state). Only use this when you intentionally want to start over or when you have already manually moved the state file.
 
 ## Backup Before Migration
 
