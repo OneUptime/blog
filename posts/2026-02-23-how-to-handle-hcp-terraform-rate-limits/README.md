@@ -12,15 +12,15 @@ If you build automation around the HCP Terraform API - CI/CD pipelines, custom t
 
 ## Understanding HCP Terraform Rate Limits
 
-HCP Terraform uses rate limiting on its API to prevent abuse and ensure all customers get fair access. The limits apply per API token and vary by endpoint.
+HCP Terraform uses rate limiting on its API to prevent abuse and ensure all customers get fair access. The limits apply per user (not per token, so using multiple tokens does not raise your limit). Unauthenticated requests are rate-limited by the requesting IP address.
 
-The general rate limit for most API endpoints is 30 requests per second. Some endpoints have lower limits, particularly those that trigger heavy operations like creating runs or uploading configuration versions.
+The general rate limit for most API endpoints is 30 requests per second. Some endpoints have lower limits, particularly those that trigger heavy operations or are sensitive (such as SMS and email-sending endpoints).
 
-When you exceed the limit, the API returns a `429 Too Many Requests` response with headers telling you when you can retry.
+When you exceed the limit, the API returns a `429 Too Many Requests` response.
 
 ## Detecting Rate Limits
 
-Rate limit information comes in the HTTP response headers:
+HCP Terraform documents an `x-ratelimit-limit` response header that surfaces the limit applied to a request (this is most useful when an endpoint has a reduced limit). You can inspect response headers with `curl -D-`:
 
 ```bash
 # Make an API call and inspect rate limit headers
@@ -29,12 +29,10 @@ curl -s -D- \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   "https://app.terraform.io/api/v2/organizations/my-org/workspaces" 2>&1 | \
-  grep -i "x-ratelimit\|retry-after"
+  grep -i "x-ratelimit"
 
-# Look for these headers:
-# X-RateLimit-Limit: 30        (max requests per second)
-# X-RateLimit-Remaining: 28    (remaining requests in current window)
-# X-RateLimit-Reset: 1677000000 (Unix timestamp when limit resets)
+# Example header:
+# x-ratelimit-limit: 30
 ```
 
 When you hit the limit, the response looks like this:
@@ -42,14 +40,14 @@ When you hit the limit, the response looks like this:
 ```bash
 # 429 response
 # HTTP/1.1 429 Too Many Requests
-# Retry-After: 1
 # Content-Type: application/vnd.api+json
 #
 # {
 #   "errors": [
 #     {
-#       "status": "429",
-#       "title": "too many requests"
+#       "detail": "You have exceeded the API's rate limit.",
+#       "status": 429,
+#       "title": "Too many requests"
 #     }
 #   ]
 # }
