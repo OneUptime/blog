@@ -149,7 +149,7 @@ resource "aws_lambda_function" "create_item" {
   function_name    = "api-create-item"
   role             = aws_iam_role.lambda_api.arn
   handler          = "create.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.api_functions.output_base64sha256
   timeout          = 10
   memory_size      = 256
@@ -167,7 +167,7 @@ resource "aws_lambda_function" "get_item" {
   function_name    = "api-get-item"
   role             = aws_iam_role.lambda_api.arn
   handler          = "get.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.api_functions.output_base64sha256
   timeout          = 10
   memory_size      = 256
@@ -185,7 +185,7 @@ resource "aws_lambda_function" "list_items" {
   function_name    = "api-list-items"
   role             = aws_iam_role.lambda_api.arn
   handler          = "list.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.api_functions.output_base64sha256
   timeout          = 10
   memory_size      = 256
@@ -203,7 +203,7 @@ resource "aws_lambda_function" "update_item" {
   function_name    = "api-update-item"
   role             = aws_iam_role.lambda_api.arn
   handler          = "update.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.api_functions.output_base64sha256
   timeout          = 10
   memory_size      = 256
@@ -221,7 +221,7 @@ resource "aws_lambda_function" "delete_item" {
   function_name    = "api-delete-item"
   role             = aws_iam_role.lambda_api.arn
   handler          = "delete.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   source_code_hash = data.archive_file.api_functions.output_base64sha256
   timeout          = 10
   memory_size      = 256
