@@ -289,7 +289,7 @@ resource "aws_dynamodb_table" "switchable_table" {
 }
 ```
 
-Keep in mind that AWS limits how frequently you can switch between capacity modes. You can switch from provisioned to on-demand once per day, and from on-demand to provisioned at any time.
+Keep in mind that AWS limits how frequently you can switch between capacity modes. You can switch from provisioned to on-demand up to four times in a 24-hour rolling window, and from on-demand to provisioned at any time.
 
 ## Monitoring Your On-Demand Tables
 
