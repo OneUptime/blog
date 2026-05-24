@@ -74,12 +74,28 @@ resource "aws_s3_object" "file" {
 }
 ```
 
-To migrate, use a moved block:
+Because `aws_s3_bucket_object` and `aws_s3_object` are different resource types, a `moved` block does not work here (Terraform's `moved` block only supports renames within the same resource type unless the provider explicitly opts in to a cross-type move). Migrate the state instead:
+
+```bash
+# Update the configuration to use aws_s3_object, then move the state entry
+terraform state mv aws_s3_bucket_object.file aws_s3_object.file
+```
+
+Alternatively, on Terraform 1.5 or newer, use an `import` block after removing the old resource from state:
+
+```hcl
+import {
+  to = aws_s3_object.file
+  id = "my-bucket/data/file.txt"
+}
+```
+
+Reserve `moved` blocks for renames where the resource type is unchanged:
 
 ```hcl
 moved {
-  from = aws_s3_bucket_object.file
-  to   = aws_s3_object.file
+  from = aws_s3_object.old_name
+  to   = aws_s3_object.new_name
 }
 ```
 
@@ -272,7 +288,7 @@ Priority 3 (Monitor): Recently deprecated features
 
 ## Best Practices
 
-Monitor deprecation warnings in your CI/CD pipeline output. Address deprecations proactively before they become removals. Test deprecated feature replacements in non-production environments. Use moved blocks to handle resource type changes without state disruption. Keep provider versions reasonably current to reduce the deprecation backlog. Document deprecation migration plans for your team. Subscribe to provider release notifications to stay informed about new deprecations.
+Monitor deprecation warnings in your CI/CD pipeline output. Address deprecations proactively before they become removals. Test deprecated feature replacements in non-production environments. Use moved blocks for renames within the same resource type, and `terraform state mv` or `import` blocks when migrating between different resource types. Keep provider versions reasonably current to reduce the deprecation backlog. Document deprecation migration plans for your team. Subscribe to provider release notifications to stay informed about new deprecations.
 
 ## Conclusion
 
