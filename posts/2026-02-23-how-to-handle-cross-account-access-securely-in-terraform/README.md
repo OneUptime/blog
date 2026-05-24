@@ -284,8 +284,11 @@ terraform {
     encrypt        = true
     kms_key_id     = "alias/terraform-state"
     dynamodb_table = "terraform-locks"
+
     # Role to assume for state access (separate from the resource access role)
-    role_arn       = "arn:aws:iam::111111111111:role/TerraformStateAccess"
+    assume_role = {
+      role_arn = "arn:aws:iam::111111111111:role/TerraformStateAccess"
+    }
   }
 }
 ```
@@ -322,7 +325,7 @@ resource "aws_organizations_policy" "protect_security_controls" {
         Effect = "Deny"
         Action = [
           "guardduty:DeleteDetector",
-          "guardduty:DisassociateFromMasterAccount"
+          "guardduty:DisassociateFromAdministratorAccount"
         ]
         Resource = "*"
       },
@@ -398,7 +401,7 @@ resource "aws_cloudtrail" "cross_account_audit" {
 # Metric filter for cross-account role assumptions
 resource "aws_cloudwatch_log_metric_filter" "cross_account_assume" {
   name           = "cross-account-assume-role"
-  pattern        = "{ $.eventName = \"AssumeRole\" && $.requestParameters.roleArn = \"*TerraformAccess*\" }"
+  pattern        = "{ $.eventName = \"AssumeRole\" && $.requestParameters.roleArn = %TerraformAccess% }"
   log_group_name = aws_cloudwatch_log_group.cloudtrail.name
 
   metric_transformation {
