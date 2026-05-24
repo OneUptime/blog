@@ -133,8 +133,8 @@ terraform workspace select prod
 
 # Import each resource into the new workspace
 terraform import aws_vpc.main vpc-0abc123def456
-terraform import aws_subnet.public[0] subnet-0abc123
-terraform import aws_subnet.public[1] subnet-0def456
+terraform import 'aws_subnet.public[0]' subnet-0abc123
+terraform import 'aws_subnet.public[1]' subnet-0def456
 terraform import aws_security_group.web sg-0abc123
 
 # After importing, run a plan to verify everything matches
@@ -156,19 +156,25 @@ terraform state rm aws_instance.legacy_app
 
 ## Step 3: Handling Resources With Dependencies
 
-Resources often depend on each other. When destroying or migrating, you need to respect these dependencies.
+Resources often depend on each other. When destroying or migrating, you need to be aware of how Terraform handles these dependencies.
 
 ```bash
-# Wrong order - this will fail because the VPC has dependencies
+# When you target a resource for destruction, Terraform also destroys
+# any resources that depend on it. So targeting only the VPC will
+# also pull in the dependent subnets, security groups, and instances
+# and destroy them in the correct order.
 terraform destroy -target=aws_vpc.main
 
-# Correct order - destroy dependents first
+# If you want to destroy resources one at a time instead, work from
+# the leaves up so each command only affects what you intend:
 terraform destroy -target=aws_instance.app
 terraform destroy -target=aws_security_group.web
-terraform destroy -target=aws_subnet.public[0]
-terraform destroy -target=aws_subnet.public[1]
+terraform destroy -target='aws_subnet.public[0]'
+terraform destroy -target='aws_subnet.public[1]'
 terraform destroy -target=aws_vpc.main
 ```
+
+Note that resource addresses containing brackets (like `aws_subnet.public[0]`) should be quoted on the command line so the shell does not try to interpret them as glob patterns.
 
 For a cleaner approach, use a script:
 
