@@ -134,7 +134,7 @@ resource "google_dns_record_set" "googleapis_a" {
   rrdatas = [google_compute_global_address.psc_address.address]
 }
 
-# CNAME for the restricted API domain
+# A record for the restricted API domain
 resource "google_dns_record_set" "restricted_googleapis" {
   name         = "restricted.googleapis.com."
   project      = var.project_id
@@ -262,8 +262,8 @@ resource "google_compute_firewall" "allow_google_apis" {
 
   # Google API IP ranges
   destination_ranges = [
-    "199.36.153.8/30",   # restricted.googleapis.com
-    "199.36.153.4/30",   # private.googleapis.com
+    "199.36.153.8/30",   # private.googleapis.com
+    "199.36.153.4/30",   # restricted.googleapis.com
   ]
 
   description = "Allow HTTPS egress to Google APIs"
