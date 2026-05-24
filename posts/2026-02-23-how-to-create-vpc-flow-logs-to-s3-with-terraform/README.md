@@ -296,7 +296,7 @@ resource "aws_athena_named_query" "create_table" {
       'projection.hour.type'='integer',
       'projection.hour.range'='0,23',
       'projection.hour.digits'='2',
-      'storage.location.template'='s3://${aws_s3_bucket.flow_logs.bucket}/AWSLogs/$${aws-account-id}/$${aws-service}/$${aws-region}/$${year}/$${month}/$${day}/$${hour}'
+      'storage.location.template'='s3://${aws_s3_bucket.flow_logs.bucket}/AWSLogs/aws-account-id=$${aws-account-id}/aws-service=$${aws-service}/aws-region=$${aws-region}/year=$${year}/month=$${month}/day=$${day}/hour=$${hour}'
     )
   EOT
 }
