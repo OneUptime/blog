@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Logging, Infrastructure as Code, Observability, AWS, CloudWatch
 
-Description: Learn how to build a complete log aggregation infrastructure using Terraform, including centralized logging with CloudWatch, Elasticsearch, and S3 storage.
+Description: Learn how to build a complete log aggregation infrastructure using Terraform, including centralized logging with CloudWatch, Kinesis Firehose, and S3 storage.
 
 ---
 
 Log aggregation is a critical component of any observability strategy. When you have dozens or hundreds of services running across multiple environments, collecting and centralizing logs becomes essential for debugging, auditing, and monitoring. Terraform provides a powerful way to define and deploy your entire log aggregation infrastructure as code, ensuring consistency and repeatability across environments.
 
-In this guide, we will walk through creating a complete log aggregation infrastructure using Terraform. We will cover centralized logging with AWS CloudWatch, log shipping to Elasticsearch, and long-term storage in S3.
+In this guide, we will walk through creating a complete log aggregation infrastructure using Terraform. We will cover centralized logging with AWS CloudWatch, log shipping through Kinesis Firehose, and long-term storage in S3.
 
 ## Why Use Terraform for Log Aggregation Infrastructure
 
@@ -252,6 +252,24 @@ resource "aws_iam_role" "cloudwatch_to_firehose" {
       Principal = {
         Service = "logs.${var.aws_region}.amazonaws.com"
       }
+    }]
+  })
+}
+
+# Policy allowing CloudWatch Logs to write to Firehose
+resource "aws_iam_role_policy" "cloudwatch_to_firehose" {
+  name = "cloudwatch-to-firehose-access"
+  role = aws_iam_role.cloudwatch_to_firehose.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "firehose:PutRecord",
+        "firehose:PutRecordBatch"
+      ]
+      Resource = aws_kinesis_firehose_delivery_stream.log_delivery.arn
     }]
   })
 }
