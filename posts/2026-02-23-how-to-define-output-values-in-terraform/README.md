@@ -168,7 +168,7 @@ output "cdn_domain" {
 ```hcl
 output "current_region" {
   description = "Current AWS region"
-  value       = data.aws_region.current.name
+  value       = data.aws_region.current.region
 }
 
 output "account_id" {
