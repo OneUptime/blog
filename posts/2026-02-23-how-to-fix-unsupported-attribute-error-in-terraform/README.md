@@ -147,17 +147,20 @@ resource "aws_instance" "web" {
 
 ## Cause 4: Provider Version Does Not Support the Attribute
 
-Some attributes are only available in newer versions of a provider. If you are using an older version, the attribute might not exist yet:
+Some attributes are only available in newer versions of a provider. If you are using an older version, the attribute might not exist yet. For example, the `aws_s3_bucket_versioning` resource (and its `versioning_configuration` block) was introduced in AWS provider v4.0, so referencing it from an older provider will fail:
 
 ```hcl
-# This attribute was added in AWS provider v4.x
-resource "aws_s3_bucket" "example" {
-  bucket = "my-bucket"
+# This resource was introduced in AWS provider v4.0
+resource "aws_s3_bucket_versioning" "example" {
+  bucket = aws_s3_bucket.example.id
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
-output "bucket_arn" {
-  # This works in v4.x+ but might not in v3.x
-  value = aws_s3_bucket.example.arn
+output "versioning_status" {
+  # This will be an unsupported attribute on provider versions older than v4.0
+  value = aws_s3_bucket_versioning.example.versioning_configuration[0].status
 }
 ```
 
@@ -268,10 +271,10 @@ When you are not sure what attributes are available:
 terraform console
 
 > aws_vpc.main
-# Shows all attributes of the resource
+# Prints the full object with every available attribute and value
 
-> keys(aws_vpc.main)
-# Lists all attribute names
+> aws_vpc.main.id
+# Try a specific attribute - if it does not exist you will see the same error
 ```
 
 If the resource already exists in state:
