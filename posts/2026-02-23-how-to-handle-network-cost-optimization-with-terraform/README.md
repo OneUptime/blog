@@ -315,13 +315,10 @@ resource "aws_cloudfront_distribution" "cost_optimized" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    # Use managed caching policy for optimal caching
+    # Use the AWS managed CachingOptimized policy.
+    # TTLs are defined inside the cache policy itself, so do not also set
+    # min_ttl/default_ttl/max_ttl here (they conflict with cache_policy_id).
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-
-    # Set reasonable TTL values
-    min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
   }
 
   restrictions {
