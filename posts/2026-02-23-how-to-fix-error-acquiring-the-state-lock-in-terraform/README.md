@@ -133,8 +133,8 @@ az storage blob lease break \
 For GCS, delete the lock file:
 
 ```bash
-# Delete the lock file
-gsutil rm gs://terraform-state/prod/terraform.tfstate.lock
+# Delete the lock file (GCS backend uses <prefix>/<workspace>.tflock)
+gsutil rm gs://terraform-state/prod/default.tflock
 ```
 
 ## What NOT to Do
