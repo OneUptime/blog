@@ -242,12 +242,12 @@ resource "aws_iam_role" "backup_role" {
 
 resource "aws_iam_role_policy_attachment" "backup_policy" {
   role       = aws_iam_role.backup_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForDynamoDB"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
 }
 
-resource "aws_iam_role_policy_attachment" "backup_rds_policy" {
+resource "aws_iam_role_policy_attachment" "restore_policy" {
   role       = aws_iam_role.backup_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
 }
 
 # Select resources to back up
@@ -304,23 +304,11 @@ resource "aws_db_snapshot" "shared_snapshot" {
   db_instance_identifier = aws_db_instance.production.identifier
   db_snapshot_identifier = "shared-snapshot-for-dev"
 
+  # Share directly with another AWS account (provider v4.58.0+)
+  shared_accounts = ["123456789012"]
+
   tags = {
     Purpose = "shared-with-dev-account"
-  }
-}
-
-# Note: Snapshot sharing is done via AWS CLI or API
-# terraform cannot directly share snapshots, but you can use a null_resource
-resource "null_resource" "share_snapshot" {
-  depends_on = [aws_db_snapshot.shared_snapshot]
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      aws rds modify-db-snapshot-attribute \
-        --db-snapshot-identifier ${aws_db_snapshot.shared_snapshot.db_snapshot_identifier} \
-        --attribute-name restore \
-        --values-to-add "123456789012"
-    EOT
   }
 }
 ```
