@@ -74,7 +74,7 @@ resource "aws_db_parameter_group" "postgres_production" {
   # WAL and checkpoint settings
   parameter {
     name  = "wal_buffers"
-    value = "16384"  # 16 MB
+    value = "16384"  # 128 MB (value is in 8 KB blocks)
   }
 
   parameter {
