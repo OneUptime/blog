@@ -190,8 +190,8 @@ terraform apply
 Some resources require composite import IDs with multiple values separated by a delimiter. For example:
 
 ```bash
-# Route table association needs table ID and subnet ID
-terraform import aws_route_table_association.main rtbassoc-0abc123def456789
+# Route table association needs subnet ID and route table ID separated by a slash
+terraform import aws_route_table_association.main subnet-0abc123def456789/rtb-0abc123def456789
 
 # Security group rule needs multiple components
 terraform import aws_security_group_rule.allow_ssh sg-0abc123def456789_ingress_tcp_22_22_0.0.0.0/0
