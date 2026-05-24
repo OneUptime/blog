@@ -15,7 +15,7 @@ ECS capacity providers give you fine-grained control over how compute capacity i
 A capacity provider is a bridge between your ECS cluster and the underlying compute infrastructure. There are three types:
 
 1. **FARGATE** - AWS-managed serverless compute. No instances to manage.
-2. **FARGATE_SPOT** - Fargate at up to 70% discount, but tasks can be interrupted with a 30-second warning.
+2. **FARGATE_SPOT** - Fargate at up to 70% discount, but tasks can be interrupted with a 2-minute warning.
 3. **Auto Scaling Group** - Your own EC2 instances managed by an ASG, with ECS managing the scaling.
 
 You assign capacity provider strategies to your ECS services to tell ECS how to distribute tasks across these providers.
