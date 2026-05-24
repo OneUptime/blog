@@ -161,12 +161,13 @@ Network CIDR calculations are notoriously hard to get right by guessing. The con
 > cidrnetmask("10.0.0.0/16")
 "255.255.0.0"
 
-# Check if an address is within a CIDR range
-> cidrcontains("10.0.0.0/16", "10.0.5.100")
-true
-
-> cidrcontains("10.0.0.0/16", "10.1.0.1")
-false
+# Generate a sequence of subnets at once
+> cidrsubnets("10.0.0.0/16", 8, 8, 8)
+tolist([
+  "10.0.0.0/24",
+  "10.0.1.0/24",
+  "10.0.2.0/24",
+])
 ```
 
 ## Working with JSON and YAML
@@ -222,24 +223,24 @@ toset([
   "c",
 ])
 
-# Check what type something is
+# Check what type something is (type is a console-only function)
 > type(42)
 number
 
 > type(["a", "b"])
-tuple
+tuple([
+    string,
+    string,
+])
 ```
 
-## Using the Console with Plan Files
+## Using the Console with a Plan
 
-You can pass a saved plan file to `terraform console` to evaluate expressions against the planned state:
+You can ask `terraform console` to evaluate expressions against the planned state instead of the current state by passing the `-plan` flag. Terraform will generate an execution plan first and then drop you into the console with that plan loaded:
 
 ```bash
-# First, save a plan
-terraform plan -out=tfplan
-
-# Then open the console with the plan
-terraform console -plan=tfplan
+# Open the console against a freshly generated plan
+terraform console -plan
 ```
 
 This lets you inspect what values resources will have after the plan is applied, including computed attributes that are only available at plan time.
