@@ -141,8 +141,8 @@ If the referenced value is "known after apply," the precondition evaluation is d
 ```hcl
 lifecycle {
   precondition {
-    condition     = var.subnet_cidr_size >= 24
-    error_message = "Subnet must be at least a /24 to have enough IPs."
+    condition     = var.subnet_cidr_size <= 24
+    error_message = "Subnet prefix length must be /24 or smaller (e.g., /24, /23, /22) to have enough IPs."
   }
 }
 ```
@@ -164,13 +164,13 @@ resource "aws_instance" "web" {
 ```
 
 ```text
-Error: Self reference in precondition
+Error: Invalid reference
 
   on main.tf line 4, in resource "aws_instance" "web":
    4:       condition     = self.instance_type == "t3.micro"
 
-Preconditions cannot use "self" references because the resource has
-not been created or updated yet.
+The "self" object is not available in this context. This object can be used
+only from within the "postcondition" and "provisioner" blocks.
 ```
 
 **Fix:** Use the variable or argument directly:
@@ -339,9 +339,10 @@ lifecycle {
 3. **Remove and re-add** - If the condition is correct but the resource is wrong, you might need to recreate:
 
 ```bash
-terraform taint aws_instance.web
-terraform apply
+terraform apply -replace="aws_instance.web"
 ```
+
+(The older `terraform taint` command is deprecated since Terraform 0.15.2 in favor of the `-replace` flag.)
 
 ## Best Practices
 
