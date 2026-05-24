@@ -294,6 +294,8 @@ terraform plan -generate-config-out=networking.tf
 
 ## Configuration Generation with for_each
 
+Note: `for_each` on `import` blocks requires Terraform 1.7 or later. If you are on 1.5 or 1.6, you must use one `import` block per resource.
+
 ```hcl
 # for-each-import.tf - Generate config for dynamic resources
 variable "existing_instances" {
