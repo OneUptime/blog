@@ -134,23 +134,6 @@ instance.addOverride("enable_primary_ipv6", true);
 instance.addOverride("private_dns_name_options.hostname_type", "resource-name");
 ```
 
-## The resetOverride Method
-
-You can also reset overrides that were previously set:
-
-```typescript
-const server = new Instance(this, "server", {
-  ami: "ami-0c55b159cbfafe1f0",
-  instanceType: "t3.micro",
-});
-
-// Set an override
-server.addOverride("ebs_optimized", true);
-
-// Later, remove it
-server.resetOverride("ebs_optimized");
-```
-
 ## Raw JSON Overrides
 
 For complex nested structures, you can override entire blocks:
@@ -266,7 +249,7 @@ const server = new Instance(this, "server", {
   instanceType: "t3.micro",
 });
 
-// Use Terraform functions in overrides
+// Use raw Terraform interpolation in overrides
 server.addOverride(
   "tags.CreatedAt",
   "${timestamp()}"
@@ -274,8 +257,8 @@ server.addOverride(
 
 // Or use the Fn class for a more type-safe approach
 server.addOverride(
-  "tags.Region",
-  Fn.dataAwsRegionCurrent
+  "tags.CreatedAt",
+  Fn.timestamp()
 );
 ```
 
