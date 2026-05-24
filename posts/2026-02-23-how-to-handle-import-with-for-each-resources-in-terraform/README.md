@@ -46,8 +46,8 @@ terraform import 'aws_s3_bucket.data["artifacts"]' my-prefix-artifacts
 # If using double quotes for the outer string, escape the inner quotes
 terraform import "aws_s3_bucket.data[\"logs\"]" my-prefix-logs
 
-# PowerShell - use backtick to escape quotes
-terraform import "aws_s3_bucket.data[\`"logs\`"]" my-prefix-logs
+# PowerShell - use single quotes with escaped inner quotes
+terraform import 'aws_s3_bucket.data[\"logs\"]' my-prefix-logs
 ```
 
 Shell quoting issues are the most common source of errors when importing for_each resources. If you see an error about the resource address not being valid, double-check your quoting.
