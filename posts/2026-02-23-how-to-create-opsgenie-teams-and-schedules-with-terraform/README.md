@@ -26,7 +26,10 @@ provider "opsgenie" {
   api_key = var.opsgenie_api_key
 }
 
-variable "opsgenie_api_key" { type = string; sensitive = true }
+variable "opsgenie_api_key" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Creating Teams
