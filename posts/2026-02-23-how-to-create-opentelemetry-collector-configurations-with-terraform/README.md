@@ -53,7 +53,7 @@ resource "helm_release" "otel_collector" {
   name       = "otel-collector"
   repository = "https://open-telemetry.github.io/opentelemetry-helm-charts"
   chart      = "opentelemetry-collector"
-  version    = "0.75.0"
+  version    = "0.108.0"
   namespace  = kubernetes_namespace.observability.metadata[0].name
 
   values = [
@@ -137,14 +137,14 @@ resource "helm_release" "otel_collector" {
             }
           }
 
-          # Export logs to Loki
-          loki = {
-            endpoint = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+          # Export logs to Loki via its native OTLP endpoint
+          otlphttp/loki = {
+            endpoint = "http://loki.observability.svc.cluster.local:3100/otlp"
           }
 
           # Debug exporter for troubleshooting
-          logging = {
-            loglevel = "info"
+          debug = {
+            verbosity = "basic"
           }
         }
 
@@ -153,7 +153,7 @@ resource "helm_release" "otel_collector" {
             traces = {
               receivers  = ["otlp"]
               processors = ["memory_limiter", "batch", "attributes"]
-              exporters  = ["otlp", "logging"]
+              exporters  = ["otlp", "debug"]
             }
             metrics = {
               receivers  = ["otlp", "prometheus", "hostmetrics"]
@@ -163,7 +163,7 @@ resource "helm_release" "otel_collector" {
             logs = {
               receivers  = ["otlp"]
               processors = ["memory_limiter", "batch", "attributes"]
-              exporters  = ["loki", "logging"]
+              exporters  = ["otlphttp/loki", "debug"]
             }
           }
 
@@ -236,7 +236,7 @@ resource "helm_release" "otel_agent" {
   name       = "otel-agent"
   repository = "https://open-telemetry.github.io/opentelemetry-helm-charts"
   chart      = "opentelemetry-collector"
-  version    = "0.75.0"
+  version    = "0.108.0"
   namespace  = kubernetes_namespace.observability.metadata[0].name
 
   values = [
