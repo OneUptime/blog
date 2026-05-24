@@ -276,12 +276,14 @@ resource "aws_instance" "web" {
 If someone modified the infrastructure outside of Terraform (through the console, CLI, or another tool), Terraform detects the difference:
 
 ```bash
-# Refresh the state to match reality
-terraform refresh
+# Refresh the state to match reality (preferred since Terraform 0.15.4)
+terraform apply -refresh-only
 
 # Then plan again
 terraform plan
 ```
+
+The standalone `terraform refresh` command still exists but is deprecated; use `-refresh-only` mode with `apply` or `plan` instead.
 
 If you want to keep the external changes, update your code to match:
 
