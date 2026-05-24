@@ -73,13 +73,10 @@ The GCS service agent needs permission to use the KMS key for encrypting and dec
 data "google_storage_project_service_account" "gcs_account" {}
 
 # Grant the GCS service agent permission to use the KMS key
-resource "google_kms_crypto_key_iam_binding" "gcs_encrypt" {
+resource "google_kms_crypto_key_iam_member" "gcs_encrypt" {
   crypto_key_id = google_kms_crypto_key.terraform_state.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-
-  members = [
-    "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"
-  ]
+  member        = "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"
 }
 ```
 
@@ -122,7 +119,7 @@ resource "google_storage_bucket" "terraform_state" {
     prevent_destroy = true
   }
 
-  depends_on = [google_kms_crypto_key_iam_binding.gcs_encrypt]
+  depends_on = [google_kms_crypto_key_iam_member.gcs_encrypt]
 }
 ```
 
