@@ -323,15 +323,13 @@ curl -s \
     id: .id,
     status: .attributes.status,
     created: .attributes["created-at"],
-    plan_duration: .attributes["status-timestamps"] |
+    has_changes: .attributes["has-changes"],
+    plan_duration: (.attributes["status-timestamps"] |
       if .["planned-at"] and .["planning-at"] then
         "computed"
       else
         "n/a"
-      end,
-    additions: .attributes["resource-additions"],
-    changes: .attributes["resource-changes"],
-    destructions: .attributes["resource-destructions"]
+      end)
   }'
 ```
 
