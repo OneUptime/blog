@@ -121,21 +121,7 @@ Call to function "templatefile" failed:
 be a sequence like %{ if ... }, %{ for ... }, or %{ endif }.
 ```
 
-Common syntax mistakes in templates:
-
-```text
-# Wrong - missing spaces in directives
-%{if condition}
-%{for item in list}
-
-# Right - spaces are required after %{
-%{ if condition }
-%{ for item in list }
-%{ endif }
-%{ endfor }
-```
-
-Another common mistake is mismatched directives:
+Common syntax mistakes include mismatched directives:
 
 ```text
 # Wrong - for without endfor
@@ -188,14 +174,14 @@ resource "aws_instance" "web" {
 
 ## Error 5: Nested Interpolation
 
-You cannot nest `${}` inside another `${}`:
+Nested `${}` interpolations are valid in modern Terraform but harder to read and were a frequent source of bugs in older versions. They are also unnecessary since you are already in an expression context:
 
 ```text
-# Wrong - nested interpolation
+# Confusing - the inner ${} is redundant
 ${lookup(var.config, "${var.env}-key")}
 ```
 
-Fix by using a local or restructuring:
+Clean it up by using a local or restructuring:
 
 ```hcl
 locals {
