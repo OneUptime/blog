@@ -39,7 +39,8 @@ variable "server" {
 When someone provides a value for this variable, Terraform checks that:
 - All required attributes are present
 - Each attribute has the correct type
-- No unknown attributes are included (by default)
+
+Any attributes that aren't part of the declared type are silently discarded during type conversion, so the resulting object only ever contains the attributes you defined.
 
 ```hcl
 # In terraform.tfvars or -var flag
