@@ -92,9 +92,6 @@ resource "google_redis_instance" "production" {
 
   authorized_network = var.network_id
 
-  # Reserve a specific IP range
-  reserved_ip_range = "10.0.0.0/28"
-
   # Connect mode
   connect_mode = "PRIVATE_SERVICE_ACCESS"
 
