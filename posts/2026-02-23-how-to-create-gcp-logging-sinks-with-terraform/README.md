@@ -287,7 +287,7 @@ resource "google_logging_project_exclusion" "health_check_exclusion" {
   # Filter matches logs that will be EXCLUDED
   filter = <<-EOT
     resource.type="http_load_balancer" AND
-    httpRequest.requestUrl="/health" AND
+    httpRequest.requestUrl:"/health" AND
     httpRequest.status=200
   EOT
 }
