@@ -379,8 +379,8 @@ resource "aws_cloudwatch_event_rule" "failover_events" {
   description = "Capture database failover events"
 
   event_pattern = jsonencode({
-    source      = ["aws.rds"]
-    detail_type = ["RDS DB Instance Event", "RDS DB Cluster Event"]
+    source        = ["aws.rds"]
+    "detail-type" = ["RDS DB Instance Event", "RDS DB Cluster Event"]
     detail = {
       EventCategories = ["failover"]
     }
