@@ -107,9 +107,13 @@ For larger providers, use subsystems to categorize log output:
 ```go
 // internal/provider/provider.go
 func (p *ExampleProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-    // Create subsystem loggers for different components
-    ctx = tflog.NewSubsystem(ctx, "api_client")
-    ctx = tflog.NewSubsystem(ctx, "state_migration")
+    // Create subsystem loggers for different components.
+    // Pass WithLevelFromEnv so each subsystem's level can be controlled
+    // independently from the root provider logger via its own env var.
+    ctx = tflog.NewSubsystem(ctx, "api_client",
+        tflog.WithLevelFromEnv("TF_LOG_PROVIDER_EXAMPLE", "api_client"))
+    ctx = tflog.NewSubsystem(ctx, "state_migration",
+        tflog.WithLevelFromEnv("TF_LOG_PROVIDER_EXAMPLE", "state_migration"))
 
     // ... rest of configure
 }
@@ -133,11 +137,14 @@ func (c *Client) CreateServer(ctx context.Context, req *CreateServerRequest) (*S
 }
 ```
 
-Users can enable subsystem-specific logging:
+Users can enable subsystem-specific logging. Note that the env var name
+is constructed by uppercasing the base name and the subsystem and joining
+them with an underscore, so the `api_client` subsystem registered above
+is controlled by `TF_LOG_PROVIDER_EXAMPLE_API_CLIENT`:
 
 ```bash
-# Only show api_client subsystem logs
-TF_LOG_PROVIDER_EXAMPLE=DEBUG TF_LOG_PROVIDER_EXAMPLE_api_client=TRACE terraform plan
+# Set the root provider logger to DEBUG, and the api_client subsystem to TRACE
+TF_LOG_PROVIDER_EXAMPLE=DEBUG TF_LOG_PROVIDER_EXAMPLE_API_CLIENT=TRACE terraform plan
 ```
 
 ## Protecting Sensitive Data in Logs
