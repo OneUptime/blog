@@ -262,7 +262,7 @@ connection {
 }
 ```
 
-## Fix 8: Agent Forwarding
+## Fix 8: SSH Agent Authentication
 
 If your SSH key is managed by an SSH agent:
 
