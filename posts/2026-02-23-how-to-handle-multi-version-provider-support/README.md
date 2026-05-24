@@ -34,6 +34,8 @@ package client
 import (
     "context"
     "fmt"
+    "net/http"
+    "strconv"
     "strings"
 )
 
@@ -256,34 +258,58 @@ Terraform uses a protocol to communicate with providers. The main protocol versi
 
 ### Supporting Both Protocols
 
-If you need to support both Terraform versions that use protocol 5 and protocol 6, use the mux server:
+If you have a Plugin Framework provider alongside an SDK v2 provider (for example, while migrating resources from SDK v2 to the Framework), use the protocol 6 mux server. The `tf5to6server` package upgrades the SDK v2 server from protocol 5 to protocol 6 so both can be served together:
 
 ```go
 // main.go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/hashicorp/terraform-plugin-framework/providerserver"
+    "github.com/hashicorp/terraform-plugin-go/tfprotov6"
+    "github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server"
+    "github.com/hashicorp/terraform-plugin-mux/tf5to6server"
+    "github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
+
+    "example.com/terraform-provider-example/internal/provider"
+    sdkv2 "example.com/terraform-provider-example/internal/sdkv2provider"
+)
+
+var version = "dev"
+
 func main() {
     ctx := context.Background()
 
-    // Protocol 6 server (Plugin Framework)
-    frameworkServer := providerserver.NewProtocol6(provider.New(version)())
-
-    // If you also have SDK v2 resources, include them
-    // sdkServer := ... (upgrade from protocol 5)
-
-    // Serve with protocol 6
-    opts := providerserver.ServeOpts{
-        Address: "registry.terraform.io/example/example",
+    // Upgrade the SDK v2 provider from protocol 5 to protocol 6.
+    upgradedSDKServer, err := tf5to6server.UpgradeServer(ctx, sdkv2.New(version)().GRPCProvider)
+    if err != nil {
+        log.Fatal(err)
     }
 
-    err := providerserver.Serve(ctx, provider.New(version), opts)
+    providers := []func() tfprotov6.ProviderServer{
+        providerserver.NewProtocol6(provider.New(version)()),
+        func() tfprotov6.ProviderServer { return upgradedSDKServer },
+    }
+
+    muxServer, err := tf6muxserver.NewMuxServer(ctx, providers...)
     if err != nil {
+        log.Fatal(err)
+    }
+
+    if err := tf6server.Serve("registry.terraform.io/example/example", muxServer.ProviderServer); err != nil {
         log.Fatal(err)
     }
 }
 ```
 
+If you only have a Plugin Framework provider, you do not need the mux server — call `providerserver.Serve(ctx, provider.New(version), opts)` directly.
+
 ### Terraform Version Constraints
 
-Specify minimum Terraform version in your provider:
+The Plugin Framework provider's `Metadata` method sets the provider type name and its own version, but it does not expose any API for declaring a minimum Terraform CLI version:
 
 ```go
 func (p *ExampleProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -292,7 +318,7 @@ func (p *ExampleProvider) Metadata(ctx context.Context, req provider.MetadataReq
 }
 ```
 
-And in your documentation:
+The minimum Terraform CLI version is enforced indirectly: serving over protocol 6 already requires Terraform 1.0+ (protocol 5 requires 0.12+). Beyond that, users pin the minimum in their own configuration with `required_version`, and you document the recommended pin alongside your provider:
 
 ```hcl
 terraform {
