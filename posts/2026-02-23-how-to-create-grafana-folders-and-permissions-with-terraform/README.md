@@ -27,8 +27,14 @@ provider "grafana" {
   auth = var.grafana_auth
 }
 
-variable "grafana_url" { type = string }
-variable "grafana_auth" { type = string; sensitive = true }
+variable "grafana_url" {
+  type = string
+}
+
+variable "grafana_auth" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Creating Folders
@@ -63,6 +69,10 @@ resource "grafana_folder" "alerts" {
 resource "grafana_team" "platform" {
   name  = "Platform Engineering"
   email = "platform@company.com"
+  members = [
+    "alice@company.com",
+    "bob@company.com",
+  ]
 }
 
 resource "grafana_team" "developers" {
@@ -73,15 +83,6 @@ resource "grafana_team" "developers" {
 resource "grafana_team" "security" {
   name  = "Security Team"
   email = "security@company.com"
-}
-
-# Add members to teams
-resource "grafana_team_members" "platform" {
-  team_id = grafana_team.platform.id
-  members = [
-    "alice@company.com",
-    "bob@company.com",
-  ]
 }
 ```
 
