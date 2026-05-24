@@ -356,12 +356,13 @@ Terragrunt finds all `terragrunt.hcl` files in child directories and applies the
 
 ## Common First-Time Issues
 
-**State bucket does not exist**: Terragrunt can auto-create the S3 bucket and DynamoDB table for state. Add this to your root configuration:
+**State bucket does not exist**: Terragrunt auto-creates the S3 bucket and DynamoDB table for state by default - you do not need extra configuration to enable this. If you ever want to opt out (for example, when the bucket is managed outside Terragrunt), set `disable_init = true` at the `remote_state` block level:
 
 ```hcl
-# live/terragrunt.hcl - add this to remote_state
+# live/terragrunt.hcl - opt out of auto-creation
 remote_state {
-  backend = "s3"
+  backend     = "s3"
+  disable_init = true
   generate = {
     path      = "backend.tf"
     if_exists = "overwrite"
@@ -372,9 +373,6 @@ remote_state {
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "terraform-lock"
-
-    # Terragrunt will create these if they do not exist
-    skip_bucket_creation = false
   }
 }
 ```
