@@ -12,7 +12,7 @@ Lambda cold starts happen when AWS needs to create a new execution environment f
 
 ## How Provisioned Concurrency Works
 
-When you configure provisioned concurrency, Lambda pre-initializes the specified number of execution environments. These environments are always warm and ready to handle requests with no cold start delay. You pay for provisioned concurrency whether or not the environments are handling requests, but the tradeoff is guaranteed sub-millisecond initialization latency.
+When you configure provisioned concurrency, Lambda pre-initializes the specified number of execution environments. These environments are always warm and ready to handle requests with no cold start delay. You pay for provisioned concurrency whether or not the environments are handling requests, but the tradeoff is that the initialization phase is eliminated for those pre-warmed environments, enabling consistent double-digit millisecond response times.
 
 Provisioned concurrency is configured on a specific function version or alias, not on the `$LATEST` version. This ensures that your provisioned environments run a known, stable version of your code.
 
@@ -273,43 +273,17 @@ resource "aws_cloudwatch_metric_alarm" "provisioned_utilization_high" {
   alarm_name          = "lambda-provisioned-utilization-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
+  metric_name         = "ProvisionedConcurrencyUtilization"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Maximum"
   threshold           = 0.85
   alarm_description   = "Provisioned concurrency utilization is above 85%"
   alarm_actions       = [aws_sns_topic.lambda_alerts.arn]
 
-  metric_query {
-    id          = "utilization"
-    expression  = "invocations / provisioned"
-    label       = "Utilization"
-    return_data = true
-  }
-
-  metric_query {
-    id = "invocations"
-    metric {
-      metric_name = "ProvisionedConcurrentExecutions"
-      namespace   = "AWS/Lambda"
-      period      = 300
-      stat        = "Maximum"
-      dimensions = {
-        FunctionName = aws_lambda_function.api.function_name
-        Resource     = "${aws_lambda_function.api.function_name}:${aws_lambda_alias.live.name}"
-      }
-    }
-  }
-
-  metric_query {
-    id = "provisioned"
-    metric {
-      metric_name = "ProvisionedConcurrencyUtilization"
-      namespace   = "AWS/Lambda"
-      period      = 300
-      stat        = "Maximum"
-      dimensions = {
-        FunctionName = aws_lambda_function.api.function_name
-        Resource     = "${aws_lambda_function.api.function_name}:${aws_lambda_alias.live.name}"
-      }
-    }
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+    Resource     = "${aws_lambda_function.api.function_name}:${aws_lambda_alias.live.name}"
   }
 }
 
