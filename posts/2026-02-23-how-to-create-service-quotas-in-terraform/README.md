@@ -185,16 +185,16 @@ resource "aws_servicequotas_service_quota" "increases" {
   value        = each.value.value
 }
 
-# Output all quota request statuses
+# Output all applied quota values
 output "quota_requests" {
-  description = "Status of quota increase requests"
+  description = "Applied quota increase requests"
   value = {
     for k, v in aws_servicequotas_service_quota.increases :
     k => {
       service    = v.service_code
       quota_name = v.quota_name
       requested  = v.value
-      status     = v.request_status
+      adjustable = v.adjustable
     }
   }
 }
@@ -214,7 +214,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_quota_usage" {
 
   metric_query {
     id          = "usage_pct"
-    expression  = "(usage / quota) * 100"
+    expression  = "(usage / SERVICE_QUOTA(usage)) * 100"
     label       = "Quota Usage Percentage"
     return_data = true
   }
@@ -223,23 +223,6 @@ resource "aws_cloudwatch_metric_alarm" "ec2_quota_usage" {
     id = "usage"
     metric {
       metric_name = "ResourceCount"
-      namespace   = "AWS/Usage"
-      period      = 300
-      stat        = "Maximum"
-
-      dimensions = {
-        Type     = "Resource"
-        Service  = "EC2"
-        Class    = "Standard/OnDemand"
-        Resource = "vCPU"
-      }
-    }
-  }
-
-  metric_query {
-    id = "quota"
-    metric {
-      metric_name = "ServiceQuota"
       namespace   = "AWS/Usage"
       period      = 300
       stat        = "Maximum"
@@ -337,7 +320,7 @@ For tracking the cost impact of increased quotas, see our guide on budget alerts
 
 - Quota increase requests are asynchronous. Some are approved instantly (adjustable quotas), while others require AWS review and can take days.
 - Not all quotas can be increased through the API. Some require a support ticket.
-- The `request_status` attribute in the Terraform state tells you whether the request was approved, pending, or denied.
+- Use the `aws_servicequotas_request_history` data source or the AWS console to track whether a request was approved, pending, or denied.
 - Keep your quota requests in Terraform even after they are approved. They serve as documentation of what limits have been adjusted and why.
 
 ## Summary
