@@ -91,7 +91,7 @@ exports.handler = async (event) => {
   // Add strict transport security header
   headers['strict-transport-security'] = [{
     key: 'Strict-Transport-Security',
-    value: 'max-age=31536000; includeSubdomains; preload'
+    value: 'max-age=31536000; includeSubDomains; preload'
   }];
 
   // Add content type options header to prevent MIME sniffing
@@ -136,7 +136,7 @@ resource "aws_lambda_function" "edge_security_headers" {
   role             = aws_iam_role.lambda_edge_role.arn
   handler          = "index.handler"
   source_code_hash = data.archive_file.lambda_edge_zip.output_base64sha256
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   publish          = true  # Lambda@Edge requires published versions
 
   # Lambda@Edge has specific limits
@@ -213,7 +213,7 @@ resource "aws_lambda_function" "edge_url_rewrite" {
   role             = aws_iam_role.lambda_edge_role.arn
   handler          = "index.handler"
   source_code_hash = data.archive_file.url_rewrite_zip.output_base64sha256
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   publish          = true
   memory_size      = 128
   timeout          = 30  # Origin events allow up to 30 seconds
