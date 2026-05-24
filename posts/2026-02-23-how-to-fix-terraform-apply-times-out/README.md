@@ -37,12 +37,12 @@ Most Terraform resources have built-in timeout values. When you create an RDS in
 
 Default timeouts vary by resource:
 
-- **RDS Instance**: 40 minutes for creation
-- **EKS Cluster**: 30 minutes for creation
-- **CloudFront Distribution**: 70 minutes for creation
-- **NAT Gateway**: 10 minutes for creation
-- **Elastic Beanstalk Environment**: 20 minutes for creation
-- **ElastiCache Cluster**: 50 minutes for creation
+- **RDS Instance** (`aws_db_instance`): 40 minutes create, 80 minutes update, 60 minutes delete
+- **EKS Cluster** (`aws_eks_cluster`): 30 minutes create, 60 minutes update, 15 minutes delete
+- **NAT Gateway** (`aws_nat_gateway`): 10 minutes create, 10 minutes update, 30 minutes delete
+- **ElastiCache Cluster** (`aws_elasticache_cluster`): 40 minutes create, 80 minutes update, 40 minutes delete
+- **Elastic Beanstalk Environment** (`aws_elastic_beanstalk_environment`): 20 minutes via the `wait_for_ready_timeout` argument (this resource does not expose a `timeouts` block)
+- **CloudFront Distribution** (`aws_cloudfront_distribution`): no user-configurable `timeouts` block; the provider waits for the distribution to reach `Deployed` unless you set `wait_for_deployment = false`
 
 If the actual creation takes longer than these defaults, you get a timeout error.
 
@@ -86,15 +86,13 @@ resource "aws_eks_cluster" "main" {
   }
 }
 
-# Increase CloudFront timeout
+# CloudFront does not support a timeouts block.
+# If you do not need Terraform to wait for the distribution to fully deploy,
+# disable the wait instead so apply returns as soon as the distribution is created.
 resource "aws_cloudfront_distribution" "cdn" {
   # ... configuration ...
 
-  timeouts {
-    create = "90m"   # Default is 70m
-    update = "90m"
-    delete = "90m"
-  }
+  wait_for_deployment = false
 }
 
 # Increase NAT Gateway timeout
