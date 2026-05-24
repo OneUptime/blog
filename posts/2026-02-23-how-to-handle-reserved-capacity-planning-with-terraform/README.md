@@ -180,33 +180,6 @@ output "cost_comparison" {
 Track whether your reservations are being fully used to avoid paying for unused capacity.
 
 ```hcl
-# CloudWatch alarm for low RI utilization
-resource "aws_cloudwatch_metric_alarm" "ri_utilization" {
-  alarm_name          = "low-ri-utilization"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 7
-  metric_name         = "ReservedInstanceUtilization"
-  namespace           = "AWS/Billing"
-  period              = 86400
-  statistic           = "Average"
-  threshold           = 80
-  treat_missing_data  = "notBreaching"
-  alarm_description   = "Reserved Instance utilization has dropped below 80%"
-  alarm_actions       = [aws_sns_topic.reservation_alerts.arn]
-}
-
-# SNS topic for reservation alerts
-resource "aws_sns_topic" "reservation_alerts" {
-  name = "reservation-utilization-alerts"
-}
-
-resource "aws_sns_topic_subscription" "reservation_email" {
-  for_each  = toset(var.finance_emails)
-  topic_arn = aws_sns_topic.reservation_alerts.arn
-  protocol  = "email"
-  endpoint  = each.value
-}
-
 # Budget for tracking savings vs. on-demand
 resource "aws_budgets_budget" "reservation_coverage" {
   name              = "reservation-coverage"
