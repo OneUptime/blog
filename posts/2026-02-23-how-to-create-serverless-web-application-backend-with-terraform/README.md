@@ -338,7 +338,7 @@ resource "aws_lambda_function" "get_upload_url" {
   function_name    = "get-upload-url"
   role             = aws_iam_role.lambda_api.arn
   handler          = "upload.getUrl"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.api_functions.output_base64sha256
   timeout          = 10
 
