@@ -113,17 +113,19 @@ locals {
 }
 ```
 
-If you need to include a literal `${` in your heredoc, escape it with `$${}`:
+If you need to include a literal `${` in your heredoc, escape it with `$${`:
 
 ```hcl
 locals {
   # This produces a literal ${variable} in the output
   template_example = <<-EOF
     # Nginx variable syntax uses dollar signs
-    set $$request_uri $${uri};
+    set $request_uri $${uri};
   EOF
 }
 ```
+
+Note that a lone `$` not followed by `{` is already literal, so `$request_uri` passes through unchanged. The `$${` escape is only required when the next character would start an interpolation.
 
 ## Using jsonencode for Multi-Line JSON
 
