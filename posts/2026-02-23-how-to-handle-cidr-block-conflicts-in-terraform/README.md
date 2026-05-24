@@ -83,18 +83,24 @@ locals {
   }
 }
 
-# Verify no conflicts with cidrcontains (Terraform 1.7+)
+# Detect simple overlaps by comparing the proposed CIDR's first octet
+# against known on-premises ranges. Terraform core does not include a
+# CIDR-overlap function, so true overlap detection requires either a
+# provider-defined function or upfront planning.
 locals {
-  # Check if a proposed CIDR falls within on-premises ranges
-  proposed_cidr   = "10.0.0.0/16"
+  proposed_cidr = "10.0.0.0/16"
+
+  # Extract the first octet to flag obvious conflicts with reserved spaces
+  proposed_first_octet = split(".", local.proposed_cidr)[0]
+
   conflicts_onprem = [
     for cidr in local.onprem_cidrs :
-    cidr if can(cidrcontains(cidr, local.proposed_cidr)) || can(cidrcontains(local.proposed_cidr, cidr))
+    cidr if split(".", cidr)[0] == local.proposed_first_octet
   ]
 }
 
 output "cidr_conflicts" {
-  description = "List of on-premises CIDRs that conflict with the proposed VPC CIDR"
+  description = "List of on-premises CIDRs that may conflict with the proposed VPC CIDR"
   value       = local.conflicts_onprem
 }
 ```
