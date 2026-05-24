@@ -334,9 +334,9 @@ variable "vpc_id" {
 
 # No sleep needed - Terraform knows to create the SG first
 resource "aws_instance" "app" {
-  ami             = "ami-12345678"
-  instance_type   = "t3.medium"
-  security_groups = [aws_security_group.app.id]  # Implicit dependency
+  ami                    = "ami-12345678"
+  instance_type          = "t3.medium"
+  vpc_security_group_ids = [aws_security_group.app.id]  # Implicit dependency
 }
 ```
 
