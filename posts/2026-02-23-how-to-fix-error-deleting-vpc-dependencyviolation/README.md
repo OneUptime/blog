@@ -216,7 +216,7 @@ Lambda functions in a VPC create ENIs that persist even after the function is de
 # Find Lambda-managed ENIs
 aws ec2 describe-network-interfaces \
   --filters "Name=vpc-id,Values=vpc-0abc123def456789" \
-             "Name=requester-id,Values=*lambda*" \
+             "Name=description,Values=*Lambda*" \
   --query "NetworkInterfaces[*].NetworkInterfaceId"
 ```
 
