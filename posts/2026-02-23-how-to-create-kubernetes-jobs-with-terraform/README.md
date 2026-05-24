@@ -143,7 +143,7 @@ resource "kubernetes_job" "batch_processor" {
     # Run 5 pods at a time
     parallelism = 5
 
-    # Each pod can fail up to 3 times before the Job gives up
+    # Total number of pod failures tolerated across the whole Job before it gives up
     backoff_limit = 6
 
     # Completion mode: Indexed gives each pod a unique index
