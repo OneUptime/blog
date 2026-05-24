@@ -303,10 +303,18 @@ git config --global url."https://oauth2:${GITLAB_TOKEN}@gitlab.com".insteadOf "h
 ### Rotate Credentials Regularly
 
 ```bash
-# Script to check token age and notify
 #!/bin/bash
-TOKEN_CREATED=$(gh api user --jq '.created_at')
-DAYS_OLD=$(( ($(date +%s) - $(date -d "$TOKEN_CREATED" +%s)) / 86400 ))
+# Script to check token age and notify
+# Touch this file whenever you create or rotate the token:
+#   touch ~/.config/terraform-token-rotated
+TOKEN_FILE=~/.config/terraform-token-rotated
+
+if [ ! -f "$TOKEN_FILE" ]; then
+  echo "Token rotation tracking file missing. Run: touch $TOKEN_FILE"
+  exit 1
+fi
+
+DAYS_OLD=$(( ($(date +%s) - $(stat -c %Y "$TOKEN_FILE")) / 86400 ))
 
 if [ "$DAYS_OLD" -gt 90 ]; then
   echo "WARNING: Token is $DAYS_OLD days old. Consider rotating."
