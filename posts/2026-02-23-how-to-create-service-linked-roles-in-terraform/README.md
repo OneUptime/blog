@@ -138,13 +138,15 @@ terraform import aws_iam_service_linked_role.elasticsearch arn:aws:iam::12345678
 
 ### Using Lifecycle Rules
 
+Once a service-linked role is under Terraform management (either created or imported), you can use `prevent_destroy` to protect it from accidental deletion. Note that this does not help with the "already exists" error during creation — that case is handled by importing or conditional creation.
+
 ```hcl
-# Prevent errors if the role already exists
+# Protect a managed service-linked role from accidental destruction
 resource "aws_iam_service_linked_role" "elasticsearch" {
   aws_service_name = "es.amazonaws.com"
 
   lifecycle {
-    # If the role already exists, do not try to recreate it
+    # Block `terraform destroy` from removing this role
     prevent_destroy = true
   }
 }
