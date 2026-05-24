@@ -127,6 +127,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "expire_all" {
     id     = "expire-all"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = 1
     }
@@ -146,14 +148,14 @@ Wait a day or two for AWS to process the lifecycle rules, then delete the bucket
 
 ## Fix 4: Use AWS S3 Batch Operations
 
-For very large buckets (billions of objects), AWS S3 Batch Operations can delete objects at scale:
+For very large buckets (billions of objects), AWS S3 Batch Operations can delete objects at scale. S3 Batch Operations does not have a native delete-object action, so deletions are performed by invoking a Lambda function (which in turn calls `DeleteObject` or `DeleteObjects`) for each entry in the manifest:
 
 ```bash
-# Generate an inventory of all objects
-# Then create a batch delete job using the inventory
+# Generate an inventory of all objects, then create a batch job
+# that invokes a Lambda function to delete each object.
 aws s3control create-job \
   --account-id 123456789012 \
-  --operation '{"S3DeleteObject":{}}' \
+  --operation '{"LambdaInvoke":{"FunctionArn":"arn:aws:lambda:us-east-1:123456789012:function:DeleteS3Object"}}' \
   --manifest '{"Spec":{"Format":"S3InventoryReport_CSV_20161130","Fields":["Bucket","Key"]},"Location":{"ObjectArn":"arn:aws:s3:::inventory-bucket/inventory.csv","ETag":"etag"}}' \
   --report '{"Bucket":"arn:aws:s3:::report-bucket","Format":"Report_CSV_20180820","Enabled":true,"Prefix":"reports"}' \
   --priority 10 \
@@ -235,6 +237,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "cleanup" {
   rule {
     id     = "cleanup-old-logs"
     status = "Enabled"
+
+    filter {}
 
     expiration {
       days = 90
