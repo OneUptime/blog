@@ -247,7 +247,9 @@ resource "aws_iam_policy" "deny_dangerous_actions" {
         Sid    = "DenyBillingAccess"
         Effect = "Deny"
         Action = [
-          "aws-portal:*",
+          "account:*",
+          "billing:*",
+          "payments:*",
           "budgets:*",
           "cur:*"
         ]
