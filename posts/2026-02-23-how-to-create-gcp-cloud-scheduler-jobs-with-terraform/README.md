@@ -329,11 +329,16 @@ resource "google_cloudfunctions2_function_iam_member" "scheduler_invoker" {
   member         = "serviceAccount:${google_service_account.scheduler.email}"
 }
 
-# For Pub/Sub targets - grant publisher role
+# For Pub/Sub targets - Cloud Scheduler publishes using its Google-managed
+# service agent, not the custom service account. In the same project the
+# agent already has publish permission via roles/cloudscheduler.serviceAgent,
+# so this grant is only needed when the topic lives in a different project.
+data "google_project" "project" {}
+
 resource "google_pubsub_topic_iam_member" "scheduler_publisher" {
   topic  = google_pubsub_topic.scheduled_tasks.name
   role   = "roles/pubsub.publisher"
-  member = "serviceAccount:${google_service_account.scheduler.email}"
+  member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
 }
 ```
 
