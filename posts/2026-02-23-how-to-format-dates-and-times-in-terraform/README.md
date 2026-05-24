@@ -48,11 +48,10 @@ locals {
   # === Day of Week Tokens ===
   weekday_full  = formatdate("EEEE", local.ts)  # "Monday"
   weekday_abbr  = formatdate("EEE", local.ts)   # "Mon"
-  weekday_short = formatdate("EE", local.ts)    # "Mo"
 
   # === Hour Tokens ===
-  hour_24 = formatdate("HH", local.ts)  # "14"
-  hour_12 = formatdate("hh", local.ts)  # "02"
+  hour_24 = formatdate("hh", local.ts)  # "14"
+  hour_12 = formatdate("HH", local.ts)  # "02"
 
   # === AM/PM Tokens ===
   ampm_upper = formatdate("AA", local.ts)  # "PM"
@@ -65,9 +64,10 @@ locals {
   second = formatdate("ss", local.ts)  # "09"
 
   # === Timezone Tokens ===
-  tz_z     = formatdate("Z", local.ts)      # "Z"
-  tz_colon = formatdate("ZZZZ", local.ts)   # "Z"
-  tz_name  = formatdate("ZZZZZ", local.ts)  # "UTC"
+  tz_z     = formatdate("Z", local.ts)      # "Z" (or "+02:00" style for non-UTC)
+  tz_name  = formatdate("ZZZ", local.ts)    # "UTC" (or "+0200" style for non-UTC)
+  tz_off   = formatdate("ZZZZ", local.ts)   # "+0000"
+  tz_colon = formatdate("ZZZZZ", local.ts)  # "+00:00"
 }
 ```
 
@@ -81,8 +81,8 @@ locals {
 
   # ISO 8601 formats
   iso_date     = formatdate("YYYY-MM-DD", local.ts)
-  iso_datetime = formatdate("YYYY-MM-DD'T'HH:mm:ssZ", local.ts)
-  iso_compact  = formatdate("YYYYMMDDHHmmss", local.ts)
+  iso_datetime = formatdate("YYYY-MM-DD'T'hh:mm:ssZ", local.ts)
+  iso_compact  = formatdate("YYYYMMDDhhmmss", local.ts)
 
   # Regional formats
   us_date      = formatdate("MM/DD/YYYY", local.ts)
@@ -95,13 +95,13 @@ locals {
   short_date   = formatdate("MMM DD, YYYY", local.ts)             # "Feb 23, 2026"
 
   # Time formats
-  time_24h     = formatdate("HH:mm:ss", local.ts)      # "14:05:09"
-  time_12h     = formatdate("hh:mm AA", local.ts)       # "02:05 PM"
-  time_short   = formatdate("HH:mm", local.ts)          # "14:05"
+  time_24h     = formatdate("hh:mm:ss", local.ts)      # "14:05:09"
+  time_12h     = formatdate("HH:mm AA", local.ts)       # "02:05 PM"
+  time_short   = formatdate("hh:mm", local.ts)          # "14:05"
 
   # Combined date-time
-  datetime_readable = formatdate("MMM DD, YYYY 'at' hh:mm AA", local.ts)
-  datetime_log      = formatdate("YYYY-MM-DD HH:mm:ss", local.ts)
+  datetime_readable = formatdate("MMM DD, YYYY 'at' HH:mm AA", local.ts)
+  datetime_log      = formatdate("YYYY-MM-DD hh:mm:ss", local.ts)
 }
 ```
 
@@ -117,7 +117,7 @@ locals {
   deployed_msg = formatdate("'Deployed on' MMMM DD, YYYY", local.ts)
   # "Deployed on February 23, 2026"
 
-  at_time = formatdate("YYYY-MM-DD 'at' HH:mm 'UTC'", local.ts)
+  at_time = formatdate("YYYY-MM-DD 'at' hh:mm 'UTC'", local.ts)
   # "2026-02-23 at 14:05 UTC"
 
   date_label = formatdate("'Date:' YYYY-MM-DD", local.ts)
@@ -135,14 +135,13 @@ locals {
 
   standard_tags = {
     DeployDate     = formatdate("YYYY-MM-DD", local.now)
-    DeployTime     = formatdate("HH:mm:ss 'UTC'", local.now)
-    DeployDatetime = formatdate("YYYY-MM-DD'T'HH:mm:ssZ", local.now)
+    DeployTime     = formatdate("hh:mm:ss 'UTC'", local.now)
+    DeployDatetime = formatdate("YYYY-MM-DD'T'hh:mm:ssZ", local.now)
     DeployMonth    = formatdate("YYYY-MM", local.now)
     DeployQuarter  = format("Q%d-%s",
       ceil(tonumber(formatdate("M", local.now)) / 3),
       formatdate("YYYY", local.now)
     )
-    DeployWeek     = formatdate("YYYY-'W'WW", local.now)
   }
 }
 
@@ -165,8 +164,8 @@ locals {
 
   # Formats safe for resource names (no special chars)
   name_date     = formatdate("YYYYMMDD", local.now)           # "20260223"
-  name_datetime = formatdate("YYYYMMDDHHmmss", local.now)     # "20260223140509"
-  name_compact  = formatdate("YYMMDD-HHmm", local.now)        # "260223-1405"
+  name_datetime = formatdate("YYYYMMDDhhmmss", local.now)     # "20260223140509"
+  name_compact  = formatdate("YYMMDD-hhmm", local.now)        # "260223-1405"
 
   # Use in resource names
   snapshot_name = "db-snapshot-${local.name_datetime}"
@@ -204,7 +203,7 @@ output "deployment_summary" {
     Deployment Summary
     ==================
     Date:        ${formatdate("EEEE, MMMM DD, YYYY", plantimestamp())}
-    Time:        ${formatdate("hh:mm AA 'UTC'", plantimestamp())}
+    Time:        ${formatdate("HH:mm AA 'UTC'", plantimestamp())}
     Environment: ${var.environment}
     Region:      ${var.region}
     Version:     ${var.app_version}
@@ -250,10 +249,10 @@ locals {
   now = plantimestamp()
 
   # More verbose timestamps for production
-  deploy_tag = var.environment == "production" ? formatdate("YYYY-MM-DD'T'HH:mm:ssZ", local.now) : formatdate("YYYYMMDD", local.now)
+  deploy_tag = var.environment == "production" ? formatdate("YYYY-MM-DD'T'hh:mm:ssZ", local.now) : formatdate("YYYYMMDD", local.now)
 
   # Include day name only for readable formats
-  readable_date = var.environment == "production" ? formatdate("EEEE, MMMM DD, YYYY 'at' HH:mm 'UTC'", local.now) : formatdate("MMM DD HH:mm", local.now)
+  readable_date = var.environment == "production" ? formatdate("EEEE, MMMM DD, YYYY 'at' hh:mm 'UTC'", local.now) : formatdate("MMM DD hh:mm", local.now)
 }
 ```
 
@@ -282,19 +281,19 @@ locals {
   now = timestamp()
 
   # AWS CloudWatch - ISO 8601
-  cloudwatch_time = formatdate("YYYY-MM-DD'T'HH:mm:ss'Z'", local.now)
+  cloudwatch_time = formatdate("YYYY-MM-DD'T'hh:mm:ss'Z'", local.now)
 
   # GCP - RFC 3339
-  gcp_time = formatdate("YYYY-MM-DD'T'HH:mm:ssZ", local.now)
+  gcp_time = formatdate("YYYY-MM-DD'T'hh:mm:ssZ", local.now)
 
   # Azure - ISO 8601 with timezone offset
-  azure_time = formatdate("YYYY-MM-DD'T'HH:mm:ss'+00:00'", local.now)
+  azure_time = formatdate("YYYY-MM-DD'T'hh:mm:ss'+00:00'", local.now)
 
   # Unix-style log format
-  log_time = formatdate("DD/MMM/YYYY:HH:mm:ss '+0000'", local.now)
+  log_time = formatdate("DD/MMM/YYYY:hh:mm:ss '+0000'", local.now)
 }
 ```
 
 ## Summary
 
-Date and time formatting in Terraform centers on the `formatdate` function. The key is knowing the tokens: `YYYY` for year, `MM` for month, `DD` for day, `HH` for 24-hour, `hh` for 12-hour, `mm` for minutes, and `ss` for seconds. Use single quotes for literal text, `plantimestamp()` for stable deployment dates, and `timeadd()` when you need calculated dates. Keep date formats consistent across your resources by defining them in locals and referencing them everywhere.
+Date and time formatting in Terraform centers on the `formatdate` function. The key is knowing the tokens: `YYYY` for year, `MM` for month, `DD` for day, `hh` for 24-hour, `HH` for 12-hour, `mm` for minutes, and `ss` for seconds. Use single quotes for literal text, `plantimestamp()` for stable deployment dates, and `timeadd()` when you need calculated dates. Keep date formats consistent across your resources by defining them in locals and referencing them everywhere.
