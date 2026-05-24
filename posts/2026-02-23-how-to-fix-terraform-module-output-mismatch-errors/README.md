@@ -144,24 +144,24 @@ resource "aws_route" "nat" {
 
 ## Cause 4: Output Changed After Module Upgrade
 
-You upgrade a module version and suddenly your outputs break. Module authors sometimes rename or restructure outputs between versions.
+You upgrade a module version and suddenly your outputs break. Module authors sometimes rename, remove, or restructure outputs between major versions.
 
 ```hcl
-# This worked with v3.x of the VPC module
+# You bumped the version constraint
 module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 4.0"
+  source  = "example/vpc/aws"
+  version = "~> 4.0"  # was "~> 3.0"
   # ...
 }
 
-# But v4.x renamed the output
+# And now this reference no longer resolves because v4.x renamed the output
 resource "aws_instance" "web" {
-  subnet_id = module.vpc.public_subnets[0]
-  # Might have been module.vpc.public_subnet_ids[0] in v3.x
+  subnet_id = module.vpc.public_subnet_ids[0]
+  # In v4.x this might now be exposed as module.vpc.public_subnets[0]
 }
 ```
 
-Always read the changelog or migration guide when upgrading module versions. The Terraform Registry shows the outputs tab for each module version.
+Always read the changelog or migration guide when upgrading module versions. The Terraform Registry shows the outputs tab for each module version, so you can diff what changed.
 
 ## Cause 5: for_each Module Instances
 
