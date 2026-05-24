@@ -163,7 +163,7 @@ resource "google_access_context_manager_service_perimeter" "data_perimeter" {
         operations {
           service_name = "bigquery.googleapis.com"
           method_selectors {
-            method = "BigQueryRead"
+            method = "BigQueryRead.ReadRows"
           }
           method_selectors {
             method = "google.cloud.bigquery.v2.JobService.InsertJob"
