@@ -60,7 +60,7 @@ resource "aws_iam_role_policy" "pipe_source_policy" {
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes"
         ]
-        Resource = aws_sqs_queue.source_queue.arn
+        Resource = aws_sqs_queue.order_queue.arn
       }
     ]
   })
