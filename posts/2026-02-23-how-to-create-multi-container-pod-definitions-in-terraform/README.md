@@ -269,7 +269,7 @@ resource "kubernetes_deployment" "app_with_envoy" {
           # Application communicates with localhost proxy
           env {
             name  = "UPSTREAM_URL"
-            value = "http://localhost:9901"
+            value = "http://localhost:10000"
           }
 
           resources {
