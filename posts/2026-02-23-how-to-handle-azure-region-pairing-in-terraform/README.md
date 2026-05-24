@@ -344,7 +344,7 @@ output "secondary_rg_name" {
 
 **Consider latency.** Some paired regions are geographically close (UK South and UK West) while others are far apart (Brazil South and South Central US). Factor this into your architecture.
 
-**Use geo-redundant services where available.** GRS storage, Azure SQL failover groups, and Cosmos DB multi-region writes all leverage region pairing. Use them instead of building custom replication.
+**Use geo-redundant services where available.** GRS storage automatically replicates to the paired region, and Azure SQL failover groups make it easy to fail over to a paired region. Cosmos DB lets you replicate to any combination of regions you choose, so configure it to use your paired region for consistency with the rest of your DR setup. Use these built-in capabilities instead of building custom replication.
 
 ## Wrapping Up
 
