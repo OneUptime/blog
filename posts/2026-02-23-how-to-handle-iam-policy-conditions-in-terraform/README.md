@@ -61,7 +61,7 @@ resource "aws_iam_policy" "string_equals" {
 ### StringLike (with wildcards)
 
 ```hcl
-# Allow access to S3 objects matching a pattern
+# Allow listing only objects under specific prefixes
 resource "aws_iam_policy" "string_like" {
   name = "string-like-example"
 
@@ -69,8 +69,8 @@ resource "aws_iam_policy" "string_like" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["s3:GetObject"]
-      Resource = "arn:aws:s3:::data-bucket/*"
+      Action   = ["s3:ListBucket"]
+      Resource = "arn:aws:s3:::data-bucket"
       Condition = {
         StringLike = {
           "s3:prefix" = ["reports/*", "exports/*"]
@@ -175,7 +175,7 @@ resource "aws_iam_policy" "ip_restriction" {
               "10.0.0.0/8",
             ]
           }
-          # Do not deny VPC endpoint traffic (it has no source IP)
+          # Do not deny requests made by AWS services on your behalf
           Bool = {
             "aws:ViaAWSService" = "false"
           }
@@ -281,7 +281,7 @@ resource "aws_iam_policy" "abac" {
           StringEquals = {
             "aws:RequestTag/Department" = "$${aws:PrincipalTag/Department}"
           }
-          # Ensure the Department tag is always present
+          # Restrict the set of allowed tag keys on the request
           "ForAllValues:StringEquals" = {
             "aws:TagKeys" = ["Department", "Environment", "Name"]
           }
