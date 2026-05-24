@@ -146,14 +146,13 @@ resource "google_compute_subnetwork" "subnet" {
 Every new project should have a baseline IAM configuration.
 
 ```hcl
-# Remove the default editor role from the default compute service account
-# The default SA with editor role is a common security issue
-resource "google_project_iam_member" "remove_default_sa_editor" {
+# Deprivilege the default service accounts to remove their automatic editor role.
+# The default SA with editor role is a common security issue.
+# Note: google_project_iam_member is non-authoritative and can only add bindings,
+# so use google_project_default_service_accounts with action = "DEPRIVILEGE".
+resource "google_project_default_service_accounts" "deprivilege_defaults" {
   project = google_project.project.project_id
-  role    = "roles/editor"
-  member  = "serviceAccount:${google_project.project.number}-compute@developer.gserviceaccount.com"
-
-  # This is a removal - use google_project_iam_binding or policy to remove
+  action  = "DEPRIVILEGE"
 }
 
 # Grant the team group access to the project
@@ -328,8 +327,8 @@ module "team_alpha_prod" {
 If you have projects that were created outside Terraform, you can import them.
 
 ```bash
-# Import an existing project
-terraform import google_project.project projects/existing-project-id
+# Import an existing project (the import ID is the project_id itself, no "projects/" prefix)
+terraform import google_project.project existing-project-id
 ```
 
 After importing, make sure to set `auto_create_network = false` and add any existing configuration to your Terraform files. Run `terraform plan` to check that Terraform's state matches reality.
@@ -354,7 +353,7 @@ resource "google_project" "critical_project" {
 
 ## Practical Tips
 
-Project IDs are globally unique and permanent. Once a project ID is used and deleted, it cannot be reused for 30 days. Use a naming convention that includes a random suffix to avoid collisions.
+Project IDs are globally unique and permanent. Once a project ID is used, it cannot be reused — even after the project is deleted, the ID is permanently retired (the 30-day window is for project recovery, not ID reuse). Use a naming convention that includes a random suffix to avoid collisions.
 
 Some APIs take time to enable. If a resource creation fails immediately after enabling the API, add a time_sleep or use explicit depends_on.
 
