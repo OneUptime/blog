@@ -284,7 +284,7 @@ gcloud compute url-maps invalidate-cdn-cache cdn-url-map --path="/images/logo.pn
 
 ## Monitoring Your CDN
 
-Once the CDN is running, you should monitor cache hit ratios and latency. Google Cloud provides CDN-specific metrics in Cloud Monitoring, including `cdn/hit_count`, `cdn/miss_count`, and `cdn/fill_bytes`. Low hit ratios often mean your TTL settings need tuning or your content is too dynamic for effective caching.
+Once the CDN is running, you should monitor cache hit ratios and latency. Cloud CDN exposes its metrics through Cloud Load Balancing in Cloud Monitoring, including `loadbalancing.googleapis.com/https/request_count` and `loadbalancing.googleapis.com/https/response_bytes_count`. You can filter or group by the `cache_result` label (HIT, MISS, REVALIDATED, DISABLED) to break out cache performance, and use `loadbalancing.googleapis.com/https/backend_request_count` to see how much traffic actually reaches your origin. Low hit ratios often mean your TTL settings need tuning or your content is too dynamic for effective caching.
 
 For production monitoring of your CDN and the applications behind it, consider using [OneUptime](https://oneuptime.com) to track uptime, response times, and error rates across your infrastructure.
 
