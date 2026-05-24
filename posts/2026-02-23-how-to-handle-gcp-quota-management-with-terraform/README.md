@@ -25,7 +25,7 @@ Some quotas can be increased by request, while others are hard limits set by Goo
 
 ## Checking Current Quota Usage
 
-Before making infrastructure changes, it is smart to check your current quota usage. The `google_compute_project_metadata` data source does not directly expose quotas, but you can use the Google Cloud client to query them.
+Before making infrastructure changes, it is smart to check your current quota usage. The `google_cloud_quotas_quota_info` data source from the Cloud Quotas API lets you query a specific quota for a project, folder, or organization.
 
 ```hcl
 # data.tf - Query current quota information
@@ -34,16 +34,17 @@ data "google_project" "current" {
   project_id = var.project_id
 }
 
-# You can query specific compute quotas
-data "google_compute_region" "current" {
-  name    = var.region
-  project = var.project_id
+# Query a specific compute quota (e.g., CPUs per project per region)
+data "google_cloud_quotas_quota_info" "cpus" {
+  parent   = "projects/${var.project_id}"
+  service  = "compute.googleapis.com"
+  quota_id = "CPUS-per-project-region"
 }
 
-# Output regional quota information
-output "regional_quotas" {
-  description = "Quotas for the selected region"
-  value       = data.google_compute_region.current.quotas
+# Output quota information, including per-region dimensions
+output "cpus_quota" {
+  description = "Quota details for CPUs"
+  value       = data.google_cloud_quotas_quota_info.cpus
 }
 ```
 
@@ -155,17 +156,17 @@ resource "google_service_usage_consumer_quota_override" "sql_instances" {
   force          = true
 }
 
-# Increase GKE node quota (per zone)
-resource "google_service_usage_consumer_quota_override" "gke_nodes" {
+# Increase regional N2 CPU quota (commonly needed for GKE node pools)
+resource "google_service_usage_consumer_quota_override" "n2_cpus" {
   project        = var.project_id
-  service        = "container.googleapis.com"
-  metric         = "container.googleapis.com%2Finternal%2Fnodes"
-  limit          = "%2Fproject%2Fzone"
+  service        = "compute.googleapis.com"
+  metric         = "compute.googleapis.com%2Fn2_cpus"
+  limit          = "%2Fproject%2Fregion"
   override_value = "100"
   force          = true
 
   dimensions = {
-    zone = var.zone
+    region = var.region
   }
 }
 ```
