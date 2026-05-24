@@ -185,7 +185,7 @@ resource "aws_db_parameter_group" "postgres" {
   # Tune shared buffers for better performance
   parameter {
     name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"
+    value = "{DBInstanceClassMemory/32768}"
   }
 
   # Enable logging for slow queries
