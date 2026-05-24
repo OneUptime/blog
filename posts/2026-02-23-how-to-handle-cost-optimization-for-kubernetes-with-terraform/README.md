@@ -249,7 +249,7 @@ resource "kubectl_manifest" "karpenter_nodepool" {
 }
 ```
 
-Resource Quotas and Limit Ranges
+## Resource Quotas and Limit Ranges
 
 Prevent teams from over-requesting resources by setting quotas and limits at the namespace level.
 
