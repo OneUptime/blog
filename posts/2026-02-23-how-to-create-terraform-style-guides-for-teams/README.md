@@ -307,7 +307,7 @@ jobs:
 
       # Enforce naming conventions and best practices
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: |
           tflint --init
           tflint --recursive
@@ -329,7 +329,7 @@ Create a `.tflint.hcl` configuration that enforces your team's rules:
 ```hcl
 # .tflint.hcl
 config {
-  module = true
+  call_module_type = "all"
 }
 
 # Enforce naming conventions
