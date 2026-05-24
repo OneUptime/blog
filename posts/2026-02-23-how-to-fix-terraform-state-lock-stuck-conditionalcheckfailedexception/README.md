@@ -265,8 +265,8 @@ echo "$LOCKS" | jq -c '.Items[]' 2>/dev/null | while read -r item; do
     continue
   fi
 
-  # Calculate age
-  CREATED_TS=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${CREATED%%.*}" +%s 2>/dev/null)
+  # Calculate age (GNU date / Linux)
+  CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null)
   NOW_TS=$(date +%s)
 
   if [ -n "$CREATED_TS" ]; then
