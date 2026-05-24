@@ -93,7 +93,7 @@ resource "aws_lambda_function" "validate_order" {
   function_name    = "validate-order"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.validate_order.output_base64sha256
 }
 
@@ -103,7 +103,7 @@ resource "aws_lambda_function" "process_payment" {
   function_name    = "process-payment"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.process_payment.output_base64sha256
 }
 
@@ -113,7 +113,7 @@ resource "aws_lambda_function" "send_notification" {
   function_name    = "send-notification"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   source_code_hash = data.archive_file.send_notification.output_base64sha256
 }
 ```
