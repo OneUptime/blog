@@ -203,23 +203,30 @@ variable "output_bucket" {
 }
 ```
 
-## Getting the MediaConvert Endpoint
+## Looking Up the Default Queue
 
-MediaConvert uses account-specific endpoints. You need this endpoint to submit jobs:
+As of February 2024, MediaConvert no longer requires account-specific endpoints — you can send API requests directly to the regional endpoint (for example, `https://mediaconvert.us-east-1.amazonaws.com`). If you need to reference the default queue that every account ships with, use the `aws_media_convert_queue` data source:
 
 ```hcl
-# Retrieve the account-specific MediaConvert endpoint
+# Look up the default queue that every account has
 data "aws_media_convert_queue" "default" {
   id = "Default"
 }
 
-# You can also use the AWS CLI data source
-# to discover the endpoint programmatically
-output "mediaconvert_endpoint" {
-  description = "MediaConvert API endpoint for this account"
-  value       = "Use aws mediaconvert describe-endpoints to get the endpoint URL"
+output "default_queue_arn" {
+  description = "ARN of the default MediaConvert queue"
+  value       = data.aws_media_convert_queue.default.arn
 }
+
+output "mediaconvert_regional_endpoint" {
+  description = "Regional MediaConvert endpoint"
+  value       = "https://mediaconvert.${data.aws_region.current.name}.amazonaws.com"
+}
+
+data "aws_region" "current" {}
 ```
+
+The data source returns the queue's ARN, name, status, and tags. It does not return an endpoint URL — endpoint discovery is no longer needed since the regional endpoint accepts requests directly.
 
 ## Setting Up Event Notifications
 
