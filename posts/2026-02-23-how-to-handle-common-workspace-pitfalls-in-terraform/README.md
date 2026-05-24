@@ -179,16 +179,20 @@ resource "null_resource" "workspace_check" {
 }
 ```
 
-The above uses a trick: if the workspace is "default", the count expression tries to use a string as a number, causing a clear error. A cleaner approach:
+The above uses a trick: if the workspace is "default", the count expression tries to use a string as a number, causing a clear error. A cleaner approach is to use a `precondition`, which actually fails the plan rather than just warning:
 
 ```hcl
-check "no_default_workspace" {
-  assert {
-    condition     = terraform.workspace != "default"
-    error_message = "Do not use the default workspace. Select dev, staging, or prod."
+resource "terraform_data" "workspace_check" {
+  lifecycle {
+    precondition {
+      condition     = terraform.workspace != "default"
+      error_message = "Do not use the default workspace. Select dev, staging, or prod."
+    }
   }
 }
 ```
+
+Note: a `check` block would only emit a warning and let the apply proceed, so it is not suitable for enforcing this rule.
 
 ## Pitfall 6: Shared Provider Configuration
 
