@@ -132,7 +132,7 @@ resource "aws_network_acl" "public" {
     protocol   = "tcp"
     rule_no    = 120
     action     = "allow"
-    cidr_block = "10.0.10.0/21"  # Application tier CIDR range
+    cidr_block = "10.0.8.0/21"  # Application tier CIDR range
     from_port  = 1024
     to_port    = 65535
   }
@@ -142,7 +142,7 @@ resource "aws_network_acl" "public" {
     protocol   = "tcp"
     rule_no    = 100
     action     = "allow"
-    cidr_block = "10.0.10.0/21"
+    cidr_block = "10.0.8.0/21"
     from_port  = 8080
     to_port    = 8080
   }
@@ -173,7 +173,7 @@ resource "aws_network_acl" "data" {
     protocol   = "tcp"
     rule_no    = 100
     action     = "allow"
-    cidr_block = "10.0.10.0/21"  # Application tier only
+    cidr_block = "10.0.8.0/21"  # Application tier only
     from_port  = 3306
     to_port    = 3306
   }
@@ -183,7 +183,7 @@ resource "aws_network_acl" "data" {
     protocol   = "tcp"
     rule_no    = 110
     action     = "allow"
-    cidr_block = "10.0.10.0/21"
+    cidr_block = "10.0.8.0/21"
     from_port  = 6379
     to_port    = 6379
   }
@@ -193,7 +193,7 @@ resource "aws_network_acl" "data" {
     protocol   = "tcp"
     rule_no    = 120
     action     = "allow"
-    cidr_block = "10.0.10.0/21"
+    cidr_block = "10.0.8.0/21"
     from_port  = 5432
     to_port    = 5432
   }
@@ -213,7 +213,7 @@ resource "aws_network_acl" "data" {
     protocol   = "tcp"
     rule_no    = 100
     action     = "allow"
-    cidr_block = "10.0.10.0/21"
+    cidr_block = "10.0.8.0/21"
     from_port  = 1024
     to_port    = 65535
   }
