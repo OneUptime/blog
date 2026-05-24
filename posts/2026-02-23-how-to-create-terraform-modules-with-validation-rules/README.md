@@ -145,7 +145,7 @@ variable "database_config" {
 
 ## Cross-Variable Validation with Preconditions
 
-Variable validation blocks can only reference the variable they are attached to. For validations that involve multiple variables, use `precondition` blocks on resources or data sources.
+In Terraform versions prior to 1.9, variable validation blocks could only reference the variable they were attached to. Since Terraform 1.9, validation conditions can reference other variables, locals, data sources, and resources in the same module. For validations that depend on the state of a resource being created, use `precondition` blocks on resources or data sources.
 
 ```hcl
 variable "environment" {
@@ -199,6 +199,12 @@ resource "aws_subnet" "this" {
   vpc_id            = var.vpc_id
   cidr_block        = var.cidr_block
   availability_zone = var.availability_zone
+}
+
+# The aws_subnet resource does not expose available_ip_address_count, so we
+# look it up through the data source and assert on it there.
+data "aws_subnet" "verify" {
+  id = aws_subnet.this.id
 
   lifecycle {
     postcondition {
