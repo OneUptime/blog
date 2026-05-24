@@ -40,30 +40,12 @@ resource "aws_ecr_repository" "lambda_app" {
     scan_on_push = true
   }
 
-  # Lifecycle policy to clean up old images
-  lifecycle_policy_policy = jsonencode({
-    rules = [
-      {
-        rulePriority = 1
-        description  = "Keep last 10 images"
-        selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = 10
-        }
-        action = {
-          type = "expire"
-        }
-      }
-    ]
-  })
-
   tags = {
     Name = "lambda-app"
   }
 }
 
-# ECR lifecycle policy (alternative method)
+# ECR lifecycle policy to clean up old images
 resource "aws_ecr_lifecycle_policy" "lambda_app" {
   repository = aws_ecr_repository.lambda_app.name
 
@@ -96,7 +78,7 @@ FROM public.ecr.aws/lambda/nodejs:20
 
 # Copy package files and install dependencies
 COPY package*.json ${LAMBDA_TASK_ROOT}/
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy function code
 COPY src/ ${LAMBDA_TASK_ROOT}/src/
