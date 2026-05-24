@@ -209,8 +209,8 @@ Then map resource types to providers:
 | azurerm_kubernetes_cluster | Microsoft.ContainerService |
 | azurerm_container_registry | Microsoft.ContainerRegistry |
 | azurerm_key_vault | Microsoft.KeyVault |
-| azurerm_sql_server | Microsoft.Sql |
-| azurerm_app_service | Microsoft.Web |
+| azurerm_mssql_server | Microsoft.Sql |
+| azurerm_linux_web_app | Microsoft.Web |
 | azurerm_cosmosdb_account | Microsoft.DocumentDB |
 | azurerm_redis_cache | Microsoft.Cache |
 
