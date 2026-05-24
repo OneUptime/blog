@@ -20,7 +20,7 @@ Consider this scenario: two engineers both modify a security group. One adds an 
 
 ## Common Conflict Patterns
 
-Resource Block Conflicts
+### Resource Block Conflicts
 
 The most common conflict occurs when two branches modify the same resource:
 
@@ -106,7 +106,7 @@ Before touching the conflict markers, read the full diff for both branches:
 
 ```bash
 # See what the current branch changed
-git diff HEAD...main -- path/to/file.tf
+git diff main...HEAD -- path/to/file.tf
 
 # See what the incoming branch changed
 git log --oneline feature-branch --not main -- path/to/file.tf
