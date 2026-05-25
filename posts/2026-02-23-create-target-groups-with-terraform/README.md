@@ -10,14 +10,14 @@ Description: A complete guide to creating and configuring AWS target groups in T
 
 Target groups are the bridge between your load balancer and your backend resources. They define where traffic goes, how health is checked, and how connections are managed. Whether you're running EC2 instances, containers in ECS, Lambda functions, or IP-based targets, you need target groups to tie everything together.
 
-This guide covers all the target group types and configurations available in Terraform.
+This guide covers the common target group types and configurations available in Terraform.
 
 ## Target Group Types
 
-AWS supports three target types, each suited to different architectures:
+Application Load Balancers support three target types, each suited to different architectures:
 
 - **instance** - Routes to EC2 instances by instance ID. The ALB uses the instance's primary private IP.
-- **ip** - Routes to specific IP addresses. Works with containers, cross-VPC targets, or on-premises resources via Direct Connect.
+- **ip** - Routes to specific private IP addresses. Works with containers, cross-VPC targets, or on-premises resources via Direct Connect or Site-to-Site VPN.
 - **lambda** - Routes to Lambda functions. Only supported with ALBs.
 
 ## Instance Target Group
@@ -89,7 +89,7 @@ resource "aws_autoscaling_group" "web" {
 
 ## IP Target Group
 
-Use IP targets for ECS tasks with awsvpc networking, cross-VPC resources, or external IP addresses.
+Use IP targets for ECS tasks with awsvpc networking, cross-VPC resources, or private on-premises IP addresses.
 
 ```hcl
 # IP-based target group for ECS Fargate tasks
@@ -124,7 +124,7 @@ resource "aws_lb_target_group_attachment" "api_target" {
   target_group_arn  = aws_lb_target_group.api.arn
   target_id         = "10.0.1.100"
   port              = 8080
-  availability_zone = "all"  # Required for cross-AZ IP targets
+  availability_zone = "all"  # Required when the IP is outside the target group's VPC
 }
 ```
 
@@ -246,7 +246,7 @@ Application-based stickiness is better because it uses your existing session mec
 
 ## NLB Target Groups
 
-Network Load Balancer target groups use TCP, UDP, or TLS protocols.
+Network Load Balancer target groups use TCP, UDP, TLS, QUIC, or combined protocols such as TCP_UDP and TCP_QUIC. NLBs support instance, IP, and ALB target types.
 
 ```hcl
 # TCP target group for NLB
