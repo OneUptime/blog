@@ -17,7 +17,7 @@ terraform {
   required_providers {
     datadog = {
       source  = "DataDog/datadog"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -27,8 +27,15 @@ provider "datadog" {
   app_key = var.datadog_app_key
 }
 
-variable "datadog_api_key" { type = string; sensitive = true }
-variable "datadog_app_key" { type = string; sensitive = true }
+variable "datadog_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "datadog_app_key" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Service Overview Dashboard
@@ -78,7 +85,7 @@ resource "datadog_dashboard" "service_overview" {
     timeseries_definition {
       title = "P95 Latency by Service"
       request {
-        q            = "avg:trace.web.request.duration.by.service.95p{env:production} by {service}"
+        q            = "p95:trace.web.request{env:production} by {service}"
         display_type = "line"
       }
     }
@@ -110,7 +117,7 @@ resource "datadog_dashboard" "service_overview" {
         query_value_definition {
           title = "Active Hosts"
           request {
-            q          = "sum:system.cpu.user{*}"
+            q          = "count_not_null(avg:system.cpu.user{*} by {host})"
             aggregator = "avg"
           }
           autoscale = true
@@ -146,7 +153,7 @@ resource "datadog_dashboard" "service_overview" {
     }
   }
 
-  tags = ["team:platform", "env:production"]
+  tags = ["team:platform"]
 }
 ```
 
@@ -211,15 +218,15 @@ resource "datadog_dashboard" "with_variables" {
 
   # Template variables for filtering
   template_variable {
-    name    = "service"
-    prefix  = "service"
-    default = "*"
+    name     = "service"
+    prefix   = "service"
+    defaults = ["*"]
   }
 
   template_variable {
-    name    = "environment"
-    prefix  = "env"
-    default = "production"
+    name     = "environment"
+    prefix   = "env"
+    defaults = ["production"]
   }
 
   widget {
