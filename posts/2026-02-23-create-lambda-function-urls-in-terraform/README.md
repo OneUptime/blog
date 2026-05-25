@@ -55,6 +55,23 @@ resource "aws_lambda_function_url" "webhook" {
   }
 }
 
+# Resource-based policy allowing public URL invocation
+resource "aws_lambda_permission" "allow_public_url" {
+  statement_id           = "AllowPublicInvokeFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.webhook.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
+resource "aws_lambda_permission" "allow_public_invoke" {
+  statement_id             = "AllowPublicInvokeFunction"
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.webhook.function_name
+  principal                = "*"
+  invoked_via_function_url = true
+}
+
 # IAM role
 resource "aws_iam_role" "lambda_exec" {
   name = "webhook-handler-role"
@@ -93,6 +110,14 @@ resource "aws_lambda_permission" "allow_caller" {
   function_name          = aws_lambda_function.internal.function_name
   principal              = var.caller_role_arn
   function_url_auth_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "allow_caller_invoke" {
+  statement_id             = "AllowCallerInvokeFunction"
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.internal.function_name
+  principal                = var.caller_role_arn
+  invoked_via_function_url = true
 }
 ```
 
