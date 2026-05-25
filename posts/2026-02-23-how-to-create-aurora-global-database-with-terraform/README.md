@@ -12,7 +12,7 @@ Aurora Global Database spans multiple AWS regions, providing cross-region disast
 
 ## How Aurora Global Database Works
 
-An Aurora Global Database consists of one primary cluster in one region and up to five secondary clusters in different regions. The primary cluster handles all write operations, while secondary clusters serve read traffic. Data replication happens at the storage level, not through binlog or WAL replication, which provides sub-second replication lag (typically under 1 second).
+An Aurora Global Database consists of one primary cluster in one region and up to 10 secondary clusters in different regions. The primary cluster handles all write operations, while secondary clusters serve read traffic. Data replication happens at the storage level, not through binlog or WAL replication, which provides sub-second replication lag (typically under 1 second).
 
 During a regional failure, you can promote a secondary cluster to become the new primary, with a recovery time of typically less than 1 minute.
 
@@ -108,7 +108,7 @@ resource "aws_rds_global_cluster" "main" {
 
   global_cluster_identifier = "aurora-global-postgres"
   engine                    = "aurora-postgresql"
-  engine_version            = "15.4"
+  engine_version            = "15.17"
   database_name             = "appdb"
   storage_encrypted         = true
 }
@@ -351,18 +351,18 @@ resource "aws_cloudwatch_metric_alarm" "global_replication_lag" {
   }
 }
 
-# Monitor data transfer out of primary region
+# Monitor replicated write I/O in the secondary region
 resource "aws_cloudwatch_metric_alarm" "replication_data" {
   provider            = aws.secondary
-  alarm_name          = "aurora-global-data-transfer"
+  alarm_name          = "aurora-global-replicated-write-io"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "AuroraGlobalDBReplicatedWriteIO"
   namespace           = "AWS/RDS"
   period              = 3600
   statistic           = "Sum"
-  threshold           = 1000000  # Alert on high replication volume
-  alarm_description   = "Unusually high replication data volume"
+  threshold           = 1000000  # Alert on high replicated write I/O
+  alarm_description   = "Unusually high replicated write I/O"
 
   dimensions = {
     DBClusterIdentifier = aws_rds_cluster.secondary.cluster_identifier
@@ -401,9 +401,9 @@ output "secondary_reader_endpoint" {
 
 ## Failover Considerations
 
-To perform a planned failover, you would detach the secondary cluster from the global database and promote it. This is an operational procedure done through the AWS console or CLI, not through Terraform. After failover, you would need to update your Terraform configuration to reflect the new primary.
+To perform a planned failover, use an Aurora Global Database switchover. This is an operational procedure done through the AWS console, CLI, or API, not through Terraform. After the switchover, you would need to update your Terraform configuration to reflect the new primary.
 
-For unplanned failover, the secondary cluster is promoted automatically if the primary region becomes unavailable. Your application should be configured to detect the failover and redirect writes to the new primary endpoint.
+For unplanned failover, you initiate a managed failover to a secondary cluster, or use the manual detach-and-promote procedure when managed failover is not available. Your application should be configured to use the Aurora Global Database writer endpoint or otherwise redirect writes to the new primary endpoint after failover.
 
 ## Conclusion
 
