@@ -10,14 +10,14 @@ Description: Learn how to build a service mesh architecture using Terraform with
 
 When your microservices architecture grows beyond a handful of services, you start running into problems that are hard to solve at the application level. How do you enforce mutual TLS between all services? How do you do canary deployments? How do you get consistent observability across services written in different languages? A service mesh solves all of these problems by handling them at the infrastructure layer.
 
-In this guide, we will build a service mesh using Terraform. We will cover both AWS App Mesh for native AWS integration and touch on Istio for Kubernetes environments.
+In this guide, we will build a service mesh using Terraform. We will cover AWS App Mesh for native AWS integration and touch on Istio for Kubernetes environments. AWS has announced that App Mesh support ends on September 30, 2026, so use this pattern for existing App Mesh environments and plan migrations to alternatives such as Amazon ECS Service Connect, Amazon VPC Lattice, or Istio where appropriate.
 
 ## What a Service Mesh Gives You
 
 Before jumping into code, let's be clear about what a service mesh provides:
 
 - **Traffic management**: Canary deployments, traffic splitting, retries, timeouts
-- **Security**: Mutual TLS between services, policy enforcement
+- **Security**: TLS between services, mutual TLS when client certificates are configured, policy enforcement
 - **Observability**: Distributed tracing, metrics, access logging without code changes
 - **Resilience**: Circuit breaking, fault injection for testing
 
@@ -355,6 +355,10 @@ resource "aws_ecs_task_definition" "order_service" {
         {
           name  = "ENABLE_ENVOY_XRAY_TRACING"
           value = "1"
+        },
+        {
+          name  = "XRAY_SAMPLING_RATE"
+          value = "0.10"
         }
       ]
 
@@ -372,6 +376,27 @@ resource "aws_ecs_task_definition" "order_service" {
           "awslogs-group"         = aws_cloudwatch_log_group.envoy.name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "envoy-order-service"
+        }
+      }
+    },
+    {
+      name      = "xray-daemon"
+      image     = "public.ecr.aws/xray/aws-xray-daemon:3.x"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = 2000
+          protocol      = "udp"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.xray.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "xray-order-service"
         }
       }
     }
@@ -398,28 +423,19 @@ resource "aws_ecs_service" "order_service" {
 
 ## Observability with X-Ray
 
-With the Envoy sidecar, you get distributed tracing through X-Ray without changing your application code.
+With the Envoy sidecar and an X-Ray daemon container in the same ECS task, you get distributed tracing through X-Ray without changing your application code. The ECS task role also needs permission to send trace data to X-Ray. App Mesh Envoy does not use dynamic X-Ray sampling rules, so configure Envoy sampling with `XRAY_SAMPLING_RATE` or `XRAY_SAMPLING_RULE_MANIFEST` on the Envoy container.
 
 ```hcl
-# observability.tf - Distributed tracing and metrics
-resource "aws_xray_sampling_rule" "mesh_services" {
-  rule_name      = "mesh-services"
-  priority       = 1000
-  version        = 1
-  reservoir_size = 10
-  fixed_rate     = 0.1 # Sample 10% of requests
-  url_path       = "*"
-  host           = "*"
-  http_method    = "*"
-  service_type   = "*"
-  service_name   = "*"
-  resource_arn   = "*"
+# observability.tf - X-Ray daemon logs
+resource "aws_cloudwatch_log_group" "xray" {
+  name              = "/ecs/${var.project_name}/xray"
+  retention_in_days = 30
 }
 ```
 
 ## Summary
 
-A service mesh built with Terraform provides consistent networking behavior across all your services. The key benefits are that security (mutual TLS), observability (tracing), and traffic management (canary deployments) all happen at the infrastructure level, not in your application code.
+A service mesh built with Terraform provides consistent networking behavior across all your services. The key benefits are that security (TLS and mutual TLS when configured), observability (tracing), and traffic management (canary deployments) all happen at the infrastructure level, not in your application code.
 
 Start simple. Get the mesh running with basic routing and then gradually add features like traffic splitting, retry policies, and circuit breaking as you need them.
 
