@@ -8,13 +8,13 @@ Description: Learn how to build HIPAA-compliant healthcare infrastructure with T
 
 ---
 
-Healthcare infrastructure is one of the most heavily regulated environments you can build. HIPAA requires specific safeguards for Protected Health Information (PHI) - technical, physical, and administrative. Getting it wrong can mean fines in the millions and loss of patient trust. Terraform lets you encode HIPAA requirements directly into your infrastructure code, ensuring every environment meets compliance standards automatically.
+Healthcare infrastructure is one of the most heavily regulated environments you can build. HIPAA requires specific safeguards for Protected Health Information (PHI) - technical, physical, and administrative. Getting it wrong can mean fines in the millions and loss of patient trust. Terraform lets you encode many HIPAA-supporting controls directly into your infrastructure code, helping every environment meet your compliance baseline consistently.
 
 ## Understanding HIPAA Infrastructure Requirements
 
 HIPAA has several rules that affect infrastructure design. The Security Rule requires administrative, physical, and technical safeguards. The Privacy Rule governs how PHI is used and disclosed. The Breach Notification Rule mandates reporting. For infrastructure, the technical safeguards are the most relevant: access controls, audit controls, integrity controls, and transmission security.
 
-Before building anything, you need a Business Associate Agreement (BAA) with AWS. AWS will not cover HIPAA compliance without one.
+Before building anything that stores, processes, or transmits PHI on AWS, you need a Business Associate Agreement (BAA) with AWS and must use services covered by the AWS HIPAA Eligible Services reference.
 
 ## Architecture Overview
 
@@ -25,7 +25,7 @@ Our HIPAA-compliant infrastructure includes:
 - TLS 1.2+ for all data in transit
 - CloudTrail for comprehensive audit logging
 - Config rules for continuous compliance
-- Dedicated tenancy for sensitive workloads
+- Optional dedicated tenancy where your isolation policy requires it
 - Automated access controls
 - Backup and recovery for PHI data
 
@@ -100,7 +100,7 @@ resource "aws_vpc_endpoint" "logs" {
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
 }
 
-# VPC Flow Logs - required for HIPAA audit
+# VPC Flow Logs - useful evidence for HIPAA audit controls
 resource "aws_flow_log" "hipaa" {
   vpc_id                   = aws_vpc.hipaa.id
   traffic_type             = "ALL"
@@ -113,7 +113,7 @@ resource "aws_flow_log" "hipaa" {
 
 ## Encryption for PHI Data
 
-All PHI must be encrypted at rest and in transit. No exceptions.
+Treat PHI as requiring encryption at rest and in transit in your AWS architecture.
 
 ```hcl
 # KMS key for PHI data encryption
@@ -172,6 +172,43 @@ resource "aws_kms_key" "phi" {
           "kms:DescribeKey",
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudTrailEncryption"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action = [
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+      {
+        Sid    = "AllowCloudWatchLogsEncryption"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt*",
+          "kms:Decrypt*",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:Describe*",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
+          }
+        }
       }
     ]
   })
@@ -266,7 +303,8 @@ S3 buckets for PHI need encryption, access logging, and versioning.
 ```hcl
 # S3 bucket for PHI documents
 resource "aws_s3_bucket" "phi_documents" {
-  bucket = "hipaa-phi-documents-${var.environment}"
+  bucket              = "hipaa-phi-documents-${var.environment}"
+  object_lock_enabled = true
 
   tags = {
     Compliance = "HIPAA"
@@ -317,7 +355,7 @@ resource "aws_s3_bucket_object_lock_configuration" "phi" {
   rule {
     default_retention {
       mode = "COMPLIANCE"
-      days = 2555  # 7 years - HIPAA retention requirement
+      days = 2555  # Example 7-year retention policy; confirm legal and state requirements
     }
   }
 }
@@ -391,7 +429,7 @@ resource "aws_cloudtrail" "hipaa" {
 # CloudWatch log group with encryption and retention
 resource "aws_cloudwatch_log_group" "cloudtrail" {
   name              = "/hipaa/cloudtrail"
-  retention_in_days = 2555  # 7 years
+  retention_in_days = 2555  # Example 7-year retention policy
   kms_key_id        = aws_kms_key.phi.arn
 }
 
@@ -436,7 +474,7 @@ resource "aws_backup_plan" "hipaa" {
     schedule          = "cron(0 3 * * ? *)"
 
     lifecycle {
-      delete_after = 2555  # 7 years retention
+      delete_after = 2555  # Example 7-year retention policy
     }
 
     copy_action {
@@ -453,9 +491,10 @@ resource "aws_backup_vault" "hipaa" {
   kms_key_arn = aws_kms_key.phi.arn
 }
 
-# Vault lock to prevent deletion
+# Vault lock in compliance mode to prevent deletion after the grace period
 resource "aws_backup_vault_lock_configuration" "hipaa" {
   backup_vault_name  = aws_backup_vault.hipaa.name
+  changeable_for_days = 3
   min_retention_days = 365
   max_retention_days = 2555
 }
