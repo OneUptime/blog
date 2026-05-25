@@ -8,7 +8,7 @@ Description: Learn how to create and configure database subnet groups in Terrafo
 
 ---
 
-Database subnet groups define which subnets your database instances can be placed in within your VPC. They are a fundamental networking requirement for every AWS managed database service. A subnet group must span at least two availability zones to enable high availability features like Multi-AZ deployments and read replicas. In this guide, we will cover how to create subnet groups for all major AWS database services using Terraform.
+Database subnet groups define which subnets your database instances can be placed in within your VPC. They are a fundamental networking requirement for many AWS managed database services that run inside a VPC. RDS DB subnet groups generally require subnets in at least two availability zones, and subnet groups that span multiple availability zones enable high availability features like Multi-AZ deployments. In this guide, we will cover how to create subnet groups for several major AWS database services using Terraform.
 
 ## Understanding Database Subnet Groups
 
