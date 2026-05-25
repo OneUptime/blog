@@ -86,13 +86,13 @@ After creation, configure the essential settings. Navigate to your organization'
 ### General Settings
 
 ```text
-Organization Name: acme-infrastructure (cannot change after creation)
+Organization Name: acme-infrastructure (can be renamed later, but renaming is disruptive)
 Email: infra-team@acme.com
 Session Timeout: 20160 (minutes - default is 14 days)
-Session Expiration: 20160 (minutes)
+Forced Re-Authentication: 20160 (minutes)
 ```
 
-The session timeout controls how long users stay logged in. For security-conscious teams, reduce this to a shorter period.
+The session timeout controls how long users stay logged in after inactivity. Forced re-authentication controls the maximum time before users must reauthenticate. For security-conscious teams, reduce these to shorter periods.
 
 ### Authentication Settings
 
@@ -105,7 +105,7 @@ Settings > Security > Two-Factor Authentication
 Require two-factor authentication for all members: Enabled
 ```
 
-**SSO (Single Sign-On)**: Available on the Business tier, SSO lets your team authenticate through your identity provider (Okta, Azure AD, OneLogin):
+**SSO (Single Sign-On)**: SSO lets your team authenticate through your identity provider (Okta, Microsoft Entra ID, or another SAML provider):
 
 ```text
 Settings > SSO
@@ -119,17 +119,17 @@ HCP Terraform uses three types of tokens:
 
 1. **User tokens** - Tied to an individual user's permissions
 2. **Team tokens** - Tied to a team's permissions
-3. **Organization tokens** - Full access to the organization (use sparingly)
+3. **Organization tokens** - Organization-wide access for setup and configuration tasks, with some API limitations (use sparingly)
 
-Create an organization token for CI/CD:
+Create an organization token for initial setup automation:
 
 ```text
 Settings > API Tokens > Create an organization token
-Description: CI/CD Pipeline Token
+Description: Organization Setup Token
 
 ```
 
-Store this token securely. It grants full access to the organization.
+Store this token securely. Organization tokens have broad permissions across the organization, but they are not meant for routine workspace runs and cannot access every API endpoint. For CI/CD workflows that upload configurations or start runs, use a user token or team token with the minimum required workspace access.
 
 ## Setting Up Teams
 
@@ -220,7 +220,7 @@ Access levels:
 - **plan** - Queue plans but cannot apply
 - **write** - Queue plans and apply
 - **admin** - Full control including settings and variable management
-- **custom** - Fine-grained permission selection
+- **custom** - Fine-grained permission selection (with the `tfe` provider, use a `permissions` block instead of `access = "custom"`)
 
 ## Projects for Workspace Organization
 
@@ -262,10 +262,10 @@ Settings > VCS Providers > Add VCS Provider
 ```
 
 For GitHub:
-1. Choose "GitHub.com" or "GitHub Enterprise"
-2. Register a new OAuth application in GitHub
-3. Enter the Application ID and Client Secret
-4. Authorize the connection
+1. Choose "GitHub.com" to use the preconfigured Terraform Cloud GitHub App, or choose "GitHub.com (Custom)" / "GitHub Enterprise" for an OAuth connection
+2. For the GitHub App flow, authorize HCP Terraform and install the app for the repositories you want to use
+3. For an OAuth connection, register a new OAuth application in GitHub
+4. Enter the Client ID and Client Secret, then authorize the connection
 
 For GitLab:
 1. Choose "GitLab.com" or "GitLab Community/Enterprise"
@@ -276,14 +276,14 @@ Once connected, any workspace can link to a repository in that VCS provider.
 
 ## Cost Management
 
-If you are on a paid tier, configure cost estimation:
+If cost estimation is available for your organization, configure it:
 
 ```text
 Settings > Cost Estimation
 Enable Cost Estimation: Yes
 ```
 
-This shows estimated monthly costs in every plan output, helping teams understand the financial impact of infrastructure changes before they apply.
+When enabled, cost estimates appear in HCP Terraform runs as an extra phase between plan and apply, helping teams understand the financial impact of infrastructure changes before they apply.
 
 ## Naming Conventions
 
