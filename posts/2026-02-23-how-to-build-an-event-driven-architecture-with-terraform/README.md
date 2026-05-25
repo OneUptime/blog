@@ -66,8 +66,8 @@ resource "aws_cloudwatch_event_rule" "order_events" {
   event_bus_name = aws_cloudwatch_event_bus.main.name
 
   event_pattern = jsonencode({
-    source      = ["com.myapp.orders"]
-    detail-type = ["OrderCreated", "OrderUpdated", "OrderCancelled"]
+    source        = ["com.myapp.orders"]
+    "detail-type" = ["OrderCreated", "OrderUpdated", "OrderCancelled"]
   })
 }
 
@@ -85,8 +85,8 @@ resource "aws_cloudwatch_event_rule" "user_events" {
   event_bus_name = aws_cloudwatch_event_bus.main.name
 
   event_pattern = jsonencode({
-    source      = ["com.myapp.users"]
-    detail-type = ["UserRegistered", "UserUpdated", "UserDeleted"]
+    source        = ["com.myapp.users"]
+    "detail-type" = ["UserRegistered", "UserUpdated", "UserDeleted"]
   })
 }
 
@@ -143,6 +143,24 @@ resource "aws_sns_topic_policy" "order_events" {
     ]
   })
 }
+
+resource "aws_sns_topic_policy" "user_events" {
+  arn = aws_sns_topic.user_events.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sns:Publish"
+        Resource = aws_sns_topic.user_events.arn
+      }
+    ]
+  })
+}
 ```
 
 ## SQS Queues with Dead Letter Queues
@@ -167,7 +185,7 @@ resource "aws_sqs_queue" "order_processing_dlq" {
 # Main processing queue
 resource "aws_sqs_queue" "order_processing" {
   name                       = "${var.project_name}-order-processing"
-  visibility_timeout_seconds = 300
+  visibility_timeout_seconds = 1805
   message_retention_seconds  = 86400 # 1 day
 
   kms_master_key_id = aws_kms_key.events.id
@@ -186,15 +204,16 @@ resource "aws_sns_topic_subscription" "order_processing" {
   endpoint  = aws_sqs_queue.order_processing.arn
 
   # Filter to only receive specific event types
+  filter_policy_scope = "MessageBody"
   filter_policy = jsonencode({
-    detail-type = ["OrderCreated", "OrderUpdated"]
+    "detail-type" = ["OrderCreated", "OrderUpdated"]
   })
 }
 
 # Notification queue - subscribes to the same topic
 resource "aws_sqs_queue" "order_notifications" {
   name                       = "${var.project_name}-order-notifications"
-  visibility_timeout_seconds = 60
+  visibility_timeout_seconds = 360
 
   kms_master_key_id = aws_kms_key.events.id
 
@@ -224,6 +243,29 @@ resource "aws_sqs_queue_policy" "order_processing" {
         }
         Action   = "sqs:SendMessage"
         Resource = aws_sqs_queue.order_processing.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.order_events.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_sqs_queue_policy" "order_notifications" {
+  queue_url = aws_sqs_queue.order_notifications.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "sns.amazonaws.com"
+        }
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.order_notifications.arn
         Condition = {
           ArnEquals = {
             "aws:SourceArn" = aws_sns_topic.order_events.arn
@@ -271,7 +313,7 @@ resource "aws_lambda_event_source_mapping" "order_processor" {
   batch_size                         = 10
   maximum_batching_window_in_seconds = 5
 
-  # Process events in order within each message group
+  # Let the function report individual failed records in a batch
   function_response_types = ["ReportBatchItemFailures"]
 }
 
@@ -386,9 +428,10 @@ resource "aws_apigatewayv2_stage" "events" {
 }
 
 resource "aws_apigatewayv2_integration" "events" {
-  api_id             = aws_apigatewayv2_api.events.id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = aws_lambda_function.event_publisher.invoke_arn
+  api_id                 = aws_apigatewayv2_api.events.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.event_publisher.invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -396,6 +439,14 @@ resource "aws_apigatewayv2_route" "publish_event" {
   api_id    = aws_apigatewayv2_api.events.id
   route_key = "POST /events"
   target    = "integrations/${aws_apigatewayv2_integration.events.id}"
+}
+
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.event_publisher.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.events.execution_arn}/*/*"
 }
 ```
 
