@@ -42,11 +42,6 @@ resource "aws_msk_cluster" "main" {
     storage_info {
       ebs_storage_info {
         volume_size = 500
-
-        provisioned_throughput {
-          enabled           = true
-          volume_throughput  = 250
-        }
       }
     }
 
@@ -105,7 +100,7 @@ resource "aws_msk_cluster" "main" {
         log_group = aws_cloudwatch_log_group.kafka.name
       }
 
-      s3_logs {
+      s3 {
         enabled = true
         bucket  = aws_s3_bucket.kafka_logs.id
         prefix  = "logs/msk/"
@@ -360,6 +355,7 @@ resource "aws_cloudwatch_metric_alarm" "consumer_lag" {
   dimensions = {
     "Cluster Name"   = aws_msk_cluster.main.cluster_name
     "Consumer Group" = "flink-stream-processor"
+    "Topic"          = "orders"
   }
 
   alarm_actions = [var.alert_sns_topic_arn]
@@ -367,7 +363,8 @@ resource "aws_cloudwatch_metric_alarm" "consumer_lag" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "disk_usage" {
-  alarm_name          = "${var.project_name}-kafka-disk-usage"
+  for_each            = toset(["1", "2", "3"])
+  alarm_name          = "${var.project_name}-kafka-disk-usage-broker-${each.value}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "KafkaDataLogsDiskUsed"
@@ -378,6 +375,7 @@ resource "aws_cloudwatch_metric_alarm" "disk_usage" {
 
   dimensions = {
     "Cluster Name" = aws_msk_cluster.main.cluster_name
+    "Broker ID"    = each.value
   }
 
   alarm_actions = [var.alert_sns_topic_arn]
