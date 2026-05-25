@@ -61,7 +61,7 @@ Terraform builds a dependency graph from these references. It knows to create th
 
 ## Multi-Layer Architecture
 
-Most production infrastructure follows a layered pattern. Here is a complete three-tier architecture wired together with module chaining:
+Most production infrastructure follows a layered pattern. Here is a complete layered architecture wired together with module chaining:
 
 ```hcl
 # Layer 1: Foundation
@@ -290,7 +290,7 @@ module "application" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnet_ids
 
-  # Use try() to handle the case where Redis is not created
+  # Use a conditional expression to handle the case where Redis is not created
   environment_variables = merge(
     {
       DATABASE_URL = module.database.connection_string
@@ -304,7 +304,7 @@ module "application" {
 
 ## Cross-State Module Chaining
 
-When modules are in separate Terraform configurations (separate state files), use `terraform_remote_state` to chain them:
+When modules are in separate Terraform configurations (separate state files), one common option is `terraform_remote_state`, which reads root module outputs from another state:
 
 ```hcl
 # In the application configuration, read the networking state
@@ -330,7 +330,7 @@ module "application" {
 
 To make modules chain well, follow these principles:
 
-1. **Output everything another module might need.** If your VPC module creates subnets, output the IDs, CIDR blocks, and availability zones.
+1. **Output the non-sensitive values another module might need.** If your VPC module creates subnets, output the IDs, CIDR blocks, and availability zones.
 
 2. **Use consistent naming.** If the VPC module outputs `vpc_id` and the ECS module accepts `vpc_id`, the chaining reads naturally.
 
@@ -340,9 +340,14 @@ To make modules chain well, follow these principles:
 
 ```hcl
 # Good: Names match naturally
-module "vpc" { ... }  # outputs: vpc_id, private_subnet_ids
+module "vpc" {
+  source = "./modules/vpc"
+  # outputs: vpc_id, private_subnet_ids
+}
 
 module "ecs" {
+  source = "./modules/ecs"
+
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnet_ids
 }
@@ -354,15 +359,26 @@ While chaining is powerful, deep chains (A -> B -> C -> D -> E) make your config
 
 ```hcl
 # Prefer this (shallow)
-module "vpc" { ... }
-module "db"  { vpc_id = module.vpc.vpc_id, ... }
-module "app" { vpc_id = module.vpc.vpc_id, db_endpoint = module.db.endpoint, ... }
+module "vpc" {
+  source = "./modules/vpc"
+}
+
+module "db" {
+  source = "./modules/db"
+  vpc_id = module.vpc.vpc_id
+}
+
+module "app" {
+  source      = "./modules/app"
+  vpc_id      = module.vpc.vpc_id
+  db_endpoint = module.db.endpoint
+}
 
 # Over this (deep nesting where app is inside a module that is inside another module)
 ```
 
 ## Summary
 
-Chaining module outputs to other module inputs is how you build composable infrastructure in Terraform. The basic pattern is straightforward - use `module.<NAME>.<OUTPUT>` as the value for another module's input variable. Terraform handles the dependency ordering automatically. For real-world architectures, combine fan-out patterns (one VPC feeding many services), fan-in patterns (many services feeding one load balancer), and transformation steps using locals. Keep chains shallow for maintainability, and design module interfaces with chaining in mind by outputting everything downstream modules might need.
+Chaining module outputs to other module inputs is how you build composable infrastructure in Terraform. The basic pattern is straightforward - use `module.<NAME>.<OUTPUT>` as the value for another module's input variable. Terraform handles the dependency ordering automatically. For real-world architectures, combine fan-out patterns (one VPC feeding many services), fan-in patterns (many services feeding one load balancer), and transformation steps using locals. Keep chains shallow for maintainability, and design module interfaces with chaining in mind by outputting the non-sensitive values downstream modules might need.
 
 For more on module outputs, see [How to Return Output Values from Terraform Modules](https://oneuptime.com/blog/post/2026-02-23-how-to-return-output-values-from-terraform-modules/view). For using outputs directly in resources, see [How to Use Module Output in Resource Definitions](https://oneuptime.com/blog/post/2026-02-23-how-to-use-module-output-in-resource-definitions/view).
