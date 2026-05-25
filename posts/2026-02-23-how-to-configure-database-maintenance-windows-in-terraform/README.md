@@ -14,7 +14,7 @@ Database maintenance windows define when AWS can perform system updates, patchin
 
 A maintenance window is a weekly time period during which AWS may perform system maintenance on your database instances. This includes operating system patching, database engine updates, and hardware maintenance. Not all maintenance windows result in actual maintenance; AWS only uses the window when updates are pending.
 
-During maintenance, your database may experience brief periods of unavailability. For Multi-AZ deployments, the maintenance is typically performed on the standby first, then a failover occurs, and finally the old primary is updated. This reduces downtime to the failover time, which is usually 60 to 120 seconds.
+During maintenance, your database may experience brief periods of unavailability. For Multi-AZ DB instances, operating system maintenance can require a short failover, which is usually 60 to 120 seconds. Database engine upgrades can require longer downtime because Amazon RDS modifies both the primary and standby instances during the upgrade.
 
 ## Setting Up the Provider
 
@@ -42,7 +42,7 @@ provider "aws" {
 resource "aws_db_instance" "production" {
   identifier     = "production-db"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15.16"
   instance_class = "db.r6g.large"
 
   allocated_storage     = 100
@@ -94,7 +94,7 @@ The maintenance window format is `ddd:hh24:mi-ddd:hh24:mi` where `ddd` is the da
 resource "aws_rds_cluster" "aurora" {
   cluster_identifier = "production-aurora"
   engine             = "aurora-postgresql"
-  engine_version     = "15.4"
+  engine_version     = "15.17"
   database_name      = "appdb"
   master_username    = "dbadmin"
   master_password    = var.db_password
@@ -221,8 +221,6 @@ resource "aws_docdb_cluster_instance" "instances" {
   # Stagger instance maintenance windows
   preferred_maintenance_window = count.index == 0 ? "sat:08:00-sat:08:30" : "sat:0${8 + count.index}:00-sat:0${8 + count.index}:30"
 
-  auto_minor_version_upgrade = true
-
   tags = {
     Environment = "production"
     Instance    = count.index + 1
@@ -291,14 +289,14 @@ locals {
 
 ## Controlling Auto Minor Version Upgrades
 
-The `auto_minor_version_upgrade` setting controls whether minor version upgrades are applied automatically during the maintenance window:
+For services that support it, such as Amazon RDS and ElastiCache, the `auto_minor_version_upgrade` setting controls whether minor version upgrades are applied automatically during the maintenance window:
 
 ```hcl
 # Production: Enable auto minor version upgrades
 resource "aws_db_instance" "prod_db" {
   identifier                 = "prod-db"
   engine                     = "postgres"
-  engine_version             = "15.4"
+  engine_version             = "15.16"
   instance_class             = "db.r6g.large"
   allocated_storage          = 100
   username                   = "dbadmin"
@@ -330,7 +328,7 @@ resource "aws_cloudwatch_event_rule" "rds_maintenance" {
 
   event_pattern = jsonencode({
     source      = ["aws.rds"]
-    detail_type = ["RDS DB Instance Event"]
+    "detail-type" = ["RDS DB Instance Event"]
     detail = {
       EventCategories = ["maintenance"]
     }
@@ -370,7 +368,7 @@ For comprehensive monitoring of maintenance windows and database uptime, [OneUpt
 
 ## Best Practices
 
-Always set explicit maintenance windows rather than relying on AWS defaults. Schedule maintenance during your lowest traffic period. Never overlap maintenance windows with backup windows on the same instance. Stagger maintenance windows across instances in a cluster to minimize impact. Use Multi-AZ deployments for production to reduce maintenance-related downtime. Enable auto minor version upgrades to keep your databases patched. Monitor maintenance events via CloudWatch Events and SNS. Test maintenance procedures in staging environments before production.
+Always set explicit maintenance windows rather than relying on AWS defaults. Schedule maintenance during your lowest traffic period. Never overlap maintenance windows with backup windows on the same instance. Stagger maintenance windows across instances in a cluster to minimize impact. Use Multi-AZ deployments for production to reduce maintenance-related downtime. Enable auto minor version upgrades where supported to keep your databases patched. Monitor maintenance events via CloudWatch Events and SNS. Test maintenance procedures in staging environments before production.
 
 ## Conclusion
 
