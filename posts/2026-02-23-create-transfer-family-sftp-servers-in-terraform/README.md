@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Transfer Family, SFTP, File Transfer, Infrastructure as Code
 
-Description: Learn how to create AWS Transfer Family SFTP servers with S3 and EFS backends, custom authentication, and user management using Terraform.
+Description: Learn how to create AWS Transfer Family SFTP servers with S3 and EFS backends, service-managed authentication, and user management using Terraform.
 
 ---
 
@@ -109,7 +109,7 @@ resource "aws_transfer_server" "sftp_vpc" {
     vpc_id                 = aws_vpc.main.id
     subnet_ids             = aws_subnet.private[*].id
     security_group_ids     = [aws_security_group.sftp.id]
-    address_allocation_ids = [aws_eip.sftp.id] # For internet-facing VPC endpoint
+    address_allocation_ids = aws_eip.sftp[*].id # For internet-facing VPC endpoints, provide one EIP per subnet
   }
 
   tags = {
@@ -146,10 +146,11 @@ resource "aws_security_group" "sftp" {
 
 # Elastic IP for stable public IP
 resource "aws_eip" "sftp" {
+  count  = length(aws_subnet.private)
   domain = "vpc"
 
   tags = {
-    Name = "sftp-server-eip"
+    Name = "sftp-server-eip-${count.index + 1}"
   }
 }
 ```
@@ -182,7 +183,7 @@ resource "aws_iam_role" "sftp_user_role" {
   })
 }
 
-# Policy granting S3 access scoped to the user's directory
+# Base policy granting S3 access. Each user below adds a session policy to scope this down.
 resource "aws_iam_role_policy" "sftp_user_policy" {
   name = "sftp-user-s3-access"
   role = aws_iam_role.sftp_user_role.id
@@ -216,6 +217,36 @@ resource "aws_transfer_user" "partner_a" {
   server_id = aws_transfer_server.sftp.id
   user_name = "partner-a"
   role      = aws_iam_role.sftp_user_role.arn
+  policy    = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowListUserPrefix"
+        Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = aws_s3_bucket.sftp_files.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "partner-a",
+              "partner-a/*"
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "AllowUserObjectOperations"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:GetObjectVersion",
+        ]
+        Resource = "${aws_s3_bucket.sftp_files.arn}/partner-a/*"
+      }
+    ]
+  })
 
   # Restrict user to their home directory
   home_directory_type = "LOGICAL"
@@ -247,20 +278,16 @@ When you have many users, use a map and for_each.
 variable "sftp_users" {
   type = map(object({
     ssh_public_key = string
-    home_directory = string
   }))
   default = {
     "partner-alpha" = {
       ssh_public_key = "ssh-rsa AAAAB3... partner-alpha@example.com"
-      home_directory = "partner-alpha"
     }
     "partner-beta" = {
       ssh_public_key = "ssh-rsa AAAAB3... partner-beta@example.com"
-      home_directory = "partner-beta"
     }
     "internal-etl" = {
       ssh_public_key = "ssh-rsa AAAAB3... etl@internal"
-      home_directory = "etl-uploads"
     }
   }
 }
@@ -272,12 +299,42 @@ resource "aws_transfer_user" "users" {
   server_id = aws_transfer_server.sftp.id
   user_name = each.key
   role      = aws_iam_role.sftp_user_role.arn
+  policy    = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowListUserPrefix"
+        Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = aws_s3_bucket.sftp_files.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              each.key,
+              "${each.key}/*"
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "AllowUserObjectOperations"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:GetObjectVersion",
+        ]
+        Resource = "${aws_s3_bucket.sftp_files.arn}/${each.key}/*"
+      }
+    ]
+  })
 
   home_directory_type = "LOGICAL"
 
   home_directory_mappings {
     entry  = "/"
-    target = "/${aws_s3_bucket.sftp_files.id}/${each.value.home_directory}"
+    target = "/${aws_s3_bucket.sftp_files.id}/${each.key}"
   }
 
   tags = {
@@ -297,7 +354,7 @@ resource "aws_transfer_ssh_key" "user_keys" {
 
 ## EFS-Backed SFTP Server
 
-For use cases that need POSIX file permissions or shared access, use EFS as the backend.
+For use cases that need POSIX file permissions or shared access, use EFS as the backend. Create the user's EFS home directory with the matching UID and GID before the user connects.
 
 ```hcl
 # SFTP server with EFS backend
@@ -326,23 +383,35 @@ resource "aws_efs_file_system" "sftp_storage" {
   }
 }
 
-# EFS access point for the SFTP user
-resource "aws_efs_access_point" "sftp_user" {
-  file_system_id = aws_efs_file_system.sftp_storage.id
+# Security group for EFS mount targets
+resource "aws_security_group" "efs" {
+  name        = "sftp-efs-sg"
+  description = "Security group for Transfer Family EFS storage"
+  vpc_id      = aws_vpc.main.id
 
-  posix_user {
-    gid = 1000
-    uid = 1000
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sftp.id]
+    description     = "Allow NFS from Transfer Family endpoint"
   }
 
-  root_directory {
-    path = "/sftp/partner-a"
-    creation_info {
-      owner_gid   = 1000
-      owner_uid   = 1000
-      permissions = "0755"
-    }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# EFS mount targets in the same subnets as the Transfer Family endpoint
+resource "aws_efs_mount_target" "sftp_storage" {
+  for_each = toset(aws_subnet.private[*].id)
+
+  file_system_id  = aws_efs_file_system.sftp_storage.id
+  subnet_id       = each.value
+  security_groups = [aws_security_group.efs.id]
 }
 
 # IAM role for EFS-backed user
@@ -389,6 +458,11 @@ resource "aws_transfer_user" "efs_user" {
   user_name = "partner-a"
   role      = aws_iam_role.sftp_efs_user_role.arn
 
+  posix_profile {
+    uid = 1000
+    gid = 1000
+  }
+
   home_directory_type = "LOGICAL"
 
   home_directory_mappings {
@@ -412,11 +486,17 @@ resource "aws_route53_record" "sftp" {
   records = [aws_transfer_server.sftp.endpoint]
 }
 
-# Host key for the server (so clients see a consistent host key)
+# Custom hostname tags for non-console-created servers
 resource "aws_transfer_tag" "hostname" {
   resource_arn = aws_transfer_server.sftp.arn
-  key          = "aws:transfer:customHostname"
+  key          = "transfer:customHostname"
   value        = "sftp.company.com"
+}
+
+resource "aws_transfer_tag" "hosted_zone" {
+  resource_arn = aws_transfer_server.sftp.arn
+  key          = "transfer:route53HostedZoneId"
+  value        = data.aws_route53_zone.main.zone_id
 }
 ```
 
@@ -486,11 +566,11 @@ resource "aws_transfer_server" "sftp_with_workflow" {
 
 1. **Use VPC endpoints for sensitive transfers.** Public endpoints are convenient but VPC endpoints let you control access through security groups and network ACLs.
 
-2. **Scope IAM policies tightly.** Each user's role should only grant access to their specific S3 prefix or EFS path.
+2. **Scope effective permissions tightly.** Each user's role and session policy should only grant access to their specific S3 prefix or EFS path.
 
 3. **Use logical home directories.** Logical directory mappings give you clean paths and prevent users from navigating outside their designated area.
 
-4. **Enable logging.** Always attach a logging role so Transfer Family sends structured logs to CloudWatch. You will need these for troubleshooting and auditing.
+4. **Enable logging.** Use structured logging for server activity, and attach a logging role when you use workflows. You will need these logs for troubleshooting and auditing.
 
 5. **Use strong security policies.** The older security policies allow weak ciphers. Use `TransferSecurityPolicy-2024-01` or newer.
 
