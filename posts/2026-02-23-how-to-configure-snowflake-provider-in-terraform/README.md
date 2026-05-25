@@ -16,7 +16,7 @@ With the Snowflake provider, you can manage warehouses, databases, schemas, user
 
 - Terraform 1.0 or later
 - A Snowflake account
-- A Snowflake user with ACCOUNTADMIN or SYSADMIN role (for initial setup)
+- A Snowflake user with the privileges needed for the resources you manage (for example, ACCOUNTADMIN for the broad examples in this guide)
 - RSA key pair for authentication (recommended)
 
 ## Authentication Setup
@@ -53,8 +53,8 @@ terraform {
 
   required_providers {
     snowflake = {
-      source  = "Snowflake-Labs/snowflake"
-      version = "~> 0.87"
+      source  = "snowflakedb/snowflake"
+      version = "~> 2.16"
     }
   }
 }
@@ -70,9 +70,16 @@ provider "snowflake" {
   organization_name = var.snowflake_organization
   account_name      = var.snowflake_account
   user              = var.snowflake_user
-  private_key       = file(var.snowflake_private_key_path)
-  role              = "SYSADMIN"
+  authenticator     = "SNOWFLAKE_JWT"
+  private_key       = file(pathexpand(var.snowflake_private_key_path))
+  role              = "ACCOUNTADMIN"
   warehouse         = "COMPUTE_WH"
+
+  # Required for the stage and pipe examples below because those resources are preview features in the provider.
+  preview_features_enabled = [
+    "snowflake_stage_external_s3_resource",
+    "snowflake_pipe_resource",
+  ]
 }
 
 variable "snowflake_organization" {
@@ -103,7 +110,7 @@ provider "snowflake" {
   account_name      = var.snowflake_account
   user              = var.snowflake_user
   password          = var.snowflake_password
-  role              = "SYSADMIN"
+  role              = "ACCOUNTADMIN"
 }
 ```
 
@@ -114,8 +121,9 @@ provider "snowflake" {
 export SNOWFLAKE_ORGANIZATION_NAME="my_org"
 export SNOWFLAKE_ACCOUNT_NAME="my_account"
 export SNOWFLAKE_USER="terraform_user"
-export SNOWFLAKE_PRIVATE_KEY_PATH="~/.snowflake/snowflake_key.p8"
-export SNOWFLAKE_ROLE="SYSADMIN"
+export SNOWFLAKE_AUTHENTICATOR="SNOWFLAKE_JWT"
+export SNOWFLAKE_PRIVATE_KEY="$(cat ~/.snowflake/snowflake_key.p8)"
+export SNOWFLAKE_ROLE="ACCOUNTADMIN"
 export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 ```
 
@@ -150,7 +158,7 @@ resource "snowflake_warehouse" "bi" {
   auto_resume  = true
 
   # Resource monitor to control costs
-  resource_monitor = snowflake_resource_monitor.bi.name
+  resource_monitor = snowflake_resource_monitor.bi.fully_qualified_name
 }
 
 # Create a resource monitor for cost control
@@ -159,7 +167,7 @@ resource "snowflake_resource_monitor" "bi" {
   credit_quota    = 100  # Credits per month
 
   frequency       = "MONTHLY"
-  start_timestamp = "2026-03-01 00:00"
+  start_timestamp = "IMMEDIATELY"
 
   notify_triggers = [75, 90]
   suspend_trigger = 100
@@ -184,7 +192,7 @@ resource "snowflake_schema" "raw" {
   name     = "RAW"
   comment  = "Raw data ingested from source systems"
 
-  is_managed = true
+  with_managed_access = "true"
   data_retention_time_in_days = 14
 }
 
@@ -318,7 +326,7 @@ resource "snowflake_user" "analyst_john" {
   default_warehouse = snowflake_warehouse.bi.name
   default_role      = snowflake_account_role.data_analyst.name
 
-  must_change_password = true
+  must_change_password = "true"
 }
 
 # Assign the role to the user
@@ -332,16 +340,22 @@ resource "snowflake_grant_account_role" "john_analyst" {
 
 ```hcl
 # Create an external stage pointing to S3
-resource "snowflake_stage" "s3_raw" {
+resource "snowflake_stage_external_s3" "s3_raw" {
   database = snowflake_database.analytics.name
   schema   = snowflake_schema.raw.name
   name     = "S3_RAW_STAGE"
+  url      = "s3://my-data-bucket/raw/"
 
-  url         = "s3://my-data-bucket/raw/"
-  credentials = "AWS_KEY_ID='${var.aws_key}' AWS_SECRET_KEY='${var.aws_secret}'"
+  credentials {
+    aws_key_id     = var.aws_key
+    aws_secret_key = var.aws_secret
+  }
 
-  file_format = "TYPE = JSON"
-  comment     = "Stage for raw JSON data from S3"
+  file_format {
+    json {}
+  }
+
+  comment = "Stage for raw JSON data from S3"
 }
 
 # Create a pipe for continuous data loading
@@ -355,7 +369,7 @@ resource "snowflake_pipe" "raw_events" {
 
   copy_statement = <<-SQL
     COPY INTO ${snowflake_database.analytics.name}.${snowflake_schema.raw.name}.EVENTS
-    FROM @${snowflake_stage.s3_raw.fully_qualified_name}
+    FROM @${snowflake_stage_external_s3.s3_raw.fully_qualified_name}
     FILE_FORMAT = (TYPE = JSON)
   SQL
 }
