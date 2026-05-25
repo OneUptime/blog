@@ -53,10 +53,16 @@ jobs:
 
       - name: Post plan to PR
         uses: actions/github-script@v7
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
-            const plan = `${{ steps.plan.outputs.stdout }}`;
-            const body = `### Terraform Plan\n```\n${plan}\n````;
+            const plan = process.env.PLAN_OUTPUT || 'No output captured';
+            const body = `### Terraform Plan
+
+            ~~~
+            ${plan}
+            ~~~`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -119,15 +125,12 @@ jobs:
           script: |
             // Determine plan status
             const exitCode = process.env.PLAN_EXIT_CODE;
-            let statusEmoji, statusText;
+            let statusText;
             if (exitCode === '0') {
-              statusEmoji = '';
               statusText = 'No changes';
             } else if (exitCode === '2') {
-              statusEmoji = '';
               statusText = 'Changes detected';
             } else {
-              statusEmoji = '';
               statusText = 'Plan failed';
             }
 
@@ -151,9 +154,9 @@ jobs:
             <details>
             <summary>Show Plan Output</summary>
 
-            ```hcl
+            ~~~hcl
             ${planOutput}
-            ```
+            ~~~
 
             </details>
 
@@ -271,9 +274,9 @@ jobs:
             <details>
             <summary>Show Plan</summary>
 
-            ```hcl
+            ~~~hcl
             ${plan}
-            ```
+            ~~~
 
             </details>
 
@@ -321,7 +324,11 @@ Terraform plans can contain sensitive values like passwords, API keys, or databa
     sed -i 's/secret.*=.*/secret = [REDACTED]/gi' plan_output.txt
     sed -i 's/api_key.*=.*/api_key = [REDACTED]/gi' plan_output.txt
 
-    echo "plan_output=$(cat plan_output.txt)" >> $GITHUB_OUTPUT
+    {
+      echo 'plan_output<<EOF'
+      cat plan_output.txt
+      echo EOF
+    } >> "$GITHUB_OUTPUT"
   working-directory: terraform
   continue-on-error: true
 ````
@@ -378,9 +385,9 @@ For large plans, it helps to include a summary at the top showing the resource c
       <details>
       <summary>Full Plan Output</summary>
 
-      ```hcl
+      ~~~hcl
       ${plan.substring(0, 60000)}
-      ```
+      ~~~
 
       </details>`;
 
@@ -399,11 +406,14 @@ You might want the workflow to fail (or at least warn) when the plan includes re
 ```yaml
 - name: Check for destructive changes
   if: steps.plan.outputs.exitcode == '2'
+  env:
+    PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
   run: |
-    # Check if the plan includes any resource destruction
-    if echo "${{ steps.plan.outputs.stdout }}" | grep -q "will be destroyed"; then
+    # Check if the plan includes resource destruction or replacement
+    if echo "$PLAN_OUTPUT" | grep -Eq "will be destroyed|must be replaced"; then
       echo "WARNING: This plan includes resource destruction!"
       echo "destructive=true" >> $GITHUB_OUTPUT
+      exit 1
     fi
 ````
 
