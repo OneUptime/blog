@@ -8,7 +8,7 @@ Description: Learn how to deploy Azure Functions with Premium Plan using Terrafo
 
 ---
 
-Azure Functions Premium Plan offers the best of both worlds: the serverless event-driven programming model of Azure Functions combined with enterprise features like VNet integration, unlimited execution duration, pre-warmed instances, and premium hardware. Unlike the Consumption plan, Premium Plan eliminates cold starts by keeping instances warm and ready. Terraform makes it easy to provision and manage Azure Functions with Premium Plan configurations.
+Azure Functions Premium Plan offers the best of both worlds: the serverless event-driven programming model of Azure Functions combined with enterprise features like VNet integration, longer execution duration, always-ready and pre-warmed instances, and premium hardware. Unlike the Consumption plan, Premium Plan can effectively eliminate cold starts for configured always-ready capacity by keeping instances warm and ready. Terraform makes it easy to provision and manage Azure Functions with Premium Plan configurations.
 
 This guide covers setting up Azure Functions with Premium Plan in Terraform, including VNet integration, scaling configuration, and deployment slots.
 
@@ -16,9 +16,9 @@ This guide covers setting up Azure Functions with Premium Plan in Terraform, inc
 
 The Azure Functions Premium Plan provides several advantages over the Consumption plan:
 
-- **Pre-warmed instances**: Always-ready instances eliminate cold starts
+- **Always-ready and pre-warmed instances**: Keep app instances ready and provide a warm buffer during scale-out
 - **VNet integration**: Connect to resources in your virtual network
-- **Unlimited execution duration**: No 5 or 10 minute timeout limits
+- **Longer execution duration**: Default 30 minute timeout with support for an unbounded timeout when configured in `host.json`
 - **Premium hardware**: More powerful compute instances with faster CPUs
 - **More memory**: Up to 14 GB per instance
 
@@ -33,13 +33,23 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
+}
+
+variable "subscription_id" {
+  description = "Azure subscription ID to deploy into"
+  type        = string
 }
 
 # Resource group
@@ -100,6 +110,9 @@ resource "azurerm_service_plan" "premium" {
   # EP2 - 2 cores, 7 GB RAM
   # EP3 - 4 cores, 14 GB RAM
   sku_name = "EP1"
+
+  # Enable automatic scaling for the Premium plan
+  premium_plan_auto_scale_enabled = true
 
   # Maximum elastic worker count
   maximum_elastic_worker_count = 20
@@ -180,12 +193,18 @@ resource "azurerm_linux_function_app" "main" {
 
   # Site configuration
   site_config {
-    # Pre-warmed instances (minimum always-ready instances)
+    # Always-ready instances (minimum app instances)
     elastic_instance_minimum = 2
+
+    # Pre-warmed scale-out buffer
+    pre_warmed_instance_count = 1
+
+    # Maximum app scale-out limit
+    app_scale_limit = 20
 
     # Runtime configuration
     application_stack {
-      node_version = "18"
+      node_version = "20"
     }
 
     # Always On is automatically enabled for Premium Plan
@@ -221,7 +240,6 @@ resource "azurerm_linux_function_app" "main" {
   app_settings = {
     # Runtime settings
     FUNCTIONS_WORKER_RUNTIME       = "node"
-    WEBSITE_NODE_DEFAULT_VERSION   = "~18"
 
     # VNet routing
     WEBSITE_VNET_ROUTE_ALL = "1"
@@ -270,9 +288,11 @@ resource "azurerm_linux_function_app_slot" "staging" {
 
   site_config {
     elastic_instance_minimum = 1
+    pre_warmed_instance_count = 1
+    app_scale_limit           = 20
 
     application_stack {
-      node_version = "18"
+      node_version = "20"
     }
 
     always_on             = true
@@ -284,7 +304,6 @@ resource "azurerm_linux_function_app_slot" "staging" {
 
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME     = "node"
-    WEBSITE_NODE_DEFAULT_VERSION = "~18"
     WEBSITE_VNET_ROUTE_ALL       = "1"
     WEBSITE_DNS_SERVER           = "168.63.129.16"
 
@@ -301,10 +320,10 @@ resource "azurerm_linux_function_app_slot" "staging" {
 
 ## Configuring Private Endpoints
 
-For maximum security, add private endpoints to the storage account:
+For private network access to function package blobs, add a private endpoint to the storage account's Blob service:
 
 ```hcl
-# Private endpoint for storage account
+# Private endpoint for the storage account Blob service
 resource "azurerm_private_endpoint" "storage" {
   name                = "pe-storage-functions"
   resource_group_name = azurerm_resource_group.main.name
@@ -339,71 +358,11 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
 }
 ```
 
-## Setting Up Auto-Scaling Rules
+## Setting Up Scaling Limits
 
-Configure custom auto-scaling rules:
+Premium Plan functions use event-driven scaling. Configure the plan maximum burst limit and the app scale-out limit instead of CPU-based autoscale rules:
 
-```hcl
-# Auto-scale settings for the Premium Plan
-resource "azurerm_monitor_autoscale_setting" "functions" {
-  name                = "autoscale-functions-premium"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  target_resource_id  = azurerm_service_plan.premium.id
-
-  profile {
-    name = "default"
-
-    capacity {
-      default = 2
-      minimum = 2
-      maximum = 20
-    }
-
-    # Scale out on high CPU
-    rule {
-      metric_trigger {
-        metric_name        = "CpuPercentage"
-        metric_resource_id = azurerm_service_plan.premium.id
-        time_grain         = "PT1M"
-        statistic          = "Average"
-        time_window        = "PT5M"
-        time_aggregation   = "Average"
-        operator           = "GreaterThan"
-        threshold          = 70
-      }
-
-      scale_action {
-        direction = "Increase"
-        type      = "ChangeCount"
-        value     = "2"
-        cooldown  = "PT5M"
-      }
-    }
-
-    # Scale in when CPU drops
-    rule {
-      metric_trigger {
-        metric_name        = "CpuPercentage"
-        metric_resource_id = azurerm_service_plan.premium.id
-        time_grain         = "PT1M"
-        statistic          = "Average"
-        time_window        = "PT10M"
-        time_aggregation   = "Average"
-        operator           = "LessThan"
-        threshold          = 25
-      }
-
-      scale_action {
-        direction = "Decrease"
-        type      = "ChangeCount"
-        value     = "1"
-        cooldown  = "PT10M"
-      }
-    }
-  }
-}
-```
+The `premium_plan_auto_scale_enabled` and `maximum_elastic_worker_count` settings in the Premium Plan example above enable automatic scaling and set the plan's maximum burst limit. The `app_scale_limit` setting in the Function App's `site_config` block sets the app-level scale-out limit.
 
 ## Outputs
 
@@ -430,6 +389,6 @@ Premium Plan functions are often used for business-critical workloads. OneUptime
 
 ## Conclusion
 
-Azure Functions with Premium Plan in Terraform gives you enterprise-grade serverless capabilities with full infrastructure-as-code management. Pre-warmed instances eliminate cold starts, VNet integration provides secure access to private resources, and deployment slots enable zero-downtime releases. By defining your Premium Plan configuration in Terraform, you ensure consistent deployments across environments and maintain a clear record of your infrastructure decisions. The combination of auto-scaling, health checks, and private networking makes Premium Plan ideal for production workloads that demand both performance and security.
+Azure Functions with Premium Plan in Terraform gives you enterprise-grade serverless capabilities with full infrastructure-as-code management. Always-ready and pre-warmed instances reduce cold starts, VNet integration provides secure access to private resources, and deployment slots enable zero-downtime releases. By defining your Premium Plan configuration in Terraform, you ensure consistent deployments across environments and maintain a clear record of your infrastructure decisions. The combination of event-driven scaling, health checks, and private networking makes Premium Plan ideal for production workloads that demand both performance and security.
 
 For more serverless options, see [How to Create Azure Container Apps Environment in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-azure-container-apps-environment-in-terraform/view) and [How to Handle Serverless Cold Start Issues with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-serverless-cold-start-issues-with-terraform/view).
