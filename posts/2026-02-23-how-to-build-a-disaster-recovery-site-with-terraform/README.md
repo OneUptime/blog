@@ -54,6 +54,19 @@ provider "aws" {
   }
 }
 
+provider "aws" {
+  region = "us-east-1"
+  alias  = "route53"
+
+  default_tags {
+    tags = {
+      Environment = var.environment
+      ManagedBy   = "terraform"
+      DR          = "global"
+    }
+  }
+}
+
 variable "primary_region" {
   type    = string
   default = "us-east-1"
@@ -311,14 +324,16 @@ resource "aws_lb" "dr" {
 }
 ```
 
-## DNS Failover with Route53
+## DNS Failover with Route 53
 
-Route53 health checks and failover routing automatically switch traffic to the DR site.
+Route 53 health checks and failover routing automatically switch traffic to the DR site.
 
 ```hcl
 # dr-dns.tf - Automated DNS failover
 # Health check for primary site
 resource "aws_route53_health_check" "primary" {
+  provider = aws.route53
+
   fqdn              = "primary.${var.domain}"
   port              = 443
   type              = "HTTPS"
@@ -333,6 +348,8 @@ resource "aws_route53_health_check" "primary" {
 
 # Primary DNS record with failover routing
 resource "aws_route53_record" "primary" {
+  provider = aws.route53
+
   zone_id = var.route53_zone_id
   name    = var.domain
   type    = "A"
@@ -353,6 +370,8 @@ resource "aws_route53_record" "primary" {
 
 # DR DNS record (secondary)
 resource "aws_route53_record" "dr" {
+  provider = aws.route53
+
   zone_id = var.route53_zone_id
   name    = var.domain
   type    = "A"
@@ -373,12 +392,12 @@ resource "aws_route53_record" "dr" {
 
 ## Failover Automation
 
-A Lambda function handles the scale-up of DR resources when failover is triggered.
+A Lambda function handles the scale-up of DR resources and promotes the Aurora secondary cluster when failover is triggered.
 
 ```hcl
 # dr-automation.tf - Failover automation
 resource "aws_lambda_function" "failover" {
-  provider      = aws.dr
+  provider      = aws.route53
   filename      = "failover_handler.zip"
   function_name = "${var.project_name}-failover-handler"
   role          = aws_iam_role.failover.arn
@@ -391,30 +410,67 @@ resource "aws_lambda_function" "failover" {
       ECS_CLUSTER    = aws_ecs_cluster.dr.name
       ECS_SERVICE    = aws_ecs_service.dr_api.name
       TARGET_COUNT   = var.production_desired_count
+      DR_REGION      = var.dr_region
+      GLOBAL_CLUSTER = aws_rds_global_cluster.main.id
       RDS_CLUSTER_ID = aws_rds_cluster.dr.id
       SNS_TOPIC      = aws_sns_topic.dr_notifications.arn
     }
   }
 }
 
-# Trigger failover Lambda when health check fails
+# Route 53 health check metrics are published to CloudWatch in us-east-1
+resource "aws_cloudwatch_metric_alarm" "primary_health_failed" {
+  provider = aws.route53
+
+  alarm_name          = "${var.project_name}-primary-health-failed"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "HealthCheckStatus"
+  namespace           = "AWS/Route53"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    HealthCheckId = aws_route53_health_check.primary.id
+  }
+}
+
+# Trigger failover Lambda when the health check alarm enters ALARM
 resource "aws_cloudwatch_event_rule" "failover_trigger" {
+  provider = aws.route53
+
   name = "dr-failover-trigger"
 
   event_pattern = jsonencode({
-    source      = ["aws.route53"]
-    detail-type = ["Route 53 Health Check Status Changed"]
+    source        = ["aws.cloudwatch"]
+    "detail-type" = ["CloudWatch Alarm State Change"]
     detail = {
-      "health-check-id" = [aws_route53_health_check.primary.id]
-      "status"          = ["FAILURE"]
+      alarmName = [aws_cloudwatch_metric_alarm.primary_health_failed.alarm_name]
+      state = {
+        value = ["ALARM"]
+      }
     }
   })
 }
 
 resource "aws_cloudwatch_event_target" "failover" {
+  provider = aws.route53
+
   rule      = aws_cloudwatch_event_rule.failover_trigger.name
   target_id = "failover-lambda"
   arn       = aws_lambda_function.failover.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_failover" {
+  provider = aws.route53
+
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.failover.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.failover_trigger.arn
 }
 
 # Notification topic for DR events
