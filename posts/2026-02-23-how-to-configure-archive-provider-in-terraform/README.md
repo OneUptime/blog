@@ -58,7 +58,7 @@ resource "aws_lambda_function" "handler" {
   function_name    = "my-handler"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
 
   filename         = data.archive_file.lambda_function.output_path
   source_code_hash = data.archive_file.lambda_function.output_base64sha256
@@ -82,6 +82,7 @@ resource "google_cloudfunctions_function" "function" {
   name        = "my-function"
   runtime     = "python311"
   entry_point = "handler"
+  trigger_http = true
 
   source_archive_bucket = google_storage_bucket.functions.name
   source_archive_object = google_storage_bucket_object.function_zip.name
@@ -283,7 +284,7 @@ resource "aws_lambda_function" "step_functions" {
   function_name    = each.key
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs22.x"
   filename         = data.archive_file.lambdas[each.key].output_path
   source_code_hash = data.archive_file.lambdas[each.key].output_base64sha256
 }
