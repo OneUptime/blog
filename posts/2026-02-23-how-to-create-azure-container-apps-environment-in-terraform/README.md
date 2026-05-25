@@ -23,7 +23,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -43,6 +43,35 @@ variable "environment" {
   description = "Environment name"
   type        = string
   default     = "production"
+}
+
+variable "db_connection_string" {
+  description = "Database connection string for the API"
+  type        = string
+  sensitive   = true
+}
+
+variable "queue_connection_string" {
+  description = "Azure Storage queue connection string"
+  type        = string
+  sensitive   = true
+}
+
+variable "acr_username" {
+  description = "Azure Container Registry username"
+  type        = string
+  sensitive   = true
+}
+
+variable "acr_password" {
+  description = "Azure Container Registry password"
+  type        = string
+  sensitive   = true
+}
+
+variable "storage_account_name" {
+  description = "Globally unique storage account name for Dapr state"
+  type        = string
 }
 ```
 
@@ -65,12 +94,12 @@ resource "azurerm_virtual_network" "main" {
   address_space       = ["10.0.0.0/16"]
 }
 
-# Subnet for Container Apps (requires at least /23 CIDR range)
+# Subnet for Container Apps (requires at least /21 CIDR range with the AzureRM provider)
 resource "azurerm_subnet" "container_apps" {
   name                 = "subnet-container-apps"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.0.0/23"]
+  address_prefixes     = ["10.0.0.0/21"]
 
   # Delegate the subnet to Container Apps
   delegation {
@@ -86,7 +115,7 @@ resource "azurerm_subnet" "container_apps" {
 
 ## Setting Up Log Analytics
 
-Container Apps environments require a Log Analytics workspace for logging:
+Use a Log Analytics workspace to collect Container Apps logs:
 
 ```hcl
 # Log Analytics workspace for Container Apps
@@ -112,12 +141,13 @@ resource "azurerm_container_app_environment" "main" {
   name                       = "cae-${var.environment}"
   resource_group_name        = azurerm_resource_group.main.name
   location                   = azurerm_resource_group.main.location
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
-  # VPC integration
+  # VNet integration
   infrastructure_subnet_id = azurerm_subnet.container_apps.id
 
-  # Internal load balancer for private access only
+  # Set to true for an internal-only environment
   internal_load_balancer_enabled = false
 
   # Workload profiles for different resource requirements
@@ -152,6 +182,7 @@ resource "azurerm_container_app" "api" {
   container_app_environment_id = azurerm_container_app_environment.main.id
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Multiple"  # Enable multiple revision support
+  workload_profile_name        = "general-purpose"
 
   template {
     # Main container
@@ -216,14 +247,15 @@ resource "azurerm_container_app" "api" {
       concurrent_requests = 50
     }
 
-    # Custom scaling rule based on Azure Queue
-    custom_scale_rule {
-      name             = "queue-scaling"
-      custom_rule_type = "azure-queue"
-      metadata = {
-        queueName    = "orders"
-        queueLength  = "10"
-        connectionFromEnv = "QUEUE_CONNECTION"
+    # Azure Queue scaling rule
+    azure_queue_scale_rule {
+      name         = "queue-scaling"
+      queue_name   = "orders"
+      queue_length = 10
+
+      authentication {
+        secret_name       = "queue-connection"
+        trigger_parameter = "connection"
       }
     }
   }
@@ -277,6 +309,7 @@ resource "azurerm_container_app" "worker" {
   container_app_environment_id = azurerm_container_app_environment.main.id
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Single"
+  workload_profile_name        = "memory-optimized"
 
   template {
     container {
@@ -300,12 +333,14 @@ resource "azurerm_container_app" "worker" {
     min_replicas = 0  # Scale to zero when no messages
     max_replicas = 10
 
-    custom_scale_rule {
-      name             = "queue-scaling"
-      custom_rule_type = "azure-queue"
-      metadata = {
-        queueName   = "background-jobs"
-        queueLength = "5"
+    azure_queue_scale_rule {
+      name         = "queue-scaling"
+      queue_name   = "background-jobs"
+      queue_length = 5
+
+      authentication {
+        secret_name       = "queue-connection"
+        trigger_parameter = "connection"
       }
     }
   }
@@ -342,6 +377,7 @@ resource "azurerm_container_app" "dapr_service" {
   container_app_environment_id = azurerm_container_app_environment.main.id
   resource_group_name          = azurerm_resource_group.main.name
   revision_mode                = "Single"
+  workload_profile_name        = "general-purpose"
 
   template {
     container {
@@ -385,16 +421,30 @@ resource "azurerm_container_app" "dapr_service" {
   }
 }
 
+# Storage account for the Dapr state store
+resource "azurerm_storage_account" "main" {
+  name                     = var.storage_account_name
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = azurerm_resource_group.main.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
 # Dapr component for state store
 resource "azurerm_container_app_environment_dapr_component" "statestore" {
   name                         = "statestore"
   container_app_environment_id = azurerm_container_app_environment.main.id
   component_type               = "state.azure.blobstorage"
-  version                      = "v1"
+  version                      = "v2"
 
   metadata {
     name  = "accountName"
     value = azurerm_storage_account.main.name
+  }
+
+  metadata {
+    name  = "containerName"
+    value = "dapr-state"
   }
 
   metadata {
