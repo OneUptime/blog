@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Chaos Engineering, AWS FIS, Resilience, Testing, Infrastructure as Code
 
-Description: Learn how to build chaos engineering infrastructure using Terraform with AWS Fault Injection Simulator for testing system resilience and failure recovery.
+Description: Learn how to build chaos engineering infrastructure using Terraform with AWS Fault Injection Service for testing system resilience and failure recovery.
 
 ---
 
 Chaos engineering is the practice of deliberately injecting failures into your systems to discover weaknesses before they cause real incidents. The idea is simple: if you want to be confident your system can handle failures, you should practice failing regularly in a controlled way.
 
-In this guide, we will build the infrastructure for chaos engineering on AWS using Terraform. We will use AWS Fault Injection Simulator (FIS) to create repeatable experiments that test our system's resilience to various failure scenarios.
+In this guide, we will build the infrastructure for chaos engineering on AWS using Terraform. We will use AWS Fault Injection Service (FIS) to create repeatable experiments that test our system's resilience to various failure scenarios.
 
 ## Chaos Engineering Infrastructure
 
@@ -20,7 +20,7 @@ Our setup includes:
 - **IAM roles**: Controlled permissions for fault injection
 - **CloudWatch**: Monitoring and stop conditions for safety
 - **S3**: Experiment results and logs
-- **SNS**: Notifications when experiments run
+- **SNS**: Subscription target for chaos experiment notifications
 
 ## Safety First: Stop Conditions
 
@@ -29,12 +29,12 @@ Before creating any experiments, set up stop conditions. These automatically hal
 ```hcl
 # safety.tf - Stop conditions and guardrails
 
-# CloudWatch alarm that stops experiments if error rate spikes
+# CloudWatch alarm that stops experiments if 5XX responses spike
 resource "aws_cloudwatch_metric_alarm" "chaos_stop_condition" {
   alarm_name          = "chaos-engineering-stop-condition"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "5XXError"
+  metric_name         = "HTTPCode_Target_5XX_Count"
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Sum"
@@ -59,7 +59,7 @@ resource "aws_cloudwatch_metric_alarm" "latency_stop_condition" {
   metric_name         = "TargetResponseTime"
   namespace           = "AWS/ApplicationELB"
   period              = 60
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = var.latency_stop_threshold_seconds
   alarm_description   = "Stop chaos experiment - latency too high"
 
@@ -130,16 +130,22 @@ resource "aws_iam_role_policy" "fis" {
         Effect = "Allow"
         Action = [
           "ec2:StopInstances",
-          "ec2:StartInstances",
-          "ec2:TerminateInstances",
-          "ec2:DescribeInstances"
+          "ec2:StartInstances"
         ]
-        Resource = "*"
+        Resource = "arn:aws:ec2:*:*:instance/*"
         Condition = {
           StringEquals = {
             "ec2:ResourceTag/ChaosEnabled" = "true"
           }
         }
+      },
+      {
+        # EC2 discovery for target resolution
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances"
+        ]
+        Resource = "*"
       },
       {
         # ECS actions for container experiments
@@ -156,23 +162,46 @@ resource "aws_iam_role_policy" "fis" {
         # RDS actions for database experiments
         Effect = "Allow"
         Action = [
-          "rds:FailoverDBCluster",
-          "rds:RebootDBInstance",
-          "rds:DescribeDBInstances",
-          "rds:DescribeDBClusters"
+          "rds:FailoverDBCluster"
         ]
         Resource = "*"
         Condition = {
           StringEquals = {
-            "rds:db-tag/ChaosEnabled" = "true"
+            "rds:cluster-tag/ChaosEnabled" = "true"
           }
         }
       },
       {
-        # CloudWatch for monitoring
+        # RDS discovery for target resolution
         Effect = "Allow"
         Action = [
-          "cloudwatch:DescribeAlarms"
+          "rds:DescribeDBClusters"
+        ]
+        Resource = "*"
+      },
+      {
+        # Network disruption actions
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkAcl",
+          "ec2:CreateNetworkAclEntry",
+          "ec2:CreateTags",
+          "ec2:DeleteNetworkAcl",
+          "ec2:DescribeManagedPrefixLists",
+          "ec2:DescribeNetworkAcls",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs",
+          "ec2:GetManagedPrefixListEntries",
+          "ec2:ReplaceNetworkAclAssociation"
+        ]
+        Resource = "*"
+      },
+      {
+        # CloudWatch and tags for monitoring and target resolution
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:DescribeAlarms",
+          "tag:GetResources"
         ]
         Resource = "*"
       },
@@ -180,7 +209,23 @@ resource "aws_iam_role_policy" "fis" {
         # Logging
         Effect = "Allow"
         Action = [
-          "logs:CreateLogDelivery",
+          "logs:CreateLogDelivery"
+        ]
+        Resource = "*"
+      },
+      {
+        # S3 log delivery setup
+        Effect = "Allow"
+        Action = [
+          "s3:GetBucketPolicy",
+          "s3:PutBucketPolicy"
+        ]
+        Resource = aws_s3_bucket.chaos_logs.arn
+      },
+      {
+        # S3 experiment log objects
+        Effect = "Allow"
+        Action = [
           "s3:PutObject"
         ]
         Resource = [
@@ -213,11 +258,6 @@ resource "aws_fis_experiment_template" "ecs_task_kill" {
     name      = "stop-tasks"
     action_id = "aws:ecs:stop-task"
 
-    parameter {
-      key   = "duration"
-      value = "PT5M"
-    }
-
     target {
       key   = "Tasks"
       value = "ecs-tasks"
@@ -232,6 +272,11 @@ resource "aws_fis_experiment_template" "ecs_task_kill" {
     resource_tag {
       key   = "ChaosEnabled"
       value = "true"
+    }
+
+    parameters = {
+      cluster = var.ecs_cluster_name
+      service = var.ecs_service_name
     }
   }
 
@@ -444,9 +489,58 @@ Run chaos experiments on a regular schedule to continuously validate resilience.
 
 ```hcl
 # schedule.tf - Automated chaos experiments
+resource "aws_scheduler_schedule_group" "chaos" {
+  name = "chaos-engineering"
+}
+
+resource "aws_iam_role" "chaos_scheduler" {
+  name = "chaos-engineering-scheduler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "scheduler.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "chaos_scheduler" {
+  name = "start-fis-experiment"
+  role = aws_iam_role.chaos_scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "fis:StartExperiment"
+        ]
+        Resource = [
+          aws_fis_experiment_template.ecs_task_kill.arn,
+          "arn:aws:fis:*:*:experiment/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:CreateServiceLinkedRole"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_scheduler_schedule" "weekly_ecs_chaos" {
   name       = "weekly-ecs-chaos-experiment"
-  group_name = "chaos-engineering"
+  group_name = aws_scheduler_schedule_group.chaos.name
 
   flexible_time_window {
     mode                      = "FLEXIBLE"
@@ -461,7 +555,8 @@ resource "aws_scheduler_schedule" "weekly_ecs_chaos" {
     role_arn = aws_iam_role.chaos_scheduler.arn
 
     input = jsonencode({
-      ExperimentTemplateId = aws_fis_experiment_template.ecs_task_kill.id
+      clientToken          = "<aws.scheduler.execution-id>"
+      experimentTemplateId = aws_fis_experiment_template.ecs_task_kill.id
     })
   }
 }
