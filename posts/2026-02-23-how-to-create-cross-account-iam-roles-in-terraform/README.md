@@ -10,7 +10,7 @@ Description: Learn how to create cross-account IAM roles in Terraform to enable 
 
 In multi-account AWS environments, services and users in one account often need to access resources in another account. Cross-account IAM roles provide a secure mechanism for this. Instead of sharing long-lived credentials between accounts, you create a role in the target account that principals from the source account can assume. Terraform makes it easy to set up both sides of this relationship.
 
-This guide walks through creating cross-account IAM roles in Terraform, covering trust policies, external IDs, permission boundaries, and real-world patterns for multi-account architectures.
+This guide walks through creating cross-account IAM roles in Terraform, covering trust policies, external IDs, and real-world patterns for multi-account architectures.
 
 ## How Cross-Account Access Works
 
@@ -162,10 +162,9 @@ When a third party needs to assume a role in your account, always use an externa
 
 ```hcl
 variable "external_id" {
-  description = "External ID for cross-account role assumption"
+  description = "External ID supplied by the third party for cross-account role assumption"
   type        = string
   sensitive   = true
-  default     = "unique-external-id-abc123"
 }
 
 # Trust policy with external ID requirement
@@ -301,6 +300,7 @@ variable "cross_account_roles" {
 
 # Create trust policies dynamically
 data "aws_iam_policy_document" "cross_account_trusts" {
+  provider = aws.target
   for_each = var.cross_account_roles
 
   statement {
@@ -327,6 +327,7 @@ data "aws_iam_policy_document" "cross_account_trusts" {
 
 # Create all roles
 resource "aws_iam_role" "cross_account_roles" {
+  provider = aws.target
   for_each = var.cross_account_roles
 
   name               = "${each.key}-cross-account"
@@ -346,6 +347,7 @@ locals {
 }
 
 resource "aws_iam_role_policy_attachment" "cross_account" {
+  provider = aws.target
   for_each = {
     for item in local.role_policy_attachments :
     "${item.role_name}-${item.policy_arn}" => item
