@@ -181,9 +181,9 @@ Fix in CI:
 # Temporary fix: allow lock file updates in CI
 - name: Terraform Init (fix lock file)
   run: |
-    terraform init
-    # Then regenerate lock file with CI platform
+    # Regenerate lock file with the CI platform before init retries provider installation
     terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
+    terraform init
   # Proper fix: regenerate locally and commit
 ```
 
@@ -239,7 +239,7 @@ When apply fails midway, some resources are created and others are not:
 - name: Terraform Apply with Recovery
   id: apply
   run: |
-    terraform apply -auto-approve tfplan -no-color 2>&1 | tee apply-output.txt
+    terraform apply -auto-approve -no-color tfplan 2>&1 | tee apply-output.txt
     EXIT_CODE=$?
 
     if [ $EXIT_CODE -ne 0 ]; then
@@ -310,19 +310,31 @@ Create a comprehensive error report when things fail:
 - name: Generate Failure Report
   if: failure()
   run: |
-    cat > failure-report.json << EOF
-    {
-      "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-      "pipeline": "${{ github.run_id }}",
-      "commit": "${{ github.sha }}",
-      "actor": "${{ github.actor }}",
-      "step": "${{ github.action }}",
-      "terraform_version": "$(terraform version -json | jq -r '.terraform_version')",
-      "provider_versions": $(terraform version -json | jq '.provider_selections'),
-      "resource_count": $(terraform state list 2>/dev/null | wc -l),
-      "error_summary": "$(grep 'Error:' plan-output.txt 2>/dev/null || echo 'unknown')"
-    }
-    EOF
+    TERRAFORM_VERSION_JSON=$(terraform version -json)
+    ERROR_SUMMARY=$(grep 'Error:' plan-output.txt 2>/dev/null || echo 'unknown')
+    RESOURCE_COUNT=$(terraform state list 2>/dev/null | wc -l)
+
+    jq -n \
+      --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg pipeline "${{ github.run_id }}" \
+      --arg commit "${{ github.sha }}" \
+      --arg actor "${{ github.actor }}" \
+      --arg step "${{ github.action }}" \
+      --arg terraform_version "$(jq -r '.terraform_version' <<< "$TERRAFORM_VERSION_JSON")" \
+      --argjson provider_versions "$(jq '.provider_selections' <<< "$TERRAFORM_VERSION_JSON")" \
+      --argjson resource_count "$RESOURCE_COUNT" \
+      --arg error_summary "$ERROR_SUMMARY" \
+      '{
+        timestamp: $timestamp,
+        pipeline: $pipeline,
+        commit: $commit,
+        actor: $actor,
+        step: $step,
+        terraform_version: $terraform_version,
+        provider_versions: $provider_versions,
+        resource_count: $resource_count,
+        error_summary: $error_summary
+      }' > failure-report.json
 
     cat failure-report.json
 
