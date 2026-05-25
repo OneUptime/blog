@@ -36,6 +36,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 }
 
@@ -234,9 +238,9 @@ resource "aws_db_parameter_group" "mysql" {
   }
 
   parameter {
-    name  = "innodb_log_file_size"
+    name  = "innodb_redo_log_capacity"
     value = "268435456"
-    # 256MB log files for better write performance
+    # 256MB redo log capacity for write-heavy workloads
   }
 
   # Slow query logging
@@ -276,7 +280,7 @@ resource "aws_db_instance" "mysql" {
 
 ## Using AWS Secrets Manager for Credentials
 
-Hardcoding database passwords in your Terraform variables is not ideal. A better approach is to generate random passwords and store them in Secrets Manager:
+Hardcoding database passwords in your Terraform variables is not ideal. A better approach is to generate random passwords and store them in Secrets Manager. The generated password is still stored in Terraform state, so keep your state encrypted and access-controlled:
 
 ```hcl
 # Generate a random password
@@ -285,6 +289,13 @@ resource "random_password" "mysql" {
   special = true
   # MySQL has restrictions on certain special characters in passwords
   override_special = "!#$%^&*()-_=+[]{}|:,.<>?"
+}
+
+# Use the generated password for the RDS master user
+resource "aws_db_instance" "mysql" {
+  # ... all previous configuration ...
+
+  password = random_password.mysql.result
 }
 
 # Store credentials in Secrets Manager
