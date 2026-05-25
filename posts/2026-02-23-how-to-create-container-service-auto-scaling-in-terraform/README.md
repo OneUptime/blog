@@ -89,7 +89,7 @@ resource "aws_appautoscaling_policy" "ecs_alb_requests" {
 
     predefined_metric_specification {
       predefined_metric_type = "ALBRequestCountPerTarget"
-      resource_label         = "${aws_lb_target_group.api.arn_suffix}/${aws_lb.main.arn_suffix}"
+      resource_label         = "${aws_lb.main.arn_suffix}/${aws_lb_target_group.api.arn_suffix}"
     }
 
     scale_in_cooldown  = 300
@@ -119,6 +119,26 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   }
 
   alarm_actions = [aws_appautoscaling_policy.ecs_step_up.arn]
+}
+
+# CloudWatch alarm for low CPU
+resource "aws_cloudwatch_metric_alarm" "low_cpu" {
+  alarm_name          = "ecs-low-cpu"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 30
+  alarm_description   = "ECS service CPU is low"
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = aws_ecs_service.api.name
+  }
+
+  alarm_actions = [aws_appautoscaling_policy.ecs_step_down.arn]
 }
 
 # Step scaling policy for scaling out
