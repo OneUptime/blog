@@ -62,6 +62,15 @@ resource "aws_security_group" "redshift" {
     description = "Redshift access from VPN"
   }
 
+  # Allow Glue jobs using this security group to reach Redshift
+  ingress {
+    from_port   = 5439
+    to_port     = 5439
+    protocol    = "tcp"
+    self        = true
+    description = "Redshift access from Glue jobs"
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -86,7 +95,7 @@ resource "aws_kms_key" "redshift" {
 # Parameter group for tuning
 resource "aws_redshift_parameter_group" "main" {
   name   = "${var.project_name}-params"
-  family = "redshift-1.0"
+  family = "redshift-2.0"
 
   parameter {
     name  = "require_ssl"
@@ -116,6 +125,7 @@ resource "aws_redshift_cluster" "main" {
   cluster_subnet_group_name  = aws_redshift_subnet_group.main.name
   vpc_security_group_ids     = [aws_security_group.redshift.id]
   cluster_parameter_group_name = aws_redshift_parameter_group.main.name
+  publicly_accessible          = false
 
   # Encryption at rest
   encrypted  = true
@@ -191,6 +201,14 @@ resource "aws_iam_role_policy" "redshift_s3" {
       {
         Effect = "Allow"
         Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = aws_kms_key.redshift.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "glue:GetTable",
           "glue:GetTables",
           "glue:GetDatabase"
@@ -217,6 +235,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "staging" {
   rule {
     id     = "clean-up-staging"
     status = "Enabled"
+    filter {}
 
     # Delete staging files after 7 days
     expiration {
@@ -237,7 +256,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "staging" {
 }
 ```
 
-## Scheduled Data Loading with Glue
+## Data Loading with Glue
 
 Use Glue jobs to extract data from source systems and load it into the staging area:
 
@@ -329,15 +348,15 @@ resource "aws_cloudwatch_metric_alarm" "disk_usage" {
 
 If you also have a [data lake](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-data-lake-architecture-with-terraform/view), Redshift Spectrum lets you query data in S3 directly from Redshift without loading it first:
 
-```hcl
-# External schema pointing to the Glue data catalog
-resource "aws_redshift_cluster_iam_roles" "spectrum" {
-  cluster_identifier = aws_redshift_cluster.main.cluster_identifier
-  iam_role_arns      = [aws_iam_role.redshift.arn]
-}
+```sql
+CREATE EXTERNAL SCHEMA spectrum_schema
+FROM DATA CATALOG
+DATABASE 'spectrum_db'
+IAM_ROLE 'arn:aws:iam::123456789012:role/MySpectrumRole'
+CREATE EXTERNAL DATABASE IF NOT EXISTS;
 ```
 
-Then from Redshift SQL, you can create an external schema that references your Glue catalog and query raw S3 data alongside your warehouse tables.
+The IAM role must be attached to the Redshift cluster, as shown earlier with `iam_roles`, and have access to the Glue Data Catalog and the S3 data you want to query.
 
 ## Wrapping Up
 
