@@ -23,7 +23,7 @@ Our canary deployment setup includes:
 - CloudWatch alarms for canary health monitoring
 - Automatic rollback on alarm triggers
 - Lambda for custom metric evaluation
-- Step Functions for deployment orchestration
+- EventBridge schedule for custom canary analysis
 
 ## Weighted Target Groups
 
@@ -49,6 +49,7 @@ resource "aws_lb_target_group" "stable" {
   name                 = "app-stable-${var.environment}"
   port                 = 8080
   protocol             = "HTTP"
+  target_type          = "ip"
   vpc_id               = var.vpc_id
   deregistration_delay = 120
 
@@ -72,6 +73,7 @@ resource "aws_lb_target_group" "canary" {
   name                 = "app-canary-${var.environment}"
   port                 = 8080
   protocol             = "HTTP"
+  target_type          = "ip"
   vpc_id               = var.vpc_id
   deregistration_delay = 60
 
@@ -162,6 +164,11 @@ resource "aws_codedeploy_deployment_group" "canary" {
       action                           = "TERMINATE"
       termination_wait_time_in_minutes = 60
     }
+  }
+
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
   }
 
   ecs_service {
@@ -277,6 +284,7 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
+  launch_type     = "FARGATE"
 
   deployment_controller {
     type = "CODE_DEPLOY"
@@ -424,13 +432,21 @@ resource "aws_lambda_function" "canary_analyzer" {
 resource "aws_cloudwatch_event_rule" "canary_analysis" {
   name                = "canary-analysis-schedule"
   schedule_expression = "rate(1 minute)"
-  is_enabled          = false  # Enable during deployments
+  state               = "DISABLED"  # Enable during deployments
 }
 
 resource "aws_cloudwatch_event_target" "canary_analysis" {
   rule      = aws_cloudwatch_event_rule.canary_analysis.name
   target_id = "analyze-canary"
   arn       = aws_lambda_function.canary_analyzer.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_canary_analysis" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.canary_analyzer.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.canary_analysis.arn
 }
 
 resource "aws_sns_topic" "deployment" {
