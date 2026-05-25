@@ -16,6 +16,7 @@ Terraform makes ACI deployments repeatable and manageable. Instead of using CLI 
 
 - Terraform 1.0 or later
 - Azure CLI authenticated
+- An Azure subscription ID
 - A container image in a registry (Docker Hub, Azure Container Registry, or elsewhere)
 
 ## Provider Configuration
@@ -25,13 +26,20 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
+}
+
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
+  sensitive   = true
 }
 ```
 
@@ -317,6 +325,31 @@ resource "azurerm_subnet" "aci" {
   }
 }
 
+resource "azurerm_public_ip" "aci_nat" {
+  name                = "pip-aci-nat-prod"
+  location            = azurerm_resource_group.aci.location
+  resource_group_name = azurerm_resource_group.aci.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+resource "azurerm_nat_gateway" "aci" {
+  name                = "nat-aci-prod"
+  location            = azurerm_resource_group.aci.location
+  resource_group_name = azurerm_resource_group.aci.name
+  sku_name            = "Standard"
+}
+
+resource "azurerm_nat_gateway_public_ip_association" "aci" {
+  nat_gateway_id       = azurerm_nat_gateway.aci.id
+  public_ip_address_id = azurerm_public_ip.aci_nat.id
+}
+
+resource "azurerm_subnet_nat_gateway_association" "aci" {
+  subnet_id      = azurerm_subnet.aci.id
+  nat_gateway_id = azurerm_nat_gateway.aci.id
+}
+
 # Private container instance
 resource "azurerm_container_group" "private" {
   name                = "ci-private-prod"
@@ -362,9 +395,9 @@ resource "azurerm_storage_account" "aci_storage" {
 
 # File share
 resource "azurerm_storage_share" "data" {
-  name                 = "app-data"
-  storage_account_name = azurerm_storage_account.aci_storage.name
-  quota                = 50  # GB
+  name               = "app-data"
+  storage_account_id = azurerm_storage_account.aci_storage.id
+  quota              = 50  # GB
 }
 
 # Container with mounted file share
@@ -405,40 +438,7 @@ resource "azurerm_container_group" "with_storage" {
 
 ## Container Group with GPU
 
-For AI/ML workloads, request GPU resources:
-
-```hcl
-# GPU-enabled container for ML inference
-resource "azurerm_container_group" "gpu" {
-  name                = "ci-gpu-inference"
-  location            = azurerm_resource_group.aci.location
-  resource_group_name = azurerm_resource_group.aci.name
-  os_type             = "Linux"
-  ip_address_type     = "Public"
-
-  container {
-    name   = "inference"
-    image  = "myapp/ml-model:latest"
-    cpu    = "4"
-    memory = "16"
-
-    # Request GPU resources
-    gpu {
-      count = 1
-      sku   = "V100"
-    }
-
-    ports {
-      port     = 8501
-      protocol = "TCP"
-    }
-  }
-
-  tags = {
-    Workload = "ml-inference"
-  }
-}
-```
+ACI GPU container groups were retired on July 14, 2025. For AI/ML workloads that need GPUs, use AKS or GPU-enabled Azure virtual machines instead of requesting GPU resources in ACI.
 
 ## Restart Policy and Init Containers
 
