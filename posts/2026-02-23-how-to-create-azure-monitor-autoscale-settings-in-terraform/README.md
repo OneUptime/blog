@@ -8,7 +8,7 @@ Description: Learn how to create Azure Monitor autoscale settings using Terrafor
 
 ---
 
-Azure Monitor autoscale automatically adjusts the number of resource instances based on metric thresholds, schedules, or both. It supports Virtual Machine Scale Sets, App Services, Cloud Services, and more. Managing autoscale rules through Terraform ensures your scaling behavior is consistent, predictable, and version-controlled. This guide shows you how.
+Azure Monitor autoscale automatically adjusts the number of resource instances based on metric thresholds, schedules, or both. It supports Virtual Machine Scale Sets, App Services, Azure API Management, and more. Managing autoscale rules through Terraform ensures your scaling behavior is consistent, predictable, and version-controlled. This guide shows you how.
 
 ## Understanding Autoscale
 
@@ -21,12 +21,17 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  type = string
+}
+
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 
