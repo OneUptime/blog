@@ -59,6 +59,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
     id     = "expire-old-artifacts"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = 30
     }
@@ -340,6 +342,7 @@ resource "aws_codepipeline" "main" {
       configuration = {
         ClusterName = var.ecs_cluster_name
         ServiceName = var.ecs_service_name
+        FileName    = "imagedefinitions.json"
       }
     }
   }
@@ -355,10 +358,29 @@ resource "aws_sns_topic" "pipeline_notifications" {
   name = "${var.project_name}-pipeline-notifications"
 }
 
+data "aws_iam_policy_document" "pipeline_notifications" {
+  statement {
+    actions = ["sns:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["codestar-notifications.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.pipeline_notifications.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "pipeline_notifications" {
+  arn    = aws_sns_topic.pipeline_notifications.arn
+  policy = data.aws_iam_policy_document.pipeline_notifications.json
+}
+
 resource "aws_codestarnotifications_notification_rule" "pipeline" {
   name        = "${var.project_name}-pipeline-events"
   resource    = aws_codepipeline.main.arn
   detail_type = "FULL"
+  depends_on  = [aws_sns_topic_policy.pipeline_notifications]
 
   event_type_ids = [
     "codepipeline-pipeline-pipeline-execution-failed",
