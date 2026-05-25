@@ -42,7 +42,7 @@ terraform {
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"
-      version = "~> 0.46"
+      version = "~> 0.106"
     }
   }
 }
@@ -130,7 +130,6 @@ resource "proxmox_virtual_environment_vm" "web_server" {
   # Disk configuration
   disk {
     datastore_id = "local-lvm"
-    file_id      = ""  # Empty when cloning
     interface    = "scsi0"
     size         = 50  # GB
   }
@@ -185,7 +184,7 @@ resource "proxmox_virtual_environment_file" "ubuntu_iso" {
   node_name    = "pve1"
 
   source_file {
-    path = "https://releases.ubuntu.com/22.04/ubuntu-22.04.3-live-server-amd64.iso"
+    path = "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
   }
 }
 
@@ -210,7 +209,8 @@ resource "proxmox_virtual_environment_vm" "manual_install" {
   }
 
   cdrom {
-    file_id = proxmox_virtual_environment_file.ubuntu_iso.id
+    file_id   = proxmox_virtual_environment_file.ubuntu_iso.id
+    interface = "ide2"
   }
 
   network_device {
@@ -218,7 +218,7 @@ resource "proxmox_virtual_environment_vm" "manual_install" {
   }
 
   # Boot from the CD-ROM first
-  boot_order = ["scsi0", "ide2"]
+  boot_order = ["ide2", "scsi0"]
 }
 ```
 
@@ -373,15 +373,13 @@ To use cloud-init templates, you first need to create them in Proxmox. Here is h
 
 ```hcl
 # Download a cloud image for use as a template
-resource "proxmox_virtual_environment_file" "cloud_image" {
-  content_type = "iso"
+resource "proxmox_download_file" "cloud_image" {
+  content_type = "import"
   datastore_id = "local"
   node_name    = "pve1"
 
-  source_file {
-    path      = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
-    file_name = "jammy-server-cloudimg-amd64.img"
-  }
+  url       = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+  file_name = "jammy-server-cloudimg-amd64.qcow2"
 }
 ```
 
@@ -399,7 +397,7 @@ resource "proxmox_virtual_environment_pool" "production" {
 
 ```hcl
 # Create a Linux bridge on the Proxmox host
-resource "proxmox_virtual_environment_network_linux_bridge" "internal" {
+resource "proxmox_network_linux_bridge" "internal" {
   node_name = "pve1"
   name      = "vmbr1"
   comment   = "Internal network bridge"
