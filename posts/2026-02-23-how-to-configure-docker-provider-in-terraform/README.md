@@ -45,7 +45,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -87,12 +87,7 @@ For TCP connections, always use TLS:
 provider "docker" {
   host = "tcp://docker-host.example.com:2376"
 
-  # TLS configuration
-  registry_auth {
-    address = "docker-host.example.com:2376"
-  }
-
-  # Alternatively, specify cert paths
+  # TLS certificate directory
   cert_path = pathexpand("~/.docker/certs")
 }
 ```
@@ -113,12 +108,11 @@ Or set environment variables:
 
 ```bash
 export DOCKER_HOST="tcp://docker-host.example.com:2376"
-export DOCKER_TLS_VERIFY=1
 export DOCKER_CERT_PATH="$HOME/.docker/certs"
 ```
 
 ```hcl
-# Provider reads from environment variables when no host is specified
+# Provider reads DOCKER_HOST and DOCKER_CERT_PATH when no host is specified
 provider "docker" {}
 ```
 
@@ -150,7 +144,7 @@ resource "docker_image" "custom_app" {
     tag        = ["my-custom-app:latest", "my-custom-app:v1.0"]
 
     # Build arguments
-    build_arg = {
+    build_args = {
       NODE_VERSION = "20"
       APP_ENV      = "production"
     }
@@ -339,7 +333,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
