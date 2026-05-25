@@ -8,17 +8,17 @@ Description: Learn how to build a GDPR compliant cloud infrastructure using Terr
 
 ---
 
-Building infrastructure that meets GDPR requirements is not just a legal obligation for companies handling EU citizen data - it is a fundamental trust exercise. Terraform gives you the ability to codify compliance rules so that every environment you spin up is compliant from the start, rather than having to retrofit security controls after deployment.
+Building infrastructure that supports GDPR requirements is not just a legal obligation for companies handling personal data from people in the EU or EEA - it is a fundamental trust exercise. Terraform gives you the ability to codify compliance controls so that every environment you spin up has the same safeguards from the start, rather than having to retrofit security controls after deployment.
 
-In this guide, we will walk through building a GDPR compliant infrastructure on AWS using Terraform. The approach covers data residency, encryption at rest and in transit, access controls, audit logging, and data lifecycle management.
+In this guide, we will walk through building infrastructure on AWS using Terraform that supports GDPR compliance. The approach covers data residency, encryption at rest and in transit, access controls, audit logging, and data lifecycle management.
 
 ## Understanding GDPR Infrastructure Requirements
 
-GDPR has several technical requirements that directly impact infrastructure design:
+GDPR has several obligations that directly impact infrastructure design, and these common technical controls help address them:
 
-- Data must be stored in approved regions (typically EU)
-- Data must be encrypted at rest and in transit
-- Access to personal data must be logged and auditable
+- Data should be stored in approved regions and transferred only with an appropriate legal basis
+- Encryption at rest and in transit should be used where appropriate for the risk
+- Access to personal data should be logged and auditable
 - You need the ability to delete personal data on request (right to erasure)
 - Data processing must have clear boundaries and controls
 
@@ -26,22 +26,22 @@ Let's translate each of these into Terraform configurations.
 
 ## Setting Up the Provider with Region Restrictions
 
-The first step is making sure all resources get created in EU regions only.
+The first step is making sure all resources get created in approved European regions only.
 
 ```hcl
-# providers.tf - Lock down to EU regions only
+# providers.tf - Lock down to approved European regions only
 
 provider "aws" {
   region = var.aws_region
 
-  # Enforce that only EU regions can be used
+  # Enforce that the expected AWS account is used
   allowed_account_ids = [var.account_id]
 
   default_tags {
     tags = {
       Environment   = var.environment
       Compliance    = "GDPR"
-      DataResidency = "EU"
+      DataResidency = "Europe"
       ManagedBy     = "Terraform"
     }
   }
@@ -49,7 +49,7 @@ provider "aws" {
 
 variable "aws_region" {
   type        = string
-  description = "AWS region - must be an EU region for GDPR compliance"
+  description = "AWS region - must be an approved European region for this workload"
 
   validation {
     condition = contains([
@@ -57,17 +57,19 @@ variable "aws_region" {
       "eu-west-2",      # London
       "eu-west-3",      # Paris
       "eu-central-1",   # Frankfurt
+      "eu-central-2",   # Zurich
       "eu-north-1",     # Stockholm
       "eu-south-1",     # Milan
+      "eu-south-2",     # Spain
     ], var.aws_region)
-    error_message = "Region must be an EU region for GDPR compliance."
+    error_message = "Region must be an approved European region for this workload."
   }
 }
 ```
 
 ## Encrypted Storage with KMS
 
-All personal data must be encrypted. We will create a KMS key specifically for GDPR-related data and apply it across our storage resources.
+Personal data should be encrypted where appropriate for the risk. We will create a KMS key specifically for GDPR-related data and apply it across our storage resources.
 
 ```hcl
 # kms.tf - Customer managed encryption keys
@@ -137,6 +139,7 @@ resource "aws_db_instance" "personal_data" {
   engine         = "postgres"
   engine_version = "15.4"
   instance_class = "db.r6g.large"
+  username       = "gdpr_admin"
 
   allocated_storage     = 100
   max_allocated_storage = 500
@@ -144,6 +147,10 @@ resource "aws_db_instance" "personal_data" {
   # Encryption at rest using our GDPR KMS key
   storage_encrypted = true
   kms_key_id        = aws_kms_key.gdpr_data.arn
+
+  # Let RDS store the master password in Secrets Manager
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = aws_kms_key.gdpr_data.arn
 
   # Network isolation
   db_subnet_group_name   = aws_db_subnet_group.gdpr.name
@@ -214,6 +221,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "personal_data" {
 
 # Enforce data retention - auto-delete after retention period
 resource "aws_s3_bucket_lifecycle_configuration" "personal_data" {
+  depends_on = [aws_s3_bucket_versioning.personal_data]
+
   bucket = aws_s3_bucket.personal_data.id
 
   rule {
@@ -229,6 +238,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "personal_data" {
     # Delete after the retention period
     expiration {
       days = var.data_retention_days # e.g., 365 days
+    }
+
+    # Delete noncurrent versions after the retention period
+    noncurrent_version_expiration {
+      noncurrent_days = var.data_retention_days
     }
   }
 }
@@ -253,7 +267,7 @@ resource "aws_cloudtrail" "gdpr_audit" {
   name                          = "gdpr-audit-trail"
   s3_bucket_name                = aws_s3_bucket.audit_logs.id
   include_global_service_events = true
-  is_multi_region_trail         = false # Stay within EU region
+  is_multi_region_trail         = false # Stay within the selected region
   enable_log_file_validation    = true
 
   # Log data events for S3 buckets containing personal data
@@ -370,8 +384,8 @@ resource "aws_lambda_function" "dsar_handler" {
 
   environment {
     variables = {
-      DB_SECRET_ARN  = aws_secretsmanager_secret.db_credentials.arn
-      S3_BUCKET      = aws_s3_bucket.personal_data.id
+      DB_SECRET_ARN   = aws_db_instance.personal_data.master_user_secret[0].secret_arn
+      S3_BUCKET       = aws_s3_bucket.personal_data.id
       AUDIT_LOG_GROUP = aws_cloudwatch_log_group.gdpr_audit.name
     }
   }
@@ -392,7 +406,7 @@ resource "aws_sqs_queue" "dsar_requests" {
   message_retention_seconds  = 1209600 # 14 days
   visibility_timeout_seconds = 300
 
-  # Encrypt messages in transit and at rest
+  # Encrypt messages at rest with KMS. SQS API calls use HTTPS for encryption in transit.
   kms_master_key_id = aws_kms_key.gdpr_data.id
 
   tags = {
@@ -403,7 +417,7 @@ resource "aws_sqs_queue" "dsar_requests" {
 
 ## Monitoring and Alerting
 
-Set up alerts for any compliance violations or suspicious access patterns.
+Set up alerts for any compliance violations or suspicious access patterns. This example assumes your CloudTrail metric filters or application code publish the custom `UnauthorizedAccessAttempts` metric.
 
 ```hcl
 # monitoring.tf - Alerts for GDPR compliance
@@ -429,13 +443,13 @@ resource "aws_sns_topic" "gdpr_alerts" {
 
 ## Putting It All Together
 
-With these Terraform configurations, your infrastructure will enforce GDPR compliance at every layer:
+With these Terraform configurations, your infrastructure will support GDPR compliance at every layer:
 
-1. **Region restrictions** prevent data from leaving the EU
+1. **Region restrictions** keep data in approved European regions
 2. **KMS encryption** protects data at rest across all storage services
 3. **VPC isolation** keeps personal data processing in private networks
 4. **CloudTrail auditing** logs every access to personal data
-5. **Lifecycle policies** automatically enforce data retention limits
+5. **Lifecycle policies** automatically enforce data retention limits for current and noncurrent S3 object versions
 6. **DSAR infrastructure** supports right to erasure and portability
 
 The key advantage of managing GDPR compliance through Terraform is repeatability. Every environment you create will have the same controls, and any drift from the compliant configuration will be caught during the next `terraform plan`.
