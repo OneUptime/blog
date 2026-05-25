@@ -8,7 +8,7 @@ Description: Learn how to convert between types in Terraform using built-in conv
 
 ---
 
-Type conversions in Terraform come up more often than you might expect. You get a number from a module output but need a string for a resource argument. A JSON decode gives you a map but you need a list. A variable comes in as a string but needs to be a bool.
+Type conversions in Terraform come up more often than you might expect. You get a number from a module output but need a string for a resource argument. A JSON decode gives you an object but you need a list. A variable comes in as a string but needs to be a bool.
 
 Terraform handles some conversions automatically, but others require explicit function calls. This post covers all the conversion scenarios you are likely to encounter.
 
@@ -142,7 +142,7 @@ locals {
 
 ### tolist()
 
-Converts a set to a list (adds ordering):
+Converts a set to a list (adds an indexable sequence):
 
 ```hcl
 variable "zones" {
@@ -151,7 +151,7 @@ variable "zones" {
 }
 
 locals {
-  # Set to list - elements are sorted
+  # Set to list - string elements are returned in lexicographical order
   zone_list = tolist(var.zones)
   # Result: ["us-east-1a", "us-east-1b", "us-east-1c"]
 
@@ -171,9 +171,9 @@ locals {
 
   # Convert to set - removes duplicates
   unique_tags = toset(local.tags)
-  # Result: set("api", "frontend", "web")
+  # Result: toset(["api", "frontend", "web"])
 
-  # Useful for for_each which requires a set or map
+  # Useful for for_each which requires a set of strings or a map
 }
 
 resource "aws_iam_user" "users" {
@@ -380,7 +380,7 @@ variable "port" {
   }
 
   validation {
-    condition     = can(tonumber(var.port)) && tonumber(var.port) >= 1 && tonumber(var.port) <= 65535
+    condition     = try(tonumber(var.port) >= 1 && tonumber(var.port) <= 65535, false)
     error_message = "Port must be between 1 and 65535."
   }
 }
