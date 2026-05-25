@@ -22,7 +22,7 @@ Our compliance infrastructure includes:
 - Config rules for automated compliance checks
 - CloudTrail for audit logging
 - S3 buckets with proper access controls for log storage
-- Lambda functions for automated remediation
+- SSM Automation documents for automated remediation
 - SNS notifications for compliance violations
 - GuardDuty for threat detection
 
@@ -89,7 +89,7 @@ resource "aws_config_delivery_channel" "main" {
   sns_topic_arn  = aws_sns_topic.compliance_alerts.arn
 
   snapshot_delivery_properties {
-    delivery_frequency = "TwelveHours"
+    delivery_frequency = "Twelve_Hours"
   }
 
   depends_on = [aws_config_configuration_recorder.main]
@@ -191,7 +191,7 @@ resource "aws_config_config_rule" "vpc_flow_logs" {
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Custom rule using Lambda for organization-specific checks
+# Managed rule for organization-specific tagging checks
 resource "aws_config_config_rule" "required_tags" {
   name = "required-tags-check"
 
@@ -213,7 +213,7 @@ resource "aws_config_config_rule" "required_tags" {
 
 ## CloudTrail for Audit Logging
 
-Every compliance framework requires audit logging. CloudTrail captures every API call.
+Every compliance framework requires audit logging. CloudTrail captures management events and the data events you explicitly select.
 
 ```hcl
 # KMS key for CloudTrail encryption
@@ -234,6 +234,13 @@ resource "aws_s3_bucket" "cloudtrail" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # Object lock for tamper-proof logs
 resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
@@ -244,6 +251,8 @@ resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
       days = 365
     }
   }
+
+  depends_on = [aws_s3_bucket_versioning.cloudtrail]
 }
 
 # CloudTrail trail
@@ -290,25 +299,9 @@ resource "aws_cloudwatch_log_group" "cloudtrail" {
 
 ## Automated Remediation
 
-Detecting violations is only half the battle. Let us auto-remediate some common issues.
+Detecting violations is only half the battle. Let us auto-remediate some common issues with AWS Config remediation actions and SSM Automation documents.
 
 ```hcl
-# Lambda function to remediate unencrypted S3 buckets
-resource "aws_lambda_function" "remediate_s3" {
-  filename         = "remediate_s3.zip"
-  function_name    = "remediate-s3-encryption"
-  role             = aws_iam_role.remediation_role.arn
-  handler          = "index.handler"
-  runtime          = "python3.11"
-  timeout          = 60
-
-  environment {
-    variables = {
-      SNS_TOPIC_ARN = aws_sns_topic.compliance_alerts.arn
-    }
-  }
-}
-
 # Config remediation for S3 encryption
 resource "aws_config_remediation_configuration" "s3_encryption" {
   config_rule_name = aws_config_config_rule.s3_encryption.name
@@ -356,29 +349,29 @@ GuardDuty adds an extra layer by detecting suspicious activity.
 resource "aws_guardduty_detector" "main" {
   enable = true
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
-
   finding_publishing_frequency = "FIFTEEN_MINUTES"
 
   tags = {
     Purpose = "compliance-threat-detection"
   }
+}
+
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
 }
 
 # SNS notifications for GuardDuty findings
@@ -392,6 +385,12 @@ resource "aws_cloudwatch_event_rule" "guardduty_findings" {
       severity = [{ numeric = [">=", 7] }]
     }
   })
+}
+
+resource "aws_cloudwatch_event_target" "guardduty_sns" {
+  rule      = aws_cloudwatch_event_rule.guardduty_findings.name
+  target_id = "send-to-sns"
+  arn       = aws_sns_topic.compliance_alerts.arn
 }
 ```
 
@@ -410,6 +409,25 @@ resource "aws_sns_topic_subscription" "security_team" {
   topic_arn = aws_sns_topic.compliance_alerts.arn
   protocol  = "email"
   endpoint  = "security@company.com"
+}
+
+data "aws_iam_policy_document" "compliance_alerts_events" {
+  statement {
+    sid     = "AllowEventBridgePublish"
+    actions = ["sns:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.compliance_alerts.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "compliance_alerts_events" {
+  arn    = aws_sns_topic.compliance_alerts.arn
+  policy = data.aws_iam_policy_document.compliance_alerts_events.json
 }
 
 # EventBridge rule for non-compliant Config evaluations
