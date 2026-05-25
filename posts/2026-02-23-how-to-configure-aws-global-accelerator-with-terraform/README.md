@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS Global Accelerator, Networking, Performance, Load Balancing, CDN
+Tags: Terraform, AWS Global Accelerator, Networking, Performance, Load Balancing
 
 Description: Learn how to configure AWS Global Accelerator with Terraform to improve application performance with static anycast IP addresses and intelligent traffic routing.
 
@@ -140,8 +140,6 @@ resource "aws_globalaccelerator_endpoint_group" "us_east" {
     weight                         = 128
     client_ip_preservation_enabled = true
   }
-
-  tags = { Name = "us-east-endpoint-group" }
 }
 
 # EU West endpoint group
@@ -162,8 +160,6 @@ resource "aws_globalaccelerator_endpoint_group" "eu_west" {
     weight                         = 128
     client_ip_preservation_enabled = true
   }
-
-  tags = { Name = "eu-west-endpoint-group" }
 }
 
 # AP Southeast endpoint group
@@ -184,8 +180,6 @@ resource "aws_globalaccelerator_endpoint_group" "ap_southeast" {
     weight                         = 128
     client_ip_preservation_enabled = true
   }
-
-  tags = { Name = "ap-southeast-endpoint-group" }
 }
 ```
 
@@ -214,8 +208,6 @@ resource "aws_globalaccelerator_endpoint_group" "multi_endpoint" {
     endpoint_id = aws_lb.secondary.arn
     weight      = 77
   }
-
-  tags = { Name = "multi-endpoint-group" }
 }
 ```
 
@@ -235,13 +227,13 @@ resource "aws_globalaccelerator_endpoint_group" "ec2_endpoints" {
   endpoint_configuration {
     endpoint_id                    = aws_instance.app_1.id
     weight                         = 128
-    client_ip_preservation_enabled = false
+    client_ip_preservation_enabled = true
   }
 
   endpoint_configuration {
     endpoint_id                    = aws_instance.app_2.id
     weight                         = 128
-    client_ip_preservation_enabled = false
+    client_ip_preservation_enabled = true
   }
 }
 ```
