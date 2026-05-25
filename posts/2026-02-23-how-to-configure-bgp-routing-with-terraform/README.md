@@ -16,7 +16,7 @@ In this guide, we will configure BGP routing with Terraform across different AWS
 
 Before diving into Terraform, here are the BGP concepts you need to understand:
 
-- **ASN (Autonomous System Number)**: A unique identifier for a network. AWS uses private ASNs (64512-65534) and public ASNs.
+- **ASN (Autonomous System Number)**: A unique identifier for a network. AWS supports public ASNs and private ASNs, including 64512-65534 and 4200000000-4294967294 for customer gateways.
 - **BGP Peering**: Two BGP-speaking routers exchange routing information.
 - **Route Advertisement**: Each side announces which CIDR blocks it can route to.
 - **AS Path**: The list of ASNs a route has traversed, used for path selection.
@@ -34,7 +34,7 @@ resource "aws_vpn_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   # Use a custom AWS-side ASN
-  # Default is 64512, but you can choose any private ASN
+  # Default is 64512, but you can choose a supported private ASN
   amazon_side_asn = 64520
 
   tags = {
@@ -163,12 +163,14 @@ resource "aws_dx_public_virtual_interface" "main" {
   connection_id = var.dx_connection_id
   name          = "${var.project_name}-public-vif"
 
-  vlan          = var.public_vlan_id
+  vlan           = var.public_vlan_id
   address_family = "ipv4"
-  bgp_asn       = 65000
+  bgp_asn        = 65000
 
-  amazon_address   = "169.254.101.1/30"
-  customer_address = "169.254.101.2/30"
+  # Public VIF BGP peering addresses must be public IPv4 addresses that you own
+  # or public IPv4 addresses provided by AWS.
+  amazon_address   = var.public_vif_amazon_address
+  customer_address = var.public_vif_customer_address
 
   # Your public IP prefixes to advertise to AWS
   route_filter_prefixes = var.onprem_public_prefixes
@@ -192,7 +194,7 @@ resource "aws_ec2_transit_gateway" "main" {
   # Custom ASN for the transit gateway
   amazon_side_asn = 64522
 
-  # Enable ECMP for load balancing across multiple VPN tunnels
+  # Enable ECMP for load balancing across multiple BGP VPN tunnels
   vpn_ecmp_support = "enable"
 
   # Enable route propagation
@@ -275,7 +277,7 @@ resource "aws_ec2_transit_gateway_route" "blackhole" {
 
 ## Prefix Lists for Route Filtering
 
-Use prefix lists to control which routes are accepted and advertised.
+Use prefix lists to document reusable route sets for routing and firewall policy. BGP route acceptance and advertisement are controlled by Transit Gateway route table propagation, Direct Connect gateway allowed prefixes, and route policy on your customer gateway.
 
 ```hcl
 # prefix-lists.tf - Route filtering
@@ -322,12 +324,17 @@ resource "aws_ec2_managed_prefix_list" "aws_routes" {
 
 ## BGP Monitoring
 
-Monitor BGP session health and route counts.
+Monitor BGP session health and tunnel traffic.
 
 ```hcl
 # monitoring.tf - BGP monitoring
 resource "aws_cloudwatch_metric_alarm" "bgp_session_down" {
-  alarm_name          = "${var.project_name}-bgp-session-down"
+  for_each = {
+    tunnel1 = aws_vpn_connection.main.tunnel1_address
+    tunnel2 = aws_vpn_connection.main.tunnel2_address
+  }
+
+  alarm_name          = "${var.project_name}-bgp-session-down-${each.key}"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
   metric_name         = "TunnelState"
@@ -337,7 +344,8 @@ resource "aws_cloudwatch_metric_alarm" "bgp_session_down" {
   threshold           = 1
 
   dimensions = {
-    VpnId = aws_vpn_connection.main.id
+    VpnId           = aws_vpn_connection.main.id
+    TunnelIpAddress = each.value
   }
 
   alarm_actions = [var.critical_alert_topic_arn]
