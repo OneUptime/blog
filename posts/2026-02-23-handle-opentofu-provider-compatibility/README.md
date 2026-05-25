@@ -12,7 +12,7 @@ Providers are the most critical dependency in any OpenTofu project. When they wo
 
 ## The Provider Compatibility Landscape
 
-OpenTofu uses the same provider plugin protocol as Terraform. This means any provider binary that works with Terraform also works with OpenTofu. The compatibility issues arise not from the plugins themselves but from how they are distributed, versioned, and referenced.
+OpenTofu uses the Terraform provider plugin protocol. This means most provider binaries that implement a protocol version supported by OpenTofu also work with OpenTofu. The compatibility issues usually arise from how providers are distributed, versioned, and referenced.
 
 The three main areas where compatibility matters are:
 
@@ -59,7 +59,7 @@ tofu init
 cd .. && rm -rf compatibility-test
 ```
 
-If `tofu init` succeeds, all providers are compatible. If it fails, you get specific error messages about which providers have issues.
+If `tofu init` succeeds, all providers are available and installable for that configuration. If it fails, you get specific error messages about which providers have issues.
 
 ## Scenario 1: Provider Not Found in Registry
 
@@ -73,20 +73,31 @@ example/myprovider: provider registry registry.opentofu.org does
 not have a provider named example/myprovider
 ```
 
-### Solution: Direct Installation
+### Solution: Use the Provider's Origin Registry
 
-Configure OpenTofu to download the provider directly from its source:
+If the provider is published in a third-party registry, use its full source address and allow direct installation from that origin registry:
+
+```hcl
+terraform {
+  required_providers {
+    myprovider = {
+      source  = "registry.example.com/example/myprovider"
+      version = "~> 1.0"
+    }
+  }
+}
+```
 
 ```hcl
 # ~/.tofurc (or .terraformrc)
 provider_installation {
   direct {
-    include = ["example/myprovider"]
+    include = ["registry.example.com/example/myprovider"]
   }
 
-  # Use the registry for everything else
+  # Use origin registries for everything else
   direct {
-    exclude = ["example/myprovider"]
+    exclude = ["registry.example.com/example/myprovider"]
   }
 }
 ```
@@ -97,13 +108,13 @@ Download the provider manually and use a filesystem mirror:
 
 ```bash
 # Download the provider binary
-mkdir -p ~/.opentofu/providers/example/myprovider/1.0.0/linux_amd64/
+mkdir -p ~/.opentofu/providers/registry.opentofu.org/example/myprovider/1.0.0/linux_amd64/
 
 # Download from the provider's GitHub releases
 curl -L "https://github.com/example/terraform-provider-myprovider/releases/download/v1.0.0/terraform-provider-myprovider_1.0.0_linux_amd64.zip" \
   -o /tmp/provider.zip
 
-unzip /tmp/provider.zip -d ~/.opentofu/providers/example/myprovider/1.0.0/linux_amd64/
+unzip /tmp/provider.zip -d ~/.opentofu/providers/registry.opentofu.org/example/myprovider/1.0.0/linux_amd64/
 ```
 
 ```hcl
@@ -111,10 +122,10 @@ unzip /tmp/provider.zip -d ~/.opentofu/providers/example/myprovider/1.0.0/linux_
 provider_installation {
   filesystem_mirror {
     path    = "~/.opentofu/providers"
-    include = ["example/*"]
+    include = ["registry.opentofu.org/example/*"]
   }
   direct {
-    exclude = ["example/*"]
+    exclude = ["registry.opentofu.org/example/*"]
   }
 }
 ```
@@ -164,8 +175,8 @@ Options:
 ```text
 Error: Incompatible provider version
 
-Provider example/myprovider v2.0.0 uses protocol version 6,
-but OpenTofu v1.7.0 only supports protocol versions 5 and 5.1.
+Provider example/myprovider v2.0.0 uses protocol version 7,
+but this OpenTofu version only supports protocol versions 5 and 6.
 ```
 
 ### Solution: Upgrade or Downgrade
@@ -175,7 +186,7 @@ but OpenTofu v1.7.0 only supports protocol versions 5 and 5.1.
 tofu version
 
 # Upgrade OpenTofu to support newer protocol
-# Or downgrade the provider to one using protocol 5
+# Or downgrade the provider to one using a supported protocol
 ```
 
 ```hcl
@@ -183,7 +194,7 @@ terraform {
   required_providers {
     myprovider = {
       source  = "example/myprovider"
-      version = "~> 1.0"  # Use an older version that uses protocol 5
+      version = "~> 1.0"  # Use an older version that uses a supported protocol
     }
   }
 }
@@ -243,7 +254,7 @@ Most providers use the standard plugin SDK that works with both tools. Issues on
 Keep providers updated while maintaining stability:
 
 ```bash
-# Check for outdated providers
+# Select the newest allowed provider versions
 tofu init -upgrade
 
 # Before upgrading, check the provider changelog
@@ -258,18 +269,13 @@ tofu plan  # Look for unexpected changes after upgrading
 Use Renovate or Dependabot to track provider updates:
 
 ```json
-// renovate.json
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "terraform": {
-    "enabled": true
-  },
-  "regexManagers": [
+  "packageRules": [
     {
-      "fileMatch": [".*\\.tf$"],
-      "matchStrings": [
-        "version\\s*=\\s*\"(?<currentValue>[^\"]+)\"\\s*#\\s*(?<datasource>.*?)\\/(?<depName>.*?)\\s"
-      ]
+      "matchManagers": ["terraform"],
+      "matchDatasources": ["terraform-provider", "terraform-module"],
+      "registryUrls": ["https://registry.opentofu.org"]
     }
   ]
 }
@@ -359,7 +365,7 @@ When you encounter provider compatibility issues:
 - **OpenTofu GitHub Issues**: Report provider compatibility problems
 - **Provider GitHub Repositories**: Check for OpenTofu-specific issues
 - **OpenTofu Community Slack**: Ask for help from other users
-- **Provider Compatibility Matrix**: The OpenTofu documentation maintains a list of tested providers
+- **OpenTofu Registry**: Search for provider availability and documentation
 
 Provider compatibility is rarely a blocker for OpenTofu adoption. The vast majority of providers work identically with both tools. When issues do arise, they are usually solvable with version adjustments or configuration changes.
 
