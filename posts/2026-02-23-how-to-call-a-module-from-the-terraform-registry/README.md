@@ -63,7 +63,7 @@ module "vpc" {
 # Pessimistic constraint - allows patch updates
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.5"  # Allows 5.5.x but not 5.6.0
+  version = "~> 5.5.0"  # Allows 5.5.x but not 5.6.0
   # ...
 }
 
@@ -202,10 +202,10 @@ The `//modules/iam-assumable-role` part points to a subdirectory within the modu
 
 ## Private Registries
 
-If your organization uses Terraform Cloud or Terraform Enterprise, you have access to a private registry. The syntax is slightly different:
+If your organization uses HCP Terraform or Terraform Enterprise, you have access to a private registry. The syntax is slightly different:
 
 ```hcl
-# Private registry module (Terraform Cloud / Enterprise)
+# Private registry module (HCP Terraform / Terraform Enterprise)
 module "vpc" {
   source  = "app.terraform.io/myorg/vpc/aws"
   version = "2.1.0"
@@ -283,6 +283,6 @@ In CI/CD pipelines, you might want to cache the `.terraform` directory between r
 
 ## Summary
 
-The Terraform Registry is the easiest way to consume well-tested, community-maintained modules. Use the three-part naming format (`namespace/name/provider`), always pin versions for production use, and review the auto-generated documentation before configuring a module. For private modules, use your organization's private registry in Terraform Cloud or Enterprise. The registry's version constraint system gives you fine-grained control over which updates you accept, and `terraform init -upgrade` handles the actual version changes.
+The Terraform Registry is the easiest way to consume well-tested, community-maintained modules. Use the three-part naming format (`namespace/name/provider`), always pin versions for production use, and review the auto-generated documentation before configuring a module. For private modules, use your organization's private registry in HCP Terraform or Terraform Enterprise. The registry's version constraint system gives you fine-grained control over which updates you accept, and `terraform init -upgrade` handles the actual version changes.
 
 For other module source options, see [How to Call a Module from a Git Repository in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-call-a-module-from-a-git-repository-in-terraform/view) and [How to Call a Module from an S3 Bucket in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-call-a-module-from-an-s3-bucket-in-terraform/view).
