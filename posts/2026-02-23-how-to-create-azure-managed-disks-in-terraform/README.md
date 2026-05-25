@@ -14,7 +14,7 @@ This post covers everything from creating basic managed disks to advanced scenar
 
 ## Disk Types and When to Use Them
 
-Azure offers four managed disk types, each with different performance and cost characteristics:
+Azure offers five managed disk types, each with different performance and cost characteristics:
 
 - **Ultra Disk**: Highest performance, sub-millisecond latency. Use for IO-intensive workloads like SAP HANA and top-tier databases.
 - **Premium SSD v2**: Flexible performance tuning without tier changes. Good for production databases that need predictable performance.
@@ -126,6 +126,8 @@ resource "azurerm_managed_disk" "restored" {
 By default, Azure encrypts managed disks at rest with platform-managed keys. For additional control, use customer-managed keys with Azure Key Vault:
 
 ```hcl
+data "azurerm_client_config" "current" {}
+
 # Key Vault for storing encryption keys
 resource "azurerm_key_vault" "encryption" {
   name                        = "kv-diskenc-prod"
@@ -135,6 +137,24 @@ resource "azurerm_key_vault" "encryption" {
   sku_name                    = "standard"
   enabled_for_disk_encryption = true
   purge_protection_enabled    = true
+}
+
+# Grant the Terraform identity access to create and manage the key
+resource "azurerm_key_vault_access_policy" "terraform" {
+  key_vault_id = azurerm_key_vault.encryption.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  key_permissions = [
+    "Create",
+    "Delete",
+    "Get",
+    "GetRotationPolicy",
+    "List",
+    "Purge",
+    "Recover",
+    "Update",
+  ]
 }
 
 # Encryption key for disk encryption
@@ -151,6 +171,10 @@ resource "azurerm_key_vault_key" "disk_encryption" {
     "unwrapKey",
     "verify",
     "wrapKey",
+  ]
+
+  depends_on = [
+    azurerm_key_vault_access_policy.terraform,
   ]
 }
 
@@ -179,6 +203,13 @@ resource "azurerm_key_vault_access_policy" "disk_encryption" {
   ]
 }
 
+# Grant the disk encryption set the Key Vault crypto role
+resource "azurerm_role_assignment" "disk_encryption" {
+  scope                = azurerm_key_vault.encryption.id
+  role_definition_name = "Key Vault Crypto Service Encryption User"
+  principal_id         = azurerm_disk_encryption_set.main.identity[0].principal_id
+}
+
 # Managed disk encrypted with customer-managed key
 resource "azurerm_managed_disk" "encrypted" {
   name                   = "disk-data-encrypted-01"
@@ -191,6 +222,7 @@ resource "azurerm_managed_disk" "encrypted" {
 
   depends_on = [
     azurerm_key_vault_access_policy.disk_encryption,
+    azurerm_role_assignment.disk_encryption,
   ]
 }
 ```
@@ -218,7 +250,7 @@ resource "azurerm_managed_disk" "shared" {
 }
 ```
 
-Not all disk sizes support sharing, and the maximum number of shares depends on the disk size. Premium SSDs of 256 GB or larger support up to 10 shares.
+Not all disk sizes support sharing, and the maximum number of shares depends on the disk type and size. For Premium SSDs, P30 through P50 support up to 5 shares, while P60 through P80 support up to 10 shares. Check the current shared disk size table before choosing `max_shares`.
 
 ## Creating Multiple Disks with for_each
 
@@ -303,7 +335,7 @@ resource "azurerm_managed_disk" "high_perf" {
   # Custom throughput in MB/s - baseline is 125
   disk_mbps_read_write = 500
 
-  # Zone is required for Premium SSD v2
+  # In regions with availability zones, use a zone and attach to a VM in the same zone
   zone                 = "1"
 }
 ```
