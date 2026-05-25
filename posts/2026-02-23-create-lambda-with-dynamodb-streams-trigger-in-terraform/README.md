@@ -110,7 +110,7 @@ resource "aws_lambda_event_source_mapping" "dynamodb_trigger" {
   maximum_record_age_in_seconds         = 3600  # Skip records older than 1 hour
   bisect_batch_on_function_error        = true  # Split batch in half on error
 
-  # Send failed records to SQS or SNS
+  # Send failed invocation metadata to SQS or SNS
   destination_config {
     on_failure {
       destination_arn = aws_sqs_queue.stream_dlq.arn
@@ -175,7 +175,7 @@ filter_criteria {
     })
   }
 
-  # Filter 2: Status changes to "shipped"
+  # Filter 2: Modified orders whose new status is "shipped"
   filter {
     pattern = jsonencode({
       eventName = ["MODIFY"]
@@ -242,10 +242,10 @@ resource "aws_iam_role_policy" "dynamodb_stream" {
 }
 ```
 
-## Dead Letter Queue for Failed Records
+## Failure Destination Queue for Discarded Records
 
 ```hcl
-# DLQ for records that could not be processed
+# SQS destination for records that could not be processed
 resource "aws_sqs_queue" "stream_dlq" {
   name                      = "dynamodb-stream-dlq"
   message_retention_seconds = 1209600
@@ -273,10 +273,9 @@ def handler(event, context):
     for record in event['Records']:
         try:
             event_name = record['eventName']  # INSERT, MODIFY, REMOVE
-            event_id = record['eventID']
-
             # Get the DynamoDB record data
             dynamodb_record = record['dynamodb']
+            sequence_number = dynamodb_record['SequenceNumber']
 
             if event_name == 'INSERT':
                 new_image = deserialize(dynamodb_record['NewImage'])
@@ -297,28 +296,38 @@ def handler(event, context):
         except Exception as e:
             print(f"Error processing record {record['eventID']}: {str(e)}")
             batch_item_failures.append({
-                "itemIdentifier": record['eventID']
+                "itemIdentifier": sequence_number
             })
 
     return {"batchItemFailures": batch_item_failures}
 
 def deserialize(dynamodb_item):
     """Convert DynamoDB JSON format to regular Python dict."""
-    result = {}
-    for key, value in dynamodb_item.items():
-        if 'S' in value:
-            result[key] = value['S']
-        elif 'N' in value:
-            result[key] = Decimal(value['N'])
-        elif 'BOOL' in value:
-            result[key] = value['BOOL']
-        elif 'NULL' in value:
-            result[key] = None
-        elif 'M' in value:
-            result[key] = deserialize(value['M'])
-        elif 'L' in value:
-            result[key] = [deserialize_value(v) for v in value['L']]
-    return result
+    return {key: deserialize_value(value) for key, value in dynamodb_item.items()}
+
+def deserialize_value(value):
+    """Convert a single DynamoDB attribute value to a Python value."""
+    if 'S' in value:
+        return value['S']
+    if 'N' in value:
+        return Decimal(value['N'])
+    if 'BOOL' in value:
+        return value['BOOL']
+    if 'NULL' in value:
+        return None
+    if 'M' in value:
+        return deserialize(value['M'])
+    if 'L' in value:
+        return [deserialize_value(v) for v in value['L']]
+    if 'SS' in value:
+        return set(value['SS'])
+    if 'NS' in value:
+        return {Decimal(v) for v in value['NS']}
+    if 'B' in value:
+        return value['B']
+    if 'BS' in value:
+        return set(value['BS'])
+    return value
 
 def handle_insert(item):
     """Handle new item insertion."""
