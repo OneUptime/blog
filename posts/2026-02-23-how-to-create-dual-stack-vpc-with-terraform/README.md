@@ -133,6 +133,8 @@ resource "aws_nat_gateway" "main" {
   tags = {
     Name = "dual-stack-nat"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 ```
 
