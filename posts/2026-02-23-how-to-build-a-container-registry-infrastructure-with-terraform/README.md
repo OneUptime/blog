@@ -47,12 +47,6 @@ variable "max_image_count" {
   description = "Maximum number of images to keep"
 }
 
-variable "scan_on_push" {
-  type        = bool
-  default     = true
-  description = "Enable vulnerability scanning on push"
-}
-
 variable "cross_account_ids" {
   type        = list(string)
   default     = []
@@ -62,10 +56,6 @@ variable "cross_account_ids" {
 resource "aws_ecr_repository" "this" {
   name                 = var.name
   image_tag_mutability = var.image_tag_mutability
-
-  image_scanning_configuration {
-    scan_on_push = var.scan_on_push
-  }
 
   encryption_configuration {
     encryption_type = "AES256"
@@ -82,7 +72,7 @@ resource "aws_ecr_lifecycle_policy" "this" {
   repository = aws_ecr_repository.this.name
 
   policy = jsonencode({
-    rules = [
+    rules = concat([
       {
         # Remove untagged images after 1 day
         rulePriority = 1
@@ -96,37 +86,39 @@ resource "aws_ecr_lifecycle_policy" "this" {
         action = {
           type = "expire"
         }
-      },
-      {
-        # Keep only the last N tagged images
-        rulePriority = 2
-        description  = "Keep last ${var.max_image_count} images"
+      }
+    ], [
+      for prefix in ["v", "release", "sha"] : {
+        # Keep only the last N tagged images for each release tag prefix
+        rulePriority = index(["v", "release", "sha"], prefix) + 2
+        description  = "Keep last ${var.max_image_count} ${prefix} images"
         selection = {
-          tagStatus   = "tagged"
-          tagPrefixList = ["v", "release", "sha"]
-          countType   = "imageCountMoreThan"
-          countNumber = var.max_image_count
-        }
-        action = {
-          type = "expire"
-        }
-      },
-      {
-        # Remove dev/feature branch images after 14 days
-        rulePriority = 3
-        description  = "Expire dev images after 14 days"
-        selection = {
-          tagStatus   = "tagged"
-          tagPrefixList = ["dev-", "feature-", "pr-"]
-          countType   = "sinceImagePushed"
-          countUnit   = "days"
-          countNumber = 14
+          tagStatus     = "tagged"
+          tagPrefixList = [prefix]
+          countType     = "imageCountMoreThan"
+          countNumber   = var.max_image_count
         }
         action = {
           type = "expire"
         }
       }
-    ]
+    ], [
+      for prefix in ["dev-", "feature-", "pr-"] : {
+        # Remove dev/feature branch images after 14 days
+        rulePriority = index(["dev-", "feature-", "pr-"], prefix) + 5
+        description  = "Expire ${prefix} images after 14 days"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = [prefix]
+          countType     = "sinceImagePushed"
+          countUnit     = "days"
+          countNumber   = 14
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ])
   })
 }
 
@@ -228,6 +220,8 @@ resource "aws_ecr_pull_through_cache_rule" "dockerhub" {
 resource "aws_ecr_pull_through_cache_rule" "github" {
   ecr_repository_prefix = "github"
   upstream_registry_url = "ghcr.io"
+
+  credential_arn = aws_secretsmanager_secret.github_credentials.arn
 }
 
 resource "aws_ecr_pull_through_cache_rule" "quay" {
@@ -245,6 +239,19 @@ resource "aws_secretsmanager_secret_version" "dockerhub_credentials" {
   secret_string = jsonencode({
     username    = var.dockerhub_username
     accessToken = var.dockerhub_token
+  })
+}
+
+# GitHub Container Registry credentials for authenticated pulls
+resource "aws_secretsmanager_secret" "github_credentials" {
+  name = "ecr-pullthroughcache/github"
+}
+
+resource "aws_secretsmanager_secret_version" "github_credentials" {
+  secret_id = aws_secretsmanager_secret.github_credentials.id
+  secret_string = jsonencode({
+    username    = var.github_username
+    accessToken = var.github_token
   })
 }
 ```
@@ -300,6 +307,24 @@ resource "aws_ecr_registry_scanning_configuration" "main" {
 # SNS topic for scan findings
 resource "aws_sns_topic" "vulnerability_findings" {
   name = "ecr-vulnerability-findings"
+}
+
+data "aws_iam_policy_document" "eventbridge_to_sns" {
+  statement {
+    sid       = "AllowEventBridgePublish"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.vulnerability_findings.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "vulnerability_findings" {
+  arn    = aws_sns_topic.vulnerability_findings.arn
+  policy = data.aws_iam_policy_document.eventbridge_to_sns.json
 }
 
 # EventBridge rule to alert on critical findings
@@ -372,6 +397,9 @@ resource "aws_iam_role" "ci_push" {
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
           StringLike = {
             "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/*:ref:refs/heads/main"
           }
@@ -417,6 +445,6 @@ resource "aws_iam_role_policy" "ci_push" {
 
 A well-built container registry infrastructure is about more than just storing images. Lifecycle policies keep costs under control. Image scanning catches vulnerabilities before they reach production. Cross-account access supports multi-account architectures. And pull-through caching reduces your dependency on external registries.
 
-The key to scaling is the reusable module approach. Define your standards once, and every repository automatically gets lifecycle policies, scanning, and access controls. Teams can create new repositories through pull requests without worrying about the underlying configuration.
+The key to scaling is the reusable module approach. Define your standards once, and every repository automatically gets lifecycle policies and access controls, while registry-level scanning covers every repository. Teams can create new repositories through pull requests without worrying about the underlying configuration.
 
 For monitoring the health of your container infrastructure and alerting on build failures or deployment issues, [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-an-observability-platform-with-terraform/view) provides visibility across your entire container pipeline.
