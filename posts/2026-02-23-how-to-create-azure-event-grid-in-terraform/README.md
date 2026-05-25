@@ -76,7 +76,7 @@ resource "azurerm_eventgrid_topic" "orders" {
   # Enable local auth (access keys)
   local_auth_enabled = true
 
-  # Managed identity for authenticated delivery
+  # Managed identity that event subscriptions can use for authenticated delivery
   identity {
     type = "SystemAssigned"
   }
@@ -286,7 +286,7 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "blob_created" {
   # Send to a storage queue for processing
   storage_queue_endpoint {
     storage_account_id = azurerm_storage_account.events.id
-    queue_name         = "blob-notifications"
+    queue_name         = azurerm_storage_queue.blob_notifications.name
   }
 
   # Only trigger on blob creation in the uploads container
