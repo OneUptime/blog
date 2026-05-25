@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, API Management, APIM, Infrastructure as Code, API Gateway
 
-Description: A hands-on guide to provisioning Azure API Management with Terraform, including APIs, products, policies, subscriptions, and developer portal configuration.
+Description: A hands-on guide to provisioning Azure API Management with Terraform, including APIs, products, policies, subscriptions, and diagnostics.
 
 ---
 
@@ -17,6 +17,7 @@ Setting up APIM through Terraform is the right approach for production environme
 - Terraform 1.3+
 - Azure subscription with Contributor access
 - Azure CLI authenticated
+- Azure subscription ID available as a Terraform variable, for example via `TF_VAR_subscription_id`
 - Some patience - APIM provisioning takes 30-45 minutes for Developer and Premium tiers
 
 ## Provider Setup
@@ -28,13 +29,19 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID used by the AzureRM provider."
+  type        = string
+}
+
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 ```
 
@@ -60,7 +67,7 @@ resource "azurerm_api_management" "main" {
   publisher_name  = "My Organization"
   publisher_email = "api-admin@example.com"
 
-  # Tier options: Consumption, Developer, Basic, Standard, Premium
+  # Tier options: Consumption, Developer, Basic, BasicV2, Standard, StandardV2, Premium, PremiumV2
   # Developer is good for non-production; Standard or Premium for production
   sku_name = "Developer_1"
 
@@ -72,7 +79,7 @@ resource "azurerm_api_management" "main" {
   # Virtual network integration (optional)
   # virtual_network_type = "Internal" # or "External"
 
-  # Minimum TLS version
+  # Minimum control plane API version
   min_api_version = "2019-12-01"
 
   # Enable Application Insights integration
@@ -297,8 +304,8 @@ resource "azurerm_api_management_policy" "global" {
     <set-header name="X-Request-ID" exists-action="skip">
       <value>@(context.RequestId.ToString())</value>
     </set-header>
-    <!-- Rate limit by subscription key -->
-    <rate-limit calls="1000" renewal-period="60" />
+    <!-- Rate limit by subscription ID -->
+    <rate-limit-by-key calls="1000" renewal-period="60" counter-key="@(context.Subscription.Id)" />
   </inbound>
   <backend>
     <forward-request />
@@ -325,7 +332,7 @@ resource "azurerm_api_management_api_policy" "orders" {
 <policies>
   <inbound>
     <base />
-    <!-- Validate JWT from Azure AD -->
+    <!-- Validate JWT from Microsoft Entra ID -->
     <validate-jwt header-name="Authorization" failed-validation-httpcode="401" require-scheme="Bearer">
       <openid-config url="https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration" />
       <audiences>
@@ -338,8 +345,10 @@ resource "azurerm_api_management_api_policy" "orders" {
         </claim>
       </required-claims>
     </validate-jwt>
-    <!-- Cache responses for 5 minutes -->
-    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
+    <!-- Cache authorized GET responses for 5 minutes, varying by bearer token -->
+    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" allow-private-response-caching="true">
+      <vary-by-header>Authorization</vary-by-header>
+    </cache-lookup>
   </inbound>
   <backend>
     <forward-request />
