@@ -8,7 +8,7 @@ Description: Learn how to configure DNS resolution across multiple VPCs using Te
 
 ---
 
-When you operate multiple VPCs in AWS, resources in one VPC often need to resolve DNS names for services running in another VPC. By default, each VPC has its own DNS resolver that only knows about resources within that VPC. To enable cross-VPC DNS resolution, you need to configure Route 53 private hosted zones, resolver endpoints, and forwarding rules. Terraform provides a clean way to manage all these components as code.
+When you operate multiple VPCs in AWS, resources in one VPC often need to resolve DNS names for services running in another VPC. Route 53 Resolver is available by default in every VPC and resolves public records, Amazon VPC-specific DNS names, and private hosted zones associated with that VPC. To enable private DNS resolution across VPCs, you can associate Route 53 private hosted zones with multiple VPCs, or use Resolver endpoints and forwarding rules for hybrid and conditional forwarding scenarios. Terraform provides a clean way to manage all these components as code.
 
 ## DNS Resolution Options in AWS
 
