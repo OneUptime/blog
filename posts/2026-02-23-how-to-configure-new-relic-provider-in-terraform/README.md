@@ -16,7 +16,7 @@ You need three things from your New Relic account:
 
 - **Account ID** - Found in the URL when logged in or in Account Settings
 - **API Key** - A User API key (not the License key or Insights key)
-- **Region** - Either US or EU
+- **Region** - US, EU, or JP
 
 ### Getting Your API Key
 
@@ -30,7 +30,7 @@ You need three things from your New Relic account:
 
 export NEW_RELIC_ACCOUNT_ID="1234567"
 export NEW_RELIC_API_KEY="NRAK-your-api-key-here"
-export NEW_RELIC_REGION="US"  # or "EU"
+export NEW_RELIC_REGION="US"  # or "EU" / "JP"
 ```
 
 ## Basic Provider Configuration
@@ -41,7 +41,7 @@ terraform {
   required_providers {
     newrelic = {
       source  = "newrelic/newrelic"
-      version = "~> 3.50"
+      version = "~> 3.89"
     }
   }
 }
@@ -65,7 +65,7 @@ variable "new_relic_api_key" {
 }
 
 variable "new_relic_region" {
-  description = "New Relic region (US or EU)"
+  description = "New Relic region (US, EU, or JP)"
   type        = string
   default     = "US"
 }
@@ -253,16 +253,10 @@ resource "newrelic_notification_destination" "email_ops" {
   }
 }
 
-# Slack notification destination
-resource "newrelic_notification_destination" "slack_alerts" {
+# Slack destinations must be connected in New Relic first, then referenced from Terraform
+data "newrelic_notification_destination" "slack_alerts" {
   account_id = var.new_relic_account_id
-  name       = "Slack Alerts Channel"
-  type       = "SLACK"
-
-  property {
-    key   = "url"
-    value = var.slack_webhook_url
-  }
+  exact_name = "Slack Alerts Channel"
 }
 
 # PagerDuty notification destination
@@ -272,8 +266,13 @@ resource "newrelic_notification_destination" "pagerduty" {
   type       = "PAGERDUTY_ACCOUNT_INTEGRATION"
 
   property {
-    key   = "account"
-    value = var.pagerduty_account_id
+    key   = "two_way_integration"
+    value = "true"
+  }
+
+  auth_token {
+    prefix = "Token token="
+    token  = var.pagerduty_account_integration_key
   }
 }
 
@@ -282,7 +281,7 @@ resource "newrelic_notification_channel" "slack_channel" {
   account_id     = var.new_relic_account_id
   name           = "Slack - Ops Alerts"
   type           = "SLACK"
-  destination_id = newrelic_notification_destination.slack_alerts.id
+  destination_id = data.newrelic_notification_destination.slack_alerts.id
   product        = "IINT"
 
   property {
@@ -304,7 +303,7 @@ resource "newrelic_workflow" "production_alerts" {
     predicate {
       attribute = "labels.policyIds"
       operator  = "EXACTLY_MATCHES"
-      values    = [newrelic_alert_policy.production.id]
+      values    = [tostring(newrelic_alert_policy.production.id)]
     }
   }
 
@@ -467,6 +466,10 @@ resource "newrelic_synthetics_script_monitor" "api_flow" {
       assert.ok(token, 'Response should include a token');
     });
   EOT
+
+  script_language      = "JAVASCRIPT"
+  runtime_type         = "NODE_API"
+  runtime_type_version = "22.20.0"
 }
 
 # Alert on synthetic failures
