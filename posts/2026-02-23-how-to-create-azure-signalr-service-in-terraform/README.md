@@ -65,7 +65,7 @@ resource "azurerm_signalr_service" "main" {
   # SKU options: Free_F1, Standard_S1, Premium_P1
   sku {
     name     = "Standard_S1"
-    capacity = 1 # Number of units (1, 2, 5, 10, 20, 50, 100)
+    capacity = 1 # Number of units (1-10, then 20, 30, ..., 100 for Standard_S1/Premium_P1)
   }
 
   # Service mode determines how the service operates
@@ -164,7 +164,7 @@ resource "azurerm_subnet" "private_endpoints" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.1.0/24"]
 
-  private_endpoint_network_policies_enabled = true
+  private_endpoint_network_policies_enabled = false
 }
 
 # Private DNS zone for SignalR
@@ -234,18 +234,18 @@ resource "azurerm_private_endpoint" "signalr" {
 You can configure custom domains for your SignalR Service:
 
 ```hcl
-# Custom domain requires a certificate in Key Vault
+# Custom domain requires a Premium tier SignalR Service and a certificate in Key Vault
 resource "azurerm_signalr_service_custom_domain" "main" {
-  name                  = "custom-domain"
-  signalr_service_id    = azurerm_signalr_service.main.id
-  domain_name           = "realtime.example.com"
+  name                          = "custom-domain"
+  signalr_service_id            = azurerm_signalr_service.private.id
+  domain_name                   = "realtime.example.com"
   signalr_custom_certificate_id = azurerm_signalr_service_custom_certificate.main.id
 }
 
 resource "azurerm_signalr_service_custom_certificate" "main" {
   name                  = "custom-cert"
-  signalr_service_id    = azurerm_signalr_service.main.id
-  custom_certificate_id = "https://my-keyvault.vault.azure.net/certificates/realtime-cert/latest"
+  signalr_service_id    = azurerm_signalr_service.private.id
+  custom_certificate_id = "https://my-keyvault.vault.azure.net/certificates/realtime-cert"
 }
 ```
 
@@ -336,7 +336,7 @@ output "signalr_id" {
 
 **Choose the right service mode.** Use Default mode when you have a persistent app server (ASP.NET Core, etc.). Use Serverless mode when you want Azure Functions to handle the logic. Do not use Classic mode for new deployments.
 
-**Size your units based on connection count.** Each Standard S1 unit supports about 1,000 concurrent connections and 1 million messages per day. Monitor your actual usage and scale accordingly.
+**Size your units based on connection count.** Each Standard S1 unit supports about 1,000 concurrent connections. The Standard tier supports unlimited messages, with the first 1 million messages per unit per day included in the base price. Monitor your actual usage and scale accordingly.
 
 **Use private endpoints in production.** Public SignalR endpoints work fine for development, but production workloads should use private endpoints to keep traffic on the Azure backbone.
 
