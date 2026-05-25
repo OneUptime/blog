@@ -33,7 +33,6 @@ resource "aws_lambda_function" "processor" {
   environment {
     variables = {
       PROCESSED_BUCKET = aws_s3_bucket.processed.id
-      TABLE_NAME       = var.dynamodb_table_name
     }
   }
 
@@ -260,7 +259,7 @@ def process_file(content):
 
 ## Avoiding Infinite Loops
 
-A critical gotcha: if your Lambda writes back to the same bucket that triggers it, you create an infinite loop. Lambda triggers, writes a file, which triggers Lambda again, and so on until you hit concurrency limits and your AWS bill explodes.
+A critical gotcha: if your Lambda writes back to the same bucket that triggers it, you can create a recursive loop. Lambda triggers, writes a file, which triggers Lambda again, and so on. Lambda has recursive loop detection for supported S3, SQS, and SNS loops, but you should still design the workflow so recursion cannot happen and avoid unexpected invocations or charges.
 
 The fix is to use separate buckets for input and output, or use prefix filtering to separate source and destination:
 
