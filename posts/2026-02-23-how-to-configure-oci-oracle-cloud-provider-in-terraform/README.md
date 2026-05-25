@@ -56,7 +56,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "~> 5.30"
+      version = "~> 8.0"
     }
   }
 }
@@ -106,6 +106,11 @@ variable "region" {
 variable "compartment_ocid" {
   type        = string
   description = "OCI compartment OCID for resources"
+}
+
+variable "kubernetes_version" {
+  type        = string
+  description = "OKE Kubernetes version supported in your region"
 }
 ```
 
@@ -169,6 +174,7 @@ resource "oci_core_route_table" "public" {
 
   route_rules {
     destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
     network_entity_id = oci_core_internet_gateway.main.id
   }
 }
@@ -181,6 +187,7 @@ resource "oci_core_route_table" "private" {
 
   route_rules {
     destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
     network_entity_id = oci_core_nat_gateway.main.id
   }
 }
@@ -333,7 +340,7 @@ output "db_connection_strings" {
 resource "oci_containerengine_cluster" "production" {
   compartment_id     = var.compartment_ocid
   name               = "production-cluster"
-  kubernetes_version = "v1.28.2"
+  kubernetes_version = var.kubernetes_version
   vcn_id             = oci_core_vcn.main.id
 
   endpoint_config {
@@ -351,7 +358,7 @@ resource "oci_containerengine_node_pool" "workers" {
   compartment_id     = var.compartment_ocid
   cluster_id         = oci_containerengine_cluster.production.id
   name               = "worker-pool"
-  kubernetes_version = "v1.28.2"
+  kubernetes_version = var.kubernetes_version
   node_shape         = "VM.Standard.E4.Flex"
 
   node_shape_config {
