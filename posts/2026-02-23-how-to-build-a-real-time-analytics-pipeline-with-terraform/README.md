@@ -42,7 +42,7 @@ resource "aws_kinesis_stream" "events" {
   }
 }
 
-# Dead letter stream for failed processing
+# Dead letter stream for records the processor explicitly sends after per-record failures
 
 resource "aws_kinesis_stream" "dead_letter" {
   name             = "${var.project_name}-events-dlq"
@@ -54,6 +54,12 @@ resource "aws_kinesis_stream" "dead_letter" {
 
   encryption_type = "KMS"
   kms_key_id      = aws_kms_key.kinesis.id
+}
+
+# Event source mapping failure destination for discarded batches
+resource "aws_sqs_queue" "stream_failures" {
+  name                      = "${var.project_name}-stream-failures"
+  message_retention_seconds = 1209600
 }
 ```
 
@@ -68,7 +74,7 @@ resource "aws_lambda_function" "stream_processor" {
   function_name    = "${var.project_name}-stream-processor"
   role             = aws_iam_role.stream_processor.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   memory_size      = 512
   timeout          = 60
   source_code_hash = filebase64sha256(var.processor_package)
@@ -103,7 +109,7 @@ resource "aws_lambda_event_source_mapping" "stream" {
 
   destination_config {
     on_failure {
-      destination_arn = aws_kinesis_stream.dead_letter.arn
+      destination_arn = aws_sqs_queue.stream_failures.arn
     }
   }
 
@@ -158,6 +164,13 @@ resource "aws_iam_role_policy" "stream_processor" {
       {
         Effect = "Allow"
         Action = [
+          "sqs:SendMessage"
+        ]
+        Resource = aws_sqs_queue.stream_failures.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:BatchWriteItem"
@@ -166,6 +179,16 @@ resource "aws_iam_role_policy" "stream_processor" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "stream_processor_basic_logs" {
+  role       = aws_iam_role.stream_processor.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "stream_processor_vpc_access" {
+  role       = aws_iam_role.stream_processor.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 ```
 
@@ -252,7 +275,7 @@ resource "aws_kinesis_firehose_delivery_stream" "archive" {
     buffering_size     = 128
     buffering_interval = 300
 
-    compression_format = "GZIP"
+    compression_format = "UNCOMPRESSED"
 
     # Convert to Parquet for efficient analytics
     data_format_conversion_configuration {
@@ -289,6 +312,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "event_archive" {
   rule {
     id     = "tiered-storage"
     status = "Enabled"
+
+    filter {}
 
     transition {
       days          = 90
@@ -351,9 +376,10 @@ resource "aws_apigatewayv2_api" "events" {
 }
 
 resource "aws_apigatewayv2_integration" "kinesis" {
-  api_id             = aws_apigatewayv2_api.events.id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = aws_lambda_function.event_ingester.invoke_arn
+  api_id                 = aws_apigatewayv2_api.events.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.event_ingester.invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -361,6 +387,20 @@ resource "aws_apigatewayv2_route" "events" {
   api_id    = aws_apigatewayv2_api.events.id
   route_key = "POST /events"
   target    = "integrations/${aws_apigatewayv2_integration.kinesis.id}"
+}
+
+resource "aws_apigatewayv2_stage" "events" {
+  api_id      = aws_apigatewayv2_api.events.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "event_ingester_api" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.event_ingester.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.events.execution_arn}/*/*"
 }
 ```
 
