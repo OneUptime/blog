@@ -102,11 +102,43 @@ resource "aws_ecs_task_definition" "order_service" {
   }])
 }
 
+# Product service
+resource "aws_ecs_service" "product_service" {
+  name            = "product-service"
+  cluster         = aws_ecs_cluster.ecommerce.id
+  task_definition = aws_ecs_task_definition.product_service.arn
+  desired_count   = 3
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.private_subnet_ids
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+}
+
+# Order service
+resource "aws_ecs_service" "order_service" {
+  name            = "order-service"
+  cluster         = aws_ecs_cluster.ecommerce.id
+  task_definition = aws_ecs_task_definition.order_service.arn
+  desired_count   = 3
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.private_subnet_ids
+    security_groups = [aws_security_group.ecs.id]
+  }
+}
+
 # Auto-scaling for product service
 resource "aws_appautoscaling_target" "product_service" {
   max_capacity       = 50
   min_capacity       = 3
-  resource_id        = "service/${aws_ecs_cluster.ecommerce.name}/product-service"
+  resource_id        = "service/${aws_ecs_cluster.ecommerce.name}/${aws_ecs_service.product_service.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
@@ -327,6 +359,32 @@ resource "aws_s3_bucket" "product_images" {
   bucket = "ecommerce-product-images-${var.environment}"
 }
 
+# Cache policy for image transformation parameters
+resource "aws_cloudfront_cache_policy" "image_cache" {
+  name        = "ecommerce-image-cache-${var.environment}"
+  min_ttl     = 86400
+  default_ttl = 604800
+  max_ttl     = 31536000
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "none"
+    }
+
+    query_strings_config {
+      query_string_behavior = "whitelist"
+
+      query_strings {
+        items = ["w", "h", "q"]
+      }
+    }
+  }
+}
+
 # CloudFront distribution
 resource "aws_cloudfront_distribution" "static" {
   enabled         = true
@@ -348,16 +406,8 @@ resource "aws_cloudfront_distribution" "static" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-images"
 
-    forwarded_values {
-      query_string = true
-      query_string_cache_keys = ["w", "h", "q"]  # Image transformation params
-      cookies { forward = "none" }
-    }
-
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 86400
-    default_ttl            = 604800
-    max_ttl                = 31536000
+    cache_policy_id        = aws_cloudfront_cache_policy.image_cache.id
     compress               = true
   }
 
