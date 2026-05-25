@@ -16,7 +16,7 @@ This guide covers creating permission sets, attaching managed and inline policie
 
 - Terraform 1.0 or later
 - AWS IAM Identity Center enabled in your organization
-- AWS Organizations set up (SSO requires it)
+- AWS Organizations set up with an organization instance of IAM Identity Center for multi-account permission sets
 - Administrative access to the management account
 
 ## Provider Configuration
@@ -150,7 +150,7 @@ resource "aws_ssoadmin_permission_set_inline_policy" "developer_restrictions" {
           "iam:PutRolePolicy",
         ]
         Resource = "*"
-        # Allow changes to roles that start with "app-" prefix
+        # Allow changes to IAM resources tagged ManagedBy=application
         Condition = {
           StringNotLike = {
             "iam:ResourceTag/ManagedBy" = "application"
