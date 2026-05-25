@@ -96,8 +96,8 @@ resource "azurerm_cosmosdb_account" "main" {
   is_virtual_network_filter_enabled = true
   public_network_access_enabled     = true  # Set to false if using private endpoints
 
-  # IP range filter for allowed IPs (Azure portal access)
-  ip_range_filter = "104.42.195.92,40.76.54.131,52.176.6.30,52.169.50.45,52.187.184.26"
+  # IP range filter for Azure portal middleware access (API for NoSQL, Azure Public)
+  ip_range_filter = "13.91.105.215,4.210.172.107,13.88.56.148,40.91.218.243"
 
   # Backup policy
   backup {
@@ -145,7 +145,7 @@ resource "azurerm_cosmosdb_sql_container" "users" {
   account_name          = azurerm_cosmosdb_account.main.name
   database_name         = azurerm_cosmosdb_sql_database.app.name
   partition_key_path    = "/userId"
-  partition_key_version = 2  # Use v2 for hierarchical partition keys
+  partition_key_version = 2  # Use v2 for large partition keys
 
   # Container-level throughput overrides the database-level setting
   throughput = 1000
@@ -164,7 +164,7 @@ resource "azurerm_cosmosdb_sql_container" "users" {
     }
   }
 
-  # Unique key constraint
+  # Unique key constraint within each logical partition
   unique_key {
     paths = ["/email"]
   }
@@ -197,11 +197,11 @@ resource "azurerm_cosmosdb_sql_container" "orders" {
     composite_index {
       index {
         path  = "/customerId"
-        order = "ascending"
+        order = "Ascending"
       }
       index {
         path  = "/orderDate"
-        order = "descending"
+        order = "Descending"
       }
     }
   }
@@ -305,7 +305,7 @@ output "cosmos_connection_strings" {
 
 Cosmos DB offers five consistency levels, from strongest to weakest:
 
-1. **Strong** - Linearizable reads. Highest latency, guaranteed consistency. Only works within a single region.
+1. **Strong** - Linearizable reads. Highest latency, guaranteed consistency. Not supported with multiple write regions, and multi-region accounts have distance-related latency limits.
 2. **Bounded Staleness** - Reads lag behind writes by at most K versions or T seconds.
 3. **Session** - Within a session, reads are consistent with writes. The most popular choice.
 4. **Consistent Prefix** - Reads never see out-of-order writes, but may see older data.
