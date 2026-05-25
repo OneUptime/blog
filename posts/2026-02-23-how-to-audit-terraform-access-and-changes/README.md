@@ -38,7 +38,7 @@ The most basic form of Terraform auditing is version control. Every change to yo
 
 Configure your repository to require pull request approvals:
 
-```yaml
+```hcl
 # Example GitHub branch protection (via Terraform)
 resource "github_branch_protection" "main" {
   repository_id = github_repository.infra.node_id
@@ -69,7 +69,7 @@ Your cloud provider has built-in audit logging. Make sure it is turned on and pr
 ### AWS CloudTrail
 
 ```hcl
-# Enable CloudTrail for all API calls
+# Enable CloudTrail for management calls and state-bucket data events
 resource "aws_cloudtrail" "audit" {
   name                          = "terraform-audit-trail"
   s3_bucket_name                = aws_s3_bucket.audit_logs.id
@@ -145,11 +145,11 @@ Your Terraform state file contains sensitive information. Every access to it sho
 # S3 backend with logging enabled
 terraform {
   backend "s3" {
-    bucket         = "my-org-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-org-terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
@@ -162,15 +162,14 @@ resource "aws_s3_bucket_logging" "state_logging" {
 }
 ```
 
-For teams using Terraform Cloud or Terraform Enterprise, audit logging is built in. You can access it through the API:
+For teams using HCP Terraform, audit logging is built in. You can access it through the API:
 
 ```bash
-# Query Terraform Cloud audit trail
+# Query HCP Terraform audit trail
 curl -s \
-  --header "Authorization: Bearer $TFE_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/organization/audit-trail?since=2026-01-01" \
-  | jq '.data[] | {timestamp: .attributes.timestamp, action: .attributes.type, user: .attributes.user}'
+  --header "Authorization: Bearer $TFC_AUDIT_TOKEN" \
+  "https://app.terraform.io/api/v2/organization/audit-trail?since=2026-01-01T00:00:00.000Z" \
+  | jq '.data[] | {timestamp: .timestamp, action: .resource.action, resource: .resource.type, user: .auth.description}'
 ```
 
 ## Track Plan and Apply Operations
@@ -205,22 +204,24 @@ exit $EXIT_CODE
 
 Policy-as-code tools let you define and enforce rules, while also creating an audit trail of policy decisions.
 
-```python
+```rego
 # Example OPA policy (Rego) - audit all resource changes
 package terraform.audit
 
+import rego.v1
+
 # Deny any changes to production without an approved change ticket
-deny[msg] {
+deny contains msg if {
   input.workspace == "production"
   not input.variables.change_ticket
   msg := "Production changes require an approved change ticket"
 }
 
 # Log all security group modifications
-audit[msg] {
-  resource := input.resource_changes[_]
+audit contains msg if {
+  some resource in input.resource_changes
   resource.type == "aws_security_group"
-  resource.change.actions[_] != "no-op"
+  resource.change.actions != ["no-op"]
   msg := sprintf("Security group %s is being modified", [resource.address])
 }
 ```
@@ -230,22 +231,30 @@ audit[msg] {
 Do not just log changes - alert on the ones that matter. Use CloudWatch or similar services to notify your team when high-risk changes occur.
 
 ```hcl
-# CloudWatch alarm for state file modifications
+# CloudWatch metric filter and alarm for state file modifications recorded by CloudTrail
+resource "aws_cloudwatch_log_metric_filter" "state_modification" {
+  name           = "terraform-state-modified"
+  log_group_name = aws_cloudwatch_log_group.audit.name
+  pattern        = "{ ($.eventSource = \"s3.amazonaws.com\") && ($.eventName = \"PutObject\") && ($.requestParameters.bucketName = \"${aws_s3_bucket.terraform_state.id}\") }"
+
+  metric_transformation {
+    name      = "TerraformStatePutObject"
+    namespace = "Custom/TerraformAudit"
+    value     = "1"
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "state_modification" {
   alarm_name          = "terraform-state-modified"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "PutObject"
-  namespace           = "AWS/S3"
+  metric_name         = "TerraformStatePutObject"
+  namespace           = "Custom/TerraformAudit"
   period              = 300
   statistic           = "Sum"
   threshold           = 0
   alarm_description   = "Alert when Terraform state is modified"
-
-  dimensions = {
-    BucketName = aws_s3_bucket.terraform_state.id
-    FilterId   = "AllObjects"
-  }
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.security_alerts.arn]
 }
@@ -275,8 +284,13 @@ jobs:
       - name: Check for Drift
         id: plan
         run: |
+          set +e
           terraform plan -detailed-exitcode -out=drift.plan 2>&1 | tee plan-output.txt
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          exitcode=${PIPESTATUS[0]}
+          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Alert on Drift
         if: steps.plan.outputs.exitcode == '2'
