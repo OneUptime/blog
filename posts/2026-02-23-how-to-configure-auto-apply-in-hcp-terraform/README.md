@@ -16,7 +16,7 @@ This guide covers when to use auto-apply, how to configure it, and how to set up
 
 With auto-apply enabled:
 
-1. A run is triggered (via VCS push, API call, or CLI)
+1. A run is triggered (via VCS push or API call)
 2. Terraform runs the plan phase
 3. If the plan succeeds and all policies pass, the apply starts immediately
 4. No manual confirmation is needed
@@ -61,7 +61,6 @@ Auto-apply is generally not recommended for:
 resource "tfe_workspace" "dev" {
   name           = "app-development"
   organization   = "your-org"
-  execution_mode = "remote"
   auto_apply     = true
 
   vcs_repo {
@@ -77,7 +76,6 @@ resource "tfe_workspace" "dev" {
 resource "tfe_workspace" "prod" {
   name           = "app-production"
   organization   = "your-org"
-  execution_mode = "remote"
   auto_apply     = false  # Manual confirmation required
 
   vcs_repo {
@@ -123,7 +121,6 @@ If you use run triggers to chain workspaces together, you might want auto-apply 
 resource "tfe_workspace" "downstream" {
   name           = "app-downstream"
   organization   = "your-org"
-  execution_mode = "remote"
 
   # Auto-apply for run triggers only
   auto_apply             = false  # No auto-apply for VCS/manual runs
@@ -258,7 +255,7 @@ resource "tfe_workspace_run_task" "dev_security" {
   workspace_id      = tfe_workspace.dev.id
   task_id           = tfe_organization_run_task.security_scan.id
   enforcement_level = "mandatory"  # Must pass before auto-apply
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
@@ -291,7 +288,6 @@ resource "tfe_workspace" "app" {
 
   name           = "app-${each.key}"
   organization   = "your-org"
-  execution_mode = "remote"
   auto_apply     = each.value.auto_apply
 
   vcs_repo {
