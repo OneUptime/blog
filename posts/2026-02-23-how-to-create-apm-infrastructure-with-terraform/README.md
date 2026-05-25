@@ -79,9 +79,9 @@ provider "aws" {
 }
 ```
 
-## Creating Custom Metric Namespaces and Alarms
+## Using Custom Metric Namespaces and Alarms
 
-Define CloudWatch alarms for key APM metrics like latency, error rate, and resource utilization:
+Define CloudWatch alarms for key APM metrics like latency and error rate:
 
 ```hcl
 # alarms.tf - Create CloudWatch alarms for each service
@@ -92,27 +92,13 @@ resource "aws_cloudwatch_metric_alarm" "latency" {
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   threshold           = each.value.latency_threshold_ms
+  metric_name         = "ResponseTime"
+  namespace           = "APM/${var.environment}"
+  period              = 300
+  extended_statistic  = "p99"
 
-  # Use a metric query for percentile-based latency
-  metric_query {
-    id          = "latency_p99"
-    expression  = "PERCENTILE(m1, 99)"
-    label       = "P99 Latency"
-    return_data = true
-  }
-
-  metric_query {
-    id = "m1"
-    metric {
-      metric_name = "ResponseTime"
-      namespace   = "APM/${var.environment}"
-      period      = 300
-      stat        = "Average"
-
-      dimensions = {
-        ServiceName = each.key
-      }
-    }
+  dimensions = {
+    ServiceName = each.key
   }
 
   alarm_description = "P99 latency for ${each.key} exceeds ${each.value.latency_threshold_ms}ms"
@@ -278,7 +264,6 @@ resource "aws_cloudwatch_metric_alarm" "latency_anomaly" {
     id          = "ad1"
     expression  = "ANOMALY_DETECTION_BAND(m1, 2)"
     label       = "Anomaly Detection Band"
-    return_data = true
   }
 
   alarm_description = "Anomalous latency pattern detected for ${each.key}"
@@ -314,6 +299,17 @@ resource "aws_sns_topic_subscription" "lambda" {
   topic_arn = aws_sns_topic.apm_alerts.arn
   protocol  = "lambda"
   endpoint  = var.remediation_lambda_arn
+
+  depends_on = [aws_lambda_permission.allow_sns]
+}
+
+resource "aws_lambda_permission" "allow_sns" {
+  count         = var.enable_auto_remediation ? 1 : 0
+  statement_id  = "AllowExecutionFromSNS-${var.environment}"
+  action        = "lambda:InvokeFunction"
+  function_name = var.remediation_lambda_arn
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.apm_alerts.arn
 }
 
 variable "ops_email" {
