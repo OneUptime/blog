@@ -37,11 +37,11 @@ output "instance_public_ips" {
 
 ## Where Descriptions Appear
 
-Output descriptions show up in several places:
+Output descriptions do not appear everywhere. Here are the main places to expect them:
 
 ### terraform output
 
-When running `terraform output`, descriptions are not shown directly. But they appear in:
+When running `terraform output`, descriptions are not shown directly. Use documentation tools or registry pages to display them.
 
 ### Terraform Documentation
 
@@ -63,15 +63,6 @@ This produces a markdown table:
 ### Terraform Registry
 
 If you publish your module to the Terraform Registry, descriptions appear on the module's documentation page, making them visible to anyone considering using your module.
-
-### terraform console
-
-```bash
-terraform console
-> output
-# Shows outputs with their descriptions in some versions
-
-```
 
 ### IDE Support
 
@@ -315,10 +306,10 @@ You can automate this with a pre-commit hook:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/terraform-docs/terraform-docs
-    rev: v0.18.0
+    rev: v0.24.0
     hooks:
       - id: terraform-docs-go
-        args: ["markdown", "table", "--output-file", "README.md"]
+        args: ["markdown", "table", "--output-file", "README.md", "./modules/eks"]
 ```
 
 ## Consistency Patterns
@@ -367,6 +358,6 @@ output "elastic_ip" {
 
 ## Wrapping Up
 
-Output descriptions are the documentation layer for your Terraform module's return values. They cost almost nothing to write but significantly improve the usability of your code. When someone reads your outputs - whether in the CLI, in generated docs, or in the Terraform Registry - the descriptions are what help them understand what they are getting and how to use it. Make them a habit, and your future self and teammates will thank you.
+Output descriptions are the documentation layer for your Terraform module's return values. They cost almost nothing to write but significantly improve the usability of your code. When someone reads your output definitions, generated docs, or Terraform Registry page, the descriptions are what help them understand what they are getting and how to use it. Make them a habit, and your future self and teammates will thank you.
 
 For more on Terraform outputs, see our posts on [defining output values](https://oneuptime.com/blog/post/2026-02-23-how-to-define-output-values-in-terraform/view) and [exporting outputs from modules](https://oneuptime.com/blog/post/2026-02-23-how-to-export-outputs-from-modules-in-terraform/view).
