@@ -168,14 +168,8 @@ resource "aws_security_group" "database" {
     description     = "PostgreSQL from app tier"
   }
 
-  # No direct outbound internet access
-  egress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app.id]
-    description     = "Response to app tier"
-  }
+  # No outbound rules are needed for database responses; Security Groups are stateful.
+  egress = []
 
   tags = { Name = "database-tier-sg" }
 }
