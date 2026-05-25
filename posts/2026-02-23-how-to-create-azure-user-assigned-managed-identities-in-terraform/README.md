@@ -8,7 +8,7 @@ Description: Learn how to create and assign Azure User-Assigned Managed Identiti
 
 ---
 
-Managing credentials is one of the biggest security headaches in cloud infrastructure. Service accounts with passwords, API keys stored in environment variables, certificates that expire - all of these create operational burden and security risk. Azure Managed Identities eliminate this problem by giving your resources an identity in Azure Active Directory without any credentials to manage.
+Managing credentials is one of the biggest security headaches in cloud infrastructure. Service accounts with passwords, API keys stored in environment variables, certificates that expire - all of these create operational burden and security risk. Azure Managed Identities eliminate this problem by giving your resources an identity in Microsoft Entra ID without any credentials to manage.
 
 This guide covers creating user-assigned managed identities with Terraform, assigning roles, and attaching them to various Azure resources.
 
@@ -39,12 +39,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID where resources will be created"
+  type        = string
+}
+
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 
@@ -95,7 +101,7 @@ resource "azurerm_role_assignment" "rg_contributor" {
 }
 ```
 
-The `principal_id` is the identity's object ID in Azure AD. Terraform exposes this as an attribute on the identity resource, so you do not need to look it up manually.
+The `principal_id` is the identity's object ID in Microsoft Entra ID. Terraform exposes this as an attribute on the identity resource, so you do not need to look it up manually.
 
 ## Attaching to a Virtual Machine
 
@@ -181,6 +187,8 @@ resource "azurerm_linux_web_app" "api" {
 ## Attaching to Azure Kubernetes Service
 
 AKS workload identity lets pods use managed identities through Kubernetes service accounts:
+
+This assumes your AKS cluster has the OIDC issuer and workload identity enabled, and that your Kubernetes service account is configured to use this managed identity.
 
 ```hcl
 # Managed identity for AKS workloads
@@ -276,7 +284,7 @@ output "identity_id" {
 }
 
 output "identity_principal_id" {
-  description = "Object ID of the identity in Azure AD"
+  description = "Object ID of the identity in Microsoft Entra ID"
   value       = azurerm_user_assigned_identity.app.principal_id
 }
 
