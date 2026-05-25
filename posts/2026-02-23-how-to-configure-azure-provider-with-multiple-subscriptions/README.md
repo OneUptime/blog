@@ -124,6 +124,11 @@ provider "azurerm" {
   subscription_id = var.hub_subscription_id
 }
 
+resource "azurerm_resource_group" "app" {
+  name     = "app-spoke-rg"
+  location = "eastus"
+}
+
 # The hub VNet already exists - reference it with a data source
 data "azurerm_virtual_network" "hub" {
   provider            = azurerm.hub
@@ -217,6 +222,14 @@ resource "azurerm_resource_group" "app" {
   # Uses the default provider (app subscription)
   name     = "${var.app_name}-rg"
   location = "eastus"
+}
+
+resource "azurerm_service_plan" "plan" {
+  name                = "${var.app_name}-plan"
+  resource_group_name = azurerm_resource_group.app.name
+  location            = azurerm_resource_group.app.location
+  os_type             = "Linux"
+  sku_name            = "B1"
 }
 
 resource "azurerm_linux_web_app" "app" {
