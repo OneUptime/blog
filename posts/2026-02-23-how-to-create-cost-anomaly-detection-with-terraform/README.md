@@ -99,6 +99,35 @@ resource "aws_sns_topic" "cost_anomaly" {
   name = "cost-anomaly-alerts"
 }
 
+# Allow AWS Cost Anomaly Detection to publish to the SNS topic
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "cost_anomaly_sns" {
+  statement {
+    sid     = "AWSAnomalyDetectionSNSPublishingPermissions"
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["costalerts.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.cost_anomaly.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "cost_anomaly" {
+  arn    = aws_sns_topic.cost_anomaly.arn
+  policy = data.aws_iam_policy_document.cost_anomaly_sns.json
+}
+
 # Email subscriptions for the finance team
 resource "aws_sns_topic_subscription" "finance_email" {
   for_each  = toset(var.finance_team_emails)
@@ -120,6 +149,8 @@ resource "aws_ce_anomaly_subscription" "service_alerts" {
     type    = "SNS"
     address = aws_sns_topic.cost_anomaly.arn
   }
+
+  depends_on = [aws_sns_topic_policy.cost_anomaly]
 
   # Alert when anomaly impact exceeds $50
   threshold_expression {
@@ -144,6 +175,8 @@ resource "aws_ce_anomaly_subscription" "team_alerts" {
     type    = "SNS"
     address = aws_sns_topic.cost_anomaly.arn
   }
+
+  depends_on = [aws_sns_topic_policy.cost_anomaly]
 
   # Alert when anomaly exceeds both absolute and percentage thresholds
   threshold_expression {
@@ -170,8 +203,16 @@ resource "aws_ce_anomaly_subscription" "team_alerts" {
 For more granular control, you can build custom anomaly detection using CloudWatch Anomaly Detection, which uses machine learning on your CloudWatch metrics.
 
 ```hcl
+# AWS/Billing metrics are published in us-east-1
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 # CloudWatch anomaly detector for billing metrics
 resource "aws_cloudwatch_metric_alarm" "billing_anomaly" {
+  provider = aws.us_east_1
+
   alarm_name          = "billing-anomaly-detection"
   comparison_operator = "GreaterThanUpperThreshold"
   evaluation_periods  = 1
@@ -203,12 +244,14 @@ resource "aws_cloudwatch_metric_alarm" "billing_anomaly" {
     id          = "ad1"
     expression  = "ANOMALY_DETECTION_BAND(m1, 2)"
     label       = "EstimatedCharges Anomaly Band"
-    return_data = true
+    return_data = false
   }
 }
 
 # Per-service billing anomaly detection
 resource "aws_cloudwatch_metric_alarm" "service_billing_anomaly" {
+  provider = aws.us_east_1
+
   for_each = toset(var.monitored_services)
 
   alarm_name          = "billing-anomaly-${lower(replace(each.value, " ", "-"))}"
@@ -242,7 +285,7 @@ resource "aws_cloudwatch_metric_alarm" "service_billing_anomaly" {
     id          = "ad1"
     expression  = "ANOMALY_DETECTION_BAND(m1, 2)"
     label       = "${each.value} Anomaly Band"
-    return_data = true
+    return_data = false
   }
 }
 ```
@@ -277,6 +320,8 @@ resource "aws_sns_topic_subscription" "anomaly_lambda" {
   topic_arn = aws_sns_topic.cost_anomaly.arn
   protocol  = "lambda"
   endpoint  = aws_lambda_function.anomaly_processor.arn
+
+  depends_on = [aws_lambda_permission.sns_invoke]
 }
 
 resource "aws_lambda_permission" "sns_invoke" {
@@ -287,6 +332,14 @@ resource "aws_lambda_permission" "sns_invoke" {
   source_arn    = aws_sns_topic.cost_anomaly.arn
 }
 
+resource "aws_lambda_permission" "eventbridge_invoke" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.anomaly_processor.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.cost_anomaly_event.arn
+}
+
 # EventBridge rule for Cost Anomaly Detection events
 resource "aws_cloudwatch_event_rule" "cost_anomaly_event" {
   name        = "cost-anomaly-event"
@@ -294,7 +347,7 @@ resource "aws_cloudwatch_event_rule" "cost_anomaly_event" {
 
   event_pattern = jsonencode({
     source      = ["aws.ce"]
-    detail-type = ["Cost Anomaly Detection Alert"]
+    detail-type = ["Anomaly Detected"]
   })
 }
 
