@@ -22,13 +22,13 @@ Our IoT infrastructure includes:
 - IoT rules for message routing
 - Kinesis Data Streams for high-throughput ingestion
 - Lambda for real-time processing
-- DynamoDB for device shadows and state
+- DynamoDB for device status and operational state
 - S3 for long-term data storage
 - CloudWatch for device monitoring
 
 ## IoT Core Setup
 
-Configure the IoT Core endpoint, thing types, and policies.
+Configure IoT Core thing types and policies.
 
 ```hcl
 # IoT thing type for temperature sensors
@@ -63,6 +63,11 @@ resource "aws_iot_policy" "device_policy" {
         Effect   = "Allow"
         Action   = ["iot:Connect"]
         Resource = "arn:aws:iot:${var.region}:${data.aws_caller_identity.current.account_id}:client/$${iot:Connection.Thing.ThingName}"
+        Condition = {
+          Bool = {
+            "iot:Connection.Thing.IsAttached" = "true"
+          }
+        }
       },
       {
         Effect   = "Allow"
@@ -205,10 +210,19 @@ resource "aws_iot_topic_rule" "alerts" {
   }
 
   sns {
-    target_arn = aws_sns_topic.device_alerts.arn
-    role_arn   = aws_iam_role.iot_rules.arn
+    target_arn     = aws_sns_topic.device_alerts.arn
+    role_arn       = aws_iam_role.iot_rules.arn
     message_format = "JSON"
   }
+}
+
+# Allow AWS IoT Rules to invoke the alert processor
+resource "aws_lambda_permission" "allow_iot_alerts" {
+  statement_id  = "AllowExecutionFromIoTRule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.alert_processor.function_name
+  principal     = "iot.amazonaws.com"
+  source_arn    = aws_iot_topic_rule.alerts.arn
 }
 
 # Rule to store device status in DynamoDB
@@ -332,6 +346,33 @@ resource "aws_dynamodb_table" "device_status" {
   }
 }
 
+# Device metrics table - historical readings
+resource "aws_dynamodb_table" "device_metrics" {
+  name         = "device-metrics"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "deviceId"
+  range_key    = "timestamp"
+
+  attribute {
+    name = "deviceId"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "N"
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
 # S3 data lake for long-term storage
 resource "aws_s3_bucket" "iot_data_lake" {
   bucket = "company-iot-data-lake-${var.environment}"
@@ -376,17 +417,23 @@ resource "aws_cloudwatch_metric_alarm" "rule_failures" {
   alarm_name          = "iot-rule-failures"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "RuleActionFailure"
+  metric_name         = "Failure"
   namespace           = "AWS/IoT"
   period              = 300
   statistic           = "Sum"
   threshold           = 0
   alarm_actions       = [aws_sns_topic.device_alerts.arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    RuleName   = aws_iot_topic_rule.telemetry_to_kinesis.name
+    ActionType = "Kinesis"
+  }
 }
 
-# Alarm for disconnected devices
-resource "aws_cloudwatch_metric_alarm" "disconnected_devices" {
-  alarm_name          = "high-device-disconnections"
+# Alarm for unauthorized device connection attempts
+resource "aws_cloudwatch_metric_alarm" "unauthorized_connections" {
+  alarm_name          = "high-device-auth-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "Connect.AuthError"
@@ -395,6 +442,11 @@ resource "aws_cloudwatch_metric_alarm" "disconnected_devices" {
   statistic           = "Sum"
   threshold           = 10
   alarm_actions       = [aws_sns_topic.device_alerts.arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Protocol = "MQTT"
+  }
 }
 ```
 
