@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Kubernetes, Helm, OCI, Container Registry, DevOps
 
-Description: Learn how to use Helm charts stored in OCI-compliant container registries with Terraform, including authentication setup for ECR, ACR, GCR, and private registries.
+Description: Learn how to use Helm charts stored in OCI-compliant container registries with Terraform, including authentication setup for ECR, ACR, Google Artifact Registry, and private registries.
 
 ---
 
-Helm charts have traditionally been stored in HTTP-based chart repositories. But since Helm 3.8, OCI (Open Container Initiative) registries became the recommended way to distribute charts. Major cloud providers - AWS ECR, Azure ACR, Google Artifact Registry - all support storing Helm charts as OCI artifacts. Using these with Terraform requires a slightly different configuration than traditional chart repositories.
+Helm charts have traditionally been stored in HTTP-based chart repositories. But since Helm 3.8, OCI (Open Container Initiative) registry support has been generally available and enabled by default. Major cloud providers - AWS ECR, Azure ACR, Google Artifact Registry - all support storing Helm charts as OCI artifacts. Using these with Terraform requires a slightly different configuration than traditional chart repositories.
 
 This guide covers how to pull and deploy Helm charts from OCI registries using Terraform, with authentication examples for the major cloud providers.
 
 ## Why OCI Registries for Helm Charts
 
-Traditional Helm repositories use an `index.yaml` file served over HTTP. This works, but has limitations. The index file grows with every chart version, repositories need separate hosting infrastructure, and there is no standard authentication mechanism.
+Traditional Helm repositories use an `index.yaml` file served over HTTP. This works, but has limitations. The index file grows with every chart version, repositories need separate hosting infrastructure, and authentication is separate from the container registry credentials many teams already use.
 
 OCI registries solve these problems. They reuse existing container registry infrastructure, support standard authentication, provide content-addressable storage, and work with the same tooling you already use for container images.
 
 ## Basic OCI Helm Release in Terraform
 
-The key difference when using OCI registries is the `repository` format. Instead of an HTTP URL, you use the `oci://` prefix.
+The key difference when using OCI registries is the registry URL format. Instead of an HTTP URL, you use the `oci://` prefix. You can put the full OCI chart URL in `chart`, or use `repository` for the OCI repository URL and `chart` for the chart name.
 
 ```hcl
 # providers.tf - configure Helm provider
@@ -60,7 +60,7 @@ resource "helm_release" "nginx" {
 }
 ```
 
-Notice that with OCI registries, you do not use the `repository` attribute. The full OCI URL goes in the `chart` attribute instead. This catches many people off guard the first time.
+Notice that this example puts the full OCI URL in the `chart` attribute. The Helm provider also supports the more traditional split form, where `repository` is the OCI repository URL and `chart` is the chart name.
 
 ## Authenticating with AWS ECR
 
@@ -77,7 +77,7 @@ provider "helm" {
 
   # Configure registry credentials for ECR
   registry {
-    url      = "oci://${data.aws_ecr_authorization_token.token.proxy_endpoint}"
+    url      = replace(data.aws_ecr_authorization_token.token.proxy_endpoint, "https://", "oci://")
     username = data.aws_ecr_authorization_token.token.user_name
     password = data.aws_ecr_authorization_token.token.password
   }
@@ -103,7 +103,8 @@ ECR tokens expire after 12 hours. For long-running Terraform operations or CI pi
 Azure Container Registry works similarly, but uses different credential sources.
 
 ```hcl
-# Get ACR credentials from Azure
+# Get ACR metadata from Azure. Admin credentials are populated only
+# when the registry admin account is enabled.
 data "azurerm_container_registry" "acr" {
   name                = "myacregistry"
   resource_group_name = "my-resource-group"
@@ -152,7 +153,7 @@ data "google_client_config" "current" {}
 
 provider "helm" {
   kubernetes {
-    host                   = data.google_container_cluster.primary.endpoint
+    host                   = "https://${data.google_container_cluster.primary.endpoint}"
     token                  = data.google_client_config.current.access_token
     cluster_ca_certificate = base64decode(data.google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
   }
@@ -258,13 +259,13 @@ resource "helm_release" "redis" {
 }
 ```
 
-To find available versions in an OCI registry, use the Helm CLI:
+To inspect a specific version in an OCI registry, use the Helm CLI:
 
 ```bash
-# List available tags (versions) for a chart in an OCI registry
+# Show chart metadata and values for a specific chart version
 helm show all oci://registry-1.docker.io/bitnamicharts/redis --version 18.6.1
 
-# For ECR, you can also use the AWS CLI
+# To list available versions in ECR, use the AWS CLI
 aws ecr describe-images --repository-name my-chart --region us-east-1
 ```
 
@@ -316,7 +317,7 @@ terraform apply
 
 A few things that trip people up when working with OCI charts in Terraform:
 
-1. **Chart attribute vs repository**: With OCI, the full URL goes in `chart`, not `repository`. Setting `repository` to an OCI URL will fail.
+1. **Chart attribute vs repository**: With OCI, either put the full chart URL in `chart`, or put the OCI repository URL in `repository` and the chart name in `chart`. Do not split the chart name into both attributes.
 
 2. **Missing oci:// prefix**: The URL must start with `oci://`. Without it, Terraform tries to treat it as an HTTP repository.
 
