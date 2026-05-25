@@ -29,6 +29,10 @@ terraform {
       source  = "cyrilgdn/postgresql"
       version = "~> 1.21"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -46,14 +50,14 @@ IAM database authentication is available for RDS MySQL, PostgreSQL, and Aurora:
 resource "aws_db_instance" "production" {
   identifier     = "production-db"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15"
   instance_class = "db.r6g.large"
 
   allocated_storage = 100
   storage_type      = "gp3"
   db_name           = "appdb"
   username          = "dbadmin"
-  password          = var.db_password
+  password          = random_password.master_password.result
 
   # Enable IAM database authentication
   iam_database_authentication_enabled = true
@@ -70,11 +74,6 @@ resource "aws_db_instance" "production" {
     Environment = "production"
     IAMAuth     = "enabled"
   }
-}
-
-variable "db_password" {
-  type      = string
-  sensitive = true
 }
 ```
 
@@ -94,7 +93,7 @@ resource "aws_iam_policy" "db_read_only" {
         Action = [
           "rds-db:connect"
         ]
-        Resource = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.production.resource_id}/readonly_user"
+        Resource = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.production.resource_id}/iam_readonly_user"
       }
     ]
   })
@@ -113,7 +112,7 @@ resource "aws_iam_policy" "db_read_write" {
         Action = [
           "rds-db:connect"
         ]
-        Resource = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.production.resource_id}/app_user"
+        Resource = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.production.resource_id}/iam_app_user"
       }
     ]
   })
@@ -132,7 +131,7 @@ resource "aws_iam_policy" "db_admin" {
         Action = [
           "rds-db:connect"
         ]
-        Resource = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.production.resource_id}/admin_user"
+        Resource = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.production.resource_id}/iam_admin_user"
       }
     ]
   })
@@ -253,7 +252,7 @@ provider "postgresql" {
   port     = aws_db_instance.production.port
   database = "appdb"
   username = "dbadmin"
-  password = var.db_password
+  password = random_password.master_password.result
   sslmode  = "require"
 }
 
@@ -393,6 +392,15 @@ resource "postgresql_role" "iam_readonly_user" {
   name  = "iam_readonly_user"
   login = true
   roles = ["rds_iam", postgresql_role.readonly.name]
+
+  depends_on = [aws_db_instance.production]
+}
+
+# Create an admin IAM user
+resource "postgresql_role" "iam_admin_user" {
+  name  = "iam_admin_user"
+  login = true
+  roles = ["rds_iam", "rds_superuser"]
 
   depends_on = [aws_db_instance.production]
 }
