@@ -53,7 +53,7 @@ terraform {
     akamai = {
       # Official Akamai provider from the Terraform registry
       source  = "akamai/akamai"
-      version = "~> 6.0"
+      version = "~> 10.0"
     }
   }
 
@@ -114,7 +114,7 @@ resource "akamai_dns_zone" "example" {
   contract = "ctr_1-AB123"
   group    = "grp_12345"
   zone     = "example.com"
-  type     = "PRIMARY"
+  type     = "primary"
 
   # Optional comment for identification
   comment = "Primary zone managed by Terraform"
@@ -188,12 +188,13 @@ resource "akamai_property" "website" {
   contract_id = data.akamai_contract.default.id
   group_id    = data.akamai_group.default.id
   product_id  = "prd_Fresca"
+  rule_format = "v2025-07-07"
 
   # Associate hostnames with the property
   hostnames {
     cname_from             = "www.example.com"
-    cname_to               = "www.example.com.edgesuite.net"
-    cert_provisioning_type = "CPS_MANAGED"
+    cname_to               = "www.example.com.edgekey.net"
+    cert_provisioning_type = "DEFAULT"
   }
 
   # Apply the rules
@@ -248,9 +249,10 @@ resource "akamai_appsec_configuration" "security" {
 
 # Create a security policy within the configuration
 resource "akamai_appsec_security_policy" "policy" {
-  config_id          = akamai_appsec_configuration.security.config_id
-  security_policy_name = "Default Policy"
-  default_settings     = true
+  config_id               = akamai_appsec_configuration.security.config_id
+  security_policy_name    = "Default Policy"
+  security_policy_prefix  = "def1"
+  default_settings        = true
 }
 ```
 
@@ -260,7 +262,7 @@ For custom logic at the edge, use EdgeWorkers:
 
 ```hcl
 # Create an EdgeWorker ID
-resource "akamai_edgeworkers_edge_worker" "custom_logic" {
+resource "akamai_edgeworker" "custom_logic" {
   name             = "custom-header-logic"
   group_id         = data.akamai_group.default.id
   resource_tier_id = 100  # Basic Compute tier
@@ -306,7 +308,7 @@ akamai-terraform/
 
 ## Best Practices
 
-**Version pin the provider.** Akamai releases frequently. Lock to a major version with `~> 6.0` to avoid breaking changes.
+**Version pin the provider.** Akamai releases frequently. Lock to a major version with `~> 10.0` to avoid breaking changes.
 
 **Use staging activations first.** Always test property changes on the staging network before pushing to production. The `depends_on` pattern shown above enforces this ordering.
 
