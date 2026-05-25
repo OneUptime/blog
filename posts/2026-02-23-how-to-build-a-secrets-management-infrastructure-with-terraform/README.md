@@ -122,14 +122,6 @@ resource "aws_secretsmanager_secret" "this" {
   # Prevent accidental deletion
   recovery_window_in_days = var.recovery_window
 
-  # Enable rotation if configured
-  dynamic "rotation_rules" {
-    for_each = var.rotation_enabled ? [1] : []
-    content {
-      automatically_after_days = var.rotation_days
-    }
-  }
-
   tags = merge(var.tags, {
     ManagedBy = "terraform"
   })
@@ -151,7 +143,17 @@ resource "aws_secretsmanager_secret_policy" "this" {
   secret_arn = aws_secretsmanager_secret.this.arn
   policy     = var.resource_policy
 }
+
+output "secret_id" {
+  value = aws_secretsmanager_secret.this.id
+}
+
+output "secret_arn" {
+  value = aws_secretsmanager_secret.this.arn
+}
 ```
+
+When you manage `aws_secretsmanager_secret_version` values with Terraform, protect your Terraform state like a secret. The secret value is marked sensitive in CLI output, but it is still part of Terraform state unless you use provider features such as write-only arguments where available.
 
 ## Database Credential Secrets
 
@@ -175,13 +177,17 @@ module "rds_master_password" {
     dbname   = var.db_name
   })
 
-  rotation_enabled = true
-  rotation_days    = 30
   recovery_window  = 30
 }
 
 # Generate a strong random password
 resource "random_password" "db_master" {
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}|:,.<>?"
+}
+
+resource "random_password" "app_db" {
   length           = 32
   special          = true
   override_special = "!#$%&*()-_=+[]{}|:,.<>?"
@@ -203,9 +209,6 @@ module "app_db_credentials" {
     port     = 5432
     dbname   = var.db_name
   })
-
-  rotation_enabled = true
-  rotation_days    = 30
 }
 ```
 
@@ -242,6 +245,7 @@ resource "aws_lambda_permission" "secrets_manager" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.rds_rotator.function_name
   principal     = "secretsmanager.amazonaws.com"
+  source_account = var.account_id
 }
 
 # Attach the rotation function to the secret
@@ -300,6 +304,25 @@ resource "aws_iam_role_policy" "rotator" {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
         Resource = aws_kms_key.database_secrets.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DetachNetworkInterface"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${var.region}:${var.account_id}:*"
       }
     ]
   })
