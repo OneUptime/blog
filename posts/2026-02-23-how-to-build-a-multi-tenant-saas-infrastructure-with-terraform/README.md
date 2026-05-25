@@ -145,7 +145,10 @@ resource "aws_cognito_user_pool" "main" {
 
   # Pre-token generation trigger to add tenant claims
   lambda_config {
-    pre_token_generation = aws_lambda_function.pre_token.arn
+    pre_token_generation_config {
+      lambda_arn     = aws_lambda_function.pre_token.arn
+      lambda_version = "V2_0"
+    }
   }
 }
 
@@ -165,7 +168,7 @@ resource "aws_lambda_function" "pre_token" {
   }
 }
 
-# Per-tenant resource servers for fine-grained scopes
+# API resource server for fine-grained scopes
 resource "aws_cognito_resource_server" "api" {
   identifier   = "https://api.company.com"
   name         = "SaaS API"
@@ -190,7 +193,7 @@ resource "aws_cognito_resource_server" "api" {
 
 ## Shared Compute with ECS
 
-All tenants share the same ECS cluster, with task-level isolation.
+All tenants share the same ECS cluster and application service, with tenant isolation enforced by the application and IAM boundaries.
 
 ```hcl
 # Shared ECS cluster
@@ -300,10 +303,14 @@ Standard tenants share a database with schema-level isolation. Premium tenants g
 ```hcl
 # Shared database for standard tier tenants
 resource "aws_db_instance" "shared" {
-  identifier     = "saas-shared-db"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.xlarge"
+  identifier                  = "saas-shared-db"
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.r6g.xlarge"
+  allocated_storage           = 100
+  max_allocated_storage       = 1000
+  username                    = "dbadmin"
+  manage_master_user_password = true
 
   multi_az            = true
   storage_encrypted   = true
@@ -339,14 +346,18 @@ module "premium_tenant_db" {
 # variable "instance_class" { default = "db.r6g.large" }
 #
 # resource "aws_db_instance" "tenant" {
-#   identifier     = "tenant-${var.tenant_id}"
-#   engine         = "postgres"
-#   engine_version = "15.4"
-#   instance_class = var.instance_class
-#   multi_az       = true
-#   storage_encrypted   = true
-#   kms_key_id          = var.kms_key_id
-#   deletion_protection = true
+#   identifier                  = "tenant-${var.tenant_id}"
+#   engine                      = "postgres"
+#   engine_version              = "15.4"
+#   instance_class              = var.instance_class
+#   allocated_storage           = 50
+#   max_allocated_storage       = 500
+#   username                    = "dbadmin"
+#   manage_master_user_password = true
+#   multi_az                    = true
+#   storage_encrypted           = true
+#   kms_key_id                  = var.kms_key_id
+#   deletion_protection         = true
 # }
 ```
 
@@ -378,23 +389,27 @@ resource "aws_iam_policy" "tenant_s3_access" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket",
-      ]
-      Resource = [
-        "${aws_s3_bucket.tenant_data.arn}/$${aws:PrincipalTag/tenantId}/*",
-      ]
-      Condition = {
-        StringLike = {
-          "s3:prefix" = ["$${aws:PrincipalTag/tenantId}/*"]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.tenant_data.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = ["$${aws:PrincipalTag/tenantId}/*"]
+          }
         }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = "${aws_s3_bucket.tenant_data.arn}/$${aws:PrincipalTag/tenantId}/*"
       }
-    }]
+    ]
   })
 }
 ```
@@ -415,7 +430,7 @@ resource "aws_apigatewayv2_stage" "saas" {
   name        = "$default"
   auto_deploy = true
 
-  # Per-tenant rate limiting via stage variables
+  # Default throttling for routes on this stage
   default_route_settings {
     throttling_burst_limit = 100
     throttling_rate_limit  = 50
@@ -452,11 +467,10 @@ resource "aws_cloudwatch_log_metric_filter" "tenant_requests" {
     namespace     = "SaaS/Tenants"
     value         = "1"
     dimensions    = { TenantId = "$.tenantId" }
-    default_value = "0"
   }
 }
 
-# Alarm for noisy neighbor detection
+# Alarm for noisy neighbor detection for a monitored tenant
 resource "aws_cloudwatch_metric_alarm" "noisy_tenant" {
   alarm_name          = "noisy-tenant-detection"
   comparison_operator = "GreaterThanThreshold"
@@ -466,6 +480,7 @@ resource "aws_cloudwatch_metric_alarm" "noisy_tenant" {
   period              = 300
   statistic           = "Sum"
   threshold           = 10000  # requests per 5 minutes
+  dimensions          = { TenantId = var.monitored_tenant_id }
   alarm_actions       = [aws_sns_topic.ops_alerts.arn]
 }
 
