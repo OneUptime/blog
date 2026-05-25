@@ -21,7 +21,7 @@ Unlike most Azure services that use the `azurerm` provider, Azure DevOps has its
 - Terraform 1.3+
 - An Azure DevOps organization
 - A Personal Access Token (PAT) with appropriate permissions, or use service principal authentication
-- Azure CLI authenticated (for service connections to Azure)
+- AzureRM provider authentication configured (for service connections to Azure)
 
 ## Provider Configuration
 
@@ -32,11 +32,11 @@ terraform {
   required_providers {
     azuredevops = {
       source  = "microsoft/azuredevops"
-      version = "~> 0.11"
+      version = "~> 1.15"
     }
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -45,7 +45,7 @@ terraform {
 
 provider "azuredevops" {
   org_service_url       = "https://dev.azure.com/my-organization"
-  personal_access_token = var.azdo_pat # Store in environment variable or use managed identity
+  personal_access_token = var.azdo_pat # Prefer AZDO_PERSONAL_ACCESS_TOKEN or a secrets manager
 }
 
 provider "azurerm" {
@@ -147,7 +147,7 @@ resource "azuredevops_git_repository" "imported" {
 Branch policies enforce code quality standards on protected branches:
 
 ```hcl
-# Require minimum number of reviewers on the main branch
+# Require minimum number of reviewers on the default branch
 resource "azuredevops_branch_policy_min_reviewers" "main" {
   project_id = azuredevops_project.main.id
 
@@ -163,7 +163,7 @@ resource "azuredevops_branch_policy_min_reviewers" "main" {
 
     scope {
       repository_id  = azuredevops_git_repository.api.id
-      repository_ref = "refs/heads/main"
+      repository_ref = azuredevops_git_repository.api.default_branch
       match_type     = "Exact"
     }
   }
@@ -179,7 +179,7 @@ resource "azuredevops_branch_policy_work_item_linking" "main" {
   settings {
     scope {
       repository_id  = azuredevops_git_repository.api.id
-      repository_ref = "refs/heads/main"
+      repository_ref = azuredevops_git_repository.api.default_branch
       match_type     = "Exact"
     }
   }
@@ -195,7 +195,7 @@ resource "azuredevops_branch_policy_comment_resolution" "main" {
   settings {
     scope {
       repository_id  = azuredevops_git_repository.api.id
-      repository_ref = "refs/heads/main"
+      repository_ref = azuredevops_git_repository.api.default_branch
       match_type     = "Exact"
     }
   }
@@ -219,7 +219,7 @@ resource "azuredevops_branch_policy_build_validation" "main" {
 
     scope {
       repository_id  = azuredevops_git_repository.api.id
-      repository_ref = "refs/heads/main"
+      repository_ref = azuredevops_git_repository.api.default_branch
       match_type     = "Exact"
     }
   }
@@ -240,9 +240,10 @@ resource "azuredevops_serviceendpoint_azurerm" "production" {
   service_endpoint_name = "Azure Production"
   description           = "Service connection to Azure Production subscription"
 
+  service_endpoint_authentication_scheme = "ServicePrincipal"
   azurerm_spn_tenantid      = data.azurerm_client_config.current.tenant_id
   azurerm_subscription_id   = data.azurerm_subscription.current.subscription_id
-  azurerm_subscription_name = "Production Subscription"
+  azurerm_subscription_name = data.azurerm_subscription.current.display_name
 
   credentials {
     serviceprincipalid  = var.sp_client_id
@@ -264,7 +265,7 @@ variable "sp_client_secret" {
 resource "azuredevops_serviceendpoint_dockerregistry" "acr" {
   project_id            = azuredevops_project.main.id
   service_endpoint_name = "ACR Production"
-  docker_registry       = "https://myacr.azurecr.io"
+  docker_registry       = "https://myacr.azurecr.io/v1"
   docker_username       = var.acr_username
   docker_password       = var.acr_password
   registry_type         = "Others"
@@ -392,7 +393,7 @@ resource "azuredevops_build_definition" "ci" {
   repository {
     repo_type   = "TfsGit"
     repo_id     = azuredevops_git_repository.api.id
-    branch_name = "refs/heads/main"
+    branch_name = azuredevops_git_repository.api.default_branch
     yml_path    = "azure-pipelines.yml"
   }
 
@@ -415,7 +416,7 @@ resource "azuredevops_build_definition" "cd" {
   repository {
     repo_type   = "TfsGit"
     repo_id     = azuredevops_git_repository.api.id
-    branch_name = "refs/heads/main"
+    branch_name = azuredevops_git_repository.api.default_branch
     yml_path    = "azure-pipelines-cd.yml"
   }
 
