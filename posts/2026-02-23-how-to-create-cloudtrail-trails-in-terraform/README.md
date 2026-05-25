@@ -8,9 +8,9 @@ Description: Learn how to create and configure AWS CloudTrail trails with Terraf
 
 ---
 
-AWS CloudTrail records API calls and events across your AWS account. Every time someone creates an EC2 instance, modifies a security group, or accesses an S3 object, CloudTrail captures that activity. This audit trail is essential for security investigations, compliance requirements, and understanding who changed what in your infrastructure.
+AWS CloudTrail records API calls and events across your AWS account. Every time someone creates an EC2 instance, modifies a security group, or accesses an S3 object with data events enabled, CloudTrail captures that activity. This audit trail is essential for security investigations, compliance requirements, and understanding who changed what in your infrastructure.
 
-Managing CloudTrail with Terraform ensures your logging configuration is consistent, version-controlled, and applied uniformly across all accounts in your organization. This guide walks through creating trails, configuring S3 storage, setting up CloudWatch integration, and enabling advanced features like data events and organization trails.
+Managing CloudTrail with Terraform ensures your logging configuration is consistent, version-controlled, and applied uniformly across all accounts in your organization. This guide walks through creating trails, configuring S3 storage, setting up CloudWatch integration, and enabling advanced features like data events.
 
 ## Prerequisites
 
@@ -117,7 +117,10 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
           Service = "cloudtrail.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Resource = [
+          "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+          "${aws_s3_bucket.cloudtrail.arn}/cloudtrail/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        ]
         Condition = {
           StringEquals = {
             "s3:x-amz-acl" = "bucket-owner-full-control"
@@ -383,7 +386,7 @@ resource "aws_cloudwatch_metric_alarm" "unauthorized_api_calls" {
   statistic           = "Sum"
   threshold           = 10
   alarm_description   = "Alert when unauthorized API calls exceed threshold"
-  alarm_actions       = [var.sns_topic_arn]
+  alarm_actions       = var.sns_topic_arn != "" ? [var.sns_topic_arn] : []
 
   tags = {
     Purpose = "security"
