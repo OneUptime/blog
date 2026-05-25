@@ -20,7 +20,7 @@ Our observability platform includes:
 - **Logs**: CloudWatch Logs with structured logging
 - **Traces**: AWS X-Ray for distributed tracing
 - **Dashboards**: Amazon Managed Grafana
-- **Alerting**: SNS, PagerDuty, and Slack integration
+- **Alerting**: SNS topics for downstream PagerDuty and Slack integration
 - **Data retention**: Tiered storage for cost management
 
 ## Metrics with Managed Prometheus
@@ -138,7 +138,7 @@ resource "aws_prometheus_rule_group_namespace" "main" {
           },
           {
             alert = "HighMemoryUsage"
-            expr  = "(1 - node_memory_AvailableBytes / node_memory_MemoryTotal_bytes) * 100 > 90"
+            expr  = "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90"
             for   = "5m"
             labels = {
               severity = "critical"
@@ -176,7 +176,7 @@ resource "aws_prometheus_rule_group_namespace" "main" {
           },
           {
             alert = "HighLatency"
-            expr  = "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2"
+            expr  = "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 2"
             for   = "5m"
             labels = {
               severity = "warning"
@@ -213,6 +213,16 @@ resource "aws_cloudwatch_log_group" "services" {
 }
 
 # Log subscription for real-time processing
+resource "aws_lambda_permission" "allow_cloudwatch_logs" {
+  for_each = var.services
+
+  statement_id_prefix = "AllowExecutionFromCloudWatchLogs-"
+  action              = "lambda:InvokeFunction"
+  function_name       = aws_lambda_function.log_processor.function_name
+  principal           = "logs.amazonaws.com"
+  source_arn          = "${aws_cloudwatch_log_group.services[each.key].arn}:*"
+}
+
 resource "aws_cloudwatch_log_subscription_filter" "to_opensearch" {
   for_each = var.services
 
@@ -220,6 +230,8 @@ resource "aws_cloudwatch_log_subscription_filter" "to_opensearch" {
   log_group_name  = aws_cloudwatch_log_group.services[each.key].name
   filter_pattern  = ""
   destination_arn = aws_lambda_function.log_processor.arn
+
+  depends_on = [aws_lambda_permission.allow_cloudwatch_logs]
 }
 
 # Lambda function to process and forward logs
@@ -289,7 +301,7 @@ resource "aws_opensearch_domain" "logs" {
     security_group_ids = [aws_security_group.opensearch.id]
   }
 
-  # Index lifecycle management via advanced options
+  # Advanced option for explicit index actions
   advanced_options = {
     "rest.action.multi.allow_explicit_index" = "true"
   }
@@ -385,24 +397,22 @@ resource "aws_grafana_workspace" "main" {
 }
 
 # Grafana data source for Prometheus
-resource "aws_grafana_workspace_configuration" "prometheus" {
-  workspace_id = aws_grafana_workspace.main.id
+provider "grafana" {
+  url  = "https://${aws_grafana_workspace.main.endpoint}"
+  auth = var.grafana_service_account_token
+}
 
-  configuration = jsonencode({
-    datasources = [
-      {
-        name      = "Prometheus"
-        type      = "prometheus"
-        url       = aws_prometheus_workspace.main.prometheus_endpoint
-        isDefault = true
-        jsonData = {
-          httpMethod    = "POST"
-          sigV4Auth     = true
-          sigV4AuthType = "default"
-          sigV4Region   = var.aws_region
-        }
-      }
-    ]
+resource "grafana_data_source" "prometheus" {
+  type       = "prometheus"
+  name       = "Prometheus"
+  url        = aws_prometheus_workspace.main.prometheus_endpoint
+  is_default = true
+
+  json_data_encoded = jsonencode({
+    httpMethod    = "POST"
+    sigV4Auth     = true
+    sigV4AuthType = "default"
+    sigV4Region   = var.aws_region
   })
 }
 ```
