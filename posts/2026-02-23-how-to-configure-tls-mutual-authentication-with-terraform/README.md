@@ -57,6 +57,17 @@ provider "aws" {
   region = "us-east-1"
 }
 
+variable "truststore_file" {
+  description = "Path to the truststore PEM file"
+  type        = string
+  default     = "certs/truststore.pem"
+}
+
+data "aws_route53_zone" "example" {
+  name         = "example.com"
+  private_zone = false
+}
+
 # S3 bucket to store the truststore
 resource "aws_s3_bucket" "truststore" {
   bucket = "mtls-truststore-${data.aws_caller_identity.current.account_id}"
@@ -77,12 +88,23 @@ resource "aws_s3_bucket_public_access_block" "truststore" {
   restrict_public_buckets = true
 }
 
+# Enable versioning so API Gateway can reference a specific truststore version
+resource "aws_s3_bucket_versioning" "truststore" {
+  bucket = aws_s3_bucket.truststore.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # Upload the truststore PEM file containing CA certificates
 resource "aws_s3_object" "truststore" {
   bucket = aws_s3_bucket.truststore.id
   key    = "truststore.pem"
-  source = "${path.module}/certs/truststore.pem"
-  etag   = filemd5("${path.module}/certs/truststore.pem")
+  source = "${path.module}/${var.truststore_file}"
+  etag   = filemd5("${path.module}/${var.truststore_file}")
+
+  depends_on = [aws_s3_bucket_versioning.truststore]
 }
 
 data "aws_caller_identity" "current" {}
@@ -101,11 +123,34 @@ resource "aws_acm_certificate" "api" {
   }
 }
 
+resource "aws_route53_record" "api_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.api.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.example.zone_id
+}
+
+resource "aws_acm_certificate_validation" "api" {
+  certificate_arn         = aws_acm_certificate.api.arn
+  validation_record_fqdns = [for record in aws_route53_record.api_validation : record.fqdn]
+}
+
 # HTTP API with mutual TLS
 resource "aws_apigatewayv2_api" "mtls" {
-  name          = "mtls-api"
-  protocol_type = "HTTP"
-  description   = "API with mutual TLS authentication"
+  name                         = "mtls-api"
+  protocol_type                = "HTTP"
+  description                  = "API with mutual TLS authentication"
+  disable_execute_api_endpoint = true
 }
 
 # Custom domain with mTLS enabled
@@ -113,7 +158,7 @@ resource "aws_apigatewayv2_domain_name" "mtls" {
   domain_name = "secure-api.example.com"
 
   domain_name_configuration {
-    certificate_arn = aws_acm_certificate.api.arn
+    certificate_arn = aws_acm_certificate_validation.api.certificate_arn
     endpoint_type   = "REGIONAL"
     security_policy = "TLS_1_2"
   }
@@ -144,7 +189,7 @@ resource "aws_apigatewayv2_stage" "default" {
 
 ## Adding a Lambda Authorizer for Certificate Validation
 
-For more granular control, use a Lambda authorizer to inspect client certificate details.
+For more granular control, use a Lambda authorizer to inspect client certificate details. After creating the authorizer, attach it to the routes that require the additional certificate checks.
 
 ```hcl
 # Lambda function for certificate-based authorization
@@ -153,7 +198,7 @@ resource "aws_lambda_function" "cert_authorizer" {
   function_name    = "mtls-cert-authorizer"
   role             = aws_iam_role.lambda_authorizer.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs24.x"
   source_code_hash = filebase64sha256("cert_authorizer.zip")
 
   environment {
@@ -197,7 +242,7 @@ resource "aws_apigatewayv2_authorizer" "cert" {
   authorizer_type  = "REQUEST"
   authorizer_uri   = aws_lambda_function.cert_authorizer.invoke_arn
   name             = "cert-authorizer"
-  identity_sources = ["$context.identity.clientCert.subjectDN"]
+  identity_sources = ["$context.authentication.clientCert.subjectDN"]
 
   authorizer_payload_format_version = "2.0"
   enable_simple_responses           = true
@@ -209,7 +254,7 @@ resource "aws_lambda_permission" "api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.cert_authorizer.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.mtls.execution_arn}/*"
+  source_arn    = "${aws_apigatewayv2_api.mtls.execution_arn}/authorizers/${aws_apigatewayv2_authorizer.cert.id}"
 }
 ```
 
@@ -220,9 +265,10 @@ ALBs can also verify client certificates using a trust store.
 ```hcl
 # Create the ALB trust store
 resource "aws_lb_trust_store" "mtls" {
-  name                             = "mtls-trust-store"
-  ca_certificates_bundle_s3_bucket = aws_s3_bucket.truststore.id
-  ca_certificates_bundle_s3_key    = aws_s3_object.truststore.key
+  name                                     = "mtls-trust-store"
+  ca_certificates_bundle_s3_bucket         = aws_s3_bucket.truststore.id
+  ca_certificates_bundle_s3_key            = aws_s3_object.truststore.key
+  ca_certificates_bundle_s3_object_version = aws_s3_object.truststore.version_id
 
   tags = {
     Name = "mtls-trust-store"
@@ -248,7 +294,7 @@ resource "aws_lb_listener" "mtls" {
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = aws_acm_certificate.api.arn
+  certificate_arn   = aws_acm_certificate_validation.api.certificate_arn
 
   # Configure mutual authentication
   mutual_authentication {
@@ -311,13 +357,16 @@ resource "aws_s3_object" "crl" {
   key    = "crl.pem"
   source = "${path.module}/certs/crl.pem"
   etag   = filemd5("${path.module}/certs/crl.pem")
+
+  depends_on = [aws_s3_bucket_versioning.truststore]
 }
 
 # Trust store revocation list for ALB
 resource "aws_lb_trust_store_revocation" "crl" {
-  trust_store_arn = aws_lb_trust_store.mtls.arn
-  revocations_s3_bucket = aws_s3_bucket.truststore.id
-  revocations_s3_key    = aws_s3_object.crl.key
+  trust_store_arn               = aws_lb_trust_store.mtls.arn
+  revocations_s3_bucket         = aws_s3_bucket.truststore.id
+  revocations_s3_key            = aws_s3_object.crl.key
+  revocations_s3_object_version = aws_s3_object.crl.version_id
 }
 ```
 
@@ -342,22 +391,10 @@ curl --cert wrong-client.crt --key wrong-client.key \
 
 Plan for certificate rotation by updating the truststore with new CA certificates.
 
-```hcl
-# Variable to track truststore version
-variable "truststore_file" {
-  description = "Path to the truststore PEM file"
-  type        = string
-  default     = "certs/truststore.pem"
-}
-
-# Upload with versioning so old and new certificates work during rotation
-resource "aws_s3_bucket_versioning" "truststore" {
-  bucket = aws_s3_bucket.truststore.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
+```bash
+# Because bucket versioning is enabled, apply with an updated truststore file
+# so aws_apigatewayv2_domain_name.mtls references the new object version.
+terraform apply -var="truststore_file=certs/truststore-rotated.pem"
 ```
 
 ## Best Practices
