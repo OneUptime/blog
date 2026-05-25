@@ -152,7 +152,7 @@ resource "aws_organizations_policy" "region_restriction" {
   })
 }
 
-# Require encryption on S3 buckets
+# Require encryption on S3 object uploads
 resource "aws_organizations_policy" "require_s3_encryption" {
   name = "require-s3-encryption"
   type = "SERVICE_CONTROL_POLICY"
@@ -194,6 +194,8 @@ All accounts should send their CloudTrail logs to the log archive account:
 ```hcl
 # Organization-wide CloudTrail
 resource "aws_cloudtrail" "org_trail" {
+  depends_on = [aws_s3_bucket_policy.cloudtrail]
+
   name                       = "${var.project_name}-org-trail"
   s3_bucket_name             = aws_s3_bucket.cloudtrail_logs.id
   is_organization_trail      = true
@@ -207,7 +209,7 @@ resource "aws_cloudtrail" "org_trail" {
 
     data_resource {
       type   = "AWS::S3::Object"
-      values = ["arn:aws:s3:::"]
+      values = ["arn:aws:s3"]
     }
   }
 }
@@ -226,14 +228,15 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowCloudTrailWrite"
+        Sid       = "AllowCloudTrailOrganizationWrite"
         Effect    = "Allow"
         Principal = { Service = "cloudtrail.amazonaws.com" }
         Action    = "s3:PutObject"
-        Resource  = "${aws_s3_bucket.cloudtrail_logs.arn}/*"
+        Resource  = "${aws_s3_bucket.cloudtrail_logs.arn}/AWSLogs/${var.org_id}/*"
         Condition = {
           StringEquals = {
             "s3:x-amz-acl" = "bucket-owner-full-control"
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.home_region}:${var.management_account_id}:trail/${var.project_name}-org-trail"
           }
         }
       },
@@ -243,6 +246,11 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
         Principal = { Service = "cloudtrail.amazonaws.com" }
         Action    = "s3:GetBucketAcl"
         Resource  = aws_s3_bucket.cloudtrail_logs.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.home_region}:${var.management_account_id}:trail/${var.project_name}-org-trail"
+          }
+        }
       }
     ]
   })
@@ -274,6 +282,13 @@ resource "aws_config_delivery_channel" "main" {
   }
 
   depends_on = [aws_config_configuration_recorder.main]
+}
+
+resource "aws_config_configuration_recorder_status" "main" {
+  name       = aws_config_configuration_recorder.main.name
+  is_enabled = true
+
+  depends_on = [aws_config_delivery_channel.main]
 }
 
 # Config rules for compliance checking
