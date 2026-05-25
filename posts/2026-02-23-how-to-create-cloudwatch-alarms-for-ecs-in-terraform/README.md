@@ -33,6 +33,25 @@ resource "aws_sns_topic" "ecs_alarms" {
   name = "ecs-alarm-notifications"
 }
 
+resource "aws_sns_topic_policy" "ecs_alarms_eventbridge" {
+  arn    = aws_sns_topic.ecs_alarms.arn
+  policy = data.aws_iam_policy_document.ecs_alarms_eventbridge.json
+}
+
+data "aws_iam_policy_document" "ecs_alarms_eventbridge" {
+  statement {
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.ecs_alarms.arn]
+  }
+}
+
 variable "cluster_name" {
   type        = string
   description = "ECS cluster name"
@@ -253,7 +272,8 @@ resource "aws_appautoscaling_policy" "scale_down" {
 ## Deployment Monitoring
 
 ```hcl
-# Monitor for deployment failures using CloudWatch Events
+# Monitor for deployment failures using CloudWatch Events.
+# SERVICE_DEPLOYMENT_FAILED events require the ECS deployment circuit breaker.
 resource "aws_cloudwatch_event_rule" "ecs_deployment_failure" {
   name        = "ecs-deployment-failure-${var.service_name}"
   description = "Detect ECS deployment failures"
@@ -283,7 +303,7 @@ resource "aws_cloudwatch_event_rule" "ecs_task_stopped" {
     detail-type = ["ECS Task State Change"]
     detail = {
       lastStatus    = ["STOPPED"]
-      stoppedReason = [{ "anything-but": ["Scaling activity initiated by"] }]
+      stoppedReason = [{ "anything-but": { "prefix": "Scaling activity initiated by" } }]
       clusterArn    = [{ "suffix": var.cluster_name }]
     }
   })
