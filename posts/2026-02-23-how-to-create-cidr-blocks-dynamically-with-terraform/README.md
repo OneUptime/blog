@@ -67,6 +67,11 @@ Instead of hardcoding subnet counts, derive them from the number of availability
 # dynamic-subnets.tf - Generate subnets dynamically
 data "aws_availability_zones" "available" {
   state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 variable "vpc_cidr" {
@@ -182,11 +187,11 @@ locals {
   # cidrhost("10.0.1.0/24", 5) = "10.0.1.5"
   # cidrhost("10.0.1.0/24", 10) = "10.0.1.10"
 
-  # Reserve specific IPs for infrastructure
-  dns_server_ip     = cidrhost(local.subnet_cidr, 2)    # 10.0.1.2 (AWS VPC DNS)
-  gateway_ip        = cidrhost(local.subnet_cidr, 1)    # 10.0.1.1
-  ntp_server_ip     = cidrhost(local.subnet_cidr, 10)   # 10.0.1.10
-  monitoring_ip     = cidrhost(local.subnet_cidr, 11)   # 10.0.1.11
+  # AWS reserves the first four and last IP addresses in each subnet,
+  # so use addresses outside that range for resources you assign directly.
+  ntp_server_ip = cidrhost(local.subnet_cidr, 10) # 10.0.1.10
+  monitoring_ip = cidrhost(local.subnet_cidr, 11) # 10.0.1.11
+  backup_ip     = cidrhost(local.subnet_cidr, 12) # 10.0.1.12
 }
 
 # Assign static IP to an ENI
@@ -287,6 +292,15 @@ variable "subnet_tiers" {
 }
 
 # modules/networking/main.tf
+data "aws_availability_zones" "available" {
+  state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+
 locals {
   subnets = {
     for tier, config in var.subnet_tiers :
