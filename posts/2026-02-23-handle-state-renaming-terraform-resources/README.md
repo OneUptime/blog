@@ -70,10 +70,16 @@ terraform plan
 
 ### Renaming Resources with count
 
-If the resource uses `count`, you need to move each index:
+If you're only renaming the resource block, you can move the whole resource address and Terraform will move all of its instances:
 
 ```bash
 # If you're renaming a counted resource
+terraform state mv aws_instance.web aws_instance.api_server
+```
+
+If you're also changing how individual instances map to new addresses, move each index explicitly:
+
+```bash
 terraform state mv 'aws_instance.web[0]' 'aws_instance.api_server[0]'
 terraform state mv 'aws_instance.web[1]' 'aws_instance.api_server[1]'
 terraform state mv 'aws_instance.web[2]' 'aws_instance.api_server[2]'
@@ -81,10 +87,16 @@ terraform state mv 'aws_instance.web[2]' 'aws_instance.api_server[2]'
 
 ### Renaming Resources with for_each
 
-For `for_each` resources, move each key:
+For `for_each` resources, a whole-resource move also covers all instances when only the resource block name changes:
 
 ```bash
 # If you're renaming a for_each resource
+terraform state mv aws_instance.web aws_instance.api_server
+```
+
+If you're also changing keys, move each key explicitly:
+
+```bash
 terraform state mv 'aws_instance.web["app-1"]' 'aws_instance.api_server["app-1"]'
 terraform state mv 'aws_instance.web["app-2"]' 'aws_instance.api_server["app-2"]'
 ```
@@ -107,7 +119,7 @@ resource "aws_instance" "api_server" {
 }
 ```
 
-When you run `terraform plan`, Terraform sees the `moved` block and automatically updates the state:
+When you run `terraform plan`, Terraform sees the `moved` block and includes the address update in the execution plan:
 
 ```text
 Terraform will perform the following actions:
@@ -126,7 +138,7 @@ Plan: 0 to add, 0 to change, 0 to destroy.
 The `moved` block has several advantages over `terraform state mv`:
 
 1. **It's declarative.** The rename is tracked in your configuration, visible in code review.
-2. **It's safe for teams.** Every team member who pulls the updated code gets the rename applied automatically on their next `terraform plan`.
+2. **It's safe for teams.** Every team member who pulls the updated code sees the rename in their next `terraform plan`, and `terraform apply` records it in state.
 3. **It works with remote backends.** No need to run manual state commands.
 4. **It's part of the normal plan/apply workflow.** No special steps required.
 
@@ -155,7 +167,7 @@ resource "aws_instance" "backend_server" {
 
 ### Cleaning Up moved Blocks
 
-After everyone on the team has applied the rename (and any CI/CD pipelines have run), you can safely remove the `moved` block. It's only needed during the transition period.
+After everyone on the team has applied the rename (and any CI/CD pipelines have run), you can remove the `moved` block from a private configuration. For reusable modules, keep historical `moved` blocks so users can upgrade from older versions without a destroy/create plan.
 
 ## Renaming Resources Inside Modules
 
@@ -293,16 +305,16 @@ Missing a reference will cause a plan error, so Terraform will catch these for y
 
 ## Handling Dependent Resources
 
-If other resources depend on the renamed resource, they may show as changed in the plan even though nothing is actually different. This happens when the dependency is via a reference:
+If other resources depend on the renamed resource, updating references should not change them as long as the underlying values are the same:
 
 ```bash
 # After renaming aws_instance.web to aws_instance.api_server
 terraform plan
-# aws_security_group_rule.allow_web may show as needing update
-# because its source_security_group_id referenced the old name
+# Dependent resources should not need updates just because the expression
+# now references aws_instance.api_server instead of aws_instance.web
 ```
 
-The plan should show in-place updates, not recreations. Review the plan carefully to make sure no resources are being destroyed.
+If the plan shows in-place updates or recreations for dependent resources, review the diff carefully. That usually means another value changed during the refactor.
 
 ## Wrapping Up
 
