@@ -16,7 +16,7 @@ This guide covers how to add and configure different types of node pools for an 
 
 AKS clusters have two types of node pools:
 
-- **System node pools** run Kubernetes system components like CoreDNS, kube-proxy, and the metrics server. Every cluster needs at least one.
+- **System node pools** run Kubernetes system components like CoreDNS and the metrics server. Every cluster needs at least one.
 - **User node pools** run your application workloads. You can add as many as you need with different VM sizes and configurations.
 
 Each node pool maps to a Virtual Machine Scale Set in Azure, which handles scaling the underlying VMs.
@@ -41,21 +41,20 @@ resource "azurerm_kubernetes_cluster" "main" {
   location            = azurerm_resource_group.aks.location
   resource_group_name = azurerm_resource_group.aks.name
   dns_prefix          = "aks-multipool"
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   # Keep the system pool small - it only runs system components
   default_node_pool {
-    name                = "system"
-    node_count          = 3
-    vm_size             = "Standard_D2s_v5"
-    vnet_subnet_id      = azurerm_subnet.aks.id
-    os_disk_size_gb     = 64
-    os_disk_type        = "Managed"
-    max_pods            = 30
-    zones               = [1, 2, 3]
-    enable_auto_scaling = true
-    min_count           = 3
-    max_count           = 5
+    name                 = "system"
+    node_count           = 3
+    vm_size              = "Standard_D4s_v5"
+    os_disk_size_gb      = 64
+    os_disk_type         = "Managed"
+    max_pods             = 30
+    zones                = ["1", "2", "3"]
+    auto_scaling_enabled = true
+    min_count            = 3
+    max_count            = 5
 
     # Taint system nodes so user workloads don't land here
     only_critical_addons_enabled = true
@@ -66,10 +65,11 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   network_profile {
-    network_plugin = "azure"
-    network_policy = "calico"
-    service_cidr   = "10.1.0.0/16"
-    dns_service_ip = "10.1.0.10"
+    network_plugin    = "azure"
+    network_policy    = "calico"
+    load_balancer_sku = "standard"
+    service_cidr      = "10.1.0.0/16"
+    dns_service_ip    = "10.1.0.10"
   }
 }
 ```
@@ -89,12 +89,12 @@ resource "azurerm_kubernetes_cluster_node_pool" "general" {
   os_disk_size_gb       = 128
   os_disk_type          = "Managed"
   max_pods              = 50
-  zones                 = [1, 2, 3]
+  zones                 = ["1", "2", "3"]
 
   # Autoscaling handles traffic fluctuations
-  enable_auto_scaling = true
-  min_count           = 2
-  max_count           = 10
+  auto_scaling_enabled = true
+  min_count            = 2
+  max_count            = 10
 
   # Labels help with pod scheduling
   node_labels = {
@@ -121,11 +121,11 @@ resource "azurerm_kubernetes_cluster_node_pool" "memory" {
   vm_size               = "Standard_E4s_v5"  # E-series has higher memory-to-CPU ratio
   os_disk_size_gb       = 128
   max_pods              = 30
-  zones                 = [1, 2, 3]
+  zones                 = ["1", "2", "3"]
 
-  enable_auto_scaling = true
-  min_count           = 1
-  max_count           = 5
+  auto_scaling_enabled = true
+  min_count            = 1
+  max_count            = 5
 
   node_labels = {
     "workload-type" = "memory-optimized"
@@ -154,12 +154,12 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   vm_size               = "Standard_NC6s_v3"  # 1x V100 GPU per node
   os_disk_size_gb       = 256
   max_pods              = 20
-  zones                 = [1]  # GPU VMs may not be available in all zones
+  zones                 = ["1"]  # GPU VMs may not be available in all zones
 
   # Scale to zero when no GPU workloads are running
-  enable_auto_scaling = true
-  min_count           = 0
-  max_count           = 4
+  auto_scaling_enabled = true
+  min_count            = 0
+  max_count            = 4
 
   node_labels = {
     "workload-type"           = "gpu"
@@ -189,20 +189,19 @@ resource "azurerm_kubernetes_cluster_node_pool" "spot" {
   vm_size               = "Standard_D4s_v5"
   os_disk_size_gb       = 128
   max_pods              = 50
-  zones                 = [1, 2, 3]
+  zones                 = ["1", "2", "3"]
 
   # Priority setting makes this a spot instance pool
   priority        = "Spot"
   eviction_policy = "Delete"  # Delete VMs when evicted rather than deallocating
-  spot_max_price  = -1        # Use -1 for market price (pay whatever it costs)
+  spot_max_price  = -1        # Do not evict based on price
 
-  enable_auto_scaling = true
-  min_count           = 0
-  max_count           = 20
+  auto_scaling_enabled = true
+  min_count            = 0
+  max_count            = 20
 
   node_labels = {
-    "workload-type"                        = "spot"
-    "kubernetes.azure.com/scalesetpriority" = "spot"
+    "workload-type" = "spot"
   }
 
   # Spot nodes get a taint automatically, but add one explicitly for clarity
@@ -352,6 +351,6 @@ resource "azurerm_kubernetes_cluster_node_pool" "general" {
 
 **Scale GPU and spot pools to zero.** Setting min_count to 0 means you pay nothing when those pools have no workloads. The cluster autoscaler will add nodes when pods with matching tolerations appear.
 
-**Name node pools carefully.** AKS pool names must be 1-12 characters, lowercase alphanumeric only. No hyphens or underscores allowed.
+**Name node pools carefully.** AKS Linux pool names must be 1-12 characters, lowercase alphanumeric only, and start with a lowercase letter. No hyphens or underscores allowed.
 
 For the next step in your AKS Terraform journey, check out [creating Azure Kubernetes Service clusters in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-azure-kubernetes-service-aks-in-terraform/view) if you have not already set up the base cluster.
