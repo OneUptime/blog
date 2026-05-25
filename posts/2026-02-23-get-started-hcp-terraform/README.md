@@ -98,6 +98,8 @@ Description: Development environment AWS infrastructure
 
 ```
 
+Make sure the workspace execution mode is set to **Remote** so plans and applies run in HCP Terraform instead of only storing state there.
+
 ## Configure the Cloud Block
 
 In your Terraform configuration, add a `cloud` block to connect to your workspace:
@@ -118,6 +120,11 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+    }
+
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }
@@ -199,8 +206,12 @@ variable "environment" {
 ```hcl
 # s3.tf
 
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
 resource "aws_s3_bucket" "example" {
-  bucket = "my-company-${var.environment}-example-bucket"
+  bucket = "my-company-${var.environment}-example-${random_id.bucket_suffix.hex}"
 
   tags = {
     Environment = var.environment
@@ -242,7 +253,7 @@ terraform plan
 # The plan runs remotely on HCP Terraform's infrastructure
 # Output streams back to your terminal
 
-# Plan: 2 to add, 0 to change, 0 to destroy.
+# Plan: 3 to add, 0 to change, 0 to destroy.
 ```
 
 The plan runs on HCP Terraform's runners, not on your machine. Your configuration is uploaded, the plan executes, and the output streams back to your terminal.
@@ -258,10 +269,10 @@ terraform apply
 # Do you want to perform these actions in workspace "dev-infrastructure"?
 # Enter "yes" to confirm.
 
-# Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
+# Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
 # Outputs:
-#   bucket_arn  = "arn:aws:s3:::my-company-dev-example-bucket"
-#   bucket_name = "my-company-dev-example-bucket"
+#   bucket_arn  = "arn:aws:s3:::my-company-dev-example-a1b2c3d4"
+#   bucket_name = "my-company-dev-example-a1b2c3d4"
 ```
 
 ## View the Run in the UI
