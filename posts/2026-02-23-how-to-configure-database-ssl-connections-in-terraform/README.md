@@ -300,6 +300,18 @@ resource "aws_docdb_cluster" "docdb_ssl" {
     TLSEnabled  = "true"
   }
 }
+
+# DocumentDB instance
+resource "aws_docdb_cluster_instance" "docdb_ssl_instance" {
+  identifier         = "docdb-ssl-instance-1"
+  cluster_identifier = aws_docdb_cluster.docdb_ssl.id
+  instance_class     = "db.r6g.large"
+  ca_cert_identifier = "rds-ca-rsa2048-g1"
+
+  tags = {
+    Environment = "production"
+  }
+}
 ```
 
 ## Configuring SSL for Neptune
@@ -343,6 +355,19 @@ resource "aws_neptune_cluster" "neptune_ssl" {
   tags = {
     Environment = "production"
     SSLEnabled  = "true"
+  }
+}
+
+# Neptune instance
+resource "aws_neptune_cluster_instance" "neptune_ssl_instance" {
+  identifier                = "neptune-ssl-instance-1"
+  cluster_identifier        = aws_neptune_cluster.neptune_ssl.id
+  engine                    = "neptune"
+  instance_class            = "db.r6g.large"
+  neptune_subnet_group_name = aws_neptune_subnet_group.main.name
+
+  tags = {
+    Environment = "production"
   }
 }
 ```
@@ -391,15 +416,15 @@ output "current_ca_cert" {
 }
 ```
 
-## Creating an IAM Policy for SSL-Only Access
+## Creating an IAM Policy for IAM Database Authentication
 
-You can use IAM policies to enforce that database connections use SSL:
+For RDS IAM database authentication, IAM policies control which IAM principals can connect as database users. SSL/TLS enforcement still comes from the database engine configuration, such as `rds.force_ssl` for PostgreSQL or `require_secure_transport` for MySQL:
 
 ```hcl
-# IAM policy that requires SSL for RDS IAM authentication
-resource "aws_iam_policy" "rds_ssl_only" {
-  name        = "rds-ssl-only-access"
-  description = "Allow RDS access only via SSL connections"
+# IAM policy that allows RDS IAM authentication for database users
+resource "aws_iam_policy" "rds_iam_connect" {
+  name        = "rds-iam-connect"
+  description = "Allow RDS IAM database authentication"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -410,11 +435,6 @@ resource "aws_iam_policy" "rds_ssl_only" {
           "rds-db:connect"
         ]
         Resource = "arn:aws:rds-db:us-east-1:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.postgres_ssl.resource_id}/*"
-        Condition = {
-          Bool = {
-            "rds:tlsEnabled" = "true"
-          }
-        }
       }
     ]
   })
@@ -423,22 +443,22 @@ resource "aws_iam_policy" "rds_ssl_only" {
 data "aws_caller_identity" "current" {}
 ```
 
-## Monitoring SSL Connections
+## Monitoring Database Connections
 
-Track SSL connection metrics to ensure all connections are encrypted:
+Track database connection metrics for capacity and operational visibility. CloudWatch `DatabaseConnections` counts client network connections, but it does not distinguish SSL/TLS connections from non-SSL connections:
 
 ```hcl
-# CloudWatch alarm for non-SSL connections (PostgreSQL)
-resource "aws_cloudwatch_metric_alarm" "non_ssl_connections" {
-  alarm_name          = "database-non-ssl-connections"
+# CloudWatch alarm for total database connections
+resource "aws_cloudwatch_metric_alarm" "database_connections" {
+  alarm_name          = "database-connections-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "DatabaseConnections"
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Average"
-  threshold           = 0
-  alarm_description   = "Alert on potential non-SSL database connections"
+  threshold           = 100
+  alarm_description   = "Alert when database connections exceed the expected threshold"
 
   dimensions = {
     DBInstanceIdentifier = aws_db_instance.postgres_ssl.identifier
@@ -452,7 +472,7 @@ resource "aws_sns_topic" "security_alerts" {
 }
 ```
 
-For comprehensive security monitoring of your database connections, [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-create-database-monitoring-dashboards-with-terraform/view) can help you track connection patterns and detect non-encrypted connections.
+For PostgreSQL, use engine-level checks such as the `pg_stat_ssl` view to inspect whether current sessions are using SSL/TLS. For comprehensive security monitoring of your database connections, [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-create-database-monitoring-dashboards-with-terraform/view) can help you track connection patterns alongside database-specific SSL checks.
 
 ## Best Practices
 
