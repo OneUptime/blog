@@ -57,13 +57,20 @@ For a more systematic approach, compare the resources in your state to the resou
 # Get all resource addresses from state
 terraform state list > /tmp/state-resources.txt
 
-# Get all resource addresses from configuration
-terraform providers schema -json | \
-  jq -r '.provider_schemas | to_entries[] | .value.resource_schemas | keys[]' \
-  > /tmp/config-resource-types.txt
-
-# A simpler approach: look for planned destroys
-terraform plan -no-color | grep "will be destroyed" > /tmp/orphans.txt
+# Look for planned deletes caused by missing configuration
+terraform plan -json | \
+  jq -r 'select(.type == "planned_change") |
+    select(.change.action == "delete") |
+    select(.change.reason as $reason |
+      [
+        "delete_because_no_resource_config",
+        "delete_because_no_module",
+        "delete_because_wrong_repetition",
+        "delete_because_count_index",
+        "delete_because_each_key"
+      ] | index($reason)) |
+    .change.resource.addr' \
+  > /tmp/orphans.txt
 ```
 
 ### Method 3: Script-Based Detection
@@ -83,6 +90,14 @@ echo "===================================================="
 terraform plan -json 2>/dev/null | \
   jq -r 'select(.type == "planned_change") |
     select(.change.action == "delete") |
+    select(.change.reason as $reason |
+      [
+        "delete_because_no_resource_config",
+        "delete_because_no_module",
+        "delete_because_wrong_repetition",
+        "delete_because_count_index",
+        "delete_because_each_key"
+      ] | index($reason)) |
     .change.resource.addr' 2>/dev/null || \
   echo "Could not parse plan output. Run 'terraform plan' manually."
 ```
@@ -100,7 +115,7 @@ If the resource is genuinely no longer needed, just run `terraform apply` and le
 terraform apply -target=aws_instance.old_web
 ```
 
-Using `-target` limits the destroy to just the orphaned resource, so you don't accidentally apply other changes in the same operation.
+Using `-target` focuses Terraform on the selected address and its dependencies, so you can clean up one orphan without applying unrelated changes in the same operation. Treat this as an exceptional recovery step, not a routine workflow.
 
 ### Option 2: Remove from State Without Destroying
 
@@ -207,7 +222,7 @@ resource "aws_db_instance" "production" {
 }
 ```
 
-This won't prevent the resource from becoming orphaned, but it will prevent Terraform from actually destroying it if you accidentally remove the configuration.
+This won't prevent the resource from becoming orphaned, and it only protects the resource while the `prevent_destroy` rule is still present in configuration. If you remove the whole resource block, Terraform no longer sees that lifecycle rule and can still plan to destroy the object.
 
 ## Bulk Cleanup of Orphaned Resources
 
@@ -223,6 +238,14 @@ set -euo pipefail
 ORPHANS=$(terraform plan -json 2>/dev/null | \
   jq -r 'select(.type == "planned_change") |
     select(.change.action == "delete") |
+    select(.change.reason as $reason |
+      [
+        "delete_because_no_resource_config",
+        "delete_because_no_module",
+        "delete_because_wrong_repetition",
+        "delete_because_count_index",
+        "delete_because_each_key"
+      ] | index($reason)) |
     .change.resource.addr' 2>/dev/null)
 
 if [ -z "$ORPHANS" ]; then
