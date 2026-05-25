@@ -69,8 +69,12 @@ provider "aws" {
 # Option 4: OIDC with GitHub Actions
 provider "aws" {
   region = "us-east-1"
-  # Uses OIDC token from GitHub Actions
-  # Requires AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE env vars
+
+  assume_role_with_web_identity {
+    role_arn                = "arn:aws:iam::123456789012:role/GitHubActionsRole"
+    session_name            = "github-actions"
+    web_identity_token_file = "/tmp/web-identity-token"
+  }
 }
 ```
 
@@ -127,7 +131,7 @@ provider "azurerm" {
 
 ## Default Tags
 
-Apply tags to all resources created by a provider without repeating them in every resource block:
+Apply tags to resources managed by a provider without repeating them in every resource block:
 
 ```hcl
 # AWS default tags
@@ -156,6 +160,8 @@ resource "aws_instance" "web" {
 }
 ```
 
+AWS default tags apply to resources that support provider-level tagging. Auto Scaling Groups require their own tag blocks if you want tags to propagate to launched instances.
+
 ```hcl
 # Google Cloud default labels
 provider "google" {
@@ -169,6 +175,8 @@ provider "google" {
   }
 }
 ```
+
+Google Cloud default labels apply to resources that expose a top-level `labels` field or a `labels` field nested inside a top-level `metadata` field.
 
 ## Custom Endpoints
 
@@ -379,4 +387,4 @@ provider "aws" {
 7. **Keep provider blocks in a dedicated file** (`provider.tf` or `providers.tf`) for easy discovery.
 8. **Use variables for region and project settings** to make configurations portable across environments.
 
-Provider blocks are the first thing Terraform evaluates during any operation. Getting them right sets the foundation for everything else in your configuration.
+Terraform evaluates provider configuration before it can plan or apply provider-managed resources. Getting it right sets the foundation for everything else in your configuration.
