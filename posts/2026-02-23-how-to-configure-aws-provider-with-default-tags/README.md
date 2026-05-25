@@ -8,7 +8,7 @@ Description: Learn how to configure default tags in the Terraform AWS provider t
 
 ---
 
-Tagging AWS resources consistently is one of those things every team agrees is important but few teams do well. Tags get forgotten, misspelled, or applied inconsistently across modules. The AWS provider for Terraform has a `default_tags` block that solves this by automatically applying a set of tags to every resource that supports tagging. You define them once at the provider level and they propagate everywhere.
+Tagging AWS resources consistently is one of those things every team agrees is important but few teams do well. Tags get forgotten, misspelled, or applied inconsistently across modules. The AWS provider for Terraform has a `default_tags` block that solves this by automatically applying a set of tags to resources that support the standard `tags` argument. You define them once at the provider level and they propagate across the resources managed by that provider configuration.
 
 ## Why Default Tags Matter
 
@@ -40,7 +40,7 @@ terraform {
 provider "aws" {
   region = "us-east-1"
 
-  # These tags will be applied to every resource that supports tagging
+  # These tags will be applied to resources that support the standard tags argument
   default_tags {
     tags = {
       Environment = "production"
@@ -52,7 +52,7 @@ provider "aws" {
 }
 ```
 
-With this configuration, every `aws_instance`, `aws_s3_bucket`, `aws_vpc`, and any other taggable resource will automatically receive these four tags without you specifying them in each resource block.
+With this configuration, resources like `aws_instance`, `aws_s3_bucket`, `aws_vpc`, and other resources that support the standard `tags` argument will automatically receive these four tags without you specifying them in each resource block.
 
 ## Using Variables for Dynamic Tags
 
@@ -165,7 +165,7 @@ resource "aws_s3_bucket" "staging_data" {
 
 The bucket will have `Environment = "staging"` because resource-level tags take precedence over default tags.
 
-**Important caveat**: When you override a default tag at the resource level, Terraform may show a perpetual diff in your plan output. This is a known behavior. The plan will show the tag as being set to the resource-level value, which is technically correct but can be noisy. The AWS provider team has improved this over time, but it is something to be aware of.
+**Important caveat**: Older AWS provider versions had known `default_tags` plan-diff issues when provider-level and resource-level tags overlapped. The AWS provider team fixed several of these issues in version 5.0.0 and later, so if you see noisy tag diffs, first check your provider version and upgrade if possible.
 
 ## Multi-Region with Default Tags
 
@@ -216,7 +216,7 @@ resource "aws_s3_bucket" "dr" {
 
 ## Handling the tags_all Attribute
 
-Every AWS resource that supports tagging exposes a `tags_all` computed attribute. This attribute contains the merged result of default tags and resource-level tags:
+AWS resources that support the standard `tags` argument expose a `tags_all` computed attribute. This attribute contains the merged result of default tags and resource-level tags:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -267,17 +267,22 @@ provider "aws" {
 
 ## Enforcing Tag Compliance
 
-Default tags handle the happy path, but what about modules or resources that explicitly set tags to empty? You can add validation:
+Default tags handle the happy path, but what about verifying that the provider is configured with the required default tags? You can add a non-blocking check:
 
 ```hcl
-# Check that required tags exist using a data source
-data "aws_caller_identity" "current" {}
+# Read the default tags configured on the AWS provider
+data "aws_default_tags" "current" {}
 
-# Use a check block (Terraform 1.5+) to validate tags
+# Use a check block (Terraform 1.5+) to validate tags.
+# Failed check assertions produce warnings; they do not block plan or apply.
 check "tag_compliance" {
   assert {
-    condition     = length(keys(provider::aws::default_tags())) >= 3
-    error_message = "At least 3 default tags must be configured"
+    condition = alltrue([
+      for tag_key in ["Environment", "Project", "ManagedBy"] :
+      contains(keys(data.aws_default_tags.current.tags), tag_key)
+    ])
+
+    error_message = "Environment, Project, and ManagedBy default tags must be configured"
   }
 }
 ```
@@ -296,7 +301,7 @@ rule "aws_resource_missing_tags" {
 
 ### 1. Forgetting About Auto Scaling Group Propagation
 
-Default tags do not automatically propagate to instances launched by Auto Scaling Groups. You still need to configure tag propagation explicitly:
+The AWS provider's `default_tags` block does not apply to `aws_autoscaling_group`. You need to configure Auto Scaling group tags explicitly, and set propagation for any tags that should reach launched instances:
 
 ```hcl
 resource "aws_autoscaling_group" "web" {
@@ -308,9 +313,8 @@ resource "aws_autoscaling_group" "web" {
     propagate_at_launch = true
   }
 
-  # Default tags are applied to the ASG itself,
-  # but you need explicit tag blocks with propagate_at_launch
-  # for tags to reach the launched instances
+  # Auto Scaling groups need explicit tag blocks.
+  # Set propagate_at_launch for tags that should reach launched instances.
 }
 ```
 
@@ -324,4 +328,4 @@ A small number of AWS resources do not support tagging at all. The provider cann
 
 ## Summary
 
-Default tags in the AWS provider give you a single place to define tags that apply everywhere. This reduces duplication, ensures consistency, and makes cost tracking and compliance much easier. Combine them with variables for environment-specific values, and use resource-level tags for additional metadata that varies per resource. If your organization is serious about tagging, default tags should be one of the first things you configure in any new Terraform project.
+Default tags in the AWS provider give you a single place to define tags that apply broadly across supported resources. This reduces duplication, ensures consistency, and makes cost tracking and compliance much easier. Combine them with variables for environment-specific values, and use resource-level tags for additional metadata that varies per resource. If your organization is serious about tagging, default tags should be one of the first things you configure in any new Terraform project.
