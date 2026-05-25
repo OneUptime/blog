@@ -59,6 +59,7 @@ For remote Docker hosts with TLS, you can configure certificates:
 # Docker provider with TLS for remote host
 provider "docker" {
   host = "tcp://docker-host:2376/"
+  cert_path = pathexpand("~/.docker")
 
   registry_auth {
     address  = "registry.example.com"
@@ -77,7 +78,7 @@ The most common operation is pulling images from container registries. The `dock
 resource "docker_image" "nginx" {
   name = "nginx:latest"
 
-  # Keep the image locally even if the tag is updated
+  # Remove the image from local storage when destroying the resource
   keep_locally = false
 }
 
@@ -271,16 +272,20 @@ resource "docker_image" "app_build" {
 resource "docker_tag" "app_ecr" {
   source_image = docker_image.app_build.name
   target_image = "${var.ecr_repository_url}:${var.image_tag}"
+  tag_triggers = [docker_image.app_build.image_id]
 }
 
-# Push to ECR using a provisioner
+# Push to ECR using the registry image resource
 resource "docker_registry_image" "app_ecr" {
-  name = "${var.ecr_repository_url}:${var.image_tag}"
+  name = docker_tag.app_ecr.target_image
 
-  # Rebuild if the source changes
+  # Keep the remote image when destroying the resource
   keep_remotely = true
 
-  depends_on = [docker_image.app_build]
+  # Repush if the local image changes
+  triggers = {
+    image_id = docker_image.app_build.image_id
+  }
 }
 ```
 
