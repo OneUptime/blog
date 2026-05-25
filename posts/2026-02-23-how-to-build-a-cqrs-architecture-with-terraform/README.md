@@ -10,14 +10,14 @@ Description: Learn how to build a CQRS (Command Query Responsibility Segregation
 
 CQRS, or Command Query Responsibility Segregation, is an architectural pattern that separates read and write operations into different models. Instead of one database handling both reads and writes, you use a write-optimized store for commands and a read-optimized store for queries. This approach lets you scale reads and writes independently and optimize each side for its specific workload.
 
-In this guide, we will build a full CQRS architecture on AWS using Terraform. The write side will use DynamoDB with event sourcing, and the read side will use Elasticsearch for fast, flexible queries.
+In this guide, we will build a full CQRS architecture on AWS using Terraform. The write side will use DynamoDB with event sourcing, and the read side will use OpenSearch for fast, flexible queries.
 
 ## Architecture Overview
 
 Our CQRS system has these components:
 
 - **Command side**: API Gateway, Lambda, DynamoDB (write store), Kinesis (event stream)
-- **Query side**: Elasticsearch (read store), Lambda (projections), API Gateway
+- **Query side**: OpenSearch (read store), Lambda (projections), API Gateway
 - **Sync layer**: Kinesis Data Streams and Lambda to project events into the read store
 
 ## The Command Side - Write Store
@@ -113,7 +113,7 @@ resource "aws_lambda_function" "command_handler" {
   function_name = "${var.project_name}-command-handler"
   role          = aws_iam_role.command_handler.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   timeout       = 30
   memory_size   = 512
 
@@ -223,7 +223,7 @@ resource "aws_lambda_function" "stream_forwarder" {
   function_name = "${var.project_name}-stream-forwarder"
   role          = aws_iam_role.stream_forwarder.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   timeout       = 60
 
   environment {
@@ -260,13 +260,13 @@ resource "aws_lambda_function" "projector" {
   function_name = "${var.project_name}-event-projector"
   role          = aws_iam_role.projector.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   timeout       = 120
   memory_size   = 512
 
   environment {
     variables = {
-      ELASTICSEARCH_ENDPOINT = aws_opensearch_domain.read_store.endpoint
+      OPENSEARCH_ENDPOINT = aws_opensearch_domain.read_store.endpoint
     }
   }
 
@@ -283,13 +283,20 @@ resource "aws_lambda_event_source_mapping" "kinesis_to_projector" {
   starting_position = "LATEST"
   batch_size        = 100
 
-  maximum_retry_attempts = 3
+  maximum_retry_attempts        = 3
+  bisect_batch_on_function_error = true
+
+  destination_config {
+    on_failure {
+      destination_arn = aws_sqs_queue.projection_dlq.arn
+    }
+  }
 }
 ```
 
 ## The Query Side - Read Store
 
-OpenSearch (Elasticsearch) is the read store. It is optimized for fast, flexible queries with full-text search and aggregations.
+OpenSearch is the read store. It is optimized for fast, flexible queries with full-text search and aggregations.
 
 ```hcl
 # read-store.tf - Query side infrastructure
@@ -357,13 +364,13 @@ resource "aws_lambda_function" "query_handler" {
   function_name = "${var.project_name}-query-handler"
   role          = aws_iam_role.query_handler.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   timeout       = 10
   memory_size   = 256
 
   environment {
     variables = {
-      ELASTICSEARCH_ENDPOINT = aws_opensearch_domain.read_store.endpoint
+      OPENSEARCH_ENDPOINT = aws_opensearch_domain.read_store.endpoint
     }
   }
 
