@@ -36,7 +36,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 3.116"
     }
   }
 }
@@ -60,8 +60,8 @@ AKS needs a VNet and subnet to operate. You can let AKS create its own networkin
 # Create a resource group to hold all resources
 
 resource "azurerm_resource_group" "aks" {
-  name     = "rg-aks-production"
-  location = "East US"
+  name     = var.resource_group_name
+  location = var.location
 
   tags = {
     environment = "production"
@@ -82,7 +82,7 @@ resource "azurerm_subnet" "aks_nodes" {
   name                 = "snet-aks-nodes"
   resource_group_name  = azurerm_resource_group.aks.name
   virtual_network_name = azurerm_virtual_network.aks.name
-  address_prefixes     = ["10.0.1.0/24"]
+  address_prefixes     = ["10.0.0.0/22"]
 }
 ```
 
@@ -118,13 +118,13 @@ resource "azurerm_kubernetes_cluster" "main" {
   dns_prefix          = "aks-prod"
 
   # Pin to a specific Kubernetes version for stability
-  kubernetes_version = "1.28"
+  kubernetes_version = var.kubernetes_version
 
   # The default node pool runs system workloads
   default_node_pool {
     name                = "system"
-    node_count          = 3
-    vm_size             = "Standard_D4s_v5"
+    node_count          = var.node_count
+    vm_size             = var.node_vm_size
     vnet_subnet_id      = azurerm_subnet.aks_nodes.id
     os_disk_size_gb     = 128
     os_disk_type        = "Managed"
@@ -247,7 +247,7 @@ variable "location" {
 variable "kubernetes_version" {
   type        = string
   description = "Kubernetes version for the AKS cluster"
-  default     = "1.28"
+  default     = "1.35"
 }
 
 variable "node_vm_size" {
@@ -289,7 +289,7 @@ az aks get-credentials --resource-group rg-aks-production --name aks-production
 
 There are a few things worth keeping in mind when running AKS in production with Terraform.
 
-**Version pinning** matters. Always specify a Kubernetes version explicitly. Letting Azure pick the default version can lead to unexpected upgrades when you re-apply your Terraform configuration.
+**Version pinning** matters. Always specify a Kubernetes version explicitly. Letting Azure pick the default version can lead to different versions being selected when the same configuration is used later or in another environment.
 
 **Availability zones** should be enabled for production workloads. The configuration above spreads nodes across zones 1, 2, and 3 for high availability.
 
