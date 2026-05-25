@@ -8,7 +8,7 @@ Description: Speed up your Terraform CI/CD pipelines by caching providers and pl
 
 ---
 
-Every time your Terraform pipeline runs `terraform init`, it downloads provider plugins from the Terraform registry. The AWS provider alone is over 300 MB. If you are running multiple pipelines a day across several environments, that adds up to significant bandwidth usage and wasted time. Caching providers eliminates this bottleneck.
+Every time your Terraform pipeline runs `terraform init`, it downloads provider plugins from the Terraform registry. The AWS provider alone can be a large download, depending on the version and platform. If you are running multiple pipelines a day across several environments, that adds up to significant bandwidth usage and wasted time. Caching providers eliminates this bottleneck.
 
 ## The Problem with Provider Downloads
 
@@ -53,7 +53,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       # Cache the provider plugins directory
       - name: Cache Terraform providers
@@ -105,7 +105,7 @@ stages:
 
 plan:
   stage: plan
-  image: hashicorp/terraform:1.7.0
+  image: hashicorp/terraform:1.15.4
   before_script:
     # Create the plugin cache directory
     - mkdir -p $TF_PLUGIN_CACHE_DIR
@@ -130,7 +130,7 @@ mkdir -p $TF_PLUGIN_CACHE_DIR
 terraform init
 ```
 
-When the cache directory contains a provider that matches the version constraint, Terraform creates a symlink to it instead of downloading a fresh copy. This works across multiple Terraform configurations in the same pipeline run.
+When the cache directory contains the selected provider package and it matches the dependency lock file checksums, Terraform uses that cached copy instead of downloading a fresh one. When possible, Terraform creates a symlink to avoid storing a separate copy in each working directory. This works across multiple Terraform configurations in the same pipeline run.
 
 ```yaml
 # GitHub Actions - Cache shared across multiple Terraform directories
@@ -232,7 +232,7 @@ For the fastest possible init, build a custom Docker image with providers alread
 
 ```dockerfile
 # Dockerfile.terraform - Custom image with pre-installed providers
-FROM hashicorp/terraform:1.7.0
+FROM hashicorp/terraform:1.15.4
 
 # Copy your Terraform config to get the lock file
 COPY .terraform.lock.hcl /tmp/terraform/
