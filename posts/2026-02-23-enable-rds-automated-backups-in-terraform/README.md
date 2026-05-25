@@ -16,12 +16,12 @@ This guide covers automated backups, manual snapshots, cross-region backup repli
 
 RDS automated backups consist of two components:
 
-1. **Daily snapshots** - full snapshots taken during your configured backup window
+1. **Daily snapshots** - storage volume snapshots taken during your configured backup window. The first snapshot contains the full DB instance data, and subsequent snapshots are incremental.
 2. **Transaction logs** - continuously archived to S3, enabling point-in-time recovery
 
 Together, these allow you to restore to any point within your retention period with up to one-second granularity. The retention period can be 1 to 35 days.
 
-When a backup runs on a single-AZ instance, you may see brief I/O suspension. On Multi-AZ instances, backups are taken from the standby, so the primary is not affected.
+When a backup runs on a single-AZ instance, you may see brief I/O suspension. For MariaDB, MySQL, Oracle, and PostgreSQL Multi-AZ instances, backups are taken from the standby, so I/O activity is not suspended on the primary. SQL Server and Db2 can still see brief I/O suspension during backups.
 
 ## Enabling Automated Backups
 
@@ -63,7 +63,7 @@ resource "aws_db_instance" "main" {
 
   # Final snapshot when instance is deleted
   skip_final_snapshot       = false
-  final_snapshot_identifier = "myapp-db-final-${formatdate("YYYY-MM-DD", timestamp())}"
+  final_snapshot_identifier = "myapp-db-final"
 
   # Deletion protection
   deletion_protection = true
@@ -148,10 +148,15 @@ With cross-region backup replication, you can restore your database in a differe
 Automated backups are great, but manual snapshots are useful for specific events like before a major migration or deployment:
 
 ```hcl
+variable "snapshot_suffix" {
+  type        = string
+  description = "Unique suffix for one-off snapshots, for example 2026-02-23-1030"
+}
+
 # Manual snapshot before a risky operation
 resource "aws_db_snapshot" "pre_migration" {
   db_instance_identifier = aws_db_instance.main.identifier
-  db_snapshot_identifier = "pre-migration-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  db_snapshot_identifier = "pre-migration-${var.snapshot_suffix}"
 
   tags = {
     Name    = "pre-migration-snapshot"
@@ -167,16 +172,32 @@ Manual snapshots persist until you explicitly delete them - they are not subject
 For long-term retention beyond the 35-day maximum, copy snapshots and manage their lifecycle:
 
 ```hcl
+variable "archive_month" {
+  type        = string
+  description = "Archive month in YYYY-MM format, for example 2026-02"
+}
+
+variable "retain_until" {
+  type        = string
+  description = "Archive retention date in YYYY-MM-DD format"
+}
+
 # Copy the latest automated snapshot for long-term storage
+data "aws_db_snapshot" "latest_automated" {
+  db_instance_identifier = aws_db_instance.main.identifier
+  snapshot_type          = "automated"
+  most_recent            = true
+}
+
 resource "aws_db_snapshot_copy" "monthly_archive" {
-  source_db_snapshot_identifier = aws_db_instance.main.id
-  target_db_snapshot_identifier = "monthly-archive-${formatdate("YYYY-MM", timestamp())}"
+  source_db_snapshot_identifier = data.aws_db_snapshot.latest_automated.db_snapshot_arn
+  target_db_snapshot_identifier = "monthly-archive-${var.archive_month}"
   copy_tags                     = true
   kms_key_id                    = var.archive_kms_key_arn
 
   tags = {
     Name         = "monthly-archive"
-    RetainUntil  = formatdate("YYYY-MM-DD", timeadd(timestamp(), "8760h"))
+    RetainUntil  = var.retain_until
     ArchiveType  = "monthly"
   }
 }
@@ -184,12 +205,37 @@ resource "aws_db_snapshot_copy" "monthly_archive" {
 
 ## Monitoring Backup Status
 
-Set up CloudWatch alarms to catch backup failures:
+Set up EventBridge notifications to catch backup events, and CloudWatch alarms for storage conditions that can interfere with backups:
 
 ```hcl
 # SNS topic for backup alerts
 resource "aws_sns_topic" "backup_alerts" {
   name = "rds-backup-alerts"
+}
+
+data "aws_iam_policy_document" "backup_alerts" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.backup_alerts.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.rds_backup_events.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "backup_alerts" {
+  arn    = aws_sns_topic.backup_alerts.arn
+  policy = data.aws_iam_policy_document.backup_alerts.json
 }
 
 # EventBridge rule to catch backup events
@@ -199,7 +245,7 @@ resource "aws_cloudwatch_event_rule" "rds_backup_events" {
 
   event_pattern = jsonencode({
     source      = ["aws.rds"]
-    detail-type = ["RDS DB Instance Event"]
+    "detail-type" = ["RDS DB Instance Event"]
     detail = {
       EventCategories = ["backup"]
       SourceArn       = [aws_db_instance.main.arn]
@@ -211,6 +257,8 @@ resource "aws_cloudwatch_event_target" "backup_sns" {
   rule      = aws_cloudwatch_event_rule.rds_backup_events.name
   target_id = "backup-notifications"
   arn       = aws_sns_topic.backup_alerts.arn
+
+  depends_on = [aws_sns_topic_policy.backup_alerts]
 }
 
 # Also monitor free storage space - running out breaks backups
@@ -257,7 +305,7 @@ After restoring, you will need to import the new instance into Terraform or mana
 
 ## Backup Cost Considerations
 
-Automated backup storage up to 100% of your allocated storage is free. Beyond that, you pay per GB-month. Manual snapshots always incur storage costs.
+Automated backup storage up to 100% of your provisioned database storage in a Region is included at no additional charge. Beyond that, you pay per GB-month. Manual snapshots count toward backup storage and can incur charges, especially when total backup storage exceeds the included allocation or after the source DB instance is deleted.
 
 Cross-region backup replication adds data transfer costs and storage costs in the destination region.
 
