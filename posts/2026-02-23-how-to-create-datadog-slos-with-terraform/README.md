@@ -17,7 +17,7 @@ terraform {
   required_providers {
     datadog = {
       source  = "DataDog/datadog"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -27,8 +27,15 @@ provider "datadog" {
   app_key = var.datadog_app_key
 }
 
-variable "datadog_api_key" { type = string; sensitive = true }
-variable "datadog_app_key" { type = string; sensitive = true }
+variable "datadog_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "datadog_app_key" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Monitor-Based SLO
@@ -82,7 +89,7 @@ resource "datadog_service_level_objective" "api_availability" {
 ## Metric-Based SLO
 
 ```hcl
-# Create a metric-based SLO for latency
+# Create a metric-based SLO for latency using custom count metrics
 resource "datadog_service_level_objective" "api_latency" {
   name        = "API Service Latency SLO"
   type        = "metric"
@@ -90,9 +97,9 @@ resource "datadog_service_level_objective" "api_latency" {
 
   query {
     # Numerator: count of requests faster than 500ms
-    numerator   = "sum:trace.web.request.hits{service:api-service,env:production}.as_count() - sum:trace.web.request.duration.by.service.above_500ms{service:api-service,env:production}.as_count()"
+    numerator   = "sum:api.request.latency.under_500ms{service:api-service,env:production}.as_count()"
     # Denominator: total request count
-    denominator = "sum:trace.web.request.hits{service:api-service,env:production}.as_count()"
+    denominator = "sum:api.request.total{service:api-service,env:production}.as_count()"
   }
 
   thresholds {
@@ -110,7 +117,7 @@ resource "datadog_service_level_objective" "api_latency" {
   tags = ["service:api", "team:backend", "slo-type:latency"]
 }
 
-# SLO for error rate
+# SLO for error rate using custom count metrics
 resource "datadog_service_level_objective" "api_error_rate" {
   name        = "API Service Error Rate SLO"
   type        = "metric"
@@ -118,9 +125,9 @@ resource "datadog_service_level_objective" "api_error_rate" {
 
   query {
     # Numerator: successful requests
-    numerator   = "sum:trace.web.request.hits{service:api-service,env:production}.as_count() - sum:trace.web.request.errors{service:api-service,env:production}.as_count()"
+    numerator   = "sum:api.request.success{service:api-service,env:production}.as_count()"
     # Denominator: total requests
-    denominator = "sum:trace.web.request.hits{service:api-service,env:production}.as_count()"
+    denominator = "sum:api.request.total{service:api-service,env:production}.as_count()"
   }
 
   thresholds {
@@ -211,8 +218,8 @@ resource "datadog_service_level_objective" "services" {
   description = each.value.description
 
   query {
-    numerator   = "sum:trace.web.request.hits{service:${each.value.service},env:production}.as_count() - sum:trace.web.request.errors{service:${each.value.service},env:production}.as_count()"
-    denominator = "sum:trace.web.request.hits{service:${each.value.service},env:production}.as_count()"
+    numerator   = "sum:api.request.success{service:${each.value.service},env:production}.as_count()"
+    denominator = "sum:api.request.total{service:${each.value.service},env:production}.as_count()"
   }
 
   thresholds {
