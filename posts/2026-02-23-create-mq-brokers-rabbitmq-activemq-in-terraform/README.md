@@ -28,7 +28,11 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
     }
   }
 }
@@ -112,7 +116,7 @@ resource "aws_mq_broker" "activemq_single" {
   broker_name = "dev-activemq-broker"
 
   engine_type        = "ActiveMQ"
-  engine_version     = "5.17.6"
+  engine_version     = "5.19"
   host_instance_type = "mq.m5.large"
   deployment_mode    = "SINGLE_INSTANCE"
 
@@ -180,7 +184,7 @@ resource "aws_mq_broker" "activemq_ha" {
   broker_name = "prod-activemq-broker"
 
   engine_type        = "ActiveMQ"
-  engine_version     = "5.17.6"
+  engine_version     = "5.19"
   host_instance_type = "mq.m5.large"
   deployment_mode    = "ACTIVE_STANDBY_MULTI_AZ"
 
@@ -242,7 +246,7 @@ resource "aws_mq_configuration" "activemq_config" {
   name           = "activemq-production-config"
   description    = "Production ActiveMQ configuration"
   engine_type    = "ActiveMQ"
-  engine_version = "5.17.6"
+  engine_version = "5.19"
 
   data = <<XML
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -278,7 +282,7 @@ resource "aws_mq_broker" "activemq_configured" {
   broker_name = "configured-activemq"
 
   engine_type        = "ActiveMQ"
-  engine_version     = "5.17.6"
+  engine_version     = "5.19"
   host_instance_type = "mq.m5.large"
   deployment_mode    = "SINGLE_INSTANCE"
 
@@ -346,8 +350,8 @@ resource "aws_mq_broker" "rabbitmq_single" {
   broker_name = "dev-rabbitmq-broker"
 
   engine_type        = "RabbitMQ"
-  engine_version     = "3.13"
-  host_instance_type = "mq.m5.large"
+  engine_version     = "4.2"
+  host_instance_type = "mq.m7g.large"
   deployment_mode    = "SINGLE_INSTANCE"
 
   user {
@@ -387,8 +391,8 @@ resource "aws_mq_broker" "rabbitmq_cluster" {
   broker_name = "prod-rabbitmq-cluster"
 
   engine_type        = "RabbitMQ"
-  engine_version     = "3.13"
-  host_instance_type = "mq.m5.large"
+  engine_version     = "4.2"
+  host_instance_type = "mq.m7g.large"
   deployment_mode    = "CLUSTER_MULTI_AZ"
 
   user {
@@ -438,6 +442,16 @@ variable "activemq_app_password" {
   sensitive = true
 }
 
+variable "activemq_producer_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "activemq_consumer_password" {
+  type      = string
+  sensitive = true
+}
+
 variable "rabbitmq_admin_password" {
   type      = string
   sensitive = true
@@ -472,8 +486,9 @@ Never hardcode broker passwords. Use AWS Secrets Manager instead.
 ```hcl
 # Generate a random password
 resource "random_password" "mq_password" {
-  length  = 24
-  special = true
+  length           = 24
+  special          = true
+  override_special = "!@#$%&*()-_+[]{}<>?"
 }
 
 # Store in Secrets Manager
@@ -497,7 +512,7 @@ resource "aws_secretsmanager_secret_version" "mq_credentials" {
 
 2. **Use multi-AZ for production.** Single-instance brokers have no failover. Always use active/standby (ActiveMQ) or cluster multi-AZ (RabbitMQ) for production workloads.
 
-3. **Size your instances correctly.** Start with mq.m5.large and monitor CPU and memory utilization. Scale up if you see sustained high usage.
+3. **Size your instances correctly.** Start with mq.m5.large for ActiveMQ or mq.m7g.large for RabbitMQ and monitor CPU and memory utilization. Scale up if you see sustained high usage.
 
 4. **Keep brokers private.** Set `publicly_accessible = false` and place brokers in private subnets. Applications should connect through VPC networking.
 
