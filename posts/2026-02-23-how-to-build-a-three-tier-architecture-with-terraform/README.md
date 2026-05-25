@@ -42,6 +42,7 @@ three-tier/
   app.tf           # Application tier (EC2)
   database.tf      # Data tier (RDS)
   security.tf      # Security groups
+  user_data.sh     # EC2 bootstrap script
 ```
 
 ## Step 1: Provider Configuration
@@ -285,7 +286,7 @@ Security groups enforce the tier boundaries. Each tier can only communicate with
 ```hcl
 # security.tf
 
-# ALB Security Group - accepts HTTP/HTTPS from the internet
+# ALB Security Group - accepts HTTP from the internet
 resource "aws_security_group" "alb" {
   name   = "${var.project_name}-alb-sg"
   vpc_id = aws_vpc.main.id
@@ -294,14 +295,6 @@ resource "aws_security_group" "alb" {
     description = "HTTP from internet"
     from_port   = 80
     to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTPS from internet"
-    from_port   = 443
-    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -356,13 +349,8 @@ resource "aws_security_group" "db" {
     security_groups = [aws_security_group.app.id]
   }
 
-  # No egress needed for the database
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # No outbound rules are needed for the database security group.
+  egress = []
 
   tags = {
     Name = "${var.project_name}-db-sg"
@@ -525,7 +513,7 @@ yum install -y httpd php php-mysqlnd
 # Configure the application
 cat > /var/www/html/index.php << 'APPEOF'
 <?php
-$db_host = getenv('DB_HOST');
+$db_host = "${db_host}";
 echo "<h1>Three-Tier App</h1>";
 echo "<p>Server: " . gethostname() . "</p>";
 echo "<p>Database: " . $db_host . "</p>";
@@ -536,10 +524,6 @@ APPEOF
 cat > /var/www/html/health << 'HEALTHEOF'
 OK
 HEALTHEOF
-
-# Set database connection as environment variable
-echo "export DB_HOST=${db_host}" >> /etc/environment
-echo "export DB_NAME=${db_name}" >> /etc/environment
 
 # Start and enable Apache
 systemctl start httpd
