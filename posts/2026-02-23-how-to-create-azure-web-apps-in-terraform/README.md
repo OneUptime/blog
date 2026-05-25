@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Web Apps, App Service, PaaS, Infrastructure as Code
 
-Description: A comprehensive guide to deploying Azure Web Apps with Terraform, including application settings, deployment slots, custom domains, and continuous deployment configuration.
+Description: A comprehensive guide to deploying Azure Web Apps with Terraform, including application settings, deployment slots, custom domains, VNet integration, and Key Vault integration.
 
 ---
 
@@ -25,7 +25,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -98,10 +98,10 @@ resource "azurerm_linux_web_app" "main" {
 
   # Application settings (environment variables)
   app_settings = {
-    "NODE_ENV"                      = "production"
-    "WEBSITE_NODE_DEFAULT_VERSION"  = "~20"
-    "APPINSIGHTS_INSTRUMENTATIONKEY" = azurerm_application_insights.web.instrumentation_key
-    "DATABASE_URL"                  = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.db_url.id})"
+    "NODE_ENV"                               = "production"
+    "WEBSITE_NODE_DEFAULT_VERSION"           = "~20"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"  = azurerm_application_insights.web.connection_string
+    "DATABASE_URL"                           = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.db_url.id})"
   }
 
   # Connection strings
@@ -144,10 +144,23 @@ resource "azurerm_linux_web_app" "main" {
 
 ```hcl
 # Application Insights for monitoring
+resource "azurerm_log_analytics_workspace" "web" {
+  name                = "law-webapp-prod"
+  location            = azurerm_resource_group.web.location
+  resource_group_name = azurerm_resource_group.web.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+
+  tags = {
+    Environment = "production"
+  }
+}
+
 resource "azurerm_application_insights" "web" {
   name                = "ai-webapp-prod"
   location            = azurerm_resource_group.web.location
   resource_group_name = azurerm_resource_group.web.name
+  workspace_id        = azurerm_log_analytics_workspace.web.id
   application_type    = "web"
 
   tags = {
@@ -178,9 +191,9 @@ resource "azurerm_linux_web_app_slot" "staging" {
 
   # Staging-specific settings
   app_settings = {
-    "NODE_ENV"                      = "staging"
-    "WEBSITE_NODE_DEFAULT_VERSION"  = "~20"
-    "APPINSIGHTS_INSTRUMENTATIONKEY" = azurerm_application_insights.web.instrumentation_key
+    "NODE_ENV"                               = "staging"
+    "WEBSITE_NODE_DEFAULT_VERSION"           = "~20"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"  = azurerm_application_insights.web.connection_string
   }
 
   identity {
@@ -209,9 +222,9 @@ resource "azurerm_linux_web_app_slot" "preprod" {
   }
 
   app_settings = {
-    "NODE_ENV"                      = "preprod"
-    "WEBSITE_NODE_DEFAULT_VERSION"  = "~20"
-    "APPINSIGHTS_INSTRUMENTATIONKEY" = azurerm_application_insights.web.instrumentation_key
+    "NODE_ENV"                               = "preprod"
+    "WEBSITE_NODE_DEFAULT_VERSION"           = "~20"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"  = azurerm_application_insights.web.connection_string
   }
 
   identity {
@@ -367,6 +380,15 @@ resource "azurerm_key_vault" "app" {
 
 data "azurerm_client_config" "current" {}
 
+# Access policy for the identity running Terraform to create the secret
+resource "azurerm_key_vault_access_policy" "terraform" {
+  key_vault_id = azurerm_key_vault.app.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  secret_permissions = ["Get", "List", "Set", "Delete"]
+}
+
 # Access policy for the web app's managed identity
 resource "azurerm_key_vault_access_policy" "webapp" {
   key_vault_id = azurerm_key_vault.app.id
@@ -381,6 +403,8 @@ resource "azurerm_key_vault_secret" "db_url" {
   name         = "database-url"
   value        = "postgresql://user:pass@host:5432/db"
   key_vault_id = azurerm_key_vault.app.id
+
+  depends_on = [azurerm_key_vault_access_policy.terraform]
 }
 ```
 
