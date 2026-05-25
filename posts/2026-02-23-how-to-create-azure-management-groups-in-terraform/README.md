@@ -44,18 +44,21 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 
 # Get the root management group (your tenant root)
+data "azurerm_client_config" "current" {}
+
 data "azurerm_management_group" "root" {
-  display_name = "Tenant Root Group"
+  name = data.azurerm_client_config.current.tenant_id
 }
 
 # Top-level management groups
@@ -181,10 +184,10 @@ resource "azurerm_management_group_policy_assignment" "require_env_tag" {
   })
 }
 
-# Disable public IP creation in connectivity subscription
+# Deny network interfaces with public IPs in Connectivity
 resource "azurerm_management_group_policy_assignment" "no_public_ip" {
   name                 = "deny-public-ip"
-  management_group_id  = azurerm_management_group.production.id
+  management_group_id  = azurerm_management_group.connectivity.id
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/83a86a26-fd1f-447c-b59d-e51f44264114"
 }
 ```
@@ -231,11 +234,11 @@ variable "workload_teams" {
   default = {
     "team-alpha" = {
       production_sub_id     = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-      non_production_sub_id = "ffffffff-gggg-hhhh-iiii-jjjjjjjjjjjj"
+      non_production_sub_id = "ffffffff-1111-2222-3333-444444444444"
     }
     "team-beta" = {
-      production_sub_id     = "kkkkkkkk-llll-mmmm-nnnn-oooooooooooo"
-      non_production_sub_id = "pppppppp-qqqq-rrrr-ssss-tttttttttttt"
+      production_sub_id     = "55555555-6666-7777-8888-999999999999"
+      non_production_sub_id = "00000000-aaaa-bbbb-cccc-dddddddddddd"
     }
   }
 }
