@@ -84,7 +84,7 @@ locals {
   ]))
   # Result: ["us-east-1a", "us-east-1b", "us-east-1c"]
 
-  # Chain: values -> for (filter + extract) -> sort
+  # Chain: for (filter + extract) -> sort
   web_instance_names = sort([
     for name, inst in var.instances : name
     if inst.tags["Role"] == "web"
@@ -95,7 +95,7 @@ locals {
   unique_instance_types = toset([
     for inst in values(var.instances) : inst.type
   ])
-  # Result: toset(["r5.xlarge", "t3.large", "t3.medium"])
+  # Result: set containing "r5.xlarge", "t3.large", and "t3.medium"
 }
 ```
 
@@ -122,7 +122,7 @@ variable "custom_tags" {
 }
 
 locals {
-  # Chain: merge (combine with overrides) -> for (transform keys)
+  # Chain: merge (combine with overrides) -> for (copy entries)
   final_tags = {
     for key, value in merge(var.default_tags, var.custom_tags) :
     key => value
@@ -203,7 +203,7 @@ locals {
     setunion(var.required_permissions, var.user_permissions),
     var.restricted_permissions
   )
-  # Result: toset(["execute", "read", "write"])
+  # Result: set containing "execute", "read", and "write"
 
   # Chain: setintersection -> tolist -> length (count shared permissions)
   shared_count = length(tolist(
