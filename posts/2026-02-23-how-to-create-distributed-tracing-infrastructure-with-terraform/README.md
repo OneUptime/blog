@@ -50,6 +50,26 @@ variable "environment" {
   default     = "production"
 }
 
+variable "vpc_id" {
+  description = "VPC ID where the collector runs"
+  type        = string
+}
+
+variable "vpc_cidr_block" {
+  description = "VPC CIDR block allowed to send traces to the collector"
+  type        = string
+}
+
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for the OpenTelemetry Collector tasks"
+  type        = list(string)
+}
+
+variable "alert_sns_topic_arn" {
+  description = "SNS topic ARN for tracing infrastructure alerts"
+  type        = string
+}
+
 variable "services" {
   description = "List of microservices to trace"
   type        = list(string)
@@ -83,24 +103,22 @@ resource "aws_xray_sampling_rule" "service_sampling" {
   attributes = {}
 }
 
-# High-priority sampling for error responses
-resource "aws_xray_sampling_rule" "error_sampling" {
-  rule_name      = "error-traces-${var.environment}"
+# High-priority sampling for critical user flows
+resource "aws_xray_sampling_rule" "critical_path_sampling" {
+  rule_name      = "critical-path-${var.environment}"
   priority       = 100  # Higher priority than service rules
   version        = 1
   reservoir_size = 10
-  fixed_rate     = 1.0  # Trace 100% of errors
+  fixed_rate     = 1.0  # Trace 100% of matching requests
 
   host         = "*"
-  http_method  = "*"
+  http_method  = "POST"
   service_name = "*"
   service_type = "*"
-  url_path     = "*"
+  url_path     = "/checkout*"
   resource_arn = "*"
 
-  attributes = {
-    "http.status_code" = "5*"  # Match all 5xx errors
-  }
+  attributes = {}
 }
 
 # Low-rate sampling for health check endpoints
@@ -214,11 +232,79 @@ resource "aws_iam_role_policy_attachment" "xray_write" {
   role       = aws_iam_role.xray_service_role[each.value].name
   policy_arn = aws_iam_policy.xray_write.arn
 }
+
+# Task execution role for the OpenTelemetry Collector on ECS
+resource "aws_iam_role" "ecs_execution" {
+  name = "otel-execution-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# Task role used by the collector container to export traces to X-Ray
+resource "aws_iam_role" "otel_collector" {
+  name = "otel-collector-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "otel_collector_xray_write" {
+  role       = aws_iam_role.otel_collector.name
+  policy_arn = aws_iam_policy.xray_write.arn
+}
 ```
 
 ## Deploying an OpenTelemetry Collector on ECS
 
-For more flexibility, deploy an OpenTelemetry Collector as a sidecar or standalone service:
+For more flexibility, deploy an OpenTelemetry Collector as a sidecar or standalone service. Create a collector configuration file that receives OTLP traces and exports them to X-Ray:
+
+```yaml
+# otel-config.yaml - ADOT Collector configuration for X-Ray traces
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  awsxray:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [awsxray]
+```
+
+Then run the collector on ECS Fargate:
 
 ```hcl
 # otel-collector.tf - Deploy OpenTelemetry Collector on ECS Fargate
@@ -243,10 +329,6 @@ resource "aws_ecs_task_definition" "otel_collector" {
       },
       {
         containerPort = 4318  # OTLP HTTP receiver
-        protocol      = "tcp"
-      },
-      {
-        containerPort = 55681 # Legacy OTLP HTTP
         protocol      = "tcp"
       }
     ]
@@ -274,6 +356,35 @@ resource "aws_ecs_task_definition" "otel_collector" {
 resource "aws_cloudwatch_log_group" "otel_collector" {
   name              = "/ecs/otel-collector-${var.environment}"
   retention_in_days = 14
+}
+
+# Security group for OTLP traffic from services in the VPC
+resource "aws_security_group" "otel_collector" {
+  name        = "otel-collector-${var.environment}"
+  description = "Allow services to send OTLP traces to the collector"
+  vpc_id      = var.vpc_id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "otel_grpc" {
+  security_group_id = aws_security_group.otel_collector.id
+  cidr_ipv4         = var.vpc_cidr_block
+  from_port         = 4317
+  ip_protocol       = "tcp"
+  to_port           = 4317
+}
+
+resource "aws_vpc_security_group_ingress_rule" "otel_http" {
+  security_group_id = aws_security_group.otel_collector.id
+  cidr_ipv4         = var.vpc_cidr_block
+  from_port         = 4318
+  ip_protocol       = "tcp"
+  to_port           = 4318
+}
+
+resource "aws_vpc_security_group_egress_rule" "otel_all_egress" {
+  security_group_id = aws_security_group.otel_collector.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
 }
 
 # ECS service to run the collector
@@ -348,12 +459,19 @@ resource "aws_cloudwatch_metric_alarm" "trace_throttle" {
   alarm_name          = "xray-throttle-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "ThrottledCount"
-  namespace           = "AWS/X-Ray"
+  metric_name         = "ThrottleCount"
+  namespace           = "AWS/Usage"
   period              = 300
   statistic           = "Sum"
   threshold           = 100
   alarm_description   = "X-Ray is throttling trace submissions"
+
+  dimensions = {
+    Service  = "X-Ray"
+    Type     = "API"
+    Resource = "PutTraceSegments"
+    Class    = "None"
+  }
 
   alarm_actions = [var.alert_sns_topic_arn]
 }
