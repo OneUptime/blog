@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Infrastructure as Code, DevOps, Local Modules
 
-Description: Learn how to reference and call Terraform modules from local directories using relative and absolute paths, including best practices for project organization.
+Description: Learn how to reference and call Terraform modules from local directories using relative paths, including best practices for project organization.
 
 ---
 
@@ -27,7 +27,7 @@ module "networking" {
 }
 ```
 
-The path is relative to the file where the `module` block is defined. The `./` prefix means "start from the current directory."
+The path is relative to the directory of the module where the `module` block is defined. The `./` prefix means "start from that module directory."
 
 ## Directory Layout Options
 
