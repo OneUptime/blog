@@ -26,16 +26,22 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 
 # Variables
+
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
+}
 
 variable "resource_group_name" {
   description = "Name of the resource group"
@@ -137,7 +143,7 @@ resource "azurerm_linux_virtual_machine" "app_server" {
   # Use SSH key authentication (recommended over password)
   admin_ssh_key {
     username   = var.admin_username
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 
   # Disable password authentication for security
@@ -234,7 +240,7 @@ resource "azurerm_windows_virtual_machine" "web_server" {
     version   = "latest"
   }
 
-  # Enable automatic Windows updates
+  # Enable platform-managed guest patching
   patch_mode = "AutomaticByPlatform"
 
   # Boot diagnostics
@@ -287,6 +293,18 @@ resource "azurerm_virtual_machine_data_disk_attachment" "data" {
 For high availability, place VMs in specific availability zones:
 
 ```hcl
+resource "azurerm_network_interface" "ha_server" {
+  name                = "nic-ha-prod-01"
+  location            = azurerm_resource_group.compute.location
+  resource_group_name = azurerm_resource_group.compute.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.vms.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
 resource "azurerm_linux_virtual_machine" "ha_server" {
   name                = "vm-ha-prod-01"
   location            = azurerm_resource_group.compute.location
@@ -299,11 +317,11 @@ resource "azurerm_linux_virtual_machine" "ha_server" {
 
   admin_ssh_key {
     username   = var.admin_username
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 
   disable_password_authentication = true
-  network_interface_ids           = [azurerm_network_interface.linux_vm.id]
+  network_interface_ids           = [azurerm_network_interface.ha_server.id]
 
   os_disk {
     caching              = "ReadWrite"
@@ -371,7 +389,7 @@ resource "azurerm_linux_virtual_machine" "fleet" {
 
   admin_ssh_key {
     username   = var.admin_username
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 
   disable_password_authentication = true
