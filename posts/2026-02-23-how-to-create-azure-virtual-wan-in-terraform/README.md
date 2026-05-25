@@ -77,7 +77,7 @@ resource "azurerm_virtual_wan" "main" {
   # Allow traffic between VNets connected to different hubs
   allow_branch_to_branch_traffic = true
 
-  # Disable VPN encryption (only for testing, keep true in production)
+  # Disable VPN encryption (only for testing, keep false in production)
   disable_vpn_encryption = false
 
   tags = {
@@ -166,7 +166,7 @@ resource "azurerm_virtual_hub_connection" "workload_eastus" {
   virtual_hub_id            = azurerm_virtual_hub.eastus.id
   remote_virtual_network_id = azurerm_virtual_network.workload_eastus.id
 
-  # Enable internet security (routes internet traffic through the hub)
+  # Propagate a default route for secured internet traffic when the hub is configured for it
   internet_security_enabled = true
 }
 
@@ -266,8 +266,8 @@ resource "azurerm_vpn_gateway_connection" "branch_nyc" {
       encryption_algorithm     = "AES256"
       integrity_algorithm      = "SHA256"
       pfs_group                = "PFS14"
-      sa_data_size_in_kilobytes = 102400000
-      sa_lifetime_in_seconds   = 3600
+      sa_data_size_kb           = 102400000
+      sa_lifetime_sec           = 3600
     }
 
     bgp_enabled  = true
