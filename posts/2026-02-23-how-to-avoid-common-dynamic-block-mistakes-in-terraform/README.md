@@ -68,7 +68,7 @@ The confusing part is that `each.value` in the `for_each = each.value.rules` lin
 
 ## Mistake 3 - Wrong Data Type for for_each
 
-The `for_each` argument in a dynamic block accepts a list, set, or map. Passing a string, number, or bool causes an error:
+The `for_each` argument in a dynamic block accepts a collection or structural value, such as a list, set, map, tuple, or object. Passing a string, number, or bool causes an error:
 
 ```hcl
 # WRONG - for_each receives a string
@@ -261,10 +261,10 @@ locals {
 
 ## Mistake 9 - Using Dynamic Blocks Where count Would Work
 
-For simple on/off scenarios, `count` on the resource might be simpler:
+For simple on/off scenarios, `count` on a separate resource might be simpler. This can also help avoid deprecated inline configuration blocks:
 
 ```hcl
-# Over-engineered with dynamic block
+# Outdated and over-engineered with a deprecated inline logging block
 resource "aws_s3_bucket" "main" {
   bucket = "my-bucket"
 
