@@ -77,7 +77,7 @@ resource "aws_ecr_lifecycle_policy" "app" {
         description  = "Keep only last 10 dev images"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["dev-", "feature-"]
+          tagPrefixList = ["dev-"]
           countType     = "imageCountMoreThan"
           countNumber   = 10
         }
@@ -86,8 +86,22 @@ resource "aws_ecr_lifecycle_policy" "app" {
         }
       },
       {
-        # Rule 3: Keep only the last 50 staging images
+        # Rule 3: Keep only the last 10 feature images
         rulePriority = 3
+        description  = "Keep only last 10 feature images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["feature-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # Rule 4: Keep only the last 50 staging images
+        rulePriority = 4
         description  = "Keep only last 50 staging images"
         selection = {
           tagStatus     = "tagged"
@@ -100,13 +114,12 @@ resource "aws_ecr_lifecycle_policy" "app" {
         }
       },
       {
-        # Rule 4: Remove production images older than 90 days
-        # but keep the last 20 regardless of age
-        rulePriority = 4
-        description  = "Remove prod images older than 90 days"
+        # Rule 5: Remove v-prefixed production images older than 90 days
+        rulePriority = 5
+        description  = "Remove v-prefixed prod images older than 90 days"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["v", "release-"]
+          tagPrefixList = ["v"]
           countType     = "sinceImagePushed"
           countUnit     = "days"
           countNumber   = 90
@@ -116,7 +129,22 @@ resource "aws_ecr_lifecycle_policy" "app" {
         }
       },
       {
-        # Rule 5: Catch-all - remove any remaining images older than 180 days
+        # Rule 6: Remove release-prefixed production images older than 90 days
+        rulePriority = 6
+        description  = "Remove release-prefixed prod images older than 90 days"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["release-"]
+          countType     = "sinceImagePushed"
+          countUnit     = "days"
+          countNumber   = 90
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # Rule 7: Catch-all - remove any remaining images older than 180 days
         rulePriority = 10
         description  = "Remove all images older than 180 days"
         selection = {
@@ -214,11 +242,12 @@ resource "aws_ecr_lifecycle_policy" "services" {
 ```hcl
 # Azure Container Registry
 resource "azurerm_container_registry" "main" {
-  name                = "myappregistry"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  sku                 = "Premium"  # Premium required for retention policies
-  admin_enabled       = false
+  name                     = "myappregistry"
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = azurerm_resource_group.main.location
+  sku                      = "Premium"  # Premium required for retention policies
+  admin_enabled            = false
+  retention_policy_in_days = 7
 
   # Geo-replication for high availability
   georeplications {
@@ -236,22 +265,6 @@ resource "azurerm_container_registry" "main" {
       action   = "Allow"
       ip_range = var.allowed_cidr
     }
-
-    virtual_network_rule {
-      action    = "Allow"
-      subnet_id = azurerm_subnet.aks.id
-    }
-  }
-
-  # Retention policy for untagged manifests
-  retention_policy {
-    days    = 7
-    enabled = true
-  }
-
-  # Trust policy for content trust
-  trust_policy {
-    enabled = true
   }
 
   tags = {
@@ -326,13 +339,8 @@ resource "google_artifact_registry_repository" "main" {
   }
 
   cleanup_policies {
-    id     = "keep-production-releases"
+    id     = "keep-recent-versions"
     action = "KEEP"
-
-    condition {
-      tag_state    = "TAGGED"
-      tag_prefixes = ["v", "release-"]
-    }
 
     most_recent_versions {
       keep_count = 20
