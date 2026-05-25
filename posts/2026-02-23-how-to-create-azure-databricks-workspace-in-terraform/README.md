@@ -162,10 +162,12 @@ resource "azurerm_subnet_network_security_group_association" "private" {
 
 # Databricks workspace with VNet injection
 resource "azurerm_databricks_workspace" "vnet_injected" {
-  name                = "dbw-analytics-vnet-prod-001"
-  location            = azurerm_resource_group.databricks.location
-  resource_group_name = azurerm_resource_group.databricks.name
-  sku                 = "premium"
+  name                                  = "dbw-analytics-vnet-prod-001"
+  location                              = azurerm_resource_group.databricks.location
+  resource_group_name                   = azurerm_resource_group.databricks.name
+  sku                                   = "premium"
+  public_network_access_enabled         = false
+  network_security_group_rules_required = "NoAzureDatabricksRules"
 
   managed_resource_group_name = "rg-databricks-managed-vnet-prod"
 
@@ -348,11 +350,17 @@ resource "databricks_cluster_policy" "standard" {
       "maxValue" : 120,
       "defaultValue" : 60
     },
-    "num_workers" : {
+    "autoscale.min_workers" : {
+      "type" : "range",
+      "minValue" : 1,
+      "maxValue" : 5,
+      "defaultValue" : 1
+    },
+    "autoscale.max_workers" : {
       "type" : "range",
       "minValue" : 1,
       "maxValue" : 10,
-      "defaultValue" : 2
+      "defaultValue" : 5
     }
   })
 }
