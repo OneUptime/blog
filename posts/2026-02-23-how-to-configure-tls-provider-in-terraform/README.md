@@ -14,7 +14,7 @@ This is particularly useful for development environments, internal services, and
 
 ## Prerequisites
 
-- Terraform 1.0 or later
+- Terraform 1.0 or later (Terraform 1.4 or later for the `terraform_data` rotation example)
 - No external services or credentials required
 
 ## Declaring the Provider
@@ -34,7 +34,7 @@ terraform {
 }
 ```
 
-The TLS provider has no configuration options.
+The TLS provider has no required configuration for typical use.
 
 ```hcl
 # provider.tf - No configuration needed
@@ -369,6 +369,10 @@ resource "tls_private_key" "server" {
   rsa_bits  = 2048
 }
 
+resource "terraform_data" "cert_rotation" {
+  input = var.cert_rotation_date
+}
+
 # The certificate will be recreated when the rotation date changes
 resource "tls_self_signed_cert" "server" {
   private_key_pem = tls_private_key.server.private_key_pem
@@ -386,6 +390,7 @@ resource "tls_self_signed_cert" "server" {
   # Force recreation based on the lifecycle
   lifecycle {
     create_before_destroy = true
+    replace_triggered_by  = [terraform_data.cert_rotation]
   }
 }
 ```
