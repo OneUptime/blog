@@ -8,17 +8,17 @@ Description: Learn how to set up latency-based DNS routing with Terraform and AW
 
 ---
 
-Latency-based routing in AWS Route 53 directs DNS queries to the AWS region that provides the lowest latency for the user. Unlike geolocation routing, which uses the user's physical location, latency-based routing measures actual network latency between the user and each AWS region. This means users are always directed to the fastest endpoint, regardless of geographic assumptions. In this guide, we will configure latency-based DNS routing with Terraform.
+Latency-based routing in AWS Route 53 directs DNS queries to the AWS region that provides the lowest latency for the user. Unlike geolocation routing, which uses the user's physical location, latency-based routing uses AWS latency data between users and AWS regions. This helps direct users to the fastest available AWS-region endpoint, rather than relying only on geographic assumptions. In this guide, we will configure latency-based DNS routing with Terraform.
 
 ## How Latency-Based Routing Works
 
-Route 53 maintains a database of latency measurements between different network locations and AWS regions. When a DNS query arrives, Route 53 checks the source IP address, looks up the latency data for each region where you have records, and returns the record associated with the lowest-latency region.
+Route 53 maintains a database of latency measurements between different network locations and AWS regions. When a DNS query arrives, Route 53 determines the query origin, uses EDNS Client Subnet data when the resolver provides it, looks up the latency data for each region where you have records, and returns the record associated with the lowest-latency region.
 
 It is important to understand that latency-based routing uses AWS region-level granularity. You specify which AWS region each record belongs to, and Route 53 handles the rest.
 
 ## Prerequisites
 
-You will need Terraform 1.0 or later, an AWS account, a Route 53 hosted zone, and application endpoints deployed in multiple AWS regions.
+You will need Terraform 1.0 or later, an AWS account, a Route 53 hosted zone, and application endpoints deployed in multiple AWS regions. For public hosted zones and standard Route 53 health checks, the endpoints must be publicly reachable.
 
 ## Basic Setup
 
@@ -63,7 +63,7 @@ resource "aws_route53_record" "us_east" {
   }
 
   set_identifier = "us-east-1"
-  records        = ["10.0.1.100"]
+  records        = ["198.51.100.10"]
 }
 
 # EU West endpoint - latency-based record
@@ -78,7 +78,7 @@ resource "aws_route53_record" "eu_west" {
   }
 
   set_identifier = "eu-west-1"
-  records        = ["10.0.2.100"]
+  records        = ["203.0.113.10"]
 }
 
 # AP Southeast endpoint - latency-based record
@@ -93,7 +93,7 @@ resource "aws_route53_record" "ap_southeast" {
   }
 
   set_identifier = "ap-southeast-1"
-  records        = ["10.0.3.100"]
+  records        = ["192.0.2.10"]
 }
 ```
 
@@ -159,7 +159,7 @@ resource "aws_route53_record" "eu_west_alb" {
 }
 ```
 
-Setting `evaluate_target_health` to `true` means Route 53 will skip unhealthy targets and route to the next-lowest-latency region.
+Setting `evaluate_target_health` to `true` means Route 53 considers the health of supported alias targets. In a latency record group, Route 53 can skip an unhealthy target and route to the next-lowest-latency healthy region.
 
 ## Adding Health Checks
 
@@ -208,7 +208,7 @@ resource "aws_route53_record" "us_east_healthy" {
   }
 
   set_identifier  = "us-east-1-healthy"
-  records         = ["10.0.1.100"]
+  records         = ["198.51.100.10"]
   health_check_id = aws_route53_health_check.us_east.id
 }
 ```
@@ -227,12 +227,12 @@ variable "regional_endpoints" {
     health_fqdn   = string
   }))
   default = {
-    "us-east-1"      = { ip = "10.0.1.100", health_fqdn = "us-east.example.com" }
-    "us-west-2"      = { ip = "10.0.2.100", health_fqdn = "us-west.example.com" }
-    "eu-west-1"      = { ip = "10.0.3.100", health_fqdn = "eu-west.example.com" }
-    "eu-central-1"   = { ip = "10.0.4.100", health_fqdn = "eu-central.example.com" }
-    "ap-southeast-1" = { ip = "10.0.5.100", health_fqdn = "ap-southeast.example.com" }
-    "ap-northeast-1" = { ip = "10.0.6.100", health_fqdn = "ap-northeast.example.com" }
+    "us-east-1"      = { ip = "198.51.100.10", health_fqdn = "us-east.example.com" }
+    "us-west-2"      = { ip = "198.51.100.20", health_fqdn = "us-west.example.com" }
+    "eu-west-1"      = { ip = "203.0.113.10", health_fqdn = "eu-west.example.com" }
+    "eu-central-1"   = { ip = "203.0.113.20", health_fqdn = "eu-central.example.com" }
+    "ap-southeast-1" = { ip = "192.0.2.10", health_fqdn = "ap-southeast.example.com" }
+    "ap-northeast-1" = { ip = "192.0.2.20", health_fqdn = "ap-northeast.example.com" }
   }
 }
 
@@ -276,7 +276,7 @@ This approach scales easily. Adding a new region is as simple as adding an entry
 
 ## Combining Latency with Failover
 
-You can nest routing policies by using alias records that chain different policies. For example, a latency-based record can point to a failover record set:
+You can combine routing policies by using alias records that chain different policies. For example, a latency-based record can point to a failover record set:
 
 ```hcl
 # Primary endpoint in us-east-1 (with failover)
@@ -291,7 +291,7 @@ resource "aws_route53_record" "us_east_primary" {
   }
 
   set_identifier  = "us-east-primary"
-  records         = ["10.0.1.100"]
+  records         = ["198.51.100.10"]
   health_check_id = aws_route53_health_check.us_east.id
 }
 
@@ -307,7 +307,7 @@ resource "aws_route53_record" "us_east_secondary" {
   }
 
   set_identifier = "us-east-secondary"
-  records        = ["10.0.1.200"]
+  records        = ["198.51.100.20"]
 }
 
 # Latency record pointing to the failover pair
