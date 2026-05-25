@@ -73,7 +73,7 @@ resource "azurerm_cognitive_account" "multi_service" {
   kind     = "CognitiveServices"
   sku_name = "S0"
 
-  # Custom subdomain is required for Azure AD authentication
+  # Custom subdomain is required for Microsoft Entra ID authentication
   custom_subdomain_name = "myorg-ai-prod"
 
   # Public network access
@@ -84,9 +84,9 @@ resource "azurerm_cognitive_account" "multi_service" {
     type = "SystemAssigned"
   }
 
-  # Accept Microsoft's responsible AI terms
-  # This must be set to true for the first deployment
-  # custom_question_answering_search_service_id = azurerm_search_service.main.id
+  # Some services, such as Face, Text Analytics, and Computer Vision,
+  # require you to accept service terms in the Azure portal before
+  # creating the first resource with Terraform.
 
   tags = {
     Environment = "Production"
@@ -207,14 +207,14 @@ resource "azurerm_cognitive_account" "openai" {
 }
 
 # Deploy a GPT model within the OpenAI account
-resource "azurerm_cognitive_deployment" "gpt4" {
-  name                 = "gpt-4"
+resource "azurerm_cognitive_deployment" "gpt41" {
+  name                 = "gpt-4-1"
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
     format  = "OpenAI"
-    name    = "gpt-4"
-    version = "0613"
+    name    = "gpt-4.1"
+    version = "2025-04-14"
   }
 
   scale {
@@ -272,8 +272,8 @@ resource "azurerm_cognitive_account" "secure_vision" {
   sku_name              = "S1"
   custom_subdomain_name = "myorg-vision-secure"
 
-  # Disable public access
-  public_network_access_enabled = false
+  # Keep the public endpoint enabled, but restrict it to selected networks
+  public_network_access_enabled = true
 
   # Network rules
   network_acls {
@@ -368,7 +368,7 @@ output "vision_endpoint" {
 
 **Implement network security from day one.** Use private endpoints or virtual network service endpoints to restrict access. Public endpoints are fine for development but should be locked down in production.
 
-**Use Azure AD authentication over keys.** While key-based authentication is simpler to set up, Azure AD with managed identities is more secure and does not require key rotation.
+**Use Microsoft Entra ID authentication over keys.** While key-based authentication is simpler to set up, Microsoft Entra ID with managed identities is more secure and does not require key rotation.
 
 **Monitor usage and set budgets.** Cognitive Services can generate significant costs at scale, especially for services like OpenAI. Use Azure Cost Management to track spending and set alerts.
 
