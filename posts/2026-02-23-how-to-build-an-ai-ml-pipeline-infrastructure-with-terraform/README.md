@@ -100,15 +100,13 @@ resource "aws_sagemaker_domain" "ml" {
 
     jupyter_server_app_settings {
       default_resource_spec {
-        instance_type       = "system"
-        sagemaker_image_arn = data.aws_sagemaker_prebuilt_ecr_image.pytorch.id
+        instance_type = "system"
       }
     }
 
     kernel_gateway_app_settings {
       default_resource_spec {
-        instance_type       = "ml.t3.medium"
-        sagemaker_image_arn = data.aws_sagemaker_prebuilt_ecr_image.pytorch.id
+        instance_type = "ml.t3.medium"
       }
     }
   }
@@ -309,10 +307,16 @@ resource "aws_iam_role_policy" "pipeline_execution" {
           "sagemaker:CreateModel",
           "sagemaker:CreateEndpoint",
           "sagemaker:CreateEndpointConfig",
+          "sagemaker:UpdateEndpoint",
           "sagemaker:DescribeTrainingJob",
           "sagemaker:DescribeProcessingJob"
         ]
         Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = aws_iam_role.sagemaker_execution.arn
       },
       {
         Effect   = "Allow"
@@ -375,11 +379,21 @@ resource "aws_sagemaker_endpoint_configuration" "production" {
   }
 }
 
+resource "aws_sagemaker_endpoint" "production" {
+  name                 = "${var.project_name}-production"
+  endpoint_config_name = aws_sagemaker_endpoint_configuration.production.name
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
 # Auto-scaling for the endpoint
 resource "aws_appautoscaling_target" "sagemaker" {
   max_capacity       = 10
   min_capacity       = 2
-  resource_id        = "endpoint/${var.project_name}-production/variant/primary"
+  resource_id        = "endpoint/${aws_sagemaker_endpoint.production.name}/variant/primary"
   scalable_dimension = "sagemaker:variant:DesiredInstanceCount"
   service_namespace  = "sagemaker"
 }
@@ -402,36 +416,30 @@ resource "aws_appautoscaling_policy" "sagemaker" {
 
 ## Model Monitoring
 
-Detect data drift and model quality degradation in production.
+Detect data drift in production.
 
 ```hcl
 # monitoring.tf - Model monitoring
-resource "aws_sagemaker_model_quality_job_definition" "main" {
-  name     = "${var.project_name}-model-quality-monitor"
+data "aws_sagemaker_prebuilt_ecr_image" "monitor" {
+  repository_name = "sagemaker-model-monitor-analyzer"
+}
+
+resource "aws_sagemaker_data_quality_job_definition" "main" {
+  name     = "${var.project_name}-data-quality-monitor"
   role_arn = aws_iam_role.sagemaker_execution.arn
 
-  model_quality_app_specification {
-    image_uri       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.project_name}/monitoring:latest"
-    problem_type    = "BinaryClassification"
+  data_quality_app_specification {
+    image_uri = data.aws_sagemaker_prebuilt_ecr_image.monitor.registry_path
   }
 
-  model_quality_job_input {
-    end_time_offset   = "-PT1H"
-    start_time_offset = "-PT2H"
-
+  data_quality_job_input {
     endpoint_input {
-      endpoint_name          = "${var.project_name}-production"
-      local_path             = "/opt/ml/processing/input"
-      inference_attribute    = "prediction"
-      probability_attribute  = "probability"
-    }
-
-    ground_truth_s3_input {
-      s3_uri = "s3://${aws_s3_bucket.ml_data.id}/ground-truth/"
+      endpoint_name = aws_sagemaker_endpoint.production.name
+      local_path    = "/opt/ml/processing/input"
     }
   }
 
-  model_quality_job_output_config {
+  data_quality_job_output_config {
     monitoring_outputs {
       s3_output {
         s3_uri        = "s3://${aws_s3_bucket.ml_data.id}/monitoring-output/"
@@ -457,4 +465,4 @@ An ML pipeline infrastructure built with Terraform provides a structured, reprod
 
 The most important thing is making the infrastructure self-service. Data scientists should be able to run experiments, train models, and deploy to production without filing infrastructure tickets.
 
-For monitoring your ML models in production and detecting issues like latency spikes or error rate increases, [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-an-observability-platform-with-terraform/view) provides the observability you need to keep your ML services healthy.
+For monitoring your ML services in production and detecting issues like latency spikes or error rate increases, [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-an-observability-platform-with-terraform/view) provides the observability you need to keep your ML services healthy.
