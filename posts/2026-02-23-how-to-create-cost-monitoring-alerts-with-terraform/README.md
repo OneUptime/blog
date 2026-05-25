@@ -10,7 +10,7 @@ Description: Learn how to set up cost monitoring alerts with Terraform using AWS
 
 Cloud costs can spiral out of control quickly if you are not monitoring them. A misconfigured auto-scaling group, an accidentally provisioned large instance, or a forgotten resource can lead to surprise bills. Setting up cost monitoring alerts with Terraform ensures that your budget guardrails are deployed consistently and that the right people are notified when spending thresholds are breached.
 
-In this guide, we will create a comprehensive cost monitoring system using Terraform. We will set up AWS Budgets for monthly and service-level tracking, CloudWatch billing alarms for real-time notifications, and SNS topics for alert delivery.
+In this guide, we will create a comprehensive cost monitoring system using Terraform. We will set up AWS Budgets for monthly and service-level tracking, CloudWatch billing alarms for estimated charge notifications, and SNS topics for alert delivery.
 
 ## Why Automate Cost Monitoring with Terraform
 
@@ -32,7 +32,7 @@ terraform {
   }
 }
 
-# Billing data is only available in us-east-1
+# CloudWatch billing metrics are only available in us-east-1
 provider "aws" {
   region = "us-east-1"
   alias  = "billing"
@@ -50,6 +50,10 @@ variable "aws_region" {
 variable "environment" {
   type    = string
   default = "production"
+}
+
+data "aws_caller_identity" "current" {
+  provider = aws.billing
 }
 ```
 
@@ -107,6 +111,8 @@ AWS Budgets provide the most comprehensive way to track spending:
 ```hcl
 # budgets.tf - Create AWS Budget for overall monthly spending
 resource "aws_budgets_budget" "monthly_total" {
+  provider = aws.billing
+
   name         = "monthly-total-${var.environment}"
   budget_type  = "COST"
   limit_amount = var.monthly_budget
@@ -160,6 +166,7 @@ Track spending for individual AWS services:
 ```hcl
 # service-budgets.tf - Create budgets for each AWS service
 resource "aws_budgets_budget" "service" {
+  provider = aws.billing
   for_each = var.service_budgets
 
   name         = "service-${each.key}-${var.environment}"
@@ -197,7 +204,7 @@ resource "aws_budgets_budget" "service" {
 
 ## Creating CloudWatch Billing Alarms
 
-CloudWatch billing alarms provide near-real-time cost monitoring:
+CloudWatch billing alarms provide an additional signal based on estimated charges. Before creating these alarms, enable CloudWatch billing alerts for the account or management account; AWS publishes estimated charge metrics several times daily in US East (N. Virginia).
 
 ```hcl
 # billing-alarms.tf - CloudWatch billing metric alarms
@@ -252,6 +259,8 @@ Create SNS topics for different severity levels:
 ```hcl
 # sns.tf - Alert notification topics
 resource "aws_sns_topic" "budget_alerts" {
+  provider = aws.billing
+
   name = "budget-alerts-${var.environment}"
 
   tags = {
@@ -261,6 +270,8 @@ resource "aws_sns_topic" "budget_alerts" {
 }
 
 resource "aws_sns_topic" "budget_critical" {
+  provider = aws.billing
+
   name = "budget-critical-${var.environment}"
 
   tags = {
@@ -271,6 +282,7 @@ resource "aws_sns_topic" "budget_critical" {
 
 # Email subscriptions for standard alerts
 resource "aws_sns_topic_subscription" "budget_email" {
+  provider = aws.billing
   for_each = toset(var.alert_emails)
 
   topic_arn = aws_sns_topic.budget_alerts.arn
@@ -280,6 +292,7 @@ resource "aws_sns_topic_subscription" "budget_email" {
 
 # Email subscriptions for critical alerts
 resource "aws_sns_topic_subscription" "critical_email" {
+  provider = aws.billing
   for_each = toset(var.alert_emails)
 
   topic_arn = aws_sns_topic.budget_critical.arn
@@ -287,32 +300,87 @@ resource "aws_sns_topic_subscription" "critical_email" {
   endpoint  = each.value
 }
 
-# SNS topic policy allowing AWS Budgets to publish
+# SNS topic policy allowing AWS Budgets and CloudWatch to publish
 resource "aws_sns_topic_policy" "budget_alerts" {
+  provider = aws.billing
+
   arn = aws_sns_topic.budget_alerts.arn
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "budgets.amazonaws.com" }
-      Action    = "SNS:Publish"
-      Resource  = aws_sns_topic.budget_alerts.arn
-    }]
+    Statement = [
+      {
+        Sid       = "DefaultTopicOwnerAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "SNS:*"
+        Resource  = aws_sns_topic.budget_alerts.arn
+      },
+      {
+        Sid       = "AWSBudgetsSNSPublishingPermissions"
+        Effect    = "Allow"
+        Principal = { Service = "budgets.amazonaws.com" }
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.budget_alerts.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:budgets::${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      },
+      {
+        Sid       = "CloudWatchAlarmSNSPublishingPermissions"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.budget_alerts.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:cloudwatch:us-east-1:${data.aws_caller_identity.current.account_id}:alarm:*"
+          }
+        }
+      }
+    ]
   })
 }
 
 resource "aws_sns_topic_policy" "budget_critical" {
+  provider = aws.billing
+
   arn = aws_sns_topic.budget_critical.arn
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "budgets.amazonaws.com" }
-      Action    = "SNS:Publish"
-      Resource  = aws_sns_topic.budget_critical.arn
-    }]
+    Statement = [
+      {
+        Sid       = "DefaultTopicOwnerAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "SNS:*"
+        Resource  = aws_sns_topic.budget_critical.arn
+      },
+      {
+        Sid       = "AWSBudgetsSNSPublishingPermissions"
+        Effect    = "Allow"
+        Principal = { Service = "budgets.amazonaws.com" }
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.budget_critical.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:budgets::${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      }
+    ]
   })
 }
 ```
@@ -324,6 +392,8 @@ Automate a daily cost summary that is sent to your team:
 ```hcl
 # cost-report.tf - Lambda for daily cost reporting
 resource "aws_lambda_function" "cost_report" {
+  provider = aws.billing
+
   function_name = "daily-cost-report-${var.environment}"
   runtime       = "python3.11"
   handler       = "cost_report.handler"
@@ -343,18 +413,24 @@ resource "aws_lambda_function" "cost_report" {
 
 # Schedule the report to run daily at 8 AM UTC
 resource "aws_cloudwatch_event_rule" "daily_cost_report" {
+  provider = aws.billing
+
   name                = "daily-cost-report-${var.environment}"
   description         = "Triggers daily cost report"
   schedule_expression = "cron(0 8 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "cost_report" {
+  provider = aws.billing
+
   rule      = aws_cloudwatch_event_rule.daily_cost_report.name
   target_id = "cost-report-lambda"
   arn       = aws_lambda_function.cost_report.arn
 }
 
 resource "aws_lambda_permission" "cost_report" {
+  provider = aws.billing
+
   statement_id  = "AllowEventBridge"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.cost_report.function_name
@@ -364,6 +440,8 @@ resource "aws_lambda_permission" "cost_report" {
 
 # IAM role for the cost report Lambda
 resource "aws_iam_role" "cost_report" {
+  provider = aws.billing
+
   name = "cost-report-lambda-${var.environment}"
 
   assume_role_policy = jsonencode({
@@ -377,6 +455,8 @@ resource "aws_iam_role" "cost_report" {
 }
 
 resource "aws_iam_role_policy" "cost_report" {
+  provider = aws.billing
+
   name = "cost-report-permissions"
   role = aws_iam_role.cost_report.id
 
@@ -421,4 +501,4 @@ output "alert_topic_arns" {
 
 ## Conclusion
 
-Cost monitoring alerts are a safety net that every cloud deployment needs. By defining them in Terraform, you ensure that budget guardrails are always in place and updated as your infrastructure evolves. The combination of AWS Budgets for monthly tracking, CloudWatch billing alarms for real-time monitoring, and automated daily reports gives you comprehensive visibility into your cloud spending. Pair this with [infrastructure health dashboards](https://oneuptime.com/blog/post/2026-02-23-how-to-create-infrastructure-health-dashboards-with-terraform/view) to correlate cost changes with infrastructure events.
+Cost monitoring alerts are a safety net that every cloud deployment needs. By defining them in Terraform, you ensure that budget guardrails are always in place and updated as your infrastructure evolves. The combination of AWS Budgets for monthly tracking, CloudWatch billing alarms for estimated charge monitoring, and automated daily reports gives you comprehensive visibility into your cloud spending. Pair this with [infrastructure health dashboards](https://oneuptime.com/blog/post/2026-02-23-how-to-create-infrastructure-health-dashboards-with-terraform/view) to correlate cost changes with infrastructure events.
