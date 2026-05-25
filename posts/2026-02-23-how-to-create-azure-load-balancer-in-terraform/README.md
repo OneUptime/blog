@@ -92,6 +92,11 @@ resource "azurerm_lb" "public" {
     public_ip_address_id = azurerm_public_ip.lb.id
   }
 
+  frontend_ip_configuration {
+    name                 = "frontend-outbound"
+    public_ip_address_id = azurerm_public_ip.outbound.id
+  }
+
   tags = {
     environment = "production"
     managed_by  = "terraform"
@@ -159,7 +164,7 @@ resource "azurerm_lb_rule" "https" {
 
 ## Outbound Rules
 
-Standard Load Balancer requires explicit outbound rules for internet-bound traffic from backend instances.
+When you disable outbound SNAT on load-balancing rules, use explicit outbound rules for internet-bound traffic from backend instances.
 
 ```hcl
 # outbound.tf
@@ -181,7 +186,7 @@ resource "azurerm_lb_outbound_rule" "main" {
   backend_address_pool_id = azurerm_lb_backend_address_pool.web.id
 
   frontend_ip_configuration {
-    name = "frontend-public"
+    name = "frontend-outbound"
   }
 
   allocated_outbound_ports = 1024  # Ports per instance
