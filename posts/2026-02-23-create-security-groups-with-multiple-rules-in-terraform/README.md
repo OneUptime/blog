@@ -80,7 +80,7 @@ resource "aws_security_group" "web_app" {
 }
 ```
 
-This works fine for small rule sets, but it has a downside: any change to any rule forces Terraform to update the entire security group resource. This can cause issues when other resources reference the security group.
+This works fine for small rule sets, but it has a downside: Terraform manages those rules as part of the same security group resource. That can make diffs harder to read, and inline rules have limitations around multiple CIDR blocks, tags, descriptions, and mixing with standalone rule resources.
 
 ## Separate Rule Resources
 
@@ -156,7 +156,7 @@ variable "web_ingress_rules" {
     from_port   = number
     to_port     = number
     protocol    = string
-    cidr_blocks = list(string)
+    cidr_ipv4   = string
   }))
   default = {
     http = {
@@ -164,35 +164,35 @@ variable "web_ingress_rules" {
       from_port   = 80
       to_port     = 80
       protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
+      cidr_ipv4   = "0.0.0.0/0"
     }
     https = {
       description = "HTTPS from internet"
       from_port   = 443
       to_port     = 443
       protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
+      cidr_ipv4   = "0.0.0.0/0"
     }
     ssh = {
       description = "SSH from office"
       from_port   = 22
       to_port     = 22
       protocol    = "tcp"
-      cidr_blocks = ["10.0.0.0/8"]
+      cidr_ipv4   = "10.0.0.0/8"
     }
     node_exporter = {
       description = "Prometheus node exporter"
       from_port   = 9100
       to_port     = 9100
       protocol    = "tcp"
-      cidr_blocks = ["10.0.5.0/24"]
+      cidr_ipv4   = "10.0.5.0/24"
     }
     custom_app = {
       description = "Custom application port"
       from_port   = 8080
       to_port     = 8080
       protocol    = "tcp"
-      cidr_blocks = ["10.0.0.0/16"]
+      cidr_ipv4   = "10.0.0.0/16"
     }
   }
 }
@@ -217,7 +217,7 @@ resource "aws_vpc_security_group_ingress_rule" "web" {
   from_port         = each.value.from_port
   to_port           = each.value.to_port
   ip_protocol       = each.value.protocol
-  cidr_ipv4         = each.value.cidr_blocks[0]
+  cidr_ipv4         = each.value.cidr_ipv4
 }
 ```
 
@@ -229,9 +229,9 @@ Real configurations often need both CIDR-based and security group-based rules. H
 # Rules that reference CIDR blocks
 locals {
   cidr_rules = {
-    http      = { port = 80, cidrs = ["0.0.0.0/0"] }
-    https     = { port = 443, cidrs = ["0.0.0.0/0"] }
-    monitoring = { port = 9090, cidrs = ["10.0.5.0/24"] }
+    http       = { port = 80, cidr_ipv4 = "0.0.0.0/0" }
+    https      = { port = 443, cidr_ipv4 = "0.0.0.0/0" }
+    monitoring = { port = 9090, cidr_ipv4 = "10.0.5.0/24" }
   }
 
   # Rules that reference other security groups
@@ -249,7 +249,7 @@ resource "aws_vpc_security_group_ingress_rule" "cidr_based" {
   from_port         = each.value.port
   to_port           = each.value.port
   ip_protocol       = "tcp"
-  cidr_ipv4         = each.value.cidrs[0]
+  cidr_ipv4         = each.value.cidr_ipv4
 }
 
 # Security group-based ingress rules
@@ -281,16 +281,16 @@ variable "vpc_id" {
 }
 
 variable "ingress_rules" {
-  type = list(object({
-    description = string
-    from_port   = number
-    to_port     = number
-    protocol    = string
-    cidr_blocks = optional(list(string), [])
-    security_groups = optional(list(string), [])
+  type = map(object({
+    description                  = string
+    from_port                    = number
+    to_port                      = number
+    protocol                     = string
+    cidr_ipv4                    = optional(string)
+    referenced_security_group_id = optional(string)
   }))
-  description = "List of ingress rules"
-  default     = []
+  description = "Map of ingress rules"
+  default     = {}
 }
 
 # modules/security-group/main.tf
@@ -308,20 +308,34 @@ resource "aws_security_group" "this" {
   }
 }
 
-# Create individual ingress rules from the list
-resource "aws_security_group_rule" "ingress" {
-  count = length(var.ingress_rules)
+# Create individual CIDR-based ingress rules from the map
+resource "aws_vpc_security_group_ingress_rule" "cidr" {
+  for_each = {
+    for name, rule in var.ingress_rules : name => rule
+    if rule.cidr_ipv4 != null
+  }
 
-  type              = "ingress"
   security_group_id = aws_security_group.this.id
-  description       = var.ingress_rules[count.index].description
-  from_port         = var.ingress_rules[count.index].from_port
-  to_port           = var.ingress_rules[count.index].to_port
-  protocol          = var.ingress_rules[count.index].protocol
+  description       = each.value.description
+  from_port         = each.value.from_port
+  to_port           = each.value.to_port
+  ip_protocol       = each.value.protocol
+  cidr_ipv4         = each.value.cidr_ipv4
+}
 
-  # Use CIDR blocks if provided, otherwise use security groups
-  cidr_blocks             = length(var.ingress_rules[count.index].cidr_blocks) > 0 ? var.ingress_rules[count.index].cidr_blocks : null
-  source_security_group_id = length(var.ingress_rules[count.index].security_groups) > 0 ? var.ingress_rules[count.index].security_groups[0] : null
+# Create individual security group-based ingress rules from the map
+resource "aws_vpc_security_group_ingress_rule" "security_group" {
+  for_each = {
+    for name, rule in var.ingress_rules : name => rule
+    if rule.referenced_security_group_id != null
+  }
+
+  security_group_id            = aws_security_group.this.id
+  description                  = each.value.description
+  from_port                    = each.value.from_port
+  to_port                      = each.value.to_port
+  ip_protocol                  = each.value.protocol
+  referenced_security_group_id = each.value.referenced_security_group_id
 }
 ```
 
@@ -335,28 +349,28 @@ module "api_sg" {
   name   = "api-server"
   vpc_id = aws_vpc.main.id
 
-  ingress_rules = [
-    {
+  ingress_rules = {
+    https = {
       description = "HTTPS from internet"
       from_port   = 443
       to_port     = 443
       protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"]
-    },
-    {
-      description     = "Health checks from ALB"
-      from_port       = 8080
-      to_port         = 8080
-      protocol        = "tcp"
-      security_groups = [module.alb_sg.security_group_id]
-    },
-  ]
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+    health_checks = {
+      description                  = "Health checks from ALB"
+      from_port                    = 8080
+      to_port                      = 8080
+      protocol                     = "tcp"
+      referenced_security_group_id = module.alb_sg.security_group_id
+    }
+  }
 }
 ```
 
 ## Common Mistakes to Avoid
 
-1. **Mixing inline and separate rules** - Don't use both `ingress` blocks inside `aws_security_group` and separate `aws_security_group_rule` resources for the same security group. Terraform will fight itself trying to manage them.
+1. **Mixing inline and separate rules** - Don't use both `ingress` blocks inside `aws_security_group` and separate rule resources for the same security group. That includes `aws_security_group_rule`, `aws_vpc_security_group_ingress_rule`, and `aws_vpc_security_group_egress_rule`. Terraform will fight itself trying to manage them.
 
 2. **Forgetting `create_before_destroy`** - Without this lifecycle rule, Terraform may try to delete the security group before creating a replacement, which fails if other resources still reference it.
 
