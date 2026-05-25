@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Cross-Region Replication, AWS, Disaster Recovery, High Availability, Infrastructure as Code
 
-Description: Learn how to build cross-region replication infrastructure using Terraform for S3, DynamoDB, RDS, and ECS to ensure data availability across AWS regions.
+Description: Learn how to build cross-region replication infrastructure using Terraform for S3, DynamoDB, RDS, and ECR to help ensure data availability across AWS regions.
 
 ---
 
-Cross-region replication ensures your data and services are available even if an entire AWS region goes down. It is a critical component of any serious disaster recovery or high availability strategy. The challenge is that different AWS services have different replication mechanisms, and coordinating them all requires careful planning.
+Cross-region replication helps keep your data and services available even if an entire AWS region goes down. It is a critical component of any serious disaster recovery or high availability strategy. The challenge is that different AWS services have different replication mechanisms, and coordinating them all requires careful planning.
 
 In this guide, we will build a comprehensive cross-region replication infrastructure using Terraform. We will cover S3, DynamoDB, RDS, Secrets Manager, and ECR, showing how to replicate each service across regions.
 
@@ -16,7 +16,7 @@ In this guide, we will build a comprehensive cross-region replication infrastruc
 
 Our cross-region setup replicates these components:
 
-- **S3**: Bidirectional replication for object storage
+- **S3**: Primary-to-secondary replication for object storage
 - **DynamoDB**: Global tables for NoSQL data
 - **RDS Aurora**: Global database for relational data
 - **ECR**: Container image replication
@@ -50,7 +50,7 @@ variable "secondary_region" {
 
 ## S3 Cross-Region Replication
 
-S3 CRR replicates objects between buckets in different regions. We will set up bidirectional replication.
+S3 CRR replicates new eligible objects and object changes between buckets in different regions. We will set up primary-to-secondary replication.
 
 ```hcl
 # s3-replication.tf - S3 cross-region replication
@@ -389,6 +389,8 @@ Replicate container images to the secondary region so deployments work during fa
 
 ```hcl
 # ecr-replication.tf - Container image replication
+data "aws_caller_identity" "current" {}
+
 resource "aws_ecr_replication_configuration" "main" {
   provider = aws.primary
 
@@ -488,7 +490,7 @@ resource "aws_cloudwatch_metric_alarm" "aurora_replication_lag" {
 
 # DynamoDB replication lag
 resource "aws_cloudwatch_metric_alarm" "dynamodb_replication_lag" {
-  provider            = aws.secondary
+  provider            = aws.primary
   alarm_name          = "${var.project_name}-dynamodb-replication-lag"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
