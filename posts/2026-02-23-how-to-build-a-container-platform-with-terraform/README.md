@@ -22,11 +22,11 @@ Our container platform includes:
 - AWS Load Balancer Controller for ingress
 - Cluster Autoscaler for node scaling
 - External DNS for automatic DNS management
-- EFS CSI driver for persistent storage
+- EBS CSI driver for persistent storage
 
 ## VPC for EKS
 
-EKS requires specific subnet tags for auto-discovery:
+Kubernetes load balancers use subnet tags for auto-discovery:
 
 ```hcl
 module "vpc" {
@@ -44,7 +44,7 @@ module "vpc" {
   single_nat_gateway   = false
   enable_dns_hostnames = true
 
-  # Tags required for EKS subnet auto-discovery
+  # Tags used by Kubernetes load balancers for subnet auto-discovery
   public_subnet_tags = {
     "kubernetes.io/role/elb"                      = 1
     "kubernetes.io/cluster/${var.cluster_name}"    = "owned"
@@ -65,7 +65,7 @@ The cluster configuration with the essential components:
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
-  version  = "1.29"
+  version  = "1.35"
 
   vpc_config {
     subnet_ids              = module.vpc.private_subnets
@@ -156,6 +156,8 @@ resource "aws_eks_node_group" "general" {
     workload = "general"
   }
 
+  # Node group tags do not propagate to the underlying Auto Scaling group.
+  # Verify the Cluster Autoscaler discovery tags on the ASG when installing it.
   tags = {
     "k8s.io/cluster-autoscaler/enabled"         = "true"
     "k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
@@ -194,6 +196,8 @@ resource "aws_eks_node_group" "spot" {
     effect = "NO_SCHEDULE"
   }
 
+  # Node group tags do not propagate to the underlying Auto Scaling group.
+  # Verify the Cluster Autoscaler discovery tags on the ASG when installing it.
   tags = {
     "k8s.io/cluster-autoscaler/enabled"              = "true"
     "k8s.io/cluster-autoscaler/${var.cluster_name}"   = "owned"
@@ -242,21 +246,18 @@ Essential cluster add-ons managed by AWS:
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "vpc-cni"
-  addon_version = "v1.16.0-eksbuild.1"
   resolve_conflicts_on_update = "OVERWRITE"
 }
 
 resource "aws_eks_addon" "coredns" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "coredns"
-  addon_version = "v1.11.1-eksbuild.6"
   resolve_conflicts_on_update = "OVERWRITE"
 }
 
 resource "aws_eks_addon" "kube_proxy" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "kube-proxy"
-  addon_version = "v1.29.0-eksbuild.3"
   resolve_conflicts_on_update = "OVERWRITE"
 }
 
@@ -303,7 +304,7 @@ resource "helm_release" "lb_controller" {
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
-  version    = "1.7.1"
+  version    = "1.14.0"
 
   set {
     name  = "clusterName"
