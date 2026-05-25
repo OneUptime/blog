@@ -169,8 +169,9 @@ resource "aws_s3_bucket_replication_configuration" "selective" {
 
   # Only replicate objects under the "critical/" prefix
   rule {
-    id     = "replicate-critical"
-    status = "Enabled"
+    id       = "replicate-critical"
+    priority = 1
+    status   = "Enabled"
 
     filter {
       prefix = "critical/"
@@ -184,8 +185,9 @@ resource "aws_s3_bucket_replication_configuration" "selective" {
 
   # Replicate backups to Glacier in the destination
   rule {
-    id     = "replicate-backups"
-    status = "Enabled"
+    id       = "replicate-backups"
+    priority = 2
+    status   = "Enabled"
 
     filter {
       prefix = "backups/"
@@ -216,8 +218,9 @@ resource "aws_s3_bucket_replication_configuration" "tag_based" {
 
   # Replicate objects tagged with replicate=true
   rule {
-    id     = "replicate-tagged"
-    status = "Enabled"
+    id       = "replicate-tagged"
+    priority = 1
+    status   = "Enabled"
 
     filter {
       tag {
@@ -233,8 +236,9 @@ resource "aws_s3_bucket_replication_configuration" "tag_based" {
 
   # Replicate objects matching both prefix and tag
   rule {
-    id     = "replicate-critical-tagged"
-    status = "Enabled"
+    id       = "replicate-critical-tagged"
+    priority = 2
+    status   = "Enabled"
 
     filter {
       and {
@@ -259,6 +263,13 @@ resource "aws_s3_bucket_replication_configuration" "tag_based" {
 When both source and destination buckets use KMS encryption, you need additional configuration.
 
 ```hcl
+# KMS key in the source region
+resource "aws_kms_key" "source" {
+  provider            = aws.source
+  description         = "KMS key for S3 replication source"
+  enable_key_rotation = true
+}
+
 # KMS key in the destination region
 resource "aws_kms_key" "destination" {
   provider            = aws.destination
@@ -406,6 +417,8 @@ resource "aws_s3_bucket_replication_configuration" "with_deletes" {
     id     = "replicate-with-deletes"
     status = "Enabled"
 
+    filter {}
+
     # Replicate delete markers
     delete_marker_replication {
       status = "Enabled"
@@ -467,7 +480,7 @@ RTC adds cost but provides SLA-backed replication times.
 
 ## Monitoring Replication
 
-Track replication status with CloudWatch.
+Track replication status with CloudWatch. Enable replication metrics in the replication rule before creating alarms.
 
 ```hcl
 # Alarm when replication is failing
@@ -475,7 +488,7 @@ resource "aws_cloudwatch_metric_alarm" "replication_failure" {
   alarm_name          = "s3-replication-failure"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "OperationFailedReplication"
+  metric_name         = "OperationsFailedReplication"
   namespace           = "AWS/S3"
   period              = 300
   statistic           = "Sum"
