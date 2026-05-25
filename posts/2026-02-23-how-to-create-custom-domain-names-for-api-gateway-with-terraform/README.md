@@ -20,7 +20,7 @@ You need Terraform 1.0 or later, an AWS account, a registered domain name with a
 
 ## ACM Certificate for the Custom Domain
 
-First, create an SSL/TLS certificate using AWS Certificate Manager. For API Gateway custom domains in us-east-1 (edge-optimized), the certificate must be in us-east-1. For regional endpoints, it must be in the same region as the API.
+First, create an SSL/TLS certificate using AWS Certificate Manager. For edge-optimized API Gateway custom domains, the certificate must be in us-east-1. For regional endpoints, it must be in the same region as the API.
 
 ```hcl
 provider "aws" {
@@ -39,8 +39,12 @@ resource "aws_acm_certificate" "api" {
   domain_name       = "api.example.com"
   validation_method = "DNS"
 
-  # Also cover wildcard subdomains if needed
-  subject_alternative_names = ["*.api.example.com"]
+  # Also cover wildcard subdomains and the other custom domains used below
+  subject_alternative_names = [
+    "*.api.example.com",
+    "global-api.example.com",
+    "secure-api.example.com"
+  ]
 
   lifecycle {
     create_before_destroy = true  # Prevent downtime during certificate renewal
@@ -106,11 +110,42 @@ resource "aws_api_gateway_method" "health_get" {
   authorization = "NONE"
 }
 
+resource "aws_api_gateway_integration" "health_get" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.health.id
+  http_method = aws_api_gateway_method.health_get.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "health_get" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.health.id
+  http_method = aws_api_gateway_method.health_get.http_method
+  status_code = "200"
+}
+
+resource "aws_api_gateway_integration_response" "health_get" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.health.id
+  http_method = aws_api_gateway_method.health_get.http_method
+  status_code = aws_api_gateway_method_response.health_get.status_code
+
+  depends_on = [aws_api_gateway_integration.health_get]
+
+  response_templates = {
+    "application/json" = "{\"status\":\"ok\"}"
+  }
+}
+
 # Deploy the API
 resource "aws_api_gateway_deployment" "main" {
   rest_api_id = aws_api_gateway_rest_api.main.id
 
-  depends_on = [aws_api_gateway_method.health_get]
+  depends_on = [aws_api_gateway_integration_response.health_get]
 
   lifecycle {
     create_before_destroy = true
@@ -166,7 +201,7 @@ resource "aws_route53_record" "api" {
 
 ## Multiple API Services Under One Domain
 
-Map different API services to different base paths under the same custom domain.
+Map different API services to different base paths under the same custom domain after each API has a deployed `prod` stage.
 
 ```hcl
 # Users API
