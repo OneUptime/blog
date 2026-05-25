@@ -211,6 +211,8 @@ docker build -t terraform-mirror -f Dockerfile.mirror .
 docker run -d -p 8080:80 --name terraform-mirror terraform-mirror
 ```
 
+For Terraform clients, run this container behind an HTTPS reverse proxy or load balancer, because `network_mirror` URLs must use the `https:` scheme.
+
 For Kubernetes deployment:
 
 ```yaml
@@ -257,10 +259,12 @@ spec:
   selector:
     app: terraform-mirror
   ports:
-    - port: 443
+    - port: 80
       targetPort: 80
   type: ClusterIP
 ```
+
+Expose this Service through an HTTPS Ingress or another TLS-terminating load balancer before configuring Terraform clients to use it as a network mirror.
 
 ## Selective Mirroring
 
