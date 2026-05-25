@@ -12,7 +12,7 @@ Not everyone on your team should have the same level of access to infrastructure
 
 ## Permission Levels Overview
 
-HCP Terraform has five built-in permission levels for workspace access:
+HCP Terraform has four fixed permission sets for workspace access, plus a custom option:
 
 - **Read** - View workspace details, state, runs, and variables (not sensitive values)
 - **Plan** - Everything in Read, plus the ability to trigger plans
@@ -289,30 +289,38 @@ TAG=$2
 ACCESS=${3:-"plan"}
 
 # Get all workspaces with the tag
-WORKSPACES=$(curl -s \
-  --header "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/my-org/workspaces?search%5Btags%5D=$TAG&page%5Bsize%5D=100" | \
-  jq -r '.data[].id')
+PAGE=1
 
-for WS_ID in $WORKSPACES; do
-  curl -s \
-    --request POST \
+while true; do
+  WORKSPACES=$(curl -s \
     --header "Authorization: Bearer $TF_TOKEN" \
-    --header "Content-Type: application/vnd.api+json" \
-    --data "{
-      \"data\": {
-        \"type\": \"team-workspaces\",
-        \"attributes\": {\"access\": \"$ACCESS\"},
-        \"relationships\": {
-          \"team\": {\"data\": {\"type\": \"teams\", \"id\": \"$TEAM_ID\"}},
-          \"workspace\": {\"data\": {\"type\": \"workspaces\", \"id\": \"$WS_ID\"}}
-        }
-      }
-    }" \
-    "https://app.terraform.io/api/v2/team-workspaces" > /dev/null
+    "https://app.terraform.io/api/v2/organizations/my-org/workspaces?search%5Btags%5D=$TAG&page%5Bsize%5D=100&page%5Bnumber%5D=$PAGE")
 
-  echo "Assigned $ACCESS to workspace $WS_ID"
-  sleep 0.1  # Avoid rate limits
+  WORKSPACE_IDS=$(echo "$WORKSPACES" | jq -r '.data[].id')
+  [ -z "$WORKSPACE_IDS" ] && break
+
+  for WS_ID in $WORKSPACE_IDS; do
+    curl -s \
+      --request POST \
+      --header "Authorization: Bearer $TF_TOKEN" \
+      --header "Content-Type: application/vnd.api+json" \
+      --data "{
+        \"data\": {
+          \"type\": \"team-workspaces\",
+          \"attributes\": {\"access\": \"$ACCESS\"},
+          \"relationships\": {
+            \"team\": {\"data\": {\"type\": \"teams\", \"id\": \"$TEAM_ID\"}},
+            \"workspace\": {\"data\": {\"type\": \"workspaces\", \"id\": \"$WS_ID\"}}
+          }
+        }
+      }" \
+      "https://app.terraform.io/api/v2/team-workspaces" > /dev/null
+
+    echo "Assigned $ACCESS to workspace $WS_ID"
+    sleep 0.1  # Avoid rate limits
+  done
+
+  PAGE=$((PAGE + 1))
 done
 ```
 
@@ -324,7 +332,7 @@ Review who has access to what:
 # List all team access for a workspace
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/team-access" | \
+  "https://app.terraform.io/api/v2/team-workspaces?filter%5Bworkspace%5D%5Bid%5D=$WORKSPACE_ID" | \
   jq '.data[] | {
     team_id: .relationships.team.data.id,
     access: .attributes.access,
