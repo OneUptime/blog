@@ -111,11 +111,11 @@ terraform {
 }
 ```
 
-Workspaces create state files at paths like `terraform/state/<workspace_name>.tfstate`.
+The `default` workspace uses `terraform/state/default.tfstate`. Other workspaces create state files at paths like `terraform/state/<workspace_name>.tfstate`.
 
 ## The -state Flag
 
-The `terraform workspace new` command has one useful flag: `-state`. It lets you initialize the new workspace with an existing state file instead of starting empty.
+The `terraform workspace new` command has a useful flag: `-state`. It lets you initialize the new workspace with an existing state file instead of starting empty. The command also supports state-locking options such as `-lock=false` and `-lock-timeout=DURATION` for backends that use state locking.
 
 ```bash
 # Create a new workspace initialized with state from a file
@@ -125,8 +125,8 @@ terraform workspace new -state=path/to/existing.tfstate production
 This is handy when you want to:
 
 - Migrate from a non-workspace setup to workspaces
-- Clone an environment by copying state
-- Split a monolithic state into workspace-managed pieces
+- Move an existing state into a named workspace
+- Seed a new workspace from a known state file during recovery or migration
 
 For example, if you have been running without workspaces and want to move your existing infrastructure into a "prod" workspace:
 
@@ -139,6 +139,8 @@ terraform workspace new -state=terraform.tfstate prod
 terraform plan
 # Should show "No changes. Your infrastructure matches the configuration."
 ```
+
+After this migration, avoid continuing to manage the same resources from the old `default` workspace state.
 
 ## Creating Multiple Workspaces
 
@@ -176,7 +178,7 @@ if [ -z "$WORKSPACE_NAME" ]; then
 fi
 
 # Check if the workspace already exists
-if terraform workspace list | grep -q "  ${WORKSPACE_NAME}$"; then
+if terraform workspace list | sed 's/^[* ] //' | grep -Fxq "$WORKSPACE_NAME"; then
   echo "Workspace '${WORKSPACE_NAME}' already exists. Switching to it."
   terraform workspace select "$WORKSPACE_NAME"
 else
@@ -268,7 +270,7 @@ resource "aws_s3_bucket" "data" {
 }
 ```
 
-Always use `terraform.workspace` in resource names when working with workspaces.
+Make resource names unique per workspace when working with workspaces. `terraform.workspace` is one common way to do that.
 
 ## Initializing Workspaces with Variable Files
 
@@ -318,4 +320,4 @@ python3 -c "import json; json.load(open('terraform.tfstate'))"
 
 ## Conclusion
 
-The `terraform workspace new` command is straightforward but understanding what happens behind the scenes makes a difference. Each new workspace starts with an empty state, shares the same configuration, and stores its state according to your backend's conventions. Pair it with the `-state` flag for migrations, use wrapper scripts for CI/CD, and always reference `terraform.workspace` in your resource names to avoid conflicts. Next, learn how to [switch between workspaces](https://oneuptime.com/blog/post/2026-02-23-how-to-switch-between-workspaces-with-terraform-workspace-select/view) once you have them set up.
+The `terraform workspace new` command is straightforward but understanding what happens behind the scenes makes a difference. Each new workspace starts with an empty state unless you initialize it with `-state`, shares the same configuration, and stores its state according to your backend's conventions. Pair it with the `-state` flag for migrations, use wrapper scripts for CI/CD, and make resource names unique per workspace to avoid conflicts. Next, learn how to [switch between workspaces](https://oneuptime.com/blog/post/2026-02-23-how-to-switch-between-workspaces-with-terraform-workspace-select/view) once you have them set up.
