@@ -8,11 +8,11 @@ Description: Learn how to build secure FinTech infrastructure with Terraform inc
 
 ---
 
-Financial technology infrastructure has higher requirements than almost any other domain. Every transaction must be recorded immutably. Data must be encrypted everywhere. Access must be tightly controlled and audited. Regulatory requirements like PCI DSS, SOX, and banking regulations add additional constraints. Terraform lets you encode all of these requirements as infrastructure code so nothing gets missed.
+Financial technology infrastructure has higher requirements than almost any other domain. Every transaction must be recorded durably and protected against unauthorized changes. Data must be encrypted everywhere. Access must be tightly controlled and audited. Regulatory requirements like PCI DSS, SOX, and banking regulations add additional constraints. Terraform lets you encode these controls as infrastructure code so they can be reviewed, tested, and applied consistently.
 
 ## Why Terraform for FinTech?
 
-When regulators ask "how do you ensure all data is encrypted?", you want to point to Terraform code that makes it impossible to create unencrypted resources. When auditors ask about access controls, you show them the IAM policies in your repository. Infrastructure as code turns compliance from a manual checklist into an automated guarantee.
+When regulators ask "how do you ensure all data is encrypted?", you want to point to Terraform code that makes encryption requirements explicit and repeatable. When auditors ask about access controls, you show them the IAM policies in your repository. Infrastructure as code turns compliance from a manual checklist into controls that can be reviewed, automated, and continuously checked.
 
 ## Architecture Overview
 
@@ -23,7 +23,7 @@ Our FinTech infrastructure includes:
 - Aurora with encryption and audit logging
 - SQS FIFO queues for ordered transaction processing
 - WAF for API protection
-- CloudTrail and Config for compliance auditing
+- CloudTrail for compliance auditing
 - Secrets Manager for credential rotation
 - GuardDuty for threat detection
 
@@ -122,13 +122,6 @@ resource "aws_security_group" "app" {
     to_port         = 5432
     protocol        = "tcp"
     security_groups = [aws_security_group.database.id]
-  }
-
-  egress {
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.redis.id]
   }
 
   egress {
@@ -234,7 +227,7 @@ resource "aws_secretsmanager_secret_rotation" "db_credentials" {
 
 ## Transaction Database
 
-Aurora PostgreSQL with full audit logging and encryption.
+Aurora PostgreSQL with encryption and PostgreSQL log export. pgAudit also requires creating the `pgaudit` extension in the database after the parameter group is applied and the writer instance is rebooted.
 
 ```hcl
 # Aurora cluster for financial transactions
@@ -304,7 +297,7 @@ resource "aws_rds_cluster_parameter_group" "audit" {
 
 ## Transaction Processing Queue
 
-FIFO queues ensure transactions are processed in order exactly once.
+FIFO queues preserve message order and help prevent duplicate enqueues within the deduplication interval.
 
 ```hcl
 # FIFO queue for ordered transaction processing
@@ -426,7 +419,7 @@ resource "aws_guardduty_detector" "fintech" {
   finding_publishing_frequency = "FIFTEEN_MINUTES"
 }
 
-# CloudTrail with tamper-proof logging
+# CloudTrail with log file validation
 resource "aws_cloudtrail" "fintech" {
   name                       = "fintech-audit-trail"
   s3_bucket_name             = aws_s3_bucket.audit_logs.id
@@ -471,8 +464,8 @@ resource "aws_sns_topic" "critical" {
 
 ## Wrapping Up
 
-FinTech infrastructure demands defense in depth. Network segmentation isolates tiers. KMS encrypts everything. Audit logging captures every action. FIFO queues guarantee transaction ordering. WAF protects the API surface. And continuous compliance monitoring catches any drift.
+FinTech infrastructure demands defense in depth. Network segmentation isolates tiers. KMS encrypts sensitive services. Audit logging captures infrastructure activity and selected data events. FIFO queues preserve transaction ordering. WAF protects the API surface. And continuous compliance monitoring helps catch drift.
 
-Terraform makes this manageable by codifying every security control. When you need to prove to a regulator that all databases are encrypted, you point to the Terraform configuration. When you need to show audit trails, you point to the CloudTrail setup. The infrastructure code is the compliance documentation.
+Terraform makes this manageable by codifying security controls. When you need to prove to a regulator that all databases are encrypted, you point to the Terraform configuration. When you need to show audit trails, you point to the CloudTrail setup. The infrastructure code becomes part of the compliance documentation.
 
 For monitoring your financial infrastructure with real-time alerting on transaction failures and security events, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-fintech-infrastructure-with-terraform/view) for FinTech-grade observability.
