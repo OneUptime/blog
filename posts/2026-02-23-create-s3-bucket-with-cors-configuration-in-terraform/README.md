@@ -14,7 +14,7 @@ This guide covers how to configure CORS on S3 buckets in Terraform, with practic
 
 ## How CORS Works with S3
 
-When a browser makes a cross-origin request (e.g., JavaScript on `app.example.com` fetching a file from your S3 bucket), it first sends a preflight OPTIONS request. S3 checks the request against your CORS rules and either returns the appropriate CORS headers (allowing the request) or returns an error (blocking it).
+When a browser makes a cross-origin request (e.g., JavaScript on `app.example.com` fetching a file from your S3 bucket), it may first send a preflight OPTIONS request for non-simple methods or headers. S3 checks the request against your CORS rules and either returns the appropriate CORS headers (allowing the request) or returns an error (blocking it).
 
 The key CORS headers are:
 - **Access-Control-Allow-Origin** - Which origins can access the resource
@@ -160,7 +160,7 @@ resource "aws_s3_bucket_cors_configuration" "cdn_assets" {
 
 ## Multiple CORS Rules
 
-S3 supports multiple CORS rules on a single bucket. S3 evaluates them in order and uses the first rule that matches the request's origin and method.
+S3 supports multiple CORS rules on a single bucket. For each request, S3 needs a CORS rule that matches the request's origin, method, and requested headers. Keep overlapping rules consistent so the result does not depend on rule ordering.
 
 ```hcl
 resource "aws_s3_bucket_cors_configuration" "multi_rule" {
@@ -352,7 +352,7 @@ Common issues:
 2. **Trailing slash** - `https://example.com/` won't match `https://example.com`
 3. **CloudFront not forwarding Origin header** - Need the right cache policy
 4. **Browser caching old preflight response** - Clear browser cache or wait for `max_age_seconds` to expire
-5. **OPTIONS method not allowed** - Some configurations forget to include OPTIONS in allowed_methods
+5. **Actual request method not allowed** - For S3 bucket CORS, include the method from `Access-Control-Request-Method` (for example, `PUT`), not `OPTIONS`, in `allowed_methods`
 
 ## Complete Production Example
 
