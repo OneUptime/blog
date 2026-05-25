@@ -98,7 +98,7 @@ resource "aws_s3_bucket_cors_configuration" "output" {
   }
 }
 
-# Block public access - CloudFront will use OAI
+# Block public access - CloudFront will use OAC
 resource "aws_s3_bucket_public_access_block" "output" {
   bucket = aws_s3_bucket.output_video.id
 
@@ -156,9 +156,63 @@ resource "aws_iam_role_policy" "mediaconvert" {
   })
 }
 
-# MediaConvert job template for HLS output
-# Note: MediaConvert job templates are typically created via
-# a Lambda function since Terraform does not have a native resource.
+# Lambda execution role for creating MediaConvert jobs
+resource "aws_iam_role" "transcoder_lambda" {
+  name = "video-transcoder-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "transcoder_lambda" {
+  name = "video-transcoder-lambda-policy"
+  role = aws_iam_role.transcoder_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "mediaconvert:CreateJob",
+          "mediaconvert:GetJob"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = aws_iam_role.mediaconvert.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem"
+        ]
+        Resource = aws_dynamodb_table.video_metadata.arn
+      }
+    ]
+  })
+}
+
 # Here we set up the Lambda that creates transcoding jobs.
 
 resource "aws_lambda_function" "transcoder" {
@@ -190,6 +244,8 @@ resource "aws_s3_bucket_notification" "source_video" {
     filter_prefix       = "uploads/"
     filter_suffix       = ".mp4"
   }
+
+  depends_on = [aws_lambda_permission.s3_trigger]
 }
 
 resource "aws_lambda_permission" "s3_trigger" {
@@ -206,9 +262,13 @@ resource "aws_lambda_permission" "s3_trigger" {
 Deliver video content globally with low latency through CloudFront.
 
 ```hcl
-# Origin Access Identity for CloudFront
-resource "aws_cloudfront_origin_access_identity" "video" {
-  comment = "OAI for video output bucket"
+# Origin Access Control for CloudFront
+resource "aws_cloudfront_origin_access_control" "video" {
+  name                              = "video-output-oac"
+  description                       = "OAC for video output bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
 }
 
 # Bucket policy to allow CloudFront access
@@ -220,10 +280,15 @@ resource "aws_s3_bucket_policy" "output_video" {
     Statement = [{
       Effect = "Allow"
       Principal = {
-        AWS = aws_cloudfront_origin_access_identity.video.iam_arn
+        Service = "cloudfront.amazonaws.com"
       }
       Action   = "s3:GetObject"
       Resource = "${aws_s3_bucket.output_video.arn}/*"
+      Condition = {
+        StringEquals = {
+          "AWS:SourceArn" = aws_cloudfront_distribution.video.arn
+        }
+      }
     }]
   })
 }
@@ -231,12 +296,9 @@ resource "aws_s3_bucket_policy" "output_video" {
 # CloudFront distribution for video delivery
 resource "aws_cloudfront_distribution" "video" {
   origin {
-    domain_name = aws_s3_bucket.output_video.bucket_regional_domain_name
-    origin_id   = "S3-video-output"
-
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.video.cloudfront_access_identity_path
-    }
+    domain_name              = aws_s3_bucket.output_video.bucket_regional_domain_name
+    origin_id                = "S3-video-output"
+    origin_access_control_id = aws_cloudfront_origin_access_control.video.id
   }
 
   enabled         = true
