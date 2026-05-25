@@ -37,7 +37,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -131,13 +131,14 @@ resource "azurerm_email_communication_service_domain" "custom" {
 ```
 
 After creating the custom domain resource, you need to verify it by adding DNS records. The verification records are available in the Azure portal or through the API. You will need to add:
-- SPF record for sender verification
-- DKIM records for email signing
-- DMARC record for email authentication policy
+- Domain ownership TXT record
+- SPF record for sender authentication
+- DKIM and DKIM2 records for email signing
+- DMARC record for email authentication policy, as a deliverability best practice
 
 ## Storing Connection Strings Securely
 
-The communication service connection string is sensitive. Store it in Key Vault:
+The communication service connection string is sensitive. Store it in Key Vault and protect your Terraform state backend, because Terraform stores secret resource values in state:
 
 ```hcl
 # Store the connection string in Key Vault
@@ -169,7 +170,7 @@ resource "azurerm_linux_function_app" "comms" {
 
   site_config {
     application_stack {
-      node_version = "18"
+      node_version = "22"
     }
   }
 
@@ -206,7 +207,7 @@ resource "azurerm_eventgrid_system_topic" "acs" {
   name                   = "evgt-acs-prod"
   resource_group_name    = azurerm_resource_group.comms.name
   location               = "Global"
-  source_arm_resource_id = azurerm_communication_service.main.id
+  source_resource_id     = azurerm_communication_service.main.id
   topic_type             = "Microsoft.Communication.CommunicationServices"
 
   tags = {
@@ -269,7 +270,7 @@ resource "azurerm_monitor_diagnostic_setting" "acs" {
     category = "AuthOperational"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
   }
 }
