@@ -126,7 +126,7 @@ resource "azurerm_role_definition" "storage_reader_delete" {
 
 ## AKS Developer Role
 
-Give developers enough access to deploy to Kubernetes without managing the cluster infrastructure.
+Give developers enough Azure access to fetch Kubernetes credentials without managing the cluster infrastructure. Kubernetes permissions inside the cluster still need to be granted separately.
 
 ```hcl
 # aks-developer.tf
@@ -154,10 +154,7 @@ resource "azurerm_role_definition" "aks_developer" {
       "Microsoft.Resources/subscriptions/resourceGroups/read",
     ]
 
-    not_actions = [
-      # Explicitly deny admin credentials
-      "Microsoft.ContainerService/managedClusters/listClusterAdminCredential/action",
-    ]
+    not_actions = []
   }
 
   assignable_scopes = [
@@ -191,12 +188,7 @@ resource "azurerm_role_definition" "kv_secret_reader" {
       "Microsoft.KeyVault/vaults/secrets/readMetadata/action",
     ]
 
-    not_data_actions = [
-      # Explicitly deny key operations
-      "Microsoft.KeyVault/vaults/keys/*",
-      # Deny certificate operations
-      "Microsoft.KeyVault/vaults/certificates/*",
-    ]
+    not_data_actions = []
   }
 
   assignable_scopes = [
@@ -214,7 +206,7 @@ Let the networking team diagnose issues without making changes.
 resource "azurerm_role_definition" "network_troubleshooter" {
   name        = "Network Troubleshooter"
   scope       = data.azurerm_subscription.current.id
-  description = "Can view network configuration, run diagnostics, and check NSG flow logs but cannot make changes"
+  description = "Can view network configuration, run diagnostics, and check flow log status but cannot make changes"
 
   permissions {
     actions = [
@@ -228,7 +220,7 @@ resource "azurerm_role_definition" "network_troubleshooter" {
       "Microsoft.Network/networkWatchers/connectivityCheck/action",
       "Microsoft.Network/networkWatchers/topology/action",
 
-      # View NSG flow logs
+      # Query connection monitors
       "Microsoft.Network/networkWatchers/queryConnectionMonitors/action",
 
       # Read metrics
@@ -362,7 +354,7 @@ terraform apply tfplan
 
 **Start with built-in roles.** Only create custom roles when no built-in role fits your needs. Custom roles add maintenance overhead.
 
-**Use `not_actions` sparingly.** It is clearer to list exactly what you want to allow rather than starting broad and carving out exceptions.
+**Use `not_actions` sparingly.** `not_actions` and `not_data_actions` subtract permissions from the current role definition; they are not deny rules and do not block permissions granted by another role assignment. It is clearer to list exactly what you want to allow rather than starting broad and carving out exceptions.
 
 **Include `data_actions` when needed.** Data plane operations (like reading blob contents or Key Vault secrets) are separate from management plane operations. Many people forget this distinction.
 
