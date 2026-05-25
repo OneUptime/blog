@@ -20,7 +20,7 @@ You need Terraform 1.0 or later, an AWS account, and a VPC. For forwarding rules
 
 ## Resolver Query Logging
 
-Query logging captures every DNS query made within your VPC, which is invaluable for security monitoring and troubleshooting.
+Query logging captures DNS queries made within your VPC, which is invaluable for security monitoring and troubleshooting. Resolver logs unique queries that it processes, but it doesn't log repeat queries that are answered from the Resolver cache.
 
 ```hcl
 provider "aws" {
@@ -115,12 +115,21 @@ resource "aws_route53_resolver_firewall_domain_list" "blocked" {
   }
 }
 
-# Use AWS managed domain lists for known threats
-data "aws_route53_resolver_firewall_domain_list" "aws_malware" {
-  # AWS provides managed domain lists that are automatically updated
-  # Check available managed lists in your region
-  firewall_domain_list_id = "rslvr-fdl-managed-malware"
+# Create a domain list for domains that should receive a custom block response
+resource "aws_route53_resolver_firewall_domain_list" "custom_blocked" {
+  name    = "custom-blocked-domains"
+  domains = [
+    "blocked-app.example.com",
+    "*.blocked-service.example.com",
+  ]
+
+  tags = {
+    Name = "custom-blocked-domains"
+  }
 }
+
+# AWS also provides managed domain lists such as AWSManagedDomainsMalwareDomainList.
+# Use `aws route53resolver list-firewall-domain-lists` to find the managed list ID in your region.
 
 # Create a domain list of allowed domains (for allowlist approach)
 resource "aws_route53_resolver_firewall_domain_list" "allowed" {
@@ -133,6 +142,19 @@ resource "aws_route53_resolver_firewall_domain_list" "allowed" {
 
   tags = {
     Name = "allowed-domains"
+  }
+}
+
+# Create a domain list of suspicious domains to alert on
+resource "aws_route53_resolver_firewall_domain_list" "suspicious" {
+  name    = "suspicious-domains"
+  domains = [
+    "suspicious.example.com",
+    "*.untrusted.example.com",
+  ]
+
+  tags = {
+    Name = "suspicious-domains"
   }
 }
 
@@ -163,7 +185,7 @@ resource "aws_route53_resolver_firewall_rule" "block_with_response" {
   block_override_domain   = "blocked.internal.example.com"
   block_override_dns_type = "CNAME"
   block_override_ttl      = 60
-  firewall_domain_list_id = aws_route53_resolver_firewall_domain_list.blocked.id
+  firewall_domain_list_id = aws_route53_resolver_firewall_domain_list.custom_blocked.id
   firewall_rule_group_id  = aws_route53_resolver_firewall_rule_group.main.id
   priority                = 200
 }
@@ -172,7 +194,7 @@ resource "aws_route53_resolver_firewall_rule" "block_with_response" {
 resource "aws_route53_resolver_firewall_rule" "alert_suspicious" {
   name                    = "alert-suspicious"
   action                  = "ALERT"
-  firewall_domain_list_id = aws_route53_resolver_firewall_domain_list.blocked.id
+  firewall_domain_list_id = aws_route53_resolver_firewall_domain_list.suspicious.id
   firewall_rule_group_id  = aws_route53_resolver_firewall_rule_group.main.id
   priority                = 300
 }
@@ -327,17 +349,17 @@ resource "aws_route53_resolver_dnssec_config" "main" {
 ## Monitoring Resolver Metrics
 
 ```hcl
-# Alarm for DNS firewall blocks
+# Alarm for DNS firewall rule group matches
 resource "aws_cloudwatch_metric_alarm" "dns_blocks" {
-  alarm_name          = "high-dns-firewall-blocks"
+  alarm_name          = "high-dns-firewall-matches"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "FirewallRuleGroupQueryBlock"
+  metric_name         = "FirewallRuleGroupQueryVolume"
   namespace           = "AWS/Route53Resolver"
   period              = 300
   statistic           = "Sum"
   threshold           = 100
-  alarm_description   = "High number of DNS queries blocked by firewall"
+  alarm_description   = "High number of DNS queries matching a firewall rule group"
 
   dimensions = {
     FirewallRuleGroupId = aws_route53_resolver_firewall_rule_group.main.id
