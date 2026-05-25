@@ -12,7 +12,7 @@ Cross-Origin Resource Sharing (CORS) is a browser security mechanism that contro
 
 ## Understanding CORS
 
-CORS works through HTTP headers. When a browser makes a cross-origin request, it first sends a preflight OPTIONS request to check if the server allows the cross-origin access. The server responds with headers like `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers`. If the response headers permit the request, the browser proceeds with the actual request.
+CORS works through HTTP headers. For requests that require preflight, the browser first sends an OPTIONS request to check if the server allows the cross-origin access. The server responds with headers like `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers`. If the response headers permit the request, the browser proceeds with the actual request.
 
 Simple requests (GET, POST with certain content types) may not trigger a preflight, but most API calls with custom headers or JSON content types will.
 
@@ -165,6 +165,8 @@ resource "aws_api_gateway_integration_response" "options" {
 }
 ```
 
+For each actual method, such as GET or POST, also return `Access-Control-Allow-Origin` on the method response. For Lambda proxy or HTTP proxy integrations, the backend must return the CORS headers.
+
 ## CORS on S3 Buckets
 
 Configure CORS for S3 buckets that serve static assets or receive uploads:
@@ -213,24 +215,30 @@ resource "aws_s3_bucket_cors_configuration" "assets" {
 Configure CloudFront to forward and cache CORS headers:
 
 ```hcl
+# Origin Access Control for the S3 origin
+resource "aws_cloudfront_origin_access_control" "main" {
+  name                              = "cors-oac"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 # CloudFront distribution with CORS support
 resource "aws_cloudfront_distribution" "main" {
   enabled = true
 
   origin {
-    domain_name = aws_s3_bucket.assets.bucket_regional_domain_name
-    origin_id   = "S3Origin"
-
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.main.cloudfront_access_identity_path
-    }
+    domain_name              = aws_s3_bucket.assets.bucket_regional_domain_name
+    origin_id                = "S3Origin"
+    origin_access_control_id = aws_cloudfront_origin_access_control.main.id
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    target_origin_id       = "S3Origin"
-    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD", "OPTIONS"]
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.cors.id
+    target_origin_id           = "S3Origin"
+    viewer_protocol_policy     = "redirect-to-https"
 
     forwarded_values {
       query_string = false
