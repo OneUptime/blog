@@ -159,10 +159,16 @@ resource "aws_apigatewayv2_stage" "default" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "api" {
+  name              = "/aws/apigateway/${var.api_name}"
+  retention_in_days = 14
+}
+
 # Connect Lambda to the API Gateway
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id                 = aws_apigatewayv2_api.this.id
   integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
   integration_uri        = var.lambda_invoke_arn
   payload_format_version = "2.0"
 }
@@ -171,6 +177,14 @@ resource "aws_apigatewayv2_route" "this" {
   api_id    = aws_apigatewayv2_api.this.id
   route_key = "${var.http_method} ${var.route_path}"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
 }
 ```
 
@@ -258,7 +272,7 @@ module "create_user_function" {
   source              = "./modules/lambda"
   function_name       = "create-user"
   handler             = "index.handler"
-  runtime             = "nodejs20.x"
+  runtime             = "nodejs22.x"
   memory_size         = 256
   timeout             = 30
   deployment_package  = "../dist/create-user.zip"
@@ -272,6 +286,7 @@ module "api" {
   source           = "./modules/api_gateway"
   api_name         = "users-api"
   lambda_invoke_arn = module.create_user_function.invoke_arn
+  lambda_function_name = module.create_user_function.function_name
   http_method      = "POST"
   route_path       = "/users"
   cors_origins     = ["https://myapp.example.com"]
@@ -292,6 +307,8 @@ resource "aws_s3_bucket_notification" "upload_trigger" {
     events              = ["s3:ObjectCreated:*"]
     filter_prefix       = "uploads/"
   }
+
+  depends_on = [aws_lambda_permission.s3_invoke]
 }
 
 # Permission for S3 to invoke the Lambda
