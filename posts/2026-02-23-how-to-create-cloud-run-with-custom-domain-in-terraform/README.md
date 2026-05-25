@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, GCP, Cloud Run, Serverless, Container, DNS
 
-Description: Learn how to deploy Google Cloud Run services with custom domain mapping using Terraform for production-ready containerized applications with your own domain.
+Description: Learn how to deploy Google Cloud Run services with custom domain options using Terraform for containerized applications with your own domain.
 
 ---
 
-Google Cloud Run is a fully managed serverless platform that runs stateless containers. It automatically scales from zero to handle incoming traffic, and you only pay for the resources used during request processing. While Cloud Run provides a default URL for each service, production deployments typically need a custom domain. Terraform makes it easy to provision the Cloud Run service and configure domain mapping in a single declarative configuration.
+Google Cloud Run is a fully managed serverless platform that runs stateless containers. It automatically scales from zero to handle incoming traffic when no minimum instance count is configured, and billing depends on your CPU allocation and scaling configuration. While Cloud Run provides a default URL for each service, production deployments typically need a custom domain. Terraform makes it easy to provision the Cloud Run service and configure a global external Application Load Balancer or Cloud Run domain mapping in a single declarative configuration.
 
 This guide covers deploying a Cloud Run service with a custom domain, including DNS configuration, SSL certificate management, and authentication settings.
 
@@ -48,6 +48,23 @@ variable "domain" {
   description = "Custom domain for the Cloud Run service"
   type        = string
 }
+
+variable "dns_zone_name" {
+  description = "DNS zone name, such as example.com"
+  type        = string
+}
+
+variable "is_apex_domain" {
+  description = "Whether var.domain is the apex/root domain for the DNS zone"
+  type        = bool
+  default     = false
+}
+
+variable "artifact_registry_repository" {
+  description = "Artifact Registry Docker repository name"
+  type        = string
+  default     = "containers"
+}
 ```
 
 ## Enabling Required APIs
@@ -71,10 +88,26 @@ resource "google_project_service" "dns" {
   disable_on_destroy = false
 }
 
-# Enable Container Registry API
-resource "google_project_service" "containerregistry" {
+# Enable Compute Engine API if using a load balancer
+resource "google_project_service" "compute" {
   project = var.project_id
-  service = "containerregistry.googleapis.com"
+  service = "compute.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Artifact Registry API
+resource "google_project_service" "artifactregistry" {
+  project = var.project_id
+  service = "artifactregistry.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Secret Manager API if using Secret Manager
+resource "google_project_service" "secretmanager" {
+  project = var.project_id
+  service = "secretmanager.googleapis.com"
 
   disable_on_destroy = false
 }
@@ -90,13 +123,17 @@ resource "google_cloud_run_v2_service" "main" {
   name     = "my-web-app"
   location = var.region
 
-  # Ensure the API is enabled first
-  depends_on = [google_project_service.run]
+  # Ensure required APIs and secrets are ready first
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.db_password,
+    google_secret_manager_secret_iam_member.db_password_access
+  ]
 
   template {
     # Container configuration
     containers {
-      image = "gcr.io/${var.project_id}/my-web-app:latest"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/my-web-app:latest"
 
       # Resource limits
       resources {
@@ -177,6 +214,34 @@ resource "google_service_account" "cloud_run_sa" {
   account_id   = "cloud-run-sa"
   display_name = "Cloud Run Service Account"
 }
+
+# Example secret referenced by the service
+resource "google_secret_manager_secret" "db_password" {
+  secret_id = "db-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "db_password" {
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = var.db_password
+}
+
+resource "google_secret_manager_secret_iam_member" "db_password_access" {
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+variable "db_password" {
+  description = "Database password to store in Secret Manager"
+  type        = string
+  sensitive   = true
+}
 ```
 
 ## Allowing Public Access
@@ -196,7 +261,7 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 
 ## Mapping a Custom Domain
 
-Map your custom domain to the Cloud Run service:
+Map your custom domain to the Cloud Run service. Cloud Run domain mappings are in preview, are available only in supported regions, and are not recommended for production services that need the full feature set of the global external Application Load Balancer:
 
 ```hcl
 # Domain mapping for Cloud Run
@@ -224,16 +289,17 @@ If you are using Google Cloud DNS, configure the DNS records automatically:
 # Cloud DNS managed zone (if managing DNS in GCP)
 resource "google_dns_managed_zone" "main" {
   name     = "my-domain-zone"
-  dns_name = "${var.domain}."
+  dns_name = "${var.dns_zone_name}."
 
   dnssec_config {
     state = "on"
   }
 }
 
-# DNS records for domain verification and routing
-# Cloud Run domain mapping provides the required DNS records
+# DNS records for routing
+# After creating the domain mapping, confirm the required records from its status.resource_records
 resource "google_dns_record_set" "cloud_run_cname" {
+  count        = var.is_apex_domain ? 0 : 1
   name         = "${var.domain}."
   managed_zone = google_dns_managed_zone.main.name
   type         = "CNAME"
@@ -277,7 +343,7 @@ resource "google_dns_record_set" "cloud_run_aaaa" {
 
 ## Using a Global Load Balancer (Alternative Approach)
 
-For more control over SSL and traffic management, use a global load balancer:
+For production custom domains and more control over SSL and traffic management, use a global external Application Load Balancer:
 
 ```hcl
 # Serverless NEG for Cloud Run
@@ -293,7 +359,8 @@ resource "google_compute_region_network_endpoint_group" "cloud_run_neg" {
 
 # Backend service
 resource "google_compute_backend_service" "cloud_run_backend" {
-  name = "cloud-run-backend"
+  name                  = "cloud-run-backend"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 
   backend {
     group = google_compute_region_network_endpoint_group.cloud_run_neg.id
@@ -333,10 +400,11 @@ resource "google_compute_target_https_proxy" "main" {
 
 # Global forwarding rule
 resource "google_compute_global_forwarding_rule" "main" {
-  name       = "cloud-run-forwarding-rule"
-  target     = google_compute_target_https_proxy.main.id
-  port_range = "443"
-  ip_address = google_compute_global_address.main.address
+  name                  = "cloud-run-forwarding-rule"
+  target                = google_compute_target_https_proxy.main.id
+  port_range            = "443"
+  ip_address            = google_compute_global_address.main.address
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 
 # Reserve a global static IP
@@ -360,10 +428,11 @@ resource "google_compute_target_http_proxy" "redirect" {
 }
 
 resource "google_compute_global_forwarding_rule" "redirect" {
-  name       = "http-redirect-rule"
-  target     = google_compute_target_http_proxy.redirect.id
-  port_range = "80"
-  ip_address = google_compute_global_address.main.address
+  name                  = "http-redirect-rule"
+  target                = google_compute_target_http_proxy.redirect.id
+  port_range            = "80"
+  ip_address            = google_compute_global_address.main.address
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
@@ -392,6 +461,6 @@ After deploying your Cloud Run service with a custom domain, monitoring both the
 
 ## Conclusion
 
-Deploying Google Cloud Run with a custom domain in Terraform gives you a production-ready serverless container platform with your own branding. The direct domain mapping approach is simpler and suitable for most use cases, while the global load balancer approach gives you additional features like CDN caching, custom SSL management, and advanced traffic routing. Terraform ensures your entire setup is reproducible and version-controlled, from the Cloud Run service configuration to the DNS records and SSL certificates.
+Deploying Google Cloud Run with a custom domain in Terraform gives you a serverless container platform with your own branding. The direct domain mapping approach is simpler for supported preview use cases, while the global load balancer approach is recommended for production services and gives you additional features like CDN caching, custom SSL management, and advanced traffic routing. Terraform ensures your entire setup is reproducible and version-controlled, from the Cloud Run service configuration to the DNS records and SSL certificates.
 
 For more container deployment patterns, see [How to Create App Runner with Custom VPC in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-app-runner-with-custom-vpc-in-terraform/view) and [How to Create Azure Container Apps Environment in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-azure-container-apps-environment-in-terraform/view).
