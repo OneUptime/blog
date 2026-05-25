@@ -16,6 +16,7 @@ The External provider works through a simple contract: your program reads JSON f
 
 - Terraform 1.0 or later
 - The external program or script you want to call must be installed and accessible on the machine running Terraform
+- `jq` for the shell examples that parse or emit JSON
 
 ## Declaring the Provider
 
@@ -79,13 +80,15 @@ The script (`scripts/git-info.sh`):
 # The External provider expects a JSON object on stdout
 
 # All values must be strings
-cat <<EOF
-{
-  "commit": "$(git rev-parse HEAD)",
-  "branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "short_commit": "$(git rev-parse --short HEAD)"
-}
-EOF
+jq -n \
+  --arg commit "$(git rev-parse HEAD)" \
+  --arg branch "$(git rev-parse --abbrev-ref HEAD)" \
+  --arg short_commit "$(git rev-parse --short HEAD)" \
+  '{
+    commit: $commit,
+    branch: $branch,
+    short_commit: $short_commit
+  }'
 ```
 
 ## Passing Input to Scripts
@@ -355,7 +358,8 @@ if [ -n "$MISSING" ]; then
 fi
 
 # Return status as JSON
-echo '{"status": "all_tools_present", "checked": "'"$TOOLS"'"}'
+jq -n --arg checked "$TOOLS" \
+  '{"status": "all_tools_present", "checked": $checked}'
 ```
 
 ## Alternatives to Consider
