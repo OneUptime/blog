@@ -27,7 +27,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.72"
     }
   }
 }
@@ -44,14 +44,14 @@ resource "azurerm_resource_group" "storage" {
 
 # Storage account that will hold our containers
 resource "azurerm_storage_account" "main" {
-  name                          = "stblobprod2026"
-  resource_group_name           = azurerm_resource_group.storage.name
-  location                      = azurerm_resource_group.storage.location
-  account_tier                  = "Standard"
-  account_replication_type      = "GRS"
-  allow_nested_items_to_be_public = false
-  min_tls_version               = "TLS1_2"
-  enable_https_traffic_only     = true
+  name                            = "stblobprod2026"
+  resource_group_name             = azurerm_resource_group.storage.name
+  location                        = azurerm_resource_group.storage.location
+  account_tier                    = "Standard"
+  account_replication_type        = "GRS"
+  allow_nested_items_to_be_public = true
+  min_tls_version                 = "TLS1_2"
+  https_traffic_only_enabled      = true
 
   blob_properties {
     versioning_enabled = true
@@ -74,28 +74,28 @@ resource "azurerm_storage_account" "main" {
 # Private container for application data
 resource "azurerm_storage_container" "app_data" {
   name                  = "app-data"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"  # No anonymous access
 }
 
 # Container for application logs
 resource "azurerm_storage_container" "logs" {
   name                  = "logs"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
 # Container for backup files
 resource "azurerm_storage_container" "backups" {
   name                  = "backups"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
 # Container for user uploads
 resource "azurerm_storage_container" "uploads" {
   name                  = "uploads"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 ```
@@ -109,10 +109,13 @@ Azure Blob containers support three access levels:
 - **container**: Anonymous read access to blobs and the container listing. Rarely appropriate in production.
 
 ```hcl
+# Public access must be enabled on the storage account for this example:
+# allow_nested_items_to_be_public = true
+
 # Public assets container - use blob-level access for CDN-backed content
 resource "azurerm_storage_container" "public_assets" {
   name                  = "public-assets"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "blob"  # Anyone with the URL can read
 }
 ```
@@ -152,7 +155,7 @@ variable "containers" {
 resource "azurerm_storage_container" "dynamic" {
   for_each              = var.containers
   name                  = each.key
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = each.value.access_type
 }
 ```
@@ -200,7 +203,7 @@ resource "azurerm_storage_management_policy" "main" {
 
     filters {
       blob_types   = ["blockBlob"]
-      prefix_match = ["logs/"]
+      prefix_match = ["logs"]
     }
 
     actions {
@@ -219,7 +222,7 @@ resource "azurerm_storage_management_policy" "main" {
 
     filters {
       blob_types   = ["blockBlob"]
-      prefix_match = ["backups/"]
+      prefix_match = ["backups"]
     }
 
     actions {
@@ -230,14 +233,14 @@ resource "azurerm_storage_management_policy" "main" {
     }
   }
 
-  # Uploads: delete incomplete uploads after 7 days
+  # Uploads: delete old uploads after 90 days
   rule {
-    name    = "cleanup-incomplete-uploads"
+    name    = "cleanup-old-uploads"
     enabled = true
 
     filters {
       blob_types   = ["blockBlob"]
-      prefix_match = ["uploads/"]
+      prefix_match = ["uploads"]
     }
 
     actions {
@@ -258,14 +261,15 @@ For regulatory compliance (WORM - Write Once, Read Many), configure immutability
 # Container for compliance-critical documents
 resource "azurerm_storage_container" "compliance" {
   name                  = "compliance-records"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
-# Note: Immutability policies can be set via azurerm_storage_container
-# using the metadata or via Azure CLI after creation.
-# Terraform support for immutability policies depends on provider version.
-# As of azurerm 3.x, use azapi_resource or CLI provisioner for full control.
+resource "azurerm_storage_container_immutability_policy" "compliance" {
+  storage_container_resource_manager_id = azurerm_storage_container.compliance.id
+  immutability_period_in_days           = 365
+  protected_append_writes_enabled       = true
+}
 ```
 
 ## Outputs
@@ -285,6 +289,12 @@ output "container_names" {
 output "blob_endpoint" {
   value       = azurerm_storage_account.main.primary_blob_endpoint
   description = "Primary blob endpoint URL"
+}
+
+output "primary_connection_string" {
+  value       = azurerm_storage_account.main.primary_connection_string
+  description = "Primary connection string for the storage account"
+  sensitive   = true
 }
 ```
 
