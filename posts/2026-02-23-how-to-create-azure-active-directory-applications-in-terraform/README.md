@@ -116,20 +116,20 @@ resource "azuread_application" "spa" {
   # SPA-specific redirect URIs (uses PKCE, no client secret needed)
   single_page_application {
     redirect_uris = [
-      "https://app.example.com/",
+      "https://app.example.com",
       "https://app.example.com/auth/callback",
-      "http://localhost:3000/",  # For local development
+      "http://localhost:3000",  # For local development
       "http://localhost:3000/auth/callback",
     ]
   }
 
-  # The SPA needs to access our backend API
+  # The SPA needs delegated access to our backend API
   required_resource_access {
     resource_app_id = azuread_application.api.client_id  # Our API app
 
     resource_access {
-      id   = azuread_application.api.app_role_ids["User.Read"]
-      type = "Role"
+      id   = azuread_application.api.oauth2_permission_scope_ids["api.access"]
+      type = "Scope"
     }
   }
 }
@@ -253,7 +253,7 @@ resource "azuread_application_password" "web_app" {
 resource "azuread_application_certificate" "api" {
   application_id = azuread_application.api.id
   type           = "AsymmetricX509Cert"
-  value          = filebase64("${path.module}/certs/api-cert.pem")
+  value          = file("${path.module}/certs/api-cert.pem")
   end_date       = "2027-01-01T00:00:00Z"
 }
 ```
@@ -311,8 +311,19 @@ resource "azuread_service_principal" "daemon" {
   owners    = [data.azuread_client_config.current.object_id]
 }
 
+resource "azuread_service_principal" "msgraph" {
+  client_id    = local.microsoft_graph_app_id
+  use_existing = true
+}
+
 resource "azuread_app_role_assignment" "daemon_mail_send" {
-  app_role_id         = "b633e1c5-b582-4048-a93e-9f11b44c7e96"
+  app_role_id         = azuread_service_principal.msgraph.app_role_ids["Mail.Send"]
+  principal_object_id = azuread_service_principal.daemon.object_id
+  resource_object_id  = azuread_service_principal.msgraph.object_id  # Microsoft Graph SP
+}
+
+resource "azuread_app_role_assignment" "daemon_user_read_all" {
+  app_role_id         = azuread_service_principal.msgraph.app_role_ids["User.Read.All"]
   principal_object_id = azuread_service_principal.daemon.object_id
   resource_object_id  = azuread_service_principal.msgraph.object_id  # Microsoft Graph SP
 }
@@ -357,6 +368,6 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-The Terraform service principal needs the Application Administrator or Cloud Application Administrator role in Azure AD to create and manage application registrations. Without sufficient permissions, the apply will fail with an authorization error.
+The Terraform identity needs sufficient Microsoft Graph permissions or directory roles to create and manage application registrations. For service principal authentication, this typically means application permissions such as Application.ReadWrite.All, and AppRoleAssignment.ReadWrite.All when granting admin consent. For user authentication, roles such as Application Administrator, Cloud Application Administrator, or Global Administrator may be required. Without sufficient permissions, the apply will fail with an authorization error.
 
 Managing Azure AD applications in Terraform brings the same benefits as managing any other infrastructure - consistency, audit trails, and the ability to review changes before they take effect. This is especially important for identity configuration, where a misconfigured redirect URI or overly broad API permission can create security vulnerabilities.
