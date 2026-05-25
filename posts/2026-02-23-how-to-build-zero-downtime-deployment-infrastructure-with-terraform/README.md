@@ -162,7 +162,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Health check configuration
@@ -184,7 +184,7 @@ resource "aws_autoscaling_group" "app" {
       # Skip replacing instances that are already running the latest version
       skip_matching = true
 
-      # Auto rollback if too many instances fail
+      # Auto rollback if the instance refresh fails
       auto_rollback = true
     }
 
