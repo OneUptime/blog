@@ -282,12 +282,20 @@ data "google_sql_database_instance" "shared_db" {
   name     = "shared-postgres"
 }
 
-# Create a VPC peering from the app project to the database project
+# Create VPC peerings between the app project and database project
 # (for private IP connectivity)
 resource "google_compute_network_peering" "to_db" {
   name         = "app-to-db-peering"
   network      = google_compute_network.app_vpc.self_link
   peer_network = "projects/${var.shared_project_id}/global/networks/db-vpc"
+}
+
+resource "google_compute_network_peering" "from_db" {
+  provider = google.shared
+
+  name         = "db-to-app-peering"
+  network      = "projects/${var.shared_project_id}/global/networks/db-vpc"
+  peer_network = google_compute_network.app_vpc.self_link
 }
 ```
 
