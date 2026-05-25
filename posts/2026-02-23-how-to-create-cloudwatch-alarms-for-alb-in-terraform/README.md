@@ -182,7 +182,7 @@ resource "aws_cloudwatch_metric_alarm" "unhealthy_targets" {
   metric_name         = "UnHealthyHostCount"
   namespace           = "AWS/ApplicationELB"
   period              = 60
-  statistic           = "Maximum"
+  statistic           = "Minimum"
   threshold           = 0
   alarm_description   = "Unhealthy targets detected behind the ALB"
   alarm_actions       = [aws_sns_topic.alb_alarms.arn]
