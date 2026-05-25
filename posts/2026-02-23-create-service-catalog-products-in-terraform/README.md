@@ -71,7 +71,7 @@ resource "aws_servicecatalog_portfolio" "compute" {
 
 ## Creating a Product
 
-Products are backed by CloudFormation templates. Each product can have multiple versions (provisioning artifacts).
+In this example, products are backed by CloudFormation templates. Each product can have multiple versions (provisioning artifacts).
 
 ```hcl
 # S3 bucket to store product templates
@@ -254,7 +254,10 @@ resource "aws_servicecatalog_constraint" "vpc_tag_update" {
   type         = "RESOURCE_UPDATE"
 
   parameters = jsonencode({
-    TagUpdatesOnProvisionedProduct = "ALLOWED"
+    Version = "2.0"
+    Properties = {
+      TagUpdateOnProvisionedProduct = "ALLOWED"
+    }
   })
 
   description = "Allow tag updates on provisioned VPC products"
