@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Fastly, CDN, Provider, Infrastructure as Code, Edge Computing
 
-Description: Step-by-step guide to configuring the Fastly provider in Terraform for managing CDN services, VCL configurations, edge dictionaries, and compute services programmatically.
+Description: Step-by-step guide to configuring the Fastly provider in Terraform for managing CDN services, VCL configurations, and edge dictionaries programmatically.
 
 ---
 
@@ -18,7 +18,7 @@ Before configuring the provider, make sure you have:
 - Terraform 1.0 or later installed
 - Basic familiarity with Fastly concepts (services, backends, VCL)
 
-To create an API token, log into the Fastly dashboard, go to Account, then Personal API Tokens, and generate a token with the appropriate scope. For full management, you need a token with `global` scope or at minimum `purge_all` and `global:read` combined with engineer-level access.
+To create an API token, log into the Fastly dashboard, go to Account, then Personal API Tokens, and generate a token with the appropriate scope. For full management, use a token with the `global` scope created by a user with sufficient permissions. The `global:read` scope is read-only, and purge scopes such as `purge_all` are only for cache purging.
 
 ## Basic Provider Configuration
 
@@ -32,7 +32,7 @@ terraform {
     fastly = {
       # Official Fastly provider from the Terraform registry
       source  = "fastly/fastly"
-      version = "~> 5.0"
+      version = "~> 9.0"
     }
   }
 
@@ -96,7 +96,7 @@ resource "fastly_service_vcl" "website" {
   # Additional domain
   domain {
     name    = "example.com"
-    comment = "Apex domain redirect"
+    comment = "Apex domain"
   }
 
   # Origin server configuration
@@ -110,7 +110,7 @@ resource "fastly_service_vcl" "website" {
     ssl_cert_hostname = "origin.example.com"
     ssl_sni_hostname  = "origin.example.com"
 
-    # Health check and timeouts
+    # Connection timeouts
     connect_timeout       = 5000
     first_byte_timeout    = 15000
     between_bytes_timeout = 10000
@@ -125,7 +125,7 @@ resource "fastly_service_vcl" "website" {
     force_ssl = true
   }
 
-  # Always activate after changes
+  # Allow Terraform to destroy an active service if needed
   force_destroy = true
 }
 ```
@@ -180,6 +180,7 @@ resource "fastly_service_vcl" "website" {
     priority  = 5
   }
 
+  # Allow Terraform to destroy an active service if needed
   force_destroy = true
 }
 ```
@@ -218,12 +219,12 @@ resource "fastly_service_vcl" "website" {
     priority = 100
   }
 
-  # Custom 404 handling
+  # Custom handling for synthetic 404 errors
   snippet {
     name     = "custom-error-handling"
     type     = "error"
     content  = <<-EOT
-      # Return a custom error page for 404s
+      # Return a custom error page for synthetic 404s generated with error 404
       if (obj.status == 404) {
         set obj.http.Content-Type = "text/html";
         synthetic {"<html><body><h1>Page Not Found</h1></body></html>"};
@@ -268,8 +269,22 @@ resource "fastly_service_vcl" "website" {
     type    = "recv"
     content = <<-EOT
       # Look up the request path in the redirects dictionary
-      if (table.lookup(redirects, req.url)) {
-        error 301 table.lookup(redirects, req.url);
+      if (table.contains(redirects, req.url.path)) {
+        error 618 "redirect";
+      }
+    EOT
+    priority = 50
+  }
+
+  snippet {
+    name    = "dictionary-redirect-response"
+    type    = "error"
+    content = <<-EOT
+      # Convert the synthetic error into a redirect response
+      if (obj.status == 618 && obj.response == "redirect") {
+        set obj.status = 301;
+        set obj.http.Location = table.lookup(redirects, req.url.path);
+        return(deliver);
       }
     EOT
     priority = 50
@@ -286,6 +301,7 @@ resource "fastly_service_dictionary_items" "redirects" {
 
   service_id    = fastly_service_vcl.website.id
   dictionary_id = each.value.dictionary_id
+  manage_items  = true
 
   # Key-value pairs for redirects
   items = {
@@ -328,12 +344,12 @@ resource "fastly_service_vcl" "website" {
 
     # Custom log format
     format = jsonencode({
-      timestamp   = "%%{now}V"
-      client_ip   = "%%{req.http.Fastly-Client-IP}V"
-      request     = "%%{req.method}V %%{req.url}V"
-      status      = "%%{resp.status}V"
-      bytes       = "%%{resp.body_bytes_written}V"
-      cache_hit   = "%%{if(fastly_info.state ~ \"HIT\", \"true\", \"false\")}V"
+      timestamp   = "%{now}V"
+      client_ip   = "%{req.http.Fastly-Client-IP}V"
+      request     = "%{req.method}V %{req.url}V"
+      status      = "%{resp.status}V"
+      bytes       = "%{resp.body_bytes_written}V"
+      cache_hit   = "%{if(fastly_info.state ~ \"HIT\", \"true\", \"false\")}V"
     })
     format_version = 2
   }
@@ -394,8 +410,11 @@ resource "fastly_service_vcl" "website" {
 If you already have Fastly services, import them into Terraform:
 
 ```bash
-# Import an existing service by its ID and active version
+# Import an existing service by its ID
 terraform import fastly_service_vcl.website xxxxxxxxxxxxxxxxxxxx
+
+# Or import a specific service version
+terraform import fastly_service_vcl.website xxxxxxxxxxxxxxxxxxxx@2
 
 # After import, run plan to see if your config matches
 terraform plan
@@ -403,7 +422,7 @@ terraform plan
 
 ## Best Practices
 
-**Version your services carefully.** Every change to a Fastly service creates a new version. The Terraform provider handles this automatically, but be aware that each apply creates and activates a new version.
+**Version your services carefully.** Every change to versioned Fastly service configuration creates a new version. The Terraform provider handles this automatically, but be aware that each apply with service configuration changes creates and activates a new version by default.
 
 **Use `force_destroy` wisely.** Setting `force_destroy = true` lets Terraform delete services that have active versions. Leave it out in production to prevent accidental deletion.
 
