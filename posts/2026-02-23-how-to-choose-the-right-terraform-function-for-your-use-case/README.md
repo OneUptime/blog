@@ -8,7 +8,7 @@ Description: A practical guide to selecting the right Terraform function for com
 
 ---
 
-Terraform ships with over a hundred built-in functions, and it is easy to feel overwhelmed when you are trying to figure out which one solves your specific problem. Should you use `replace` or `regex`? Is `merge` or `zipmap` the right choice for combining maps? When do you need `flatten` versus just a `for` expression?
+Terraform ships with over a hundred built-in functions, and it is easy to feel overwhelmed when you are trying to figure out which one solves your specific problem. Should you use `replace` or `regex`? Is `merge` or `zipmap` the right choice for building maps? When do you need `flatten` versus just a `for` expression?
 
 This guide organizes Terraform functions by the type of problem you are trying to solve, so you can quickly find the right tool for the job.
 
@@ -67,7 +67,7 @@ locals {
 
 ### "I need to modify part of a string"
 
-Use `replace` for simple substitutions, `regex` + `replace` for patterns:
+Use `replace` for simple substitutions, or `replace` with a regex pattern for patterns:
 
 ```hcl
 locals {
