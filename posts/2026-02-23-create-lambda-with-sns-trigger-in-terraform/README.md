@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Lambda, SNS, Event-Driven, Serverless, Notification
 
-Description: How to configure AWS Lambda functions as SNS topic subscribers in Terraform, with filtering policies, fan-out patterns, and cross-account subscription examples.
+Description: How to configure AWS Lambda functions as SNS topic subscribers in Terraform, with filtering policies, fan-out patterns, and dead letter queues.
 
 ---
 
-Amazon SNS is a pub/sub messaging service. Publishers send messages to topics, and subscribers receive them. Lambda functions can subscribe to SNS topics, getting invoked automatically whenever a message is published. Unlike SQS, where Lambda polls for messages, SNS pushes messages to Lambda directly. This makes the integration simpler but also means there is no built-in retry queue - if Lambda fails, SNS handles retries on its own.
+Amazon SNS is a pub/sub messaging service. Publishers send messages to topics, and subscribers receive them. Lambda functions can subscribe to SNS topics, getting invoked automatically whenever a message is published. Unlike SQS, where Lambda polls for messages, SNS pushes messages to Lambda directly. This makes the integration simpler but also means there is no SQS-style queue that you manage - if delivery to Lambda fails, SNS and Lambda handle retries.
 
 This guide covers setting up Lambda as an SNS subscriber in Terraform, including subscription filtering, fan-out patterns where one topic triggers multiple functions, and the permissions model.
 
@@ -298,7 +298,7 @@ resource "aws_sqs_queue_policy" "sns_dlq" {
 
 ## SNS Retry Behavior
 
-SNS has its own retry policy for Lambda invocations. By default, it retries 3 times with no delay for Lambda endpoints. You cannot customize this for Lambda subscriptions the way you can for HTTP endpoints. If all retries fail and you have a DLQ configured, the message goes there.
+SNS has its own delivery retry policy for Lambda endpoints. For AWS managed endpoints such as Lambda, SNS retries failed deliveries through immediate, backoff, and post-backoff phases, up to 100,015 total attempts over 23 days for server-side failures. You cannot customize this for Lambda subscriptions the way you can for HTTP endpoints. If all retries fail and you have a DLQ configured, the message goes there.
 
 This is different from the SQS + Lambda pattern where you have more control over retry behavior through visibility timeouts and `maxReceiveCount`.
 
