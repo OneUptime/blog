@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, CloudWatch, EC2, Monitoring, Infrastructure as Code
 
-Description: Learn how to create comprehensive CloudWatch alarms for EC2 instances using Terraform to monitor CPU, memory, disk, and network performance.
+Description: Learn how to create comprehensive CloudWatch alarms for EC2 instances using Terraform to monitor CPU, status checks, disk, and network performance.
 
 ---
 
@@ -53,7 +53,7 @@ variable "ops_email" {
 ## CPU Utilization Alarm
 
 ```hcl
-# Alarm when CPU utilization exceeds 80% for 5 minutes
+# Alarm when CPU utilization exceeds 80% for 10 minutes
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   alarm_name          = "ec2-high-cpu-${var.instance_id}"
   comparison_operator = "GreaterThanThreshold"
@@ -157,7 +157,7 @@ resource "aws_cloudwatch_metric_alarm" "network_in_high" {
   metric_name         = "NetworkIn"
   namespace           = "AWS/EC2"
   period              = 300
-  statistic           = "Average"
+  statistic           = "Sum"
   threshold           = 500000000  # 500 MB in 5 minutes
   alarm_description   = "EC2 instance is receiving unusually high network traffic"
   alarm_actions       = [aws_sns_topic.ec2_alarms.arn]
@@ -175,7 +175,7 @@ resource "aws_cloudwatch_metric_alarm" "network_out_high" {
   metric_name         = "NetworkOut"
   namespace           = "AWS/EC2"
   period              = 300
-  statistic           = "Average"
+  statistic           = "Sum"
   threshold           = 500000000
   alarm_description   = "EC2 instance is sending unusually high network traffic"
   alarm_actions       = [aws_sns_topic.ec2_alarms.arn]
@@ -186,18 +186,18 @@ resource "aws_cloudwatch_metric_alarm" "network_out_high" {
 }
 ```
 
-## Disk Performance Alarms (EBS)
+## Disk Performance Alarms (EBS on Nitro-based Instances)
 
 ```hcl
-# EBS read latency alarm
+# EBS read operations alarm
 resource "aws_cloudwatch_metric_alarm" "disk_read_ops" {
   alarm_name          = "ec2-disk-read-ops-${var.instance_id}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "DiskReadOps"
+  metric_name         = "EBSReadOps"
   namespace           = "AWS/EC2"
   period              = 300
-  statistic           = "Average"
+  statistic           = "Sum"
   threshold           = 10000
   alarm_description   = "EC2 instance disk read operations are abnormally high"
   alarm_actions       = [aws_sns_topic.ec2_alarms.arn]
@@ -212,10 +212,10 @@ resource "aws_cloudwatch_metric_alarm" "disk_write_ops" {
   alarm_name          = "ec2-disk-write-ops-${var.instance_id}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "DiskWriteOps"
+  metric_name         = "EBSWriteOps"
   namespace           = "AWS/EC2"
   period              = 300
-  statistic           = "Average"
+  statistic           = "Sum"
   threshold           = 10000
   alarm_description   = "EC2 instance disk write operations are abnormally high"
   alarm_actions       = [aws_sns_topic.ec2_alarms.arn]
