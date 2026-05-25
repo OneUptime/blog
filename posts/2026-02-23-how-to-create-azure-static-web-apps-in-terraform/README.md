@@ -19,7 +19,7 @@ Before Terraform code, let's understand what Static Web Apps gives you compared 
 - **Global CDN distribution**: Content is served from edge locations worldwide without you configuring anything
 - **Free SSL certificates**: Managed SSL for custom domains, no certificate management needed
 - **Integrated API functions**: Azure Functions backend automatically deployed alongside your frontend
-- **Built-in authentication**: Supports Azure AD, GitHub, Twitter, and custom providers out of the box
+- **Built-in authentication**: Supports Microsoft Entra ID and GitHub out of the box, with custom OpenID Connect providers available for additional identity providers
 - **Pull request previews**: Automatically creates staging environments for PRs
 - **Free tier**: The free plan is generous enough for many production sites
 
@@ -78,11 +78,11 @@ The Free tier is surprisingly capable:
 - 100 GB bandwidth per subscription per month
 - 2 custom domains
 - 250 MB storage per app
-- Azure Functions APIs with 100,000 invocations per month
+- Azure Functions APIs with 1 million free executions per month
 
-The Standard tier ($9/month) adds:
+The paid Standard tier adds:
 
-- 100 GB bandwidth per app
+- 100 GB included bandwidth per subscription per month, with paid overage
 - 5 custom domains per app
 - 500 MB storage
 - Bring-your-own Azure Functions backend
@@ -96,13 +96,6 @@ For many websites and small applications, the Free tier is enough.
 Add a custom domain to your Static Web App:
 
 ```hcl
-# Custom domain with DNS validation
-resource "azurerm_static_web_app_custom_domain" "main" {
-  static_web_app_id = azurerm_static_web_app.main.id
-  domain_name       = "www.myapp.com"
-  validation_type   = "cname-delegation"
-}
-
 # If using Azure DNS, create the CNAME record
 resource "azurerm_dns_cname_record" "www" {
   name                = "www"
@@ -110,6 +103,17 @@ resource "azurerm_dns_cname_record" "www" {
   resource_group_name = azurerm_resource_group.dns.name
   ttl                 = 300
   record              = azurerm_static_web_app.main.default_host_name
+}
+
+# Custom domain with CNAME validation
+resource "azurerm_static_web_app_custom_domain" "main" {
+  static_web_app_id = azurerm_static_web_app.main.id
+  domain_name       = "www.myapp.com"
+  validation_type   = "cname-delegation"
+
+  depends_on = [
+    azurerm_dns_cname_record.www
+  ]
 }
 
 # For apex domain (myapp.com without www), use a different validation
@@ -191,7 +195,7 @@ resource "azurerm_static_web_app" "main" {
 
   # App settings are available as environment variables in the API functions
   app_settings = {
-    "DATABASE_URL"    = "@Microsoft.KeyVault(VaultName=kv-prod;SecretName=db-url)"
+    "DATABASE_URL"    = "postgres://example"
     "API_VERSION"     = "v2"
     "FEATURE_FLAGS"   = "new-dashboard,beta-api"
   }
@@ -202,9 +206,9 @@ resource "azurerm_static_web_app" "main" {
 }
 ```
 
-## Managed Identity for Backend APIs
+## Managed Identity for Key Vault Secrets
 
-If your API functions need to access other Azure resources:
+Managed identity is available on the Standard plan. It can be used for Static Web Apps features such as resolving Key Vault references in production app settings. Managed functions do not support managed identity directly; if your API needs managed identity, use a bring-your-own Azure Functions backend and enable identity on that Function App.
 
 ```hcl
 resource "azurerm_static_web_app" "main" {
@@ -214,17 +218,14 @@ resource "azurerm_static_web_app" "main" {
   sku_tier            = "Standard"
   sku_size            = "Standard"
 
-  # Enable managed identity for the API backend
+  # Enable managed identity for the Static Web App
   identity {
     type = "SystemAssigned"
   }
-}
 
-# Grant the Static Web App access to a storage account
-resource "azurerm_role_assignment" "swa_storage" {
-  scope                = azurerm_storage_account.data.id
-  role_definition_name = "Storage Blob Data Reader"
-  principal_id         = azurerm_static_web_app.main.identity[0].principal_id
+  app_settings = {
+    "AUTH_CLIENT_SECRET" = "@Microsoft.KeyVault(SecretUri=https://kv-prod.vault.azure.net/secrets/auth-client-secret/)"
+  }
 }
 
 # Grant access to Key Vault for secrets
@@ -300,13 +301,13 @@ output "deployment_token" {
 
 ## Best Practices
 
-**Use the Standard SKU for production.** The SLA and additional features are worth $9/month for any production application.
+**Use the Standard SKU for production.** The SLA and additional features are worth the paid tier for any production application.
 
 **Configure routing in staticwebapp.config.json.** SPA routing, redirects, and authentication rules belong in the application configuration file, not in Terraform.
 
-**Store the deployment token securely.** The API key allows anyone to deploy to your Static Web App. Keep it in a secrets manager, not in your Terraform state.
+**Store the deployment token securely.** The API key allows anyone to deploy to your Static Web App. Keep it in a secrets manager, and secure your Terraform state because sensitive outputs are still stored there.
 
-**Use managed identity for API connections.** If your serverless functions connect to databases or other Azure services, use managed identity instead of connection strings.
+**Use managed identity for API connections when using bring-your-own functions.** If your serverless functions connect to databases or other Azure services, enable managed identity on the Function App instead of using connection strings.
 
 **Set up staging environments for PRs.** Static Web Apps creates preview environments for pull requests automatically. Use this feature to review changes before merging.
 
