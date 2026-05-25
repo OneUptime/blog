@@ -52,6 +52,10 @@ resource "aws_route53_zone" "internal" {
   vpc {
     vpc_id = var.vpc_id
   }
+
+  lifecycle {
+    ignore_changes = [vpc]
+  }
 }
 
 # Associate private zone with additional VPCs
@@ -165,6 +169,32 @@ resource "aws_route53_health_check" "app_primary" {
   }
 }
 
+resource "aws_route53_health_check" "app_api" {
+  fqdn              = "api.${var.domain_name}"
+  port              = 443
+  type              = "HTTPS"
+  resource_path     = "/health"
+  failure_threshold = 3
+  request_interval  = 10
+
+  tags = {
+    Name = "${var.project_name}-app-api-health"
+  }
+}
+
+resource "aws_route53_health_check" "app_status" {
+  fqdn              = "status.${var.domain_name}"
+  port              = 443
+  type              = "HTTPS"
+  resource_path     = "/health"
+  failure_threshold = 3
+  request_interval  = 10
+
+  tags = {
+    Name = "${var.project_name}-app-status-health"
+  }
+}
+
 # Calculated health check combining multiple checks
 resource "aws_route53_health_check" "app_overall" {
   type                   = "CALCULATED"
@@ -173,7 +203,7 @@ resource "aws_route53_health_check" "app_overall" {
   child_healthchecks = [
     aws_route53_health_check.app_primary.id,
     aws_route53_health_check.app_api.id,
-    aws_route53_health_check.app_db.id,
+    aws_route53_health_check.app_status.id,
   ]
 
   tags = {
@@ -183,6 +213,7 @@ resource "aws_route53_health_check" "app_overall" {
 
 # CloudWatch alarm when health check fails
 resource "aws_cloudwatch_metric_alarm" "health_check_failed" {
+  provider            = aws.us_east_1
   alarm_name          = "${var.project_name}-dns-health-check-failed"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 1
@@ -225,7 +256,6 @@ resource "aws_route53_record" "app_us" {
   }
 
   set_identifier  = "us-east-1"
-  health_check_id = aws_route53_health_check.app_us.id
 }
 
 resource "aws_route53_record" "app_eu" {
@@ -244,7 +274,6 @@ resource "aws_route53_record" "app_eu" {
   }
 
   set_identifier  = "eu-west-1"
-  health_check_id = aws_route53_health_check.app_eu.id
 }
 ```
 
@@ -309,7 +338,7 @@ resource "aws_kms_key" "dnssec" {
         Sid       = "AllowRoute53DNSSEC"
         Effect    = "Allow"
         Principal = { Service = "dnssec-route53.amazonaws.com" }
-        Action    = ["kms:DescribeKey", "kms:GetPublicKey", "kms:Sign"]
+        Action    = ["kms:DescribeKey", "kms:GetPublicKey", "kms:Sign", "kms:Verify"]
         Resource  = "*"
         Condition = {
           StringEquals = {
@@ -341,22 +370,60 @@ resource "aws_route53_hosted_zone_dnssec" "main" {
 }
 ```
 
+After enabling signing, publish the DS record with your domain registrar or parent zone so resolvers can validate the DNSSEC chain of trust.
+
 ## Query Logging
 
 Enable DNS query logging for security and troubleshooting:
 
 ```hcl
+resource "aws_cloudwatch_log_group" "dns_queries" {
+  provider          = aws.us_east_1 # Must be in us-east-1
+  name              = "/aws/route53/${var.domain_name}"
+  retention_in_days = 30
+}
+
+data "aws_iam_policy_document" "dns_query_logging" {
+  statement {
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+
+    resources = [
+      "arn:aws:logs:us-east-1:${var.account_id}:log-group:/aws/route53/*",
+    ]
+
+    principals {
+      type        = "Service"
+      identifiers = ["route53.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [var.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:route53:::hostedzone/${aws_route53_zone.primary.zone_id}"]
+    }
+  }
+}
+
+resource "aws_cloudwatch_log_resource_policy" "dns_logging" {
+  provider        = aws.us_east_1
+  policy_document = data.aws_iam_policy_document.dns_query_logging.json
+  policy_name     = "${var.project_name}-route53-query-logging"
+}
+
 resource "aws_route53_query_log" "primary" {
   cloudwatch_log_group_arn = aws_cloudwatch_log_group.dns_queries.arn
   zone_id                  = aws_route53_zone.primary.zone_id
 
   depends_on = [aws_cloudwatch_log_resource_policy.dns_logging]
-}
-
-resource "aws_cloudwatch_log_group" "dns_queries" {
-  provider          = aws.us_east_1 # Must be in us-east-1
-  name              = "/aws/route53/${var.domain_name}"
-  retention_in_days = 30
 }
 ```
 
