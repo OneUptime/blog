@@ -22,13 +22,13 @@ The architecture is straightforward:
 4. When a run is queued on a workspace that uses your agent pool, an available agent picks it up
 5. The agent executes the Terraform plan/apply locally and streams results back to HCP Terraform
 
-The important thing to understand is that agents initiate all connections outbound. Your network only needs to allow HTTPS traffic to `app.terraform.io` on port 443. No inbound firewall rules or port forwarding required.
+The important thing to understand is that agents initiate all connections outbound. At minimum, your network needs to allow HTTPS traffic to HCP Terraform services such as `app.terraform.io`, and Terraform runs may also need outbound access to services such as `registry.terraform.io`, `releases.hashicorp.com`, `archivist.terraform.io`, provider APIs, and any private endpoints your Terraform code manages. No inbound firewall rules or port forwarding are required for normal agent operation.
 
 ## Prerequisites
 
-- An HCP Terraform organization on the **Business** tier (agents are not available on free or Teams plans)
+- An HCP Terraform organization with enough self-hosted agent capacity for your use case
 - A machine inside your private network where you can run the agent
-- Outbound HTTPS access from that machine to `app.terraform.io`
+- Outbound network access from that machine to HCP Terraform and any services your Terraform runs require
 
 ## Creating an Agent Pool
 
@@ -196,12 +196,15 @@ For bare-metal or VM deployments:
 
 ```bash
 # Download the agent binary
-curl -o /usr/local/bin/tfc-agent \
-  https://releases.hashicorp.com/tfc-agent/1.15.0/tfc-agent_1.15.0_linux_amd64.zip
+TFC_AGENT_VERSION="1.28.10"
+
+curl -fsSLo /tmp/tfc-agent.zip \
+  "https://releases.hashicorp.com/tfc-agent/${TFC_AGENT_VERSION}/tfc-agent_${TFC_AGENT_VERSION}_linux_amd64.zip"
 
 # Unzip and make executable
-unzip /usr/local/bin/tfc-agent -d /usr/local/bin/
-chmod +x /usr/local/bin/tfc-agent
+sudo unzip -o /tmp/tfc-agent.zip -d /usr/local/bin/
+sudo chmod +x /usr/local/bin/tfc-agent /usr/local/bin/tfc-agent-core
+id -u tfc-agent >/dev/null 2>&1 || sudo useradd --system --create-home --shell /usr/sbin/nologin tfc-agent
 ```
 
 Create the systemd service file:
