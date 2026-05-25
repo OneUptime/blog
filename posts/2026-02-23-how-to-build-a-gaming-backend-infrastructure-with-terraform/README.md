@@ -36,7 +36,7 @@ Start with Cognito for player sign-up and login.
 resource "aws_cognito_user_pool" "players" {
   name = "game-players"
 
-  # Allow email or username login
+  # Use email as the username
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
@@ -134,7 +134,7 @@ resource "aws_dynamodb_table" "leaderboard" {
   name         = "leaderboard"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "leaderboardId"
-  range_key    = "score"
+  range_key    = "playerId"
 
   attribute {
     name = "leaderboardId"
@@ -152,9 +152,15 @@ resource "aws_dynamodb_table" "leaderboard" {
   }
 
   global_secondary_index {
+    name            = "leaderboard-score-index"
+    hash_key        = "leaderboardId"
+    range_key       = "score"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
     name            = "playerId-index"
     hash_key        = "playerId"
-    range_key       = "score"
     projection_type = "ALL"
   }
 
@@ -235,6 +241,7 @@ resource "aws_elasticache_replication_group" "game" {
   replication_group_id = "game-state"
   description          = "Redis cluster for game state management"
 
+  engine               = "redis"
   node_type            = "cache.r6g.large"
   num_cache_clusters   = 3
   engine_version       = "7.0"
@@ -282,87 +289,96 @@ resource "aws_gamelift_build" "game_server" {
 }
 
 # GameLift fleet
-resource "aws_gamelift_fleet" "main" {
-  build_id    = aws_gamelift_build.game_server.id
-  name        = "game-server-fleet"
-  description = "Main game server fleet"
+resource "awscc_gamelift_fleet" "main" {
+  build_id     = aws_gamelift_build.game_server.id
+  name         = "game-server-fleet"
+  description  = "Main game server fleet"
+  compute_type = "EC2"
 
   ec2_instance_type = "c5.large"
   fleet_type        = "ON_DEMAND"
+  apply_capacity    = "ON_CREATE_AND_UPDATE_WITH_AUTOSCALING"
 
-  runtime_configuration {
+  runtime_configuration = {
     game_session_activation_timeout_seconds = 300
     max_concurrent_game_session_activations = 5
 
-    server_process {
-      concurrent_executions = 10
-      launch_path           = "/local/game/server"
-      parameters            = "-port 7777 -log"
+    server_processes = [
+      {
+        concurrent_executions = 10
+        launch_path           = "/local/game/server"
+        parameters            = "-port 7777 -log"
+      }
+    ]
+  }
+
+  ec2_inbound_permissions = [
+    {
+      from_port = 7777
+      to_port   = 7877
+      ip_range  = "0.0.0.0/0"
+      protocol  = "UDP"
+    },
+    {
+      from_port = 7777
+      to_port   = 7877
+      ip_range  = "0.0.0.0/0"
+      protocol  = "TCP"
     }
-  }
+  ]
 
-  ec2_inbound_permission {
-    from_port = 7777
-    to_port   = 7877
-    ip_range  = "0.0.0.0/0"
-    protocol  = "UDP"
-  }
-
-  ec2_inbound_permission {
-    from_port = 7777
-    to_port   = 7877
-    ip_range  = "0.0.0.0/0"
-    protocol  = "TCP"
-  }
-
-  resource_creation_limit_policy {
+  resource_creation_limit_policy = {
     new_game_sessions_per_creator = 5
     policy_period_in_minutes      = 15
   }
 
-  tags = {
-    Environment = var.environment
-  }
-}
-
-# Auto-scaling for game fleet
-resource "aws_gamelift_fleet" "scaling_target" {
-  # Scaling is configured through GameLift API
-  # This is typically done via aws_appautoscaling_target
-}
-
-resource "aws_appautoscaling_target" "gamelift" {
-  service_namespace  = "gamelift"
-  resource_id        = "fleet/${aws_gamelift_fleet.main.id}"
-  scalable_dimension = "gamelift:fleet:DesiredEC2Instances"
-  min_capacity       = 2
-  max_capacity       = 50
-}
-
-resource "aws_appautoscaling_policy" "gamelift" {
-  name               = "game-fleet-scaling"
-  policy_type        = "TargetTrackingScaling"
-  service_namespace  = aws_appautoscaling_target.gamelift.service_namespace
-  resource_id        = aws_appautoscaling_target.gamelift.resource_id
-  scalable_dimension = aws_appautoscaling_target.gamelift.scalable_dimension
-
-  target_tracking_scaling_policy_configuration {
-    target_value = 70  # Target 70% available game sessions
-
-    predefined_metric_specification {
-      predefined_metric_type = "PercentAvailableGameSessions"
+  locations = [
+    {
+      location = var.aws_region
+      location_capacity = {
+        min_size              = 2
+        max_size              = 50
+        desired_ec2_instances = 2
+      }
     }
+  ]
 
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
-  }
+  scaling_policies = [
+    {
+      name        = "game-fleet-scaling"
+      policy_type = "TargetBased"
+      metric_name = "PercentAvailableGameSessions"
+
+      target_configuration = {
+        target_value = 20 # Keep 20% of game session capacity available
+      }
+    }
+  ]
+
+  tags = [
+    {
+      key   = "Environment"
+      value = var.environment
+    }
+  ]
 }
 
-# Matchmaking configuration
-resource "aws_gamelift_matchmaking_configuration" "ranked" {
+resource "aws_gamelift_game_session_queue" "main" {
+  name               = "main-game-session-queue"
+  timeout_in_seconds = 60
+
+  destinations = [
+    awscc_gamelift_fleet.main.fleet_arn,
+  ]
+}
+
+# Matchmaking configuration through the AWS Cloud Control provider
+resource "awscc_gamelift_matchmaking_configuration" "ranked" {
   name                    = "ranked-match"
   game_session_queue_arns = [aws_gamelift_game_session_queue.main.arn]
-  rule_set_name           = aws_gamelift_matchmaking_rule_set.ranked.name
+  rule_set_name           = awscc_gamelift_matchmaking_rule_set.ranked.id
+
+  flex_match_mode = "WITH_QUEUE"
 
   acceptance_required        = true
   acceptance_timeout_seconds = 30
@@ -371,17 +387,19 @@ resource "aws_gamelift_matchmaking_configuration" "ranked" {
 
   additional_player_count = 0
 
-  game_property {
-    key   = "gameMode"
-    value = "ranked"
-  }
+  game_properties = [
+    {
+      key   = "gameMode"
+      value = "ranked"
+    }
+  ]
 }
 
-resource "aws_gamelift_matchmaking_rule_set" "ranked" {
+resource "awscc_gamelift_matchmaking_rule_set" "ranked" {
   name = "ranked-rules"
 
   rule_set_body = jsonencode({
-    name               = "ranked-matchmaking"
+    name                = "ranked-matchmaking"
     ruleLanguageVersion = "1.0"
     playerAttributes = [{
       name    = "skill"
@@ -394,11 +412,11 @@ resource "aws_gamelift_matchmaking_rule_set" "ranked" {
       maxPlayers = 10
     }]
     rules = [{
-      name        = "skill-range"
-      type        = "distance"
-      measurements = ["teams[players].players.attributes[skill]"]
+      name           = "skill-range"
+      type           = "distance"
+      measurements   = ["teams[players].players.attributes[skill]"]
       referenceValue = "avg(teams[players].players.attributes[skill])"
-      maxDistance  = 200
+      maxDistance    = 200
     }]
     expansions = [{
       target = "rules[skill-range].maxDistance"
@@ -477,7 +495,7 @@ resource "aws_cloudwatch_dashboard" "game" {
         properties = {
           title   = "Active Game Sessions"
           metrics = [
-            ["AWS/GameLift", "ActiveGameSessions", "FleetId", aws_gamelift_fleet.main.id]
+            ["AWS/GameLift", "ActiveGameSessions", "FleetId", awscc_gamelift_fleet.main.fleet_id]
           ]
           period = 60
           stat   = "Average"
@@ -492,7 +510,7 @@ resource "aws_cloudwatch_dashboard" "game" {
         properties = {
           title   = "Active Players"
           metrics = [
-            ["AWS/GameLift", "CurrentPlayerSessions", "FleetId", aws_gamelift_fleet.main.id]
+            ["AWS/GameLift", "CurrentPlayerSessions", "FleetId", awscc_gamelift_fleet.main.fleet_id]
           ]
           period = 60
           stat   = "Sum"
@@ -507,12 +525,16 @@ resource "aws_cloudwatch_metric_alarm" "match_wait" {
   alarm_name          = "high-matchmaking-wait"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "MatchAcceptanceTime"
+  metric_name         = "TimeToMatch"
   namespace           = "AWS/GameLift"
   period              = 300
   statistic           = "Average"
   threshold           = 60  # 60 seconds
   alarm_actions       = [aws_sns_topic.game_alerts.arn]
+
+  dimensions = {
+    ConfigurationName = awscc_gamelift_matchmaking_configuration.ranked.name
+  }
 }
 ```
 
