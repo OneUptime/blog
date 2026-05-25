@@ -14,19 +14,19 @@ The MongoDB Atlas Terraform provider covers cluster management, database users, 
 
 ## Prerequisites
 
-- Terraform 1.0 or later
+- Terraform 1.9 or later
 - A MongoDB Atlas account
 - An Atlas organization with a project (or the ability to create one)
-- An Atlas API key pair (public and private key)
+- Atlas service account credentials or an API key pair (public and private key)
 
 ## Creating API Keys
 
 1. Log in to MongoDB Atlas
 2. Go to Organization Settings > Access Manager > API Keys
 3. Click Create API Key
-4. Assign the appropriate role (Organization Project Creator for full access)
+4. Assign the appropriate role (Organization Owner if you want the key to manage all resources in this guide)
 5. Save both the Public Key and Private Key
-6. Whitelist the IP address where Terraform will run
+6. Add the IP address where Terraform will run to the API access list
 
 ## Declaring the Provider
 
@@ -34,12 +34,12 @@ The MongoDB Atlas Terraform provider covers cluster management, database users, 
 # versions.tf - Declare the MongoDB Atlas provider
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.9"
 
   required_providers {
     mongodbatlas = {
       source  = "mongodb/mongodbatlas"
-      version = "~> 1.15"
+      version = "~> 2.0"
     }
   }
 }
@@ -70,8 +70,8 @@ variable "atlas_private_key" {
 
 ```bash
 # Set credentials via environment variables
-export MONGODB_ATLAS_PUBLIC_KEY="your-public-key"
-export MONGODB_ATLAS_PRIVATE_KEY="your-private-key"
+export MONGODB_ATLAS_PUBLIC_API_KEY="your-public-key"
+export MONGODB_ATLAS_PRIVATE_API_KEY="your-private-key"
 ```
 
 ```hcl
@@ -106,15 +106,26 @@ variable "atlas_org_id" {
 
 ```hcl
 # Create a free tier cluster (M0)
-resource "mongodbatlas_cluster" "free" {
-  project_id = mongodbatlas_project.app.id
-  name       = "dev-cluster"
+resource "mongodbatlas_advanced_cluster" "free" {
+  project_id   = mongodbatlas_project.app.id
+  name         = "dev-cluster"
+  cluster_type = "REPLICASET"
 
-  # Free tier configuration
-  provider_name               = "TENANT"
-  backing_provider_name       = "AWS"
-  provider_region_name        = "US_EAST_1"
-  provider_instance_size_name = "M0"
+  replication_specs = [
+    {
+      region_configs = [
+        {
+          electable_specs = {
+            instance_size = "M0"
+          }
+          provider_name         = "TENANT"
+          backing_provider_name = "AWS"
+          region_name           = "US_EAST_1"
+          priority              = 7
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -122,43 +133,46 @@ resource "mongodbatlas_cluster" "free" {
 
 ```hcl
 # Create a dedicated cluster
-resource "mongodbatlas_cluster" "production" {
-  project_id = mongodbatlas_project.app.id
-  name       = "production"
+resource "mongodbatlas_advanced_cluster" "production" {
+  project_id           = mongodbatlas_project.app.id
+  name                 = "production"
+  cluster_type         = "REPLICASET"
+  use_effective_fields = true
 
-  # Cluster tier
-  provider_name               = "AWS"
-  provider_region_name        = "US_EAST_1"
-  provider_instance_size_name = "M30"
+  replication_specs = [
+    {
+      region_configs = [
+        {
+          electable_specs = {
+            instance_size = "M30"
+            node_count    = 3
+            disk_size_gb  = 100
+          }
 
-  # Disk configuration
-  disk_size_gb                = 100
-  auto_scaling_disk_gb_enabled = true
+          auto_scaling = {
+            disk_gb_enabled            = true
+            compute_enabled            = true
+            compute_scale_down_enabled = true
+            compute_min_instance_size  = "M30"
+            compute_max_instance_size  = "M50"
+          }
 
-  # Replication configuration
-  replication_specs {
-    num_shards = 1
-
-    regions_config {
-      region_name     = "US_EAST_1"
-      electable_nodes = 3
-      priority        = 7
-      read_only_nodes = 0
+          provider_name = "AWS"
+          region_name   = "US_EAST_1"
+          priority      = 7
+        }
+      ]
     }
-  }
+  ]
 
   # MongoDB version
   mongo_db_major_version = "7.0"
 
   # Backup
-  cloud_backup = true
-
-  # Auto-scaling
-  auto_scaling_compute_enabled                    = true
-  auto_scaling_compute_scale_down_enabled         = true
+  backup_enabled = true
 
   # Maintenance window
-  advanced_configuration {
+  advanced_configuration = {
     javascript_enabled           = false
     minimum_enabled_tls_protocol = "TLS1_2"
     no_table_scan                = false
@@ -170,44 +184,53 @@ resource "mongodbatlas_cluster" "production" {
 
 ```hcl
 # Create a multi-region cluster for high availability
-resource "mongodbatlas_cluster" "global" {
-  project_id = mongodbatlas_project.app.id
-  name       = "global-cluster"
-
-  provider_name               = "AWS"
-  provider_instance_size_name = "M30"
-
+resource "mongodbatlas_advanced_cluster" "global" {
+  project_id   = mongodbatlas_project.app.id
+  name         = "global-cluster"
   cluster_type = "REPLICASET"
 
-  replication_specs {
-    num_shards = 1
-
-    # Primary region
-    regions_config {
-      region_name     = "US_EAST_1"
-      electable_nodes = 3
-      priority        = 7
-      read_only_nodes = 0
+  replication_specs = [
+    {
+      region_configs = [
+        {
+          # Primary region
+          electable_specs = {
+            instance_size = "M30"
+            node_count    = 3
+          }
+          provider_name = "AWS"
+          region_name   = "US_EAST_1"
+          priority      = 7
+        },
+        {
+          # Secondary region with a read-only node
+          electable_specs = {
+            instance_size = "M30"
+            node_count    = 2
+          }
+          read_only_specs = {
+            instance_size = "M30"
+            node_count    = 1
+          }
+          provider_name = "AWS"
+          region_name   = "EU_WEST_1"
+          priority      = 6
+        },
+        {
+          # Read-only region in APAC
+          read_only_specs = {
+            instance_size = "M30"
+            node_count    = 1
+          }
+          provider_name = "AWS"
+          region_name   = "AP_SOUTHEAST_1"
+          priority      = 0
+        }
+      ]
     }
+  ]
 
-    # Read replica in EU
-    regions_config {
-      region_name     = "EU_WEST_1"
-      electable_nodes = 2
-      priority        = 6
-      read_only_nodes = 1
-    }
-
-    # Read replica in APAC
-    regions_config {
-      region_name     = "AP_SOUTHEAST_1"
-      electable_nodes = 0
-      priority        = 0
-      read_only_nodes = 1
-    }
-  }
-
-  cloud_backup = true
+  backup_enabled = true
 }
 ```
 
@@ -232,7 +255,7 @@ resource "mongodbatlas_database_user" "app" {
   }
 
   scopes {
-    name = mongodbatlas_cluster.production.name
+    name = mongodbatlas_advanced_cluster.production.name
     type = "CLUSTER"
   }
 }
@@ -267,7 +290,7 @@ resource "mongodbatlas_database_user" "iam_user" {
 
 ## Network Access
 
-### IP Whitelist
+### IP Access List
 
 ```hcl
 # Allow access from a specific IP
@@ -298,7 +321,7 @@ resource "mongodbatlas_project_ip_access_list" "allow_all" {
 # Set up VPC peering with AWS
 resource "mongodbatlas_network_peering" "aws" {
   project_id             = mongodbatlas_project.app.id
-  container_id           = mongodbatlas_cluster.production.container_id
+  container_id           = one(values(mongodbatlas_advanced_cluster.production.replication_specs[0].container_id))
   provider_name          = "AWS"
   accepter_region_name   = "us-east-1"
   aws_account_id         = var.aws_account_id
@@ -320,7 +343,7 @@ resource "aws_vpc_peering_connection_accepter" "atlas" {
 resource "mongodbatlas_privatelink_endpoint" "aws" {
   project_id    = mongodbatlas_project.app.id
   provider_name = "AWS"
-  region        = "us-east-1"
+  region        = "US_EAST_1"
 }
 
 # Create the AWS VPC endpoint
@@ -347,7 +370,7 @@ resource "mongodbatlas_privatelink_endpoint_service" "aws" {
 # Configure a backup schedule
 resource "mongodbatlas_cloud_backup_schedule" "production" {
   project_id   = mongodbatlas_project.app.id
-  cluster_name = mongodbatlas_cluster.production.name
+  cluster_name = mongodbatlas_advanced_cluster.production.name
 
   reference_hour_of_day    = 3   # 3 AM UTC
   reference_minute_of_hour = 0
@@ -368,7 +391,7 @@ resource "mongodbatlas_cloud_backup_schedule" "production" {
 
   # Weekly snapshots
   policy_item_weekly {
-    frequency_interval = 1  # Sunday
+    frequency_interval = 7  # Sunday
     retention_unit     = "weeks"
     retention_value    = 12
   }
@@ -413,12 +436,12 @@ resource "mongodbatlas_alert_configuration" "high_cpu" {
 ```hcl
 # Connection string outputs
 output "connection_string" {
-  value     = mongodbatlas_cluster.production.connection_strings[0].standard_srv
+  value     = mongodbatlas_advanced_cluster.production.connection_strings[0].standard_srv
   sensitive = true
 }
 
 output "cluster_state" {
-  value = mongodbatlas_cluster.production.state_name
+  value = mongodbatlas_advanced_cluster.production.state_name
 }
 ```
 
