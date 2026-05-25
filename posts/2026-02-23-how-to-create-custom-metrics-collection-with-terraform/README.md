@@ -119,11 +119,6 @@ resource "aws_cloudwatch_log_metric_filter" "custom" {
     namespace     = each.value.namespace
     value         = "1"
     default_value = each.value.default_value
-
-    # Add dimensions for filtering
-    dimensions = {
-      Environment = var.environment
-    }
   }
 }
 ```
@@ -303,10 +298,6 @@ resource "aws_cloudwatch_metric_alarm" "custom" {
   threshold           = each.value.threshold
   alarm_description   = each.value.description
 
-  dimensions = {
-    Environment = var.environment
-  }
-
   alarm_actions = [aws_sns_topic.metric_alerts.arn]
   ok_actions    = [aws_sns_topic.metric_alerts.arn]
 }
@@ -326,7 +317,7 @@ Composite alarms combine multiple metric alarms to reduce alert noise:
 resource "aws_cloudwatch_composite_alarm" "service_degradation" {
   alarm_name = "service-degradation-${var.environment}"
 
-  # Trigger when both error rate AND latency are high
+  # Trigger when both API errors are high AND order rate is low
   alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.custom["high_api_errors"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.custom["low_order_rate"].alarm_name})"
 
   alarm_description = "Multiple indicators suggest service degradation"
@@ -371,8 +362,8 @@ resource "aws_cloudwatch_dashboard" "custom_metrics" {
         properties = {
           title = "Business Metrics"
           metrics = [
-            ["Custom/Business", "OrdersCompleted", "Environment", var.environment, { label = "Orders" }],
-            ["Custom/Business", "PaymentsProcessed", "Environment", var.environment, { label = "Payments" }]
+            ["Custom/Business", "OrdersCompleted", { label = "Orders" }],
+            ["Custom/Business", "PaymentsProcessed", { label = "Payments" }]
           ]
           period = 300
           stat   = "Sum"
@@ -389,8 +380,8 @@ resource "aws_cloudwatch_dashboard" "custom_metrics" {
         properties = {
           title = "Application Health"
           metrics = [
-            ["Custom/Application", "APIErrors", "Environment", var.environment, { label = "API Errors", color = "#d62728" }],
-            ["Custom/Application", "SlowQueries", "Environment", var.environment, { label = "Slow Queries", color = "#ff7f0e" }]
+            ["Custom/Application", "APIErrors", { label = "API Errors", color = "#d62728" }],
+            ["Custom/Application", "SlowQueries", { label = "Slow Queries", color = "#ff7f0e" }]
           ]
           period = 300
           stat   = "Sum"
