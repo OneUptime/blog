@@ -21,6 +21,8 @@ resource "aws_s3_bucket" "cur" {
   bucket = "company-cost-reports"
 }
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket_policy" "cur" {
   bucket = aws_s3_bucket.cur.id
 
@@ -32,12 +34,24 @@ resource "aws_s3_bucket_policy" "cur" {
         Principal = { Service = "billingreports.amazonaws.com" }
         Action    = ["s3:GetBucketAcl", "s3:GetBucketPolicy"]
         Resource  = aws_s3_bucket.cur.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn"     = "arn:aws:cur:us-east-1:${data.aws_caller_identity.current.account_id}:definition/*"
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
       {
         Effect = "Allow"
         Principal = { Service = "billingreports.amazonaws.com" }
         Action   = "s3:PutObject"
         Resource = "${aws_s3_bucket.cur.arn}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn"     = "arn:aws:cur:us-east-1:${data.aws_caller_identity.current.account_id}:definition/*"
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       }
     ]
   })
@@ -128,11 +142,18 @@ resource "aws_iam_role_policy" "glue_s3" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:GetObject", "s3:PutObject"]
-      Resource = "${aws_s3_bucket.cur.arn}/*"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.cur.arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.cur.arn
+      }
+    ]
   })
 }
 ```
@@ -217,9 +238,8 @@ resource "google_bigquery_table" "daily_costs" {
         DATE(usage_start_time) as date,
         service.description as service,
         SUM(cost) as total_cost,
-        SUM(credits.amount) as total_credits
+        SUM((SELECT IFNULL(SUM(c.amount), 0) FROM UNNEST(credits) as c)) as total_credits
       FROM `${var.project_id}.billing_data.gcp_billing_export_v1_*`
-      LEFT JOIN UNNEST(credits) as credits
       GROUP BY date, service
       ORDER BY date DESC, total_cost DESC
     SQL
@@ -228,9 +248,9 @@ resource "google_bigquery_table" "daily_costs" {
 }
 ```
 
-## QuickSight Dashboard for AWS Costs
+## QuickSight Data Source for AWS Costs
 
-Provision a QuickSight dashboard for cost visualization:
+Provision a QuickSight data source for cost visualization:
 
 ```hcl
 # QuickSight data source
