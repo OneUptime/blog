@@ -75,7 +75,7 @@ When Terraform applies changes, it follows this process:
 2. **Waits for confirmation** (if no saved plan and no `-auto-approve`)
 3. **Creates a dependency graph** of all resources and changes
 4. **Executes operations in parallel** respecting dependencies
-5. **Updates the state file** after each successful operation
+5. **Updates the state file** with the changes it made
 6. **Reports progress** in real-time
 7. **Displays outputs** after all operations complete
 
@@ -171,16 +171,16 @@ If another process has the state locked, Terraform waits instead of immediately 
 
 ### Partial Applies
 
-If `terraform apply` fails partway through, some resources may have been created while others failed. This is normal and safe because:
+If `terraform apply` fails partway through, some resources may have been created while others failed. Terraform does not automatically roll back a partially completed apply, but it does record changes it knows completed successfully:
 
 - Successfully created resources are recorded in the state
-- Failed resources are not in the state
-- Running `terraform apply` again retries only the failed operations
+- Failed or uncertain operations may require cleanup or import
+- Running `terraform apply` again retries the changes still needed to reach the desired state
 
 ```bash
 # After a partial failure, just re-run apply
 terraform apply
-# Terraform will only attempt the operations that failed
+# Terraform will plan and attempt the remaining changes
 ```
 
 ### State Lock Errors
@@ -188,7 +188,7 @@ terraform apply
 If a previous apply crashed without releasing the state lock:
 
 ```bash
-# Check the lock status
+# Release a stuck lock using the lock ID from the error message
 terraform force-unlock LOCK_ID
 ```
 
@@ -334,10 +334,10 @@ terraform destroy -target=aws_instance.web
 
 ### Restore from State Backup
 
-If things go really wrong, Terraform keeps a `terraform.tfstate.backup` of the previous state:
+If you use the local backend, Terraform may keep a `terraform.tfstate.backup` of the previous local state. For remote backends, use your backend's versioning or backup process instead:
 
 ```bash
-# Restore previous state (use with extreme caution)
+# Restore previous local state (use with extreme caution)
 cp terraform.tfstate.backup terraform.tfstate
 terraform apply
 ```
