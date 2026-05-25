@@ -8,7 +8,7 @@ Description: Learn how to configure encryption at rest for AWS databases using T
 
 ---
 
-Encryption at rest protects your data by encrypting it when it is stored on disk. For AWS managed database services, this means that the underlying storage, automated backups, snapshots, and read replicas are all encrypted. Many compliance frameworks require encryption at rest, making it a standard practice for production databases. In this guide, we will cover how to configure encryption at rest across all major AWS database services using Terraform.
+Encryption at rest protects your data by encrypting it when it is stored on disk. For many AWS managed database services, this means that the underlying storage, automated backups, snapshots, and read replicas are all encrypted. Many compliance frameworks require encryption at rest, making it a standard practice for production databases. In this guide, we will cover how to configure encryption at rest across several major AWS database services using Terraform.
 
 ## Understanding Encryption at Rest
 
@@ -25,7 +25,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -97,7 +97,7 @@ data "aws_caller_identity" "current" {}
 resource "aws_db_instance" "encrypted_postgres" {
   identifier     = "encrypted-postgres"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15.17"
   instance_class = "db.r6g.large"
 
   allocated_storage     = 100
@@ -142,7 +142,7 @@ variable "db_password" {
 resource "aws_rds_cluster" "encrypted_aurora" {
   cluster_identifier = "encrypted-aurora"
   engine             = "aurora-postgresql"
-  engine_version     = "15.4"
+  engine_version     = "15.17"
   database_name      = "appdb"
   master_username    = "dbadmin"
   master_password    = var.db_password
@@ -184,7 +184,7 @@ resource "aws_rds_cluster_instance" "encrypted_instances" {
 ## Encrypting DynamoDB Tables
 
 ```hcl
-# DynamoDB with AWS-managed key (default, no additional cost)
+# DynamoDB with AWS-owned key (default, no additional cost)
 resource "aws_dynamodb_table" "default_encrypted" {
   name         = "default-encrypted-table"
   billing_mode = "PAY_PER_REQUEST"
@@ -195,10 +195,7 @@ resource "aws_dynamodb_table" "default_encrypted" {
     type = "S"
   }
 
-  # Default encryption with AWS-owned key (enabled by default)
-  server_side_encryption {
-    enabled = true
-  }
+  # DynamoDB encryption at rest is enabled by default with an AWS-owned key
 
   tags = {
     Environment = "production"
@@ -296,7 +293,7 @@ resource "aws_docdb_cluster" "encrypted_docdb" {
 resource "aws_neptune_cluster" "encrypted_neptune" {
   cluster_identifier = "encrypted-neptune"
   engine             = "neptune"
-  engine_version     = "1.3.1.0"
+  engine_version     = "1.4.7.0"
 
   # Enable encryption
   storage_encrypted = true
@@ -366,23 +363,53 @@ resource "aws_kms_alias" "service_key_aliases" {
 ## Monitoring KMS Key Usage
 
 ```hcl
-# CloudTrail for KMS key usage auditing
-resource "aws_cloudwatch_metric_alarm" "kms_key_deletion" {
-  alarm_name          = "kms-key-pending-deletion"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "NumberOfMessagesPublished"
-  namespace           = "AWS/SNS"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Alert when KMS key deletion is scheduled"
-
-  alarm_actions = [aws_sns_topic.security_alerts.arn]
-}
-
 resource "aws_sns_topic" "security_alerts" {
   name = "database-security-alerts"
+}
+
+# EventBridge alert when deletion is scheduled for the database KMS key
+resource "aws_cloudwatch_event_rule" "kms_key_deletion_scheduled" {
+  name        = "kms-key-deletion-scheduled"
+  description = "Alert when deletion is scheduled for the database KMS key"
+
+  event_pattern = jsonencode({
+    source      = ["aws.kms"]
+    detail-type = ["AWS API Call via CloudTrail"]
+    detail = {
+      eventSource = ["kms.amazonaws.com"]
+      eventName   = ["ScheduleKeyDeletion"]
+      requestParameters = {
+        keyId = [
+          aws_kms_key.database_key.key_id,
+          aws_kms_key.database_key.arn
+        ]
+      }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "kms_key_deletion_scheduled" {
+  rule      = aws_cloudwatch_event_rule.kms_key_deletion_scheduled.name
+  target_id = "SendToSNS"
+  arn       = aws_sns_topic.security_alerts.arn
+}
+
+resource "aws_sns_topic_policy" "allow_eventbridge" {
+  arn = aws_sns_topic.security_alerts.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sns:Publish"
+        Resource = aws_sns_topic.security_alerts.arn
+      }
+    ]
+  })
 }
 ```
 
