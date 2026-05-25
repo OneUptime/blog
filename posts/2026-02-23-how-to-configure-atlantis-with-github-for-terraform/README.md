@@ -59,12 +59,15 @@ Permissions:
     - Issues: Read & Write
     - Pull Requests: Read & Write
     - Commit statuses: Read & Write
+    - Webhooks: Read & Write
+    - Actions: Read-only
   Organization:
     - Members: Read-only
 
 Subscribe to events:
   - Issue comments
   - Pull requests
+  - Pull request review comments
   - Pull request reviews
   - Push
 ```
@@ -97,7 +100,9 @@ Secret: (same secret used in Atlantis config)
 Events:
   - Issue comments
   - Pull requests
+  - Pull request review comments
   - Pull request reviews
+  - Pull request synchronized
   - Pushes
 ```
 
@@ -116,12 +121,12 @@ Required settings:
   - Require a pull request before merging
   - Require approvals: 1 (or more)
   - Require status checks to pass before merging
-    - Add "atlantis/plan" as a required check
+    - Add the exact Atlantis plan checks you need, such as "atlantis/plan: production-infrastructure"
   - Require branches to be up to date before merging
   - Do not allow bypassing the above settings
 ```
 
-This ensures no one can push directly to main without going through the Atlantis plan/apply workflow.
+This ensures no one can push directly to main without going through the Atlantis plan and review workflow.
 
 ## Repository Configuration
 
@@ -162,6 +167,8 @@ projects:
       - mergeable   # Must pass all status checks
 ```
 
+If you set `apply_requirements` in repository-level `atlantis.yaml`, allow that restricted key in the server-side `repos.yaml` with `allowed_overrides: [apply_requirements]`.
+
 ## Custom Workflows with Policy Checks
 
 Add security scanning and linting before plan:
@@ -179,8 +186,8 @@ workflows:
         - plan
         # Run conftest for OPA policy validation
         - run: |
-            terraform show -json $PLANFILE | \
-              conftest test --policy policies/ -
+            terraform show -json $PLANFILE > $SHOWFILE
+            conftest test --policy policies/ $SHOWFILE
     apply:
       steps:
         - apply
@@ -207,14 +214,16 @@ projects:
     workflow: development
 ```
 
+Repository-defined custom workflows require server-side `allowed_overrides: [workflow]` and `allow_custom_workflows: true`.
+
 ## GitHub Status Checks
 
 Atlantis creates status checks on PRs for each project:
 
 ```text
-atlantis/plan: environments/dev        - Success
-atlantis/plan: environments/production - Success
-atlantis/apply: environments/dev       - Pending (waiting for apply)
+atlantis/plan: dev-infrastructure        - Success
+atlantis/plan: production-infrastructure - Success
+atlantis/apply: dev-infrastructure       - Pending (waiting for apply)
 ```
 
 You can require specific status checks in branch protection:
@@ -223,14 +232,22 @@ You can require specific status checks in branch protection:
 # Use the GitHub API to configure required status checks
 gh api repos/myorg/infrastructure/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["atlantis/plan: environments/production"]}' \
+  --field 'required_status_checks[strict]=true' \
+  --field 'required_status_checks[contexts][]=atlantis/plan: production-infrastructure' \
   --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1}'
+  --field 'required_pull_request_reviews[required_approving_review_count]=1' \
+  --field restrictions=null
 ```
 
 ## Team-Based Access Control
 
 Restrict who can run `atlantis apply` based on GitHub teams:
+
+```bash
+atlantis server \
+  --gh-team-allowlist="*:plan,platform-team:apply,sre-team:apply" \
+  --repo-allowlist="github.com/myorg/*"
+```
 
 ```yaml
 # repos.yaml (server-side configuration)
@@ -240,51 +257,55 @@ repos:
       - approved
       - mergeable
 
-    # Only members of the platform-team can apply to production
+    # Keep repo-level overrides locked down
     allowed_overrides: []
     allow_custom_workflows: false
 ```
 
-For finer control, use a custom workflow with a team check:
+For finer control per project, use Atlantis' external authorization command:
 
 ```yaml
-workflows:
-  production:
-    apply:
-      steps:
-        # Check if the user is in the allowed team
-        - run: |
-            ALLOWED_TEAMS="platform-team sre-team"
-            USER_TEAMS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/orgs/myorg/members/$PULL_AUTHOR/teams" | \
-              jq -r '.[].slug')
+# repos.yaml (server-side configuration)
+team_authz:
+  command: "/scripts/atlantis-team-authz.sh"
+```
 
-            AUTHORIZED=false
-            for team in $ALLOWED_TEAMS; do
-              if echo "$USER_TEAMS" | grep -q "$team"; then
-                AUTHORIZED=true
-                break
-              fi
-            done
+```bash
+#!/usr/bin/env bash
+COMMAND="$1"
+shift
+REPO="$1"
+shift
+TEAMS="$*"
 
-            if [ "$AUTHORIZED" != "true" ]; then
-              echo "User $PULL_AUTHOR is not authorized to apply to production"
-              exit 1
-            fi
-        - apply
+if [ "$COMMAND" = "apply" ] && [ "$PROJECT_NAME" = "production" ]; then
+  case " $TEAMS " in
+    *" myorg/platform-team "*|*" myorg/sre-team "*)
+      echo "pass"
+      ;;
+    *)
+      echo "user \"$USER_NAME\" is not authorized to apply to production in $REPO"
+      ;;
+  esac
+  exit 0
+fi
+
+echo "pass"
 ```
 
 ## Handling Multiple GitHub Organizations
 
-If you manage infrastructure across multiple GitHub organizations:
+If you use a personal access token across multiple GitHub organizations, include all allowed repositories:
 
 ```bash
 # Atlantis supports multiple VCS hosts
 atlantis server \
-  --gh-app-id=12345 \
-  --gh-app-key-file=/path/to/private-key.pem \
+  --gh-user=atlantis-bot \
+  --gh-token=ghp_xxxxxxxxxxxxxxxxxxxx \
   --repo-allowlist="github.com/myorg/*,github.com/partner-org/shared-infra"
 ```
+
+For GitHub App authentication, run one Atlantis configuration per app installation, or set `--gh-app-installation-id` for the specific installation that instance should use.
 
 ## Exposing Atlantis Securely
 
@@ -317,13 +338,13 @@ spec:
                   number: 80
 ```
 
-For extra security, restrict incoming traffic to GitHub's webhook IP ranges:
+For extra security, restrict incoming traffic to GitHub's current webhook IP ranges from the GitHub Meta API:
 
-```yaml
-# Nginx config to only allow GitHub webhook IPs
-annotations:
-  nginx.ingress.kubernetes.io/whitelist-source-range: "140.82.112.0/20,185.199.108.0/22,192.30.252.0/22"
+```bash
+gh api meta --jq '.hooks | join(",")'
 ```
+
+Use the output for `nginx.ingress.kubernetes.io/whitelist-source-range` and refresh it regularly because GitHub changes these ranges.
 
 ## Troubleshooting Common Issues
 
