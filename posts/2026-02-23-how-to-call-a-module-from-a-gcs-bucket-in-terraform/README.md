@@ -8,13 +8,13 @@ Description: Learn how to store and reference Terraform modules in Google Cloud 
 
 ---
 
-If your organization runs on Google Cloud Platform, storing Terraform modules in Google Cloud Storage (GCS) is a natural choice. Terraform supports GCS as a module source out of the box. You package your module as a zip file, upload it to a GCS bucket, and reference it using the `gcs::` prefix. Google Cloud IAM handles access control, and GCS object versioning gives you an audit trail.
+If your organization runs on Google Cloud Platform, storing Terraform modules in Google Cloud Storage (GCS) is a natural choice. Terraform supports GCS as a module source out of the box. You package your module as a zip file, upload it to a GCS bucket, and reference it using the `gcs::` prefix. Google Cloud IAM handles access control, and GCS object versioning gives you version history for overwritten or deleted module archives.
 
 This guide walks through the entire workflow, from setting up the bucket to referencing modules in your Terraform configurations.
 
 ## How GCS Module Sources Work
 
-Terraform downloads modules from GCS when you use the `gcs::` source prefix. It expects a zip archive containing the module's `.tf` files:
+Terraform downloads modules from GCS when you use the `gcs::` source prefix. It expects an archive, such as a zip file, containing the module's `.tf` files:
 
 ```hcl
 # Basic GCS module source
@@ -69,7 +69,7 @@ resource "google_storage_bucket" "modules" {
   project       = var.project_id
   force_destroy = false
 
-  # Enable versioning for audit trail
+  # Enable versioning for module archive history
   versioning {
     enabled = true
   }
@@ -255,7 +255,7 @@ ZIP_FILE="${TEMP_DIR}/${MODULE_NAME}-${VERSION}.zip"
 # Package the module
 echo "Packaging module ${MODULE_NAME}..."
 cd "$MODULE_DIR"
-zip -r "$ZIP_FILE" *.tf README.md 2>/dev/null
+zip -r "$ZIP_FILE" . -x ".terraform/*" ".git/*"
 cd - > /dev/null
 
 # Check if version already exists
