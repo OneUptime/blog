@@ -8,7 +8,7 @@ Description: Learn how to host and reference Terraform modules stored in AWS S3 
 
 ---
 
-Storing Terraform modules in S3 buckets is a practical choice for organizations that are already invested in AWS and want a simple, private module distribution mechanism. You do not need a Terraform Registry or Git server. Just package your module as a zip file, upload it to S3, and reference it in your configuration. AWS IAM handles authentication, and S3 versioning can handle module versions.
+Storing Terraform modules in S3 buckets is a practical choice for organizations that are already invested in AWS and want a simple, private module distribution mechanism. You do not need a Terraform Registry or Git server. Just package your module as a zip file, upload it to S3, and reference it in your configuration. AWS IAM handles authentication, and S3 versioning can help protect module objects from accidental overwrites or deletions.
 
 This guide covers how to package, upload, and reference S3-hosted modules.
 
@@ -165,19 +165,17 @@ module "vpc" {
 
 ## Authentication
 
-Terraform uses the standard AWS credential chain to authenticate with S3. This means it checks, in order:
+Terraform's module installer checks for AWS credentials to authenticate with S3. This means it checks, in order:
 
 1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-2. Shared credentials file (`~/.aws/credentials`)
-3. AWS config file (`~/.aws/config`)
-4. EC2 instance profile or ECS task role
-5. Other credential sources in the chain
+2. The default profile in the shared credentials file (`~/.aws/credentials`)
+3. EC2 instance profile credentials
 
-For most setups, if you can run `aws s3 ls s3://your-bucket` successfully, Terraform will also be able to download modules from that bucket.
+For most setups, if you can download the object with the same environment or default credentials, Terraform will also be able to download modules from that bucket.
 
 ### IAM Policy for Module Access
 
-Create an IAM policy that grants the minimum required permissions:
+Create an IAM policy that grants permission to download module archives. Add `s3:ListBucket` if users also need to list available module versions:
 
 ```json
 {
@@ -286,7 +284,7 @@ Here is a full configuration using S3-hosted modules:
 ```hcl
 # versions.tf
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -297,10 +295,10 @@ terraform {
 
   # You can even store state in S3
   backend "s3" {
-    bucket         = "myorg-terraform-state"
-    key            = "prod/infrastructure.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "myorg-terraform-state"
+    key          = "prod/infrastructure.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 
@@ -360,7 +358,7 @@ s3://bucket/module-name/v1.1.0.zip   # Minor release
 s3://bucket/module-name/v2.0.0.zip   # Breaking change
 ```
 
-You can also maintain a `latest.zip` symlink for development (though you should never use "latest" in production):
+You can also maintain a `latest.zip` object for development (though you should never use "latest" in production):
 
 ```bash
 # Copy the latest version as "latest" for development use
