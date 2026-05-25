@@ -59,6 +59,7 @@ resource "azurerm_resource_group" "db" {
 ## Generate a Secure Admin Password
 
 Never hardcode passwords in Terraform files. Use the random provider to generate one and store it in Key Vault.
+The generated password is still stored in Terraform state, so keep your state backend encrypted and access-controlled.
 
 ```hcl
 # secrets.tf
@@ -126,7 +127,7 @@ resource "azurerm_mssql_firewall_rule" "azure_services" {
   end_ip_address   = "0.0.0.0"
 }
 
-# Allow a specific office IP range
+# Allow a specific office IP range (replace this documentation-only range with your real office range)
 resource "azurerm_mssql_firewall_rule" "office" {
   name             = "OfficeNetwork"
   server_id        = azurerm_mssql_server.main.id
@@ -134,7 +135,8 @@ resource "azurerm_mssql_firewall_rule" "office" {
   end_ip_address   = "203.0.113.255"
 }
 
-# For production, use VNet service endpoints instead of IP rules
+# For production, use VNet service endpoints instead of IP rules.
+# The target subnet must have the Microsoft.Sql service endpoint enabled.
 resource "azurerm_mssql_virtual_network_rule" "app_subnet" {
   name      = "app-subnet-rule"
   server_id = azurerm_mssql_server.main.id
