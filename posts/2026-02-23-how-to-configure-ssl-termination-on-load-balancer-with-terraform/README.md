@@ -189,7 +189,7 @@ resource "aws_lb_listener" "https" {
   certificate_arn = aws_acm_certificate_validation.main.certificate_arn
 
   # TLS security policy
-  ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  ssl_policy = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
 
   default_action {
     type             = "forward"
@@ -220,17 +220,17 @@ resource "aws_lb_listener" "http_redirect" {
 AWS provides several predefined SSL policies. Here are the recommended options:
 
 ```hcl
-# For maximum security (TLS 1.3 only)
-# ssl_policy = "ELBSecurityPolicy-TLS13-1-3-2021-06"
+# For maximum security (TLS 1.3 only with post-quantum key exchange support)
+# ssl_policy = "ELBSecurityPolicy-TLS13-1-3-PQ-2025-09"
 
-# For TLS 1.2 and 1.3 (recommended for most use cases)
-# ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+# For TLS 1.2 and 1.3 (recommended by AWS for most use cases)
+# ssl_policy = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
 
-# For backward compatibility (supports TLS 1.0+)
+# For legacy backward compatibility (supports TLS 1.0+)
 # ssl_policy = "ELBSecurityPolicy-2016-08"
 
 # FIPS compliant
-# ssl_policy = "ELBSecurityPolicy-TLS13-1-2-FIPS-2023-04"
+# ssl_policy = "ELBSecurityPolicy-TLS13-1-2-FIPS-PQ-2025-09"
 ```
 
 ## Adding Additional Certificates
@@ -250,10 +250,34 @@ resource "aws_acm_certificate" "api" {
   tags = { Name = "api-certificate" }
 }
 
+# Create DNS validation records for the additional certificate
+resource "aws_route53_record" "api_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.api.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.main.zone_id
+}
+
+# Wait for the additional certificate validation
+resource "aws_acm_certificate_validation" "api" {
+  certificate_arn         = aws_acm_certificate.api.arn
+  validation_record_fqdns = [for record in aws_route53_record.api_cert_validation : record.fqdn]
+}
+
 # Add the certificate to the HTTPS listener
 resource "aws_lb_listener_certificate" "api" {
   listener_arn    = aws_lb_listener.https.arn
-  certificate_arn = aws_acm_certificate.api.arn
+  certificate_arn = aws_acm_certificate_validation.api.certificate_arn
 }
 ```
 
