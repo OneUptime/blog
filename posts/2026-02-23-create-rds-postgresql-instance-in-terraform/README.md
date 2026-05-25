@@ -207,8 +207,7 @@ resource "aws_db_instance" "postgres" {
   max_allocated_storage = 500
   storage_type          = "gp3"
   storage_encrypted     = true
-  iops                  = 3000   # gp3 baseline
-  storage_throughput    = 125    # gp3 baseline in MB/s
+  # gp3 provides baseline storage performance at this size
 
   # Database credentials
   db_name  = "myapp"
@@ -308,13 +307,13 @@ After the instance is up, you would connect and run:
 -- Enable commonly used extensions
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- For fuzzy text search
 ```
 
 ## Store Credentials in Secrets Manager
 
-Keep your credentials out of Terraform state as much as possible:
+If you generate the password in Terraform, it remains in Terraform state. Store the connection details in Secrets Manager for applications, and protect your Terraform state carefully:
 
 ```hcl
 # Store the database credentials securely
