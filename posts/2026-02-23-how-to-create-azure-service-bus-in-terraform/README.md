@@ -16,7 +16,7 @@ If you have used simpler queuing systems and hit their limits - messages getting
 
 Service Bus fits scenarios where you need:
 
-- Guaranteed at-least-once or exactly-once delivery
+- At-least-once delivery with duplicate detection for producer retries
 - FIFO ordering within sessions
 - Dead-letter queues for messages that cannot be processed
 - Topic-based pub/sub with filtered subscriptions
@@ -94,7 +94,7 @@ resource "azurerm_servicebus_namespace" "main" {
 
 ## Creating Queues
 
-Queues provide point-to-point communication where each message is consumed by exactly one receiver:
+Queues provide point-to-point communication where each message is delivered to a single competing receiver at a time:
 
 ```hcl
 # Order processing queue with dead-letter and duplicate detection
@@ -189,12 +189,12 @@ resource "azurerm_servicebus_subscription" "billing" {
   max_delivery_count = 10
   lock_duration      = "PT1M"
 
-  # Auto-delete if idle for this duration (0 means never)
+  # Auto-delete if idle for this duration (omit this setting to keep the subscription)
   auto_delete_on_idle = "P30D"
 
-  # Forward dead-lettered messages to a specific queue for analysis
+  # Dead-letter expired messages and messages that fail filter evaluation
   dead_lettering_on_message_expiration          = true
-  dead_lettering_on_filter_evaluation_exception = true
+  dead_lettering_on_filter_evaluation_error     = true
 }
 
 # Subscription for the audit service - only receives specific events
@@ -291,10 +291,10 @@ resource "azurerm_servicebus_topic_authorization_rule" "event_publisher" {
 
 ## Premium Tier with Network Isolation
 
-For production workloads that need dedicated resources and private networking:
+For production workloads that need dedicated resources and network-restricted access:
 
 ```hcl
-# Virtual network for private access
+# Virtual network for restricted access
 resource "azurerm_virtual_network" "main" {
   name                = "vnet-messaging-prod"
   location            = azurerm_resource_group.messaging.location
@@ -307,6 +307,7 @@ resource "azurerm_subnet" "servicebus" {
   resource_group_name  = azurerm_resource_group.messaging.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.1.0/24"]
+  service_endpoints    = ["Microsoft.ServiceBus"]
 }
 
 # Premium namespace with network rules
@@ -317,15 +318,15 @@ resource "azurerm_servicebus_namespace" "premium" {
   sku                 = "Premium"
   capacity            = 1
 
-  # Restrict public network access
-  public_network_access_enabled = false
+  # Allow public endpoint access only from selected networks
+  public_network_access_enabled = true
 
   minimum_tls_version = "1.2"
 
   # Network rule set
   network_rule_set {
     default_action                = "Deny"
-    public_network_access_enabled = false
+    public_network_access_enabled = true
     trusted_services_allowed      = true
 
     # Allow traffic from specific subnet
