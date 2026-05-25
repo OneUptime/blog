@@ -181,14 +181,14 @@ openssl req -x509 -newkey rsa:4096 \
   -days 365 -nodes \
   -subj "/CN=terraform-sp"
 
-# Create PFX file (Azure needs this format)
+# Create a PFX file for Terraform to use
 openssl pkcs12 -export \
   -out terraform-sp.pfx \
   -inkey terraform-sp.key \
   -in terraform-sp.crt \
-  -passout pass:
+  -passout pass:"change-this-password"
 
-# Create the service principal with the certificate
+# Create the service principal with the public certificate
 az ad sp create-for-rbac \
   --name "terraform-sp-cert" \
   --cert @terraform-sp.crt \
@@ -208,6 +208,8 @@ provider "azurerm" {
   subscription_id             = var.azure_subscription_id
 }
 ```
+
+Set `var.certificate_path` to the path of `terraform-sp.pfx` and `var.certificate_password` to the PFX export password.
 
 ## CI/CD Integration Examples
 
