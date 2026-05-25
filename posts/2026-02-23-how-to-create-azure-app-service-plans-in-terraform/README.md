@@ -319,7 +319,7 @@ resource "azurerm_service_plan" "plans" {
   zone_balancing_enabled = each.value.zone_redundant
 
   tags = {
-    Environment = contains(each.key, "prod") ? "production" : "staging"
+    Environment = length(regexall("prod", each.key)) > 0 ? "production" : "staging"
     ManagedBy   = "terraform"
   }
 }
@@ -341,7 +341,7 @@ resource "azurerm_service_plan" "isolated" {
   sku_name            = "I1v2"
 
   # Associate with an App Service Environment
-  # app_service_environment_id = azurerm_app_service_environment_v3.main.id
+  app_service_environment_id = azurerm_app_service_environment_v3.main.id
 
   worker_count = 2
 
