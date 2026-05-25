@@ -53,7 +53,7 @@ The newer Front Door Standard and Premium tiers use a profile-based configuratio
 resource "azurerm_cdn_frontdoor_profile" "main" {
   name                = "fd-production"
   resource_group_name = azurerm_resource_group.frontdoor.name
-  sku_name            = "Premium_AzureFrontDoor"  # Premium includes WAF
+  sku_name            = "Premium_AzureFrontDoor"  # Premium includes managed WAF rules and Bot Manager
 
   tags = {
     environment = "production"
@@ -183,7 +183,7 @@ resource "azurerm_cdn_frontdoor_route" "web_app" {
   patterns_to_match      = ["/*"]
   supported_protocols    = ["Http", "Https"]
 
-  # Link to custom domains and WAF
+  # Link to custom domains
   cdn_frontdoor_custom_domain_ids = [azurerm_cdn_frontdoor_custom_domain.app.id]
 
   cache {
@@ -248,7 +248,7 @@ resource "azurerm_cdn_frontdoor_custom_domain_association" "app" {
 }
 ```
 
-You will also need a CNAME record pointing your domain to the Front Door endpoint. Check out our guide on [creating Azure DNS zones and records in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-azure-dns-zones-and-records-in-terraform/view).
+You will also need a DNS TXT validation record for the custom domain and a CNAME record pointing your domain to the Front Door endpoint. Check out our guide on [creating Azure DNS zones and records in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-azure-dns-zones-and-records-in-terraform/view).
 
 ## WAF Policy
 
@@ -353,10 +353,10 @@ output "frontdoor_profile_id" {
 
 ## Standard vs Premium
 
-- **Standard**: Includes CDN caching, SSL offloading, and basic routing. No WAF support.
-- **Premium**: Everything in Standard plus WAF, Private Link origins, and enhanced analytics.
+- **Standard**: Includes CDN caching, SSL offloading, basic routing, and WAF custom rules.
+- **Premium**: Everything in Standard plus managed WAF rules, Bot Manager, Private Link origins, and enhanced analytics.
 
-If you need WAF protection (and you usually do for production), go with Premium.
+If you need managed WAF rule sets or Bot Manager protection (and you usually do for production), go with Premium.
 
 ## Deployment
 
