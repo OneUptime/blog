@@ -287,11 +287,28 @@ variable "max_iops_threshold" {
 
 ```hcl
 # modules/rds-alarms/main.tf
-variable "db_identifier" { type = string }
-variable "sns_topic_arn" { type = string }
-variable "cpu_threshold" { type = number; default = 80 }
-variable "storage_threshold_gb" { type = number; default = 10 }
-variable "connection_threshold" { type = number; default = 100 }
+variable "db_identifier" {
+  type = string
+}
+
+variable "sns_topic_arn" {
+  type = string
+}
+
+variable "cpu_threshold" {
+  type    = number
+  default = 80
+}
+
+variable "storage_threshold_gb" {
+  type    = number
+  default = 10
+}
+
+variable "connection_threshold" {
+  type    = number
+  default = 100
+}
 
 resource "aws_cloudwatch_metric_alarm" "cpu" {
   alarm_name          = "rds-cpu-${var.db_identifier}"
@@ -341,7 +358,7 @@ resource "aws_cloudwatch_metric_alarm" "connections" {
 
 ## Best Practices
 
-Set storage alarms well before you run out of space since RDS instances become read-only when storage is exhausted. Monitor both read and write latency to catch I/O bottlenecks early. Adjust connection thresholds based on your instance class since smaller instances have lower maximum connections. Use multiple evaluation periods for CPU alarms to avoid alerting on brief query spikes. For read replicas, always monitor replication lag to ensure data consistency.
+Set storage alarms well before you run out of space since RDS instances can become unavailable or enter the `storage-full` state when storage is exhausted. Monitor both read and write latency to catch I/O bottlenecks early. Adjust connection thresholds based on your instance class since smaller instances have lower maximum connections. Use multiple evaluation periods for CPU alarms to avoid alerting on brief query spikes. For read replicas, always monitor replication lag to ensure data consistency.
 
 For complementary monitoring, see our guides on [CloudWatch alarms for Lambda](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-alarms-for-lambda-in-terraform/view) and [CloudWatch metric filters](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-metric-filters-in-terraform/view).
 
