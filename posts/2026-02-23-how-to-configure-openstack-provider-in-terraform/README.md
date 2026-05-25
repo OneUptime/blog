@@ -40,7 +40,7 @@ terraform {
   required_providers {
     openstack = {
       source  = "terraform-provider-openstack/openstack"
-      version = "~> 1.54"
+      version = "~> 3.4"
     }
   }
 }
@@ -235,10 +235,16 @@ resource "openstack_networking_floatingip_v2" "web" {
   pool = "external"
 }
 
+# Look up the instance port
+data "openstack_networking_port_v2" "web" {
+  device_id  = openstack_compute_instance_v2.web.id
+  network_id = openstack_networking_network_v2.app.id
+}
+
 # Associate the floating IP with an instance
-resource "openstack_compute_floatingip_associate_v2" "web" {
+resource "openstack_networking_floatingip_associate_v2" "web" {
   floating_ip = openstack_networking_floatingip_v2.web.address
-  instance_id = openstack_compute_instance_v2.web.id
+  port_id     = data.openstack_networking_port_v2.web.id
 }
 ```
 
@@ -359,7 +365,7 @@ resource "openstack_lb_member_v2" "web" {
 
   pool_id       = openstack_lb_pool_v2.web.id
   address       = openstack_compute_instance_v2.web_cluster[count.index].access_ip_v4
-  protocol_port = 8080
+  protocol_port = 80
   subnet_id     = openstack_networking_subnet_v2.app.id
 }
 
