@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, IAM, Infrastructure as Code, Security, Role
 
-Description: Learn how to attach multiple IAM policies to a single IAM role in Terraform using various approaches including for_each, count, and dynamic policy maps.
+Description: Learn how to attach multiple IAM policies to a single IAM role in Terraform using various approaches including for_each, maps, and reusable modules.
 
 ---
 
@@ -14,7 +14,7 @@ This guide covers all the methods for attaching multiple policies to an IAM role
 
 ## Understanding Policy Attachment in AWS
 
-Before diving into Terraform code, it helps to understand how AWS handles policy attachments. Each IAM role can have up to 10 managed policies attached to it (this limit can be increased). Additionally, a role can have one inline policy per name. There are two main types of policies you can attach:
+Before diving into Terraform code, it helps to understand how AWS handles policy attachments. By default, each IAM role can have up to 10 managed policies attached to it, and this quota can be increased. Additionally, a role can have one inline policy per name. There are two main types of policies you can attach:
 
 - **Managed policies**: Standalone policy objects that can be reused across multiple roles. These can be AWS-managed (created by AWS) or customer-managed (created by you).
 - **Inline policies**: Policies embedded directly in the role. They are deleted when the role is deleted.
@@ -230,37 +230,39 @@ resource "aws_iam_role" "ecs_task_role" {
       Action = "sts:AssumeRole"
     }]
   })
+}
 
-  # Inline policy defined directly on the role
-  inline_policy {
-    name = "task-specific-permissions"
+# Inline policy attached to the role
+resource "aws_iam_role_policy" "task_specific_permissions" {
+  name = "task-specific-permissions"
+  role = aws_iam_role.ecs_task_role.name
 
-    policy = jsonencode({
-      Version = "2012-10-17"
-      Statement = [{
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
-        Resource = "arn:aws:ssm:us-east-1:*:parameter/app/*"
-      }]
-    })
-  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameter"]
+      Resource = "arn:aws:ssm:us-east-1:*:parameter/app/*"
+    }]
+  })
+}
 
-  # You can add multiple inline policies
-  inline_policy {
-    name = "logging-permissions"
+# You can add multiple inline policies
+resource "aws_iam_role_policy" "logging_permissions" {
+  name = "logging-permissions"
+  role = aws_iam_role.ecs_task_role.name
 
-    policy = jsonencode({
-      Version = "2012-10-17"
-      Statement = [{
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ]
-        Resource = "*"
-      }]
-    })
-  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+      ]
+      Resource = "*"
+    }]
+  })
 }
 
 # Also attach managed policies
@@ -317,16 +319,6 @@ resource "aws_iam_role" "this" {
       Action = "sts:AssumeRole"
     }]
   })
-
-  # Dynamically create inline policies
-  dynamic "inline_policy" {
-    for_each = var.inline_policies
-
-    content {
-      name   = inline_policy.key
-      policy = inline_policy.value
-    }
-  }
 }
 
 resource "aws_iam_role_policy_attachment" "managed" {
@@ -334,6 +326,14 @@ resource "aws_iam_role_policy_attachment" "managed" {
 
   role       = aws_iam_role.this.name
   policy_arn = each.value
+}
+
+resource "aws_iam_role_policy" "inline" {
+  for_each = var.inline_policies
+
+  name   = each.key
+  role   = aws_iam_role.this.name
+  policy = each.value
 }
 ```
 
@@ -369,7 +369,7 @@ module "lambda_role" {
 
 1. **Prefer managed policies over inline policies** when the permissions might be reused across multiple roles.
 2. **Use `for_each` instead of `count`** for policy attachments. It handles additions and removals more gracefully.
-3. **Be mindful of the 10-policy limit** per role. If you exceed it, request a limit increase or consolidate policies.
+3. **Be mindful of the default 10-policy limit** per role. If you exceed it, request a quota increase or consolidate policies.
 4. **Name your policies clearly** so that `terraform plan` output is easy to understand.
 5. **Use variables for policy ARNs** to make your configurations reusable across environments.
 
