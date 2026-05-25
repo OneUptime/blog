@@ -38,7 +38,7 @@ terraform {
   required_providers {
     linode = {
       source  = "linode/linode"
-      version = "~> 2.14"
+      version = "~> 3.13"
     }
   }
 }
@@ -87,9 +87,8 @@ resource "linode_instance" "web" {
   # Authorized SSH keys
   authorized_keys = [var.ssh_public_key]
 
-  # Assign to a group for organization
-  group = "production"
-  tags  = ["web", "production"]
+  # Assign tags for organization
+  tags = ["web", "production"]
 
   # Enable backups
   backups_enabled = true
@@ -114,8 +113,8 @@ resource "linode_stackscript" "web_setup" {
   description = "Sets up a web server with Nginx"
   script      = <<-EOT
     #!/bin/bash
-    # <UDF name="hostname" Label="Hostname" />
-    # <UDF name="app_port" Label="Application Port" default="8080" />
+    # <UDF name="hostname" label="Hostname" />
+    # <UDF name="app_port" label="Application Port" default="8080" />
 
     # Set hostname
     hostnamectl set-hostname $HOSTNAME
@@ -125,7 +124,7 @@ resource "linode_stackscript" "web_setup" {
     apt-get install -y nginx
 
     # Configure Nginx as reverse proxy
-    cat > /etc/nginx/sites-available/app <<'NGINX'
+    cat > /etc/nginx/sites-available/app <<NGINX
     server {
         listen 80;
         location / {
@@ -206,10 +205,10 @@ resource "linode_nodebalancer" "web" {
 }
 
 # Configure a NodeBalancer port
-resource "linode_nodebalancer_config" "https" {
+resource "linode_nodebalancer_config" "http" {
   nodebalancer_id = linode_nodebalancer.web.id
-  port            = 443
-  protocol        = "https"
+  port            = 80
+  protocol        = "http"
   algorithm       = "roundrobin"
   stickiness      = "table"
 
@@ -219,19 +218,15 @@ resource "linode_nodebalancer_config" "https" {
   check_timeout  = 5
   check_attempts = 3
 
-  ssl_cert = tls_locally_signed_cert.web.cert_pem
-  ssl_key  = tls_private_key.web.private_key_pem
 }
 
 # Add backend nodes
 resource "linode_nodebalancer_node" "web" {
-  count = length(linode_instance.web_cluster)
-
   nodebalancer_id = linode_nodebalancer.web.id
-  config_id       = linode_nodebalancer_config.https.id
+  config_id       = linode_nodebalancer_config.http.id
 
-  label   = "web-${count.index}"
-  address = "${linode_instance.web_cluster[count.index].private_ip_address}:8080"
+  label   = "web-0"
+  address = "${linode_instance.web.private_ip_address}:8080"
   mode    = "accept"
   weight  = 100
 }
@@ -243,7 +238,7 @@ resource "linode_nodebalancer_node" "web" {
 # Create a managed Kubernetes cluster
 resource "linode_lke_cluster" "production" {
   label       = "production"
-  k8s_version = "1.28"
+  k8s_version = "1.32"
   region      = "us-east"
 
   tags = ["production", "kubernetes"]
@@ -417,15 +412,15 @@ resource "linode_object_storage_key" "app" {
 
   bucket_access {
     bucket_name = linode_object_storage_bucket.assets.label
-    cluster     = "us-east-1"
+    region      = "us-east"
     permissions = "read_write"
   }
 }
 
 # Create an Object Storage bucket
 resource "linode_object_storage_bucket" "assets" {
-  label   = "app-assets"
-  cluster = "us-east-1"
+  label  = "app-assets"
+  region = "us-east"
 }
 ```
 
@@ -436,7 +431,7 @@ resource "linode_object_storage_bucket" "assets" {
 data "linode_images" "ubuntu" {
   filter {
     name   = "label"
-    values = ["Linode 22.04"]
+    values = ["Ubuntu 22.04 LTS"]
   }
 }
 
