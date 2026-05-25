@@ -62,9 +62,9 @@ resource "aws_db_instance" "backstage" {
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  deletion_protection = true
-  skip_final_snapshot = false
-  final_snapshot_identifier = "backstage-final-${formatdate("YYYY-MM-DD", timestamp())}"
+  deletion_protection       = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "${var.project_name}-backstage-final-snapshot"
 
   tags = {
     Application = "Backstage"
@@ -164,6 +164,10 @@ resource "aws_ecs_task_definition" "backstage" {
         {
           name      = "POSTGRES_PASSWORD"
           valueFrom = "${aws_secretsmanager_secret.backstage_db.arn}:password::"
+        },
+        {
+          name      = "POSTGRES_DATABASE"
+          valueFrom = "${aws_secretsmanager_secret.backstage_db.arn}:dbname::"
         }
       ]
 
@@ -209,6 +213,22 @@ resource "aws_ecs_service" "backstage" {
     enable   = true
     rollback = true
   }
+}
+
+resource "aws_iam_role_policy" "backstage_execution_secrets" {
+  name = "backstage-execution-secrets-access"
+  role = aws_iam_role.backstage_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_secretsmanager_secret.backstage_db.arn
+      }
+    ]
+  })
 }
 ```
 
@@ -291,7 +311,7 @@ resource "aws_route53_record" "backstage" {
 
 ## Authentication with Cognito
 
-Backstage needs authentication. AWS Cognito provides OIDC-compatible authentication that integrates with corporate identity providers.
+Backstage needs authentication. AWS Cognito provides OIDC-compatible authentication that integrates with corporate identity providers. In Backstage, you can connect it through the generic OIDC auth provider.
 
 ```hcl
 # auth.tf - Cognito for Backstage authentication
@@ -338,7 +358,7 @@ resource "aws_cognito_user_pool_client" "backstage" {
   allowed_oauth_flows_user_pool_client = true
 
   callback_urls = [
-    "https://${var.portal_domain}/api/auth/cognito/handler/frame"
+    "https://${var.portal_domain}/api/auth/oidc/handler/frame"
   ]
 
   supported_identity_providers = ["COGNITO"]
@@ -421,6 +441,13 @@ resource "aws_security_group" "backstage_alb" {
   ingress {
     from_port   = 443
     to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_cidr_blocks
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = var.allowed_cidr_blocks
   }
