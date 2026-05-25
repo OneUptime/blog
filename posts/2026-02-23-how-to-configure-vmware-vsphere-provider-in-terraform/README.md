@@ -15,7 +15,7 @@ If you are running a hybrid environment or maintaining on-premises infrastructur
 ## Prerequisites
 
 - Terraform 1.0 or later
-- VMware vCenter Server (the provider connects to vCenter, not individual ESXi hosts)
+- VMware vCenter Server (required for the cloning, tagging, distributed switch, and content library examples in this guide)
 - A vCenter user account with appropriate permissions
 - Network access from the Terraform runner to vCenter
 
@@ -29,8 +29,8 @@ terraform {
 
   required_providers {
     vsphere = {
-      source  = "hashicorp/vsphere"
-      version = "~> 2.6"
+      source  = "vmware/vsphere"
+      version = "~> 2.16"
     }
   }
 }
@@ -149,6 +149,7 @@ resource "vsphere_virtual_machine" "web" {
 
   # Firmware (match the template)
   firmware = data.vsphere_virtual_machine.template.firmware
+  scsi_type = data.vsphere_virtual_machine.template.scsi_type
 
   # Network adapter
   network_interface {
@@ -159,7 +160,7 @@ resource "vsphere_virtual_machine" "web" {
   # Disk configuration
   disk {
     label            = "disk0"
-    size             = 50  # GB
+    size             = max(50, data.vsphere_virtual_machine.template.disks[0].size)  # GB
     thin_provisioned = true
   }
 
@@ -228,14 +229,17 @@ resource "vsphere_virtual_machine" "servers" {
   num_cpus = each.value.cpus
   memory   = each.value.memory
   guest_id = data.vsphere_virtual_machine.template.guest_id
+  firmware = data.vsphere_virtual_machine.template.firmware
+  scsi_type = data.vsphere_virtual_machine.template.scsi_type
 
   network_interface {
-    network_id = data.vsphere_network.network.id
+    network_id   = data.vsphere_network.network.id
+    adapter_type = data.vsphere_virtual_machine.template.network_interface_types[0]
   }
 
   disk {
     label            = "disk0"
-    size             = each.value.disk_gb
+    size             = max(each.value.disk_gb, data.vsphere_virtual_machine.template.disks[0].size)
     thin_provisioned = true
   }
 
@@ -302,6 +306,11 @@ resource "vsphere_tag" "role_web" {
 ## Distributed Virtual Switch
 
 ```hcl
+data "vsphere_host" "esxi1" {
+  name          = "esxi-01.example.com"
+  datacenter_id = data.vsphere_datacenter.dc.id
+}
+
 # Create a distributed virtual switch
 resource "vsphere_distributed_virtual_switch" "dvs" {
   name          = "Production-DVS"
@@ -338,10 +347,25 @@ data "vsphere_storage_policy" "gold" {
 resource "vsphere_virtual_machine" "critical_db" {
   name             = "db-server-01"
   resource_pool_id = data.vsphere_resource_pool.pool.id
+  datastore_id     = data.vsphere_datastore.datastore.id
 
   storage_policy_id = data.vsphere_storage_policy.gold.id
 
-  # ... other VM configuration
+  num_cpus = 4
+  memory   = 8192
+  guest_id = data.vsphere_virtual_machine.template.guest_id
+
+  network_interface {
+    network_id   = data.vsphere_network.network.id
+    adapter_type = data.vsphere_virtual_machine.template.network_interface_types[0]
+  }
+
+  disk {
+    label             = "disk0"
+    size              = data.vsphere_virtual_machine.template.disks[0].size
+    thin_provisioned  = data.vsphere_virtual_machine.template.disks[0].thin_provisioned
+    storage_policy_id = data.vsphere_storage_policy.gold.id
+  }
 }
 ```
 
@@ -352,7 +376,7 @@ resource "vsphere_virtual_machine" "critical_db" {
 resource "vsphere_content_library" "templates" {
   name            = "VM Templates"
   description     = "Template library for VM deployment"
-  storage_backing = [data.vsphere_datastore.datastore.id]
+  storage_backing = data.vsphere_datastore.datastore.id
 }
 
 # Upload an OVF template
