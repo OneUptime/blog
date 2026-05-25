@@ -47,7 +47,7 @@ resource "aws_ec2_transit_gateway" "main" {
   # Enable DNS support for the TGW
   dns_support = "enable"
 
-  # Enable auto-acceptance for attachments from the same account
+  # Enable auto-acceptance for cross-account attachments to this shared TGW
   auto_accept_shared_attachments = "enable"
 
   # Use the default route table for associations and propagations
@@ -170,6 +170,10 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "app" {
   # Enable DNS support for this attachment
   dns_support = "enable"
 
+  # Disable the default association because this attachment is
+  # associated with a custom route table below
+  transit_gateway_default_route_table_association = false
+
   tags = {
     Name = "app-vpc-attachment"
   }
@@ -274,6 +278,18 @@ resource "aws_route_table" "app" {
   tags = {
     Name = "app-vpc-rt"
   }
+
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.app]
+}
+
+resource "aws_route_table_association" "app_a" {
+  subnet_id      = aws_subnet.app_a.id
+  route_table_id = aws_route_table.app.id
+}
+
+resource "aws_route_table_association" "app_b" {
+  subnet_id      = aws_subnet.app_b.id
+  route_table_id = aws_route_table.app.id
 }
 
 # Route table for database VPC
@@ -295,6 +311,51 @@ resource "aws_route_table" "database" {
   tags = {
     Name = "database-vpc-rt"
   }
+
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.database]
+}
+
+resource "aws_route_table_association" "database_a" {
+  subnet_id      = aws_subnet.db_a.id
+  route_table_id = aws_route_table.database.id
+}
+
+resource "aws_route_table_association" "database_b" {
+  subnet_id      = aws_subnet.db_b.id
+  route_table_id = aws_route_table.database.id
+}
+
+# Route table for shared services VPC
+resource "aws_route_table" "shared" {
+  vpc_id = aws_vpc.shared.id
+
+  # Route to app VPC via TGW
+  route {
+    cidr_block         = "10.0.0.0/16"
+    transit_gateway_id = aws_ec2_transit_gateway.main.id
+  }
+
+  # Route to database VPC via TGW
+  route {
+    cidr_block         = "10.1.0.0/16"
+    transit_gateway_id = aws_ec2_transit_gateway.main.id
+  }
+
+  tags = {
+    Name = "shared-services-vpc-rt"
+  }
+
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.shared]
+}
+
+resource "aws_route_table_association" "shared_a" {
+  subnet_id      = aws_subnet.shared_a.id
+  route_table_id = aws_route_table.shared.id
+}
+
+resource "aws_route_table_association" "shared_b" {
+  subnet_id      = aws_subnet.shared_b.id
+  route_table_id = aws_route_table.shared.id
 }
 ```
 
@@ -328,7 +389,7 @@ resource "aws_ram_principal_association" "other_account" {
 
 ## Monitoring Transit Gateway
 
-Monitor your Transit Gateway to ensure connectivity and track bandwidth usage. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-transit-gateway-attachments-with-terraform/view) along with CloudWatch metrics to track bytes in/out, packet counts, and attachment status.
+Monitor your Transit Gateway to ensure connectivity and track bandwidth usage. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-transit-gateway-attachments-with-terraform/view) along with CloudWatch metrics to track bytes in/out and packet counts, and use AWS attachment state information to track attachment status.
 
 ## Best Practices
 
