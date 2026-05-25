@@ -147,8 +147,6 @@ resource "azurerm_logic_app_action_http" "validate_order" {
   headers = {
     "Content-Type" = "application/json"
   }
-
-  run_after {}
 }
 
 # Add a custom action using the workflow definition directly
@@ -255,9 +253,9 @@ resource "azurerm_logic_app_standard" "main" {
 
   site_config {
     dotnet_framework_version = "v6.0"
-    use_32_bit_worker        = false
+    use_32_bit_worker_process = false
 
-    # Application Insights integration
+    # Scale-out limit
     app_scale_limit = 10
   }
 
@@ -303,18 +301,18 @@ resource "azurerm_api_connection" "blob_storage" {
 }
 ```
 
-## Complete Workflow Definition
+## Workflow Schema and Version
 
-For complex workflows, you can define the entire workflow as a JSON definition:
+For complex workflows, set the workflow schema and version on the Logic App resource, then define the actual triggers and actions with dedicated Terraform resources or custom JSON action and trigger bodies:
 
 ```hcl
-# Logic App with a full workflow definition inline
+# Logic App with explicit schema and version
 resource "azurerm_logic_app_workflow" "file_processor" {
   name                = "la-file-processor-prod"
   location            = azurerm_resource_group.automation.location
   resource_group_name = azurerm_resource_group.automation.name
 
-  # Workflow definition as JSON
+  # Workflow definition schema and version
   workflow_schema  = "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#"
   workflow_version = "1.0.0.0"
 
