@@ -8,7 +8,7 @@ Description: A practical guide to creating Azure Function Apps with Terraform, c
 
 ---
 
-Azure Functions is Microsoft's serverless compute offering. You write small pieces of code that run in response to events - HTTP requests, queue messages, timer schedules, database changes - and Azure handles all the infrastructure. You only pay for the compute time your code actually uses.
+Azure Functions is Microsoft's serverless compute offering. You write small pieces of code that run in response to events - HTTP requests, queue messages, timer schedules, database changes - and Azure handles the infrastructure. On consumption-based plans, billing is based on executions, execution time, memory, and any always-ready instances you configure.
 
 While the code itself lives in your repository, the infrastructure backing it - the function app, storage account, hosting plan, and application settings - belongs in Terraform. This guide covers creating function apps on different hosting plans, configuring triggers and bindings, and setting up the supporting infrastructure.
 
@@ -26,13 +26,19 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
+}
+
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
 }
 
 variable "location" {
@@ -75,6 +81,13 @@ resource "azurerm_storage_account" "functions" {
   }
 }
 
+# Blob container used by Flex Consumption deployments
+resource "azurerm_storage_container" "function_deployments" {
+  name                  = "function-deployments"
+  storage_account_id    = azurerm_storage_account.functions.id
+  container_access_type = "private"
+}
+
 # Application Insights for monitoring
 resource "azurerm_application_insights" "functions" {
   name                = "ai-functions-prod"
@@ -88,44 +101,45 @@ resource "azurerm_application_insights" "functions" {
 }
 ```
 
-## Consumption Plan Function App
+## Flex Consumption Plan Function App
 
-The consumption plan is the most cost-effective option. It scales automatically and you pay only for execution time:
+Flex Consumption is the recommended serverless hosting option for new Linux function apps. It scales automatically and you pay for execution time and any always-ready instances:
 
 ```hcl
-# Consumption plan (serverless)
-resource "azurerm_service_plan" "consumption" {
-  name                = "asp-func-consumption"
+# Flex Consumption plan (serverless)
+resource "azurerm_service_plan" "flex_consumption" {
+  name                = "asp-func-flex"
   location            = azurerm_resource_group.functions.location
   resource_group_name = azurerm_resource_group.functions.name
   os_type             = "Linux"
-  sku_name            = "Y1"  # Y1 = Consumption plan
+  sku_name            = "FC1"  # FC1 = Flex Consumption plan
 
   tags = {
     Environment = "production"
-    Plan        = "consumption"
+    Plan        = "flex-consumption"
   }
 }
 
-# Linux Function App on consumption plan (Node.js)
-resource "azurerm_linux_function_app" "api" {
+# Linux Function App on Flex Consumption plan (Node.js)
+resource "azurerm_function_app_flex_consumption" "api" {
   name                = "func-api-prod"
   location            = azurerm_resource_group.functions.location
   resource_group_name = azurerm_resource_group.functions.name
-  service_plan_id     = azurerm_service_plan.consumption.id
+  service_plan_id     = azurerm_service_plan.flex_consumption.id
 
-  storage_account_name       = azurerm_storage_account.functions.name
-  storage_account_access_key = azurerm_storage_account.functions.primary_access_key
+  storage_container_type      = "blobContainer"
+  storage_container_endpoint  = "${azurerm_storage_account.functions.primary_blob_endpoint}${azurerm_storage_container.function_deployments.name}"
+  storage_authentication_type = "StorageAccountConnectionString"
+  storage_access_key          = azurerm_storage_account.functions.primary_access_key
+  runtime_name                = "node"
+  runtime_version             = "20"
+  maximum_instance_count      = 50
+  instance_memory_in_mb       = 2048
 
   # HTTPS only
   https_only = true
 
   site_config {
-    # Runtime stack configuration
-    application_stack {
-      node_version = "20"
-    }
-
     # CORS settings for API functions
     cors {
       allowed_origins     = ["https://www.example.com", "https://app.example.com"]
@@ -139,9 +153,7 @@ resource "azurerm_linux_function_app" "api" {
 
   # Application settings (environment variables)
   app_settings = {
-    "FUNCTIONS_WORKER_RUNTIME" = "node"
-    "WEBSITE_RUN_FROM_PACKAGE" = "1"
-    "NODE_ENV"                 = "production"
+    "NODE_ENV" = "production"
   }
 
   # Managed identity for accessing other Azure services
@@ -226,7 +238,7 @@ resource "azurerm_linux_function_app" "processor" {
 variable "integration_subnet_id" {
   description = "Subnet ID for VNet integration"
   type        = string
-  default     = ""
+  default     = null
 }
 ```
 
@@ -328,11 +340,10 @@ resource "azurerm_eventhub_namespace" "functions" {
 }
 
 resource "azurerm_eventhub" "events" {
-  name                = "app-events"
-  namespace_name      = azurerm_eventhub_namespace.functions.name
-  resource_group_name = azurerm_resource_group.functions.name
-  partition_count     = 4
-  message_retention   = 7
+  name              = "app-events"
+  namespace_id      = azurerm_eventhub_namespace.functions.id
+  partition_count   = 4
+  message_retention = 7
 }
 
 # Add connection strings to function app settings
@@ -340,7 +351,7 @@ resource "azurerm_linux_function_app" "event_processor" {
   name                = "func-events-prod"
   location            = azurerm_resource_group.functions.location
   resource_group_name = azurerm_resource_group.functions.name
-  service_plan_id     = azurerm_service_plan.consumption.id
+  service_plan_id     = azurerm_service_plan.premium.id
 
   storage_account_name       = azurerm_storage_account.functions.name
   storage_account_access_key = azurerm_storage_account.functions.primary_access_key
@@ -374,18 +385,19 @@ resource "azurerm_linux_function_app" "event_processor" {
 
 ## Deployment Slots
 
-Use slots for zero-downtime deployments of function apps:
+Use slots for zero-downtime deployments of Premium or Dedicated function apps:
 
 ```hcl
-# Staging slot for the API function app
+# Staging slot for the processor function app
 resource "azurerm_linux_function_app_slot" "staging" {
-  name                 = "staging"
-  function_app_id      = azurerm_linux_function_app.api.id
-  storage_account_name = azurerm_storage_account.functions.name
+  name                       = "staging"
+  function_app_id            = azurerm_linux_function_app.processor.id
+  storage_account_name       = azurerm_storage_account.functions.name
+  storage_account_access_key = azurerm_storage_account.functions.primary_access_key
 
   site_config {
     application_stack {
-      node_version = "20"
+      python_version = "3.11"
     }
 
     application_insights_key               = azurerm_application_insights.functions.instrumentation_key
@@ -393,9 +405,8 @@ resource "azurerm_linux_function_app_slot" "staging" {
   }
 
   app_settings = {
-    "FUNCTIONS_WORKER_RUNTIME" = "node"
+    "FUNCTIONS_WORKER_RUNTIME" = "python"
     "WEBSITE_RUN_FROM_PACKAGE" = "1"
-    "NODE_ENV"                 = "staging"
   }
 
   tags = {
@@ -409,12 +420,12 @@ resource "azurerm_linux_function_app_slot" "staging" {
 ```hcl
 output "api_function_url" {
   description = "URL of the API function app"
-  value       = "https://${azurerm_linux_function_app.api.default_hostname}"
+  value       = "https://${azurerm_function_app_flex_consumption.api.default_hostname}"
 }
 
 output "function_app_identity" {
   description = "Principal ID of the function app managed identity"
-  value       = azurerm_linux_function_app.api.identity[0].principal_id
+  value       = azurerm_function_app_flex_consumption.api.identity[0].principal_id
 }
 
 output "app_insights_key" {
@@ -430,4 +441,4 @@ Serverless functions introduce unique monitoring challenges. Cold starts, execut
 
 ## Summary
 
-Azure Function Apps on Terraform let you define your serverless infrastructure as code. Choose the consumption plan for cost optimization with spiky workloads, the premium plan when you need VNet integration and consistent performance, or a dedicated plan for predictable, always-running functions. The supporting infrastructure - storage accounts, service bus queues, event hubs - should live alongside the function app definitions so you can deploy everything together.
+Azure Function Apps on Terraform let you define your serverless infrastructure as code. Choose the Flex Consumption plan for cost optimization with spiky workloads, the premium plan when you need VNet integration and consistent performance, or a dedicated plan for predictable, always-running functions. The supporting infrastructure - storage accounts, service bus queues, event hubs - should live alongside the function app definitions so you can deploy everything together.
