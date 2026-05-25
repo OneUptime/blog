@@ -10,7 +10,7 @@ Description: Learn how to configure container health checks in Terraform for Kub
 
 Container health checks are essential for maintaining application reliability. They enable the orchestration platform to detect when a container is unhealthy and take corrective action, such as restarting the container or removing it from load balancer rotation. Properly configured health checks mean the difference between a self-healing system and one that silently fails. Terraform provides a consistent way to define health check configurations across different container platforms.
 
-This guide covers how to create comprehensive health check configurations in Terraform for Kubernetes, AWS ECS, Azure Container Apps, and Docker Compose.
+This guide covers how to create comprehensive health check configurations in Terraform for Kubernetes and AWS ECS.
 
 ## Types of Health Checks
 
@@ -249,7 +249,7 @@ resource "kubernetes_deployment" "grpc_service" {
             container_port = 50051
           }
 
-          # gRPC health check (Kubernetes 1.24+)
+          # gRPC health check (stable in Kubernetes 1.27+)
           liveness_probe {
             grpc {
               port    = 50051
