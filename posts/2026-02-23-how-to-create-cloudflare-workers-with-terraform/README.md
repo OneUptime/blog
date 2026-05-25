@@ -20,7 +20,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -53,10 +53,10 @@ variable "domain" {
 ```hcl
 # basic-worker.tf - Simple hello world worker
 
-resource "cloudflare_worker_script" "hello" {
-  account_id = var.account_id
-  name       = "hello-worker"
-  content    = <<-JS
+resource "cloudflare_workers_script" "hello" {
+  account_id  = var.account_id
+  script_name = "hello-worker"
+  content     = <<-JS
     addEventListener('fetch', event => {
       event.respondWith(handleRequest(event.request));
     });
@@ -75,10 +75,10 @@ resource "cloudflare_worker_script" "hello" {
 }
 
 # Route the worker to a URL pattern
-resource "cloudflare_worker_route" "hello" {
-  zone_id     = var.zone_id
-  pattern     = "${var.domain}/hello/*"
-  script_name = cloudflare_worker_script.hello.name
+resource "cloudflare_workers_route" "hello" {
+  zone_id = var.zone_id
+  pattern = "${var.domain}/hello/*"
+  script  = cloudflare_workers_script.hello.script_name
 }
 ```
 
@@ -86,10 +86,10 @@ resource "cloudflare_worker_route" "hello" {
 
 ```hcl
 # router-worker.tf - Route requests based on path
-resource "cloudflare_worker_script" "router" {
-  account_id = var.account_id
-  name       = "request-router"
-  content    = <<-JS
+resource "cloudflare_workers_script" "router" {
+  account_id  = var.account_id
+  script_name = "request-router"
+  content     = <<-JS
     // Route configuration
     const routes = {
       '/api/v1': 'https://api-v1.origin.example.com',
@@ -122,10 +122,10 @@ resource "cloudflare_worker_script" "router" {
   JS
 }
 
-resource "cloudflare_worker_route" "router" {
-  zone_id     = var.zone_id
-  pattern     = "${var.domain}/api/*"
-  script_name = cloudflare_worker_script.router.name
+resource "cloudflare_workers_route" "router" {
+  zone_id = var.zone_id
+  pattern = "${var.domain}/api/*"
+  script  = cloudflare_workers_script.router.script_name
 }
 ```
 
@@ -133,10 +133,10 @@ resource "cloudflare_worker_route" "router" {
 
 ```hcl
 # headers-worker.tf - Add security headers to responses
-resource "cloudflare_worker_script" "security_headers" {
-  account_id = var.account_id
-  name       = "security-headers"
-  content    = <<-JS
+resource "cloudflare_workers_script" "security_headers" {
+  account_id  = var.account_id
+  script_name = "security-headers"
+  content     = <<-JS
     const SECURITY_HEADERS = {
       'Content-Security-Policy': "default-src 'self'; script-src 'self'",
       'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
@@ -171,10 +171,10 @@ resource "cloudflare_worker_script" "security_headers" {
   JS
 }
 
-resource "cloudflare_worker_route" "security_headers" {
-  zone_id     = var.zone_id
-  pattern     = "${var.domain}/*"
-  script_name = cloudflare_worker_script.security_headers.name
+resource "cloudflare_workers_route" "security_headers" {
+  zone_id = var.zone_id
+  pattern = "${var.domain}/*"
+  script  = cloudflare_workers_script.security_headers.script_name
 }
 ```
 
@@ -182,10 +182,10 @@ resource "cloudflare_worker_route" "security_headers" {
 
 ```hcl
 # ab-testing.tf - A/B testing at the edge
-resource "cloudflare_worker_script" "ab_test" {
-  account_id = var.account_id
-  name       = "ab-testing"
-  content    = <<-JS
+resource "cloudflare_workers_script" "ab_test" {
+  account_id  = var.account_id
+  script_name = "ab-testing"
+  content     = <<-JS
     const EXPERIMENT_COOKIE = 'ab_variant';
 
     addEventListener('fetch', event => {
@@ -210,7 +210,7 @@ resource "cloudflare_worker_script" "ab_test" {
       }
 
       // Fetch the appropriate page
-      const response = await fetch(url.toString(), request);
+      const response = await fetch(new Request(url.toString(), request));
       const newResponse = new Response(response.body, response);
 
       // Set the variant cookie
@@ -241,7 +241,7 @@ resource "cloudflare_workers_kv_namespace" "config" {
 resource "cloudflare_workers_kv" "feature_flags" {
   account_id   = var.account_id
   namespace_id = cloudflare_workers_kv_namespace.config.id
-  key          = "feature-flags"
+  key_name     = "feature-flags"
   value = jsonencode({
     new_ui       = true
     beta_api     = false
@@ -249,10 +249,10 @@ resource "cloudflare_workers_kv" "feature_flags" {
   })
 }
 
-resource "cloudflare_worker_script" "with_kv" {
-  account_id = var.account_id
-  name       = "kv-worker"
-  content    = <<-JS
+resource "cloudflare_workers_script" "with_kv" {
+  account_id  = var.account_id
+  script_name = "kv-worker"
+  content     = <<-JS
     addEventListener('fetch', event => {
       event.respondWith(handleRequest(event.request));
     });
@@ -269,10 +269,11 @@ resource "cloudflare_worker_script" "with_kv" {
     }
   JS
 
-  kv_namespace_binding {
+  bindings = [{
     name         = "CONFIG"
+    type         = "kv_namespace"
     namespace_id = cloudflare_workers_kv_namespace.config.id
-  }
+  }]
 }
 ```
 
@@ -281,9 +282,9 @@ resource "cloudflare_worker_script" "with_kv" {
 ```hcl
 output "worker_names" {
   value = {
-    hello    = cloudflare_worker_script.hello.name
-    router   = cloudflare_worker_script.router.name
-    security = cloudflare_worker_script.security_headers.name
+    hello    = cloudflare_workers_script.hello.script_name
+    router   = cloudflare_workers_script.router.script_name
+    security = cloudflare_workers_script.security_headers.script_name
   }
 }
 ```
