@@ -95,7 +95,7 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
-# IAM role for the bastion (needed for CloudWatch and SSM)
+# IAM role for the bastion (needed for CloudWatch Agent and SSM)
 resource "aws_iam_role" "bastion" {
   name = "${var.project_name}-bastion-role"
 
@@ -116,6 +116,11 @@ resource "aws_iam_role" "bastion" {
 resource "aws_iam_role_policy_attachment" "bastion_ssm" {
   role       = aws_iam_role.bastion.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy_attachment" "bastion_cloudwatch_agent" {
+  role       = aws_iam_role.bastion.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
 resource "aws_iam_instance_profile" "bastion" {
@@ -165,7 +170,7 @@ resource "aws_instance" "bastion" {
     # Restart SSH with new config
     systemctl restart sshd
 
-    # Install CloudWatch agent for session logging
+    # Install CloudWatch agent; configure it to ship audit logs separately
     dnf install -y amazon-cloudwatch-agent
   EOF
 
@@ -243,7 +248,7 @@ resource "aws_autoscaling_group" "bastion" {
 
 ## Modern Alternative: Session Manager
 
-AWS Systems Manager Session Manager provides shell access without SSH, without opening inbound ports, and with full audit logging built in:
+AWS Systems Manager Session Manager provides shell access without SSH, without opening inbound ports, and with integrated audit logging options:
 
 ```hcl
 # Session Manager preferences for logging
@@ -287,14 +292,14 @@ resource "aws_s3_bucket" "session_logs" {
 }
 ```
 
-With Session Manager, your private instances do not need a public IP or an open SSH port. They just need the SSM agent (included in Amazon Linux by default) and an IAM role with the SSM managed policy.
+With Session Manager, your private instances do not need a public IP or an open SSH port. They need the SSM agent (included in Amazon Linux by default), an IAM role with the SSM managed policy, and HTTPS connectivity to the required Systems Manager endpoints through NAT or VPC interface endpoints.
 
 ## SSH Session Logging
 
-For compliance, you want every command typed on the bastion recorded:
+For compliance, create a log destination for bastion audit data. Recording SSH commands also requires configuring the instance, for example with shell logging or auditd plus the CloudWatch Agent:
 
 ```hcl
-# CloudWatch log group for SSH session recordings
+# CloudWatch log group for SSH audit data
 resource "aws_cloudwatch_log_group" "bastion_sessions" {
   name              = "/bastion/sessions"
   retention_in_days = 365 # Keep for compliance
