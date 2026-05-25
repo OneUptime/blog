@@ -33,7 +33,7 @@ terraform state list | while read -r address; do
   TYPE=$(echo "$address" | sed 's/module\.[^.]*\.//g' | sed 's/\[.*//;s/\..*//')
 
   # Extract module path
-  MODULE=$(echo "$address" | grep -o 'module\.[^.]*' | head -1)
+  MODULE=$(echo "$address" | grep -o 'module\.[^.]*' | paste -sd'.' -)
   MODULE=${MODULE:-"root"}
 
   # Extract provider
@@ -43,10 +43,10 @@ terraform state list | while read -r address; do
 done
 
 echo "Inventory saved to $OUTPUT_FILE"
-echo "Total resources: $(wc -l < "$OUTPUT_FILE")"
+echo "Total resources: $(($(wc -l < "$OUTPUT_FILE") - 1))"
 echo ""
 echo "Resources by type:"
-cut -d',' -f2 "$OUTPUT_FILE" | sort | uniq -c | sort -rn | head -20
+tail -n +2 "$OUTPUT_FILE" | cut -d',' -f2 | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Script 2: Generate Import Blocks from Cloud Resources
@@ -59,8 +59,26 @@ Generate Terraform import blocks from cloud provider resources.
 """
 import subprocess
 import json
+import re
 
-def get_aws_instances(region):
+def terraform_name(value, fallback):
+    """Convert a cloud name into a valid, unique Terraform resource name."""
+    name = re.sub(r"[^A-Za-z0-9_-]", "_", value or fallback).lower()
+    if not name or name[0].isdigit():
+        name = f"resource_{name}"
+    return name
+
+def unique_name(base, used_names):
+    """Avoid generating duplicate Terraform resource addresses."""
+    name = base
+    counter = 2
+    while name in used_names:
+        name = f"{base}_{counter}"
+        counter += 1
+    used_names.add(name)
+    return name
+
+def get_aws_instances(region, used_names):
     """Discover EC2 instances and generate import blocks."""
     result = subprocess.run(
         ["aws", "ec2", "describe-instances",
@@ -68,12 +86,12 @@ def get_aws_instances(region):
          "--filters", "Name=instance-state-name,Values=running",
          "--query", "Reservations[].Instances[].[InstanceId,Tags[?Key=='Name'].Value|[0]]",
          "--output", "json"],
-        capture_output=True, text=True
+        capture_output=True, text=True, check=True
     )
     instances = json.loads(result.stdout)
     imports = []
     for instance_id, name in instances:
-        safe_name = (name or f"unnamed_{instance_id}").replace("-", "_").replace(" ", "_").lower()
+        safe_name = unique_name(terraform_name(name, f"unnamed_{instance_id}"), used_names)
         imports.append(f'''import {{
   to = aws_instance.{safe_name}
   id = "{instance_id}"
@@ -81,18 +99,18 @@ def get_aws_instances(region):
 ''')
     return imports
 
-def get_aws_s3_buckets():
+def get_aws_s3_buckets(used_names):
     """Discover S3 buckets and generate import blocks."""
     result = subprocess.run(
         ["aws", "s3api", "list-buckets",
          "--query", "Buckets[].Name",
          "--output", "json"],
-        capture_output=True, text=True
+        capture_output=True, text=True, check=True
     )
     buckets = json.loads(result.stdout)
     imports = []
     for bucket in buckets:
-        safe_name = bucket.replace("-", "_").replace(".", "_")
+        safe_name = unique_name(terraform_name(bucket, "bucket"), used_names)
         imports.append(f'''import {{
   to = aws_s3_bucket.{safe_name}
   id = "{bucket}"
@@ -102,8 +120,8 @@ def get_aws_s3_buckets():
 
 def main():
     all_imports = []
-    all_imports.extend(get_aws_instances("us-east-1"))
-    all_imports.extend(get_aws_s3_buckets())
+    all_imports.extend(get_aws_instances("us-east-1", set()))
+    all_imports.extend(get_aws_s3_buckets(set()))
 
     with open("imports.tf", "w") as f:
         f.write("# Auto-generated import blocks\n\n")
@@ -299,6 +317,8 @@ fi
 # multi-config-migrate.sh
 # Migrate multiple Terraform configurations in sequence
 
+set -e
+
 CONFIGS=(
   "environments/production/networking"
   "environments/production/compute"
@@ -307,7 +327,8 @@ CONFIGS=(
 )
 
 RESULTS_FILE="migration-results.log"
-echo "Migration Results - $(date)" > "$RESULTS_FILE"
+ROOT_DIR=$(pwd)
+echo "Migration Results - $(date)" > "$ROOT_DIR/$RESULTS_FILE"
 
 for config in "${CONFIGS[@]}"; do
   echo ""
@@ -315,30 +336,35 @@ for config in "${CONFIGS[@]}"; do
   echo "Migrating: $config"
   echo "============================================"
 
-  cd "$config"
+  cd "$ROOT_DIR/$config"
 
   # Back up
-  terraform state pull > "/tmp/backup-$(basename $config).json"
+  terraform state pull > "/tmp/backup-$(basename "$config").json"
 
   # Initialize
-  terraform init -upgrade > /dev/null 2>&1
+  terraform init > /dev/null 2>&1
 
   # Plan
-  if terraform plan -detailed-exitcode > /dev/null 2>&1; then
-    RESULT="PASS"
-  else
-    RESULT="CHANGES_DETECTED"
-  fi
+  set +e
+  terraform plan -detailed-exitcode > /dev/null 2>&1
+  PLAN_EXIT=$?
+  set -e
 
-  echo "$config: $RESULT" >> "/$OLDPWD/$RESULTS_FILE"
+  case $PLAN_EXIT in
+    0) RESULT="PASS" ;;
+    1) RESULT="ERROR" ;;
+    2) RESULT="CHANGES_DETECTED" ;;
+  esac
+
+  echo "$config: $RESULT" >> "$ROOT_DIR/$RESULTS_FILE"
   echo "Result: $RESULT"
 
-  cd "$OLDPWD"
+  cd "$ROOT_DIR"
 done
 
 echo ""
 echo "=== All Results ==="
-cat "$RESULTS_FILE"
+cat "$ROOT_DIR/$RESULTS_FILE"
 ```
 
 ## Best Practices for Migration Scripts
