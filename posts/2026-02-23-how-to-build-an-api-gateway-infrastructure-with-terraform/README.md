@@ -18,13 +18,13 @@ API Gateway configurations are notoriously fiddly. Resources, methods, integrati
 
 We will build:
 
-- AWS API Gateway (HTTP API and REST API options)
+- AWS API Gateway HTTP API
 - Custom domain with TLS certificate
-- Lambda authorizer for authentication
+- JWT authorizer for authentication
 - Rate limiting and throttling
 - Request/response logging
 - CloudWatch monitoring and alarms
-- WAF integration for security
+- WAF integration guidance for security
 
 ## HTTP API with Lambda Backend
 
@@ -83,9 +83,19 @@ resource "aws_apigatewayv2_stage" "default" {
 resource "aws_apigatewayv2_integration" "users_service" {
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
   integration_uri        = aws_lambda_function.users_service.invoke_arn
   payload_format_version = "2.0"
   timeout_milliseconds   = 30000
+}
+
+# Permission for API Gateway to invoke the Lambda function
+resource "aws_lambda_permission" "api_gateway_users_service" {
+  statement_id  = "AllowAPIGatewayInvokeUsersService"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.users_service.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_stage.default.execution_arn}/*/*"
 }
 
 # Routes
@@ -255,7 +265,7 @@ resource "aws_route53_record" "api" {
 
 ## WAF Protection
 
-Add a Web Application Firewall to protect your API from common attacks.
+Add a Web Application Firewall to protect your API from common attacks. Direct WAF association is supported for API Gateway REST API stages. For HTTP APIs, put CloudFront in front of the API and associate AWS WAF with the CloudFront distribution instead.
 
 ```hcl
 # WAF Web ACL
@@ -346,7 +356,8 @@ resource "aws_wafv2_web_acl" "api" {
 
 # Associate WAF with API Gateway
 resource "aws_wafv2_web_acl_association" "api" {
-  resource_arn = aws_apigatewayv2_stage.default.arn
+  # Use the ARN of an API Gateway REST API stage.
+  resource_arn = aws_api_gateway_stage.rest.arn
   web_acl_arn  = aws_wafv2_web_acl.api.arn
 }
 ```
