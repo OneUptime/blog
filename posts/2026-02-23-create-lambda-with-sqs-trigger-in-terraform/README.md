@@ -8,7 +8,7 @@ Description: A practical guide to configuring AWS Lambda with SQS triggers in Te
 
 ---
 
-SQS and Lambda are a natural pairing. SQS provides durable message queuing with guaranteed delivery, and Lambda provides automatic scaling to process those messages. When messages arrive in the queue, Lambda polls for them, pulls batches, and invokes your function. If processing fails, the message goes back to the queue for retry. If it keeps failing, it moves to a dead letter queue.
+SQS and Lambda are a natural pairing. SQS provides durable message queuing with at-least-once delivery, and Lambda provides automatic scaling to process those messages. When messages arrive in the queue, Lambda polls for them, pulls batches, and invokes your function. If processing fails, the message goes back to the queue for retry. If it keeps failing, it moves to a dead letter queue.
 
 This pattern is the foundation of decoupled, event-driven architectures. The producer does not need to know or care about the consumer. In this guide, we will set up the complete pipeline in Terraform: the SQS queue, the Lambda function, the event source mapping that connects them, and the error handling that keeps things reliable.
 
@@ -21,8 +21,8 @@ resource "aws_sqs_queue" "orders" {
   name = "order-processing-queue"
 
   # How long a message is hidden after being received
-  # Must be >= Lambda timeout
-  visibility_timeout_seconds = 900  # 15 minutes
+  # Must be >= Lambda timeout; AWS recommends at least 6x the timeout plus batching window
+  visibility_timeout_seconds = 1805  # 30 minutes and 5 seconds
 
   # How long messages stay in the queue before being deleted
   message_retention_seconds = 1209600  # 14 days
@@ -213,7 +213,7 @@ resource "aws_sqs_queue" "orders_fifo" {
   fifo_queue                  = true
   content_based_deduplication = true
 
-  visibility_timeout_seconds = 900
+  visibility_timeout_seconds = 1800
   sqs_managed_sse_enabled    = true
 
   redrive_policy = jsonencode({
@@ -245,6 +245,7 @@ resource "aws_lambda_event_source_mapping" "fifo_trigger" {
 
   # FIFO queues process messages in order within each message group
   # Lambda processes one batch per message group at a time
+  # With partial batch failures, stop after the first failure and report failed and unprocessed messages
   function_response_types = ["ReportBatchItemFailures"]
 }
 ```
@@ -337,9 +338,9 @@ output "lambda_function_name" {
 
 ## Key Considerations
 
-The `visibility_timeout_seconds` on the queue must be greater than or equal to the Lambda function's timeout. If Lambda takes 5 minutes to process a message but the visibility timeout is only 30 seconds, the message becomes visible again and gets processed a second time.
+The `visibility_timeout_seconds` on the queue must be greater than or equal to the Lambda function's timeout, and AWS recommends setting it to at least six times the function timeout plus the batching window. If Lambda takes 5 minutes to process a message but the visibility timeout is only 30 seconds, the message becomes visible again and gets processed a second time.
 
-Set `maximum_concurrency` in the `scaling_config` to limit how many Lambda instances run concurrently. Without this, Lambda can scale to thousands of concurrent executions, which might overwhelm downstream services like databases.
+Set `maximum_concurrency` in the `scaling_config` to limit how many Lambda instances this SQS event source can invoke concurrently. Without this, Lambda can scale up to the account concurrency quota and SQS event source mapping limits, which might overwhelm downstream services like databases.
 
 The `maximum_batching_window_in_seconds` setting lets Lambda wait for more messages before invoking your function. This reduces the number of invocations (and cost) when message volume is low, at the expense of slightly higher latency.
 
