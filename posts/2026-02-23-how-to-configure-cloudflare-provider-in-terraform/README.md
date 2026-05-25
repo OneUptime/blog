@@ -21,14 +21,18 @@ You need a Cloudflare account and an API token. The old API key method still wor
 3. Click "Create Token"
 4. Choose a template or create a custom token
 
-For Terraform, create a custom token with these permissions:
+For Terraform, create a custom token with the permissions required for the resources you manage. For the examples in this guide, that can include:
 
 - **Zone - DNS - Edit** (to manage DNS records)
 - **Zone - Zone Settings - Edit** (to manage zone settings)
 - **Zone - Zone - Read** (to look up zone IDs)
+- **Zone - WAF - Edit** (to manage WAF custom rules)
+- **Zone - Page Rules - Edit** (to manage page rules)
+- **Account - Workers Scripts - Edit** (to manage Worker scripts)
+- **Zone - Workers Routes - Edit** (to manage Worker routes)
 - **Account - Account Settings - Read** (if managing account-level resources)
 
-Or for broad access during initial setup:
+Or for broader zone access during initial setup:
 
 - **Zone - Zone - Edit** and **Zone - DNS - Edit** for all zones
 
@@ -46,7 +50,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -75,8 +79,8 @@ variable "cloudflare_api_token" {
 
 ```hcl
 provider "cloudflare" {
-  email   = var.cloudflare_email
-  api_key = var.cloudflare_api_key
+  api_email = var.cloudflare_email
+  api_key   = var.cloudflare_api_key
 }
 ```
 
@@ -88,13 +92,13 @@ Most Cloudflare resources need a zone ID. Look it up with a data source:
 
 ```hcl
 # Look up the zone by domain name
-data "cloudflare_zone" "example" {
+data "cloudflare_zones" "example" {
   name = "example.com"
 }
 
 # Use the zone ID in resources
 output "zone_id" {
-  value = data.cloudflare_zone.example.id
+  value = data.cloudflare_zones.example.result[0].id
 }
 ```
 
@@ -113,66 +117,70 @@ DNS records are probably the most common Cloudflare resource managed through Ter
 
 ```hcl
 # A record pointing to a server
-resource "cloudflare_record" "www" {
-  zone_id = data.cloudflare_zone.example.id
-  name    = "www"
+resource "cloudflare_dns_record" "www" {
+  zone_id = data.cloudflare_zones.example.result[0].id
+  name    = "www.example.com"
   content = "203.0.113.50"
   type    = "A"
-  ttl     = 300
+  ttl     = 1
   proxied = true  # Route through Cloudflare's CDN/proxy
 }
 
 # AAAA record for IPv6
-resource "cloudflare_record" "www_ipv6" {
-  zone_id = data.cloudflare_zone.example.id
-  name    = "www"
+resource "cloudflare_dns_record" "www_ipv6" {
+  zone_id = data.cloudflare_zones.example.result[0].id
+  name    = "www.example.com"
   content = "2001:db8::1"
   type    = "AAAA"
-  ttl     = 300
+  ttl     = 1
   proxied = true
 }
 
 # CNAME for a subdomain
-resource "cloudflare_record" "blog" {
-  zone_id = data.cloudflare_zone.example.id
-  name    = "blog"
+resource "cloudflare_dns_record" "blog" {
+  zone_id = data.cloudflare_zones.example.result[0].id
+  name    = "blog.example.com"
   content = "blog-platform.example.net"
   type    = "CNAME"
-  ttl     = 300
+  ttl     = 1
   proxied = true
 }
 
 # MX records for email
-resource "cloudflare_record" "mx_primary" {
-  zone_id  = data.cloudflare_zone.example.id
-  name     = "@"
+resource "cloudflare_dns_record" "mx_primary" {
+  zone_id  = data.cloudflare_zones.example.result[0].id
+  name     = "example.com"
   content  = "mx1.mailprovider.com"
   type     = "MX"
   priority = 10
+  ttl      = 300
 }
 
-resource "cloudflare_record" "mx_secondary" {
-  zone_id  = data.cloudflare_zone.example.id
-  name     = "@"
+resource "cloudflare_dns_record" "mx_secondary" {
+  zone_id  = data.cloudflare_zones.example.result[0].id
+  name     = "example.com"
   content  = "mx2.mailprovider.com"
   type     = "MX"
   priority = 20
+  ttl      = 300
 }
 
 # TXT record for SPF
-resource "cloudflare_record" "spf" {
-  zone_id = data.cloudflare_zone.example.id
-  name    = "@"
+resource "cloudflare_dns_record" "spf" {
+  zone_id = data.cloudflare_zones.example.result[0].id
+  name    = "example.com"
   content = "v=spf1 include:_spf.mailprovider.com ~all"
   type    = "TXT"
+  ttl     = 300
 }
 
 # TXT record for domain verification
-resource "cloudflare_record" "verification" {
-  zone_id = data.cloudflare_zone.example.id
-  name    = "@"
+resource "cloudflare_dns_record" "verification" {
+  zone_id = data.cloudflare_zones.example.result[0].id
+  name    = "example.com"
   content = "google-site-verification=abc123..."
   type    = "TXT"
+  ttl     = 300
 }
 ```
 
@@ -208,11 +216,11 @@ locals {
   }
 }
 
-resource "cloudflare_record" "records" {
+resource "cloudflare_dns_record" "records" {
   for_each = local.dns_records
 
-  zone_id = data.cloudflare_zone.example.id
-  name    = each.key
+  zone_id = data.cloudflare_zones.example.result[0].id
+  name    = "${each.key}.example.com"
   type    = each.value.type
   content = each.value.content
   proxied = each.value.proxied
@@ -225,42 +233,62 @@ resource "cloudflare_record" "records" {
 Manage zone-level settings:
 
 ```hcl
-# SSL/TLS settings
-resource "cloudflare_zone_settings_override" "settings" {
-  zone_id = data.cloudflare_zone.example.id
+resource "cloudflare_zone_setting" "always_use_https" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "always_use_https"
+  value      = "on"
+}
 
-  settings {
-    # Force HTTPS
-    always_use_https = "on"
+resource "cloudflare_zone_setting" "ssl" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "ssl"
+  value      = "strict"
+}
 
-    # SSL mode - full strict validates the origin cert
-    ssl = "strict"
+resource "cloudflare_zone_setting" "min_tls_version" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
 
-    # Minimum TLS version
-    min_tls_version = "1.2"
+resource "cloudflare_zone_setting" "http2" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "http2"
+  value      = "on"
+}
 
-    # Enable HTTP/2
-    http2 = "on"
+resource "cloudflare_zone_setting" "http3" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "http3"
+  value      = "on"
+}
 
-    # Enable HTTP/3
-    http3 = "on"
+resource "cloudflare_zone_setting" "security_level" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "security_level"
+  value      = "medium"
+}
 
-    # Security settings
-    security_level = "medium"
+resource "cloudflare_zone_setting" "browser_cache_ttl" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "browser_cache_ttl"
+  value      = 14400
+}
 
-    # Caching
-    browser_cache_ttl = 14400
-
-    # Performance
-    minify {
-      css  = "on"
-      js   = "on"
-      html = "on"
-    }
-
-    # Brotli compression
-    brotli = "on"
+resource "cloudflare_zone_setting" "minify" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "minify"
+  value = {
+    css  = "on"
+    js   = "on"
+    html = "on"
   }
+}
+
+resource "cloudflare_zone_setting" "brotli" {
+  zone_id    = data.cloudflare_zones.example.result[0].id
+  setting_id = "brotli"
+  value      = "on"
 }
 ```
 
@@ -271,32 +299,32 @@ Protect your site with firewall rules:
 ```hcl
 # Create a firewall rule to block known bad bots
 resource "cloudflare_ruleset" "waf_custom" {
-  zone_id     = data.cloudflare_zone.example.id
+  zone_id     = data.cloudflare_zones.example.result[0].id
   name        = "Custom WAF Rules"
   description = "Custom firewall rules"
   kind        = "zone"
   phase       = "http_request_firewall_custom"
 
-  rules {
+  rules = [{
     action      = "block"
     expression  = "(http.user_agent contains \"BadBot\") or (http.user_agent contains \"ScrapeBot\")"
     description = "Block known bad bots"
     enabled     = true
-  }
+  },
 
-  rules {
+  {
     action      = "challenge"
     expression  = "(ip.geoip.country eq \"XX\")"
     description = "Challenge traffic from specific countries"
     enabled     = true
-  }
+  },
 
-  rules {
+  {
     action      = "block"
     expression  = "(http.request.uri.path contains \"/wp-admin\" and not ip.src in {10.0.0.0/8})"
     description = "Block wp-admin access from outside"
     enabled     = true
-  }
+  }]
 }
 ```
 
@@ -307,12 +335,12 @@ Configure page-specific behavior:
 ```hcl
 # Redirect www to naked domain
 resource "cloudflare_page_rule" "www_redirect" {
-  zone_id  = data.cloudflare_zone.example.id
+  zone_id  = data.cloudflare_zones.example.result[0].id
   target   = "www.example.com/*"
   priority = 1
 
-  actions {
-    forwarding_url {
+  actions = {
+    forwarding_url = {
       url         = "https://example.com/$1"
       status_code = 301
     }
@@ -321,11 +349,11 @@ resource "cloudflare_page_rule" "www_redirect" {
 
 # Cache everything for static assets
 resource "cloudflare_page_rule" "cache_static" {
-  zone_id  = data.cloudflare_zone.example.id
+  zone_id  = data.cloudflare_zones.example.result[0].id
   target   = "example.com/static/*"
   priority = 2
 
-  actions {
+  actions = {
     cache_level       = "cache_everything"
     edge_cache_ttl    = 86400
     browser_cache_ttl = 14400
@@ -339,28 +367,32 @@ Deploy Cloudflare Workers:
 
 ```hcl
 # Worker script
-resource "cloudflare_worker_script" "api_gateway" {
-  account_id = var.cloudflare_account_id
-  name       = "api-gateway"
-  content    = file("${path.module}/workers/api-gateway.js")
+resource "cloudflare_workers_script" "api_gateway" {
+  account_id         = var.cloudflare_account_id
+  script_name        = "api-gateway"
+  body_part          = "api-gateway.js"
+  compatibility_date = "2026-05-25"
+  files              = [file("${path.module}/workers/api-gateway.js")]
 
   # Environment variables for the worker
-  plain_text_binding {
+  bindings = [{
     name = "API_ENDPOINT"
     text = "https://api.internal.example.com"
-  }
+    type = "plain_text"
+  },
 
-  secret_text_binding {
+  {
     name = "API_KEY"
     text = var.api_key
-  }
+    type = "secret_text"
+  }]
 }
 
 # Route the worker to specific URLs
-resource "cloudflare_worker_route" "api" {
-  zone_id     = data.cloudflare_zone.example.id
-  pattern     = "example.com/api/*"
-  script_name = cloudflare_worker_script.api_gateway.name
+resource "cloudflare_workers_route" "api" {
+  zone_id = data.cloudflare_zones.example.result[0].id
+  pattern = "example.com/api/*"
+  script  = cloudflare_workers_script.api_gateway.script_name
 }
 ```
 
@@ -377,19 +409,20 @@ locals {
   }
 }
 
-data "cloudflare_zone" "zones" {
+data "cloudflare_zones" "zones" {
   for_each = local.zones
   name     = each.key
 }
 
 # Apply the same DNS record to all zones
-resource "cloudflare_record" "txt_verification" {
-  for_each = data.cloudflare_zone.zones
+resource "cloudflare_dns_record" "txt_verification" {
+  for_each = data.cloudflare_zones.zones
 
-  zone_id = each.value.id
-  name    = "@"
+  zone_id = each.value.result[0].id
+  name    = each.key
   content = "v=spf1 include:_spf.mailprovider.com ~all"
   type    = "TXT"
+  ttl     = 300
 }
 ```
 
@@ -399,7 +432,7 @@ If you already have Cloudflare resources configured in the dashboard, import the
 
 ```bash
 # Import a DNS record
-terraform import cloudflare_record.www ZONE_ID/RECORD_ID
+terraform import cloudflare_dns_record.www ZONE_ID/RECORD_ID
 
 # Find record IDs with the API
 curl -s -X GET "https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records" \
@@ -414,10 +447,10 @@ Or use the `cf-terraforming` tool to generate Terraform configuration from exist
 go install github.com/cloudflare/cf-terraforming/cmd/cf-terraforming@latest
 
 # Generate Terraform config for all DNS records
-cf-terraforming generate --resource-type cloudflare_record --zone ZONE_ID
+cf-terraforming generate --resource-type cloudflare_dns_record --zone ZONE_ID
 
 # Generate import commands
-cf-terraforming import --resource-type cloudflare_record --zone ZONE_ID
+cf-terraforming import --resource-type cloudflare_dns_record --zone ZONE_ID
 ```
 
 ## Summary
