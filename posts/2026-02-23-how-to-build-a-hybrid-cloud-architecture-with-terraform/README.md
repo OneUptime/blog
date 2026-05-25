@@ -161,7 +161,7 @@ For production workloads, Direct Connect provides dedicated bandwidth.
 # Direct Connect gateway
 resource "aws_dx_gateway" "main" {
   name            = "hybrid-dx-gateway"
-  amazon_side_asn = 64512
+  amazon_side_asn = 64513
 }
 
 # Direct Connect gateway association with Transit Gateway
@@ -175,10 +175,10 @@ resource "aws_dx_gateway_association" "tgw" {
   ]
 }
 
-# Virtual interface on the Direct Connect connection
-resource "aws_dx_private_virtual_interface" "main" {
+# Transit virtual interface on the Direct Connect connection
+resource "aws_dx_transit_virtual_interface" "main" {
   connection_id  = var.dx_connection_id
-  name           = "hybrid-private-vif"
+  name           = "hybrid-transit-vif"
   vlan           = 100
   address_family = "ipv4"
   bgp_asn        = 65000
