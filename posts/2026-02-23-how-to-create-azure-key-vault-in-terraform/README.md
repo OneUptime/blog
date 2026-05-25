@@ -8,7 +8,7 @@ Description: Learn how to create and configure Azure Key Vault in Terraform with
 
 ---
 
-Azure Key Vault is where you store secrets, encryption keys, and certificates in Azure. It provides hardware security module (HSM) backed storage, fine-grained access control, and audit logging for everything that touches your sensitive data. Setting it up through Terraform ensures consistent security configuration across all your environments and keeps your access policies version-controlled.
+Azure Key Vault is where you store secrets, encryption keys, and certificates in Azure. Premium vaults support hardware security module (HSM) protected keys, and all vaults provide fine-grained access control and audit logging for everything that touches your sensitive data. Setting it up through Terraform ensures consistent security configuration across all your environments and keeps your access policies version-controlled.
 
 This guide covers creating a Key Vault, configuring access policies and RBAC, adding network restrictions, storing keys and certificates, and setting up diagnostic logging.
 
@@ -62,7 +62,7 @@ resource "azurerm_key_vault" "main" {
   location            = azurerm_resource_group.kv.location
   resource_group_name = azurerm_resource_group.kv.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
-  sku_name            = "standard"  # "standard" or "premium" (HSM-backed)
+  sku_name            = "standard"  # "standard" or "premium" (supports HSM-protected keys)
 
   # Soft delete protects against accidental deletion
   soft_delete_retention_days = 90
@@ -79,33 +79,8 @@ resource "azurerm_key_vault" "main" {
   # Enable access from Azure Resource Manager for template deployments
   enabled_for_template_deployment = true
 
-  # Enable access from Azure Deployment Scripts
+  # Enable Azure VMs to retrieve certificates stored as secrets
   enabled_for_deployment = true
-
-  # Access policy for the Terraform service principal
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    # Full permissions for the admin
-    key_permissions = [
-      "Backup", "Create", "Decrypt", "Delete", "Encrypt", "Get",
-      "Import", "List", "Purge", "Recover", "Restore", "Sign",
-      "UnwrapKey", "Update", "Verify", "WrapKey",
-    ]
-
-    secret_permissions = [
-      "Backup", "Delete", "Get", "List", "Purge",
-      "Recover", "Restore", "Set",
-    ]
-
-    certificate_permissions = [
-      "Backup", "Create", "Delete", "DeleteIssuers", "Get",
-      "GetIssuers", "Import", "List", "ListIssuers", "ManageContacts",
-      "ManageIssuers", "Purge", "Recover", "Restore", "SetIssuers",
-      "Update",
-    ]
-  }
 
   tags = {
     environment = "production"
@@ -120,6 +95,33 @@ Grant specific applications limited access to the vault.
 
 ```hcl
 # access-policies.tf
+# Access policy for the Terraform service principal
+resource "azurerm_key_vault_access_policy" "terraform" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  # Full permissions for the admin
+  key_permissions = [
+    "Backup", "Create", "Decrypt", "Delete", "Encrypt", "Get",
+    "Import", "List", "Purge", "Recover", "Restore", "Sign",
+    "UnwrapKey", "Update", "Verify", "WrapKey", "Rotate",
+    "GetRotationPolicy", "SetRotationPolicy",
+  ]
+
+  secret_permissions = [
+    "Backup", "Delete", "Get", "List", "Purge",
+    "Recover", "Restore", "Set",
+  ]
+
+  certificate_permissions = [
+    "Backup", "Create", "Delete", "DeleteIssuers", "Get",
+    "GetIssuers", "Import", "List", "ListIssuers", "ManageContacts",
+    "ManageIssuers", "Purge", "Recover", "Restore", "SetIssuers",
+    "Update",
+  ]
+}
+
 # Access policy for a web application (read-only secrets)
 resource "azurerm_key_vault_access_policy" "web_app" {
   key_vault_id = azurerm_key_vault.main.id
@@ -216,7 +218,7 @@ resource "azurerm_key_vault" "main" {
   network_acls {
     default_action             = "Deny"  # Deny all by default
     bypass                     = "AzureServices"  # Allow trusted Azure services
-    ip_rules                   = ["203.0.113.0/24"]  # Office IP range
+    ip_rules                   = var.office_ip_ranges  # Office public IPv4 CIDR ranges
     virtual_network_subnet_ids = [var.app_subnet_id]
   }
 }
@@ -232,6 +234,7 @@ resource "azurerm_key_vault_key" "encryption" {
   key_vault_id = azurerm_key_vault.main.id
   key_type     = "RSA"
   key_size     = 2048
+  depends_on   = [azurerm_key_vault_access_policy.terraform]
 
   key_opts = [
     "decrypt",
@@ -257,6 +260,7 @@ resource "azurerm_key_vault_key" "signing" {
   key_vault_id = azurerm_key_vault.main.id
   key_type     = "EC"
   curve        = "P-256"
+  depends_on   = [azurerm_key_vault_access_policy.terraform]
 
   key_opts = [
     "sign",
@@ -273,6 +277,7 @@ resource "azurerm_key_vault_key" "signing" {
 resource "azurerm_key_vault_certificate" "dev" {
   name         = "dev-cert"
   key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_key_vault_access_policy.terraform]
 
   certificate_policy {
     issuer_parameters {
