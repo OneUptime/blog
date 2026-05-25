@@ -46,9 +46,9 @@ The first step is creating the AWS Organization itself. You only do this once fr
 ```hcl
 # Create the AWS Organization with all features enabled
 resource "aws_organizations_organization" "org" {
-  # ALL_FEATURES enables SCPs and other policy types
+  # ALL enables SCPs and other policy types
   # CONSOLIDATED_BILLING is the other option but limits what you can do
-  feature_set = "ALL_FEATURES"
+  feature_set = "ALL"
 
   # Enable the policy types you need
   enabled_policy_types = [
@@ -123,9 +123,9 @@ resource "aws_organizations_account" "security" {
   role_name = "OrganizationAccountAccessRole"
   parent_id = aws_organizations_organizational_unit.security.id
 
-  # Prevent Terraform from trying to delete the account
-  # AWS accounts cannot be deleted via API
+  # Prevent accidental account removal or closure from Terraform
   lifecycle {
+    prevent_destroy = true
     ignore_changes = [role_name]
   }
 
@@ -142,6 +142,7 @@ resource "aws_organizations_account" "log_archive" {
   parent_id = aws_organizations_organizational_unit.security.id
 
   lifecycle {
+    prevent_destroy = true
     ignore_changes = [role_name]
   }
 
@@ -158,6 +159,7 @@ resource "aws_organizations_account" "shared_services" {
   parent_id = aws_organizations_organizational_unit.infrastructure.id
 
   lifecycle {
+    prevent_destroy = true
     ignore_changes = [role_name]
   }
 
@@ -174,6 +176,7 @@ resource "aws_organizations_account" "prod_app" {
   parent_id = aws_organizations_organizational_unit.workloads_prod.id
 
   lifecycle {
+    prevent_destroy = true
     ignore_changes = [role_name]
   }
 
@@ -186,7 +189,7 @@ resource "aws_organizations_account" "prod_app" {
 
 ## Creating Service Control Policies
 
-SCPs are the real power of Organizations. They set permission boundaries that apply to all principals in the target accounts. Remember that SCPs do not grant permissions - they only restrict what is allowed.
+SCPs are the real power of Organizations. They set permission guardrails for users and roles in member accounts, including the member account root user. Remember that SCPs do not grant permissions - they only restrict what is allowed.
 
 ### Deny Leaving the Organization
 
@@ -254,7 +257,13 @@ resource "aws_organizations_policy" "restrict_regions" {
       {
         Sid       = "DenyUnapprovedRegions"
         Effect    = "Deny"
-        Action    = "*"
+        NotAction = [
+          "cloudfront:*",
+          "iam:*",
+          "organizations:*",
+          "route53:*",
+          "support:*",
+        ]
         Resource  = "*"
         Condition = {
           StringNotEquals = {
@@ -262,12 +271,6 @@ resource "aws_organizations_policy" "restrict_regions" {
               "us-east-1",
               "us-west-2",
               "eu-west-1"
-            ]
-          }
-          # Exclude global services that only work in us-east-1
-          ArnNotLike = {
-            "aws:PrincipalArn" = [
-              "arn:aws:iam::*:role/OrganizationAccountAccessRole"
             ]
           }
         }
@@ -420,10 +423,10 @@ resource "aws_organizations_policy_attachment" "sandbox_restrictions" {
 Tag policies help enforce consistent tagging across your organization.
 
 ```hcl
-# Tag policy requiring specific tags
+# Tag policy standardizing accepted values for a tag
 resource "aws_organizations_policy" "tagging_policy" {
-  name        = "required-tags"
-  description = "Enforce required tags across the organization"
+  name        = "environment-tag-values"
+  description = "Standardize Environment tag values across the organization"
   type        = "TAG_POLICY"
 
   content = jsonencode({
@@ -488,7 +491,7 @@ resource "aws_organizations_delegated_administrator" "guard_duty" {
 
 4. **Protect your management account.** SCPs do not apply to the management account. Use IAM policies and careful access controls there instead.
 
-5. **Use lifecycle ignore_changes for accounts.** AWS accounts cannot be deleted via API, so add lifecycle rules to prevent Terraform from trying to recreate them.
+5. **Use lifecycle rules for accounts.** Add `prevent_destroy` to avoid accidental account removal or closure, and use `ignore_changes` for fields such as `role_name` that the Organizations API cannot read after account creation.
 
 6. **Version control your SCPs.** Store SCP JSON in separate files and use `file()` to load them. This makes them easier to review in pull requests.
 
