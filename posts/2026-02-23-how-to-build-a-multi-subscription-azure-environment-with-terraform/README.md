@@ -90,7 +90,7 @@ Policies enforce governance across all subscriptions in a management group.
 resource "azurerm_management_group_policy_assignment" "require_tags" {
   name                 = "require-cost-tags"
   management_group_id  = azurerm_management_group.workloads.id
-  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b466-ef6698e0a6a0"
+  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99"
   display_name         = "Require CostCenter tag on resources"
   enforce              = true
 
@@ -121,15 +121,27 @@ resource "azurerm_management_group_policy_assignment" "deny_public_ip" {
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/6c112d4e-5bc7-47ae-a041-ea2d9dccd749"
   display_name         = "Deny public IP addresses in production"
   enforce              = true
+
+  parameters = jsonencode({
+    listOfResourceTypesNotAllowed = {
+      value = ["Microsoft.Network/publicIPAddresses"]
+    }
+  })
 }
 
-# Require encryption on storage accounts
+# Require secure transfer on storage accounts
 resource "azurerm_management_group_policy_assignment" "storage_encryption" {
   name                 = "require-storage-https"
   management_group_id  = data.azurerm_management_group.tenant_root.id
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
   display_name         = "Require secure transfer for storage accounts"
   enforce              = true
+
+  parameters = jsonencode({
+    effect = {
+      value = "Deny"
+    }
+  })
 }
 
 # Custom policy initiative for security baseline
@@ -141,7 +153,7 @@ resource "azurerm_policy_set_definition" "security_baseline" {
 
   policy_definition_reference {
     policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/0015ea4d-51ff-4ce3-8d8c-f3f8f0179a56"
-    reference_id         = "require-sql-encryption"
+    reference_id         = "audit-vm-disaster-recovery"
   }
 
   policy_definition_reference {
@@ -151,7 +163,7 @@ resource "azurerm_policy_set_definition" "security_baseline" {
 
   policy_definition_reference {
     policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/22bee202-a82f-4305-9a2a-6d7f44d4dedb"
-    reference_id         = "require-nsg-on-subnets"
+    reference_id         = "audit-redis-ssl"
   }
 }
 ```
@@ -274,7 +286,19 @@ resource "azurerm_management_group_policy_assignment" "activity_log_diagnostics"
     logAnalytics = {
       value = azurerm_log_analytics_workspace.central.id
     }
+    effect = {
+      value = "DeployIfNotExists"
+    }
+    logsEnabled = {
+      value = "True"
+    }
   })
+}
+
+resource "azurerm_role_assignment" "activity_log_diagnostics" {
+  scope                = data.azurerm_management_group.tenant_root.id
+  role_definition_name = "Monitoring Contributor"
+  principal_id         = azurerm_management_group_policy_assignment.activity_log_diagnostics.identity[0].principal_id
 }
 
 # Azure Security Center (Defender for Cloud)
@@ -286,7 +310,7 @@ resource "azurerm_security_center_workspace" "central" {
 
 ## Subscription Vending Module
 
-Create a reusable module that provisions new subscriptions with all baseline configurations.
+Create a reusable module that configures newly created subscriptions with all baseline configurations.
 
 ```hcl
 # modules/subscription-vending/main.tf
@@ -295,6 +319,13 @@ variable "management_group_id" {}
 variable "address_space" {}
 variable "hub_vnet_id" {}
 variable "log_analytics_workspace_id" {}
+
+data "azurerm_subscription" "current" {}
+
+resource "azurerm_management_group_subscription_association" "current" {
+  management_group_id = var.management_group_id
+  subscription_id     = data.azurerm_subscription.current.subscription_id
+}
 
 # Create spoke networking
 resource "azurerm_virtual_network" "spoke" {
@@ -318,7 +349,7 @@ resource "azurerm_virtual_network_peering" "spoke_to_hub" {
 # Deploy diagnostic settings
 resource "azurerm_monitor_diagnostic_setting" "subscription" {
   name                       = "send-to-central-logs"
-  target_resource_id         = "/subscriptions/${data.azurerm_subscription.current.subscription_id}"
+  target_resource_id         = data.azurerm_subscription.current.id
   log_analytics_workspace_id = var.log_analytics_workspace_id
 
   enabled_log {
@@ -339,6 +370,6 @@ resource "azurerm_monitor_diagnostic_setting" "subscription" {
 
 A well-designed multi-subscription Azure environment gives you the isolation, governance, and scalability you need as your organization grows. Management groups let you apply policies at scale. Hub-spoke networking keeps traffic flowing securely. Centralized logging gives you visibility across everything.
 
-The subscription vending approach is particularly powerful because every new team or project gets a properly configured subscription without manual setup. The baseline is baked into the Terraform module.
+The subscription vending approach is particularly powerful because every new team or project gets a properly configured subscription without manual setup after the subscription is created. The baseline is baked into the Terraform module.
 
 For monitoring your Azure resources across all subscriptions and getting unified alerting, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-multi-subscription-azure-environment-with-terraform/view) for cross-subscription observability.
