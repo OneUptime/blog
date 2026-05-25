@@ -10,7 +10,7 @@ Description: Learn how to build comprehensive alerting pipelines with Terraform 
 
 Alerting pipelines are the nervous system of your infrastructure. They detect anomalies, route notifications to the right people, and trigger automated responses. A poorly designed alerting pipeline leads to alert fatigue, missed incidents, and slow response times. Terraform enables you to build structured, multi-channel alerting pipelines that are consistent, testable, and version-controlled.
 
-In this guide, we will create a complete alerting pipeline using Terraform. We will set up SNS topics for different severity levels, CloudWatch alarms with intelligent thresholds, Lambda functions for alert processing and enrichment, and multi-channel delivery to email, Slack, and PagerDuty.
+In this guide, we will create a complete alerting pipeline using Terraform. We will set up SNS topics for different severity levels, CloudWatch alarms with intelligent thresholds, Lambda functions for alert processing and enrichment, and multi-channel delivery to email and Slack.
 
 ## Why Build Alerting Pipelines with Terraform
 
@@ -58,26 +58,22 @@ variable "alert_severities" {
     description     = string
     email_endpoints = list(string)
     slack_webhook   = string
-    pagerduty       = bool
   }))
   default = {
     "critical" = {
       description     = "Service down or data loss imminent"
       email_endpoints = ["oncall@example.com", "engineering-lead@example.com"]
       slack_webhook   = "https://hooks.slack.com/services/critical-channel"
-      pagerduty       = true
     }
     "warning" = {
       description     = "Service degraded but functional"
       email_endpoints = ["engineering@example.com"]
       slack_webhook   = "https://hooks.slack.com/services/warning-channel"
-      pagerduty       = false
     }
     "info" = {
       description     = "Informational alerts for awareness"
       email_endpoints = ["engineering@example.com"]
       slack_webhook   = "https://hooks.slack.com/services/info-channel"
-      pagerduty       = false
     }
   }
 }
@@ -127,7 +123,7 @@ Create a Lambda function that enriches alerts before forwarding them to Slack an
 # alert-processor.tf - Lambda for alert enrichment and routing
 resource "aws_lambda_function" "alert_processor" {
   function_name = "alert-processor-${var.environment}"
-  runtime       = "python3.11"
+  runtime       = "python3.12"
   handler       = "alert_processor.handler"
   role          = aws_iam_role.alert_processor.arn
   timeout       = 30
