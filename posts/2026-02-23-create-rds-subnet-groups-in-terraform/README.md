@@ -8,7 +8,7 @@ Description: A complete guide to creating and managing RDS DB subnet groups in T
 
 ---
 
-Every RDS instance needs a DB subnet group. It tells RDS which subnets - and therefore which availability zones - the database can use. Without a properly configured subnet group, your RDS instance cannot be created, and if your subnet group only covers one AZ, you cannot enable Multi-AZ for high availability.
+Every RDS instance needs a DB subnet group. It tells RDS which subnets - and therefore which availability zones - the database can use. Without a properly configured subnet group, an RDS instance in a custom VPC cannot be created, and if your VPC and subnet group do not cover enough AZs, you cannot enable Multi-AZ for high availability.
 
 Despite being a relatively simple resource, subnet groups are the foundation of your database networking. Getting them right from the start saves headaches later. This guide covers creating them in Terraform, designing for high availability, and handling common scenarios like shared subnet groups and VPC peering.
 
@@ -20,7 +20,7 @@ A DB subnet group is a collection of subnets that RDS uses to place database ins
 - For a **Multi-AZ instance**, RDS uses subnets in two different AZs (one for primary, one for standby)
 - For an **Aurora cluster**, RDS can place instances across all AZs covered by the subnet group
 
-The subnets in the group must be in the same VPC, and they should be in different availability zones for high availability.
+The subnets in the group must be in the same VPC, and regional DB subnet groups should include subnets in at least two availability zones for high availability.
 
 ## Creating a Basic Subnet Group
 
@@ -124,7 +124,7 @@ If you use the popular terraform-aws-modules/vpc module, subnet groups can be cr
 ```hcl
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "~> 6.0"
 
   name = "myapp-vpc"
   cidr = "10.0.0.0/16"
@@ -258,7 +258,7 @@ resource "aws_network_acl" "database" {
     to_port    = 3306
   }
 
-  # Allow return traffic (ephemeral ports)
+  # Allow inbound return traffic for database-initiated connections
   ingress {
     protocol   = "tcp"
     rule_no    = 200
@@ -268,7 +268,7 @@ resource "aws_network_acl" "database" {
     to_port    = 65535
   }
 
-  # Allow outbound to application subnets
+  # Allow outbound response traffic to application subnets
   egress {
     protocol   = "tcp"
     rule_no    = 100
@@ -307,7 +307,7 @@ resource "aws_network_acl" "database" {
 
 There are a few things that trip people up with subnet groups:
 
-**Not enough AZs.** If your subnet group only has subnets in one AZ, you cannot enable Multi-AZ. Always use at least two AZs, preferably three.
+**Not enough AZs.** In normal regional deployments, RDS requires DB subnet groups to cover at least two AZs. Multi-AZ DB clusters require at least three AZs. Always use at least two AZs, preferably three.
 
 **Using public subnets.** Database subnets should be private. If you put RDS in a public subnet, you are relying solely on security groups and `publicly_accessible = false` for protection. Use private subnets with no route to an internet gateway.
 
