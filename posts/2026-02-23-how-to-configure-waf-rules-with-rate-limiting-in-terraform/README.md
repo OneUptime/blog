@@ -8,13 +8,13 @@ Description: Learn how to configure AWS WAF rules with rate limiting using Terra
 
 ---
 
-AWS WAF (Web Application Firewall) with rate limiting provides a powerful combination for protecting your web applications from abuse. Rate-based rules automatically block IP addresses that exceed a configured request threshold within a five-minute window. This protects against brute force login attempts, API abuse, web scraping, and simple layer 7 DDoS attacks. Terraform lets you define these WAF rules as infrastructure as code, ensuring consistent protection across all your environments.
+AWS WAF (Web Application Firewall) with rate limiting provides a powerful combination for protecting your web applications from abuse. Rate-based rules automatically block IP addresses that exceed a configured request threshold within the rule's evaluation window. This protects against brute force login attempts, API abuse, web scraping, and simple layer 7 DDoS attacks. Terraform lets you define these WAF rules as infrastructure as code, ensuring consistent protection across all your environments.
 
 ## How WAF Rate Limiting Works
 
-WAF rate-based rules count the number of requests from each source IP address over a rolling five-minute period. When an IP exceeds the configured limit, WAF blocks subsequent requests from that IP until the rate drops below the threshold. You can scope rate limiting to specific URL paths, HTTP methods, or other request attributes using scope-down statements.
+WAF rate-based rules count the number of requests from each source IP address over a rolling evaluation window. The default window is five minutes, and AWS WAF also supports one-minute, two-minute, and ten-minute windows. When an IP exceeds the configured limit, WAF blocks subsequent requests from that IP until the rate drops below the threshold. You can scope rate limiting to specific URL paths, HTTP methods, or other request attributes using scope-down statements.
 
-The minimum rate limit in AWS WAF is 100 requests per five minutes. AWS evaluates the rate approximately every 30 seconds.
+The minimum rate limit in AWS WAF is 10 requests per evaluation window. AWS evaluates the rate approximately every 10 seconds.
 
 ## Prerequisites
 
@@ -49,7 +49,7 @@ resource "aws_wafv2_web_acl" "main" {
     allow {}
   }
 
-  # Global rate limit - block IPs exceeding 2000 requests per 5 minutes
+  # Global rate limit - block IPs exceeding 2000 requests per default 5-minute window
   rule {
     name     = "global-rate-limit"
     priority = 1
@@ -467,7 +467,7 @@ resource "aws_cloudwatch_metric_alarm" "rate_limit_triggered" {
   alarm_description   = "WAF rate limiting has blocked more than 100 requests"
 
   dimensions = {
-    WebACL = aws_wafv2_web_acl.comprehensive.name
+    WebACL = "ComprehensiveWAF"
     Rule   = "GlobalRateLimit"
     Region = "us-east-1"
   }
