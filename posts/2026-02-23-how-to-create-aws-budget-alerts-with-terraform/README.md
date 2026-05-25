@@ -105,9 +105,12 @@ resource "aws_budgets_budget" "rds" {
 
 ## Budget with SNS Notifications
 
-For more flexible notifications, use SNS topics:
+For more flexible notifications, use SNS topics. To deliver budget alerts to Slack, connect the SNS topic to Amazon Q Developer in chat applications or a transformer such as Lambda:
 
 ```hcl
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+
 # Create an SNS topic for budget alerts
 resource "aws_sns_topic" "budget_alerts" {
   name = "budget-alerts"
@@ -124,15 +127,23 @@ resource "aws_sns_topic_policy" "budget_alerts" {
       Principal = { Service = "budgets.amazonaws.com" }
       Action    = "SNS:Publish"
       Resource  = aws_sns_topic.budget_alerts.arn
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
+        ArnLike = {
+          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:budgets::${data.aws_caller_identity.current.account_id}:*"
+        }
+      }
     }]
   })
 }
 
-# Subscribe a Slack webhook or Lambda function
-resource "aws_sns_topic_subscription" "slack" {
+# Subscribe an HTTPS endpoint that can process SNS notifications
+resource "aws_sns_topic_subscription" "webhook" {
   topic_arn = aws_sns_topic.budget_alerts.arn
   protocol  = "https"
-  endpoint  = var.slack_webhook_url
+  endpoint  = var.https_alert_endpoint_url
 }
 
 # Budget with SNS notification
@@ -196,7 +207,7 @@ resource "aws_budgets_budget" "team" {
 
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:Team$${each.key}"]
+    values = ["user:Team${"$"}${each.key}"]
   }
 
   notification {
@@ -244,6 +255,8 @@ Automatically respond to budget alerts with actions:
 
 ```hcl
 # IAM role for budget actions
+data "aws_partition" "budget_action" {}
+
 resource "aws_iam_role" "budget_action" {
   name = "budget-action-role"
 
@@ -251,29 +264,15 @@ resource "aws_iam_role" "budget_action" {
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Service = "budgets.amazonaws.com" }
+      Principal = { Service = "budgets.${data.aws_partition.budget_action.dns_suffix}" }
       Action    = "sts:AssumeRole"
     }]
   })
 }
 
-resource "aws_iam_role_policy" "budget_action" {
-  name = "budget-action-policy"
-  role = aws_iam_role.budget_action.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ec2:StopInstances"]
-      Resource = "*"
-      Condition = {
-        StringEquals = {
-          "ec2:ResourceTag/Environment" = "development"
-        }
-      }
-    }]
-  })
+resource "aws_iam_role_policy_attachment" "budget_action_ssm" {
+  role       = aws_iam_role.budget_action.name
+  policy_arn = "arn:${data.aws_partition.budget_action.partition}:iam::aws:policy/AWSBudgetsActions_RolePolicyForResourceAdministrationWithSSM"
 }
 
 # Budget with action to stop dev instances when budget exceeded
@@ -309,12 +308,32 @@ Create a module for consistent budget creation:
 
 ```hcl
 # modules/aws-budget/main.tf
-variable "name" { type = string }
-variable "limit" { type = number }
-variable "service" { type = string; default = null }
-variable "tags" { type = map(string); default = {} }
-variable "alert_emails" { type = list(string) }
-variable "thresholds" { type = list(number); default = [80, 100] }
+variable "name" {
+  type = string
+}
+
+variable "limit" {
+  type = number
+}
+
+variable "service" {
+  type    = string
+  default = null
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
+
+variable "alert_emails" {
+  type = list(string)
+}
+
+variable "thresholds" {
+  type    = list(number)
+  default = [80, 100]
+}
 
 resource "aws_budgets_budget" "this" {
   name         = var.name
@@ -328,6 +347,14 @@ resource "aws_budgets_budget" "this" {
     content {
       name   = "Service"
       values = [cost_filter.value]
+    }
+  }
+
+  dynamic "cost_filter" {
+    for_each = length(var.tags) > 0 ? [var.tags] : []
+    content {
+      name   = "TagKeyValue"
+      values = [for key, value in cost_filter.value : "user:${key}${"$"}${value}"]
     }
   }
 
