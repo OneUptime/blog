@@ -37,7 +37,7 @@ terraform {
   required_providers {
     confluent = {
       source  = "confluentinc/confluent"
-      version = "~> 1.70"
+      version = "~> 2.73"
     }
   }
 }
@@ -85,10 +85,18 @@ Confluent environments are logical groupings for your clusters and resources.
 # Create an environment
 resource "confluent_environment" "production" {
   display_name = "Production"
+
+  stream_governance {
+    package = "ESSENTIALS"
+  }
 }
 
 resource "confluent_environment" "staging" {
   display_name = "Staging"
+
+  stream_governance {
+    package = "ESSENTIALS"
+  }
 }
 ```
 
@@ -155,7 +163,18 @@ resource "confluent_kafka_cluster" "dedicated" {
 Before creating topics, you need service accounts and API keys for authentication.
 
 ```hcl
-# Create a service account for an application
+resource "confluent_service_account" "app_manager" {
+  display_name = "app-manager"
+  description  = "Service account to manage the Kafka cluster"
+}
+
+resource "confluent_role_binding" "app_manager_cluster_admin" {
+  principal   = "User:${confluent_service_account.app_manager.id}"
+  role_name   = "CloudClusterAdmin"
+  crn_pattern = confluent_kafka_cluster.production.rbac_crn
+}
+
+# Create service accounts for applications
 resource "confluent_service_account" "app_producer" {
   display_name = "app-producer"
   description  = "Service account for the application producer"
@@ -167,6 +186,31 @@ resource "confluent_service_account" "app_consumer" {
 }
 
 # Create Kafka API keys for the service accounts
+resource "confluent_api_key" "manager_key" {
+  display_name = "manager-api-key"
+  description  = "API key for the cluster manager service account"
+
+  owner {
+    id          = confluent_service_account.app_manager.id
+    api_version = confluent_service_account.app_manager.api_version
+    kind        = confluent_service_account.app_manager.kind
+  }
+
+  managed_resource {
+    id          = confluent_kafka_cluster.production.id
+    api_version = confluent_kafka_cluster.production.api_version
+    kind        = confluent_kafka_cluster.production.kind
+
+    environment {
+      id = confluent_environment.production.id
+    }
+  }
+
+  depends_on = [
+    confluent_role_binding.app_manager_cluster_admin
+  ]
+}
+
 resource "confluent_api_key" "producer_key" {
   display_name = "producer-api-key"
   description  = "API key for the producer service account"
@@ -230,8 +274,8 @@ resource "confluent_kafka_topic" "orders" {
   }
 
   credentials {
-    key    = confluent_api_key.producer_key.id
-    secret = confluent_api_key.producer_key.secret
+    key    = confluent_api_key.manager_key.id
+    secret = confluent_api_key.manager_key.secret
   }
 }
 
@@ -253,8 +297,8 @@ resource "confluent_kafka_topic" "user_profiles" {
   }
 
   credentials {
-    key    = confluent_api_key.producer_key.id
-    secret = confluent_api_key.producer_key.secret
+    key    = confluent_api_key.manager_key.id
+    secret = confluent_api_key.manager_key.secret
   }
 }
 
@@ -286,8 +330,8 @@ resource "confluent_kafka_topic" "events" {
   }
 
   credentials {
-    key    = confluent_api_key.producer_key.id
-    secret = confluent_api_key.producer_key.secret
+    key    = confluent_api_key.manager_key.id
+    secret = confluent_api_key.manager_key.secret
   }
 }
 ```
@@ -311,8 +355,8 @@ resource "confluent_kafka_acl" "producer_write" {
   rest_endpoint = confluent_kafka_cluster.production.rest_endpoint
 
   credentials {
-    key    = confluent_api_key.producer_key.id
-    secret = confluent_api_key.producer_key.secret
+    key    = confluent_api_key.manager_key.id
+    secret = confluent_api_key.manager_key.secret
   }
 }
 
@@ -332,8 +376,8 @@ resource "confluent_kafka_acl" "consumer_read" {
   rest_endpoint = confluent_kafka_cluster.production.rest_endpoint
 
   credentials {
-    key    = confluent_api_key.consumer_key.id
-    secret = confluent_api_key.consumer_key.secret
+    key    = confluent_api_key.manager_key.id
+    secret = confluent_api_key.manager_key.secret
   }
 }
 
@@ -353,8 +397,8 @@ resource "confluent_kafka_acl" "consumer_group" {
   rest_endpoint = confluent_kafka_cluster.production.rest_endpoint
 
   credentials {
-    key    = confluent_api_key.consumer_key.id
-    secret = confluent_api_key.consumer_key.secret
+    key    = confluent_api_key.manager_key.id
+    secret = confluent_api_key.manager_key.secret
   }
 }
 ```
@@ -362,17 +406,26 @@ resource "confluent_kafka_acl" "consumer_group" {
 ## Schema Registry
 
 ```hcl
-# Enable Schema Registry
-resource "confluent_schema_registry_cluster" "production" {
-  package = "ESSENTIALS"
-
+# Look up the Schema Registry cluster for the environment
+data "confluent_schema_registry_cluster" "production" {
   environment {
     id = confluent_environment.production.id
   }
 
-  region {
-    id = "sgreg-1"  # Schema Registry region
-  }
+  depends_on = [
+    confluent_kafka_cluster.production
+  ]
+}
+
+resource "confluent_service_account" "schema_registry_manager" {
+  display_name = "schema-registry-manager"
+  description  = "Service account to manage schemas in the environment"
+}
+
+resource "confluent_role_binding" "schema_registry_manager_environment_admin" {
+  principal   = "User:${confluent_service_account.schema_registry_manager.id}"
+  role_name   = "EnvironmentAdmin"
+  crn_pattern = confluent_environment.production.resource_name
 }
 
 # Create a Schema Registry API key
@@ -380,29 +433,33 @@ resource "confluent_api_key" "schema_registry_key" {
   display_name = "schema-registry-key"
 
   owner {
-    id          = confluent_service_account.app_producer.id
-    api_version = confluent_service_account.app_producer.api_version
-    kind        = confluent_service_account.app_producer.kind
+    id          = confluent_service_account.schema_registry_manager.id
+    api_version = confluent_service_account.schema_registry_manager.api_version
+    kind        = confluent_service_account.schema_registry_manager.kind
   }
 
   managed_resource {
-    id          = confluent_schema_registry_cluster.production.id
-    api_version = confluent_schema_registry_cluster.production.api_version
-    kind        = confluent_schema_registry_cluster.production.kind
+    id          = data.confluent_schema_registry_cluster.production.id
+    api_version = data.confluent_schema_registry_cluster.production.api_version
+    kind        = data.confluent_schema_registry_cluster.production.kind
 
     environment {
       id = confluent_environment.production.id
     }
   }
+
+  depends_on = [
+    confluent_role_binding.schema_registry_manager_environment_admin
+  ]
 }
 
 # Register an Avro schema
 resource "confluent_schema" "order_value" {
   schema_registry_cluster {
-    id = confluent_schema_registry_cluster.production.id
+    id = data.confluent_schema_registry_cluster.production.id
   }
 
-  rest_endpoint = confluent_schema_registry_cluster.production.rest_endpoint
+  rest_endpoint = data.confluent_schema_registry_cluster.production.rest_endpoint
   subject_name  = "orders-value"
   format        = "AVRO"
 
@@ -415,7 +472,7 @@ resource "confluent_schema" "order_value" {
       { name = "customer_id", type = "string" },
       { name = "amount", type = "double" },
       { name = "currency", type = "string" },
-      { name = "created_at", type = "long", logicalType = "timestamp-millis" },
+      { name = "created_at", type = { type = "long", logicalType = "timestamp-millis" } },
       { name = "status", type = { type = "enum", name = "OrderStatus", symbols = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"] } },
     ]
   })
@@ -502,7 +559,7 @@ output "bootstrap_servers" {
 }
 
 output "schema_registry_url" {
-  value = confluent_schema_registry_cluster.production.rest_endpoint
+  value = data.confluent_schema_registry_cluster.production.rest_endpoint
 }
 
 output "producer_api_key" {
