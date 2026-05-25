@@ -33,6 +33,43 @@ Start with the API definition and schema.
 ```hcl
 # AppSync GraphQL API
 
+resource "aws_cognito_user_pool" "main" {
+  name = "main-user-pool"
+}
+
+resource "aws_iam_role" "appsync_logs" {
+  name = "appsync-cloudwatch-logs-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "appsync.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "appsync_logs" {
+  name = "appsync-cloudwatch-logs-policy"
+  role = aws_iam_role.appsync_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_appsync_graphql_api" "main" {
   name                = "main-graphql-api"
   authentication_type = "AMAZON_COGNITO_USER_POOLS"
@@ -92,6 +129,7 @@ type Mutation {
   updateUser(id: ID!, input: UpdateUserInput!): User
   deleteUser(id: ID!): ID
   createProduct(input: CreateProductInput!): Product
+  updateProduct(id: ID!, input: UpdateProductInput!): Product
   createOrder(input: CreateOrderInput!): Order
 }
 
@@ -170,6 +208,14 @@ input CreateProductInput {
   inventory: Int!
 }
 
+input UpdateProductInput {
+  name: String
+  description: String
+  price: Float
+  category: String
+  inventory: Int
+}
+
 input CreateOrderInput {
   userId: ID!
   products: [OrderItemInput!]!
@@ -244,6 +290,33 @@ resource "aws_dynamodb_table" "products" {
   }
 }
 
+# Orders table
+resource "aws_dynamodb_table" "orders" {
+  name         = "Orders"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "user-index"
+    hash_key        = "userId"
+    projection_type = "ALL"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
 # IAM role for AppSync to access DynamoDB
 resource "aws_iam_role" "appsync_dynamodb" {
   name = "appsync-dynamodb-role"
@@ -281,6 +354,8 @@ resource "aws_iam_role_policy" "appsync_dynamodb" {
         "${aws_dynamodb_table.users.arn}/index/*",
         aws_dynamodb_table.products.arn,
         "${aws_dynamodb_table.products.arn}/index/*",
+        aws_dynamodb_table.orders.arn,
+        "${aws_dynamodb_table.orders.arn}/index/*",
       ]
     }]
   })
@@ -336,6 +411,11 @@ resource "aws_appsync_resolver" "get_user" {
 EOF
 
   response_template = "$util.toJson($ctx.result)"
+
+  caching_config {
+    caching_keys = ["$context.arguments.id"]
+    ttl          = 300
+  }
 }
 
 # List Users resolver with pagination
@@ -349,10 +429,8 @@ resource "aws_appsync_resolver" "list_users" {
 {
   "version": "2018-05-29",
   "operation": "Scan",
-  "limit": $util.defaultIfNull($ctx.args.limit, 20),
-  #if($ctx.args.nextToken)
-    "nextToken": "$ctx.args.nextToken",
-  #end
+  "limit": $util.defaultIfNull($ctx.args.limit, 20)#if($ctx.args.nextToken),
+  "nextToken": $util.toJson($ctx.args.nextToken)#end
 }
 EOF
 
@@ -395,6 +473,86 @@ EOF
 Some operations need more than simple DynamoDB operations. Use Lambda for complex business logic.
 
 ```hcl
+# IAM role for the order-processing Lambda
+resource "aws_iam_role" "order_lambda" {
+  name = "graphql-create-order-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "order_lambda" {
+  name = "graphql-create-order-lambda-policy"
+  role = aws_iam_role.order_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query",
+        ]
+        Resource = [
+          aws_dynamodb_table.orders.arn,
+          "${aws_dynamodb_table.orders.arn}/index/*",
+          aws_dynamodb_table.products.arn,
+        ]
+      },
+    ]
+  })
+}
+
+# IAM role for AppSync to invoke Lambda
+resource "aws_iam_role" "appsync_lambda" {
+  name = "appsync-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "appsync.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "appsync_lambda" {
+  name = "appsync-lambda-policy"
+  role = aws_iam_role.appsync_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "lambda:InvokeFunction"
+      Resource = aws_lambda_function.create_order.arn
+    }]
+  })
+}
+
 # Lambda function for order processing
 resource "aws_lambda_function" "create_order" {
   filename         = "create_order.zip"
@@ -457,6 +615,7 @@ resource "aws_appsync_api_cache" "main" {
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
 }
+
 ```
 
 ## Monitoring
@@ -468,6 +627,10 @@ Track your GraphQL API performance and errors.
 resource "aws_cloudwatch_log_group" "appsync" {
   name              = "/aws/appsync/apis/${aws_appsync_graphql_api.main.id}"
   retention_in_days = 30
+}
+
+resource "aws_sns_topic" "api_alerts" {
+  name = "graphql-api-alerts"
 }
 
 # Alarm for GraphQL errors
