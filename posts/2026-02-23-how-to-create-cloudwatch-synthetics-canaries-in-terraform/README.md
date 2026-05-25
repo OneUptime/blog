@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, CloudWatch, Synthetics, Monitoring, Infrastructure as Code
 
-Description: Learn how to create CloudWatch Synthetics canaries using Terraform to continuously test your APIs and websites from multiple locations.
+Description: Learn how to create CloudWatch Synthetics canaries using Terraform to continuously test your APIs and websites from AWS-managed infrastructure.
 
 ---
 
@@ -23,7 +23,15 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.0"
     }
   }
 }
@@ -99,6 +107,14 @@ resource "aws_iam_role_policy" "canary" {
       {
         Effect = "Allow"
         Action = [
+          "s3:ListAllMyBuckets",
+          "xray:PutTraceSegments"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
@@ -132,7 +148,7 @@ resource "aws_synthetics_canary" "heartbeat" {
   name                 = "website-heartbeat"
   artifact_s3_location = "s3://${aws_s3_bucket.canary_artifacts.id}/heartbeat/"
   execution_role_arn   = aws_iam_role.canary.arn
-  runtime_version      = "syn-nodejs-puppeteer-7.0"
+  runtime_version      = "syn-nodejs-puppeteer-15.1"
   handler              = "heartbeat.handler"
   start_canary         = true
 
@@ -154,8 +170,8 @@ resource "local_file" "heartbeat_script" {
   filename = "${path.module}/canary-scripts/heartbeat/nodejs/node_modules/heartbeat.js"
   content  = <<-EOT
     const { URL } = require('url');
-    const synthetics = require('Synthetics');
-    const log = require('SyntheticsLogger');
+    const synthetics = require('@aws/synthetics-puppeteer');
+    const log = require('@aws/synthetics-logger');
 
     const heartbeatHandler = async function () {
       const urls = [
@@ -212,7 +228,7 @@ resource "aws_synthetics_canary" "api_test" {
   name                 = "api-health-check"
   artifact_s3_location = "s3://${aws_s3_bucket.canary_artifacts.id}/api-test/"
   execution_role_arn   = aws_iam_role.canary.arn
-  runtime_version      = "syn-nodejs-puppeteer-7.0"
+  runtime_version      = "syn-nodejs-puppeteer-15.1"
   handler              = "apitest.handler"
   start_canary         = true
 
@@ -229,6 +245,32 @@ resource "aws_synthetics_canary" "api_test" {
       API_ENDPOINT = var.api_endpoint
     }
   }
+}
+
+# Create the API canary script
+resource "local_file" "api_script" {
+  filename = "${path.module}/canary-scripts/api-test/nodejs/node_modules/apitest.js"
+  content  = <<-EOT
+    const synthetics = require('@aws/synthetics-puppeteer');
+
+    const apiHandler = async function () {
+      const endpoint = process.env.API_ENDPOINT;
+
+      await synthetics.executeHttpStep('Verify API health', endpoint);
+    };
+
+    exports.handler = async () => {
+      return await apiHandler();
+    };
+  EOT
+}
+
+data "archive_file" "api_canary" {
+  type        = "zip"
+  source_dir  = "${path.module}/canary-scripts/api-test"
+  output_path = "${path.module}/canary-scripts/api-test.zip"
+
+  depends_on = [local_file.api_script]
 }
 
 variable "api_endpoint" {
@@ -285,7 +327,7 @@ resource "aws_sns_topic" "canary_alerts" {
 ## Multiple Endpoint Monitoring
 
 ```hcl
-# Monitor multiple endpoints using for_each
+# Define endpoints for use with for_each
 variable "endpoints" {
   type = map(object({
     url      = string
