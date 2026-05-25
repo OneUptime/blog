@@ -23,11 +23,11 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
     azuread = {
       source  = "hashicorp/azuread"
-      version = "~> 2.0"
+      version = "~> 3.0"
     }
   }
 }
@@ -90,12 +90,12 @@ resource "azurerm_role_definition" "app_operator" {
       "Microsoft.Web/sites/*",
       "Microsoft.Web/serverFarms/*",
 
-      # Storage read permissions
+      # Storage account read and key listing permissions
       "Microsoft.Storage/storageAccounts/read",
       "Microsoft.Storage/storageAccounts/listKeys/action",
 
-      # Key Vault secret read permissions
-      "Microsoft.KeyVault/vaults/secrets/read",
+      # Key Vault read permissions
+      "Microsoft.KeyVault/vaults/read",
 
       # Monitor permissions
       "Microsoft.Insights/metrics/read",
@@ -115,7 +115,11 @@ resource "azurerm_role_definition" "app_operator" {
     data_actions = [
       # Allow blob data access
       "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
-      "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write"
+      "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+
+      # Key Vault secret read permissions
+      "Microsoft.KeyVault/vaults/secrets/readMetadata/action",
+      "Microsoft.KeyVault/vaults/secrets/getSecret/action"
     ]
 
     not_data_actions = []
@@ -155,6 +159,9 @@ resource "azurerm_role_assignment" "deployment_contributor" {
   scope                = azurerm_resource_group.dev.id
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.deployment.object_id
+  principal_type       = "ServicePrincipal"
+
+  skip_service_principal_aad_check = true
 }
 
 # Also grant Key Vault access for secret management
@@ -162,6 +169,9 @@ resource "azurerm_role_assignment" "deployment_keyvault" {
   scope                = azurerm_resource_group.dev.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = azuread_service_principal.deployment.object_id
+  principal_type       = "ServicePrincipal"
+
+  skip_service_principal_aad_check = true
 }
 ```
 
@@ -283,13 +293,13 @@ resource "azurerm_role_assignment" "dynamic" {
 
 ## Deny Assignments
 
-Azure also supports deny assignments that block specific actions even if a role assignment grants access:
+Azure also supports deny assignments that block specific actions even if a role assignment grants access. You cannot create RBAC deny assignments directly, but you can use Azure Policy deny effects to block non-compliant requests:
 
 ```hcl
-# Note: Deny assignments are typically managed through Azure Blueprints
-# or Azure Policy, but you can reference them in Terraform
+# Note: RBAC deny assignments are created and managed by Azure, such as by
+# deployment stacks. You cannot create them directly with Terraform.
 
-# Use Azure Policy to create deny effects
+# Use Azure Policy deny effects when you need to block non-compliant requests
 resource "azurerm_policy_assignment" "deny_public_storage" {
   name                 = "deny-public-storage"
   scope                = data.azurerm_subscription.current.id
