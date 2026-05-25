@@ -54,6 +54,10 @@ resource "aws_autoscaling_policy" "cpu_target" {
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
 
+  # Seconds to wait before including a new instance in the metric
+  # Prevents scaling decisions based on startup spikes
+  estimated_instance_warmup = 300
+
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
@@ -61,10 +65,6 @@ resource "aws_autoscaling_policy" "cpu_target" {
 
     # Target 60% average CPU utilization
     target_value = 60.0
-
-    # Seconds to wait before including a new instance in the metric
-    # Prevents scaling decisions based on startup spikes
-    estimated_instance_warmup = 300
   }
 }
 ```
@@ -86,6 +86,8 @@ resource "aws_autoscaling_policy" "request_count" {
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
 
+  estimated_instance_warmup = 300
+
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ALBRequestCountPerTarget"
@@ -96,8 +98,6 @@ resource "aws_autoscaling_policy" "request_count" {
 
     # Each instance should handle approximately 1000 requests per minute
     target_value = 1000.0
-
-    estimated_instance_warmup = 300
   }
 }
 ```
@@ -106,7 +106,7 @@ The `resource_label` format is `app/lb-name/xxxxxxxx/targetgroup/tg-name/yyyyyyy
 
 ## Custom Metric Target Tracking
 
-When predefined metrics don't fit, you can track any CloudWatch metric. This is useful for application-specific metrics like queue depth, active connections, or custom business metrics.
+When predefined metrics don't fit, you can track a custom CloudWatch metric that behaves like a utilization metric. This is useful for application-specific metrics like queue depth, active connections, or custom business metrics.
 
 ```hcl
 # Scale based on average active connections per instance
@@ -114,6 +114,8 @@ resource "aws_autoscaling_policy" "connections" {
   name                   = "connections-target"
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
+
+  estimated_instance_warmup = 180
 
   target_tracking_configuration {
     customized_metric_specification {
@@ -130,8 +132,6 @@ resource "aws_autoscaling_policy" "connections" {
 
     # Keep average connections per instance at 500
     target_value = 500.0
-
-    estimated_instance_warmup = 180
   }
 }
 ```
@@ -143,7 +143,10 @@ To publish custom metrics from your application:
 # Script to publish custom metric from the application
 # Run this on each instance via cron or a daemon
 
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id)
 ASG_NAME=$(aws ec2 describe-tags \
   --filters "Name=resource-id,Values=$INSTANCE_ID" "Name=key,Values=aws:autoscaling:groupName" \
   --query "Tags[0].Value" --output text)
@@ -162,7 +165,7 @@ aws cloudwatch put-metric-data \
 
 ## SQS Queue-Based Scaling
 
-A common pattern for worker fleets is scaling based on the number of messages in an SQS queue, divided by the number of instances.
+A common pattern for worker fleets is scaling based on the number of messages in an SQS queue, divided by the number of `InService` instances.
 
 ```hcl
 # Custom metric: messages per instance
@@ -174,7 +177,7 @@ resource "aws_autoscaling_policy" "queue_depth" {
   target_tracking_configuration {
     customized_metric_specification {
       metrics {
-        label = "Get the queue size (the p99 of the determine the queue size)"
+        label = "Get the queue size (the number of messages waiting to be processed)"
         id    = "m1"
 
         metric_stat {
@@ -186,14 +189,14 @@ resource "aws_autoscaling_policy" "queue_depth" {
               value = aws_sqs_queue.work.name
             }
           }
-          stat = "Average"
+          stat = "Sum"
         }
 
         return_data = false
       }
 
       metrics {
-        label = "Get the group size"
+        label = "Get the group size (the number of InService instances)"
         id    = "m2"
 
         metric_stat {
@@ -225,7 +228,7 @@ resource "aws_autoscaling_policy" "queue_depth" {
 }
 ```
 
-This is a metric math expression that divides the queue depth by the number of running instances. When the backlog per instance exceeds 100, the ASG adds more workers. When it drops below 100, it removes them.
+This is a metric math expression that divides the queue depth by the number of `InService` instances. When the backlog per instance exceeds 100, the ASG adds more workers. When it drops below 100, it removes them.
 
 ## Multiple Target Tracking Policies
 
@@ -238,12 +241,13 @@ resource "aws_autoscaling_policy" "cpu" {
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
 
+  estimated_instance_warmup = 300
+
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
     }
-    target_value              = 60.0
-    estimated_instance_warmup = 300
+    target_value = 60.0
   }
 }
 
@@ -253,13 +257,14 @@ resource "aws_autoscaling_policy" "requests" {
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
 
+  estimated_instance_warmup = 300
+
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ALBRequestCountPerTarget"
       resource_label         = "${aws_lb.app.arn_suffix}/${aws_lb_target_group.app.arn_suffix}"
     }
-    target_value              = 800.0
-    estimated_instance_warmup = 300
+    target_value = 800.0
   }
 }
 
@@ -269,13 +274,14 @@ resource "aws_autoscaling_policy" "network" {
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
 
+  estimated_instance_warmup = 300
+
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageNetworkOut"
     }
-    # Target 500 MB/sec average network out per instance
-    target_value              = 500000000
-    estimated_instance_warmup = 300
+    # Target 500 MB per minute average network out per instance
+    target_value = 500000000
   }
 }
 ```
