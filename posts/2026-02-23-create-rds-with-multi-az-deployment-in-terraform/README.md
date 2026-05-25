@@ -67,7 +67,7 @@ resource "aws_db_instance" "main" {
   identifier = "myapp-db"
 
   engine         = "postgres"
-  engine_version = "16.2"
+  engine_version = "16.13"
   instance_class = "db.r6g.large"
 
   # THIS IS THE KEY SETTING
@@ -124,7 +124,7 @@ resource "aws_rds_cluster" "multi_az" {
   cluster_identifier = "myapp-multi-az-cluster"
 
   engine         = "mysql"
-  engine_version = "8.0.35"
+  engine_version = "8.0.45"
 
   # This is what makes it a Multi-AZ DB Cluster
   db_cluster_instance_class = "db.r6gd.large"
@@ -176,7 +176,7 @@ output "db_address" {
 }
 ```
 
-The DNS TTL for RDS endpoints is 5 seconds. Most applications will reconnect within a few seconds after failover completes. But your application needs to handle the brief disconnection gracefully - retry logic in your database driver is essential.
+RDS endpoints are DNS names that can change during failover. If your runtime caches DNS, keep the TTL short; for example, AWS recommends a JVM DNS TTL of no more than 60 seconds. Most applications will reconnect shortly after failover completes. But your application needs to handle the brief disconnection gracefully - retry logic in your database driver is essential.
 
 ## CloudWatch Alarms for Failover Events
 
@@ -201,7 +201,7 @@ resource "aws_cloudwatch_event_rule" "rds_failover" {
 
   event_pattern = jsonencode({
     source      = ["aws.rds"]
-    detail-type = ["RDS DB Instance Event"]
+    "detail-type" = ["RDS DB Instance Event"]
     detail = {
       EventCategories = ["failover"]
       SourceArn       = [aws_db_instance.main.arn]
@@ -242,10 +242,20 @@ aws rds reboot-db-instance \
   --db-instance-identifier myapp-db \
   --force-failover
 
+# Trigger a manual failover for a Multi-AZ DB cluster
+aws rds failover-db-cluster \
+  --db-cluster-identifier myapp-multi-az-cluster
+
 # Watch the failover progress
 aws rds describe-events \
   --source-identifier myapp-db \
   --source-type db-instance \
+  --duration 60
+
+# Watch Multi-AZ DB cluster failover progress
+aws rds describe-events \
+  --source-identifier myapp-multi-az-cluster \
+  --source-type db-cluster \
   --duration 60
 ```
 
