@@ -47,7 +47,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -148,7 +148,7 @@ resource "azurerm_linux_virtual_machine" "web" {
 }
 ```
 
-Azure automatically distributes these 3 VMs across the 3 fault domains and 5 update domains. You do not need to specify which domain each VM goes into - Azure handles that.
+Azure automatically distributes these 3 VMs across up to 3 fault domains and 5 update domains. You do not need to specify which domain each VM goes into - Azure handles that.
 
 ## Multiple Availability Sets for Multi-Tier Applications
 
