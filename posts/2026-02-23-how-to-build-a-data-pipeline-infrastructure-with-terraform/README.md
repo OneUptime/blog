@@ -209,6 +209,13 @@ resource "aws_s3_object" "transform_script" {
   etag   = filemd5("${path.module}/scripts/transform.py")
 }
 
+resource "aws_s3_object" "quality_check_script" {
+  bucket = aws_s3_bucket.scripts.id
+  key    = "scripts/quality_check.py"
+  source = "${path.module}/scripts/quality_check.py"
+  etag   = filemd5("${path.module}/scripts/quality_check.py")
+}
+
 resource "aws_glue_job" "transform" {
   name     = "${var.project_name}-transform"
   role_arn = aws_iam_role.glue.arn
@@ -343,17 +350,41 @@ resource "aws_sfn_state_machine" "pipeline" {
     States = {
       RunCrawler = {
         Type     = "Task"
-        Resource = "arn:aws:states:::glue:startCrawler.sync"
+        Resource = "arn:aws:states:::aws-sdk:glue:startCrawler"
         Parameters = {
           Name = aws_glue_crawler.raw.name
         }
-        Next  = "TransformData"
+        Next  = "WaitForRawCrawler"
         Catch = [
           {
             ErrorEquals = ["States.ALL"]
             Next        = "PipelineFailed"
           }
         ]
+      }
+      WaitForRawCrawler = {
+        Type    = "Wait"
+        Seconds = 60
+        Next    = "GetRawCrawler"
+      }
+      GetRawCrawler = {
+        Type     = "Task"
+        Resource = "arn:aws:states:::aws-sdk:glue:getCrawler"
+        Parameters = {
+          Name = aws_glue_crawler.raw.name
+        }
+        Next = "RawCrawlerComplete"
+      }
+      RawCrawlerComplete = {
+        Type = "Choice"
+        Choices = [
+          {
+            Variable     = "$.Crawler.State"
+            StringEquals = "READY"
+            Next         = "TransformData"
+          }
+        ]
+        Default = "WaitForRawCrawler"
       }
       TransformData = {
         Type     = "Task"
@@ -385,11 +416,35 @@ resource "aws_sfn_state_machine" "pipeline" {
       }
       UpdateCatalog = {
         Type     = "Task"
-        Resource = "arn:aws:states:::glue:startCrawler.sync"
+        Resource = "arn:aws:states:::aws-sdk:glue:startCrawler"
         Parameters = {
           Name = aws_glue_crawler.curated.name
         }
-        Next = "PipelineSucceeded"
+        Next = "WaitForCuratedCrawler"
+      }
+      WaitForCuratedCrawler = {
+        Type    = "Wait"
+        Seconds = 60
+        Next    = "GetCuratedCrawler"
+      }
+      GetCuratedCrawler = {
+        Type     = "Task"
+        Resource = "arn:aws:states:::aws-sdk:glue:getCrawler"
+        Parameters = {
+          Name = aws_glue_crawler.curated.name
+        }
+        Next = "CuratedCrawlerComplete"
+      }
+      CuratedCrawlerComplete = {
+        Type = "Choice"
+        Choices = [
+          {
+            Variable     = "$.Crawler.State"
+            StringEquals = "READY"
+            Next         = "PipelineSucceeded"
+          }
+        ]
+        Default = "WaitForCuratedCrawler"
       }
       PipelineSucceeded = {
         Type = "Succeed"
