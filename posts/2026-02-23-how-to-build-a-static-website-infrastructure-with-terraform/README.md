@@ -24,7 +24,7 @@ The architecture is straightforward:
 
 ## S3 Bucket Configuration
 
-The S3 bucket holds your static files. With CloudFront in front, you do not need to enable S3 static website hosting. Instead, use an Origin Access Identity so only CloudFront can read from the bucket:
+The S3 bucket holds your static files. With CloudFront in front, you do not need to enable S3 static website hosting. Instead, use Origin Access Control so only CloudFront can read from the bucket:
 
 ```hcl
 # S3 bucket for website content
@@ -258,11 +258,37 @@ resource "aws_route53_record" "apex" {
   }
 }
 
+# Apex domain IPv6
+resource "aws_route53_record" "apex_ipv6" {
+  zone_id = var.hosted_zone_id
+  name    = var.domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website.domain_name
+    zone_id                = aws_cloudfront_distribution.website.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
 # www subdomain
 resource "aws_route53_record" "www" {
   zone_id = var.hosted_zone_id
   name    = "www.${var.domain_name}"
   type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website.domain_name
+    zone_id                = aws_cloudfront_distribution.website.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# www subdomain IPv6
+resource "aws_route53_record" "www_ipv6" {
+  zone_id = var.hosted_zone_id
+  name    = "www.${var.domain_name}"
+  type    = "AAAA"
 
   alias {
     name                   = aws_cloudfront_distribution.website.domain_name
