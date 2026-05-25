@@ -203,6 +203,7 @@ resource "aws_memorydb_cluster" "production" {
   name                   = "production-cluster"
   description            = "Production MemoryDB cluster for application data"
   node_type              = "db.r7g.xlarge"
+  engine                 = "redis"
   engine_version         = "7.1"
   port                   = 6379
   num_shards             = 3
@@ -248,7 +249,7 @@ resource "aws_sns_topic" "memorydb_events" {
 
 # Output the cluster endpoint
 output "memorydb_cluster_endpoint" {
-  value       = aws_memorydb_cluster.production.cluster_endpoint
+  value       = aws_memorydb_cluster.production.cluster_endpoint[0].address
   description = "MemoryDB cluster endpoint for application connections"
 }
 ```
@@ -273,6 +274,7 @@ resource "aws_memorydb_cluster" "development" {
   name                   = "dev-cluster"
   description            = "Development MemoryDB cluster"
   node_type              = "db.t4g.small"
+  engine                 = "redis"
   engine_version         = "7.1"
   port                   = 6379
   num_shards             = 1
@@ -316,6 +318,7 @@ resource "aws_memorydb_cluster" "restored" {
   name                   = "restored-cluster"
   description            = "Cluster restored from snapshot"
   node_type              = "db.r7g.xlarge"
+  engine                 = "redis"
   num_shards             = 3
   num_replicas_per_shard = 2
   snapshot_name          = aws_memorydb_snapshot.before_migration.name
@@ -365,7 +368,7 @@ variable "memorydb_admin_password" {
 Set up CloudWatch alarms to monitor your cluster health.
 
 ```hcl
-# Alarm for high memory usage
+# Alarm for high memory usage on a node
 resource "aws_cloudwatch_metric_alarm" "memorydb_memory" {
   alarm_name          = "memorydb-high-memory-usage"
   comparison_operator = "GreaterThanThreshold"
@@ -375,15 +378,16 @@ resource "aws_cloudwatch_metric_alarm" "memorydb_memory" {
   period              = 300
   statistic           = "Average"
   threshold           = 80
-  alarm_description   = "MemoryDB cluster memory usage exceeds 80%"
+  alarm_description   = "MemoryDB node memory usage exceeds 80%"
   alarm_actions       = [aws_sns_topic.memorydb_events.arn]
 
   dimensions = {
     ClusterName = aws_memorydb_cluster.production.name
+    NodeId      = "0001"
   }
 }
 
-# Alarm for high CPU
+# Alarm for high CPU on a node
 resource "aws_cloudwatch_metric_alarm" "memorydb_cpu" {
   alarm_name          = "memorydb-high-cpu"
   comparison_operator = "GreaterThanThreshold"
@@ -393,11 +397,12 @@ resource "aws_cloudwatch_metric_alarm" "memorydb_cpu" {
   period              = 300
   statistic           = "Average"
   threshold           = 75
-  alarm_description   = "MemoryDB cluster CPU utilization exceeds 75%"
+  alarm_description   = "MemoryDB node CPU utilization exceeds 75%"
   alarm_actions       = [aws_sns_topic.memorydb_events.arn]
 
   dimensions = {
     ClusterName = aws_memorydb_cluster.production.name
+    NodeId      = "0001"
   }
 }
 ```
