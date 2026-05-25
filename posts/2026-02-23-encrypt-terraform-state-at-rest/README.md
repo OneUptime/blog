@@ -38,7 +38,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
 
     # Enable server-side encryption using AES-256
     encrypt = true
@@ -59,7 +59,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
 
     # Use a specific KMS key for encryption
@@ -77,7 +77,7 @@ With KMS, you can:
 
 ### Enforcing Encryption via Bucket Policy
 
-Even with `encrypt = true`, someone could misconfigure a backend and write unencrypted state. Add a bucket policy to enforce encryption at the S3 level:
+Even with `encrypt = true`, someone could misconfigure a backend and write state without your required KMS encryption settings. Add a bucket policy to enforce encryption at the S3 level:
 
 ```json
 {
@@ -128,7 +128,7 @@ terraform {
     prefix = "prod"
 
     # Use a Cloud KMS key for encryption
-    encryption_key = "projects/my-project/locations/us-central1/keyRings/terraform/cryptoKeys/state-key"
+    kms_encryption_key = "projects/my-project/locations/us-central1/keyRings/terraform/cryptoKeys/state-key"
   }
 }
 ```
@@ -145,6 +145,10 @@ gcloud kms keys create state-key \
   --keyring terraform \
   --purpose encryption \
   --rotation-period 90d
+
+# Allow Cloud Storage to use the key for CMEK encryption
+gcloud storage service-agent \
+  --authorize-cmek projects/my-project/locations/us-central1/keyRings/terraform/cryptoKeys/state-key
 ```
 
 ## Azure Blob Storage Backend
@@ -175,7 +179,7 @@ resource "azurerm_storage_account" "terraform_state" {
   account_replication_type = "GRS"
 
   # Require HTTPS for all connections
-  enable_https_traffic_only = true
+  https_traffic_only_enabled = true
 
   # Configure customer-managed key encryption
   identity {
@@ -185,8 +189,7 @@ resource "azurerm_storage_account" "terraform_state" {
 
 resource "azurerm_storage_account_customer_managed_key" "terraform_state" {
   storage_account_id = azurerm_storage_account.terraform_state.id
-  key_vault_id       = azurerm_key_vault.terraform.id
-  key_name           = azurerm_key_vault_key.state_encryption.name
+  key_vault_key_id   = azurerm_key_vault_key.state_encryption.id
 }
 ```
 
@@ -265,8 +268,8 @@ terraform {
     region   = "us-east-1"
     encrypt  = true
 
-    # Explicitly skip insecure HTTP
-    skip_metadata_api_check = false
+    # Explicitly disallow insecure SSL requests
+    insecure = false
   }
 }
 ```
