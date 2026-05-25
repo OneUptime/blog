@@ -28,8 +28,8 @@ resource "azurerm_consumption_budget_subscription" "monthly" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2026-01-01T00:00:00Z"
-    end_date   = "2027-01-01T00:00:00Z"
+    start_date = "2026-06-01T00:00:00Z"
+    end_date   = "2027-06-01T00:00:00Z"
   }
 
   # Alert at 80%
@@ -85,8 +85,8 @@ resource "azurerm_consumption_budget_resource_group" "production" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2026-01-01T00:00:00Z"
-    end_date   = "2027-01-01T00:00:00Z"
+    start_date = "2026-06-01T00:00:00Z"
+    end_date   = "2027-06-01T00:00:00Z"
   }
 
   # Filter by specific resource types
@@ -137,8 +137,8 @@ resource "azurerm_consumption_budget_subscription" "team_budget" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2026-01-01T00:00:00Z"
-    end_date   = "2027-01-01T00:00:00Z"
+    start_date = "2026-06-01T00:00:00Z"
+    end_date   = "2027-06-01T00:00:00Z"
   }
 
   filter {
@@ -201,8 +201,8 @@ resource "azurerm_consumption_budget_subscription" "with_actions" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2026-01-01T00:00:00Z"
-    end_date   = "2027-01-01T00:00:00Z"
+    start_date = "2026-06-01T00:00:00Z"
+    end_date   = "2027-06-01T00:00:00Z"
   }
 
   notification {
@@ -217,38 +217,18 @@ resource "azurerm_consumption_budget_subscription" "with_actions" {
 
 ## Cost Anomaly Alerts
 
-Set up alerts for unexpected cost spikes:
+Set up Azure Cost Management anomaly alerts for unexpected cost spikes:
 
 ```hcl
-# Create a cost anomaly alert using Azure Monitor
-resource "azurerm_monitor_scheduled_query_rules_alert_v2" "cost_anomaly" {
-  name                = "cost-anomaly-alert"
-  resource_group_name = azurerm_resource_group.monitoring.name
-  location            = "eastus"
-
-  evaluation_frequency = "P1D"
-  window_duration      = "P1D"
-  scopes               = [data.azurerm_subscription.current.id]
-
-  severity = 2
-
-  criteria {
-    query = <<-QUERY
-      AzureDiagnostics
-      | where Category == "Costs"
-      | summarize DailyCost = sum(todouble(cost_s)) by bin(TimeGenerated, 1d)
-      | extend AvgCost = avg(DailyCost)
-      | where DailyCost > AvgCost * 1.5
-    QUERY
-
-    time_aggregation_method = "Count"
-    threshold               = 0
-    operator                = "GreaterThan"
-  }
-
-  action {
-    action_groups = [azurerm_monitor_action_group.cost_alerts.id]
-  }
+resource "azurerm_cost_anomaly_alert" "daily" {
+  name            = "daily-cost-anomaly"
+  display_name    = "Daily Cost Anomaly"
+  subscription_id = data.azurerm_subscription.current.id
+  email_subject   = "Azure cost anomaly detected"
+  email_addresses = [
+    "finance@company.com",
+    "devops@company.com",
+  ]
 }
 ```
 
@@ -275,8 +255,8 @@ resource "azurerm_consumption_budget_subscription" "per_subscription" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2026-01-01T00:00:00Z"
-    end_date   = "2027-01-01T00:00:00Z"
+    start_date = "2026-06-01T00:00:00Z"
+    end_date   = "2027-06-01T00:00:00Z"
   }
 
   notification {
