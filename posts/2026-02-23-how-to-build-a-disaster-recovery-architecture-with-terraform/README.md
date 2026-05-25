@@ -39,6 +39,16 @@ resource "aws_backup_vault" "main" {
   }
 }
 
+resource "aws_backup_vault" "dr" {
+  provider    = aws.dr
+  name        = "${var.project_name}-backup-vault-dr"
+  kms_key_arn = aws_kms_key.dr_backup.arn
+
+  tags = {
+    Purpose = "disaster-recovery"
+  }
+}
+
 # Backup plan with daily and weekly schedules
 resource "aws_backup_plan" "main" {
   name = "${var.project_name}-backup-plan"
@@ -231,7 +241,7 @@ resource "aws_route53_record" "failover_dr" {
 
 ## Scaling Up During Failover
 
-When a failover occurs, you need to scale up the DR region to handle production traffic. Use a Lambda function triggered by a CloudWatch alarm:
+When a failover occurs, you need to promote the DR database replica and scale up the DR region to handle production traffic. Use a Lambda function triggered by a CloudWatch alarm:
 
 ```hcl
 # Lambda function that scales up DR resources
@@ -245,18 +255,26 @@ resource "aws_lambda_function" "failover_scaleup" {
 
   environment {
     variables = {
-      ECS_CLUSTER    = aws_ecs_cluster.dr.name
-      ECS_SERVICE    = aws_ecs_service.dr_app.name
-      TARGET_COUNT   = "4" # Scale to production capacity
-      DB_IDENTIFIER  = aws_db_instance.dr_replica.identifier
+      ECS_CLUSTER     = aws_ecs_cluster.dr.name
+      ECS_SERVICE     = aws_ecs_service.dr_app.name
+      TARGET_COUNT    = "4" # Scale to production capacity
+      DB_IDENTIFIER   = aws_db_instance.dr_replica.identifier
+      PROMOTE_REPLICA = "true"
       TARGET_DB_CLASS = "db.r6g.xlarge"
     }
   }
 }
 
+# SNS topic for the alarm notification
+resource "aws_sns_topic" "failover" {
+  provider = aws.us_east_1
+  name     = "${var.project_name}-failover"
+}
+
 # Trigger scale-up when primary health check fails
 resource "aws_cloudwatch_metric_alarm" "primary_down" {
-  provider            = aws.dr
+  # Route53 health check metrics are available in CloudWatch only in us-east-1
+  provider            = aws.us_east_1
   alarm_name          = "primary-region-down"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 3
@@ -272,6 +290,22 @@ resource "aws_cloudwatch_metric_alarm" "primary_down" {
     HealthCheckId = aws_route53_health_check.primary.id
   }
 }
+
+resource "aws_lambda_permission" "allow_failover_sns" {
+  provider      = aws.dr
+  statement_id  = "AllowExecutionFromSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.failover_scaleup.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.failover.arn
+}
+
+resource "aws_sns_topic_subscription" "failover_lambda" {
+  provider  = aws.us_east_1
+  topic_arn = aws_sns_topic.failover.arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.failover_scaleup.arn
+}
 ```
 
 ## S3 Cross-Region Replication
@@ -279,10 +313,33 @@ resource "aws_cloudwatch_metric_alarm" "primary_down" {
 Static assets and uploaded files need to be available in the DR region:
 
 ```hcl
+resource "aws_s3_bucket_versioning" "primary_assets" {
+  provider = aws.primary
+  bucket   = aws_s3_bucket.primary_assets.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "dr_assets" {
+  provider = aws.dr
+  bucket   = aws_s3_bucket.dr_assets.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_replication_configuration" "dr" {
   provider = aws.primary
   bucket   = aws_s3_bucket.primary_assets.id
   role     = aws_iam_role.replication.arn
+
+  depends_on = [
+    aws_s3_bucket_versioning.primary_assets,
+    aws_s3_bucket_versioning.dr_assets
+  ]
 
   rule {
     id     = "dr-replication"
