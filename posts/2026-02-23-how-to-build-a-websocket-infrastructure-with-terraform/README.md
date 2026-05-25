@@ -181,6 +181,16 @@ resource "aws_iam_role_policy" "websocket_lambda" {
           "logs:PutLogEvents",
         ]
         Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+        ]
+        Resource = aws_sqs_queue.broadcast.arn
       }
     ]
   })
@@ -192,7 +202,7 @@ resource "aws_lambda_function" "ws_connect" {
   function_name    = "websocket-connect"
   role             = aws_iam_role.websocket_lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   timeout          = 10
 
   environment {
@@ -208,7 +218,7 @@ resource "aws_lambda_function" "ws_disconnect" {
   function_name    = "websocket-disconnect"
   role             = aws_iam_role.websocket_lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   timeout          = 10
 
   environment {
@@ -224,7 +234,7 @@ resource "aws_lambda_function" "ws_message" {
   function_name    = "websocket-message"
   role             = aws_iam_role.websocket_lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   timeout          = 30
   memory_size      = 256
 
@@ -242,7 +252,7 @@ resource "aws_lambda_function" "ws_default" {
   function_name    = "websocket-default"
   role             = aws_iam_role.websocket_lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   timeout          = 10
 
   environment {
@@ -356,13 +366,13 @@ When broadcasting to many connections, use SQS to buffer messages and avoid Lamb
 # SQS queue for message fan-out
 resource "aws_sqs_queue" "broadcast" {
   name                       = "websocket-broadcast"
-  visibility_timeout_seconds = 60
+  visibility_timeout_seconds = 360
   message_retention_seconds  = 3600
   receive_wait_time_seconds  = 20
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.broadcast_dlq.arn
-    maxReceiveCount     = 3
+    maxReceiveCount     = 5
   })
 }
 
@@ -377,7 +387,7 @@ resource "aws_lambda_function" "broadcast" {
   function_name    = "websocket-broadcast"
   role             = aws_iam_role.websocket_lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   timeout          = 60
   memory_size      = 512
 
@@ -430,7 +440,7 @@ resource "aws_cloudwatch_metric_alarm" "ws_errors" {
   alarm_name          = "websocket-message-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "MessageCount"
+  metric_name         = "IntegrationError"
   namespace           = "AWS/ApiGateway"
   period              = 300
   statistic           = "Sum"
