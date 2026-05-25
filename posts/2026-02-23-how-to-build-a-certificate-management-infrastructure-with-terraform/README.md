@@ -137,9 +137,30 @@ resource "aws_acmpca_certificate_authority" "root" {
     }
   }
 
+  depends_on = [aws_s3_bucket_policy.crl]
+
   tags = {
     Name = "${var.project_name}-root-ca"
   }
+}
+
+# Self-sign and activate the root CA
+resource "aws_acmpca_certificate" "root" {
+  certificate_authority_arn   = aws_acmpca_certificate_authority.root.arn
+  certificate_signing_request = aws_acmpca_certificate_authority.root.certificate_signing_request
+  signing_algorithm           = "SHA512WITHRSA"
+
+  template_arn = "arn:aws:acm-pca:::template/RootCACertificate/V1"
+
+  validity {
+    type  = "YEARS"
+    value = 10
+  }
+}
+
+resource "aws_acmpca_certificate_authority_certificate" "root" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.root.arn
+  certificate               = aws_acmpca_certificate.root.certificate
 }
 
 # Subordinate CA for issuing service certificates
@@ -176,6 +197,8 @@ resource "aws_acmpca_certificate" "subordinate" {
     type  = "YEARS"
     value = 5
   }
+
+  depends_on = [aws_acmpca_certificate_authority_certificate.root]
 }
 
 resource "aws_acmpca_certificate_authority_certificate" "subordinate" {
@@ -190,6 +213,17 @@ resource "aws_acmpca_certificate_authority_certificate" "subordinate" {
 Issue private certificates from your subordinate CA:
 
 ```hcl
+# Allow ACM to issue and renew private certificates from the subordinate CA
+resource "aws_acmpca_permission" "subordinate_acm" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.subordinate.arn
+  principal                 = "acm.amazonaws.com"
+  actions = [
+    "IssueCertificate",
+    "GetCertificate",
+    "ListPermissions",
+  ]
+}
+
 # Private certificate for an internal service
 resource "aws_acm_certificate" "internal_service" {
   domain_name               = "service.internal.${var.domain_name}"
@@ -203,6 +237,8 @@ resource "aws_acm_certificate" "internal_service" {
     Name    = "service-internal-cert"
     Service = "my-service"
   }
+
+  depends_on = [aws_acmpca_permission.subordinate_acm]
 }
 
 # Module for creating internal service certificates
@@ -232,7 +268,7 @@ resource "aws_s3_bucket" "crl" {
 resource "aws_s3_bucket_public_access_block" "crl" {
   bucket = aws_s3_bucket.crl.id
 
-  # CRL needs to be publicly readable
+  # In this direct-S3 example, PKI clients need unauthenticated read access.
   block_public_acls       = false
   block_public_policy     = false
   ignore_public_acls      = false
@@ -242,23 +278,30 @@ resource "aws_s3_bucket_public_access_block" "crl" {
 resource "aws_s3_bucket_policy" "crl" {
   bucket = aws_s3_bucket.crl.id
 
+  depends_on = [aws_s3_bucket_public_access_block.crl]
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowACMPCAWrite"
+        Sid       = "AllowACMPCABucketAccess"
+        Effect    = "Allow"
+        Principal = { Service = "acm-pca.amazonaws.com" }
+        Action = [
+          "s3:GetBucketAcl",
+          "s3:GetBucketLocation"
+        ]
+        Resource = aws_s3_bucket.crl.arn
+      },
+      {
+        Sid       = "AllowACMPCAObjectWrite"
         Effect    = "Allow"
         Principal = { Service = "acm-pca.amazonaws.com" }
         Action = [
           "s3:PutObject",
-          "s3:PutObjectAcl",
-          "s3:GetBucketAcl",
-          "s3:GetBucketLocation"
+          "s3:PutObjectAcl"
         ]
-        Resource = [
-          aws_s3_bucket.crl.arn,
-          "${aws_s3_bucket.crl.arn}/*"
-        ]
+        Resource = "${aws_s3_bucket.crl.arn}/*"
       },
       {
         Sid       = "AllowPublicRead"
