@@ -14,7 +14,7 @@ In this guide, we will walk through setting up a complete DNS failover configura
 
 ## Understanding DNS Failover
 
-DNS failover works by associating health checks with DNS records. Route 53 continuously monitors the health of your primary endpoint. When a health check fails, Route 53 stops returning the primary IP address and instead returns the secondary (failover) record. This happens transparently to end users, who simply experience a brief DNS propagation delay before being directed to the backup resource.
+DNS failover works by associating health checks with DNS records. Route 53 continuously monitors the health of your primary endpoint. When a health check fails, Route 53 stops returning the primary IP address and instead returns the secondary (failover) record. This happens transparently to end users, who may experience a brief delay while DNS resolver caches refresh before being directed to the backup resource.
 
 There are two main types of failover records in Route 53: the primary record that points to your main resource, and the secondary record that points to your backup resource.
 
@@ -207,12 +207,16 @@ resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
   alarm_name          = "high-error-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "5XXError"
+  metric_name         = "HTTPCode_Target_5XX_Count"
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Sum"
   threshold           = 100
   alarm_description   = "Triggers when 5XX errors exceed threshold"
+
+  dimensions = {
+    LoadBalancer = aws_lb.primary.arn_suffix
+  }
 }
 
 # Health check based on the CloudWatch alarm
