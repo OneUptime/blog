@@ -8,7 +8,7 @@ Description: Learn how to create cloud cost optimization dashboards with Terrafo
 
 ---
 
-Cost visibility is the first step toward optimization. Without dashboards that show real-time spending, trends, and anomalies, teams fly blind when making infrastructure decisions. Terraform can provision the entire cost dashboard infrastructure, from data collection to visualization. This guide covers building cost optimization dashboards across major cloud providers.
+Cost visibility is the first step toward optimization. Without dashboards that show spending signals, trends, and anomalies, teams fly blind when making infrastructure decisions. Terraform can provision the entire cost dashboard infrastructure, from data collection to visualization. This guide covers building cost optimization dashboards across major cloud providers.
 
 ## CloudWatch Dashboard for AWS Costs
 
@@ -53,10 +53,16 @@ resource "aws_cloudwatch_dashboard" "cost_optimization" {
         height = 6
         properties = {
           title   = "EBS Volume Read/Write IOPS"
-          metrics = [
-            for id in var.monitored_volume_ids :
-            ["AWS/EBS", "VolumeReadOps", "VolumeId", id]
-          ]
+          metrics = concat(
+            [
+              for id in var.monitored_volume_ids :
+              ["AWS/EBS", "VolumeReadOps", "VolumeId", id]
+            ],
+            [
+              for id in var.monitored_volume_ids :
+              ["AWS/EBS", "VolumeWriteOps", "VolumeId", id]
+            ]
+          )
           period = 3600
           stat   = "Sum"
           region = var.region
@@ -145,6 +151,14 @@ resource "aws_cloudwatch_event_target" "cost_metrics" {
   rule = aws_cloudwatch_event_rule.daily_cost_metrics.name
   arn  = aws_lambda_function.cost_metrics.arn
 }
+
+resource "aws_lambda_permission" "allow_eventbridge_cost_metrics" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.cost_metrics.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_cost_metrics.arn
+}
 ```
 
 ## Grafana Dashboard with Terraform
@@ -200,7 +214,7 @@ resource "aws_ecs_service" "grafana" {
 Create an Azure dashboard for cost monitoring:
 
 ```hcl
-resource "azurerm_dashboard" "cost" {
+resource "azurerm_portal_dashboard" "cost" {
   name                = "cost-optimization-dashboard"
   resource_group_name = azurerm_resource_group.monitoring.name
   location            = azurerm_resource_group.monitoring.location
@@ -241,8 +255,9 @@ resource "azurerm_dashboard" "cost" {
 Track and display cost savings over time:
 
 ```hcl
-# CloudWatch metric for tracking savings
+# Billing metrics are stored in us-east-1, so use a provider alias for that Region.
 resource "aws_cloudwatch_metric_alarm" "savings_tracker" {
+  provider   = aws.us_east_1
   alarm_name = "monthly-savings-goal"
 
   comparison_operator = "LessThanThreshold"
