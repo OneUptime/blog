@@ -39,7 +39,7 @@ terraform {
   required_providers {
     datadog = {
       source  = "DataDog/datadog"
-      version = "~> 3.46"
+      version = "~> 4.0"
     }
   }
 }
@@ -241,7 +241,7 @@ resource "datadog_dashboard" "service_overview" {
           metric_query {
             name       = "latency"
             data_source = "metrics"
-            query       = "avg:trace.http.request.duration.by.service.99p{env:production} by {service}"
+            query       = "p99:trace.http.request{env:production} by {service}"
           }
         }
         display_type = "line"
@@ -267,7 +267,7 @@ resource "datadog_dashboard" "service_overview" {
     }
   }
 
-  tags = ["team:platform", "env:production", "managed-by:terraform"]
+  tags = ["team:platform"]
 }
 ```
 
@@ -306,8 +306,8 @@ resource "datadog_service_level_objective" "api_latency" {
   description = "99% of API requests complete within 500ms"
 
   query {
-    numerator   = "sum:trace.http.request.hits{env:production,service:api,is_duration_ok:true}.as_count()"
-    denominator = "sum:trace.http.request.hits{env:production,service:api}.as_count()"
+    numerator   = "sum:api.requests.under_500ms{env:production,service:api}.as_count()"
+    denominator = "sum:api.requests.total{env:production,service:api}.as_count()"
   }
 
   thresholds {
@@ -331,22 +331,24 @@ resource "datadog_service_level_objective" "api_latency" {
 Schedule maintenance windows:
 
 ```hcl
-resource "datadog_downtime" "weekly_maintenance" {
-  scope = ["env:staging"]
+resource "datadog_downtime_schedule" "weekly_maintenance" {
+  scope = "env:staging"
 
   # Recurring schedule - every Sunday 2-4 AM UTC
-  recurrence {
-    type   = "weeks"
-    period = 1
-    week_days = ["Sun"]
+  recurring_schedule {
+    recurrence {
+      duration = "2h"
+      rrule    = "FREQ=WEEKLY;INTERVAL=1;BYDAY=SU"
+      start    = "2026-03-01T02:00:00"
+    }
+    timezone = "UTC"
   }
 
-  start = 1700000000  # Unix timestamp
-  end   = 1700007200
+  monitor_identifier {
+    monitor_tags = ["env:staging"]
+  }
 
   message = "Weekly staging maintenance window - managed by Terraform"
-
-  monitor_tags = ["env:staging"]
 }
 ```
 
