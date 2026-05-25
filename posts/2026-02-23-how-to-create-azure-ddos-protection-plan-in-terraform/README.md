@@ -8,25 +8,26 @@ Description: Learn how to deploy Azure DDoS Protection plans with Terraform to d
 
 ---
 
-Distributed Denial of Service (DDoS) attacks are one of the most common threats facing cloud applications. They flood your services with traffic, making them unavailable to legitimate users. Azure DDoS Protection defends against these attacks by monitoring traffic patterns and automatically mitigating volumetric, protocol, and application-layer attacks.
+Distributed Denial of Service (DDoS) attacks are one of the most common threats facing cloud applications. They flood your services with traffic, making them unavailable to legitimate users. Azure DDoS Protection defends against these attacks by monitoring traffic patterns and automatically mitigating volumetric and protocol attacks. For application-layer attacks, pair DDoS Protection with a web application firewall (WAF).
 
 While Azure provides basic DDoS protection for free on all public IPs, the DDoS Protection plan (formerly known as DDoS Protection Standard) offers much more - adaptive tuning, attack analytics, cost protection guarantees, and rapid response team access. Deploying this through Terraform ensures your DDoS protection is consistently applied across all your virtual networks.
 
 ## DDoS Protection Tiers
 
-Azure offers two levels of DDoS protection:
+Azure offers DDoS protection in several forms:
 
 - **DDoS Infrastructure Protection (Basic)** - free, automatically enabled on all Azure services. Protects against common network-layer attacks. No configuration needed.
-- **DDoS Network Protection (Standard)** - paid service that provides enhanced mitigation, application-specific tuning, attack telemetry, and cost protection. This is what we configure in Terraform.
+- **DDoS Network Protection (formerly DDoS Protection Standard)** - paid service that provides enhanced mitigation, application-specific tuning, attack telemetry, and cost protection for public IPs in protected virtual networks. This is what we configure in Terraform.
+- **DDoS IP Protection** - paid, per-public-IP protection for smaller deployments that do not need a DDoS protection plan.
 
-The Standard tier monitors traffic patterns to your specific resources and automatically tunes detection thresholds. When an attack is detected, it mitigates the malicious traffic while allowing legitimate traffic through.
+DDoS Network Protection monitors traffic patterns to your specific resources and automatically tunes detection thresholds. When an attack is detected, it mitigates the malicious traffic while allowing legitimate traffic through.
 
 ## Prerequisites
 
 - Terraform 1.3+
 - Azure subscription with Contributor access
 - Azure CLI authenticated
-- Important: DDoS Protection Standard costs approximately $2,944/month per plan, plus data processing charges. One plan can protect up to 100 virtual networks.
+- Important: DDoS Network Protection costs approximately $2,944/month per plan, plus charges for additional protected public IP resources beyond the included allowance. One plan includes protection for up to 100 public IP addresses.
 
 ## Provider Configuration
 
@@ -138,7 +139,7 @@ resource "azurerm_virtual_network" "spoke2" {
 
 ## Setting Up Resources That Benefit from DDoS Protection
 
-Public IPs within protected VNets automatically receive DDoS Standard protection:
+Public IPs within protected VNets automatically receive DDoS Network Protection:
 
 ```hcl
 # Subnet for web servers
@@ -277,12 +278,12 @@ resource "azurerm_monitor_metric_alert" "ddos_attack" {
   }
 }
 
-# Alert on high inbound packet count (potential attack indicator)
+# Alert on high inbound packet drop rate (potential attack indicator)
 resource "azurerm_monitor_metric_alert" "ddos_packets" {
   name                = "alert-ddos-high-packets"
   resource_group_name = azurerm_resource_group.security.name
   scopes              = [azurerm_public_ip.lb.id]
-  description         = "Alert when inbound packets dropped by DDoS protection exceeds threshold"
+  description         = "Alert when inbound packets dropped by DDoS protection exceeds the per-second threshold"
   severity            = 1
   frequency           = "PT5M"
   window_size         = "PT15M"
@@ -290,7 +291,7 @@ resource "azurerm_monitor_metric_alert" "ddos_packets" {
   criteria {
     metric_namespace = "Microsoft.Network/publicIPAddresses"
     metric_name      = "PacketsDroppedDDoS"
-    aggregation      = "Total"
+    aggregation      = "Maximum"
     operator         = "GreaterThan"
     threshold        = 10000
   }
@@ -300,12 +301,12 @@ resource "azurerm_monitor_metric_alert" "ddos_packets" {
   }
 }
 
-# Alert on bytes dropped
+# Alert on bytes dropped per second
 resource "azurerm_monitor_metric_alert" "ddos_bytes" {
   name                = "alert-ddos-bytes-dropped"
   resource_group_name = azurerm_resource_group.security.name
   scopes              = [azurerm_public_ip.lb.id]
-  description         = "Alert on high volume of bytes dropped by DDoS protection"
+  description         = "Alert on high rate of bytes dropped by DDoS protection"
   severity            = 2
   frequency           = "PT5M"
   window_size         = "PT15M"
@@ -313,9 +314,9 @@ resource "azurerm_monitor_metric_alert" "ddos_bytes" {
   criteria {
     metric_namespace = "Microsoft.Network/publicIPAddresses"
     metric_name      = "BytesDroppedDDoS"
-    aggregation      = "Total"
+    aggregation      = "Maximum"
     operator         = "GreaterThan"
-    threshold        = 100000000 # 100 MB
+    threshold        = 100000000 # 100 MB/s
   }
 
   action {
@@ -420,7 +421,7 @@ output "protected_vnet_ids" {
 
 ## Best Practices
 
-**Use one plan for all VNets.** A single DDoS Protection plan can cover up to 100 virtual networks across regions and subscriptions. You do not need separate plans per region or environment.
+**Use one plan across VNets.** A single DDoS Protection plan can be linked to virtual networks across regions and subscriptions in the same Microsoft Entra tenant, and its fixed monthly charge includes up to 100 protected public IP addresses. You do not need separate plans per region or environment.
 
 **Protect all production VNets.** Every VNet that has public-facing resources (load balancers, application gateways, VMs with public IPs) should be linked to the DDoS Protection plan.
 
@@ -428,9 +429,9 @@ output "protected_vnet_ids" {
 
 **Enable diagnostic logging on public IPs.** DDoS flow logs and mitigation reports provide the details you need to understand attack patterns and verify that legitimate traffic was not affected.
 
-**Consider the cost carefully.** At roughly $2,944/month plus data charges, DDoS Protection Standard is a significant cost. It makes sense for production workloads with public-facing services. For development environments, the built-in Infrastructure Protection is usually sufficient.
+**Consider the cost carefully.** At roughly $2,944/month plus charges for additional protected public IP resources, DDoS Network Protection is a significant cost. It makes sense for production workloads with public-facing services. For development environments, the built-in Infrastructure Protection is usually sufficient.
 
-**Take advantage of cost protection.** DDoS Protection Standard includes a cost protection SLA. If you incur resource scaling costs due to a documented DDoS attack, Microsoft will credit those costs back.
+**Take advantage of cost protection.** DDoS Network Protection includes a cost protection guarantee. If you incur resource scaling costs due to a documented DDoS attack, Microsoft will credit those costs back.
 
 ## Conclusion
 
