@@ -22,6 +22,8 @@ Azure Spring Apps comes in three tiers:
 
 For this guide, we will focus on the Standard tier, which is what most production deployments use.
 
+Azure Spring Apps Basic, Standard, and Enterprise plans entered a retirement period on March 17, 2025 and will retire on March 31, 2028. New customers cannot sign up for these plans, but existing customers can continue creating and managing instances until retirement.
+
 ## Creating the Spring Apps Service
 
 ```hcl
@@ -102,7 +104,7 @@ resource "azurerm_spring_cloud_app" "api" {
   }
 }
 
-# Deploy a JAR to the app
+# Create a Java deployment for the app
 resource "azurerm_spring_cloud_java_deployment" "api" {
   name                = "production"
   spring_cloud_app_id = azurerm_spring_cloud_app.api.id
@@ -138,23 +140,36 @@ resource "azurerm_spring_cloud_active_deployment" "api" {
 
 ## Config Server Setup
 
-Spring Cloud Config Server provides centralized configuration for all your apps. You can point it at a Git repository:
+Spring Cloud Config Server provides centralized configuration for all your apps. In the Standard tier, configure it on the Spring Apps service and point it at a Git repository:
 
 ```hcl
 # Config Server with Git backend
-resource "azurerm_spring_cloud_configuration_service" "main" {
-  name                    = "default"
-  spring_cloud_service_id = azurerm_spring_cloud_service.main.id
+resource "azurerm_spring_cloud_service" "main" {
+  name                = "spring-prod-contoso"
+  resource_group_name = azurerm_resource_group.spring.name
+  location            = azurerm_resource_group.spring.location
+  sku_name            = "S0"
 
-  repository {
-    name     = "app-config"
-    uri      = "https://github.com/contoso/spring-config.git"
-    label    = "main"
-    patterns = ["api-service", "order-service"]
+  config_server_git_setting {
+    uri   = "https://github.com/contoso/spring-config.git"
+    label = "main"
 
-    # For private repos, use SSH key or HTTP basic auth
-    # username = var.git_username
-    # password = var.git_password
+    repository {
+      name    = "app-config"
+      uri     = "https://github.com/contoso/spring-config.git"
+      label   = "main"
+      pattern = ["api-service/*", "order-service/*"]
+
+      # For private repos, use ssh_auth or http_basic_auth blocks
+      # http_basic_auth {
+      #   username = var.git_username
+      #   password = var.git_password
+      # }
+    }
+  }
+
+  trace {
+    connection_string = azurerm_application_insights.spring.connection_string
   }
 }
 ```
@@ -199,13 +214,29 @@ resource "azurerm_spring_cloud_java_deployment" "order_service" {
 Add a custom domain to your Spring app:
 
 ```hcl
+# DNS zone that hosts contoso.com
+data "azurerm_dns_zone" "contoso" {
+  name                = "contoso.com"
+  resource_group_name = "rg-dns-prod"
+}
+
+# CNAME record for the app
+resource "azurerm_dns_cname_record" "api" {
+  name                = "api"
+  zone_name           = data.azurerm_dns_zone.contoso.name
+  resource_group_name = data.azurerm_dns_zone.contoso.resource_group_name
+  ttl                 = 300
+  record              = azurerm_spring_cloud_app.api.fqdn
+}
+
 # Custom domain for the API
 resource "azurerm_spring_cloud_custom_domain" "api" {
-  name                = "api.contoso.com"
+  name                = join(".", [azurerm_dns_cname_record.api.name, azurerm_dns_cname_record.api.zone_name])
   spring_cloud_app_id = azurerm_spring_cloud_app.api.id
 
   # Optional: bind an SSL certificate
   certificate_name = azurerm_spring_cloud_certificate.api.name
+  thumbprint       = azurerm_spring_cloud_certificate.api.thumbprint
 }
 
 # Import a certificate for the custom domain
@@ -256,7 +287,7 @@ resource "azurerm_spring_cloud_service" "main" {
   network {
     app_subnet_id             = azurerm_subnet.spring_runtime.id
     service_runtime_subnet_id = azurerm_subnet.spring_service.id
-    cidr_ranges               = ["10.0.2.0/24", "10.0.3.0/24", "10.0.4.0/28"]
+    cidr_ranges               = ["10.1.0.0/16", "10.2.0.0/16", "10.3.0.0/16"]
   }
 
   trace {
@@ -265,7 +296,7 @@ resource "azurerm_spring_cloud_service" "main" {
 }
 ```
 
-The VNet injection requires specific CIDR ranges for Spring Apps internal networking. These ranges must not overlap with any existing subnets in the VNet.
+The VNet injection requires three CIDR ranges of at least `/16` for Spring Apps internal networking. These ranges must not overlap with the virtual network address space or any existing subnet ranges.
 
 ## Blue-Green Deployment
 
@@ -294,7 +325,7 @@ resource "azurerm_spring_cloud_java_deployment" "api_staging" {
 resource "azurerm_spring_cloud_active_deployment" "api" {
   spring_cloud_app_id = azurerm_spring_cloud_app.api.id
   # Change from "production" to "staging" to swap
-  deployment_name     = azurerm_spring_cloud_java_deployment.api.name
+  deployment_name     = azurerm_spring_cloud_java_deployment.api_staging.name
 }
 ```
 
@@ -323,9 +354,9 @@ resource "azurerm_monitor_diagnostic_setting" "spring" {
 ## Outputs
 
 ```hcl
-output "spring_apps_url" {
-  description = "URL of the Spring Apps service"
-  value       = "https://${azurerm_spring_cloud_service.main.name}.azuremicroservices.io"
+output "spring_apps_default_domain" {
+  description = "Default domain target for custom domains"
+  value       = "${azurerm_spring_cloud_service.main.name}.azuremicroservices.io"
 }
 
 output "api_url" {
@@ -353,4 +384,4 @@ output "service_registry_enabled" {
 
 ## Wrapping Up
 
-Azure Spring Apps with Terraform gives Java teams a managed platform that understands Spring Boot's ecosystem. Service discovery, centralized configuration, and distributed tracing work out of the box. Terraform handles the infrastructure provisioning, while your Spring Boot applications deploy as JAR files without needing Docker images or Kubernetes manifests. It is the fastest path from Spring Boot code to a running production environment.
+For existing Azure Spring Apps customers, Terraform gives Java teams a managed platform that understands Spring Boot's ecosystem. Service discovery, centralized configuration, and distributed tracing work out of the box. Terraform handles the infrastructure provisioning, while your Spring Boot applications deploy as JAR files without needing Docker images or Kubernetes manifests.
