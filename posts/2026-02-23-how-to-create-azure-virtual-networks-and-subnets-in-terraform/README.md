@@ -8,15 +8,15 @@ Description: Complete guide to creating Azure Virtual Networks and Subnets with 
 
 ---
 
-Azure Virtual Networks (VNets) are the foundation of private networking in Azure. They isolate your resources from the public internet, let you control traffic flow with subnets and network security groups, and connect to on-premises networks or other VNets through peering and VPN gateways.
+Azure Virtual Networks (VNets) are the foundation of private networking in Azure. They can isolate your resources from the public internet, let you control traffic flow with subnets and network security groups, and connect to on-premises networks or other VNets through peering and VPN gateways.
 
-Getting your network architecture right at the start is critical because changing it later means migrating workloads. Terraform makes it straightforward to define, version, and replicate your network topology. This guide covers creating VNets and subnets, configuring service endpoints, setting up peering, and implementing a hub-spoke pattern.
+Getting your network architecture right at the start is critical because changing it later can require readdressing or migrating workloads. Terraform makes it straightforward to define, version, and replicate your network topology. This guide covers creating VNets and subnets, configuring service endpoints, setting up peering, and implementing a hub-spoke pattern.
 
 ## Prerequisites
 
-- Terraform 1.0 or later
+- Terraform 1.3 or later
 - Azure CLI authenticated (`az login`)
-- An Azure subscription
+- An Azure subscription and subscription ID
 - A resource group (or we will create one)
 
 ## Provider Configuration
@@ -26,13 +26,20 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID to deploy into"
+  type        = string
+}
+
 provider "azurerm" {
   features {}
+
+  subscription_id = var.subscription_id
 }
 ```
 
