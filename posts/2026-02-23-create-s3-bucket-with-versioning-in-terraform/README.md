@@ -182,6 +182,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "limited_versions" {
     id     = "keep-last-5-versions"
     status = "Enabled"
 
+    filter {}
+
     # Keep only the 5 most recent noncurrent versions
     noncurrent_version_expiration {
       newer_noncurrent_versions = 5
@@ -237,24 +239,21 @@ MFA Delete requires multi-factor authentication to delete object versions or cha
 
 ```hcl
 # Note: MFA Delete can only be enabled by the root account
-# Terraform can configure the versioning, but the MFA device
-# must be specified through the root account
+# Terraform can configure the versioning, but the AWS provider
+# must use root account credentials and a current MFA code
 
 resource "aws_s3_bucket_versioning" "critical" {
   bucket = aws_s3_bucket.critical.id
+  mfa    = "arn:aws:iam::123456789012:mfa/root-account-mfa 123456"
 
   versioning_configuration {
     status     = "Enabled"
     mfa_delete = "Enabled"  # Requires root account to apply
   }
-
-  # MFA string format: "arn-of-mfa-device mfa-code"
-  # This can only be provided by the root account
-  # mfa = "arn:aws:iam::123456789012:mfa/root-account-mfa 123456"
 }
 ```
 
-In practice, many teams enable MFA Delete through a one-time CLI operation rather than through Terraform, since it requires root account credentials.
+In practice, many teams enable MFA Delete through a one-time CLI operation rather than through Terraform, since it requires root account credentials and a time-based MFA code. You also cannot use MFA Delete with lifecycle configurations, so do not combine it with the lifecycle rules shown earlier.
 
 ## Suspending Versioning
 
@@ -275,7 +274,7 @@ When versioning is suspended, new objects get a version ID of "null". Overwritin
 
 ## Versioned Bucket with Replication
 
-Versioning is required for cross-region replication. Here's a complete setup.
+Versioning is required for cross-region replication. Here's the required bucket versioning setup.
 
 ```hcl
 # Source bucket with versioning
@@ -319,6 +318,8 @@ Versioning increases storage costs because you're keeping multiple copies of obj
 
 ```hcl
 # S3 Storage Lens configuration to monitor versioning costs
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3control_storage_lens_configuration" "versioning_monitor" {
   config_id = "versioning-costs"
 
@@ -335,9 +336,10 @@ resource "aws_s3control_storage_lens_configuration" "versioning_monitor" {
 
     data_export {
       s3_bucket_destination {
-        bucket_arn = aws_s3_bucket.analytics.arn
-        prefix     = "storage-lens"
-        format     = "CSV"
+        account_id            = data.aws_caller_identity.current.account_id
+        arn                   = aws_s3_bucket.analytics.arn
+        prefix                = "storage-lens"
+        format                = "CSV"
         output_schema_version = "V_1"
 
         encryption {
