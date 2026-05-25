@@ -54,8 +54,8 @@ resource "aws_db_instance" "primary" {
   backup_retention_period = 7
   backup_window           = "03:00-04:00"
 
-  # For PostgreSQL replicas, enable replication
-  # This happens automatically, but good to be explicit
+  # Use a custom parameter group for primary-specific tuning.
+  # RDS configures the physical replication settings automatically.
   parameter_group_name = aws_db_parameter_group.primary.name
 
   multi_az            = true
@@ -247,7 +247,7 @@ resource "aws_db_parameter_group" "replica" {
   # Optimize for read-heavy workloads
   parameter {
     name  = "effective_cache_size"
-    value = "{DBInstanceClassMemory*3/4}"
+    value = "{DBInstanceClassMemory*3/32768}"
   }
 
   # Hot standby feedback helps avoid replication conflicts
@@ -292,7 +292,7 @@ resource "aws_cloudwatch_metric_alarm" "replica_lag" {
 
 ## Promoting a Replica
 
-When you need to promote a replica to become a standalone instance (for disaster recovery or splitting off a workload), you cannot do it through Terraform alone. Promotion is an operational action:
+When you need to promote a replica to become a standalone instance (for disaster recovery or splitting off a workload), you can remove `replicate_source_db` from a Terraform-managed replica and apply the change. You can also promote it operationally with the AWS CLI:
 
 ```bash
 # Promote a replica to standalone
@@ -300,7 +300,7 @@ aws rds promote-read-replica \
   --db-instance-identifier myapp-replica-1
 
 # After promotion, remove the replicate_source_db from Terraform
-# and import the instance as a standalone resource
+# so Terraform treats the instance as standalone
 ```
 
 After promotion, update your Terraform configuration to remove `replicate_source_db` and run `terraform plan` to reconcile the state.
@@ -328,8 +328,8 @@ output "cross_region_replica_endpoint" {
 
 Having replicas is only half the story. Your application needs to know which endpoint to use for reads versus writes. Most database drivers support this natively:
 
-For PostgreSQL, connection strings can include multiple hosts. For MySQL, many ORMs have built-in read/write splitting. Alternatively, use Amazon RDS Proxy, which can route read queries to replicas automatically.
+For PostgreSQL, connection strings can include multiple hosts, but your application still needs to choose which hosts receive read-only traffic. For MySQL, many ORMs have built-in read/write splitting. Amazon RDS Proxy does not automatically route reads to standard RDS read replicas; for non-Aurora RDS instances, keep read/write routing in your application, ORM, or another database-aware proxy.
 
 ## Summary
 
-Read replicas in Terraform are created by setting `replicate_source_db` on a new `aws_db_instance`. You can have up to 5 replicas per primary (15 for Aurora), and they can be in different regions for disaster recovery. The main things to remember are: backups must be enabled on the primary, replication is asynchronous so monitor lag, and replica parameter groups should be tuned for read-heavy workloads. For more about monitoring your database, check out our post on [configuring RDS monitoring in Terraform](https://oneuptime.com/blog/post/2026-02-23-configure-rds-monitoring-in-terraform/view).
+Read replicas in Terraform are created by setting `replicate_source_db` on a new `aws_db_instance`. For RDS for PostgreSQL, MySQL, MariaDB, and SQL Server, you can have up to 15 read replicas per source DB instance, and they can be in different regions for disaster recovery. The main things to remember are: backups must be enabled on the primary, replication is asynchronous so monitor lag, and replica parameter groups should be tuned for read-heavy workloads. For more about monitoring your database, check out our post on [configuring RDS monitoring in Terraform](https://oneuptime.com/blog/post/2026-02-23-configure-rds-monitoring-in-terraform/view).
