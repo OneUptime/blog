@@ -8,7 +8,7 @@ Description: Learn how to create and manage Cloudflare DNS records with Terrafor
 
 ---
 
-Cloudflare DNS is one of the fastest DNS services available, and managing it with Terraform gives you version-controlled, automated DNS management. The cloudflare_record resource supports all DNS record types and integrates with Cloudflare's proxy feature, which adds CDN caching and DDoS protection to your records.
+Cloudflare DNS is one of the fastest DNS services available, and managing it with Terraform gives you version-controlled, automated DNS management. The cloudflare_dns_record resource manages Cloudflare DNS records and integrates with Cloudflare's proxy feature for A, AAAA, and CNAME records, which adds CDN caching and DDoS protection to web traffic for those records.
 
 In this guide, we will create various types of Cloudflare DNS records with Terraform, including proxied and non-proxied records, mail configuration, verification records, and dynamic multi-service setups.
 
@@ -20,18 +20,13 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
 
 provider "cloudflare" {
-  api_token = var.cloudflare_api_token
-}
-
-variable "cloudflare_api_token" {
-  type      = string
-  sensitive = true
+  # API token is read from the CLOUDFLARE_API_TOKEN environment variable
 }
 
 variable "zone_id" {
@@ -49,7 +44,7 @@ variable "domain" {
 ```hcl
 # a-records.tf
 
-resource "cloudflare_record" "root_a" {
+resource "cloudflare_dns_record" "root_a" {
   zone_id = var.zone_id
   name    = "@"
   content = "203.0.113.10"
@@ -59,7 +54,7 @@ resource "cloudflare_record" "root_a" {
   comment = "Root domain pointing to primary server"
 }
 
-resource "cloudflare_record" "api_a" {
+resource "cloudflare_dns_record" "api_a" {
   zone_id = var.zone_id
   name    = "api"
   content = "203.0.113.20"
@@ -69,7 +64,7 @@ resource "cloudflare_record" "api_a" {
 }
 
 # Non-proxied record for direct access
-resource "cloudflare_record" "direct" {
+resource "cloudflare_dns_record" "direct" {
   zone_id = var.zone_id
   name    = "direct"
   content = "203.0.113.10"
@@ -84,7 +79,7 @@ resource "cloudflare_record" "direct" {
 
 ```hcl
 # cname-records.tf
-resource "cloudflare_record" "www" {
+resource "cloudflare_dns_record" "www" {
   zone_id = var.zone_id
   name    = "www"
   content = var.domain
@@ -92,7 +87,7 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
-resource "cloudflare_record" "app" {
+resource "cloudflare_dns_record" "app" {
   zone_id = var.zone_id
   name    = "app"
   content = "app-lb.us-east-1.elb.amazonaws.com"
@@ -100,7 +95,7 @@ resource "cloudflare_record" "app" {
   proxied = true
 }
 
-resource "cloudflare_record" "status" {
+resource "cloudflare_dns_record" "status" {
   zone_id = var.zone_id
   name    = "status"
   content = "statuspage.example.com"
@@ -114,7 +109,7 @@ resource "cloudflare_record" "status" {
 
 ```hcl
 # mail-records.tf
-resource "cloudflare_record" "mx_primary" {
+resource "cloudflare_dns_record" "mx_primary" {
   zone_id  = var.zone_id
   name     = "@"
   content  = "aspmx.l.google.com"
@@ -122,7 +117,7 @@ resource "cloudflare_record" "mx_primary" {
   priority = 1
 }
 
-resource "cloudflare_record" "mx_alt1" {
+resource "cloudflare_dns_record" "mx_alt1" {
   zone_id  = var.zone_id
   name     = "@"
   content  = "alt1.aspmx.l.google.com"
@@ -130,7 +125,7 @@ resource "cloudflare_record" "mx_alt1" {
   priority = 5
 }
 
-resource "cloudflare_record" "mx_alt2" {
+resource "cloudflare_dns_record" "mx_alt2" {
   zone_id  = var.zone_id
   name     = "@"
   content  = "alt2.aspmx.l.google.com"
@@ -139,7 +134,7 @@ resource "cloudflare_record" "mx_alt2" {
 }
 
 # SPF record
-resource "cloudflare_record" "spf" {
+resource "cloudflare_dns_record" "spf" {
   zone_id = var.zone_id
   name    = "@"
   content = "v=spf1 include:_spf.google.com include:sendgrid.net ~all"
@@ -147,7 +142,7 @@ resource "cloudflare_record" "spf" {
 }
 
 # DMARC record
-resource "cloudflare_record" "dmarc" {
+resource "cloudflare_dns_record" "dmarc" {
   zone_id = var.zone_id
   name    = "_dmarc"
   content = "v=DMARC1; p=quarantine; rua=mailto:dmarc@${var.domain}"
@@ -155,7 +150,7 @@ resource "cloudflare_record" "dmarc" {
 }
 
 # DKIM record
-resource "cloudflare_record" "dkim" {
+resource "cloudflare_dns_record" "dkim" {
   zone_id = var.zone_id
   name    = "google._domainkey"
   content = var.dkim_value
@@ -181,12 +176,12 @@ variable "services" {
   default = {
     "blog"    = { target = "blog-cdn.example.com", type = "CNAME", proxied = true }
     "docs"    = { target = "docs.readthedocs.io", type = "CNAME", proxied = false }
-    "grafana" = { target = "10.0.1.50", type = "A", proxied = true }
-    "jenkins" = { target = "10.0.1.60", type = "A", proxied = false }
+    "grafana" = { target = "198.51.100.50", type = "A", proxied = true }
+    "jenkins" = { target = "198.51.100.60", type = "A", proxied = false }
   }
 }
 
-resource "cloudflare_record" "services" {
+resource "cloudflare_dns_record" "services" {
   for_each = var.services
 
   zone_id = var.zone_id
@@ -203,15 +198,12 @@ resource "cloudflare_record" "services" {
 
 ```hcl
 # srv-records.tf
-resource "cloudflare_record" "xmpp_srv" {
+resource "cloudflare_dns_record" "xmpp_srv" {
   zone_id = var.zone_id
   name    = "_xmpp-server._tcp"
   type    = "SRV"
 
-  data {
-    service  = "_xmpp-server"
-    proto    = "_tcp"
-    name     = var.domain
+  data = {
     priority = 10
     weight   = 0
     port     = 5269
@@ -225,14 +217,14 @@ resource "cloudflare_record" "xmpp_srv" {
 ```hcl
 output "dns_records" {
   value = {
-    root = cloudflare_record.root_a.hostname
-    www  = cloudflare_record.www.hostname
-    api  = cloudflare_record.api_a.hostname
-    services = { for k, v in cloudflare_record.services : k => v.hostname }
+    root = cloudflare_dns_record.root_a.name
+    www  = cloudflare_dns_record.www.name
+    api  = cloudflare_dns_record.api_a.name
+    services = { for k, v in cloudflare_dns_record.services : k => v.name }
   }
 }
 ```
 
 ## Conclusion
 
-Managing Cloudflare DNS records with Terraform gives you automated, version-controlled DNS management with the added benefit of Cloudflare's proxy features. The proxy option adds CDN caching and DDoS protection with a simple boolean flag. For related Cloudflare management, see our guides on [page rules](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudflare-page-rules-with-terraform/view) and [Workers](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudflare-workers-with-terraform/view).
+Managing Cloudflare DNS records with Terraform gives you automated, version-controlled DNS management with the added benefit of Cloudflare's proxy features for supported web traffic records. The proxy option adds CDN caching and DDoS protection with a simple boolean flag. For related Cloudflare management, see our guides on [page rules](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudflare-page-rules-with-terraform/view) and [Workers](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudflare-workers-with-terraform/view).
