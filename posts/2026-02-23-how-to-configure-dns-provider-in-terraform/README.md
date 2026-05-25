@@ -367,7 +367,7 @@ There are a few things to keep in mind when using this provider:
 
 2. The `name` attribute is relative to the zone. To create a record at the zone apex, use an empty string `""`.
 
-3. TSIG authentication is strongly recommended. Without it, anyone who can reach your DNS server on port 53 can modify records.
+3. TSIG authentication is strongly recommended. Without it, unauthenticated clients may be able to modify records if your DNS server's dynamic update policy allows them.
 
 4. The DNS provider works at the record set level. If you create an `dns_a_record_set` resource, it manages all A records for that name, not individual records.
 
