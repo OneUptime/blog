@@ -8,11 +8,11 @@ Description: Understand and configure how runs are queued in HCP Terraform works
 
 ---
 
-Every workspace in HCP Terraform has a run queue. When multiple runs are triggered - whether from VCS pushes, API calls, or CLI commands - they line up and execute one at a time per workspace. Understanding how this queue works and how to configure it saves you from unexpected behavior and wasted time.
+Every workspace in HCP Terraform has a run queue. When multiple non-speculative runs are triggered - whether from VCS pushes, API calls, or CLI commands - they line up and execute one at a time per workspace. Understanding how this queue works and how to configure it saves you from unexpected behavior and wasted time.
 
 ## How the Run Queue Works
 
-Each workspace maintains its own queue. Only one run can be in an active state (planning or applying) at any given time within a workspace. Additional runs wait in the queue in the order they were created.
+Each workspace maintains its own queue. Only one non-speculative run can be in an active state (planning or applying) at any given time within a workspace. Additional runs wait in the queue in the order they were created.
 
 ```text
 Workspace "app-prod" queue:
@@ -43,7 +43,8 @@ curl -s \
       "type": "runs",
       "attributes": {
         "message": "Speculative plan for PR review",
-        "plan-only": true
+        "plan-only": true,
+        "terraform-version": "<available-terraform-version>"
       },
       "relationships": {
         "workspace": {
@@ -139,7 +140,7 @@ curl -s \
   "https://app.terraform.io/api/v2/organizations/my-org/workspaces/app-staging"
 ```
 
-With auto-apply enabled, runs flow through the queue faster because there is no human waiting step between plan and apply. This is recommended for:
+With auto-apply enabled, runs flow through the queue faster because there is no human waiting step between plan and apply. HCP Terraform uses a separate `auto-apply-run-trigger` workspace setting for runs created by run triggers, and CLI-driven runs must use the Terraform CLI `-auto-approve` flag. Auto-apply is recommended for:
 
 - Development and staging environments
 - Workspaces with good Sentinel policy coverage
@@ -179,12 +180,12 @@ curl -s \
 
 This requires appropriate permissions. Use it sparingly for situations where waiting for manual approval is not practical.
 
-## Cancelling Queued Runs
+## Discarding Queued Runs
 
-When a newer run makes an older queued run irrelevant, cancel the older one:
+When a newer run makes an older queued run irrelevant, discard the older one:
 
 ```bash
-# Cancel a specific run
+# Discard a specific pending run
 RUN_ID="run-abc123"
 
 curl -s \
@@ -194,10 +195,10 @@ curl -s \
   --data '{
     "comment": "Superseded by newer configuration changes"
   }' \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/actions/cancel"
+  "https://app.terraform.io/api/v2/runs/$RUN_ID/actions/discard"
 ```
 
-You can also force-cancel a run that is stuck:
+Use cancel for a run that is already planning or applying, and use force-cancel only after a normal cancel has been requested and the force-cancel cool-off period has elapsed:
 
 ```bash
 # Force cancel a run that will not stop gracefully
@@ -235,7 +236,7 @@ Here is a script that monitors and cleans up your run queues:
 ```bash
 #!/bin/bash
 # clean-queue.sh
-# Cancel stale queued runs older than 2 hours
+# Discard stale pending runs older than 2 hours
 
 ORG="my-company"
 MAX_AGE_SECONDS=7200  # 2 hours
@@ -253,13 +254,13 @@ echo "$RUNS" | jq -r '.data[] | "\(.id) \(.attributes["created-at"])"' | while r
   AGE=$((NOW_EPOCH - CREATED_EPOCH))
 
   if [ "$AGE" -gt "$MAX_AGE_SECONDS" ]; then
-    echo "Cancelling stale run $RUN_ID (age: ${AGE}s)"
+    echo "Discarding stale run $RUN_ID (age: ${AGE}s)"
     curl -s \
       --request POST \
       --header "Authorization: Bearer $TF_TOKEN" \
       --header "Content-Type: application/vnd.api+json" \
-      --data '{"comment": "Auto-cancelled: stale queued run"}' \
-      "https://app.terraform.io/api/v2/runs/$RUN_ID/actions/cancel"
+      --data '{"comment": "Auto-discarded: stale queued run"}' \
+      "https://app.terraform.io/api/v2/runs/$RUN_ID/actions/discard"
   fi
 done
 ```
@@ -273,7 +274,7 @@ Plans in the "needs confirmation" state block the workspace queue. If team membe
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/organizations/my-org/runs?filter%5Bstatus%5D=planned&page%5Bsize%5D=100" | \
+  "https://app.terraform.io/api/v2/organizations/my-org/runs?filter%5Bstatus%5D=planned,policy_checked,policy_override&page%5Bsize%5D=100" | \
   jq '.data[] | {
     id: .id,
     workspace: .relationships.workspace.data.id,
@@ -338,7 +339,7 @@ Keep your queues healthy with these practices:
 
 - Enable auto-apply for non-production workspaces to prevent queue blockage
 - Set up notifications for runs needing confirmation
-- Cancel superseded queued runs promptly
+- Discard superseded queued runs promptly
 - Monitor queue depth across your organization
 - Use speculative plans (plan-only) for PR checks instead of full runs
 - Avoid triggering runs unnecessarily with VCS path filters
