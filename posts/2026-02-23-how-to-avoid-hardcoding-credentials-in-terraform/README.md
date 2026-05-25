@@ -17,7 +17,7 @@ This guide covers practical approaches to keep credentials completely out of you
 Before diving into solutions, it is worth understanding the specific risks:
 
 - **Git history**: Secrets committed to Git persist in history even after deletion. Anyone with repo access can find them.
-- **State file exposure**: Even if you use variables, the resolved values end up in the state file. But at least they are not in plain text in your repo.
+- **State file exposure**: Even if you use variables or secret data sources, the resolved values can end up in the state file. But at least they are not in plain text in your repo.
 - **Accidental sharing**: Code snippets get pasted in Slack, Stack Overflow questions, and documentation. Embedded secrets travel with them.
 - **Automated scanning**: Attackers actively scan public repositories for AWS keys, database passwords, and API tokens. If a key hits GitHub, it can be exploited within minutes.
 
@@ -67,7 +67,7 @@ terraform apply
 
 ## Pattern 2: AWS Secrets Manager Data Source
 
-Fetch secrets at plan/apply time instead of passing them as variables:
+Fetch secrets at plan/apply time instead of passing them as variables. This keeps the secret out of your `.tf` files, but if you pass the value into a managed resource, protect your Terraform state because the resolved value can still be stored there:
 
 ```hcl
 # Store the secret in AWS Secrets Manager (done once, outside Terraform)
@@ -135,9 +135,11 @@ resource "aws_db_instance" "main" {
 }
 ```
 
+Be aware that secrets read with the Vault provider data sources can be written to Terraform state. Dynamic, short-lived credentials reduce blast radius, but you should still secure the state backend.
+
 ## Pattern 4: AWS SSM Parameter Store
 
-For simpler setups, Parameter Store is a free alternative to Secrets Manager:
+For simpler setups, Parameter Store standard parameters can be a lower-cost alternative to Secrets Manager. As with other secret data sources, values you pass into resources can still be stored in Terraform state:
 
 ```hcl
 # Fetch from SSM Parameter Store
@@ -166,7 +168,7 @@ resource "aws_lambda_function" "api" {
 
 ## Pattern 5: Generate Secrets with Terraform
 
-For passwords that do not need to be known in advance, let Terraform generate them:
+For passwords that do not need to be known in advance, let Terraform generate them. This keeps the password out of source control, but the `random_password` result is stored in Terraform state unless you use Terraform's newer ephemeral values and provider write-only arguments where supported:
 
 ```hcl
 # Generate a random password
@@ -211,25 +213,25 @@ Use automated tools to catch secrets that slip through:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
 
-  - repo: https://github.com/zricethezav/gitleaks
-    rev: v8.18.0
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
     hooks:
       - id: gitleaks
 ```
 
-Also scan with tfsec, which specifically looks for hardcoded credentials in Terraform:
+Also scan with Trivy, which includes Terraform misconfiguration scanning and secret scanning. The older tfsec project is now part of Trivy:
 
 ```bash
-# tfsec catches things like:
+# Trivy can catch things like:
 # - Hardcoded AWS access keys
 # - Plaintext passwords in resource blocks
 # - API keys in provider configurations
-tfsec . --include-passed
+trivy fs --scanners secret,misconfig .
 ```
 
 ## Handling Secrets in .tfvars Files
@@ -266,16 +268,15 @@ resource "aws_secretsmanager_secret_rotation" "db_password" {
 }
 ```
 
-For Terraform-managed passwords, you can use `terraform taint` to force regeneration:
+For Terraform-managed passwords, use `terraform apply -replace` to force regeneration:
 
 ```bash
 # Force password regeneration on next apply
-terraform taint random_password.db_password
-terraform apply
+terraform apply -replace="random_password.db_password"
 ```
 
 ## Wrapping Up
 
-The path from hardcoded credentials to proper secret management is not as hard as it seems. Start by moving secrets to environment variables, then graduate to a secrets manager data source. For the most security-sensitive workloads, use Vault for dynamic credential generation. The key principle is that secrets should never exist in your `.tf` files, your `.tfvars` files, or your Git history.
+The path from hardcoded credentials to proper secret management is not as hard as it seems. Start by moving secrets to environment variables, then graduate to a secrets manager data source. For the most security-sensitive workloads, use Vault for dynamic credential generation. The key principle is that secrets should never exist in your `.tf` files, committed `.tfvars` files, or your Git history.
 
 For monitoring the infrastructure you build, [OneUptime](https://oneuptime.com) provides uptime monitoring, incident management, and status pages to keep your team informed and your services healthy.
