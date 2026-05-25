@@ -8,11 +8,11 @@ Description: Learn how to enable and manage point-in-time recovery for DynamoDB 
 
 ---
 
-Data loss can happen in many ways, from application bugs that corrupt records to accidental deletions by team members. Amazon DynamoDB offers point-in-time recovery (PITR) as a safeguard against these scenarios. PITR provides continuous backups of your DynamoDB table data, allowing you to restore your table to any point in time within the last 35 days. In this guide, we will show you how to enable and manage PITR for DynamoDB tables using Terraform.
+Data loss can happen in many ways, from application bugs that corrupt records to accidental deletions by team members. Amazon DynamoDB offers point-in-time recovery (PITR) as a safeguard against these scenarios. PITR provides continuous backups of your DynamoDB table data, allowing you to restore your table to any point in time within a recovery period of up to 35 days. In this guide, we will show you how to enable and manage PITR for DynamoDB tables using Terraform.
 
 ## What is Point-in-Time Recovery?
 
-Point-in-time recovery maintains continuous backups of your DynamoDB table. Unlike on-demand backups, which capture a snapshot at a specific moment, PITR lets you restore to any second within the recovery window. The recovery window extends back 35 days from the current time. When you restore, DynamoDB creates a new table with the data as it existed at the specified point in time.
+Point-in-time recovery maintains continuous backups of your DynamoDB table. Unlike on-demand backups, which capture a snapshot at a specific moment, PITR lets you restore to any second within the recovery window. The recovery window defaults to 35 days and can be configured from 1 to 35 days. When you restore, DynamoDB creates a new table with the data as it existed at the specified point in time.
 
 PITR works at the table level and covers all items, including those in local secondary indexes and global secondary indexes. It does not affect the performance or availability of your table, and it works with both provisioned and on-demand capacity modes.
 
@@ -53,7 +53,8 @@ resource "aws_dynamodb_table" "users_table" {
 
   # Enable point-in-time recovery for continuous backups
   point_in_time_recovery {
-    enabled = true
+    enabled                 = true
+    recovery_period_in_days = 35
   }
 
   tags = {
@@ -64,7 +65,7 @@ resource "aws_dynamodb_table" "users_table" {
 }
 ```
 
-That single block is all you need. Once enabled, DynamoDB automatically maintains continuous backups with no performance impact and no additional configuration required.
+That single block is all you need. Once enabled, DynamoDB automatically maintains continuous backups with no performance impact. If you omit `recovery_period_in_days`, DynamoDB uses the default 35-day recovery period.
 
 ## Creating a Complete Production Table
 
@@ -96,7 +97,8 @@ resource "aws_dynamodb_table" "production_table" {
 
   # Enable point-in-time recovery
   point_in_time_recovery {
-    enabled = true
+    enabled                 = true
+    recovery_period_in_days = 35
   }
 
   # Enable server-side encryption with AWS managed key
@@ -154,6 +156,12 @@ variable "enable_pitr" {
   default     = true  # Enabled by default for safety
 }
 
+variable "pitr_recovery_period_in_days" {
+  description = "Number of days to retain point-in-time recovery backups"
+  type        = number
+  default     = 35
+}
+
 variable "environment" {
   description = "The deployment environment"
   type        = string
@@ -175,7 +183,8 @@ resource "aws_dynamodb_table" "table" {
 
   # Enable PITR based on the variable
   point_in_time_recovery {
-    enabled = var.enable_pitr
+    enabled                 = var.enable_pitr
+    recovery_period_in_days = var.pitr_recovery_period_in_days
   }
 
   server_side_encryption {
@@ -235,7 +244,7 @@ module "dev_scratch_table" {
 
 ## Combining PITR with On-Demand Backups
 
-PITR and on-demand backups serve different purposes and can work together. PITR gives you continuous protection within a 35-day window, while on-demand backups let you keep snapshots indefinitely:
+PITR and on-demand backups serve different purposes and can work together. PITR gives you continuous protection within a 1-to-35-day recovery window, while on-demand backups let you keep snapshots indefinitely:
 
 ```hcl
 # Create the table with PITR
@@ -250,7 +259,8 @@ resource "aws_dynamodb_table" "critical_data" {
   }
 
   point_in_time_recovery {
-    enabled = true
+    enabled                 = true
+    recovery_period_in_days = 35
   }
 
   tags = {
@@ -308,28 +318,21 @@ resource "aws_iam_role" "backup_role" {
 
 resource "aws_iam_role_policy_attachment" "backup_policy" {
   role       = aws_iam_role.backup_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForDynamoDB"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
 }
 ```
 
 ## Restoring from Point-in-Time Recovery
 
-Restoring a table using PITR is done through the AWS CLI or console rather than Terraform, since it creates a new table. However, you can import the restored table into your Terraform state afterward:
+Restoring a table using PITR creates a new table. You can restore through the AWS CLI or console and import the restored table afterward, or create the restored table directly with Terraform:
 
 ```hcl
-# After restoring a table via AWS CLI:
-# aws dynamodb restore-table-to-point-in-time \
-#   --source-table-name users \
-#   --target-table-name users-restored \
-#   --restore-date-time "2026-02-20T12:00:00Z"
-
-# Import the restored table into Terraform
-# terraform import aws_dynamodb_table.restored_users users-restored
-
 resource "aws_dynamodb_table" "restored_users" {
-  name         = "users-restored"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "user_id"
+  name                = "users-restored"
+  billing_mode        = "PAY_PER_REQUEST"
+  hash_key            = "user_id"
+  restore_source_name = "users"
+  restore_date_time   = "2026-02-20T12:00:00Z"
 
   attribute {
     name = "user_id"
@@ -337,12 +340,13 @@ resource "aws_dynamodb_table" "restored_users" {
   }
 
   point_in_time_recovery {
-    enabled = true  # Re-enable PITR on the restored table
+    enabled                 = true  # Re-enable PITR on the restored table
+    recovery_period_in_days = 35
   }
 
   tags = {
-    Environment = "production"
-    ManagedBy   = "terraform"
+    Environment  = "production"
+    ManagedBy    = "terraform"
     RestoredFrom = "users"
   }
 }
@@ -368,14 +372,14 @@ For broader monitoring of your DynamoDB tables and their backup status, [OneUpti
 
 ## Cost Considerations
 
-PITR is billed based on the size of each DynamoDB table. AWS charges per GB-month for the continuous backup storage. For tables with a lot of data churn, the storage costs can add up. However, the peace of mind and operational simplicity usually make it worthwhile for production workloads.
+PITR is billed based on the size of each DynamoDB table, including table data and local secondary indexes. AWS charges per GB-month for the continuous backup storage, and shortening the recovery period does not reduce PITR cost. For large tables, the storage costs can add up. However, the peace of mind and operational simplicity usually make it worthwhile for production workloads.
 
 For development and testing environments, you might choose to disable PITR to save costs, as shown in the module example above.
 
 ## Best Practices
 
-Enable PITR on all production tables from day one. It is much easier to have it enabled from the start than to scramble when data loss occurs. Use tags to track which tables have PITR enabled so you can audit compliance. Combine PITR with on-demand backups for long-term retention beyond the 35-day window. Test your restore process periodically to make sure you know how to recover when you actually need it. Use deletion protection alongside PITR to prevent accidental table deletion.
+Enable PITR on all production tables from day one. It is much easier to have it enabled from the start than to scramble when data loss occurs. Use tags to track which tables have PITR enabled so you can audit compliance. Combine PITR with on-demand backups for long-term retention beyond the PITR recovery window. Test your restore process periodically to make sure you know how to recover when you actually need it. Use deletion protection alongside PITR to prevent accidental table deletion.
 
 ## Conclusion
 
-Point-in-time recovery is one of the simplest yet most valuable features you can enable on your DynamoDB tables. With just a few lines of Terraform configuration, you get continuous backups with second-level granularity and a 35-day recovery window. There is no reason not to enable it on any table that holds data you care about. Make PITR part of your standard DynamoDB table template and sleep better knowing your data is protected.
+Point-in-time recovery is one of the simplest yet most valuable features you can enable on your DynamoDB tables. With just a few lines of Terraform configuration, you get continuous backups with second-level granularity and a recovery window of up to 35 days. There is no reason not to enable it on any table that holds data you care about. Make PITR part of your standard DynamoDB table template and sleep better knowing your data is protected.
