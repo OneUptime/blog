@@ -12,13 +12,13 @@ VPC Traffic Mirroring is an AWS feature that lets you copy network traffic from 
 
 ## How Traffic Mirroring Works
 
-Traffic Mirroring has three main components. The mirror source is the ENI whose traffic you want to capture. The mirror target is where the mirrored traffic is sent, which can be an ENI or a Network Load Balancer. The mirror filter defines which traffic to capture based on protocol, port, and direction rules. A mirror session ties these together, linking a source to a target through a filter.
+Traffic Mirroring has four key components. The mirror source is the ENI whose traffic you want to capture. The mirror target is where the mirrored traffic is sent, such as an ENI, a Network Load Balancer, or a Gateway Load Balancer endpoint. The mirror filter defines which traffic to capture based on protocol, port, and direction rules. A mirror session ties these together, linking a source to a target through a filter.
 
 Mirrored traffic is encapsulated in VXLAN format and sent to the target. The target must be able to receive and process VXLAN-encapsulated packets.
 
 ## Prerequisites
 
-You need Terraform 1.0 or later, an AWS account, a VPC with instances whose traffic you want to mirror, and a target instance or NLB to receive mirrored traffic. Note that Traffic Mirroring is supported on Nitro-based instances.
+You need Terraform 1.0 or later, an AWS account, a VPC with instances whose traffic you want to mirror, and a target instance or NLB to receive mirrored traffic. Note that Traffic Mirroring sources must use a supported EC2 instance family.
 
 ## Setting Up the Infrastructure
 
@@ -93,10 +93,10 @@ resource "aws_security_group" "source" {
   tags = { Name = "source-sg" }
 }
 
-# Source instance (must be Nitro-based)
+# Source instance (must use a supported Traffic Mirroring source instance type)
 resource "aws_instance" "source" {
   ami           = "ami-0c02fb55956c7d316" # Amazon Linux 2
-  instance_type = "t3.micro"              # Nitro-based
+  instance_type = "t3.micro"              # Supported as a Traffic Mirroring source
   subnet_id     = aws_subnet.main.id
 
   vpc_security_group_ids = [aws_security_group.source.id]
@@ -124,6 +124,15 @@ resource "aws_security_group" "target" {
     protocol    = "udp"
     cidr_blocks = [aws_vpc.main.cidr_block]
     description = "Allow VXLAN mirrored traffic"
+  }
+
+  # Allow NLB health checks if you use the NLB target option below
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+    description = "Allow NLB health checks"
   }
 
   egress {
@@ -170,10 +179,41 @@ resource "aws_lb" "mirror" {
   tags = { Name = "mirror-nlb" }
 }
 
+resource "aws_lb_target_group" "mirror" {
+  name     = "mirror-nlb-tg"
+  port     = 4789
+  protocol = "UDP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    protocol = "TCP"
+    port     = "80"
+  }
+
+  tags = { Name = "mirror-nlb-tg" }
+}
+
+resource "aws_lb_target_group_attachment" "mirror" {
+  target_group_arn = aws_lb_target_group.mirror.arn
+  target_id        = aws_instance.target.id
+  port             = 4789
+}
+
+resource "aws_lb_listener" "mirror" {
+  load_balancer_arn = aws_lb.mirror.arn
+  port              = 4789
+  protocol          = "UDP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.mirror.arn
+  }
+}
+
 # Mirror target using the NLB
 resource "aws_ec2_traffic_mirror_target" "nlb_target" {
-  description                       = "NLB mirror target"
-  network_load_balancer_arn         = aws_lb.mirror.arn
+  description               = "NLB mirror target"
+  network_load_balancer_arn = aws_lb.mirror.arn
 
   tags = { Name = "nlb-mirror-target" }
 }
@@ -196,10 +236,10 @@ resource "aws_ec2_traffic_mirror_filter_rule" "inbound_http" {
   traffic_mirror_filter_id = aws_ec2_traffic_mirror_filter.main.id
   description              = "Capture inbound HTTP"
 
-  rule_number  = 100
-  rule_action  = "accept"
-  direction    = "ingress"
-  protocol     = 6 # TCP
+  rule_number       = 100
+  rule_action       = "accept"
+  traffic_direction = "ingress"
+  protocol          = 6 # TCP
 
   destination_port_range {
     from_port = 80
@@ -215,10 +255,10 @@ resource "aws_ec2_traffic_mirror_filter_rule" "inbound_https" {
   traffic_mirror_filter_id = aws_ec2_traffic_mirror_filter.main.id
   description              = "Capture inbound HTTPS"
 
-  rule_number  = 200
-  rule_action  = "accept"
-  direction    = "ingress"
-  protocol     = 6 # TCP
+  rule_number       = 200
+  rule_action       = "accept"
+  traffic_direction = "ingress"
+  protocol          = 6 # TCP
 
   destination_port_range {
     from_port = 443
@@ -229,15 +269,15 @@ resource "aws_ec2_traffic_mirror_filter_rule" "inbound_https" {
   destination_cidr_block = "0.0.0.0/0"
 }
 
-# Filter rule: capture all outbound traffic
+# Filter rule: capture all outbound TCP traffic
 resource "aws_ec2_traffic_mirror_filter_rule" "outbound_all" {
   traffic_mirror_filter_id = aws_ec2_traffic_mirror_filter.main.id
-  description              = "Capture all outbound traffic"
+  description              = "Capture all outbound TCP traffic"
 
-  rule_number  = 100
-  rule_action  = "accept"
-  direction    = "egress"
-  protocol     = 6 # TCP
+  rule_number       = 100
+  rule_action       = "accept"
+  traffic_direction = "egress"
+  protocol          = 6 # TCP
 
   source_cidr_block      = "0.0.0.0/0"
   destination_cidr_block = "0.0.0.0/0"
@@ -248,10 +288,10 @@ resource "aws_ec2_traffic_mirror_filter_rule" "reject_dns" {
   traffic_mirror_filter_id = aws_ec2_traffic_mirror_filter.main.id
   description              = "Reject DNS traffic to reduce noise"
 
-  rule_number  = 50
-  rule_action  = "reject"
-  direction    = "egress"
-  protocol     = 17 # UDP
+  rule_number       = 50
+  rule_action       = "reject"
+  traffic_direction = "egress"
+  protocol          = 17 # UDP
 
   destination_port_range {
     from_port = 53
