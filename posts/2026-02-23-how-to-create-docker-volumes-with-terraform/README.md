@@ -8,11 +8,11 @@ Description: Learn how to create and manage Docker volumes with Terraform for pe
 
 ---
 
-Containers are ephemeral by nature. When a container is removed, all data written inside it is lost. Docker volumes solve this problem by providing persistent storage that exists independently of container lifecycles. With Terraform, you can manage these volumes declaratively, ensuring your storage configuration is reproducible and version-controlled. This guide covers creating Docker volumes with Terraform, from basic named volumes to advanced configurations with custom drivers and NFS mounts.
+Containers are ephemeral by nature. When a container is removed, data written to its writable layer is lost. Docker volumes solve this problem by providing persistent storage that exists independently of container lifecycles. With Terraform, you can manage these volumes declaratively, ensuring your storage configuration is reproducible and version-controlled. This guide covers creating Docker volumes with Terraform, from basic named volumes to advanced configurations with custom drivers and NFS mounts.
 
 ## Why Docker Volumes Matter
 
-Without volumes, database containers lose their data on restart, application containers lose uploaded files, and log data vanishes when containers are recreated. Docker volumes provide a mechanism to persist data beyond the container lifecycle. They are also the preferred way to share data between containers and to achieve better I/O performance compared to bind mounts on some platforms.
+Without volumes, database containers can lose their data when they are removed or recreated, application containers can lose uploaded files, and log data can vanish when containers are recreated. Docker volumes provide a mechanism to persist data beyond the container lifecycle. They are also the preferred way to share data between containers and to achieve better I/O performance compared to bind mounts on some platforms.
 
 ## Prerequisites
 
@@ -137,6 +137,10 @@ resource "docker_volume" "tmpfs_volume" {
 }
 
 # Use the tmpfs volume for cache-heavy workloads
+resource "docker_image" "app" {
+  name = "nginx:alpine"
+}
+
 resource "docker_container" "cache_worker" {
   name  = "cache-worker"
   image = docker_image.app.image_id
@@ -292,6 +296,8 @@ resource "docker_volume" "app_volumes" {
 
   name   = each.key
   driver = each.value.driver
+
+  driver_opts = each.value.driver_opts
 
   dynamic "labels" {
     for_each = each.value.labels
