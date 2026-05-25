@@ -94,7 +94,7 @@ The website will be available at `http://my-awesome-website-2026.s3-website-us-e
 
 ## Routing Rules
 
-Configure redirects and URL rewriting at the S3 level.
+Configure redirects at the S3 level.
 
 ```hcl
 resource "aws_s3_bucket_website_configuration" "website" {
@@ -119,14 +119,14 @@ resource "aws_s3_bucket_website_configuration" "website" {
     }
   }
 
-  # Redirect all 404s to index.html (useful for SPAs)
+  # Redirect 404s to index.html
   routing_rule {
     condition {
       http_error_code_returned_equals = "404"
     }
     redirect {
       replace_key_with   = "index.html"
-      http_redirect_code = "200"
+      http_redirect_code = "302"
     }
   }
 }
@@ -386,7 +386,7 @@ resource "aws_s3_object" "website_files" {
   key          = each.value
   source       = "${path.module}/build/${each.value}"
   etag         = filemd5("${path.module}/build/${each.value}")
-  content_type = lookup(local.mime_types, regex("\\.[^.]+$", each.value), "application/octet-stream")
+  content_type = lookup(local.mime_types, try(regex("\\.[^.]+$", each.value), ""), "application/octet-stream")
 }
 ```
 
