@@ -4,25 +4,34 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Aurora Serverless, Database, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to create Aurora Serverless v2 with auto-scaling in Terraform for cost-effective database workloads that scale automatically based on demand.
+Description: Learn how to create Aurora Serverless v2 with auto-scaling and auto-pause in Terraform for cost-effective database workloads that scale automatically based on demand.
 
 ---
 
-Aurora Serverless automatically adjusts database capacity based on your application's needs, scaling up during traffic spikes and scaling down during quiet periods. This makes it ideal for development environments, variable workloads, and applications with unpredictable traffic patterns. This guide covers creating Aurora Serverless with Terraform, including capacity configuration, scaling policies, and cost optimization.
+Aurora Serverless automatically adjusts database capacity based on your application's needs, scaling up during traffic spikes and scaling down during quiet periods. Recent Aurora Serverless v2 engine versions can also scale to zero ACUs and automatically pause when idle. This makes it ideal for development environments, variable workloads, and applications with unpredictable traffic patterns. This guide covers creating Aurora Serverless with Terraform, including capacity configuration, auto-pause, and cost optimization.
 
 ## Aurora Serverless v1 vs v2
 
 Aurora Serverless v1 introduced the concept of auto-pausing, where the database could scale to zero ACUs (Aurora Capacity Units) and pause entirely when idle, resuming automatically when connections arrive. However, v1 had limitations including a cold start delay of up to 30 seconds.
 
-Aurora Serverless v2 is the current recommended version. It scales more granularly (in 0.5 ACU increments), responds to load changes in milliseconds rather than seconds, and supports more Aurora features. However, v2 does not support scaling to zero - the minimum is 0.5 ACU.
+Aurora Serverless v2 is the current recommended version. It scales more granularly (in 0.5 ACU increments), responds to load changes quickly, and supports more Aurora features. Recent Aurora Serverless v2 engine versions support scaling to zero ACUs with auto-pause; older engine versions still require a minimum of 0.5 ACU.
 
 ## Prerequisites
 
-You need Terraform 1.0 or later, an AWS account, and a VPC with private subnets. Aurora Serverless v2 supports both MySQL-compatible and PostgreSQL-compatible engines.
+You need Terraform 1.0 or later, AWS provider 5.81.0 or later for Serverless v2 scale-to-zero support, an AWS account, and a VPC with private subnets. Aurora Serverless v2 supports both MySQL-compatible and PostgreSQL-compatible engines. Auto-pause requires supported engine versions, such as Aurora PostgreSQL 15.7 or later in the 15.x family, or Aurora MySQL 3.08.0 or later.
 
 ## Aurora Serverless v2 Cluster
 
 ```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.81.0"
+    }
+  }
+}
+
 provider "aws" {
   region = "us-east-1"
 }
@@ -86,7 +95,7 @@ resource "aws_rds_cluster" "serverless" {
   cluster_identifier = "aurora-serverless-postgres"
   engine             = "aurora-postgresql"
   engine_mode        = "provisioned"  # v2 uses provisioned mode with serverless instances
-  engine_version     = "15.4"
+  engine_version     = "15.7"
 
   database_name   = "appdb"
   master_username = "admin"
@@ -97,12 +106,12 @@ resource "aws_rds_cluster" "serverless" {
 
   # Serverless v2 scaling configuration
   serverlessv2_scaling_configuration {
-    min_capacity = 0.5   # Minimum 0.5 ACU (lowest possible for v2)
-    max_capacity = 16.0  # Maximum 16 ACU (adjust based on workload)
+    min_capacity             = 0.0   # Set to 0 ACU to enable auto-pause on supported engine versions
+    max_capacity             = 16.0  # Maximum 16 ACU (adjust based on workload)
+    seconds_until_auto_pause = 600   # Pause after 10 minutes with no connections
   }
 
   storage_encrypted = true
-  storage_type      = "aurora"
 
   backup_retention_period = 14
   preferred_backup_window = "03:00-04:00"
@@ -165,7 +174,7 @@ resource "aws_rds_cluster" "serverless_mysql" {
   cluster_identifier = "aurora-serverless-mysql"
   engine             = "aurora-mysql"
   engine_mode        = "provisioned"
-  engine_version     = "3.04.0"  # Aurora MySQL 3.x is MySQL 8.0 compatible
+  engine_version     = "3.08.0"  # Aurora MySQL 3.x is MySQL 8.0 compatible
 
   database_name   = "appdb"
   master_username = "admin"
@@ -175,8 +184,9 @@ resource "aws_rds_cluster" "serverless_mysql" {
   vpc_security_group_ids = [aws_security_group.aurora.id]
 
   serverlessv2_scaling_configuration {
-    min_capacity = 0.5
-    max_capacity = 32.0  # Higher max for demanding MySQL workloads
+    min_capacity             = 0.0
+    max_capacity             = 32.0  # Higher max for demanding MySQL workloads
+    seconds_until_auto_pause = 600
   }
 
   storage_encrypted = true
@@ -208,7 +218,7 @@ resource "aws_rds_cluster" "dev" {
   cluster_identifier = "dev-aurora-serverless"
   engine             = "aurora-postgresql"
   engine_mode        = "provisioned"
-  engine_version     = "15.4"
+  engine_version     = "15.7"
 
   database_name   = "devdb"
   master_username = "admin"
@@ -218,8 +228,9 @@ resource "aws_rds_cluster" "dev" {
   vpc_security_group_ids = [aws_security_group.aurora.id]
 
   serverlessv2_scaling_configuration {
-    min_capacity = 0.5  # Absolute minimum (about $43/month if running 24/7)
-    max_capacity = 2.0  # Cap growth for cost control
+    min_capacity             = 0.0  # Enables auto-pause so compute can stop when idle
+    max_capacity             = 2.0  # Cap growth for cost control
+    seconds_until_auto_pause = 300  # Pause after 5 minutes with no connections
   }
 
   storage_encrypted = true
@@ -357,6 +368,6 @@ output "scaling_config" {
 
 ## Conclusion
 
-Aurora Serverless v2 provides automatic scaling that matches your workload, eliminating the need to manually choose and resize instance classes. With Terraform, you can configure the scaling boundaries, set up monitoring for capacity utilization, and maintain consistent configurations across environments. For development workloads, the 0.5 ACU minimum provides significant cost savings, while production workloads benefit from near-instant scaling to handle traffic spikes.
+Aurora Serverless v2 provides automatic scaling that matches your workload, eliminating the need to manually choose and resize instance classes. With Terraform, you can configure the scaling boundaries, set up monitoring for capacity utilization, and maintain consistent configurations across environments. For development workloads, setting the minimum capacity to 0 ACUs enables auto-pause so compute charges can stop while the database is idle, while production workloads benefit from fast scaling to handle traffic spikes.
 
 For more Aurora topics, see our guide on [How to Create Aurora Global Database with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-create-aurora-global-database-with-terraform/view).
