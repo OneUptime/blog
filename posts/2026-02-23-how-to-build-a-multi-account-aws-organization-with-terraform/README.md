@@ -23,7 +23,6 @@ We will build:
 - Centralized logging in a dedicated account
 - Cross-account IAM roles for access
 - Account factory for creating new accounts
-- Shared networking with AWS Transit Gateway
 
 ## Setting Up the Organization
 
@@ -173,15 +172,17 @@ resource "aws_organizations_policy" "region_restriction" {
       {
         Sid    = "DenyOutsideApprovedRegions"
         Effect = "Deny"
-        Action = "*"
+        NotAction = [
+          "cloudfront:*",
+          "iam:*",
+          "organizations:*",
+          "route53:*",
+          "support:*",
+        ]
         Resource = "*"
         Condition = {
           StringNotEquals = {
             "aws:RequestedRegion" = ["us-east-1", "us-west-2", "eu-west-1"]
-          }
-          # Allow global services
-          ArnNotLike = {
-            "aws:PrincipalARN" = "arn:aws:iam::*:role/OrganizationAccountAccessRole"
           }
         }
       }
@@ -269,14 +270,19 @@ resource "aws_organizations_policy_attachment" "prod_guardrails" {
 All accounts should send their logs to the log archive account.
 
 ```hcl
+variable "log_archive_bucket_name" {}
+variable "org_logging_kms_key_arn" {}
+
 # Organization-wide CloudTrail
+# The S3 bucket must already exist and include the CloudTrail bucket policy
+# required for organization trail delivery.
 resource "aws_cloudtrail" "organization" {
   name                       = "organization-trail"
-  s3_bucket_name             = "log-archive-cloudtrail-${aws_organizations_account.log_archive.id}"
+  s3_bucket_name             = var.log_archive_bucket_name
   is_organization_trail      = true
   is_multi_region_trail      = true
   enable_log_file_validation = true
-  kms_key_id                 = aws_kms_key.org_logging.arn
+  kms_key_id                 = var.org_logging_kms_key_arn
 
   event_selector {
     read_write_type           = "All"
