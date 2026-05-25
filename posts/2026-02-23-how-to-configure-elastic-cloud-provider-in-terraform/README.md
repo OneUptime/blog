@@ -8,13 +8,13 @@ Description: Learn how to configure the Elastic Cloud provider in Terraform to m
 
 ---
 
-Elastic Cloud is the managed service for running Elasticsearch, Kibana, and the rest of the Elastic Stack. When you are running multiple deployments across environments, managing them through the Elastic Cloud console becomes repetitive. The Elastic Cloud Terraform provider (also known as the Elastic Cloud Enterprise/ECE provider) lets you define your deployments as code, making it easy to create consistent environments and track changes.
+Elastic Cloud is the managed service for running Elasticsearch, Kibana, and the rest of the Elastic Stack. When you are running multiple deployments across environments, managing them through the Elastic Cloud console becomes repetitive. The Elastic Cloud Terraform provider supports Elastic Cloud Hosted and Elastic Cloud Enterprise (ECE), letting you define your deployments as code, making it easy to create consistent environments and track changes.
 
 This guide covers setting up the provider, creating deployments, configuring resources, and managing your Elastic infrastructure through Terraform.
 
 ## Prerequisites
 
-- Terraform 1.0 or later
+- Terraform 1.2.7 or later
 - An Elastic Cloud account (cloud.elastic.co)
 - An Elastic Cloud API key
 
@@ -32,12 +32,17 @@ This guide covers setting up the provider, creating deployments, configuring res
 # versions.tf - Declare the Elastic Cloud provider
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.2.7"
 
   required_providers {
     ec = {
       source  = "elastic/ec"
-      version = "~> 0.9"
+      version = "~> 0.13"
+    }
+
+    elasticstack = {
+      source  = "elastic/elasticstack"
+      version = "~> 0.16"
     }
   }
 }
@@ -83,12 +88,12 @@ provider "ec" {
 }
 ```
 
-## Getting Deployment Templates
+## Getting Stack Versions
 
-Before creating a deployment, you need to know what templates are available in your region.
+Before creating a deployment, you need to know what Elastic Stack versions are available in your region. The deployment template ID is selected separately from Elastic Cloud's list of available templates for the region.
 
 ```hcl
-# Look up available deployment templates
+# Look up the latest available stack version
 data "ec_stack" "latest" {
   version_regex = "latest"
   region        = "us-east-1"
@@ -109,7 +114,7 @@ resource "ec_deployment" "production" {
   name                   = "production"
   region                 = "us-east-1"
   version                = data.ec_stack.latest.version
-  deployment_template_id = "aws-io-optimized-v2"
+  deployment_template_id = "aws-storage-optimized"
 
   elasticsearch = {
     hot = {
@@ -157,7 +162,7 @@ resource "ec_deployment" "logging" {
   name                   = "logging-cluster"
   region                 = "us-east-1"
   version                = data.ec_stack.latest.version
-  deployment_template_id = "aws-hot-warm-v2"
+  deployment_template_id = "aws-storage-optimized-faster-warm"
 
   elasticsearch = {
     # Hot tier for recent data
@@ -203,7 +208,7 @@ resource "ec_deployment" "observability" {
   name                   = "observability"
   region                 = "us-east-1"
   version                = data.ec_stack.latest.version
-  deployment_template_id = "aws-io-optimized-v2"
+  deployment_template_id = "aws-storage-optimized"
 
   elasticsearch = {
     hot = {
@@ -336,7 +341,7 @@ resource "ec_deployment" "env" {
   name                   = each.key
   region                 = "us-east-1"
   version                = data.ec_stack.latest.version
-  deployment_template_id = "aws-io-optimized-v2"
+  deployment_template_id = "aws-storage-optimized"
 
   elasticsearch = {
     hot = {
@@ -389,6 +394,7 @@ resource "elasticstack_elasticsearch_index_lifecycle" "logs" {
 
   delete {
     min_age = "90d"
+    delete {}
   }
 }
 ```
@@ -401,7 +407,7 @@ data "ec_deployment" "existing" {
   id = "deployment-id-here"
 }
 
-# List available regions and templates
+# Look up the latest matching 8.x stack version in a region
 data "ec_stack" "v8" {
   version_regex = "8\\..*"
   region        = "us-east-1"
