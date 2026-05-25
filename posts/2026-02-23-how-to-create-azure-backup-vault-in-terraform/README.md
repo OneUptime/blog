@@ -34,7 +34,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.72"
     }
   }
 }
@@ -75,9 +75,6 @@ resource "azurerm_recovery_services_vault" "main" {
   resource_group_name = azurerm_resource_group.backup.name
   sku                 = "Standard"
 
-  # Enable soft delete so accidentally deleted backups can be recovered
-  soft_delete_enabled = true
-
   # Storage replication type - GRS for production, LRS for dev/test
   storage_mode_type = "GeoRedundant"
 
@@ -95,6 +92,8 @@ resource "azurerm_recovery_services_vault" "main" {
 ```
 
 The `storage_mode_type` setting is important. Geo-redundant storage (GRS) replicates your backup data to a secondary region, which protects against regional outages. For non-production environments, locally redundant storage (LRS) costs less and is usually sufficient.
+
+Soft delete is enabled by default on newly created Recovery Services Vaults, so you do not need to set it explicitly in current AzureRM provider versions.
 
 ## Setting Up a VM Backup Policy
 
@@ -189,6 +188,8 @@ resource "azurerm_data_protection_backup_vault" "main" {
 }
 ```
 
+For Azure Disk Backup, the Backup Vault is still required for management, but disk backups are stored as snapshots in the operational tier and are not copied into Backup Vault storage. The vault redundancy setting does not apply to those managed disk snapshots.
+
 ## Disk Backup Policy
 
 Here is a backup policy for managed disks:
@@ -223,6 +224,12 @@ resource "azurerm_data_protection_backup_policy_disk" "hourly" {
 To back up a managed disk, you need to assign the right role to the vault's managed identity first:
 
 ```hcl
+# Reference an existing managed disk to protect
+data "azurerm_managed_disk" "os_disk" {
+  name                = "vm-web-prod-01-osdisk"
+  resource_group_name = "rg-compute-prod"
+}
+
 # The backup vault needs Disk Backup Reader role on the disk
 resource "azurerm_role_assignment" "disk_backup_reader" {
   scope                = data.azurerm_managed_disk.os_disk.id
@@ -272,13 +279,13 @@ variable "location" {
 }
 
 variable "backup_redundancy" {
-  description = "Storage redundancy for the vault (GeoRedundant or LocallyRedundant)"
+  description = "Storage redundancy for the vault (GeoRedundant, ZoneRedundant, or LocallyRedundant)"
   type        = string
   default     = "GeoRedundant"
 
   validation {
-    condition     = contains(["GeoRedundant", "LocallyRedundant"], var.backup_redundancy)
-    error_message = "Redundancy must be GeoRedundant or LocallyRedundant."
+    condition     = contains(["GeoRedundant", "ZoneRedundant", "LocallyRedundant"], var.backup_redundancy)
+    error_message = "Redundancy must be GeoRedundant, ZoneRedundant, or LocallyRedundant."
   }
 }
 
@@ -317,7 +324,7 @@ There are several things to keep in mind when setting up Azure Backup with Terra
 
 **Test your restores.** Having backups is useless if you cannot restore from them. Schedule regular restore tests and document the procedure.
 
-**Use geo-redundant storage for production.** The extra cost is worth it when you need to recover from a regional outage. Use locally redundant storage for development and test environments to save money.
+**Use geo-redundant storage for production.** The extra cost is worth it when you need to recover from a regional outage for workloads copied into vault storage. Use locally redundant storage for development and test environments to save money.
 
 **Enable soft delete.** Soft delete keeps deleted backup data for 14 additional days, giving you a safety net against accidental or malicious deletion.
 
