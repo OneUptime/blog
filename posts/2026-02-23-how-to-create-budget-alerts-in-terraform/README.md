@@ -35,6 +35,7 @@ provider "aws" {
 }
 
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 ```
 
 ## Creating a Monthly Cost Budget
@@ -226,6 +227,9 @@ resource "aws_sns_topic_policy" "budget_alerts" {
         Condition = {
           StringEquals = {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:budgets::${data.aws_caller_identity.current.account_id}:*"
           }
         }
       }
