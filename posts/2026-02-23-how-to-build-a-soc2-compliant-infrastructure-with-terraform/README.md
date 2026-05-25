@@ -309,7 +309,7 @@ resource "aws_cloudtrail" "soc2" {
 
     data_resource {
       type   = "AWS::S3::Object"
-      values = ["arn:aws:s3"]
+      values = ["arn:aws:s3:::"]
     }
   }
 
@@ -329,7 +329,8 @@ resource "aws_cloudwatch_log_group" "cloudtrail" {
 
 # Immutable audit log storage
 resource "aws_s3_bucket" "audit_logs" {
-  bucket = "soc2-audit-logs-${data.aws_caller_identity.current.account_id}"
+  bucket              = "soc2-audit-logs-${data.aws_caller_identity.current.account_id}"
+  object_lock_enabled = true
 
   tags = {
     SOC2_Criteria = "CC7.2"
@@ -340,6 +341,17 @@ resource "aws_s3_bucket_versioning" "audit" {
   bucket = aws_s3_bucket.audit_logs.id
   versioning_configuration {
     status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "audit" {
+  bucket = aws_s3_bucket.audit_logs.id
+
+  rule {
+    default_retention {
+      mode = "COMPLIANCE"
+      days = 365
+    }
   }
 }
 
@@ -431,15 +443,15 @@ resource "aws_guardduty_detector" "soc2" {
   enable                       = true
   finding_publishing_frequency = "FIFTEEN_MINUTES"
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-  }
-
   tags = {
     SOC2_Criteria = "CC7.3"  # Detect security events
   }
+}
+
+resource "aws_guardduty_detector_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.soc2.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
 }
 
 # Security Hub for centralized findings
