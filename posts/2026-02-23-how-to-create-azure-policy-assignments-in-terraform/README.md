@@ -23,7 +23,7 @@ When a policy is assigned, Azure evaluates all existing and new resources within
 Before we begin, make sure you have the following set up:
 
 - Terraform 1.3 or later installed
-- An Azure subscription with Owner or Policy Contributor permissions
+- An Azure subscription with Owner permissions for the full example, or Policy Contributor plus the required resource and role assignment permissions for the scopes you manage
 - Azure CLI authenticated (`az login`)
 
 ## Setting Up the Terraform Provider
@@ -57,13 +57,13 @@ data "azurerm_subscription" "current" {}
 Azure comes with hundreds of built-in policy definitions. Let us start by assigning one of the most common ones - requiring a specific tag on resource groups.
 
 ```hcl
-# Assign a built-in policy that audits resource groups missing a required tag
+# Assign a built-in policy that denies resource groups missing a required tag
 resource "azurerm_subscription_policy_assignment" "require_environment_tag" {
   name                 = "require-env-tag"
   subscription_id      = data.azurerm_subscription.current.id
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025"
   display_name         = "Require Environment Tag on Resource Groups"
-  description          = "Audits resource groups that do not have an Environment tag"
+  description          = "Denies resource groups that do not have an Environment tag"
 
   # Parameters are passed as JSON
   parameters = jsonencode({
@@ -160,7 +160,7 @@ resource "azurerm_policy_set_definition" "security_baseline" {
 
   # Reference built-in policies within the initiative
   policy_definition_reference {
-    policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae11-4f18ce352cff"
+    policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
     reference_id         = "secureTransfer"
     parameter_values     = jsonencode({})
   }
@@ -210,6 +210,12 @@ data "azurerm_policy_definition" "deploy_diagnostics" {
   display_name = "Deploy Diagnostic Settings for Key Vault to Log Analytics workspace"
 }
 
+# Existing Log Analytics workspace that diagnostic settings should send logs to
+data "azurerm_log_analytics_workspace" "policy_logs" {
+  name                = "law-policy-logs"
+  resource_group_name = "rg-monitoring"
+}
+
 # Assign the policy with a managed identity for auto-remediation
 resource "azurerm_subscription_policy_assignment" "kv_diagnostics" {
   name                 = "kv-diagnostics"
@@ -224,6 +230,12 @@ resource "azurerm_subscription_policy_assignment" "kv_diagnostics" {
   }
 
   location = "eastus"
+
+  parameters = jsonencode({
+    logAnalytics = {
+      value = data.azurerm_log_analytics_workspace.policy_logs.id
+    }
+  })
 
   # Non-compliance message shown in the portal
   non_compliance_message {
@@ -250,14 +262,14 @@ resource "azurerm_resource_group_policy_assignment" "exempt_rg" {
   resource_group_id    = azurerm_resource_group.example.id
   policy_definition_id = data.azurerm_policy_definition.allowed_locations.id
 
-  # Mark this as not enforced - it will audit but not deny
+  # Mark this as not enforced - it reports compliance state without enforcing the deny effect
   enforce = false
 
-  display_name = "Allowed Locations (Audit Only)"
+  display_name = "Allowed Locations (Not Enforced)"
 }
 ```
 
-For full exemptions, you can use the `azurerm_resource_policy_exemption` resource:
+For full exemptions at the resource group scope, you can use the `azurerm_resource_group_policy_exemption` resource:
 
 ```hcl
 # Create a policy exemption for a specific resource group
