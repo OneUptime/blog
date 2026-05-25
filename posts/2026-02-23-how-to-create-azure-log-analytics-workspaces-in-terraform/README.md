@@ -23,7 +23,7 @@ Each workspace has its own data retention settings, access controls, and pricing
 You will need:
 
 - Terraform 1.3 or later
-- An Azure subscription with Contributor access
+- An Azure subscription with Contributor access, plus Owner or User Access Administrator if you will create role assignments
 - Azure CLI configured and authenticated
 
 ## Provider Configuration
@@ -37,7 +37,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -72,7 +72,7 @@ resource "azurerm_log_analytics_workspace" "main" {
   # PerGB2018 is the standard pay-as-you-go tier
   sku = "PerGB2018"
 
-  # Retention in days (30 is free, up to 730 days)
+  # Retention in days (31 days are included in the ingestion price, up to 730 days)
   retention_in_days = 90
 
   # Daily ingestion cap in GB (-1 means no cap)
@@ -134,27 +134,18 @@ resource "azurerm_log_analytics_solution" "containers" {
   }
 }
 
-# Install the Security and Audit solution (useful for Sentinel)
-resource "azurerm_log_analytics_solution" "security" {
-  solution_name         = "SecurityInsights"
-  location              = azurerm_resource_group.monitoring.location
-  resource_group_name   = azurerm_resource_group.monitoring.name
-  workspace_resource_id = azurerm_log_analytics_workspace.main.id
-  workspace_name        = azurerm_log_analytics_workspace.main.name
-
-  plan {
-    publisher = "Microsoft"
-    product   = "OMSGallery/SecurityInsights"
-  }
+# Enable Microsoft Sentinel on the workspace
+resource "azurerm_sentinel_log_analytics_workspace_onboarding" "sentinel" {
+  workspace_id = azurerm_log_analytics_workspace.main.id
 }
 ```
 
 ## Data Collection Rules
 
-Data Collection Rules (DCRs) are the modern way to configure what data gets sent to your workspace. They replace the older agent-based configuration:
+Data Collection Rules (DCRs) are the modern way to configure what data gets sent to your workspace. With Azure Monitor Agent, they replace the older Log Analytics agent configuration for supported VM data collection:
 
 ```hcl
-# Create a data collection rule for VM performance counters and syslog
+# Define a data collection rule for VM performance counters and syslog
 resource "azurerm_monitor_data_collection_rule" "vm_logs" {
   name                = "dcr-vm-perf-syslog"
   location            = azurerm_resource_group.monitoring.location
@@ -242,9 +233,8 @@ resource "azurerm_monitor_diagnostic_setting" "keyvault" {
   }
 
   # Send metrics
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
@@ -335,7 +325,7 @@ output "workspace_primary_key" {
 
 **Plan your workspace topology.** Most organizations work well with a centralized workspace per region. Only split workspaces when you have specific data sovereignty or access control requirements.
 
-**Set retention carefully.** Data beyond 30 days costs money. Set retention based on your compliance and operational needs. For long-term archival, consider exporting data to a storage account.
+**Set retention carefully.** Analytics log retention beyond the included period costs money. Set retention based on your compliance and operational needs. For long-term archival, consider exporting data to a storage account.
 
 **Use daily caps wisely.** A daily cap prevents runaway costs from unexpected log spikes, but it also means you could lose visibility during an incident. Set it high enough to handle normal peaks.
 
