@@ -29,7 +29,7 @@ Terraform v1.7.4
 on darwin_arm64
 
 Your version of Terraform is out of date! The latest version
-is 1.8.0. You can update by downloading from https://www.terraform.io/downloads
+is X.Y.Z. You can update by downloading from https://developer.hashicorp.com/terraform/install
 ```
 
 Terraform also tells you if a newer version is available. If you just need the version number for a script:
@@ -58,19 +58,19 @@ terraform version -json
     "registry.terraform.io/hashicorp/aws": "5.35.0",
     "registry.terraform.io/hashicorp/random": "3.6.0"
   },
-  "outdated": true
+  "terraform_outdated": true
 }
 ```
 
 ## Understanding Terraform Version Numbers
 
-Terraform follows semantic versioning: MAJOR.MINOR.PATCH.
+Terraform version numbers use a semantic-version-style format: MAJOR.MINOR.PATCH.
 
 | Component | Meaning | Example |
 |-----------|---------|---------|
 | Major | Breaking changes | 1.x.x to 2.x.x |
 | Minor | New features, backward compatible | 1.7.x to 1.8.x |
-| Patch | Bug fixes only | 1.7.3 to 1.7.4 |
+| Patch | Bug fixes and small compatible fixes | 1.7.3 to 1.7.4 |
 
 Patch upgrades are almost always safe. Minor upgrades are usually safe but worth testing. Major upgrades require careful planning and potentially configuration changes.
 
@@ -230,7 +230,7 @@ Look specifically for:
 
 ### Step 2: Back Up Your State
 
-Always back up state before upgrading. For remote backends, most storage systems (S3, GCS, Azure Blob) have versioning built in. For local state:
+Always back up state before upgrading. For remote backends, many storage systems (S3, GCS, Azure Blob) support object or blob versioning if you enable it. For local state:
 
 ```bash
 # Back up local state
