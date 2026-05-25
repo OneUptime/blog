@@ -10,7 +10,7 @@ Description: A detailed guide to configuring GCP Cloud Storage bucket lifecycle 
 
 Cloud Storage lifecycle rules are one of the most effective ways to manage storage costs in Google Cloud. They automatically transition objects between storage classes as they age, delete old versions, and clean up incomplete uploads. Without lifecycle rules, storage costs tend to grow indefinitely because nobody remembers to clean up old data.
 
-In this guide, we will cover every type of lifecycle rule you can configure with Terraform and show practical patterns for common use cases.
+In this guide, we will cover common lifecycle rules you can configure with Terraform and show practical patterns for common use cases.
 
 ## Storage Class Overview
 
@@ -99,7 +99,7 @@ resource "google_storage_bucket" "tiered" {
 }
 ```
 
-The `age` condition is in days and starts from when the object was created (or last modified, depending on the condition type). Objects are evaluated once a day, so transitions happen within 24 hours of meeting the condition.
+The `age` condition is in days and starts from when the object was created. Cloud Storage evaluates lifecycle rules asynchronously, so actions can lag after an object meets a condition and applications should not rely on lifecycle actions happening within a fixed amount of time.
 
 ## Lifecycle with Automatic Deletion
 
@@ -170,8 +170,9 @@ resource "google_storage_bucket" "versioned" {
   # Delete non-current versions older than 90 days
   lifecycle_rule {
     condition {
-      age        = 90
-      with_state = "ARCHIVED"
+      days_since_noncurrent_time = 90
+      with_state                 = "ARCHIVED"
+      send_age_if_zero           = false
     }
     action {
       type = "Delete"
@@ -181,8 +182,9 @@ resource "google_storage_bucket" "versioned" {
   # Move non-current versions to Coldline after 30 days
   lifecycle_rule {
     condition {
-      age        = 30
-      with_state = "ARCHIVED"
+      days_since_noncurrent_time = 30
+      with_state                 = "ARCHIVED"
+      send_age_if_zero           = false
     }
     action {
       type          = "SetStorageClass"
@@ -195,6 +197,8 @@ resource "google_storage_bucket" "versioned" {
 The `with_state` condition is important here. `ARCHIVED` means non-current versions (previous versions of overwritten or deleted objects). `LIVE` means the current version. If you omit `with_state`, the rule applies to all versions.
 
 The `num_newer_versions` condition means "delete this version if there are N newer versions of the same object." Setting it to 5 keeps the 5 most recent versions and deletes anything older.
+
+Use `days_since_noncurrent_time` when you want to count from when a version became non-current. The `age` condition still counts from the original object creation time, even for archived versions.
 
 ## Conditional Rules with Prefix Matching
 
@@ -396,8 +400,9 @@ resource "google_storage_bucket" "production" {
   # Move old versions to Coldline after 7 days
   lifecycle_rule {
     condition {
-      age        = 7
-      with_state = "ARCHIVED"
+      days_since_noncurrent_time = 7
+      with_state                 = "ARCHIVED"
+      send_age_if_zero           = false
     }
     action {
       type          = "SetStorageClass"
@@ -408,8 +413,9 @@ resource "google_storage_bucket" "production" {
   # Delete old versions after 90 days
   lifecycle_rule {
     condition {
-      age        = 90
-      with_state = "ARCHIVED"
+      days_since_noncurrent_time = 90
+      with_state                 = "ARCHIVED"
+      send_age_if_zero           = false
     }
     action {
       type = "Delete"
@@ -481,7 +487,8 @@ resource "google_storage_bucket" "configurable" {
 
   lifecycle_rule {
     condition {
-      age = var.lifecycle_config.nearline_age
+      age        = var.lifecycle_config.nearline_age
+      with_state = "LIVE"
     }
     action {
       type          = "SetStorageClass"
@@ -491,7 +498,8 @@ resource "google_storage_bucket" "configurable" {
 
   lifecycle_rule {
     condition {
-      age = var.lifecycle_config.coldline_age
+      age        = var.lifecycle_config.coldline_age
+      with_state = "LIVE"
     }
     action {
       type          = "SetStorageClass"
@@ -501,7 +509,8 @@ resource "google_storage_bucket" "configurable" {
 
   lifecycle_rule {
     condition {
-      age = var.lifecycle_config.archive_age
+      age        = var.lifecycle_config.archive_age
+      with_state = "LIVE"
     }
     action {
       type          = "SetStorageClass"
@@ -511,7 +520,8 @@ resource "google_storage_bucket" "configurable" {
 
   lifecycle_rule {
     condition {
-      age = var.lifecycle_config.delete_age
+      age        = var.lifecycle_config.delete_age
+      with_state = "LIVE"
     }
     action {
       type = "Delete"
@@ -550,9 +560,9 @@ output "production_bucket_url" {
 
 **Use `with_state` explicitly.** When versioning is enabled, always specify whether a rule applies to `LIVE` or `ARCHIVED` versions. Rules without `with_state` apply to both, which might not be what you want.
 
-**Test lifecycle rules on non-production data.** Lifecycle rules are evaluated asynchronously and cannot be undone. Deleted objects are gone (unless versioning saves them).
+**Test lifecycle rules on non-production data.** Lifecycle rules are evaluated asynchronously and can be hard to unwind. Deleted live objects may be recoverable during the soft delete retention period or through versioning, but permanently deleted versions are gone.
 
-**Combine version limits and age-based deletion.** Using both `num_newer_versions` and `age` for non-current versions gives you a belt-and-suspenders approach to version cleanup.
+**Combine version limits and time-based deletion.** Using both `num_newer_versions` and `days_since_noncurrent_time` for non-current versions gives you a belt-and-suspenders approach to version cleanup.
 
 ## Conclusion
 
