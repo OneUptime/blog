@@ -23,11 +23,11 @@ terraform {
   required_providers {
     azuread = {
       source  = "hashicorp/azuread"
-      version = "~> 2.47"
+      version = "~> 3.8"
     }
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.74"
     }
   }
 }
@@ -62,7 +62,7 @@ resource "azuread_group" "engineering" {
   # The Terraform SP owns the group
   owners = [data.azuread_client_config.current.object_id]
 
-  # Prevent accidental changes to membership outside Terraform
+  # Prevent creating a duplicate group with the same display name
   prevent_duplicate_names = true
 }
 
@@ -153,7 +153,7 @@ resource "azuread_group_member" "engineering" {
 
 ## Dynamic Groups
 
-Dynamic groups automatically add and remove members based on user attributes. This requires Azure AD Premium P1 or P2.
+Dynamic groups automatically add and remove members based on user attributes. This requires Microsoft Entra ID P1 or P2 licensing for user-based dynamic groups.
 
 ```hcl
 # dynamic-groups.tf
@@ -220,7 +220,7 @@ resource "azuread_group" "windows_devices" {
 
 ## Microsoft 365 Groups
 
-M365 groups provide collaboration features like shared mailboxes, SharePoint sites, and Teams channels.
+M365 groups provide collaboration features like shared mailboxes, SharePoint sites, and Microsoft Teams integration.
 
 ```hcl
 # m365-groups.tf
@@ -231,7 +231,12 @@ resource "azuread_group" "project_alpha" {
   mail_enabled     = true
   mail_nickname    = "project-alpha"
   types            = ["Unified"]  # Unified = Microsoft 365 group
-  owners           = [data.azuread_client_config.current.object_id]
+
+  # Microsoft 365 groups must have at least one user owner
+  owners = [
+    data.azuread_client_config.current.object_id,
+    data.azuread_user.alice.id,
+  ]
 
   # Control visibility
   visibility = "Private"  # "Public" or "Private"
@@ -361,8 +366,8 @@ terraform apply tfplan
 
 **Dynamic group rules are evaluated asynchronously.** After creating a dynamic group, it may take a few minutes for Azure AD to populate the membership based on the rule.
 
-**Nested group depth is limited.** Azure AD supports nesting groups, but some features (like Conditional Access) only evaluate one level of nesting.
+**Nested group support varies by feature.** Microsoft Entra ID supports nested security groups for membership and Conditional Access scopes, but nested groups are not supported for every scenario, such as Microsoft 365 group nesting, license assignment, or access to shared resources and apps assigned to the parent group.
 
-**The AzureAD provider requires appropriate permissions.** The service principal running Terraform needs the Groups Administrator or equivalent directory role.
+**The AzureAD provider requires appropriate permissions.** A service principal running Terraform needs Microsoft Graph application permissions such as `Group.ReadWrite.All` or `Directory.ReadWrite.All`. A user principal needs the Groups Administrator role or equivalent permissions.
 
 Managing groups in Terraform gives you a clear, reviewable record of who has access to what. Combined with Azure RBAC role assignments, it creates a complete access management system that is auditable and reproducible.
