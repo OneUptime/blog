@@ -171,6 +171,19 @@ resource "azurerm_container_registry" "main" {
   admin_enabled       = false
 }
 
+resource "azurerm_user_assigned_identity" "container_app" {
+  name                = "id-ca-api-prod"
+  location            = azurerm_resource_group.apps.location
+  resource_group_name = azurerm_resource_group.apps.name
+}
+
+# Grant the managed identity pull access to ACR before the app starts
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = azurerm_container_registry.main.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.container_app.principal_id
+}
+
 # Container app with ACR authentication using managed identity
 resource "azurerm_container_app" "api" {
   name                         = "ca-api-prod"
@@ -180,12 +193,13 @@ resource "azurerm_container_app" "api" {
 
   # Use managed identity to pull images from ACR
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.container_app.id]
   }
 
   registry {
     server   = azurerm_container_registry.main.login_server
-    identity = "System"
+    identity = azurerm_user_assigned_identity.container_app.id
   }
 
   template {
@@ -206,13 +220,10 @@ resource "azurerm_container_app" "api" {
       latest_revision = true
     }
   }
-}
 
-# Grant the container app pull access to ACR
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                = azurerm_container_registry.main.id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_container_app.api.identity[0].principal_id
+  depends_on = [
+    azurerm_role_assignment.acr_pull
+  ]
 }
 ```
 
@@ -327,7 +338,8 @@ resource "azurerm_virtual_network" "apps" {
   address_space       = ["10.0.0.0/16"]
 }
 
-# Subnet dedicated to Container Apps (minimum /23)
+# Subnet dedicated to Container Apps (/23 for legacy Consumption-only environments;
+# workload profile environments can use /27 or larger and require delegation to Microsoft.App/environments)
 resource "azurerm_subnet" "container_apps" {
   name                 = "snet-containerapps"
   resource_group_name  = azurerm_resource_group.apps.name
