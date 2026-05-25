@@ -259,6 +259,7 @@ resource "aws_appautoscaling_scheduled_action" "scale_out" {
   scalable_dimension = aws_appautoscaling_target.aurora_replicas.scalable_dimension
   resource_id        = aws_appautoscaling_target.aurora_replicas.resource_id
   schedule           = "cron(0 8 ? * MON-FRI *)"
+  timezone           = "America/New_York"
 
   scalable_target_action {
     min_capacity = 3
@@ -273,6 +274,7 @@ resource "aws_appautoscaling_scheduled_action" "scale_in" {
   scalable_dimension = aws_appautoscaling_target.aurora_replicas.scalable_dimension
   resource_id        = aws_appautoscaling_target.aurora_replicas.resource_id
   schedule           = "cron(0 20 ? * MON-FRI *)"
+  timezone           = "America/New_York"
 
   scalable_target_action {
     min_capacity = 1
@@ -296,12 +298,12 @@ resource "aws_cloudwatch_metric_alarm" "replica_lag" {
   alarm_name          = "aurora-high-replica-lag"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "AuroraReplicaLag"
+  metric_name         = "AuroraReplicaLagMaximum"
   namespace           = "AWS/RDS"
   period              = 60
   statistic           = "Maximum"
   threshold           = 100  # 100 milliseconds
-  alarm_description   = "Aurora replica lag is above 100ms"
+  alarm_description   = "Aurora maximum replica lag is above 100ms"
   alarm_actions       = [aws_sns_topic.scaling_alerts.arn]
 
   dimensions = {
