@@ -292,9 +292,10 @@ resource "aws_cloudwatch_dashboard" "aurora_monitoring" {
         width  = 12
         height = 6
         properties = {
-          title   = "Buffer Cache Hit Ratio"
+          title = "Buffer Cache Hit Ratio by Instance"
           metrics = [
-            ["AWS/RDS", "BufferCacheHitRatio", "DBClusterIdentifier", var.aurora_cluster_id]
+            for instance in var.aurora_instance_ids :
+            ["AWS/RDS", "BufferCacheHitRatio", "DBInstanceIdentifier", instance]
           ]
           period = 300
           stat   = "Average"
@@ -308,9 +309,10 @@ resource "aws_cloudwatch_dashboard" "aurora_monitoring" {
         width  = 12
         height = 6
         properties = {
-          title   = "Deadlocks"
+          title = "Deadlocks by Instance"
           metrics = [
-            ["AWS/RDS", "Deadlocks", "DBClusterIdentifier", var.aurora_cluster_id]
+            for instance in var.aurora_instance_ids :
+            ["AWS/RDS", "Deadlocks", "DBInstanceIdentifier", instance]
           ]
           period = 300
           stat   = "Sum"
@@ -350,7 +352,8 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
         properties = {
           title = "Cache Hit Rate"
           metrics = [
-            ["AWS/ElastiCache", "CacheHitRate", "ReplicationGroupId", var.redis_replication_group_id]
+            for node in var.redis_cache_nodes :
+            ["AWS/ElastiCache", "CacheHitRate", "CacheClusterId", node.cache_cluster_id, "CacheNodeId", node.cache_node_id]
           ]
           period = 300
           stat   = "Average"
@@ -369,7 +372,8 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
         properties = {
           title = "Engine CPU Utilization"
           metrics = [
-            ["AWS/ElastiCache", "EngineCPUUtilization", "ReplicationGroupId", var.redis_replication_group_id]
+            for node in var.redis_cache_nodes :
+            ["AWS/ElastiCache", "EngineCPUUtilization", "CacheClusterId", node.cache_cluster_id, "CacheNodeId", node.cache_node_id]
           ]
           period = 300
           stat   = "Average"
@@ -385,7 +389,8 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
         properties = {
           title = "Current Connections"
           metrics = [
-            ["AWS/ElastiCache", "CurrConnections", "ReplicationGroupId", var.redis_replication_group_id]
+            for node in var.redis_cache_nodes :
+            ["AWS/ElastiCache", "CurrConnections", "CacheClusterId", node.cache_cluster_id, "CacheNodeId", node.cache_node_id]
           ]
           period = 300
           stat   = "Average"
@@ -401,7 +406,8 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
         properties = {
           title = "Memory Usage"
           metrics = [
-            ["AWS/ElastiCache", "DatabaseMemoryUsagePercentage", "ReplicationGroupId", var.redis_replication_group_id]
+            for node in var.redis_cache_nodes :
+            ["AWS/ElastiCache", "DatabaseMemoryUsagePercentage", "CacheClusterId", node.cache_cluster_id, "CacheNodeId", node.cache_node_id]
           ]
           period = 300
           stat   = "Average"
@@ -420,7 +426,8 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
         properties = {
           title = "Evictions"
           metrics = [
-            ["AWS/ElastiCache", "Evictions", "ReplicationGroupId", var.redis_replication_group_id]
+            for node in var.redis_cache_nodes :
+            ["AWS/ElastiCache", "Evictions", "CacheClusterId", node.cache_cluster_id, "CacheNodeId", node.cache_node_id]
           ]
           period = 300
           stat   = "Sum"
@@ -436,7 +443,8 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
         properties = {
           title = "Replication Lag"
           metrics = [
-            ["AWS/ElastiCache", "ReplicationLag", "ReplicationGroupId", var.redis_replication_group_id]
+            for node in var.redis_cache_nodes :
+            ["AWS/ElastiCache", "ReplicationLag", "CacheClusterId", node.cache_cluster_id, "CacheNodeId", node.cache_node_id]
           ]
           period = 60
           stat   = "Maximum"
@@ -447,9 +455,12 @@ resource "aws_cloudwatch_dashboard" "redis_monitoring" {
   })
 }
 
-variable "redis_replication_group_id" {
-  description = "ElastiCache replication group ID"
-  type        = string
+variable "redis_cache_nodes" {
+  description = "ElastiCache cache nodes to monitor"
+  type        = list(object({
+    cache_cluster_id = string
+    cache_node_id    = string
+  }))
 }
 ```
 
@@ -608,7 +619,9 @@ resource "aws_cloudwatch_dashboard" "dynamodb_monitoring" {
         properties = {
           title = "System Errors"
           metrics = [
-            ["AWS/DynamoDB", "SystemErrors", "TableName", var.dynamodb_table_name]
+            ["AWS/DynamoDB", "SystemErrors", "TableName", var.dynamodb_table_name, "Operation", "GetItem"],
+            ["AWS/DynamoDB", "SystemErrors", "TableName", var.dynamodb_table_name, "Operation", "PutItem"],
+            ["AWS/DynamoDB", "SystemErrors", "TableName", var.dynamodb_table_name, "Operation", "Query"]
           ]
           period = 300
           stat   = "Sum"
