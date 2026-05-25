@@ -195,8 +195,8 @@ For HTTPS access to private repos, you can configure Git credentials:
 # Configure a credential helper (example for GitHub)
 git config --global credential.helper store
 
-# Or use environment variables that Terraform respects
-export GIT_ASKPASS="echo $GITHUB_TOKEN"
+# Or point Git at an executable askpass helper script
+export GIT_ASKPASS="/path/to/git-askpass"
 ```
 
 For GitHub specifically, you can embed the token in the URL (not recommended for shared code, but works in CI/CD):
@@ -204,7 +204,7 @@ For GitHub specifically, you can embed the token in the URL (not recommended for
 ```hcl
 # HTTPS with token (CI/CD pipelines)
 module "vpc" {
-  source = "git::https://${var.github_token}@github.com/myorg/private-modules.git//modules/vpc?ref=v1.0.0"
+  source = "git::https://GITHUB_USERNAME:GITHUB_TOKEN@github.com/myorg/private-modules.git//modules/vpc?ref=v1.0.0"
 }
 ```
 
@@ -212,7 +212,7 @@ A better approach for CI/CD is to configure the Git credential helper in the pip
 
 ```bash
 # In your CI/CD pipeline, configure git before terraform init
-git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
+git config --global url."https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
 
 # Then terraform init will work with HTTPS URLs
 terraform init
@@ -256,7 +256,7 @@ module "app" {
   source = "git::ssh://git@github.com/myorg/terraform-modules.git//modules/ecs-service?ref=v3.1.0"
 
   service_name   = "web-app"
-  cluster_id     = module.cluster.id
+  cluster_id     = var.cluster_id
   subnet_ids     = module.networking.private_subnet_ids
   vpc_id         = module.networking.vpc_id
   container_port = 8080
@@ -281,6 +281,10 @@ variable "vpc_cidr" {
 variable "availability_zones" {
   type    = list(string)
   default = ["us-east-1a", "us-east-1b"]
+}
+
+variable "cluster_id" {
+  type = string
 }
 ```
 
