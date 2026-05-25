@@ -72,7 +72,6 @@ resource "aws_cloudwatch_metric_alarm" "cpu_anomaly" {
     id          = "anomaly_band"
     expression  = "ANOMALY_DETECTION_BAND(actual, 2)"
     label       = "CPU Anomaly Band"
-    return_data = true
   }
 }
 
@@ -116,7 +115,6 @@ resource "aws_cloudwatch_metric_alarm" "request_anomaly" {
     id          = "request_band"
     expression  = "ANOMALY_DETECTION_BAND(requests, 2)"
     label       = "Request Count Anomaly Band"
-    return_data = true
   }
 }
 
@@ -150,7 +148,6 @@ resource "aws_cloudwatch_metric_alarm" "request_anomaly_low" {
     id          = "request_band_low"
     expression  = "ANOMALY_DETECTION_BAND(requests_low, 2)"
     label       = "Request Count Anomaly Band"
-    return_data = true
   }
 }
 
@@ -192,7 +189,6 @@ resource "aws_cloudwatch_metric_alarm" "error_anomaly" {
     id          = "error_band"
     expression  = "ANOMALY_DETECTION_BAND(errors, 3)"
     label       = "Error Rate Anomaly Band"
-    return_data = true
   }
 }
 ```
@@ -230,7 +226,6 @@ resource "aws_cloudwatch_metric_alarm" "latency_anomaly" {
     id          = "latency_band"
     expression  = "ANOMALY_DETECTION_BAND(latency, 2)"
     label       = "Latency Anomaly Band"
-    return_data = true
   }
 }
 ```
@@ -267,7 +262,6 @@ resource "aws_cloudwatch_metric_alarm" "db_connections_anomaly" {
     id          = "conn_band"
     expression  = "ANOMALY_DETECTION_BAND(connections, 2)"
     label       = "Connection Anomaly Band"
-    return_data = true
   }
 }
 
@@ -305,7 +299,6 @@ resource "aws_cloudwatch_metric_alarm" "order_anomaly" {
     # Wider band (3) for business metrics which have more natural variance
     expression  = "ANOMALY_DETECTION_BAND(orders, 3)"
     label       = "Order Volume Anomaly Band"
-    return_data = true
   }
 }
 ```
@@ -339,7 +332,6 @@ resource "aws_cloudwatch_metric_alarm" "sensitive_anomaly" {
     id          = "band"
     # Band width of 1 = very sensitive
     expression  = "ANOMALY_DETECTION_BAND(metric, 1)"
-    return_data = true
   }
 }
 
@@ -367,14 +359,13 @@ resource "aws_cloudwatch_metric_alarm" "lenient_anomaly" {
     id          = "band_wide"
     # Band width of 4 = lenient, only extreme outliers
     expression  = "ANOMALY_DETECTION_BAND(metric_wide, 4)"
-    return_data = true
   }
 }
 ```
 
 ## Best Practices
 
-Anomaly detection requires at least two weeks of historical data to build an accurate model, so deploy the alarm before you expect it to be accurate. Use a band width of 2 as a starting point and adjust based on alert volume. Start with GreaterThanUpperThreshold for most metrics since abnormally high values are usually more concerning. Use LessThanLowerThreshold for traffic and business metrics where a sudden drop indicates a problem. Combine anomaly detection with static thresholds for critical metrics. Use longer evaluation periods (3 or more) to reduce false positives from brief fluctuations.
+Anomaly detection trains on up to two weeks of historical data, and a new model can take up to two weeks to become more accurate, so deploy the alarm before you expect it to be fully tuned. Use a band width of 2 as a starting point and adjust based on alert volume. Start with GreaterThanUpperThreshold for most metrics since abnormally high values are usually more concerning. Use LessThanLowerThreshold for traffic and business metrics where a sudden drop indicates a problem. Combine anomaly detection with static thresholds for critical metrics. Use longer evaluation periods (3 or more) to reduce false positives from brief fluctuations.
 
 For static threshold monitoring, see our guides on [CloudWatch alarms for EC2](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-alarms-for-ec2-in-terraform/view) and [CloudWatch metric filters](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-metric-filters-in-terraform/view).
 
