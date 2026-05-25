@@ -142,8 +142,17 @@ resource "aws_ssoadmin_permission_set_inline_policy" "developer_restrictions" {
         Sid    = "DenyBillingAccess"
         Effect = "Deny"
         Action = [
-          "aws-portal:*",
-          "budgets:*"
+          "account:*",
+          "billing:*",
+          "budgets:*",
+          "ce:*",
+          "consolidatedbilling:*",
+          "cur:*",
+          "freetier:*",
+          "invoicing:*",
+          "payments:*",
+          "purchase-orders:*",
+          "tax:*"
         ]
         Resource = "*"
       }
@@ -177,11 +186,15 @@ resource "aws_ssoadmin_permissions_boundary_attachment" "sandbox" {
   permission_set_arn = aws_ssoadmin_permission_set.sandbox.arn
 
   permissions_boundary {
-    managed_policy_arn = aws_iam_policy.sandbox_boundary.arn
+    customer_managed_policy_reference {
+      name = aws_iam_policy.sandbox_boundary.name
+      path = "/"
+    }
   }
 }
 
-# Define the permissions boundary policy
+# Define the permissions boundary policy with the same name and path
+# in each AWS account where this permission set is assigned
 resource "aws_iam_policy" "sandbox_boundary" {
   name = "SandboxBoundary"
 
