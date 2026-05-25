@@ -164,7 +164,7 @@ You can register external services in Consul's catalog through Terraform.
 # Register an external service that is not running a Consul agent
 resource "consul_service" "external_database" {
   name    = "postgres"
-  node    = "external-db-node"
+  node    = consul_node.external_db.name
   port    = 5432
   tags    = ["production", "primary"]
 
