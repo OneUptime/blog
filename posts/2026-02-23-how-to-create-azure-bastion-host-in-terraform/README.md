@@ -8,7 +8,7 @@ Description: Learn how to deploy Azure Bastion with Terraform for secure RDP and
 
 ---
 
-Azure Bastion provides secure and seamless RDP and SSH connectivity to your virtual machines directly through the Azure portal or native clients, without needing public IP addresses on your VMs. Instead of opening RDP port 3389 or SSH port 22 to the internet and hoping your firewall rules hold up, Bastion gives you a hardened jump box that Microsoft manages.
+Azure Bastion provides secure and seamless RDP and SSH connectivity to your virtual machines directly through the Azure portal or native clients, depending on the SKU, without needing public IP addresses on your VMs. Instead of opening RDP port 3389 or SSH port 22 to the internet and hoping your firewall rules hold up, Bastion gives you a hardened jump box that Microsoft manages.
 
 This is a significant security improvement over traditional approaches like public IPs with NSG rules or self-managed jump boxes. Bastion terminates the connection at the Azure edge, provisions a TLS session from your browser, and connects to the target VM over the private network. Your VMs never need to be directly reachable from the internet.
 
@@ -22,9 +22,10 @@ When you deploy Bastion into a virtual network, it creates a managed service in 
 
 ## SKU Options
 
-Azure Bastion comes in three tiers:
+Azure Bastion comes in four SKU tiers:
 
-- **Basic** - browser-based RDP/SSH, manual scaling
+- **Developer** - free shared deployment for development and testing in supported regions
+- **Basic** - browser-based RDP/SSH with fixed capacity
 - **Standard** - adds native client support, IP-based connections, file transfers, shareable links, and custom port support
 - **Premium** - adds session recording and private-only deployment
 
@@ -328,29 +329,42 @@ resource "azurerm_network_security_group" "bastion" {
     destination_address_prefix = "*"
   }
 
-  # Outbound: Allow SSH to Virtual Network
+  # Inbound: Allow Bastion host internal communication
   security_rule {
-    name                       = "AllowSshOutbound"
+    name                       = "AllowBastionHostCommunication"
+    priority                   = 150
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_ranges    = ["8080", "5701"]
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
+  }
+
+  # Outbound: Allow SSH/RDP to Virtual Network
+  security_rule {
+    name                       = "AllowSshRdpOutbound"
     priority                   = 100
     direction                  = "Outbound"
     access                     = "Allow"
-    protocol                   = "Tcp"
+    protocol                   = "*"
     source_port_range          = "*"
-    destination_port_range     = "22"
+    destination_port_ranges    = ["22", "3389"]
     source_address_prefix      = "*"
     destination_address_prefix = "VirtualNetwork"
   }
 
-  # Outbound: Allow RDP to Virtual Network
+  # Outbound: Allow Bastion internal communication
   security_rule {
-    name                       = "AllowRdpOutbound"
+    name                       = "AllowBastionCommunication"
     priority                   = 110
     direction                  = "Outbound"
     access                     = "Allow"
-    protocol                   = "Tcp"
+    protocol                   = "*"
     source_port_range          = "*"
-    destination_port_range     = "3389"
-    source_address_prefix      = "*"
+    destination_port_ranges    = ["8080", "5701"]
+    source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "VirtualNetwork"
   }
 
@@ -365,6 +379,19 @@ resource "azurerm_network_security_group" "bastion" {
     destination_port_range     = "443"
     source_address_prefix      = "*"
     destination_address_prefix = "AzureCloud"
+  }
+
+  # Outbound: Allow HTTP to Internet for session and certificate validation
+  security_rule {
+    name                       = "AllowHttpOutbound"
+    priority                   = 130
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "Internet"
   }
 
   tags = {
