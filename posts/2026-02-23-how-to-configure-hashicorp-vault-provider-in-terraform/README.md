@@ -16,7 +16,7 @@ In this guide, we will walk through configuring the HashiCorp Vault provider in 
 
 Before getting started, make sure you have:
 
-- Terraform 1.0 or later installed
+- Terraform 1.10 or later installed
 - A running Vault server (dev or production)
 - A valid Vault token or alternative authentication method
 - Basic familiarity with Terraform syntax
@@ -29,12 +29,12 @@ The first step is declaring the Vault provider in your Terraform configuration. 
 # versions.tf - Pin the Vault provider version
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.10"
 
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 3.25"
+      version = "~> 5.9"
     }
   }
 }
@@ -125,7 +125,7 @@ You can also configure the provider entirely through environment variables, whic
 # Set Vault address and token via environment variables
 export VAULT_ADDR="https://vault.example.com:8200"
 export VAULT_TOKEN="hvs.your-token-here"
-export VAULT_SKIP_TLS_VERIFY="false"
+export VAULT_SKIP_VERIFY="false"
 ```
 
 When environment variables are set, the provider block can be minimal.
@@ -202,7 +202,12 @@ resource "vault_policy" "app_read" {
   policy = <<-EOT
     # Allow reading secrets under the secret/data/database path
     path "secret/data/database/*" {
-      capabilities = ["read", "list"]
+      capabilities = ["read"]
+    }
+
+    # Allow listing secrets under the secret/metadata/database path
+    path "secret/metadata/database/*" {
+      capabilities = ["list"]
     }
 
     # Allow the app to renew its own token
@@ -257,7 +262,7 @@ resource "vault_pki_secret_backend_role" "web_server" {
   allowed_domains  = ["example.com"]
   allow_subdomains = true
 
-  max_ttl = "72h"
+  max_ttl = 259200
 
   key_type = "rsa"
   key_bits = 2048
@@ -322,11 +327,11 @@ Since Terraform state may contain sensitive values read from Vault, always use e
 # Use an encrypted S3 backend for state storage
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "vault/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-terraform-state"
+    key          = "vault/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
