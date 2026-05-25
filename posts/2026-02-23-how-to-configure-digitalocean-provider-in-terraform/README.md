@@ -231,6 +231,11 @@ resource "digitalocean_firewall" "web" {
     port_range            = "1-65535"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
+
+  outbound_rule {
+    protocol              = "icmp"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
 }
 ```
 
@@ -313,11 +318,14 @@ output "database_uri" {
 ## Kubernetes (DOKS)
 
 ```hcl
+# Look up the latest available Kubernetes version
+data "digitalocean_kubernetes_versions" "latest" {}
+
 # Create a managed Kubernetes cluster
 resource "digitalocean_kubernetes_cluster" "main" {
   name    = "production-cluster"
   region  = "nyc3"
-  version = "1.28.2-do.0"
+  version = data.digitalocean_kubernetes_versions.latest.latest_version
 
   vpc_uuid = digitalocean_vpc.production.id
 
@@ -403,7 +411,7 @@ resource "digitalocean_app" "web" {
     service {
       name               = "api"
       instance_count     = 2
-      instance_size_slug = "professional-xs"
+      instance_size_slug = "apps-s-1vcpu-1gb"
 
       github {
         repo           = "myorg/myapp"
