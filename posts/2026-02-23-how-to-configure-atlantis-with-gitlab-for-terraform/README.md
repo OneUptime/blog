@@ -23,10 +23,8 @@ You need:
 Create a dedicated user for Atlantis (e.g., `atlantis-bot`) and generate an access token:
 
 1. Go to the user's Settings > Access Tokens
-2. Create a token with these scopes:
-   - `api` - Full API access for commenting on merge requests
-   - `read_repository` - Clone repositories
-   - `write_repository` - Push status updates
+2. Create a token with this scope:
+   - `api` - Full API access for reading merge requests, cloning repositories, commenting on merge requests, and updating commit statuses
 
 For group-level access, create a group access token instead:
 
@@ -34,7 +32,7 @@ For group-level access, create a group access token instead:
 Group Settings > Access Tokens > Add new token
 Name: atlantis-terraform
 Role: Developer
-Scopes: api, read_repository, write_repository
+Scopes: api
 ```
 
 ## Starting Atlantis with GitLab
@@ -137,7 +135,7 @@ projects:
 
 The workflow mirrors the GitHub experience but uses GitLab terminology:
 
-```text
+````text
 Developer: Creates merge request modifying environments/production/main.tf
 
 atlantis-bot:
@@ -153,7 +151,7 @@ atlantis-bot:
       }
 
   Plan: 1 to add, 0 to change, 0 to destroy.
-  ```text
+  ```
 
   To **apply** this plan, comment:
     `atlantis apply -d environments/production`
@@ -162,7 +160,7 @@ Developer: atlantis apply -d environments/production
 
 atlantis-bot:
   Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
-```
+````
 
 ## GitLab Merge Request Approval Rules
 
@@ -180,7 +178,7 @@ Approval rules:
   - Approvers: platform-team
 ```
 
-Since Atlantis creates pipeline statuses in GitLab, you can require those statuses to pass before the merge request can be merged.
+Since Atlantis creates commit statuses in GitLab, you can require those statuses to pass before the merge request can be merged. If you want GitLab to keep the merge request blocked until all planned changes have been applied, start Atlantis with `--pending-apply-status`.
 
 ## Custom Workflows for GitLab
 
@@ -194,12 +192,12 @@ workflows:
       steps:
         - init
         - plan
-        # Run tfsec security scanner
+        # Run Trivy security scanner
         - run: |
-            tfsec . --format json --out tfsec-results.json || true
+            trivy config --format json --output trivy-results.json . || true
             # Post results as a merge request note if issues found
-            if [ -s tfsec-results.json ]; then
-              echo "Security issues found. Review tfsec-results.json"
+            if [ -s trivy-results.json ]; then
+              echo "Security issues found. Review trivy-results.json"
             fi
     apply:
       steps:
@@ -234,9 +232,9 @@ terraform-validate:
 
 security-scan:
   stage: security
-  image: aquasec/tfsec:latest
+  image: aquasec/trivy:latest
   script:
-    - tfsec .
+    - trivy config .
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   allow_failure: true  # Advisory, does not block the MR
@@ -250,7 +248,7 @@ Configure Atlantis behavior at the server level:
 # repos.yaml
 repos:
   # Default for all GitLab projects
-  - id: "/.*/""
+  - id: /.*/
     apply_requirements:
       - approved
     allowed_overrides:
@@ -274,12 +272,12 @@ repos:
     allow_custom_workflows: true
 ```
 
-## Deploying on GitLab-Managed Kubernetes
+## Deploying on Kubernetes
 
-If you use GitLab's Kubernetes integration:
+If you deploy Atlantis to a Kubernetes cluster:
 
 ```yaml
-# atlantis-deployment.yaml for GitLab-managed cluster
+# atlantis-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -332,7 +330,6 @@ atlantis server \
   --gitlab-webhook-secret=$WEBHOOK_SECRET \
   --gitlab-hostname=gitlab.internal.mycompany.com \
   --repo-allowlist="gitlab.internal.mycompany.com/*" \
-  --ssl-cert-file=/etc/ssl/certs/gitlab-ca.pem \
   --data-dir=/atlantis-data
 ```
 
@@ -349,7 +346,7 @@ RUN update-ca-certificates
 
 **Webhook returns 401**: Verify the webhook secret matches the `--gitlab-webhook-secret` flag exactly.
 
-**Atlantis cannot clone the repository**: Check that the access token has `read_repository` scope and the user has at least Developer access to the project.
+**Atlantis cannot clone the repository**: Check that the access token has `api` scope and the user has at least Developer access to the project.
 
 **Comments not appearing**: The token needs `api` scope. Also check that the atlantis-bot user is a member of the project.
 
