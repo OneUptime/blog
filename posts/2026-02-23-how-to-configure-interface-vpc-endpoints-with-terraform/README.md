@@ -76,7 +76,7 @@ resource "aws_security_group" "vpc_endpoints" {
     description = "HTTPS from VPC"
   }
 
-  # Allow all outbound (endpoints need to respond)
+  # Allow all outbound (conservative default for endpoint security groups)
   egress {
     from_port   = 0
     to_port     = 0
@@ -128,7 +128,7 @@ resource "aws_vpc_endpoint" "ssm_messages" {
   }
 }
 
-# EC2 Messages endpoint - required for SSM to communicate with EC2
+# EC2 Messages endpoint - used by SSM Agent in Regions that support it
 resource "aws_vpc_endpoint" "ec2_messages" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.us-east-1.ec2messages"
@@ -145,7 +145,7 @@ resource "aws_vpc_endpoint" "ec2_messages" {
 
 ### ECR and Docker Endpoints
 
-For pulling container images in private subnets, you need ECR API, ECR Docker, and S3 endpoints.
+For pulling container images in private subnets, you need ECR API, ECR Docker, and an S3 gateway endpoint because ECR stores image layers in S3.
 
 ```hcl
 # ECR API endpoint - for ECR API operations
