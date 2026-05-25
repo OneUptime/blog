@@ -8,7 +8,7 @@ Description: Build robust message queue infrastructure with Terraform using SQS,
 
 ---
 
-Message queues are the backbone of loosely coupled architectures. They let services communicate without knowing about each other, handle traffic spikes by buffering messages, and provide reliability through guaranteed delivery. Whether you are processing orders, sending notifications, or coordinating microservices, you need message queues.
+Message queues are the backbone of loosely coupled architectures. They let services communicate without knowing about each other, handle traffic spikes by buffering messages, and provide reliability through durable, at-least-once delivery. Whether you are processing orders, sending notifications, or coordinating microservices, you need message queues.
 
 In this guide, we will build a comprehensive message queue infrastructure on AWS using Terraform. We will cover SQS for point-to-point messaging, SNS for pub/sub, and Amazon MQ for teams that need RabbitMQ compatibility.
 
@@ -242,6 +242,18 @@ module "inventory_queue" {
   alarm_actions         = [aws_sns_topic.alerts.arn]
   tags                  = local.common_tags
 }
+
+module "analytics_queue" {
+  source                = "./modules/sqs_queue"
+  queue_name            = "${var.project_name}-analytics-events"
+  visibility_timeout    = 60
+  message_retention     = 345600
+  max_receive_count     = 5
+  kms_key_id            = aws_kms_key.messaging.arn
+  queue_depth_threshold = 5000
+  alarm_actions         = [aws_sns_topic.alerts.arn]
+  tags                  = local.common_tags
+}
 ```
 
 ## Amazon MQ for RabbitMQ
@@ -250,14 +262,14 @@ If your team already uses RabbitMQ and wants a managed service:
 
 ```hcl
 resource "aws_mq_broker" "rabbitmq" {
-  broker_name = "${var.project_name}-rabbitmq"
-  engine_type = "RabbitMQ"
-  engine_version = "3.12"
-  host_instance_type = "mq.m5.large"
-  deployment_mode = "CLUSTER_MULTI_AZ"
+  broker_name        = "${var.project_name}-rabbitmq"
+  engine_type        = "RabbitMQ"
+  engine_version     = "4.2"
+  host_instance_type = "mq.m7g.large"
+  deployment_mode    = "CLUSTER_MULTI_AZ"
 
-  subnet_ids         = var.private_subnet_ids
-  security_groups    = [aws_security_group.mq.id]
+  subnet_ids      = var.private_subnet_ids
+  security_groups = [aws_security_group.mq.id]
 
   user {
     username = var.mq_username
