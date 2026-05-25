@@ -94,7 +94,7 @@ resource "null_resource" "configure_app" {
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("~/.ssh/id_rsa")
+      private_key = file(pathexpand("~/.ssh/id_rsa"))
       host        = aws_instance.app.public_ip
     }
   }
@@ -124,7 +124,7 @@ resource "null_resource" "update_inventory" {
 
 ### Triggering Actions on Changes
 
-The `triggers` map is what makes `null_resource` truly powerful. You can tie it to any value, and when that value changes, the resource is recreated.
+The `triggers` map is what makes `null_resource` truly powerful. You can tie it to string values derived from other expressions, and when a trigger value changes, the resource is recreated.
 
 ```hcl
 # Re-run deployment when the Docker image tag changes
@@ -256,7 +256,7 @@ resource "null_resource" "cleanup" {
 }
 ```
 
-Note that destroy-time provisioners can only reference `self.triggers` - they cannot access other resources or variables.
+Note that destroy-time provisioners should reference values through the `self` object, such as `self.triggers`, rather than accessing other resources or variables directly.
 
 ## The terraform_data Resource (Modern Alternative)
 
