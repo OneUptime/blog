@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Azure Monitor, Diagnostic Settings, Logging, Infrastructure as Code
 
-Description: Learn how to create Azure Monitor diagnostic settings using Terraform to route platform logs and metrics to Log Analytics, Storage, and Event Hubs.
+Description: Learn how to create Azure Monitor diagnostic settings using Terraform to route platform logs and metrics to Log Analytics and Storage.
 
 ---
 
-Azure Monitor diagnostic settings control where your Azure resource logs and metrics are sent. Without diagnostic settings, most Azure resources do not emit their platform logs or detailed metrics. By configuring diagnostic settings through Terraform, you ensure that every resource in your environment has consistent logging and monitoring from the moment it is created. This guide shows you how.
+Azure Monitor diagnostic settings control where your Azure resource logs and metrics are sent. Resource logs are not collected by default, while platform metrics are collected automatically and can be routed to other destinations with diagnostic settings. By configuring diagnostic settings through Terraform, you ensure that every resource in your environment has consistent logging and monitoring from the moment it is created. This guide shows you how.
 
 ## Understanding Diagnostic Settings
 
-Every Azure resource can generate platform logs (activity, resource, and audit logs) and metrics. Diagnostic settings route this data to one or more destinations: Log Analytics workspaces, Storage accounts, Event Hubs, or partner solutions. You can have multiple diagnostic settings per resource, each routing different categories to different destinations.
+Many Azure resource types can generate resource logs and metrics. Diagnostic settings route this data to one or more destinations: Log Analytics workspaces, Storage accounts, Event Hubs, or partner solutions. You can have up to five diagnostic settings per resource, each routing different categories to different destinations.
 
 ## Setting Up the Foundation
 
@@ -21,6 +21,10 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+    random = {
+      source  = "hashicorp/random"
       version = "~> 3.0"
     }
   }
@@ -71,7 +75,7 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   storage_account_id         = azurerm_storage_account.logs.id
 
-  # Enable all log categories
+  # Enable common log categories
   enabled_log {
     category = "AppServiceHTTPLogs"
   }
@@ -93,9 +97,8 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
   }
 
   # Enable metrics
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 
@@ -138,17 +141,15 @@ resource "azurerm_monitor_diagnostic_setting" "sql_database" {
   }
 
   enabled_log {
-    category = "Audit"
+    category = "SQLSecurityAuditEvents"
   }
 
-  metric {
+  enabled_metric {
     category = "Basic"
-    enabled  = true
   }
 
-  metric {
+  enabled_metric {
     category = "InstanceAndAppAdvanced"
-    enabled  = true
   }
 }
 
@@ -175,9 +176,8 @@ resource "azurerm_monitor_diagnostic_setting" "key_vault" {
     category = "AzurePolicyEvaluationDetails"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 
@@ -186,10 +186,10 @@ variable "key_vault_id" {
 }
 ```
 
-## Network Security Group Flow Logs
+## Network Security Group Diagnostic Logs
 
 ```hcl
-# NSG flow logs require special handling
+# Diagnostic settings for a Network Security Group
 resource "azurerm_monitor_diagnostic_setting" "nsg" {
   name                       = "nsg-diagnostics"
   target_resource_id         = var.nsg_id
@@ -242,6 +242,12 @@ variable "enable_metrics" {
   default = true
 }
 
+variable "metric_categories" {
+  type        = list(string)
+  description = "List of metric categories to enable"
+  default     = ["AllMetrics"]
+}
+
 resource "azurerm_monitor_diagnostic_setting" "this" {
   name                       = "${var.resource_name}-diagnostics"
   target_resource_id         = var.resource_id
@@ -255,11 +261,10 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
     }
   }
 
-  dynamic "metric" {
-    for_each = var.enable_metrics ? ["AllMetrics"] : []
+  dynamic "enabled_metric" {
+    for_each = var.enable_metrics ? var.metric_categories : []
     content {
-      category = metric.value
-      enabled  = true
+      category = enabled_metric.value
     }
   }
 }
@@ -294,6 +299,10 @@ module "sql_diag" {
     "Timeouts",
     "Deadlocks"
   ]
+  metric_categories = [
+    "Basic",
+    "InstanceAndAppAdvanced"
+  ]
 }
 ```
 
@@ -305,4 +314,4 @@ For building alerts on the diagnostic data you collect, see our guides on [Azure
 
 ## Conclusion
 
-Azure Monitor diagnostic settings managed through Terraform ensure that your Azure resources emit the logs and metrics needed for effective monitoring. By creating diagnostic settings alongside your resources, you guarantee that nothing falls through the cracks. The reusable module pattern makes it easy to maintain consistent logging standards across your entire Azure environment.
+Azure Monitor diagnostic settings managed through Terraform ensure that your Azure resource logs and exported metrics are available where you need them for effective monitoring. By creating diagnostic settings alongside your resources, you guarantee that nothing falls through the cracks. The reusable module pattern makes it easy to maintain consistent logging standards across your entire Azure environment.
