@@ -89,7 +89,7 @@ The `for` expression converts each number to a string, then `toset()` wraps the 
 
 ## Converting Lists of Objects to Maps
 
-Lists of objects cannot be converted to sets because sets only hold strings. Instead, convert them to maps where one attribute serves as the key:
+Lists of objects cannot be used as sets for `for_each` because `for_each` only accepts sets of strings. Instead, convert them to maps where one attribute serves as the key:
 
 ```hcl
 variable "users" {
@@ -226,15 +226,18 @@ A common scenario is having a list of objects where each object contains a list,
 variable "teams" {
   type = list(object({
     name    = string
+    team_id = string
     members = list(string)
   }))
   default = [
     {
       name    = "engineering"
+      team_id = "1234567"
       members = ["alice", "bob"]
     },
     {
       name    = "platform"
+      team_id = "7654321"
       members = ["charlie", "diana"]
     }
   ]
@@ -246,6 +249,7 @@ locals {
     for team in var.teams : [
       for member in team.members : {
         team_name   = team.name
+        team_id     = team.team_id
         member_name = member
       }
     ]
@@ -254,16 +258,16 @@ locals {
   # Convert to a map for for_each
   team_membership_map = {
     for tm in local.team_memberships :
-    "${tm.team_name}-${tm.member_name}" => tm
+    "${tm.team_id}-${tm.member_name}" => tm
   }
 }
 
-resource "aws_iam_group_membership" "this" {
+resource "github_team_membership" "this" {
   for_each = local.team_membership_map
 
-  name  = each.key
-  group = each.value.team_name
-  users = [each.value.member_name]
+  team_id  = each.value.team_id
+  username = each.value.member_name
+  role     = "member"
 }
 ```
 
