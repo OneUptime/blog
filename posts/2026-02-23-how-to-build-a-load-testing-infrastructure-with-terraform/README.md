@@ -107,15 +107,9 @@ resource "aws_ecs_task_definition" "locust_worker" {
       image = "locustio/locust:latest"
 
       command = [
+        "-f", "/tests/locustfile.py",
         "--worker",
         "--master-host", "locust-master.${aws_service_discovery_private_dns_namespace.load_test.name}"
-      ]
-
-      environment = [
-        {
-          name  = "LOCUST_LOCUSTFILE"
-          value = "/tests/locustfile.py"
-        }
       ]
 
       logConfiguration = {
@@ -203,7 +197,7 @@ resource "aws_ecs_task_definition" "influxdb" {
   container_definitions = jsonencode([
     {
       name  = "influxdb"
-      image = "influxdb:2.7"
+      image = "influxdb:1.12.4"
 
       portMappings = [
         {
@@ -214,34 +208,15 @@ resource "aws_ecs_task_definition" "influxdb" {
 
       environment = [
         {
-          name  = "DOCKER_INFLUXDB_INIT_MODE"
-          value = "setup"
-        },
-        {
-          name  = "DOCKER_INFLUXDB_INIT_USERNAME"
-          value = "admin"
-        },
-        {
-          name  = "DOCKER_INFLUXDB_INIT_ORG"
-          value = var.project_name
-        },
-        {
-          name  = "DOCKER_INFLUXDB_INIT_BUCKET"
+          name  = "INFLUXDB_DB"
           value = "k6"
-        }
-      ]
-
-      secrets = [
-        {
-          name      = "DOCKER_INFLUXDB_INIT_PASSWORD"
-          valueFrom = aws_secretsmanager_secret.influxdb_password.arn
         }
       ]
 
       mountPoints = [
         {
           sourceVolume  = "influxdb-data"
-          containerPath = "/var/lib/influxdb2"
+          containerPath = "/var/lib/influxdb"
         }
       ]
 
@@ -261,7 +236,8 @@ resource "aws_ecs_task_definition" "influxdb" {
 
     efs_volume_configuration {
       file_system_id = aws_efs_file_system.load_test.id
-      root_directory = "/influxdb"
+      root_directory = "/"
+      transit_encryption = "ENABLED"
     }
   }
 }
@@ -322,6 +298,7 @@ resource "aws_sfn_state_machine" "load_test" {
           FunctionName = aws_lambda_function.prepare_test.arn
           "Payload.$"  = "$"
         }
+        ResultPath = "$.prepared"
         Next = "RunLoadGenerators"
       }
       RunLoadGenerators = {
@@ -330,7 +307,7 @@ resource "aws_sfn_state_machine" "load_test" {
         Parameters = {
           Cluster        = aws_ecs_cluster.load_test.arn
           TaskDefinition = aws_ecs_task_definition.k6_generator.arn
-          "Count.$"      = "$.generatorCount"
+          "Count.$"      = "$.prepared.Payload.generatorCount"
           LaunchType     = "FARGATE"
           NetworkConfiguration = {
             AwsvpcConfiguration = {
@@ -339,6 +316,7 @@ resource "aws_sfn_state_machine" "load_test" {
             }
           }
         }
+        ResultPath = "$.run"
         Next = "CollectResults"
       }
       CollectResults = {
@@ -348,6 +326,7 @@ resource "aws_sfn_state_machine" "load_test" {
           FunctionName = aws_lambda_function.collect_results.arn
           "Payload.$"  = "$"
         }
+        ResultPath = "$.collected"
         Next = "AnalyzeResults"
       }
       AnalyzeResults = {
@@ -357,13 +336,14 @@ resource "aws_sfn_state_machine" "load_test" {
           FunctionName = aws_lambda_function.analyze_results.arn
           "Payload.$"  = "$"
         }
+        ResultPath = "$.analysis"
         Next = "CheckThresholds"
       }
       CheckThresholds = {
         Type = "Choice"
         Choices = [
           {
-            Variable        = "$.Payload.passed"
+            Variable        = "$.analysis.Payload.passed"
             BooleanEquals   = false
             Next            = "TestFailed"
           }
