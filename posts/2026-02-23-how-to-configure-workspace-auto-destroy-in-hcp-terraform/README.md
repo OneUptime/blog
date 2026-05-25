@@ -22,9 +22,9 @@ The simplest way to configure auto-destroy:
 
 1. Navigate to your workspace in HCP Terraform
 2. Go to **Settings** > **Destruction and Deletion**
-3. Under **Auto-destroy**, toggle it on
+3. Under **Automatically destroy**, click **Set up auto-destroy**
 4. Set the date and time for destruction
-5. Click **Save**
+5. Click **Confirm auto-destroy**
 
 The UI shows a countdown timer so you can always see when the workspace is scheduled for destruction.
 
@@ -77,7 +77,7 @@ curl -s \
 
 ## Auto-Destroy with Activity-Based Duration
 
-Instead of setting a fixed date, you can configure auto-destroy based on workspace inactivity. This means the countdown resets every time a run completes:
+Instead of setting a fixed date, you can configure auto-destroy based on workspace inactivity. This means the countdown resets every time a run updates Terraform state:
 
 ```bash
 # Set auto-destroy to trigger 72 hours after the last run
@@ -96,7 +96,7 @@ curl -s \
   "https://app.terraform.io/api/v2/organizations/my-org/workspaces/dev-testing"
 ```
 
-Activity-based duration is better for workspaces that are actively being used. The environment stays alive as long as someone is working with it, and auto-destroys only after a period of inactivity.
+Activity-based duration is better for workspaces that are actively being used. The environment stays alive as long as runs are still updating state, and auto-destroys only after a period of inactivity.
 
 ## Use Case: Ephemeral Development Environments
 
@@ -251,7 +251,8 @@ curl -s \
     "data": {
       "type": "workspaces",
       "attributes": {
-        "auto-destroy-at": null
+        "auto-destroy-at": null,
+        "auto-destroy-activity-duration": null
       }
     }
   }' \
@@ -270,13 +271,13 @@ curl -s \
   --header "Content-Type: application/vnd.api+json" \
   --data '{
     "data": {
-      "type": "notification-configurations",
+      "type": "notification-configuration",
       "attributes": {
         "destination-type": "slack",
         "enabled": true,
         "name": "auto-destroy-warning",
         "url": "https://hooks.slack.com/services/T00/B00/xxx",
-        "triggers": ["run:created", "run:planning", "run:completed"]
+        "triggers": ["workspace:auto_destroy_reminder", "workspace:auto_destroy_run_results"]
       }
     }
   }' \
