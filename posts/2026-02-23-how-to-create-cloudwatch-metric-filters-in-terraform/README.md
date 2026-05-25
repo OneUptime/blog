@@ -12,7 +12,7 @@ CloudWatch metric filters allow you to turn log data into actionable metrics. By
 
 ## Understanding Metric Filters
 
-A metric filter watches a CloudWatch log group for specific patterns and increments a custom metric whenever a match is found. This transforms unstructured log data into structured, alertable metrics. You can then build CloudWatch alarms on these custom metrics just like you would on any AWS-native metric.
+A metric filter watches a CloudWatch log group for specific patterns and publishes a custom metric value whenever a match is found. This transforms unstructured log data into structured, alertable metrics. You can then build CloudWatch alarms on these custom metrics just like you would on any AWS-native metric.
 
 ## Setting Up the Foundation
 
@@ -59,7 +59,7 @@ resource "aws_cloudwatch_log_metric_filter" "error_count" {
     name      = "ApplicationErrors"
     namespace = "Custom/Application"
     value     = "1"
-    # Reset to 0 when no errors are found
+    # Publish 0 when logs are ingested but no errors match
     default_value = "0"
   }
 }
@@ -187,7 +187,7 @@ Create metrics for security monitoring:
 # Track unauthorized API access attempts
 resource "aws_cloudwatch_log_metric_filter" "unauthorized_api" {
   name           = "unauthorized-api-calls"
-  pattern        = "{ $.errorCode = \"UnauthorizedAccess\" || $.errorCode = \"AccessDenied\" }"
+  pattern        = "{ ($.errorCode = \"*UnauthorizedOperation\") || ($.errorCode = \"AccessDenied*\") }"
   log_group_name = "/aws/cloudtrail"
 
   metric_transformation {
@@ -264,7 +264,7 @@ resource "aws_cloudwatch_log_metric_filter" "user_registrations" {
 # Track order values from logs
 resource "aws_cloudwatch_log_metric_filter" "order_value" {
   name           = "order-value"
-  pattern        = "{ $.event = \"ORDER_PLACED\" }"
+  pattern        = "{ $.event = \"ORDER_PLACED\" && $.orderAmount = * }"
   log_group_name = aws_cloudwatch_log_group.application.name
 
   metric_transformation {
@@ -347,7 +347,7 @@ resource "aws_cloudwatch_log_metric_filter" "dynamic" {
 
 ## Best Practices
 
-Use JSON-structured logging in your applications to enable precise pattern matching. Set default_value to 0 for count-based metrics so that CloudWatch reports zero rather than missing data during quiet periods. Test your filter patterns against actual log data before deploying since syntax errors result in no matches rather than errors. Use descriptive namespaces to organize your custom metrics logically. Create alarms on all security-related metric filters with immediate notification.
+Use JSON-structured logging in your applications to enable precise pattern matching. Set default_value to 0 for count-based metrics so that CloudWatch reports zero rather than missing data during periods when logs are ingested but no events match; if no logs are ingested, no value is reported. Test your filter patterns against actual log data before deploying since invalid patterns can fail deployment and valid patterns can still miss the events you expect. Use descriptive namespaces to organize your custom metrics logically. Create alarms on all security-related metric filters with immediate notification.
 
 For advanced log analysis, see our guide on [CloudWatch anomaly detection](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-anomaly-detection-in-terraform/view).
 
