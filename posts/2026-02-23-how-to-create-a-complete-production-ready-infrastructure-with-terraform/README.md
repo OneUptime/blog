@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Production, Infrastructure as Code, AWS, DevOps
 
-Description: Learn how to build a complete production-ready infrastructure with Terraform, including networking, compute, databases, monitoring, security, and CI/CD pipelines that meet enterprise standards.
+Description: Learn how to build a complete production-ready infrastructure with Terraform, including networking, compute, databases, monitoring, and security patterns that meet enterprise standards.
 
 ---
 
@@ -178,7 +178,7 @@ resource "aws_appautoscaling_policy" "cpu" {
 resource "aws_db_instance" "main" {
   identifier     = "${var.project_name}-production"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15"
   instance_class = "db.r6g.large"
 
   allocated_storage     = 100
@@ -224,7 +224,7 @@ resource "aws_db_instance" "main" {
 
 ```hcl
 # production/alb.tf
-# Application Load Balancer with HTTPS and security headers
+# Application Load Balancer with HTTPS
 
 resource "aws_lb" "main" {
   name               = "${var.project_name}-production"
@@ -333,17 +333,17 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
 
 ## Best Practices
 
-Enable encryption on every resource that supports it. Use KMS for key management and rotate keys automatically.
+Enable encryption on every resource that supports it. Use KMS for key management and enable automatic key rotation where supported.
 
 Use Multi-AZ for all stateful resources. Databases, caches, and message queues should all be deployed across multiple availability zones.
 
-Implement deletion protection on critical resources. Production databases, load balancers, and S3 buckets should have deletion protection enabled.
+Implement deletion protection on critical resources. Production databases and load balancers should have deletion protection enabled. For S3 buckets, use controls such as versioning, MFA Delete, Object Lock, and Terraform lifecycle guards where appropriate.
 
 Monitor everything from day one. Set up alerts for CPU, memory, disk, error rates, and latency before you need them.
 
 Automate backups with sufficient retention. 30 days minimum for production databases.
 
-Use secrets management for all credentials. Never hardcode passwords, API keys, or tokens in Terraform configuration.
+Use secrets management for all credentials. Never hardcode passwords, API keys, or tokens in Terraform configuration, and protect Terraform state because referenced secret values can still be stored there.
 
 ## Conclusion
 
