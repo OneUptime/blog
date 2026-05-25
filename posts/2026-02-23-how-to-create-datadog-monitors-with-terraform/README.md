@@ -17,7 +17,7 @@ terraform {
   required_providers {
     datadog = {
       source  = "DataDog/datadog"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -87,7 +87,7 @@ resource "datadog_monitor" "apm_latency" {
   type    = "query alert"
   message = "P95 latency for the API service exceeds 2 seconds. @ops-team"
 
-  query = "avg(last_5m):trace.web.request.duration.by.service.95p{service:api-service,env:production} > 2"
+  query = "percentile(last_5m):p95:trace.web.request{service:api-service,env:production} > 2"
 
   monitor_thresholds {
     critical = 2
@@ -211,7 +211,7 @@ resource "datadog_monitor" "process_check" {
   name    = "Critical Process Not Running"
   type    = "process alert"
   message = "The nginx process is not running on {{host.name}}. @ops-team @pagerduty"
-  query   = "processes('nginx').over('environment:production').by('host').last(2).count_by_status()"
+  query   = "processes('nginx').over('environment:production').rollup('count').last('2m') < 1"
 
   monitor_thresholds {
     critical = 1
@@ -240,15 +240,16 @@ resource "datadog_monitor" "network_latency" {
 
 ```hcl
 # Create a scheduled maintenance window
-resource "datadog_downtime" "weekly_maintenance" {
-  scope      = "environment:production"
-  start      = 1708646400
-  end        = 1708653600
+resource "datadog_downtime_schedule" "weekly_maintenance" {
+  scope = "environment:production"
 
-  recurrence {
-    type   = "weeks"
-    period = 1
-    week_days = ["Sun"]
+  recurring_schedule {
+    recurrence {
+      duration = "2h"
+      rrule    = "FREQ=WEEKLY;INTERVAL=1;BYDAY=SU"
+      start    = "2026-03-01T02:00:00"
+    }
+    timezone = "UTC"
   }
 
   message = "Weekly maintenance window - alerts suppressed"
