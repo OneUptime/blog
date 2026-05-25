@@ -208,17 +208,19 @@ For RDS, you can set up a cross-region read replica that can be promoted during 
 ```hcl
 # Primary database
 resource "aws_db_instance" "primary" {
-  provider               = aws.primary
-  identifier             = "${var.project_name}-primary-db"
-  engine                 = "postgres"
-  engine_version         = "15.4"
-  instance_class         = "db.r6g.xlarge"
-  allocated_storage      = 100
-  db_subnet_group_name   = module.primary.db_subnet_group_name
-  vpc_security_group_ids = [module.primary.db_security_group_id]
-  backup_retention_period = 7
-  multi_az               = true
-  storage_encrypted      = true
+  provider                    = aws.primary
+  identifier                  = "${var.project_name}-primary-db"
+  engine                      = "postgres"
+  engine_version              = "15.18"
+  instance_class              = "db.r6g.xlarge"
+  allocated_storage           = 100
+  db_subnet_group_name        = module.primary.db_subnet_group_name
+  vpc_security_group_ids      = [module.primary.db_security_group_id]
+  username                    = "app_admin"
+  manage_master_user_password = true
+  backup_retention_period     = 7
+  multi_az                    = true
+  storage_encrypted           = true
 
   tags = {
     Role = "primary"
@@ -233,7 +235,7 @@ resource "aws_db_instance" "replica" {
   instance_class         = "db.r6g.xlarge"
   db_subnet_group_name   = module.secondary.db_subnet_group_name
   vpc_security_group_ids = [module.secondary.db_security_group_id]
-  storage_encrypted      = true
+  kms_key_id             = aws_kms_key.replica.arn
 
   tags = {
     Role = "replica"
@@ -280,10 +282,33 @@ resource "aws_s3_bucket" "secondary_assets" {
   bucket   = "${var.project_name}-assets-eu-west-1"
 }
 
+resource "aws_s3_bucket_versioning" "primary_assets" {
+  provider = aws.primary
+  bucket   = aws_s3_bucket.primary_assets.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "secondary_assets" {
+  provider = aws.secondary
+  bucket   = aws_s3_bucket.secondary_assets.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_replication_configuration" "assets" {
   provider = aws.primary
   bucket   = aws_s3_bucket.primary_assets.id
   role     = aws_iam_role.replication.arn
+
+  depends_on = [
+    aws_s3_bucket_versioning.primary_assets,
+    aws_s3_bucket_versioning.secondary_assets
+  ]
 
   rule {
     id     = "replicate-assets"
