@@ -240,6 +240,7 @@ resource "aws_elasticache_replication_group" "flags" {
   replication_group_id = "feature-flags"
   description          = "Redis cache for feature flag evaluation"
 
+  engine               = "redis"
   node_type            = "cache.r6g.large"
   num_cache_clusters   = 2
   engine_version       = "7.0"
@@ -351,6 +352,7 @@ resource "aws_lambda_function" "flag_manager" {
 resource "aws_apigatewayv2_integration" "evaluate" {
   api_id             = aws_apigatewayv2_api.flags.id
   integration_type   = "AWS_PROXY"
+  integration_method = "POST"
   integration_uri    = aws_lambda_function.flag_evaluator.invoke_arn
 }
 
@@ -363,6 +365,7 @@ resource "aws_apigatewayv2_route" "evaluate" {
 resource "aws_apigatewayv2_integration" "manage" {
   api_id             = aws_apigatewayv2_api.flags.id
   integration_type   = "AWS_PROXY"
+  integration_method = "POST"
   integration_uri    = aws_lambda_function.flag_manager.invoke_arn
 }
 
@@ -381,11 +384,27 @@ resource "aws_apigatewayv2_route" "update_flag" {
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.admin.id
 }
+
+resource "aws_lambda_permission" "allow_api_evaluate" {
+  statement_id  = "AllowAPIGatewayEvaluate"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.flag_evaluator.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.flags.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "allow_api_manage" {
+  statement_id  = "AllowAPIGatewayManage"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.flag_manager.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.flags.execution_arn}/*/*"
+}
 ```
 
 ## Real-Time Flag Change Propagation
 
-When a flag changes, push updates to all services immediately.
+When a flag changes, publish an event so subscribers can invalidate caches or refresh their local flag state.
 
 ```hcl
 # DynamoDB Streams to EventBridge via Lambda
@@ -423,7 +442,7 @@ resource "aws_cloudwatch_event_bus" "flags" {
   name = "feature-flag-events"
 }
 
-# Rule to notify services of flag changes
+# Rule that subscriber targets can use for flag changes
 resource "aws_cloudwatch_event_rule" "flag_changed" {
   name           = "flag-changed"
   event_bus_name = aws_cloudwatch_event_bus.flags.name
@@ -481,6 +500,6 @@ resource "aws_sns_topic" "flag_alerts" {
 
 Feature flag infrastructure lets you ship code to production fearlessly. Deploy often, release gradually, and kill problematic features instantly. Whether you use AppConfig for managed flags or build a custom system with DynamoDB and Redis, Terraform keeps the infrastructure reproducible and auditable.
 
-The key is to keep flag evaluation fast - sub-10ms ideally. Redis caching makes this possible. And real-time propagation via DynamoDB Streams ensures flag changes take effect immediately across all services.
+The key is to keep flag evaluation fast. For in-process evaluation, sub-10ms is a good target; API Gateway and Lambda based evaluation will have higher end-to-end latency. Redis caching helps keep flag reads fast, and propagation via DynamoDB Streams can publish change events so services can refresh cached flag state quickly.
 
 For monitoring feature flag evaluation performance and tracking the impact of flag changes on your application metrics, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-feature-flag-infrastructure-with-terraform/view) for feature flag observability.
