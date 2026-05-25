@@ -100,7 +100,7 @@ resource "azurerm_notification_hub" "main" {
     bundle_id        = var.apns_bundle_id
   }
 
-  # Firebase Cloud Messaging (for Android)
+  # Legacy Google Cloud Messaging / FCM API key
   gcm_credential {
     api_key = var.fcm_api_key
   }
@@ -133,7 +133,7 @@ variable "apns_team_id" {
 }
 
 variable "apns_token" {
-  description = "APNs authentication token (.p8 key content)"
+  description = "APNs authentication token (.p8 key content without PEM header/footer)"
   type        = string
   sensitive   = true
 }
@@ -144,13 +144,15 @@ variable "apns_bundle_id" {
   default     = "com.contoso.myapp"
 }
 
-# Firebase Cloud Messaging (FCM)
+# Legacy Google Cloud Messaging / FCM
 variable "fcm_api_key" {
-  description = "Firebase Cloud Messaging server key"
+  description = "Legacy GCM/FCM API key"
   type        = string
   sensitive   = true
 }
 ```
+
+The `gcm_credential` block configures the legacy GCM/FCM API key credential model. For new Android push notification deployments, use Firebase Cloud Messaging v1 credentials; if your Terraform provider does not expose FCM v1 fields, configure those credentials through the Azure portal, Azure CLI, REST API, or SDK after creating the hub.
 
 ## Authorization Rules
 
@@ -282,19 +284,19 @@ resource "azurerm_notification_hub" "prod" {
 }
 ```
 
-## Storing Connection Strings in Key Vault
+## Storing Access Keys in Key Vault
 
 ```hcl
-# Store the send connection string for the backend
-resource "azurerm_key_vault_secret" "nh_send_connection" {
-  name         = "notification-hub-send-connection"
+# Store the send access key for the backend
+resource "azurerm_key_vault_secret" "nh_send_access_key" {
+  name         = "notification-hub-send-access-key"
   value        = azurerm_notification_hub_authorization_rule.backend.primary_access_key
   key_vault_id = azurerm_key_vault.main.id
 }
 
-# Store the listen connection string for the mobile app
-resource "azurerm_key_vault_secret" "nh_listen_connection" {
-  name         = "notification-hub-listen-connection"
+# Store the listen access key for the mobile app
+resource "azurerm_key_vault_secret" "nh_listen_access_key" {
+  name         = "notification-hub-listen-access-key"
   value        = azurerm_notification_hub_authorization_rule.mobile_app.primary_access_key
   key_vault_id = azurerm_key_vault.main.id
 }
@@ -331,7 +333,7 @@ output "namespace_id" {
 
 **Use tags for targeted notifications.** Instead of sending to all devices, use tags to target specific user segments. This reduces unnecessary push notifications and improves user experience.
 
-**Store credentials in Key Vault.** Platform credentials (APNs tokens, FCM keys) and SAS keys should be in Key Vault, referenced through managed identity.
+**Store credentials in Key Vault.** Platform credentials (APNs tokens, FCM v1 service account credentials, and legacy FCM keys where still used) and SAS keys should be in Key Vault, referenced through managed identity.
 
 ## Wrapping Up
 
