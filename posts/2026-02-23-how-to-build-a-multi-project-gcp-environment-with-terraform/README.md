@@ -104,7 +104,7 @@ resource "google_org_policy_policy" "allowed_locations" {
 
 # Disable external IP addresses on VMs in production
 resource "google_org_policy_policy" "disable_external_ip_prod" {
-  name   = "${google_folder.workloads_prod.name}/policies/compute.vmExternalIpAccess"
+  name   = "${google_folder.workloads_prod.name}/policies/compute.managed.vmExternalIpAccess"
   parent = google_folder.workloads_prod.name
 
   spec {
@@ -135,10 +135,10 @@ resource "google_org_policy_policy" "allowed_services" {
     rules {
       values {
         allowed_values = [
-          "compute.googleapis.com",
-          "storage.googleapis.com",
-          "bigquery.googleapis.com",
-          "container.googleapis.com",
+          "is:compute.googleapis.com",
+          "is:storage.googleapis.com",
+          "is:bigquery.googleapis.com",
+          "is:container.googleapis.com",
         ]
       }
     }
@@ -286,9 +286,20 @@ resource "google_compute_router_nat" "nat" {
 }
 
 # Attach workload projects as service projects
+resource "google_project" "prod_workload" {
+  name            = "prod-app"
+  project_id      = "company-prod-app"
+  folder_id       = google_folder.workloads_prod.name
+  billing_account = var.billing_account_id
+
+  auto_create_network = false
+}
+
 resource "google_compute_shared_vpc_service_project" "prod_app" {
   host_project    = google_project.host_network.project_id
   service_project = google_project.prod_workload.project_id
+
+  depends_on = [google_compute_shared_vpc_host_project.host]
 }
 ```
 
@@ -298,6 +309,13 @@ Aggregate logs from all projects into the logging project.
 
 ```hcl
 # Organization-level log sink
+resource "google_logging_project_bucket_config" "org_logs" {
+  project        = google_project.logging.project_id
+  location       = "global"
+  retention_days = 365
+  bucket_id      = "org-logs"
+}
+
 resource "google_logging_organization_sink" "central" {
   name             = "central-log-sink"
   org_id           = data.google_organization.main.org_id
@@ -305,14 +323,14 @@ resource "google_logging_organization_sink" "central" {
   include_children = true
 
   filter = "severity >= WARNING"
+
+  depends_on = [google_logging_project_bucket_config.org_logs]
 }
 
-# Log bucket in the logging project
-resource "google_logging_project_bucket_config" "org_logs" {
-  project        = google_project.logging.project_id
-  location       = "global"
-  retention_days = 365
-  bucket_id      = "org-logs"
+resource "google_project_iam_member" "central_log_bucket_writer" {
+  project = google_project.logging.project_id
+  role    = "roles/logging.bucketWriter"
+  member  = google_logging_organization_sink.central.writer_identity
 }
 
 # BigQuery dataset for log analytics
@@ -332,6 +350,13 @@ resource "google_logging_organization_sink" "bigquery" {
   include_children = true
 
   filter = "logName:\"cloudaudit.googleapis.com\""
+}
+
+resource "google_bigquery_dataset_iam_member" "bigquery_log_writer" {
+  project    = google_project.logging.project_id
+  dataset_id = google_bigquery_dataset.logs.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = google_logging_organization_sink.bigquery.writer_identity
 }
 ```
 
