@@ -211,7 +211,7 @@ resource "azurerm_storage_account_network_rules" "queues" {
 
 ## Monitoring with Azure Monitor
 
-Set up alerts for queue depth to catch processing backlogs early.
+Set up alerts for queue depth to catch processing backlogs.
 
 ```hcl
 # monitoring.tf
@@ -231,7 +231,7 @@ resource "azurerm_monitor_action_group" "queue_alerts" {
 resource "azurerm_monitor_metric_alert" "queue_depth" {
   name                = "alert-queue-depth-high"
   resource_group_name = azurerm_resource_group.queues.name
-  scopes              = [azurerm_storage_account.queues.id]
+  scopes              = ["${azurerm_storage_account.queues.id}/queueServices/default"]
   description         = "Alert when queue message count exceeds 1000"
 
   criteria {
@@ -246,8 +246,8 @@ resource "azurerm_monitor_metric_alert" "queue_depth" {
     action_group_id = azurerm_monitor_action_group.queue_alerts.id
   }
 
-  frequency   = "PT5M"   # Check every 5 minutes
-  window_size = "PT15M"  # Look at 15-minute window
+  frequency   = "PT1H"  # QueueMessageCount is sampled hourly
+  window_size = "P1D"   # Look at a one-day window
 }
 ```
 
@@ -287,7 +287,7 @@ resource "azurerm_linux_function_app" "queue_processor" {
 
   site_config {
     application_stack {
-      node_version = "18"
+      node_version = "20"
     }
   }
 
@@ -353,7 +353,7 @@ Azure offers two main messaging services. Choosing between them depends on your 
 
 **Queue Storage** is the simpler option. It supports messages up to 64 KB, has no ordering guarantee, and charges per transaction. Best for simple task queues with high throughput and low cost requirements.
 
-**Service Bus Queues** support messages up to 256 KB (or 100 MB with Premium), guarantee FIFO ordering, support dead-lettering natively, and offer sessions for message grouping. Better for enterprise messaging patterns.
+**Service Bus Queues** support messages up to 256 KB (or 100 MB with Premium over AMQP), can provide FIFO ordering with sessions, support dead-lettering natively, and offer sessions for message grouping. Better for enterprise messaging patterns.
 
 If your needs are straightforward - a producer puts messages in and a consumer takes them out - Queue Storage is the right choice. If you need ordering, transactions, or complex routing, look at Service Bus instead.
 
@@ -365,4 +365,4 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-Queue Storage is one of the cheapest Azure services. At the time of writing, storage costs around $0.045 per GB per month, and operations cost $0.004 per 10,000 transactions. This makes it practical to use queues liberally for decoupling components without worrying about cost.
+Queue Storage is one of the cheapest Azure services. Pricing varies by region, redundancy option, and operation class, with storage charged per GB per month and operations charged per 10,000 transactions. This makes it practical to use queues liberally for decoupling components while still checking the current Azure pricing page for your deployment region.
