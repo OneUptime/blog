@@ -8,17 +8,18 @@ Description: A practical guide to handling CDKTF version upgrades safely, coveri
 
 ---
 
-Upgrading CDKTF versions is one of those tasks that feels like it should be simple but can quickly spiral if you are not careful. CDKTF has been evolving rapidly, and major version bumps often include breaking changes to APIs, generated provider bindings, and the synthesis process. This guide gives you a battle-tested approach to handling upgrades without breaking your infrastructure.
+Upgrading CDKTF versions is one of those tasks that feels like it should be simple but can quickly spiral if you are not careful. CDKTF has historically evolved rapidly, and current HashiCorp documentation marks it as deprecated as of December 10, 2025. Version bumps can still include breaking changes to APIs, generated provider bindings, and the synthesis process. This guide gives you a battle-tested approach to handling upgrades without breaking your infrastructure.
 
 ## Understanding CDKTF Versioning
 
-CDKTF follows semantic versioning. A version like 0.20.x means the project is still in pre-1.0 territory, where even minor version bumps can include breaking changes. Once CDKTF hits 1.0, the versioning rules will be stricter.
+CDKTF follows semantic versioning. A version like 0.20.x means the project is still in pre-1.0 territory, where even minor version bumps can include breaking changes. As of the current HashiCorp documentation, the latest documented line is 0.21.x and CDKTF is deprecated rather than moving toward a supported 1.0 release.
 
 The key components you need to track are:
 
 - `cdktf` - The core library
 - `cdktf-cli` - The command-line tool
 - `@cdktf/provider-*` - Pre-built provider bindings
+- `cdktf-cdktf-provider-*` - Pre-built provider bindings for Python projects
 - `constructs` - The constructs library (shared with AWS CDK and cdk8s)
 
 These packages are versioned independently, which means you need to check compatibility between them.
@@ -76,7 +77,7 @@ cp terraform.tfstate terraform.tfstate.backup
 
 ## Step 4: Upgrade Dependencies
 
-Upgrade in the right order. Start with the constructs library, then cdktf core, then the CLI, and finally the provider packages:
+Upgrade packages in a way that keeps peer dependencies aligned. The current pre-built provider packages declare peer dependencies on compatible `cdktf` and `constructs` versions, so update those packages together and check the resulting lock file:
 
 ```bash
 # Upgrade core dependencies
@@ -97,7 +98,10 @@ For Python projects:
 
 ```bash
 # Upgrade pip packages
-pip install --upgrade cdktf cdktf-cli-python
+pip install --upgrade cdktf cdktf-cdktf-provider-aws
+
+# The CDKTF CLI is still distributed as the npm package cdktf-cli
+npm install -D cdktf-cli@latest
 
 # If using requirements.txt
 pip install --upgrade -r requirements.txt
@@ -123,9 +127,9 @@ Provider bindings sometimes rename classes between versions:
 
 ```typescript
 // Before (old version)
-import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
+import { S3Bucket } from "./.gen/providers/aws/s3-bucket";
 
-// After (new version - example of a potential rename)
+// After (new version - example if you move to pre-built bindings)
 import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
 // Check the provider changelog for actual renames
 ```
@@ -135,11 +139,11 @@ import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
 ```typescript
 // Before
 new S3Bucket(this, "bucket", {
-  acl: "private",  // acl might be removed in newer provider versions
+  acl: "private",  // acl might be deprecated or require a separate resource
 });
 
 // After
-new S3Bucket(this, "bucket", {});
+const bucket = new S3Bucket(this, "bucket", {});
 // Use S3BucketAcl resource separately
 new S3BucketAcl(this, "bucket-acl", {
   bucket: bucket.id,
@@ -153,7 +157,7 @@ Properties that were strings might become objects, or lists might become sets:
 
 ```typescript
 // Before
-new SecurityGroup(this, "sg", {
+const sg = new SecurityGroup(this, "sg", {
   ingress: [{
     fromPort: 80,
     toPort: 80,
@@ -163,6 +167,7 @@ new SecurityGroup(this, "sg", {
 });
 
 // After - ingress might need to be defined as separate rules
+const sg = new SecurityGroup(this, "sg", {});
 new SecurityGroupRule(this, "sg-rule", {
   securityGroupId: sg.id,
   type: "ingress",
@@ -201,6 +206,7 @@ cdktf diff
 
 # Or use Terraform directly
 cd cdktf.out/stacks/my-stack
+terraform init
 terraform plan
 ```
 
@@ -213,6 +219,8 @@ If you have unit tests for your constructs, they may need updating:
 ```typescript
 // Tests might break if assertion APIs changed
 import { Testing } from "cdktf";
+import { Instance } from "@cdktf/provider-aws/lib/instance";
+import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
 
 describe("After upgrade", () => {
   it("still creates expected resources", () => {
@@ -224,8 +232,8 @@ describe("After upgrade", () => {
     expect(synth).toBeDefined();
 
     // Verify critical resources exist
-    expect(synth).toHaveResource("aws_s3_bucket");
-    expect(synth).toHaveResource("aws_instance");
+    expect(synth).toHaveResource(S3Bucket);
+    expect(synth).toHaveResource(Instance);
   });
 });
 ```
@@ -267,15 +275,16 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - run: npx npm-check-updates '/cdktf|constructs/' --target minor
+      - name: Check for updates
+        id: ncu
+        continue-on-error: true
+        run: npx npm-check-updates '/cdktf|constructs/' --target minor --errorLevel 2 | tee ncu-output.txt
       - name: Create issue if updates available
+        if: steps.ncu.outcome == 'failure'
         run: |
-          UPDATES=$(npx npm-check-updates '/cdktf|constructs/')
-          if [ -n "$UPDATES" ]; then
-            gh issue create \
-              --title "CDKTF dependency updates available" \
-              --body "$UPDATES"
-          fi
+          gh issue create \
+            --title "CDKTF dependency updates available" \
+            --body-file ncu-output.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -288,8 +297,10 @@ If things go wrong after applying the upgrade, here is how to roll back:
 # Revert to the previous branch
 git checkout main
 
-# If state was modified, restore the backup
+# If local state was modified, restore the backup
 cp terraform.tfstate.backup terraform.tfstate
+
+# If remote state was modified, restore from your backend snapshot or object version
 
 # Reinstall old dependencies
 npm ci
