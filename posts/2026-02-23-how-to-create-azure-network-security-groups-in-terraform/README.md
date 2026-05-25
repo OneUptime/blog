@@ -16,6 +16,7 @@ Managing NSGs through Terraform is essential because security rules tend to grow
 
 - Terraform 1.0 or later
 - Azure CLI authenticated
+- Azure subscription ID available for the provider configuration
 - An existing VNet and subnets (or create them alongside the NSGs)
 
 ## Provider Configuration
@@ -25,13 +26,19 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
+}
+
+variable "subscription_id" {
+  description = "Azure subscription ID where the resources will be managed"
+  type        = string
 }
 
 # Reference an existing resource group
@@ -219,7 +226,7 @@ resource "azurerm_subnet_network_security_group_association" "app" {
 
 ## Application Security Groups
 
-Application Security Groups (ASGs) let you group VMs logically and reference them in NSG rules instead of using IP addresses. This makes rules cleaner and more maintainable:
+Application Security Groups (ASGs) let you group VM network interfaces logically and reference them in NSG rules instead of using IP addresses. This makes rules cleaner and more maintainable:
 
 ```hcl
 # ASG for web servers
@@ -376,9 +383,9 @@ resource "azurerm_network_security_group" "dynamic_rules" {
 }
 ```
 
-## NSG Flow Logs
+## Virtual Network Flow Logs
 
-Enable flow logs to capture traffic data for analysis and troubleshooting:
+NSG flow logs are being retired, and Azure no longer allows creating new NSG flow logs. For new deployments, enable virtual network flow logs to capture traffic data for analysis and troubleshooting:
 
 ```hcl
 # Storage account for flow logs
@@ -390,7 +397,7 @@ resource "azurerm_storage_account" "flow_logs" {
   account_replication_type = "LRS"
 
   tags = {
-    Purpose = "nsg-flow-logs"
+    Purpose = "network-flow-logs"
   }
 }
 
@@ -414,16 +421,16 @@ resource "azurerm_network_watcher" "main" {
   resource_group_name = data.azurerm_resource_group.networking.name
 }
 
-# NSG flow log
-resource "azurerm_network_watcher_flow_log" "web" {
+# Virtual network flow log
+resource "azurerm_network_watcher_flow_log" "main" {
   network_watcher_name = azurerm_network_watcher.main.name
   resource_group_name  = data.azurerm_resource_group.networking.name
-  name                 = "flowlog-nsg-web"
+  name                 = "flowlog-vnet-main"
 
-  network_security_group_id = azurerm_network_security_group.web.id
-  storage_account_id        = azurerm_storage_account.flow_logs.id
-  enabled                   = true
-  version                   = 2
+  target_resource_id = data.azurerm_virtual_network.main.id
+  storage_account_id = azurerm_storage_account.flow_logs.id
+  enabled            = true
+  version            = 2
 
   retention_policy {
     enabled = true
@@ -465,8 +472,8 @@ output "asg_ids" {
 
 ## Monitoring Network Security
 
-NSGs silently drop traffic when rules do not match. This can cause confusing connectivity issues if you are not watching. Use OneUptime to monitor your application endpoints and get alerted when connections fail. Correlating failed connection alerts with NSG flow logs quickly tells you whether a firewall rule is the culprit.
+NSGs silently drop traffic when rules deny it. This can cause confusing connectivity issues if you are not watching. Use OneUptime to monitor your application endpoints and get alerted when connections fail. Correlating failed connection alerts with virtual network flow logs quickly tells you whether a firewall rule is the culprit.
 
 ## Summary
 
-Network Security Groups are your primary tool for controlling traffic in Azure. Define them in Terraform alongside your VNet and subnet configuration to keep your security posture version-controlled and reviewable. Use Application Security Groups instead of raw IP addresses when possible - they make rules more readable and easier to maintain as your infrastructure grows. And always enable flow logs on production NSGs so you have the data you need when troubleshooting connectivity issues.
+Network Security Groups are your primary tool for controlling traffic in Azure. Define them in Terraform alongside your VNet and subnet configuration to keep your security posture version-controlled and reviewable. Use Application Security Groups instead of raw IP addresses when possible - they make rules more readable and easier to maintain as your infrastructure grows. And always enable flow logs on production virtual networks so you have the data you need when troubleshooting connectivity issues.
