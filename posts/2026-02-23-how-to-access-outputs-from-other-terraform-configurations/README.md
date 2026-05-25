@@ -64,7 +64,7 @@ terraform {
     key            = "networking/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -377,7 +377,7 @@ data "tfe_outputs" "network" {
 }
 
 resource "aws_instance" "app" {
-  subnet_id = data.tfe_outputs.network.values.public_subnet_ids[0]
+  subnet_id = data.tfe_outputs.network.nonsensitive_values.public_subnet_ids[0]
 }
 ```
 
@@ -429,7 +429,7 @@ output "database_secret_arn" {
 
 ## Handling Missing or Changed Outputs
 
-If the source configuration has not been applied yet or if an output name changes, you will get an error. Handle this defensively:
+If the source configuration has not been applied yet, Terraform cannot read its state and you will get an error. For optional outputs or outputs that may be renamed, handle access defensively:
 
 ```hcl
 # Check if the remote state has the expected output
