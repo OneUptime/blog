@@ -16,7 +16,7 @@ Let's build an NLB from scratch in Terraform, covering the common patterns you'l
 
 Quick decision guide:
 
-- **NLB** - TCP/UDP traffic, static IPs needed, extreme performance, gRPC without HTTP/2, game servers, IoT backends
+- **NLB** - TCP/UDP traffic, static IPs needed, extreme performance, TCP pass-through protocols, game servers, IoT backends
 - **ALB** - HTTP/HTTPS routing, path-based routing, host-based routing, WebSocket, standard web applications
 
 ## Basic NLB Setup
@@ -200,7 +200,7 @@ resource "aws_acm_certificate" "main" {
 
 ## TCP and UDP Listeners
 
-NLBs support TCP, UDP, TCP_UDP, and TLS protocols.
+NLBs support TCP, UDP, TCP_UDP, TLS, QUIC, and TCP_QUIC protocols.
 
 ```hcl
 # TCP listener for application traffic
@@ -249,7 +249,7 @@ resource "aws_lb_target_group" "udp_app" {
 
   health_check {
     enabled             = true
-    protocol            = "TCP"      # Health checks are always TCP or HTTP
+    protocol            = "TCP"      # Health checks are TCP, HTTP, or HTTPS
     port                = 8080       # Check a TCP port even for UDP targets
     healthy_threshold   = 3
     unhealthy_threshold = 3
@@ -262,7 +262,7 @@ Note that even for UDP target groups, health checks must use TCP or HTTP/HTTPS p
 
 ## IP-Based Target Group
 
-For targets outside your VPC, or for containers with dynamic port mapping, use IP-based target groups.
+For private targets outside your VPC, or for containers with dynamic port mapping, use IP-based target groups. IP targets must use supported private address ranges; you can't register publicly routable IP addresses.
 
 ```hcl
 # IP-based target group
@@ -346,7 +346,7 @@ resource "aws_route53_record" "internal" {
 
 ## NLB Access Logging
 
-NLB supports access logging to S3 for auditing and troubleshooting.
+NLB supports access logging to S3 for auditing and troubleshooting TLS traffic. Access logs are created only for TLS listeners and contain information about TLS requests.
 
 ```hcl
 # S3 bucket for NLB access logs
