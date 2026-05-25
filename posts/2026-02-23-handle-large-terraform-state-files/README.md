@@ -40,11 +40,11 @@ When Terraform runs a plan, it does several things:
 
 1. Downloads the state from the remote backend.
 2. Parses the JSON state file into memory.
-3. Queries the cloud provider API for every resource to check its current status (refresh).
+3. Asks each provider to read the current status of managed resources, which usually means cloud provider API calls (refresh).
 4. Compares each resource's actual state against the desired configuration.
 5. Generates a plan showing required changes.
 
-Step 3 is the biggest bottleneck. Each resource requires at least one API call. With 1000 resources, that's 1000+ API calls, each with network latency. Some resources require multiple API calls to fully describe (like security groups with many rules).
+Step 3 is often the biggest bottleneck. Many resources require at least one API call, and some require multiple API calls to fully describe (like security groups with many rules). With 1000 resources, that can become thousands of API calls, each with network latency.
 
 Step 1 can also be slow for very large state files over slow connections or when the backend has high latency.
 
@@ -165,16 +165,16 @@ While this doesn't reduce the total state size (if they're all in one root confi
 
 ## Strategy 7: Optimize Provider Configuration
 
-Some provider configurations can reduce the number of API calls:
+Some provider configurations can skip startup checks, especially for AWS-compatible endpoints or runners that do not use EC2 instance metadata:
 
 ```hcl
 provider "aws" {
   region = "us-east-1"
 
-  # Skip requesting the Account ID - saves an API call per plan
+  # Skip requesting the Account ID when your endpoint lacks IAM, STS, or metadata APIs
   skip_requesting_account_id = true
 
-  # Skip metadata API check
+  # Skip the EC2 metadata API check when you are not using instance metadata credentials
   skip_metadata_api_check = true
 
   # Use a shared credentials file instead of environment variables
@@ -245,23 +245,20 @@ These numbers vary significantly based on resource types (some store more data t
 Large state files can hit S3 transfer speeds:
 
 ```hcl
-# Use a regional endpoint for faster transfers
+# Store state in the same region as your runners and enable S3 state locking
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-
-    # Ensure we're using the regional endpoint, not the global one
-    force_path_style = false
+    bucket       = "my-terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
 
-### Terraform Cloud
+### HCP Terraform and Terraform Enterprise
 
-Terraform Cloud has state size limits. Check your plan tier for the current limits. Enterprise tier has higher limits, but even then, very large states can cause timeout issues during plan operations.
+HCP Terraform and Terraform Enterprise have platform limits and run constraints to consider. Check your current plan or installation limits, and remember that very large states can still cause timeout or upload issues during plan and state operations.
 
 ## Wrapping Up
 
