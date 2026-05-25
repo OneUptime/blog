@@ -107,7 +107,7 @@ variable "environment" {
 }
 ```
 
-If you need to catch bad input early, it has to be a variable.
+If you need to catch bad caller input early, validate it on a variable.
 
 ## When to Use Locals
 
@@ -264,7 +264,7 @@ Ask these questions in order:
 
 1. **Does the caller need to set this value?** If yes, use a variable.
 2. **Can this value be computed from other inputs?** If yes, use a local.
-3. **Should the caller be able to override the computed value?** If yes, use a variable with a computed default (or a variable + local pattern).
+3. **Should the caller be able to override the computed value?** If yes, use a variable with a `null` default plus a local that computes the final value.
 4. **Is this value only used internally?** If yes, use a local.
 
 ## The Variable-Plus-Local Pattern
