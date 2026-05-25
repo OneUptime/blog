@@ -10,7 +10,7 @@ Description: Learn how to use Terraform's cidrsubnets function to automatically 
 
 If you have ever used Terraform's `cidrsubnet` function, you know it works well for creating subnets of the same size. But what happens when you need subnets of different sizes? Calculating the offsets manually to avoid overlaps becomes tedious. That is exactly the problem `cidrsubnets` (with an "s") was designed to solve.
 
-The `cidrsubnets` function takes a CIDR block and a list of new bit lengths, and returns a list of non-overlapping subnet CIDRs that are packed together efficiently. In this guide, we will explore how to use `cidrsubnets` for real-world networking scenarios.
+The `cidrsubnets` function takes a CIDR block and a list of new bit lengths, and returns a list of non-overlapping subnet CIDRs in the same order as the requested sizes. In this guide, we will explore how to use `cidrsubnets` for real-world networking scenarios.
 
 ## cidrsubnets vs cidrsubnet
 
@@ -27,19 +27,19 @@ locals {
   # Wait, do these overlap? You have to do the math yourself.
 }
 
-# cidrsubnets - calculates multiple subnets at once, packs them automatically
+# cidrsubnets - calculates multiple subnets at once, assigning addresses automatically
 locals {
   # Just tell it the sizes you want, it figures out the addresses
   subnets = cidrsubnets("10.0.0.0/16", 8, 4, 8, 8)
   # subnets[0] = "10.0.0.0/24"   (256 addresses)
   # subnets[1] = "10.0.16.0/20"  (4096 addresses)
-  # subnets[2] = "10.0.1.0/24"   (256 addresses)
-  # subnets[3] = "10.0.2.0/24"   (256 addresses)
-  # All non-overlapping, packed efficiently
+  # subnets[2] = "10.0.32.0/24"  (256 addresses)
+  # subnets[3] = "10.0.33.0/24"  (256 addresses)
+  # All non-overlapping, allocated in argument order
 }
 ```
 
-The key difference is that `cidrsubnets` handles the packing for you. It allocates larger subnets first, then fills in smaller ones around them, ensuring nothing overlaps.
+The key difference is that `cidrsubnets` handles the subnet numbering for you. It allocates subnets in the order you pass the `newbits` arguments, aligning each subnet on the correct CIDR boundary so nothing overlaps.
 
 ## Basic Usage: Three Subnet Tiers
 
@@ -90,7 +90,7 @@ output "subnet_layout" {
 # vpc_cidr = "10.0.0.0/16"
 # public_subnets = ["10.0.0.0/24", "10.0.1.0/24", "10.0.2.0/24"]
 # private_subnets = ["10.0.16.0/20", "10.0.32.0/20", "10.0.48.0/20"]
-# database_subnets = ["10.0.3.0/24", "10.0.4.0/24", "10.0.5.0/24"]
+# database_subnets = ["10.0.64.0/24", "10.0.65.0/24", "10.0.66.0/24"]
 ```
 
 ## Creating Subnets with AWS Resources
@@ -126,8 +126,8 @@ locals {
     for tier in local.tier_order :
     tier => slice(
       local.all_cidrs,
-      sum([for t in slice(local.tier_order, 0, index(local.tier_order, tier)) : local.tiers[t].count]),
-      sum([for t in slice(local.tier_order, 0, index(local.tier_order, tier) + 1) : local.tiers[t].count])
+      sum(concat([0], [for t in slice(local.tier_order, 0, index(local.tier_order, tier)) : local.tiers[t].count])),
+      sum(concat([0], [for t in slice(local.tier_order, 0, index(local.tier_order, tier) + 1) : local.tiers[t].count]))
     )
   }
 }
@@ -284,10 +284,10 @@ resource "aws_subnet" "dynamic" {
 
 ## Handling Different VPC Sizes
 
-The beauty of `cidrsubnets` is that it works with any VPC size. The same code adapts to /16, /20, or /24 VPCs.
+The beauty of `cidrsubnets` is that it works with different VPC sizes as long as the requested subnets fit inside the parent CIDR block. The same pattern adapts to /16, /20, or /24 VPCs.
 
 ```hcl
-# adaptive.tf - Works with any VPC size
+# adaptive.tf - Works with configured VPC sizes
 variable "vpc_size" {
   type    = string
   default = "medium"
@@ -372,13 +372,13 @@ output "address_plan" {
 
 ## Summary
 
-The `cidrsubnets` function is a significant improvement over `cidrsubnet` when you need subnets of different sizes. It automatically packs subnets to avoid overlaps, handles the address math for you, and works with any base CIDR size.
+The `cidrsubnets` function is a significant improvement over `cidrsubnet` when you need subnets of different sizes. It automatically calculates non-overlapping subnets in the order you request them, handles the address math for you, and works with any base CIDR size that has enough address space.
 
 The key patterns to remember:
 
 1. List larger subnets first for better address space utilization
 2. Use `slice` to split the results back into logical groups
-3. The function works identically regardless of your VPC size
+3. The function works identically as long as the requested prefixes fit inside the VPC CIDR
 4. Reserve address space for future growth by including placeholder allocations
 
 For monitoring the health of your VPC and the subnets you create, [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-an-observability-platform-with-terraform/view) can track network connectivity and alert you when infrastructure issues arise.
