@@ -80,8 +80,9 @@ resource "aws_cloudfront_distribution" "main" {
     viewer_protocol_policy = "https-only"
     compress               = true
 
-    cache_policy_id          = aws_cloudfront_cache_policy.api.id
-    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+    cache_policy_id            = aws_cloudfront_cache_policy.api.id
+    origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
   # Media behavior - long cache TTL
@@ -93,7 +94,8 @@ resource "aws_cloudfront_distribution" "main" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    cache_policy_id = aws_cloudfront_cache_policy.media.id
+    cache_policy_id            = aws_cloudfront_cache_policy.media.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
   restrictions {
@@ -281,8 +283,8 @@ resource "aws_wafv2_web_acl" "cdn" {
     name     = "rate-limit"
     priority = 1
 
-    override_action {
-      none {}
+    action {
+      block {}
     }
 
     statement {
@@ -383,9 +385,10 @@ resource "aws_cloudfront_distribution" "with_failover" {
   default_cache_behavior {
     target_origin_id       = "api-failover-group"
     viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods         = ["GET", "HEAD"]
-    cache_policy_id        = aws_cloudfront_cache_policy.static_assets.id
+    cache_policy_id          = aws_cloudfront_cache_policy.api.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
   }
 
   # ...rest of configuration
