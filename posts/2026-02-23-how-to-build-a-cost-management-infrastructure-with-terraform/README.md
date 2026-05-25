@@ -128,6 +128,25 @@ resource "aws_sns_topic" "cost_anomaly" {
   name = "cost-anomaly-alerts"
 }
 
+data "aws_iam_policy_document" "cost_anomaly_sns" {
+  statement {
+    sid     = "AllowCostAnomalyDetectionPublish"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["costalerts.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.cost_anomaly.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "cost_anomaly" {
+  arn    = aws_sns_topic.cost_anomaly.arn
+  policy = data.aws_iam_policy_document.cost_anomaly_sns.json
+}
+
 resource "aws_sns_topic_subscription" "finops" {
   topic_arn = aws_sns_topic.cost_anomaly.arn
   protocol  = "email"
@@ -156,12 +175,14 @@ resource "aws_ce_anomaly_subscription" "alerts" {
   }
 
   frequency = "IMMEDIATE"
+
+  depends_on = [aws_sns_topic_policy.cost_anomaly]
 }
 ```
 
-Resource Scheduling for Non-Production
+## Resource Scheduling for Non-Production
 
-Dev and staging environments do not need to run 24/7. Schedule them to turn off outside business hours.
+Dev and staging environments do not need to run 24/7. Schedule them to turn off outside business hours. Scheduled EventBridge rules use UTC, so adjust the cron expressions for your local business hours.
 
 ```hcl
 # Lambda function to stop/start instances on schedule
@@ -182,7 +203,7 @@ resource "aws_lambda_function" "instance_scheduler" {
   }
 }
 
-# Stop instances at 7 PM (Monday - Friday)
+# Stop instances at 7 PM UTC (Monday - Friday)
 resource "aws_cloudwatch_event_rule" "stop_instances" {
   name                = "stop-dev-instances"
   schedule_expression = "cron(0 19 ? * MON-FRI *)"
@@ -198,7 +219,7 @@ resource "aws_cloudwatch_event_target" "stop" {
   })
 }
 
-# Start instances at 7 AM (Monday - Friday)
+# Start instances at 7 AM UTC (Monday - Friday)
 resource "aws_cloudwatch_event_rule" "start_instances" {
   name                = "start-dev-instances"
   schedule_expression = "cron(0 7 ? * MON-FRI *)"
@@ -234,7 +255,7 @@ resource "aws_lambda_permission" "start_permission" {
 
 ## Tagging Enforcement for Cost Allocation
 
-You cannot allocate costs if resources are not tagged properly. Enforce tagging with AWS Config.
+You cannot allocate costs if resources are not tagged properly. Monitor required tags with AWS Config and standardize tag usage with AWS Organizations tag policies.
 
 ```hcl
 # Config rule to check for required cost allocation tags
@@ -263,7 +284,7 @@ resource "aws_config_config_rule" "required_tags" {
   }
 }
 
-# SCP to prevent creating resources without required tags
+# Tag policy to standardize the CostCenter tag on supported resources
 resource "aws_organizations_policy" "tag_policy" {
   name = "require-cost-tags"
   type = "TAG_POLICY"
@@ -380,7 +401,7 @@ resource "aws_autoscaling_group" "app" {
   }
 }
 
-# Scale based on CPU - keeps utilization between 40-70%
+# Scale based on CPU - targets average CPU utilization at 60%
 resource "aws_autoscaling_policy" "cpu_target" {
   name                   = "cpu-target-tracking"
   autoscaling_group_name = aws_autoscaling_group.app.name
@@ -426,6 +447,7 @@ resource "aws_cur_report_definition" "daily" {
   format                     = "Parquet"
   compression                = "Parquet"
   additional_schema_elements = ["RESOURCES"]
+  additional_artifacts       = ["ATHENA"]
   s3_bucket                  = aws_s3_bucket.cost_reports.id
   s3_prefix                  = "cur"
   s3_region                  = "us-east-1"
@@ -439,7 +461,7 @@ resource "aws_s3_bucket" "cost_reports" {
 
 ## Wrapping Up
 
-Building cost management infrastructure with Terraform means every environment gets the same financial guardrails from the start. Budgets alert you before overspending happens. Anomaly detection catches unexpected spikes. Scheduling turns off dev resources at night. Tagging enforcement ensures you can always attribute costs to the right team.
+Building cost management infrastructure with Terraform means every environment gets the same financial guardrails from the start. Budgets alert you before overspending happens. Anomaly detection catches unexpected spikes. Scheduling turns off dev resources at night. Tagging checks help ensure you can attribute costs to the right team.
 
 The key takeaway is that cost optimization should not be a separate initiative. It should be baked into your infrastructure code, deployed alongside your applications, and monitored continuously.
 
