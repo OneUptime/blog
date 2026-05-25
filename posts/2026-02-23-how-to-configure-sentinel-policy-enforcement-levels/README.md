@@ -50,7 +50,7 @@ Use soft-mandatory for:
 
 ### Hard-Mandatory
 
-Hard-mandatory policies cannot be overridden by anyone. If the policy fails, the run is blocked and there is no way around it except fixing the issue or removing the policy.
+Hard-mandatory policies cannot be overridden in the standard Sentinel policy check workflow. If the policy fails, the run is blocked and there is no way around it except fixing the issue, removing the policy, or changing policy-set override settings that explicitly allow mandatory failures to be overridden.
 
 ```hcl
 policy "enforce-encryption" {
@@ -69,7 +69,7 @@ Use hard-mandatory for:
 
 ### In sentinel.hcl
 
-The primary way to set enforcement levels is in the `sentinel.hcl` file:
+For VCS-backed Sentinel policy sets, the primary way to set enforcement levels is in the `sentinel.hcl` file:
 
 ```hcl
 # sentinel.hcl
@@ -134,7 +134,7 @@ curl \
 
 ### Advisory Policy Workflow
 
-1. Developer runs `terraform plan`
+1. Developer triggers a Terraform run in HCP Terraform
 2. Sentinel evaluates the advisory policy
 3. Policy fails
 4. Run continues normally
@@ -159,7 +159,7 @@ Continue to apply? (yes/no)
 
 ### Soft-Mandatory Policy Workflow
 
-1. Developer runs `terraform plan`
+1. Developer triggers a Terraform run in HCP Terraform
 2. Sentinel evaluates the soft-mandatory policy
 3. Policy fails
 4. Run is blocked
@@ -177,16 +177,16 @@ Policy: restrict-instance-types
     aws_instance.web uses m5.4xlarge which is not in the approved list.
 
 This policy can be overridden by an authorized user.
-Override? (yes/no)
+Enter "override" to override failed soft-mandatory policies, or "no" to cancel.
 ```
 
 ### Hard-Mandatory Policy Workflow
 
-1. Developer runs `terraform plan`
+1. Developer triggers a Terraform run in HCP Terraform
 2. Sentinel evaluates the hard-mandatory policy
 3. Policy fails
 4. Run is blocked
-5. No override is possible
+5. No override is possible in the standard policy check workflow
 6. Developer must fix the issue and re-run
 
 ```text
@@ -199,7 +199,7 @@ Policy: enforce-encryption
   Output:
     aws_db_instance.primary - storage_encrypted must be true.
 
-This policy is hard-mandatory and cannot be overridden.
+This policy is hard-mandatory and cannot be overridden in the standard policy check workflow.
 Fix the issues and re-run the plan.
 ```
 
@@ -289,7 +289,7 @@ policy "new-encryption-policy" {
 
 ## Who Can Override Soft-Mandatory Policies?
 
-In HCP Terraform, the ability to override soft-mandatory policies depends on the user's permissions. By default, organization owners and users with the "Manage Policies" permission can override.
+In HCP Terraform, the ability to override soft-mandatory policies depends on the user's permissions. Organization owners can configure whether team members may override policy failures, and users generally need the "Manage Policy Overrides" permission or an equivalent workspace or project permission that allows policy overrides.
 
 This is configurable through team permissions:
 
@@ -309,17 +309,17 @@ Every soft-mandatory override is logged. You should regularly review these overr
 - Find patterns that suggest the policy needs updating
 
 ```bash
-# List policy check results for auditing
+# List policy check results for a run and inspect entries with status "overridden"
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  https://app.terraform.io/api/v2/policy-checks?filter[result]=overridden
+  https://app.terraform.io/api/v2/runs/run-xxxxxxxxxxxx/policy-checks
 ```
 
 ## Dynamic Enforcement Based on Context
 
 While enforcement levels are set in `sentinel.hcl`, you can write policies that behave differently based on context, effectively creating dynamic enforcement:
 
-```python
+```sentinel
 # dynamic-enforcement.sentinel
 # Strict in production, lenient in development
 
