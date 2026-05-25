@@ -17,12 +17,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID where the alert rules will be created."
+}
+
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 
@@ -222,11 +228,12 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "missing_heartbeat" {
 
   scopes               = [data.azurerm_log_analytics_workspace.main.id]
   evaluation_frequency = "PT5M"
-  window_duration      = "PT10M"
+  window_duration      = "PT30M"
 
   criteria {
     query = <<-KQL
       Heartbeat
+      | where TimeGenerated > ago(30m)
       | summarize LastHeartbeat = max(TimeGenerated) by Computer
       | where LastHeartbeat < ago(10m)
       | project Computer, LastHeartbeat, MinutesSinceLastBeat = datetime_diff('minute', now(), LastHeartbeat)
