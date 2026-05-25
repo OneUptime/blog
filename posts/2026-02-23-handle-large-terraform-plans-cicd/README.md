@@ -53,7 +53,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "networking/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -144,7 +144,7 @@ jobs:
 
 ## Use Targeted Plans for Quick Feedback
 
-When you know exactly what you're changing, use `-target` to plan only specific resources during development. This gives much faster feedback.
+When you're recovering from a mistake or working around a specific Terraform limitation, use `-target` to plan only specific resources. This can also give faster ad hoc feedback, but it should not be part of your routine pipeline.
 
 ```yaml
 # Quick targeted plan for specific resources
@@ -158,7 +158,7 @@ When you know exactly what you're changing, use `-target` to plan only specific 
       -no-color
 ```
 
-Just make sure your final pipeline runs a full plan before apply. Targeted plans can miss dependency changes.
+Just make sure your final pipeline runs a full plan before apply. Targeted plans can miss unrelated drift or configuration changes.
 
 ## Handle Large Plan Output
 
@@ -246,7 +246,7 @@ For very large plans, save the full output as a pipeline artifact instead of try
 
 ## Increase Parallelism
 
-Terraform makes API calls to refresh state sequentially by default. Increase the parallelism flag:
+Terraform limits concurrent operations to 10 by default. Increase the parallelism flag carefully:
 
 ```yaml
 - name: Terraform Plan
@@ -259,10 +259,10 @@ Be careful not to set this too high or you will hit cloud provider API rate limi
 
 ## Use Refresh-Only When Appropriate
 
-If you're troubleshooting drift without making changes, a refresh-only plan is faster:
+If you're troubleshooting drift without making infrastructure changes, a refresh-only plan limits Terraform to updating state and root module outputs:
 
 ```bash
-# Only refresh state, don't calculate changes
+# Plan state and output updates without changing remote infrastructure
 terraform plan -refresh-only -out=tfplan
 ```
 
