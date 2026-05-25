@@ -85,7 +85,7 @@ variable "environment" {
 
 ## Setting Up Cognito for RUM Authentication
 
-RUM requires a Cognito Identity Pool for browser authentication:
+This example uses a Cognito Identity Pool for browser authentication:
 
 ```hcl
 # Create a Cognito Identity Pool for RUM
@@ -176,7 +176,7 @@ resource "aws_rum_app_monitor" "production" {
     ]
 
     # Only monitor specific pages
-    favorite_pages = [
+    included_pages = [
       "/",
       "/checkout",
       "/product/*",
@@ -243,17 +243,17 @@ resource "aws_cloudwatch_metric_alarm" "rum_page_load" {
   }
 }
 
-# Alarm for HTTP errors from browser requests
+# Alarm for HTTP 5xx errors from browser requests
 resource "aws_cloudwatch_metric_alarm" "rum_http_errors" {
   alarm_name          = "rum-http-errors-${aws_rum_app_monitor.main.name}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "HttpErrorCount"
+  metric_name         = "Http5xxCount"
   namespace           = "AWS/RUM"
   period              = 300
   statistic           = "Sum"
   threshold           = 25
-  alarm_description   = "High HTTP error count detected from real user sessions"
+  alarm_description   = "High HTTP 5xx error count detected from real user sessions"
   alarm_actions       = [aws_sns_topic.rum_alerts.arn]
 
   dimensions = {
@@ -341,7 +341,7 @@ resource "aws_rum_app_monitor" "apps" {
 
 ## Best Practices
 
-Start with a high sampling rate and reduce it as traffic increases. This way you get detailed data during early adoption and optimize costs at scale. Enable X-Ray integration to correlate frontend performance with backend traces. Use favorite_pages to focus monitoring on critical user paths like checkout flows and login pages. Create separate app monitors for different environments so staging data does not pollute production metrics. Set up alarms on frustrated session counts rather than absolute load times since the frustration metric accounts for user expectations.
+Start with a high sampling rate and reduce it as traffic increases. This way you get detailed data during early adoption and optimize costs at scale. Enable X-Ray integration to correlate frontend performance with backend traces. Use included_pages to focus monitoring on critical user paths like checkout flows and login pages. Create separate app monitors for different environments so staging data does not pollute production metrics. Set up alarms on frustrated session counts rather than absolute load times since the frustration metric accounts for user expectations.
 
 For server-side monitoring to complement RUM, see our guides on [CloudWatch Synthetics canaries](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-synthetics-canaries-in-terraform/view) and [CloudWatch alarms for ALB](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-alarms-for-alb-in-terraform/view).
 
