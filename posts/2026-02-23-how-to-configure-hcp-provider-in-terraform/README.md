@@ -32,7 +32,7 @@ terraform {
     hcp = {
       # Official HashiCorp HCP provider from the Terraform registry
       source  = "hashicorp/hcp"
-      version = "~> 0.78"
+      version = "~> 0.111"
     }
   }
 
@@ -90,15 +90,16 @@ When using environment variables, your provider block simplifies to:
 provider "hcp" {}
 ```
 
-### Using a Credentials File
+### Using Browser Login
 
-For local development, you can also use the HCP CLI to log in, and the provider picks up the token automatically:
+For local development, you can also let the provider start a browser-based login flow. Make sure `HCP_CLIENT_ID` and `HCP_CLIENT_SECRET` are not set first:
 
 ```bash
-# Log in to HCP via the CLI
-hcp auth login
+# Clear service principal credentials so the provider can use browser login
+unset HCP_CLIENT_ID
+unset HCP_CLIENT_SECRET
 
-# The provider will use the cached token
+# The provider will open a browser login flow if needed
 terraform plan
 ```
 
@@ -177,7 +178,7 @@ resource "hcp_consul_cluster" "example" {
   hvn_id          = hcp_hvn.main.hvn_id
   tier            = "development"
 
-  # Connect clients from outside the HVN
+  # Enable Consul service mesh and public UI access
   connect_enabled     = true
   public_endpoint     = true
 
@@ -203,6 +204,12 @@ resource "hcp_aws_network_peering" "peer" {
   peer_vpc_id     = "vpc-0abc123def456"
   peer_account_id = "123456789012"
   peer_vpc_region = "us-west-2"
+}
+
+# Accept the peering request in AWS
+resource "aws_vpc_peering_connection_accepter" "peer" {
+  vpc_peering_connection_id = hcp_aws_network_peering.peer.provider_peering_id
+  auto_accept               = true
 }
 
 # Add a route from the HVN to the peered VPC
@@ -299,7 +306,7 @@ module "vault_prod" {
 
 A few things to keep in mind when working with the HCP provider:
 
-**Pin your provider version.** The HCP provider moves fast. Use version constraints like `~> 0.78` to avoid surprises during `terraform init`.
+**Pin your provider version.** The HCP provider moves fast. Use version constraints like `~> 0.111` to avoid surprises during `terraform init`.
 
 **Never hardcode credentials.** Always use environment variables or a secrets manager. Mark credential variables as `sensitive = true` so they do not appear in logs.
 
