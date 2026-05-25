@@ -233,7 +233,7 @@ resource "aws_launch_template" "versioned" {
   }
 }
 
-# ASG referencing the latest version
+# ASG referencing the latest version number tracked by Terraform
 resource "aws_autoscaling_group" "app" {
   name_prefix         = "app-"
   desired_capacity    = var.desired_capacity
@@ -243,7 +243,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.versioned.id
-    version = "$Latest"  # Always use the newest version
+    version = aws_launch_template.versioned.latest_version
   }
 
   # Refresh instances when the launch template changes
@@ -257,7 +257,7 @@ resource "aws_autoscaling_group" "app" {
 }
 ```
 
-Using `$Latest` means the ASG will use the newest template version for any new instances. Combined with `instance_refresh`, existing instances get replaced in a rolling fashion when the template changes.
+Using `latest_version` means Terraform updates the ASG's launch template version when the template changes. Combined with `instance_refresh`, existing instances get replaced in a rolling fashion when the template changes.
 
 ## Mixed Instance Types
 
@@ -428,6 +428,6 @@ output "launch_template_arn" {
 
 ## Summary
 
-Launch templates are the recommended way to define instance configurations for Auto Scaling Groups. Key things to remember: use `name_prefix` with `create_before_destroy` for safe updates, omit `instance_type` when using mixed instances in your ASG, always enforce IMDSv2, encrypt your volumes, and use `$Latest` version with instance refresh for rolling updates. Build your templates with all the production settings from the start - it's much easier than bolting them on later.
+Launch templates are the recommended way to define instance configurations for Auto Scaling Groups. Key things to remember: use `name_prefix` with `create_before_destroy` for safe updates, omit `instance_type` when using mixed instances in your ASG, always enforce IMDSv2, encrypt your volumes, and use the launch template's `latest_version` with instance refresh for rolling updates. Build your templates with all the production settings from the start - it's much easier than bolting them on later.
 
 For more on Auto Scaling, see our guide on [creating Auto Scaling Groups with Terraform](https://oneuptime.com/blog/post/2026-02-23-create-auto-scaling-groups-with-terraform/view) and [configuring Auto Scaling policies](https://oneuptime.com/blog/post/2026-02-23-configure-auto-scaling-policies-in-terraform/view).
