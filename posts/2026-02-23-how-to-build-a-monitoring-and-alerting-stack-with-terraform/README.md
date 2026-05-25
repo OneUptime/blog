@@ -117,7 +117,7 @@ module "alb_5xx_alarm" {
 Create separate topics for different severity levels:
 
 ```hcl
-# Critical alerts go to PagerDuty and Slack
+# Critical alerts go to PagerDuty and email
 resource "aws_sns_topic" "critical" {
   name = "${var.project_name}-critical-alerts"
 }
@@ -152,6 +152,14 @@ resource "aws_sns_topic_subscription" "warning_slack" {
   protocol  = "lambda"
   endpoint  = aws_lambda_function.slack_notifier.arn
 }
+
+resource "aws_lambda_permission" "allow_sns_warning" {
+  statement_id  = "AllowExecutionFromSNSWarning"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.slack_notifier.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.warning.arn
+}
 ```
 
 ## Prometheus on ECS
@@ -184,9 +192,9 @@ resource "aws_ecs_task_definition" "prometheus" {
 
       mountPoints = [
         {
-          sourceVolume  = "prometheus-config"
-          containerPath = "/etc/prometheus"
-          readOnly      = true
+          sourceVolume  = "prometheus-data"
+          containerPath = "/prometheus"
+          readOnly      = false
         }
       ]
 
@@ -202,11 +210,12 @@ resource "aws_ecs_task_definition" "prometheus" {
   ])
 
   volume {
-    name = "prometheus-config"
+    name = "prometheus-data"
 
     efs_volume_configuration {
-      file_system_id = aws_efs_file_system.prometheus.id
-      root_directory = "/prometheus-config"
+      file_system_id     = aws_efs_file_system.prometheus.id
+      root_directory     = "/"
+      transit_encryption = "ENABLED"
     }
   }
 }
@@ -306,7 +315,7 @@ resource "aws_synthetics_canary" "api_health" {
   execution_role_arn   = aws_iam_role.canary.arn
   handler              = "apiCanaryBlueprint.handler"
   zip_file             = data.archive_file.canary_script.output_path
-  runtime_version      = "syn-nodejs-puppeteer-7.0"
+  runtime_version      = "syn-nodejs-puppeteer-15.1"
 
   schedule {
     expression = "rate(5 minutes)"
