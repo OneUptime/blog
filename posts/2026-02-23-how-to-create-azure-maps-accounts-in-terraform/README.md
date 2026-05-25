@@ -8,7 +8,7 @@ Description: Learn how to create and configure Azure Maps accounts using Terrafo
 
 ---
 
-Adding location-based features to your applications - maps, geocoding, route planning, geofencing - requires a geospatial platform. Azure Maps provides these capabilities as a set of REST APIs and SDKs that integrate naturally with the rest of your Azure infrastructure. If you are already on Azure, it makes sense to use Azure Maps rather than adding another vendor to your stack.
+Adding location-based features to your applications - maps, geocoding, route planning, traffic awareness - requires a geospatial platform. Azure Maps provides these capabilities as a set of REST APIs and SDKs that integrate naturally with the rest of your Azure infrastructure. If you are already on Azure, it makes sense to use Azure Maps rather than adding another vendor to your stack.
 
 This guide covers creating Azure Maps accounts with Terraform, configuring authentication, managing access, and setting up the infrastructure around it.
 
@@ -19,11 +19,9 @@ Azure Maps provides a range of geospatial services:
 - **Render**: Map tiles and imagery for displaying interactive maps
 - **Search**: Geocoding (address to coordinates), reverse geocoding, and point of interest search
 - **Route**: Driving, walking, and truck routing with traffic awareness
-- **Geofencing**: Define geographic boundaries and detect when devices enter or exit
 - **Weather**: Current conditions and forecasts for any location
 - **Traffic**: Real-time traffic flow and incident data
-- **Spatial**: Geospatial operations like closest point, great circle distance, and buffers
-- **Creator**: Create indoor maps for buildings
+- **Indoor maps (retired)**: Azure Maps Creator was retired on September 30, 2025, so do not use it for new deployments
 
 ## Creating an Azure Maps Account
 
@@ -57,6 +55,7 @@ resource "azurerm_resource_group" "maps" {
 resource "azurerm_maps_account" "main" {
   name                = "maps-prod-contoso"
   resource_group_name = azurerm_resource_group.maps.name
+  location            = azurerm_resource_group.maps.location
   sku_name            = "G2"
 
   tags = {
@@ -66,16 +65,16 @@ resource "azurerm_maps_account" "main" {
 }
 ```
 
-Azure Maps has two SKU options:
-- **S0 (Gen 1 S0)**: Older tier with limited transaction volume. Being phased out.
-- **S1 (Gen 1 S1)**: Higher transaction volumes.
-- **G2 (Gen 2)**: The current recommended tier. Pay-per-use pricing with access to all features.
+Azure Maps has three Terraform SKU values:
+- **S0 (Gen 1 S0)**: Deprecated and no longer available for new deployments.
+- **S1 (Gen 1 S1)**: Deprecated and no longer available for new deployments.
+- **G2 (Gen 2)**: The current recommended tier. Pay-per-use pricing with access to current Azure Maps features.
 
 For new deployments, always use G2.
 
 ## Authentication Options
 
-Azure Maps supports two authentication methods:
+Azure Maps supports three authentication methods: shared keys, Microsoft Entra ID, and shared access signature (SAS) tokens. The two most common options for application deployments are:
 
 ### Shared Key Authentication
 
@@ -90,9 +89,11 @@ resource "azurerm_key_vault_secret" "maps_key" {
 }
 ```
 
-### Azure AD Authentication (Recommended)
+Terraform state will still contain the secret value, so secure your state backend and access to plan files.
 
-For production, use Azure AD authentication with managed identity:
+### Microsoft Entra ID Authentication (Recommended)
+
+For production, use Microsoft Entra ID authentication with managed identity:
 
 ```hcl
 # User-assigned managed identity for the application
@@ -109,7 +110,7 @@ resource "azurerm_role_assignment" "maps_reader" {
   principal_id         = azurerm_user_assigned_identity.app.principal_id
 }
 
-# For applications that need write access (e.g., Creator)
+# For applications that need write access
 resource "azurerm_role_assignment" "maps_contributor" {
   scope                = azurerm_maps_account.main.id
   role_definition_name = "Azure Maps Data Contributor"
@@ -117,16 +118,17 @@ resource "azurerm_role_assignment" "maps_contributor" {
 }
 ```
 
-Azure AD authentication is more secure because you do not need to distribute API keys. The managed identity handles token acquisition automatically.
+Microsoft Entra ID authentication is more secure because you do not need to distribute API keys. The managed identity handles token acquisition automatically.
 
 ## CORS Configuration
 
-If your web application calls Azure Maps APIs directly from the browser, you need to configure CORS:
+If your web application calls Azure Maps APIs directly from the browser, you should configure restrictive CORS origins:
 
 ```hcl
 resource "azurerm_maps_account" "main" {
   name                = "maps-prod-contoso"
   resource_group_name = azurerm_resource_group.maps.name
+  location            = azurerm_resource_group.maps.location
   sku_name            = "G2"
 
   # CORS configuration for browser-based access
@@ -157,7 +159,7 @@ resource "azurerm_static_web_app" "map_app" {
   sku_size            = "Standard"
 
   app_settings = {
-    # Pass the Maps client ID for Azure AD authentication
+    # Pass the Maps client ID for Microsoft Entra ID authentication
     "AZURE_MAPS_CLIENT_ID" = azurerm_maps_account.main.x_ms_client_id
   }
 }
@@ -198,25 +200,7 @@ resource "azurerm_role_assignment" "app_maps" {
 
 ## Azure Maps Creator for Indoor Maps
 
-If you need indoor mapping capabilities:
-
-```hcl
-# Azure Maps Creator resource
-resource "azurerm_maps_creator" "main" {
-  name            = "maps-creator-prod"
-  maps_account_id = azurerm_maps_account.main.id
-  location        = azurerm_resource_group.maps.location
-
-  # Storage units for indoor map data
-  storage_units = 5
-
-  tags = {
-    environment = "production"
-  }
-}
-```
-
-Maps Creator is available in specific regions. Check the Azure documentation for the latest availability.
+Azure Maps Creator indoor map service was retired on September 30, 2025. The Terraform `azurerm_maps_creator` resource is deprecated and should not be used for new deployments.
 
 ## Multiple Maps Accounts for Different Environments
 
@@ -238,6 +222,7 @@ resource "azurerm_maps_account" "envs" {
 
   name                = "maps-${each.key}-contoso"
   resource_group_name = azurerm_resource_group.maps.name
+  location            = azurerm_resource_group.maps.location
   sku_name            = each.value.sku
 
   tags = {
@@ -271,7 +256,7 @@ output "maps_account_id" {
 }
 
 output "maps_client_id" {
-  description = "Client ID for Azure AD authentication"
+  description = "Client ID for Microsoft Entra ID authentication"
   value       = azurerm_maps_account.main.x_ms_client_id
 }
 
@@ -284,11 +269,11 @@ output "maps_name" {
 
 ## Best Practices
 
-**Use Azure AD authentication in production.** Shared keys are convenient for development but should not be used in production applications. Azure AD with managed identity eliminates key management.
+**Use Microsoft Entra ID authentication in production.** Shared keys are convenient for development but should not be used in production applications. Microsoft Entra ID with managed identity eliminates key management.
 
-**Use the G2 SKU.** The Gen 1 SKUs (S0, S1) are older and lack features available in G2. G2 is pay-per-use, so you only pay for what you consume.
+**Use the G2 SKU.** The Gen 1 SKUs (S0, S1) are deprecated and no longer available for new deployments. G2 is pay-per-use, so you only pay for what you consume.
 
-**Monitor usage.** Azure Maps charges per API call. Set up budgets and alerts to avoid surprise bills, especially with geofencing or search APIs that can generate high volumes.
+**Monitor usage.** Azure Maps charges per API call. Set up budgets and alerts to avoid surprise bills, especially with search or routing APIs that can generate high volumes.
 
 **Cache geocoding results.** Azure Maps terms of service allow caching of geocoding results. If your application repeatedly looks up the same addresses, cache the results to reduce API calls and improve response times.
 
@@ -298,4 +283,4 @@ output "maps_name" {
 
 ## Wrapping Up
 
-Azure Maps accounts in Terraform are straightforward to set up. Create the account, configure authentication (preferably Azure AD with managed identity), and wire it into your applications. The geospatial APIs cover everything from basic geocoding to complex routing and geofencing scenarios. With Terraform managing the infrastructure, your Maps configuration is version-controlled and consistent across environments.
+Azure Maps accounts in Terraform are straightforward to set up. Create the account, configure authentication (preferably Microsoft Entra ID with managed identity), and wire it into your applications. The geospatial APIs cover everything from basic geocoding to complex routing and traffic scenarios. With Terraform managing the infrastructure, your Maps configuration is version-controlled and consistent across environments.
