@@ -234,7 +234,7 @@ provider "kubernetes" {
 
 ## Inline Kubeconfig Content
 
-Instead of referencing a file path, you can pass the kubeconfig content directly. This is useful when the kubeconfig is stored in a secret manager or generated dynamically:
+Instead of referencing a file path, you can parse simple static-token kubeconfig content directly. This is useful when the kubeconfig is stored in a secret manager or generated dynamically:
 
 ```hcl
 variable "kubeconfig_content" {
@@ -244,25 +244,23 @@ variable "kubeconfig_content" {
 }
 
 provider "kubernetes" {
-  config_path = null  # Must be null when using config_paths
-
-  # Parse the kubeconfig content
+  # Parse the kubeconfig content instead of setting config_path
   host                   = yamldecode(var.kubeconfig_content).clusters[0].cluster.server
   cluster_ca_certificate = base64decode(yamldecode(var.kubeconfig_content).clusters[0].cluster["certificate-authority-data"])
   token                  = yamldecode(var.kubeconfig_content).users[0].user.token
 }
 ```
 
-A cleaner approach is to write the content to a temporary file:
+A cleaner approach for full kubeconfig support, including exec-based auth, is to write the content to a temporary file before running Terraform and point the provider at that file:
 
 ```hcl
-resource "local_file" "kubeconfig" {
-  content  = var.kubeconfig_content
-  filename = "${path.module}/.kubeconfig"
+variable "kubeconfig_path" {
+  description = "Path to the generated kubeconfig file"
+  type        = string
 }
 
 provider "kubernetes" {
-  config_path = local_file.kubeconfig.filename
+  config_path = var.kubeconfig_path
 }
 ```
 
@@ -277,7 +275,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     config_path    = "~/.kube/config"
     config_context = "production-cluster"
   }
@@ -339,7 +337,7 @@ The credentials in your kubeconfig may have expired:
 aws sts get-caller-identity
 
 # For GKE, refresh credentials
-gcloud auth application-default login
+gcloud auth login
 
 # For AKS, refresh credentials
 az aks get-credentials --resource-group my-rg --name my-cluster --overwrite-existing
