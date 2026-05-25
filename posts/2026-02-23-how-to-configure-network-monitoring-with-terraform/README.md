@@ -165,12 +165,13 @@ Set up alarms to detect anomalous network behavior.
 resource "aws_cloudwatch_log_metric_filter" "rejected_packets" {
   name           = "rejected-packets"
   log_group_name = aws_cloudwatch_log_group.flow_logs.name
-  pattern        = "[version, account, eni, source, destination, srcport, destport, protocol, packets, bytes, windowstart, windowend, action=\"REJECT\", flowlogstatus]"
+  pattern        = "[version, account_id, eni, source, destination, srcport, destport, protocol, packets, bytes, windowstart, windowend, action=\"REJECT\", flowlogstatus, vpc_id, subnet_id, tcp_flags, flow_direction]"
 
   metric_transformation {
     name      = "RejectedPacketCount"
     namespace = "CustomNetworkMetrics"
-    value     = "1"
+    value     = "$packets"
+    unit      = "Count"
   }
 }
 
