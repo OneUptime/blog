@@ -55,7 +55,7 @@ Create the cache directory:
 mkdir -p ~/.terraform.d/plugin-cache
 ```
 
-With this setting, `terraform init` stores downloaded providers in the cache directory and creates symlinks in your project's `.terraform/providers/` folder. This saves disk space and speeds up initialization for subsequent projects.
+With this setting, `terraform init` stores downloaded providers in the cache directory and then copies them, or uses symlinks when possible, in your project's `.terraform/providers/` folder. This saves disk space and speeds up initialization for subsequent projects.
 
 You can also set this via an environment variable instead:
 
@@ -91,10 +91,13 @@ If you run a local provider mirror (common in enterprise environments), configur
 provider_installation {
   network_mirror {
     url = "https://terraform-mirror.internal.company.com/"
+    include = ["registry.terraform.io/hashicorp/*"]
   }
 
-  # Fall back to direct download for anything not in the mirror
-  direct {}
+  # Use direct download for everything outside the mirror
+  direct {
+    exclude = ["registry.terraform.io/hashicorp/*"]
+  }
 }
 ```
 
@@ -227,7 +230,9 @@ provider_installation {
   }
 
   # Direct download for everything else
-  direct {}
+  direct {
+    exclude = ["registry.terraform.io/hashicorp/*"]
+  }
 }
 
 # Terraform Cloud credentials
