@@ -20,7 +20,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -54,7 +54,7 @@ resource "cloudflare_page_rule" "cache_static" {
   target   = "${var.domain}/static/*"
   priority = 1
 
-  actions {
+  actions = {
     cache_level       = "cache_everything"
     browser_cache_ttl = 86400    # 1 day browser cache
     edge_cache_ttl    = 2592000  # 30 days edge cache
@@ -66,7 +66,7 @@ resource "cloudflare_page_rule" "cache_images" {
   target   = "${var.domain}/images/*"
   priority = 2
 
-  actions {
+  actions = {
     cache_level       = "cache_everything"
     browser_cache_ttl = 604800   # 7 days
     edge_cache_ttl    = 2592000  # 30 days
@@ -83,7 +83,7 @@ resource "cloudflare_page_rule" "bypass_api" {
   target   = "${var.domain}/api/*"
   priority = 3
 
-  actions {
+  actions = {
     cache_level          = "bypass"
     disable_performance  = true
   }
@@ -94,8 +94,8 @@ resource "cloudflare_page_rule" "bypass_admin" {
   target   = "${var.domain}/admin/*"
   priority = 4
 
-  actions {
-    cache_level = "bypass"
+  actions = {
+    cache_level    = "bypass"
     security_level = "high"
   }
 }
@@ -110,8 +110,8 @@ resource "cloudflare_page_rule" "www_redirect" {
   target   = "www.${var.domain}/*"
   priority = 5
 
-  actions {
-    forwarding_url {
+  actions = {
+    forwarding_url = {
       url         = "https://${var.domain}/$1"
       status_code = 301
     }
@@ -123,8 +123,8 @@ resource "cloudflare_page_rule" "old_blog_redirect" {
   target   = "${var.domain}/blog/old/*"
   priority = 6
 
-  actions {
-    forwarding_url {
+  actions = {
+    forwarding_url = {
       url         = "https://${var.domain}/blog/$1"
       status_code = 301
     }
@@ -141,7 +141,7 @@ resource "cloudflare_page_rule" "force_https" {
   target   = "http://${var.domain}/*"
   priority = 7
 
-  actions {
+  actions = {
     always_use_https = true
   }
 }
@@ -156,7 +156,7 @@ resource "cloudflare_page_rule" "webhook_security" {
   target   = "${var.domain}/webhooks/*"
   priority = 8
 
-  actions {
+  actions = {
     # Relax security for webhook endpoints
     security_level   = "essentially_off"
     browser_check    = "off"
@@ -169,7 +169,7 @@ resource "cloudflare_page_rule" "login_security" {
   target   = "${var.domain}/login*"
   priority = 9
 
-  actions {
+  actions = {
     security_level = "high"
     cache_level    = "bypass"
     browser_check  = "on"
@@ -221,7 +221,7 @@ resource "cloudflare_page_rule" "dynamic" {
   target   = each.value.pattern
   priority = each.value.priority
 
-  actions {
+  actions = {
     cache_level       = each.value.cache_level
     browser_cache_ttl = each.value.browser_cache_ttl
     edge_cache_ttl    = each.value.edge_cache_ttl
