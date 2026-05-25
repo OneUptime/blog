@@ -63,10 +63,10 @@ Developer -> terraform plan -> HCP Terraform -> Agent (your network) -> Private 
 
 **Characteristics**:
 - Agents run inside your network, poll HCP Terraform for work
-- Credentials stay within your network
+- Credentials can stay within your network
 - No inbound firewall rules needed
 - You manage the agent infrastructure
-- Available on Business tier
+- Availability depends on your HCP Terraform plan
 
 ## Configuring Execution Mode
 
@@ -84,22 +84,34 @@ Developer -> terraform plan -> HCP Terraform -> Agent (your network) -> Private 
 # Remote execution (default)
 
 resource "tfe_workspace" "remote_ws" {
-  name           = "cloud-infrastructure"
-  organization   = "your-org"
+  name         = "cloud-infrastructure"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "remote_ws" {
+  workspace_id   = tfe_workspace.remote_ws.id
   execution_mode = "remote"
 }
 
 # Local execution
 resource "tfe_workspace" "local_ws" {
-  name           = "development-testing"
-  organization   = "your-org"
+  name         = "development-testing"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "local_ws" {
+  workspace_id   = tfe_workspace.local_ws.id
   execution_mode = "local"
 }
 
 # Agent execution
 resource "tfe_workspace" "agent_ws" {
-  name           = "private-datacenter"
-  organization   = "your-org"
+  name         = "private-datacenter"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "agent_ws" {
+  workspace_id   = tfe_workspace.agent_ws.id
   execution_mode = "agent"
   agent_pool_id  = tfe_agent_pool.private_network.id
 }
@@ -161,9 +173,13 @@ curl \
 resource "tfe_workspace" "aws_production" {
   name              = "aws-production"
   organization      = "your-org"
-  execution_mode    = "remote"
   terraform_version = "1.7.0"
   auto_apply        = false
+}
+
+resource "tfe_workspace_settings" "aws_production" {
+  workspace_id   = tfe_workspace.aws_production.id
+  execution_mode = "remote"
 }
 
 # Set AWS credentials as environment variables
@@ -195,8 +211,12 @@ resource "tfe_variable" "aws_secret" {
 ```hcl
 # Local execution workspace - state in cloud, runs locally
 resource "tfe_workspace" "dev_local" {
-  name           = "development-local"
-  organization   = "your-org"
+  name         = "development-local"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "dev_local" {
+  workspace_id   = tfe_workspace.dev_local.id
   execution_mode = "local"
 }
 ```
@@ -240,8 +260,12 @@ resource "tfe_agent_pool" "private" {
 
 # Workspace using agent execution
 resource "tfe_workspace" "private_infra" {
-  name           = "private-infrastructure"
-  organization   = "your-org"
+  name         = "private-infrastructure"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "private_infra" {
+  workspace_id   = tfe_workspace.private_infra.id
   execution_mode = "agent"
   agent_pool_id  = tfe_agent_pool.private.id
 }
@@ -249,7 +273,7 @@ resource "tfe_workspace" "private_infra" {
 
 ## Switching Between Execution Modes
 
-You can switch a workspace's execution mode at any time. Here is what to consider:
+You can switch a workspace's execution mode, but changing it after a run has already been planned causes that run to error during apply. Here is what to consider:
 
 ### Switching from Local to Remote
 
@@ -346,11 +370,16 @@ variable "workspaces" {
 resource "tfe_workspace" "environments" {
   for_each = var.workspaces
 
-  name           = "app-${each.key}"
-  organization   = "your-org"
-  execution_mode = each.value.execution_mode
-  auto_apply     = each.value.auto_apply
+  name         = "app-${each.key}"
+  organization = "your-org"
+  auto_apply   = each.value.auto_apply
+}
 
+resource "tfe_workspace_settings" "environments" {
+  for_each = var.workspaces
+
+  workspace_id   = tfe_workspace.environments[each.key].id
+  execution_mode = each.value.execution_mode
   # Only set agent pool for agent mode
   agent_pool_id = each.value.execution_mode == "agent" ? tfe_agent_pool.private.id : null
 }
@@ -364,7 +393,7 @@ Each mode handles credentials differently:
 |---|---|
 | Remote | Set as workspace env variables or use dynamic credentials |
 | Local | Uses your local environment (env vars, credential files, instance profiles) |
-| Agent | Available on the agent host's environment |
+| Agent | Set as workspace env variables or make them available on the agent host |
 
 ### Dynamic Credentials (Remote Mode)
 
@@ -373,8 +402,12 @@ For remote execution, dynamic credentials are the most secure option:
 ```hcl
 # Configure dynamic credentials for AWS
 resource "tfe_workspace" "aws_dynamic" {
-  name           = "aws-with-dynamic-creds"
-  organization   = "your-org"
+  name         = "aws-with-dynamic-creds"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "aws_dynamic" {
+  workspace_id   = tfe_workspace.aws_dynamic.id
   execution_mode = "remote"
 }
 
