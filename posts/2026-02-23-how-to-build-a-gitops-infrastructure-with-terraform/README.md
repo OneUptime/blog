@@ -31,10 +31,10 @@ First, we need a Kubernetes cluster where ArgoCD will run and deploy workloads.
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+  version = "~> 21.0"
 
   cluster_name    = "${var.project_name}-gitops"
-  cluster_version = "1.28"
+  cluster_version = "1.33"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -55,12 +55,12 @@ module "eks" {
         role = "system"
       }
 
-      taints = [
-        {
+      taints = {
+        critical_addons = {
           key    = "CriticalAddonsOnly"
           effect = "NO_SCHEDULE"
         }
-      ]
+      }
     }
 
     # Application node group for workloads
@@ -75,9 +75,6 @@ module "eks" {
       }
     }
   }
-
-  # Allow ArgoCD to manage all namespaces
-  manage_aws_auth_configmap = true
 
   tags = {
     Environment = var.environment
@@ -132,9 +129,17 @@ resource "helm_release" "argocd" {
           }
           hosts = [var.argocd_hostname]
         }
+      }
 
-        # RBAC configuration
-        config = {
+      configs = {
+        # Run ArgoCD server without its own TLS when TLS is terminated by the ALB
+        params = {
+          "server.insecure" = true
+        }
+
+        # ArgoCD configuration
+        cm = {
+          url             = "https://${var.argocd_hostname}"
           "accounts.ci"   = "apiKey"
           "resource.exclusions" = yamlencode([
             {
@@ -144,17 +149,38 @@ resource "helm_release" "argocd" {
             }
           ])
         }
+
+        repositories = {
+          gitops_infra = {
+            url      = github_repository.gitops_infra.http_clone_url
+            username = var.github_username
+            password = var.github_token
+          }
+          gitops_apps = {
+            url      = github_repository.gitops_apps.http_clone_url
+            username = var.github_username
+            password = var.github_token
+          }
+        }
       }
 
       # Application controller settings
       controller = {
-        replicas = 2
+        replicas = 1
         metrics = {
           enabled = true
           serviceMonitor = {
             enabled = true
           }
         }
+      }
+
+      repoServer = {
+        replicas = 2
+      }
+
+      applicationSet = {
+        replicas = 2
       }
 
       # Enable notifications
@@ -164,13 +190,13 @@ resource "helm_release" "argocd" {
       }
 
       # Redis HA
-      redis-ha = {
+      "redis-ha" = {
         enabled = true
       }
     })
   ]
 
-  depends_on = [module.eks]
+  depends_on = [module.eks, helm_release.monitoring]
 }
 ```
 
@@ -320,15 +346,25 @@ resource "helm_release" "sealed_secrets" {
   version          = "2.13.0"
   namespace        = "kube-system"
 
-  set {
-    name  = "nodeSelector.role"
-    value = "system"
-  }
+  values = [
+    yamlencode({
+      nodeSelector = {
+        role = "system"
+      }
+      tolerations = [
+        {
+          key      = "CriticalAddonsOnly"
+          operator = "Exists"
+          effect   = "NoSchedule"
+        }
+      ]
+    })
+  ]
 
   depends_on = [module.eks]
 }
 
-# Backup the sealed secrets key to AWS Secrets Manager
+# Create a Secrets Manager entry where the sealed-secrets controller key backup can be stored
 resource "aws_secretsmanager_secret" "sealed_secrets_key" {
   name                    = "${var.project_name}/sealed-secrets-key"
   description             = "Backup of sealed secrets encryption key"
@@ -370,8 +406,24 @@ resource "kubectl_manifest" "notification_config" {
         }
       })
       "trigger.on-sync-succeeded" = yamlencode([
-        { when = "app.status.sync.status == 'Synced'", send = ["app-sync-succeeded"] }
+        { when = "app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']", send = ["app-sync-succeeded"] }
       ])
+    }
+  })
+
+  depends_on = [helm_release.argocd]
+}
+
+resource "kubectl_manifest" "notification_secret" {
+  yaml_body = yamlencode({
+    apiVersion = "v1"
+    kind       = "Secret"
+    metadata = {
+      name      = "argocd-notifications-secret"
+      namespace = "argocd"
+    }
+    stringData = {
+      "slack-token" = var.slack_token
     }
   })
 
@@ -383,26 +435,26 @@ resource "kubectl_manifest" "notification_config" {
 
 ```hcl
 # monitoring.tf - GitOps pipeline monitoring
-resource "helm_release" "argocd_metrics" {
-  name       = "argocd-metrics"
+resource "helm_release" "monitoring" {
+  name       = "kube-prometheus-stack"
   repository = "https://prometheus-community.github.io/helm-charts"
-  chart      = "prometheus"
+  chart      = "kube-prometheus-stack"
   namespace  = "monitoring"
+  create_namespace = true
 
   values = [
     yamlencode({
-      serviceMonitors = {
-        argocd = {
-          enabled = true
-          selector = {
-            matchLabels = {
-              "app.kubernetes.io/part-of" = "argocd"
-            }
-          }
+      prometheus = {
+        prometheusSpec = {
+          serviceMonitorSelectorNilUsesHelmValues = false
+          serviceMonitorSelector = {}
+          serviceMonitorNamespaceSelector = {}
         }
       }
     })
   ]
+
+  depends_on = [module.eks]
 }
 ```
 
