@@ -23,7 +23,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -54,7 +54,7 @@ resource "azurerm_storage_account" "files" {
   account_replication_type = "ZRS"  # Zone-redundant for availability
   account_kind             = "StorageV2"
 
-  enable_https_traffic_only = true
+  https_traffic_only_enabled = true
   min_tls_version           = "TLS1_2"
 
   # Enable large file shares (up to 100 TiB per share)
@@ -73,12 +73,12 @@ resource "azurerm_storage_account" "files" {
 # file-shares.tf
 # Shared documents file share
 resource "azurerm_storage_share" "documents" {
-  name                 = "documents"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 100  # Size in GiB
-  access_tier          = "Hot"
+  name               = "documents"
+  storage_account_id = azurerm_storage_account.files.id
+  quota              = 100  # Size in GiB
+  access_tier        = "Hot"
 
-  # Enable SMB protocol settings
+  # Create a stored access policy for SAS tokens
   acl {
     id = "docs-access-policy"
 
@@ -92,18 +92,18 @@ resource "azurerm_storage_share" "documents" {
 
 # Application configuration share
 resource "azurerm_storage_share" "app_config" {
-  name                 = "app-config"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 10  # 10 GiB
-  access_tier          = "Hot"
+  name               = "app-config"
+  storage_account_id = azurerm_storage_account.files.id
+  quota              = 10  # 10 GiB
+  access_tier        = "Hot"
 }
 
 # Log archive share
 resource "azurerm_storage_share" "log_archive" {
-  name                 = "log-archive"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 500  # 500 GiB
-  access_tier          = "Cool"  # Lower cost for infrequently accessed data
+  name               = "log-archive"
+  storage_account_id = azurerm_storage_account.files.id
+  quota              = 500  # 500 GiB
+  access_tier        = "Cool"  # Lower cost for infrequently accessed data
 }
 ```
 
@@ -122,7 +122,7 @@ resource "azurerm_storage_account" "premium_files" {
   account_replication_type = "ZRS"
   account_kind             = "FileStorage"  # Must be FileStorage for Premium
 
-  enable_https_traffic_only = true
+  https_traffic_only_enabled = true
   min_tls_version           = "TLS1_2"
 
   tags = {
@@ -133,10 +133,10 @@ resource "azurerm_storage_account" "premium_files" {
 
 # Premium file share with provisioned IOPS
 resource "azurerm_storage_share" "database_files" {
-  name                 = "database-files"
-  storage_account_name = azurerm_storage_account.premium_files.name
-  quota                = 256  # 256 GiB - IOPS scale with quota for Premium
-  enabled_protocol     = "SMB"
+  name               = "database-files"
+  storage_account_id = azurerm_storage_account.premium_files.id
+  quota              = 256  # 256 GiB - IOPS scale with quota for Premium
+  enabled_protocol   = "SMB"
 }
 ```
 
@@ -155,8 +155,9 @@ resource "azurerm_storage_account" "nfs" {
   account_replication_type = "LRS"
   account_kind             = "FileStorage"
 
-  # NFS requires HTTPS to be disabled and specific network settings
-  enable_https_traffic_only = false
+  # NFS access must be restricted to trusted networks. Disable secure transfer only
+  # if your clients are not using Azure Files NFS encryption in transit.
+  https_traffic_only_enabled = false
 
   network_rules {
     default_action             = "Deny"
@@ -166,10 +167,10 @@ resource "azurerm_storage_account" "nfs" {
 
 # NFS file share
 resource "azurerm_storage_share" "nfs_data" {
-  name                 = "nfs-data"
-  storage_account_name = azurerm_storage_account.nfs.name
-  quota                = 100
-  enabled_protocol     = "NFS"
+  name               = "nfs-data"
+  storage_account_id = azurerm_storage_account.nfs.id
+  quota              = 100
+  enabled_protocol   = "NFS"
 }
 ```
 
@@ -193,11 +194,11 @@ variable "file_shares" {
 }
 
 resource "azurerm_storage_share" "teams" {
-  for_each             = var.file_shares
-  name                 = each.key
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = each.value.quota
-  access_tier          = each.value.access_tier
+  for_each           = var.file_shares
+  name               = each.key
+  storage_account_id = azurerm_storage_account.files.id
+  quota              = each.value.quota
+  access_tier        = each.value.access_tier
 }
 ```
 
@@ -209,17 +210,17 @@ Seed a file share with initial content using Terraform.
 # seed-files.tf
 # Create a directory in the file share
 resource "azurerm_storage_share_directory" "config" {
-  name             = "config"
-  storage_share_id = azurerm_storage_share.app_config.id
+  name              = "config"
+  storage_share_url = azurerm_storage_share.app_config.url
 }
 
 # Upload a file to the share
 resource "azurerm_storage_share_file" "app_settings" {
-  name             = "appsettings.json"
-  storage_share_id = azurerm_storage_share.app_config.id
-  path             = "config"
-  source           = "${path.module}/files/appsettings.json"
-  content_type     = "application/json"
+  name              = "appsettings.json"
+  storage_share_url = azurerm_storage_share.app_config.url
+  path              = "config"
+  source            = "${path.module}/files/appsettings.json"
+  content_type      = "application/json"
 
   depends_on = [azurerm_storage_share_directory.config]
 }
@@ -321,9 +322,9 @@ output "file_share_urls" {
 
 Standard file shares support three access tiers:
 
-- **Hot**: Lowest access cost, highest storage cost. For actively used data.
+- **Hot**: Middle storage and transaction costs. For actively used data.
 - **Cool**: Lower storage cost, higher access cost. For data accessed infrequently.
-- **Transaction Optimized**: Balanced for high-transaction workloads. Default tier.
+- **Transaction Optimized**: Highest storage cost, lowest transaction cost. Default tier for high-transaction workloads.
 
 Premium file shares do not have access tiers - IOPS and throughput scale with the provisioned quota size.
 
