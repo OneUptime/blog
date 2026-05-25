@@ -66,7 +66,7 @@ variable "instance_type" {
 variable "compute_type" {
   description = "EC2 instance type for the application servers"
   type        = string
-  default     = "t3.medium"
+  default     = null
 }
 
 locals {
@@ -75,15 +75,11 @@ locals {
 }
 ```
 
-Add a validation that warns users:
+If your module requires Terraform 1.5 or later, add a check that warns users:
 
 ```hcl
-variable "instance_type" {
-  description = "DEPRECATED: Use compute_type instead"
-  type        = string
-  default     = null
-
-  validation {
+check "deprecated_instance_type" {
+  assert {
     condition     = var.instance_type == null
     error_message = "The 'instance_type' variable is deprecated. Please use 'compute_type' instead."
   }
@@ -111,29 +107,35 @@ moved {
 
 This prevents destroy/recreate cycles for anyone upgrading. See [how to use the moved block when refactoring modules](https://oneuptime.com/blog/post/2026-02-23-terraform-moved-block-refactoring-modules/view) for more details.
 
-## Strategy 3: Migration Modules
+## Strategy 3: Migration Shim Modules
 
-For complex breaking changes, create a migration module that users run once:
+For complex breaking changes, create a shim version of the old module that users can upgrade through:
 
 ```text
 modules/vpc/
-  v2-migration/
-    main.tf     # Contains moved blocks and state adjustments
+  main.tf       # Calls the new module and contains moved blocks
+modules/vpc-v2/
+    main.tf     # Contains the new implementation
     README.md   # Step-by-step migration instructions
 ```
 
 ```hcl
-# modules/vpc/v2-migration/main.tf
-# Run this module once to migrate state from v1 to v2
+# modules/vpc/main.tf
+# Shim version that migrates state from v1 to v2
 
-moved {
-  from = module.vpc.aws_vpc.main
-  to   = module.vpc.aws_vpc.this
+module "vpc_v2" {
+  source = "../vpc-v2"
+  # pass through variables
 }
 
 moved {
-  from = module.vpc.aws_subnet.public
-  to   = module.vpc.aws_subnet.public_subnets
+  from = aws_vpc.main
+  to   = module.vpc_v2.aws_vpc.this
+}
+
+moved {
+  from = aws_subnet.public
+  to   = module.vpc_v2.aws_subnet.public_subnets
 }
 
 # ... all necessary moved blocks
