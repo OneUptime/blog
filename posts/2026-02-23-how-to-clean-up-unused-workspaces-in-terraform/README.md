@@ -29,18 +29,18 @@ terraform workspace list | grep "test-"
 terraform workspace list | grep "demo-"
 ```
 
-### Check When Each Workspace Was Last Modified
+### Check State Details for Each Workspace
 
 ```bash
 #!/bin/bash
 # workspace-ages.sh
-# Shows the last modification time for each workspace's state
+# Shows the resource count and state serial for each workspace
 
 ORIGINAL_WS=$(terraform workspace show)
 
-echo "Workspace State Ages"
-echo "===================="
-printf "%-40s %-10s %-20s\n" "Workspace" "Resources" "Last Modified"
+echo "Workspace State Summary"
+echo "======================="
+printf "%-40s %-10s %-20s\n" "Workspace" "Resources" "State Serial"
 echo "---------------------------------------------------------------------"
 
 terraform workspace list | tr -d ' *' | while read -r ws; do
@@ -85,7 +85,7 @@ echo "====================="
 aws s3api list-objects-v2 \
   --bucket "$BUCKET" \
   --prefix "$PREFIX" \
-  --query 'Contents[?contains(Key, `terraform.tfstate`)].[Key, LastModified, Size]' \
+  --query "Contents[?contains(Key, '$KEY_SUFFIX')].[Key, LastModified, Size]" \
   --output table
 
 # Find states not modified in the last 30 days
@@ -96,7 +96,7 @@ THIRTY_DAYS_AGO=$(date -v-30d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d "30 days
 aws s3api list-objects-v2 \
   --bucket "$BUCKET" \
   --prefix "$PREFIX" \
-  --query "Contents[?LastModified<='$THIRTY_DAYS_AGO' && contains(Key, 'terraform.tfstate')].[Key, LastModified]" \
+  --query "Contents[?LastModified<='$THIRTY_DAYS_AGO' && contains(Key, '$KEY_SUFFIX')].[Key, LastModified]" \
   --output table
 ```
 
@@ -204,7 +204,7 @@ echo ""
 CLEANUP_COUNT=0
 ACTIVE_COUNT=0
 
-terraform workspace list | tr -d ' *' | while read -r ws; do
+while read -r ws; do
   [ -z "$ws" ] && continue
 
   # Skip protected workspaces
@@ -287,7 +287,7 @@ terraform workspace list | tr -d ' *' | while read -r ws; do
     echo "ACTIVE: $ws ($resource_count resources)"
     ACTIVE_COUNT=$((ACTIVE_COUNT + 1))
   fi
-done
+done < <(terraform workspace list | tr -d ' *')
 
 terraform workspace select "$ORIGINAL_WS" > /dev/null 2>&1
 
@@ -343,15 +343,17 @@ jobs:
 
       - name: Run Cleanup
         run: |
-          DRY_RUN=${{ inputs.dry_run || 'true' }} \
+          DRY_RUN=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'true' }} \
           bash scripts/cleanup-workspaces.sh 2>&1 | tee cleanup-report.txt
 
       - name: Post Results to Slack
         if: always()
         run: |
+          report_tail=$(tail -10 cleanup-report.txt)
+          payload=$(jq -n --arg text "Workspace Cleanup Report:\n${report_tail}" '{text: $text}')
           curl -X POST "${{ secrets.SLACK_WEBHOOK }}" \
             -H 'Content-type: application/json' \
-            -d "{\"text\": \"Workspace Cleanup Report:\n\$(cat cleanup-report.txt | tail -10)\"}"
+            -d "$payload"
 
       - name: Upload Report
         uses: actions/upload-artifact@v4
@@ -362,7 +364,7 @@ jobs:
 
 ## Cleaning Up Backend State Files
 
-After deleting workspaces, the state files may still exist in your backend. Clean those up too:
+Terraform's S3 backend deletes non-default workspace state when you run `terraform workspace delete`, but orphaned objects can still appear after manual changes or failed cleanup runs. You can check for those too:
 
 ```bash
 #!/bin/bash
@@ -387,7 +389,7 @@ aws s3api list-objects-v2 \
   # Format: env:/workspace-name/path/to/terraform.tfstate
   ws_name=$(echo "$key" | cut -d'/' -f2)
 
-  if echo "$CURRENT_WS" | grep -q "^${ws_name}$"; then
+  if echo "$CURRENT_WS" | grep -Fxq "$ws_name"; then
     echo "ACTIVE: $key"
   else
     echo "ORPHANED: $key"
