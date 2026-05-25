@@ -46,7 +46,7 @@ terraform {
   required_providers {
     gitlab = {
       source  = "gitlabhq/gitlab"
-      version = "~> 17.0"
+      version = "~> 19.0"
     }
   }
 }
@@ -64,7 +64,7 @@ For self-hosted GitLab instances:
 
 ```hcl
 provider "gitlab" {
-  base_url = "https://gitlab.mycompany.com/api/v4"
+  base_url = "https://gitlab.mycompany.com/api/v4/"
   # Token from GITLAB_TOKEN environment variable
 }
 ```
@@ -80,7 +80,7 @@ provider "gitlab" {
 variable "gitlab_url" {
   description = "GitLab instance URL"
   type        = string
-  default     = "https://gitlab.com/api/v4"
+  default     = "https://gitlab.com/api/v4/"
 }
 
 variable "gitlab_token" {
@@ -95,7 +95,7 @@ variable "gitlab_token" {
 Groups in GitLab organize projects and manage access:
 
 ```hcl
-# Top-level group
+# Top-level group (self-managed GitLab; on GitLab.com, import an existing top-level group)
 resource "gitlab_group" "engineering" {
   name        = "engineering"
   path        = "engineering"
@@ -104,7 +104,7 @@ resource "gitlab_group" "engineering" {
   # Visibility: private, internal, public
   visibility_level = "private"
 
-  # Project creation level: noone, maintainer, developer
+  # Project creation level: noone, owner, maintainer, developer, administrator
   project_creation_level = "maintainer"
 
   # Require two-factor authentication
@@ -144,12 +144,12 @@ resource "gitlab_project" "api_service" {
   visibility_level = "private"
 
   # Features
-  issues_enabled           = true
-  merge_requests_enabled   = true
-  wiki_enabled             = false
-  snippets_enabled         = false
-  container_registry_enabled = true
-  packages_enabled          = true
+  issues_access_level             = "enabled"
+  merge_requests_access_level     = "enabled"
+  wiki_access_level               = "disabled"
+  snippets_access_level           = "disabled"
+  container_registry_access_level = "enabled"
+  packages_enabled                = true
 
   # Default branch
   default_branch = "main"
@@ -198,9 +198,9 @@ resource "gitlab_project" "projects" {
   topics       = each.value.topics
 
   visibility_level                  = "private"
-  issues_enabled                    = true
-  merge_requests_enabled            = true
-  wiki_enabled                      = false
+  issues_access_level              = "enabled"
+  merge_requests_access_level      = "enabled"
+  wiki_access_level                = "disabled"
   only_allow_merge_if_pipeline_succeeds = true
   remove_source_branch_after_merge  = true
   merge_method                      = "ff"
@@ -260,12 +260,16 @@ resource "gitlab_project_approval_rule" "default" {
   group_ids          = [gitlab_group.backend.id]
 }
 
-# Approval rule for security-sensitive paths
+# Approval rule for security reviewers
+data "gitlab_group" "security" {
+  full_path = "engineering/security"
+}
+
 resource "gitlab_project_approval_rule" "security" {
   project            = gitlab_project.api_service.id
   name               = "security-review"
   approvals_required = 1
-  group_ids          = [gitlab_group.security.id]
+  group_ids          = [data.gitlab_group.security.id]
 }
 ```
 
@@ -279,7 +283,7 @@ resource "gitlab_project_variable" "deploy_key" {
   project   = gitlab_project.api_service.id
   key       = "DEPLOY_KEY"
   value     = var.deploy_key
-  protected = true   # Only available in protected branches
+  protected = true   # Only available in protected branches and tags
   masked    = true   # Masked in CI logs
 }
 
@@ -338,15 +342,15 @@ resource "gitlab_deploy_key" "deploy" {
 
 # Share a deploy key across projects
 resource "gitlab_deploy_key" "shared" {
-  for_each = {
-    "api-service" = gitlab_project.api_service.id
-    "web-app"     = gitlab_project.projects["web-app"].id
-  }
-
-  project  = each.value
+  project  = gitlab_project.api_service.id
   title    = "Shared CI deploy key"
   key      = var.shared_deploy_public_key
   can_push = false
+}
+
+resource "gitlab_deploy_key_enable" "shared_web_app" {
+  project = gitlab_project.projects["web-app"].id
+  key_id  = gitlab_deploy_key.shared.deploy_key_id
 }
 ```
 
@@ -364,7 +368,7 @@ data "gitlab_user" "developer" {
 resource "gitlab_group_membership" "developer" {
   group_id     = gitlab_group.backend.id
   user_id      = data.gitlab_user.developer.id
-  access_level = "developer"  # guest, reporter, developer, maintainer, owner
+  access_level = "developer"  # no one, minimal, guest, planner, reporter, developer, maintainer, owner
 }
 
 # Add user to a specific project with different access than the group
@@ -399,14 +403,14 @@ If you work with both GitLab.com and a self-managed instance:
 ```hcl
 # GitLab.com (SaaS)
 provider "gitlab" {
-  base_url = "https://gitlab.com/api/v4"
+  base_url = "https://gitlab.com/api/v4/"
   token    = var.gitlab_com_token
 }
 
 # Self-managed GitLab
 provider "gitlab" {
   alias    = "self_managed"
-  base_url = "https://gitlab.internal.company.com/api/v4"
+  base_url = "https://gitlab.internal.company.com/api/v4/"
   token    = var.gitlab_internal_token
 }
 
