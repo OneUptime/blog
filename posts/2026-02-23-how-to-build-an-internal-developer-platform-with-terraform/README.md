@@ -181,6 +181,10 @@ variable "needs_queue" {
   default = false
 }
 
+variable "db_instance_class" {
+  type = string
+}
+
 # ECR repository for the service
 resource "aws_ecr_repository" "service" {
   name = "${var.team}/${var.service_name}"
@@ -226,13 +230,13 @@ resource "aws_db_instance" "service" {
 
   engine         = "postgres"
   engine_version = "15.4"
-  instance_class = local.environments[var.environment].db_class
+  instance_class = var.db_instance_class
 
   allocated_storage = 20
   storage_encrypted = true
 
-  db_name  = replace(var.service_name, "-", "_")
-  username = var.service_name
+  db_name  = substr("db_${regexreplace(var.service_name, "[^A-Za-z0-9_]", "_")}", 0, 63)
+  username = substr("svc_${regexreplace(var.service_name, "[^A-Za-z0-9_]", "_")}", 0, 16)
   password = random_password.db[0].result
 
   vpc_security_group_ids = [aws_security_group.db[0].id]
@@ -319,7 +323,7 @@ resource "helm_release" "external_secrets" {
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"
-  version          = "0.9.0"
+  version          = "2.5.0"
   namespace        = "external-secrets"
   create_namespace = true
 }
@@ -327,7 +331,7 @@ resource "helm_release" "external_secrets" {
 # Cluster-wide secret store
 resource "kubectl_manifest" "cluster_secret_store" {
   yaml_body = yamlencode({
-    apiVersion = "external-secrets.io/v1beta1"
+    apiVersion = "external-secrets.io/v1"
     kind       = "ClusterSecretStore"
     metadata = {
       name = "aws-secrets-manager"
@@ -340,7 +344,7 @@ resource "kubectl_manifest" "cluster_secret_store" {
           auth = {
             jwt = {
               serviceAccountRef = {
-                name      = "external-secrets-sa"
+                name      = "external-secrets"
                 namespace = "external-secrets"
               }
             }
@@ -465,7 +469,7 @@ resource "aws_cloudwatch_dashboard" "service" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ServiceName", each.key]
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", each.key]
           ]
           title  = "${each.key} - CPU"
           period = 300
@@ -477,7 +481,7 @@ resource "aws_cloudwatch_dashboard" "service" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/ECS", "MemoryUtilization", "ServiceName", each.key]
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", each.key]
           ]
           title  = "${each.key} - Memory"
           period = 300
