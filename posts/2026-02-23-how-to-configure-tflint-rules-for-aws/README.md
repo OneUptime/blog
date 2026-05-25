@@ -19,7 +19,7 @@ TFLint uses a plugin system. Install the AWS plugin by creating a `.tflint.hcl` 
 
 plugin "aws" {
   enabled = true
-  version = "0.31.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 ```
@@ -36,7 +36,7 @@ tflint --version
 
 ## What the AWS Plugin Checks
 
-The AWS plugin includes hundreds of rules across these categories:
+The AWS plugin includes 700+ rules across these categories:
 
 1. **Invalid resource configurations** - Wrong instance types, invalid AMIs, unsupported regions
 2. **Deprecated features** - Resources and arguments that AWS has deprecated
@@ -51,7 +51,7 @@ The AWS plugin accepts configuration options:
 # .tflint.hcl
 plugin "aws" {
   enabled = true
-  version = "0.31.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 
   # Deep checking queries the AWS API for validation
@@ -72,9 +72,9 @@ plugin "aws" {
 With `deep_check = true`, TFLint will call the AWS API to verify things like:
 - Whether an AMI ID actually exists
 - Whether a subnet ID is valid
-- Whether an instance type is available in your region
+- Whether an IAM instance profile exists in the target account
 
-Without deep checking, TFLint uses a static list of known values, which is faster but might miss region-specific issues.
+Without deep checking, TFLint still runs the static AWS rules, which is faster but skips checks that require reading from your AWS account.
 
 ## Enabling and Disabling Specific Rules
 
@@ -84,7 +84,7 @@ Control individual rules in your configuration:
 # .tflint.hcl
 plugin "aws" {
   enabled = true
-  version = "0.31.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
@@ -99,7 +99,7 @@ rule "aws_resource_missing_tags" {
   tags    = ["Environment", "Team", "ManagedBy"]
 }
 
-# Configure rule severity
+# Enable another specific rule
 rule "aws_s3_bucket_invalid_acl" {
   enabled = true
 }
@@ -148,7 +148,7 @@ resource "aws_security_group_rule" "bad" {
 ### IAM Policy Validation
 
 ```hcl
-# TFLint checks for valid IAM policy syntax
+# TFLint checks IAM policy field constraints such as length and allowed characters
 resource "aws_iam_policy" "bad" {
   name   = "test-policy"
   policy = jsonencode({
@@ -158,7 +158,6 @@ resource "aws_iam_policy" "bad" {
         Effect   = "Allow"
         Action   = "s3:*"
         Resource = "*"
-        # TFLint can warn about overly permissive policies
       }
     ]
   })
@@ -241,14 +240,14 @@ resource "aws_instance" "bad" {
 You can disable rules for specific resources using inline comments:
 
 ```hcl
-# tflint-ignore: aws_instance_invalid_type
 resource "aws_instance" "special" {
   ami           = "ami-12345678"
+  # tflint-ignore: aws_instance_invalid_type
   instance_type = var.custom_instance_type  # Dynamic, cannot be validated statically
 }
 ```
 
-Or disable all rules for a block:
+Or disable the rule for an entire file:
 
 ```hcl
 # tflint-ignore-file: aws_resource_missing_tags
@@ -305,7 +304,7 @@ jobs:
         run: tflint --recursive --format compact
 ```
 
-For deep checking in CI, configure AWS credentials:
+For deep checking in CI, set `deep_check = true` in `.tflint.hcl` and configure AWS credentials:
 
 ```yaml
       - uses: aws-actions/configure-aws-credentials@v4
@@ -314,9 +313,7 @@ For deep checking in CI, configure AWS credentials:
           aws-region: us-east-1
 
       - name: Run TFLint with Deep Check
-        run: tflint --recursive
-        env:
-          TFLINT_AWS_DEEP_CHECK: "true"
+        run: tflint --recursive --config "$(pwd)/.tflint.hcl"
 ```
 
 ## Example Complete Configuration
@@ -336,7 +333,7 @@ config {
 # AWS plugin
 plugin "aws" {
   enabled = true
-  version = "0.31.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
   deep_check = false  # Enable in CI with credentials
 }
