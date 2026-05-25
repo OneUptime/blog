@@ -77,7 +77,7 @@ resource "azurerm_subnet" "mysql" {
 
 # Private DNS zone for MySQL
 resource "azurerm_private_dns_zone" "mysql" {
-  name                = "privatelink.mysql.database.azure.com"
+  name                = "mysql-prod-2026.mysql.database.azure.com"
   resource_group_name = azurerm_resource_group.mysql.name
 }
 
@@ -125,7 +125,7 @@ resource "azurerm_mysql_flexible_server" "main" {
   # Compute tier and size
   # Burstable: B_Standard_B1ms, B_Standard_B2s
   # General Purpose: GP_Standard_D2ds_v4, GP_Standard_D4ds_v4
-  # Business Critical (Memory Optimized): MO_Standard_E2ds_v4
+  # Memory-Optimized: MO_Standard_E2ds_v4
   sku_name = "GP_Standard_D2ds_v4"
 
   # VNet integration
@@ -301,7 +301,7 @@ Flexible Server offers three compute tiers:
 
 - **Burstable (B-series)**: Good for development and light workloads. Cheapest option. CPU credits accumulate when idle and get consumed during bursts.
 - **General Purpose (D-series)**: Balanced compute and memory for most production workloads. Predictable performance.
-- **Business Critical (E-series)**: High memory-to-CPU ratio with local SSD storage. Best for memory-intensive workloads needing low storage latency.
+- **Memory-Optimized (E-series)**: High memory-to-CPU ratio with local SSD storage. Best for memory-intensive workloads needing low storage latency.
 
 For production, start with GP_Standard_D2ds_v4 (2 vCores, 8 GB RAM) and scale up based on actual usage metrics.
 
