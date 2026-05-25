@@ -10,7 +10,7 @@ Description: Learn how to use the Local provider in Terraform to manage local fi
 
 Not everything in Terraform needs to talk to a cloud API. Sometimes you just need to write a file to disk. Maybe you are generating a configuration file, saving SSH keys, creating an inventory for Ansible, or writing outputs that other tools will consume. The Local provider in Terraform handles all of this.
 
-It is a simple provider with a focused purpose: create and manage files and directories on the machine running Terraform. Despite its simplicity, it shows up in almost every non-trivial Terraform project.
+It is a simple provider with a focused purpose: create and manage files on the machine running Terraform, creating parent directories when needed. Despite its simplicity, it shows up in almost every non-trivial Terraform project.
 
 ## Prerequisites
 
@@ -300,7 +300,7 @@ For binary content, use the `content_base64` attribute instead of `content`.
 ```hcl
 # Write a binary file from base64-encoded content
 resource "local_file" "binary_data" {
-  content_base64 = base64encode(file("${path.module}/templates/icon.png"))
+  content_base64 = filebase64("${path.module}/templates/icon.png")
   filename       = "${path.module}/output/icon.png"
 }
 
