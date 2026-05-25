@@ -32,7 +32,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -73,7 +73,7 @@ resource "docker_container" "web" {
 Pass configuration to your container through environment variables.
 
 ```hcl
-# Pull the application image
+# Pull the Node.js image for the sample application
 resource "docker_image" "app" {
   name = "node:20-alpine"
 }
@@ -99,7 +99,7 @@ resource "docker_container" "app" {
   }
 
   # Override the default command
-  command = ["node", "server.js"]
+  command = ["node", "-e", "require('http').createServer((req, res) => { res.end('ok'); }).listen(3000, '0.0.0.0')"]
 
   # Set the working directory inside the container
   working_dir = "/app"
@@ -166,6 +166,8 @@ resource "docker_container" "api" {
   name  = "api-server"
   image = docker_image.app.image_id
 
+  command = ["node", "-e", "require('http').createServer((req, res) => { res.end('ok'); }).listen(3000, '0.0.0.0')"]
+
   env = [
     "PORT=3000",
   ]
@@ -178,7 +180,7 @@ resource "docker_container" "api" {
   # Health check configuration
   healthcheck {
     # Command to check container health
-    test = ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+    test = ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
 
     # Time between health checks
     interval = "30s"
@@ -207,7 +209,7 @@ resource "docker_container" "worker" {
   name  = "background-worker"
   image = docker_image.app.image_id
 
-  command = ["node", "worker.js"]
+  command = ["node", "-e", "setInterval(() => console.log('working'), 60000)"]
 
   env = [
     "WORKER_CONCURRENCY=4",
@@ -243,6 +245,8 @@ resource "docker_network" "app_network" {
 resource "docker_container" "app_networked" {
   name  = "app-networked"
   image = docker_image.app.image_id
+
+  command = ["node", "-e", "require('http').createServer((req, res) => { res.end('ok'); }).listen(3000, '0.0.0.0')"]
 
   # Connect to the custom network
   networks_advanced {
@@ -297,6 +301,8 @@ Add metadata labels and configure logging drivers.
 resource "docker_container" "labeled_app" {
   name  = "labeled-app"
   image = docker_image.app.image_id
+
+  command = ["node", "-e", "require('http').createServer((req, res) => { res.end('ok'); }).listen(3000, '0.0.0.0')"]
 
   # Labels for service discovery and management
   labels {
@@ -372,10 +378,38 @@ resource "docker_container" "redis" {
   must_run = true
 }
 
+# PostgreSQL database
+resource "docker_container" "stack_postgres" {
+  name  = "stack-postgres"
+  image = docker_image.postgres.image_id
+
+  networks_advanced {
+    name    = docker_network.stack.name
+    aliases = ["postgres", "database"]
+  }
+
+  env = [
+    "POSTGRES_DB=myapp",
+    "POSTGRES_USER=admin",
+    "POSTGRES_PASSWORD=secretpassword",
+  ]
+
+  volumes {
+    volume_name    = docker_volume.postgres_data.name
+    container_path = "/var/lib/postgresql/data"
+  }
+
+  restart = "unless-stopped"
+
+  must_run = true
+}
+
 # Application container
 resource "docker_container" "stack_app" {
   name  = "stack-app"
   image = docker_image.app.image_id
+
+  command = ["node", "-e", "require('http').createServer((req, res) => { res.end('ok'); }).listen(3000, '0.0.0.0')"]
 
   networks_advanced {
     name    = docker_network.stack.name
@@ -400,7 +434,7 @@ resource "docker_container" "stack_app" {
   # Wait for dependencies to be ready
   depends_on = [
     docker_container.redis,
-    docker_container.db_networked,
+    docker_container.stack_postgres,
   ]
 
   must_run = true
