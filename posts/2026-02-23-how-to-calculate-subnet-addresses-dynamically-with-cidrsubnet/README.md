@@ -217,8 +217,8 @@ locals {
   # Production gets larger subnets, dev gets smaller ones
   subnet_newbits = var.environment == "production" ? 4 : 8
 
-  # Production /16 with 4 newbits = /20 subnets (4096 IPs)
-  # Development /16 with 8 newbits = /24 subnets (256 IPs)
+  # Production /16 with 4 newbits = /20 subnets (4096 total addresses)
+  # Development /16 with 8 newbits = /24 subnets (256 total addresses)
   public_subnet  = cidrsubnet(var.vpc_cidr, local.subnet_newbits, 0)
   private_subnet = cidrsubnet(var.vpc_cidr, local.subnet_newbits, 1)
 }
@@ -292,7 +292,7 @@ Add validation rules to catch configuration errors early:
 variable "vpc_cidr" {
   type = string
   validation {
-    # Ensure the CIDR is valid and has a reasonable prefix length
+    # Ensure the CIDR is valid
     condition     = can(cidrsubnet(var.vpc_cidr, 0, 0))
     error_message = "The vpc_cidr must be a valid CIDR block."
   }
