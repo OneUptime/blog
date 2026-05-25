@@ -23,10 +23,11 @@ Whether you are setting up a new workspace or standardizing an existing one, thi
 
 1. Log in to your Databricks workspace
 2. Click your username in the top right
-3. Select User Settings
-4. Go to Developer > Access Tokens
-5. Click Generate New Token
-6. Set a comment and lifetime, then copy the token
+3. Select Settings
+4. Click Developer
+5. Next to Access tokens, click Manage
+6. Click Generate new token
+7. Enter a name, set a lifetime, select the required scopes, then copy the token
 
 ## Declaring the Provider
 
@@ -86,17 +87,19 @@ provider "databricks" {
 ```hcl
 # AWS account-level provider for workspace management
 provider "databricks" {
-  alias    = "accounts"
-  host     = "https://accounts.cloud.databricks.com"
-  username = var.databricks_account_username
-  password = var.databricks_account_password
+  alias         = "accounts"
+  host          = "https://accounts.cloud.databricks.com"
+  account_id    = var.databricks_account_id
+  client_id     = var.databricks_client_id
+  client_secret = var.databricks_client_secret
 }
 
 # Workspace-level provider
 provider "databricks" {
-  alias = "workspace"
-  host  = databricks_mws_workspaces.main.workspace_url
-  token = databricks_mws_workspaces.main.token[0].token_value
+  alias         = "workspace"
+  host          = var.databricks_workspace_host
+  client_id     = var.databricks_client_id
+  client_secret = var.databricks_client_secret
 }
 ```
 
@@ -136,8 +139,7 @@ resource "databricks_cluster" "shared" {
   }
 
   spark_conf = {
-    "spark.databricks.cluster.profile" = "singleNode"
-    "spark.sql.adaptive.enabled"       = "true"
+    "spark.sql.adaptive.enabled" = "true"
   }
 
   custom_tags = {
