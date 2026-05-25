@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Container, Resource, Kubernetes, ECS, Performance
 
-Description: Learn how to configure container resource limits and requests in Terraform for Kubernetes, ECS, and other platforms to ensure optimal performance and stability.
+Description: Learn how to configure container resource limits and requests in Terraform for Kubernetes and ECS to ensure optimal performance and stability.
 
 ---
 
 Resource limits are fundamental to running containers in production. Without proper resource constraints, a single runaway container can consume all available CPU and memory, starving other containers on the same host. Resource requests ensure your containers get the minimum resources they need to function, while limits cap the maximum they can consume. Terraform provides a consistent way to define these constraints across container platforms.
 
-This guide covers how to configure container resource limits in Terraform for Kubernetes, AWS ECS, and Azure Container Apps, including best practices for sizing and troubleshooting.
+This guide covers how to configure container resource limits in Terraform for Kubernetes and AWS ECS, including best practices for sizing and troubleshooting.
 
 ## Understanding Requests vs Limits
 
@@ -267,6 +267,8 @@ resource "kubernetes_limit_range" "defaults" {
 # 1024         | 2048-8192 (in 1024 increments)
 # 2048         | 4096-16384 (in 1024 increments)
 # 4096         | 8192-30720 (in 1024 increments)
+# 8192         | 16384-61440 (in 4096 increments, Linux platform 1.4.0+)
+# 16384        | 32768-122880 (in 8192 increments, Linux platform 1.4.0+)
 
 variable "ecs_resources" {
   description = "ECS task resource configuration"
@@ -356,7 +358,7 @@ resource "kubernetes_manifest" "vpa" {
         name       = kubernetes_deployment.api.metadata[0].name
       }
       updatePolicy = {
-        updateMode = "Auto"  # Automatically apply recommendations
+        updateMode = "Recreate"  # Automatically apply recommendations by recreating pods
       }
       resourcePolicy = {
         containerPolicies = [
