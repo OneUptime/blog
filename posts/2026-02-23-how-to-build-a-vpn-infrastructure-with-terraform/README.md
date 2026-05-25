@@ -41,6 +41,25 @@ resource "aws_acmpca_certificate_authority" "vpn" {
   }
 }
 
+data "aws_partition" "current" {}
+
+resource "aws_acmpca_certificate" "vpn_ca" {
+  certificate_authority_arn   = aws_acmpca_certificate_authority.vpn.arn
+  certificate_signing_request = aws_acmpca_certificate_authority.vpn.certificate_signing_request
+  signing_algorithm           = "SHA256WITHRSA"
+  template_arn                = "arn:${data.aws_partition.current.partition}:acm-pca:::template/RootCACertificate/V1"
+
+  validity {
+    type  = "YEARS"
+    value = 10
+  }
+}
+
+resource "aws_acmpca_certificate_authority_certificate" "vpn" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.vpn.arn
+  certificate               = aws_acmpca_certificate.vpn_ca.certificate
+}
+
 # Server certificate for the VPN endpoint
 resource "aws_acm_certificate" "vpn_server" {
   domain_name               = "vpn.${var.domain_name}"
@@ -49,6 +68,8 @@ resource "aws_acm_certificate" "vpn_server" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [aws_acmpca_certificate_authority_certificate.vpn]
 }
 ```
 
@@ -62,7 +83,10 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
 
   authentication_options {
     type                       = "certificate-authentication"
-    root_certificate_chain_arn = aws_acmpca_certificate_authority.vpn.arn
+    # Use an ACM certificate ARN for the client root chain. If clients use the
+    # same CA as the server certificate, AWS Client VPN accepts the server
+    # certificate ARN here.
+    root_certificate_chain_arn = aws_acm_certificate.vpn_server.arn
   }
 
   connection_log_options {
@@ -71,8 +95,8 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
     cloudwatch_log_stream = aws_cloudwatch_log_stream.vpn.name
   }
 
-  # Enable split tunneling so only VPC traffic goes through VPN
-  split_tunnel = true
+  # Use split tunneling unless you are routing internet traffic through the VPN
+  split_tunnel = !var.allow_internet_access
 
   # DNS servers - use the VPC DNS
   dns_servers = [cidrhost(var.vpc_cidr, 2)]
@@ -103,12 +127,22 @@ resource "aws_ec2_client_vpn_authorization_rule" "vpc" {
   description            = "Allow access to VPC"
 }
 
-# If you need internet access through the VPN
+# If you need internet access through a full-tunnel VPN, make sure the target
+# subnets route 0.0.0.0/0 through a NAT gateway or internet gateway, and add both
+# the route and authorization rule below.
 resource "aws_ec2_client_vpn_route" "internet" {
   count                  = var.allow_internet_access ? length(var.private_subnet_ids) : 0
   client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
   destination_cidr_block = "0.0.0.0/0"
   target_vpc_subnet_id   = var.private_subnet_ids[count.index]
+}
+
+resource "aws_ec2_client_vpn_authorization_rule" "internet" {
+  count                  = var.allow_internet_access ? 1 : 0
+  client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
+  target_network_cidr    = "0.0.0.0/0"
+  authorize_all_groups   = true
+  description            = "Allow internet access"
 }
 ```
 
@@ -118,15 +152,7 @@ resource "aws_ec2_client_vpn_route" "internet" {
 resource "aws_security_group" "vpn" {
   name_prefix = "${var.project_name}-vpn-"
   vpc_id      = var.vpc_id
-  description = "Security group for Client VPN"
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "VPN client connections"
-  }
+  description = "Security group applied to Client VPN target network interfaces"
 
   egress {
     from_port   = 0
@@ -189,9 +215,6 @@ resource "aws_vpn_connection" "onprem" {
   vpn_gateway_id      = aws_vpn_gateway.main.id
   type                = "ipsec.1"
 
-  # Enable acceleration for better performance
-  enable_acceleration = true
-
   # Tunnel configuration
   tunnel1_ike_versions                 = ["ikev2"]
   tunnel1_phase1_dh_group_numbers      = [14, 15, 16]
@@ -231,6 +254,8 @@ resource "aws_vpn_connection" "tgw" {
   customer_gateway_id = aws_customer_gateway.onprem.id
   transit_gateway_id  = var.transit_gateway_id
   type                = "ipsec.1"
+
+  # Acceleration is supported only for Transit Gateway VPN attachments.
   enable_acceleration = true
 
   tags = {
