@@ -90,7 +90,7 @@ The HCP Terraform agent is a standalone binary. Install it on a machine in your 
 ```bash
 # Download the agent (Linux amd64)
 curl -o tfc-agent.zip \
-  "https://releases.hashicorp.com/tfc-agent/1.15.0/tfc-agent_1.15.0_linux_amd64.zip"
+  "https://releases.hashicorp.com/tfc-agent/1.28.8/tfc-agent_1.28.8_linux_amd64.zip"
 unzip tfc-agent.zip
 
 # Set the required environment variables
@@ -162,19 +162,24 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install any required CLI tools
-RUN pip3 install awscli
+RUN apt-get update && apt-get install -y \
+    awscli \
+    && rm -rf /var/lib/apt/lists/*
 
 USER tfc-agent
 ```
 
 ```bash
+# Build the custom image
+docker build -t custom-tfc-agent .
+
 # Run the agent container
 docker run -d \
   --name tfc-agent \
   --restart always \
   -e TFC_AGENT_TOKEN="your-agent-token" \
   -e TFC_AGENT_NAME="docker-agent-01" \
-  hashicorp/tfc-agent:latest
+  custom-tfc-agent
 ```
 
 ## Running the Agent on Kubernetes
@@ -294,6 +299,8 @@ Agent statuses include:
 - `idle` - Connected and waiting for work
 - `busy` - Currently executing a job
 - `unknown` - Has not pinged recently (may be down)
+- `errored` - Encountered an unrecoverable error or stayed unknown long enough to be considered errored
+- `exited` - The agent process exited
 
 ## Scoping Agent Pools
 
