@@ -14,7 +14,7 @@ This guide covers creating and using Proximity Placement Groups with Terraform, 
 
 ## What Proximity Placement Groups Do
 
-When you create VMs without a proximity placement group, Azure places them wherever capacity is available. Two VMs in the same region might end up in different buildings, adding network latency. A proximity placement group is a logical constraint that tells Azure to place resources as close together as possible, ideally in the same network spine or even the same rack.
+When you create VMs without a proximity placement group, Azure places them wherever capacity is available. Two VMs in the same region might end up in different buildings, adding network latency. A proximity placement group is a logical constraint that tells Azure to place resources as close together as possible within the same data center.
 
 The result is lower network latency between VMs. For workloads like distributed databases where nodes communicate constantly, this can make a significant difference in performance.
 
@@ -22,9 +22,9 @@ The result is lower network latency between VMs. For workloads like distributed 
 
 Proximity placement groups improve latency but come with trade-offs:
 
-- **Reduced availability**: Placing VMs close together means a localized failure affects more of your workload. This is the opposite of what availability sets and zones do.
+- **Reduced availability**: Placing VMs close together means a localized failure affects more of your workload. You can still combine PPGs with availability sets, but proximity reduces some of the isolation you get from spreading resources out.
 - **Capacity constraints**: Asking Azure to place all your VMs in the same physical location may fail if there is not enough capacity in that specific area.
-- **Deployment order matters**: The first VM you deploy anchors the placement group to a specific location. If you later need a VM size that is not available in that location, you may need to deallocate and redeploy.
+- **Deployment order can matter**: Without VM size intent, the first VM you deploy anchors the placement group to a specific location. If you later need a VM size that is not available in that location, you may need to deallocate and redeploy.
 
 Use proximity placement groups only when low latency is a genuine requirement, not as a default.
 
@@ -62,7 +62,7 @@ resource "azurerm_proximity_placement_group" "main" {
   location            = azurerm_resource_group.hpc.location
   resource_group_name = azurerm_resource_group.hpc.name
 
-  # Allowed types control which resources can use this PPG
+  # VM size intent helps Azure choose a data center that supports these sizes
   allowed_vm_sizes = [
     "Standard_D4s_v5",
     "Standard_D8s_v5",
@@ -77,7 +77,7 @@ resource "azurerm_proximity_placement_group" "main" {
 }
 ```
 
-The `allowed_vm_sizes` parameter is optional but useful. It restricts which VM sizes can be added to the placement group, preventing someone from accidentally adding a VM size that forces the group to a different physical location.
+The `allowed_vm_sizes` parameter is optional but useful. It maps to Azure's VM size intent for the placement group, helping Azure select a data center that supports the listed sizes. It does not reserve capacity, and you should still deploy only sizes included in the intent to avoid allocation failures.
 
 ## Placing VMs in a Proximity Placement Group
 
@@ -90,9 +90,6 @@ resource "azurerm_network_interface" "hpc" {
   name                = "nic-hpc-node-${count.index + 1}"
   location            = azurerm_resource_group.hpc.location
   resource_group_name = azurerm_resource_group.hpc.name
-
-  # Enable accelerated networking for lower latency
-  enable_accelerated_networking = true
 
   ip_configuration {
     name                          = "internal"
@@ -142,7 +139,7 @@ resource "azurerm_linux_virtual_machine" "hpc" {
 }
 ```
 
-Notice the `enable_accelerated_networking = true` on the network interfaces. This is critical for low-latency workloads because it bypasses the host network stack and sends traffic directly to the NIC hardware.
+For the lowest latency, use proximity placement groups together with accelerated networking where Azure supports that combination. Accelerated networking bypasses the host network stack and sends traffic directly to the NIC hardware, but Azure documents that VMs using only a proximity placement group should instead use an availability set or virtual machine scale set linked to the placement group for hardware acceleration to work.
 
 ## Combining PPG with Availability Sets
 
@@ -203,7 +200,7 @@ resource "azurerm_linux_virtual_machine" "db" {
 }
 ```
 
-When you combine these, Azure puts all VMs as close together as possible while still distributing them across fault domains. The fault domains will be within the same physical cluster, so latency stays low.
+When you combine these, Azure puts all VMs as close together as possible while still distributing them across fault domains in the availability set.
 
 ## Using PPG with Virtual Machine Scale Sets
 
@@ -289,12 +286,12 @@ resource "azurerm_proximity_placement_group" "groups" {
 
 ## Deployment Strategy
 
-The order in which you deploy VMs into a PPG matters. The first VM you create anchors the placement group to a physical location. Here is a practical approach:
+The order in which you deploy VMs into a PPG matters when you are not using VM size intent. The first VM you create anchors the placement group to a physical location. Here is a practical approach:
 
 1. Create the PPG first
-2. Deploy the largest VM size you need first - this anchors the group to a location that can support that size
-3. Deploy smaller VMs after - they will fit anywhere the large VM fits
-4. If deployment fails due to capacity, deallocate all VMs, then redeploy starting with the anchor VM
+2. Specify all required VM sizes in `allowed_vm_sizes` when you create the PPG
+3. If you are not using `allowed_vm_sizes`, deploy the largest or most constrained VM size first
+4. If deployment fails due to capacity and you are not using `allowed_vm_sizes`, deallocate all VMs, then redeploy starting with the failed VM size
 
 ## Wrapping Up
 
