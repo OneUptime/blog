@@ -125,7 +125,7 @@ resource "aws_efs_mount_target" "wordpress" {
   security_groups = [aws_security_group.efs.id]
 }
 
-# Access point for WordPress uploads directory
+# Access point for the WordPress uploads directory
 resource "aws_efs_access_point" "wordpress" {
   file_system_id = aws_efs_file_system.wordpress.id
 
@@ -135,7 +135,7 @@ resource "aws_efs_access_point" "wordpress" {
   }
 
   root_directory {
-    path = "/wordpress"
+    path = "/wordpress/uploads"
     creation_info {
       owner_gid   = 33
       owner_uid   = 33
@@ -147,7 +147,7 @@ resource "aws_efs_access_point" "wordpress" {
 
 ## ElastiCache Redis
 
-Redis dramatically improves WordPress performance by caching database queries and page fragments:
+Redis can dramatically improve WordPress performance when paired with a WordPress object-cache plugin by caching database queries and page fragments:
 
 ```hcl
 resource "aws_elasticache_replication_group" "wordpress" {
@@ -179,7 +179,7 @@ resource "aws_elasticache_subnet_group" "wordpress" {
 
 ## ECS Task Definition
 
-The WordPress container with all the configuration to connect to Aurora, EFS, and Redis:
+The WordPress container with all the configuration to connect to Aurora, EFS, and a Redis object-cache plugin:
 
 ```hcl
 resource "aws_ecs_task_definition" "wordpress" {
@@ -194,7 +194,7 @@ resource "aws_ecs_task_definition" "wordpress" {
   container_definitions = jsonencode([
     {
       name      = "wordpress"
-      image     = "wordpress:6.4-php8.2-fpm"
+      image     = "wordpress:php8.2-apache"
       essential = true
 
       portMappings = [
@@ -209,6 +209,7 @@ resource "aws_ecs_task_definition" "wordpress" {
         { name = "WORDPRESS_DB_NAME", value = "wordpress" },
         { name = "WORDPRESS_DB_USER", value = var.db_username },
         { name = "WORDPRESS_CONFIG_EXTRA", value = <<-EOT
+          define('WP_REDIS_SCHEME', 'tls');
           define('WP_REDIS_HOST', '${aws_elasticache_replication_group.wordpress.primary_endpoint_address}');
           define('WP_REDIS_PORT', 6379);
           define('WP_REDIS_TIMEOUT', 1);
@@ -227,7 +228,7 @@ resource "aws_ecs_task_definition" "wordpress" {
       mountPoints = [
         {
           sourceVolume  = "wordpress-data"
-          containerPath = "/var/www/html/wp-content"
+          containerPath = "/var/www/html/wp-content/uploads"
           readOnly      = false
         }
       ]
