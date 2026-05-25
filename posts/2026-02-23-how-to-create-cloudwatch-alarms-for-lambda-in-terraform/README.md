@@ -52,7 +52,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   period              = 300
   statistic           = "Sum"
   threshold           = 5
-  alarm_description   = "Lambda function ${var.function_name} has more than 5 errors in 5 minutes"
+  alarm_description   = "Lambda function ${var.function_name} has more than 5 errors for two consecutive 5-minute periods"
   alarm_actions       = [aws_sns_topic.lambda_alarms.arn]
   ok_actions          = [aws_sns_topic.lambda_alarms.arn]
 
@@ -75,7 +75,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_rate" {
   # Use metric math to calculate error rate percentage
   metric_query {
     id          = "error_rate"
-    expression  = "(errors / invocations) * 100"
+    expression  = "IF(invocations > 0, (errors / invocations) * 100, 0)"
     label       = "Error Rate (%)"
     return_data = true
   }
@@ -246,7 +246,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_dlq" {
   metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 300
-  statistic           = "Sum"
+  statistic           = "Maximum"
   threshold           = 0
   alarm_description   = "Messages detected in Lambda DLQ - check for failed invocations"
   alarm_actions       = [aws_sns_topic.lambda_alarms.arn]
@@ -265,7 +265,6 @@ variable "function_name" { type = string }
 variable "sns_topic_arn" { type = string }
 variable "error_threshold" { type = number; default = 5 }
 variable "timeout_ms" { type = number; default = 30000 }
-variable "error_rate_threshold" { type = number; default = 5 }
 
 resource "aws_cloudwatch_metric_alarm" "errors" {
   alarm_name          = "lambda-errors-${var.function_name}"
