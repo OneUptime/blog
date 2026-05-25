@@ -19,7 +19,7 @@ Create or update your `.tflint.hcl` configuration:
 
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.32.0"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
 }
 ```
@@ -38,11 +38,11 @@ tflint --version
 
 The AzureRM plugin validates:
 
-- **VM sizes** - Whether the specified VM size exists and is available in your region
-- **SKU names** - Valid SKUs for storage accounts, App Service plans, and other resources
-- **API versions** - Whether resource API versions are valid
-- **Location values** - Whether the specified Azure region is valid
-- **Deprecated features** - Resources and arguments that Microsoft has deprecated
+- **VM sizes** - Whether the specified VM size exists in the plugin's known size list
+- **SKU names** - Valid SKUs for supported Azure resource types
+- **Resource argument values** - Whether supported enum-style arguments match Azure API specifications
+- **Resource names** - Whether supported resource names match Azure naming constraints
+- **Retired features** - VM sizes and selected values that Microsoft has retired or no longer supports
 
 ## Plugin Configuration Options
 
@@ -50,12 +50,12 @@ The AzureRM plugin validates:
 # .tflint.hcl
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.32.0"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
 }
 ```
 
-Unlike the AWS plugin, the Azure plugin does not have a `deep_check` option. It relies on a static list of valid values that is updated with each plugin release.
+Unlike the AWS plugin, the Azure plugin does not have a `deep_check` option. It relies on static rule data, including values generated from `azure-rest-api-specs`, that is updated with plugin releases.
 
 ## Common Azure Rules and What They Catch
 
@@ -79,52 +79,57 @@ resource "azurerm_linux_virtual_machine" "bad" {
 }
 ```
 
-The `azurerm_linux_virtual_machine_invalid_size` rule validates against all known Azure VM sizes. This catches typos and nonexistent sizes before you even run `terraform plan`.
+The `azurerm_linux_virtual_machine_invalid_size` rule validates against the VM sizes known to the plugin. This catches typos and nonexistent sizes before you even run `terraform plan`.
 
-### Invalid Storage Account SKU
+### Invalid Storage Account Kind
 
 ```hcl
-# Invalid storage account type
+# Invalid storage account kind
 resource "azurerm_storage_account" "bad" {
   name                     = "badstorageaccount"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
-  account_replication_type = "GZRS"  # Not available in all regions
+  account_replication_type = "LRS"
+  account_kind             = "StorageV3"  # ERROR: invalid account kind
 }
 ```
 
-### Invalid Location
+### Invalid Key Vault SKU
 
 ```hcl
-# Typo in location name
-resource "azurerm_resource_group" "bad" {
-  name     = "bad-rg"
-  location = "east-us"  # ERROR: should be "eastus" (no hyphen)
+# Invalid Key Vault SKU
+resource "azurerm_key_vault" "bad" {
+  name                = "bad-key-vault"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "enterprise"  # ERROR: invalid SKU name
 }
 ```
 
-### App Service Plan SKU
+### Search Service SKU
 
 ```hcl
-# Invalid App Service plan SKU
-resource "azurerm_service_plan" "bad" {
+# Invalid Search service SKU
+resource "azurerm_search_service" "bad" {
   name                = "bad-plan"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  os_type             = "Linux"
-  sku_name            = "B99"  # ERROR: invalid SKU name
+  sku                 = "ultra"  # ERROR: invalid SKU
 }
 ```
 
-### SQL Database SKU
+### Redis Cache SKU
 
 ```hcl
-resource "azurerm_mssql_database" "bad" {
-  name         = "bad-db"
-  server_id    = azurerm_mssql_server.sql.id
-  sku_name     = "SuperFast"  # ERROR: invalid SKU
-  max_size_gb  = 10
+resource "azurerm_redis_cache" "bad" {
+  name                = "bad-cache"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  capacity            = 1
+  family              = "C"
+  sku_name            = "SuperFast"  # ERROR: invalid SKU name
 }
 ```
 
@@ -136,8 +141,14 @@ While the Azure plugin focuses on validation rules, you can use TFLint's built-i
 # .tflint.hcl
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.32.0"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
+}
+
+# Azure tag enforcement
+rule "azurerm_resource_missing_tags" {
+  enabled = true
+  tags    = ["Environment", "Owner", "CostCenter"]
 }
 
 # Terraform core rules
@@ -167,7 +178,7 @@ If a rule does not apply to your project, disable it:
 # .tflint.hcl
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.32.0"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
 }
 
@@ -200,7 +211,7 @@ config {
 
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.32.0"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
 }
 ```
@@ -212,7 +223,7 @@ Run TFLint recursively:
 tflint --recursive
 
 # Or lint a specific module
-tflint --chdir modules/networking
+tflint --chdir=modules/networking
 ```
 
 ## Running TFLint
@@ -230,7 +241,7 @@ tflint --format compact
 # Set minimum severity to fail on
 tflint --minimum-failure-severity error
 
-# Run only Azure-specific rules
+# Run only one Azure-specific rule
 tflint --only azurerm_linux_virtual_machine_invalid_size
 ```
 
@@ -253,7 +264,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: latest
 
@@ -312,8 +323,14 @@ config {
 # Azure provider plugin
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.32.0"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
+}
+
+# Azure tag enforcement
+rule "azurerm_resource_missing_tags" {
+  enabled = true
+  tags    = ["Environment", "Owner", "CostCenter"]
 }
 
 # Terraform best practices
@@ -372,6 +389,6 @@ echo "All checks passed"
 
 ## Summary
 
-TFLint's Azure plugin validates your Terraform configurations against Azure's actual constraints. It catches invalid VM sizes, unsupported SKUs, incorrect location names, and deprecated features before you run `terraform plan`. Set it up with a `.tflint.hcl` file, run `tflint --init`, and integrate it into your CI pipeline. The few minutes of setup saves hours of debugging failed Azure deployments.
+TFLint's Azure plugin validates your Terraform configurations against many Azure-specific constraints. It catches invalid VM sizes, unsupported SKUs, invalid resource argument values, missing required tags when configured, and retired VM sizes before you run `terraform plan`. Set it up with a `.tflint.hcl` file, run `tflint --init`, and integrate it into your CI pipeline. The few minutes of setup saves hours of debugging failed Azure deployments.
 
 For other cloud providers, see [How to Configure TFLint Rules for AWS](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-tflint-rules-for-aws/view) and [How to Configure TFLint Rules for GCP](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-tflint-rules-for-gcp/view).
