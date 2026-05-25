@@ -101,7 +101,6 @@ resource "github_repository" "api_service" {
   has_issues    = true
   has_projects  = false
   has_wiki      = false
-  has_downloads = false
 
   # Allow merge commit, squash, and rebase
   allow_merge_commit = false
@@ -120,11 +119,13 @@ resource "github_repository" "api_service" {
   #   repository = "service-template"
   # }
 
-  # Vulnerability alerts
-  vulnerability_alerts = true
-
   # Topics/tags
   topics = ["api", "backend", "golang"]
+}
+
+resource "github_repository_vulnerability_alerts" "api_service" {
+  repository = github_repository.api_service.name
+  enabled    = true
 }
 ```
 
@@ -147,7 +148,7 @@ locals {
     }
     "shared-lib" = {
       description = "Shared library for internal services"
-      visibility  = "internal"
+      visibility  = "internal" # GitHub Enterprise only
       topics      = ["library", "shared"]
     }
     "docs" = {
@@ -172,8 +173,14 @@ resource "github_repository" "repos" {
   allow_merge_commit     = false
   allow_squash_merge     = true
   delete_branch_on_merge = true
-  vulnerability_alerts   = true
   auto_init              = true
+}
+
+resource "github_repository_vulnerability_alerts" "repos" {
+  for_each = github_repository.repos
+
+  repository = each.value.name
+  enabled    = true
 }
 ```
 
@@ -316,23 +323,23 @@ Manage GitHub Actions secrets:
 ```hcl
 # Repository-level secret
 resource "github_actions_secret" "deploy_key" {
-  repository      = github_repository.api_service.name
-  secret_name     = "DEPLOY_KEY"
-  plaintext_value = var.deploy_key
+  repository  = github_repository.api_service.name
+  secret_name = "DEPLOY_KEY"
+  value       = var.deploy_key
 }
 
 # Organization-level secret
 resource "github_actions_organization_secret" "docker_token" {
-  secret_name     = "DOCKER_REGISTRY_TOKEN"
-  plaintext_value = var.docker_registry_token
-  visibility      = "selected"
+  secret_name = "DOCKER_REGISTRY_TOKEN"
+  value       = var.docker_registry_token
+  visibility  = "selected"
 
   selected_repository_ids = [
     github_repository.api_service.repo_id,
   ]
 }
 
-# Actions variable (not secret - visible in logs)
+# Actions variable (not secret - not masked like a secret)
 resource "github_actions_variable" "environment" {
   repository    = github_repository.api_service.name
   variable_name = "DEPLOY_ENVIRONMENT"
