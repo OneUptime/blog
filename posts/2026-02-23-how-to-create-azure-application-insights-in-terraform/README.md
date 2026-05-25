@@ -14,7 +14,7 @@ Provisioning Application Insights through Terraform means every environment - de
 
 ## Classic vs Workspace-Based Application Insights
 
-There are two flavors of Application Insights: classic and workspace-based. Classic resources store data in their own internal storage, while workspace-based resources forward everything to a Log Analytics workspace. Microsoft has been pushing workspace-based as the default since 2020, and new features only land there. Always use workspace-based for new deployments.
+There are two flavors of Application Insights: classic and workspace-based. Classic resources stored data in their own internal storage, while workspace-based resources store telemetry in a Log Analytics workspace. Classic Application Insights resources have been retired, and Microsoft recommends workspace-based resources for current deployments. Always use workspace-based for new deployments.
 
 ## Prerequisites
 
@@ -77,7 +77,7 @@ resource "azurerm_application_insights" "main" {
   resource_group_name = azurerm_resource_group.monitoring.name
   workspace_id        = azurerm_log_analytics_workspace.main.id
 
-  # Application type affects the default dashboards and experiences
+  # Application type is required by the provider and is case-sensitive
   # Options: web, ios, java, MobileCenter, Node.JS, other, phone, store
   application_type = "web"
 
@@ -93,9 +93,8 @@ resource "azurerm_application_insights" "main" {
   # Disable IP masking if you need full IP addresses for geolocation
   disable_ip_masking = false
 
-  # Retention is controlled by the linked Log Analytics workspace
-  # but you can set a shorter retention here
-  retention_in_days = 90
+  # Data retention for workspace-based resources is controlled by
+  # the linked Log Analytics workspace above
 
   tags = {
     Environment = "Production"
@@ -188,7 +187,7 @@ resource "azurerm_application_insights_standard_web_test" "homepage" {
   geo_locations = [
     "us-tx-sn1-azr",  # South Central US
     "us-il-ch1-azr",  # North Central US
-    "emea-gb-db3-azr", # UK South
+    "emea-ru-msa-edge", # UK South
     "emea-nl-ams-azr", # West Europe
     "apac-hk-hkn-azr"  # East Asia
   ]
@@ -265,12 +264,12 @@ resource "azurerm_monitor_metric_alert" "response_time" {
   }
 }
 
-# Alert on high failure rate
+# Alert on failed request volume
 resource "azurerm_monitor_metric_alert" "failure_rate" {
   name                = "alert-high-failure-rate"
   resource_group_name = azurerm_resource_group.monitoring.name
   scopes              = [azurerm_application_insights.main.id]
-  description         = "Alert when request failure rate exceeds 5%"
+  description         = "Alert when failed requests exceed 50 in the evaluation window"
   severity            = 1
   frequency           = "PT5M"
   window_size         = "PT15M"
