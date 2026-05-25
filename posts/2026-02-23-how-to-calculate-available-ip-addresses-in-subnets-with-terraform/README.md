@@ -50,7 +50,7 @@ output "subnet_size_reference" {
 
 ## Calculating IPs with Terraform Functions
 
-Terraform provides the `cidrhost`, `cidrsubnet`, `cidrnetmask`, and `cidrcontains` functions for IP address math.
+Terraform provides the `cidrhost`, `cidrsubnet`, `cidrsubnets`, and `cidrnetmask` functions for IP address math.
 
 ```hcl
 locals {
@@ -86,9 +86,9 @@ locals {
 
 output "vpc_capacity" {
   value = {
-    vpc_cidr      = local.vpc_cidr
-    total_ips     = local.vpc_total_ips
-    usable_ips    = local.vpc_total_ips - 5
+    vpc_cidr            = local.vpc_cidr
+    total_ips           = local.vpc_total_ips
+    subnet_reserved_ips = 5
   }
 }
 
@@ -129,7 +129,7 @@ variable "database_subnet_count" {
 locals {
   vpc_prefix = tonumber(split("/", var.vpc_cidr)[1])
 
-  # Calculate optimal subnet sizes based on VPC size
+  # Calculate subnet sizes for the default /16 VPC
   # Public subnets: smaller (for load balancers, NAT gateways)
   # Private subnets: larger (for application instances, containers)
   # Database subnets: medium (for RDS, ElastiCache)
@@ -173,7 +173,7 @@ output "subnet_plan" {
   description = "Complete subnet plan with IP calculations"
   value = {
     vpc_cidr   = var.vpc_cidr
-    vpc_total  = pow(2, 32 - local.vpc_prefix) - 5
+    vpc_total  = pow(2, 32 - local.vpc_prefix)
 
     public_subnets = local.public_subnets
     public_total   = local.total_public_ips
@@ -187,7 +187,7 @@ output "subnet_plan" {
     total_allocated = local.total_public_ips + local.total_private_ips + local.total_database_ips
     utilization_pct = format("%.1f%%",
       (local.total_public_ips + local.total_private_ips + local.total_database_ips) /
-      (pow(2, 32 - local.vpc_prefix) - 5) * 100
+      pow(2, 32 - local.vpc_prefix) * 100
     )
   }
 }
@@ -205,19 +205,22 @@ locals {
   # Plus node IPs: 50
   # Total: 1,850 IPs minimum
 
+  eks_node_count   = 50
+  eks_subnet_count = 3
   eks_required_ips = 1850
   eks_prefix       = 32 - ceil(log(local.eks_required_ips + 5, 2))  # Calculate needed prefix
+  eks_node_ips_per_subnet = ceil(local.eks_node_count / local.eks_subnet_count)
 
   # /20 = 4091 usable IPs, /21 = 2043 usable IPs
-  # For 1850 IPs, we need at least /21 per AZ, or /20 for comfort
+  # For 1850 IPs in one subnet, we need at least /21, or /20 for comfort
 
   eks_subnets = {
-    for i in range(3) :
+    for i in range(local.eks_subnet_count) :
     "eks-${i + 1}" => {
       cidr       = cidrsubnet("10.0.0.0/16", 4, i + 4)  # /20 subnets
       total_ips  = pow(2, 32 - 20)
       usable_ips = pow(2, 32 - 20) - 5
-      can_support_pods = pow(2, 32 - 20) - 5 - 50  # Minus node IPs
+      can_support_pods = pow(2, 32 - 20) - 5 - local.eks_node_ips_per_subnet  # Minus estimated node IPs in this subnet
     }
   }
 }
