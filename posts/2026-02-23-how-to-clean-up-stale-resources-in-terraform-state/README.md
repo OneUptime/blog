@@ -47,7 +47,7 @@ Look for these patterns in the output:
 
 ### Using terraform refresh
 
-The `terraform plan -refresh-only` command updates state to match reality without changing any configuration:
+The `terraform plan -refresh-only` command shows how Terraform would update state to match reality without changing any real infrastructure:
 
 ```bash
 # See what has drifted without making changes
@@ -56,6 +56,8 @@ terraform plan -refresh-only
 # The output shows resources that exist in state
 # but no longer exist in the cloud
 ```
+
+To write those refresh-only changes to state, use `terraform apply -refresh-only` after reviewing the plan.
 
 ### Scripted Detection
 
@@ -83,8 +85,7 @@ echo "Stale resources detected: $STALE"
 
 # Look for resources in state but not in config
 terraform plan -no-color 2>&1 | \
-  grep "will be destroyed" | \
-  grep "not in configuration" > /tmp/orphaned-resources.txt 2>/dev/null || true
+  grep "is not in configuration" > /tmp/orphaned-resources.txt 2>/dev/null || true
 
 ORPHANED=$(wc -l < /tmp/orphaned-resources.txt)
 echo "Orphaned resources (in state, not in config): $ORPHANED"
@@ -205,14 +206,14 @@ terraform plan
 
 ## Handling Data Source Stale Entries
 
-Data sources can also have stale entries if the referenced resource was deleted:
+Data sources can also have state entries, but they are read-only and Terraform re-reads them during refresh or plan when possible. If the referenced object was deleted, they usually show provider-specific lookup errors rather than resources that need cleanup:
 
 ```bash
 # Data source errors show up during plan
-# Error: Reference to undiscoverable resource
+# Error: no matching resource found
 
 # Data sources are automatically refreshed, so stale entries
-# usually manifest as errors rather than stale state
+# usually manifest as errors rather than resources to remove
 
 # Fix by updating the configuration to reference an existing resource
 # or by removing the data source if it is no longer needed
@@ -223,7 +224,8 @@ Data sources can also have stale entries if the referenced resource was deleted:
 Prevention is better than cleanup. Here are strategies to minimize stale resources:
 
 ```hcl
-# 1. Use lifecycle rules to prevent accidental deletion
+# 1. Use lifecycle rules to prevent accidental deletion while the resource
+# remains in configuration
 resource "aws_s3_bucket" "important_data" {
   bucket = "important-data"
 
