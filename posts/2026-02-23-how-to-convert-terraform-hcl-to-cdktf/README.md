@@ -8,7 +8,7 @@ Description: A step-by-step guide to converting existing Terraform HCL configura
 
 ---
 
-If you have existing Terraform configurations written in HCL and want to move to CDKTF, you do not have to start from scratch. CDKTF includes a built-in `convert` command that translates HCL to your preferred programming language. The conversion is not always perfect, but it gives you a solid starting point. This guide covers the automated conversion process, what it handles well, where it falls short, and how to clean up the output.
+If you have existing Terraform configurations written in HCL and want to move to CDKTF, you do not have to start from scratch. CDKTF includes a built-in `convert` command that translates HCL to your preferred programming language. CDKTF is deprecated as of December 10, 2025, and HashiCorp no longer supports or maintains it, so consider that before starting a new migration. The conversion is not always perfect, but it gives you a solid starting point for existing CDKTF users. This guide covers the automated conversion process, what it handles well, where it falls short, and how to clean up the output.
 
 ## The CDKTF Convert Command
 
@@ -18,6 +18,9 @@ The `cdktf convert` command reads HCL and outputs equivalent CDKTF code:
 # Convert a single Terraform file to TypeScript
 
 cat main.tf | cdktf convert --language typescript
+
+# Convert and wrap the output in a TerraformStack
+cat main.tf | cdktf convert --language typescript --stack
 
 # Convert from a file directly
 cdktf convert --language typescript < main.tf
@@ -75,7 +78,7 @@ output "vpc_id" {
 }
 ```
 
-Running `cdktf convert` produces something like this:
+Running `cdktf convert --language typescript --stack` produces something like this:
 
 ```typescript
 import { Construct } from "constructs";
@@ -101,7 +104,7 @@ class MyConvertedStack extends TerraformStack {
       },
     });
 
-    new Subnet(this, "public", {
+    const publicSubnet = new Subnet(this, "public", {
       vpcId: mainVpc.id,
       cidrBlock: "10.0.1.0/24",
       mapPublicIpOnLaunch: true,
@@ -140,7 +143,7 @@ Several HCL features require manual cleanup after conversion:
 
 ### Dynamic Blocks
 
-HCL dynamic blocks do not have a direct equivalent. The converter may produce incomplete code:
+HCL dynamic blocks often need manual handling. The converter may produce incomplete code:
 
 ```hcl
 # HCL with dynamic block
@@ -159,7 +162,7 @@ resource "aws_security_group" "example" {
 }
 ```
 
-In CDKTF, you would use a regular loop:
+If the values are known before synthesis, you can use a regular loop:
 
 ```typescript
 // Manual conversion using TypeScript loops
@@ -179,9 +182,11 @@ new SecurityGroup(this, "example", {
 });
 ```
 
+If the values come from a `TerraformVariable` or another value that is only known at deploy time, use a CDKTF escape hatch such as `addOverride("dynamic.ingress", ...)` instead of a native TypeScript loop.
+
 ### Count and For Each
 
-HCL `count` and `for_each` meta-arguments need to be replaced with loops:
+HCL `count` and `for_each` meta-arguments often need cleanup. Use native language loops when the values are known before synthesis. For values that are only known at deploy time, use CDKTF `TerraformCount` or `TerraformIterator`:
 
 ```hcl
 # HCL with count
@@ -207,7 +212,7 @@ azs.forEach((az, index) => {
 
 ### Terraform Functions
 
-HCL functions like `file()`, `templatefile()`, `jsonencode()`, and `lookup()` are replaced by native language equivalents:
+HCL functions like `file()`, `templatefile()`, `jsonencode()`, and `lookup()` are often replaced by native language equivalents. When you need Terraform to evaluate a function at deploy time, use CDKTF functions from `Fn` instead:
 
 ```hcl
 # HCL
@@ -258,7 +263,7 @@ module "vpc" {
 }
 ```
 
-In CDKTF, add the module to `cdktf.json` and generate bindings:
+In CDKTF, add the module to `cdktf.json` and run `cdktf get` to generate bindings:
 
 ```json
 {
@@ -287,7 +292,7 @@ cdktf init --template=typescript --local
 
 ```bash
 # Convert each .tf file
-cat ../terraform-project/main.tf | cdktf convert --language typescript > converted-main.ts
+cat ../terraform-project/main.tf | cdktf convert --language typescript --stack > converted-main.ts
 cat ../terraform-project/variables.tf | cdktf convert --language typescript > converted-variables.ts
 ```
 
@@ -297,19 +302,14 @@ Combine the converted output into your `main.ts`, fix any issues, and make sure 
 
 ### Step 4: Import Existing State
 
-If you want to manage the existing resources with CDKTF (instead of recreating them), import the state:
+If you want to manage the existing resources with CDKTF (instead of recreating them), add imports to the generated resources:
 
-```bash
-# Synthesize first
-cdktf synth
-
-# Navigate to the stack directory
-cd cdktf.out/stacks/my-stack
-
-# Import existing resources
-terraform import aws_vpc.main_vpc_12345 vpc-abcdef123456
-terraform import aws_subnet.public_subnet_67890 subnet-fedcba654321
+```typescript
+mainVpc.importFrom("vpc-abcdef123456");
+publicSubnet.importFrom("subnet-fedcba654321");
 ```
+
+Run `cdktf plan` or `cdktf deploy` to review and apply the import. After the import is applied, remove the `importFrom` calls so the resources remain managed normally.
 
 ### Step 5: Verify with Diff
 
@@ -346,8 +346,8 @@ Then manually organize the output into proper stack and construct files.
 
 3. **Refactor after converting**. The converter produces functional but not elegant code. Take time to refactor into proper constructs.
 
-4. **Import state carefully**. State import is a one-way operation. Back up your state file before starting.
+4. **Import state carefully**. Import changes your state and can cause Terraform to update existing resources to match your configuration. Back up your state file before starting.
 
 5. **Keep HCL and CDKTF in sync during migration**. Do not modify both versions simultaneously.
 
-Converting from HCL to CDKTF is a worthwhile investment, especially for large projects that benefit from the programming capabilities of a real language. The converter gets you most of the way there, and manual cleanup handles the rest. For more on CDKTF patterns, see our guide on [using CDKTF for complex programming logic](https://oneuptime.com/blog/post/2026-02-23-how-to-use-cdktf-for-complex-programming-logic/view).
+Converting from HCL to CDKTF can still be useful for existing CDKTF projects, especially for large projects that benefit from the programming capabilities of a real language. The converter gets you most of the way there, and manual cleanup handles the rest. For more on CDKTF patterns, see our guide on [using CDKTF for complex programming logic](https://oneuptime.com/blog/post/2026-02-23-how-to-use-cdktf-for-complex-programming-logic/view).
