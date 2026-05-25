@@ -14,7 +14,7 @@ AWS PrivateLink enables you to expose a service running in your VPC to other VPC
 
 The architecture consists of two sides. The service provider creates a Network Load Balancer (NLB) in front of their application and registers it as a VPC endpoint service. The service consumer creates a VPC endpoint that connects to the endpoint service. AWS creates an elastic network interface (ENI) in the consumer's VPC subnet with a private IP address. Traffic from the consumer flows through this ENI to the NLB in the provider's VPC.
 
-The key advantage is that the provider's VPC and the consumer's VPC do not need overlapping CIDR ranges, peering connections, or any other connectivity. PrivateLink handles everything.
+The key advantage is that the provider's VPC and the consumer's VPC do not need non-overlapping CIDR ranges, peering connections, or any other connectivity. PrivateLink handles everything.
 
 ## Prerequisites
 
@@ -130,12 +130,6 @@ resource "aws_vpc_endpoint_service" "main" {
 
   # Require manual acceptance of connection requests
   acceptance_required = true
-
-  # Allowed principals (AWS account IDs or ARNs)
-  allowed_principals = [
-    "arn:aws:iam::222222222222:root",
-    "arn:aws:iam::333333333333:root",
-  ]
 
   tags = {
     Name = "my-privatelink-service"
@@ -289,7 +283,23 @@ Set up SNS notifications for endpoint connection events:
 ```hcl
 # SNS topic for endpoint notifications
 resource "aws_sns_topic" "endpoint_events" {
-  name = "endpoint-connection-events"
+  name   = "endpoint-connection-events"
+  policy = data.aws_iam_policy_document.endpoint_events.json
+}
+
+# Allow AWS PrivateLink to publish notifications to the topic
+data "aws_iam_policy_document" "endpoint_events" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["vpce.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = ["arn:aws:sns:*:*:endpoint-connection-events"]
+  }
 }
 
 # Notify when consumers connect or disconnect
