@@ -50,7 +50,7 @@ terraform {
 provider "azurerm" {
   features {}
 
-  # Optional: specify the subscription explicitly
+  # Required for AzureRM 4.x unless ARM_SUBSCRIPTION_ID is set
   subscription_id = "your-subscription-id-here"
 }
 ```
@@ -71,7 +71,7 @@ provider "azurerm" {
 
     # Control key vault behavior
     key_vault {
-      # Purge soft-deleted keys, secrets, and certificates on destroy
+      # Purge a soft-deleted key vault on destroy
       purge_soft_delete_on_destroy    = true
       # Recover soft-deleted key vaults instead of failing
       recover_soft_deleted_key_vaults = true
@@ -95,8 +95,8 @@ provider "azurerm" {
 
     # API management
     api_management {
-      purge_soft_delete_on_destroy = true
-      recover_soft_deleted         = true
+      purge_soft_delete_on_destroy         = true
+      recover_soft_deleted_api_managements = true
     }
   }
 }
@@ -110,11 +110,12 @@ The AzureRM provider supports several authentication methods. Here is a quick ov
 
 ### Azure CLI Authentication (Development)
 
-The simplest method for local development. No additional configuration needed beyond `az login`:
+The simplest method for local development. No credential configuration is needed beyond `az login`, but AzureRM 4.x still requires a subscription ID in the provider block or through `ARM_SUBSCRIPTION_ID`:
 
 ```hcl
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
   # Uses credentials from 'az login' automatically
 }
 ```
