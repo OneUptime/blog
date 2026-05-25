@@ -15,7 +15,7 @@ Unlike a simple `sleep` command, the Time provider's resources are stored in sta
 ## Prerequisites
 
 - Terraform 1.0 or later
-- No external services or credentials needed
+- No external services or credentials needed for the Time provider itself
 
 ## Declaring the Provider
 
@@ -28,7 +28,7 @@ terraform {
   required_providers {
     time = {
       source  = "hashicorp/time"
-      version = "~> 0.11"
+      version = "~> 0.14"
     }
   }
 }
@@ -77,7 +77,7 @@ resource "null_resource" "db_migrations" {
 
 ### time_offset
 
-The `time_offset` resource calculates a timestamp offset from a base time. This is perfect for setting expiration dates, scheduling future events, or computing time windows.
+The `time_offset` resource calculates a timestamp offset from a base time captured in state. This is perfect for setting expiration dates, scheduling future events, or computing time windows.
 
 ```hcl
 # Calculate a date 90 days from now for certificate expiry
@@ -116,7 +116,7 @@ output "six_months_after_launch" {
 
 ### time_rotating
 
-The `time_rotating` resource tracks rotation periods. When the rotation period expires, the resource's `rotation_rfc3339` timestamp changes, which can trigger recreation of dependent resources.
+The `time_rotating` resource tracks rotation periods. When Terraform runs after the rotation period expires, the resource's `rotation_rfc3339` timestamp changes, which can trigger recreation of dependent resources.
 
 ```hcl
 # Rotate API keys every 30 days
@@ -338,7 +338,7 @@ resource "aws_lb" "app" {
 
 ## Time Attributes
 
-All time resources expose the timestamp broken into components.
+The `time_offset`, `time_rotating`, and `time_static` resources expose the timestamp broken into components.
 
 ```hcl
 resource "time_static" "now" {}
@@ -352,7 +352,7 @@ output "time_parts" {
     hour    = time_static.now.hour      # 10
     minute  = time_static.now.minute    # 30
     second  = time_static.now.second    # 0
-    unix    = time_static.now.unix      # 1771929000
+    unix    = time_static.now.unix      # 1771842600
   }
 }
 ```
