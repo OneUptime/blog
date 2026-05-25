@@ -23,20 +23,12 @@ terraform {
   required_providers {
     azuread = {
       source  = "hashicorp/azuread"
-      version = "~> 2.0"
-    }
-    azurerm = {
-      source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
   }
 }
 
 provider "azuread" {}
-
-provider "azurerm" {
-  features {}
-}
 ```
 
 ## Creating a Basic MFA Policy
@@ -44,21 +36,15 @@ provider "azurerm" {
 The most common Conditional Access policy requires multi-factor authentication:
 
 ```hcl
-# Get all users group for broad policy application
-data "azuread_group" "all_users" {
-  display_name     = "All Users"
-  security_enabled = true
-}
-
 # Create a Conditional Access policy requiring MFA
 resource "azuread_conditional_access_policy" "require_mfa" {
   display_name = "Require MFA for All Users"
   state        = "enabled"
 
   conditions {
-    # Apply to all users in the specified group
+    # Apply to all users
     users {
-      included_groups = [data.azuread_group.all_users.object_id]
+      included_users = ["All"]
 
       # Exclude emergency access accounts
       excluded_users = [azuread_user.break_glass.object_id]
@@ -132,8 +118,8 @@ resource "azuread_conditional_access_policy" "block_untrusted_countries" {
 
   conditions {
     users {
-      included_groups = [data.azuread_group.all_users.object_id]
-      excluded_users  = [azuread_user.break_glass.object_id]
+      included_users = ["All"]
+      excluded_users = [azuread_user.break_glass.object_id]
     }
 
     applications {
@@ -171,14 +157,14 @@ resource "azuread_conditional_access_policy" "require_compliant_device" {
 
   conditions {
     users {
-      included_groups = [data.azuread_group.all_users.object_id]
+      included_users = ["All"]
     }
 
     applications {
       # Apply only to specific sensitive applications
       included_applications = [
-        azuread_application.hr_portal.client_id,
-        azuread_application.finance_app.client_id
+        data.azuread_application.hr_portal.client_id,
+        data.azuread_application.finance_app.client_id
       ]
     }
 
@@ -218,7 +204,7 @@ resource "azuread_conditional_access_policy" "session_controls" {
 
   conditions {
     users {
-      included_groups = [data.azuread_group.all_users.object_id]
+      included_users = ["All"]
     }
 
     applications {
@@ -242,15 +228,11 @@ resource "azuread_conditional_access_policy" "session_controls" {
   # Configure session controls
   session_controls {
     # Limit session lifetime
-    sign_in_frequency {
-      value  = 4
-      type   = "hours"
-    }
+    sign_in_frequency        = 4
+    sign_in_frequency_period = "hours"
 
     # Disable persistent browser sessions
-    persistent_browser {
-      mode = "never"
-    }
+    persistent_browser_mode = "never"
   }
 }
 ```
@@ -282,7 +264,7 @@ resource "azuread_directory_role_assignment" "break_glass_admin" {
   principal_object_id = azuread_user.break_glass.object_id
 }
 
-data "azuread_directory_role" "global_admin" {
+resource "azuread_directory_role" "global_admin" {
   display_name = "Global Administrator"
 }
 ```
