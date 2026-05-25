@@ -19,7 +19,7 @@ Our email infrastructure includes:
 - Amazon SES for sending emails
 - DNS records for SPF, DKIM, and DMARC authentication
 - SNS topics for bounce and complaint handling
-- S3 for email archiving
+- S3 for email event archiving
 - CloudWatch for delivery metrics
 - Lambda for processing bounces
 
@@ -67,9 +67,11 @@ resource "aws_route53_record" "dkim" {
   name    = "${aws_ses_domain_dkim.main.dkim_tokens[count.index]}._domainkey.${var.domain_name}"
   type    = "CNAME"
   ttl     = 600
-  records = ["${aws_ses_domain_dkim.main.dkim_tokens[count.index]}.dkim.amazonses.com"]
+  records = ["${aws_ses_domain_dkim.main.dkim_tokens[count.index]}.${var.ses_dkim_domain}"]
 }
 ```
+
+Set `var.ses_dkim_domain` to the SES DKIM domain for your Region, such as `dkim.amazonses.com` for most Regions or the Region-specific value listed in the AWS General Reference.
 
 ## SPF and DMARC Records
 
@@ -168,7 +170,7 @@ resource "aws_ses_event_destination" "sns" {
   }
 }
 
-# Archive all sent emails to S3 via Firehose
+# Archive sending event records to S3 via Firehose
 resource "aws_ses_event_destination" "firehose" {
   name                   = "email-archive"
   configuration_set_name = aws_ses_configuration_set.main.name
@@ -204,7 +206,7 @@ resource "aws_lambda_function" "bounce_handler" {
   function_name    = "${var.project_name}-bounce-handler"
   role             = aws_iam_role.bounce_handler.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   memory_size      = 128
   timeout          = 30
   source_code_hash = filebase64sha256(var.bounce_handler_package)
@@ -310,7 +312,7 @@ resource "aws_ses_template" "password_reset" {
 
 ## Inbound Email Processing
 
-If you need to receive email, SES can store incoming messages in S3 or trigger Lambda:
+If you need to receive email in a Region where SES supports email receiving, SES can store incoming messages in S3 or trigger Lambda:
 
 ```hcl
 resource "aws_ses_receipt_rule_set" "main" {
