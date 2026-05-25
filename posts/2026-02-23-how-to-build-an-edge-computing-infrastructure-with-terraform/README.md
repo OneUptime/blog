@@ -57,7 +57,7 @@ resource "aws_cloudfront_function" "url_rewrite" {
 resource "aws_cloudfront_function" "security_headers" {
   name    = "security-headers"
   runtime = "cloudfront-js-2.0"
-  comment = "Add security headers to all responses"
+  comment = "Add security headers to successful viewer responses"
   publish = true
 
   code = <<-EOF
@@ -255,13 +255,6 @@ resource "aws_cloudfront_distribution" "main" {
       function_arn = aws_cloudfront_function.security_headers.arn
     }
 
-    # Lambda@Edge for authentication
-    lambda_function_association {
-      event_type   = "viewer-request"
-      lambda_arn   = aws_lambda_function.edge_auth.qualified_arn
-      include_body = false
-    }
-
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
     default_ttl            = 3600
@@ -289,6 +282,34 @@ resource "aws_cloudfront_distribution" "main" {
     min_ttl                = 0
     default_ttl            = 0
     max_ttl                = 0
+  }
+
+  # Protected content - use Lambda@Edge viewer-request auth without CloudFront Functions
+  ordered_cache_behavior {
+    path_pattern     = "/protected/*"
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-static"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    lambda_function_association {
+      event_type   = "viewer-request"
+      lambda_arn   = aws_lambda_function.edge_auth.qualified_arn
+      include_body = false
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+    compress               = true
   }
 
   # Image optimization behavior
@@ -393,13 +414,14 @@ resource "aws_globalaccelerator_endpoint_group" "secondary" {
 }
 ```
 
-## DynamoDB Global Tables for Edge Data
+## DynamoDB Global Tables for Regional Edge Data
 
-When edge functions need data access, use DynamoDB Global Tables for low-latency reads worldwide.
+When Lambda@Edge functions need AWS service data, use DynamoDB Global Tables for low-latency reads from nearby AWS Regions.
 
 ```hcl
-# DynamoDB Global Table for edge-accessible data
+# DynamoDB Global Table for regionally replicated edge configuration
 resource "aws_dynamodb_table" "edge_config" {
+  provider     = aws.us_east_1
   name         = "edge-configuration"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "configKey"
@@ -410,10 +432,6 @@ resource "aws_dynamodb_table" "edge_config" {
   }
 
   # Enable Global Tables
-  replica {
-    region_name = "us-east-1"
-  }
-
   replica {
     region_name = "eu-west-1"
   }
@@ -426,7 +444,7 @@ resource "aws_dynamodb_table" "edge_config" {
 
 ## Wrapping Up
 
-Edge computing infrastructure brings your application logic to the network edge, dramatically reducing latency for users worldwide. CloudFront Functions handle lightweight transformations at sub-millisecond speed. Lambda@Edge runs more complex logic. Global Accelerator optimizes routing for non-HTTP traffic. And DynamoDB Global Tables provide data access at the edge.
+Edge computing infrastructure brings your application logic to the network edge, dramatically reducing latency for users worldwide. CloudFront Functions handle lightweight transformations at sub-millisecond speed. Lambda@Edge runs more complex logic. Global Accelerator optimizes routing for non-HTTP traffic. And DynamoDB Global Tables provide replicated regional data access for edge logic.
 
 The key is to put the right logic in the right place. Simple header manipulation goes in CloudFront Functions. Authentication and image processing go in Lambda@Edge. And heavy business logic stays in your origin servers where you have full access to your data layer.
 
