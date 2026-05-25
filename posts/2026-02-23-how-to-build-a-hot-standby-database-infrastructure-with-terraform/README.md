@@ -8,7 +8,7 @@ Description: Learn how to build hot standby database infrastructure using Terraf
 
 ---
 
-Database downtime is one of the most painful kinds of outages. When your database goes down, everything that depends on it goes down too. A hot standby database is a fully synchronized replica that can take over immediately when the primary fails, keeping your application running with minimal or zero data loss.
+Database downtime is one of the most painful kinds of outages. When your database goes down, everything that depends on it goes down too. A hot standby database is a continuously updated replica that can take over when the primary fails, keeping your application running with minimal data loss depending on the replication mode.
 
 In this guide, we will build hot standby database infrastructure on AWS using Terraform. We will cover RDS Multi-AZ for single-region high availability, Aurora Global Database for cross-region hot standby, and the monitoring and automation that keeps everything working smoothly.
 
@@ -54,7 +54,7 @@ resource "aws_rds_cluster" "main" {
   # Enable deletion protection in production
   deletion_protection = var.environment == "production"
 
-  # Enable enhanced monitoring
+  # Enable PostgreSQL log exports
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   # Enable Performance Insights
@@ -205,7 +205,7 @@ resource "aws_rds_cluster_instance" "secondary" {
 
 ## Connection Management with RDS Proxy
 
-RDS Proxy handles connection pooling and makes failover transparent to your application.
+RDS Proxy handles connection pooling and reduces the impact of failover on your application.
 
 ```hcl
 # proxy.tf - RDS Proxy for connection management
@@ -268,12 +268,12 @@ resource "aws_cloudwatch_metric_alarm" "replication_lag" {
   alarm_name          = "${var.project_name}-replication-lag"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "AuroraGlobalDBReplicationLag"
+  metric_name         = "AuroraGlobalDBRPOLag"
   namespace           = "AWS/RDS"
   period              = 60
   statistic           = "Maximum"
   threshold           = 1000 # 1 second in milliseconds
-  alarm_description   = "Global database replication lag exceeds 1 second"
+  alarm_description   = "Global database RPO lag exceeds 1 second"
 
   dimensions = {
     DBClusterIdentifier = aws_rds_cluster.secondary.cluster_identifier
@@ -301,7 +301,7 @@ resource "aws_cloudwatch_metric_alarm" "writer_cpu" {
   alarm_actions = [var.alert_sns_topic_arn]
 }
 
-# Free storage space alarm
+# Free local storage alarm for writer instance
 resource "aws_cloudwatch_metric_alarm" "storage_space" {
   alarm_name          = "${var.project_name}-storage-space"
   comparison_operator = "LessThanThreshold"
@@ -311,10 +311,10 @@ resource "aws_cloudwatch_metric_alarm" "storage_space" {
   period              = 300
   statistic           = "Minimum"
   threshold           = 5368709120 # 5 GB in bytes
-  alarm_description   = "Database free storage below 5 GB"
+  alarm_description   = "Database writer free local storage below 5 GB"
 
   dimensions = {
-    DBClusterIdentifier = aws_rds_cluster.main.cluster_identifier
+    DBInstanceIdentifier = aws_rds_cluster_instance.writer.identifier
   }
 
   alarm_actions = [var.alert_sns_topic_arn]
@@ -371,11 +371,19 @@ resource "aws_cloudwatch_event_target" "failover_test" {
   target_id = "failover-test"
   arn       = aws_lambda_function.failover_test.arn
 }
+
+resource "aws_lambda_permission" "allow_eventbridge_failover_test" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.failover_test.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.monthly_failover_test.arn
+}
 ```
 
 ## Summary
 
-A hot standby database infrastructure built with Terraform provides protection against both instance-level and region-level failures. Aurora replicas handle in-region failover in about 30 seconds. Aurora Global Database handles cross-region failover with typically under 1 second of replication lag. And RDS Proxy makes failover transparent to your application by managing connections.
+A hot standby database infrastructure built with Terraform provides protection against both instance-level and region-level failures. Aurora replicas handle in-region failover in about 30 seconds. Aurora Global Database handles cross-region failover with typically under 1 second of replication lag. And RDS Proxy reduces failover impact on your application by managing connections.
 
 The most critical monitoring points are replication lag (which tells you how much data you could lose during failover), failover events, and overall database health metrics. Set up alerts for all of these from the start.
 
