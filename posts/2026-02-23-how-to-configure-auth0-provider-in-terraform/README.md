@@ -8,7 +8,7 @@ Description: Learn how to configure the Auth0 provider in Terraform to manage ap
 
 ---
 
-Auth0 is a widely used identity platform that handles authentication, authorization, and user management for applications. As your organization grows and you add more applications, managing Auth0 through the dashboard becomes unsustainable. The Auth0 Terraform provider lets you define your entire identity configuration as code - applications, connections, rules, roles, and more.
+Auth0 is a widely used identity platform that handles authentication, authorization, and user management for applications. As your organization grows and you add more applications, managing Auth0 through the dashboard becomes unsustainable. The Auth0 Terraform provider lets you define your entire identity configuration as code - applications, connections, actions, roles, and more.
 
 This approach brings several benefits: changes go through code review, configurations are consistent across environments, and you have a clear audit trail of who changed what and when.
 
@@ -41,7 +41,7 @@ terraform {
   required_providers {
     auth0 = {
       source  = "auth0/auth0"
-      version = "~> 1.2"
+      version = "~> 1.47"
     }
   }
 }
@@ -103,9 +103,6 @@ resource "auth0_client" "spa" {
   allowed_logout_urls = ["https://app.example.com", "http://localhost:3000"]
   web_origins         = ["https://app.example.com", "http://localhost:3000"]
 
-  # Token settings
-  token_endpoint_auth_method = "none"  # SPAs use PKCE, not client secrets
-
   jwt_configuration {
     alg = "RS256"
   }
@@ -124,6 +121,11 @@ resource "auth0_client" "spa" {
     token_lifetime      = 2592000  # 30 days
   }
 }
+
+resource "auth0_client_credentials" "spa_credentials" {
+  client_id             = auth0_client.spa.id
+  authentication_method = "none"  # SPAs use PKCE, not client secrets
+}
 ```
 
 ### Regular Web Application
@@ -137,8 +139,6 @@ resource "auth0_client" "web_app" {
   callbacks           = ["https://api.example.com/auth/callback"]
   allowed_logout_urls = ["https://api.example.com"]
 
-  token_endpoint_auth_method = "client_secret_post"
-
   jwt_configuration {
     alg                 = "RS256"
     lifetime_in_seconds = 36000
@@ -150,6 +150,11 @@ resource "auth0_client" "web_app" {
     "refresh_token",
   ]
 }
+
+resource "auth0_client_credentials" "web_app_credentials" {
+  client_id             = auth0_client.web_app.id
+  authentication_method = "client_secret_post"
+}
 ```
 
 ### Machine-to-Machine Application
@@ -160,13 +165,18 @@ resource "auth0_client" "api_service" {
   name     = "Backend API Service"
   app_type = "non_interactive"
 
-  token_endpoint_auth_method = "client_secret_post"
-
   grant_types = ["client_credentials"]
+}
+
+resource "auth0_client_credentials" "api_service_credentials" {
+  client_id             = auth0_client.api_service.id
+  authentication_method = "client_secret_post"
 }
 
 # Grant the M2M app access to an API
 resource "auth0_client_grant" "api_service_grant" {
+  depends_on = [auth0_resource_server_scopes.api_scopes]
+
   client_id = auth0_client.api_service.id
   audience  = auth0_resource_server.api.identifier
   scopes    = ["read:data", "write:data"]
@@ -192,24 +202,28 @@ resource "auth0_resource_server" "api" {
   token_lifetime         = 86400   # 24 hours
   token_lifetime_for_web = 7200    # 2 hours for web
 
-  # Define scopes
+}
+
+resource "auth0_resource_server_scopes" "api_scopes" {
+  resource_server_identifier = auth0_resource_server.api.identifier
+
   scopes {
-    value       = "read:data"
+    name        = "read:data"
     description = "Read data"
   }
 
   scopes {
-    value       = "write:data"
+    name        = "write:data"
     description = "Write data"
   }
 
   scopes {
-    value       = "delete:data"
+    name        = "delete:data"
     description = "Delete data"
   }
 
   scopes {
-    value       = "admin"
+    name        = "admin"
     description = "Full admin access"
   }
 }
@@ -334,6 +348,8 @@ resource "auth0_role" "viewer" {
 
 # Assign permissions to roles
 resource "auth0_role_permissions" "admin_permissions" {
+  depends_on = [auth0_resource_server_scopes.api_scopes]
+
   role_id = auth0_role.admin.id
 
   permissions {
@@ -358,6 +374,8 @@ resource "auth0_role_permissions" "admin_permissions" {
 }
 
 resource "auth0_role_permissions" "editor_permissions" {
+  depends_on = [auth0_resource_server_scopes.api_scopes]
+
   role_id = auth0_role.editor.id
 
   permissions {
