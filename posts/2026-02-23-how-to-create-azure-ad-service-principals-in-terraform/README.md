@@ -33,6 +33,10 @@ terraform {
       source  = "hashicorp/time"
       version = "~> 0.9"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -82,10 +86,10 @@ The most common authentication method. Create a password credential with an expi
 
 ```hcl
 # credentials.tf
-# Client secret with 6-month rotation
+# Client secret with 6-month expiration
 resource "azuread_application_password" "cicd" {
-  application_id = azuread_application.cicd.id
-  display_name   = "CI/CD pipeline secret"
+  application_id    = azuread_application.cicd.id
+  display_name      = "CI/CD pipeline secret"
   end_date_relative = "4320h"  # 180 days
 }
 
@@ -94,7 +98,7 @@ resource "time_rotating" "secret_rotation" {
   rotation_days = 180
 }
 
-# Create a new secret that rotates automatically
+# Create a new secret when Terraform runs after the rotation interval
 resource "azuread_application_password" "cicd_rotating" {
   application_id = azuread_application.cicd.id
   display_name   = "Rotating secret - ${time_rotating.secret_rotation.id}"
@@ -107,7 +111,7 @@ resource "azuread_application_password" "cicd_rotating" {
 
 ## Certificate Credentials
 
-Certificates are more secure than client secrets because the private key never leaves the client.
+Certificates are more secure than client secrets because the private key is not shared with Azure AD. When Terraform generates the private key, protect your Terraform state because the key is stored there.
 
 ```hcl
 # cert-credentials.tf
@@ -190,30 +194,34 @@ Once you have a service principal, assign it Azure roles to grant access to reso
 # role-assignments.tf
 # Contributor on the entire subscription (broad - be careful)
 resource "azurerm_role_assignment" "cicd_contributor" {
-  scope                = data.azurerm_subscription.current.id
-  role_definition_name = "Contributor"
-  principal_id         = azuread_service_principal.cicd.object_id
+  scope                            = data.azurerm_subscription.current.id
+  role_definition_name             = "Contributor"
+  principal_id                     = azuread_service_principal.cicd.object_id
+  skip_service_principal_aad_check = true
 }
 
 # Reader on a specific resource group
 resource "azurerm_role_assignment" "cicd_reader" {
-  scope                = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/rg-production"
-  role_definition_name = "Reader"
-  principal_id         = azuread_service_principal.cicd.object_id
+  scope                            = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/rg-production"
+  role_definition_name             = "Reader"
+  principal_id                     = azuread_service_principal.cicd.object_id
+  skip_service_principal_aad_check = true
 }
 
 # AcrPush on a container registry
 resource "azurerm_role_assignment" "cicd_acr_push" {
-  scope                = var.acr_id
-  role_definition_name = "AcrPush"
-  principal_id         = azuread_service_principal.cicd.object_id
+  scope                            = var.acr_id
+  role_definition_name             = "AcrPush"
+  principal_id                     = azuread_service_principal.cicd.object_id
+  skip_service_principal_aad_check = true
 }
 
 # Key Vault Secrets User for reading secrets
 resource "azurerm_role_assignment" "cicd_kv_secrets" {
-  scope                = var.key_vault_id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azuread_service_principal.cicd.object_id
+  scope                            = var.key_vault_id
+  role_definition_name             = "Key Vault Secrets User"
+  principal_id                     = azuread_service_principal.cicd.object_id
+  skip_service_principal_aad_check = true
 }
 ```
 
