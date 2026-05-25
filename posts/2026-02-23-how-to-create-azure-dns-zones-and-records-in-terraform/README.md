@@ -23,13 +23,19 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
+}
+
+variable "subscription_id" {
+  description = "Azure subscription ID to deploy resources into"
+  type        = string
 }
 ```
 
