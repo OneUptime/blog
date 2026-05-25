@@ -8,7 +8,7 @@ Description: A practical guide to creating and managing Azure Resource Groups wi
 
 ---
 
-In Azure, every resource lives inside a resource group. Resource groups are containers that hold related resources for a solution - they define the scope for access control, policy, and cost management. You cannot create a virtual machine, database, or storage account without first placing it in a resource group.
+In Azure, most resources live inside a resource group. Resource groups are containers that hold related resources for a solution - they define the scope for access control, policy, and cost management. Some resource types can exist at subscription, management group, or tenant scope, but you cannot create a virtual machine, database, or storage account without first placing it in a resource group.
 
 This makes resource groups the first thing you create in any Azure Terraform project. Getting the structure right early saves you from painful reorganizations later. This guide covers how to create resource groups, apply tags and locks, and organize them for real-world projects.
 
@@ -26,6 +26,10 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+    azuread = {
+      source  = "hashicorp/azuread"
       version = "~> 3.0"
     }
   }
@@ -34,6 +38,8 @@ terraform {
 provider "azurerm" {
   features {}
 }
+
+provider "azuread" {}
 ```
 
 ## Creating a Basic Resource Group
@@ -271,8 +277,8 @@ resource "azurerm_consumption_budget_resource_group" "monthly" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2026-01-01T00:00:00Z"
-    end_date   = "2026-12-31T00:00:00Z"
+    start_date = "2026-06-01T00:00:00Z"
+    end_date   = "2027-06-01T00:00:00Z"
   }
 
   notification {
@@ -296,7 +302,7 @@ resource "azurerm_consumption_budget_resource_group" "monthly" {
 
 ## Multi-Environment Pattern
 
-A module-based approach for creating consistent resource groups across environments:
+A `for_each` approach for creating consistent resource groups across environments:
 
 ```hcl
 # Variables for multi-environment setup
@@ -383,4 +389,4 @@ Use OneUptime to monitor the health and performance of resources across your res
 
 ## Summary
 
-Resource groups are the organizational backbone of any Azure deployment. Getting the naming, tagging, and access control right at this level pays dividends as your infrastructure grows. Use Terraform's `for_each` to create consistent groups across environments, apply delete locks to production groups, and set budgets to avoid cost surprises. Everything else you build in Azure depends on this foundation being solid.
+Resource groups are the organizational backbone of most Azure deployments. Getting the naming, tagging, and access control right at this level pays dividends as your infrastructure grows. Use Terraform's `for_each` to create consistent groups across environments, apply delete locks to production groups, and set budgets to avoid cost surprises. Most application resources you build in Azure depend on this foundation being solid.
