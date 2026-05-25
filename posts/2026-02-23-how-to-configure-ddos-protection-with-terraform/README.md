@@ -265,6 +265,12 @@ resource "aws_wafv2_web_acl" "ddos_protection" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesBotControlRuleSet"
         vendor_name = "AWS"
+
+        managed_rule_group_configs {
+          aws_managed_rules_bot_control_rule_set {
+            inspection_level = "COMMON"
+          }
+        }
       }
     }
 
@@ -296,6 +302,46 @@ resource "aws_wafv2_web_acl_association" "alb" {
 Use CloudFront to absorb and distribute attack traffic:
 
 ```hcl
+# WAF Web ACL for CloudFront must use CLOUDFRONT scope
+resource "aws_wafv2_web_acl" "ddos_cloudfront" {
+  name  = "ddos-cloudfront-acl"
+  scope = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "rate-limit-cloudfront"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = 2000
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "RateLimitCloudFront"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "DDOSCloudFrontACL"
+    sampled_requests_enabled   = true
+  }
+
+  tags = { Name = "ddos-cloudfront-acl" }
+}
+
 # CloudFront distribution for DDoS absorption
 resource "aws_cloudfront_distribution" "protected" {
   enabled = true
