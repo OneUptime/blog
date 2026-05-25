@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure Patterns, Blue-Green Deployment, Zero Downtime, AWS, ALB
 
-Description: A step-by-step guide to building blue-green deployment infrastructure with Terraform using ALB weighted target groups, DNS switching, and automated rollback.
+Description: A step-by-step guide to building blue-green deployment infrastructure with Terraform using ALB weighted target groups and automated rollback.
 
 ---
 
@@ -12,7 +12,7 @@ Blue-green deployments are the gold standard for safe releases. You run two iden
 
 ## Why Blue-Green?
 
-The key advantage over rolling deployments is that you always have a complete, known-good environment to fall back to. With rolling updates, if something goes wrong midway through, you have a mix of old and new instances. With blue-green, you either serve from blue or green - there is no mixed state. The switchover is atomic.
+The key advantage over rolling deployments is that you always have a complete, known-good environment to fall back to. With rolling updates, if something goes wrong midway through, you have a mix of old and new instances. With blue-green, you can switch directly from blue to green with no mixed state, or use weighted routing for a controlled canary-style shift.
 
 ## Architecture Overview
 
@@ -20,7 +20,7 @@ Our blue-green infrastructure includes:
 
 - Two identical environment stacks (blue and green)
 - Application Load Balancer with weighted target groups
-- Route53 for DNS-based switching
+- Optional Route53 alias record pointing your application domain at the ALB
 - Auto Scaling Groups for each environment
 - Shared database with backward-compatible schema
 - Automated health checking before cutover
@@ -78,11 +78,17 @@ resource "aws_lb_listener" "https" {
 
 # Shared database
 resource "aws_db_instance" "app" {
-  identifier     = "app-db-${var.environment}"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.xlarge"
-  multi_az       = true
+  identifier             = "app-db-${var.environment}"
+  engine                 = "postgres"
+  engine_version         = "15"
+  instance_class         = "db.r6g.xlarge"
+  allocated_storage      = var.db_allocated_storage
+  db_name                = "app"
+  username               = var.db_username
+  password               = var.db_password
+  db_subnet_group_name   = aws_db_subnet_group.app.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  multi_az               = true
 
   backup_retention_period = 35
   deletion_protection     = true
@@ -163,9 +169,9 @@ resource "aws_launch_template" "blue" {
 # Blue Auto Scaling Group
 resource "aws_autoscaling_group" "blue" {
   name                = "app-blue-${var.environment}"
-  min_size            = var.blue_weight > 0 ? var.min_instances : 0
+  min_size            = var.blue_enabled ? var.min_instances : 0
   max_size            = var.max_instances
-  desired_capacity    = var.blue_weight > 0 ? var.desired_instances : 0
+  desired_capacity    = var.blue_enabled ? var.desired_instances : 0
   vpc_zone_identifier = var.private_subnet_ids
   target_group_arns   = [aws_lb_target_group.blue.arn]
 
@@ -260,9 +266,9 @@ resource "aws_launch_template" "green" {
 # Green Auto Scaling Group
 resource "aws_autoscaling_group" "green" {
   name                = "app-green-${var.environment}"
-  min_size            = var.green_weight > 0 ? var.min_instances : 0
+  min_size            = var.green_enabled ? var.min_instances : 0
   max_size            = var.max_instances
-  desired_capacity    = var.green_weight > 0 ? var.desired_instances : 0
+  desired_capacity    = var.green_enabled ? var.desired_instances : 0
   vpc_zone_identifier = var.private_subnet_ids
   target_group_arns   = [aws_lb_target_group.green.arn]
 
@@ -306,6 +312,18 @@ variable "green_weight" {
   default     = 0
 }
 
+variable "blue_enabled" {
+  description = "Whether the blue environment should have running instances"
+  type        = bool
+  default     = true
+}
+
+variable "green_enabled" {
+  description = "Whether the green environment should have running instances"
+  type        = bool
+  default     = true
+}
+
 variable "blue_ami_id" {
   description = "AMI ID for blue environment"
   type        = string
@@ -326,9 +344,28 @@ variable "green_version" {
   type        = string
 }
 
+variable "db_allocated_storage" {
+  description = "Allocated storage for the shared database in GiB"
+  type        = number
+  default     = 100
+}
+
+variable "db_username" {
+  description = "Master username for the shared database"
+  type        = string
+}
+
+variable "db_password" {
+  description = "Master password for the shared database"
+  type        = string
+  sensitive   = true
+}
+
 # terraform.tfvars for initial state (blue is live)
 # blue_weight   = 100
 # green_weight  = 0
+# blue_enabled  = true
+# green_enabled = true
 # blue_ami_id   = "ami-current"
 # green_ami_id  = "ami-new"
 
@@ -354,7 +391,6 @@ resource "aws_lambda_function" "health_validator" {
   environment {
     variables = {
       GREEN_TARGET_GROUP_ARN = aws_lb_target_group.green.arn
-      HEALTH_CHECK_URL       = "http://${aws_lb.app.dns_name}/health"
       SNS_TOPIC_ARN          = aws_sns_topic.deployment_alerts.arn
     }
   }
@@ -465,16 +501,16 @@ resource "aws_sns_topic" "deployment_alerts" {
 
 The deployment process with this infrastructure follows these steps:
 
-1. Deploy new version to the green environment (update `green_ami_id` and `green_version`, set `green_weight = 0`)
+1. Deploy new version to the green environment (update `green_ami_id` and `green_version`, keep `green_enabled = true` and `green_weight = 0`)
 2. Wait for green ASG instances to pass health checks
 3. Run the health validator Step Function
 4. Gradually shift traffic: `blue_weight = 90, green_weight = 10`
 5. Monitor error rates and latency
 6. Complete cutover: `blue_weight = 0, green_weight = 100`
 7. Keep blue running for quick rollback
-8. Once confident, scale down blue: update blue to become the new standby
+8. Once confident, scale down blue: set `blue_enabled = false`, then update blue to become the new standby
 
-Each step is a `terraform apply` with updated variable values. Rollback is just reverting the weights.
+Each step is a `terraform apply` with updated variable values. Rollback is just reverting the weights while the previous environment is still enabled.
 
 ## Wrapping Up
 
