@@ -88,7 +88,7 @@ resource "aws_sagemaker_notebook_instance" "ml_notebook" {
   name                  = "data-science-notebook"
   instance_type         = "ml.t3.medium"
   role_arn              = aws_iam_role.sagemaker_execution.arn
-  platform_identifier   = "notebook-al2-v2"
+  platform_identifier   = "notebook-al2-v3"
 
   # Place in your VPC for security
   subnet_id             = var.private_subnet_id
@@ -127,8 +127,24 @@ resource "aws_kms_key" "sagemaker" {
 # Security group for the notebook
 resource "aws_security_group" "sagemaker" {
   name        = "sagemaker-notebook-sg"
-  description = "Security group for SageMaker notebook instances"
+  description = "Security group for SageMaker notebook instances and Studio apps"
   vpc_id      = var.vpc_id
+
+  # Required for SageMaker Studio apps to mount the domain EFS volume
+  ingress {
+    from_port = 2049
+    to_port   = 2049
+    protocol  = "tcp"
+    self      = true
+  }
+
+  # Required for SageMaker Studio apps to mount the domain EFS volume
+  egress {
+    from_port = 2049
+    to_port   = 2049
+    protocol  = "tcp"
+    self      = true
+  }
 
   # Allow outbound HTTPS for AWS API calls and pip installs
   egress {
@@ -181,7 +197,7 @@ resource "aws_sagemaker_notebook_instance_lifecycle_configuration" "setup" {
   EOF
   )
 
-  # Runs every time the notebook starts (including restarts)
+  # Runs every time the notebook starts, including when it is created
   on_start = base64encode(<<-EOF
     #!/bin/bash
     set -e
@@ -215,9 +231,8 @@ resource "aws_sagemaker_notebook_instance_lifecycle_configuration" "setup" {
                 print("Stopping notebook due to inactivity")
                 import boto3
                 client = boto3.client("sagemaker")
-                notebook_name = urllib.request.urlopen(
-                    "http://169.254.169.254/latest/meta-data/tags/instance/aws:sagemaker:notebook-name"
-                ).read().decode()
+                with open("/opt/ml/metadata/resource-metadata.json") as metadata_file:
+                    notebook_name = json.load(metadata_file)["ResourceName"]
                 client.stop_notebook_instance(NotebookInstanceName=notebook_name)
                 break
         else:
@@ -241,10 +256,11 @@ SageMaker Studio is the newer, more feature-rich option. It provides a full IDE 
 ```hcl
 # SageMaker Studio domain
 resource "aws_sagemaker_domain" "ml_studio" {
-  domain_name = "ml-studio"
-  auth_mode   = "IAM"
-  vpc_id      = var.vpc_id
-  subnet_ids  = var.private_subnet_ids
+  domain_name             = "ml-studio"
+  auth_mode               = "IAM"
+  app_network_access_type = "VpcOnly"
+  vpc_id                  = var.vpc_id
+  subnet_ids              = var.private_subnet_ids
 
   default_user_settings {
     execution_role = aws_iam_role.sagemaker_execution.arn
@@ -377,7 +393,7 @@ resource "aws_sagemaker_notebook_instance" "with_git" {
   name                    = "notebook-with-git"
   instance_type           = "ml.t3.medium"
   role_arn                = aws_iam_role.sagemaker_execution.arn
-  platform_identifier     = "notebook-al2-v2"
+  platform_identifier     = "notebook-al2-v3"
   default_code_repository = aws_sagemaker_code_repository.ml_repo.code_repository_name
   volume_size             = 50
 
@@ -408,7 +424,7 @@ variable "private_subnet_ids" {
 }
 
 output "notebook_url" {
-  value       = "https://${aws_sagemaker_notebook_instance.ml_notebook.name}.notebook.${data.aws_region.current.name}.sagemaker.aws"
+  value       = aws_sagemaker_notebook_instance.ml_notebook.url
   description = "URL to access the SageMaker notebook"
 }
 
