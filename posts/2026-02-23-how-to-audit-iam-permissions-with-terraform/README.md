@@ -35,22 +35,22 @@ provider "aws" {
 
 ## Discovering IAM Users and Their Policies
 
-The first step in any audit is understanding who exists in your account and what policies they have attached:
+The first step in any audit is understanding who exists in your account and which managed policies you want to inspect:
 
 ```hcl
 # Fetch all IAM users in the account
 data "aws_iam_users" "all" {}
 
-# Get details for each user including their attached policies
+# Get details for each user
 data "aws_iam_user" "details" {
   for_each  = toset(data.aws_iam_users.all.names)
   user_name = each.value
 }
 
-# List all IAM policies in the account
-data "aws_iam_policies" "all" {
-  # Only get customer-managed policies (not AWS-managed)
-  path_prefix = "/"
+# Provide the managed policy ARNs you want to audit
+variable "audit_policy_arns" {
+  type        = set(string)
+  description = "ARNs of managed IAM policies to include in the audit."
 }
 
 # Output user information for review
@@ -72,7 +72,7 @@ To understand what each policy allows, you can fetch and analyze the policy docu
 ```hcl
 # Fetch specific policy details for analysis
 data "aws_iam_policy" "audit_targets" {
-  for_each = toset(data.aws_iam_policies.all.arns)
+  for_each = var.audit_policy_arns
   arn      = each.value
 }
 
@@ -84,7 +84,7 @@ data "aws_iam_policy_document" "current_versions" {
   source_policy_documents = [each.value.policy]
 }
 
-# Output all policies and their permissions
+# Output selected policies and their permissions
 output "policy_details" {
   value = {
     for arn, policy in data.aws_iam_policy.audit_targets : policy.name => {
@@ -106,16 +106,29 @@ locals {
   # Parse each policy document and check for wildcards
   dangerous_actions = ["*", "iam:*", "s3:*", "ec2:*"]
 
+  policy_statements = {
+    for arn, policy in data.aws_iam_policy.audit_targets :
+      arn => flatten([try(jsondecode(policy.policy).Statement, [])])
+  }
+
   # Collect policies with full admin access
   admin_policies = [
     for arn, policy in data.aws_iam_policy.audit_targets :
-    policy.name if can(regex("\"Action\":\\s*\"\\*\"", policy.policy))
+    policy.name if anytrue([
+      for statement in local.policy_statements[arn] :
+      try(statement.Effect, "") == "Allow" &&
+      contains(flatten([try(statement.Action, [])]), "*")
+    ])
   ]
 
   # Collect policies with wildcard resources
   wildcard_resource_policies = [
     for arn, policy in data.aws_iam_policy.audit_targets :
-    policy.name if can(regex("\"Resource\":\\s*\"\\*\"", policy.policy))
+    policy.name if anytrue([
+      for statement in local.policy_statements[arn] :
+      try(statement.Effect, "") == "Allow" &&
+      contains(flatten([try(statement.Resource, [])]), "*")
+    ])
   ]
 }
 
@@ -177,7 +190,7 @@ output "external_trust_roles" {
 Identifying unused IAM credentials helps reduce your attack surface:
 
 ```hcl
-# Create a custom audit report using AWS Config
+# Create a managed AWS Config rule
 resource "aws_config_config_rule" "iam_user_unused_credentials" {
   name = "iam-user-unused-credentials-check"
 
@@ -188,46 +201,14 @@ resource "aws_config_config_rule" "iam_user_unused_credentials" {
 
   # Check for credentials unused for 90 days
   input_parameters = jsonencode({
-    maxCredentialUsageAge = "90"
-  })
-
-  depends_on = [aws_config_configuration_recorder.main]
-}
-
-# Enable AWS Config recorder if not already enabled
-resource "aws_config_configuration_recorder" "main" {
-  name     = "iam-audit-recorder"
-  role_arn = aws_iam_role.config_role.arn
-
-  recording_group {
-    all_supported                 = false
-    include_global_resource_types = true
-    resource_types                = ["AWS::IAM::User", "AWS::IAM::Role", "AWS::IAM::Policy"]
-  }
-}
-
-# IAM role for AWS Config
-resource "aws_iam_role" "config_role" {
-  name = "aws-config-iam-audit-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "config.amazonaws.com"
-        }
-      }
-    ]
+    maxCredentialUsageAge = 90
   })
 }
 ```
 
 ## Building an Automated Compliance Framework
 
-You can create Terraform configurations that enforce compliance rules automatically:
+You can create Terraform configurations that monitor compliance rules automatically:
 
 ```hcl
 # Define compliance rules as local values
@@ -240,11 +221,9 @@ locals {
   }
 }
 
-# Check for inline policies (which are harder to audit)
-data "aws_iam_user_policy" "inline_check" {
-  for_each  = toset(data.aws_iam_users.all.names)
-  user_name = each.value
-  # This will fail if no inline policy exists, which is actually good
+# Track users to review for inline policies, which are harder to audit
+locals {
+  users_to_review_for_inline_policies = data.aws_iam_users.all.names
 }
 
 # Create an SNS topic for audit notifications
@@ -258,8 +237,8 @@ resource "aws_cloudwatch_event_rule" "iam_changes" {
   description = "Detect any IAM configuration changes"
 
   event_pattern = jsonencode({
-    source      = ["aws.iam"]
-    detail-type = ["AWS API Call via CloudTrail"]
+    source        = ["aws.iam"]
+    "detail-type" = ["AWS API Call via CloudTrail"]
     detail = {
       eventSource = ["iam.amazonaws.com"]
       eventName = [
@@ -281,6 +260,25 @@ resource "aws_cloudwatch_event_target" "iam_changes_sns" {
   target_id = "send-to-sns"
   arn       = aws_sns_topic.iam_audit_alerts.arn
 }
+
+# Allow EventBridge to publish matching events to the SNS topic
+resource "aws_sns_topic_policy" "iam_audit_alerts" {
+  arn = aws_sns_topic.iam_audit_alerts.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sns:Publish"
+        Resource = aws_sns_topic.iam_audit_alerts.arn
+      }
+    ]
+  })
+}
 ```
 
 ## Generating Audit Reports with Outputs
@@ -293,7 +291,7 @@ output "iam_audit_report" {
   value = {
     total_users           = length(data.aws_iam_users.all.names)
     total_roles           = length(data.aws_iam_roles.all.names)
-    total_policies        = length(data.aws_iam_policies.all.arns)
+    total_policies        = length(var.audit_policy_arns)
     admin_policies        = local.admin_policies
     external_trust_roles  = keys(local.external_trust_roles)
     audit_timestamp       = timestamp()
@@ -326,10 +324,10 @@ data "aws_caller_identity" "current" {}
 
 ## Best Practices
 
-Run your IAM audit Terraform configuration regularly, ideally as part of a CI/CD pipeline. Store audit outputs in a versioned location so you can track changes over time. Pay special attention to policies with wildcard actions or resources. Audit cross-account trust relationships carefully since they represent your account's external attack surface. Combine Terraform auditing with AWS Access Analyzer for a complete picture.
+Run your IAM audit Terraform configuration regularly, ideally as part of a CI/CD pipeline. Store audit outputs in a versioned location so you can track changes over time. Pay special attention to audited policies with wildcard actions or resources. Audit cross-account trust relationships carefully since they represent your account's external attack surface. Combine Terraform auditing with AWS Access Analyzer for a complete picture.
 
 For monitoring your AWS infrastructure health alongside IAM auditing, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-23-how-to-create-cloudwatch-alarms-for-ec2-in-terraform/view).
 
 ## Conclusion
 
-Auditing IAM permissions with Terraform transforms a manual, error-prone process into an automated, repeatable workflow. By leveraging Terraform data sources, you can discover all IAM entities, analyze their permissions, detect overly permissive policies, and generate comprehensive audit reports. When combined with AWS Config rules and CloudWatch event monitoring, you get a complete IAM governance solution that runs as code.
+Auditing IAM permissions with Terraform transforms a manual, error-prone process into an automated, repeatable workflow. By leveraging Terraform data sources, you can discover IAM users and roles, analyze selected managed policies, detect overly permissive policies, and generate comprehensive audit reports. When combined with AWS Config rules and CloudWatch event monitoring, you get a complete IAM governance solution that runs as code.
