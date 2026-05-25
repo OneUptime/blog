@@ -81,6 +81,64 @@ resource "aws_sns_topic" "serverless_alerts" {
   name = "serverless-cost-alerts-${var.environment}"
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+data "aws_iam_policy_document" "serverless_alerts" {
+  statement {
+    sid = "AllowCloudWatchAlarmsToPublish"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.serverless_alerts.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:cloudwatch:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:alarm:*"]
+    }
+  }
+
+  statement {
+    sid = "AllowBudgetsToPublish"
+
+    principals {
+      type        = "Service"
+      identifiers = ["budgets.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.serverless_alerts.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:budgets::${data.aws_caller_identity.current.account_id}:*"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "serverless_alerts" {
+  arn    = aws_sns_topic.serverless_alerts.arn
+  policy = data.aws_iam_policy_document.serverless_alerts.json
+}
+
 resource "aws_sns_topic_subscription" "serverless_email" {
   for_each  = toset(var.alert_emails)
   topic_arn = aws_sns_topic.serverless_alerts.arn
@@ -122,7 +180,7 @@ resource "aws_lambda_function" "api_handler" {
   }
 }
 
-# Provisioned concurrency for predictable workloads (more cost-effective than on-demand at scale)
+# Provisioned concurrency for predictable workloads that need lower cold-start latency
 resource "aws_lambda_provisioned_concurrency_config" "api" {
   count = var.environment == "production" ? 1 : 0
 
@@ -145,7 +203,7 @@ resource "aws_cloudwatch_metric_alarm" "api_requests" {
   metric_name         = "Count"
   namespace           = "AWS/ApiGateway"
   period              = 300
-  statistic           = "Sum"
+  statistic           = "SampleCount"
   threshold           = var.max_api_requests_per_5min
   alarm_description   = "API Gateway request count exceeded threshold"
   alarm_actions       = [aws_sns_topic.serverless_alerts.arn]
@@ -173,7 +231,7 @@ resource "aws_cloudwatch_metric_alarm" "api_4xx" {
   }
 }
 
-# Usage plan for API Gateway to enforce rate limiting
+# Usage plan for API Gateway API-key clients to apply rate limiting
 resource "aws_api_gateway_usage_plan" "cost_controlled" {
   name        = "cost-controlled-plan"
   description = "Rate-limited usage plan to control costs"
@@ -192,6 +250,16 @@ resource "aws_api_gateway_usage_plan" "cost_controlled" {
     limit  = 100000
     period = "DAY"
   }
+}
+
+resource "aws_api_gateway_api_key" "cost_controlled" {
+  name = "cost-controlled-key-${var.environment}"
+}
+
+resource "aws_api_gateway_usage_plan_key" "cost_controlled" {
+  key_id        = aws_api_gateway_api_key.cost_controlled.id
+  key_type      = "API_KEY"
+  usage_plan_id = aws_api_gateway_usage_plan.cost_controlled.id
 }
 ```
 
@@ -281,7 +349,7 @@ resource "aws_cloudwatch_composite_alarm" "lambda_cost_spike" {
 
 ## Best Practices
 
-Always set reserved concurrency on Lambda functions, even if the limit is generous. It is far better to throttle excess traffic than to process it and pay for it. Use API Gateway usage plans to enforce rate limits on all APIs. Monitor not just invocation counts but also duration, error rates, and concurrent executions, as all of these affect costs.
+Always set reserved concurrency on Lambda functions, even if the limit is generous. It is far better to throttle excess traffic than to process it and pay for it. Use API Gateway usage plans for API-key clients, but remember that usage plan throttles and quotas are best-effort controls; use AWS Budgets and AWS WAF for stronger cost and request protection. Monitor not just invocation counts but also duration, error rates, and concurrent executions, as all of these affect costs.
 
 Right-size Lambda memory allocations by testing with tools like AWS Lambda Power Tuning. Sometimes increasing memory actually reduces cost because the function runs faster.
 
