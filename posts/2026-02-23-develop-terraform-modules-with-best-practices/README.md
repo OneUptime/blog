@@ -171,7 +171,7 @@ output "password" {
 
 ## Version Constraints
 
-Always pin your provider versions and required Terraform version:
+Always declare your provider versions and required Terraform version:
 
 ```hcl
 # versions.tf
@@ -181,13 +181,13 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0, < 6.0"
+      version = ">= 5.0"
     }
   }
 }
 ```
 
-Use `>=` for the minimum version that supports the features you use, and `<` for the next major version to protect against breaking changes.
+Use `>=` for the minimum version that supports the features you use. For root modules, add an upper bound such as `< 6.0` to protect against breaking changes; for reusable modules, let the root module manage the maximum provider version.
 
 ## Naming Conventions
 
