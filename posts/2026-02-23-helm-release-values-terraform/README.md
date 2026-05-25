@@ -209,7 +209,7 @@ resource "helm_release" "database" {
   namespace  = "database"
   version    = "14.0.0"
 
-  set {
+  set_sensitive {
     name  = "auth.postgresPassword"
     value = var.postgres_password
   }
@@ -227,6 +227,11 @@ resource "helm_release" "database" {
 }
 
 # Mark variables as sensitive too
+variable "postgres_password" {
+  type      = string
+  sensitive = true
+}
+
 variable "db_password" {
   type      = string
   sensitive = true
@@ -264,13 +269,13 @@ resource "helm_release" "app" {
   values = [
     yamlencode({
       database = {
-        host     = data.aws_db_instance.main.endpoint
-        port     = data.aws_db_instance.main.port
+        host     = data.aws_db_instance.main.address
+        port     = data.aws_db_instance.main.db_instance_port
         name     = "myapp"
       }
       storage = {
         bucket = data.aws_s3_bucket.assets.id
-        region = data.aws_s3_bucket.assets.region
+        region = data.aws_s3_bucket.assets.bucket_region
       }
       env = var.environment
     })
@@ -345,7 +350,7 @@ resource "helm_release" "nginx_ingress" {
     value = "ingress/wildcard-tls"
   }
 
-  # For list values, use backslash-escaped braces
+  # For map keys that contain dots, escape the dots with double backslashes
   set {
     name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
     value = "nlb"
