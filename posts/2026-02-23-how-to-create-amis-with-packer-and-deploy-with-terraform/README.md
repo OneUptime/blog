@@ -116,8 +116,8 @@ build {
   # Install SSM agent for secure access
   provisioner "shell" {
     inline = [
-      "sudo snap install amazon-ssm-agent --classic",
-      "sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service",
+      "sudo snap list amazon-ssm-agent >/dev/null 2>&1 || sudo snap install amazon-ssm-agent --classic",
+      "sudo systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service",
     ]
   }
 
@@ -143,6 +143,20 @@ The application AMI builds on top of the base image and adds your specific appli
 
 ```hcl
 # packer/app-image.pkr.hcl
+
+packer {
+  required_plugins {
+    amazon = {
+      version = ">= 1.2.0"
+      source  = "github.com/hashicorp/amazon"
+    }
+  }
+}
+
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
 
 variable "base_ami_id" {
   type        = string
@@ -201,7 +215,7 @@ build {
   # Install application dependencies
   provisioner "shell" {
     inline = [
-      "cd /opt/app && npm install --production",
+      "cd /opt/app && npm install --omit=dev",
     ]
   }
 
@@ -325,7 +339,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Rolling update configuration
