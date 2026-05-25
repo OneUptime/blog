@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring Single Sign-On (SSO) with SAML fo
 
 ---
 
-Single Sign-On is one of those things that every growing engineering team eventually needs. Once you have more than a handful of people using HCP Terraform, managing individual accounts becomes tedious and error-prone. SSO lets you centralize authentication through your identity provider, enforce consistent security policies, and automate user provisioning.
+Single Sign-On is one of those things that every growing engineering team eventually needs. Once you have more than a handful of people using HCP Terraform, managing individual accounts becomes tedious and error-prone. SSO lets you centralize authentication through your identity provider, enforce consistent security policies, and keep team membership aligned with your directory.
 
 HCP Terraform supports SAML 2.0-based SSO, which means it works with most major identity providers including Okta, Azure AD (now Entra ID), OneLogin, and others. Let us walk through the full setup process.
 
@@ -16,10 +16,10 @@ HCP Terraform supports SAML 2.0-based SSO, which means it works with most major 
 
 Before configuring SSO, make sure you have:
 
-- An HCP Terraform organization on the **Business** tier (SSO is not available on free or Team plans)
+- An HCP Terraform organization where you have permission to manage SSO
 - Owner access to the HCP Terraform organization
 - Admin access to your identity provider (Okta, Azure AD, etc.)
-- A verified email domain for your organization
+- Team Management enabled if you want to map IdP groups to HCP Terraform teams
 
 ## How SAML SSO Works with HCP Terraform
 
@@ -29,7 +29,7 @@ Here is the flow at a high level:
 2. HCP Terraform redirects them to your identity provider
 3. The user authenticates with the identity provider
 4. The identity provider sends a SAML assertion back to HCP Terraform
-5. HCP Terraform creates or updates the user session
+5. HCP Terraform establishes the user session. On first SSO sign-in, the user creates a new HCP Terraform account or links the SSO identity to an existing account.
 
 HCP Terraform acts as the SAML Service Provider (SP), and your identity provider is the SAML Identity Provider (IdP).
 
@@ -40,9 +40,10 @@ Start on the HCP Terraform side:
 1. Log in to HCP Terraform as an organization owner
 2. Go to **Settings** > **SSO**
 3. Click **Setup SSO**
-4. You will see your organization's SAML metadata, including:
-   - **Entity ID**: `https://app.terraform.io/sso/saml/metadata/your-org`
-   - **Assertion Consumer Service (ACS) URL**: `https://app.terraform.io/sso/saml/actions/your-org`
+4. Select your provider, or select **SAML** for a generic SAML identity provider
+5. After saving the initial provider details, HCP Terraform shows your organization's SAML metadata, including:
+   - **Entity ID**: `https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/metadata`
+   - **Assertion Consumer Service (ACS) URL**: `https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/acs`
 
 Keep this page open - you will need these values for your identity provider configuration.
 
@@ -61,13 +62,13 @@ If you are using Okta as your identity provider:
 5. Configure the SAML settings:
 
 ```text
-Single Sign-On URL:    https://app.terraform.io/sso/saml/actions/your-org
-Audience URI (SP Entity ID):  https://app.terraform.io/sso/saml/metadata/your-org
+Single Sign-On URL:    https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/acs
+Audience URI (SP Entity ID):  https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/metadata
 Name ID format:        EmailAddress
 Application username:  Email
 ```
 
-6. Add attribute statements:
+6. Add a group attribute statement if you want team mapping:
 
 | Name | Value |
 |---|---|
@@ -85,22 +86,21 @@ Application username:  Email
 For Azure AD:
 
 1. Go to **Azure Portal** > **Enterprise Applications** > **New Application**
-2. Click **Create your own application**
-3. Name it "HCP Terraform" and select **Integrate any other application you don't find in the gallery**
-4. Go to **Single sign-on** > **SAML**
-5. Edit the **Basic SAML Configuration**:
+2. Search for **Terraform Cloud** in the gallery and add the application
+3. Go to **Single sign-on** > **SAML**
+4. Edit the **Basic SAML Configuration**:
 
 ```text
-Identifier (Entity ID):     https://app.terraform.io/sso/saml/metadata/your-org
-Reply URL (ACS URL):        https://app.terraform.io/sso/saml/actions/your-org
-Sign on URL:                https://app.terraform.io
+Identifier (Entity ID):     https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/metadata
+Reply URL (ACS URL):        https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/acs
+Sign on URL:                https://app.terraform.io/session
 ```
 
-6. Edit **User Attributes & Claims**:
-   - The default NameID claim should be set to `user.userprincipalname` or `user.mail`
-   - Add a group claim if you want to map Azure AD groups to HCP Terraform teams
+5. Edit **User Attributes & Claims**:
+   - The NameID claim must use the email address format and provide a valid email address
+   - Add a group claim named `MemberOf` if you want to map Azure AD groups to HCP Terraform teams. Entra ID commonly sends group UUIDs, so configure matching SSO Team IDs in HCP Terraform when needed.
 
-7. Download the **Federation Metadata XML** from the SAML Signing Certificate section
+6. Download the **Federation Metadata XML** from the SAML Signing Certificate section
 
 ### Configuring OneLogin
 
@@ -111,10 +111,10 @@ For OneLogin:
 3. Configure the connector:
 
 ```text
-Audience:                    https://app.terraform.io/sso/saml/metadata/your-org
-Recipient:                   https://app.terraform.io/sso/saml/actions/your-org
-ACS URL:                     https://app.terraform.io/sso/saml/actions/your-org
-ACS URL Validator:           https://app.terraform.io/sso/saml/actions/your-org
+Audience:                    https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/metadata
+Recipient:                   https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/acs
+ACS URL:                     https://app.terraform.io/sso/saml/samlconf-xxxxxxxx/acs
+ACS URL Validator:           ^https:\/\/app\.terraform\.io\/sso\/saml\/samlconf-[^\/]+\/acs$
 ```
 
 4. Under **Parameters**, ensure the NameID maps to Email
@@ -131,38 +131,13 @@ Back in HCP Terraform:
    - **Public Certificate**: Paste the X.509 certificate from your IdP (PEM format)
 3. Click **Save Settings**
 
-You can also configure SSO via the API:
-
-```bash
-# Configure SAML SSO settings
-
-curl \
-  --header "Authorization: Bearer $TFC_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request POST \
-  --data '{
-    "data": {
-      "type": "saml-settings",
-      "attributes": {
-        "idp-cert": "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-        "slo-endpoint-url": "https://idp.example.com/slo",
-        "sso-endpoint-url": "https://idp.example.com/sso",
-        "attr-username": "Username",
-        "attr-groups": "MemberOf",
-        "attr-site-admin": "SiteAdmin",
-        "site-admin-role": "site-admins",
-        "sso-api-token-session-timeout": 1209600
-      }
-    }
-  }' \
-  https://app.terraform.io/api/v2/organizations/your-org/authentication-token
-```
+HCP Terraform's public API documentation does not currently expose an organization-level endpoint for configuring SSO settings. Use the HCP Terraform UI for SSO configuration. The `/api/v2/admin/saml-settings` API is for Terraform Enterprise admin SAML settings, not HCP Terraform organizations.
 
 ## Step 4: Test the SSO Connection
 
 Before enforcing SSO for all users, test it:
 
-1. In HCP Terraform, on the SSO settings page, click **Test** or use the test URL provided
+1. In HCP Terraform, on the SSO settings page, click **Test**
 2. You should be redirected to your identity provider
 3. After authenticating, you should be redirected back to HCP Terraform
 4. Verify that your user session is established correctly
@@ -178,10 +153,9 @@ If the test fails, check:
 Once testing is successful:
 
 1. Go to **Settings** > **SSO**
-2. Toggle **Enable SSO** on
-3. Optionally toggle **Require SSO for all members** - this forces all users to authenticate through SSO
+2. Click **Enable**
 
-When SSO is enforced, users who are not part of the identity provider will lose access. Make sure all team members are configured in your IdP before enabling enforcement.
+Once SSO is enabled, non-owner members must authenticate through SSO to access the organization. Owners can still use their HCP Terraform or linked HCP credentials to recover from IdP outages or configuration problems. Make sure all team members are configured in your IdP before enabling SSO.
 
 ## Team Mapping with SSO
 
@@ -190,8 +164,8 @@ One of the most powerful features of SSO in HCP Terraform is team mapping. You c
 ### Setting Up Team Mapping
 
 1. In your identity provider, configure a group attribute claim (typically named `MemberOf`)
-2. In HCP Terraform, go to **Settings** > **SSO** > **Team Management**
-3. For each HCP Terraform team, specify the IdP group name that should map to it
+2. In HCP Terraform, go to **Settings** > **SSO** and enable team management
+3. Use values in the SAML team attribute that exactly match HCP Terraform team names, or configure SSO Team IDs on the organization's Teams page when your IdP sends IDs instead of human-readable group names
 
 ```hcl
 # You can also manage team mappings with the TFE provider
@@ -208,7 +182,7 @@ resource "tfe_team" "developers" {
 }
 ```
 
-When a user logs in via SSO, HCP Terraform reads the group claims from the SAML assertion and automatically adds or removes the user from teams based on the mappings.
+When a user logs in via SSO, HCP Terraform reads the group claims from the SAML assertion and automatically adds or removes the user from teams based on exact team-name or SSO Team ID matches. HCP Terraform ignores groups that do not match an existing team, and team mapping cannot assign users to the `owners` team.
 
 ## Handling Service Accounts and API Tokens
 
@@ -216,7 +190,7 @@ SSO applies to interactive user sessions, but you still need API tokens for auto
 
 - **Team API tokens**: Not tied to individual users, so SSO does not affect them
 - **Organization API tokens**: Also not affected by SSO enforcement
-- **User API tokens**: These may be affected by SSO session timeout settings
+- **User API tokens**: These inherit the permissions of the user they belong to and can be disabled for organization resources in organization settings
 
 ```bash
 # Generate a team token that works independently of SSO
@@ -224,7 +198,15 @@ curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --request POST \
-  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-token
+  --data '{
+    "data": {
+      "type": "authentication-tokens",
+      "attributes": {
+        "description": "automation token"
+      }
+    }
+  }' \
+  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-tokens
 ```
 
 ## Troubleshooting SSO Issues
@@ -235,7 +217,7 @@ curl \
 
 **Certificate errors**: Make sure you are using the signing certificate, not the encryption certificate. The certificate should be in PEM format with the header and footer lines included.
 
-**Users losing access after SSO enforcement**: Any user whose email does not exist in the identity provider will be locked out. Always verify user list parity before enforcing SSO.
+**Users losing access after SSO enforcement**: Any non-owner user whose email does not exist in the identity provider will be locked out. Always verify user list parity before enforcing SSO.
 
 ## Summary
 
