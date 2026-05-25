@@ -9,29 +9,32 @@ Guide
 ## Technologies Covered
 - Terraform modules
 - Terraform HCL
-- Terraform input variables and validation
-- Terraform outputs and sensitive outputs
+- Terraform variables, outputs, locals, validation, and meta-arguments
 - Terraform provider version constraints
-- Terraform `count` and `for_each` meta-arguments
+- AWS provider resources
+- pre-commit-terraform hooks
 - terraform-docs
-- pre-commit-terraform
+- TFLint
+- Terratest and Terraform native tests
 
 ## Sources Consulted
-- HashiCorp Terraform standard module structure: https://developer.hashicorp.com/terraform/language/modules/develop/structure
-- HashiCorp Terraform provider requirements and version constraints: https://developer.hashicorp.com/terraform/language/providers/requirements
-- HashiCorp Terraform type constraints and optional object attributes: https://developer.hashicorp.com/terraform/language/expressions/type-constraints
-- HashiCorp Terraform validation documentation: https://developer.hashicorp.com/terraform/language/validate
-- HashiCorp Terraform `count` meta-argument documentation: https://developer.hashicorp.com/terraform/language/meta-arguments/count
-- HashiCorp Terraform output documentation: https://developer.hashicorp.com/terraform/tutorials/configuration-language/outputs
-- Terraform AWS provider `aws_instance` resource documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance
-- terraform-docs pre-commit hook documentation: https://terraform-docs.io/how-to/pre-commit-hooks/
-- terraform-docs CLI boolean flag documentation: https://terraform-docs.io/how-to/cli-flag-false-value/
-- pre-commit-terraform hook documentation: https://github.com/antonbabenko/pre-commit-terraform
+- Terraform Standard Module Structure: https://developer.hashicorp.com/terraform/language/modules/develop/structure
+- Terraform Files and Configuration Structure: https://developer.hashicorp.com/terraform/language/files
+- Terraform Input Variables and Custom Validation: https://developer.hashicorp.com/terraform/language/values/variables
+- Terraform Type Constraints and Optional Object Attributes: https://developer.hashicorp.com/terraform/language/expressions/type-constraints
+- Terraform Provider Requirements and Version Constraints: https://developer.hashicorp.com/terraform/language/providers/requirements
+- Terraform Output Values: https://developer.hashicorp.com/terraform/language/values/outputs
+- Terraform Sensitive Outputs and State Behavior: https://developer.hashicorp.com/terraform/tutorials/configuration-language/outputs
+- Terraform count Meta-Argument: https://developer.hashicorp.com/terraform/language/meta-arguments/count
+- AWS Provider aws_instance Resource Documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance
+- pre-commit-terraform Documentation and Releases: https://github.com/antonbabenko/pre-commit-terraform
+- Linked OneUptime post: https://oneuptime.com/blog/post/2026-02-23-terraform-modules-with-optional-features/view
+- Linked OneUptime post: https://oneuptime.com/blog/post/2026-02-23-document-terraform-modules-with-readme/view
 
 ## Issues Found
-- The version constraint section said to "pin" provider versions and recommended an upper-bound provider constraint for reusable modules. HashiCorp's provider requirements documentation recommends reusable modules declare at least the minimum provider version they work with and let the root module manage maximum provider constraints. Updated the text to say "declare" version constraints, changed the reusable-module example from `>= 5.0, < 6.0` to `>= 5.0`, and clarified that upper bounds are appropriate for root modules.
+- The naming convention HCL snippet used literal `...` inside resource blocks. Terraform does not use `...` as placeholder syntax in resource bodies, so I replaced those placeholders with HCL comments while preserving the illustrative intent.
+- The pre-commit example pinned `antonbabenko/pre-commit-terraform` to `v1.88.0`. The latest official GitHub release checked during review was `v1.105.0`, so I updated the example pin.
 
 ## Review Notes
-- The remaining Terraform snippets use valid HCL patterns for variable validation, optional object attributes with defaults, outputs, sensitive outputs, locals, and conditional resources.
-- The example module layout is consistent with Terraform's standard module structure guidance. Terraform's docs also recommend a `LICENSE` file for public modules, but omitting that from this guide is not a technical error.
-- The `terraform_docs` pre-commit example uses `--lockfile=false`, which matches terraform-docs' documented boolean flag syntax.
+- The provider version guidance is technically correct for reusable modules: the module declares a minimum compatible AWS provider version and leaves maximum provider constraints to the root module, matching HashiCorp guidance for reusable modules.
+- The local environment does not have the `terraform` CLI installed, so snippets were reviewed against official documentation rather than by running `terraform validate`.

@@ -195,11 +195,18 @@ Be consistent with resource naming inside your module:
 
 ```hcl
 # Use "this" for the primary resource in a module
-resource "aws_instance" "this" { ... }
+resource "aws_instance" "this" {
+  # ... resource arguments
+}
 
 # Use descriptive names for secondary resources
-resource "aws_security_group" "instance" { ... }
-resource "aws_iam_role" "execution" { ... }
+resource "aws_security_group" "instance" {
+  # ... resource arguments
+}
+
+resource "aws_iam_role" "execution" {
+  # ... resource arguments
+}
 ```
 
 The `this` convention signals "this is the main thing this module creates."
@@ -276,7 +283,7 @@ Use pre-commit hooks to enforce formatting and documentation:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.88.0
+    rev: v1.105.0
     hooks:
       - id: terraform_fmt
       - id: terraform_validate
