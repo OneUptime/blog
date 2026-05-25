@@ -374,7 +374,7 @@ resource "aws_cloudwatch_event_rule" "backup_events" {
 
   event_pattern = jsonencode({
     source      = ["aws.rds"]
-    detail_type = ["RDS DB Snapshot Event"]
+    "detail-type" = ["RDS DB Snapshot Event"]
     detail = {
       EventID = ["RDS-EVENT-0091"]  # Automated snapshot created
     }
@@ -389,6 +389,23 @@ resource "aws_cloudwatch_event_target" "backup_notification" {
 
 resource "aws_sns_topic" "backup_notifications" {
   name = "backup-notifications"
+}
+
+data "aws_iam_policy_document" "backup_notifications" {
+  statement {
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.backup_notifications.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "backup_notifications" {
+  arn    = aws_sns_topic.backup_notifications.arn
+  policy = data.aws_iam_policy_document.backup_notifications.json
 }
 ```
 
