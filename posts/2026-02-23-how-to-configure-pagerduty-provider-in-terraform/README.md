@@ -19,7 +19,7 @@ You need a PagerDuty account with admin access and an API token.
 1. Go to PagerDuty > Integrations > Developer Tools > API Access Keys
 2. Click "Create New API Key"
 3. Give it a description like "Terraform Automation"
-4. Select "Read/Write" access
+4. Leave "Read-only API Key" unchecked so Terraform can create and update resources
 
 ```bash
 # Set the token as an environment variable
@@ -36,7 +36,7 @@ For account-level operations (like managing users), you need a full access REST 
 terraform {
   required_providers {
     pagerduty = {
-      source  = "PagerDuty/pagerduty"
+      source  = "pagerduty/pagerduty"
       version = "~> 3.0"
     }
   }
@@ -137,7 +137,7 @@ resource "pagerduty_schedule" "platform_primary" {
   teams = [pagerduty_team.platform.id]
 }
 
-# Business hours schedule (overrides the primary)
+# Separate business hours schedule
 resource "pagerduty_schedule" "platform_business_hours" {
   name      = "Platform Business Hours"
   time_zone = "America/New_York"
@@ -219,16 +219,14 @@ resource "pagerduty_service" "api" {
   description       = "Backend API serving customer requests"
   escalation_policy = pagerduty_escalation_policy.platform.id
 
-  # Auto-resolve incidents after 4 hours if not acknowledged
+  # Auto-resolve incidents after 4 hours if left open
   auto_resolve_timeout = 14400
 
-  # Alert creation behavior
-  # "create_alerts_and_incidents" - each alert creates an incident
-  # "create_incidents" - groups alerts into incidents
-  alert_creation = "create_alerts_and_incidents"
-
-  # Acknowledgement timeout - re-trigger if not resolved within 30 min
+  # Acknowledgement timeout - re-trigger if acknowledged but not resolved within 30 min
   acknowledgement_timeout = 1800
+
+  # Required for Events API v2 service integrations
+  alert_creation = "create_alerts_and_incidents"
 
   incident_urgency_rule {
     type    = "constant"
@@ -243,7 +241,6 @@ resource "pagerduty_service" "database" {
 
   auto_resolve_timeout    = 14400
   acknowledgement_timeout = 1800
-  alert_creation          = "create_alerts_and_incidents"
 
   # Time-based urgency - high during business hours, low at night
   incident_urgency_rule {
@@ -267,6 +264,16 @@ resource "pagerduty_service" "database" {
     end_time     = "18:00:00"
     days_of_week = [1, 2, 3, 4, 5]  # Monday through Friday
   }
+
+  scheduled_actions {
+    type       = "urgency_change"
+    to_urgency = "high"
+
+    at {
+      type = "named_time"
+      name = "support_hours_start"
+    }
+  }
 }
 ```
 
@@ -281,7 +288,7 @@ data "pagerduty_vendor" "datadog" {
 }
 
 data "pagerduty_vendor" "cloudwatch" {
-  name = "Amazon CloudWatch"
+  name = "Cloudwatch"
 }
 
 # Datadog integration
@@ -336,7 +343,7 @@ resource "pagerduty_event_orchestration_router" "platform" {
     rule {
       label = "Route API alerts"
       condition {
-        expression = "event.source matches 'api-*'"
+        expression = "event.source matches regex '^api-.*'"
       }
       actions {
         route_to = pagerduty_service.api.id
@@ -346,7 +353,7 @@ resource "pagerduty_event_orchestration_router" "platform" {
     rule {
       label = "Route database alerts"
       condition {
-        expression = "event.source matches 'db-*' or event.source matches 'redis-*'"
+        expression = "event.source matches regex '^db-.*' or event.source matches regex '^redis-.*'"
       }
       actions {
         route_to = pagerduty_service.database.id
@@ -396,7 +403,6 @@ resource "aws_ecs_service" "api" {
 resource "pagerduty_service" "api_ecs" {
   name              = "API Service (ECS)"
   escalation_policy = pagerduty_escalation_policy.platform.id
-  alert_creation    = "create_alerts_and_incidents"
 }
 
 # Create CloudWatch alarm that pages
