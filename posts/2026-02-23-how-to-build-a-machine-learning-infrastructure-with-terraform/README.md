@@ -56,6 +56,12 @@ resource "aws_s3_bucket" "experiments" {
   }
 }
 
+resource "aws_kms_key" "ml" {
+  description             = "KMS key for ${var.project_name} ML data"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
 # Versioning on model artifacts for reproducibility
 resource "aws_s3_bucket_versioning" "model_artifacts" {
   bucket = aws_s3_bucket.model_artifacts.id
@@ -224,6 +230,21 @@ resource "aws_iam_role_policy" "sagemaker_s3" {
           "kms:GenerateDataKey"
         ]
         Resource = aws_kms_key.ml.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:CreateNetworkInterfacePermission",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DeleteNetworkInterfacePermission",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeDhcpOptions",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeSecurityGroups"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -277,6 +298,18 @@ resource "aws_sagemaker_model_package_group" "main" {
 Deploy models for real-time predictions:
 
 ```hcl
+resource "aws_security_group" "sagemaker" {
+  name        = "${var.project_name}-sagemaker"
+  description = "Security group for SageMaker model containers"
+  vpc_id      = var.vpc_id
+}
+
+resource "aws_vpc_security_group_egress_rule" "sagemaker_all" {
+  security_group_id = aws_security_group.sagemaker.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
 # Model configuration
 resource "aws_sagemaker_model" "production" {
   name               = "${var.project_name}-production-model"
