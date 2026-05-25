@@ -38,7 +38,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -83,7 +83,7 @@ resource "azurerm_recovery_services_vault" "dr" {
   sku                 = "Standard"
 
   # Soft delete protects against accidental vault deletion
-  soft_delete_enabled = true
+  # and is enabled by default for new vaults.
 
   tags = {
     environment = "production"
@@ -161,7 +161,7 @@ resource "azurerm_site_recovery_replication_policy" "main" {
 
 The `recovery_point_retention_in_minutes` setting determines how far back in time you can recover. A 24-hour retention means you can pick any recovery point from the last 24 hours during failover.
 
-The `application_consistent_snapshot_frequency_in_minutes` controls how often ASR takes application-consistent snapshots using VSS. These snapshots guarantee that applications are in a consistent state, which is critical for databases.
+The `application_consistent_snapshot_frequency_in_minutes` controls how often ASR takes application-consistent snapshots. For Windows VMs, ASR uses VSS; for Linux VMs, application consistency requires custom scripts. These snapshots help ensure that applications are in a consistent state, which is critical for databases.
 
 ## Mapping Containers
 
@@ -200,6 +200,9 @@ resource "azurerm_subnet" "secondary" {
   virtual_network_name = azurerm_virtual_network.secondary.name
   address_prefixes     = ["10.1.1.0/24"]
 }
+
+# This assumes your primary workload VNet is already managed as
+# azurerm_virtual_network.primary.
 
 # Network mapping tells ASR which target network to use
 resource "azurerm_site_recovery_network_mapping" "main" {
@@ -242,7 +245,7 @@ resource "azurerm_site_recovery_replicated_vm" "web_server" {
 
   # Map each managed disk for replication
   managed_disk {
-    disk_id                    = azurerm_linux_virtual_machine.web.os_disk[0].managed_disk_id
+    disk_id                    = azurerm_linux_virtual_machine.web.os_disk[0].id
     staging_storage_account_id = azurerm_storage_account.cache.id
     target_resource_group_id   = azurerm_resource_group.secondary.id
     target_disk_type           = "Premium_LRS"
@@ -271,9 +274,9 @@ If you have multiple VMs to replicate, use `for_each` to avoid code duplication:
 variable "vms_to_replicate" {
   description = "Map of VMs to replicate with their properties"
   type = map(object({
-    vm_id              = string
+    vm_id                = string
     network_interface_id = string
-    os_disk_id         = string
+    os_disk_id           = string
   }))
 }
 
@@ -304,6 +307,11 @@ resource "azurerm_site_recovery_replicated_vm" "all" {
     source_network_interface_id = each.value.network_interface_id
     target_subnet_name          = azurerm_subnet.secondary.name
   }
+
+  depends_on = [
+    azurerm_site_recovery_protection_container_mapping.main,
+    azurerm_site_recovery_network_mapping.main,
+  ]
 }
 ```
 
