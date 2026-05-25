@@ -85,35 +85,26 @@ resource "cloudflare_access_application" "staging" {
 
 ```hcl
 # access-policies.tf - Define who can access each application
-# Admin panel: only specific email domain
-resource "cloudflare_access_policy" "admin_email_domain" {
+# Admin panel: require company email domain and admin group membership
+resource "cloudflare_access_policy" "admin_access" {
   application_id = cloudflare_access_application.admin_panel.id
   zone_id        = var.zone_id
-  name           = "Allow company emails"
+  name           = "Allow company administrators"
   precedence     = 1
   decision       = "allow"
 
   include {
     email_domain = [var.company_domain]
   }
+
+  require {
+    group = [cloudflare_access_group.admins.id]
+  }
 }
 
 variable "company_domain" {
   type    = string
   default = "example.com"
-}
-
-# Admin panel: require specific group membership
-resource "cloudflare_access_policy" "admin_group" {
-  application_id = cloudflare_access_application.admin_panel.id
-  zone_id        = var.zone_id
-  name           = "Require admin group"
-  precedence     = 2
-  decision       = "allow"
-
-  include {
-    group = [cloudflare_access_group.admins.id]
-  }
 }
 
 # Grafana: allow engineering team
@@ -165,11 +156,7 @@ resource "cloudflare_access_group" "engineering" {
   name       = "Engineering Team"
 
   include {
-    email_domain = [var.company_domain]
-  }
-
-  require {
-    group = [var.idp_engineering_group_id]
+    email = var.engineering_emails
   }
 }
 
@@ -192,9 +179,9 @@ variable "oncall_emails" {
   default = ["oncall1@example.com", "oncall2@example.com"]
 }
 
-variable "idp_engineering_group_id" {
-  type    = string
-  default = "group-id-placeholder"
+variable "engineering_emails" {
+  type    = list(string)
+  default = ["engineer1@example.com", "engineer2@example.com"]
 }
 ```
 
@@ -219,8 +206,13 @@ resource "cloudflare_access_policy" "api_service_token" {
   }
 }
 
-output "service_token_id" {
+output "service_token_client_id" {
   value     = cloudflare_access_service_token.ci_cd.client_id
+  sensitive = true
+}
+
+output "service_token_client_secret" {
+  value     = cloudflare_access_service_token.ci_cd.client_secret
   sensitive = true
 }
 ```
@@ -232,8 +224,8 @@ output "service_token_id" {
 resource "cloudflare_access_policy" "office_ip" {
   application_id = cloudflare_access_application.admin_panel.id
   zone_id        = var.zone_id
-  name           = "Office IP requirement"
-  precedence     = 3
+  name           = "Allow office IPs"
+  precedence     = 2
   decision       = "allow"
 
   include {
