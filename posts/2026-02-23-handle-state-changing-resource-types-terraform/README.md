@@ -14,7 +14,7 @@ Unlike renaming resources, changing resource types is not a simple state operati
 
 ## Why You Can't Just State Move
 
-The `terraform state mv` command and `moved` blocks work for renaming resources of the same type. But when the type changes, the state data has a completely different structure:
+The `terraform state mv` command works for renaming resources of the same type. `moved` blocks also work for same-type refactors, and can only handle a cross-type move when the provider explicitly supports that specific state migration. But in most type changes, the state data has a completely different structure:
 
 ```json
 // aws_instance state data
@@ -65,10 +65,6 @@ resource "aws_launch_template" "web" {
   name_prefix   = "web-"
   image_id      = "ami-0123456789abcdef0"
   instance_type = "t3.medium"
-
-  network_interfaces {
-    subnet_id = aws_subnet.public.id
-  }
 
   tag_specifications {
     resource_type = "instance"
@@ -141,17 +137,18 @@ terraform import aws_rds_cluster_instance.main my-cluster-instance-id
 When the underlying infrastructure stays the same but the Terraform resource type changes (common with provider upgrades or resource splits):
 
 ```bash
-# Example: aws_security_group with inline rules -> separate aws_security_group_rule resources
+# Example: aws_security_group with inline rules -> separate security group rule resources
 
-# Step 1: Remove the old resource from state
-terraform state rm aws_security_group.web
+# Step 1: Remove inline ingress/egress blocks from aws_security_group.web
+# Keep the aws_security_group.web resource itself in state
 
-# Step 2: Import it under the new structure
-terraform import aws_security_group.web sg-0abc123
+# Step 2: Find the existing security group rule IDs
+aws ec2 describe-security-group-rules \
+  --filters Name=group-id,Values=sg-0abc123
 
 # Step 3: Import the individual rules
-terraform import aws_security_group_rule.http "sg-0abc123_ingress_tcp_80_80_0.0.0.0/0"
-terraform import aws_security_group_rule.https "sg-0abc123_ingress_tcp_443_443_0.0.0.0/0"
+terraform import aws_vpc_security_group_ingress_rule.http sgr-0123456789abcdef0
+terraform import aws_vpc_security_group_ingress_rule.https sgr-0fedcba9876543210
 ```
 
 ## Real-World Example: EC2 Instance to Launch Template
@@ -272,19 +269,27 @@ aws rds create-db-snapshot \
   --db-snapshot-identifier pre-aurora-migration
 
 # Step 2: Create the Aurora cluster from the snapshot (outside Terraform)
+# For a DB snapshot, use the snapshot ARN when restoring an Aurora cluster.
 aws rds restore-db-cluster-from-snapshot \
   --db-cluster-identifier my-aurora-cluster \
-  --snapshot-identifier pre-aurora-migration \
+  --snapshot-identifier arn:aws:rds:us-east-1:123456789012:snapshot:pre-aurora-migration \
   --engine aurora-mysql
 
-# Step 3: Remove the old resource from Terraform state
+# Step 3: Create an Aurora DB instance in the restored cluster
+aws rds create-db-instance \
+  --db-instance-identifier my-aurora-cluster-instance \
+  --db-cluster-identifier my-aurora-cluster \
+  --db-instance-class db.r6g.large \
+  --engine aurora-mysql
+
+# Step 4: Remove the old resource from Terraform state
 terraform state rm aws_db_instance.main
 
-# Step 4: Import the new Aurora cluster into Terraform
+# Step 5: Import the new Aurora cluster into Terraform
 terraform import aws_rds_cluster.main my-aurora-cluster
 terraform import aws_rds_cluster_instance.main my-aurora-cluster-instance
 
-# Step 5: Update your configuration to use aws_rds_cluster instead of aws_db_instance
+# Step 6: Update your configuration to use aws_rds_cluster instead of aws_db_instance
 # Then run terraform plan to verify alignment
 terraform plan
 ```
@@ -350,7 +355,6 @@ variable "active_color" {
 
 # Blue (old) resources
 resource "aws_instance" "blue" {
-  count         = var.active_color == "blue" ? 1 : 0
   ami           = "ami-0123456789abcdef0"
   instance_type = "t3.medium"
   subnet_id     = aws_subnet.private.id
@@ -358,7 +362,6 @@ resource "aws_instance" "blue" {
 
 # Green (new) resources
 resource "aws_autoscaling_group" "green" {
-  count            = var.active_color == "green" ? 1 : 0
   desired_capacity = 1
   max_size         = 3
   min_size         = 1
@@ -369,16 +372,14 @@ resource "aws_autoscaling_group" "green" {
   }
 
   vpc_zone_identifier = [aws_subnet.private.id]
+  target_group_arns   = var.active_color == "green" ? [aws_lb_target_group.app.arn] : []
 }
 
-# Point traffic at the active color
-resource "aws_lb_target_group_attachment" "active" {
+# Point traffic at blue while it is active. The ASG attaches green instances when active_color is "green".
+resource "aws_lb_target_group_attachment" "blue" {
+  count            = var.active_color == "blue" ? 1 : 0
   target_group_arn = aws_lb_target_group.app.arn
-  target_id = (
-    var.active_color == "blue"
-    ? aws_instance.blue[0].id
-    : aws_autoscaling_group.green[0].id
-  )
+  target_id        = aws_instance.blue.id
 }
 ```
 
