@@ -10,7 +10,7 @@ Description: Learn how to create Azure Virtual Machine Scale Sets with Terraform
 
 Azure Virtual Machine Scale Sets (VMSS) let you deploy and manage a group of identical VMs that automatically scale based on demand. Instead of manually adding or removing VMs as traffic changes, the scale set handles it for you. Combined with a load balancer, VMSS provides a resilient, elastic compute tier for your applications.
 
-Terraform is particularly well suited for managing scale sets because the configuration captures everything - the VM template, scaling rules, upgrade policy, and networking - in one place. This guide covers creating Linux and Windows scale sets, configuring autoscale rules, and setting up rolling upgrades.
+Terraform is particularly well suited for managing scale sets because the configuration captures everything - the VM template, scaling rules, upgrade policy, and networking - in one place. This guide covers creating a Linux scale set, configuring autoscale rules, and setting up rolling upgrades.
 
 ## Prerequisites
 
@@ -115,7 +115,7 @@ resource "azurerm_lb_probe" "http" {
   name            = "http-probe"
   protocol        = "Http"
   port            = 80
-  request_path    = "/health"
+  request_path    = "/"
 }
 
 # Load balancing rule
@@ -395,7 +395,7 @@ resource "azurerm_monitor_autoscale_setting" "app" {
       }
     }
 
-    # Recurrence schedule - weekdays 8 AM to 6 PM EST
+    # Recurrence schedule - weekdays at 8 AM EST
     recurrence {
       timezone = "Eastern Standard Time"
       days     = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
