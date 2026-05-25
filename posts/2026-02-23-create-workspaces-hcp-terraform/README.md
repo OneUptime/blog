@@ -10,7 +10,7 @@ Description: Learn how to create and configure workspaces in HCP Terraform using
 
 Workspaces in HCP Terraform are the fundamental unit of organization. Each workspace has its own Terraform state, variables, access controls, and run history. Think of them as isolated environments for managing a specific set of infrastructure. Getting your workspace strategy right is essential because it determines how your team collaborates, how changes are isolated, and how fast your plans run.
 
-This guide covers creating workspaces through every available method and configuring them for real-world use.
+This guide covers creating workspaces through the most common methods and configuring them for real-world use.
 
 ## Creating a Workspace via the UI
 
@@ -64,16 +64,11 @@ Then initialize:
 ```bash
 terraform init
 
-# If the workspace does not exist, Terraform prompts you:
-# Workspace "staging-networking" doesn't exist.
-#
-# No workspaces are tagged with "staging-networking" in the "acme-infrastructure"
-# organization.
-#
-# Would you like to create it? (y/n)
+# If the workspace does not exist, Terraform creates it and reports that
+# the new workspace was created during initialization.
 ```
 
-Type `y` and the workspace is created automatically.
+The workspace is created automatically.
 
 ## Creating Workspaces via the API
 
@@ -110,6 +105,10 @@ provider "tfe" {
   # Uses TFE_TOKEN environment variable
 }
 
+variable "organization" {
+  type = string
+}
+
 # Define workspaces in a map for easy management
 variable "workspaces" {
   type = map(object({
@@ -125,6 +124,13 @@ variable "workspaces" {
     }))
     tag_names = optional(list(string), [])
   }))
+}
+
+resource "tfe_project" "projects" {
+  for_each = toset(distinct([for workspace in var.workspaces : workspace.project]))
+
+  name         = each.key
+  organization = var.organization
 }
 
 resource "tfe_workspace" "workspaces" {
@@ -198,8 +204,12 @@ Every workspace has settings that control its behavior. Here are the important o
 
 ```hcl
 resource "tfe_workspace" "example" {
-  # ...
+  name         = "my-workspace"
+  organization = var.organization
+}
 
+resource "tfe_workspace_settings" "example" {
+  workspace_id = tfe_workspace.example.id
   # Remote: Plans and applies run on HCP Terraform
   execution_mode = "remote"
 
@@ -217,15 +227,17 @@ resource "tfe_workspace" "example" {
 
 ```hcl
 resource "tfe_workspace" "staging" {
-  name       = "staging-app"
-  auto_apply = true
+  name         = "staging-app"
+  organization = var.organization
+  auto_apply   = true
   # Applies automatically after a successful plan
   # Good for dev/staging, risky for production
 }
 
 resource "tfe_workspace" "production" {
-  name       = "production-app"
-  auto_apply = false
+  name         = "production-app"
+  organization = var.organization
+  auto_apply   = false
   # Requires manual confirmation to apply
   # Always use this for production
 }
@@ -236,6 +248,7 @@ resource "tfe_workspace" "production" {
 ```hcl
 resource "tfe_workspace" "example" {
   name              = "my-workspace"
+  organization      = var.organization
   terraform_version = "1.7.0"
   # Pin to a specific version to avoid surprises
   # You can also use "~> 1.7.0" for latest patch
@@ -249,12 +262,14 @@ For monorepos where multiple workspaces share a repository:
 ```hcl
 resource "tfe_workspace" "prod_networking" {
   name              = "production-networking"
+  organization      = var.organization
   working_directory = "environments/production/networking"
   # Terraform only runs within this subdirectory
 }
 
 resource "tfe_workspace" "prod_compute" {
   name              = "production-compute"
+  organization      = var.organization
   working_directory = "environments/production/compute"
 }
 ```
@@ -265,7 +280,8 @@ Control which file changes trigger a run:
 
 ```hcl
 resource "tfe_workspace" "example" {
-  name = "my-workspace"
+  name         = "my-workspace"
+  organization = var.organization
 
   # Only trigger when files in these paths change
   trigger_patterns = [
@@ -274,7 +290,7 @@ resource "tfe_workspace" "example" {
   ]
 
   # Or use prefix-based triggers
-  # trigger_prefixes = ["/environments/production/networking"]
+  # trigger_prefixes = ["environments/production/networking"]
 }
 ```
 
@@ -322,8 +338,9 @@ Tags help you filter and find workspaces:
 
 ```hcl
 resource "tfe_workspace" "example" {
-  name      = "production-networking"
-  tag_names = ["production", "networking", "aws", "us-east-1"]
+  name         = "production-networking"
+  organization = var.organization
+  tag_names    = ["production", "networking", "aws", "us-east-1"]
 }
 ```
 
