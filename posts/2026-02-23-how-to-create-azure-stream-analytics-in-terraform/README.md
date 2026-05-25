@@ -73,14 +73,14 @@ resource "azurerm_stream_analytics_job" "main" {
   events_out_of_order_policy               = "Adjust"
   output_error_policy                      = "Drop"
 
-  # Streaming units (1, 3, 6, 12, 18, 24, 30, 36, 42, 48)
-  # Each SU provides roughly 1 MB/s of throughput
+  # Streaming units (1, 3, 6, then multiples of 6 up to 120)
+  # SUs allocate compute and memory; throughput depends on query complexity and input/output configuration.
   streaming_units = 6
 
   # Transformation query
   transformation_query = <<QUERY
     SELECT
-        IoTHub.ConnectionDeviceId AS DeviceId,
+        DeviceId,
         AVG(temperature) AS AvgTemperature,
         MAX(temperature) AS MaxTemperature,
         MIN(temperature) AS MinTemperature,
@@ -90,7 +90,7 @@ resource "azurerm_stream_analytics_job" "main" {
     FROM [eventhub-input]
     TIMESTAMP BY EventEnqueuedUtcTime
     GROUP BY
-        IoTHub.ConnectionDeviceId,
+        DeviceId,
         TumblingWindow(minute, 5)
   QUERY
 
@@ -279,6 +279,10 @@ resource "azurerm_stream_analytics_output_blob" "archive" {
   date_format  = "yyyy-MM-dd"
   time_format  = "HH"
 
+  # Required when writing Parquet output
+  batch_max_wait_time = "00:02:00"
+  batch_min_rows      = 100
+
   serialization {
     type     = "Parquet"
   }
@@ -357,7 +361,7 @@ resource "azurerm_stream_analytics_job" "advanced" {
     JOIN [device-lookup] d ON t.DeviceId = d.DeviceId
     GROUP BY
         t.DeviceId, d.DeviceName, d.Location,
-        TumblingWindow(minute, 5)
+        TumblingWindow(minute, 5);
 
     -- Detect temperature spikes and send alerts
     SELECT
