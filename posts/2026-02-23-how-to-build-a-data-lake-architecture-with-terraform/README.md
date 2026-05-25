@@ -90,6 +90,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw" {
     id     = "archive-old-data"
     status = "Enabled"
 
+    filter {}
+
     transition {
       days          = 90
       storage_class = "GLACIER"
@@ -113,6 +115,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "curated" {
   rule {
     id     = "intelligent-tiering"
     status = "Enabled"
+
+    filter {}
 
     transition {
       days          = 30
@@ -222,6 +226,7 @@ resource "aws_glue_job" "raw_to_processed" {
   role_arn = aws_iam_role.glue.arn
 
   command {
+    name            = "glueetl"
     script_location = "s3://${aws_s3_bucket.scripts.id}/etl/raw_to_processed.py"
     python_version  = "3"
   }
@@ -295,7 +300,7 @@ resource "aws_kinesis_firehose_delivery_stream" "events" {
 
     # Partition by date automatically
     prefix              = "events/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
-    error_output_prefix = "errors/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
+    error_output_prefix = "errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
 
     buffering_size     = 128 # MB
     buffering_interval = 300 # seconds
