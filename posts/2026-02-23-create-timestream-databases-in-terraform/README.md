@@ -27,7 +27,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 5.85, < 7.0"
     }
   }
 }
@@ -184,7 +184,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "timestream_reject
 
 ## Table with Schema Definition
 
-You can define the schema for your table to enable strict type checking.
+You can define customer-defined partition keys for your table to improve data organization and query performance.
 
 ```hcl
 # Table with explicit schema definition
@@ -197,7 +197,7 @@ resource "aws_timestreamwrite_table" "events" {
     magnetic_store_retention_period_in_days = 180
   }
 
-  # Define the schema for measure values
+  # Define a customer-defined partition key
   schema {
     composite_partition_key {
       enforcement_in_record = "REQUIRED"
@@ -261,6 +261,7 @@ resource "aws_iam_role_policy" "timestream_scheduled_query" {
         Effect = "Allow"
         Action = [
           "timestream:Select",
+          "timestream:SelectValues",
           "timestream:WriteRecords",
           "timestream:DescribeEndpoints",
         ]
@@ -272,6 +273,13 @@ resource "aws_iam_role_policy" "timestream_scheduled_query" {
           "s3:PutObject",
         ]
         Resource = "${aws_s3_bucket.timestream_errors.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetBucketAcl",
+        ]
+        Resource = aws_s3_bucket.timestream_errors.arn
       },
       {
         Effect = "Allow"
@@ -326,10 +334,9 @@ resource "aws_timestreamquery_scheduled_query" "hourly_avg" {
       database_name = aws_timestreamwrite_database.metrics.database_name
       table_name    = aws_timestreamwrite_table.hourly_aggregates.table_name
 
-      time_column      = "binned_time"
-      measure_name_column = "measure_name"
+      time_column = "binned_time"
 
-      dimension_mappings {
+      dimension_mapping {
         name                = "hostname"
         dimension_value_type = "VARCHAR"
       }
@@ -337,17 +344,17 @@ resource "aws_timestreamquery_scheduled_query" "hourly_avg" {
       multi_measure_mappings {
         target_multi_measure_name = "performance_stats"
 
-        multi_measure_attribute_mappings {
+        multi_measure_attribute_mapping {
           measure_value_type = "DOUBLE"
           source_column      = "avg_cpu"
         }
 
-        multi_measure_attribute_mappings {
+        multi_measure_attribute_mapping {
           measure_value_type = "DOUBLE"
           source_column      = "max_cpu"
         }
 
-        multi_measure_attribute_mappings {
+        multi_measure_attribute_mapping {
           measure_value_type = "DOUBLE"
           source_column      = "min_cpu"
         }
@@ -355,7 +362,7 @@ resource "aws_timestreamquery_scheduled_query" "hourly_avg" {
     }
   }
 
-  scheduled_query_execution_role_arn = aws_iam_role.timestream_scheduled_query.arn
+  execution_role_arn = aws_iam_role.timestream_scheduled_query.arn
 
   error_report_configuration {
     s3_configuration {
@@ -389,12 +396,19 @@ resource "aws_iam_policy" "timestream_write" {
         Effect = "Allow"
         Action = [
           "timestream:WriteRecords",
-          "timestream:DescribeEndpoints",
         ]
         Resource = [
           aws_timestreamwrite_table.app_performance.arn,
           aws_timestreamwrite_table.infra_metrics.arn,
         ]
+      },
+      {
+        Sid    = "DescribeEndpoints"
+        Effect = "Allow"
+        Action = [
+          "timestream:DescribeEndpoints",
+        ]
+        Resource = "*"
       },
       {
         Sid    = "DescribeDatabase"
