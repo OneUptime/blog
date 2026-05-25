@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Container, Logging, ECS, Kubernetes, CloudWatch
 
-Description: Learn how to create container logging configurations in Terraform for centralized log collection, including CloudWatch, Fluentd, and structured logging across platforms.
+Description: Learn how to create container logging configurations in Terraform for centralized log collection, including CloudWatch, Fluent Bit, and structured logging across platforms.
 
 ---
 
-Effective logging is critical for debugging, monitoring, and auditing containerized applications. Without proper logging configuration, container logs are ephemeral and lost when containers stop. Terraform allows you to define logging configurations as code, ensuring every container in every environment has consistent log collection, retention, and routing. This guide covers container logging setup across AWS ECS, Kubernetes, and Azure Container Apps.
+Effective logging is critical for debugging, monitoring, and auditing containerized applications. Without proper logging configuration, container logs are ephemeral and lost when containers stop. Terraform allows you to define logging configurations as code, ensuring every container in every environment has consistent log collection, retention, and routing. This guide covers container logging setup across AWS ECS and Kubernetes.
 
 In this guide, we will explore how to configure logging drivers, set up log aggregation, manage retention policies, and implement structured logging patterns with Terraform.
 
@@ -97,8 +97,6 @@ resource "aws_ecs_task_definition" "app" {
           "awslogs-multiline-pattern" = "^\\d{4}-\\d{2}-\\d{2}"
           # Create log group automatically if it does not exist
           "awslogs-create-group" = "true"
-          # Set datetime format for log timestamps
-          "awslogs-datetime-format" = "%Y-%m-%d %H:%M:%S"
         }
       }
 
@@ -204,11 +202,18 @@ resource "aws_cloudwatch_log_group" "firelens" {
 ### Fluent Bit DaemonSet for Log Collection
 
 ```hcl
+# Namespace for logging resources
+resource "kubernetes_namespace" "logging" {
+  metadata {
+    name = "logging"
+  }
+}
+
 # Fluent Bit DaemonSet for cluster-wide log collection
-resource "kubernetes_daemon_set" "fluent_bit" {
+resource "kubernetes_daemon_set_v1" "fluent_bit" {
   metadata {
     name      = "fluent-bit"
-    namespace = "logging"
+    namespace = kubernetes_namespace.logging.metadata[0].name
     labels = {
       app = "fluent-bit"
     }
@@ -253,13 +258,6 @@ resource "kubernetes_daemon_set" "fluent_bit" {
             read_only  = true
           }
 
-          # Mount container runtime log directory
-          volume_mount {
-            name       = "containers"
-            mount_path = "/var/lib/docker/containers"
-            read_only  = true
-          }
-
           # Mount Fluent Bit configuration
           volume_mount {
             name       = "config"
@@ -272,13 +270,6 @@ resource "kubernetes_daemon_set" "fluent_bit" {
           name = "varlog"
           host_path {
             path = "/var/log"
-          }
-        }
-
-        volume {
-          name = "containers"
-          host_path {
-            path = "/var/lib/docker/containers"
           }
         }
 
@@ -302,7 +293,7 @@ resource "kubernetes_daemon_set" "fluent_bit" {
 resource "kubernetes_config_map" "fluent_bit_config" {
   metadata {
     name      = "fluent-bit-config"
-    namespace = "logging"
+    namespace = kubernetes_namespace.logging.metadata[0].name
   }
 
   data = {
@@ -317,7 +308,7 @@ resource "kubernetes_config_map" "fluent_bit_config" {
           Name              tail
           Tag               kube.*
           Path              /var/log/containers/*.log
-          Parser            docker
+          Parser            cri
           DB                /var/log/flb_kube.db
           Mem_Buf_Limit     5MB
           Skip_Long_Lines   On
@@ -344,10 +335,11 @@ resource "kubernetes_config_map" "fluent_bit_config" {
 
     "parsers.conf" = <<-EOF
       [PARSER]
-          Name        docker
-          Format      json
+          Name        cri
+          Format      regex
+          Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
           Time_Key    time
-          Time_Format %Y-%m-%dT%H:%M:%S.%L
+          Time_Format %Y-%m-%dT%H:%M:%S.%L%z
           Time_Keep   On
     EOF
   }
@@ -357,7 +349,7 @@ resource "kubernetes_config_map" "fluent_bit_config" {
 resource "kubernetes_service_account" "fluent_bit" {
   metadata {
     name      = "fluent-bit"
-    namespace = "logging"
+    namespace = kubernetes_namespace.logging.metadata[0].name
   }
 }
 
@@ -388,7 +380,7 @@ resource "kubernetes_cluster_role_binding" "fluent_bit" {
   subject {
     kind      = "ServiceAccount"
     name      = kubernetes_service_account.fluent_bit.metadata[0].name
-    namespace = "logging"
+    namespace = kubernetes_namespace.logging.metadata[0].name
   }
 }
 ```
