@@ -37,7 +37,7 @@ terraform {
   required_providers {
     okta = {
       source  = "okta/okta"
-      version = "~> 4.8"
+      version = "~> 6.10.0"
     }
   }
 }
@@ -144,7 +144,7 @@ resource "okta_user" "developer" {
   department = "Engineering"
   title      = "Senior Developer"
 
-  # Custom profile attributes
+  # Custom profile attributes must already exist in the Okta user profile schema
   custom_profile_attributes = jsonencode({
     team       = "Platform"
     start_date = "2025-01-15"
@@ -152,7 +152,7 @@ resource "okta_user" "developer" {
 }
 
 # Add user to groups
-resource "okta_group_memberships" "developer_groups" {
+resource "okta_user_group_memberships" "developer_groups" {
   user_id = okta_user.developer.id
   groups = [
     okta_group.engineering.id,
@@ -234,10 +234,6 @@ resource "okta_app_oauth" "web_app" {
   ]
 
   token_endpoint_auth_method = "client_secret_post"
-
-  lifecycle {
-    ignore_changes = [groups]
-  }
 }
 
 # Output the client credentials
@@ -373,7 +369,7 @@ resource "okta_policy_rule_signon" "mfa_rule" {
   access             = "ALLOW"
   mfa_required       = true
   mfa_remember_device = true
-  mfa_lifetime       = 720  # 30 days
+  mfa_lifetime       = 720  # 12 hours
 
   factor_sequence {
     primary_criteria_factor_type = "token:software:totp"
