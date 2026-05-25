@@ -43,9 +43,9 @@ az vm identity assign \
   --resource-group my-terraform-rg \
   --name my-terraform-vm
 
-# The output includes the principal ID - save this
+# The output includes the principalId - save this
 # {
-#   "systemAssignedIdentity": "abcdef12-3456-7890-abcd-ef1234567890"
+#   "principalId": "abcdef12-3456-7890-abcd-ef1234567890"
 # }
 ```
 
@@ -222,8 +222,16 @@ metadata:
   namespace: terraform
   annotations:
     azure.workload.identity/client-id: "CLIENT_ID_HERE"
-  labels:
-    azure.workload.identity/use: "true"
+```
+
+Add the workload identity label to the pod template that runs Terraform:
+
+```yaml
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
 ```
 
 ### Step 4 - Configure the Provider
@@ -232,10 +240,10 @@ metadata:
 provider "azurerm" {
   features {}
 
-  use_oidc        = true
-  client_id       = "CLIENT_ID_HERE"
-  subscription_id = "your-subscription-id"
-  tenant_id       = "your-tenant-id"
+  use_aks_workload_identity = true
+  use_cli                   = false
+  client_id                 = "CLIENT_ID_HERE"
+  subscription_id           = "your-subscription-id"
 }
 ```
 
@@ -252,7 +260,9 @@ terraform {
     key                  = "prod/terraform.tfstate"
 
     # Use managed identity for state storage access
-    use_msi = true
+    use_msi          = true
+    use_azuread_auth = true
+    tenant_id        = "your-tenant-id"
   }
 
   required_providers {
