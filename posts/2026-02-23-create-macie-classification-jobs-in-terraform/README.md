@@ -64,6 +64,13 @@ resource "aws_macie2_organization_admin_account" "security" {
   depends_on = [aws_macie2_account.main]
 }
 
+# Auto-enable Macie for accounts that are added to the organization
+resource "aws_macie2_organization_configuration" "main" {
+  auto_enable = true
+
+  depends_on = [aws_macie2_account.main]
+}
+
 # Associate member accounts (run in delegated admin account)
 resource "aws_macie2_member" "workload_accounts" {
   for_each = toset(var.member_account_ids)
@@ -137,7 +144,7 @@ resource "aws_macie2_classification_job" "weekly_scan" {
       ]
     }
 
-    # Only scan objects uploaded since the last scan
+    # Focus the scan on relevant object key prefixes
     scoping {
       includes {
         and {
@@ -162,8 +169,8 @@ resource "aws_macie2_classification_job" "weekly_scan" {
     }
   }
 
-  # Run every Monday at 2 AM UTC
-  schedule_frequency_details {
+  # Run every Monday
+  schedule_frequency {
     weekly_schedule = "MONDAY"
   }
 
@@ -238,7 +245,7 @@ resource "aws_macie2_classification_job" "tagged_buckets" {
     }
   }
 
-  schedule_frequency_details {
+  schedule_frequency {
     weekly_schedule = "SUNDAY"
   }
 
@@ -259,7 +266,7 @@ resource "aws_macie2_custom_data_identifier" "employee_id" {
   description = "Matches internal employee ID format EMP-XXXXXXXX"
   regex       = "EMP-[A-Z0-9]{8}"
 
-  # Keywords that must appear near the match for higher confidence
+  # Keywords that must appear near the regex match
   keywords = ["employee", "emp_id", "employee_id", "staff"]
 
   # Maximum distance between keyword and match
@@ -388,7 +395,12 @@ resource "aws_macie2_findings_filter" "test_data" {
 
   finding_criteria {
     criterion {
-      field  = "resourcesAffected.s3Bucket.tags.Environment"
+      field  = "resourcesAffected.s3Bucket.tags.key"
+      eq     = ["Environment"]
+    }
+
+    criterion {
+      field  = "resourcesAffected.s3Bucket.tags.value"
       eq     = ["test"]
     }
   }
@@ -405,14 +417,14 @@ Route Macie findings to your security workflows.
 # EventBridge rule for high-severity Macie findings
 resource "aws_cloudwatch_event_rule" "macie_high" {
   name        = "macie-high-severity-findings"
-  description = "Capture high and critical Macie findings"
+  description = "Capture high-severity Macie findings"
 
   event_pattern = jsonencode({
     source      = ["aws.macie"]
     detail-type = ["Macie Finding"]
     detail = {
       severity = {
-        description = ["High", "Critical"]
+        description = ["High"]
       }
     }
   })
@@ -449,19 +461,19 @@ resource "aws_sns_topic_policy" "macie_eventbridge" {
 }
 ```
 
-## Findings Export to S3
+## Discovery Results Export to S3
 
-Configure Macie to export its findings to S3 for long-term analysis.
+Configure Macie to export its sensitive data discovery results to S3 for long-term analysis.
 
 ```hcl
-# S3 bucket for Macie findings export
+# S3 bucket for Macie discovery results export
 resource "aws_s3_bucket" "macie_export" {
-  bucket = "my-org-macie-findings-export"
+  bucket = "my-org-macie-discovery-results"
 }
 
-# KMS key for encrypting exported findings
+# KMS key for encrypting exported discovery results
 resource "aws_kms_key" "macie_export" {
-  description             = "KMS key for Macie findings export"
+  description             = "KMS key for Macie discovery results export"
   deletion_window_in_days = 7
   enable_key_rotation     = true
 
@@ -488,6 +500,67 @@ resource "aws_kms_key" "macie_export" {
           "kms:Encrypt",
         ]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = [
+              "arn:aws:macie2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:export-configuration:*",
+              "arn:aws:macie2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:classification-job/*",
+            ]
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_s3_bucket_policy" "macie_export" {
+  bucket = aws_s3_bucket.macie_export.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowMacieGetBucketLocation"
+        Effect = "Allow"
+        Principal = {
+          Service = "macie.amazonaws.com"
+        }
+        Action   = "s3:GetBucketLocation"
+        Resource = aws_s3_bucket.macie_export.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = [
+              "arn:aws:macie2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:export-configuration:*",
+              "arn:aws:macie2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:classification-job/*",
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "AllowMaciePutObject"
+        Effect = "Allow"
+        Principal = {
+          Service = "macie.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.macie_export.arn}/macie-results/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = [
+              "arn:aws:macie2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:export-configuration:*",
+              "arn:aws:macie2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:classification-job/*",
+            ]
+          }
+        }
       }
     ]
   })
@@ -497,12 +570,17 @@ resource "aws_kms_key" "macie_export" {
 resource "aws_macie2_classification_export_configuration" "main" {
   s3_destination {
     bucket_name = aws_s3_bucket.macie_export.id
-    key_prefix  = "macie-findings/"
+    key_prefix  = "macie-results/"
     kms_key_arn = aws_kms_key.macie_export.arn
   }
 
-  depends_on = [aws_macie2_account.main]
+  depends_on = [
+    aws_macie2_account.main,
+    aws_s3_bucket_policy.macie_export,
+  ]
 }
+
+data "aws_region" "current" {}
 ```
 
 ## Best Practices
@@ -515,9 +593,9 @@ resource "aws_macie2_classification_export_configuration" "main" {
 
 4. **Scope your jobs carefully.** Use includes and excludes to focus scans on relevant prefixes and file types. Scanning thumbnails and static assets wastes money.
 
-5. **Route critical findings to alerts.** PII and credential discoveries should trigger immediate notifications through EventBridge and SNS.
+5. **Route high-severity findings to alerts.** PII and credential discoveries should trigger immediate notifications through EventBridge and SNS.
 
-6. **Export findings for compliance.** Long-term storage of Macie findings helps you demonstrate data protection practices during audits.
+6. **Export discovery results for compliance.** Long-term storage of Macie discovery results helps you demonstrate data protection practices during audits.
 
 ## Conclusion
 
