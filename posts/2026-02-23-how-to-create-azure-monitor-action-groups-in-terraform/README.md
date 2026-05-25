@@ -23,13 +23,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
+}
+
+variable "subscription_id" {
+  type = string
 }
 
 # Create a resource group for monitoring resources
@@ -98,10 +103,10 @@ resource "azurerm_monitor_action_group" "webhooks" {
   short_name          = "webhooks"
   enabled             = true
 
-  # Slack webhook
+  # Team notification webhook
   webhook_receiver {
-    name                    = "slack-alerts"
-    service_uri             = var.slack_webhook_url
+    name                    = "team-alerts"
+    service_uri             = var.team_webhook_url
     use_common_alert_schema = true
   }
 
@@ -120,7 +125,7 @@ resource "azurerm_monitor_action_group" "webhooks" {
   }
 }
 
-variable "slack_webhook_url" {
+variable "team_webhook_url" {
   type      = string
   sensitive = true
 }
@@ -245,7 +250,7 @@ resource "azurerm_monitor_action_group" "critical" {
   }
 }
 
-# Warning alerts - email and Slack only
+# Warning alerts - email and team webhook only
 resource "azurerm_monitor_action_group" "warning" {
   name                = "warning-alerts"
   resource_group_name = azurerm_resource_group.monitoring.name
@@ -259,8 +264,8 @@ resource "azurerm_monitor_action_group" "warning" {
   }
 
   webhook_receiver {
-    name                    = "slack-warnings"
-    service_uri             = var.slack_webhook_url
+    name                    = "team-warnings"
+    service_uri             = var.team_webhook_url
     use_common_alert_schema = true
   }
 }
@@ -334,7 +339,7 @@ resource "azurerm_monitor_action_group" "dynamic" {
 
 ## Best Practices
 
-Always enable the common alert schema so all your action receivers get a consistent payload format regardless of the alert source. Create separate action groups for different severity levels and teams so you can compose them in different combinations. Test your action groups with a test alert before relying on them for production monitoring. Use short names that are easy to identify in the Azure portal. Keep webhook URLs in variables marked as sensitive to avoid exposing them in Terraform state.
+Always enable the common alert schema so all your action receivers get a consistent payload format regardless of the alert source. Create separate action groups for different severity levels and teams so you can compose them in different combinations. Test your action groups with a test alert before relying on them for production monitoring. Use short names that are easy to identify in the Azure portal. Keep webhook URLs in variables marked as sensitive to avoid exposing them in Terraform plan and apply output, and protect your Terraform state because those values can still be stored there.
 
 For using action groups with metric alerts, see our guide on [Azure Monitor metric alerts](https://oneuptime.com/blog/post/2026-02-23-how-to-create-azure-monitor-metric-alerts-in-terraform/view).
 
