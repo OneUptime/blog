@@ -17,7 +17,7 @@ Setting up CUR through Terraform makes your cost reporting configuration reprodu
 - Terraform 1.0 or later
 - AWS credentials with billing, S3, and (optionally) Athena/Glue permissions
 - CUR can only be created in the us-east-1 region
-- Management account or delegated administrator access for consolidated billing
+- Use the AWS Organizations management account for consolidated billing reports; member accounts can create reports only for their own account data
 
 ## Provider Configuration
 
@@ -95,7 +95,7 @@ resource "aws_s3_bucket_policy" "cur" {
         Principal = {
           Service = "billingreports.amazonaws.com"
         }
-        Action   = "s3:GetBucketAcl"
+        Action   = ["s3:GetBucketAcl", "s3:GetBucketPolicy"]
         Resource = aws_s3_bucket.cur.arn
         Condition = {
           StringEquals = {
@@ -194,14 +194,26 @@ resource "aws_cur_report_definition" "main" {
 
 ## Athena Integration for Querying CUR Data
 
-CUR with Athena integration automatically creates a Glue database and table for SQL queries:
+CUR with Athena integration delivers a CloudFormation template in the report path. AWS's template creates the Glue crawler, Glue database, Lambda functions, and S3 notification needed to keep the Athena table updated. The Terraform below creates an Athena results bucket and workgroup you can use after deploying that template:
 
 ```hcl
-# Glue database for CUR data
-resource "aws_glue_catalog_database" "cur" {
-  name = "cur_database"
+variable "cur_athena_database_name" {
+  description = "Glue database created by the CUR Athena CloudFormation template"
+  type        = string
+}
 
-  description = "Database for Cost and Usage Report data"
+variable "cur_athena_table_name" {
+  description = "Glue table created by the CUR Athena CloudFormation template"
+  type        = string
+}
+
+# S3 bucket for Athena query results
+resource "aws_s3_bucket" "athena_results" {
+  bucket = "athena-cur-results-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Purpose = "athena-query-results"
+  }
 }
 
 # Athena workgroup for cost queries
@@ -216,7 +228,7 @@ resource "aws_athena_workgroup" "cur" {
     bytes_scanned_cutoff_per_query = 10737418240  # 10 GB
 
     result_configuration {
-      output_location = "s3://${aws_s3_bucket.cur.id}/athena-results/"
+      output_location = "s3://${aws_s3_bucket.athena_results.id}/query-results/"
 
       encryption_configuration {
         encryption_option = "SSE_S3"
@@ -226,15 +238,6 @@ resource "aws_athena_workgroup" "cur" {
 
   tags = {
     Purpose = "cost-analysis"
-  }
-}
-
-# S3 bucket for Athena query results
-resource "aws_s3_bucket" "athena_results" {
-  bucket = "athena-cur-results-${data.aws_caller_identity.current.account_id}"
-
-  tags = {
-    Purpose = "athena-query-results"
   }
 }
 ```
@@ -248,7 +251,7 @@ Save commonly used queries as named queries in Athena:
 resource "aws_athena_named_query" "top_services" {
   name      = "top-10-services-by-cost"
   workgroup = aws_athena_workgroup.cur.name
-  database  = aws_glue_catalog_database.cur.name
+  database  = var.cur_athena_database_name
 
   description = "Find the top 10 AWS services by cost for the current month"
 
@@ -256,7 +259,7 @@ resource "aws_athena_named_query" "top_services" {
     SELECT
       line_item_product_code AS service,
       SUM(line_item_unblended_cost) AS total_cost
-    FROM cur_database.cur_table
+    FROM ${var.cur_athena_database_name}.${var.cur_athena_table_name}
     WHERE month = CAST(MONTH(CURRENT_DATE) AS VARCHAR)
       AND year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
     GROUP BY line_item_product_code
@@ -269,7 +272,7 @@ resource "aws_athena_named_query" "top_services" {
 resource "aws_athena_named_query" "daily_trend" {
   name      = "daily-cost-trend"
   workgroup = aws_athena_workgroup.cur.name
-  database  = aws_glue_catalog_database.cur.name
+  database  = var.cur_athena_database_name
 
   description = "Show daily cost for the current month"
 
@@ -277,7 +280,7 @@ resource "aws_athena_named_query" "daily_trend" {
     SELECT
       line_item_usage_start_date AS date,
       SUM(line_item_unblended_cost) AS daily_cost
-    FROM cur_database.cur_table
+    FROM ${var.cur_athena_database_name}.${var.cur_athena_table_name}
     WHERE month = CAST(MONTH(CURRENT_DATE) AS VARCHAR)
       AND year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
     GROUP BY line_item_usage_start_date
@@ -289,16 +292,16 @@ resource "aws_athena_named_query" "daily_trend" {
 resource "aws_athena_named_query" "cost_by_tag" {
   name      = "cost-by-environment-tag"
   workgroup = aws_athena_workgroup.cur.name
-  database  = aws_glue_catalog_database.cur.name
+  database  = var.cur_athena_database_name
 
-  description = "Break down costs by the Environment tag"
+  description = "Break down costs by the activated Environment cost allocation tag"
 
   query = <<-EOQ
     SELECT
       resource_tags_user_environment AS environment,
       line_item_product_code AS service,
       SUM(line_item_unblended_cost) AS total_cost
-    FROM cur_database.cur_table
+    FROM ${var.cur_athena_database_name}.${var.cur_athena_table_name}
     WHERE month = CAST(MONTH(CURRENT_DATE) AS VARCHAR)
       AND year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
       AND resource_tags_user_environment IS NOT NULL
@@ -311,7 +314,7 @@ resource "aws_athena_named_query" "cost_by_tag" {
 resource "aws_athena_named_query" "idle_resources" {
   name      = "idle-resources"
   workgroup = aws_athena_workgroup.cur.name
-  database  = aws_glue_catalog_database.cur.name
+  database  = var.cur_athena_database_name
 
   description = "Find resources with low utilization that could be downsized"
 
@@ -322,7 +325,7 @@ resource "aws_athena_named_query" "idle_resources" {
       product_instance_type,
       SUM(line_item_unblended_cost) AS total_cost,
       AVG(CAST(line_item_usage_amount AS DOUBLE)) AS avg_usage
-    FROM cur_database.cur_table
+    FROM ${var.cur_athena_database_name}.${var.cur_athena_table_name}
     WHERE month = CAST(MONTH(CURRENT_DATE) AS VARCHAR)
       AND year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
       AND line_item_resource_id != ''
@@ -337,7 +340,7 @@ resource "aws_athena_named_query" "idle_resources" {
 
 ## SNS Notifications for Report Delivery
 
-Get notified when new CUR data arrives:
+If you are not deploying AWS's Athena CloudFormation template on this bucket, get notified when new CUR data arrives:
 
 ```hcl
 # SNS topic for CUR delivery notifications
@@ -412,7 +415,7 @@ output "athena_workgroup" {
 
 ## Connecting CUR to Budget Alerts
 
-CUR data feeds into AWS Budgets, which can send alerts when spending exceeds thresholds. For setting up automated budget alerts through Terraform, see our companion guide at https://oneuptime.com/blog/post/2026-02-23-how-to-create-budget-alerts-in-terraform/view.
+The same billing data behind CUR is also used by AWS Budgets, which can send alerts when spending exceeds thresholds. For setting up automated budget alerts through Terraform, see our companion guide at https://oneuptime.com/blog/post/2026-02-23-how-to-create-budget-alerts-in-terraform/view.
 
 ## Monitoring Your Cloud Spend
 
