@@ -14,7 +14,7 @@ Building this shared layer with Terraform gives you a consistent, auditable foun
 
 ## Why a Shared Services VPC?
 
-Without a shared services VPC, teams end up duplicating infrastructure. Each account runs its own NAT gateways, its own DNS resolvers, its own monitoring collectors. That duplication adds cost and creates operational burden. A shared services VPC centralizes these common resources and makes them available to all connected VPCs through Transit Gateway or VPC peering.
+Without a shared services VPC, teams end up duplicating infrastructure. Each account runs its own NAT gateways, its own DNS resolvers, its own monitoring collectors. That duplication adds cost and creates operational burden. A shared services VPC centralizes these common resources and makes them available to connected VPCs through Transit Gateway or, for non-transitive service-to-service traffic, VPC peering.
 
 ## Architecture
 
@@ -82,11 +82,53 @@ resource "aws_subnet" "tgw" {
     Tier = "transit"
   }
 }
+
+resource "aws_internet_gateway" "shared" {
+  vpc_id = aws_vpc.shared.id
+
+  tags = {
+    Name = "${var.project_name}-shared-igw"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.shared.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.shared.id
+  }
+
+  tags = {
+    Name = "${var.project_name}-shared-public"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table" "private" {
+  count  = length(var.availability_zones)
+  vpc_id = aws_vpc.shared.id
+
+  tags = {
+    Name = "${var.project_name}-shared-private-${var.availability_zones[count.index]}"
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = length(aws_subnet.private)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
 ```
 
 ## Centralized VPC Endpoints
 
-Instead of every VPC having its own interface endpoints (which cost money per AZ), centralize them in the shared services VPC:
+Instead of every VPC having its own interface endpoints (which cost money per AZ), you can centralize interface endpoints in the shared services VPC when connected VPCs have routing to the endpoint ENIs and DNS is configured to resolve the service names to those private endpoint addresses:
 
 ```hcl
 # Common AWS service endpoints shared across the organization
@@ -103,7 +145,9 @@ locals {
     "com.amazonaws.${var.region}.kms",
   ]
 
-  # Gateway endpoints (S3, DynamoDB) vs Interface endpoints
+  # Gateway endpoints (S3, DynamoDB) are attached to route tables in this VPC.
+  # They are useful for workloads in the shared services VPC, but they are not
+  # reachable from peered VPCs or through Transit Gateway.
   gateway_endpoints = [
     "com.amazonaws.${var.region}.s3",
     "com.amazonaws.${var.region}.dynamodb",
@@ -158,11 +202,34 @@ resource "aws_security_group" "vpc_endpoints" {
 }
 ```
 
+For spoke VPCs to use centralized interface endpoints with the standard AWS service names, add centralized DNS such as Route53 Resolver forwarding rules or custom private hosted zones. The AWS-managed private DNS for an interface endpoint is associated with the endpoint VPC, not automatically with every connected VPC.
+
 ## Route53 Resolver for Hybrid DNS
 
 If you have on-premises DNS servers or need to resolve private hosted zones across accounts, Route53 Resolver endpoints are essential:
 
 ```hcl
+resource "aws_security_group" "dns" {
+  name_prefix = "${var.project_name}-dns-"
+  vpc_id      = aws_vpc.shared.id
+
+  ingress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = [var.vpc_cidr, "10.0.0.0/8"]
+    description = "DNS UDP from internal networks"
+  }
+
+  ingress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr, "10.0.0.0/8"]
+    description = "DNS TCP from internal networks"
+  }
+}
+
 # Inbound endpoint - on-premises can resolve AWS private zones
 resource "aws_route53_resolver_endpoint" "inbound" {
   name      = "${var.project_name}-inbound-resolver"
@@ -254,11 +321,20 @@ resource "aws_nat_gateway" "shared" {
     Name = "${var.project_name}-shared-nat-${count.index}"
   }
 }
+
+resource "aws_route" "private_default" {
+  count                  = length(aws_route_table.private)
+  route_table_id         = aws_route_table.private[count.index].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.shared[count.index].id
+}
 ```
+
+For centralized egress from spoke VPCs, you also need routes from spoke subnet route tables to the Transit Gateway, Transit Gateway route-table entries toward this attachment, routes from the Transit Gateway attachment subnet route tables to the NAT gateways, and return routes from the NAT/public subnet route tables back to spoke CIDRs through the Transit Gateway. Keep those routes AZ-aware to avoid cross-AZ data processing and availability issues.
 
 ## Transit Gateway Attachment
 
-Connect the shared services VPC to the Transit Gateway so all spokes can reach it:
+Connect the shared services VPC to the Transit Gateway so all spokes can reach it after you associate and propagate the attachment with the correct Transit Gateway route tables and add matching VPC subnet routes:
 
 ```hcl
 resource "aws_ec2_transit_gateway_vpc_attachment" "shared" {
@@ -277,7 +353,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "shared" {
 
 ## Package Repository
 
-Host internal package repositories so build systems do not need to reach out to the internet:
+Host internal package repositories so build systems do not need to reach public package registries directly:
 
 ```hcl
 # CodeArtifact domain and repository for internal packages
@@ -307,7 +383,7 @@ resource "aws_codeartifact_repository" "npm_proxy" {
 
 ## Putting It All Together
 
-The shared services VPC is a critical piece of your [landing zone architecture](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-landing-zone-with-terraform/view). It reduces costs, simplifies operations, and gives every team in your organization access to common infrastructure. Define it once in Terraform, connect it to your Transit Gateway, and every spoke VPC benefits automatically.
+The shared services VPC is a critical piece of your [landing zone architecture](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-landing-zone-with-terraform/view). It reduces costs, simplifies operations, and gives every team in your organization access to common infrastructure. Define it once in Terraform, connect it to your Transit Gateway, configure the required VPC and Transit Gateway route tables, and every spoke VPC can use the shared services intentionally.
 
 ## Wrapping Up
 
