@@ -114,8 +114,8 @@ resource "azurerm_private_dns_zone_virtual_network_link" "spoke" {
   private_dns_zone_name = azurerm_private_dns_zone.internal.name
   virtual_network_id    = azurerm_virtual_network.spoke.id
 
-  # Only one VNet link per zone can have auto-registration enabled
-  # Spoke VNet gets resolution only
+  # A VNet can have auto-registration enabled for only one private DNS zone
+  # Spoke VNet gets resolution only in this example
   registration_enabled = false
 
   tags = {
@@ -396,7 +396,7 @@ output "blob_dns_zone_id" {
 
 **Create Private DNS zones in a centralized resource group.** Managing all DNS zones in one place makes it easier to maintain and avoids duplication. Link them to VNets across subscriptions as needed.
 
-**Use auto-registration sparingly.** Only one VNet link per zone can have auto-registration enabled. Use it for your primary VNet where VMs are deployed, but keep resolution-only links for other VNets.
+**Use auto-registration sparingly.** A VNet can have auto-registration enabled for only one private DNS zone, although multiple VNets can link to the same zone with auto-registration enabled. Use it for VNets where VMs should automatically create records, but keep resolution-only links for other VNets.
 
 **Set appropriate TTLs.** Lower TTLs (60-300 seconds) for records that change frequently. Higher TTLs (3600+ seconds) for stable records. The default of 3600 seconds is reasonable for most cases.
 
