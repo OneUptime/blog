@@ -146,15 +146,19 @@ gcloud iam workload-identity-pools providers create-oidc "github" \
   --location="global" \
   --workload-identity-pool="ci-pool" \
   --display-name="GitHub Actions" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
+  --attribute-condition="assertion.repository_owner == 'myorg'" \
   --issuer-uri="https://token.actions.githubusercontent.com"
+
+# Get the project number for the principalSet identifier
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 
 # Allow the GitHub repo to impersonate the service account
 gcloud iam service-accounts add-iam-policy-binding \
   "terraform@${PROJECT_ID}.iam.gserviceaccount.com" \
   --project=$PROJECT_ID \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/ci-pool/attribute.repository/myorg/my-repo"
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/ci-pool/attribute.repository/myorg/my-repo"
 ```
 
 ### Method 3 - Service Account Impersonation
@@ -206,7 +210,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/ci-pool/providers/github"
           service_account: "terraform@my-project-123.iam.gserviceaccount.com"
@@ -268,13 +272,13 @@ terraform {
   backend "gcs" {
     bucket = "my-terraform-state-bucket"
     prefix = "terraform/state"
-    # Credentials are inherited from the provider or GOOGLE_APPLICATION_CREDENTIALS
+    # The backend uses its own credentials config or Application Default Credentials
   }
 
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 6.0"
+      version = "~> 7.0"
     }
   }
 }
