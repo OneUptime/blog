@@ -37,13 +37,14 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 
 # Resource group for data governance resources
@@ -63,7 +64,7 @@ resource "azurerm_purview_account" "main" {
   resource_group_name = azurerm_resource_group.governance.name
   location            = azurerm_resource_group.governance.location
 
-  # System-assigned managed identity is required
+  # A managed identity is required; SystemAssigned is the simplest option
   identity {
     type = "SystemAssigned"
   }
@@ -188,7 +189,7 @@ resource "azurerm_private_endpoint" "purview_portal" {
 }
 ```
 
-Purview has two private endpoint sub-resources: `account` for the Purview API and `portal` for the Purview Studio web interface. You need both for a fully private deployment.
+For the classic Microsoft Purview governance portal, Purview has two private endpoint sub-resources: `account` for the Purview API and `portal` for the Purview Studio web interface. You need both for private access to the classic portal and APIs. If you also need to scan data sources privately, create ingestion private endpoints as well. For the new Microsoft Purview portal, use the newer platform private endpoint model instead of the classic account and portal endpoint model.
 
 ## Diagnostic Settings
 
@@ -219,6 +220,11 @@ resource "azurerm_monitor_diagnostic_setting" "purview" {
 
 ```hcl
 # variables.tf
+variable "subscription_id" {
+  description = "Azure subscription ID where the Purview account will be created"
+  type        = string
+}
+
 variable "purview_name" {
   description = "Name of the Purview account"
   type        = string
@@ -228,12 +234,7 @@ variable "location" {
   description = "Azure region for the Purview account"
   type        = string
   default     = "East US"
-
-  validation {
-    # Purview is not available in all regions
-    condition     = contains(["eastus", "westus2", "westeurope", "northeurope", "uksouth", "southeastasia"], lower(replace(var.location, " ", "")))
-    error_message = "Purview is not available in all regions. Check Azure documentation for supported regions."
-  }
+  # Purview is not available in all regions. Check Azure documentation for supported regions before choosing a location.
 }
 
 variable "public_network_enabled" {
@@ -280,7 +281,7 @@ output "purview_identity_principal_id" {
 
 output "purview_catalog_endpoint" {
   description = "Catalog endpoint URL"
-  value       = "https://${azurerm_purview_account.main.name}.purview.azure.com"
+  value       = azurerm_purview_account.main.catalog_endpoint
 }
 
 output "purview_managed_resource_group" {
