@@ -88,6 +88,28 @@ resource "aws_acm_certificate" "platform" {
     create_before_destroy = true
   }
 }
+
+resource "aws_route53_record" "platform_certificate_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.platform.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.platform.zone_id
+}
+
+resource "aws_acm_certificate_validation" "platform" {
+  certificate_arn         = aws_acm_certificate.platform.arn
+  validation_record_fqdns = [for record in aws_route53_record.platform_certificate_validation : record.fqdn]
+}
 ```
 
 ## Shared Observability Stack
@@ -137,7 +159,7 @@ resource "aws_grafana_workspace" "platform" {
 # X-Ray for distributed tracing
 resource "aws_xray_group" "platform" {
   group_name        = "platform-services"
-  filter_expression = "annotation.platform = \"${var.platform_name}\""
+  filter_expression = "annotation[platform] = \"${var.platform_name}\""
 }
 ```
 
@@ -316,6 +338,13 @@ resource "tfe_workspace" "team" {
 resource "tfe_variable_set" "platform_shared" {
   name         = "platform-shared-variables"
   organization = var.tfe_organization
+}
+
+resource "tfe_workspace_variable_set" "platform_shared" {
+  for_each = tfe_workspace.team
+
+  workspace_id    = each.value.id
+  variable_set_id = tfe_variable_set.platform_shared.id
 }
 
 resource "tfe_variable" "vpc_id" {
