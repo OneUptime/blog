@@ -17,7 +17,7 @@ In this guide, we will build a centralized log aggregation pipeline on AWS using
 The pipeline has three stages:
 
 1. **Collection**: CloudWatch Logs, Kinesis agents, and Fluent Bit collect logs from various sources
-2. **Processing**: Kinesis Data Firehose buffers, transforms, and delivers logs
+2. **Processing**: Kinesis Data Firehose buffers, transforms, and archives logs
 3. **Storage and Analysis**: OpenSearch for search and visualization, S3 for long-term archive
 
 ## Log Collection with CloudWatch
@@ -56,7 +56,7 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
 
 ## CloudWatch Subscription Filters
 
-Subscription filters stream logs from CloudWatch to Kinesis Data Firehose in real time:
+Subscription filters stream logs from CloudWatch to Kinesis Data Firehose in real time for S3 archiving. If you also need OpenSearch indexing for the same log group, use a second subscription filter with the AWS-managed OpenSearch subscription workflow or a Lambda consumer that expands the CloudWatch Logs batch into individual OpenSearch documents:
 
 ```hcl
 # Subscription filter to send logs to Kinesis Firehose
@@ -110,38 +110,24 @@ resource "aws_iam_role_policy" "cloudwatch_to_firehose" {
 
 ## Kinesis Data Firehose
 
-Firehose acts as the central pipeline, buffering logs and delivering them to OpenSearch and S3:
+Firehose acts as the central archive pipeline, buffering CloudWatch Logs and delivering them to S3. CloudWatch Logs sends compressed batches to Firehose, and Firehose does not support delivering those CloudWatch Logs records directly to an OpenSearch Service destination:
 
 ```hcl
 resource "aws_kinesis_firehose_delivery_stream" "logs" {
   name        = "${var.project_name}-log-pipeline"
-  destination = "opensearch"
+  destination = "extended_s3"
 
-  opensearch_configuration {
-    domain_arn = aws_opensearch_domain.logs.arn
+  extended_s3_configuration {
     role_arn   = aws_iam_role.firehose.arn
-    index_name = "logs"
-
-    # Rotate indices daily
-    index_rotation_period = "OneDay"
+    bucket_arn = aws_s3_bucket.log_archive.arn
+    prefix     = "logs/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
 
     # Buffer settings
     buffering_interval = 60  # seconds
-    buffering_size     = 5   # MB
+    buffering_size     = 128 # MB
+    compression_format = "GZIP"
 
-    # Send failed records to S3
-    s3_backup_mode = "AllDocuments"
-
-    s3_configuration {
-      role_arn           = aws_iam_role.firehose.arn
-      bucket_arn         = aws_s3_bucket.log_archive.arn
-      prefix             = "logs/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
-      buffering_interval = 300
-      buffering_size     = 128
-      compression_format = "GZIP"
-    }
-
-    # Transform logs with Lambda before indexing
+    # Transform logs with Lambda before archiving
     processing_configuration {
       enabled = true
 
@@ -165,12 +151,10 @@ resource "aws_kinesis_firehose_delivery_stream" "logs" {
       }
     }
 
-    retry_duration = 300
-
     cloudwatch_logging_options {
       enabled         = true
       log_group_name  = aws_cloudwatch_log_group.firehose.name
-      log_stream_name = "opensearch-delivery"
+      log_stream_name = "s3-delivery"
     }
   }
 }
@@ -178,7 +162,7 @@ resource "aws_kinesis_firehose_delivery_stream" "logs" {
 
 ## OpenSearch Domain
 
-OpenSearch (the successor to Elasticsearch) provides powerful search and visualization:
+OpenSearch (the successor to Elasticsearch Service) provides powerful search and visualization. For CloudWatch Logs, index through the CloudWatch Logs OpenSearch subscription workflow or a Lambda subscription that writes one document per log event:
 
 ```hcl
 resource "aws_opensearch_domain" "logs" {
@@ -249,8 +233,8 @@ resource "aws_security_group" "opensearch" {
     from_port       = 443
     to_port         = 443
     protocol        = "tcp"
-    security_groups = [aws_security_group.firehose.id, aws_security_group.grafana.id]
-    description     = "HTTPS from Firehose and Grafana"
+    security_groups = [aws_security_group.grafana.id]
+    description     = "HTTPS from Grafana"
   }
 }
 ```
@@ -301,7 +285,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "log_archive" {
 
 ## Log Transformer Lambda
 
-The transformer Lambda normalizes log formats before they reach OpenSearch:
+The transformer Lambda normalizes log formats before they are archived:
 
 ```hcl
 resource "aws_lambda_function" "log_transformer" {
@@ -324,7 +308,7 @@ resource "aws_lambda_function" "log_transformer" {
 
 ## Index Lifecycle Management
 
-Set up ISM (Index State Management) policies so old indices get cleaned up automatically. You can manage this through the OpenSearch API, but the Terraform OpenSearch provider also supports it.
+Set up ISM (Index State Management) policies so old indices get cleaned up automatically. You can manage this through the OpenSearch API, and community Terraform providers for OpenSearch can manage ISM policies as well.
 
 ## Cross-Account Log Collection
 
