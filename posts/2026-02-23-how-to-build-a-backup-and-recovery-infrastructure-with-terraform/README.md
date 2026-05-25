@@ -53,6 +53,13 @@ resource "aws_backup_vault" "primary" {
 }
 
 # Secondary vault in another region for DR
+resource "aws_kms_key" "dr_backup_key" {
+  provider                = aws.dr_region
+  description             = "KMS key for DR backup encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+}
+
 resource "aws_backup_vault" "dr_vault" {
   provider    = aws.dr_region
   name        = "dr-backup-vault"
@@ -176,6 +183,16 @@ resource "aws_iam_role_policy_attachment" "restore_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
 }
 
+resource "aws_iam_role_policy_attachment" "s3_backup_policy" {
+  role       = aws_iam_role.backup_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup"
+}
+
+resource "aws_iam_role_policy_attachment" "s3_restore_policy" {
+  role       = aws_iam_role.backup_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Restore"
+}
+
 # Select resources by tag - anything tagged with Backup=true gets backed up
 resource "aws_backup_selection" "production_resources" {
   name         = "production-resources"
@@ -192,7 +209,7 @@ resource "aws_backup_selection" "production_resources" {
 
 ## S3 Backup with Versioning and Replication
 
-For S3 buckets, you need versioning and cross-region replication rather than traditional backups.
+For S3 buckets, versioning and cross-region replication are often paired with AWS Backup so object changes and deletes can be recovered.
 
 ```hcl
 # Source bucket with versioning
@@ -249,15 +266,76 @@ resource "aws_s3_bucket_versioning" "data_replica" {
   }
 }
 
+# IAM role that Amazon S3 assumes for replication
+resource "aws_iam_role" "replication_role" {
+  name = "s3-replication-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "s3.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "replication_policy" {
+  name = "s3-replication-policy"
+  role = aws_iam_role.replication_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetReplicationConfiguration",
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.data.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObjectVersionForReplication",
+          "s3:GetObjectVersionAcl",
+          "s3:GetObjectVersionTagging"
+        ]
+        Resource = "${aws_s3_bucket.data.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+          "s3:ReplicateTags"
+        ]
+        Resource = "${aws_s3_bucket.data_replica.arn}/*"
+      }
+    ]
+  })
+}
+
 # Cross-region replication
 resource "aws_s3_bucket_replication_configuration" "data" {
-  depends_on = [aws_s3_bucket_versioning.data]
+  depends_on = [
+    aws_s3_bucket_versioning.data,
+    aws_s3_bucket_versioning.data_replica
+  ]
   role       = aws_iam_role.replication_role.arn
   bucket     = aws_s3_bucket.data.id
 
   rule {
-    id     = "replicate-all"
-    status = "Enabled"
+    id       = "replicate-all"
+    priority = 1
+    status   = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.data_replica.arn
@@ -269,15 +347,19 @@ resource "aws_s3_bucket_replication_configuration" "data" {
 
 ## RDS Backup Configuration
 
-For databases, you want both automated snapshots and manual snapshot copies to another region.
+For databases, you want automated snapshots and cross-region automated backup replication.
 
 ```hcl
 # RDS instance with backup configuration
 resource "aws_db_instance" "production" {
-  identifier     = "production-db"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.xlarge"
+  identifier                  = "production-db"
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.r6g.xlarge"
+  allocated_storage           = 100
+  db_name                     = "appdb"
+  username                    = "dbadmin"
+  manage_master_user_password = true
 
   # Backup configuration
   backup_retention_period   = 35
@@ -297,35 +379,12 @@ resource "aws_db_instance" "production" {
   }
 }
 
-# Lambda function to copy snapshots cross-region (triggered by EventBridge)
-resource "aws_lambda_function" "snapshot_copier" {
-  filename         = "snapshot_copier.zip"
-  function_name    = "rds-snapshot-copier"
-  role             = aws_iam_role.snapshot_copier_role.arn
-  handler          = "index.handler"
-  runtime          = "python3.11"
-  timeout          = 300
-
-  environment {
-    variables = {
-      DR_REGION       = "us-west-2"
-      KMS_KEY_ID      = aws_kms_key.dr_backup_key.arn
-      RETENTION_DAYS  = "35"
-    }
-  }
-}
-
-# EventBridge rule to trigger on RDS snapshot completion
-resource "aws_cloudwatch_event_rule" "snapshot_created" {
-  name = "rds-snapshot-created"
-
-  event_pattern = jsonencode({
-    source      = ["aws.rds"]
-    detail-type = ["RDS DB Snapshot Event"]
-    detail = {
-      EventID = ["RDS-EVENT-0091"]
-    }
-  })
+# Replicate automated backups to the DR region
+resource "aws_db_instance_automated_backups_replication" "production" {
+  provider               = aws.dr_region
+  source_db_instance_arn = aws_db_instance.production.arn
+  kms_key_id             = aws_kms_key.dr_backup_key.arn
+  retention_period       = 35
 }
 ```
 
@@ -343,6 +402,24 @@ resource "aws_sns_topic_subscription" "ops_team" {
   topic_arn = aws_sns_topic.backup_alerts.arn
   protocol  = "email"
   endpoint  = "ops-team@company.com"
+}
+
+resource "aws_sns_topic_policy" "backup_alerts" {
+  arn = aws_sns_topic.backup_alerts.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sns:Publish"
+        Resource = aws_sns_topic.backup_alerts.arn
+      }
+    ]
+  })
 }
 
 # CloudWatch alarm for backup job failures
@@ -431,6 +508,14 @@ resource "aws_cloudwatch_event_target" "restore_test" {
   rule      = aws_cloudwatch_event_rule.monthly_restore_test.name
   target_id = "trigger-restore-test"
   arn       = aws_lambda_function.restore_tester.arn
+}
+
+resource "aws_lambda_permission" "allow_restore_test_event" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.restore_tester.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.monthly_restore_test.arn
 }
 ```
 
