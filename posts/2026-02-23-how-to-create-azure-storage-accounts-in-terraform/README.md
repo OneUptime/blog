@@ -23,13 +23,14 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 ```
 
@@ -51,7 +52,7 @@ Start with a straightforward storage account configuration.
 # storage.tf
 # General purpose v2 storage account
 resource "azurerm_storage_account" "main" {
-  name                     = "stprodapp2026"
+  name                     = var.storage_account_name
   resource_group_name      = azurerm_resource_group.storage.name
   location                 = azurerm_resource_group.storage.location
   account_tier             = "Standard"
@@ -59,7 +60,7 @@ resource "azurerm_storage_account" "main" {
   account_kind             = "StorageV2"
 
   # Require HTTPS for all connections
-  enable_https_traffic_only = true
+  https_traffic_only_enabled = true
 
   # Minimum TLS version
   min_tls_version = "TLS1_2"
@@ -75,6 +76,17 @@ resource "azurerm_storage_account" "main" {
 
   # Enable shared key access (disable if using only Azure AD auth)
   shared_access_key_enabled = true
+
+  # Managed identity for customer-managed keys
+  identity {
+    type = "SystemAssigned"
+  }
+
+  lifecycle {
+    ignore_changes = [
+      customer_managed_key
+    ]
+  }
 
   tags = {
     environment = "production"
@@ -100,7 +112,7 @@ resource "azurerm_storage_account_network_rules" "main" {
   ip_rules = ["203.0.113.0/24"]
 
   # Allow specific subnets
-  virtual_network_subnet_ids = [var.app_subnet_id]
+  virtual_network_subnet_ids = compact([var.app_subnet_id])
 
   # Allow trusted Azure services to bypass network rules
   bypass = ["AzureServices", "Metrics", "Logging"]
@@ -210,7 +222,7 @@ resource "azurerm_storage_management_policy" "main" {
 
 ## Premium Storage Account
 
-For workloads that need low latency, like VM disks or high-performance file shares, use a Premium storage account.
+For block blob workloads that need low latency and high transaction rates, use a Premium block blob storage account.
 
 ```hcl
 # premium-storage.tf
@@ -220,10 +232,10 @@ resource "azurerm_storage_account" "premium" {
   resource_group_name      = azurerm_resource_group.storage.name
   location                 = azurerm_resource_group.storage.location
   account_tier             = "Premium"
-  account_replication_type = "LRS"  # Premium only supports LRS and ZRS
+  account_replication_type = "LRS"  # Premium block blob accounts support LRS and ZRS in supported regions
   account_kind             = "BlockBlobStorage"
 
-  enable_https_traffic_only = true
+  https_traffic_only_enabled = true
   min_tls_version           = "TLS1_2"
 
   tags = {
@@ -251,6 +263,45 @@ resource "azurerm_key_vault" "storage" {
   soft_delete_retention_days = 90
 }
 
+# Allow Terraform to create and manage the encryption key
+resource "azurerm_key_vault_access_policy" "client" {
+  key_vault_id = azurerm_key_vault.storage.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  key_permissions = [
+    "Create",
+    "Delete",
+    "Decrypt",
+    "Encrypt",
+    "Get",
+    "GetRotationPolicy",
+    "List",
+    "Purge",
+    "Recover",
+    "Restore",
+    "SetRotationPolicy",
+    "Sign",
+    "Update",
+    "UnwrapKey",
+    "Verify",
+    "WrapKey"
+  ]
+}
+
+# Allow the storage account identity to use the key
+resource "azurerm_key_vault_access_policy" "storage" {
+  key_vault_id = azurerm_key_vault.storage.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = azurerm_storage_account.main.identity[0].principal_id
+
+  key_permissions = [
+    "Get",
+    "WrapKey",
+    "UnwrapKey"
+  ]
+}
+
 # Create an encryption key
 resource "azurerm_key_vault_key" "storage" {
   name         = "storage-encryption-key"
@@ -258,6 +309,10 @@ resource "azurerm_key_vault_key" "storage" {
   key_type     = "RSA"
   key_size     = 2048
   key_opts     = ["decrypt", "encrypt", "wrapKey", "unwrapKey"]
+
+  depends_on = [
+    azurerm_key_vault_access_policy.client
+  ]
 }
 
 # Reference the current client configuration
@@ -266,8 +321,11 @@ data "azurerm_client_config" "current" {}
 # Apply customer-managed key to the storage account
 resource "azurerm_storage_account_customer_managed_key" "main" {
   storage_account_id = azurerm_storage_account.main.id
-  key_vault_id       = azurerm_key_vault.storage.id
-  key_name           = azurerm_key_vault_key.storage.name
+  key_vault_key_id   = azurerm_key_vault_key.storage.id
+
+  depends_on = [
+    azurerm_key_vault_access_policy.storage
+  ]
 }
 ```
 
@@ -279,6 +337,11 @@ variable "app_subnet_id" {
   type        = string
   description = "Subnet ID for storage account network rules"
   default     = ""
+}
+
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID used by the AzureRM provider"
 }
 
 variable "storage_account_name" {
@@ -341,4 +404,4 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-Storage accounts are naming-constrained - the name must be globally unique, 3-24 characters, and can only contain lowercase letters and numbers. Keep this in mind when designing your naming convention. Terraform will catch naming violations at plan time, which is another reason to use it instead of manual provisioning.
+Storage accounts are naming-constrained - the name must be globally unique, 3-24 characters, and can only contain lowercase letters and numbers. Keep this in mind when designing your naming convention. Terraform can catch many naming format violations at plan time, while global uniqueness is enforced by Azure during deployment.
