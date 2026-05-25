@@ -130,20 +130,21 @@ resource "aws_security_group" "cde_database" {
   description = "PCI - Cardholder data database"
   vpc_id      = aws_vpc.cde.id
 
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.payment_service.id]
-    description     = "PostgreSQL from payment service only"
-  }
-
   # No egress rules - database does not initiate connections
 
   tags = {
     PCI_Scope = "in-scope"
     PCI_Req   = "Req-1"
   }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "cde_database_from_payment_service" {
+  security_group_id            = aws_security_group.cde_database.id
+  referenced_security_group_id = aws_security_group.payment_service.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "PostgreSQL from payment service only"
 }
 
 # VPC Flow Logs for the CDE
@@ -209,24 +210,30 @@ resource "aws_kms_key" "cardholder_data" {
 
 # RDS for cardholder data with encryption
 resource "aws_db_instance" "cde" {
-  identifier     = "cde-database"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.xlarge"
+  identifier        = "cde-database"
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.r6g.xlarge"
+  allocated_storage = 100
+
+  # Master credentials
+  username                    = "cde_admin"
+  manage_master_user_password = true
 
   # Encryption at rest
   storage_encrypted = true
   kms_key_id        = aws_kms_key.cardholder_data.arn
 
   # Security
-  multi_az                = true
-  deletion_protection     = true
-  publicly_accessible     = false
+  multi_az                            = true
+  deletion_protection                 = true
+  publicly_accessible                 = false
   iam_database_authentication_enabled = true
 
   # Backup
-  backup_retention_period = 35
-  copy_tags_to_snapshot   = true
+  backup_retention_period   = 35
+  copy_tags_to_snapshot     = true
+  final_snapshot_identifier = "cde-database-final-snapshot"
 
   # Network
   db_subnet_group_name   = aws_db_subnet_group.cde.name
@@ -388,7 +395,7 @@ resource "aws_cloudtrail" "cde" {
   s3_bucket_name             = aws_s3_bucket.cde_audit.id
   is_multi_region_trail      = true
   enable_log_file_validation = true
-  kms_key_id                 = aws_kms_key.cardholder_data.arn
+  kms_key_id                 = aws_kms_key.audit_logs.arn
 
   event_selector {
     read_write_type           = "All"
@@ -396,7 +403,7 @@ resource "aws_cloudtrail" "cde" {
 
     data_resource {
       type   = "AWS::S3::Object"
-      values = ["arn:aws:s3"]
+      values = ["${aws_s3_bucket.cde_audit.arn}/"]
     }
   }
 
@@ -406,17 +413,110 @@ resource "aws_cloudtrail" "cde" {
   tags = {
     PCI_Req = "Req-10"
   }
+
+  depends_on = [aws_s3_bucket_policy.cde_audit]
 }
 
 resource "aws_cloudwatch_log_group" "cde_cloudtrail" {
   name              = "/pci/cde/cloudtrail"
   retention_in_days = 365  # 1 year minimum for PCI
-  kms_key_id        = aws_kms_key.cardholder_data.arn
+  kms_key_id        = aws_kms_key.audit_logs.arn
 }
 
 # Tamper-proof log storage
 resource "aws_s3_bucket" "cde_audit" {
-  bucket = "cde-audit-logs-${data.aws_caller_identity.current.account_id}"
+  bucket              = "cde-audit-logs-${data.aws_caller_identity.current.account_id}"
+  object_lock_enabled = true
+
+  tags = {
+    PCI_Req = "Req-10"
+  }
+}
+
+resource "aws_s3_bucket_policy" "cde_audit" {
+  bucket = aws_s3_bucket.cde_audit.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.cde_audit.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/cde-audit-trail"
+          }
+        }
+      },
+      {
+        Sid    = "AWSCloudTrailWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.cde_audit.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn"  = "arn:aws:cloudtrail:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:trail/cde-audit-trail"
+            "s3:x-amz-acl"   = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_kms_key" "audit_logs" {
+  description         = "Encryption key for PCI audit logs"
+  enable_key_rotation = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "RootAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudTrailEncryption"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action = [
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudWatchLogsEncryption"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 
   tags = {
     PCI_Req = "Req-10"
@@ -434,6 +534,18 @@ resource "aws_s3_bucket_object_lock_configuration" "cde_audit" {
   }
 }
 
+resource "aws_cloudwatch_log_metric_filter" "cde_unauthorized_access" {
+  name           = "cde-unauthorized-access"
+  log_group_name = aws_cloudwatch_log_group.cde_cloudtrail.name
+  pattern        = "{ ($.errorCode = \"*UnauthorizedOperation\") || ($.errorCode = \"AccessDenied*\") }"
+
+  metric_transformation {
+    name      = "UnauthorizedAccessCount"
+    namespace = "PCI/CDE"
+    value     = "1"
+  }
+}
+
 # Alert on suspicious CDE activity
 resource "aws_cloudwatch_metric_alarm" "cde_unauthorized_access" {
   alarm_name          = "cde-unauthorized-access"
@@ -445,6 +557,7 @@ resource "aws_cloudwatch_metric_alarm" "cde_unauthorized_access" {
   statistic           = "Sum"
   threshold           = 0
   alarm_actions       = [aws_sns_topic.security.arn]
+  treat_missing_data  = "notBreaching"
 }
 
 # GuardDuty for threat detection
@@ -505,7 +618,7 @@ resource "aws_ssm_maintenance_window" "cde_patching" {
   }
 }
 
-# WAF for web application protection (Req 6.6)
+# WAF for web application protection (Req 6.4.2)
 resource "aws_wafv2_web_acl" "cde" {
   name  = "cde-waf"
   scope = "REGIONAL"
@@ -543,6 +656,6 @@ resource "aws_wafv2_web_acl" "cde" {
 
 PCI DSS compliance comes down to protecting cardholder data through network segmentation, encryption, access controls, logging, and regular testing. The most effective strategy is to minimize your CDE scope by isolating payment processing into a small, well-controlled segment of your infrastructure.
 
-Terraform makes PCI compliance manageable by encoding every requirement as infrastructure code. Security groups enforce network segmentation. KMS keys enforce encryption. IAM policies enforce access controls. CloudTrail and Config enforce logging. Each resource can be tagged with the PCI requirement it satisfies, making audits straightforward.
+Terraform makes PCI compliance manageable by encoding every requirement as infrastructure code. Security groups enforce network segmentation. KMS keys enforce encryption. IAM policies enforce access controls. CloudTrail and CloudWatch support logging and monitoring. Each resource can be tagged with the PCI requirement it satisfies, making audits straightforward.
 
 For monitoring your PCI DSS compliant infrastructure and getting real-time alerts on security events in the CDE, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-pci-dss-compliant-infrastructure-with-terraform/view) for payment infrastructure observability.
