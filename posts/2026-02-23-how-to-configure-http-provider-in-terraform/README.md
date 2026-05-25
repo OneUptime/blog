@@ -198,7 +198,7 @@ output "latest_consul_version" {
 ### Fetching Remote Configuration
 
 ```hcl
-# Fetch a YAML configuration from a config server
+# Fetch a JSON configuration from a config server
 data "http" "remote_config" {
   url = "${var.config_server_url}/config/${var.environment}.json"
 
@@ -236,6 +236,13 @@ data "http" "dependency_health" {
     attempts     = 3
     min_delay_ms = 1000
     max_delay_ms = 5000
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200 && jsondecode(self.response_body).status == "healthy"
+      error_message = "Dependency service is not healthy."
+    }
   }
 }
 
@@ -319,15 +326,19 @@ output "response_info" {
 
 ## Error Handling
 
-By default, the HTTP provider will fail if the response status code is not in the 200 range. You can customize this behavior.
+The HTTP provider exposes the response status code, but it does not automatically fail on non-2xx responses in version 3.x. Use a lifecycle check to enforce the status codes your configuration expects.
 
 ```hcl
 # Accept 200 and 201 status codes
 data "http" "api_call" {
   url = "https://api.example.com/resource"
 
-  # Only fail if the status code is not in this list
-  # By default, only 200 is accepted
+  lifecycle {
+    postcondition {
+      condition     = contains([200, 201], self.status_code)
+      error_message = "API returned unexpected status: ${self.status_code}"
+    }
+  }
 }
 
 # Use a lifecycle check to handle unexpected responses
@@ -379,9 +390,9 @@ resource "google_compute_network" "main" {
 
 Keep these limitations in mind:
 
-1. The HTTP provider is a data source, so it runs during every `terraform plan`. If the endpoint returns different data each time, Terraform will detect changes.
+1. The HTTP provider is a data source, so Terraform reads it during planning when its arguments are known. If the endpoint returns different data each time, Terraform may detect changes.
 
-2. There is no built-in caching. Every plan and apply will make the HTTP request.
+2. There is no built-in caching. Terraform will make the HTTP request each time it refreshes the data source.
 
 3. For write operations (creating, updating, deleting resources via API), use the `restapi` community provider or write a custom provider.
 
