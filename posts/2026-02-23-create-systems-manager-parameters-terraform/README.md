@@ -122,7 +122,7 @@ resource "aws_ssm_parameter" "db_password" {
     Sensitive   = "true"
   }
 
-  # Prevent Terraform from showing the value in plan output
+  # Prevent Terraform from overwriting a value changed outside Terraform
   lifecycle {
     ignore_changes = [value]
   }
@@ -418,33 +418,42 @@ response = ssm.get_parameter(
 db_host = response['Parameter']['Value']
 
 # Get all parameters under a path
-response = ssm.get_parameters_by_path(
+paginator = ssm.get_paginator('get_parameters_by_path')
+config = {}
+
+for page in paginator.paginate(
     Path='/myapp/production/',
     Recursive=True,
     WithDecryption=True
-)
-config = {p['Name']: p['Value'] for p in response['Parameters']}
+):
+    config.update({p['Name']: p['Value'] for p in page['Parameters']})
 ```
 
 In Node.js:
 
 ```javascript
-const { SSMClient, GetParametersByPathCommand } = require('@aws-sdk/client-ssm');
+const { SSMClient, paginateGetParametersByPath } = require('@aws-sdk/client-ssm');
 
 const ssm = new SSMClient({ region: 'us-east-1' });
 
 async function loadConfig() {
-  const response = await ssm.send(new GetParametersByPathCommand({
-    Path: '/myapp/production/',
-    Recursive: true,
-    WithDecryption: true,
-  }));
-
   const config = {};
-  for (const param of response.Parameters) {
-    const key = param.Name.replace('/myapp/production/', '');
-    config[key] = param.Value;
+  const paginator = paginateGetParametersByPath(
+    { client: ssm },
+    {
+      Path: '/myapp/production/',
+      Recursive: true,
+      WithDecryption: true,
+    }
+  );
+
+  for await (const page of paginator) {
+    for (const param of page.Parameters ?? []) {
+      const key = param.Name.replace('/myapp/production/', '');
+      config[key] = param.Value;
+    }
   }
+
   return config;
 }
 ```
