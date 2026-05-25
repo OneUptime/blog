@@ -115,6 +115,64 @@ resource "aws_subnet" "hub_tgw" {
   }
 }
 
+resource "aws_internet_gateway" "hub" {
+  vpc_id = aws_vpc.hub.id
+
+  tags = {
+    Name = "${var.project_name}-hub-igw"
+  }
+}
+
+resource "aws_route_table" "hub_public" {
+  count  = length(var.availability_zones)
+  vpc_id = aws_vpc.hub.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.hub.id
+  }
+
+  tags = {
+    Name = "${var.project_name}-hub-public-rtb-${count.index}"
+  }
+}
+
+resource "aws_route_table_association" "hub_public" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.hub_public[count.index].id
+  route_table_id = aws_route_table.hub_public[count.index].id
+}
+
+resource "aws_route_table" "hub_private" {
+  count  = length(var.availability_zones)
+  vpc_id = aws_vpc.hub.id
+
+  tags = {
+    Name = "${var.project_name}-hub-private-rtb-${count.index}"
+  }
+}
+
+resource "aws_route_table_association" "hub_private" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.hub_private[count.index].id
+  route_table_id = aws_route_table.hub_private[count.index].id
+}
+
+resource "aws_route_table" "hub_tgw" {
+  count  = length(var.availability_zones)
+  vpc_id = aws_vpc.hub.id
+
+  tags = {
+    Name = "${var.project_name}-hub-tgw-rtb-${count.index}"
+  }
+}
+
+resource "aws_route_table_association" "hub_tgw" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.hub_tgw[count.index].id
+  route_table_id = aws_route_table.hub_tgw[count.index].id
+}
+
 # Attach hub VPC to Transit Gateway
 resource "aws_ec2_transit_gateway_vpc_attachment" "hub" {
   subnet_ids         = aws_subnet.hub_tgw[*].id
@@ -156,6 +214,20 @@ resource "aws_subnet" "private" {
   tags = {
     Name = "${var.project_name}-${var.spoke_name}-private-${count.index}"
   }
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.spoke.id
+
+  tags = {
+    Name = "${var.project_name}-${var.spoke_name}-private-rtb"
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
 # TGW attachment subnets
@@ -265,23 +337,42 @@ module "spoke_development" {
 Instead of every spoke running its own NAT gateway, you can centralize internet egress through the hub:
 
 ```hcl
+resource "aws_eip" "nat" {
+  count  = length(var.availability_zones)
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-hub-nat-eip-${count.index}"
+  }
+}
+
 # Centralized NAT gateways in the hub
 resource "aws_nat_gateway" "hub" {
   count         = length(var.availability_zones)
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.hub_public[count.index].id
+  depends_on    = [aws_internet_gateway.hub]
 
   tags = {
     Name = "${var.project_name}-hub-nat-${count.index}"
   }
 }
 
-# Route internet-bound traffic from hub private subnets through NAT
-resource "aws_route" "hub_nat" {
+# Route internet-bound traffic from the TGW attachment subnets through NAT
+resource "aws_route" "hub_tgw_nat" {
   count                  = length(var.availability_zones)
-  route_table_id         = aws_route_table.hub_private[count.index].id
+  route_table_id         = aws_route_table.hub_tgw[count.index].id
   destination_cidr_block = "0.0.0.0/0"
   nat_gateway_id         = aws_nat_gateway.hub[count.index].id
+}
+
+# Route return traffic from NAT public subnets back to the spokes
+resource "aws_route" "hub_public_to_spokes" {
+  count = length(var.availability_zones) * length(var.spoke_cidrs)
+
+  route_table_id         = aws_route_table.hub_public[floor(count.index / length(var.spoke_cidrs))].id
+  destination_cidr_block = var.spoke_cidrs[count.index % length(var.spoke_cidrs)]
+  transit_gateway_id     = aws_ec2_transit_gateway.main.id
 }
 ```
 
@@ -304,7 +395,7 @@ resource "aws_networkfirewall_firewall" "hub" {
 }
 ```
 
-This gives you a single point to enforce network security policies across all your environments. For a deeper look at shared networking resources, check out [building a shared services VPC with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-shared-services-vpc-with-terraform/view).
+This creates the firewall endpoints in the hub VPC. To make it the inspection point, update the hub and spoke route tables so traffic is routed through the firewall endpoints, and enable appliance mode on the hub Transit Gateway attachment when you need symmetric flows through stateful appliances. For a deeper look at shared networking resources, check out [building a shared services VPC with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-shared-services-vpc-with-terraform/view).
 
 ## Wrapping Up
 
