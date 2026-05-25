@@ -42,9 +42,9 @@ terraform {
     # Set this for Terraform Enterprise installations
     hostname = "app.terraform.io"
 
-    # Optional: the project within the organization
-    # Helps organize workspaces into logical groups
-    project = "infrastructure"
+    # Optional: authentication token
+    # Prefer terraform login or CLI credentials instead of hardcoding this
+    token = "your-api-token"
 
     # Required: workspace selection (name OR tags, not both)
     workspaces {
@@ -52,7 +52,10 @@ terraform {
       name = "api-server-prod"
 
       # Option 2: target workspaces by tags (cannot use with name)
-      # tags = ["service:api-server", "env:prod"]
+      # tags = {
+      #   service = "api-server"
+      #   env     = "prod"
+      # }
 
       # Option 3: use a project to scope workspace selection
       # project = "platform-team"
@@ -143,7 +146,9 @@ terraform {
 
     workspaces {
       # Match workspaces with ALL of these tags
-      tags = ["service:api-server"]
+      tags = {
+        service = "api-server"
+      }
     }
   }
 }
@@ -167,21 +172,20 @@ terraform workspace select api-server-production
 terraform workspace new api-server-dev
 ```
 
-The key thing to understand: tags use AND logic. If you specify `tags = ["app:api", "region:us-east"]`, only workspaces with both tags match.
+The key thing to understand: tags use AND logic. If you specify `tags = { app = "api", region = "us-east" }`, only workspaces with both tags match.
 
 ## Project Configuration
 
-Projects in HCP Terraform are organizational containers for workspaces. You can specify a project at the cloud block level:
+Projects in HCP Terraform are organizational containers for workspaces. With Terraform 1.6 or later, you can specify a project in the `workspaces` block:
 
 ```hcl
 terraform {
   cloud {
     organization = "acme-corp"
 
-    # Associate with a specific project
-    project = "platform-team"
-
     workspaces {
+      # Associate with a specific project
+      project = "platform-team"
       name = "api-server-prod"
     }
   }
@@ -240,7 +244,8 @@ export TF_CLOUD_ORGANIZATION="acme-corp"
 # Override hostname (for switching between HCP Terraform and Enterprise)
 export TF_CLOUD_HOSTNAME="terraform.internal.acme.com"
 
-# Override workspace name
+# Select a workspace when the cloud block omits workspaces,
+# or select from the workspaces matched by tags
 export TF_WORKSPACE="api-server-staging"
 
 # Authentication token
@@ -250,10 +255,7 @@ export TF_TOKEN_app_terraform_io="your-api-token"
 ```hcl
 # Minimal cloud block when using environment variables
 terraform {
-  cloud {
-    # All settings come from environment variables
-    workspaces {}
-  }
+  cloud {}
 }
 ```
 
@@ -270,7 +272,9 @@ terraform {
     organization = "acme-corp"
 
     workspaces {
-      tags = ["service:api"]
+      tags = {
+        service = "api"
+      }
     }
   }
 }
