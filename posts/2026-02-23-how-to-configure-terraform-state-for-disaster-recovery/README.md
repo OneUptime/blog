@@ -88,8 +88,11 @@ resource "aws_s3_bucket_replication_configuration" "state_replication" {
   role     = aws_iam_role.replication.arn
 
   rule {
-    id     = "replicate-all-state"
-    status = "Enabled"
+    id       = "replicate-all-state"
+    priority = 1
+    status   = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.state_dr.arn
@@ -99,6 +102,20 @@ resource "aws_s3_bucket_replication_configuration" "state_replication" {
       encryption_configuration {
         replica_kms_key_id = aws_kms_key.dr_state_key.arn
       }
+
+      metrics {
+        status = "Enabled"
+
+        event_threshold {
+          minutes = 15
+        }
+      }
+    }
+
+    source_selection_criteria {
+      sse_kms_encrypted_objects {
+        status = "Enabled"
+      }
     }
 
     # Replicate delete markers too
@@ -106,12 +123,17 @@ resource "aws_s3_bucket_replication_configuration" "state_replication" {
       status = "Enabled"
     }
   }
+
+  depends_on = [
+    aws_s3_bucket_versioning.state_primary,
+    aws_s3_bucket_versioning.state_dr
+  ]
 }
 ```
 
-## DynamoDB Global Tables for Lock Replication
+## DynamoDB Global Tables for Legacy Lock Replication
 
-If you use DynamoDB for state locking, set up a global table so locks work in both regions:
+Terraform's S3 backend now supports native S3 lockfiles with `use_lockfile`. If you still need to support older Terraform versions that use the deprecated DynamoDB locking option, set up a global table so locks work in both regions:
 
 ```hcl
 # lock-table.tf - Global DynamoDB table for locking
@@ -133,7 +155,7 @@ resource "aws_dynamodb_table" "terraform_locks" {
 }
 ```
 
-With global tables, the lock table is available in both regions. When you fail over to the DR region, locking continues to work without reconfiguration.
+With global tables, the lock table is available in both regions. If you use the legacy `dynamodb_table` backend option, locking continues to work after you fail over to the DR region.
 
 ## Multi-Region Backend Configuration
 
@@ -142,17 +164,19 @@ Prepare backend configurations for both the primary and DR regions:
 ```hcl
 # backend-configs/primary.hcl
 bucket         = "myorg-terraform-state-primary"
+key            = "global/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
-dynamodb_table = "terraform-state-locks"
+use_lockfile   = true
 ```
 
 ```hcl
 # backend-configs/dr.hcl
 bucket         = "myorg-terraform-state-dr"
+key            = "global/terraform.tfstate"
 region         = "us-west-2"
 encrypt        = true
-dynamodb_table = "terraform-state-locks"
+use_lockfile   = true
 ```
 
 During normal operations:
@@ -181,14 +205,14 @@ resource "google_storage_bucket" "state" {
     enabled = true
   }
 
-  # Keep 90 days of versions for recovery
+  # Keep archived versions for 90 days
   lifecycle_rule {
     action {
       type = "Delete"
     }
     condition {
-      num_newer_versions = 90
-      with_state         = "ARCHIVED"
+      age        = 90
+      with_state = "ARCHIVED"
     }
   }
 }
@@ -308,6 +332,8 @@ jobs:
 
       - name: Notify on failure
         if: failure()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
           curl -X POST "$SLACK_WEBHOOK" \
             -H 'Content-Type: application/json' \
@@ -337,8 +363,7 @@ fi
 terraform init -reconfigure -backend-config=backend-configs/dr.hcl
 
 # Verify state is accessible
-terraform state list > /dev/null 2>&1
-if [ $? -eq 0 ]; then
+if terraform state list > /dev/null 2>&1; then
   echo "Successfully connected to DR backend."
   echo "Resource count: $(terraform state list | wc -l)"
 else
@@ -372,6 +397,7 @@ resource "aws_cloudwatch_metric_alarm" "replication_lag" {
   statistic           = "Maximum"
   threshold           = 900  # 15 minutes
   alarm_description   = "Terraform state replication is lagging"
+  treat_missing_data  = "ignore"
 
   dimensions = {
     SourceBucket      = "myorg-terraform-state-primary"
