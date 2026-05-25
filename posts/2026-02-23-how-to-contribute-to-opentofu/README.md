@@ -8,7 +8,7 @@ Description: A practical guide to contributing to the OpenTofu project, covering
 
 ---
 
-OpenTofu emerged as a community-driven fork of Terraform after HashiCorp changed its license from the Mozilla Public License (MPL) to the Business Source License (BSL). The project lives under the Linux Foundation and has attracted a large community of contributors. If you have been thinking about getting involved, this guide walks you through the process from start to finish.
+OpenTofu emerged as a community-driven fork of Terraform after HashiCorp changed its license from the Mozilla Public License (MPL) to the Business Source License (BUSL). The project lives under the Linux Foundation and has attracted a large community of contributors. If you have been thinking about getting involved, this guide walks you through the process from start to finish.
 
 ## Why Contribute to OpenTofu?
 
@@ -19,7 +19,7 @@ Contributing to OpenTofu is not just about writing code. The project needs docum
 Before you start contributing, you need a working development environment. OpenTofu is written in Go, so you will need the Go toolchain installed.
 
 ```bash
-# Install Go (version 1.21 or later recommended)
+# Install Go (use the latest available version; the repo's go.mod selects the required toolchain)
 
 # On macOS with Homebrew
 brew install go
@@ -56,7 +56,7 @@ go build -o tofu ./cmd/tofu
 go test ./...
 
 # Verify the built binary works
-./tofu version
+./tofu --version
 ```
 
 ## Understanding the Repository Structure
@@ -92,7 +92,7 @@ The OpenTofu GitHub repository uses labels to categorize issues. Look for these 
 gh issue list --repo opentofu/opentofu --label "good first issue" --state open
 ```
 
-Before starting work on an issue, leave a comment saying you would like to work on it. This prevents duplicate effort and lets maintainers provide guidance.
+Before starting work on a code change, look for an issue with the `accepted` and `help wanted` labels, leave a comment saying you would like to work on it, and wait for a maintainer to assign it to you. This prevents duplicate effort and lets maintainers provide guidance.
 
 ## Making Your First Code Contribution
 
@@ -108,14 +108,14 @@ git checkout -b fix/issue-1234-description
 go test ./...
 
 # Run the linter
-golangci-lint run
+make golangci-lint
 
-# Commit your changes with a clear message
+# Commit your changes with a clear signed-off message
 git add .
-git commit -m "Fix: resolve nil pointer in state migration (#1234)"
+git commit -s -m "Fix nil pointer in state migration (#1234)"
 ```
 
-When writing your commit message, reference the issue number and describe what the change does. The OpenTofu project follows conventional commit practices.
+When writing your commit message, reference the issue number and describe what the change does. OpenTofu requires a Developer Certificate of Origin (DCO) sign-off on commits, which `git commit -s` adds automatically.
 
 ## Writing Tests
 
@@ -162,11 +162,8 @@ Documentation contributions are just as valuable as code. The OpenTofu docs live
 # Navigate to the docs directory
 cd website
 
-# Install dependencies
-npm install
-
 # Start the local development server
-npm run start
+docker compose up --build
 ```
 
 ## Submitting a Pull Request
