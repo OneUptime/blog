@@ -29,6 +29,8 @@ A CodeArtifact domain is the top-level container for all your repositories. It p
 ```hcl
 # domain.tf - CodeArtifact domain
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_codeartifact_domain" "main" {
   domain = var.organization_name
 
@@ -136,7 +138,7 @@ resource "aws_codeartifact_repository" "maven_upstream" {
   domain     = aws_codeartifact_domain.main.domain
 
   external_connections {
-    external_connection_name = "public:maven-centralrepository"
+    external_connection_name = "public:maven-central"
   }
 
   description = "Upstream proxy for Maven Central"
@@ -391,7 +393,7 @@ resource "aws_iam_role_policy" "artifact_publisher" {
           "codeartifact:PublishPackageVersion",
           "codeartifact:PutPackageMetadata"
         ]
-        Resource = aws_codeartifact_domain.main.arn
+        Resource = "*"
       },
       {
         Effect   = "Allow"
