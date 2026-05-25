@@ -39,6 +39,12 @@ provider "aws" {
   region = "ap-southeast-1"
   alias  = "tertiary"
 }
+
+# Global Accelerator API operations must use us-west-2
+provider "aws" {
+  region = "us-west-2"
+  alias  = "global"
+}
 ```
 
 ## VPC Creation in Each Region
@@ -154,6 +160,8 @@ resource "aws_route" "primary_to_secondary" {
   route_table_id            = aws_route_table.primary_private.id
   destination_cidr_block    = aws_vpc.secondary.cidr_block
   vpc_peering_connection_id = aws_vpc_peering_connection.primary_to_secondary.id
+
+  depends_on = [aws_vpc_peering_connection_accepter.secondary]
 }
 
 # Route from secondary to primary VPC
@@ -162,6 +170,8 @@ resource "aws_route" "secondary_to_primary" {
   route_table_id            = aws_route_table.secondary_private.id
   destination_cidr_block    = aws_vpc.primary.cidr_block
   vpc_peering_connection_id = aws_vpc_peering_connection.primary_to_secondary.id
+
+  depends_on = [aws_vpc_peering_connection_accepter.secondary]
 }
 
 # Route tables
@@ -181,6 +191,20 @@ resource "aws_route_table" "secondary_private" {
   tags = {
     Name = "secondary-private-rt"
   }
+}
+
+resource "aws_route_table_association" "primary_private" {
+  provider       = aws.primary
+  count          = length(aws_subnet.primary_private)
+  subnet_id      = aws_subnet.primary_private[count.index].id
+  route_table_id = aws_route_table.primary_private.id
+}
+
+resource "aws_route_table_association" "secondary_private" {
+  provider       = aws.secondary
+  count          = length(aws_subnet.secondary_private)
+  subnet_id      = aws_subnet.secondary_private[count.index].id
+  route_table_id = aws_route_table.secondary_private.id
 }
 ```
 
@@ -261,15 +285,54 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "secondary" {
     Name = "secondary-vpc-tgw-attachment"
   }
 }
+
+# VPC route table routes to the regional Transit Gateways
+resource "aws_route" "primary_to_secondary_tgw" {
+  provider               = aws.primary
+  route_table_id         = aws_route_table.primary_private.id
+  destination_cidr_block = aws_vpc.secondary.cidr_block
+  transit_gateway_id     = aws_ec2_transit_gateway.primary.id
+
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.primary]
+}
+
+resource "aws_route" "secondary_to_primary_tgw" {
+  provider               = aws.secondary
+  route_table_id         = aws_route_table.secondary_private.id
+  destination_cidr_block = aws_vpc.primary.cidr_block
+  transit_gateway_id     = aws_ec2_transit_gateway.secondary.id
+
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.secondary]
+}
+
+# Transit Gateway peering attachments require static routes
+resource "aws_ec2_transit_gateway_route" "primary_to_secondary" {
+  provider                       = aws.primary
+  destination_cidr_block         = aws_vpc.secondary.cidr_block
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_peering_attachment.primary_to_secondary.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway.primary.association_default_route_table_id
+
+  depends_on = [aws_ec2_transit_gateway_peering_attachment_accepter.secondary]
+}
+
+resource "aws_ec2_transit_gateway_route" "secondary_to_primary" {
+  provider                       = aws.secondary
+  destination_cidr_block         = aws_vpc.primary.cidr_block
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_peering_attachment_accepter.secondary.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway.secondary.association_default_route_table_id
+}
 ```
 
 ## Global Accelerator for Traffic Routing
 
 AWS Global Accelerator provides static anycast IP addresses that route traffic to the nearest healthy regional endpoint.
 
+The following examples assume that you already have regional Application Load Balancers and expose their ARNs, DNS names, and hosted zone IDs as variables.
+
 ```hcl
 # Global Accelerator
 resource "aws_globalaccelerator_accelerator" "main" {
+  provider        = aws.global
   name            = "multi-region-accelerator"
   ip_address_type = "IPV4"
   enabled         = true
@@ -281,6 +344,7 @@ resource "aws_globalaccelerator_accelerator" "main" {
 
 # Listener for HTTPS traffic
 resource "aws_globalaccelerator_listener" "https" {
+  provider        = aws.global
   accelerator_arn = aws_globalaccelerator_accelerator.main.id
   protocol        = "TCP"
   client_affinity = "SOURCE_IP"
@@ -293,6 +357,7 @@ resource "aws_globalaccelerator_listener" "https" {
 
 # Endpoint group for primary region
 resource "aws_globalaccelerator_endpoint_group" "primary" {
+  provider     = aws.global
   listener_arn = aws_globalaccelerator_listener.https.id
 
   endpoint_group_region         = "us-east-1"
@@ -303,7 +368,7 @@ resource "aws_globalaccelerator_endpoint_group" "primary" {
   traffic_dial_percentage       = 100  # Send 100% of traffic to healthy endpoints
 
   endpoint_configuration {
-    endpoint_id                    = aws_lb.primary.arn
+    endpoint_id                    = var.primary_alb_arn
     weight                         = 100
     client_ip_preservation_enabled = true
   }
@@ -311,7 +376,7 @@ resource "aws_globalaccelerator_endpoint_group" "primary" {
 
 # Endpoint group for secondary region (failover)
 resource "aws_globalaccelerator_endpoint_group" "secondary" {
-  provider     = aws.secondary
+  provider     = aws.global
   listener_arn = aws_globalaccelerator_listener.https.id
 
   endpoint_group_region         = "eu-west-1"
@@ -322,7 +387,7 @@ resource "aws_globalaccelerator_endpoint_group" "secondary" {
   traffic_dial_percentage       = 100
 
   endpoint_configuration {
-    endpoint_id                    = aws_lb.secondary.arn
+    endpoint_id                    = var.secondary_alb_arn
     weight                         = 100
     client_ip_preservation_enabled = true
   }
@@ -334,7 +399,8 @@ resource "aws_globalaccelerator_endpoint_group" "secondary" {
 ```hcl
 # Health checks for each region
 resource "aws_route53_health_check" "primary" {
-  fqdn              = aws_lb.primary.dns_name
+  provider          = aws.primary
+  fqdn              = var.primary_alb_dns_name
   port               = 443
   type               = "HTTPS"
   resource_path      = "/health"
@@ -347,7 +413,8 @@ resource "aws_route53_health_check" "primary" {
 }
 
 resource "aws_route53_health_check" "secondary" {
-  fqdn              = aws_lb.secondary.dns_name
+  provider          = aws.primary
+  fqdn              = var.secondary_alb_dns_name
   port               = 443
   type               = "HTTPS"
   resource_path      = "/health"
@@ -361,9 +428,10 @@ resource "aws_route53_health_check" "secondary" {
 
 # Failover DNS records
 resource "aws_route53_record" "primary" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "app.example.com"
-  type    = "A"
+  provider = aws.primary
+  zone_id  = data.aws_route53_zone.main.zone_id
+  name     = "app.example.com"
+  type     = "A"
 
   set_identifier = "primary"
 
@@ -372,8 +440,8 @@ resource "aws_route53_record" "primary" {
   }
 
   alias {
-    name                   = aws_lb.primary.dns_name
-    zone_id                = aws_lb.primary.zone_id
+    name                   = var.primary_alb_dns_name
+    zone_id                = var.primary_alb_zone_id
     evaluate_target_health = true
   }
 
@@ -381,9 +449,10 @@ resource "aws_route53_record" "primary" {
 }
 
 resource "aws_route53_record" "secondary_failover" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "app.example.com"
-  type    = "A"
+  provider = aws.primary
+  zone_id  = data.aws_route53_zone.main.zone_id
+  name     = "app.example.com"
+  type     = "A"
 
   set_identifier = "secondary"
 
@@ -392,8 +461,8 @@ resource "aws_route53_record" "secondary_failover" {
   }
 
   alias {
-    name                   = aws_lb.secondary.dns_name
-    zone_id                = aws_lb.secondary.zone_id
+    name                   = var.secondary_alb_dns_name
+    zone_id                = var.secondary_alb_zone_id
     evaluate_target_health = true
   }
 
@@ -401,7 +470,8 @@ resource "aws_route53_record" "secondary_failover" {
 }
 
 data "aws_route53_zone" "main" {
-  name = "example.com"
+  provider = aws.primary
+  name     = "example.com"
 }
 ```
 
