@@ -8,7 +8,7 @@ Description: Learn how to create and configure Azure Container Registry with Ter
 
 ---
 
-Azure Container Registry (ACR) is a managed Docker registry for storing and managing container images. It integrates natively with Azure Kubernetes Service, App Service, Container Instances, and other Azure services. ACR handles image storage, vulnerability scanning, geo-replication, and access control so you can focus on building your applications.
+Azure Container Registry (ACR) is a managed Docker registry for storing and managing container images. It integrates natively with Azure Kubernetes Service, App Service, Container Instances, and other Azure services. ACR handles image storage, geo-replication, and access control, and integrates with Microsoft Defender for Containers for vulnerability assessment so you can focus on building your applications.
 
 Managing ACR through Terraform ensures your registry configuration is consistent across environments and can be reproduced. This guide covers creating registries at different SKUs, configuring geo-replication, setting up private access, and integrating with CI/CD pipelines.
 
@@ -26,7 +26,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -56,7 +56,7 @@ ACR comes in three tiers:
 
 - **Basic**: For development and low-volume production. Limited storage and throughput.
 - **Standard**: For most production workloads. More storage and better throughput.
-- **Premium**: Geo-replication, private link, content trust, and higher storage/throughput limits.
+- **Premium**: Geo-replication, private link, higher storage/throughput limits, and Docker Content Trust for registries that enabled it before Microsoft's May 31, 2026 retirement cutoff.
 
 ## Creating a Basic Registry
 
@@ -91,8 +91,7 @@ resource "azurerm_container_registry" "prod" {
   # Enable admin user only if needed for specific integrations
   admin_enabled = false
 
-  # Enable content trust (image signing)
-  trust_policy_enabled = true
+  # Docker Content Trust is being retired by Microsoft; use Notary Project tooling for new image signing workflows.
 
   # Enable retention policy for untagged manifests
   retention_policy_in_days = 30
@@ -128,7 +127,7 @@ resource "azurerm_container_registry" "prod" {
 Premium registries can replicate images to multiple regions for low-latency pulls:
 
 ```hcl
-# Geo-replication to West US
+# Geo-replication to multiple regions
 resource "azurerm_container_registry" "geo_replicated" {
   name                = "myappcrgeorep"
   resource_group_name = azurerm_resource_group.acr.name
@@ -139,11 +138,11 @@ resource "azurerm_container_registry" "geo_replicated" {
   # Primary region is set by the location field
   # Add replicas for other regions
   georeplications {
-    location                = "West US"
-    zone_redundancy_enabled = true
+    location                = "Southeast Asia"
+    zone_redundancy_enabled = false
 
     tags = {
-      Region = "west-us"
+      Region = "southeast-asia"
     }
   }
 
@@ -157,11 +156,11 @@ resource "azurerm_container_registry" "geo_replicated" {
   }
 
   georeplications {
-    location                = "Southeast Asia"
-    zone_redundancy_enabled = false
+    location                = "West US"
+    zone_redundancy_enabled = true
 
     tags = {
-      Region = "southeast-asia"
+      Region = "west-us"
     }
   }
 
@@ -174,7 +173,7 @@ resource "azurerm_container_registry" "geo_replicated" {
 
 ## Private Endpoint Access
 
-Restrict registry access to your VNet using Private Link:
+Provide private VNet access to your registry using Private Link. To make the private endpoint the only access path, also disable public network access or configure restrictive network rules on the registry:
 
 ```hcl
 # VNet for private access
@@ -192,7 +191,7 @@ resource "azurerm_subnet" "acr_endpoint" {
   address_prefixes     = ["10.0.1.0/24"]
 
   # Disable network policies for private endpoints
-  private_endpoint_network_policies_enabled = false
+  private_endpoint_network_policies = "Disabled"
 }
 
 # Private endpoint for ACR
@@ -344,6 +343,7 @@ resource "azurerm_container_registry_task" "build" {
     name           = "github-commit"
     events         = ["commit"]
     repository_url = "https://github.com/myorg/myapp"
+    source_type    = "Github"
     branch         = "main"
 
     authentication {
@@ -428,12 +428,12 @@ A registry outage blocks every deployment that depends on it. Monitor your ACR w
 ## Security Best Practices
 
 - Disable the admin user and use managed identities or service principals instead.
-- Enable content trust to ensure images are signed before deployment.
+- Use modern image signing such as Notary Project; Docker Content Trust in ACR is being retired.
 - Use private endpoints to keep registry traffic off the public internet.
 - Set a retention policy to automatically clean up old, untagged manifests.
 - Use scope maps and tokens instead of granting broad registry access.
-- Regularly scan images for vulnerabilities using Azure Defender for container registries.
+- Regularly scan images for vulnerabilities using Microsoft Defender for Containers.
 
 ## Summary
 
-Azure Container Registry is the backbone of container workloads in Azure. By defining it in Terraform, you ensure your registry configuration - SKU, networking, access control, and replication - is consistent and auditable. Start with the Standard SKU for most workloads and upgrade to Premium when you need geo-replication or private endpoints. The combination of RBAC, private networking, and content trust gives you a secure foundation for your container supply chain.
+Azure Container Registry is the backbone of container workloads in Azure. By defining it in Terraform, you ensure your registry configuration - SKU, networking, access control, and replication - is consistent and auditable. Start with the Standard SKU for most workloads and upgrade to Premium when you need geo-replication or private endpoints. The combination of RBAC, private networking, and modern image signing gives you a secure foundation for your container supply chain.
