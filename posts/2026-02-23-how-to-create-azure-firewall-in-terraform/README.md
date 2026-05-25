@@ -8,7 +8,7 @@ Description: A complete guide to deploying Azure Firewall with Terraform, includ
 
 ---
 
-Azure Firewall is a cloud-native, managed network security service that protects your Azure Virtual Network resources. It is a fully stateful firewall as a service with built-in high availability and unrestricted cloud scalability. Unlike NSGs that work at the network interface level, Azure Firewall provides centralized network and application-level filtering, threat intelligence-based blocking, TLS inspection, and URL filtering.
+Azure Firewall is a cloud-native, managed network security service that protects your Azure Virtual Network resources. It is a fully stateful firewall as a service with built-in high availability and cloud scalability. Unlike NSGs that work at the network interface level, Azure Firewall provides centralized network and application-level filtering, threat intelligence-based blocking, and, depending on the SKU, TLS inspection and URL filtering.
 
 If you are building a hub-and-spoke network architecture, Azure Firewall typically sits in the hub VNet and inspects all traffic flowing between spokes, to the internet, and from on-premises networks. Managing this through Terraform is the right call because firewall rules tend to grow over time and become difficult to manage through the portal.
 
@@ -17,14 +17,14 @@ If you are building a hub-and-spoke network architecture, Azure Firewall typical
 Azure Firewall comes in three tiers:
 
 - **Basic** - for small environments with throughput up to 250 Mbps
-- **Standard** - L3-L7 filtering, threat intelligence, fixed public IP
-- **Premium** - adds TLS inspection, IDPS, URL filtering, and web categories
+- **Standard** - L3-L7 filtering, threat intelligence, DNS proxy, web categories, and scaling up to 30 Gbps
+- **Premium** - adds TLS inspection, IDPS, URL filtering, and advanced web categories
 
 ## Prerequisites
 
 - Terraform 1.3+
 - Azure subscription with Contributor access
-- Azure CLI authenticated
+- Azure CLI authenticated and an Azure subscription ID available
 
 ## Provider Configuration
 
@@ -35,12 +35,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID where the firewall will be deployed"
+  type        = string
+}
+
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 ```
@@ -373,7 +379,7 @@ resource "azurerm_virtual_network_peering" "hub_to_spoke1" {
   virtual_network_name      = azurerm_virtual_network.hub.name
   remote_virtual_network_id = azurerm_virtual_network.spoke1.id
   allow_forwarded_traffic   = true
-  allow_gateway_transit     = true
+  allow_gateway_transit     = false
 }
 ```
 
@@ -390,29 +396,33 @@ resource "azurerm_log_analytics_workspace" "firewall" {
 
 # Diagnostic settings for the firewall
 resource "azurerm_monitor_diagnostic_setting" "firewall" {
-  name                       = "diag-firewall-to-law"
-  target_resource_id         = azurerm_firewall.main.id
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.firewall.id
+  name                           = "diag-firewall-to-law"
+  target_resource_id             = azurerm_firewall.main.id
+  log_analytics_workspace_id     = azurerm_log_analytics_workspace.firewall.id
+  log_analytics_destination_type = "Dedicated"
 
   enabled_log {
-    category = "AzureFirewallApplicationRule"
+    category = "AZFWApplicationRule"
   }
 
   enabled_log {
-    category = "AzureFirewallNetworkRule"
+    category = "AZFWNetworkRule"
   }
 
   enabled_log {
-    category = "AzureFirewallDnsProxy"
+    category = "AZFWNatRule"
+  }
+
+  enabled_log {
+    category = "AZFWDnsQuery"
   }
 
   enabled_log {
     category = "AZFWThreatIntel"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
