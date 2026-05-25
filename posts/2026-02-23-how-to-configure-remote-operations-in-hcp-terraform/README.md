@@ -21,7 +21,7 @@ When you run `terraform plan` with remote operations enabled:
 3. HCP Terraform queues a run on the workspace
 4. A worker picks up the run, downloads the configuration, and runs `terraform plan`
 5. Plan output is streamed back to your terminal in real time
-6. For applies, the same process happens after plan approval
+6. For applies, `terraform apply` follows the same upload-and-run process, then waits for approval unless the run is auto-approved
 
 The key difference from local execution is that the actual Terraform binary runs on HCP Terraform's infrastructure, not on your machine.
 
@@ -35,8 +35,12 @@ Plans and applies run on HCP Terraform's infrastructure:
 
 ```hcl
 resource "tfe_workspace" "example" {
-  name           = "production-vpc"
-  organization   = "your-org"
+  name         = "production-vpc"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "example" {
+  workspace_id   = tfe_workspace.example.id
   execution_mode = "remote"
 }
 ```
@@ -47,8 +51,12 @@ State is stored in HCP Terraform, but plans and applies run on your local machin
 
 ```hcl
 resource "tfe_workspace" "local_example" {
-  name           = "development-testing"
-  organization   = "your-org"
+  name         = "development-testing"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "local_example" {
+  workspace_id   = tfe_workspace.local_example.id
   execution_mode = "local"
 }
 ```
@@ -59,8 +67,12 @@ Plans and applies run on your own agents inside your network:
 
 ```hcl
 resource "tfe_workspace" "agent_example" {
-  name           = "private-infrastructure"
-  organization   = "your-org"
+  name         = "private-infrastructure"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "agent_example" {
+  workspace_id   = tfe_workspace.agent_example.id
   execution_mode = "agent"
   agent_pool_id  = tfe_agent_pool.private.id
 }
@@ -149,22 +161,30 @@ For workspaces where you want plans to automatically apply without manual approv
 
 ```hcl
 resource "tfe_workspace" "auto_apply" {
-  name           = "development-infrastructure"
-  organization   = "your-org"
+  name         = "development-infrastructure"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "auto_apply" {
+  workspace_id   = tfe_workspace.auto_apply.id
   execution_mode = "remote"
-  auto_apply     = true  # Plans apply automatically if successful
+  auto_apply     = true  # UI, API, and VCS runs apply automatically if successful
 }
 ```
 
-This is common for development environments but usually not recommended for production. You can also enable auto-apply only for VCS-triggered runs:
+This is common for development environments but usually not recommended for production. CLI-driven runs still use the `-auto-approve` flag to control whether a specific apply runs without prompting. You can also enable auto-apply only for runs created by run triggers from another workspace:
 
 ```hcl
 resource "tfe_workspace" "selective_auto_apply" {
   name                          = "staging-infrastructure"
   organization                  = "your-org"
-  execution_mode                = "remote"
   auto_apply                    = false
   auto_apply_run_trigger        = true  # Auto-apply only for run triggers
+}
+
+resource "tfe_workspace_settings" "selective_auto_apply" {
+  workspace_id   = tfe_workspace.selective_auto_apply.id
+  execution_mode = "remote"
 }
 ```
 
@@ -176,8 +196,12 @@ If your Terraform configuration is in a subdirectory of your repository:
 resource "tfe_workspace" "subdirectory" {
   name              = "networking"
   organization      = "your-org"
-  execution_mode    = "remote"
   working_directory = "infrastructure/networking"
+}
+
+resource "tfe_workspace_settings" "subdirectory" {
+  workspace_id   = tfe_workspace.subdirectory.id
+  execution_mode = "remote"
 }
 ```
 
@@ -189,19 +213,26 @@ Control which version of Terraform runs your operations:
 resource "tfe_workspace" "pinned_version" {
   name              = "production-database"
   organization      = "your-org"
-  execution_mode    = "remote"
   terraform_version = "1.7.5"  # Pin to a specific version
+}
+
+resource "tfe_workspace_settings" "pinned_version" {
+  workspace_id   = tfe_workspace.pinned_version.id
+  execution_mode = "remote"
 }
 ```
 
-You can also allow the workspace to automatically use the latest version:
+You can also allow a new workspace to use the latest available version by omitting `terraform_version`:
 
 ```hcl
 resource "tfe_workspace" "latest_version" {
-  name              = "development-playground"
-  organization      = "your-org"
-  execution_mode    = "remote"
-  terraform_version = "latest"
+  name         = "development-playground"
+  organization = "your-org"
+}
+
+resource "tfe_workspace_settings" "latest_version" {
+  workspace_id   = tfe_workspace.latest_version.id
+  execution_mode = "remote"
 }
 ```
 
@@ -212,16 +243,14 @@ Run triggers let you create dependencies between workspaces. When one workspace 
 ```hcl
 # The VPC workspace
 resource "tfe_workspace" "vpc" {
-  name           = "production-vpc"
-  organization   = "your-org"
-  execution_mode = "remote"
+  name         = "production-vpc"
+  organization = "your-org"
 }
 
 # The application workspace depends on the VPC
 resource "tfe_workspace" "application" {
-  name           = "production-application"
-  organization   = "your-org"
-  execution_mode = "remote"
+  name         = "production-application"
+  organization = "your-org"
 }
 
 # Create the run trigger
