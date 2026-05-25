@@ -4,26 +4,26 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure Patterns, FedRAMP, Government, Compliance, Security, GovCloud
 
-Description: A practical guide to building FedRAMP-compliant government infrastructure with Terraform using AWS GovCloud, FIPS encryption, continuous monitoring, and NIST controls.
+Description: A practical guide to building FedRAMP-aligned government infrastructure with Terraform using AWS GovCloud, FIPS-validated cryptography, continuous monitoring, and NIST controls.
 
 ---
 
-Selling to the US federal government requires FedRAMP authorization, and FedRAMP is one of the most rigorous cloud compliance frameworks out there. It is based on NIST 800-53 controls and requires specific technical implementations for everything from encryption to access control to incident response. Building FedRAMP-compliant infrastructure from scratch is a significant undertaking, but Terraform makes it manageable by codifying every control.
+Selling cloud services to the US federal government typically requires FedRAMP authorization, and FedRAMP is one of the most rigorous cloud compliance frameworks out there. It is based on NIST 800-53 controls and requires specific technical implementations for everything from encryption to access control to incident response. Building FedRAMP-aligned infrastructure from scratch is a significant undertaking, but Terraform makes it manageable by codifying many infrastructure controls.
 
 ## Understanding FedRAMP
 
-FedRAMP (Federal Risk and Authorization Management Program) standardizes security assessment for cloud services used by federal agencies. There are three impact levels: Low, Moderate, and High. Most organizations target Moderate, which requires implementing over 300 security controls. The good news is that many of these controls map directly to infrastructure configurations that Terraform can manage.
+FedRAMP (Federal Risk and Authorization Management Program) standardizes security assessment for cloud services used by federal agencies. FedRAMP authorizes cloud service offerings at Low, Moderate, and High impact levels. Most organizations target Moderate, which requires implementing over 300 security controls. The good news is that many of these controls map directly to infrastructure configurations that Terraform can manage.
 
 ## Why AWS GovCloud?
 
-AWS GovCloud (US) regions are isolated from commercial AWS regions and operated by US persons on US soil. Using GovCloud is typically required for FedRAMP High and strongly recommended for FedRAMP Moderate. GovCloud provides FIPS 140-2 compliant endpoints, ITAR support, and FedRAMP High authorization.
+AWS GovCloud (US) regions are isolated from commercial AWS regions and operated by US persons on US soil. GovCloud is often chosen for regulated workloads and may be required by agency, data residency, export control, or contract requirements, but FedRAMP authorization can also use eligible commercial AWS regions and services. GovCloud provides FIPS endpoints, ITAR support, and FedRAMP High authorized services.
 
 ## Architecture Overview
 
 Our FedRAMP infrastructure includes:
 
 - AWS GovCloud deployment
-- FIPS 140-2 encryption for all data
+- FIPS-validated cryptographic protections
 - Comprehensive access control with MFA
 - Continuous monitoring with CloudWatch and Config
 - Audit logging with CloudTrail
@@ -39,7 +39,8 @@ Configure Terraform to deploy in GovCloud.
 # AWS GovCloud provider
 
 provider "aws" {
-  region = "us-gov-west-1"
+  region            = "us-gov-west-1"
+  use_fips_endpoint = true
 
   default_tags {
     tags = {
@@ -53,8 +54,9 @@ provider "aws" {
 
 # DR region in GovCloud
 provider "aws" {
-  alias  = "dr"
-  region = "us-gov-east-1"
+  alias             = "dr"
+  region            = "us-gov-east-1"
+  use_fips_endpoint = true
 
   default_tags {
     tags = {
@@ -67,9 +69,9 @@ provider "aws" {
 }
 ```
 
-## FIPS 140-2 Compliant Encryption
+## FIPS-Validated Encryption
 
-FedRAMP requires FIPS 140-2 validated encryption modules.
+FedRAMP requires FIPS-validated cryptographic modules. FIPS 140-3 has superseded FIPS 140-2 for new validations, but many environments still reference FIPS 140-2 certificates during transition.
 
 ```hcl
 # KMS key with FIPS-compliant configuration
@@ -78,10 +80,11 @@ resource "aws_kms_key" "fedramp" {
   deletion_window_in_days = 30
   enable_key_rotation     = true
   is_enabled              = true
-  customer_master_key_spec = "SYMMETRIC_DEFAULT"
+  key_spec                = "SYMMETRIC_DEFAULT"
   key_usage               = "ENCRYPT_DECRYPT"
 
-  # GovCloud KMS endpoints are FIPS 140-2 validated
+  # The provider is configured to use FIPS endpoints where AWS supports them.
+  # AWS KMS protects keys with FIPS-validated HSMs.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -192,7 +195,7 @@ resource "aws_flow_log" "fedramp" {
 
 resource "aws_cloudwatch_log_group" "flow_logs" {
   name              = "/fedramp/vpc-flow-logs"
-  retention_in_days = 365  # 1 year minimum for FedRAMP Moderate
+  retention_in_days = 365  # Align with AU-11 and your SSP retention requirements
   kms_key_id        = aws_kms_key.fedramp.arn
 }
 
@@ -291,15 +294,26 @@ resource "aws_cloudtrail" "fedramp" {
 
 # Audit log S3 bucket with immutability
 resource "aws_s3_bucket" "audit_logs" {
-  bucket = "fedramp-audit-logs-${data.aws_caller_identity.current.account_id}"
+  bucket              = "fedramp-audit-logs-${data.aws_caller_identity.current.account_id}"
+  object_lock_enabled = true
 
   tags = {
     Control = "AU-9"  # Protection of Audit Information
   }
 }
 
+resource "aws_s3_bucket_versioning" "audit" {
+  bucket = aws_s3_bucket.audit_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_object_lock_configuration" "audit" {
   bucket = aws_s3_bucket.audit_logs.id
+
+  depends_on = [aws_s3_bucket_versioning.audit]
 
   rule {
     default_retention {
@@ -365,14 +379,8 @@ resource "aws_config_config_rule" "mfa_enabled" {
   tags = { Control = "IA-2" }  # Identification and Authentication
 }
 
-resource "aws_config_config_rule" "root_mfa" {
-  name = "fedramp-root-mfa"
-  source {
-    owner             = "AWS"
-    source_identifier = "ROOT_ACCOUNT_MFA_ENABLED"
-  }
-  tags = { Control = "IA-2" }
-}
+# AWS Config root MFA managed rules are not supported in GovCloud.
+# Handle GovCloud root access controls through account policy and monitoring.
 
 resource "aws_config_config_rule" "cloudtrail_enabled" {
   name = "fedramp-cloudtrail"
@@ -488,8 +496,8 @@ resource "aws_security_group" "quarantine" {
 
 ## Wrapping Up
 
-FedRAMP-compliant infrastructure requires implementing hundreds of NIST 800-53 controls. Terraform makes this achievable by codifying each control as infrastructure configuration. Encryption is enforced by KMS key policies. Access control is defined in IAM policies. Audit logging is configured through CloudTrail and Config. Continuous monitoring runs through Security Hub and GuardDuty.
+FedRAMP-compliant infrastructure requires implementing hundreds of NIST 800-53 controls. Terraform makes this achievable by codifying many infrastructure-related controls as configuration. Encryption is enforced by KMS key policies. Access control is defined in IAM policies. Audit logging is configured through CloudTrail and Config. Continuous monitoring runs through Security Hub and GuardDuty.
 
-The beauty of using Terraform for FedRAMP is that your infrastructure code becomes part of your System Security Plan (SSP). Auditors can trace each control to a specific Terraform resource. Updates to controls go through code review. And new environments automatically inherit all compliance configurations.
+The beauty of using Terraform for FedRAMP is that your infrastructure code can become supporting evidence for your System Security Plan (SSP). Auditors can trace many technical controls to specific Terraform resources. Updates to controls go through code review. And new environments automatically inherit all compliance configurations.
 
 For monitoring your FedRAMP-authorized infrastructure with NIST-aligned dashboards and automated control validation, check out [OneUptime](https://oneuptime.com/blog/post/2026-02-23-how-to-build-a-government-fedramp-infrastructure-with-terraform/view) for government-grade infrastructure observability.
