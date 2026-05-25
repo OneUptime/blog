@@ -89,11 +89,6 @@ resource "aws_cloudfront_distribution" "main" {
 
     # Use a managed cache policy
     cache_policy_id = data.aws_cloudfront_cache_policy.caching_optimized.id
-
-    # TTL settings (used when origin does not set Cache-Control headers)
-    min_ttl     = 0
-    default_ttl = 86400
-    max_ttl     = 31536000
   }
 
   # Custom error responses
@@ -338,9 +333,9 @@ data "aws_cloudfront_origin_request_policy" "all_viewer" {
 }
 ```
 
-## Cache Invalidation
+## Custom Cache Policy
 
-Set up a Lambda function to invalidate the cache when content changes:
+Create a custom cache policy for fine-grained cache key and TTL control:
 
 ```hcl
 # Custom cache policy for fine-grained control
