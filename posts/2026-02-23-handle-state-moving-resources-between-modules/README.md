@@ -287,8 +287,8 @@ If you're moving resources between modules that live in different state files (d
 
 ```bash
 # Pull both states
-cd project-a && terraform state pull > /tmp/state-a.tfstate
-cd project-b && terraform state pull > /tmp/state-b.tfstate
+(cd project-a && terraform state pull > /tmp/state-a.tfstate)
+(cd project-b && terraform state pull > /tmp/state-b.tfstate)
 
 # Move the resource between state files
 terraform state mv \
@@ -298,8 +298,8 @@ terraform state mv \
   module.shared_networking.aws_vpc.main
 
 # Push the updated states back
-cd project-a && terraform state push /tmp/state-a.tfstate
-cd project-b && terraform state push /tmp/state-b.tfstate
+(cd project-a && terraform state push /tmp/state-a.tfstate)
+(cd project-b && terraform state push /tmp/state-b.tfstate)
 ```
 
 ## Dealing with Cross-Module Dependencies
