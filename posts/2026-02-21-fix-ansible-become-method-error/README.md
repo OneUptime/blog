@@ -8,7 +8,7 @@ Description: Resolve Ansible become_method requires become error by properly con
 
 ---
 
-This error occurs when you specify a `become_method` (like sudo or su) without also enabling `become`. Ansible treats this as a configuration error because specifying how to escalate privileges without actually requesting escalation does not make sense.
+This error occurs when you specify a `become_method` (like sudo or su) without also enabling `become`. The `become_method` setting only selects how Ansible should escalate privileges; it does not enable escalation by itself.
 
 ## The Error
 
@@ -94,12 +94,12 @@ The fix is simple: whenever you use `become_method`, also set `become: yes`. You
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where privilege escalation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating privilege escalation
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -131,7 +131,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -275,4 +275,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
