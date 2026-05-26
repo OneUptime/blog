@@ -20,12 +20,13 @@ Docker Compose alone works well for single-server deployments. But when you need
 # roles/compose_deploy/tasks/main.yml
 
 # Deploy a Docker Compose application
-- name: Ensure Docker and Docker Compose are installed
+- name: Ensure Docker and Docker Compose are installed on Debian/Ubuntu
   ansible.builtin.package:
     name:
       - docker.io
       - docker-compose-plugin
     state: present
+  when: ansible_os_family == 'Debian'
 
 - name: Create application directory
   ansible.builtin.file:
@@ -183,30 +184,20 @@ deploy_user: deploy
 app_dir: /opt/myapp
 ```
 
-## Zero-Downtime Updates
+## Minimized-Downtime Updates
 
 ```yaml
 # roles/compose_deploy/tasks/update.yml
-# Update Docker Compose application with zero downtime
+# Update Docker Compose application and wait for health checks
 - name: Pull new images
   ansible.builtin.command:
     cmd: docker compose pull
     chdir: "{{ app_dir }}"
   changed_when: true
 
-- name: Scale up new version
+- name: Recreate application containers
   ansible.builtin.command:
-    cmd: docker compose up -d --no-deps --scale web=2 web
-    chdir: "{{ app_dir }}"
-  changed_when: true
-
-- name: Wait for new container to be healthy
-  ansible.builtin.pause:
-    seconds: 30
-
-- name: Scale back down
-  ansible.builtin.command:
-    cmd: docker compose up -d --no-deps --scale web=1 web
+    cmd: docker compose up -d --remove-orphans --wait --wait-timeout 180
     chdir: "{{ app_dir }}"
   changed_when: true
 ```
@@ -258,12 +249,12 @@ app_dir: /opt/myapp
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these Ansible patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -292,10 +283,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -336,7 +328,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name | default('ssh') }}"
         state: restarted
 ```
 
@@ -377,7 +369,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible
 - name: Robust task execution
   hosts: all
   tasks:
