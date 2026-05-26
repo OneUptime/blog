@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, VMware, VMotion, Migration, vSphere
 
-Description: Learn how to automate VMware vMotion migrations with Ansible including compute vMotion, storage vMotion, and cross-vCenter moves for maintenance and load balancing.
+Description: Learn how to automate VMware vMotion migrations with Ansible including compute vMotion and storage vMotion for maintenance and load balancing.
 
 ---
 
@@ -59,8 +59,7 @@ Use the `community.vmware.vmware_vmotion` module to migrate a running VM to a di
     - name: Display migration result
       ansible.builtin.debug:
         msg: >
-          VM: {{ vmotion_result.vm_name }}
-          migrated to host: {{ vmotion_result.destination_host }}
+          VM migrated to host: {{ vmotion_result.running_host }}
       when: vmotion_result.changed
 ```
 
@@ -96,7 +95,7 @@ Storage vMotion moves the VM's virtual disks to a different datastore while the 
 
     - name: Report storage migration
       ansible.builtin.debug:
-        msg: "Storage migration complete for {{ svmotion_result.vm_name }}"
+        msg: "Storage migration complete to {{ svmotion_result.datastore }}"
 ```
 
 ## Combined vMotion: Host and Storage Together
@@ -179,10 +178,14 @@ The most common vMotion use case is evacuating all VMs from a host before mainte
 
     # Now put the host in maintenance mode
     - name: Put source host in maintenance mode
-      community.vmware.vmware_maintenancemode:
-        esxi_hostname: "{{ source_host }}"
+      vmware.vmware.esxi_maintenance_mode:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        esxi_host_name: "{{ source_host }}"
+        enable_maintenance_mode: true
         timeout: 3600
-        state: present
 ```
 
 ## Intelligent vMotion with Load Distribution
@@ -302,22 +305,28 @@ Move VMs between storage tiers based on performance requirements.
 
 ## Pre-Migration Validation
 
-Before migrating, validate that the target has enough resources.
+Before migrating, validate that the target host is connected and not already in maintenance mode.
 
 ```yaml
 # validate-and-migrate.yml
-- name: Validate target host capacity before migration
-  community.vmware.vmware_host_info:
+- name: Validate target host availability before migration
+  community.vmware.vmware_host_facts:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-  register: host_info
+    esxi_hostname: "{{ target_host }}"
+    schema: vsphere
+    properties:
+      - runtime.connectionState
+      - runtime.inMaintenanceMode
+  register: target_host_facts
 
 - name: Check target host is not in maintenance mode
   ansible.builtin.assert:
     that:
-      - host_info.hosts[target_host].connection_state == "connected"
+      - target_host_facts.ansible_facts.runtime.connectionState == "connected"
+      - not target_host_facts.ansible_facts.runtime.inMaintenanceMode
     fail_msg: "Target host {{ target_host }} is not available for migration"
 
 - name: Proceed with migration
