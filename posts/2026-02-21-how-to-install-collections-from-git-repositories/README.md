@@ -34,7 +34,7 @@ ansible-galaxy collection install git+https://github.com/ansible-collections/com
 ansible-galaxy collection install git+https://github.com/ansible-collections/community.general.git,stable-8
 
 # Install from a specific commit
-ansible-galaxy collection install git+https://github.com/ansible-collections/community.general.git,a1b2c3d4
+ansible-galaxy collection install git+https://github.com/ansible-collections/community.general.git,cbc6f6eed3dd6725f9618a8b9682616dc9dd7c3d
 ```
 
 ## Using requirements.yml
@@ -145,7 +145,7 @@ jobs:
 
 ## Private Repositories with HTTPS Tokens
 
-For HTTPS access with a personal access token:
+For HTTPS access with a personal access token, avoid committing or logging tokenized URLs:
 
 ```bash
 # Install using a token in the URL
@@ -202,7 +202,7 @@ collections:
     version: v1.0.0
 ```
 
-The subdirectory must contain a valid `galaxy.yml` file.
+The subdirectory must contain a valid `galaxy.yml` or `MANIFEST.json` file.
 
 ## Monorepo with Multiple Collections
 
@@ -227,7 +227,7 @@ collections:
 
 ## Repository Requirements
 
-For Galaxy to install from a Git repo, the repo must contain a `galaxy.yml` file (at the root or in the specified subdirectory):
+For Galaxy to install from a Git repo, the repo must contain a `galaxy.yml` or `MANIFEST.json` file (at the root or in the specified subdirectory):
 
 ```yaml
 # galaxy.yml - required at the root of the collection
@@ -248,13 +248,9 @@ Without this file, installation fails with an error about missing metadata.
 
 ## Caching and Performance
 
-Git-based installations are slower than Galaxy installs because they require cloning the full repository. To speed things up:
+Git-based installations are slower than Galaxy installs because they require cloning from Git, and `ansible-galaxy collection install` does not provide a documented shallow-clone option. To speed things up, use a local mirror for frequently used repos:
 
 ```bash
-# Use shallow clones by setting GIT_DEPTH (if supported)
-export GIT_CLONE_DEPTH=1
-
-# Or use a local mirror for frequently used repos
 git clone --mirror https://github.com/myorg/ansible-collection-tools.git /opt/git-mirrors/collection-tools.git
 
 # Then reference the local mirror
@@ -281,7 +277,7 @@ A real-world requirements file typically mixes sources:
 # requirements.yml - production dependencies from mixed sources
 ---
 collections:
-  # Certified collections from Galaxy
+  # Public collections from Galaxy
   - name: community.general
     version: "8.1.0"
 
@@ -305,4 +301,4 @@ collections:
 
 ## Summary
 
-Installing Ansible collections from Git repositories gives you flexibility to use unreleased code, internal collections, and specific commits. The `git+` prefix works with both HTTPS and SSH URLs, and you can specify tags, branches, or commit hashes as versions. For private repos, configure SSH keys or HTTPS tokens. Subdirectory support with the `#` fragment handles monorepos. Always pin to a tag or commit hash for production use, and mix Git sources with Galaxy sources in a single requirements file to manage all your dependencies in one place.
+Installing Ansible collections from Git repositories gives you flexibility to use unreleased code, internal collections, and specific commits. Use the `git+` prefix for HTTPS and file URLs, or SCP-style `git@` URLs for SSH authentication, and specify tags, branches, or commit hashes as versions. For private repos, configure SSH keys or HTTPS tokens. Subdirectory support with the `#` fragment handles monorepos. Always pin to a tag or commit hash for production use, and mix Git sources with Galaxy sources in a single requirements file to manage all your dependencies in one place.
