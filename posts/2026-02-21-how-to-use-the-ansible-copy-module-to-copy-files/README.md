@@ -127,7 +127,7 @@ Before overwriting a file, you can create a backup:
     backup: true
 ```
 
-When `backup: true` is set, Ansible renames the existing file with a timestamp suffix (like `app.conf.2024-01-15@10:30:45~`) before writing the new one. This gives you an easy rollback path.
+When `backup: true` is set, Ansible creates a backup file with a timestamp suffix (like `app.conf.2024-01-15@10:30~`) before writing the new one. This gives you an easy rollback path.
 
 ## Copying Files in a Loop
 
