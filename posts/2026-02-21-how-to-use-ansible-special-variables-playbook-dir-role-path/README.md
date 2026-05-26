@@ -32,7 +32,7 @@ Even if you run this from `/home/user` with `ansible-playbook /opt/ansible/playb
 
 ## What is role_path?
 
-The `role_path` variable contains the absolute path to the currently executing role's root directory. This is available only inside role tasks, handlers, templates, and files. It points to the role directory itself, not to a subdirectory like `tasks/` or `templates/`.
+The `role_path` variable contains the absolute path to the currently executing role's root directory. This is available only inside role tasks, handlers, and templates rendered by role tasks. It points to the role directory itself, not to a subdirectory like `tasks/` or `templates/`.
 
 ```yaml
 # roles/webserver/tasks/main.yml
@@ -43,9 +43,8 @@ The `role_path` variable contains the absolute path to the currently executing r
   # Output: Role directory is: /opt/ansible/roles/webserver
 
 - name: Read a custom file from the role
-  ansible.builtin.slurp:
-    src: "{{ role_path }}/files/custom-config.txt"
-  register: config_content
+  ansible.builtin.set_fact:
+    config_content: "{{ lookup('ansible.builtin.file', role_path ~ '/files/custom-config.txt') }}"
 ```
 
 ## Using playbook_dir for Relative File References
@@ -90,16 +89,37 @@ While Ansible automatically searches the `files/` and `templates/` subdirectorie
 ```yaml
 # roles/database/tasks/main.yml
 ---
-- name: Load SQL migration files
-  ansible.builtin.find:
-    paths: "{{ role_path }}/migrations"
-    patterns: "*.sql"
-  register: migration_files
+- name: Create migration staging directory
+  ansible.builtin.file:
+    path: /tmp/db-migrations
+    state: directory
+    mode: '0750'
+    owner: postgres
+    group: postgres
+  become: true
+
+- name: Copy SQL migration files from the role
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/tmp/db-migrations/{{ item | basename }}"
+    mode: '0640'
+    owner: postgres
+    group: postgres
+  loop: "{{ query('ansible.builtin.fileglob', role_path ~ '/migrations/*.sql') | sort }}"
+  become: true
+  register: copied_migrations
 
 - name: Apply migrations in order
-  ansible.builtin.shell:
-    cmd: "psql -U {{ db_user }} -d {{ db_name }} -f {{ item.path }}"
-  loop: "{{ migration_files.files | sort(attribute='path') }}"
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -U
+      - "{{ db_user }}"
+      - -d
+      - "{{ db_name }}"
+      - -f
+      - "{{ item.dest }}"
+  loop: "{{ copied_migrations.results | sort(attribute='dest') }}"
   become: true
   become_user: postgres
   changed_when: true
@@ -285,7 +305,7 @@ You can pass `role_path` into templates through variables, which is useful when 
 
 ## Common Gotcha: playbook_dir in Imported Playbooks
 
-When you import a playbook with `ansible.builtin.import_playbook`, the `playbook_dir` variable still points to the main playbook's directory, not the imported playbook's directory. This catches people when they have a directory structure like:
+When you import a playbook with `ansible.builtin.import_playbook`, the `playbook_dir` variable points to the directory of the current playbook being executed. That can be different from the directory of the playbook you passed to the `ansible-playbook` command. This catches people when they have a directory structure like:
 
 ```text
 main.yml
@@ -295,7 +315,7 @@ sub/
     config.txt
 ```
 
-If `main.yml` imports `sub/included.yml`, `playbook_dir` inside the imported playbook is the directory of `main.yml`, not `sub/`. Keep this in mind when building file paths in imported playbooks.
+If `main.yml` imports `sub/included.yml`, `playbook_dir` inside the imported playbook is `sub/`, not the directory of `main.yml`. Keep this in mind when building file paths in imported playbooks.
 
 ## Summary
 
