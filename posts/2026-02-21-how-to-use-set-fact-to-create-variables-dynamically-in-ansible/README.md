@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible set_fact module to create and modify v
 
 ---
 
-Static variables in Ansible get you pretty far, but eventually you hit situations where the value of a variable needs to be computed at runtime. Maybe you need to calculate a port number based on the host's position in a group. Maybe you need to transform data from one format to another. Or maybe you need to build a complex data structure from multiple sources. The `set_fact` module lets you create new variables on the fly during playbook execution, and those variables persist for the rest of the play on that host.
+Static variables in Ansible get you pretty far, but eventually you hit situations where the value of a variable needs to be computed at runtime. Maybe you need to calculate a port number based on the host's position in a group. Maybe you need to transform data from one format to another. Or maybe you need to build a complex data structure from multiple sources. The `set_fact` module lets you create new variables on the fly during playbook execution, and those variables are available to later tasks and later plays in the same playbook run for that host.
 
 ## Basic set_fact Usage
 
@@ -95,7 +95,7 @@ At its simplest, `set_fact` assigns a value to a new variable:
     # Build a list
     - name: Create a list of backend URLs
       set_fact:
-        backend_urls: "{{ groups['webservers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '(.*)', 'http://\\1:8080') | list }}"
+        backend_urls: "{{ groups['webservers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.+)$', 'http://\\1:8080') | list }}"
 
     - name: Show backend URLs
       debug:
@@ -247,7 +247,7 @@ A more concise way to do the same thing:
 
 ## set_fact with cacheable
 
-By default, facts created with `set_fact` last only for the current play. The `cacheable` parameter persists them to the fact cache, so they survive across playbook runs:
+By default, facts created with `set_fact` last only for the current playbook run. The `cacheable` parameter makes them work with the fact cache, so they can survive across playbook runs when fact caching is enabled:
 
 ```yaml
 ---
@@ -310,19 +310,14 @@ Combine `set_fact` with Jinja2 filters for data transformation:
         all_teams: "{{ raw_users | map(attribute='teams') | flatten | unique | sort }}"
 
     # Create a mapping of team to members
+    - name: Initialize team membership map
+      set_fact:
+        team_members: {}
+
     - name: Build team membership map
       set_fact:
-        team_members: >-
-          {{
-            dict(
-              all_teams | zip(
-                all_teams | map('regex_replace', '(.*)', '\\1') |
-                map('community.general.json_query', 'raw_users[?contains(teams, `' ~ item ~ '`)].name') |
-                list
-              )
-            )
-          }}
-      # Note: This is complex. A simpler approach with a loop:
+        team_members: "{{ team_members | combine({item: raw_users | selectattr('teams', 'contains', item) | map(attribute='name') | list}) }}"
+      loop: "{{ all_teams }}"
 
     # Simpler approach: filter admins
     - name: Get admin users
@@ -344,4 +339,4 @@ Combine `set_fact` with Jinja2 filters for data transformation:
 
 ## Wrapping Up
 
-The `set_fact` module bridges the gap between static configuration and dynamic runtime logic in Ansible. Use it to compute values from system facts, transform data between formats, build up complex structures through loops, and make conditional assignments. Remember that `set_fact` variables are scoped to the current host and last for the rest of the play unless you use `cacheable: yes` for persistence. When your expressions get complex, consider breaking them into multiple `set_fact` tasks for readability rather than cramming everything into a single Jinja2 expression.
+The `set_fact` module bridges the gap between static configuration and dynamic runtime logic in Ansible. Use it to compute values from system facts, transform data between formats, build up complex structures through loops, and make conditional assignments. Remember that `set_fact` variables are scoped to the current host and last for later tasks and later plays in the same playbook run unless you use `cacheable: yes` with fact caching for persistence. When your expressions get complex, consider breaking them into multiple `set_fact` tasks for readability rather than cramming everything into a single Jinja2 expression.
