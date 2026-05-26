@@ -55,7 +55,6 @@ all:
 
 ```yaml
 # inventories/production/group_vars/redis_cluster.yml
-redis_version: "7.2"
 redis_password: "{{ vault_redis_password }}"
 redis_maxmemory: "{{ (ansible_memtotal_mb * 0.7) | int }}mb"
 redis_maxmemory_policy: allkeys-lru
@@ -94,7 +93,7 @@ redis_cluster_replicas: 1
     - { name: net.core.somaxconn, value: '65535' }
 
 - name: Disable Transparent Huge Pages
-  ansible.builtin.command: echo never > /sys/kernel/mm/transparent_hugepage/enabled
+  ansible.builtin.shell: echo never > /sys/kernel/mm/transparent_hugepage/enabled
   changed_when: false
 
 - name: Create cluster config directory
@@ -116,6 +115,14 @@ redis_cluster_replicas: 1
     port: "{{ redis_port }}"
     delay: 3
     timeout: 30
+```
+
+```yaml
+# roles/redis_cluster/handlers/main.yml
+- name: restart redis
+  ansible.builtin.service:
+    name: redis-server
+    state: restarted
 ```
 
 ```jinja2
@@ -170,9 +177,10 @@ logfile /var/log/redis/redis-server.log
 
 - name: Check if cluster already exists
   ansible.builtin.command:
-    cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} cluster info"
+    cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} -p {{ redis_port }} cluster info"
   register: cluster_info
   changed_when: false
+  run_once: true
   no_log: true
 
 - name: Create Redis Cluster
@@ -188,12 +196,13 @@ logfile /var/log/redis/redis-server.log
 
 - name: Wait for cluster to stabilize
   ansible.builtin.command:
-    cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} cluster info"
+    cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} -p {{ redis_port }} cluster info"
   register: final_status
   until: "'cluster_state:ok' in final_status.stdout"
   retries: 30
   delay: 2
   changed_when: false
+  run_once: true
   no_log: true
 ```
 
@@ -207,7 +216,7 @@ logfile /var/log/redis/redis-server.log
   tasks:
     - name: Check cluster info
       ansible.builtin.command:
-        cmd: "redis-cli -a {{ redis_password }} cluster info"
+        cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} -p {{ redis_port }} cluster info"
       register: cluster_info
       changed_when: false
       no_log: true
@@ -218,7 +227,7 @@ logfile /var/log/redis/redis-server.log
 
     - name: Check cluster nodes
       ansible.builtin.command:
-        cmd: "redis-cli -a {{ redis_password }} cluster nodes"
+        cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} -p {{ redis_port }} cluster nodes"
       register: cluster_nodes
       changed_when: false
       no_log: true
@@ -235,13 +244,13 @@ logfile /var/log/redis/redis-server.log
 
     - name: Test write and read
       ansible.builtin.command:
-        cmd: "redis-cli -a {{ redis_password }} -c SET test_key 'ansible_test_value'"
+        cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} -p {{ redis_port }} -c SET test_key 'ansible_test_value'"
       changed_when: false
       no_log: true
 
     - name: Verify read from cluster
       ansible.builtin.command:
-        cmd: "redis-cli -a {{ redis_password }} -c GET test_key"
+        cmd: "redis-cli -a {{ redis_password }} -h {{ ansible_host }} -p {{ redis_port }} -c GET test_key"
       register: read_result
       changed_when: false
       no_log: true
@@ -267,7 +276,9 @@ logfile /var/log/redis/redis-server.log
   become: yes
   tasks:
     - name: Create cluster
-      ansible.builtin.include_tasks: roles/redis_cluster/tasks/create-cluster.yml
+      ansible.builtin.include_role:
+        name: redis_cluster
+        tasks_from: create-cluster
 
 - name: Verify cluster
   ansible.builtin.import_playbook: verify-redis-cluster.yml
