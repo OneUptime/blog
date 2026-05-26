@@ -28,7 +28,7 @@ ansible webservers -m copy -a "src=./nginx.conf dest=/etc/nginx/nginx.conf backu
 ansible all -m copy -a "content='ENVIRONMENT=production\nDEBUG=false\n' dest=/etc/app/environment mode=0644" --become
 ```
 
-The copy module calculates an MD5 checksum of the file and only transfers it if the remote file differs. This makes it safe to run repeatedly without unnecessary transfers.
+The copy module uses checksums to compare the file and only transfers it if the remote file differs. This makes it safe to run repeatedly without unnecessary transfers.
 
 ### The template Module
 
@@ -43,7 +43,7 @@ The template module renders the Jinja2 template on the controller using availabl
 
 ### The synchronize Module
 
-For large files, directories, or when you need rsync features, the `synchronize` module is significantly faster than `copy`:
+For large files, directories, or when you need rsync features, the `synchronize` module is significantly faster than `copy`. It is provided by the `ansible.posix` collection, which is included in the `ansible` package but not in `ansible-core`:
 
 ```bash
 # Sync a directory to remote hosts
@@ -56,7 +56,7 @@ ansible webservers -m synchronize -a "src=./webroot/ dest=/var/www/html/ compres
 ansible webservers -m synchronize -a "src=./webroot/ dest=/var/www/html/ delete=yes"
 
 # Sync with specific rsync options
-ansible webservers -m synchronize -a "src=./app/ dest=/opt/app/ rsync_opts='--exclude=.git,--exclude=node_modules'"
+ansible webservers -m synchronize -a '{"src":"./app/","dest":"/opt/app/","rsync_opts":["--exclude=.git","--exclude=node_modules"]}'
 ```
 
 The synchronize module wraps rsync, which transfers only the differences between files. For large directories where only a few files changed, this is orders of magnitude faster than the copy module.
@@ -107,8 +107,8 @@ ansible all -m copy -a "src=./config.yml dest=/etc/app/config.yml"
 # Best for: application deployments, large assets, directory syncs
 ansible all -m synchronize -a "src=./deploy/ dest=/opt/app/"
 
-# For very large single files, synchronize is much faster because
-# rsync can resume interrupted transfers and only send changed blocks
+# For very large single files, synchronize can be faster because
+# rsync can skip unchanged files and transfer only changed data when possible
 ansible all -m synchronize -a "src=./database_dump.sql.gz dest=/tmp/"
 ```
 
@@ -117,9 +117,9 @@ ansible all -m synchronize -a "src=./database_dump.sql.gz dest=/tmp/"
 Sometimes you need to transfer files between two remote hosts without going through the controller:
 
 ```bash
-# Use the synchronize module with delegate_to
-# This requires SSH access between the remote hosts
-ansible web2.example.com -m synchronize -a "src=/var/www/html/ dest=/var/www/html/" -e "delegate_to=web1.example.com"
+# Run rsync from the source host to the destination host
+# This requires rsync and SSH access from web1.example.com to web2.example.com
+ansible web1.example.com -m shell -a "rsync -az /var/www/html/ web2.example.com:/var/www/html/"
 
 # Alternative: fetch to controller, then push to destination
 ansible web1.example.com -m fetch -a "src=/etc/app/config.yml dest=/tmp/config.yml flat=yes"
@@ -135,7 +135,7 @@ For transferring large files across many hosts:
 ansible all -m synchronize -a "src=./large_artifact.tar.gz dest=/opt/releases/ compress=yes" -f 10
 
 # Bandwidth limiting (in KB/s)
-ansible all -m synchronize -a "src=./large_artifact.tar.gz dest=/opt/releases/ rsync_opts='--bwlimit=5000'"
+ansible all -m synchronize -a '{"src":"./large_artifact.tar.gz","dest":"/opt/releases/","rsync_opts":["--bwlimit=5000"]}'
 
 # For very large files, consider splitting and transferring in parallel
 # First, split the file locally
