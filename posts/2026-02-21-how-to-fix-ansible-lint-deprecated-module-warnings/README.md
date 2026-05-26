@@ -17,16 +17,16 @@ This post covers the most common deprecated module warnings, what to replace the
 When Ansible deprecates a module, it goes through stages:
 
 1. **Deprecation warning added**: The module still works but prints a warning
-2. **Module moved to a collection**: The module is removed from ansible-core but available in a community collection
+2. **Module moved to a collection**: The short module name may no longer resolve unless the right collection is installed
 3. **Module removed entirely**: The module no longer exists anywhere
 
-ansible-lint catches modules in stages 1 and 2, giving you time to migrate.
+ansible-lint catches deprecated modules, and its syntax checks also expose missing collections, giving you time to migrate.
 
 ## Common Deprecated Module Replacements
 
 ### include (replaced by include_tasks and import_tasks)
 
-The bare `include` module was deprecated in Ansible 2.7.
+The bare `include` module was deprecated before Ansible 2.7 and removed from ansible-core in 2.16.
 
 ```yaml
 # Deprecated: bare include
@@ -58,12 +58,12 @@ The choice between `include_tasks` and `import_tasks` matters:
 
 ```yaml
 # import_tasks: static, processed at playbook parse time
-# Use when you do NOT need conditionals or loops on the include itself
+# Use when the file name is known up front; conditionals are inherited by imported tasks
 - name: Import base configuration
   ansible.builtin.import_tasks: tasks/base.yml
 
 # include_tasks: dynamic, processed at runtime
-# Use when you need conditionals, loops, or variable file names
+# Use when you need loops or variable file names on the include itself
 - name: Include environment-specific tasks
   ansible.builtin.include_tasks: "tasks/{{ env }}.yml"
   when: env is defined
@@ -78,7 +78,7 @@ The `include_role` with `static: yes` is deprecated.
 - name: Include web role statically
   include_role:
     name: webserver
-    static: yes
+  static: yes
 
 # Fixed: use import_role for static behavior
 - name: Import web role
@@ -215,7 +215,19 @@ ansible-galaxy collection install community.docker
   google.cloud.gcp_compute_instance:
     name: webserver
     machine_type: n1-standard-1
+    disks:
+      - auto_delete: true
+        boot: true
+        initialize_params:
+          source_image: projects/debian-cloud/global/images/family/debian-12
+    network_interfaces:
+      - access_configs:
+          - name: External NAT
+            type: ONE_TO_ONE_NAT
     zone: us-central1-a
+    project: "{{ gcp_project }}"
+    auth_kind: serviceaccount
+    service_account_file: "{{ gcp_cred_file }}"
 ```
 
 ## Finding Deprecated Modules in Your Codebase
