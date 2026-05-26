@@ -204,7 +204,7 @@ Ansible collects a wealth of network information through the `setup` module. You
 
 ```bash
 # Get all network-related facts
-ansible all -m setup -a "filter=ansible_*net*"
+ansible all -m setup -a "gather_subset=!all,!min,network"
 
 # Get hostname and FQDN
 ansible all -m setup -a "filter=ansible_fqdn"
