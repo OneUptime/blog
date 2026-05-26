@@ -115,7 +115,7 @@ You can use the index variable in `when` clauses to process only certain positio
 
 ```yaml
 # Deploy to servers in batches: first half, then second half
-- name: Deploy to first batch (even indices)
+- name: Deploy to first batch (first half)
   ansible.builtin.debug:
     msg: "Deploying to {{ item }} (batch 1)"
   loop:
@@ -153,10 +153,11 @@ When you need to create ordered configurations where position matters:
 ```yaml
 # Create priority-ordered DNS entries
 - name: Configure DNS resolvers with priority
-  ansible.builtin.lineinfile:
+  ansible.builtin.blockinfile:
     path: /etc/resolv.conf
-    line: "nameserver {{ item }}"
-    insertafter: "^# DNS servers"
+    block: "nameserver {{ item }}"
+    marker: "# {mark} ANSIBLE MANAGED DNS {{ dns_priority }}"
+    insertafter: "^# END ANSIBLE MANAGED DNS {{ dns_priority - 1 }}$|^# DNS servers"
   loop:
     - 10.0.0.2
     - 10.0.0.3
@@ -168,7 +169,7 @@ When you need to create ordered configurations where position matters:
   ansible.builtin.lineinfile:
     path: /etc/haproxy/haproxy.cfg
     line: "    server backend-{{ server_idx }} {{ item.host }}:{{ item.port }} weight {{ 100 - (server_idx * 10) }} check"
-    insertafter: "^backend app_servers"
+    insertafter: "^    server backend-{{ server_idx - 1 }} |^backend app_servers"
   loop:
     - { host: "10.0.1.10", port: 8080 }
     - { host: "10.0.1.11", port: 8080 }
@@ -295,7 +296,7 @@ Here is a complete playbook that deploys multiple instances of an application, e
       ansible.builtin.lineinfile:
         path: /etc/haproxy/haproxy.cfg
         line: "    server {{ app_name }}-{{ inst_id }} 127.0.0.1:{{ base_port + inst_id }} check"
-        insertafter: "backend {{ app_name }}_servers"
+        insertafter: "^    server {{ app_name }}-{{ inst_id - 1 }} |^backend {{ app_name }}_servers"
       loop: "{{ instances }}"
       loop_control:
         index_var: inst_id
