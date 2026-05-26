@@ -162,22 +162,30 @@ Here is a playbook that configures PATH for a development server with multiple t
 
     # Verify tools are accessible
     - name: Verify Java is on PATH
-      ansible.windows.win_command: java -version
+      ansible.windows.win_shell: |
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        java -version
       register: java_check
       ignore_errors: true
 
     - name: Verify Python is on PATH
-      ansible.windows.win_command: python --version
+      ansible.windows.win_shell: |
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        python --version
       register: python_check
       ignore_errors: true
 
     - name: Verify Node.js is on PATH
-      ansible.windows.win_command: node --version
+      ansible.windows.win_shell: |
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        node --version
       register: node_check
       ignore_errors: true
 
     - name: Verify Git is on PATH
-      ansible.windows.win_command: git --version
+      ansible.windows.win_shell: |
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        git --version
       register: git_check
       ignore_errors: true
 
@@ -237,7 +245,9 @@ When deploying an application that includes CLI tools, update PATH as part of th
 
     # Verify the tool works
     - name: Verify application version
-      ansible.windows.win_command: mytool --version
+      ansible.windows.win_shell: |
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        mytool --version
       register: version_check
 
     - name: Confirm correct version
@@ -269,8 +279,7 @@ flowchart TD
     M --> N{Any changes made?}
     N -->|Yes| O[Write updated PATH to registry]
     N -->|No| P[Report no change]
-    O --> Q[Broadcast WM_SETTINGCHANGE]
-    Q --> R[Report changed=true]
+    O --> Q[Report changed=true]
 ```
 
 ## Auditing PATH Entries
@@ -322,10 +331,10 @@ Here is a playbook to audit PATH entries and find potential issues.
 
 A few things to watch out for:
 
-1. **PATH length limit**: Windows has a registry value size limit. If your PATH gets very long (over ~2048 characters), you may hit issues. Keep PATH clean by removing entries for uninstalled software.
-2. **New process requirement**: Changes to the system PATH take effect for new processes. Existing shells and services will not see the change until they restart.
-3. **Trailing backslashes**: Be consistent. `C:\Tools\bin` and `C:\Tools\bin\` are treated as different entries by some tools.
-4. **Case sensitivity**: Windows paths are case-insensitive, but `win_path` does exact string matching. Use consistent casing to avoid duplicates.
+1. **PATH length limit**: Windows has an individual environment variable size limit. Cmd.exe documents the maximum individual environment variable size as 8,192 bytes, so keep PATH clean by removing entries for uninstalled software.
+2. **New process requirement**: Changes to the system PATH take effect for new processes. Existing shells and services will not see the change until they restart, and `win_path` does not broadcast change events.
+3. **Trailing backslashes**: `win_path` ignores trailing backslashes when comparing entries. If you need a trailing backslash in YAML, quote the value.
+4. **Case sensitivity**: Windows paths are case-insensitive, and `win_path` also compares PATH entries case-insensitively. Use consistent casing anyway to keep PATH readable.
 
 ## Summary
 
