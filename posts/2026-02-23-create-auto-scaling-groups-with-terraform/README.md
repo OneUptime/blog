@@ -89,7 +89,7 @@ resource "aws_autoscaling_group" "app" {
   # Reference the launch template
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # How long to wait for a new instance to be ready
@@ -152,7 +152,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Connect to the target group
@@ -189,7 +189,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   target_group_arns         = [aws_lb_target_group.app.arn]
@@ -253,7 +253,7 @@ resource "aws_autoscaling_group" "mixed" {
     launch_template {
       launch_template_specification {
         launch_template_id = aws_launch_template.app.id
-        version            = "$Latest"
+        version            = aws_launch_template.app.latest_version
       }
 
       # Instance type alternatives
@@ -306,12 +306,12 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Termination policy order
   # 1. OldestLaunchTemplate - terminate instances using outdated templates first
-  # 2. AllocationStrategy - terminate spot instances before on-demand
+  # 2. AllocationStrategy - rebalance remaining instances toward the allocation strategy
   # 3. OldestInstance - among the rest, terminate the oldest
   termination_policies = [
     "OldestLaunchTemplate",
@@ -344,12 +344,12 @@ resource "aws_autoscaling_group" "slow_start" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Warm pool keeps stopped instances ready for quick scaling
   warm_pool {
-    pool_state                  = "Stopped"   # Stopped instances are free (no compute cost)
+    pool_state                  = "Stopped"   # No EC2 compute charge, but storage still costs
     min_size                    = 2           # Always keep 2 warm instances
     max_group_prepared_capacity = 10          # Max warm + running instances
 
