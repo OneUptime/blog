@@ -70,8 +70,7 @@ The most frequent use of `omit` is with the `default` filter. When a variable is
         update_cache: yes
         # Only set the dpkg_options if defined
         dpkg_options: "{{ dpkg_options | default(omit) }}"
-      environment:
-        http_proxy: "{{ proxy_url | default(omit) }}"
+      environment: "{{ {'http_proxy': proxy_url} if proxy_url is defined else {} }}"
 ```
 
 ## Using omit with the default Filter
@@ -289,7 +288,7 @@ For more complex conditions, combine `omit` with the ternary filter or inline co
   become: yes
   vars:
     use_ssl: true
-    custom_port: null
+    custom_mode: null
     backup_enabled: false
   tasks:
     - name: Configure web server
@@ -311,18 +310,17 @@ For more complex conditions, combine `omit` with the ternary filter or inline co
       ansible.builtin.template:
         src: app.conf.j2
         dest: /etc/myapp/app.conf
-      vars:
-        app_port: "{{ custom_port if custom_port is not none else omit }}"
-        backup_path: "{{ '/var/backup/myapp' if backup_enabled else omit }}"
+        mode: "{{ custom_mode if custom_mode is not none else omit }}"
+        backup: "{{ true if backup_enabled else omit }}"
 ```
 
-## omit in Role Parameters
+## omit Inside Roles
 
-When calling roles with optional parameters, `omit` prevents passing unnecessary values.
+When writing roles with optional variables, use `omit` on the role's module parameters. Do not pass `omit` as a role variable and expect the variable to be removed; role variables are normal variable assignments.
 
 ```yaml
 # role-with-omit.yml
-# Uses omit for optional role variables
+# Uses omit for optional module parameters inside a role
 ---
 - name: Apply nginx role with optional features
   hosts: webservers
@@ -334,10 +332,28 @@ When calling roles with optional parameters, `omit` prevents passing unnecessary
     - role: nginx
       vars:
         nginx_port: 80
-        nginx_ssl_port: "{{ 443 if enable_ssl else omit }}"
-        nginx_ssl_cert: "{{ ssl_cert_path | default(omit) }}"
-        nginx_ssl_key: "{{ ssl_key_path | default(omit) }}"
-        nginx_proxy_cache: "{{ proxy_cache_path | default(omit) }}"
+        nginx_ssl_enabled: "{{ enable_ssl }}"
+        nginx_ssl_cert: "{{ ssl_cert_path | default('') }}"
+        nginx_ssl_key: "{{ ssl_key_path | default('') }}"
+        nginx_proxy_cache: "{{ proxy_cache_path | default('') }}"
+
+# roles/nginx/tasks/main.yml
+---
+- name: Deploy nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    mode: "0644"
+    validate: "{{ nginx_validate_command | default(omit) }}"
+
+- name: Create proxy cache directory when configured
+  ansible.builtin.file:
+    path: "{{ nginx_proxy_cache }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: "{{ nginx_proxy_cache_mode | default(omit) }}"
+  when: nginx_proxy_cache | length > 0
 ```
 
 ## Important Notes About omit
@@ -377,4 +393,4 @@ There are a few things to keep in mind when using `omit`.
 
 ## Summary
 
-The `omit` placeholder eliminates the need for duplicate tasks that differ only in whether an optional parameter is present. Use `default(omit)` for variables that may not be defined, combine it with conditional expressions for more complex logic, and apply it across any module parameter. The `omit` pattern keeps your tasks DRY (Don't Repeat Yourself) and makes data-driven playbooks with variable-length parameter lists clean and maintainable. Just remember that `omit` works with module parameters, not with `set_fact` or variable assignment.
+The `omit` placeholder eliminates the need for duplicate tasks that differ only in whether an optional parameter is present. Use `default(omit)` for variables that may not be defined, combine it with conditional expressions for more complex logic, and apply it across any module parameter. The `omit` pattern keeps your tasks DRY (Don't Repeat Yourself) and makes data-driven playbooks with variable-length parameter lists clean and maintainable. Just remember that `omit` works with module parameters, not with `set_fact`, task keyword dictionaries such as `environment`, or variable assignment.
