@@ -77,8 +77,10 @@ Configure Galaxy to require and verify signatures:
 ```ini
 # ansible.cfg - enable collection signature verification
 [galaxy]
-# Require signatures for collections from specific servers
+# Use this keyring for collection signature verification
 gpg_keyring = ~/.ansible/galaxy-keyring.gpg
+# Require at least one valid signature and fail if none are found
+required_valid_signature_count = +1
 
 [galaxy_server.automation_hub]
 url = https://cloud.redhat.com/api/automation-hub/
@@ -109,7 +111,8 @@ Use the `--keyring` flag to verify signatures during collection installation:
 ```bash
 # Install with signature verification
 ansible-galaxy collection install community.general \
-    --keyring ~/.ansible/galaxy-keyring.gpg
+    --keyring ~/.ansible/galaxy-keyring.gpg \
+    --required-valid-signature-count +1
 ```
 
 If the signature is valid, installation proceeds normally. If the signature is invalid or missing, you will see an error:
@@ -126,7 +129,8 @@ You can provide a signature URL directly:
 # Install with an explicit signature URL
 ansible-galaxy collection install community.general:8.1.0 \
     --signature https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-8.1.0.tar.gz.asc \
-    --keyring ~/.ansible/galaxy-keyring.gpg
+    --keyring ~/.ansible/galaxy-keyring.gpg \
+    --required-valid-signature-count +1
 ```
 
 ## Verifying Already-Installed Collections
@@ -136,7 +140,8 @@ To verify collections that are already installed:
 ```bash
 # Verify an installed collection
 ansible-galaxy collection verify community.general \
-    --keyring ~/.ansible/galaxy-keyring.gpg
+    --keyring ~/.ansible/galaxy-keyring.gpg \
+    --required-valid-signature-count +1
 ```
 
 This checks the installed files against the MANIFEST.json and verifies the signature. If any files have been modified after installation, verification fails.
@@ -156,22 +161,22 @@ echo "Keyring: ${KEYRING}"
 echo ""
 
 # Get list of installed collections
-ansible-galaxy collection list --format yaml 2>/dev/null | python3 -c "
+while read -r collection; do
+    echo -n "Verifying ${collection}... "
+    if ansible-galaxy collection verify "$collection" --keyring "$KEYRING" --required-valid-signature-count +1 2>/dev/null; then
+        echo "OK"
+    else
+        echo "FAILED"
+        FAILURES=$((FAILURES + 1))
+    fi
+done < <(ansible-galaxy collection list --format yaml 2>/dev/null | python3 -c "
 import yaml, sys
 data = yaml.safe_load(sys.stdin)
 if data:
     for path, colls in data.items():
         for name in sorted(colls.keys()):
             print(name)
-" | while read -r collection; do
-    echo -n "Verifying ${collection}... "
-    if ansible-galaxy collection verify "$collection" --keyring "$KEYRING" 2>/dev/null; then
-        echo "OK"
-    else
-        echo "FAILED"
-        FAILURES=$((FAILURES + 1))
-    fi
-done
+")
 
 if [ "$FAILURES" -gt 0 ]; then
     echo ""
@@ -213,7 +218,8 @@ Install with the keyring:
 ```bash
 # Install with signature verification from requirements
 ansible-galaxy collection install -r requirements.yml \
-    --keyring ~/.ansible/galaxy-keyring.gpg
+    --keyring ~/.ansible/galaxy-keyring.gpg \
+    --required-valid-signature-count +1
 ```
 
 ## Signing Your Own Collections
@@ -278,14 +284,16 @@ jobs:
           ansible-galaxy collection install \
             -r requirements.yml \
             -p ./collections/ \
-            --keyring ~/.ansible/galaxy-keyring.gpg
+            --keyring ~/.ansible/galaxy-keyring.gpg \
+            --required-valid-signature-count +1
 
       - name: Verify installed collections
         run: |
           ansible-galaxy collection verify \
             -r requirements.yml \
             -p ./collections/ \
-            --keyring ~/.ansible/galaxy-keyring.gpg
+            --keyring ~/.ansible/galaxy-keyring.gpg \
+            --required-valid-signature-count +1
 
       - name: Deploy
         run: ansible-playbook -i inventory playbook.yml
@@ -299,10 +307,10 @@ Not all collections on Galaxy are signed. When verification fails because a sign
 # Allow unsigned collections while still verifying signed ones
 ansible-galaxy collection install community.general \
     --keyring ~/.ansible/galaxy-keyring.gpg \
-    --required-valid-signature-count 0
+    --required-valid-signature-count 1
 ```
 
-The `--required-valid-signature-count` flag controls how many valid signatures are needed. Setting it to 0 means "verify signatures if present, but do not fail if missing."
+The `--required-valid-signature-count` flag controls how many valid signatures are needed. Setting it to `1` without a leading `+` means "verify signatures if present, but do not fail if no signatures are found."
 
 For stricter environments:
 
@@ -310,7 +318,7 @@ For stricter environments:
 # Require at least one valid signature
 ansible-galaxy collection install community.general \
     --keyring ~/.ansible/galaxy-keyring.gpg \
-    --required-valid-signature-count 1
+    --required-valid-signature-count +1
 ```
 
 ## Summary
