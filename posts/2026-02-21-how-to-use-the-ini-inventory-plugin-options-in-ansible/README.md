@@ -45,7 +45,7 @@ web02.example.com ansible_host=10.0.1.11 ansible_port=22 http_port=8080
 web03.example.com ansible_host=10.0.1.12 ansible_port=2222 http_port=80
 ```
 
-Values can be strings, numbers, or booleans. For values containing spaces, quote them:
+Inline host values are parsed as Python literals when possible, so quoted values remain strings while unquoted values can become numbers, lists, dictionaries, booleans, or `None`. For values containing spaces, quote them:
 
 ```ini
 [webservers]
@@ -118,6 +118,7 @@ graph TD
 ```
 
 Variables from parent groups are inherited by all hosts in child groups. If the same variable is defined at multiple levels, the most specific (closest to the host) wins.
+Child group variables override parent group variables, and host variables override group variables.
 
 ## Numeric Ranges
 
@@ -203,22 +204,22 @@ The INI format has some quirks with variable types that are worth knowing:
 # Strings
 server_name=myserver
 
-# Numbers are parsed as strings in INI format
+# Numbers in :vars sections are parsed as strings
 http_port=80
 # In playbooks, you may need to use {{ http_port | int }} for arithmetic
 
 # Booleans
 ssl_enabled=true
 debug_mode=false
-# These are actually strings "true" and "false" in INI format
+# In :vars sections, these are strings "true" and "false"
 # YAML format handles types better
 
-# Lists and dicts as JSON strings
+# Lists and dicts in :vars sections are also strings unless you parse them later
 allowed_ips=["10.0.0.1", "10.0.0.2"]
 server_config={"workers": 4, "timeout": 30}
 ```
 
-This is one area where the YAML format is genuinely better. In YAML, numbers are numbers, booleans are booleans, and lists are lists. In INI format, everything is a string, and Ansible does its best to interpret types.
+This is one area where the YAML format is genuinely better. In YAML, numbers are numbers, booleans are booleans, and lists are lists. In INI format, inline host variables and `:vars` sections are interpreted differently, so do not rely on inferred types; use filters such as `int`, `bool`, or `from_json` when a specific type matters.
 
 ## The all Group
 
@@ -234,7 +235,7 @@ dns_servers=["10.0.0.53", "10.0.0.54"]
 
 ## Complex Variable Structures
 
-For complex data structures, the INI format supports JSON-encoded values:
+For complex data structures, the INI format can store JSON-encoded text, but values in `:vars` sections are still strings unless you parse them later:
 
 ```ini
 [webservers:vars]
@@ -245,7 +246,7 @@ upstream_servers=["10.0.2.20:8080", "10.0.2.21:8080"]
 ssl_config={"cert_path": "/etc/ssl/cert.pem", "key_path": "/etc/ssl/key.pem", "protocols": ["TLSv1.2", "TLSv1.3"]}
 ```
 
-However, complex structures like these are much easier to read and maintain in `group_vars` YAML files. Keep the INI file for simple host and group definitions, and move complex variables to `group_vars/`:
+However, complex structures like these are much easier to read and maintain as native YAML in `group_vars` files. Keep the INI file for simple host and group definitions, and move complex variables to `group_vars/`:
 
 ```text
 inventory/
@@ -276,19 +277,19 @@ localhost ansible_connection=local
 
 ## INI Plugin Options in ansible.cfg
 
-The INI inventory plugin itself has configuration options you can set in `ansible.cfg`:
+Inventory parsing behavior is controlled by settings in `ansible.cfg`:
 
 ```ini
 # ansible.cfg
 [inventory]
-# Enable the INI plugin
-enable_plugins = ansible.builtin.ini, ansible.builtin.yaml
+# Enable only the INI and YAML inventory plugins
+enable_plugins = ini, yaml
 
-# Make Ansible fail if an inventory file has syntax errors
+# Make Ansible fail if an inventory source cannot be parsed
 any_unparsed_is_failed = true
 ```
 
-The `any_unparsed_is_failed` setting is important. By default, if Ansible cannot parse a line in an INI inventory, it silently skips it. Setting this to `true` makes it an error, which helps catch typos.
+The `any_unparsed_is_failed` setting is important. By default, if an inventory source cannot be parsed by any available inventory plugin, Ansible reports a warning. Setting this to `true` makes it a fatal error, which helps catch inventory mistakes.
 
 ## Practical Full Example
 
