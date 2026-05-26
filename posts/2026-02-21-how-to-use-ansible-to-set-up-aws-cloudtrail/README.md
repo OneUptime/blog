@@ -8,7 +8,7 @@ Description: Configure AWS CloudTrail with Ansible to enable API activity loggin
 
 ---
 
-CloudTrail records every API call made in your AWS account. Who launched that instance at 3 AM? Who deleted the production S3 bucket? CloudTrail has the answers. It is one of the first services you should enable in any AWS account, and yet it is surprisingly common to find organizations that either have not enabled it or have it configured inconsistently. Ansible lets you set up CloudTrail as part of your account baseline, ensuring every account gets the same logging configuration.
+CloudTrail records supported API calls and account activity in your AWS account. Who launched that instance at 3 AM? Who deleted the production S3 bucket? CloudTrail has the answers. It is one of the first services you should enable in any AWS account, and yet it is surprisingly common to find organizations that either have not enabled it or have it configured inconsistently. Ansible lets you set up CloudTrail as part of your account baseline, ensuring every account gets the same logging configuration.
 
 ## What CloudTrail Captures
 
@@ -27,6 +27,7 @@ graph LR
 ## Prerequisites
 
 - Ansible 2.9+ with the `amazon.aws` collection
+- AWS CLI installed for the data event selector example
 - AWS credentials with CloudTrail, S3, and IAM permissions
 - An S3 bucket for log storage (or you can create one in the playbook)
 
@@ -51,6 +52,8 @@ CloudTrail needs an S3 bucket with the right policy to accept log deliveries. Le
   vars:
     aws_region: us-east-1
     account_id: "123456789012"
+    trail_name: "organization-trail"
+    s3_key_prefix: "trails"
     bucket_name: "cloudtrail-logs-{{ account_id }}"
 
   tasks:
@@ -75,7 +78,12 @@ CloudTrail needs an S3 bucket with the right policy to accept log deliveries. Le
                   "Service": "cloudtrail.amazonaws.com"
                 },
                 "Action": "s3:GetBucketAcl",
-                "Resource": "arn:aws:s3:::{{ bucket_name }}"
+                "Resource": "arn:aws:s3:::{{ bucket_name }}",
+                "Condition": {
+                  "StringEquals": {
+                    "aws:SourceArn": "arn:aws:cloudtrail:{{ aws_region }}:{{ account_id }}:trail/{{ trail_name }}"
+                  }
+                }
               },
               {
                 "Sid": "AWSCloudTrailWrite",
@@ -84,10 +92,11 @@ CloudTrail needs an S3 bucket with the right policy to accept log deliveries. Le
                   "Service": "cloudtrail.amazonaws.com"
                 },
                 "Action": "s3:PutObject",
-                "Resource": "arn:aws:s3:::{{ bucket_name }}/AWSLogs/{{ account_id }}/*",
+                "Resource": "arn:aws:s3:::{{ bucket_name }}/{{ s3_key_prefix }}/AWSLogs/{{ account_id }}/*",
                 "Condition": {
                   "StringEquals": {
-                    "s3:x-amz-acl": "bucket-owner-full-control"
+                    "s3:x-amz-acl": "bucket-owner-full-control",
+                    "aws:SourceArn": "arn:aws:cloudtrail:{{ aws_region }}:{{ account_id }}:trail/{{ trail_name }}"
                   }
                 }
               }
@@ -104,7 +113,7 @@ CloudTrail needs an S3 bucket with the right policy to accept log deliveries. Le
           restrict_public_buckets: true
 ```
 
-The bucket policy is critical. Without it, CloudTrail cannot write logs and will silently fail. The two statements grant CloudTrail permission to check the bucket ACL and to write log objects. Enabling versioning protects against accidental or malicious deletion of log files.
+The bucket policy is critical. Without it, CloudTrail cannot write logs and delivery will fail. The two statements grant CloudTrail permission to check the bucket ACL and to write log objects under the same S3 key prefix used by the trail. Enabling versioning protects against accidental or malicious deletion of log files.
 
 ## Creating a Basic CloudTrail
 
@@ -132,7 +141,7 @@ Now create the trail itself:
         state: present
         s3_bucket_name: "{{ bucket_name }}"
         s3_key_prefix: "trails"
-        is_logging: true
+        enable_logging: true
         is_multi_region_trail: true
         include_global_service_events: true
         enable_log_file_validation: true
@@ -169,6 +178,7 @@ Sending CloudTrail events to CloudWatch Logs enables real-time alerting:
     aws_region: us-east-1
     account_id: "123456789012"
     trail_name: "organization-trail"
+    bucket_name: "cloudtrail-logs-{{ account_id }}"
     log_group_name: "/aws/cloudtrail/{{ trail_name }}"
     role_name: "CloudTrail-CloudWatch-Role"
 
@@ -227,8 +237,14 @@ Sending CloudTrail events to CloudWatch Logs enables real-time alerting:
         region: "{{ aws_region }}"
         name: "{{ trail_name }}"
         state: present
-        cloud_watch_logs_log_group_arn: "arn:aws:logs:{{ aws_region }}:{{ account_id }}:log-group:{{ log_group_name }}:*"
-        cloud_watch_logs_role_arn: "{{ iam_role.arn }}"
+        s3_bucket_name: "{{ bucket_name }}"
+        s3_key_prefix: "trails"
+        enable_logging: true
+        is_multi_region_trail: true
+        include_global_service_events: true
+        enable_log_file_validation: true
+        cloudwatch_logs_log_group_arn: "arn:aws:logs:{{ aws_region }}:{{ account_id }}:log-group:{{ log_group_name }}:*"
+        cloudwatch_logs_role_arn: "{{ iam_role.iam_role.arn }}"
 ```
 
 ## Setting Up CloudWatch Alarms for Security Events
@@ -282,7 +298,7 @@ With events flowing into CloudWatch Logs, you can create metric filters and alar
     - name: Create CloudWatch alarms for each metric
       amazon.aws.cloudwatch_metric_alarm:
         region: "{{ aws_region }}"
-        alarm_name: "CloudTrail-{{ item.name }}"
+        name: "CloudTrail-{{ item.name }}"
         description: "{{ item.description }}"
         namespace: "CloudTrailMetrics"
         metric_name: "{{ item.metric_name }}"
@@ -290,7 +306,7 @@ With events flowing into CloudWatch Logs, you can create metric filters and alar
         period: 300
         evaluation_periods: 1
         threshold: 1
-        comparison_operator: GreaterThanOrEqualToThreshold
+        comparison: GreaterThanOrEqualToThreshold
         alarm_actions:
           - "{{ sns_topic_arn }}"
         state: present
@@ -314,24 +330,31 @@ By default, CloudTrail only logs management events (control plane operations). T
   vars:
     aws_region: us-east-1
     trail_name: "organization-trail"
+    event_selectors:
+      - ReadWriteType: All
+        IncludeManagementEvents: true
+        DataResources:
+          - Type: AWS::S3::Object
+            Values:
+              - "arn:aws:s3"
+          - Type: AWS::Lambda::Function
+            Values:
+              - "arn:aws:lambda"
 
   tasks:
     - name: Enable S3 and Lambda data events
-      amazon.aws.cloudtrail:
-        region: "{{ aws_region }}"
-        name: "{{ trail_name }}"
-        state: present
-        event_selectors:
-          - read_write_type: All
-            include_management_events: true
-            data_resources:
-              - type: AWS::S3::Object
-                values:
-                  - "arn:aws:s3"
-              - type: AWS::Lambda::Function
-                values:
-                  - "arn:aws:lambda"
-      register: updated_trail
+      ansible.builtin.command:
+        argv:
+          - aws
+          - cloudtrail
+          - put-event-selectors
+          - --region
+          - "{{ aws_region }}"
+          - --trail-name
+          - "{{ trail_name }}"
+          - --event-selectors
+          - "{{ event_selectors | to_json }}"
+      changed_when: true
 
     - name: Confirm data events are enabled
       ansible.builtin.debug:
