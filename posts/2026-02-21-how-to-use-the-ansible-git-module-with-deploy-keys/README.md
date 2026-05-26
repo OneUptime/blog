@@ -8,15 +8,15 @@ Description: Learn how to use deploy keys with the Ansible git module for secure
 
 ---
 
-Deploy keys are SSH keys that grant access to a single repository. Unlike personal SSH keys or access tokens tied to a user account, deploy keys are scoped to one repository and can be set to read-only. This makes them ideal for deployment automation where you want minimal permissions.
+Repository deploy keys are SSH keys that grant access to a single repository. Unlike personal SSH keys or access tokens tied to a user account, repository-scoped deploy keys can be limited to one repository and can be set to read-only. This makes them ideal for deployment automation where you want minimal permissions.
 
 ## What Are Deploy Keys?
 
-Deploy keys are SSH public keys registered on a specific repository (on GitHub, GitLab, Bitbucket, etc.). When Ansible connects to the Git server using the corresponding private key, it gets access to that one repository only.
+Deploy keys are SSH public keys registered on a specific repository (on GitHub and GitLab) or repository access keys in Bitbucket. When the host running the Ansible `git` task connects to the Git server using the corresponding private key, it gets access to the repository scope configured for that key.
 
 ```mermaid
 graph LR
-    A[Ansible Controller] -->|SSH with deploy key| B[Git Server]
+    A[Ansible-managed Host] -->|SSH with deploy key| B[Git Server]
     B --> C{Key registered on which repo?}
     C -->|myorg/app-frontend| D[Access to app-frontend only]
     C -->|myorg/app-backend| E[Access to app-backend only]
@@ -89,7 +89,7 @@ After generating the key, add the public key to your repository settings:
         dest: /opt/myapp
         version: main
         key_file: /opt/deploy/.ssh/myapp_key
-        accept_hostkey: true
+        accept_newhostkey: true
 
     - name: Clean up deploy key (optional - for ephemeral use)
       ansible.builtin.file:
@@ -99,7 +99,7 @@ After generating the key, add the public key to your repository settings:
 
 ## Multiple Repositories with Separate Deploy Keys
 
-Each repository gets its own deploy key:
+For GitHub deploy keys, and as a best practice for repository-scoped access elsewhere, each repository gets its own deploy key:
 
 ```yaml
 # playbook-multi-deploy-keys.yml
@@ -148,7 +148,7 @@ Each repository gets its own deploy key:
         dest: "{{ item.dest }}"
         version: "{{ item.version }}"
         key_file: "/opt/deploy/.ssh/{{ item.name }}_key"
-        accept_hostkey: true
+        accept_newhostkey: true
       loop: "{{ repositories }}"
       loop_control:
         label: "{{ item.name }}@{{ item.version }}"
@@ -184,13 +184,12 @@ ansible-vault encrypt deploy_keys/myapp_deploy_key
         dest: /opt/myapp
         version: main
         key_file: /tmp/.deploy_key
-        accept_hostkey: true
+        accept_newhostkey: true
 
     - name: Remove temp key
       ansible.builtin.file:
         path: /tmp/.deploy_key
         state: absent
-      always_run: true
 ```
 
 ## SSH Config for Deploy Keys
@@ -243,7 +242,7 @@ When you have multiple deploy keys, an SSH config file maps each host alias to t
 
 ## Read-Only vs Read-Write Deploy Keys
 
-GitHub and GitLab let you choose whether a deploy key has write access:
+GitHub and GitLab let you choose whether a deploy key has write access. Bitbucket Cloud repository access keys are read-only; Bitbucket Cloud workspace access keys can grant read-write access across a workspace.
 
 ```yaml
 # playbook-readonly-key.yml
@@ -259,7 +258,7 @@ GitHub and GitLab let you choose whether a deploy key has write access:
         dest: /opt/myapp
         version: main
         key_file: /opt/deploy/.ssh/readonly_key
-        accept_hostkey: true
+        accept_newhostkey: true
 ```
 
 For most deployment scenarios, read-only access is sufficient and more secure. Only use read-write keys if your deployment process needs to push changes back to the repository (like updating version files or committing build artifacts).
@@ -299,9 +298,9 @@ For most deployment scenarios, read-only access is sufficient and more secure. O
         dest: /opt/myapp
         version: main
         key_file: /opt/deploy/.ssh/myapp_key
-        accept_hostkey: true
+        accept_newhostkey: true
 ```
 
 ## Summary
 
-Deploy keys provide repository-scoped SSH access that is more secure than personal tokens or user SSH keys. Generate a unique key pair for each repository, add the public key to the repository settings, and use the private key with the `key_file` parameter in the Ansible git module. Store private keys in Ansible Vault for security. When managing multiple repositories, use separate deploy keys for each and manage them with SSH config host aliases. Prefer read-only deploy keys for deployment scenarios, and rotate keys periodically as part of your security practices.
+Repository deploy keys provide repository-scoped SSH access that is more secure than personal tokens or user SSH keys. Generate a unique key pair for each repository, add the public key to the repository settings, and use the private key with the `key_file` parameter in the Ansible git module. Store private keys in Ansible Vault for security. When managing multiple repositories, use separate deploy keys for each and manage them with SSH config host aliases. Prefer read-only deploy keys for deployment scenarios, and rotate keys periodically as part of your security practices.
