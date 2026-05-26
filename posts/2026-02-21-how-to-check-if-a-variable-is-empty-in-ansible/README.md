@@ -215,10 +215,10 @@ Here is a comprehensive pattern that handles all types:
     test_empty_list: []
     test_value: "hello"
   tasks:
-    # Pattern: defined AND not none AND (has length for strings/lists/dicts)
+    # Pattern: defined AND not none AND has content for strings/lists/dicts
     - name: Check if variable has a real value
       ansible.builtin.debug:
-        msg: "{{ item.name }} has a value: {{ item.var is defined and item.var is not none and (item.var | string | length > 0) }}"
+        msg: "{{ item.name }} has a value: {{ item.var is defined and item.var is not none and ((item.var is string and item.var | trim | length > 0) or (item.var is mapping and item.var | length > 0) or (item.var is sequence and item.var is not string and item.var | length > 0) or (item.var is number) or (item.var is boolean)) }}"
       loop:
         - { name: "empty_string", var: "{{ test_empty_string }}" }
         - { name: "null", var: "{{ test_null }}" }
