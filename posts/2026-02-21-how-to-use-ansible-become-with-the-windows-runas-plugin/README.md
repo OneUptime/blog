@@ -26,15 +26,16 @@ On Linux, `become` typically means "run this as root via sudo." On Windows, the 
 Before using runas with Ansible, your Windows hosts need:
 
 - WinRM enabled and configured for remote management
-- PowerShell 3.0 or later
+- PowerShell 3.0 or later and .NET Framework 4.0 or later
 - The `pywinrm` Python package on the Ansible controller
+- The Secondary Logon service (`seclogon`) running on the Windows host
 
 ```bash
 # Install pywinrm on the Ansible controller
 
 pip install pywinrm
 
-# Or if using a requirements file
+# Or if using the CredSSP transport
 pip install pywinrm[credssp]
 ```
 
@@ -65,8 +66,7 @@ win2 ansible_host=192.168.1.101
 [windows_servers:vars]
 ansible_connection=winrm
 ansible_winrm_transport=ntlm
-ansible_port=5986
-ansible_winrm_server_cert_validation=ignore
+ansible_port=5985
 ansible_user=ansible_svc@MYDOMAIN.COM
 ansible_password={{ vault_windows_password }}
 ```
@@ -280,7 +280,7 @@ ansible_become_pass: "{{ vault_admin_password }}"
 
 ## Handling UAC (User Account Control)
 
-UAC can interfere with runas because even Administrator accounts get filtered tokens by default.
+UAC can interfere with runas because Administrator accounts can receive filtered tokens, especially when local administrator accounts connect over remote management interfaces.
 
 ```yaml
 # playbooks/windows-uac.yml
@@ -295,22 +295,30 @@ UAC can interfere with runas because even Administrator accounts get filtered to
     ansible_become_pass: "{{ vault_admin_password }}"
 
   tasks:
-    - name: Disable UAC for the ansible_svc account (not recommended for all users)
+    - name: Disable UAC on the host (not recommended; requires reboot)
       ansible.windows.win_regedit:
         path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
         name: EnableLUA
         data: 0
         type: dword
+        state: present
+      register: uac_result
+      when: disable_uac | default(false) | bool
 
-    - name: Or better - configure UAC to not filter admin tokens
+    - name: Reboot after disabling UAC
+      ansible.windows.win_reboot:
+      when: uac_result is changed
+
+    - name: Or better - configure UAC to not filter local admin tokens
       ansible.windows.win_regedit:
         path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
         name: LocalAccountTokenFilterPolicy
         data: 1
         type: dword
+        state: present
 ```
 
-The `LocalAccountTokenFilterPolicy` registry value is the more targeted fix. When set to 1, it allows local admin accounts to get full admin tokens over remote connections.
+The `LocalAccountTokenFilterPolicy` registry value is the more targeted fix for local administrator accounts. When set to 1, it allows local admin accounts to get full admin tokens over remote connections.
 
 ## Troubleshooting runas Issues
 
