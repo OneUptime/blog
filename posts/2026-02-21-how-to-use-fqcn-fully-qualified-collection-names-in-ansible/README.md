@@ -8,7 +8,7 @@ Description: Learn how to use Fully Qualified Collection Names in Ansible to avo
 
 ---
 
-Starting with Ansible 2.10, the project split its modules into separate collections. This change introduced Fully Qualified Collection Names (FQCNs), and using them is now the recommended practice. If you are still writing `apt` instead of `ansible.builtin.apt`, your playbooks will eventually break or behave unexpectedly. Let me walk through why FQCNs matter and how to adopt them.
+Starting with Ansible 2.10, the project split its modules into separate collections. This change introduced Fully Qualified Collection Names (FQCNs), and using them is now the recommended practice. If you are still writing `apt` instead of `ansible.builtin.apt`, your playbooks are less explicit and can behave unexpectedly when names collide. Let me walk through why FQCNs matter and how to adopt them.
 
 ## What Are FQCNs?
 
@@ -192,7 +192,7 @@ ansible-galaxy collection install -r requirements.yml
 Here is a before-and-after comparison of a typical playbook:
 
 ```yaml
-# BEFORE: Short module names (deprecated style)
+# BEFORE: Short module names (less explicit style)
 - name: Configure web server
   hosts: webservers
   become: yes
@@ -305,7 +305,7 @@ ansible-lint playbooks/ roles/ --strict
 
 ## Using collections Keyword in Playbooks
 
-If you find FQCNs too verbose, you can declare collections at the playbook or block level. However, this is less explicit and not recommended for shared code:
+If you find FQCNs too verbose, you can declare collections at the playbook level or in a role's `meta/main.yml`. However, this is less explicit and not recommended for shared code:
 
 ```yaml
 # Using collections keyword to shorten module names
@@ -327,4 +327,4 @@ I recommend using full FQCNs in all cases. The extra typing pays for itself in c
 
 ## Summary
 
-FQCNs are not optional anymore. They prevent module name collisions, make dependencies explicit, and prepare your playbooks for the future. Use `ansible.builtin.` for core modules, install community collections via `requirements.yml`, and enforce FQCNs with ansible-lint. Migrating existing playbooks is straightforward and the result is code that is unambiguous about which module it is calling.
+FQCNs are the recommended practice. They prevent module name collisions, make dependencies explicit, and prepare your playbooks for the future. Use `ansible.builtin.` for core modules, install community collections via `requirements.yml`, and enforce FQCNs with ansible-lint. Migrating existing playbooks is straightforward and the result is code that is unambiguous about which module it is calling.
