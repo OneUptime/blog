@@ -14,14 +14,14 @@ Snapshots are your safety net for EBS volumes. They capture a point-in-time copy
 
 Make sure you have the following ready:
 
-- Ansible 2.9+ with the `amazon.aws` collection installed
-- AWS credentials with `ec2:CreateSnapshot`, `ec2:DeleteSnapshot`, `ec2:DescribeSnapshots`, and `ec2:CopySnapshot` permissions
+- Ansible 2.9+ with the `amazon.aws` and `community.aws` collections installed
+- AWS credentials with `ec2:CreateSnapshot`, `ec2:DeleteSnapshot`, `ec2:DescribeSnapshots`, `ec2:DescribeInstances`, `ec2:CopySnapshot`, and `ec2:CreateTags` permissions
 - At least one EBS volume to snapshot
 
 ```bash
 # Install the required collection
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install amazon.aws community.aws
 ```
 
 ## How EBS Snapshots Work
@@ -61,7 +61,7 @@ The `amazon.aws.ec2_snapshot` module is your primary tool. Here is the simplest 
       amazon.aws.ec2_snapshot:
         region: "{{ aws_region }}"
         volume_id: "{{ volume_id }}"
-        description: "Automated snapshot - {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}"
+        description: "Automated snapshot - {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
         snapshot_tags:
           Name: "snap-{{ volume_id }}-daily"
           CreatedBy: ansible
@@ -210,7 +210,7 @@ Without cleanup, snapshots accumulate and your storage bill grows. Here is a pla
 
     - name: Calculate cutoff date
       ansible.builtin.set_fact:
-        cutoff_date: "{{ '%Y-%m-%d' | strftime(ansible_date_time.epoch | int - (retention_days * 86400)) | default(lookup('pipe', 'date -d \"' ~ retention_days ~ ' days ago\" +%Y-%m-%d')) }}"
+        cutoff_date: "{{ lookup('pipe', 'date -u -d \"' ~ retention_days ~ ' days ago\" +%Y-%m-%dT%H:%M:%S+00:00') }}"
 
     - name: Identify snapshots to delete
       ansible.builtin.set_fact:
@@ -250,7 +250,7 @@ For disaster recovery, you need snapshots in multiple regions:
 
   tasks:
     - name: Copy snapshot to destination region
-      amazon.aws.ec2_snapshot_copy:
+      community.aws.ec2_snapshot_copy:
         region: "{{ dest_region }}"
         source_region: "{{ source_region }}"
         source_snapshot_id: "{{ snapshot_id }}"
