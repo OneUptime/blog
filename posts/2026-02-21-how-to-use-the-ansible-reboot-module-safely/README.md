@@ -30,13 +30,13 @@ This works, but it is the bare minimum. Let's look at the parameters that make i
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `pre_reboot_delay` | 0 | Seconds to wait before sending reboot command |
+| `pre_reboot_delay` | 0 | Seconds to wait before sending reboot command. On Linux, macOS, and OpenBSD this is converted to minutes and rounded down, so values below 60 become 0 |
 | `post_reboot_delay` | 0 | Seconds to wait after reboot before testing connectivity |
-| `reboot_timeout` | 600 | Maximum seconds to wait for the host to come back |
-| `connect_timeout` | 5 | Timeout for each connection test |
+| `reboot_timeout` | 600 | Maximum seconds to wait for the host to reboot and respond to the test command. This timeout is evaluated separately for reboot verification and test command success |
+| `connect_timeout` | underlying connection default | Timeout for each connection test |
 | `test_command` | `whoami` | Command to run to verify the host is usable |
 | `msg` | `Reboot initiated by Ansible` | Message sent to logged-in users |
-| `reboot_command` | platform default | Custom reboot command (overrides default) |
+| `reboot_command` | platform default | Custom reboot command. When set, `pre_reboot_delay`, `post_reboot_delay`, and `msg` are ignored |
 
 ## A Production-Safe Reboot Task
 
@@ -45,7 +45,7 @@ A reboot task with all the safety parameters:
 ```yaml
 - name: Safely reboot the server
   ansible.builtin.reboot:
-    pre_reboot_delay: 5
+    pre_reboot_delay: 60
     post_reboot_delay: 30
     reboot_timeout: 600
     connect_timeout: 10
@@ -58,7 +58,7 @@ A reboot task with all the safety parameters:
     msg: "Reboot took {{ reboot_result.elapsed }} seconds"
 ```
 
-The `pre_reboot_delay` gives users and applications a few seconds to wrap up. The `post_reboot_delay` accounts for services that start after SSH but take time to initialize. The `test_command` verifies the host is actually usable, not just that SSH is accepting connections.
+The `pre_reboot_delay` gives users and applications a minute to wrap up on Linux, macOS, and OpenBSD. The `post_reboot_delay` accounts for services that start after SSH but take time to initialize. The `test_command` verifies the host is actually usable, not just that SSH is accepting connections.
 
 ## Conditional Reboot
 
@@ -139,7 +139,7 @@ Rolling reboot with full health checks:
       ansible.builtin.reboot:
         reboot_timeout: 600
         post_reboot_delay: 30
-        test_command: systemctl is-system-running
+        test_command: systemctl is-system-running --wait
 
   post_tasks:
     - name: Verify all critical services are running
@@ -186,7 +186,7 @@ Use systemctl to verify the system is fully booted:
     test_command: "systemctl is-system-running --wait"
 ```
 
-`systemctl is-system-running --wait` blocks until the system reaches a running or degraded state. This is much better than just checking if SSH works, because SSH comes up long before all services finish starting.
+`systemctl is-system-running --wait` blocks until the system is past early boot and returns success only when the system is fully running with no failed services. This is much better than just checking if SSH works, because SSH comes up long before all services finish starting.
 
 ## Handling Reboot Failures
 
@@ -326,7 +326,7 @@ Post-reboot verification:
 
 ## Rebooting Windows Hosts
 
-The reboot module works on Windows too, via WinRM.
+For Windows hosts, use `ansible.windows.win_reboot` via WinRM.
 
 Reboot a Windows host:
 
@@ -335,7 +335,7 @@ Reboot a Windows host:
   hosts: windows_servers
   tasks:
     - name: Reboot after Windows Update
-      ansible.builtin.reboot:
+      ansible.windows.win_reboot:
         reboot_timeout: 1200  # Windows updates can be slow
         post_reboot_delay: 60
         test_command: "powershell.exe Get-Process"
