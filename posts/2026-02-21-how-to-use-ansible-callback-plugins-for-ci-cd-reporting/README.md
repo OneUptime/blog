@@ -30,15 +30,15 @@ Ansible ships with several useful callback plugins. Enable them in `ansible.cfg`
 # ansible.cfg
 
 [defaults]
-# Set the stdout callback (only one can be active)
-stdout_callback = yaml
+# Format default stdout callback output (only one stdout callback can be active)
+stdout_callback = default
+callback_result_format = yaml
 
 # Enable additional callback plugins (comma-separated)
-callback_whitelist = timer, profile_tasks, profile_roles
-
-# Or in newer Ansible versions
-callbacks_enabled = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 ```
+
+The `ansible.posix` callback plugins are included when you install the full `ansible` package. If you use `ansible-core`, install them with `ansible-galaxy collection install ansible.posix`.
 
 ## The Timer Callback
 
@@ -47,7 +47,7 @@ Shows total playbook execution time. Simple but useful for CI/CD.
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = timer
+callbacks_enabled = ansible.posix.timer
 ```
 
 Output looks like:
@@ -63,7 +63,7 @@ Shows how long each task took. This is invaluable for identifying slow tasks.
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Output includes timing per task:
@@ -84,7 +84,7 @@ Aggregates timing by role instead of individual tasks.
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = profile_roles
+callbacks_enabled = ansible.posix.profile_roles
 ```
 
 ## The JSON Callback
@@ -94,7 +94,7 @@ Outputs the entire playbook result as JSON. Perfect for machine parsing in CI/CD
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = json
+stdout_callback = ansible.posix.json
 ```
 
 Capture the JSON output in your pipeline.
@@ -103,9 +103,9 @@ Capture the JSON output in your pipeline.
 # GitHub Actions example
 - name: Run Ansible with JSON output
   run: |
-    ansible-playbook -i inventory/staging.ini playbooks/site.yml > ansible_output.json 2>&1 || true
+    ansible-playbook -i inventory/staging.ini playbooks/site.yml > ansible_output.json || true
   env:
-    ANSIBLE_STDOUT_CALLBACK: json
+    ANSIBLE_STDOUT_CALLBACK: ansible.posix.json
 
 - name: Parse Ansible results
   run: |
@@ -119,14 +119,15 @@ Capture the JSON output in your pipeline.
     fi
 ```
 
-## The YAML Callback
+## YAML-Formatted Output
 
-Produces more readable output than the default format. Good for CI/CD logs.
+Produces more readable task results than the default JSON-style result format. Good for CI/CD logs, but this is still console output, not a machine-readable YAML document.
 
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 ```
 
 ## Writing a Custom Callback Plugin
@@ -149,7 +150,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'aggregate'
     CALLBACK_NAME = 'ci_report'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
@@ -251,11 +252,7 @@ Here is a callback plugin that sends deployment notifications to Slack.
 from ansible.plugins.callback import CallbackBase
 import json
 import os
-
-try:
-    from urllib.request import Request, urlopen
-except ImportError:
-    from urllib2 import Request, urlopen
+from urllib.request import Request, urlopen
 
 
 class CallbackModule(CallbackBase):
@@ -263,7 +260,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'slack_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
@@ -287,7 +284,10 @@ class CallbackModule(CallbackBase):
             data=json.dumps(payload).encode('utf-8'),
             headers={'Content-Type': 'application/json'}
         )
-        urlopen(req)
+        try:
+            urlopen(req)
+        except Exception as exc:
+            self._display.warning(f"Slack notification failed: {exc}")
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         if not ignore_errors:
@@ -314,10 +314,11 @@ You can use one stdout callback and multiple aggregate/notification callbacks si
 # ansible.cfg
 [defaults]
 # Pretty YAML output for the console
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 
 # Enable timer, profiling, custom report, and Slack notifications
-callbacks_enabled = timer, profile_tasks, ci_report, slack_notify
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ci_report, slack_notify
 ```
 
 ## CI/CD Callback Workflow
@@ -340,7 +341,7 @@ graph TD
 ## Tips for Callback Plugins in CI/CD
 
 1. Use `profile_tasks` in every CI/CD pipeline. Knowing which tasks are slow helps you optimize your deployment time.
-2. The `json` stdout callback is great for machine processing but terrible for human readability. Use `yaml` for humans and write JSON to a separate file via a custom callback.
+2. The `ansible.posix.json` stdout callback is great for machine processing but terrible for human readability. Use `callback_result_format = yaml` for humans and write JSON to a separate file via a custom callback.
 3. Set `ANSIBLE_FORCE_COLOR=true` in your CI/CD environment if the platform supports ANSI colors (GitHub Actions, GitLab CI do).
 4. Custom callback plugins should handle exceptions gracefully. A broken callback should never cause the playbook to fail.
 5. Use environment variables to configure callback plugin behavior (webhook URLs, output file paths). This keeps your ansible.cfg portable.
