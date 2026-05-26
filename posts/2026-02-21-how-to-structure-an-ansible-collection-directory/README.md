@@ -20,6 +20,9 @@ Here is the complete directory structure that an Ansible collection can contain:
   README.md                    # Recommended: Top-level docs
   LICENSE                      # Recommended: License file
   CHANGELOG.rst                # Recommended: Version history
+  extensions/                  # Extension metadata beyond standard plugins and roles
+    audit/
+      event_query.yml
   meta/
     runtime.yml                # Runtime routing and requirements
     execution-environment.yml  # Execution environment metadata
@@ -55,6 +58,10 @@ Here is the complete directory structure that an Ansible collection can contain:
       files/
       meta/
   playbooks/                   # Playbooks included in collection
+    files/
+    vars/
+    templates/
+    tasks/
   tests/                       # Tests
     unit/
     integration/
@@ -317,7 +324,7 @@ class LookupModule(LookupBase):
 
 ## The roles Directory
 
-Roles inside a collection follow the exact same structure as standalone roles:
+Roles inside a collection mostly follow the same structure as standalone roles:
 
 ```text
 roles/
@@ -356,6 +363,8 @@ Users reference the role as `acme_corp.network_tools.baseline`:
           - ntp1.internal.com
           - ntp2.internal.com
 ```
+
+One important difference is that roles inside a collection cannot contain their own plugins. Put plugins in the collection-level `plugins/` directory instead.
 
 ## The meta Directory
 
@@ -419,6 +428,7 @@ graph TD
     A --> F[tests/]
     A --> G[docs/]
     A --> H[playbooks/]
+    A --> I[extensions/]
 
     C --> C1[runtime.yml]
 
@@ -442,13 +452,13 @@ graph TD
 
 Follow these naming rules to avoid problems:
 
-- **Namespace**: lowercase, underscores allowed, no hyphens (e.g., `acme_corp`)
-- **Collection name**: lowercase, underscores allowed, no hyphens (e.g., `network_tools`)
+- **Namespace**: lowercase alphanumeric characters and underscores, no hyphens, no leading underscores or numbers, and no consecutive underscores (e.g., `acme_corp`)
+- **Collection name**: same restrictions as the namespace (e.g., `network_tools`)
 - **Module filenames**: lowercase with underscores, must be valid Python identifiers
-- **Role directories**: lowercase with underscores
+- **Role directories**: lowercase alphanumeric characters and underscores, starting with a letter
 - **Plugin files**: lowercase with underscores, matching the class or function they provide
 
-The namespace and collection name cannot start with a number or contain hyphens. This trips people up because Python package names often use hyphens, but Ansible collection names must be valid Python identifiers.
+The namespace and collection name cannot start with a number or underscore, contain hyphens, or contain consecutive underscores. This trips people up because Python package names often use hyphens, but Ansible collection names must follow Ansible Galaxy's stricter naming rules.
 
 ## Conclusion
 
