@@ -12,7 +12,7 @@ Git hooks are scripts that run automatically at certain points in the Git workfl
 
 ## Git Hook Basics
 
-Git hooks live in the `.git/hooks/` directory of each repository. Server-side hooks (on bare repositories) are especially important for enforcing policies. The most commonly managed hooks are:
+Git hooks live in the `.git/hooks/` directory of non-bare repositories and in the `hooks/` directory of bare repositories. Server-side hooks (on bare repositories) are especially important for enforcing policies. The most commonly managed hooks are:
 
 - `pre-commit`: Runs before a commit is created
 - `pre-push`: Runs before a push is sent
@@ -43,17 +43,15 @@ Git hooks live in the `.git/hooks/` directory of each repository. Server-side ho
           echo "Running pre-commit checks..."
 
           # Check for Python syntax errors
-          python_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$')
-          if [ -n "$python_files" ]; then
-              echo "Checking Python files..."
-              for f in $python_files; do
-                  python3 -m py_compile "$f"
-                  if [ $? -ne 0 ]; then
-                      echo "Syntax error in $f"
-                      exit 1
-                  fi
-              done
-          fi
+          while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              echo "Checking $f..."
+              python3 -m py_compile "$f"
+              if [ $? -ne 0 ]; then
+                  echo "Syntax error in $f"
+                  exit 1
+              fi
+          done < <(git diff --cached --name-only --diff-filter=ACM -- '*.py')
 
           # Check for trailing whitespace
           if git diff --cached --check; then
@@ -178,11 +176,21 @@ graph TD
                   exit 1
               fi
 
+              # Skip branch deletions
+              if [ "$newrev" = "0000000000000000000000000000000000000000" ]; then
+                  continue
+              fi
+
               # Validate commit messages
-              commits=$(git log --format="%H %s" "$oldrev..$newrev" 2>/dev/null)
-              while IFS= read -r line; do
-                  sha=$(echo "$line" | cut -d' ' -f1)
-                  msg=$(echo "$line" | cut -d' ' -f2-)
+              if [ "$oldrev" = "0000000000000000000000000000000000000000" ]; then
+                  commits=$(git rev-list "$newrev" --not --all)
+              else
+                  commits=$(git rev-list "$oldrev..$newrev")
+              fi
+
+              while IFS= read -r sha; do
+                  [ -z "$sha" ] && continue
+                  msg=$(git log -1 --format="%s" "$sha")
 
                   # Require conventional commit format
                   if ! echo "$msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore)(\(.+\))?: .+'; then
@@ -255,21 +263,32 @@ graph TD
           WEBHOOK_URL="{{ webhook_url }}"
 
           while read oldrev newrev refname; do
+              if [ "$newrev" = "0000000000000000000000000000000000000000" ]; then
+                  continue
+              fi
+
               branch=$(echo "$refname" | sed 's|refs/heads/||')
               author=$(git log -1 --format='%an' "$newrev")
               message=$(git log -1 --format='%s' "$newrev")
-              commit_count=$(git log --oneline "$oldrev..$newrev" | wc -l)
+              if [ "$oldrev" = "0000000000000000000000000000000000000000" ]; then
+                  commit_count=$(git rev-list --count "$newrev")
+              else
+                  commit_count=$(git rev-list --count "$oldrev..$newrev")
+              fi
 
-              payload=$(cat <<EOF
-          {
-            "repository": "myapp",
-            "branch": "$branch",
-            "author": "$author",
-            "message": "$message",
-            "commits": $commit_count,
-            "new_rev": "$newrev"
-          }
-          EOF
+              payload=$(REPOSITORY="myapp" BRANCH="$branch" AUTHOR="$author" MESSAGE="$message" COMMIT_COUNT="$commit_count" NEW_REV="$newrev" python3 - <<'PY'
+          import json
+          import os
+
+          print(json.dumps({
+              "repository": os.environ["REPOSITORY"],
+              "branch": os.environ["BRANCH"],
+              "author": os.environ["AUTHOR"],
+              "message": os.environ["MESSAGE"],
+              "commits": int(os.environ["COMMIT_COUNT"]),
+              "new_rev": os.environ["NEW_REV"],
+          }))
+          PY
               )
 
               curl -s -X POST "$WEBHOOK_URL" \
