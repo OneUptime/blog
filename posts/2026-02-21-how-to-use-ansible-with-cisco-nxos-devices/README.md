@@ -45,7 +45,7 @@ ansible_user=admin
 ansible_password={{ vault_nxos_password }}
 ```
 
-Note that NX-OS does not use the `enable` concept like IOS. Once you are logged in with the correct privileges, you are already in privileged mode. So there is no need for `ansible_become` settings.
+Note that NX-OS authorization is role-based, so many environments do not need `ansible_become` settings when the login user already has the required privileges. Ansible does support enable-mode privilege escalation for NX-OS over `network_cli`, so add `ansible_become: true`, `ansible_become_method: enable`, and `ansible_become_password` if your devices require it.
 
 ## Gathering NX-OS Facts
 
@@ -67,7 +67,7 @@ Note that NX-OS does not use the `enable` concept like IOS. Once you are logged 
       ansible.builtin.debug:
         msg: |
           Hostname: {{ ansible_net_hostname }}
-          Platform: {{ ansible_net_platform }}
+          Platform: {{ ansible_net_model }}
           NX-OS Version: {{ ansible_net_version }}
           Serial Number: {{ ansible_net_serialnum }}
 
@@ -98,7 +98,6 @@ NX-OS requires features to be explicitly enabled before they can be used. This i
       - pim
       - udld
       - lldp
-      - nxapi
 
   tasks:
     - name: Enable required features
@@ -106,6 +105,12 @@ NX-OS requires features to be explicitly enabled before they can be used. This i
         feature: "{{ item }}"
         state: enabled
       loop: "{{ required_features }}"
+
+    - name: Enable NX-API over HTTPS
+      cisco.nxos.nxos_nxapi:
+        enable_http: false
+        enable_https: true
+        state: present
 ```
 
 ## VLAN Configuration
@@ -215,7 +220,9 @@ VPC is one of the most important features on Nexus switches. It allows two Nexus
 # playbook-nxos-vpc.yml
 # Configures Virtual Port Channel (VPC) between a pair of Nexus switches
 - name: Configure VPC domain
-  hosts: nxos_leaf
+  hosts:
+    - nexus-leaf-01
+    - nexus-leaf-02
   gather_facts: no
 
   tasks:
@@ -434,7 +441,7 @@ ansible_password: "{{ vault_nxos_password }}"
 
 **Enable features first.** NX-OS will reject commands for features that are not enabled. Always include feature enablement as the first step in your playbooks.
 
-**NX-OS does not use enable mode.** Unlike IOS, there is no `enable` password concept. If you are authenticated, you have the privileges assigned to your user role.
+**Use privilege escalation only when needed.** NX-OS authorization is role-based, so a user with the required role can run configuration tasks without `ansible_become`. If your access policy requires enable-mode escalation, Ansible supports `ansible_become_method: enable` for NX-OS over `network_cli`.
 
 **Use checkpoint/rollback for safety.** NX-OS supports configuration checkpoints. Before major changes, create a checkpoint so you can roll back if something goes wrong:
 
