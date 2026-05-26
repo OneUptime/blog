@@ -17,12 +17,13 @@ Before running commands, you need WinRM configured on your Windows hosts and pro
 Windows host preparation (run this PowerShell on each Windows host):
 
 ```powershell
-# Enable WinRM on the Windows host
+# Enable WinRM over HTTPS on the Windows host for Ansible
+$url = "https://raw.githubusercontent.com/ansible/ansible-documentation/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
+$file = "$env:TEMP\ConfigureRemotingForAnsible.ps1"
 
-Enable-PSRemoting -Force
-winrm quickconfig -q
-winrm set winrm/config/service '@{AllowUnencrypted="true"}'
-winrm set winrm/config/service/auth '@{Basic="true"}'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -Uri $url -OutFile $file
+powershell.exe -ExecutionPolicy ByPass -File $file
 ```
 
 Ansible inventory for Windows hosts:
