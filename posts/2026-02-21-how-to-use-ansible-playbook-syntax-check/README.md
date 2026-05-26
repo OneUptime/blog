@@ -50,9 +50,9 @@ The syntax check validates:
 
 1. **YAML structure**: Invalid YAML formatting, bad indentation, missing colons
 2. **Ansible keywords**: Misspelled directives like `taks` instead of `tasks`
-3. **Module parameters**: Missing required parameters in some cases
+3. **Unresolved modules/actions**: Misspelled or unavailable modules and actions
 4. **Include/import paths**: References to non-existent files (for `import_*` directives)
-5. **Jinja2 syntax**: Malformed template expressions
+5. **Jinja2 syntax during parsing**: Malformed template expressions in values Ansible must load before execution
 
 Here are examples of errors it catches:
 
@@ -97,9 +97,8 @@ Here are examples of errors it catches:
 - name: Deploy app
   hosts: webservers
   tasks:
-    - name: Show version
-      debug:
-        msg: "Version is {{ version"  # WRONG - missing closing braces
+    - name: Load task file
+      import_tasks: "{{ task_file"  # WRONG - missing closing braces
 ```
 
 ## What Syntax Check Does NOT Catch
@@ -108,7 +107,7 @@ The syntax check has limitations. It does not catch:
 
 - Logic errors (wrong variable names that are syntactically valid)
 - Runtime errors (missing files on the target, permission issues)
-- Undefined variables (these are only resolved at runtime)
+- Most task-level undefined variables (these are usually resolved at runtime, though variables used in parse-time fields such as `hosts` can fail during syntax check)
 - Module-specific validation (most parameter validation happens during execution)
 
 ```yaml
@@ -120,10 +119,10 @@ The syntax check has limitations. It does not catch:
     name: "nginx={{ ngnix_version }}"  # Typo in variable name
     state: present
 
-# Module that doesn't exist (valid syntax, missing module)
-- name: Do something
-  nonexistent_module:
-    param: value
+# Invalid module parameter (valid YAML, wrong parameter)
+- name: Show a message
+  debug:
+    nonexistent_param: value
 ```
 
 ## Checking Multiple Playbooks
@@ -337,7 +336,7 @@ ansible-playbook --syntax-check --ask-vault-pass deploy.yml
 ansible-playbook --syntax-check --vault-password-file=~/.vault_pass deploy.yml
 ```
 
-Without the vault password, you may see errors about being unable to decrypt files, but the basic syntax check will still work for the unencrypted parts.
+Without the vault password, syntax check can fail when it needs to load encrypted variables or files, even though unencrypted parts of the playbook may still be parseable.
 
 ## Common Syntax Errors and Fixes
 
@@ -364,11 +363,11 @@ Here is a quick reference of frequent syntax issues:
     state: present
     name: apache2  # WRONG - duplicate 'name' key
 
-# Problem: Using Python boolean instead of YAML
-# Fix: Use yes/no or true/false (lowercase)
+# Problem: Inconsistent boolean style
+# Fix: Prefer lowercase true/false, which also satisfies common linting rules
 - name: Gather facts
-  setup:
-  gather_facts: True  # Should be: true or yes
+  hosts: webservers
+  gather_facts: true
 ```
 
 ## Summary
