@@ -8,7 +8,7 @@ Description: Learn how to use Ansible failed_when to define custom failure condi
 
 ---
 
-Ansible decides whether a task succeeded or failed based on the return code of the underlying module. A return code of 0 means success, anything else means failure. But in the real world, a command can return 0 and still have produced bad results, or return a nonzero code while doing exactly what you wanted. The `failed_when` directive lets you override Ansible's default failure detection with your own conditions.
+For command-style tasks, Ansible usually decides whether a task succeeded or failed based on the return code of the underlying command. A return code of 0 means success, anything else means failure. But in the real world, a command can return 0 and still have produced bad results, or return a nonzero code while doing exactly what you wanted. The `failed_when` directive lets you override Ansible's default failure detection with your own conditions.
 
 ## Why Default Failure Detection Falls Short
 
@@ -113,10 +113,10 @@ Sometimes the output of a command is a number, and you need to compare it agains
 # Check disk usage percentage
 - name: Get root partition usage
   ansible.builtin.command:
-    cmd: df --output=pcent / | tail -1
+    cmd: df --output=pcent /
   register: disk_usage
   changed_when: false
-  failed_when: (disk_usage.stdout | trim | replace('%','') | int) > 90
+  failed_when: (disk_usage.stdout_lines[-1] | trim | replace('%','') | int) > 90
 ```
 
 ## Using failed_when with Complex Logic
@@ -206,8 +206,10 @@ Here is a practical example that validates a database backup beyond just checkin
 
     - name: Validate backup is not suspiciously small
       ansible.builtin.debug:
-        msg: "Backup size: {{ backup_file.stat.size // 1024 }}KB"
-      failed_when: (backup_file.stat.size // 1024) < min_backup_size_kb
+        msg: "Backup size: {{ (backup_file.stat.size | default(0)) // 1024 }}KB"
+      failed_when: >
+        not backup_file.stat.exists or
+        (backup_file.stat.size // 1024) < min_backup_size_kb
 
     - name: Verify backup integrity
       ansible.builtin.command:
@@ -251,7 +253,7 @@ You can completely disable failure detection by setting `failed_when: false`. Th
 ```yaml
 # Never fail this task, regardless of what happens
 - name: Clean up temporary files (best effort)
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: find /tmp/app-* -mtime +7 -delete
   failed_when: false
   changed_when: false
