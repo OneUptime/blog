@@ -45,7 +45,7 @@ ansible-role-nginx/
   .gitignore
 ```
 
-The repository name should follow the convention `ansible-role-<name>`. Galaxy strips the `ansible-role-` prefix when importing, so `ansible-role-nginx` becomes `yournamespace.nginx`.
+The repository name often follows the convention `ansible-role-<name>`. Current Galaxy versions do not strip the `ansible-role-` prefix automatically, so set `role_name` in `meta/main.yml` if you want `ansible-role-nginx` to be imported as `yournamespace.nginx`.
 
 ## Step 2: Configure meta/main.yml
 
@@ -92,7 +92,7 @@ dependencies: []
 
 ### Key Fields Explained
 
-- **role_name**: The name users will install with (`ansible-galaxy install yourname.nginx`)
+- **role_name**: The name users will install with (`ansible-galaxy role install yourname.nginx`)
 - **author**: Your Galaxy username
 - **description**: Shows in search results; make it descriptive
 - **platforms**: Tells users what OS versions are supported
@@ -103,7 +103,7 @@ dependencies: []
 
 Your README is the first thing people see on Galaxy. Include these sections:
 
-```markdown
+````markdown
 # Ansible Role: Nginx
 
 Installs and configures Nginx on Debian and RHEL-based systems.
@@ -130,7 +130,7 @@ nginx_worker_processes: auto      # Number of worker processes
 nginx_worker_connections: 1024    # Max connections per worker
 nginx_server_name: localhost      # Default server name
 nginx_enable_tls: false           # Enable HTTPS
-```bash
+```
 
 ## Dependencies
 
@@ -145,7 +145,7 @@ None.
       vars:
         nginx_port: 8080
         nginx_server_name: app.example.com
-```bash
+```
 
 ## License
 
@@ -154,7 +154,7 @@ MIT
 ## Author Information
 
 Created by [nawazdhandala](https://github.com/nawazdhandala).
-```text
+````
 
 ## Step 4: Add a LICENSE File
 
@@ -223,18 +223,22 @@ verifier:
 
 1. Go to https://galaxy.ansible.com
 2. Sign in with your GitHub account
-3. Click your username in the top right, then "API Token"
+3. Open https://galaxy.ansible.com/me/preferences and click "Show API key"
 4. Copy the token
 
 Store the token for CLI use:
 
-```bash
-# Option 1: Set it in your shell environment
-export ANSIBLE_GALAXY_TOKEN="your-token-here"
+```ini
+# ansible.cfg
+[galaxy]
+server_list = release_galaxy
 
-# Option 2: Store it in a file
-echo "your-token-here" > ~/.ansible/galaxy_token
+[galaxy_server.release_galaxy]
+url = https://galaxy.ansible.com/
+token = your-token-here
 ```
+
+You can also pass the token directly with `--token your-token-here` when running import commands.
 
 ## Step 7: Import Your Role
 
@@ -247,10 +251,10 @@ Galaxy imports roles directly from GitHub. You can trigger an import via the web
 ansible-galaxy role import your-github-username ansible-role-nginx
 ```
 
-If your Galaxy username differs from your GitHub username:
+If you need to override the imported role name from the command line:
 
 ```bash
-# Specify the Galaxy namespace explicitly
+# Specify the role name explicitly
 ansible-galaxy role import --role-name nginx your-github-username ansible-role-nginx
 ```
 
@@ -267,10 +271,10 @@ After importing, check that your role appears correctly:
 
 ```bash
 # Search for your role
-ansible-galaxy search nginx --author your-username
+ansible-galaxy role search nginx --author your-username
 
 # Get info about your role
-ansible-galaxy info your-username.nginx
+ansible-galaxy role info your-username.nginx
 ```
 
 Visit your role's page on Galaxy to verify:
@@ -285,10 +289,10 @@ Verify that others can install your role:
 
 ```bash
 # Install your published role
-ansible-galaxy install your-username.nginx
+ansible-galaxy role install your-username.nginx
 
 # Check it was installed correctly
-ansible-galaxy list | grep nginx
+ansible-galaxy role list | grep nginx
 ```
 
 ## Automating Imports with GitHub Actions
@@ -308,17 +312,18 @@ jobs:
   import:
     runs-on: ubuntu-latest
     steps:
+      - name: Install Ansible
+        run: python -m pip install ansible
+
       - name: Trigger Galaxy import
-        uses: robertdebock/galaxy-action@1.2.1
-        with:
-          galaxy_api_key: ${{ secrets.GALAXY_API_KEY }}
+        run: ansible-galaxy role import --token "${{ secrets.GALAXY_API_KEY }}" your-github-username ansible-role-nginx
 ```
 
 Store your Galaxy API token as a GitHub Actions secret named `GALAXY_API_KEY`.
 
 ## Adding a Quality Badge
 
-Galaxy provides a quality score for roles. Display it in your README:
+Display a Galaxy badge in your README:
 
 ```markdown
 [![Ansible Galaxy](https://img.shields.io/badge/galaxy-your--username.nginx-blue.svg)](https://galaxy.ansible.com/your-username/nginx)
@@ -345,19 +350,19 @@ Or set up automatic imports with the GitHub Action above.
 
 ### Versioning
 
-Galaxy uses your Git tags as version numbers. When you create a new release:
+Galaxy imports Git tags that match Semantic Versioning as version numbers. When you create a new release:
 
 ```bash
 # Tag a new version
-git tag -a v1.1.0 -m "Add TLS support"
-git push origin v1.1.0
+git tag -a 1.1.0 -m "Add TLS support"
+git push origin 1.1.0
 ```
 
 Users can install specific versions:
 
 ```bash
 # Install a specific version
-ansible-galaxy install your-username.nginx,v1.1.0
+ansible-galaxy role install your-username.nginx,1.1.0
 ```
 
 ### Deprecating a Role
@@ -389,7 +394,7 @@ ansible-lint
 molecule test
 
 # Verify meta/main.yml is complete
-ansible-galaxy role info . 2>&1 | head -20
+yamllint meta/main.yml
 ```
 
 ### Common Quality Issues
@@ -416,4 +421,4 @@ Standalone roles are still appropriate for:
 
 ## Wrapping Up
 
-Publishing to Ansible Galaxy makes your role available to the entire Ansible community with a simple `ansible-galaxy install` command. The process is straightforward: prepare your metadata in `meta/main.yml`, write a clear README, add tests, connect your GitHub account to Galaxy, and import. Automate the import with GitHub Actions so new releases appear on Galaxy automatically. The initial setup takes about 30 minutes, and the maintenance is minimal, mostly just reimporting when you push new versions. If you have built a role that solves a real problem, publishing it to Galaxy is the best way to share it.
+Publishing to Ansible Galaxy makes your role available to the entire Ansible community with a simple `ansible-galaxy role install` command. The process is straightforward: prepare your metadata in `meta/main.yml`, write a clear README, add tests, connect your GitHub account to Galaxy, and import. Automate the import with GitHub Actions so new releases appear on Galaxy automatically. The initial setup takes about 30 minutes, and the maintenance is minimal, mostly just reimporting when you push new versions. If you have built a role that solves a real problem, publishing it to Galaxy is the best way to share it.
