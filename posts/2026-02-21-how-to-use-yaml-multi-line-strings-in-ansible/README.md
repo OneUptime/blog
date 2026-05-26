@@ -102,7 +102,7 @@ all_trailing: |+
     content: |
       server {
           listen 80;
-          server_name {{ server_name }};
+          server_name example.com;
 
           location / {
               proxy_pass http://127.0.0.1:8080;
@@ -128,41 +128,40 @@ all_trailing: |+
 
 Note the `>-` which folds lines and strips the trailing newline, producing a single-line condition string.
 
-### Jinja2 Templates Inline
+### Static File Content
 
 ```yaml
-# Use literal block for inline Jinja2 templates
+# Use literal block for inline file content
 - name: Generate hosts file entries
   ansible.builtin.copy:
     dest: /etc/hosts.ansible
     content: |
       # Managed by Ansible
       127.0.0.1 localhost
-      {% for host in groups['all'] %}
-      {{ hostvars[host].ansible_host }} {{ host }}
-      {% endfor %}
+      192.0.2.10 app01
+      192.0.2.11 app02
 ```
 
 ## Indentation in Multi-Line Blocks
 
-The indentation indicator tells YAML how many spaces to strip from the beginning of each line:
+The indentation indicator tells YAML the indentation level to use for the block content. That indentation is stripped, and any extra indentation is preserved:
 
 ```yaml
-# Explicit indentation indicator (2 spaces)
+# Explicit indentation indicator (2 spaces beyond the parent indent)
 - name: Write indented content
   ansible.builtin.copy:
     dest: /tmp/indented.txt
     content: |2
-        This line has 4 spaces of indentation
+        This line keeps 2 spaces of indentation
         This one too
-      This line has 2 spaces
+      This line starts at the beginning
 ```
 
 ## Common Mistakes
 
 ```yaml
-# Mistake: forgetting the trailing colon-space before the block
-# This will cause a YAML parse error
+# Mistake: omitting the space after the colon before the block
+# This is parsed as plain text, not as a key with a block value
 bad_example:|
   some content
 
@@ -183,12 +182,12 @@ bad_indent: |
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this syntax proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this syntax
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -220,7 +219,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -302,7 +301,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this syntax
 - name: Robust task execution
   hosts: all
   tasks:
