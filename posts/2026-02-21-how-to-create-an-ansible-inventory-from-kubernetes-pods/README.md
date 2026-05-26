@@ -26,39 +26,50 @@ ansible-galaxy collection install kubernetes.core
 pip install kubernetes
 ```
 
-## Method 1: The kubernetes.core.k8s Inventory Plugin
+## Method 1: Build Inventory with k8s_info and add_host
 
-The `kubernetes.core.k8s` inventory plugin discovers pods and creates inventory entries for them:
+Current `kubernetes.core` releases no longer include the older `kubernetes.core.k8s` inventory plugin. The supported approach is to query pods with `kubernetes.core.k8s_info` and add them to inventory with `ansible.builtin.add_host`:
 
 ```yaml
-# inventory/k8s_pods.yml
-plugin: kubernetes.core.k8s
-connections:
-  - namespaces:
+# playbooks/build-pod-inventory.yml
+- hosts: localhost
+  gather_facts: false
+  vars:
+    target_namespaces:
       - default
       - production
       - staging
+  tasks:
+    - name: Get running pods from each namespace
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ item }}"
+        field_selectors:
+          - status.phase=Running
+      loop: "{{ target_namespaces }}"
+      register: pod_results
 
-# Only include running pods
-# Exclude system pods
+    - name: Add pods to in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ item.metadata.namespace }}_{{ item.metadata.name }}"
+        groups:
+          - "namespace_{{ item.metadata.namespace | regex_replace('[^A-Za-z0-9_]', '_') }}"
+          - "app_{{ ((item.metadata.labels | default({})).get('app', (item.metadata.labels | default({})).get('app.kubernetes.io/name', 'unknown'))) | regex_replace('[^A-Za-z0-9_]', '_') }}"
+        ansible_connection: kubernetes.core.kubectl
+        ansible_kubectl_pod: "{{ item.metadata.name }}"
+        ansible_kubectl_namespace: "{{ item.metadata.namespace }}"
+        ansible_kubectl_container: "{{ item.spec.containers[0].name }}"
+        k8s_pod_ip: "{{ item.status.podIP | default('') }}"
+        k8s_node_name: "{{ item.spec.nodeName | default('') }}"
+        k8s_labels: "{{ item.metadata.labels | default({}) }}"
+      loop: "{{ pod_results.results | map(attribute='resources') | flatten }}"
 ```
 
-Enable the plugin:
-
-```ini
-# ansible.cfg
-[inventory]
-enable_plugins = kubernetes.core.k8s, ansible.builtin.yaml, ansible.builtin.ini
-```
-
-Test it:
+Use this at the start of a playbook, then target the groups created with `add_host` in later plays.
 
 ```bash
-# See what pods the plugin discovers
-ansible-inventory -i inventory/k8s_pods.yml --graph
-
-# List with full details
-ansible-inventory -i inventory/k8s_pods.yml --list
+ansible-playbook playbooks/build-pod-inventory.yml
 ```
 
 ## Method 2: Custom Dynamic Inventory Script
@@ -73,10 +84,15 @@ For more control, write a custom script that queries the Kubernetes API:
 import json
 import sys
 import os
+import re
 from kubernetes import client, config
 
 # Namespaces to include (or empty for all)
-TARGET_NAMESPACES = os.environ.get('K8S_NAMESPACES', 'default,production').split(',')
+TARGET_NAMESPACES = [
+    ns.strip()
+    for ns in os.environ.get('K8S_NAMESPACES', 'default,production').split(',')
+    if ns.strip()
+]
 
 # Label selector to filter pods
 LABEL_SELECTOR = os.environ.get('K8S_LABEL_SELECTOR', '')
@@ -88,13 +104,23 @@ def load_k8s_config():
     except config.ConfigException:
         config.load_kube_config()
 
+def sanitize_group_name(value):
+    """Return a value that is safe to use as an Ansible group name."""
+    return re.sub(r'[^A-Za-z0-9_]', '_', value)
+
 def get_pods():
     """Get running pods from Kubernetes."""
     v1 = client.CoreV1Api()
     all_pods = []
 
+    if not TARGET_NAMESPACES:
+        pods = v1.list_pod_for_all_namespaces(
+            label_selector=LABEL_SELECTOR,
+            field_selector='status.phase=Running'
+        )
+        return pods.items
+
     for namespace in TARGET_NAMESPACES:
-        namespace = namespace.strip()
         pods = v1.list_namespaced_pod(
             namespace=namespace,
             label_selector=LABEL_SELECTOR,
@@ -121,7 +147,7 @@ def build_inventory():
         inv_name = f"{namespace}_{pod_name}"
 
         # Group by namespace
-        ns_group = f"namespace_{namespace}"
+        ns_group = f"namespace_{sanitize_group_name(namespace)}"
         if ns_group not in inventory:
             inventory[ns_group] = {'hosts': [], 'vars': {}}
         inventory[ns_group]['hosts'].append(inv_name)
@@ -129,7 +155,7 @@ def build_inventory():
         # Group by app label
         app_label = labels.get('app', labels.get('app.kubernetes.io/name', ''))
         if app_label:
-            app_group = f"app_{app_label}"
+            app_group = f"app_{sanitize_group_name(app_label)}"
             if app_group not in inventory:
                 inventory[app_group] = {'hosts': [], 'vars': {}}
             inventory[app_group]['hosts'].append(inv_name)
@@ -137,6 +163,7 @@ def build_inventory():
         # Group by custom ansible.group label
         ansible_group = labels.get('ansible-group', '')
         if ansible_group:
+            ansible_group = sanitize_group_name(ansible_group)
             if ansible_group not in inventory:
                 inventory[ansible_group] = {'hosts': [], 'vars': {}}
             inventory[ansible_group]['hosts'].append(inv_name)
@@ -208,6 +235,8 @@ ansible_kubectl_namespace: production
 ansible_kubectl_container: app-container  # needed for multi-container pods
 ```
 
+Standard Ansible modules such as `copy`, `template`, and `command` still need Python inside the target container. For minimal images that do not include Python, use `ansible.builtin.raw` for simple commands or build the needed tooling into the image.
+
 ## Labeling Pods for Ansible
 
 Add labels to your Kubernetes deployments that help the inventory script organize pods:
@@ -235,6 +264,7 @@ spec:
       containers:
         - name: nginx
           image: nginx:1.25
+          # Standard Ansible modules require Python in the container image.
           ports:
             - containerPort: 80
 ```
@@ -303,13 +333,14 @@ def build_stable_inventory():
         namespace = pod.metadata.namespace
 
         # Use app name + index for stable naming
-        app_group = f"app_{app_name}"
+        safe_app_name = sanitize_group_name(app_name)
+        app_group = f"app_{safe_app_name}"
         if app_group not in inventory:
             inventory[app_group] = {'hosts': [], 'vars': {}}
 
         # Count existing hosts in this group to create an index
         idx = len(inventory[app_group]['hosts'])
-        inv_name = f"{app_name}-{idx}"
+        inv_name = f"{safe_app_name}-{idx}"
 
         inventory[app_group]['hosts'].append(inv_name)
 
