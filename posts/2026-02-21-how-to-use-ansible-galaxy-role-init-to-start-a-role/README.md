@@ -42,7 +42,7 @@ webserver/
     README.md
 ```
 
-Every directory has a purpose, and each `main.yml` file contains a placeholder comment so the file is not empty.
+Every directory has a purpose, and each generated YAML file starts with basic placeholder content so the file is not empty.
 
 ## Specifying an Init Path
 
@@ -64,21 +64,21 @@ The default skeleton is minimal. You can provide your own template using `--role
 ansible-galaxy role init webserver --role-skeleton ~/templates/role-skeleton/
 ```
 
-This is powerful for organizations that want every role to include specific files like a Molecule configuration, CI pipeline, or license file. The skeleton directory is copied as-is, with Jinja2 template variables expanded.
+This is powerful for organizations that want every role to include specific files like a Molecule configuration, CI pipeline, or license file. The skeleton directory is copied into the new role, and `.j2` files outside the `templates/` directory are rendered with variables such as `role_name`.
 
 ### Creating a Custom Skeleton
 
-Here is a skeleton that includes Molecule testing and a GitHub Actions CI pipeline:
+Here is a skeleton that includes Molecule testing and a GitHub Actions workflow directory:
 
 ```bash
 # Create the skeleton directory structure
 mkdir -p ~/templates/role-skeleton/{defaults,files,handlers,meta,molecule/default,tasks,templates,vars,.github/workflows}
 ```
 
-The skeleton `meta/main.yml` with template variables:
+The skeleton `meta/main.yml.j2` with template variables:
 
 ```yaml
-# ~/templates/role-skeleton/meta/main.yml
+# ~/templates/role-skeleton/meta/main.yml.j2
 ---
 galaxy_info:
   role_name: {{ role_name }}
@@ -119,7 +119,7 @@ verifier:
 ```
 
 ```yaml
-# ~/templates/role-skeleton/molecule/default/converge.yml
+# ~/templates/role-skeleton/molecule/default/converge.yml.j2
 ---
 - name: Converge
   hosts: all
@@ -130,7 +130,7 @@ verifier:
 Now every role you init includes Molecule testing out of the box:
 
 ```bash
-# New roles automatically get Molecule and CI configs
+# New roles automatically get Molecule files and a place for CI configs
 ansible-galaxy role init my_database --role-skeleton ~/templates/role-skeleton/
 ```
 
@@ -183,9 +183,6 @@ The main task file. It is common to break tasks into multiple files and include 
 ```yaml
 # tasks/main.yml - orchestrate task includes
 ---
-- name: Include OS-specific variables
-  ansible.builtin.include_vars: "{{ ansible_os_family }}.yml"
-
 - name: Install webserver packages
   ansible.builtin.include_tasks: install.yml
 
@@ -281,14 +278,14 @@ The generated test files provide a basic way to test the role:
 
 ```ini
 # tests/inventory
-[testservers]
 localhost ansible_connection=local
 ```
 
 ```yaml
 # tests/test.yml
 ---
-- hosts: testservers
+- hosts: localhost
+  remote_user: root
   roles:
     - webserver
 ```
@@ -306,7 +303,7 @@ The `templates/` directory starts empty. Add Jinja2 templates that your tasks re
 
 ```nginx
 # templates/nginx.conf.j2 - Main Nginx configuration
-worker_processes {{ webserver_max_connections }};
+worker_processes auto;
 error_log /var/log/nginx/error.log {{ webserver_log_level }};
 
 events {
@@ -330,11 +327,11 @@ If you did not use a custom skeleton, add Molecule manually:
 
 ```bash
 # Install Molecule
-pip install molecule molecule-docker
+pip install molecule "molecule-plugins[docker]"
 
 # Initialize Molecule in the role directory
 cd webserver
-molecule init scenario --driver-name docker
+molecule init scenario
 ```
 
 This creates `molecule/default/` with test configuration. Edit `molecule/default/converge.yml` to use your role:
