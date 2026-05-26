@@ -188,7 +188,7 @@ Here is a playbook that audits server compliance without making any changes:
 
     - name: Report SSH root login status
       debug:
-        msg: "{{ 'PASS' if not ssh_root_check.changed else 'FAIL' }}: Root SSH login is {{ 'disabled' if not ssh_root_check.changed else 'enabled' }}"
+        msg: "{{ 'PASS' if not ssh_root_check.changed else 'FAIL' }}: PermitRootLogin is {{ 'set to no' if not ssh_root_check.changed else 'not set to no' }}"
 
     - name: Check firewall is active
       command: ufw status
@@ -227,7 +227,7 @@ ansible-playbook --check compliance-audit.yml
 
 ## Check Mode with Modules That Do Not Support It
 
-Not all modules support check mode. The `command`, `shell`, and `raw` modules do not support it because Ansible cannot predict what a shell command would do. In check mode, these tasks are skipped entirely unless you use `check_mode: no`:
+Not all modules fully support check mode. The `command` and `shell` modules have partial support when you use `creates` or `removes`, but arbitrary commands cannot be predicted. The `raw` module does not support check mode. In check mode, tasks that cannot predict a result are skipped unless you use `check_mode: no`:
 
 ```yaml
 # handle-unsupported.yml - Work around modules that skip check mode
@@ -236,7 +236,7 @@ Not all modules support check mode. The `command`, `shell`, and `raw` modules do
   hosts: all
 
   tasks:
-    # This task is SKIPPED in check mode because command module does not support it
+    # This task is SKIPPED in check mode because command cannot predict arbitrary output
     - name: Get disk usage
       command: df -h /
       register: disk_usage
