@@ -126,7 +126,7 @@ Redirecting output is another shell-only feature.
 
     - name: Append to an existing file
       ansible.builtin.shell:
-        cmd: "echo '--- Report generated at $(date) ---' >> /tmp/disk_report.txt"
+        cmd: "echo \"--- Report generated at $(date) ---\" >> /tmp/disk_report.txt"
 
     - name: Redirect stderr to a separate file
       ansible.builtin.shell:
@@ -226,13 +226,13 @@ Use `&&` and `||` for conditional command execution.
       ansible.builtin.shell:
         cmd: "nginx -t && systemctl reload nginx"
       register: nginx_reload
-      changed_when: "'signal process started' in nginx_reload.stdout"
+      changed_when: nginx_reload.rc == 0
 
     - name: Create directory only if it doesn't exist
       ansible.builtin.shell:
-        cmd: "test -d /opt/myapp/data || mkdir -p /opt/myapp/data"
+        cmd: "test -d /opt/myapp/data || (mkdir -p /opt/myapp/data && echo CHANGED)"
       register: dir_result
-      changed_when: "'mkdir' in dir_result.cmd"
+      changed_when: "'CHANGED' in dir_result.stdout"
 
     - name: Try primary command, fall back to secondary
       ansible.builtin.shell:
