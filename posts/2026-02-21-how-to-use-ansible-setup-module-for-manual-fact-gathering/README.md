@@ -29,6 +29,8 @@ The `ansible.builtin.setup` module gathers facts about remote hosts. While Ansib
 - name: Gather network facts only
   ansible.builtin.setup:
     gather_subset:
+      - '!all'
+      - '!min'
       - network
 
 # Gather minimal facts
@@ -36,9 +38,6 @@ The `ansible.builtin.setup` module gathers facts about remote hosts. While Ansib
   ansible.builtin.setup:
     gather_subset:
       - '!all'
-      - '!min'
-      - network
-      - hardware
 ```
 
 ## Filtering Facts
@@ -128,7 +127,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -210,7 +209,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in playbooks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -277,4 +276,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The setup module is the foundation of Ansible's intelligence about your infrastructure. Use fact subsets for faster gathering, filters for specific information, and caching for performance. Facts drive conditional logic, template rendering, and dynamic grouping throughout your playbooks.
-
