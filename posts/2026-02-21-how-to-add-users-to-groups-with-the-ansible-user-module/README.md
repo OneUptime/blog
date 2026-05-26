@@ -12,7 +12,7 @@ Group membership is how Linux controls access to files, devices, and system reso
 
 ## Primary vs Supplementary Groups
 
-Every Linux user has exactly one primary group and can belong to zero or more supplementary groups. The primary group is what gets assigned to new files the user creates. Supplementary groups provide additional permissions.
+Every Linux user has exactly one primary group and can belong to zero or more supplementary groups. The primary group is usually what gets assigned to new files the user creates, unless directory settings such as the setgid bit cause new files to inherit the directory's group instead. Supplementary groups provide additional permissions.
 
 You can see this with the `id` command:
 
@@ -243,7 +243,7 @@ After making changes, verify the results:
         msg: "{{ user_id.stdout }}"
 
     - name: Verify specific group membership
-      ansible.builtin.shell: "groups alice | grep -q docker"
+      ansible.builtin.shell: "id -nG alice | tr ' ' '\\n' | grep -qx docker"
       register: docker_check
       changed_when: false
       failed_when: false
