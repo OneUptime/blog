@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Docker, Health Check, Monitoring, Container
 
-Description: Configure Docker container health checks with Ansible to automatically detect and recover from unhealthy container states.
+Description: Configure Docker container health checks with Ansible to detect unhealthy container states and support recovery automation.
 
 ---
 
-Health checks tell Docker whether your container's application is actually working, not just whether the process is running. A container can be "running" with a healthy PID while the application inside is deadlocked, out of memory, or unable to connect to its database. Health checks catch these situations and enable automatic recovery through container restarts.
+Health checks tell Docker whether your container's application is actually working, not just whether the process is running. A container can be "running" with a healthy PID while the application inside is deadlocked, out of memory, or unable to connect to its database. Health checks catch these situations and make the health status available to monitoring tools, Compose dependency checks, or automation that can restart unhealthy containers.
 
 Ansible lets you define health check configurations as part of your container deployment, ensuring every container runs with appropriate monitoring.
 
 ## How Docker Health Checks Work
 
-Docker executes a command inside the container at regular intervals. Based on the exit code, the container is classified as healthy (exit 0), unhealthy (exit 1), or starting (during the start period).
+Docker executes a command inside the container at regular intervals. Based on the exit code, the container is classified as healthy (exit 0) or unhealthy (exit 1). A container with a health check starts with the starting status, and failures during the configured start period do not count toward the retry limit unless a check has already succeeded during that period.
 
 ```mermaid
 graph LR
@@ -22,7 +22,7 @@ graph LR
     S --> |start_period expires + failures| U[Unhealthy]
     H --> |health check fails N times| U[Unhealthy]
     U --> |health check passes| H
-    U --> |restart policy| R[Restart]
+    U --> |monitoring or orchestrator action| R[Restart]
 ```
 
 ## Basic HTTP Health Check
@@ -246,7 +246,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -394,4 +394,4 @@ Here are several practical scenarios where this module proves essential in real-
 
 ## Conclusion
 
-Container health checks are a simple but powerful mechanism for keeping your applications running. By configuring them through Ansible, you ensure every container in your fleet has appropriate health monitoring. Combine HTTP checks for web services, CLI tools for databases, and custom scripts for complex applications. Use dependency ordering in Docker Compose to ensure containers only start when their dependencies are truly ready, not just running.
+Container health checks are a simple but powerful mechanism for detecting when your applications are not healthy. By configuring them through Ansible, you ensure every container in your fleet has appropriate health monitoring. Combine HTTP checks for web services, CLI tools for databases, and custom scripts for complex applications. Use dependency ordering in Docker Compose to ensure containers only start when their dependencies are truly ready, not just running.
