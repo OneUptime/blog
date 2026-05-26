@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Security, Scanning, Vulnerability, DevOps
 
-Description: Automate security vulnerability scanning with Ansible using OpenSCAP, Lynis, and custom scan playbooks.
+Description: Automate security compliance checks and remediation with Ansible using custom scan playbooks.
 
 ---
 
@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -186,17 +186,23 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
-- name: Check TLS certificate validity
+- name: Assert LUKS encryption is present
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted volumes were found"
+
+- name: Check TLS certificate is not expired
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -checkend 0 -noout -in /etc/ssl/certs/app.pem
+  register: cert_validity
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_validity.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -219,16 +225,18 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+  ansible.builtin.command: "ss -H -tln sport = :{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  failed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout == ""
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
