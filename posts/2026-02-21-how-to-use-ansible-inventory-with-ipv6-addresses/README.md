@@ -8,37 +8,37 @@ Description: Learn how to configure Ansible inventory with IPv6 addresses, inclu
 
 ---
 
-IPv6 adoption is growing steadily, and more infrastructure now runs on dual-stack or IPv6-only networking. If your servers have IPv6 addresses, you need to know the correct syntax for Ansible inventory files, because the colons in IPv6 addresses conflict with the port separator syntax that Ansible uses. This post covers the exact syntax needed and the edge cases you will run into.
+IPv6 adoption is growing steadily, and more infrastructure now runs on dual-stack or IPv6-only networking. If your servers have IPv6 addresses, you need to know the correct syntax for Ansible inventory files, because the colons in IPv6 addresses can conflict with host-and-port syntax in some SSH options. This post covers the exact syntax needed and the edge cases you will run into.
 
 ## The IPv6 Address Problem
 
-IPv6 addresses use colons as delimiters (like `2001:db8::1`). This creates ambiguity in Ansible's INI inventory format, which also uses colons for ports (like `host:2222`). If you put a raw IPv6 address in your inventory, Ansible cannot tell where the address ends and a port number might begin.
+IPv6 addresses use colons as delimiters (like `2001:db8::1`). This creates ambiguity in places that also use colons for ports (like `host:2222`). If you combine an IPv6 address and a port in a single host string, the parser cannot tell where the address ends and the port number begins.
 
-## INI Format: Square Brackets Required
+## INI Format: Use Plain IPv6 Literals
 
-In the INI inventory format, IPv6 addresses must be wrapped in square brackets:
+In the INI inventory format, use the IPv6 address without square brackets when assigning `ansible_host`:
 
 ```ini
 # inventory/hosts.ini
 
-# IPv6 addresses in INI format need square brackets
+# IPv6 addresses in ansible_host should not use square brackets
 [webservers]
-web01 ansible_host=[2001:db8:1::10]
-web02 ansible_host=[2001:db8:1::11]
-web03 ansible_host=[2001:db8:1::12]
+web01 ansible_host=2001:db8:1::10
+web02 ansible_host=2001:db8:1::11
+web03 ansible_host=2001:db8:1::12
 
 [databases]
-db01 ansible_host=[2001:db8:2::30]
-db02 ansible_host=[2001:db8:2::31]
+db01 ansible_host=2001:db8:2::30
+db02 ansible_host=2001:db8:2::31
 ```
 
-If you want to use the IPv6 address as the inventory hostname itself (without an alias), you still need brackets:
+If you want to use the IPv6 address as the inventory hostname itself (without an alias), use the address directly:
 
 ```ini
 [webservers]
-[2001:db8:1::10]
-[2001:db8:1::11]
-[2001:db8:1::12]
+2001:db8:1::10
+2001:db8:1::11
+2001:db8:1::12
 ```
 
 ## IPv6 with Non-Standard Ports
@@ -49,8 +49,8 @@ When combining IPv6 addresses with non-standard SSH ports, use the `ansible_port
 # inventory/hosts.ini
 # Correct: use ansible_port for the SSH port
 [webservers]
-web01 ansible_host=[2001:db8:1::10] ansible_port=2222
-web02 ansible_host=[2001:db8:1::11] ansible_port=2222
+web01 ansible_host=2001:db8:1::10 ansible_port=2222
+web02 ansible_host=2001:db8:1::11 ansible_port=2222
 
 # Wrong: do NOT try this URL-style syntax
 # web01 ansible_host=[2001:db8:1::10]:2222
@@ -112,19 +112,17 @@ all:
           ansible_user: deploy
 ```
 
-To switch the entire inventory to IPv4, override `ansible_host` at the group level:
+To switch the inventory to IPv4, keep both addresses as custom variables and point `ansible_host` at the IPv4 value:
 
 ```yaml
 # Force IPv4 for all webservers (useful for troubleshooting)
 all:
   children:
     webservers:
-      vars:
-        # Uncomment to force IPv4 connections
-        # ansible_host: "{{ ipv4_address }}"
       hosts:
         web01:
-          ansible_host: "2001:db8:1::10"
+          ansible_host: "{{ ipv4_address }}"
+          ipv6_address: "2001:db8:1::10"
           ipv4_address: "10.0.1.10"
 ```
 
@@ -151,11 +149,11 @@ In INI format with link-local:
 
 ```ini
 [local_network]
-device01 ansible_host=[fe80::1%25eth0] ansible_user=admin
-device02 ansible_host=[fe80::2%25eth0] ansible_user=admin
+device01 ansible_host=fe80::1%eth0 ansible_user=admin
+device02 ansible_host=fe80::2%eth0 ansible_user=admin
 ```
 
-Note the `%25` encoding for the percent sign in INI format. Some versions of Ansible handle this differently, so test thoroughly with link-local addresses.
+Use the literal `%` in Ansible inventory. The `%25` encoding is for URI syntax, not for the hostname that Ansible passes to SSH. Test thoroughly with link-local addresses because the scope ID is local to the control node.
 
 ## SSH Configuration for IPv6
 
@@ -168,7 +166,7 @@ Host *
     AddressFamily inet6
 ```
 
-Or if you want to prefer IPv6 but fall back to IPv4:
+Or if you want to allow either IPv6 or IPv4:
 
 ```text
 Host *
@@ -275,14 +273,14 @@ Verify that Ansible can reach your IPv6 hosts:
 ansible -i inventory/hosts.yml webservers -m ping -vvvv
 
 # The verbose output shows the actual SSH command, including the IPv6 address
-# Look for lines like: SSH: EXEC ssh -o AddressFamily=inet6 deploy@2001:db8:1::10
+# Look for lines like: SSH: EXEC ssh -o AddressFamily=inet6 ... 2001:db8:1::10
 ```
 
 If ping fails, check these common issues:
 
 ```bash
 # Verify the host is reachable at the network level
-ping6 2001:db8:1::10
+ping -6 2001:db8:1::10
 
 # Check that SSH is listening on IPv6
 ssh -6 deploy@2001:db8:1::10
@@ -305,20 +303,20 @@ firewall_cmd: ip6tables
 
 # NTP servers accessible over IPv6
 ntp_servers:
-  - "2001:db8:ntp::1"
-  - "2001:db8:ntp::2"
+  - "2001:db8:1234::1"
+  - "2001:db8:1234::2"
 ```
 
 ## Common Mistakes
 
-The most common mistake is forgetting the square brackets in INI format. This causes Ansible to misparse the address:
+The most common mistake is adding square brackets to `ansible_host` in INI format. This causes Ansible to pass the brackets through to SSH as part of the hostname:
 
 ```ini
 # Wrong
-web01 ansible_host=2001:db8:1::10
+web01 ansible_host=[2001:db8:1::10]
 
 # Correct
-web01 ansible_host=[2001:db8:1::10]
+web01 ansible_host=2001:db8:1::10
 ```
 
 Another common issue is using the colon-port syntax with IPv6. Always use `ansible_port` as a separate variable when working with IPv6 addresses.
