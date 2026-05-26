@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible file module and command module to set 
 
 ---
 
-Linux extended file attributes go beyond standard permissions. They let you mark files as immutable (cannot be modified, deleted, or renamed even by root), append-only (can only be appended to, not overwritten), or apply other special behaviors. The `chattr` command controls these attributes, and while Ansible does not have a dedicated `chattr` module, you can manage these attributes effectively using the `file` module's `attributes` parameter and the `command` module.
+Linux file attributes go beyond standard permissions. They let you mark files as immutable (cannot be modified, deleted, or renamed while the attribute is set), append-only (can only be appended to, not overwritten), or apply other special behaviors. The `chattr` command controls these attributes, and while Ansible does not have a dedicated `chattr` module, you can manage these attributes effectively using the `file` module's `attributes` parameter and the `command` module.
 
 ## Understanding File Attributes
 
@@ -25,6 +25,8 @@ The most commonly used file attributes are:
 | Undeletable | u | Contents saved when file is deleted |
 
 The immutable (`i`) and append-only (`a`) attributes are by far the most useful for system administration.
+
+Not all attributes are supported or honored by every filesystem. For example, the `s` and `u` attributes are not honored by ext2, ext3, or ext4 in current mainline Linux kernels.
 
 ## Using the file Module's attributes Parameter
 
@@ -86,7 +88,7 @@ Note that setting `/etc/passwd` and `/etc/shadow` as immutable will prevent user
 
 ## Append-Only Log Files
 
-The append-only attribute is perfect for log files. It prevents log tampering because even root cannot overwrite or truncate the file.
+The append-only attribute is useful for log files. It prevents overwrite or truncation while the attribute is set, although a sufficiently privileged user can clear the attribute first.
 
 ```yaml
 # Set append-only on security audit log
@@ -141,7 +143,7 @@ The `always` block ensures the immutable attribute is restored even if the updat
 
 ## Using the command Module for Complex Attributes
 
-For more complex attribute management or when you need to set multiple attributes at once, use the `command` module.
+The `file` module can set multiple attributes too, but for cases where you want to invoke `chattr` directly, use the `command` module.
 
 ```yaml
 # Set multiple attributes at once using chattr
@@ -178,7 +180,7 @@ The `file` module with `attributes` is idempotent when used correctly. But if yo
 - name: Set immutable attribute if not already set
   ansible.builtin.command:
     cmd: chattr +i /etc/resolv.conf
-  when: "'----i' not in current_attrs.stdout"
+  when: "'i' not in current_attrs.stdout.split()[0]"
 ```
 
 ## Protecting Docker and Container Configurations
@@ -324,4 +326,4 @@ Run an audit to check attribute compliance.
 
 ## Summary
 
-File attributes via `chattr` provide an additional security layer that even standard root permissions do not offer. An immutable file cannot be modified, deleted, or renamed by anyone, including root, making it an effective guard against accidental changes and certain types of attacks. The append-only attribute protects log integrity. Use the `file` module's `attributes` parameter for simple cases and the `command` module for complex scenarios. Always wrap modifications to immutable files in `block/always` constructs to guarantee attributes are restored, and maintain a variable-driven list of protected files for easy auditing and management across your fleet.
+File attributes via `chattr` provide an additional security layer beyond standard permissions. An immutable file cannot be modified, deleted, or renamed while the attribute is set, making it an effective guard against accidental changes and certain types of attacks. The append-only attribute protects log integrity while it remains set. Use the `file` module's `attributes` parameter for simple cases and the `command` module when you need direct `chattr` invocation. Always wrap modifications to immutable files in `block/always` constructs to guarantee attributes are restored, and maintain a variable-driven list of protected files for easy auditing and management across your fleet.
