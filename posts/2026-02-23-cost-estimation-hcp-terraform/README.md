@@ -14,7 +14,7 @@ This guide covers enabling cost estimation, reading the results, and using polic
 
 ## Enabling Cost Estimation
 
-Cost estimation is available on HCP Terraform's Team and Business tiers. Enable it at the organization level:
+Cost estimation is disabled by default. Enable it at the organization level:
 
 ### Through the UI
 
@@ -107,40 +107,47 @@ This is visible to anyone reviewing the run, making cost implications transparen
 
 ## Cost Estimation via the API
 
-Retrieve cost estimation data programmatically:
+Retrieve cost estimation data programmatically by finding the cost estimate ID on the run, then fetching the cost estimate:
 
 ```bash
 # Get the cost estimate for a specific run
 
 RUN_ID="run-abc123"
 
+COST_ESTIMATE_ID=$(curl -s \
+  --header "Authorization: Bearer $TFC_TOKEN" \
+  "https://app.terraform.io/api/v2/runs/$RUN_ID" \
+  | jq -r '.data.relationships["cost-estimate"].data.id')
+
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID/cost-estimate"
+  "https://app.terraform.io/api/v2/cost-estimates/$COST_ESTIMATE_ID"
 ```
 
 Response:
 
 ```json
 {
-  "data": {
-    "type": "cost-estimates",
-    "id": "ce-xyz789",
-    "attributes": {
-      "status": "finished",
-      "status-timestamps": {
-        "queued-at": "2026-02-23T10:00:00Z",
-        "finished-at": "2026-02-23T10:00:15Z"
-      },
-      "error-message": null,
-      "matched-resources-count": 4,
-      "unmatched-resources-count": 1,
-      "resources-count": 5,
-      "prior-monthly-cost": "762.50",
-      "proposed-monthly-cost": "1247.50",
-      "delta-monthly-cost": "485.00"
+  "data": [
+    {
+      "type": "cost-estimates",
+      "id": "ce-xyz789",
+      "attributes": {
+        "status": "finished",
+        "status-timestamps": {
+          "queued-at": "2026-02-23T10:00:00Z",
+          "finished-at": "2026-02-23T10:00:15Z"
+        },
+        "error-message": null,
+        "matched-resources-count": 4,
+        "unmatched-resources-count": 1,
+        "resources-count": 5,
+        "prior-monthly-cost": "762.50",
+        "proposed-monthly-cost": "1247.50",
+        "delta-monthly-cost": "485.00"
+      }
     }
-  }
+  ]
 }
 ```
 
@@ -150,47 +157,49 @@ The real power of cost estimation comes when you combine it with Sentinel polici
 
 ### Block Runs That Exceed a Cost Threshold
 
-```python
+```sentinel
 # cost-limit.sentinel
 # Block plans that increase monthly costs by more than $500
 
 import "tfrun"
+import "decimal"
 
 # Maximum allowed monthly cost increase
 max_monthly_increase = 500
 
 # Get the cost estimate
-delta = tfrun.cost_estimate.delta_monthly_cost
+delta = decimal.new(tfrun.cost_estimate.delta_monthly_cost)
 
 # Log the cost change for visibility
-print("Monthly cost change: $" + string(delta))
+print("Monthly cost change: $" + tfrun.cost_estimate.delta_monthly_cost)
 
 # Policy passes if the increase is within the threshold
 main = rule {
-  delta <= max_monthly_increase
+  delta.less_than_or_equals(max_monthly_increase)
 }
 ```
 
 ### Require Approval for Large Cost Changes
 
-```python
+```sentinel
 # cost-approval.sentinel
 # Require manager approval for cost increases over $200
 # This is soft-mandatory so it can be overridden with justification
 
 import "tfrun"
+import "decimal"
 
 approval_threshold = 200
 
-delta = tfrun.cost_estimate.delta_monthly_cost
+delta = decimal.new(tfrun.cost_estimate.delta_monthly_cost)
 
-if delta > approval_threshold {
-  print("This change increases monthly costs by $" + string(delta))
+if delta.greater_than(approval_threshold) {
+  print("This change increases monthly costs by $" + tfrun.cost_estimate.delta_monthly_cost)
   print("Changes exceeding $" + string(approval_threshold) + "/mo require manager approval")
 }
 
 main = rule {
-  delta <= approval_threshold
+  delta.less_than_or_equals(approval_threshold)
 }
 ```
 
@@ -209,12 +218,12 @@ policy "cost-approval" {
 
 ### Tiered Cost Controls
 
-```python
+```sentinel
 # cost-tiers.sentinel
 # Different limits based on workspace tags
 
 import "tfrun"
-import "tfconfig/v2" as tfconfig
+import "decimal"
 
 # Cost limits by environment
 limits = {
@@ -233,38 +242,21 @@ for tfrun.workspace.tags as tag {
   }
 }
 
-delta = tfrun.cost_estimate.delta_monthly_cost
+delta = decimal.new(tfrun.cost_estimate.delta_monthly_cost)
 limit = limits[environment]
 
-if delta > limit {
-  print("Cost increase of $" + string(delta) + " exceeds the $" + string(limit) + " limit for " + environment)
+if delta.greater_than(limit) {
+  print("Cost increase of $" + tfrun.cost_estimate.delta_monthly_cost + " exceeds the $" + string(limit) + " limit for " + environment)
 }
 
 main = rule {
-  delta <= limit
+  delta.less_than_or_equals(limit)
 }
 ```
 
 ## Using OPA for Cost Policies
 
-```rego
-# cost-limit.rego
-package terraform.policies.cost_limit
-
-import input.run as tfrun
-
-# Maximum monthly cost increase allowed
-max_increase := 500
-
-deny[msg] {
-  delta := tfrun.cost_estimate.delta_monthly_cost
-  delta > max_increase
-  msg := sprintf(
-    "Monthly cost increase of $%.2f exceeds the maximum allowed increase of $%.2f",
-    [delta, max_increase]
-  )
-}
-```
+OPA policies in HCP Terraform run before cost estimation, so they cannot read cost estimate data from `input.run`. Use Sentinel for policies that need `tfrun.cost_estimate`, and use OPA for policies based on the Terraform plan or run metadata.
 
 ## Cost Estimation in PR Workflows
 
@@ -273,7 +265,7 @@ When using VCS-driven workflows, cost estimation runs on speculative plans trigg
 1. Developer opens a PR that adds three new EC2 instances
 2. HCP Terraform runs a speculative plan
 3. Cost estimation shows the monthly impact
-4. The PR status check includes the cost information
+4. The PR status check links to the HCP Terraform run, where reviewers can inspect the cost information
 5. Reviewers see the cost impact before approving
 
 This feedback loop catches expensive changes early, when they are cheapest to fix.
@@ -304,11 +296,21 @@ for WS_ID in $WORKSPACES; do
     | jq -r '.data[0].id // empty')
 
   if [ -n "$LATEST_RUN" ]; then
-    # Get cost estimate
-    COST=$(curl -s \
+    # Get cost estimate ID from the latest run
+    COST_ESTIMATE_ID=$(curl -s \
       --header "Authorization: Bearer $TFC_TOKEN" \
-      "https://app.terraform.io/api/v2/runs/$LATEST_RUN/cost-estimate" \
-      | jq -r '.data.attributes | "\(.proposed-monthly-cost // "N/A"),\(.delta-monthly-cost // "N/A")"')
+      "https://app.terraform.io/api/v2/runs/$LATEST_RUN" \
+      | jq -r '.data.relationships["cost-estimate"].data.id // empty')
+
+    if [ -n "$COST_ESTIMATE_ID" ]; then
+      # Get cost estimate
+      COST=$(curl -s \
+      --header "Authorization: Bearer $TFC_TOKEN" \
+      "https://app.terraform.io/api/v2/cost-estimates/$COST_ESTIMATE_ID" \
+      | jq -r '.data[0].attributes | "\(.["proposed-monthly-cost"] // "N/A"),\(.["delta-monthly-cost"] // "N/A")"')
+    else
+      COST="N/A,N/A"
+    fi
 
     WS_NAME=$(curl -s \
       --header "Authorization: Bearer $TFC_TOKEN" \
@@ -336,4 +338,4 @@ done
 
 ## Wrapping Up
 
-Cost estimation in HCP Terraform brings financial visibility into every infrastructure change. Enable it at the organization level, review estimates during PR reviews, and enforce cost guardrails with Sentinel or OPA policies. The combination of visibility (seeing costs in every plan) and enforcement (blocking changes that exceed thresholds) prevents cost surprises and makes infrastructure spending a deliberate decision rather than an afterthought.
+Cost estimation in HCP Terraform brings financial visibility into every infrastructure change. Enable it at the organization level, review estimates during PR reviews, and enforce cost guardrails with Sentinel policies. The combination of visibility (seeing costs in every plan) and enforcement (blocking changes that exceed thresholds) prevents cost surprises and makes infrastructure spending a deliberate decision rather than an afterthought.
