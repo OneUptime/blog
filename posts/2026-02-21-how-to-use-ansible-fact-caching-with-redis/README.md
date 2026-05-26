@@ -29,9 +29,12 @@ graph LR
 
 ## Installing Prerequisites
 
-First, install the Redis Python client on your Ansible control node:
+First, install the Redis cache plugin collection and Redis Python client on your Ansible control node:
 
 ```bash
+# Install the community.general collection if you use ansible-core
+ansible-galaxy collection install community.general
+
 # Install the redis Python library
 
 pip install redis
@@ -61,7 +64,7 @@ Add these settings to your `ansible.cfg`:
 # Configure Redis fact caching
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = localhost:6379:0
 fact_caching_timeout = 86400
 ```
@@ -75,7 +78,7 @@ That is all you need for a basic setup. Run any playbook and facts will be store
 ansible-playbook site.yml
 
 # Verify facts are in Redis
-redis-cli keys "ansible_facts*" | head -10
+redis-cli --scan --pattern "ansible_facts*" | head -10
 ```
 
 ## Connection String Formats
@@ -89,18 +92,19 @@ fact_caching_connection = localhost:6379:0
 # With password authentication
 fact_caching_connection = localhost:6379:0:my_redis_password
 
-# Just host (defaults to port 6379, db 0)
-fact_caching_connection = redis.internal.example.com
+# TLS connection
+fact_caching_connection = tls://redis.internal.example.com:6379:0:my_redis_password
 
-# Unix socket connection
-fact_caching_connection = /var/run/redis/redis.sock:0
+# Redis Sentinel connection
+fact_caching_connection = redis-sentinel-1.internal.example.com:26379;redis-sentinel-2.internal.example.com:26379;0:my_redis_password
+fact_caching_redis_sentinel = mymaster
 ```
 
-For Redis instances that require TLS, you will need to set the connection via environment variables:
+For Redis instances that require TLS, use the same `tls://` prefix via environment variables:
 
 ```bash
 # Redis with TLS via environment
-export ANSIBLE_CACHE_PLUGIN_CONNECTION="rediss://username:password@redis.example.com:6380/0"
+export ANSIBLE_CACHE_PLUGIN_CONNECTION="tls://redis.example.com:6380:0:my_redis_password"
 ansible-playbook site.yml
 ```
 
@@ -126,7 +130,7 @@ Then update your Ansible config:
 # Redis with password authentication
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = localhost:6379:0:your_strong_password_here
 fact_caching_timeout = 86400
 ```
@@ -158,7 +162,7 @@ Here is a playbook to configure Redis securely:
     - name: Configure Redis password
       lineinfile:
         path: /etc/redis/redis.conf
-        regexp: '^# ?requirepass'
+        regexp: '^(#\s*)?requirepass\b'
         line: "requirepass {{ redis_password }}"
 
     - name: Bind Redis to internal interface
@@ -170,13 +174,13 @@ Here is a playbook to configure Redis securely:
     - name: Set max memory
       lineinfile:
         path: /etc/redis/redis.conf
-        regexp: '^# ?maxmemory '
+        regexp: '^(#\s*)?maxmemory\s+'
         line: "maxmemory {{ redis_maxmemory }}"
 
     - name: Set eviction policy
       lineinfile:
         path: /etc/redis/redis.conf
-        regexp: '^# ?maxmemory-policy'
+        regexp: '^(#\s*)?maxmemory-policy\b'
         line: "maxmemory-policy allkeys-lru"
 
     - name: Restart Redis
@@ -187,11 +191,11 @@ Here is a playbook to configure Redis securely:
 
 ## Inspecting the Cache
 
-You can browse cached facts directly in Redis:
+For troubleshooting, you can browse cached facts directly in Redis. Ansible treats the cache plugin's storage format as an internal detail, so do not build playbooks or automation that depend on these keys:
 
 ```bash
 # List all cached host keys
-redis-cli -a your_password keys "ansible_facts*"
+redis-cli -a your_password --scan --pattern "ansible_facts*"
 
 # Get facts for a specific host
 redis-cli -a your_password get "ansible_factswebserver01"
@@ -232,10 +236,10 @@ REDIS_CMD="redis-cli -h $REDIS_HOST -p $REDIS_PORT -n $REDIS_DB -a $REDIS_PASS"
 
 case "$1" in
     list)
-        $REDIS_CMD keys "ansible_facts*" | sed 's/ansible_facts//'
+        $REDIS_CMD --scan --pattern "ansible_facts*" | sed 's/ansible_facts//'
         ;;
     count)
-        $REDIS_CMD keys "ansible_facts*" | wc -l
+        $REDIS_CMD --scan --pattern "ansible_facts*" | wc -l
         ;;
     clear)
         echo "Clearing all cached facts..."
@@ -275,17 +279,17 @@ The `allkeys-lru` policy evicts the least recently used keys when memory is full
 
 ## High Availability
 
-For production setups, consider Redis Sentinel or Redis Cluster for high availability:
+For production setups, consider Redis Sentinel or a managed Redis primary endpoint for high availability:
 
 ```ini
 # Point Ansible at a Redis Sentinel setup
-# Using the primary Redis instance behind Sentinel
 [defaults]
-fact_caching = redis
-fact_caching_connection = redis-primary.internal:6379:0:password
+fact_caching = community.general.redis
+fact_caching_connection = redis-sentinel-1.internal:26379;redis-sentinel-2.internal:26379;0:password
+fact_caching_redis_sentinel = mymaster
 ```
 
-You can also use a Redis replica for read-heavy workloads where multiple control nodes are reading facts simultaneously:
+You can also use Redis replication for failover targets that Sentinel can promote. Keep Ansible pointed at the writable primary service, because Redis replicas are read-only by default:
 
 ```yaml
 ---
@@ -300,7 +304,7 @@ You can also use a Redis replica for read-heavy workloads where multiple control
         line: "{{ item.line }}"
       loop:
         - { regexp: '^bind', line: 'bind 0.0.0.0' }
-        - { regexp: '^requirepass', line: 'requirepass {{ redis_password }}' }
+        - { regexp: '^(#\s*)?requirepass\b', line: 'requirepass {{ redis_password }}' }
 
 - hosts: redis_replicas
   become: true
@@ -311,8 +315,8 @@ You can also use a Redis replica for read-heavy workloads where multiple control
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^# ?replicaof', line: 'replicaof {{ redis_primary_ip }} 6379' }
-        - { regexp: '^# ?masterauth', line: 'masterauth {{ redis_password }}' }
+        - { regexp: '^(#\s*)?replicaof\b', line: 'replicaof {{ redis_primary_ip }} 6379' }
+        - { regexp: '^(#\s*)?masterauth\b', line: 'masterauth {{ redis_password }}' }
 ```
 
 ## Performance Comparison
