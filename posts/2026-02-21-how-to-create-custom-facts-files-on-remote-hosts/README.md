@@ -340,6 +340,7 @@ Once fact files are deployed, every subsequent playbook run picks them up automa
 ---
 - name: Configure monitoring based on custom facts
   hosts: all
+  become: yes
   gather_facts: yes
   tasks:
     - name: Configure alerts for high-memory hosts
@@ -350,15 +351,18 @@ Once fact files are deployed, every subsequent playbook run picks them up automa
         - ansible_local.health is defined
         - ansible_local.health.memory_used_percent | float > 80
 
-    - name: Schedule reboot during maintenance window
+    - name: Schedule reboot during the Sunday maintenance window
       ansible.builtin.cron:
         name: "scheduled reboot"
-        special_time: reboot
+        minute: "0"
+        hour: "2"
+        weekday: "0"
         job: "/sbin/shutdown -r now"
       when:
         - ansible_local.health is defined
         - ansible_local.health.needs_reboot | bool
         - ansible_local.host_metadata is defined
+        - ansible_local.host_metadata.maintenance_window == "sunday 02:00-06:00"
 ```
 
 ## Summary
