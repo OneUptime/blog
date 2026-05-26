@@ -8,7 +8,7 @@ Description: Track custom statistics during Ansible playbook runs with the set_s
 
 ---
 
-The `ansible.builtin.set_stats` module lets you define custom statistics that are displayed in the playbook summary and can be consumed by callback plugins or Ansible Tower/AWX. This is useful for tracking deployment metrics, counting changes, and passing data between playbook runs.
+The `ansible.builtin.set_stats` module lets you define custom statistics for the current Ansible run. These stats can be displayed in the play recap when custom stats output is enabled, and they can be consumed by callback plugins or Ansible Tower/AWX. This is useful for tracking deployment metrics, counting changes, and exposing data to downstream workflow jobs.
 
 ## Basic Usage
 
@@ -37,7 +37,7 @@ The `ansible.builtin.set_stats` module lets you define custom statistics that ar
       ansible.builtin.set_stats:
         data:
           packages_updated: "{{ app_update.changed | int }}"
-        aggregate: true  # Sum across all hosts
+        aggregate: true  # Add to the existing run-level stat
 ```
 
 ## Per-Host Statistics
@@ -66,12 +66,12 @@ When using Ansible Tower/AWX, set_stats data is available via the API:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this module can help in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow that could report provisioning stats
 
 - name: Infrastructure provisioning
   hosts: all
@@ -186,7 +186,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling before reporting final status
 - name: Robust task execution
   hosts: all
   tasks:
@@ -252,7 +252,7 @@ Here are several practical scenarios where this module proves essential in real-
 
 ## Aggregating Statistics Across Hosts
 
-The `aggregate` parameter is key for multi-host deployments. When set to true, numeric values are summed across all hosts:
+The `aggregate` parameter is key for multi-host deployments. When set to `true`, which is the default, the module combines the new value with the existing stat instead of replacing it. For run-level stats, repeated numeric values from multiple hosts are added together:
 
 ```yaml
 # playbooks/patching.yml
@@ -266,10 +266,10 @@ The `aggregate` parameter is key for multi-host deployments. When set to true, n
         upgrade: safe
       register: update_result
 
-    - name: Count updated packages
+    - name: Count hosts with package updates
       ansible.builtin.set_stats:
         data:
-          total_packages_updated: "{{ update_result.stdout_lines | select('match', '^Inst') | list | length }}"
+          hosts_with_updates: "{{ 1 if update_result.changed else 0 }}"
           hosts_patched: 1
         aggregate: true
 
@@ -281,7 +281,7 @@ The `aggregate` parameter is key for multi-host deployments. When set to true, n
         per_host: true
 ```
 
-At the end of the playbook run, Ansible displays the aggregated totals in the PLAY RECAP section.
+At the end of the playbook run, Ansible can display the aggregated totals in the PLAY RECAP section when `show_custom_stats` is enabled in `ansible.cfg` or `ANSIBLE_SHOW_CUSTOM_STATS=true` is set.
 
 ## Using Stats in Ansible Tower/AWX
 
@@ -309,4 +309,3 @@ When running playbooks through Tower/AWX, set_stats data becomes available throu
 ## Conclusion
 
 The `set_stats` module provides a clean way to expose custom metrics from your playbook runs. Use it to track deployment versions, count changes across hosts with aggregation, and pass data to external systems through callback plugins or Ansible Tower's API. When combined with per-host tracking, you get both fleet-wide totals and host-specific details in a single playbook run.
-
