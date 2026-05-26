@@ -30,8 +30,8 @@ The Ansible collection handles sessions automatically, but you still need to pub
 
 ansible-galaxy collection install check_point.mgmt
 
-# Install the required Python SDK
-pip install cpapi
+# Optional: install the Check Point Python SDK for standalone scripts
+pip install cp-mgmt-api-sdk
 ```
 
 ## Authentication Setup
@@ -40,10 +40,9 @@ Store your Check Point management server credentials securely.
 
 ```yaml
 # group_vars/checkpoint/vault.yml (encrypt with ansible-vault)
-checkpoint_server: "192.168.1.100"
-checkpoint_user: "ansible-admin"
-checkpoint_password: "your-secure-password"
-checkpoint_domain: "SMC User"
+ansible_user: "ansible-admin"
+ansible_password: "your-secure-password"
+ansible_checkpoint_domain: "SMC User"
 ```
 
 Create the inventory for your Check Point management server.
@@ -187,7 +186,7 @@ Now create the access rules that reference your objects.
       cp_mgmt_access_rule:
         layer: "Network"
         name: "Allow-DB-Access"
-        position:
+        relative_position:
           above: "Cleanup Rule"
         source:
           - "web-servers"
@@ -337,23 +336,23 @@ Pull existing configuration data for auditing.
     # Get all access rules from the Network layer
     - name: Get all access rules
       cp_mgmt_access_rule_facts:
-        layer: "Network"
+        name: "Network"
         limit: 500
         details_level: "full"
       register: all_rules
 
     - name: Display rule count
       debug:
-        msg: "Total rules: {{ all_rules.ansible_facts.access_rule.total }}"
+        msg: "Total rules: {{ all_rules.ansible_facts['access-rulebase'].total }}"
 ```
 
 ## Tips for Check Point Automation
 
 1. Always publish after making changes. Unpublished changes lock objects and block other administrators.
 2. Use `cp_mgmt_discard` in error handlers to clean up failed sessions.
-3. The `position` parameter in rules matters. Use "top", "bottom", or reference another rule to control placement.
-4. Check Point has a 50-object limit per API call for some operations. Use pagination when querying large rule bases.
+3. The `position` and `relative_position` parameters in rules matter. Use "top", "bottom", or `relative_position` to reference another rule.
+4. Some rule-position searches are limited to the first 50 rules unless `search_entire_rulebase` is enabled, and facts queries use `limit` and `offset` for pagination.
 5. Policy installation can take several minutes on large environments. Set appropriate timeouts in your playbooks.
-6. Use the `auto_publish_session` connection variable to automatically publish after each task if you want simpler playbooks.
+6. Use the `auto_publish_session` module parameter to automatically publish after a task if you want simpler playbooks.
 
 Check Point automation with Ansible works well once you understand the session/publish/install model. The biggest benefit is being able to version control your security policies in Git and apply them consistently across multiple management servers.
