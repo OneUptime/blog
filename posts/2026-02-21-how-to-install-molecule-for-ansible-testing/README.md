@@ -19,15 +19,15 @@ Molecule provides a structured workflow for testing Ansible roles:
 3. **Verify** that the role produced the expected state
 4. **Destroy** the test instances when done
 
-It also handles linting, idempotency checking, and side effect testing. The whole thing is driven by a YAML configuration file and integrates smoothly with CI/CD pipelines.
+It also handles syntax checks, idempotency checking, and side effect testing. Linting is usually added with tools like ansible-lint. The whole thing is driven by a YAML configuration file and integrates smoothly with CI/CD pipelines.
 
 ## Prerequisites
 
 Before installing Molecule, you need:
 
-- Python 3.8 or newer
+- Python 3.10 or newer
 - pip (Python package manager)
-- Ansible (ansible-core 2.12+)
+- Ansible (ansible-core 2.15+)
 - A container runtime or VM provider (Docker, Podman, Vagrant, etc.)
 
 Check your Python version first.
@@ -73,7 +73,7 @@ docker info
 molecule drivers
 ```
 
-The `molecule-plugins` package includes the Docker driver along with several others. If you only want Docker, this is the way to go.
+The `docker` extra installs the Docker-specific dependencies for the driver.
 
 ## Installing Molecule with Podman Support
 
@@ -201,10 +201,11 @@ ansible-lint --version
 yamllint --version
 ```
 
-Expected output from `molecule drivers`:
+Expected output from `molecule drivers` should include the drivers you installed. For example:
 
 ```text
 default
+containers
 docker
 podman
 vagrant
@@ -212,20 +213,23 @@ vagrant
 
 ## Quick Smoke Test
 
-Create a minimal role and run Molecule to verify the full stack works.
+Create a minimal role and scenario to verify the Molecule CLI is working.
 
 ```bash
-# Initialize a new role with Molecule scaffolding
-molecule init role my_test_role --driver-name docker
+# Initialize a new role
+ansible-galaxy role init my_test_role
 
 # Move into the role directory
 cd my_test_role
 
-# Run the full Molecule test sequence
-molecule test
+# Initialize a default Molecule scenario
+molecule init scenario
+
+# Confirm Molecule can discover the scenario
+molecule list
 ```
 
-This creates a role with a default Molecule scenario, runs it against a Docker container, and cleans up. If you see the full test lifecycle complete without errors, your installation is working correctly.
+This creates a role with a default Molecule scenario and confirms Molecule can discover it. Current Molecule scaffolding includes placeholder create, destroy, and converge playbooks, so configure the platform and role name before running the full `molecule test` lifecycle.
 
 ## Troubleshooting Common Installation Issues
 
@@ -270,8 +274,8 @@ pip install molecule molecule-plugins[docker]
 Molecule requires a minimum version of ansible-core. Check compatibility.
 
 ```bash
-# Check what ansible-core version Molecule needs
-pip show molecule | grep Requires
+# Check for incompatible installed Python packages
+pip check
 
 # Upgrade ansible-core if needed
 pip install --upgrade ansible-core
