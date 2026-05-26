@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Window, Update, Patch Management, Security
 
-Description: Automate Windows Update patching with the Ansible win_updates module including scheduling, filtering, and controlled rollouts.
+Description: Automate Windows Update patching with the Ansible win_updates module including filtering, reboots, and controlled rollouts.
 
 ---
 
-Patching Windows servers is one of those tasks that everyone agrees is important but nobody enjoys doing manually. The `win_updates` module automates the entire process: searching for updates, filtering by category or severity, installing patches, and handling reboots. Whether you manage 5 servers or 500, this module turns a weekend patching window into a single playbook run.
+Patching Windows servers is one of those tasks that everyone agrees is important but nobody enjoys doing manually. The `win_updates` module automates the entire process: searching for updates, filtering by category or KB article, installing patches, and handling reboots. Whether you manage 5 servers or 500, this module turns a weekend patching window into a single playbook run.
 
 ## How win_updates Works
 
@@ -27,11 +27,7 @@ The simplest approach is to install everything that is available.
   tasks:
     - name: Install all available updates
       ansible.windows.win_updates:
-        category_names:
-          - SecurityUpdates
-          - CriticalUpdates
-          - UpdateRollups
-          - Updates
+        category_names: '*'
         state: installed
         reboot: yes
       register: update_result
@@ -121,6 +117,7 @@ You can include or exclude specific updates by their KB number.
     # Install only specific KB articles
     - name: Install specific hotfix
       ansible.windows.win_updates:
+        category_names: '*'
         accept_list:
           - KB5034441
           - KB5034439
@@ -295,6 +292,13 @@ If your environment uses WSUS, the module automatically uses it based on the hos
         name: UseWUServer
         data: 1
         type: dword
+
+    - name: Set WSUS status server
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate
+        name: WUStatusServer
+        data: http://wsus.corp.local:8530
+        type: string
 
     # Now install updates from WSUS
     - name: Install approved updates from WSUS
