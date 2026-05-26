@@ -30,16 +30,19 @@ flowchart TD
 
 For bare metal automation, you need:
 
-- Ansible 2.12+ on your control node
+- Ansible 2.15+ on your control node
 - Network access to the servers' IPMI/BMC interfaces
 - A PXE boot infrastructure (DHCP + TFTP + HTTP)
 - Python `pyghmi` library for IPMI commands
+- `ipmitool` for setting one-time PXE boot devices
 - The `community.general` collection
+- The `ansible.posix` collection for mount management
 
 ```bash
 # Install required collections and libraries
 
 ansible-galaxy collection install community.general
+ansible-galaxy collection install ansible.posix
 pip install pyghmi
 ```
 
@@ -60,6 +63,7 @@ all:
           ipmi_user: admin
           ipmi_password: "{{ vault_ipmi_password }}"
           mac_address: "aa:bb:cc:dd:ee:01"
+          system_uuid: "11111111-1111-1111-1111-111111111111"
           role: compute
         server-02:
           ansible_host: 10.10.1.12
@@ -67,6 +71,7 @@ all:
           ipmi_user: admin
           ipmi_password: "{{ vault_ipmi_password }}"
           mac_address: "aa:bb:cc:dd:ee:02"
+          system_uuid: "22222222-2222-2222-2222-222222222222"
           role: compute
         server-03:
           ansible_host: 10.10.1.13
@@ -74,6 +79,7 @@ all:
           ipmi_user: admin
           ipmi_password: "{{ vault_ipmi_password }}"
           mac_address: "aa:bb:cc:dd:ee:03"
+          system_uuid: "33333333-3333-3333-3333-333333333333"
           role: storage
       vars:
         ansible_user: root
@@ -82,7 +88,7 @@ all:
 
 ## Managing IPMI/BMC
 
-IPMI gives you out-of-band management: power control, console access, and boot device selection. Ansible can drive IPMI commands using the `community.general.ipmi_power` and raw command modules.
+IPMI gives you out-of-band management: power control, console access, and boot device selection. Ansible can drive IPMI commands using the `community.general.ipmi_power` module and command tasks.
 
 ```yaml
 # playbooks/ipmi-management.yml
@@ -95,16 +101,22 @@ IPMI gives you out-of-band management: power control, console access, and boot d
   tasks:
     # Check current power state
     - name: Check server power status
-      community.general.ipmi_power:
-        name: "{{ ipmi_address }}"
-        user: "{{ ipmi_user }}"
-        password: "{{ ipmi_password }}"
-        state: status
+      ansible.builtin.command:
+        cmd: >
+          ipmitool -I lanplus
+          -H {{ ipmi_address }}
+          -U {{ ipmi_user }}
+          -E
+          chassis power status
       register: power_status
+      delegate_to: localhost
+      changed_when: false
+      environment:
+        IPMI_PASSWORD: "{{ ipmi_password }}"
 
     - name: Display power status
       ansible.builtin.debug:
-        msg: "{{ inventory_hostname }}: {{ power_status.powerstate }}"
+        msg: "{{ inventory_hostname }}: {{ power_status.stdout }}"
 
     # Power on servers that are off
     - name: Power on server
@@ -113,7 +125,7 @@ IPMI gives you out-of-band management: power control, console access, and boot d
         user: "{{ ipmi_user }}"
         password: "{{ ipmi_password }}"
         state: on
-      when: power_status.powerstate != "on"
+      when: "'is off' in power_status.stdout"
 ```
 
 ## Setting PXE Boot
@@ -136,9 +148,11 @@ Before triggering OS installation, set the boot device to PXE.
           ipmitool -I lanplus
           -H {{ ipmi_address }}
           -U {{ ipmi_user }}
-          -P {{ ipmi_password }}
+          -E
           chassis bootdev pxe options=efiboot
       delegate_to: localhost
+      environment:
+        IPMI_PASSWORD: "{{ ipmi_password }}"
       changed_when: true
 
     # Power cycle the server to trigger PXE boot
@@ -152,7 +166,7 @@ Before triggering OS installation, set the boot device to PXE.
 
 ## PXE Server Configuration
 
-Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsmasq as the DHCP/TFTP server and nginx for HTTP file serving.
+Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsmasq as the DHCP/TFTP server and nginx for HTTP file serving. Before running it, copy the target Ubuntu live-server ISO's `/casper/vmlinuz` and `/casper/initrd` into `tftp_root` as `/vmlinuz` and `/initrd`.
 
 ```yaml
 # playbooks/setup-pxe-server.yml
@@ -164,6 +178,7 @@ Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsma
   vars:
     tftp_root: /srv/tftp
     http_root: /srv/http/install
+    ubuntu_iso_url: https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso
 
   tasks:
     # Install required packages
@@ -172,8 +187,40 @@ Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsma
         name:
           - dnsmasq
           - nginx
-          - syslinux-efi
+          - shim-signed
+          - grub-efi-amd64-signed
+          - grub-common
         state: present
+
+    - name: Create TFTP and HTTP roots
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ tftp_root }}"
+        - "{{ http_root }}"
+
+    - name: Copy signed shim for UEFI PXE
+      ansible.builtin.copy:
+        src: /usr/lib/shim/shimx64.efi.signed.latest
+        dest: "{{ tftp_root }}/bootx64.efi"
+        remote_src: true
+        mode: '0644'
+
+    - name: Copy signed GRUB network loader for UEFI PXE
+      ansible.builtin.copy:
+        src: /usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed
+        dest: "{{ tftp_root }}/grubx64.efi"
+        remote_src: true
+        mode: '0644'
+
+    - name: Copy GRUB font
+      ansible.builtin.copy:
+        src: /usr/share/grub/unicode.pf2
+        dest: "{{ tftp_root }}/unicode.pf2"
+        remote_src: true
+        mode: '0644'
 
     # Configure dnsmasq for DHCP and TFTP
     - name: Configure dnsmasq
@@ -189,7 +236,7 @@ Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsma
 
           # PXE boot file for UEFI clients
           dhcp-match=set:efi-x86_64,option:client-arch,7
-          dhcp-boot=tag:efi-x86_64,grubx64.efi
+          dhcp-boot=tag:efi-x86_64,bootx64.efi
 
           # Static DHCP assignments for known servers
           dhcp-host=aa:bb:cc:dd:ee:01,10.10.1.11,server-01
@@ -197,6 +244,27 @@ Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsma
           dhcp-host=aa:bb:cc:dd:ee:03,10.10.1.13,server-03
         mode: '0644'
       notify: restart dnsmasq
+
+    # Configure nginx to serve installer and NoCloud files
+    - name: Configure nginx installer site
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/pxe-install
+        content: |
+          server {
+              listen 80;
+              server_name _;
+              root /srv/http;
+              autoindex on;
+          }
+        mode: '0644'
+      notify: restart nginx
+
+    - name: Enable nginx installer site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/pxe-install
+        dest: /etc/nginx/sites-enabled/pxe-install
+        state: link
+      notify: restart nginx
 
     # Set up GRUB configuration for automated install
     - name: Create GRUB config directory
@@ -211,7 +279,7 @@ Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsma
         content: |
           set timeout=5
           menuentry "Ubuntu 22.04 Automated Install" {
-              linux /vmlinuz ip=dhcp autoinstall ds=nocloud-net;s=http://10.10.0.1/install/
+              linux /vmlinuz ip=dhcp url={{ ubuntu_iso_url }} autoinstall 'ds=nocloud-net;s=http://10.10.0.1/install/__dmi.system-uuid__/'
               initrd /initrd
           }
         mode: '0644'
@@ -220,6 +288,11 @@ Configure your PXE boot infrastructure with Ansible. This playbook sets up dnsma
     - name: restart dnsmasq
       ansible.builtin.service:
         name: dnsmasq
+        state: restarted
+
+    - name: restart nginx
+      ansible.builtin.service:
+        name: nginx
         state: restarted
 ```
 
@@ -239,29 +312,41 @@ For Ubuntu, create an autoinstall (cloud-init) configuration. For RHEL-based sys
       - hostname: server-01
         ip: 10.10.1.11
         gateway: 10.10.1.1
+        system_uuid: "11111111-1111-1111-1111-111111111111"
         disk: /dev/sda
       - hostname: server-02
         ip: 10.10.1.12
         gateway: 10.10.1.1
+        system_uuid: "22222222-2222-2222-2222-222222222222"
         disk: /dev/sda
       - hostname: server-03
         ip: 10.10.1.13
         gateway: 10.10.1.1
+        system_uuid: "33333333-3333-3333-3333-333333333333"
         disk: /dev/sda
 
   tasks:
     # Create autoinstall directory structure
     - name: Create autoinstall directories
       ansible.builtin.file:
-        path: "/srv/http/install/{{ item.hostname }}"
+        path: "/srv/http/install/{{ item.system_uuid }}"
         state: directory
         mode: '0755'
+      loop: "{{ servers }}"
+
+    - name: Generate NoCloud meta-data
+      ansible.builtin.copy:
+        dest: "/srv/http/install/{{ item.system_uuid }}/meta-data"
+        content: |
+          instance-id: {{ item.system_uuid }}
+          local-hostname: {{ item.hostname }}
+        mode: '0644'
       loop: "{{ servers }}"
 
     # Generate autoinstall configs
     - name: Generate autoinstall user-data
       ansible.builtin.copy:
-        dest: "/srv/http/install/{{ item.hostname }}/user-data"
+        dest: "/srv/http/install/{{ item.system_uuid }}/user-data"
         content: |
           #cloud-config
           autoinstall:
@@ -284,7 +369,9 @@ For Ubuntu, create an autoinstall (cloud-init) configuration. For RHEL-based sys
                 ens3:
                   addresses:
                     - {{ item.ip }}/24
-                  gateway4: {{ item.gateway }}
+                  routes:
+                    - to: default
+                      via: {{ item.gateway }}
                   nameservers:
                     addresses: [10.10.0.53, 10.10.0.54]
             packages:
@@ -307,7 +394,6 @@ After PXE booting, the OS installation takes several minutes. Ansible needs to w
 - name: Wait for bare metal OS installation to complete
   hosts: bare_metal
   gather_facts: false
-  connection: local
 
   tasks:
     # Wait for SSH to become available after OS install
@@ -356,6 +442,7 @@ Once the OS is installed, apply base configuration.
           - lvm2
           - mdadm
           - smartmontools
+          - xfsprogs
           - ntp
           - fail2ban
         state: present
@@ -409,14 +496,11 @@ Tie everything together into a single orchestration workflow.
 ```yaml
 # playbooks/provision-bare-metal.yml
 ---
-- name: Set PXE boot and power cycle
-  ansible.builtin.import_playbook: set-pxe-boot.yml
+- ansible.builtin.import_playbook: set-pxe-boot.yml
 
-- name: Wait for OS installation
-  ansible.builtin.import_playbook: wait-for-install.yml
+- ansible.builtin.import_playbook: wait-for-install.yml
 
-- name: Post-installation configuration
-  ansible.builtin.import_playbook: post-install.yml
+- ansible.builtin.import_playbook: post-install.yml
 ```
 
 ## Tips for Bare Metal Automation
