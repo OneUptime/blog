@@ -40,7 +40,7 @@ The most straightforward way to inspect loop variables is the `debug` module.
       loop: "{{ servers }}"
 ```
 
-The `var` parameter prints the entire variable with its type and structure. The `msg` parameter lets you format specific values.
+The `var` parameter prints the entire variable value and structure. The `msg` parameter lets you format specific values.
 
 ## Inspecting the Loop Input
 
@@ -353,20 +353,20 @@ Use `assert` to verify assumptions about your loop data before the loop runs.
 
 ## Using callback Plugins for Better Output
 
-The `yaml` callback plugin makes debug output much more readable.
+The default callback plugin can format task results as YAML, which makes debug output much more readable.
 
 ```bash
-# Set the callback plugin in ansible.cfg
+# Set the result format in ansible.cfg
 # [defaults]
-# stdout_callback = yaml
+# callback_result_format = yaml
 
 # Or set it as an environment variable
-export ANSIBLE_STDOUT_CALLBACK=yaml
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
 ansible-playbook debug-playbook.yml
 ```
 
-The YAML callback formats dictionaries and lists with proper indentation instead of cramming everything on one line.
+The YAML result format prints dictionaries and lists with clearer indentation instead of cramming everything on one line.
 
 ## Summary
 
-Debugging Ansible loops comes down to inspecting the data at each stage. Use `debug` with `var` to see full variable contents, `type_debug` to check types, and `loop_control.label` to keep output readable. When debugging filter chains, break them apart and inspect each step individually. For registered variables, always check the `.results` list structure. Use `assert` to validate your data before loops process it, and use verbosity flags (`-v` through `-vvvv`) for different levels of detail. Setting the YAML callback plugin makes all debug output significantly easier to read.
+Debugging Ansible loops comes down to inspecting the data at each stage. Use `debug` with `var` to see full variable contents, `type_debug` to check types, and `loop_control.label` to keep output readable. When debugging filter chains, break them apart and inspect each step individually. For registered variables, always check the `.results` list structure. Use `assert` to validate your data before loops process it, and use verbosity flags (`-v` through `-vvvv`) for different levels of detail. Setting the default callback's YAML result format makes all debug output significantly easier to read.
