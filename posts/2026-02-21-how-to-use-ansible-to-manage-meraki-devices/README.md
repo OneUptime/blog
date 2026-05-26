@@ -14,7 +14,7 @@ This guide walks through setting up Ansible for Meraki automation and covers the
 
 ## Prerequisites
 
-You need an API key from the Meraki Dashboard. Go to Organization > Settings > Dashboard API access and generate a key.
+You need an API key from the Meraki Dashboard. In the dashboard, go to Organization > Configure > API & Webhooks > API keys and access and generate a key.
 
 Install the Meraki collection and required Python library.
 
@@ -34,7 +34,8 @@ Meraki uses a single API key for authentication. Store it in Ansible Vault.
 ```yaml
 # group_vars/meraki/vault.yml (encrypt with ansible-vault)
 meraki_api_key: "your-meraki-api-key-here"
-meraki_org_name: "My Organization"
+meraki_org_id: "123456"
+meraki_network_id: "N_1234567890"
 ```
 
 Since Meraki is cloud-managed, your inventory is different from traditional network devices. You target localhost because all API calls go to the Meraki cloud.
@@ -66,16 +67,16 @@ The first step in Meraki automation is usually creating or managing networks.
   tasks:
     # Create a new combined network with wireless and switching
     - name: Create a new network
-      meraki_network:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
+      cisco.meraki.networks:
+        meraki_api_key: "{{ meraki_api_key }}"
         state: present
+        organizationId: "{{ meraki_org_id }}"
         name: "Branch-Office-NYC"
-        type:
+        productTypes:
           - wireless
           - switch
           - appliance
-        timezone: "America/New_York"
+        timeZone: "America/New_York"
         tags:
           - branch
           - east-coast
@@ -83,7 +84,7 @@ The first step in Meraki automation is usually creating or managing networks.
 
     - name: Show network details
       debug:
-        var: network_result.data
+        var: network_result.meraki_response
 ```
 
 ## Configuring Wireless SSIDs
@@ -107,38 +108,36 @@ SSID management is probably the most frequent Meraki automation task. Here is a 
   tasks:
     # Configure the corporate SSID (index 0) with WPA2 Enterprise
     - name: Configure corporate SSID
-      meraki_mr_ssid:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        net_name: "Branch-Office-NYC"
+      cisco.meraki.networks_wireless_ssids:
+        meraki_api_key: "{{ meraki_api_key }}"
         state: present
-        number: 0
+        networkId: "{{ meraki_network_id }}"
+        number: "0"
         name: "CorpWifi"
         enabled: true
-        auth_mode: "8021x-radius"
-        encryption_mode: "wpa"
-        wpa_encryption_mode: "WPA2 only"
-        radius_servers:
+        authMode: "8021x-radius"
+        encryptionMode: "wpa"
+        wpaEncryptionMode: "WPA2 only"
+        radiusServers:
           - host: "10.0.1.50"
             port: 1812
             secret: "{{ vault_radius_secret }}"
-        ip_assignment_mode: "Bridge mode"
+        ipAssignmentMode: "Bridge mode"
       register: ssid_result
 
     # Configure a guest SSID (index 1) with a splash page
     - name: Configure guest SSID
-      meraki_mr_ssid:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        net_name: "Branch-Office-NYC"
+      cisco.meraki.networks_wireless_ssids:
+        meraki_api_key: "{{ meraki_api_key }}"
         state: present
-        number: 1
+        networkId: "{{ meraki_network_id }}"
+        number: "1"
         name: "Guest-Wifi"
         enabled: true
-        auth_mode: "open"
-        splash_page: "Click-through splash page"
-        ip_assignment_mode: "NAT mode"
-        default_vlan_id: 100
+        authMode: "open"
+        splashPage: "Click-through splash page"
+        ipAssignmentMode: "NAT mode"
+        defaultVlanId: 100
 ```
 
 ## Managing MX Firewall Rules
@@ -162,30 +161,32 @@ Meraki MX appliances handle firewall rules. You can manage these through Ansible
   tasks:
     # Set L3 outbound firewall rules on the MX appliance
     - name: Configure L3 firewall rules
-      meraki_mx_l3_firewall:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        net_name: "Branch-Office-NYC"
+      cisco.meraki.networks_appliance_firewall_l3_firewall_rules:
+        meraki_api_key: "{{ meraki_api_key }}"
         state: present
+        networkId: "{{ meraki_network_id }}"
         rules:
           - comment: "Allow DNS"
             policy: "allow"
             protocol: "udp"
-            dest_port: "53"
-            dest_cidr: "any"
-            src_cidr: "any"
+            destPort: "53"
+            destCidr: "any"
+            srcPort: "any"
+            srcCidr: "any"
           - comment: "Allow HTTPS"
             policy: "allow"
             protocol: "tcp"
-            dest_port: "443"
-            dest_cidr: "any"
-            src_cidr: "any"
+            destPort: "443"
+            destCidr: "any"
+            srcPort: "any"
+            srcCidr: "any"
           - comment: "Block social media"
             policy: "deny"
             protocol: "tcp"
-            dest_port: "443"
-            dest_cidr: "157.240.0.0/16"
-            src_cidr: "any"
+            destPort: "443"
+            destCidr: "157.240.0.0/16"
+            srcPort: "any"
+            srcCidr: "any"
 ```
 
 ## Configuring VLANs
@@ -225,24 +226,22 @@ VLAN management on Meraki MX appliances is straightforward with Ansible.
   tasks:
     # Enable VLANs on the network first
     - name: Enable VLANs on the network
-      meraki_network:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
+      cisco.meraki.networks_appliance_vlans_settings:
+        meraki_api_key: "{{ meraki_api_key }}"
         state: present
-        name: "Branch-Office-NYC"
-        enable_vlans: true
+        networkId: "{{ meraki_network_id }}"
+        vlansEnabled: true
 
     # Create each VLAN
     - name: Create VLANs
-      meraki_vlan:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        net_name: "Branch-Office-NYC"
+      cisco.meraki.networks_appliance_vlans:
+        meraki_api_key: "{{ meraki_api_key }}"
+        networkId: "{{ meraki_network_id }}"
         state: present
-        vlan_id: "{{ item.id }}"
+        id: "{{ item.id }}"
         name: "{{ item.name }}"
         subnet: "{{ item.subnet }}"
-        appliance_ip: "{{ item.appliance_ip }}"
+        applianceIp: "{{ item.appliance_ip }}"
       loop: "{{ vlans }}"
 ```
 
@@ -267,10 +266,24 @@ You can claim devices to networks and configure them through Ansible.
   tasks:
     # Claim devices using their serial numbers
     - name: Claim devices to network
-      meraki_device:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        net_name: "Branch-Office-NYC"
+      cisco.meraki.networks_devices_claim:
+        meraki_api_key: "{{ meraki_api_key }}"
+        networkId: "{{ meraki_network_id }}"
+        serials:
+          - "{{ item.serial }}"
+      loop:
+        - serial: "QXXX-XXXX-XXXX"
+          name: "MX-NYC-01"
+          address: "123 Main St, New York, NY"
+          role: "appliance"
+        - serial: "QYYY-YYYY-YYYY"
+          name: "MS-NYC-01"
+          address: "123 Main St, New York, NY"
+          role: "switch"
+
+    - name: Update claimed device details
+      cisco.meraki.devices:
+        meraki_api_key: "{{ meraki_api_key }}"
         state: present
         serial: "{{ item.serial }}"
         name: "{{ item.name }}"
@@ -322,23 +335,23 @@ Pull data from Meraki for reporting and compliance.
   tasks:
     # Get all networks in the organization
     - name: List all networks
-      meraki_network:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        state: query
+      cisco.meraki.networks_info:
+        meraki_api_key: "{{ meraki_api_key }}"
+        organizationId: "{{ meraki_org_id }}"
+        total_pages: -1
       register: all_networks
 
     # Get device inventory
     - name: Get organization inventory
-      meraki_device:
-        auth_key: "{{ meraki_api_key }}"
-        org_name: "{{ meraki_org_name }}"
-        state: query
+      cisco.meraki.organizations_devices_info:
+        meraki_api_key: "{{ meraki_api_key }}"
+        organizationId: "{{ meraki_org_id }}"
+        total_pages: -1
       register: all_devices
 
     - name: Show network count
       debug:
-        msg: "Total networks: {{ all_networks.data | length }}, Total devices: {{ all_devices.data | length }}"
+        msg: "Total networks: {{ all_networks.meraki_response | length }}, Total devices: {{ all_devices.meraki_response | length }}"
 ```
 
 ## API Rate Limiting
@@ -348,22 +361,21 @@ One thing to watch out for with Meraki automation is API rate limiting. Meraki l
 ```yaml
 # Add throttle to limit concurrent API calls
 - name: Configure SSIDs across all networks
-  meraki_mr_ssid:
-    auth_key: "{{ meraki_api_key }}"
-    org_name: "{{ meraki_org_name }}"
-    net_name: "{{ item }}"
+  cisco.meraki.networks_wireless_ssids:
+    meraki_api_key: "{{ meraki_api_key }}"
     state: present
-    number: 0
+    networkId: "{{ item }}"
+    number: "0"
     name: "CorpWifi"
     enabled: true
-  loop: "{{ network_names }}"
+  loop: "{{ network_ids }}"
   throttle: 5  # Limit to 5 concurrent API calls
 ```
 
 ## Tips for Meraki Automation
 
 1. Meraki API changes take effect immediately. There is no commit step. Test your playbooks against a lab network first.
-2. Use `state: query` to gather information before making changes. This is great for building dynamic inventories.
+2. Use the collection's `_info` modules to gather information before making changes. This is great for building dynamic inventories.
 3. SSID numbers (0-14) are fixed per network. You cannot create new SSIDs, only configure existing ones.
 4. The API rate limit of 10 requests/second is organization-wide. If you have other integrations using the API, coordinate your automation windows.
 5. Always store your Meraki API key in Ansible Vault. A leaked API key gives full access to your entire Meraki organization.
