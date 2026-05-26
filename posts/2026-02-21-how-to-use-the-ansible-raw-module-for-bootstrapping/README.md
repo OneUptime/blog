@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible raw module to bootstrap remote hosts t
 
 ---
 
-Most Ansible modules require Python on the target host. But what happens when you need to manage a host that does not have Python installed yet? Or a network device that will never have Python? That is where the `raw` module comes in. It sends commands over SSH without any module wrapper, making it the tool you reach for when nothing else works.
+Most Ansible modules require Python on the target host. But what happens when you need to manage a host that does not have Python installed yet? Or a network device that will never have Python? That is where the `raw` module comes in. It sends commands through the configured connection without any module wrapper, making it the tool you reach for when nothing else works.
 
 ## Why the raw Module Exists
 
-Ansible modules are Python scripts that get copied to the remote host and executed there. This means the target needs Python. The `raw` module bypasses this entirely. It just sends your command string over the SSH connection and captures the output. No Python required on the remote end.
+Many Ansible modules are Python scripts that get copied to the remote host and executed there. This means the target needs Python. The `raw` module bypasses this entirely. It just sends your command string through the configured remote shell or connection and captures the output. No Python required on the remote end.
 
 Common use cases:
 
@@ -40,14 +40,18 @@ The classic bootstrapping scenario is installing Python on a brand new server.
       changed_when: false
       failed_when: false
 
-    - name: Install Python on Debian/Ubuntu
+    - name: Install Python with detected package manager
       ansible.builtin.raw: |
-        apt-get update -qq && apt-get install -y -qq python3 python3-apt
-      when: python_check.rc != 0
-
-    - name: Install Python on RHEL/CentOS
-      ansible.builtin.raw: |
-        yum install -y python3
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update -qq && apt-get install -y -qq python3 python3-apt
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y python3
+        elif command -v yum >/dev/null 2>&1; then
+          yum install -y python3
+        else
+          echo "No supported package manager found" >&2
+          exit 1
+        fi
       when: python_check.rc != 0
 
     - name: Verify Python installation
@@ -79,10 +83,15 @@ In production, bootstrapping involves more than just Python. Here is a complete 
         if command -v apt-get >/dev/null 2>&1; then
           apt-get update -qq
           apt-get install -y -qq python3 python3-apt sudo
+        elif command -v dnf >/dev/null 2>&1; then
+          dnf install -y python3 sudo
         elif command -v yum >/dev/null 2>&1; then
           yum install -y python3 sudo
         elif command -v apk >/dev/null 2>&1; then
           apk add --no-cache python3 sudo
+        else
+          echo "No supported package manager found" >&2
+          exit 1
         fi
       register: install_result
       changed_when: install_result.rc == 0
@@ -92,7 +101,8 @@ In production, bootstrapping involves more than just Python. Here is a complete 
       changed_when: false
 
     - name: Verify Python is working
-      ansible.builtin.raw: python3 -c "import json; print(json.dumps({'status': 'ok'}))"
+      ansible.builtin.raw: |
+        python3 -c 'import json; print(json.dumps({"status": "ok"}))'
       register: python_test
       changed_when: false
       failed_when: "'ok' not in python_test.stdout"
@@ -135,7 +145,7 @@ Minimal Docker containers often lack Python. Bootstrap them before running regul
 - name: Bootstrap Docker containers for Ansible management
   hosts: containers
   gather_facts: false
-  connection: docker  # or community.docker.docker
+  connection: community.docker.docker
 
   tasks:
     - name: Install Python in Alpine container
@@ -192,7 +202,7 @@ Network devices like Cisco IOS, Junos, or Arista EOS do not run Python. The `raw
       changed_when: "'VLAN 100' not in running_config.stdout"
 ```
 
-For serious network automation, you should use the dedicated network modules (`ios_config`, `nxos_config`, etc.). But `raw` is useful for quick tasks or when dedicated modules are not available for your platform.
+For serious network automation, you should use the dedicated network modules (`ansible.netcommon.cli_command`, `ansible.netcommon.cli_config`, `cisco.ios.ios_config`, `cisco.nxos.nxos_config`, etc.). But `raw` is useful for quick tasks or when dedicated modules are not available for your platform.
 
 ## Error Handling with raw
 
@@ -226,7 +236,7 @@ The `raw` module has limited error detection compared to regular modules. You ne
     - name: Run command with timeout
       ansible.builtin.raw: "timeout 30 apt-get update"
       register: update_result
-      failed_when: update_result.rc == 124  # timeout returns 124
+      failed_when: update_result.rc != 0  # timeout returns 124
 ```
 
 ## Using raw with become
