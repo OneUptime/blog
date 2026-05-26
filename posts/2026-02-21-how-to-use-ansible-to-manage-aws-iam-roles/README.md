@@ -17,9 +17,9 @@ This guide covers creating IAM roles with Ansible, configuring trust policies, a
 You need:
 
 - Ansible 2.14+
-- The `amazon.aws` collection
+- The `amazon.aws` collection 6.2.0+
 - AWS credentials with IAM admin permissions
-- Python boto3
+- Python boto3 and botocore 1.34.0+
 
 ```bash
 # Install dependencies
@@ -231,6 +231,7 @@ When you need to access resources in another AWS account, create a role that can
 ```
 
 The condition requiring MFA adds a layer of security. Users in the trusted account must authenticate with MFA before they can assume this role.
+They also need an identity-based policy in the trusted account that allows `sts:AssumeRole` on this role.
 
 ## ECS Task Role
 
@@ -366,7 +367,7 @@ Query existing roles for auditing:
     msg:
       - "Role: {{ role_info.iam_roles[0].role_name }}"
       - "ARN: {{ role_info.iam_roles[0].arn }}"
-      - "Policies: {{ role_info.iam_roles[0].attached_policies }}"
+      - "Policies: {{ role_info.iam_roles[0].managed_policies }}"
 ```
 
 ## Deleting Roles
