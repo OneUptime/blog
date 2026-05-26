@@ -14,10 +14,10 @@ Since January 2023, AWS automatically encrypts all new objects with SSE-S3 (AES-
 
 ## Encryption Options
 
-S3 supports three server-side encryption methods:
+For bucket default encryption, S3 supports three server-side encryption methods:
 
 - **SSE-S3 (AES256)** - AWS manages everything. Zero cost, zero effort. Good for most use cases.
-- **SSE-KMS (aws:kms)** - Uses AWS KMS keys. Provides audit trails via CloudTrail, key rotation, and access control through key policies. Costs $1/month per key plus $0.03 per 10,000 API calls.
+- **SSE-KMS (aws:kms)** - Uses AWS KMS keys. Provides audit trails via CloudTrail, key rotation, and access control through key policies. Customer managed keys have a monthly key charge, and KMS API requests are billed separately.
 - **DSSE-KMS** - Dual-layer server-side encryption with KMS keys. Provides two layers of encryption for highly regulated workloads.
 
 ## SSE-S3 Encryption (Default)
@@ -183,10 +183,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "dual_layer" {
       sse_algorithm     = "aws:kms:dsse"
       kms_master_key_id = aws_kms_key.s3.arn
     }
-    bucket_key_enabled = true
   }
 }
 ```
+
+S3 Bucket Keys aren't supported for DSSE-KMS, so don't set `bucket_key_enabled` for this mode.
 
 ## Enforcing Encryption via Bucket Policy
 
@@ -391,10 +392,74 @@ resource "aws_s3_bucket_versioning" "production" {
   }
 }
 
+# Policy document for enforcing SSE-KMS with the production key and SSL
+data "aws_iam_policy_document" "production_enforce_encryption" {
+  statement {
+    sid    = "DenyUnencryptedUploads"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.production.arn}/*"]
+
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["aws:kms"]
+    }
+  }
+
+  statement {
+    sid    = "DenyWrongKey"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.production.arn}/*"]
+
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption-aws-kms-key-id"
+      values   = [aws_kms_key.production.arn]
+    }
+  }
+
+  statement {
+    sid    = "DenyNonSSL"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions = ["s3:*"]
+
+    resources = [
+      aws_s3_bucket.production.arn,
+      "${aws_s3_bucket.production.arn}/*",
+    ]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
 # Enforce encryption and SSL via bucket policy
 resource "aws_s3_bucket_policy" "production" {
   bucket = aws_s3_bucket.production.id
-  policy = data.aws_iam_policy_document.enforce_encryption.json
+  policy = data.aws_iam_policy_document.production_enforce_encryption.json
 
   depends_on = [aws_s3_bucket_public_access_block.production]
 }
@@ -423,6 +488,6 @@ aws s3api list-objects-v2 --bucket my-bucket --prefix data/ \
 
 ## Summary
 
-For most buckets, SSE-S3 (AES256) is sufficient and completely free. Step up to SSE-KMS when you need audit trails, key rotation control, or cross-account key sharing. Use DSSE-KMS only if regulations demand dual-layer encryption. Always enable `bucket_key_enabled` with KMS to keep costs down, and add bucket policies to enforce encryption requirements rather than relying solely on default encryption.
+For most buckets, SSE-S3 (AES256) is sufficient and completely free. Step up to SSE-KMS when you need audit trails, key rotation control, or cross-account key sharing. Use DSSE-KMS only if regulations demand dual-layer encryption. Always enable `bucket_key_enabled` with SSE-KMS to keep costs down, and add bucket policies to enforce encryption requirements rather than relying solely on default encryption.
 
 For more S3 security, see our guides on [configuring S3 bucket policies](https://oneuptime.com/blog/post/2026-02-23-configure-s3-bucket-policies-in-terraform/view) and [blocking public access to S3 buckets](https://oneuptime.com/blog/post/2026-02-23-block-public-access-to-s3-buckets-in-terraform/view).
