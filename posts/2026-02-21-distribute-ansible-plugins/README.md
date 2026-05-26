@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Plugin, Collection, Galaxy, Distribution
 
-Description: Learn the different methods for distributing Ansible plugins including Galaxy, private automation hub, Git repos, and PyPI packages.
+Description: Learn the different methods for distributing Ansible plugins including Galaxy, private automation hub, Git repos, and artifact repositories.
 
 ---
 
@@ -82,6 +82,9 @@ export ANSIBLE_GALAXY_TOKEN="your-token-here"
 
 # Or configure it in ansible.cfg
 # [galaxy]
+# server_list = galaxy
+# [galaxy_server.galaxy]
+# url = https://galaxy.ansible.com/
 # token = your-token-here
 
 # Publish the collection
@@ -158,7 +161,7 @@ collections:
     version: v1.2.0
 ```
 
-The repository must contain the collection at its root (with `galaxy.yml` at the top level).
+The repository can contain the collection at its root (with `galaxy.yml` at the top level) or in one-level-deep subdirectories. Use a URL fragment such as `#/path/to/collection/` for other layouts.
 
 ## Hosting on an Artifact Repository
 
@@ -175,7 +178,7 @@ ansible-galaxy collection install \
   https://nexus.myorg.com/repository/ansible-collections/myorg-myutils-1.2.0.tar.gz
 ```
 
-Or configure it as a Galaxy server:
+If your artifact repository exposes a Galaxy-compatible API, configure it as a Galaxy server:
 
 ```ini
 # ansible.cfg
