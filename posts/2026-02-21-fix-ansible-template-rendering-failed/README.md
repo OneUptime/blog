@@ -50,11 +50,11 @@ server_name {{ domain | default('localhost') }};
 {# Problem: intermediate key might not exist #}
 host = {{ config.database.host }}
 
-{# Fix: chain defaults #}
-host = {{ config.database.host | default('localhost') }}
+{# Fix: apply defaults at each level #}
+host = {{ ((config | default({})).database | default({})).host | default('localhost') }}
 
 {# Or check if defined #}
-{% if config.database is defined %}
+{% if config is defined and config.database is defined and config.database.host is defined %}
 host = {{ config.database.host }}
 {% else %}
 host = localhost
@@ -144,7 +144,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -288,4 +288,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
