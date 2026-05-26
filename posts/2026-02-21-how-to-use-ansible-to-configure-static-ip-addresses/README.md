@@ -329,6 +329,9 @@ Servers often have multiple network interfaces:
         ip: 10.0.1.10
         prefix: 24
         gateway: 10.0.1.1
+        dns:
+          - 8.8.8.8
+          - 8.8.4.4
         description: "Public network"
       - name: eth1
         ip: 192.168.1.10
@@ -355,11 +358,14 @@ Servers often have multiple network interfaces:
                   - to: default
                     via: {{ iface.gateway }}
           {% endif %}
-          {% endfor %}
+          {% if iface.dns is defined and iface.dns | length > 0 %}
                 nameservers:
                   addresses:
-                    - 8.8.8.8
-                    - 8.8.4.4
+          {% for dns in iface.dns %}
+                    - {{ dns }}
+          {% endfor %}
+          {% endif %}
+          {% endfor %}
         dest: /etc/netplan/01-static.yaml
         mode: '0600'
       notify: Apply netplan
@@ -425,7 +431,6 @@ Changing network settings remotely is risky. If something goes wrong, you lose c
   become: true
   vars:
     new_ip: 10.0.1.20
-    old_ip: "{{ ansible_default_ipv4.address }}"
   tasks:
     - name: Deploy new configuration
       ansible.builtin.copy:
@@ -462,12 +467,11 @@ Changing network settings remotely is risky. If something goes wrong, you lose c
 
     - name: Confirm new configuration
       ansible.builtin.command:
-        cmd: netplan apply
-      vars:
-        ansible_host: "{{ new_ip }}"
+        cmd: "pkill -USR1 -f 'netplan try --timeout 120'"
+      delegate_to: "{{ new_ip }}"
 ```
 
-The `netplan try` command applies the configuration but automatically reverts it after the timeout if you do not confirm. This prevents permanent lockouts.
+The `netplan try` command applies the configuration but automatically reverts it after the timeout if you do not confirm. In an automated run, send `SIGUSR1` to the running `netplan try` process after the new address is reachable. This prevents permanent lockouts.
 
 ## Summary
 
