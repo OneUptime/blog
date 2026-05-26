@@ -16,11 +16,11 @@ This guide covers creating RDS instances with Ansible, configuring backups, sett
 
 You need:
 
-- Ansible 2.14+
+- ansible-core 2.16+
 - The `amazon.aws` collection
 - AWS credentials with RDS permissions
 - A VPC with private subnets and a DB subnet group
-- Python boto3
+- Python boto3 and botocore 1.34.0+
 
 ```bash
 # Install dependencies
@@ -67,8 +67,8 @@ Before creating an RDS instance, you need a DB subnet group that spans at least 
         region: us-east-1
         state: present
         subnets:
-          - subnet-private-az-a
-          - subnet-private-az-b
+          - subnet-0aaa1111bbbb2222c
+          - subnet-0ddd3333eeee4444f
         tags:
           Environment: production
           ManagedBy: ansible
@@ -91,7 +91,7 @@ Here is a straightforward PostgreSQL instance:
     db_identifier: myapp-production-db
     db_instance_class: db.t3.medium
     db_engine: postgres
-    db_engine_version: "15.4"
+    db_engine_version: "15"
     db_name: myapp
     db_username: myapp_admin
     db_password: "{{ vault_db_password }}"
@@ -189,7 +189,7 @@ The process is similar for MySQL. Here are the MySQL-specific settings:
     db_instance_identifier: myapp-mysql-db
     db_instance_class: db.r6g.large
     engine: mysql
-    engine_version: "8.0.35"
+    engine_version: "8.0"
     db_name: myapp
     master_username: admin
     master_user_password: "{{ vault_db_password }}"
@@ -267,7 +267,7 @@ Before major changes, take a manual snapshot:
 ```yaml
 # Create a manual snapshot before making changes
 - name: Create DB snapshot
-  amazon.aws.rds_snapshot:
+  amazon.aws.rds_instance_snapshot:
     db_instance_identifier: myapp-production-db
     db_snapshot_identifier: "myapp-pre-upgrade-{{ ansible_date_time.date }}"
     region: us-east-1
