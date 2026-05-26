@@ -49,7 +49,7 @@ The expression `'database_host_' + deploy_env` constructs the string `database_h
 
 ## Fallback Values with default
 
-You can chain the `default` filter with the `vars` lookup to handle cases where the dynamically named variable might not exist:
+You can pass the `default` keyword parameter to the `vars` lookup to handle cases where the dynamically named variable might not exist:
 
 ```yaml
 # vars-lookup-default.yml - Fallback when variable does not exist
@@ -310,7 +310,7 @@ Related to `vars`, the `varnames` lookup finds variable names matching a regex p
   tasks:
     - name: Find all firewall_rule variables
       ansible.builtin.set_fact:
-        rule_names: "{{ lookup('varnames', 'firewall_rule_') }}"
+        rule_names: "{{ query('varnames', '^firewall_rule_.+') }}"
 
     - name: Show discovered rule names
       ansible.builtin.debug:
@@ -319,7 +319,7 @@ Related to `vars`, the `varnames` lookup finds variable names matching a regex p
     - name: Process each discovered rule
       ansible.builtin.debug:
         msg: "Rule {{ item }}: {{ lookup('vars', item) }}"
-      loop: "{{ rule_names.split(',') }}"
+      loop: "{{ rule_names }}"
       when: rule_names | length > 0
 ```
 
