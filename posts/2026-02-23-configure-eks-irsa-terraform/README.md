@@ -31,6 +31,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.25"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -283,7 +287,7 @@ output "service_account_name" {
 }
 ```
 
-Now you can create IRSA roles with a few lines:
+Now you can create IRSA roles with a few lines. Make sure each namespace already exists before creating its service account:
 
 ```hcl
 # DynamoDB access for the orders service
@@ -386,7 +390,7 @@ resource "aws_iam_policy" "lb_controller" {
   name = "AWSLoadBalancerControllerIAMPolicy"
 
   # In practice, download this from:
-  # https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+  # https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
   policy = file("${path.module}/lb-controller-policy.json")
 }
 
