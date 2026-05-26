@@ -14,7 +14,7 @@ This post covers all three approaches, shows how to handle different CSV formats
 
 ## Using the read_csv Module
 
-The `community.general.read_csv` module is the most robust way to handle CSV data in Ansible. It reads a CSV file and returns the data as a list of dictionaries.
+The `community.general.read_csv` module from the `community.general` collection is the most robust way to handle CSV data in Ansible. It reads a CSV file and returns the data as a list of dictionaries.
 
 ```yaml
 # read-csv-basic.yml
@@ -145,7 +145,7 @@ The `csvfile` lookup reads a specific value from a CSV file based on a key. It i
     - name: Get IP for each server from CSV
       ansible.builtin.debug:
         msg: >
-          {{ item }}: {{ lookup('csvfile', item + ' file=data/servers.csv delimiter=, col=1') }}
+          {{ item }}: {{ lookup('ansible.builtin.csvfile', item, file='data/servers.csv', delimiter=',', col=1) }}
       loop: "{{ server_names }}"
 ```
 
@@ -286,6 +286,12 @@ A real-world use case is configuring network interfaces from a CSV that the netw
       loop: "{{ my_interfaces }}"
       when: my_interfaces | length > 0
       notify: Restart networking
+
+  handlers:
+    - name: Restart networking
+      ansible.builtin.service:
+        name: networking
+        state: restarted
 ```
 
 The CSV file maintained by the network team:
