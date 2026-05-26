@@ -8,7 +8,7 @@ Description: Learn how to create and manage VMware content libraries with Ansibl
 
 ---
 
-Content libraries in vSphere are a centralized repository for VM templates, OVA/OVF files, ISOs, and other deployment artifacts. They solve a problem that every multi-datacenter VMware environment faces: how do you keep templates consistent and up to date across multiple vCenter instances? Instead of manually exporting and importing templates, content libraries handle replication automatically. Ansible lets you manage the full lifecycle of content libraries, from creation to item management to deploying VMs from library items.
+Content libraries in vSphere are a centralized repository for VM templates, OVA/OVF files, ISOs, and other deployment artifacts. They solve a problem that every multi-datacenter VMware environment faces: how do you keep templates consistent and up to date across multiple vCenter instances? Instead of manually exporting and importing templates, content libraries can synchronize published libraries to subscribed libraries automatically or on demand. Ansible lets you manage the full lifecycle of content libraries, from creation to item management to deploying VMs from library items.
 
 ## What Content Libraries Provide
 
@@ -27,11 +27,11 @@ flowchart TD
 There are two types of content libraries:
 
 - **Local library** - The primary source of content. Items are stored on a datastore attached to the local vCenter.
-- **Subscribed library** - A read-only replica that syncs content from a published local library. Great for multi-site deployments.
+- **Subscribed library** - A replica that syncs content from a published local library. Great for multi-site deployments.
 
 ## Creating a Local Content Library
 
-The `community.vmware.vmware_content_library_manager` module manages content libraries.
+The `vmware.vmware.local_content_library` and `vmware.vmware.subscribed_content_library` modules manage content libraries.
 
 ```yaml
 # create-content-library.yml
@@ -41,13 +41,6 @@ The `community.vmware.vmware_content_library_manager` module manages content lib
   hosts: localhost
   gather_facts: false
 
-  module_defaults:
-    group/community.vmware.vmware:
-      hostname: "{{ vcenter_hostname }}"
-      username: "{{ vcenter_username }}"
-      password: "{{ vcenter_password }}"
-      validate_certs: false
-
   vars:
     vcenter_hostname: "vcenter.example.com"
     vcenter_username: "administrator@vsphere.local"
@@ -55,10 +48,13 @@ The `community.vmware.vmware_content_library_manager` module manages content lib
 
   tasks:
     - name: Create local content library for golden images
-      community.vmware.vmware_content_library_manager:
-        library_name: "Golden-Images"
-        library_description: "Centralized repository for approved VM templates and ISOs"
-        library_type: local
+      vmware.vmware.local_content_library:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        name: "Golden-Images"
+        description: "Centralized repository for approved VM templates and ISOs"
         datastore_name: "vsanDatastore"
         state: present
       register: lib_result
@@ -79,13 +75,6 @@ To share content across vCenter instances, publish the local library.
   hosts: localhost
   gather_facts: false
 
-  module_defaults:
-    group/community.vmware.vmware:
-      hostname: "{{ vcenter_hostname }}"
-      username: "{{ vcenter_username }}"
-      password: "{{ vcenter_password }}"
-      validate_certs: false
-
   vars:
     vcenter_hostname: "vcenter.example.com"
     vcenter_username: "administrator@vsphere.local"
@@ -93,21 +82,22 @@ To share content across vCenter instances, publish the local library.
 
   tasks:
     - name: Create published content library
-      community.vmware.vmware_content_library_manager:
-        library_name: "Published-Templates"
-        library_description: "Published library for multi-site template distribution"
-        library_type: local
+      vmware.vmware.local_content_library:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        name: "Published-Templates"
+        description: "Published library for multi-site template distribution"
         datastore_name: "vsanDatastore"
-        # Enable publishing so other vCenters can subscribe
-        publish_info:
-          published: true
-          authentication_method: "NONE"
+        publish: true
+        authentication_method: "NONE"
         state: present
       register: published_lib
 
     - name: Display publication URL
       ansible.builtin.debug:
-        msg: "Library published. Other vCenters can subscribe to this library."
+        msg: "Library published at {{ published_lib.library.publish_url }}."
       when: published_lib.changed
 ```
 
@@ -128,18 +118,17 @@ On a remote vCenter, create a subscribed library that syncs from the published o
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_dc02_password }}"
     # The publish URL from the source library
-    source_publish_url: "https://vcenter.example.com:443/cls/vcsp/lib/library-uuid"
+    source_publish_url: "https://vcenter.example.com:443/cls/vcsp/lib/library-uuid/lib.json"
 
   tasks:
     - name: Create subscribed content library
-      community.vmware.vmware_content_library_manager:
+      vmware.vmware.subscribed_content_library:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
-        library_name: "Synced-Templates"
-        library_description: "Subscribed from DC01 published library"
-        library_type: subscribed
+        name: "Synced-Templates"
+        description: "Subscribed from DC01 published library"
         datastore_name: "vsanDatastore-DC02"
         subscription_url: "{{ source_publish_url }}"
         # Sync content on demand rather than automatically
@@ -149,7 +138,7 @@ On a remote vCenter, create a subscribed library that syncs from the published o
 
 ## Getting Content Library Information
 
-List libraries and their contents for auditing.
+List content library items for auditing.
 
 ```yaml
 # content-library-info.yml
@@ -158,31 +147,28 @@ List libraries and their contents for auditing.
   hosts: localhost
   gather_facts: false
 
-  module_defaults:
-    group/community.vmware.vmware:
-      hostname: "{{ vcenter_hostname }}"
-      username: "{{ vcenter_username }}"
-      password: "{{ vcenter_password }}"
-      validate_certs: false
-
   vars:
     vcenter_hostname: "vcenter.example.com"
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
 
   tasks:
-    - name: Get information about all content libraries
-      community.vmware.vmware_content_library_info:
+    - name: Get information about content library items
+      vmware.vmware.content_library_item_info:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
         library_name: "Golden-Images"
       register: lib_info
 
-    - name: Display library details
+    - name: Display library item details
       ansible.builtin.debug:
         msg: >
-          Library: {{ lib_info.content_lib_details[0].library_name }}
-          Type: {{ lib_info.content_lib_details[0].library_type }}
-          Items: {{ lib_info.content_lib_details[0].library_item_count | default('unknown') }}
-      when: lib_info.content_lib_details | length > 0
+          Item: {{ item.name }}
+          Type: {{ item.type }}
+          Size: {{ item.size | default('unknown') }}
+      loop: "{{ lib_info.library_item_info }}"
 ```
 
 ## Deploying VMs from Content Library Items
@@ -196,13 +182,6 @@ Deploy VMs directly from content library templates.
   hosts: localhost
   gather_facts: false
 
-  module_defaults:
-    group/community.vmware.vmware:
-      hostname: "{{ vcenter_hostname }}"
-      username: "{{ vcenter_username }}"
-      password: "{{ vcenter_password }}"
-      validate_certs: false
-
   vars:
     vcenter_hostname: "vcenter.example.com"
     vcenter_username: "administrator@vsphere.local"
@@ -210,21 +189,24 @@ Deploy VMs directly from content library templates.
 
   tasks:
     - name: Deploy VM from content library template
-      community.vmware.vmware_content_deploy_template:
-        template: "rhel9-golden-template"
-        content_library: "Golden-Images"
-        name: "prod-web-10"
+      vmware.vmware.deploy_content_library_template:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        library_item_name: "rhel9-golden-template"
+        library_name: "Golden-Images"
+        vm_name: "prod-web-10"
         datacenter: "DC01"
-        cluster: "Production"
         folder: "/DC01/vm/Production/WebServers"
         datastore: "vsanDatastore"
         resource_pool: "RP-Production-Standard"
-        state: poweredon
+        power_on_after_deploy: true
       register: deploy_result
 
     - name: Display deployment result
       ansible.builtin.debug:
-        msg: "VM {{ deploy_result.vm_deploy_info.name }} deployed from content library"
+        msg: "VM {{ deploy_result.vm.name }} deployed from content library"
       when: deploy_result.changed
 ```
 
@@ -235,16 +217,15 @@ Content libraries can also store OVA files for appliance deployments.
 ```yaml
 # deploy-ova-from-library.yml
 - name: Deploy OVA from content library
-  community.vmware.vmware_content_deploy_ovf_template:
+  vmware.vmware.deploy_content_library_ovf:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    ovf_template: "monitoring-appliance-v3"
-    content_library: "Golden-Images"
-    name: "monitoring-appliance-01"
+    library_item_name: "monitoring-appliance-v3"
+    library_name: "Golden-Images"
+    vm_name: "monitoring-appliance-01"
     datacenter: "DC01"
-    cluster: "Production"
     folder: "/DC01/vm/Infrastructure/Monitoring"
     datastore: "vsanDatastore"
     resource_pool: "RP-Infrastructure"
@@ -269,7 +250,7 @@ flowchart TD
 
 ## Automating Template Updates in Content Libraries
 
-When you update a template, push it to the content library and all subscribed libraries get the update.
+When you update a template, create a new content library template item from the updated VM and subscribed libraries can sync the update.
 
 ```yaml
 # update-library-template.yml
@@ -277,13 +258,6 @@ When you update a template, push it to the content library and all subscribed li
 - name: Update template in content library
   hosts: localhost
   gather_facts: false
-
-  module_defaults:
-    group/community.vmware.vmware:
-      hostname: "{{ vcenter_hostname }}"
-      username: "{{ vcenter_username }}"
-      password: "{{ vcenter_password }}"
-      validate_certs: false
 
   vars:
     vcenter_hostname: "vcenter.example.com"
@@ -295,28 +269,24 @@ When you update a template, push it to the content library and all subscribed li
   tasks:
     # Step 1: Deploy the existing template as a VM
     - name: Deploy template as a VM for updating
-      community.vmware.vmware_content_deploy_template:
-        template: "{{ template_name }}"
-        content_library: "{{ library_name }}"
-        name: "{{ template_name }}-update"
+      vmware.vmware.deploy_content_library_template:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        library_item_name: "{{ template_name }}"
+        library_name: "{{ library_name }}"
+        vm_name: "{{ template_name }}-update"
         datacenter: "DC01"
-        cluster: "Production"
         folder: "/DC01/vm/Templates/Build"
         datastore: "vsanDatastore"
-        state: poweredon
+        resource_pool: "RP-Template-Build"
+        power_on_after_deploy: true
       register: update_vm
-
-    - name: Wait for VM to be reachable
-      ansible.builtin.wait_for:
-        host: "{{ update_vm.vm_deploy_info.ip }}"
-        port: 22
-        timeout: 300
-        delay: 30
-      when: update_vm.changed
 
     - name: Add update VM to inventory
       ansible.builtin.add_host:
-        name: "{{ update_vm.vm_deploy_info.ip }}"
+        name: "{{ template_name }}-update"
         groups: template_update
       when: update_vm.changed
 
@@ -343,6 +313,31 @@ When you update a template, push it to the content library and all subscribed li
       async: 0
       poll: 0
       ignore_errors: true
+
+# Step 3: Create a new content library template item from the updated VM
+- name: Publish updated VM as a content library template
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    vcenter_hostname: "vcenter.example.com"
+    vcenter_username: "administrator@vsphere.local"
+    vcenter_password: "{{ vault_vcenter_password }}"
+    template_name: "rhel9-golden-template"
+    library_name: "Golden-Images"
+
+  tasks:
+    - name: Create updated content library template
+      vmware.vmware.content_template:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        template: "{{ template_name }}-{{ lookup('ansible.builtin.pipe', 'date +%Y-%m-%d') }}"
+        library: "{{ library_name }}"
+        vm_name: "{{ template_name }}-update"
+        resource_pool: "RP-Template-Build"
+        state: present
 ```
 
 ## Deleting Content Libraries
@@ -352,12 +347,12 @@ When a content library is no longer needed, remove it to free up datastore space
 ```yaml
 # delete-library.yml
 - name: Delete deprecated content library
-  community.vmware.vmware_content_library_manager:
+  vmware.vmware.local_content_library:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    library_name: "Old-Templates"
+    name: "Old-Templates"
     state: absent
 ```
 
