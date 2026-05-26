@@ -44,7 +44,7 @@ AWS Route53 is managed through API calls. You delegate these tasks to localhost 
         overwrite: true
       delegate_to: localhost
 
-    - name: Create CNAME for the service endpoint
+    - name: Create A record for the service endpoint
       amazon.aws.route53:
         zone: "{{ dns_zone }}"
         record: "web.{{ dns_zone }}"
@@ -121,14 +121,14 @@ For on-premises environments using BIND, you delegate to the DNS server and use 
         fail_msg: "DNS A record for {{ inventory_hostname }} does not resolve to {{ ansible_default_ipv4.address }}"
 ```
 
-## CloudFlare DNS Management
+## Cloudflare DNS Management
 
-CloudFlare provides an API for DNS management. All operations delegate to localhost:
+Cloudflare provides an API for DNS management. All operations delegate to localhost:
 
 ```yaml
-# cloudflare-dns.yml - Managing CloudFlare DNS records
+# cloudflare-dns.yml - Managing Cloudflare DNS records
 ---
-- name: Manage CloudFlare DNS for web servers
+- name: Manage Cloudflare DNS for web servers
   hosts: webservers
   gather_facts: true
   vars:
@@ -136,7 +136,18 @@ CloudFlare provides an API for DNS management. All operations delegate to localh
     cloudflare_zone_id: "abc123def456"
     domain: example.com
   tasks:
-    - name: Create or update DNS A record in CloudFlare
+    - name: Look up existing Cloudflare DNS A record
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records?type=A&name={{ inventory_hostname_short }}.{{ domain }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ cloudflare_api_token }}"
+          Content-Type: "application/json"
+        status_code: 200
+      delegate_to: localhost
+      register: cf_record_lookup
+
+    - name: Create DNS A record in Cloudflare
       ansible.builtin.uri:
         url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
         method: POST
@@ -150,13 +161,13 @@ CloudFlare provides an API for DNS management. All operations delegate to localh
           content: "{{ ansible_default_ipv4.address }}"
           ttl: 300
           proxied: false
-        status_code: [200, 409]  # 409 if record already exists
+        status_code: 200
       delegate_to: localhost
-      register: cf_result
+      when: cf_record_lookup.json.result | length == 0
 
-    - name: Update existing record if it already exists
+    - name: Update existing DNS A record in Cloudflare
       ansible.builtin.uri:
-        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ existing_record_id }}"
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ cf_record_lookup.json.result[0].id }}"
         method: PUT
         headers:
           Authorization: "Bearer {{ cloudflare_api_token }}"
@@ -169,9 +180,7 @@ CloudFlare provides an API for DNS management. All operations delegate to localh
           ttl: 300
           proxied: false
       delegate_to: localhost
-      when: cf_result.status == 409
-      vars:
-        existing_record_id: "{{ cf_result.json.result.id | default('') }}"
+      when: cf_record_lookup.json.result | length > 0
 ```
 
 ## DNS Cleanup During Server Decommissioning
@@ -305,14 +314,19 @@ For static DNS setups, you might want to generate zone files from your inventory
     - name: Generate zone file entry for each host
       ansible.builtin.lineinfile:
         path: /tmp/generated-zone.db
-        line: "{{ inventory_hostname_short }}    IN    A    {{ ansible_default_ipv4.address }}"
+        regexp: "^{{ item.split('.')[0] }}\\s+IN\\s+A\\s+"
+        line: "{{ item.split('.')[0] }}    IN    A    {{ hostvars[item].ansible_default_ipv4.address }}"
         create: true
       delegate_to: localhost
+      run_once: true
+      loop: "{{ ansible_play_hosts_all }}"
 
     - name: Add zone file header
       ansible.builtin.blockinfile:
         path: /tmp/generated-zone.db
+        create: true
         insertbefore: BOF
+        marker: "; {mark} ANSIBLE MANAGED HEADER"
         block: |
           $TTL 300
           @    IN    SOA    ns1.example.com. admin.example.com. (
