@@ -46,7 +46,7 @@ graph TD
     C --> I[Route: 0.0.0.0/0 -> NAT GW]
 ```
 
-Public subnets route internet traffic through an Internet Gateway. Private subnets route it through a NAT Gateway. This separation is fundamental to AWS networking.
+Public subnets route internet traffic through an Internet Gateway. Private subnets that need outbound internet access route it through a NAT Gateway. This separation is fundamental to AWS networking.
 
 ## Creating a Basic Route Table
 
@@ -146,14 +146,14 @@ Most VPC designs need both a public and a private route table. Here is a playboo
           - "Private RT: {{ private_rt.route_table.id }}"
 ```
 
-## Full VPC Networking Stack
+## VPC Networking Stack
 
-In real projects, you build everything from the VPC up. Here is a complete playbook:
+In real projects, you build everything from the VPC up. Here is a playbook that creates the VPC, subnets, Internet Gateway, and public route table:
 
 ```yaml
-# full-networking.yml - Builds complete VPC networking with route tables
+# full-networking.yml - Builds VPC networking with a public route table
 ---
-- name: Full VPC Networking Stack
+- name: VPC Networking Stack
   hosts: localhost
   connection: local
   gather_facts: false
@@ -257,6 +257,7 @@ When you peer two VPCs together, you need routes in both VPCs pointing to the pe
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     route_table_id: "{{ existing_rt_id }}"
+    lookup: id
     routes:
       - dest: 0.0.0.0/0
         gateway_id: "{{ igw_id }}"
@@ -266,7 +267,7 @@ When you peer two VPCs together, you need routes in both VPCs pointing to the pe
       Name: public-rt-with-peering
 ```
 
-When you specify `route_table_id`, Ansible updates the existing route table instead of creating a new one. This is important when you need to add routes to tables that already exist.
+When you specify `route_table_id` with `lookup: id`, Ansible updates the existing route table instead of creating a new one. This is important when you need to add routes to tables that already exist.
 
 ## Gathering Route Table Information
 
@@ -289,7 +290,7 @@ Use the info module to query existing route tables:
 
 ## Deleting Route Tables
 
-To remove a route table, set `state: absent` and provide either the route table ID or use lookup by tags:
+To remove a route table, set `state: absent` and provide either the route table ID with `lookup: id` or use lookup by tags:
 
 ```yaml
 # Remove a specific route table by ID
@@ -298,6 +299,7 @@ To remove a route table, set `state: absent` and provide either the route table 
     vpc_id: "{{ vpc_id }}"
     region: us-east-1
     route_table_id: rtb-0abc123def456789
+    lookup: id
     state: absent
 ```
 
@@ -318,6 +320,7 @@ You cannot delete the main route table of a VPC, and you cannot delete a route t
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     route_table_id: "{{ rt_id }}"
+    lookup: id
     purge_routes: false
     routes:
       - dest: 10.2.0.0/16
