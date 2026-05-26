@@ -39,7 +39,7 @@ export AWS_DEFAULT_REGION="us-east-1"
 ansible-playbook aws-setup.yml
 ```
 
-This works for quick testing but is not great for production. The credentials are in your shell history and visible in process listings.
+This works for quick testing but is not great for production. The credentials can end up in your shell history and may be visible through process environment inspection.
 
 ## Method 2: AWS Credentials File
 
@@ -179,7 +179,7 @@ For cross-account access or when you need to escalate privileges, assume an IAM 
         region: us-east-1
         aws_access_key: "{{ assumed_role.sts_creds.access_key }}"
         aws_secret_key: "{{ assumed_role.sts_creds.secret_key }}"
-        security_token: "{{ assumed_role.sts_creds.session_token }}"
+        session_token: "{{ assumed_role.sts_creds.session_token }}"
       register: instances
 ```
 
@@ -222,16 +222,34 @@ flowchart TD
     B -->|No| C[Environment Variables]
     C --> D{Found?}
     D -->|Yes| Z
-    D -->|No| E[AWS Credentials File]
+    D -->|No| E[Assume Role Provider]
     E --> F{Found?}
     F -->|Yes| Z
-    F -->|No| G[AWS Config File / SSO]
+    F -->|No| G[Assume Role with Web Identity]
     G --> H{Found?}
     H -->|Yes| Z
-    H -->|No| I[IAM Instance Role]
+    H -->|No| I[AWS IAM Identity Center / SSO]
     I --> J{Found?}
     J -->|Yes| Z
-    J -->|No| K[Error: No credentials]
+    J -->|No| K[AWS Credentials File]
+    K --> L{Found?}
+    L -->|Yes| Z
+    L -->|No| M[Login with Console Credentials]
+    M --> N{Found?}
+    N -->|Yes| Z
+    N -->|No| O[AWS Config File]
+    O --> P{Found?}
+    P -->|Yes| Z
+    P -->|No| Q[Boto2 Config File]
+    Q --> R{Found?}
+    R -->|Yes| Z
+    R -->|No| S[Container Credentials]
+    S --> T{Found?}
+    T -->|Yes| Z
+    T -->|No| U[IAM Instance Role]
+    U --> V{Found?}
+    V -->|Yes| Z
+    V -->|No| W[Error: No credentials]
 ```
 
 ## Setting Up AWS Credentials in AWX
@@ -257,16 +275,16 @@ curl -s -X POST \
 
 AWX injects these as environment variables (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`) when the job runs. Your playbook does not need any explicit credential configuration.
 
-For STS role assumption through AWX, use the `sts_token` input.
+For temporary STS credentials in AWX, provide the `security_token` input.
 
 ```bash
-# Create an AWS credential with role assumption
+# Create an AWS credential with temporary STS credentials
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/credentials/ \
   -d '{
-    "name": "AWS Production - Cross Account",
+    "name": "AWS Production - Temporary STS",
     "organization": 1,
     "credential_type": 6,
     "inputs": {
