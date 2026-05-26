@@ -17,14 +17,15 @@ This guide covers creating S3 buckets with Ansible, configuring security setting
 You need:
 
 - Ansible 2.14+
-- The `amazon.aws` collection
+- The `amazon.aws` and `community.aws` collections
 - AWS credentials with S3 permissions
-- Python boto3
+- Python boto3 and botocore
 
 ```bash
 # Install dependencies
 
 ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install community.aws
 pip install boto3 botocore
 ```
 
@@ -63,7 +64,7 @@ The `amazon.aws.s3_bucket` module handles bucket operations:
         msg: "Bucket created: {{ bucket_name }}"
 ```
 
-S3 bucket names are globally unique across all AWS accounts. If someone else already has that name, creation will fail. A common pattern is to include your account ID or a unique prefix.
+S3 bucket names are unique across all AWS accounts in an AWS partition. If someone else already has that name, creation will fail. A common pattern is to include your account ID or a unique prefix.
 
 ## Encryption at Rest
 
@@ -187,11 +188,11 @@ Lifecycle policies move objects between storage classes or delete them after a c
         status: enabled
         transitions:
           # Move to Infrequent Access after 30 days
-          - days: 30
-            storage_class: STANDARD_IA
+          - transition_days: 30
+            storage_class: standard_ia
           # Move to Glacier after 90 days
-          - days: 90
-            storage_class: GLACIER
+          - transition_days: 90
+            storage_class: glacier
         # Delete objects after 365 days
         expiration_days: 365
 ```
@@ -205,11 +206,11 @@ If your S3 bucket serves content to web browsers (like a static website or API r
 ```yaml
 # Configure CORS for a bucket that serves assets to web apps
 - name: Set CORS configuration
-  amazon.aws.s3_bucket:
+  community.aws.s3_cors:
     name: "{{ bucket_name }}"
     region: "{{ aws_region }}"
     state: present
-    cors_rules:
+    rules:
       - allowed_origins:
           - "https://myapp.example.com"
           - "https://staging.example.com"
