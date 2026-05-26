@@ -20,7 +20,7 @@ Before diving into debugging, let us catalog the errors you are most likely to s
 
 **"Incorrect sudo password"** is self-explanatory, but can also appear when the become_pass variable is encrypted and the vault password was wrong.
 
-**"Sorry, user deploy is not allowed to execute..."** means the sudoers file explicitly denies the command Ansible is trying to run.
+**"Sorry, user deploy is not allowed to execute..."** means the sudoers policy does not allow the command Ansible is trying to run.
 
 **"sudo: a terminal is required to read the password"** means requiretty is enabled in sudoers and Ansible is not allocating a TTY.
 
@@ -99,7 +99,7 @@ Create a diagnostic playbook that dumps all become-related settings:
 
 ## Step 4: Examine Remote Logs
 
-The remote host's authentication logs contain valuable information about why sudo is failing.
+The remote host's authentication logs contain valuable information about why sudo is failing. If Ansible cannot become on the affected host, run this check while connected as a privileged user or use another break-glass account.
 
 ```yaml
 ---
@@ -135,21 +135,20 @@ The remote host's authentication logs contain valuable information about why sud
 
 ## Step 5: Debug Password Prompt Detection
 
-Ansible looks for specific strings in the sudo output to detect password prompts. If your system uses a non-standard prompt, Ansible will not know it needs to send a password.
+Ansible's sudo become plugin sets its own sudo prompt with `sudo -p` when a become password is configured, then waits for that exact prompt before sending the password. If a PAM module or sudoers setting prevents sudo from using the prompt Ansible supplied, Ansible may time out while waiting for the privilege escalation prompt.
 
-The default prompt patterns Ansible looks for include "password:", "Password:", and several other variations. You can customize this.
+First verify that Ansible is actually receiving a become password:
 
 ```yaml
 ---
-# custom-prompt.yml - Handle non-standard sudo prompts
-- name: Handle custom sudo prompt
+# check-become-password.yml - Verify that a become password is configured
+- name: Check become password configuration
   hosts: custom_prompt_hosts
   become: true
   vars:
-    # Tell Ansible what prompt to look for
     ansible_become_pass: "{{ vault_sudo_password }}"
   tasks:
-    - name: Test with custom prompt detection
+    - name: Test become with configured password
       ansible.builtin.command: whoami
       register: result
 
@@ -158,11 +157,11 @@ The default prompt patterns Ansible looks for include "password:", "Password:", 
         msg: "{{ result.stdout }}"
 ```
 
-If the prompt does not match any known pattern, configure a standard prompt in sudoers:
+If sudo ignores the prompt Ansible passes with `-p`, configure sudoers so a standard prompt can be overridden:
 
 ```bash
-# Force a standard sudo prompt that Ansible can detect
-Defaults:deploy passprompt="[sudo] password for %u: "
+# Allow sudo -p to override PAM or sudoers password prompts
+Defaults:deploy passprompt_override
 ```
 
 ## Step 6: Debug Timeout Issues
@@ -177,20 +176,26 @@ If become works manually but times out through Ansible, the problem is usually n
   gather_facts: false
   tasks:
     - name: Record start time
-      ansible.builtin.set_fact:
-        start_time: "{{ now() }}"
+      ansible.builtin.command: date +%s
+      register: start_time
+      changed_when: false
 
     - name: Run a simple become command
       ansible.builtin.command: date
       become: true
       register: become_result
 
+    - name: Record end time
+      ansible.builtin.command: date +%s
+      register: end_time
+      changed_when: false
+
     - name: Calculate duration
       ansible.builtin.debug:
-        msg: "become took approximately {{ (now() - start_time | to_datetime).total_seconds() | round(1) }} seconds"
+        msg: "become took approximately {{ (end_time.stdout | int) - (start_time.stdout | int) }} seconds"
 ```
 
-If the timing shows delays, increase the timeout:
+If the timing shows delays, increase Ansible's connection timeout. For the SSH connection plugin this controls both SSH connection establishment and how long Ansible waits while reading from an established connection:
 
 ```bash
 # Increase timeout for slow become operations
@@ -267,7 +272,7 @@ Here is a playbook that runs through all the common checks in one go:
         msg: "sudo binary: {{ sudo_path.stdout | default('NOT FOUND') }}"
 
     - name: Check sudo permissions
-      ansible.builtin.command: sudo -l
+      ansible.builtin.command: sudo -n -l
       register: sudo_list
       changed_when: false
       failed_when: false
@@ -294,8 +299,7 @@ Here is a playbook that runs through all the common checks in one go:
 
     - name: Check for requiretty in sudoers
       ansible.builtin.shell: |
-        sudo grep -c "requiretty" /etc/sudoers 2>/dev/null || echo "0"
-      become: true
+        sudo -n grep -q "requiretty" /etc/sudoers 2>/dev/null && echo "1" || echo "0"
       register: requiretty
       changed_when: false
       ignore_errors: true
