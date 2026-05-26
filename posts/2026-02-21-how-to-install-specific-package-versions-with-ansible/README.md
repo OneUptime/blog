@@ -8,7 +8,7 @@ Description: How to install exact package versions across Debian, RHEL, and Pyth
 
 ---
 
-Installing the "latest" version of a package is fine for development, but in production you want exact versions that you have tested. A package upgrade you did not plan for can introduce bugs, change behavior, or break compatibility with your application. This post covers how to install specific versions on every major platform Ansible supports.
+Installing the "latest" version of a package is fine for development, but in production you want exact versions that you have tested. A package upgrade you did not plan for can introduce bugs, change behavior, or break compatibility with your application. This post covers how to install specific versions across common package ecosystems Ansible supports.
 
 ## Specific Versions with the apt Module (Debian/Ubuntu)
 
@@ -24,7 +24,7 @@ On Debian-based systems, you append the version to the package name with an equa
     update_cache: yes
 ```
 
-The version string has to match exactly what apt knows about. To find available versions, check `apt-cache policy`:
+The version string has to match exactly what apt knows about. The exact versions below are examples, so replace them with versions available from your configured repositories. To find available versions, check `apt-cache policy`:
 
 ```yaml
 # Check available versions of a package
@@ -269,7 +269,8 @@ For RHEL:
 - name: Lock nginx version
   ansible.builtin.command:
     cmd: dnf versionlock add nginx
-  changed_when: true
+  register: nginx_versionlock
+  changed_when: "'Adding versionlock' in nginx_versionlock.stdout"
 ```
 
 ## Full Workflow: Version-Controlled Deployment
@@ -282,7 +283,7 @@ For RHEL:
   vars:
     target_versions:
       nginx: "1.24.0-1ubuntu1"
-      redis: "5:7.0.12-1"
+      redis-server: "5:7.0.12-1"
   tasks:
     - name: Update apt cache
       ansible.builtin.apt:
