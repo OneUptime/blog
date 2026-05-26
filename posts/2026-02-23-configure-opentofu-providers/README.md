@@ -181,8 +181,8 @@ terraform {
 Version constraint syntax:
 - `= 5.30.0` - Exact version
 - `>= 5.30.0` - Minimum version
-- `~> 5.30` - Compatible release (allows 5.30.x but not 5.31.0)
-- `~> 5.30.0` - Patch-level constraint (allows 5.30.x)
+- `~> 5.30` - Compatible release (allows 5.x versions starting at 5.30.0 but not 6.0.0)
+- `~> 5.30.0` - Patch-level constraint (allows 5.30.x but not 5.31.0)
 - `>= 5.0, < 6.0` - Range
 
 ## Provider Aliases
@@ -276,7 +276,7 @@ terraform {
 You can customize how OpenTofu downloads and installs providers using a CLI configuration file:
 
 ```hcl
-# ~/.terraformrc (or $HOME/.tofurc)
+# $HOME/.tofurc (or ~/.terraformrc for backward compatibility)
 
 # Use a filesystem mirror for air-gapped environments
 provider_installation {
@@ -285,13 +285,17 @@ provider_installation {
     include = ["hashicorp/*"]
   }
 
-  # Fall back to direct download for anything not in the mirror
+  # Use direct download for providers outside the mirror
   direct {
     exclude = ["hashicorp/*"]
   }
 }
+```
 
-# Use a network mirror
+Or use a network mirror:
+
+```hcl
+# $HOME/.tofurc (or ~/.terraformrc for backward compatibility)
 provider_installation {
   network_mirror {
     url = "https://provider-mirror.mycompany.com/"
