@@ -104,7 +104,9 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init
         working-directory: terraform
@@ -124,7 +126,7 @@ jobs:
         run: python3 scripts/generate_inventory.py terraform/tf_outputs.json > ansible/inventory/hosts.ini
 
       - name: Upload Inventory
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: inventory
           path: ansible/inventory/hosts.ini
@@ -133,13 +135,16 @@ jobs:
     needs: terraform
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download Inventory
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: inventory
           path: ansible/inventory/
+
+      - name: Install Ansible
+        run: sudo apt-get update && sudo apt-get install -y ansible
 
       - name: Run Ansible
         working-directory: ansible
@@ -191,7 +196,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -335,4 +340,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
