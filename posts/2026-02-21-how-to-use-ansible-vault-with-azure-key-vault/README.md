@@ -19,8 +19,8 @@ Install the Azure Ansible collection and required Python packages:
 
 ansible-galaxy collection install azure.azcollection
 
-# Install required Python dependencies
-pip install azure-identity azure-keyvault-secrets azure-mgmt-keyvault
+# Install the collection's required Python dependencies
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 ```
 
 You also need an Azure Key Vault instance:
@@ -306,7 +306,7 @@ flowchart TD
     B -->|Return Secrets| A
     A -->|Deploy| C[Azure VMs]
     B -->|Access Logs| D[Azure Monitor]
-    B -->|Encryption| E[Azure KMS]
+    B -->|Encryption| E[Key Vault service encryption]
     F[Azure RBAC] -->|Controls Access| B
 ```
 
@@ -318,7 +318,7 @@ Azure Key Vault supports fine-grained RBAC. Use the most restrictive role possib
 |------|-------------|----------|
 | Key Vault Secrets User | Read secrets only | Ansible deployment |
 | Key Vault Secrets Officer | Full CRUD on secrets | Secret management automation |
-| Key Vault Administrator | Full control | Initial setup only |
+| Key Vault Administrator | All Key Vault data-plane operations | Initial setup only |
 
 ```bash
 # Grant minimal read-only access to the Ansible service principal
