@@ -14,7 +14,7 @@ We will focus on Google Authenticator PAM, which is the most common TOTP-based 2
 
 ## How 2FA Works with SSH
 
-When you enable 2FA for SSH, the login process changes. After entering your password (or presenting your SSH key), you also need to provide a time-based one-time password (TOTP) from an authenticator app. The server validates this code against a shared secret that was generated during setup.
+When you enable 2FA for SSH, the login process changes. After entering your password (or presenting your SSH key), you also need to provide a time-based one-time password (TOTP) from an authenticator app. The PAM module validates this code locally against a shared secret that was generated during setup.
 
 The flow looks like this:
 
@@ -23,13 +23,13 @@ sequenceDiagram
     participant User
     participant SSH Server
     participant PAM
-    participant Google Authenticator
+    participant Authenticator App
     User->>SSH Server: SSH connection + key/password
     SSH Server->>PAM: Authenticate user
-    PAM->>Google Authenticator: Request TOTP verification
-    Google Authenticator-->>User: Prompt for verification code
-    User->>Google Authenticator: Enter TOTP code
-    Google Authenticator->>PAM: Verify code
+    PAM-->>User: Prompt for verification code
+    User->>Authenticator App: Read current TOTP code
+    User->>PAM: Enter TOTP code
+    PAM->>PAM: Verify code against local shared secret
     PAM->>SSH Server: Authentication result
     SSH Server->>User: Access granted/denied
 ```
@@ -95,14 +95,6 @@ This task inserts the Google Authenticator line into the PAM SSH configuration:
         state: present
       notify: restart sshd
 
-    - name: Configure SSH to use challenge-response
-      ansible.builtin.lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: "^#?ChallengeResponseAuthentication"
-        line: "ChallengeResponseAuthentication yes"
-        state: present
-      notify: restart sshd
-
     - name: Configure SSH AuthenticationMethods
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
@@ -164,7 +156,6 @@ This playbook generates TOTP secrets for specified users and stores the output f
         --rate-limit={{ totp_rate_limit.split()[0] }}
         --rate-time={{ totp_rate_limit.split()[1] }}
         --window-size={{ totp_window_size }}
-        --no-confirm
         --qr-mode=none
         --secret=/home/{{ item.item }}/.google_authenticator
       loop: "{{ existing_2fa.results }}"
@@ -263,6 +254,7 @@ tfa_enabled: true
 tfa_pam_nullok: true
 tfa_exempt_group: no2fa
 tfa_service_accounts: []
+tfa_package_name: "{{ 'libpam-google-authenticator' if ansible_os_family == 'Debian' else 'google-authenticator' }}"
 tfa_rate_limit_attempts: 3
 tfa_rate_limit_period: 30
 tfa_window_size: 3
@@ -329,8 +321,8 @@ Before rolling out to production, always test. This playbook verifies the 2FA se
       changed_when: false
       failed_when: pam_check.stdout | int < 1
 
-    - name: Check SSH config has challenge-response enabled
-      ansible.builtin.shell: sshd -T | grep challengeresponseauthentication
+    - name: Check SSH config has keyboard-interactive enabled
+      ansible.builtin.shell: sshd -T | grep '^kbdinteractiveauthentication yes$'
       register: ssh_check
       changed_when: false
 
