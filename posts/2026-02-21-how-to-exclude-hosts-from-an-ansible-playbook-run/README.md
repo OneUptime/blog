@@ -45,17 +45,17 @@ You can also put the exclusion directly in the playbook's `hosts` field:
 
 ## Method 2: The --limit Flag
 
-The `--limit` flag narrows down which hosts a playbook runs against, regardless of what the `hosts` field says.
+The `--limit` flag further narrows down the hosts selected by the playbook's `hosts` field.
 
 ```bash
 # Playbook targets "webservers" but limit to only web1
 ansible-playbook -i inventory.ini deploy.yml --limit web1.example.com
 
 # Exclude web3 from whatever the playbook targets
-ansible-playbook -i inventory.ini deploy.yml --limit '!web3.example.com'
+ansible-playbook -i inventory.ini deploy.yml --limit 'all:!web3.example.com'
 ```
 
-You can combine `--limit` with a file containing hostnames to exclude:
+You can also combine `--limit` with a file containing hostnames:
 
 ```bash
 # Create a file with hosts to skip
@@ -64,16 +64,15 @@ web2.example.com
 db-replica-02.example.com
 EOF
 
-# Exclude hosts listed in the file (note: this limits TO these hosts)
-# To exclude, combine with the full target
-ansible-playbook -i inventory.ini site.yml --limit 'all:!@/tmp/maintenance_hosts.txt'
+# Read hosts listed in the file (note: this limits TO these hosts)
+ansible-playbook -i inventory.ini site.yml --limit @/tmp/maintenance_hosts.txt
 ```
 
-Wait, that syntax is tricky. The `@` prefix reads a file, and `!@` excludes hosts from that file. However, note that `!@filename` support depends on your Ansible version. A more reliable approach is to use `--limit` with an explicit exclusion pattern.
+Wait, that syntax is tricky. The `@` prefix reads a file as an inclusion list for `--limit`; it does not provide a portable inline exclusion pattern like `all:!@filename`. To exclude a reusable list of hosts, put those hosts in an inventory group and exclude that group, or use `--limit` with an explicit exclusion pattern such as `all:!web2.example.com:!db-replica-02.example.com`.
 
 ## Method 3: The when Conditional
 
-For dynamic exclusion based on host variables or facts, use the `when` conditional on tasks or entire plays.
+For dynamic exclusion based on host variables or facts, use the `when` conditional on tasks, blocks, or role includes.
 
 ```yaml
 # rolling-update.yml
@@ -172,7 +171,7 @@ Use `group_by` to dynamically create groups at runtime and then skip hosts:
 
     - name: Group healthy hosts
       group_by:
-        key: "health_{{ 'ok' if health_check.status == 200 else 'failed' }}"
+        key: "health_{{ 'ok' if health_check.status | default(0) == 200 else 'failed' }}"
 
 # Second play only targets healthy hosts
 - hosts: health_ok
@@ -216,11 +215,15 @@ Hosts with disk usage over 90% will be skipped for the rest of the play. The pla
 
 ## Method 8: Retry File Approach
 
-After a failed playbook run, Ansible creates a `.retry` file containing the hosts that failed. You can use this to rerun only on those hosts, effectively excluding the ones that succeeded.
+If `retry_files_enabled` is set to `True`, Ansible creates a `.retry` file after a failed playbook run containing the hosts that failed. You can use this to rerun only on those hosts, effectively excluding the ones that succeeded.
 
 ```bash
-# First run - some hosts fail
-ansible-playbook -i inventory.ini deploy.yml
+# Enable retry files, then run - some hosts fail
+ANSIBLE_RETRY_FILES_ENABLED=True ansible-playbook -i inventory.ini deploy.yml
+
+# Or enable it in ansible.cfg:
+# [defaults]
+# retry_files_enabled = True
 
 # Rerun only on failed hosts (listed in deploy.retry)
 ansible-playbook -i inventory.ini deploy.yml --limit @deploy.retry
@@ -240,7 +243,7 @@ In practice, you often combine multiple methods:
   tasks:
     # Skip hosts with insufficient resources
     - name: Check available memory
-      command: free -m | awk '/^Mem:/ {print $7}'
+      shell: free -m | awk '/^Mem:/ {print $7}'
       register: free_mem
       changed_when: false
 
