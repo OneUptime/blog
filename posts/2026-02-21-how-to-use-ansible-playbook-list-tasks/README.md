@@ -8,7 +8,7 @@ Description: Learn how to use the ansible-playbook --list-tasks flag to preview 
 
 ---
 
-Before running a playbook against production servers, you want to know exactly what tasks it will execute. The `--list-tasks` flag shows you every task in the playbook, including tasks from imported roles and included files, without actually running anything. This is invaluable for code review, change management, and understanding complex playbooks that span multiple roles.
+Before running a playbook against production servers, you want to know exactly what tasks it will execute. The `--list-tasks` flag shows you every task in the playbook that Ansible can determine before execution, including tasks from roles and static imports, without actually running anything. This is invaluable for code review, change management, and understanding complex playbooks that span multiple roles.
 
 ## Basic Usage
 
@@ -132,7 +132,7 @@ ansible-playbook --list-tasks site.yml
 
 ## Working with Complex Playbooks
 
-For playbooks that use roles, imports, and includes, `--list-tasks` resolves the full task chain:
+For playbooks that use roles and static imports, `--list-tasks` resolves the task chain:
 
 ```yaml
 # site.yml - Complex playbook with roles and imports
@@ -157,7 +157,7 @@ For playbooks that use roles, imports, and includes, `--list-tasks` resolves the
 - import_playbook: monitoring.yml
 ```
 
-Running `--list-tasks` resolves everything:
+Running `--list-tasks` resolves the roles and imported playbook:
 
 ```bash
 ansible-playbook --list-tasks site.yml
@@ -245,7 +245,7 @@ ansible-playbook --list-tasks --limit web1.example.com deploy.yml
 ### List tasks with check mode
 
 ```bash
-# See what would be checked in dry run
+# Combine with check mode; --list-tasks still only lists the selected tasks
 ansible-playbook --list-tasks --check deploy.yml
 ```
 
@@ -259,9 +259,7 @@ Parse the output for automation:
 
 echo "Task count by role:"
 ansible-playbook --list-tasks site.yml 2>/dev/null | \
-    grep "TAGS:" | \
-    sed 's/^[[:space:]]*//' | \
-    awk -F' : ' '{print $1}' | \
+    awk '/^[[:space:]]+[^[:space:]].* : .*TAGS:/ { sub(/^[[:space:]]*/, ""); split($0, parts, " : "); print parts[1] }' | \
     sort | uniq -c | sort -rn
 ```
 
@@ -339,7 +337,7 @@ for playbook in *.yml; do
         continue
     fi
 
-    TASK_COUNT=$(ansible-playbook --list-tasks "$playbook" 2>/dev/null | grep "TAGS:" | wc -l)
+    TASK_COUNT=$(ansible-playbook --list-tasks "$playbook" 2>/dev/null | awk '/^[[:space:]]+[^[:space:]].*TAGS:/ && $0 !~ /^[[:space:]]*play #/ { count++ } END { print count + 0 }')
     echo "## $playbook ($TASK_COUNT tasks)"
     echo ""
     ansible-playbook --list-tasks "$playbook" 2>/dev/null
