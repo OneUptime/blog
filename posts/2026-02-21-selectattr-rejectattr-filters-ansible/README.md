@@ -122,6 +122,12 @@ Here is a real-world scenario where you filter servers by role and status to gen
         src: haproxy.cfg.j2
         dest: /etc/haproxy/haproxy.cfg
       notify: Reload HAProxy
+
+  handlers:
+    - name: Reload HAProxy
+      ansible.builtin.service:
+        name: haproxy
+        state: reloaded
 ```
 
 ```jinja2
@@ -281,7 +287,7 @@ Check if an attribute value is in a list:
 {% set prod_servers = servers | selectattr('environment', 'in', production_envs) | list %}
 ```
 
-Note: The `in` test is available in Ansible 2.10+. For older versions, you may need a workaround.
+Note: The `in` test is available in Jinja 2.10+. For environments using older Jinja versions, you may need a workaround.
 
 ## Counting Filtered Items
 
