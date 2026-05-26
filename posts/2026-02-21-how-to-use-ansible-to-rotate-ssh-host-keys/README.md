@@ -86,14 +86,16 @@ This playbook collects host key information from all servers:
     - name: Warn about weak RSA keys
       ansible.builtin.debug:
         msg: "WARNING: RSA key on {{ inventory_hostname }} is {{ rsa_key_size.stdout }} bits. Should be at least 4096."
-      when: rsa_key_size.stdout | int < 4096
+      when:
+        - rsa_key_size.rc == 0
+        - rsa_key_size.stdout | int < 4096
 ```
 
 ## Generating New Host Keys
 
 This is the core operation. Generate new, strong host keys to replace the old ones.
 
-This playbook generates new Ed25519 and RSA host keys:
+This playbook generates new Ed25519, RSA, and ECDSA host keys:
 
 ```yaml
 # rotate_host_keys.yml - Generate and deploy new SSH host keys
@@ -338,18 +340,23 @@ This playbook updates known_hosts across your fleet:
       loop: "{{ rotated_hosts }}"
 
     - name: Scan and add new host keys
-      ansible.builtin.command: ssh-keyscan -H {{ item.name }} {{ item.ip }}
+      ansible.builtin.command: ssh-keyscan -t ed25519,rsa,ecdsa {{ item.name }} {{ item.ip }}
       loop: "{{ rotated_hosts }}"
       register: new_keys
       changed_when: false
 
+    - name: Build known_hosts entries
+      ansible.builtin.set_fact:
+        known_host_entries: "{{ known_host_entries | default([]) + item.stdout_lines }}"
+      loop: "{{ new_keys.results }}"
+
     - name: Add new keys to known_hosts
       ansible.builtin.known_hosts:
-        name: "{{ item.item.name }}"
-        key: "{{ item.stdout }}"
+        name: "{{ item.split()[0] }}"
+        key: "{{ item }}"
         path: /etc/ssh/ssh_known_hosts
         state: present
-      loop: "{{ new_keys.results }}"
+      loop: "{{ known_host_entries }}"
 ```
 
 ## Scheduled Rotation with a Complete Role
