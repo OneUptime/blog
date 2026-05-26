@@ -41,7 +41,7 @@ ansible-doc -s apt
 Here are the most frequently missed required parameters:
 
 ```yaml
-# apt module - requires 'name' or 'deb'
+# apt module - package install/remove tasks require 'name'/'pkg' or 'deb'
 - name: Install packages
   apt:
     name: nginx  # Required parameter
@@ -97,10 +97,10 @@ Sometimes the parameters are present but incorrectly indented:
 
 ### Fix 4: Variable Not Resolving
 
-A variable used as a parameter value might be undefined:
+A variable used as a parameter value might be undefined or empty:
 
 ```yaml
-# If package_name is undefined, this effectively passes no value
+# If package_name is undefined, Ansible raises an undefined variable error
 - name: Install package
   apt:
     name: "{{ package_name }}"
@@ -261,6 +261,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -310,4 +311,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
