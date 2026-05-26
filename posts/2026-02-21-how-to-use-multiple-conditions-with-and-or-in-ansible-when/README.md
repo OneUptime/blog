@@ -8,7 +8,7 @@ Description: Learn how to combine multiple conditions using AND and OR logic in 
 
 ---
 
-A single condition in a `when` clause covers simple cases, but real-world automation often requires combining multiple checks. You might need a task that runs only on Ubuntu production servers with more than 4GB of RAM. Or a task that runs on either Debian or RedHat systems. Ansible supports both AND and OR logic in `when` clauses, with two different syntaxes for each.
+A single condition in a `when` clause covers simple cases, but real-world automation often requires combining multiple checks. You might need a task that runs only on Ubuntu production servers with more than 4GB of RAM. Or a task that runs on either Debian or RedHat systems. Ansible supports both AND and OR logic in `when` clauses: AND conditions can use list or inline syntax, while OR conditions use a Jinja expression with the `or` keyword.
 
 ## AND Logic: List Syntax (Recommended)
 
@@ -222,7 +222,7 @@ Use `not` with parentheses for negating compound conditions:
       when: deploy_env != "production"
 
     # NOT (Debian OR RedHat) - runs on everything else
-    - name: Run on non-Linux systems
+    - name: Run on non-Debian/RedHat systems
       ansible.builtin.debug:
         msg: "Non-standard OS family: {{ ansible_os_family }}"
       when: ansible_os_family not in ["Debian", "RedHat"]
