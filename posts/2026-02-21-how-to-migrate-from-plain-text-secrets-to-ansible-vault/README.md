@@ -58,6 +58,7 @@ First, set up a vault password so you do not have to type it every time:
 
 ```bash
 # Generate a strong random password and save it to a file
+mkdir -p ~/.ansible
 openssl rand -base64 32 > ~/.ansible/vault_password
 chmod 600 ~/.ansible/vault_password
 ```
@@ -131,7 +132,7 @@ Notice that `app_name` and `app_port` stay as they are since they are not secret
 
 ## Step 4: Handle Secrets in Roles
 
-Roles often have secrets in their `defaults/main.yml` or `vars/main.yml`. The same pattern applies:
+Roles often have secrets in their `defaults/main.yml` or `vars/main.yml`. Move secrets out of `defaults/main.yml` and override them from `group_vars` or `host_vars`. If the secret is in `vars/main.yml`, remove it from that file instead of leaving an empty placeholder, because role vars override inventory variables.
 
 ```yaml
 # roles/database/defaults/main.yml - BEFORE
