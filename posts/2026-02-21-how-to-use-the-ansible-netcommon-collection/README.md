@@ -29,6 +29,8 @@ In your requirements file:
 collections:
   - name: ansible.netcommon
     version: ">=6.0.0"
+  - name: ansible.utils
+    version: ">=3.0.0"
 ```
 
 ## Connection Plugins
@@ -221,28 +223,32 @@ For devices that support NETCONF, you get structured data exchange using XML:
     - name: Apply NETCONF configuration
       ansible.netcommon.netconf_config:
         content: |
-          <configuration>
-            <system>
-              <host-name>switch01</host-name>
-              <name-server>
-                <name>10.0.100.10</name>
-              </name-server>
-            </system>
-          </configuration>
+          <config>
+            <configuration>
+              <system>
+                <host-name>switch01</host-name>
+                <name-server>
+                  <name>10.0.100.10</name>
+                </name-server>
+              </system>
+            </configuration>
+          </config>
         target: candidate
         default_operation: merge
 
     - name: Lock and edit configuration
       ansible.netcommon.netconf_config:
         content: |
-          <configuration>
-            <interfaces>
-              <interface>
-                <name>ge-0/0/0</name>
-                <description>Uplink to Core</description>
-              </interface>
-            </interfaces>
-          </configuration>
+          <config>
+            <configuration>
+              <interfaces>
+                <interface>
+                  <name>ge-0/0/0</name>
+                  <description>Uplink to Core</description>
+                </interface>
+              </interfaces>
+            </configuration>
+          </config>
         lock: always
         target: candidate
         validate: true
@@ -265,8 +271,12 @@ The `ansible.netcommon` collection also provides the base for network resource m
       register: interface_config
 
     - name: Parse interface configuration
-      ansible.builtin.set_fact:
-        parsed_interfaces: "{{ interface_config.stdout | ansible.netcommon.parse_cli_textfsm('templates/show_interfaces.textfsm') }}"
+      ansible.utils.cli_parse:
+        text: "{{ interface_config.stdout }}"
+        parser:
+          name: ansible.utils.textfsm
+          template_path: templates/show_interfaces.textfsm
+        set_fact: parsed_interfaces
       when: false  # Requires TextFSM template
 
     - name: Validate network configuration
@@ -281,7 +291,7 @@ The `ansible.netcommon` collection also provides the base for network resource m
 
 Network connections are persistent (they stay open across tasks). You can tune the connection behavior:
 
-```yaml
+```ini
 # ansible.cfg - Network connection settings
 [persistent_connection]
 # How long to wait for a command to complete
@@ -290,7 +300,7 @@ command_timeout = 30
 # How long to keep the connection open between tasks
 connect_timeout = 30
 
-# How long a persistent connection can stay idle
+# How long to retry connecting to the local persistent connection socket
 connect_retry_timeout = 15
 ```
 
@@ -314,7 +324,7 @@ A common use case is backing up network configurations on a schedule:
   hosts: routers:switches:firewalls
   gather_facts: false
   vars:
-    backup_dir: "/opt/network-backups/{{ ansible_date_time.date }}"
+    backup_dir: "/opt/network-backups/{{ lookup('pipe', 'date +%F') }}"
   tasks:
     - name: Create backup directory
       ansible.builtin.file:
@@ -351,7 +361,7 @@ flowchart TD
 
 ## Working with cli_parse
 
-The `cli_parse` module parses unstructured CLI output into structured data:
+The `ansible.utils.cli_parse` module parses unstructured CLI output into structured data and can use parser plugins provided by `ansible.netcommon`:
 
 ```yaml
 # parse-output.yml - Parse CLI output into structured data
@@ -366,7 +376,7 @@ The `cli_parse` module parses unstructured CLI output into structured data:
       register: raw_interfaces
 
     - name: Parse with native parser
-      ansible.netcommon.cli_parse:
+      ansible.utils.cli_parse:
         command: show ip interface brief
         parser:
           name: ansible.netcommon.native
