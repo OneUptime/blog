@@ -8,7 +8,7 @@ Description: Configure SSH ControlMaster with Ansible to reuse persistent connec
 
 ---
 
-Every time Ansible runs a task on a remote host, it establishes an SSH connection. For a playbook with 30 tasks running against 20 hosts, that is 600 SSH handshakes. Each handshake involves TCP connection establishment, cryptographic key exchange, and authentication. SSH ControlMaster eliminates this overhead by keeping a persistent connection open and multiplexing additional sessions over it.
+Without persistent SSH connections, every time Ansible runs a task on a remote host, it establishes an SSH connection. For a playbook with 30 tasks running against 20 hosts, that is 600 SSH handshakes. Each handshake involves TCP connection establishment, cryptographic key exchange, and authentication. SSH ControlMaster eliminates this overhead by keeping a persistent connection open and multiplexing additional sessions over it.
 
 ## How ControlMaster Works
 
@@ -38,7 +38,7 @@ The master connection creates a Unix domain socket on disk. Subsequent SSH sessi
 
 ## Basic Configuration
 
-Enable ControlMaster in your `ansible.cfg`:
+Ansible's SSH connection plugin enables ControlMaster and a 60-second ControlPersist by default. You can confirm or tune those settings in your `ansible.cfg`:
 
 ```ini
 # ansible.cfg
@@ -80,13 +80,15 @@ For Ansible playbook runs, 60 seconds is usually sufficient. If you are iteratin
 
 The control path is where the Unix socket for the master connection lives. Getting this right matters.
 
-### Default Ansible Control Path
+### Ansible Control Path
 
 ```ini
 # ansible.cfg
 [ssh_connection]
 control_path_dir = ~/.ansible/cp
-control_path = %(directory)s/%%h-%%r-%%p
+# Leave control_path unset to let Ansible generate a unique hashed path.
+# Or set an explicit template:
+control_path = %(directory)s/%%C
 ```
 
 ### Handling Long Hostnames
@@ -97,7 +99,7 @@ SSH has a limit on the length of the socket path (usually 108 characters on Linu
 # Use a shorter path to avoid socket path length issues
 control_path = %(directory)s/%%C
 
-# %%C is a hash of %l%h%p%r - guaranteed to be short
+# %%C is a hash of connection parameters - guaranteed to be short
 ```
 
 The `%%C` format (available in OpenSSH 6.7+) creates a hash of the connection parameters, keeping the socket path short.
@@ -148,7 +150,7 @@ Check the status of a control connection:
 
 ```bash
 # Check if a master connection exists for a host
-ssh -O check -o ControlPath=~/.ansible/cp/%%C user@host
+ssh -O check -o ControlPath=~/.ansible/cp/%C user@host
 
 # Example with the actual control path
 ssh -O check -S ~/.ansible/cp/abcdef123456 user@10.0.1.10
@@ -259,11 +261,11 @@ control_path = %(directory)s/%%C
 If a host reboots, the master connection becomes stale but the socket file remains:
 
 ```bash
-# Remove the stale socket for the specific host
+# Remove all Ansible control sockets
 rm -f ~/.ansible/cp/*
 
-# Or be more targeted if you know the socket file
-find ~/.ansible/cp/ -name "*.sock" -mmin +60 -delete
+# Or remove older socket files without relying on a filename suffix
+find ~/.ansible/cp/ -type s -mmin +60 -delete
 ```
 
 ## Ansible's Built-in Cleanup
@@ -290,6 +292,7 @@ When using Ansible async tasks, ControlMaster can sometimes cause issues because
   command: /opt/scripts/backup.sh
   async: 3600
   poll: 0
+  register: result
 
 - name: Wait for task
   async_status:
