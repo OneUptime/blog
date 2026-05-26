@@ -65,13 +65,13 @@ The pattern is: collect data from all hosts, then compare on localhost:
 
   tasks:
     - name: Get nginx version
-      ansible.builtin.shell: "nginx -v 2>&1 | awk -F/ '{print $2}'"
+      ansible.builtin.shell: "if command -v nginx >/dev/null 2>&1; then nginx -v 2>&1 | awk -F/ '{print $2}'; else echo 'not installed'; fi"
       register: nginx_version
       changed_when: false
       failed_when: false
 
     - name: Get Python version
-      ansible.builtin.shell: "python3 --version | awk '{print $2}'"
+      ansible.builtin.shell: "if command -v python3 >/dev/null 2>&1; then python3 --version | awk '{print $2}'; else echo 'not installed'; fi"
       register: python_version
       changed_when: false
       failed_when: false
@@ -228,12 +228,12 @@ graph TD
       ansible.builtin.set_fact:
         port_analysis: >-
           {% set all_hosts_ports = port_map.values() | list %}
-          {% set common = all_hosts_ports[0] %}
+          {% set ns = namespace(common=all_hosts_ports[0] | default([])) %}
           {% for ports in all_hosts_ports[1:] %}
-          {% set common = common | intersect(ports) %}
+          {% set ns.common = ns.common | intersect(ports) %}
           {% endfor %}
           {% set all_ports = all_hosts_ports | flatten | unique | list %}
-          {{ {'common': common | sort, 'all': all_ports | sort, 'inconsistent': all_ports | difference(common) | sort} }}
+          {{ {'common': ns.common | sort, 'all': all_ports | sort, 'inconsistent': all_ports | difference(ns.common) | sort} }}
 
     - name: Show analysis
       ansible.builtin.debug:
