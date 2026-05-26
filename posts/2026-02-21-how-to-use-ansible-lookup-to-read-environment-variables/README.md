@@ -106,25 +106,23 @@ When an environment variable is not set, the env lookup returns an empty string.
 You can also build a validation task that checks all variables at once.
 
 ```yaml
-    - name: Check all required env vars at once
+    - name: Build a list of missing env vars
+      ansible.builtin.set_fact:
+        missing_vars: "{{ (missing_vars | default([])) + [item] }}"
+      loop: "{{ required_env_vars }}"
+      when: lookup('env', item) | length == 0
+
+    - name: Fail if any required env vars are missing
       ansible.builtin.fail:
         msg: |
           Missing required environment variables:
-          {{ missing_vars | join(', ') }}
+          {{ missing_vars | default([]) | join(', ') }}
 
           Please set them before running this playbook:
-          {% for var in missing_vars %}
+          {% for var in missing_vars | default([]) %}
           export {{ var }}=your_value
           {% endfor %}
-      vars:
-        missing_vars: >-
-          {{
-            required_env_vars
-            | select('match', '.*')
-            | map('community.general.from_csv', lookup_plugin='env')
-            | list
-          }}
-      when: false  # Placeholder for demonstration
+      when: missing_vars | default([]) | length > 0
 ```
 
 A simpler approach:
