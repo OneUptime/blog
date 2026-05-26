@@ -117,11 +117,11 @@ Let us create a playbook that uses facts and run it twice to see caching in acti
         msg: "{{ inventory_hostname }} has {{ ansible_memtotal_mb }} MB RAM"
 ```
 
-Run it the first time with profiling:
+Run it the first time with profiling. The profiling callback is provided by the `ansible.posix` collection, so install it first if your Ansible installation does not already include it:
 
 ```bash
 # First run - facts will be gathered and cached
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook test-cache.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook test-cache.yml
 
 # Check that cache files were created
 ls -la /tmp/ansible_fact_cache/
@@ -131,7 +131,7 @@ Run it again:
 
 ```bash
 # Second run - facts should come from cache (no setup module execution)
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook test-cache.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook test-cache.yml
 ```
 
 On the second run, you should notice that the "Gathering Facts" step is either much faster or absent entirely. With 20 hosts, I typically see the fact gathering phase drop from 8-12 seconds to under 1 second.
@@ -155,7 +155,7 @@ Set up the directory with proper permissions:
 # Create a persistent cache directory
 sudo mkdir -p /var/cache/ansible/facts
 sudo chown ansible:ansible /var/cache/ansible/facts
-chmod 700 /var/cache/ansible/facts
+sudo chmod 700 /var/cache/ansible/facts
 ```
 
 If you are running Ansible from a CI/CD pipeline, you might want to put the cache in the project directory so it persists across pipeline runs (assuming your CI caches that directory):
@@ -191,13 +191,12 @@ rm /var/cache/ansible/facts/web-01.example.com
 rm /var/cache/ansible/facts/web-*.example.com
 ```
 
-You can also force Ansible to re-gather facts for specific plays:
+You can also force Ansible to re-gather facts by running the `setup` module explicitly:
 
 ```yaml
 ---
 # Force fact re-gathering even with smart gathering enabled
 - hosts: webservers
-  gather_facts: true
   tasks:
     - name: Refresh facts explicitly
       setup:
@@ -216,6 +215,7 @@ You can reduce what gets cached by combining fact caching with `gather_subset`:
 # Only cache network and hardware facts
 - hosts: all
   gather_subset:
+    - '!all'
     - network
     - hardware
   tasks:
