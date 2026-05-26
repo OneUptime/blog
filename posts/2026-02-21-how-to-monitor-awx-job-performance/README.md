@@ -74,7 +74,8 @@ spec:
       - awx
   selector:
     matchLabels:
-      app.kubernetes.io/name: awx-service
+      app.kubernetes.io/part-of: awx
+      app.kubernetes.io/component: awx
   endpoints:
     - port: http
       path: /api/v2/metrics/
@@ -133,7 +134,7 @@ Here is a Python script that generates a weekly performance report from the AWX 
 
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 AWX_URL = "https://awx.example.com"
@@ -141,7 +142,7 @@ TOKEN = "your-token"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
 # Fetch jobs from the last 7 days
-since = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def get_all_jobs():
     """Fetch all jobs from the last 7 days."""
@@ -181,7 +182,7 @@ for template, template_jobs in sorted(
     durations = sorted([j["elapsed"] for j in template_jobs if j.get("elapsed")])
 
     avg_dur = sum(durations) / len(durations) if durations else 0
-    p95_dur = durations[int(len(durations) * 0.95)] if durations else 0
+    p95_dur = durations[int((len(durations) - 1) * 0.95)] if durations else 0
 
     print(f"{template[:40]:<40} {total:>6} {passed:>6} {failed:>6} {avg_dur:>8.1f} {p95_dur:>8.1f}")
 ```
@@ -197,14 +198,14 @@ awx_running_jobs_total
 # Pending jobs (queue depth) - alerts when > 0 for extended periods
 awx_pending_jobs_total
 
-# Job success rate (last 1 hour)
-rate(awx_status_total{status="successful"}[1h])
-/ (rate(awx_status_total{status="successful"}[1h])
-   + rate(awx_status_total{status="failed"}[1h])
-   + rate(awx_status_total{status="error"}[1h]))
+# Job success ratio from current aggregate status counts
+awx_status_total{status="successful"}
+/ (awx_status_total{status="successful"}
+   + awx_status_total{status="failed"}
+   + awx_status_total{status="error"})
 
-# Failed jobs rate
-rate(awx_status_total{status="failed"}[1h])
+# Failed jobs count
+awx_status_total{status="failed"}
 ```
 
 ## Alerting on Job Performance
@@ -233,18 +234,18 @@ spec:
             summary: "AWX has {{ $value }} pending jobs"
             description: "Jobs have been queued for over 10 minutes. Check AWX capacity."
 
-        # Alert on high failure rate
-        - alert: AWXHighFailureRate
+        # Alert on high aggregate failure ratio
+        - alert: AWXHighFailureRatio
           expr: >
-            rate(awx_status_total{status="failed"}[30m])
-            / (rate(awx_status_total{status="successful"}[30m])
-               + rate(awx_status_total{status="failed"}[30m])) > 0.2
+            awx_status_total{status="failed"}
+            / (awx_status_total{status="successful"}
+               + awx_status_total{status="failed"}) > 0.2
           for: 15m
           labels:
             severity: critical
           annotations:
-            summary: "AWX job failure rate above 20%"
-            description: "More than 20% of AWX jobs have failed in the last 30 minutes."
+            summary: "AWX aggregate job failure ratio above 20%"
+            description: "More than 20% of counted AWX jobs are currently in failed status."
 
         # Alert when no jobs are running (might indicate AWX is down)
         - alert: AWXNoJobsRunning
@@ -338,6 +339,7 @@ For teams that do not have Prometheus set up, a simple health check script works
 # awx-health-check.sh - Quick AWX performance check
 
 AWX_URL="https://awx.example.com"
+SINCE="$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 
 echo "=== AWX Health Check ==="
 echo ""
@@ -349,7 +351,7 @@ curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
 echo ""
 echo "=== Failed Jobs (Last 24h) ==="
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
-  "${AWX_URL}/api/v2/jobs/?status=failed&created__gt=$(date -u -v-1d +%Y-%m-%dT%H:%M:%SZ)&page_size=10" \
+  "${AWX_URL}/api/v2/jobs/?status=failed&created__gt=${SINCE}&page_size=10" \
   | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
