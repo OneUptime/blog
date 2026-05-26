@@ -281,7 +281,7 @@ A few things that catch people off guard with INI inventories:
 
 1. **Duplicate hostnames**: If the same host appears in multiple groups, it only gets one entry in `all`. The variables from each group merge together.
 
-2. **Variable types**: INI inventory treats all values as strings. If you need booleans or integers in your playbooks, use `| bool` or `| int` filters, or switch to YAML format for the inventory.
+2. **Variable types**: INI inventory handles types differently depending on where variables are declared. Inline host variables are parsed as Python literals, while values in `:vars` sections are strings. To avoid surprises, use filters like `| bool` or `| int` when consuming values, or switch to YAML format for the inventory.
 
 3. **Spaces in values**: You cannot have spaces in variable values in INI format. Use quotes if needed: `my_var="hello world"`.
 
