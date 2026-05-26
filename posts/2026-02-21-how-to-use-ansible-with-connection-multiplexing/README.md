@@ -69,10 +69,11 @@ Ansible enables multiplexing by default with these settings:
 # Default SSH args in Ansible
 
 [ssh_connection]
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=60s
 ```
 
 This means:
+- `-C`: Enable SSH compression, which is part of Ansible's default SSH arguments
 - `ControlMaster=auto`: Create a master connection if one does not exist, or reuse one if it does
 - `ControlPersist=60s`: Keep the master connection alive for 60 seconds after the last SSH session closes
 
@@ -85,7 +86,7 @@ Here is my recommended configuration for production:
 ```ini
 # ansible.cfg - Optimized connection multiplexing
 [ssh_connection]
-ssh_args = -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=/tmp/ansible-mux-%h-%p-%r -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=~/.ansible/cp/ansible-%C -o ServerAliveInterval=30 -o ServerAliveCountMax=3
 pipelining = True
 ```
 
@@ -96,8 +97,8 @@ Let us break down each option:
 **ControlPath**: The path to the Unix socket file used for multiplexing. Keep it short to avoid socket path length limits:
 
 ```ini
-# Good: short path, unique per host-port-user combination
-ssh_args = -o ControlPath=/tmp/ansible-mux-%h-%p-%r
+# Good: short enough, user-owned, and unique per connection
+ssh_args = -o ControlPath=~/.ansible/cp/ansible-%C
 
 # Bad: long path that might hit the 108-character socket path limit
 ssh_args = -o ControlPath=~/.ansible/connections/ansible-ssh-%h-%p-%r-very-long-name
@@ -122,16 +123,16 @@ You should see messages like:
 ssh: mux_client_request_session: master session id: 2
 ```
 
-If you see repeated `ESTABLISH SSH CONNECTION` messages, multiplexing is not working correctly.
+Ansible can still log repeated `ESTABLISH SSH CONNECTION` lines because each task opens a new SSH client session. The important detail is whether those sessions reuse a master socket instead of performing a full new handshake.
 
 You can also check the socket files:
 
 ```bash
 # List active multiplexed connections
-ls -la /tmp/ansible-mux-*
+ls -la ~/.ansible/cp/ansible-*
 
 # Check a specific connection's status
-ssh -O check -o ControlPath=/tmp/ansible-mux-webserver01-22-admin webserver01
+ssh -O check -o ControlPath=~/.ansible/cp/ansible-%C admin@webserver01
 ```
 
 ## ControlPath Socket Length Limit
@@ -149,11 +150,11 @@ echo -n "/tmp/ansible-mux-very-long-hostname.datacenter.company.example.com-22-d
 Solutions:
 
 ```ini
-# Use a short base path
-ssh_args = -o ControlPath=/tmp/a-%h-%p-%r
+# Use a short user-owned base path
+ssh_args = -o ControlPath=~/.ansible/cp/a-%h-%p-%r
 
 # Or use a hash-based path
-ssh_args = -o ControlPath=/tmp/ansible-%C
+ssh_args = -o ControlPath=~/.ansible/cp/ansible-%C
 # %C is a hash of the connection parameters (requires OpenSSH 6.7+)
 ```
 
@@ -161,7 +162,7 @@ The `%C` option creates a hash-based socket name that is always a fixed length:
 
 ```bash
 # %C creates something like:
-# /tmp/ansible-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+# ~/.ansible/cp/ansible-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
 ```
 
 ## Tuning ControlPersist for Different Workloads
@@ -187,16 +188,16 @@ Sometimes you need to manually manage connections:
 
 ```bash
 # Check if a multiplexed connection is active
-ssh -O check -o ControlPath=/tmp/ansible-mux-webserver01-22-admin webserver01 2>&1
+ssh -O check -o ControlPath=~/.ansible/cp/ansible-%C admin@webserver01 2>&1
 
 # Gracefully close a multiplexed connection
-ssh -O exit -o ControlPath=/tmp/ansible-mux-webserver01-22-admin webserver01
+ssh -O exit -o ControlPath=~/.ansible/cp/ansible-%C admin@webserver01
 
-# Force close a multiplexed connection
-ssh -O stop -o ControlPath=/tmp/ansible-mux-webserver01-22-admin webserver01
+# Stop accepting new multiplexed sessions
+ssh -O stop -o ControlPath=~/.ansible/cp/ansible-%C admin@webserver01
 
 # Close all multiplexed connections
-for sock in /tmp/ansible-mux-*; do
+for sock in ~/.ansible/cp/ansible-*; do
     ssh -O exit -o ControlPath="$sock" dummy 2>/dev/null
 done
 ```
@@ -207,8 +208,8 @@ Create a cleanup script:
 #!/bin/bash
 # cleanup-mux.sh - Remove stale SSH multiplexing sockets
 
-MUX_DIR="/tmp"
-MUX_PATTERN="ansible-mux-*"
+MUX_DIR="$HOME/.ansible/cp"
+MUX_PATTERN="ansible-*"
 
 echo "=== Active multiplexed connections ==="
 for sock in "$MUX_DIR"/$MUX_PATTERN; do
@@ -227,7 +228,7 @@ echo "Remaining connections: $REMAINING"
 
 ## Multiplexing with Different Users
 
-Multiplexing is scoped to the combination of host, port, and user. If your playbook uses different users for different tasks, each user gets their own master connection:
+Multiplexing is scoped to the combination of host, port, and remote login user. If your playbook logs in as different SSH users for different tasks, each login user gets their own master connection:
 
 ```yaml
 ---
@@ -239,19 +240,19 @@ Multiplexing is scoped to the combination of host, port, and user. If your playb
       changed_when: false
 
     # This creates a separate multiplexed connection for deploy_user
+    # because remote_user changes the SSH login user
     - name: Deploy application
       copy:
         src: app.tar.gz
         dest: /opt/app/
-      become: true
-      become_user: deploy_user
+      remote_user: deploy_user
 ```
 
 The ControlPath template `%r` ensures each user has their own socket:
 
 ```ini
 # %r = remote user, ensuring separate sockets per user
-ssh_args = -o ControlPath=/tmp/ansible-mux-%h-%p-%r
+ssh_args = -o ControlPath=~/.ansible/cp/ansible-%h-%p-%r
 ```
 
 ## Performance Measurements
@@ -296,7 +297,7 @@ If multiplexing causes errors, here are common fixes:
 ```ini
 # If you get "ControlSocket already exists" errors
 # The previous connection did not clean up properly
-ssh_args = -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=/tmp/ansible-mux-%C
+ssh_args = -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=~/.ansible/cp/ansible-%C
 
 # If connections hang after network changes
 # Lower the ServerAlive values
@@ -304,7 +305,7 @@ ssh_args = -o ServerAliveInterval=15 -o ServerAliveCountMax=2
 
 # If you get "mux_client_request_session: session request failed"
 # The master connection may be dead - remove stale sockets
-rm /tmp/ansible-mux-*
+rm ~/.ansible/cp/ansible-*
 ```
 
 Connection multiplexing is one of those optimizations that Ansible gets right by default, but understanding how to tune it and troubleshoot it makes a real difference at scale. Proper ControlPersist values, short socket paths, and keepalive settings are the three things to get right for reliable, fast SSH multiplexing.
