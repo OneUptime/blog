@@ -96,7 +96,7 @@ Unstable network connections cause intermittent closures:
 
 ```ini
 # ansible.cfg - Increase retries for unreliable networks
-[defaults]
+[ssh_connection]
 retries = 3
 ```
 
@@ -111,16 +111,16 @@ ansible-playbook playbook.yml -vvvv
 
 ## Summary
 
-"Shared connection closed" errors are SSH-level issues, not Ansible bugs. The fix usually involves adjusting SSH keepalive settings, cleaning up stale control sockets, or increasing timeouts for long-running tasks. ServerAliveInterval is the single most effective setting for preventing this error.
+"Shared connection closed" errors are usually SSH-level issues, not Ansible bugs. The fix often involves adjusting SSH keepalive settings, cleaning up stale control sockets, or increasing timeouts for long-running tasks. ServerAliveInterval is a useful setting for preventing idle SSH connections from being closed.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -152,7 +152,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -296,4 +296,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
