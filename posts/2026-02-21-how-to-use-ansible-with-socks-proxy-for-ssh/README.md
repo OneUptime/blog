@@ -63,7 +63,7 @@ ssh_args = -o ProxyCommand="nc -X 5 -x 127.0.0.1:1080 %h %p"
 The `nc` flags:
 - `-X 5`: Use SOCKS5 protocol
 - `-x 127.0.0.1:1080`: Connect through the SOCKS proxy at localhost:1080
-- `%h %p`: Ansible substitutes the target hostname and port
+- `%h %p`: SSH expands these to the target hostname and port
 
 If your system does not have `nc` with SOCKS support (common on some Linux distributions), use `ncat` from the nmap package.
 
@@ -225,7 +225,7 @@ Here is a playbook that works through the SOCKS proxy.
 Dynamic inventory plugins work fine with SOCKS proxies. The inventory plugin queries the cloud API directly (not through the SOCKS proxy), and only the SSH connections to the instances go through the proxy.
 
 ```yaml
-# inventory/aws_private.yml
+# inventory/private.aws_ec2.yml
 # Discover private EC2 instances and route SSH through SOCKS proxy
 plugin: amazon.aws.aws_ec2
 regions:
@@ -236,6 +236,7 @@ filters:
 hostnames:
   - private-ip-address
 compose:
+  ansible_host: private_ip_address
   ansible_ssh_common_args: "'-o ProxyCommand=\"nc -X 5 -x 127.0.0.1:1080 %h %p\"'"
   ansible_user: "'ubuntu'"
 ```
@@ -263,7 +264,7 @@ Common problems:
 - The `nc` binary does not support SOCKS (install `ncat` or `netcat-openbsd`)
 - The bastion host's SSH session timed out, killing the SOCKS proxy
 - The target host's firewall blocks connections from the bastion's IP
-- DNS resolution fails because the proxy does not resolve internal hostnames (use IP addresses)
+- DNS resolution fails for internal hostnames (use IP addresses or names resolvable in the path you are using)
 
 ## Security Notes
 
