@@ -37,7 +37,7 @@ Install Node.js via NodeSource and PM2 globally:
         update_cache: yes
 
     - name: Install PM2 globally
-      ansible.builtin.npm:
+      community.general.npm:
         name: pm2
         global: yes
         state: present
@@ -76,17 +76,17 @@ module.exports = {
   apps: [
 {% for app in pm2_apps %}
     {
-      name: '{{ app.name }}',
-      script: '{{ app.script }}',
-      cwd: '{{ app.cwd | default(app_dir) }}',
-      instances: {{ app.instances | default(1) }},
-      exec_mode: '{{ app.exec_mode | default("fork") }}',
-      max_memory_restart: '{{ app.max_memory | default("512M") }}',
+      name: {{ app.name | to_json }},
+      script: {{ app.script | to_json }},
+      cwd: {{ app.cwd | default(app_dir) | to_json }},
+      instances: {{ app.instances | default(1) | to_json }},
+      exec_mode: {{ app.exec_mode | default("fork") | to_json }},
+      max_memory_restart: {{ app.max_memory | default("512M") | to_json }},
       env: {
-        NODE_ENV: '{{ app.node_env | default("production") }}',
+        NODE_ENV: {{ app.node_env | default("production") | to_json }},
 {% if app.env is defined %}
 {% for key, value in app.env.items() %}
-        {{ key }}: '{{ value }}',
+        {{ key | to_json }}: {{ value | to_json }},
 {% endfor %}
 {% endif %}
       },
@@ -98,7 +98,7 @@ module.exports = {
       merge_logs: true,
       // Restart behavior
       max_restarts: {{ app.max_restarts | default(10) }},
-      min_uptime: '{{ app.min_uptime | default("5s") }}',
+      min_uptime: {{ app.min_uptime | default("5s") | to_json }},
       restart_delay: {{ app.restart_delay | default(4000) }},
       // Watch (only for development)
       watch: false,
@@ -196,7 +196,7 @@ Deploy and reload with zero downtime:
       become_user: "{{ app_user }}"
 
     - name: Install dependencies
-      ansible.builtin.command: npm ci --production
+      ansible.builtin.command: npm ci --omit=dev
       args:
         chdir: "{{ app_dir }}"
       become_user: "{{ app_user }}"
@@ -231,13 +231,9 @@ PM2 can generate a systemd startup script so your processes survive reboots.
 Configure PM2 to start on boot:
 
 ```yaml
-- name: Generate PM2 startup script
+- name: Generate and install PM2 startup script
   ansible.builtin.command: "pm2 startup systemd -u {{ app_user }} --hp /home/{{ app_user }}"
-  register: pm2_startup
-
-- name: Execute the startup command
-  ansible.builtin.command: "{{ pm2_startup.stdout_lines[-1] }}"
-  when: "'sudo' in pm2_startup.stdout"
+  become: yes
 
 - name: Save current PM2 process list
   ansible.builtin.command: pm2 save
@@ -245,7 +241,7 @@ Configure PM2 to start on boot:
   become_user: "{{ app_user }}"
 ```
 
-The `pm2 startup` command generates a systemd unit file and provides a sudo command to install it. The `pm2 save` command dumps the current process list so PM2 can restore it on boot.
+The `pm2 startup` command generates and installs a systemd unit file when run with root privileges. The `pm2 save` command dumps the current process list so PM2 can restore it on boot.
 
 ## Monitoring PM2 Processes
 
@@ -361,13 +357,15 @@ Role tasks:
     repo: "{{ git_repo }}"
     dest: "{{ app_dir }}"
     version: "{{ app_version }}"
+  become: yes
   become_user: "{{ app_user }}"
   register: code_deploy
 
 - name: Install Node.js dependencies
-  ansible.builtin.command: npm ci --production
+  ansible.builtin.command: npm ci --omit=dev
   args:
     chdir: "{{ app_dir }}"
+  become: yes
   become_user: "{{ app_user }}"
   when: code_deploy.changed
 
@@ -376,20 +374,24 @@ Role tasks:
     src: ecosystem.config.js.j2
     dest: "{{ app_dir }}/ecosystem.config.js"
     owner: "{{ app_user }}"
+  become: yes
   register: ecosystem_changed
 
 - name: Start or reload PM2 processes
   ansible.builtin.command: "pm2 startOrReload {{ app_dir }}/ecosystem.config.js"
+  become: yes
   become_user: "{{ app_user }}"
   when: code_deploy.changed or ecosystem_changed.changed
 
 - name: Save PM2 process list
   ansible.builtin.command: pm2 save
+  become: yes
   become_user: "{{ app_user }}"
   when: code_deploy.changed or ecosystem_changed.changed
 
 - name: Verify processes are running
   ansible.builtin.command: pm2 jlist
+  become: yes
   become_user: "{{ app_user }}"
   register: pm2_verify
   changed_when: false

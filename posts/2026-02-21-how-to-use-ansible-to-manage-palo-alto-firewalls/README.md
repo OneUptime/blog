@@ -16,7 +16,7 @@ In this post, I will walk through setting up Ansible for Palo Alto management, w
 
 You need a few things before getting started:
 
-- Ansible 2.10 or later installed
+- Python 3.10 or later and ansible-core 2.16 or later installed
 - The `paloaltonetworks.panos` collection
 - API access enabled on your Palo Alto firewall
 - A service account with API privileges
@@ -219,20 +219,20 @@ NAT configuration is another frequent task. Here is how to set up a source NAT r
   tasks:
     # Create a source NAT rule for outbound internet access
     - name: Create source NAT for outbound traffic
-      panos_nat_rule:
+      panos_nat_rule2:
         provider:
           ip_address: "{{ panos_ip }}"
           username: "{{ panos_username }}"
           password: "{{ panos_password }}"
-        rule_name: "Outbound-SNAT"
+        name: "Outbound-SNAT"
         description: "Source NAT for outbound internet traffic"
-        source_zone: ["trust"]
-        destination_zone: ["untrust"]
-        source_ip: ["10.0.0.0/8"]
-        destination_ip: ["any"]
-        snat_type: "dynamic-ip-and-port"
-        snat_address_type: "interface-address"
-        snat_interface: "ethernet1/1"
+        from_zones: ["trust"]
+        to_zones: ["untrust"]
+        source_addresses: ["10.0.0.0/8"]
+        destination_addresses: ["any"]
+        source_translation_type: "dynamic-ip-and-port"
+        source_translation_address_type: "interface-address"
+        source_translation_interface: "ethernet1/1"
 ```
 
 ## Backing Up Configuration
@@ -262,13 +262,7 @@ Always back up your configuration before making changes. This playbook exports t
           username: "{{ panos_username }}"
           password: "{{ panos_password }}"
         category: "configuration"
-        filename: "running-config-{{ ansible_date_time.date }}.xml"
-      register: export_result
-
-    - name: Save config locally
-      copy:
-        content: "{{ export_result.stdout }}"
-        dest: "/backups/panos/{{ panos_ip }}-{{ ansible_date_time.date }}.xml"
+        filename: "/backups/panos/{{ panos_ip }}-{{ lookup('pipe', 'date +%F') }}.xml"
 ```
 
 ## Workflow for Production Changes
@@ -314,7 +308,7 @@ If you manage firewalls through Panorama, you can push configurations to device 
 A few things I have learned managing Palo Alto firewalls with Ansible in production:
 
 1. Always use `panos_commit_firewall` as a separate task so you can batch multiple changes before committing.
-2. Set `commit: false` on individual module calls when you are making multiple changes in the same playbook run.
+2. Avoid the deprecated `commit` option on individual module calls; use the dedicated commit modules when you are ready to commit.
 3. Use the `state: present` and `state: absent` parameters to make your playbooks idempotent.
 4. Test against a lab firewall or use the PAN-OS API simulator before touching production.
 5. Keep your firewall credentials in Ansible Vault and never hardcode them in playbooks.
