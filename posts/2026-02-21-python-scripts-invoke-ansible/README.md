@@ -143,7 +143,7 @@ def run_playbook_streaming(playbook, inventory, extra_vars=None):
 
 ## Wrapper with JSON Output
 
-Use Ansible's JSON callback for machine-readable output:
+Use Ansible's `ansible.posix` JSON callback for machine-readable output:
 
 ```python
 # json_ansible.py - Parse Ansible JSON output
@@ -155,7 +155,7 @@ import os
 def run_playbook_json(playbook, inventory, extra_vars=None):
     """Run playbook with JSON callback for structured output."""
     env = os.environ.copy()
-    env['ANSIBLE_STDOUT_CALLBACK'] = 'json'
+    env['ANSIBLE_STDOUT_CALLBACK'] = 'ansible.posix.json'
     env['ANSIBLE_LOAD_CALLBACK_PLUGINS'] = '1'
 
     cmd = ['ansible-playbook', playbook, '-i', inventory]
