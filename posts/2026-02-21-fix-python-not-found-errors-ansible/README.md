@@ -8,7 +8,7 @@ Description: Diagnose and fix common Python not found errors in Ansible, includi
 
 ---
 
-Few things are more frustrating than running an Ansible playbook and seeing "Python not found" or "/usr/bin/python: No such file or directory." These errors mean Ansible cannot locate a Python interpreter on the managed host, which prevents any module from running. The good news is that these errors are well-understood and have clear solutions. This guide covers every variation of the problem and how to fix each one.
+Few things are more frustrating than running an Ansible playbook and seeing "Python not found" or "/usr/bin/python: No such file or directory." These errors mean Ansible cannot locate a Python interpreter on the managed host, which prevents most POSIX modules from running. The good news is that these errors are well-understood and have clear solutions. This guide covers every variation of the problem and how to fix each one.
 
 ## Understanding the Error
 
@@ -109,10 +109,17 @@ Some minimal server images, Docker containers, and cloud instances ship without 
 
   tasks:
     - name: Install Python 3
-      ansible.builtin.raw: dnf install -y python3
+      ansible.builtin.raw: |
+        if command -v dnf >/dev/null 2>&1; then
+          dnf install -y python3
+        else
+          yum install -y python3
+        fi
       become: true
       register: result
-      changed_when: "'Nothing to do' not in result.stdout"
+      changed_when:
+        - "'Nothing to do' not in result.stdout"
+        - "'Nothing to do' not in result.stderr"
 ```
 
 ### Bootstrap Python on Alpine Linux
@@ -185,7 +192,7 @@ However, the better fix is to set `ansible_python_interpreter` correctly rather 
 
 ## Fix 6: Wrong Python Version for a Module
 
-Some Ansible modules require specific Python packages. For example, the `apt` module needs `python3-apt`, and the `dnf` module needs the `dnf` Python bindings.
+Some Ansible modules require specific Python packages. For example, the `apt` module needs `python3-apt`, and the `dnf` module needs `python3-dnf`.
 
 ```text
 web01 | FAILED! => {
@@ -211,7 +218,12 @@ For SELinux-related module failures on RHEL/CentOS:
 
 ```yaml
 - name: Install SELinux Python bindings
-  ansible.builtin.raw: dnf install -y python3-libselinux
+  ansible.builtin.raw: |
+    if command -v dnf >/dev/null 2>&1; then
+      dnf install -y python3-libselinux
+    else
+      yum install -y python3-libselinux
+    fi
   become: true
 ```
 
@@ -258,7 +270,12 @@ Here is a complete playbook that handles Python bootstrapping across multiple di
         - "'debian' in os_family.stdout"
 
     - name: Install Python on RHEL/CentOS
-      ansible.builtin.raw: dnf install -y python3
+      ansible.builtin.raw: |
+        if command -v dnf >/dev/null 2>&1; then
+          dnf install -y python3
+        else
+          yum install -y python3
+        fi
       when:
         - python3_check.rc != 0
         - "'redhat' in os_family.stdout"
