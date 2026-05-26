@@ -8,7 +8,7 @@ Description: Learn how to control parallel execution in Ansible ad hoc commands 
 
 ---
 
-By default, Ansible executes tasks on 5 hosts simultaneously. If you have 100 servers, that means 20 rounds of execution, with each round waiting for all 5 hosts to complete before starting the next batch. For simple tasks like checking uptime or pinging hosts, this default is painfully slow. The `-f` (forks) parameter lets you crank up the parallelism.
+By default, Ansible uses 5 parallel worker processes. If you have 100 servers, that means roughly 20 waves of execution, with new hosts starting as worker processes become available. For simple tasks like checking uptime or pinging hosts, this default is painfully slow. The `-f` (forks) parameter lets you crank up the parallelism.
 
 ## Understanding Forks
 
@@ -151,13 +151,13 @@ ansible all -m copy -a "src=./large_file.tar.gz dest=/tmp/" -f 3
 ```bash
 # Restart in small batches, checking health between batches
 # Batch 1: first 3 servers
-ansible webservers -m service -a "name=nginx state=restarted" --become -f 3 --limit 'web[1:3]'
+ansible webservers -m service -a "name=nginx state=restarted" --become -f 3 --limit 'web[0:2]'
 
 # Verify health
-ansible webservers -m shell -a "curl -s -o /dev/null -w '%{http_code}' http://localhost/" --limit 'web[1:3]'
+ansible webservers -m shell -a "curl -s -o /dev/null -w '%{http_code}' http://localhost/" --limit 'web[0:2]'
 
 # Batch 2: next 3 servers
-ansible webservers -m service -a "name=nginx state=restarted" --become -f 3 --limit 'web[4:6]'
+ansible webservers -m service -a "name=nginx state=restarted" --become -f 3 --limit 'web[3:5]'
 ```
 
 ## Forks with Different Task Types
@@ -239,8 +239,8 @@ ansible all -m ping -f 100 -T 60
 # [defaults]
 # timeout = 60
 
-# You can also increase the command timeout for long-running operations
-ansible all -m shell -a "find / -name '*.log' -mtime +30" -f 50 -e "ansible_command_timeout=300"
+# You can also increase the task timeout for long-running operations
+ansible all -m shell -a "find / -name '*.log' -mtime +30" -f 50 --task-timeout 300
 ```
 
 ## Practical Script: Auto-Scaling Forks
