@@ -237,7 +237,7 @@ You can include version numbers in the creates path to re-run commands when the 
 
     - name: Mark version as installed
       ansible.builtin.copy:
-        content: "{{ app_version }} installed on {{ ansible_date_time.iso8601 }}"
+        content: "installed\n"
         dest: "/opt/myapp/version-{{ app_version }}.installed"
 ```
 
