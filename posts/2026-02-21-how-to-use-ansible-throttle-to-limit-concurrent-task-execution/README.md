@@ -56,7 +56,7 @@ Add `throttle` to any task to limit its concurrency:
         headers:
           Authorization: "Bearer {{ monitoring_api_token }}"
       throttle: 3  # Only 3 hosts call the API at a time
-      # The API has a rate limit of 5 requests/second
+      # Limits concurrency; use retries or delays for a strict per-second rate limit
 
     - name: Start monitoring agent
       systemd:
@@ -74,7 +74,7 @@ These three settings control concurrency at different levels:
 |---------|-------|--------|
 | `forks` | Global | Max parallel hosts across all tasks |
 | `serial` | Play level | How many hosts complete the entire play before the next batch |
-| `throttle` | Task level | Max parallel hosts for one specific task |
+| `throttle` | Task, block, or play level | Max parallel hosts for the tasks in that scope |
 
 ```yaml
 # comparison.yml - Showing all three in action
@@ -153,7 +153,7 @@ When running tasks that connect to a shared database, you need to limit concurre
 
 ## Throttle with External Service Rate Limits
 
-Many external services have rate limits. Use throttle to stay within them:
+Many external services have rate limits. Use throttle to reduce request bursts:
 
 ```yaml
 # rate-limited-api.yml - Respect API rate limits
@@ -162,8 +162,8 @@ Many external services have rate limits. Use throttle to stay within them:
   hosts: all
 
   tasks:
-    # CloudFlare API rate limit: 1200 requests per 5 minutes
-    # With 200 servers, we need to throttle
+    # Cloudflare API rate limit: 1200 requests per 5 minutes per user/account token
+    # With a large inventory, throttling reduces bursts against the API
     - name: Create DNS A record
       uri:
         url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/dns_records"
@@ -176,8 +176,8 @@ Many external services have rate limits. Use throttle to stay within them:
           ttl: 300
         headers:
           Authorization: "Bearer {{ cf_api_token }}"
-        status_code: [200, 409]  # 409 = already exists
-      throttle: 10  # 10 concurrent requests keeps us well under the rate limit
+        status_code: [200]
+      throttle: 10  # 10 concurrent requests reduces API burst pressure
 
     # AWS API rate limits are per-service
     - name: Tag EC2 instance
@@ -185,7 +185,7 @@ Many external services have rate limits. Use throttle to stay within them:
         aws ec2 create-tags
         --resources {{ ec2_instance_id }}
         --tags Key=Environment,Value=production
-      throttle: 5  # AWS EC2 API throttles at roughly 10 req/s
+      throttle: 5  # CreateTags has a documented refill rate of 10 requests/second
       changed_when: false
 ```
 
@@ -310,10 +310,11 @@ ansible-playbook -e target_env=development deploy.yml
 When tasks are throttled, they can take a while. Here is how to track progress:
 
 ```bash
-# Run with verbose output to see which hosts are waiting
+# Run with verbose output to see more task execution detail
 ansible-playbook -v throttled-deploy.yml
 
-# The output shows which hosts are active and which are queued:
+# The output shows hosts as they return results; Ansible does not print
+# an explicit waiting queue for throttled hosts:
 # TASK [Register with monitoring API] *******************************************
 # ok: [web1.example.com]
 # ok: [web2.example.com]
@@ -325,4 +326,4 @@ ansible-playbook -v throttled-deploy.yml
 
 ## Summary
 
-The `throttle` directive gives you task-level concurrency control that `forks` and `serial` cannot provide. Use it to protect shared resources like databases and APIs, respect external rate limits, and control the blast radius of risky operations. It works on individual tasks, blocks, and within roles. Set the value based on the resource constraints of whatever the task is interacting with, and use variables to adjust it per environment.
+The `throttle` directive gives you task-level concurrency control that `forks` and `serial` cannot provide. Use it to protect shared resources like databases and APIs, reduce bursts against external services, and control the blast radius of risky operations. It works on individual tasks, blocks, and within roles. Set the value based on the resource constraints of whatever the task is interacting with, and use variables to adjust it per environment.
