@@ -144,6 +144,8 @@ The `serial` directive controls how many hosts are updated at once in a rolling 
       ansible.builtin.uri:
         url: "http://{{ inventory_hostname }}:3000/health"
         status_code: 200
+      register: health_check
+      until: health_check.status == 200
       retries: 10
       delay: 5
 
@@ -307,7 +309,7 @@ Track what is happening across hosts using callback plugins:
 ```ini
 # ansible.cfg - use timer and profile callbacks to monitor parallel execution
 [defaults]
-callback_whitelist = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 
 [callback_profile_tasks]
 task_output_limit = 20
