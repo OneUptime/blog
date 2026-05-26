@@ -110,7 +110,7 @@ resource "aws_athena_workgroup" "cost_controlled" {
     # Publish query metrics to CloudWatch
     publish_cloudwatch_metrics_enabled = true
 
-    # Limit the number of concurrent queries
+    # Limit the amount of data a single query can scan
     bytes_scanned_cutoff_per_query = 10737418240  # 10 GB per query
 
     result_configuration {
@@ -134,7 +134,7 @@ resource "aws_athena_workgroup" "cost_controlled" {
 }
 ```
 
-The `bytes_scanned_cutoff_per_query` parameter is your safety net. If a query would scan more than 10 GB, Athena cancels it before it starts. This is useful for preventing accidental full-table scans on multi-terabyte datasets. The value is in bytes, so 10737418240 equals 10 GB.
+The `bytes_scanned_cutoff_per_query` parameter is your safety net. If a query scans more than 10 GB, Athena cancels it. This is useful for limiting accidental full-table scans on multi-terabyte datasets. The value is in bytes, so 10737418240 equals 10 GB.
 
 Note that Athena also supports workgroup-level data usage controls through CloudWatch alarms, but those are configured outside the workgroup resource itself.
 
@@ -285,19 +285,44 @@ resource "aws_iam_policy" "athena_analytics_access" {
         Resource = ["*"]
       },
       {
-        # Allow reading source data and writing results
+        # Allow reading source data
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:ListBucket",
-          "s3:PutObject"
+          "s3:ListBucket"
         ]
         Resource = [
           "arn:aws:s3:::my-data-lake-bucket",
-          "arn:aws:s3:::my-data-lake-bucket/*",
-          "arn:aws:s3:::my-company-athena-results",
+          "arn:aws:s3:::my-data-lake-bucket/*"
+        ]
+      },
+      {
+        # Allow reading and writing query results
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = [
           "arn:aws:s3:::my-company-athena-results/analytics/*"
         ]
+      },
+      {
+        # Allow listing the query results prefix
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::my-company-athena-results"
+        ]
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              "analytics/*"
+            ]
+          }
+        }
       }
     ]
   })
@@ -311,7 +336,7 @@ This policy ensures users can only execute queries through the `analytics` workg
 When you enable `publish_cloudwatch_metrics_enabled`, Athena publishes several metrics per workgroup. You can create alarms to catch spending spikes:
 
 ```hcl
-# CloudWatch alarm when total data scanned exceeds threshold
+# CloudWatch alarm when successful DML query data scanned exceeds threshold
 resource "aws_cloudwatch_metric_alarm" "athena_data_scanned" {
   alarm_name          = "athena-analytics-high-scan"
   comparison_operator = "GreaterThanThreshold"
@@ -323,12 +348,14 @@ resource "aws_cloudwatch_metric_alarm" "athena_data_scanned" {
   threshold           = 107374182400  # 100 GB per hour
 
   dimensions = {
-    WorkGroup = aws_athena_workgroup.analytics_team.name
+    WorkGroup  = aws_athena_workgroup.analytics_team.name
+    QueryState = "SUCCEEDED"
+    QueryType  = "DML"
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
 
-  alarm_description = "Alert when analytics team scans more than 100 GB in an hour"
+  alarm_description = "Alert when analytics team successful DML queries scan more than 100 GB in an hour"
 
   tags = {
     ManagedBy = "terraform"
@@ -341,16 +368,14 @@ resource "aws_cloudwatch_metric_alarm" "athena_data_scanned" {
 Athena supports prepared statements within workgroups, which are useful for parameterized queries that run frequently:
 
 ```hcl
-resource "aws_athena_named_query" "top_events" {
-  name        = "top-events-by-type"
-  workgroup   = aws_athena_workgroup.analytics_team.name
-  database    = "events_db"
-  description = "Get top events by type for a given date range"
-
-  query = <<-EOT
+resource "aws_athena_prepared_statement" "top_events" {
+  name            = "top_events_by_type"
+  workgroup       = aws_athena_workgroup.analytics_team.name
+  description     = "Get top events by type for a given date range"
+  query_statement = <<-EOT
     SELECT event_type, COUNT(*) as event_count
-    FROM events
-    WHERE event_date BETWEEN DATE '2024-01-01' AND DATE '2024-12-31'
+    FROM events_db.events
+    WHERE event_date BETWEEN ? AND ?
     GROUP BY event_type
     ORDER BY event_count DESC
     LIMIT 100
@@ -358,7 +383,7 @@ resource "aws_athena_named_query" "top_events" {
 }
 ```
 
-Named queries stored in a workgroup show up for all users of that workgroup, making it easy to share commonly used queries.
+Prepared statements are stored in a workgroup and can be reused with different parameter values for commonly run queries.
 
 ## Wrapping Up
 
