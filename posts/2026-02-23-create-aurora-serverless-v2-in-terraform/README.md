@@ -8,7 +8,7 @@ Description: Learn how to deploy Aurora Serverless v2 with Terraform for automat
 
 ---
 
-Aurora Serverless v2 is the database equivalent of "set it and forget it" scaling. Instead of choosing a fixed instance size and hoping it is the right one, you define a minimum and maximum capacity range in Aurora Capacity Units (ACUs), and the database scales up and down within that range based on actual demand. Scaling happens in increments of 0.5 ACU and takes effect in seconds, not minutes.
+Aurora Serverless v2 is the database equivalent of "set it and forget it" scaling. Instead of choosing a fixed instance size and hoping it is the right one, you define a minimum and maximum capacity range in Aurora Capacity Units (ACUs), and the database scales up and down within that range based on actual demand. Scaling happens in increments as small as 0.5 ACU and can respond quickly, though the time to scale from minimum to maximum depends on the size of the capacity range.
 
 This is different from the original Aurora Serverless v1, which had significant limitations like cold starts, limited availability zones, and no read replicas. V2 fixes all of that. It runs in your VPC just like provisioned Aurora, supports Multi-AZ, and can mix serverless and provisioned instances in the same cluster.
 
@@ -16,10 +16,10 @@ This is different from the original Aurora Serverless v1, which had significant 
 
 An Aurora Capacity Unit (ACU) is roughly equivalent to 2GB of memory and corresponding CPU. The range you can configure is:
 
-- **Minimum**: 0.5 ACU (1GB memory) - the lowest your cluster will scale to
-- **Maximum**: 128 ACU (256GB memory) - the ceiling for scaling
+- **Minimum**: 0.5 ACU (1GB memory), or 0 ACU on engine versions that support auto-pause - the lowest your cluster will scale to
+- **Maximum**: 256 ACU (512GB memory) - the ceiling for scaling, depending on engine version and platform version
 
-You pay for the ACUs you actually use, measured per second. When your database is idle, it scales down to the minimum. When a traffic spike hits, it scales up within seconds.
+You pay for the ACUs you actually use, measured per second. When your database is idle, it scales down to the minimum. When a traffic spike hits, it scales up as needed within the configured range.
 
 ## Basic Aurora Serverless V2 Cluster
 
@@ -108,7 +108,7 @@ resource "aws_rds_cluster_instance" "serverless_reader" {
   monitoring_role_arn          = aws_iam_role.rds_monitoring.arn
 
   publicly_accessible = false
-  promotion_tier      = 1
+  promotion_tier      = 1  # Scales with the writer for faster failover readiness
 
   tags = {
     Name = "myapp-serverless-reader"
@@ -189,7 +189,7 @@ resource "aws_rds_cluster_instance" "serverless_readers" {
   engine_version = aws_rds_cluster.mixed.engine_version
 
   performance_insights_enabled = true
-  promotion_tier               = count.index + 1
+  promotion_tier               = count.index + 2  # Tiers 2-15 scale independently from the writer
 
   tags = {
     Name = "myapp-serverless-reader-${count.index}"
@@ -214,11 +214,11 @@ locals {
       max = 64   # Allow scaling up to 64 ACU (128GB memory)
     }
     staging = {
-      min = 0.5  # Scale down fully when idle
+      min = 0.5  # Scale down to the smallest non-paused capacity when idle
       max = 8    # Cap at 8 ACU
     }
     development = {
-      min = 0.5  # Minimum possible
+      min = 0.5  # Minimum for engine versions that do not support auto-pause
       max = 2    # Keep costs low
     }
   }
@@ -351,7 +351,7 @@ output "cluster_arn" {
 
 Use Serverless v2 when your workload is unpredictable, has significant idle periods, or varies widely throughout the day. It is great for development environments, staging, and production workloads with variable traffic patterns.
 
-Stick with provisioned instances when your workload is steady and predictable. If you consistently use 16 ACU worth of capacity, a provisioned `db.r6g.xlarge` (4 vCPU, 32GB) would cost less and give you the same performance.
+Stick with provisioned instances when your workload is steady and predictable. If you consistently use around 16 ACU worth of capacity, a provisioned `db.r6g.xlarge` (4 vCPU, 32GB) may be cheaper depending on Region, engine, utilization pattern, and current AWS pricing.
 
 The mixed cluster approach gives you the best of both worlds and is often the right choice for production.
 
