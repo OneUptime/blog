@@ -140,9 +140,14 @@ The `register` keyword stores the command output, which you can use in subsequen
       ansible.builtin.debug:
         msg: "{{ sysinfo.stdout_lines | select('match', '.*OS Name.*') | list }}"
 
-    # Check disk space using wmic
+    # Check disk space using PowerShell CIM cmdlets
     - name: Check disk space
-      ansible.windows.win_command: wmic logicaldisk get size,freespace,caption
+      ansible.windows.win_command:
+        argv:
+          - powershell.exe
+          - -NoProfile
+          - -Command
+          - Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,FreeSpace,Size | Format-Table -AutoSize
       register: disk_info
 
     - name: Display disk information
@@ -204,8 +209,12 @@ Here is a complete playbook that runs a health check across your Windows fleet.
       register: uptime_info
 
     - name: Check available memory
-      ansible.windows.win_command: >
-        wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /value
+      ansible.windows.win_command:
+        argv:
+          - powershell.exe
+          - -NoProfile
+          - -Command
+          - Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory,TotalVisibleMemorySize | Format-List
       register: memory_info
 
     - name: Check critical services
@@ -247,8 +256,8 @@ sequenceDiagram
 
 There are a few things that trip people up when using `win_command`:
 
-1. **No shell features**: You cannot use `|`, `>`, `<`, or `&&` in the command. If you need those, use `win_shell`.
-2. **No environment variable expansion**: `%TEMP%` will not expand. Use the `environment` keyword in the task instead.
+1. **No shell features**: You cannot use `|`, `>`, `<`, or `&&` as shell operators in the command. If you need those, use `win_shell` or explicitly run a shell executable.
+2. **No environment variable expansion**: Shell-specific variables such as `$env:TEMP` or `%TEMP%` will not expand. Use the `environment` keyword in the task instead.
 3. **Path separators**: Use backslashes for Windows paths, or forward slashes which Windows also accepts.
 4. **Long commands**: If your command is getting complex, consider writing a PowerShell script and using `win_script` instead.
 
