@@ -8,17 +8,17 @@ Description: Configure Ansible to use pfexec for privilege escalation on Oracle 
 
 ---
 
-If you manage Oracle Solaris or illumos-based systems (like OmniOS, SmartOS, or OpenIndiana), you are likely familiar with `pfexec`. It is the Solaris way of executing commands with elevated privileges using the Role-Based Access Control (RBAC) framework. Unlike sudo, which grants all-or-nothing root access, pfexec uses fine-grained profiles and authorizations to give users exactly the privileges they need.
+If you manage Oracle Solaris or illumos-based systems (like OmniOS, SmartOS, or OpenIndiana), you are likely familiar with `pfexec`. It is the Solaris way of executing commands with elevated privileges using the Role-Based Access Control (RBAC) framework. Like a carefully scoped sudoers policy, pfexec uses fine-grained profiles and authorizations to give users exactly the privileges they need.
 
-Ansible supports `pfexec` as a `become_method`, so you can manage Solaris systems without installing sudo.
+Ansible supports `pfexec` as a `become_method`, so you can manage Solaris systems without installing sudo. In current Ansible releases, the pfexec become plugin is provided by the `community.general` collection, which is included in the full `ansible` package but not in `ansible-core`.
 
 ## Understanding pfexec and Solaris RBAC
 
 Solaris RBAC works through a hierarchy of concepts:
 
 - **Authorizations**: Granular permissions (like `solaris.smf.manage`)
-- **Execution Profiles**: Collections of commands with specific privileges
-- **Roles**: Named collections of profiles assigned to users
+- **Rights Profiles**: Collections of commands and authorizations with specific security attributes
+- **Roles**: Special accounts that users can assume and that can have rights profiles assigned
 
 When a user runs `pfexec command`, the RBAC framework checks whether that user has a profile that grants permission to run that command with elevated privileges.
 
@@ -40,8 +40,8 @@ Before Ansible can use pfexec, the remote Solaris host needs to grant the approp
 ```bash
 # On the Solaris host, assign the Primary Administrator profile to the deploy user
 
-# This gives full root-equivalent access through pfexec
-usermod -P 'Primary Administrator' deploy
+# This gives broad administrative access through pfexec
+usermod -K profiles+='Primary Administrator' deploy
 
 # Verify the assignment
 profiles deploy
@@ -54,7 +54,7 @@ For more restrictive access, assign specific profiles instead of Primary Adminis
 
 ```bash
 # Assign only the profiles Ansible needs
-usermod -P 'Software Installation,Service Management,File System Management' deploy
+usermod -K profiles+='Software Installation,Service Management,File System Management' deploy
 
 # Verify
 profiles deploy
@@ -72,6 +72,8 @@ become_method = pfexec
 become_user = root
 become_ask_pass = false
 ```
+
+If you are using only `ansible-core`, install the collection first with `ansible-galaxy collection install community.general` and use `community.general.pfexec` as the method name. The `become_user` setting defaults to `root`, but the pfexec plugin relies on Solaris `exec_attr` entries to decide the effective identity for each command.
 
 In your inventory:
 
@@ -160,14 +162,14 @@ Solaris uses the Service Management Facility (SMF) instead of systemd. Here is h
   become_method: pfexec
 
   tasks:
-    - name: List running services
-      ansible.builtin.command: svcs -a
-      register: all_services
+    - name: Check SSH service state
+      ansible.builtin.command: svcs -H -o state svc:/network/ssh:default
+      register: ssh_state
       changed_when: false
 
     - name: Enable SSH service
       ansible.builtin.command: svcadm enable svc:/network/ssh:default
-      when: "'ssh' not in all_services.stdout"
+      when: ssh_state.stdout | trim != 'online'
 
     - name: Configure DNS client
       ansible.builtin.template:
@@ -193,30 +195,30 @@ Solaris uses the Service Management Facility (SMF) instead of systemd. Here is h
 
 ## RBAC Profile Configuration
 
-For tighter security, create a custom RBAC profile specifically for Ansible operations.
+For tighter security, create a custom RBAC profile for direct command operations that you run through Ansible.
 
 ```bash
 # On the Solaris host, create a custom execution profile
 
-# Add profile definition to /etc/security/prof_attr
-echo "Ansible Automation:::Profile for Ansible automation:" >> /etc/security/prof_attr
-
-# Add command authorizations to /etc/security/exec_attr
-cat >> /etc/security/exec_attr << 'EOF'
-Ansible Automation:solaris:cmd:::/usr/bin/pkg:uid=0
-Ansible Automation:solaris:cmd:::/usr/sbin/svcadm:uid=0
-Ansible Automation:solaris:cmd:::/usr/bin/cp:uid=0
-Ansible Automation:solaris:cmd:::/usr/bin/mv:uid=0
-Ansible Automation:solaris:cmd:::/usr/bin/mkdir:uid=0
-Ansible Automation:solaris:cmd:::/usr/bin/chmod:uid=0
-Ansible Automation:solaris:cmd:::/usr/bin/chown:uid=0
+# Create the rights profile and add command entries
+profiles -p 'Ansible Automation' << 'EOF'
+set desc="Profile for Ansible automation"
+add cmd=/usr/bin/pkg
+set uid=0
+end
+add cmd=/usr/sbin/svcadm
+set uid=0
+end
+add cmd=/usr/sbin/svccfg
+set uid=0
+end
 EOF
 
 # Assign the profile to the deploy user
-usermod -P 'Ansible Automation' deploy
+usermod -K profiles+='Ansible Automation' deploy
 ```
 
-This approach gives the deploy user root-level access only for the specific commands Ansible needs, which is much more secure than granting the Primary Administrator profile.
+This approach gives the deploy user root-level access only for those specific command paths, which is much more secure than granting the Primary Administrator profile for command-only automation. For general Ansible modules such as `file`, `copy`, and `template`, Ansible executes temporary module code on the remote host, so command-path-limited escalation is not sufficient; use a rights profile broad enough to run the module interpreter and temporary module code.
 
 ## Task-Level become_method
 
