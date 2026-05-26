@@ -183,8 +183,10 @@ Wait for connection at a new IP address:
     dest: /etc/network/interfaces
 
 - name: Apply and reboot
-  ansible.builtin.reboot:
-    reboot_timeout: 600
+  ansible.builtin.command: /sbin/reboot
+  async: 1
+  poll: 0
+  ignore_errors: yes
 
 - name: Wait for host at new IP
   ansible.builtin.wait_for_connection:
@@ -219,9 +221,9 @@ Rolling reboot with health checks:
   max_fail_percentage: 0
 
   tasks:
-    - name: Record pre-reboot uptime
-      ansible.builtin.command: cat /proc/uptime
-      register: pre_uptime
+    - name: Record pre-reboot boot ID
+      ansible.builtin.command: cat /proc/sys/kernel/random/boot_id
+      register: pre_boot_id
       changed_when: false
 
     - name: Reboot the node
@@ -236,15 +238,15 @@ Rolling reboot with health checks:
         timeout: 120
 
     - name: Verify the host actually rebooted
-      ansible.builtin.command: cat /proc/uptime
-      register: post_uptime
+      ansible.builtin.command: cat /proc/sys/kernel/random/boot_id
+      register: post_boot_id
       changed_when: false
 
     - name: Confirm reboot happened
       ansible.builtin.assert:
         that:
-          - "post_uptime.stdout.split('.')[0] | int < pre_uptime.stdout.split('.')[0] | int"
-        fail_msg: "Server does not appear to have rebooted (uptime did not reset)"
+          - post_boot_id.stdout != pre_boot_id.stdout
+        fail_msg: "Server does not appear to have rebooted (boot ID did not change)"
 
     - name: Wait for all services to come up
       ansible.builtin.wait_for:
@@ -330,6 +332,7 @@ Handle cloud instance restart with changing IPs:
 - name: Update host address with new public IP
   ansible.builtin.set_fact:
     ansible_host: "{{ ec2_start.instances[0].public_ip_address }}"
+  delegate_to: localhost
 
 - name: Wait for SSH on new IP
   ansible.builtin.wait_for_connection:
