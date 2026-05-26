@@ -52,7 +52,7 @@ phases:
       python: 3.11
     commands:
       # Install Ansible and required tools
-      - pip install ansible==8.7.0 ansible-lint
+      - pip install ansible==13.7.0 ansible-lint
       - ansible-galaxy collection install -r requirements.yml
       - ansible --version
 
@@ -62,6 +62,7 @@ phases:
       - mkdir -p ~/.ssh
       - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
       - chmod 600 ~/.ssh/id_rsa
+      - TARGET_HOST=$(aws ssm get-parameter --name "/ansible/${ENVIRONMENT}/target_host" --query 'Parameter.Value' --output text)
       - ssh-keyscan -H $TARGET_HOST >> ~/.ssh/known_hosts 2>/dev/null
       # Write vault password
       - echo "$ANSIBLE_VAULT_PASSWORD" > /tmp/vault_pass.txt
@@ -102,7 +103,7 @@ phases:
     runtime-versions:
       python: 3.11
     commands:
-      - pip install ansible==8.7.0 ansible-lint
+      - pip install ansible==13.7.0 ansible-lint
 
   build:
     commands:
@@ -119,15 +120,13 @@ env:
   secrets-manager:
     SSH_PRIVATE_KEY: "ansible-secrets:ssh_private_key"
     ANSIBLE_VAULT_PASSWORD: "ansible-secrets:vault_password"
-  parameter-store:
-    TARGET_HOST: "/ansible/${ENVIRONMENT}/target_host"
 
 phases:
   install:
     runtime-versions:
       python: 3.11
     commands:
-      - pip install ansible==8.7.0
+      - pip install ansible==13.7.0
       - ansible-galaxy collection install -r requirements.yml
 
   pre_build:
@@ -135,6 +134,7 @@ phases:
       - mkdir -p ~/.ssh
       - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
       - chmod 600 ~/.ssh/id_rsa
+      - TARGET_HOST=$(aws ssm get-parameter --name "/ansible/${ENVIRONMENT}/target_host" --query 'Parameter.Value' --output text)
       - ssh-keyscan -H $TARGET_HOST >> ~/.ssh/known_hosts 2>/dev/null
       - echo "$ANSIBLE_VAULT_PASSWORD" > /tmp/vault_pass.txt
 
@@ -153,20 +153,12 @@ phases:
 
 ## Setting Up the Pipeline with CloudFormation
 
-Here is a CloudFormation template that creates the full pipeline.
+Here is a CloudFormation template that creates the CodeBuild projects used by the pipeline.
 
 ```yaml
 # cloudformation/pipeline.yml
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Ansible deployment pipeline
-
-Parameters:
-  GitHubRepo:
-    Type: String
-    Description: GitHub repository name
-  GitHubBranch:
-    Type: String
-    Default: main
 
 Resources:
   # IAM role for CodeBuild
@@ -210,10 +202,12 @@ Resources:
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec-lint.yml
+      Artifacts:
+        Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Image: aws/codebuild/amazonlinux-x86_64-standard:5.0
 
   # CodeBuild project for staging deployment
   StagingProject:
@@ -224,10 +218,12 @@ Resources:
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec-deploy.yml
+      Artifacts:
+        Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Image: aws/codebuild/amazonlinux-x86_64-standard:5.0
         EnvironmentVariables:
           - Name: ENVIRONMENT
             Value: staging
@@ -241,10 +237,12 @@ Resources:
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec-deploy.yml
+      Artifacts:
+        Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Image: aws/codebuild/amazonlinux-x86_64-standard:5.0
         EnvironmentVariables:
           - Name: ENVIRONMENT
             Value: production
@@ -317,10 +315,10 @@ StagingProject:
     VpcConfig:
       VpcId: vpc-12345678
       Subnets:
-        - subnet-private-1
-        - subnet-private-2
+        - subnet-0123456789abcdef0
+        - subnet-0fedcba9876543210
       SecurityGroupIds:
-        - sg-codebuild
+        - sg-0123456789abcdef0
 ```
 
 ## Tips for AWS CodePipeline with Ansible
@@ -328,8 +326,8 @@ StagingProject:
 1. Use AWS Secrets Manager for SSH keys and vault passwords. The CodeBuild buildspec can reference secrets directly.
 2. IAM roles control what CodeBuild can access. Follow least privilege and only grant access to the specific secrets and parameters needed.
 3. CodeBuild runs in isolated containers. Each build starts fresh, so there is no state leakage between runs.
-4. For private infrastructure, put CodeBuild in the same VPC as your targets. This avoids needing public IP addresses.
+4. For private infrastructure, put CodeBuild in the same VPC as your targets and provide NAT or VPC endpoints for AWS service access. This avoids needing public IP addresses on the targets.
 5. Use SSM Parameter Store for non-sensitive, per-environment configuration. It is cheaper than Secrets Manager for simple string values.
-6. Manual approval actions in CodePipeline send SNS notifications. Set up the SNS topic to email your team.
+6. Manual approval actions in CodePipeline can send SNS notifications when you configure an SNS topic. Set up the SNS topic to email your team.
 
 AWS CodePipeline with CodeBuild gives you a fully managed deployment pipeline for Ansible. The native integration with IAM, Secrets Manager, and VPC makes it particularly well-suited for AWS-heavy environments.
