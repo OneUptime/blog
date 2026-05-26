@@ -64,6 +64,7 @@ Install the SELinux dependencies on your managed nodes:
       ansible.builtin.dnf:
         name:
           - python3-libselinux
+          - python3-libsemanage
           - python3-policycoreutils
           - policycoreutils-python-utils
         state: present
@@ -73,6 +74,7 @@ Install the SELinux dependencies on your managed nodes:
       ansible.builtin.yum:
         name:
           - libselinux-python
+          - libsemanage-python
           - policycoreutils-python
         state: present
       when: ansible_os_family == "RedHat" and ansible_distribution_major_version | int == 7
@@ -180,7 +182,7 @@ ansible-galaxy collection install ansible.posix
 
 ## Managing SELinux Ports with become
 
-If you run services on non-standard ports, you need to tell SELinux about it. For example, running a web server on port 8443 instead of 443 requires adding that port to the `http_port_t` type.
+If you run services on non-standard ports, you need to tell SELinux about it. For example, running a web server on port 3131 instead of 443 requires adding that port to the `http_port_t` type.
 
 ```yaml
 ---
@@ -189,9 +191,9 @@ If you run services on non-standard ports, you need to tell SELinux about it. Fo
   hosts: webservers
   become: true
   tasks:
-    - name: Allow Nginx to listen on port 8443
+    - name: Allow Nginx to listen on port 3131
       community.general.seport:
-        ports: 8443
+        ports: 3131
         proto: tcp
         setype: http_port_t
         state: present
@@ -211,6 +213,13 @@ If you run services on non-standard ports, you need to tell SELinux about it. Fo
     - name: Show HTTP ports
       ansible.builtin.debug:
         msg: "{{ port_list.stdout_lines | select('search', 'http_port_t') | list }}"
+```
+
+The `community.general.seport` module requires the `community.general` collection:
+
+```bash
+# Install the community.general collection
+ansible-galaxy collection install community.general
 ```
 
 ## Handling become with Custom SELinux Policies
