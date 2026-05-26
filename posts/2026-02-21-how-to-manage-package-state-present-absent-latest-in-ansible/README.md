@@ -8,7 +8,7 @@ Description: Understand the differences between present, absent, and latest pack
 
 ---
 
-Every Ansible package module has a `state` parameter that controls what should happen to a package. The three most common values are `present`, `absent`, and `latest`, but there are additional states for specific package managers. Understanding when to use each state is fundamental to writing reliable playbooks that do not surprise you with unintended changes. This post breaks down each state with practical examples and guidance on when to use which.
+Most Ansible package modules have a `state` parameter that controls what should happen to a package. The three most common values are `present`, `absent`, and `latest`, but there are additional states for specific package managers. Understanding when to use each state is fundamental to writing reliable playbooks that do not surprise you with unintended changes. This post breaks down each state with practical examples and guidance on when to use which.
 
 ## state: present
 
@@ -26,7 +26,7 @@ The `present` state is the most commonly used and safest option. It means "make 
 Key behaviors:
 
 - If the package is not installed, it gets installed (the latest version available in the repository at that moment)
-- If the package is already installed at any version, nothing happens
+- If the package is already installed at any version, nothing happens unless you specify an exact version in the package name
 - The task reports "changed" only when it actually installs something
 
 This is the right choice for most production playbooks. You want deterministic behavior, and `present` gives you that. Once a package is installed, it stays at whatever version was installed, regardless of what is available in the repository.
@@ -60,7 +60,7 @@ For a complete removal including config files on Debian/Ubuntu, combine with `pu
     purge: yes
 ```
 
-On RHEL, `state: absent` always removes everything (there is no separate purge concept).
+On RHEL, `state: absent` removes the package, but there is no separate apt-style purge option. Modified RPM configuration files can still be preserved with a `.rpmsave` suffix.
 
 ## state: latest
 
@@ -270,21 +270,21 @@ Before making changes, you can inspect what is installed:
 
 ## Using state with the package Module
 
-The cross-platform `package` module supports the same states:
+The cross-platform `package` module supports `present` and `absent` across package managers. You can also use states like `latest` when the underlying package module supports them:
 
 ```yaml
 # Cross-platform package state management
-- name: Install git on any distribution
+- name: Install git on any supported distribution
   ansible.builtin.package:
     name: git
     state: present
 
-- name: Upgrade curl on any distribution
+- name: Upgrade curl when the underlying package manager supports latest
   ansible.builtin.package:
     name: curl
     state: latest
 
-- name: Remove telnet on any distribution
+- name: Remove telnet on any supported distribution
   ansible.builtin.package:
     name: telnet
     state: absent
