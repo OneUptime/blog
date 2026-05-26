@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible synchronize module to efficiently sync
 
 ---
 
-The `synchronize` module is Ansible's wrapper around rsync, the gold standard for efficient file synchronization. While the `copy` module works fine for individual files or small directories, it falls apart when you need to sync large directory trees because it checks and transfers each file individually over SSH. The `synchronize` module leverages rsync's delta transfer algorithm, only sending the differences between source and destination files, making subsequent syncs extremely fast.
+The `synchronize` module is Ansible's wrapper around rsync, the gold standard for efficient file synchronization. While the `copy` module works fine for individual files or small directories, it falls apart when you need to sync large directory trees because it does not use rsync's file-list and delta-transfer protocol. The `synchronize` module leverages rsync's delta transfer algorithm, only sending the differences between source and destination files, making subsequent syncs extremely fast.
 
 ## Basic Synchronization
 
@@ -92,6 +92,8 @@ Control file permissions during the sync.
 
 The `--chmod=D0755,F0644` sets directories to 755 and files to 644. The `--chown` sets the owner and group.
 
+Changing ownership on the destination requires appropriate privileges on the receiving side. When using `become: yes` with `synchronize`, Ansible can only elevate through passwordless sudo because rsync makes the remote connection itself.
+
 ## Dry Run Mode
 
 Test what would happen without making changes.
@@ -123,11 +125,11 @@ For syncing over WAN links or during production hours, limit bandwidth usage.
     src: /opt/data/
     dest: /opt/data/
     rsync_opts:
-      - "--bwlimit=10000"
+      - "--bwlimit=10m"
       - "--compress"
 ```
 
-The `--bwlimit=10000` limits bandwidth to 10 MB/s. The `--compress` option compresses data during transfer, which helps when syncing text-heavy content.
+The `--bwlimit=10m` limits bandwidth to about 10 MiB/s. The `--compress` option compresses data during transfer, which helps when syncing text-heavy content.
 
 ## Archiving with Backup
 
@@ -268,6 +270,8 @@ graph TD
 
 ## synchronize vs copy Performance
 
+Exact timings depend on hardware, network latency, file sizes, and Ansible settings, but the relative pattern usually looks like this:
+
 | Scenario | copy module | synchronize module |
 |----------|-----------|-------------------|
 | 10 files, first run | ~3 seconds | ~2 seconds |
@@ -280,7 +284,7 @@ The performance difference grows dramatically with the number of files and becom
 
 ## Prerequisites
 
-The `synchronize` module requires rsync to be installed on both the controller and the remote host.
+The `synchronize` module is part of the `ansible.posix` collection and requires rsync to be installed on both the controller and the remote host.
 
 ```yaml
 # Ensure rsync is installed
