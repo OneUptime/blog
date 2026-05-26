@@ -24,8 +24,9 @@ A MIG is a collection of VM instances that are all created from the same instanc
 You will need:
 
 - Ansible 2.10+ with the `google.cloud` collection
+- Google Cloud CLI installed and authenticated for the autohealing and rolling update tasks
 - A GCP project with Compute Engine API enabled
-- A service account with Compute Admin permissions
+- A service account with Compute Admin permissions, and Service Account User if your instances run as a service account
 
 ```bash
 # Install the GCP Ansible collection
@@ -52,18 +53,6 @@ Before you can create a MIG, you need an instance template. The template defines
     template_name: "web-server-template-v1"
 
   tasks:
-    - name: Create a boot disk for the template
-      google.cloud.gcp_compute_disk:
-        name: "{{ template_name }}-disk"
-        size_gb: 20
-        source_image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts"
-        zone: "us-central1-a"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: boot_disk
-
     - name: Create the instance template
       google.cloud.gcp_compute_instance_template:
         name: "{{ template_name }}"
@@ -92,7 +81,7 @@ Before you can create a MIG, you need an instance template. The template defines
               systemctl enable nginx
               systemctl start nginx
           tags:
-            items:
+            tag_values:
               - "http-server"
               - "https-server"
           labels:
@@ -111,7 +100,7 @@ Before you can create a MIG, you need an instance template. The template defines
 
 ## Step 2: Create a Health Check
 
-Health checks let the MIG know when an instance is unhealthy so it can replace it automatically. For a web server, an HTTP health check makes the most sense.
+Health checks let the MIG know when an instance is unhealthy so it can replace it automatically after you attach the health check to an autohealing policy. For a web server, an HTTP health check makes the most sense.
 
 ```yaml
 # create-health-check.yml - Define how GCP checks instance health
@@ -147,6 +136,27 @@ Health checks let the MIG know when an instance is unhealthy so it can replace i
     - name: Output health check info
       ansible.builtin.debug:
         msg: "Health check created: {{ health_check.name }}"
+
+    - name: Allow health check probes to reach HTTP
+      google.cloud.gcp_compute_firewall:
+        name: "allow-web-health-checks"
+        network:
+          selfLink: "projects/{{ gcp_project }}/global/networks/default"
+        allowed:
+          - ip_protocol: tcp
+            ports:
+              - "80"
+        source_ranges:
+          - "130.211.0.0/22"
+          - "35.191.0.0/16"
+        target_tags:
+          - "http-server"
+        project: "{{ gcp_project }}"
+        auth_kind: "{{ gcp_auth_kind }}"
+        service_account_file: "{{ gcp_service_account_file }}"
+        state: present
+      register: firewall_rule
+
 ```
 
 ## Step 3: Create the Managed Instance Group
@@ -154,7 +164,7 @@ Health checks let the MIG know when an instance is unhealthy so it can replace i
 Now we can bring it all together and create the MIG itself.
 
 ```yaml
-# create-mig.yml - Create a Managed Instance Group with autoscaling
+# create-mig.yml - Create a Managed Instance Group
 ---
 - name: Create Managed Instance Group
   hosts: localhost
@@ -194,6 +204,15 @@ Now we can bring it all together and create the MIG itself.
         service_account_file: "{{ gcp_service_account_file }}"
         state: present
       register: mig_result
+
+    - name: Attach the health check as an autohealing policy
+      ansible.builtin.command: >
+        gcloud compute instance-groups managed update {{ mig_name }}
+        --health-check projects/{{ gcp_project }}/global/healthChecks/web-server-health-check
+        --initial-delay 180
+        --zone {{ zone }}
+        --project {{ gcp_project }}
+      changed_when: true
 
     - name: Display MIG information
       ansible.builtin.debug:
@@ -270,7 +289,7 @@ graph TD
 
 ## Performing Rolling Updates
 
-When you need to deploy a new version of your application, you create a new instance template and update the MIG to use it. GCP will gradually replace old instances with new ones.
+When you need to deploy a new version of your application, you create a new instance template and start a proactive update. GCP will gradually replace old instances with new ones.
 
 ```yaml
 # rolling-update.yml - Perform a rolling update on the MIG
@@ -314,25 +333,23 @@ When you need to deploy a new version of your application, you create a new inst
               systemctl enable nginx
               systemctl start nginx
           tags:
-            items:
+            tag_values:
               - "http-server"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
         state: present
 
-    - name: Update MIG to use new template
-      google.cloud.gcp_compute_instance_group_manager:
-        name: "web-server-mig"
-        zone: "{{ zone }}"
-        base_instance_name: "web-server"
-        instance_template:
-          selfLink: "projects/{{ gcp_project }}/global/instanceTemplates/{{ new_template }}"
-        target_size: 3
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+    - name: Start a proactive rolling update with the new template
+      ansible.builtin.command: >
+        gcloud compute instance-groups managed rolling-action start-update web-server-mig
+        --version=template={{ new_template }}
+        --type=proactive
+        --max-surge=1
+        --max-unavailable=1
+        --zone {{ zone }}
+        --project {{ gcp_project }}
+      changed_when: true
 ```
 
 ## Cleanup Playbook
@@ -367,6 +384,22 @@ Always have a way to tear things down. This is especially useful for development
       google.cloud.gcp_compute_instance_group_manager:
         name: "web-server-mig"
         zone: "{{ zone }}"
+        project: "{{ gcp_project }}"
+        auth_kind: "{{ gcp_auth_kind }}"
+        service_account_file: "{{ gcp_service_account_file }}"
+        state: absent
+
+    - name: Delete the firewall rule
+      google.cloud.gcp_compute_firewall:
+        name: "allow-web-health-checks"
+        project: "{{ gcp_project }}"
+        auth_kind: "{{ gcp_auth_kind }}"
+        service_account_file: "{{ gcp_service_account_file }}"
+        state: absent
+
+    - name: Delete the health check
+      google.cloud.gcp_compute_health_check:
+        name: "web-server-health-check"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
