@@ -39,7 +39,8 @@ Here is a typical playbook that has grown organically over time:
         state: present
 
     - name: Set timezone
-      timezone: name=UTC
+      community.general.timezone:
+        name: UTC
 
     - name: Create app user
       user:
@@ -156,7 +157,7 @@ ansible-galaxy role init --init-path roles/ node_exporter
 
 ## Step 3: Extract Variables into Defaults
 
-For each role, identify which variables it needs and move them into `defaults/main.yml`. The key rule: defaults should work without any overrides for the most common case.
+For each role, identify which variables it needs and move them into `defaults/main.yml`. The key rule: defaults should work without overrides where a sensible default exists, while project-specific values like a repository URL should be overridden by the playbook.
 
 ```yaml
 # roles/common/defaults/main.yml
@@ -203,7 +204,7 @@ Take each group of tasks and move them into the appropriate role's `tasks/main.y
     state: present
 
 - name: Set timezone
-  ansible.builtin.timezone:
+  community.general.timezone:
     name: "{{ common_timezone }}"
 ```
 
@@ -352,7 +353,7 @@ Create a simple test playbook for each role:
 
 **Do not hardcode values in tasks.** Anything that might vary between environments should be a variable in `defaults/main.yml`.
 
-**Do not forget to move the notify references.** When you move tasks into a role, make sure the handler names match. Handlers in a role are scoped differently than handlers in a playbook.
+**Do not forget to move the notify references.** When you move tasks into a role, make sure the handler names match. Role handlers are loaded into the play's handler namespace, so avoid duplicate handler names or notify a role handler explicitly with `role_name : handler_name` when needed.
 
 ## Refactoring Checklist
 
