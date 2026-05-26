@@ -200,6 +200,10 @@ For structured error handling, use the `block`/`rescue`/`always` pattern.
             state: restarted
 
       rescue:
+        - name: Mark deployment as failed
+          ansible.builtin.set_fact:
+            deployment_failed: true
+
         - name: Log which step failed
           ansible.builtin.debug:
             msg: |
@@ -222,7 +226,7 @@ For structured error handling, use the `block`/`rescue`/`always` pattern.
         - name: Record deployment attempt
           ansible.builtin.shell:
             cmd: |
-              echo "$(date): Deploy {{ 'SUCCEEDED' if ansible_failed_task is not defined else 'FAILED' }}" >> /var/log/deployments.log
+              echo "$(date): Deploy {{ 'FAILED' if deployment_failed | default(false) else 'SUCCEEDED' }}" >> /var/log/deployments.log
 ```
 
 ## Handling Specific Return Codes
@@ -260,13 +264,13 @@ Different programs use different return codes. Here are common patterns.
       register: rsync_result
       failed_when: rsync_result.rc not in [0, 23, 24]
 
-    # apt-get return codes: 0=success, 100=error
+    # dpkg-query -s return codes: 0=query succeeded, 1=package not found, 2=fatal error
     - name: Check if package is installed
       ansible.builtin.command:
-        cmd: "dpkg -s nginx"
+        cmd: "dpkg-query -s nginx"
       register: pkg_check
       changed_when: false
-      failed_when: false
+      failed_when: pkg_check.rc not in [0, 1]
       # rc=0 means installed, rc=1 means not installed
 ```
 
