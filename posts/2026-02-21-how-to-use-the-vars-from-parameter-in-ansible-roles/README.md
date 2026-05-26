@@ -8,16 +8,16 @@ Description: Learn how to use the vars_from parameter in Ansible roles to load d
 
 ---
 
-Ansible roles have a `vars/main.yml` file that gets loaded automatically when the role runs. But sometimes you need different sets of variables depending on the context. Maybe you want one set of variables for Debian systems and another for RedHat. Or perhaps your staging and production environments need different tuning parameters that go beyond what `defaults/main.yml` can handle. The `vars_from` parameter lets you tell Ansible to load a specific variable file from the role's `vars/` directory instead of (or in addition to) the default `main.yml`.
+Ansible roles have a `vars/main.yml` file that gets loaded automatically when the role runs. But sometimes you need different sets of variables depending on the context. Maybe you want one set of variables for Debian systems and another for RedHat. Or perhaps your staging and production environments need different tuning parameters that go beyond what `defaults/main.yml` can handle. The `vars_from` parameter lets you tell Ansible to load a specific variable file from the role's `vars/` directory instead of the default `main.yml`.
 
 ## How vars_from Works
 
-When you use `vars_from`, Ansible loads the specified file from the role's `vars/` directory. These variables have the same precedence as normal role vars, which is higher than `defaults/main.yml`, group vars, and host vars. This makes them appropriate for values that should be authoritative for a given context.
+When you use `vars_from`, Ansible loads the specified file from the role's `vars/` directory. The default value is `main`, so setting `vars_from: production.yml` changes the role vars entry point to `vars/production.yml`; Ansible does not automatically layer `vars/main.yml` with that file. These variables have the same precedence as normal role vars, which is higher than `defaults/main.yml`, group vars, and host vars. This makes them appropriate for values that should be authoritative for a given context.
 
 Here is the basic syntax:
 
 ```yaml
-# Load vars/production.yml instead of (or alongside) vars/main.yml
+# Load vars/production.yml instead of vars/main.yml
 
 - hosts: webservers
   tasks:
@@ -38,7 +38,7 @@ roles/nginx/
   tasks/
     main.yml
   vars/
-    main.yml           # Common variables loaded by default
+    main.yml           # Variables loaded by default when vars_from is not set
     debian.yml         # Debian-specific paths and packages
     redhat.yml         # RedHat-specific paths and packages
     production.yml     # Production tuning parameters
@@ -55,7 +55,7 @@ Here is what each variable file contains:
 
 ```yaml
 # roles/nginx/vars/main.yml
-# Variables that apply in all contexts
+# Variables loaded when vars_from is not set
 nginx_user: www-data
 nginx_pid_file: /run/nginx.pid
 nginx_error_log: /var/log/nginx/error.log
@@ -236,9 +236,9 @@ This means if you set `nginx_worker_connections: 2048` in `group_vars/webservers
 
 If you want the user to be able to override the values easily, put them in `defaults/main.yml` instead of `vars/`. Use `vars/` only for values that are genuinely tied to a specific context and should not be changed from outside.
 
-## Fallback Pattern with vars_from
+## Fallback Pattern for Variable Files
 
-If you want to gracefully handle cases where the variable file might not exist, combine this with a fallback:
+If you want to gracefully handle cases where the variable file might not exist, use `include_vars` with `first_found` inside the role:
 
 ```yaml
 # roles/nginx/tasks/main.yml
