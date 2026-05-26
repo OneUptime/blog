@@ -60,21 +60,21 @@ containers_with_limits:
     image: "myapp:latest"
     cpu_limit: 2.0
     cpu_shares: 2048
-    memory_limit: "1g"
-    memory_reservation: "512m"
+    memory_limit: "1G"
+    memory_reservation: "512M"
   - name: background-worker
     image: "worker:latest"
     cpu_limit: 0.5
     cpu_shares: 512
-    memory_limit: "256m"
-    memory_reservation: "128m"
+    memory_limit: "256M"
+    memory_reservation: "128M"
   - name: database
     image: "postgres:16"
     cpu_limit: 4.0
     cpu_shares: 4096
     cpuset: "0,1,2,3"
-    memory_limit: "4g"
-    memory_reservation: "2g"
+    memory_limit: "4G"
+    memory_reservation: "2G"
 ```
 
 ## Setting Memory Limits
@@ -89,12 +89,12 @@ containers_with_limits:
     state: started
     # Hard memory limit - container is killed if exceeded
     memory: "{{ item.memory_limit }}"
-    # Soft limit - used for scheduling decisions
+    # Soft limit - applied when Docker detects memory contention or low memory
     memory_reservation: "{{ item.memory_reservation | default(omit) }}"
     # Memory + swap limit (set equal to memory to disable swap)
     memory_swap: "{{ item.memory_swap | default(item.memory_limit) }}"
-    # OOM kill disable (use with caution)
-    oom_killer: "{{ item.oom_killer | default(true) }}"
+    # Disable OOM killer only when explicitly requested and a memory limit is set
+    oom_killer: "{{ item.oom_killer | default(false) }}"
     # OOM score adjustment
     oom_score_adj: "{{ item.oom_score_adj | default(0) }}"
   loop: "{{ containers_with_limits }}"
@@ -129,10 +129,10 @@ containers_with_limits:
     blkio_weight: "{{ item.blkio_weight | default(500) }}"
     device_read_bps:
       - path: /dev/sda
-        rate: "{{ item.read_bps | default('50mb') }}"
+        rate: "{{ item.read_bps | default('50M') }}"
     device_write_bps:
       - path: /dev/sda
-        rate: "{{ item.write_bps | default('30mb') }}"
+        rate: "{{ item.write_bps | default('30M') }}"
   loop: "{{ io_limited_containers }}"
   when: item.io_limits | default(false)
 ```
@@ -199,12 +199,12 @@ containers_with_limits:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow for preparing hosts before deploying limited containers
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -236,7 +236,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
