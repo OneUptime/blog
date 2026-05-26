@@ -28,7 +28,7 @@ The line number is usually close but not always exact. Check the indicated line 
 
 ## Error 1: Tabs Instead of Spaces
 
-YAML does not allow tab characters. This is the number one cause of syntax errors, especially when copying code from web pages or switching between editors.
+YAML does not allow tab characters for indentation. This is the number one cause of syntax errors, especially when copying code from web pages or switching between editors.
 
 ```yaml
 # WRONG: Tab character before 'name' (invisible but fatal)
@@ -67,13 +67,13 @@ sed -i 's/\t/  /g' deploy.yml
 YAML uses indentation to define structure. Every level must be consistently indented.
 
 ```yaml
-# WRONG: Mixed indentation (3 spaces then 2 spaces)
+# WRONG: Misaligned indentation
 - name: Deploy application
   hosts: webservers
   tasks:
-     - name: Install packages
-       ansible.builtin.apt:
-        name: nginx
+    - name: Install packages
+   ansible.builtin.apt:
+      name: nginx
 ```
 
 ```yaml
@@ -113,7 +113,7 @@ Every YAML key needs a colon and a space:
 ```
 
 ```yaml
-# WRONG: Missing space after colon
+# WRONG: Missing space after colon; this may parse as a plain string instead of a key/value pair
 - name:Deploy application
   hosts:webservers
 
@@ -124,7 +124,7 @@ Every YAML key needs a colon and a space:
 
 ## Error 4: Special Characters in Strings
 
-Certain characters have special meaning in YAML and need quoting:
+Certain characters have special meaning in YAML and need quoting in specific contexts:
 
 ```yaml
 # WRONG: Colon in value without quotes
@@ -138,7 +138,7 @@ Certain characters have special meaning in YAML and need quoting:
     msg: "Error: connection failed"
 ```
 
-Characters that require quoting:
+Characters that often require quoting:
 - `:` (colon followed by space)
 - `#` (hash/comment)
 - `{` and `}` (JSON syntax)
@@ -274,7 +274,7 @@ description: | This breaks
 
 ## Error 8: Duplicate Keys
 
-YAML does not allow duplicate keys in the same mapping:
+YAML mappings should not contain duplicate keys. Linters report them as errors, and some YAML loaders silently keep the last value:
 
 ```yaml
 # WRONG: Duplicate 'name' key
