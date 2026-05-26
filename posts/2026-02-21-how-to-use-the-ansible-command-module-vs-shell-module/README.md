@@ -14,7 +14,7 @@ Let me break down the differences and give you clear guidance on when to use eac
 
 ## The Core Difference
 
-The `command` module executes a command directly without a shell. It does not pass the command through `/bin/sh`. This means shell features like pipes, redirects, environment variable expansion, and wildcards do not work.
+The `command` module executes a command directly without a shell. It does not pass the command through `/bin/sh`. This means shell features like pipes, redirects, shell-style environment variable expansion, and wildcards do not work. In current Ansible versions, `command` expands arguments like `$HOME` by default using Python, but this is not the same as shell expansion.
 
 The `shell` module passes the command through a shell (defaults to `/bin/sh`). This means you get all shell features: pipes, redirects, globbing, environment variables, and everything else the shell provides.
 
@@ -114,9 +114,12 @@ Here is a practical breakdown of what each module supports:
       ansible.builtin.shell:
         cmd: "test -f /etc/nginx/nginx.conf && echo 'exists' || echo 'missing'"
 
-    - name: shell - here strings and here documents
+    - name: shell - here documents
       ansible.builtin.shell:
-        cmd: "cat <<< 'hello world'"
+        cmd: |
+          cat <<'EOF'
+          hello world
+          EOF
 ```
 
 ## Security Implications
@@ -136,10 +139,12 @@ The `command` module is safer because it does not process shell metacharacters. 
     dangerous_filename: "myfile.txt; rm -rf /tmp/*"
 
   tasks:
-    # SAFE - command module treats the whole string as a single argument
+    # SAFER - command module does not treat shell metacharacters as syntax
     - name: command module - safe even with shell metacharacters
       ansible.builtin.command:
-        cmd: "ls {{ dangerous_filename }}"
+        argv:
+          - ls
+          - "{{ dangerous_filename }}"
       ignore_errors: yes
       # This will try to list a file literally named "myfile.txt; rm -rf /tmp/*"
       # It won't execute the rm command
@@ -155,7 +160,7 @@ The `command` module is safer because it does not process shell metacharacters. 
     # SAFE - if you must use shell, quote your variables
     - name: shell module - safer with proper quoting
       ansible.builtin.shell:
-        cmd: "ls '{{ safe_filename }}'"
+        cmd: "ls {{ safe_filename | quote }}"
       ignore_errors: yes
 ```
 
@@ -261,11 +266,16 @@ The `shell` module defaults to `/bin/sh`, but you can specify a different shell.
           echo "${#files[@]} log files found"
         executable: /bin/bash
 
+    - name: Check whether zsh is available
+      ansible.builtin.stat:
+        path: /bin/zsh
+      register: zsh_binary
+
     - name: Use zsh if available
       ansible.builtin.shell:
         cmd: "print -l /var/log/**/*.log(.)"
         executable: /bin/zsh
-      when: "'/bin/zsh' is file"
+      when: zsh_binary.stat.exists
 ```
 
 ## Performance Considerations
