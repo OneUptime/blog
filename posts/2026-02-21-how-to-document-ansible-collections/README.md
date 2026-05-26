@@ -83,8 +83,6 @@ options:
       - Can also be set via the C(CONFIG_STORE_TOKEN) environment variable.
     required: true
     type: str
-    env:
-      - name: CONFIG_STORE_TOKEN
 notes:
   - This module requires network access to the configuration store API.
   - Encrypted values cannot be retrieved in plaintext after storage.
@@ -281,11 +279,12 @@ MIT
 
 ### docs/ Directory
 
-The `docs/` directory can contain additional documentation files. Ansible Galaxy and automation hub render these:
+The `docs/` directory can contain additional documentation files. For collection documentation published on docs.ansible.com, put reStructuredText files under `docs/docsite/rst/` and define their navigation in `docs/docsite/extra-docs.yml`:
 
 ```text
 docs/
   docsite/
+    extra-docs.yml
     rst/
       guide_getting_started.rst
       guide_authentication.rst
@@ -314,12 +313,15 @@ This creates `changelogs/config.yaml`:
 ```yaml
 # changelogs/config.yaml
 ---
-notesdir: fragments
+notes_dir: fragments
 changes_file: changelog.yaml
 changes_format: combined
 keep_fragments: false
-changelog_filename_template: CHANGELOG.rst
-changelog_filename_version_depth: 0
+output:
+  - file: CHANGELOG.rst
+    format: rst
+    title_version_depth: 0
+    filename_version_depth: 0
 title: My Namespace.My Collection
 ```
 
@@ -328,10 +330,10 @@ title: My Namespace.My Collection
 When you make a change, create a fragment file in `changelogs/fragments/`:
 
 ```yaml
-# changelogs/fragments/42-add-config-entry-module.yml
+# changelogs/fragments/42-add-encrypted-option.yml
 ---
 minor_changes:
-  - config_entry - New module for managing configuration store entries.
+  - config_entry - Added encrypted storage support for configuration values.
 ```
 
 ```yaml
@@ -346,8 +348,8 @@ Fragment categories include:
 
 | Category | When to Use |
 |----------|------------|
-| major_changes | Breaking changes or major features |
-| minor_changes | New features, new modules |
+| major_changes | Major high-level changes |
+| minor_changes | New features or new options |
 | bugfixes | Bug fixes |
 | deprecated_features | Features being deprecated |
 | removed_features | Features removed in this version |
@@ -378,7 +380,7 @@ v1.2.0
 Minor Changes
 -------------
 
-- config_entry - New module for managing configuration store entries.
+- config_entry - Added encrypted storage support for configuration values.
 
 Bugfixes
 --------
@@ -408,17 +410,12 @@ options:
       - Can also be set via the C(CONFIG_STORE_URL) environment variable.
     required: true
     type: str
-    env:
-      - name: CONFIG_STORE_URL
   api_token:
     description:
       - Authentication token for the configuration store API.
       - Can also be set via the C(CONFIG_STORE_TOKEN) environment variable.
     required: true
     type: str
-    no_log: true
-    env:
-      - name: CONFIG_STORE_TOKEN
   validate_certs:
     description:
       - Whether to validate SSL certificates when connecting to the API.
