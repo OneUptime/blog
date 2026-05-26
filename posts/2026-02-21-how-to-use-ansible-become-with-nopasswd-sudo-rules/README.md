@@ -36,7 +36,7 @@ This grants the deploy user full root access without a password. It works, but i
 
 ## Writing Restrictive NOPASSWD Rules
 
-For better security, limit which commands the Ansible user can run without a password.
+For direct sudo use, you can limit which commands the automation user can run without a password. Be careful applying this pattern to normal Ansible module execution, because Ansible often escalates the module wrapper rather than the command name in your task.
 
 ```text
 # /etc/sudoers.d/ansible-restricted
@@ -86,7 +86,6 @@ Rather than manually editing sudoers on every host, use Ansible to deploy the ru
       - /usr/bin/tee
       - /usr/sbin/service
     nopasswd_users:
-      - root
       - postgres
       - www-data
 
@@ -143,7 +142,7 @@ Ansible typically executes something like:
 sudo -H -S -n -u root /bin/bash -c '/usr/bin/python3 /tmp/.ansible/tmp/AnsiballZ_command.py'
 ```
 
-This means Ansible actually runs Python scripts through `/bin/bash -c`. If you want to restrict by command path, you need to understand that the direct commands your playbook tasks reference are not what sudo sees. Sudo sees `/bin/bash` or `/bin/sh`.
+This means Ansible may run a generated module through a shell such as `/bin/sh -c` or `/bin/bash -c`. If you want to restrict by command path, you need to understand that the direct commands your playbook tasks reference are not necessarily what sudo sees. Sudo may see the shell or the temporary Ansible module path instead.
 
 This is why restrictive command-based NOPASSWD rules can be tricky with Ansible. In practice, you have two realistic options:
 
@@ -165,7 +164,8 @@ deploy ALL=(www-data) NOPASSWD: ALL
 # (sudo denies by default, so omitting other users is sufficient)
 ```
 
-This way, even if the deploy account is compromised, it cannot become arbitrary users.
+This way, even if the deploy account is compromised, it cannot directly use sudo to become arbitrary non-root users.
+Remember that unrestricted root access is still full host control. The restriction only prevents direct `sudo -u otheruser` access to users that are not listed.
 
 ## Environment-Specific NOPASSWD Rules
 
@@ -283,7 +283,7 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=60s
 pipelining = true
 ```
 
-The `pipelining = true` setting is safe with NOPASSWD because pipelining conflicts arise from sudo password prompt interaction, which NOPASSWD eliminates. This results in faster playbook execution.
+The `pipelining = true` setting can be used in NOPASSWD environments when `requiretty` is disabled for the automation user. NOPASSWD avoids password prompts, but Ansible's main sudo pipelining conflict is the sudo `requiretty` setting. Pipelining reduces network round trips and can result in faster playbook execution.
 
 ## Security Hardening for NOPASSWD
 
@@ -320,7 +320,7 @@ Additional server-side hardening:
   become: true
 
   tasks:
-    - name: Restrict SSH access for deploy user by IP
+    - name: Restrict SSH forwarding for deploy user
       ansible.builtin.blockinfile:
         path: /etc/ssh/sshd_config
         block: |
