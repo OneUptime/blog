@@ -8,16 +8,16 @@ Description: Learn how to optimize Ansible loop performance when processing larg
 
 ---
 
-Ansible loops work fine for small lists, but when you need to process hundreds or thousands of items, performance becomes a real concern. Each loop iteration involves module loading, SSH connections (or connection plugin overhead), fact gathering, and result processing. At scale, those small overheads multiply into minutes or hours of wasted time.
+Ansible loops work fine for small lists, but when you need to process hundreds or thousands of items, performance becomes a real concern. Each loop iteration involves module loading, connection plugin overhead, remote execution, and result processing. If fact gathering is enabled, that adds another setup step per host before your tasks run. At scale, those small overheads multiply into minutes or hours of wasted time.
 
 This post covers practical optimization techniques for Ansible loops, from simple changes that give you immediate wins to architectural approaches for handling truly large data sets.
 
 ## The Biggest Win: Avoid Loops When Possible
 
-Many Ansible modules accept lists natively. Passing a list to the module is always faster than iterating one at a time because it reduces the number of module invocations and SSH round trips.
+Many Ansible modules accept lists natively. Passing a list to the module is usually faster than iterating one at a time because it reduces the number of module invocations and remote executions.
 
 ```yaml
-# SLOW: One module call per package (15 SSH round trips)
+# SLOW: One module execution per package
 
 - name: Install packages one at a time
   ansible.builtin.apt:
@@ -40,7 +40,7 @@ Many Ansible modules accept lists natively. Passing a list to the module is alwa
     - rsync
     - tree
 
-# FAST: One module call for all packages (1 SSH round trip)
+# FAST: One module execution for all packages
 - name: Install all packages at once
   ansible.builtin.apt:
     name:
@@ -60,20 +60,19 @@ Many Ansible modules accept lists natively. Passing a list to the module is alwa
       - rsync
       - tree
     state: present
-    update_cache: true
 ```
 
-Modules that accept lists include: `apt`, `yum`, `dnf`, `pip`, `npm`, and `gem`. Always check the module documentation for a `name` parameter that accepts a list.
+Modules that accept lists for package names include: `apt`, `dnf`/`yum`, and `pip`. Always check the module documentation for a `name` parameter that accepts a list.
 
 ## Performance Comparison
 
 Here is a rough comparison for installing 20 packages on Ubuntu 22.04 over SSH.
 
-| Approach | Module Calls | SSH Round Trips | Approx Time |
-|----------|-------------|-----------------|-------------|
+| Approach | Module Executions | Remote Executions | Approx Time |
+|----------|-------------------|-------------------|-------------|
 | Loop with `item` | 20 | 20 | 45-90 sec |
 | Direct list in `name` | 1 | 1 | 8-15 sec |
-| Async loop (`poll: 0`) | 20 + 20 | ~40 | 30-45 sec |
+| Async loop (`poll: 0`) | 20 starts + polling checks | At least 40 | 30-45 sec |
 
 The direct list approach is 3-6x faster for package installation.
 
@@ -203,7 +202,7 @@ Filtering inside the loop (with `when`) means Ansible still processes each itera
 
 ## Minimize Fact Gathering
 
-If your loop tasks do not need facts, disable fact gathering. This saves one SSH round trip per host.
+If your loop tasks do not need facts, disable fact gathering. This saves the setup task that gathers facts for each host.
 
 ```yaml
 # Skip fact gathering when not needed
@@ -228,7 +227,7 @@ SSH pipelining reduces the number of SSH operations per task. Enable it in `ansi
 pipelining = True
 ```
 
-This can cut task execution time by 30-50% because it eliminates the need for a separate SSH session to transfer the module to the remote host.
+This can significantly reduce task execution time because Ansible can execute many Python modules without first transferring a temporary module file to the remote host. Pipelining can conflict with some privilege escalation setups, so check your `become` configuration when enabling it.
 
 ## Performance Flow Diagram
 
@@ -266,7 +265,7 @@ This does not speed up loops on a single host, but when running against 50+ host
 
 ## Use Mitogen for Connection Speed
 
-The Mitogen strategy plugin dramatically speeds up Ansible by reducing SSH overhead. It replaces the standard SSH connection with a persistent Python-to-Python channel.
+The Mitogen strategy plugin can dramatically speed up Ansible by reducing connection and module execution overhead. It uses persistent Python-to-Python channels over SSH.
 
 ```ini
 # ansible.cfg
@@ -275,7 +274,7 @@ strategy_plugins = /path/to/mitogen/ansible_mitogen/plugins/strategy
 strategy = mitogen_linear
 ```
 
-With Mitogen, loop-heavy playbooks can run 2-7x faster because the per-iteration connection overhead is nearly eliminated.
+With Mitogen, loop-heavy playbooks can run 1.25-7x faster when overhead dominates the workload. Because Mitogen is a third-party strategy plugin, test it with your Ansible version and playbook features before adopting it broadly.
 
 ## Caching for Repeated Lookups
 
@@ -301,24 +300,24 @@ If your loop includes lookups that hit the same source repeatedly, cache the res
 
 ## Profiling Your Playbooks
 
-Enable the `timer` and `profile_tasks` callback plugins to identify slow loops.
+Enable the `ansible.posix.timer` and `ansible.posix.profile_tasks` callback plugins to identify slow loops.
 
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
 This shows execution time for each task, making it easy to spot which loops are the bottleneck.
 
 ```text
 TASK [Install packages one at a time] ******************************************
-Monday 21 February 2026  10:15:32 +0000 (0:00:45.123)
+Saturday 21 February 2026  10:15:32 +0000 (0:00:45.123)
 
 TASK [Install packages in bulk] ************************************************
-Monday 21 February 2026  10:15:42 +0000 (0:00:09.876)
+Saturday 21 February 2026  10:15:42 +0000 (0:00:09.876)
 ```
 
 ## Summary
 
-The fastest Ansible loop is the one you do not run. Always check if the module accepts a list parameter before reaching for `loop`. When you must loop, pre-filter data with `selectattr`, use `loop_control.label` to reduce output overhead, and enable SSH pipelining. For independent long-running tasks, `async` with `poll: 0` gives you parallelism. For API calls, batch items together. And for large fleets, increase `forks` and consider Mitogen for dramatically faster connections. Profile your playbooks with `profile_tasks` to find bottlenecks and measure the impact of your optimizations.
+The fastest Ansible loop is the one you do not run. Always check if the module accepts a list parameter before reaching for `loop`. When you must loop, pre-filter data with `selectattr`, use `loop_control.label` to reduce output overhead, and enable SSH pipelining where it fits your privilege escalation setup. For independent long-running tasks, `async` with `poll: 0` gives you parallelism. For API calls, batch items together. And for large fleets, increase `forks` and consider Mitogen when it is compatible with your Ansible environment. Profile your playbooks with `ansible.posix.profile_tasks` to find bottlenecks and measure the impact of your optimizations.
