@@ -90,28 +90,9 @@ One of the most practical uses of `items2dict` is reconstructing a dictionary fr
         - /etc/postgresql/14/main/postgresql.conf
       register: stat_results
 
-    - name: Build file existence dictionary
+    - name: Build existence map from loop results
       ansible.builtin.set_fact:
-        file_exists: >-
-          {{
-            stat_results.results
-            | map('combine', {})
-            | map(attribute='item')
-            | zip(stat_results.results | map(attribute='stat.exists', default=false))
-            | map('list')
-            | map('zip', ['key', 'value'])
-            | map('map', 'reverse')
-            | map('community.general.dict')
-            | items2dict
-          }}
-```
-
-That chain is complex. A cleaner approach is to build the list explicitly and then convert it.
-
-```yaml
-    - name: Build existence map the clean way
-      ansible.builtin.set_fact:
-        file_exists: "{{ file_list | items2dict }}"
+        file_exists: "{{ file_list | from_yaml | items2dict }}"
       vars:
         file_list: >-
           [
@@ -275,14 +256,14 @@ After running tasks in a loop, you can restructure the results using `items2dict
 
     - name: Build version dictionary
       ansible.builtin.set_fact:
-        package_versions: "{{ version_list | items2dict }}"
+        package_versions: "{{ version_list | from_yaml | items2dict }}"
       vars:
         version_list: >-
           [
           {% for result in version_results.results %}
             {
               "key": "{{ result.item }}",
-              "value": "{{ result.stdout | default('not installed') }}"
+              "value": "{{ result.stdout | default('not installed', true) }}"
             }{{ "," if not loop.last else "" }}
           {% endfor %}
           ]
