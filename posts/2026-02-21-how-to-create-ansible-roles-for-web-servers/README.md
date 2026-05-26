@@ -21,15 +21,11 @@ roles/nginx/
     install.yml
     configure.yml
     vhosts.yml
-    ssl.yml
     security.yml
   templates/
     nginx.conf.j2
     vhost.conf.j2
-    ssl_params.conf.j2
     security_headers.conf.j2
-  files/
-    dhparam.pem
 ```
 
 ## Default Variables
@@ -79,6 +75,7 @@ nginx_ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:EC
 nginx_ssl_session_timeout: "1d"
 nginx_ssl_session_cache: "shared:SSL:50m"
 nginx_ssl_stapling: "on"
+nginx_ssl_trusted_certificate: /etc/ssl/certs/ca-certificates.crt
 
 # Virtual hosts
 nginx_vhosts: []
@@ -110,18 +107,20 @@ nginx_remove_default_site: true
       - gnupg2
       - ca-certificates
       - lsb-release
-    state: present
-
-- name: Add Nginx signing key
-  ansible.builtin.apt_key:
-    url: https://nginx.org/keys/nginx_signing.key
+      - python3-debian
+      - ubuntu-keyring
     state: present
 
 - name: Add Nginx repository
-  ansible.builtin.apt_repository:
-    repo: "deb http://nginx.org/packages/ubuntu {{ ansible_distribution_release }} nginx"
+  ansible.builtin.deb822_repository:
+    name: nginx
+    types: deb
+    uris: https://nginx.org/packages/ubuntu
+    suites: "{{ ansible_distribution_release }}"
+    components:
+      - nginx
+    signed_by: https://nginx.org/keys/nginx_signing.key
     state: present
-    filename: nginx
 
 - name: Install Nginx
   ansible.builtin.apt:
@@ -185,6 +184,7 @@ http {
     ssl_session_timeout {{ nginx_ssl_session_timeout }};
     ssl_session_cache {{ nginx_ssl_session_cache }};
     ssl_stapling {{ nginx_ssl_stapling }};
+    ssl_trusted_certificate {{ nginx_ssl_trusted_certificate }};
     ssl_stapling_verify on;
 
     # Virtual hosts
@@ -216,8 +216,9 @@ server {
 
 server {
 {% if item.ssl_cert is defined %}
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     ssl_certificate {{ item.ssl_cert }};
     ssl_certificate_key {{ item.ssl_key }};
@@ -235,6 +236,9 @@ server {
 
 {% if nginx_security_headers %}
     include /etc/nginx/conf.d/security_headers.inc;
+{% endif %}
+{% if item.ssl_cert is defined and nginx_hsts_max_age > 0 %}
+    add_header Strict-Transport-Security "max-age={{ nginx_hsts_max_age }}; includeSubDomains; preload" always;
 {% endif %}
 
     # Logging
@@ -260,7 +264,13 @@ server {
     # Static assets caching
     location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff2|woff|ttf)$ {
         expires {{ item.static_cache_duration | default('30d') }};
-        add_header Cache-Control "public, immutable";
+{% if nginx_security_headers %}
+        include /etc/nginx/conf.d/security_headers.inc;
+{% endif %}
+{% if item.ssl_cert is defined and nginx_hsts_max_age > 0 %}
+        add_header Strict-Transport-Security "max-age={{ nginx_hsts_max_age }}; includeSubDomains; preload" always;
+{% endif %}
+        add_header Cache-Control "public, immutable" always;
     }
 
 {% if item.extra_config is defined %}
@@ -324,9 +334,6 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Content-Security-Policy "{{ nginx_content_security_policy }}" always;
-{% if nginx_hsts_max_age > 0 %}
-add_header Strict-Transport-Security "max-age={{ nginx_hsts_max_age }}; includeSubDomains; preload" always;
-{% endif %}
 ```
 
 ## Handlers and Main Task File
