@@ -8,7 +8,7 @@ Description: Learn how to pull Docker images from public and private registries 
 
 ---
 
-Pulling Docker images is the first step in any container deployment. Whether you are pulling from Docker Hub, Google Container Registry, Amazon ECR, or your own private registry, Ansible can automate the entire process. In this post, we will cover everything from pulling a simple public image to authenticating with private registries and managing image versions across your fleet.
+Pulling Docker images is the first step in any container deployment. Whether you are pulling from Docker Hub, Google Artifact Registry, Amazon ECR, or your own private registry, Ansible can automate the entire process. In this post, we will cover everything from pulling a simple public image to authenticating with private registries and managing image versions across your fleet.
 
 ## Why Manage Image Pulls with Ansible?
 
@@ -29,8 +29,8 @@ Ansible handles all of these scenarios with its `community.docker.docker_image` 
 
 ansible-galaxy collection install community.docker
 
-# Install the Docker Python SDK
-pip install docker
+# Install the Python requests library used by the collection
+pip install requests
 ```
 
 ## Pulling a Public Image
@@ -62,12 +62,12 @@ The simplest case is pulling an image from Docker Hub.
     # Pull from a specific registry
     - name: Pull an image from a specific registry
       community.docker.docker_image:
-        name: gcr.io/google-containers/busybox
-        tag: "1.27"
+        name: registry.k8s.io/busybox
+        tag: latest
         source: pull
 ```
 
-The `source: pull` parameter tells Ansible to always pull the image from the registry rather than just checking if it exists locally. Without it, Ansible might skip the pull if an image with the same name and tag already exists locally.
+The `source: pull` parameter tells Ansible to pull the image from the registry if it is not already present locally. If an image with the same name and tag already exists, the module will not pull it again unless you also set `force_source: true`.
 
 ## Understanding the source Parameter
 
@@ -76,17 +76,20 @@ The `source` parameter controls where the image comes from:
 ```mermaid
 graph TD
     A[docker_image module] --> B{source parameter}
-    B -->|pull| C[Always fetch from registry]
+    B -->|pull| C[Pull from registry if needed]
     B -->|local| D[Use local image only]
     B -->|build| E[Build from Dockerfile]
+    B -->|load| G[Load from tar archive]
     C --> F[Image on host]
     D --> F
     E --> F
+    G --> F
 ```
 
 - **pull**: Fetch the image from a registry
 - **local**: Use an existing local image (error if not found)
 - **build**: Build the image from a Dockerfile
+- **load**: Load the image from a tar archive
 
 ## Pulling Multiple Images
 
@@ -155,10 +158,10 @@ Private registries require authentication before you can pull images.
         password: "{{ docker_hub_password }}"
       no_log: true
 
-    # Login to Google Container Registry
-    - name: Authenticate with GCR
+    # Login to Google Artifact Registry
+    - name: Authenticate with Artifact Registry
       community.docker.docker_login:
-        registry_url: "https://gcr.io"
+        registry_url: "https://us-docker.pkg.dev"
         username: "_json_key"
         password: "{{ lookup('file', gcp_service_account_file) }}"
       no_log: true
@@ -189,7 +192,7 @@ Private registries require authentication before you can pull images.
     # Now pull images from any authenticated registry
     - name: Pull private application image
       community.docker.docker_image:
-        name: "gcr.io/my-project/my-app"
+        name: "us-docker.pkg.dev/my-project/my-repo/my-app"
         tag: "v2.5.0"
         source: pull
 
@@ -218,7 +221,7 @@ A common strategy is to pull images on all servers before deploying, so the actu
 
   vars:
     deploy_version: "2.5.0"
-    registry: "gcr.io/my-project"
+    registry: "us-docker.pkg.dev/my-project/my-repo"
     images:
       - "api-service"
       - "web-frontend"
@@ -228,7 +231,7 @@ A common strategy is to pull images on all servers before deploying, so the actu
   tasks:
     - name: Authenticate with the registry
       community.docker.docker_login:
-        registry_url: "https://gcr.io"
+        registry_url: "https://us-docker.pkg.dev"
         username: "_json_key"
         password: "{{ lookup('file', '/path/to/service-account.json') }}"
       no_log: true
@@ -334,14 +337,6 @@ Old images waste disk space. Here is how to clean them up.
   hosts: docker_hosts
   become: true
 
-  vars:
-    # Images to keep (everything else gets cleaned up)
-    keep_images:
-      - "nginx:1.25"
-      - "postgres:16"
-      - "redis:7-alpine"
-      - "myapp:2.5.0"
-
   tasks:
     # Remove dangling images (layers not referenced by any tag)
     - name: Remove dangling images
@@ -398,7 +393,7 @@ graph TD
 
 3. **Pre-pull images before deployment.** This reduces the time containers are down during updates.
 
-4. **Use digest-based references for maximum reproducibility.** Instead of `nginx:1.25`, use `nginx@sha256:abc123...`. This guarantees you get the exact same image every time.
+4. **Use digest-based references where supported for maximum reproducibility.** Docker supports references like `nginx@sha256:abc123...`, and `community.docker.docker_image_pull` supports digest references for pull-only playbooks. This guarantees you get the exact same image every time.
 
 5. **Clean up old images regularly.** Docker images can consume significant disk space. Schedule regular cleanup playbooks.
 
