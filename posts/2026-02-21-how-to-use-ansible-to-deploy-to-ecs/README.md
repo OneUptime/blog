@@ -15,7 +15,7 @@ AWS Elastic Container Service (ECS) is Amazon's managed container orchestration 
 ```bash
 # Install AWS collections and dependencies
 
-ansible-galaxy collection install amazon.aws community.aws
+ansible-galaxy collection install amazon.aws community.aws community.general
 pip install boto3 botocore
 ```
 
@@ -49,7 +49,7 @@ Configure AWS credentials either through environment variables, AWS CLI profile,
             value: "{{ log_level }}"
         secrets:
           - name: API_KEY
-            valueFrom: "{{ secrets_manager_arn }}/api-key"
+            valueFrom: "{{ api_key_secret_arn }}"
         logConfiguration:
           logDriver: awslogs
           options:
@@ -144,6 +144,7 @@ ecs_security_groups:
 ecs_task_role_arn: "arn:aws:iam::123456789:role/ecs-task-role"
 ecs_execution_role_arn: "arn:aws:iam::123456789:role/ecs-execution-role"
 target_group_arn: "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/myapp/abc123"
+api_key_secret_arn: "arn:aws:secretsmanager:us-east-1:123456789:secret:myapp/api-key-AbCdEf"
 log_retention_days: 30
 database_url: "{{ vault_database_url }}"
 log_level: "info"
@@ -157,13 +158,22 @@ log_level: "info"
 - name: Deploy to ECS
   hosts: localhost
   connection: local
-  roles:
-    - role: ecs_deploy
-      tasks_from: logging
-    - role: ecs_deploy
-      tasks_from: task_definition
-    - role: ecs_deploy
-      tasks_from: service
+  tasks:
+    - name: Create logging resources
+      ansible.builtin.import_role:
+        name: ecs_deploy
+        tasks_from: logging
+
+    - name: Register task definition
+      ansible.builtin.import_role:
+        name: ecs_deploy
+        tasks_from: task_definition
+
+    - name: Create or update service
+      ansible.builtin.import_role:
+        name: ecs_deploy
+        tasks_from: service
+
   post_tasks:
     - name: Verify deployment
       community.aws.ecs_service_info:
@@ -237,7 +247,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
