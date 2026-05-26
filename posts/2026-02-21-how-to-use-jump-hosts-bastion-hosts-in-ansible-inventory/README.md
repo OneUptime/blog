@@ -228,13 +228,15 @@ Host 10.10.*
 
 ## SSH Key Forwarding
 
-If the bastion host does not have the private keys for the internal servers (and it should not, for security reasons), use SSH agent forwarding:
+The bastion host does not need the private keys for the internal servers (and it should not have them, for security reasons). With `ProxyJump`, SSH authenticates from your workstation to the final target through the forwarded connection. Add the keys to your local SSH agent or configure `IdentityFile` locally:
 
 ```bash
 # Add your keys to the SSH agent
 ssh-add ~/.ssh/bastion_key
 ssh-add ~/.ssh/internal_key
 ```
+
+Only use SSH agent forwarding when you intentionally start SSH sessions from a remote host that need your local agent:
 
 ```yaml
 # group_vars/private_servers.yml
@@ -243,7 +245,7 @@ ansible_ssh_common_args: >-
   -o ForwardAgent=yes
 ```
 
-However, agent forwarding has security implications. If the bastion host is compromised, an attacker can use your forwarded agent. The ProxyJump method is safer because it does not expose your agent on the bastion.
+However, agent forwarding has security implications. If a host with access to your forwarded agent is compromised, an attacker can use that agent while the forwarding session is active. For normal Ansible connections through `ProxyJump`, avoid `ForwardAgent=yes` unless you specifically need it.
 
 ## Performance: SSH Connection Multiplexing
 
