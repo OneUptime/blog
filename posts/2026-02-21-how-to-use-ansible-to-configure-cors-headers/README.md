@@ -119,23 +119,40 @@ set $cors_headers "";
 set $cors_expose "";
 set $cors_max_age "";
 
+{% if '*' in nginx_cors_allowed_origins %}
+if ($http_origin != "") {
+    set $cors_origin "{{ '$http_origin' if nginx_cors_allow_credentials else '*' }}";
+{% if nginx_cors_allow_credentials %}
+    set $cors_credentials "true";
+{% endif %}
+    set $cors_methods "{{ nginx_cors_allowed_methods | join(', ') }}";
+    set $cors_headers "{{ nginx_cors_allowed_headers | join(', ') }}";
+    set $cors_expose "{{ nginx_cors_expose_headers | join(', ') }}";
+    set $cors_max_age "{{ nginx_cors_max_age }}";
+}
+{% else %}
 {% for origin in nginx_cors_allowed_origins %}
 if ($http_origin = "{{ origin }}") {
     set $cors_origin "{{ origin }}";
-    set $cors_credentials "{{ 'true' if nginx_cors_allow_credentials else 'false' }}";
+{% if nginx_cors_allow_credentials %}
+    set $cors_credentials "true";
+{% endif %}
     set $cors_methods "{{ nginx_cors_allowed_methods | join(', ') }}";
     set $cors_headers "{{ nginx_cors_allowed_headers | join(', ') }}";
     set $cors_expose "{{ nginx_cors_expose_headers | join(', ') }}";
     set $cors_max_age "{{ nginx_cors_max_age }}";
 }
 {% endfor %}
+{% endif %}
 
 # Handle preflight OPTIONS request
 if ($request_method = 'OPTIONS') {
     add_header 'Access-Control-Allow-Origin' $cors_origin always;
     add_header 'Access-Control-Allow-Methods' $cors_methods always;
     add_header 'Access-Control-Allow-Headers' $cors_headers always;
+{% if nginx_cors_allow_credentials %}
     add_header 'Access-Control-Allow-Credentials' $cors_credentials always;
+{% endif %}
     add_header 'Access-Control-Max-Age' $cors_max_age always;
     add_header 'Content-Type' 'text/plain; charset=utf-8';
     add_header 'Content-Length' 0;
@@ -144,7 +161,9 @@ if ($request_method = 'OPTIONS') {
 
 # Add CORS headers to actual responses
 add_header 'Access-Control-Allow-Origin' $cors_origin always;
+{% if nginx_cors_allow_credentials %}
 add_header 'Access-Control-Allow-Credentials' $cors_credentials always;
+{% endif %}
 add_header 'Access-Control-Expose-Headers' $cors_expose always;
 ```
 
@@ -252,17 +271,18 @@ server {
 ```yaml
 # roles/nginx_cors/handlers/main.yml
 ---
-- name: Validate and reload nginx
+- name: Validate nginx configuration
   ansible.builtin.command: nginx -t
   become: true
   changed_when: false
-  notify: Reload nginx
+  listen: Validate and reload nginx
 
 - name: Reload nginx
   ansible.builtin.systemd:
     name: nginx
     state: reloaded
   become: true
+  listen: Validate and reload nginx
 ```
 
 ## The Playbook
@@ -308,7 +328,7 @@ curl -X GET \
   -H "Origin: https://myapp.com" \
   -v http://api.myapp.com/api/data 2>&1 | grep -i "access-control"
 
-# Test from disallowed origin (should have empty CORS headers)
+# Test from disallowed origin (should have no CORS headers)
 curl -X GET \
   -H "Origin: https://evil.com" \
   -v http://api.myapp.com/api/data 2>&1 | grep -i "access-control"
