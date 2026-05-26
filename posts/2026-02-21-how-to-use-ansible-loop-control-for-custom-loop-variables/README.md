@@ -8,7 +8,7 @@ Description: Master Ansible loop_control to customize loop variable names, outpu
 
 ---
 
-When Ansible runs a loop, it uses the variable name `item` to represent the current element. This works fine for simple playbooks, but it breaks down when you have nested loops, included tasks with their own loops, or complex playbooks where `item` is ambiguous. The `loop_control` directive lets you customize every aspect of loop behavior, from the variable name to the output format.
+When Ansible runs a loop, it uses the variable name `item` to represent the current element. This works fine for simple playbooks, but it breaks down when you have nested loops, included tasks with their own loops, or complex playbooks where `item` is ambiguous. The `loop_control` directive lets you customize many aspects of loop behavior, from the variable name to the output format.
 
 ## The loop_var Option
 
@@ -72,7 +72,7 @@ And the included file `setup-app.yml`:
     - "/etc/{{ app.name }}"
 ```
 
-Without `loop_var: app` in the outer loop, both the outer loop and inner loops would use `item`, causing a collision. The outer `item` would be overwritten by the inner `item`, and the playbook would fail or produce wrong results.
+Without `loop_var: app` in the outer loop, both the outer loop and inner loops would use `item`, causing a collision. The inner `item` would overwrite the outer `item`; in current Ansible versions, Ansible raises an error if it detects that the loop variable is already defined.
 
 ## The label Option
 
@@ -124,6 +124,7 @@ The `pause` option adds a delay (in seconds) between loop iterations. This is us
 - name: Rolling restart of containers
   community.docker.docker_container:
     name: "{{ container.name }}"
+    image: "{{ container.image }}"
     state: started
     restart: yes
   loop:
@@ -178,12 +179,10 @@ The extended variables include:
 Extended loop variables are great for tasks that need to behave differently on the first or last iteration:
 
 ```yaml
-# Build a comma-separated list with proper formatting
-- name: Generate upstream config
-  ansible.builtin.lineinfile:
-    path: /etc/nginx/upstream.conf
-    line: "    server {{ item }}:8080{{ '' if ansible_loop.last else ';' }}"
-    insertafter: "upstream backend {"
+# Show comma-separated values with proper formatting
+- name: Show upstream servers
+  ansible.builtin.debug:
+    msg: "{{ item }}{{ ',' if not ansible_loop.last else '' }}"
   loop:
     - 10.0.1.10
     - 10.0.1.11
@@ -212,11 +211,11 @@ Extended loop variables are great for tasks that need to behave differently on t
 
 ## The extended_allitems Option
 
-By default, `extended` does not include `ansible_loop.allitems` because it can be memory-intensive for large lists. If you need access to the full list during iteration, enable it explicitly:
+By default, `extended` includes `ansible_loop.allitems`, which can be memory-intensive for large lists. If you do not need access to the full list during iteration, disable it explicitly:
 
 ```yaml
-# Access the full list during iteration (use sparingly on large lists)
-- name: Compare current item with full list
+# Disable the full list reference during iteration for large lists
+- name: Show current item without retaining allitems
   ansible.builtin.debug:
     msg: "{{ item }} is one of {{ ansible_loop.length }} items"
   loop:
@@ -225,15 +224,15 @@ By default, `extended` does not include `ansible_loop.allitems` because it can b
     - worker
   loop_control:
     extended: true
-    extended_allitems: true
+    extended_allitems: false
 ```
 
-## Combining All loop_control Options
+## Combining Common loop_control Options
 
-Here is a task that uses every `loop_control` option together:
+Here is a task that combines several common `loop_control` options:
 
 ```yaml
-# Full loop_control example with all options
+# loop_control example with several common options
 - name: Deploy application instances
   ansible.builtin.template:
     src: instance.conf.j2
