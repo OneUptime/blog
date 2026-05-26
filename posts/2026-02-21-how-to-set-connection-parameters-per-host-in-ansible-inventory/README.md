@@ -25,7 +25,7 @@ web3.example.com ansible_host=10.0.1.12 ansible_port=22 ansible_user=deploy
 
 [databases]
 db1.example.com ansible_host=10.0.2.10 ansible_user=dbadmin ansible_port=22
-db2.example.com ansible_host=10.0.2.11 ansible_user=postgres ansible_port=5433
+db2.example.com ansible_host=10.0.2.11 ansible_user=postgres ansible_port=22
 ```
 
 The most commonly used connection variables:
@@ -127,7 +127,7 @@ ansible_winrm_server_cert_validation: ignore
 
 # host_vars/docker-container.yml
 # Connect to a Docker container
-ansible_connection: docker
+ansible_connection: community.docker.docker
 ansible_docker_extra_args: ""
 ansible_host: my_container_name
 ```
@@ -292,13 +292,13 @@ Always verify that the connection parameters are correct:
 ansible-inventory -i inventory.ini --host web-ubuntu.example.com
 
 # Test actual connectivity
-ansible web-ubuntu.example.com -i inventory.ini -m ping
+ansible web-ubuntu.example.com -i inventory.ini -m ansible.builtin.ping
 
 # Test with verbose output to see the SSH command
-ansible web-ubuntu.example.com -i inventory.ini -m ping -vvvv
+ansible web-ubuntu.example.com -i inventory.ini -m ansible.builtin.ping -vvvv
 
 # Test a Windows host
-ansible win-app-01.example.com -i inventory.ini -m win_ping
+ansible win-app-01.example.com -i inventory.ini -m ansible.windows.win_ping
 ```
 
 The `-vvvv` (four v's) output shows the actual SSH command Ansible constructs, including all the connection parameters. This is extremely helpful for diagnosing connection failures.
