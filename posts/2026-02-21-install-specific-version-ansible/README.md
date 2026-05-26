@@ -8,7 +8,7 @@ Description: How to install a specific version of Ansible using pip, apt, or dnf
 
 ---
 
-There are plenty of reasons to install a specific version of Ansible instead of whatever "latest" happens to be. Maybe your playbooks were written for Ansible 2.14 and you do not want to risk breaking changes. Maybe your team standardized on a particular version. Maybe you are debugging a version-specific bug. Whatever the reason, pinning Ansible to an exact version is straightforward with any installation method.
+There are plenty of reasons to install a specific version of Ansible instead of whatever "latest" happens to be. Maybe your playbooks were written for ansible-core 2.14 and you do not want to risk breaking changes. Maybe your team standardized on a particular version. Maybe you are debugging a version-specific bug. Whatever the reason, pinning Ansible to an exact version is straightforward with any installation method.
 
 ## Understanding Ansible Versioning
 
@@ -71,10 +71,13 @@ pip install "ansible>=9.1,<10.0"
 ### Verify the Installed Version
 
 ```bash
-# Check the installed version
+# Check the installed ansible-core runtime version
 ansible --version
 
-# Check the pip package version
+# If you installed the full ansible package, check its community package version
+ansible-community --version
+
+# Check the pip package versions
 pip show ansible
 pip show ansible-core
 ```
@@ -132,8 +135,8 @@ apt-cache madison ansible
 # Install a specific version
 sudo apt install ansible=<version-string>
 
-# Example (version strings vary by repository)
-sudo apt install ansible=9.2.0-1ppa~jammy
+# Example for Ubuntu 24.04 Noble (version strings vary by repository)
+sudo apt install ansible=9.2.0+dfsg-0ubuntu1
 ```
 
 ### Prevent Automatic Upgrades
@@ -162,14 +165,14 @@ dnf --showduplicates list ansible
 # Install a specific version
 sudo dnf install ansible-<version>
 
-# Example
-sudo dnf install ansible-9.2.0-1.el9
+# Example for EPEL 8
+sudo dnf install ansible-9.2.0-1.el8
 ```
 
 To prevent automatic upgrades:
 
 ```bash
-# Exclude ansible from future updates
+# Exclude ansible from future updates with the versionlock plugin
 sudo dnf versionlock add ansible
 
 # Or add to dnf.conf
