@@ -17,7 +17,7 @@ This guide covers creating both Redis and Memcached clusters, configuring replic
 You need:
 
 - Ansible 2.14+
-- The `amazon.aws` collection
+- The `community.aws` and `amazon.aws` collections
 - AWS credentials with ElastiCache permissions
 - A VPC with private subnets
 - Python boto3
@@ -25,7 +25,7 @@ You need:
 ```bash
 # Install dependencies
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install community.aws amazon.aws
 pip install boto3 botocore
 ```
 
@@ -65,7 +65,7 @@ ElastiCache nodes run inside your VPC, so you need a subnet group first:
   tasks:
     # Subnet group spanning two AZs for high availability
     - name: Create ElastiCache subnet group
-      amazon.aws.elasticache_subnet_group:
+      community.aws.elasticache_subnet_group:
         name: myapp-cache-subnet-group
         description: "Private subnets for ElastiCache"
         region: us-east-1
@@ -96,10 +96,10 @@ For development or simple caching needs:
   tasks:
     # Create a single-node Redis cluster for development
     - name: Create Redis cluster
-      amazon.aws.elasticache:
+      community.aws.elasticache:
         name: "{{ cluster_id }}"
         engine: redis
-        engine_version: "7.1"
+        cache_engine_version: "7.1"
         node_type: "{{ node_type }}"
         num_nodes: 1
         cache_subnet_group: myapp-cache-subnet-group
@@ -187,10 +187,10 @@ Memcached is simpler than Redis but distributes data across multiple nodes:
   tasks:
     # Create a Memcached cluster with 3 nodes
     - name: Create Memcached cluster
-      amazon.aws.elasticache:
+      community.aws.elasticache:
         name: myapp-session-cache
         engine: memcached
-        engine_version: "1.6.22"
+        cache_engine_version: "1.6.22"
         node_type: cache.t3.medium
         num_nodes: 3
         cache_subnet_group: myapp-cache-subnet-group
@@ -318,7 +318,7 @@ Set up CloudWatch alarms for your cache:
 ```yaml
 # Delete a single-node cache cluster
 - name: Delete ElastiCache cluster
-  amazon.aws.elasticache:
+  community.aws.elasticache:
     name: myapp-dev-cache
     region: us-east-1
     state: absent
