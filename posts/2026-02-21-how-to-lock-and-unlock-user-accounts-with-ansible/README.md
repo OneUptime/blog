@@ -183,7 +183,7 @@ When you need to lock multiple accounts at once (incident response scenario), us
 
 ## Automated Account Locking on Failed Logins
 
-You can set up Ansible to automatically lock accounts after a certain number of failed login attempts by configuring PAM:
+If your PAM stack already uses `pam_faillock`, you can use Ansible to configure automatic account locking after a certain number of failed login attempts:
 
 ```yaml
 # auto-lock-pam.yml - Configure automatic account locking
@@ -191,7 +191,7 @@ You can set up Ansible to automatically lock accounts after a certain number of 
   hosts: all
   become: yes
   tasks:
-    # Install pam_faillock (available on RHEL/CentOS 8+)
+    # Configure pam_faillock options
     - name: Configure faillock for authentication
       ansible.builtin.copy:
         dest: /etc/security/faillock.conf
@@ -265,7 +265,7 @@ In a production environment, you should log who locked or unlocked an account an
         create: yes
         mode: '0640'
         owner: root
-        group: adm
+        group: root
       when: lock_result.changed
 ```
 
