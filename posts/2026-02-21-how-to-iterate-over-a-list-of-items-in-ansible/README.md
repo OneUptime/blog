@@ -145,7 +145,7 @@ You can construct lists at runtime based on conditions:
       }}
 
 - name: Restart affected services
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: restarted
   loop: "{{ services_to_restart }}"
@@ -300,7 +300,7 @@ Here is a real-world playbook that deploys multiple applications using list iter
       notify: reload nginx
 
     - name: Enable and start application services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item.name }}"
         state: started
         enabled: yes
@@ -310,7 +310,7 @@ Here is a real-world playbook that deploys multiple applications using list iter
 
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
 
     - name: reload nginx
@@ -323,7 +323,7 @@ This playbook deploys three web applications with a single set of tasks. Adding 
 
 ## Performance Considerations
 
-When looping over large lists, keep these things in mind. Each iteration is a separate module execution, which means a separate SSH connection or process. For package installation, always prefer passing the list directly to the `name` parameter when the module supports it. For file operations, consider using `synchronize` for bulk file copies instead of looping over `copy`. And if you are looping over hundreds of items, consider using `async` with `poll` to parallelize the work.
+When looping over large lists, keep these things in mind. Each iteration is a separate module execution, which means a separate remote module invocation or local process, even when SSH connection reuse is enabled. For package installation, always prefer passing the list directly to the `name` parameter when the module supports it. For file operations, consider using `synchronize` for bulk file copies instead of looping over `copy`. And if you are looping over hundreds of items, consider using `async` with `poll` to parallelize the work.
 
 ## Summary
 
