@@ -100,8 +100,10 @@ If the lists might contain duplicates and you want a unique set, use the `union`
     - name: Show merged list
       ansible.builtin.debug:
         msg: "{{ all_packages }}"
-    # Result: [curl, wget, jq, awscli, terraform, nginx]
+    # Example result: [curl, wget, jq, awscli, terraform, nginx]
 ```
+
+The `union` filter returns unique values, but in current ansible-core versions the result order is arbitrary. If order matters, use concatenation followed by `unique`, or use `community.general.lists_union`.
 
 ## Solution 3: Merging Lists of Dictionaries
 
@@ -134,8 +136,8 @@ Things get more involved when you are merging lists of dictionaries, like user d
       ansible.builtin.set_fact:
         all_users_raw: "{{ default_users + extra_users }}"
 
-    # Deduplicate by 'name' key, keeping the last occurrence
-    - name: Deduplicate by name (last wins)
+    # Merge entries with the same 'name' key; later values replace earlier ones by default
+    - name: Merge by name
       ansible.builtin.set_fact:
         all_users: "{{ all_users_raw | community.general.lists_mergeby('name') }}"
 
@@ -144,7 +146,7 @@ Things get more involved when you are merging lists of dictionaries, like user d
         var: all_users
 ```
 
-If you do not have the `community.general` collection, you can use a Jinja2 expression:
+If you do not have the `community.general` collection and only need the last definition to win, you can use a Jinja2 expression:
 
 ```yaml
     # Manual deduplication using a Jinja2 dict
@@ -159,12 +161,12 @@ If you do not have the `community.general` collection, you can use a Jinja2 expr
 
 ## Solution 4: The hash_behaviour Setting (Use with Caution)
 
-Ansible has a configuration option `hash_behaviour = merge` that changes the default from replace to merge for all dictionaries. However, this is a global setting and has been deprecated in recent versions. It affects all variable merging, which can lead to unexpected behavior.
+Ansible has a configuration option `hash_behaviour = merge` that changes the default from replace to merge for dictionary variables. However, this is a global setting that the Ansible project recommends avoiding for new projects and intends to eventually deprecate and remove. It affects variable merging across sources, which can lead to unexpected behavior.
 
 ```ini
 # ansible.cfg - NOT recommended for most use cases
 [defaults]
-# This is deprecated and will be removed in future versions
+# This is not recommended for new projects
 # hash_behaviour = merge
 ```
 
@@ -204,10 +206,10 @@ When a host belongs to multiple groups, you often want to accumulate list variab
 firewall_rules_base:
   - port: 22
     proto: tcp
-    action: allow
+    jump: ACCEPT
   - port: 443
     proto: tcp
-    action: allow
+    jump: ACCEPT
 ```
 
 ```yaml
@@ -215,10 +217,10 @@ firewall_rules_base:
 firewall_rules_webservers:
   - port: 80
     proto: tcp
-    action: allow
+    jump: ACCEPT
   - port: 8080
     proto: tcp
-    action: allow
+    jump: ACCEPT
 ```
 
 ```yaml
@@ -226,10 +228,10 @@ firewall_rules_webservers:
 firewall_rules_monitoring:
   - port: 9090
     proto: tcp
-    action: allow
+    jump: ACCEPT
   - port: 9100
     proto: tcp
-    action: allow
+    jump: ACCEPT
 ```
 
 ```yaml
@@ -251,7 +253,7 @@ firewall_rules_monitoring:
         chain: INPUT
         protocol: "{{ item.proto }}"
         destination_port: "{{ item.port }}"
-        jump: "{{ item.action | upper }}"
+        jump: "{{ item.jump }}"
       loop: "{{ all_firewall_rules }}"
       become: true
 ```
@@ -269,12 +271,12 @@ For a more dynamic approach, you can use the `varnames` lookup to find all varia
   tasks:
     - name: Find all variables matching pattern
       ansible.builtin.set_fact:
-        matching_var_names: "{{ lookup('varnames', 'firewall_rules_') }}"
+        matching_var_names: "{{ query('ansible.builtin.varnames', '^firewall_rules_.+') }}"
 
     - name: Merge all matching variables into one list
       ansible.builtin.set_fact:
-        all_rules: "{{ all_rules | default([]) + lookup('vars', item) }}"
-      loop: "{{ matching_var_names.split(',') }}"
+        all_rules: "{{ all_rules | default([]) + lookup('ansible.builtin.vars', item) }}"
+      loop: "{{ matching_var_names }}"
       when: matching_var_names | length > 0
 
     - name: Show combined rules
