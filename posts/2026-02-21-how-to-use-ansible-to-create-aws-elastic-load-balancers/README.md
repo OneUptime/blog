@@ -16,11 +16,11 @@ This post walks through creating Classic ELBs with Ansible, configuring listener
 
 Make sure you have:
 
-- Ansible 2.14+
+- Ansible 2.16+ for the current `amazon.aws` collection, or another Ansible version supported by the collection version you install
 - The `amazon.aws` collection installed
 - AWS credentials configured
 - A VPC with subnets already set up
-- Python boto3 library
+- Python boto3 and botocore libraries
 
 ```bash
 # Install the required collection and Python library
@@ -174,7 +174,7 @@ After creating the ELB, you need to register instances with it:
     purge_instance_ids: false
 ```
 
-Setting `purge_instance_ids: false` is important. Without it, Ansible would deregister any instances not listed in your playbook. If you want to manage the exact set of instances, set it to `true`.
+`purge_instance_ids` defaults to `false`, which means Ansible will keep existing registered instances that are not listed in your playbook. If you want to manage the exact set of instances and deregister anything not listed, set it to `true`.
 
 ## Cross-Zone Load Balancing
 
