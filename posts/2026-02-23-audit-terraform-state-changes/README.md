@@ -26,7 +26,7 @@ A complete audit trail for Terraform state should capture:
 
 ### CloudTrail for API-Level Auditing
 
-AWS CloudTrail captures every S3 API call, including reads and writes to your state file:
+AWS CloudTrail can capture S3 object-level API calls when data events are enabled, including reads and writes to your state file:
 
 ```hcl
 # Create a CloudTrail trail specifically for Terraform state auditing
@@ -92,14 +92,35 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
 
 ### Querying CloudTrail Logs
 
-Once CloudTrail is running, you can query state change events:
+Once CloudTrail is running, query the delivered data events with CloudTrail Lake or another log query tool. The `lookup-events` command only searches recent management and Insights events, not S3 object data events:
 
 ```bash
-# Find all PutObject events (state writes) in the last 24 hours
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=ResourceType,AttributeValue=AWS::S3::Object \
-  --start-time "$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
-  --query 'Events[?contains(Resources[0].ResourceName, `terraform.tfstate`)].[EventTime,Username,EventName]' \
+# Find state write events in the last 24 hours with CloudTrail Lake
+EVENT_DATA_STORE_ID="your-event-data-store-id"
+START_TIME=$(date -u -d '24 hours ago' +%Y-%m-%d\ %H:%M:%S)
+
+QUERY_ID=$(aws cloudtrail start-query \
+  --query-statement "SELECT eventTime, userIdentity.arn, eventName, requestParameters.key
+    FROM $EVENT_DATA_STORE_ID
+    WHERE eventSource = 's3.amazonaws.com'
+      AND eventName IN ('PutObject', 'CompleteMultipartUpload', 'DeleteObject')
+      AND requestParameters.bucketName = 'my-terraform-state'
+      AND requestParameters.key LIKE '%terraform.tfstate'
+      AND eventTime >= timestamp '$START_TIME'" \
+  --query 'QueryId' \
+  --output text)
+
+while true; do
+  STATUS=$(aws cloudtrail describe-query --query-id "$QUERY_ID" --query 'QueryStatus' --output text)
+  case "$STATUS" in
+    FINISHED) break ;;
+    QUEUED|RUNNING) sleep 2 ;;
+    *) echo "Query ended with status $STATUS"; exit 1 ;;
+  esac
+done
+
+aws cloudtrail get-query-results \
+  --query-id "$QUERY_ID" \
   --output table
 ```
 
@@ -157,13 +178,13 @@ aws s3api get-object --bucket "$BUCKET" --key "$KEY" \
 
 # Compare resource lists
 echo "=== Resources Added ==="
-diff <(jq -r '.resources[].type + "." + .resources[].name' /tmp/state-previous.json | sort) \
-     <(jq -r '.resources[].type + "." + .resources[].name' /tmp/state-current.json | sort) \
+diff <(jq -r '.resources[] | .type + "." + .name' /tmp/state-previous.json | sort) \
+     <(jq -r '.resources[] | .type + "." + .name' /tmp/state-current.json | sort) \
      | grep "^>" | sed 's/^> //'
 
 echo "=== Resources Removed ==="
-diff <(jq -r '.resources[].type + "." + .resources[].name' /tmp/state-previous.json | sort) \
-     <(jq -r '.resources[].type + "." + .resources[].name' /tmp/state-current.json | sort) \
+diff <(jq -r '.resources[] | .type + "." + .name' /tmp/state-previous.json | sort) \
+     <(jq -r '.resources[] | .type + "." + .name' /tmp/state-current.json | sort) \
      | grep "^<" | sed 's/^< //'
 
 echo "=== Full Diff ==="
@@ -201,7 +222,7 @@ Query audit logs with gcloud:
 gcloud logging read \
   'resource.type="gcs_bucket" AND
    resource.labels.bucket_name="my-terraform-state" AND
-   protoPayload.methodName="storage.objects.update"' \
+   protoPayload.methodName=("storage.objects.create" OR "storage.objects.update" OR "storage.objects.delete")' \
   --limit 50 \
   --format "table(timestamp,protoPayload.authenticationInfo.principalEmail,protoPayload.resourceName)"
 ```
@@ -214,9 +235,8 @@ Terraform Cloud has built-in audit logging:
 # Query audit trail via the Terraform Cloud API
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/organization/audit-trail?since=2026-02-22T00:00:00Z" | \
-  jq '.data[] | {timestamp: .attributes.timestamp, action: .attributes.type, user: .attributes.auth.accessor_id}'
+  "https://app.terraform.io/api/v2/organization/audit-trail?since=2026-02-22T00:00:00.000Z" | \
+  jq '.data[] | {timestamp: .timestamp, resource: .resource.type, action: .resource.action, user: .auth.accessor_id}'
 ```
 
 Terraform Cloud audit events include:
@@ -281,6 +301,7 @@ import json
 import boto3
 import os
 from datetime import datetime
+from urllib.parse import unquote_plus
 
 s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
@@ -291,11 +312,14 @@ def handler(event, context):
     record = message['Records'][0]
 
     bucket = record['s3']['bucket']['name']
-    key = record['s3']['object']['key']
-    version_id = record['s3']['object'].get('versionId', 'unknown')
+    key = unquote_plus(record['s3']['object']['key'])
+    version_id = record['s3']['object'].get('versionId')
 
     # Download the new state
-    response = s3.get_object(Bucket=bucket, Key=key, VersionId=version_id)
+    get_object_args = {'Bucket': bucket, 'Key': key}
+    if version_id:
+        get_object_args['VersionId'] = version_id
+    response = s3.get_object(**get_object_args)
     new_state = json.loads(response['Body'].read())
 
     # Extract summary information
@@ -311,7 +335,7 @@ def handler(event, context):
         'serial': serial,
         'resource_count': resource_count,
         'terraform_version': terraform_version,
-        'version_id': version_id,
+        'version_id': version_id or 'unversioned',
     })
 
     print(f"State change recorded: {key} serial={serial} resources={resource_count}")
