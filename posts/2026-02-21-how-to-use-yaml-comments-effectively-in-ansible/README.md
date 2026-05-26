@@ -8,7 +8,7 @@ Description: Best practices for using YAML comments in Ansible playbooks to expl
 
 ---
 
-Comments in YAML start with `#` and extend to the end of the line. They are stripped by the parser and never reach Ansible, but they are invaluable for humans reading your code. Good comments explain why something is done, not what is done.
+Comments in YAML start with `#` outside scalar content and extend to the end of the line. For inline comments, keep whitespace before `#` so it is parsed as a comment rather than part of a plain scalar. They are stripped by the parser and never reach Ansible, but they are invaluable for humans reading your code. Good comments explain why something is done, not what is done.
 
 ## Comment Types
 
@@ -88,7 +88,7 @@ db_connect_timeout: 15
 
 ```yaml
 # TODO: Replace with ansible.builtin.package when
-# we drop support for Ubuntu 18.04
+# package names are normalized across supported distros
 - name: Install packages
   ansible.builtin.apt:
     name: "{{ packages }}"
@@ -120,12 +120,12 @@ Avoid leaving commented-out code in playbooks. Use version control to track old 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where comments add useful context in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow with comments for context
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -157,7 +157,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -178,7 +178,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -196,9 +196,9 @@ Here are several practical scenarios where this module proves essential in real-
         policy: deny
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -239,7 +239,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with comments for context
 - name: Robust task execution
   hosts: all
   tasks:
@@ -306,4 +306,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 Good comments in Ansible YAML explain intent, document constraints, flag temporary workarounds, and provide context that the code cannot convey on its own. Use section headers for navigation, document non-obvious variable choices, and mark temporary code with TODO/FIXME tags. Avoid commenting out code and avoid restating what the task name already says.
-
