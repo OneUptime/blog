@@ -36,9 +36,12 @@ AWX supports these inventory source types out of the box:
 - **Microsoft Azure Resource Manager** - Pulls VMs from Azure
 - **VMware vCenter** - Pulls VMs from VMware
 - **Red Hat Satellite** - Pulls hosts from Satellite
+- **Red Hat Insights** - Pulls hosts from Insights
 - **OpenStack** - Pulls instances from OpenStack
 - **Red Hat Virtualization** - Pulls VMs from RHV
-- **Ansible Controller** - Pulls inventories from another AWX/Controller
+- **Red Hat Ansible Automation Platform** - Pulls inventories from another AWX/Controller
+- **Terraform State** - Pulls instances from Terraform state
+- **OpenShift Virtualization** - Pulls VMs from OpenShift Virtualization
 - **Sourced from a project** - Uses an inventory file or script from a Git repo
 
 ## Setting Up an AWS EC2 Inventory Source
@@ -91,8 +94,10 @@ curl -s -X POST \
     "update_on_launch": true,
     "update_cache_timeout": 300,
     "source_vars": {
-      "regions": "us-east-1",
-      "filters": "tag:Environment=production",
+      "regions": ["us-east-1"],
+      "filters": {
+        "tag:Environment": "production"
+      },
       "keyed_groups": [
         {"key": "tags.Role", "prefix": "role"},
         {"key": "placement.availability_zone", "prefix": "az"},
@@ -131,8 +136,8 @@ curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
 import sys, json
 data = json.load(sys.stdin)
 print(f'Status: {data[\"status\"]}')
-print(f'Last synced: {data[\"last_updated\"]}')
-print(f'Last sync result: {data[\"last_job_run\"]}')
+print(f'Last job run: {data[\"last_job_run\"]}')
+print(f'Last job failed: {data[\"last_job_failed\"]}')
 "
 ```
 
@@ -161,11 +166,11 @@ curl -s -X POST \
         "runtime.powerState"
       ],
       "filters": [
-        {"runtime.powerState": "poweredOn"}
+        "runtime.powerState == \"poweredOn\""
       ],
       "keyed_groups": [
         {"key": "config.guestId", "separator": ""},
-        {"key": "summary.runtime.powerState", "separator": ""}
+        {"key": "runtime.powerState", "separator": ""}
       ],
       "compose": {
         "ansible_host": "guest.ipAddress"
@@ -199,7 +204,7 @@ curl -s -X POST \
         {"key": "tags.Environment | default(\"untagged\")", "prefix": "env"}
       ],
       "compose": {
-        "ansible_host": "private_ip_addresses[0]"
+        "ansible_host": "private_ipv4_addresses[0]"
       }
     }
   }'
@@ -235,12 +240,11 @@ curl -s -X POST \
     "source_project": 4,
     "source_path": "inventories/production/",
     "overwrite": true,
-    "update_on_launch": true,
-    "update_on_project_update": true
+    "update_on_launch": true
   }'
 ```
 
-The `update_on_project_update` flag means the inventory syncs automatically whenever the source project is updated from Git.
+With `update_on_launch`, AWX refreshes the project and inventory source before jobs use this inventory, subject to the cache timeout settings.
 
 ## Scheduling Inventory Syncs
 
