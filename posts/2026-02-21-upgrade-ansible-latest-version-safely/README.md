@@ -24,7 +24,7 @@ ansible --version
 # Record installed collections and their versions
 ansible-galaxy collection list > /tmp/collections-before.txt
 
-# Record the Python version Ansible is using
+# Record the default Python version on the control node
 python3 --version
 ```
 
@@ -224,16 +224,16 @@ collections:
 
 ### Deprecated Module Warnings
 
-If you see deprecation warnings, the module still works but will be removed in a future version. Update your playbooks to use the replacement module:
+If you see deprecation warnings, the module still works but will be removed in a future version. Update your playbooks to use the recommended replacement. For built-in modules, prefer the fully qualified collection name to avoid ambiguity:
 
 ```yaml
-# Old (deprecated in newer versions)
+# Short name (still valid, but less explicit)
 - name: Copy file
   copy:
     src: myfile.conf
     dest: /etc/myfile.conf
 
-# New (fully qualified collection name)
+# Fully qualified collection name
 - name: Copy file
   ansible.builtin.copy:
     src: myfile.conf
