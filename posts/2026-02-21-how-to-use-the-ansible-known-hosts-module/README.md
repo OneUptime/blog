@@ -16,7 +16,7 @@ This post covers how to add, remove, and manage SSH host keys using the `known_h
 
 When Ansible connects to a remote host over SSH, it checks the host's key against the `known_hosts` file. If the key is not found, one of three things happens:
 
-1. If `host_key_checking = true` (default), Ansible refuses to connect
+1. If `host_key_checking = true` (default), Ansible prompts for confirmation, or fails in non-interactive runs
 2. If you set `ANSIBLE_HOST_KEY_CHECKING=False`, Ansible connects without verification (insecure)
 3. If the host key is already in `known_hosts`, Ansible connects normally
 
@@ -335,13 +335,13 @@ Here is a complete playbook for bootstrapping known_hosts when setting up new in
 
     - name: Add all scanned keys to known_hosts
       ansible.builtin.known_hosts:
-        name: "{{ item.item.1 }}"
-        key: "{{ item.stdout_lines | first }}"
+        name: "{{ item.0.item.1 }}"
+        key: "{{ item.1 }}"
         state: present
-      loop: "{{ scanned_keys.results }}"
+      loop: "{{ scanned_keys.results | subelements('stdout_lines') }}"
       loop_control:
-        label: "{{ item.item.1 }}"
-      when: item.stdout_lines | length > 0
+        label: "{{ item.0.item.1 }}"
+      when: item.1 | length > 0
 
     - name: Report results
       ansible.builtin.debug:
