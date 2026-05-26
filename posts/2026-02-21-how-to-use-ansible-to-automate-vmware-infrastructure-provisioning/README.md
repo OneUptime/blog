@@ -16,7 +16,7 @@ This guide covers the full provisioning lifecycle: creating VMs from templates, 
 
 You need:
 
-- Ansible 2.12+ with the `community.vmware` collection
+- Ansible with VMware, POSIX, and general-purpose collections supported by your ansible-core version
 - vCenter Server with appropriate permissions
 - VM templates prepared in your vSphere environment
 - Python packages `pyvmomi` and `requests`
@@ -25,6 +25,9 @@ You need:
 # Install everything you need
 
 ansible-galaxy collection install community.vmware
+ansible-galaxy collection install vmware.vmware
+ansible-galaxy collection install community.general
+ansible-galaxy collection install ansible.posix
 pip install pyvmomi requests
 ```
 
@@ -165,6 +168,7 @@ Database servers and application servers often need extra disks beyond the OS di
   gather_facts: false
   vars_files:
     - ../vars/vcenter_creds.yml
+    - ../vars/infrastructure.yml
 
   vars:
     extra_disks:
@@ -206,28 +210,27 @@ Database servers and application servers often need extra disks beyond the OS di
 After creating VMs, you need to configure them. Use a dynamic inventory that queries vCenter to find the new VMs.
 
 ```yaml
-# inventory/vmware_dynamic.yml
+# inventory/hosts.vmware_vms.yml
 ---
-plugin: community.vmware.vmware_vm_inventory
+plugin: vmware.vmware.vms
 strict: false
 hostname: vcenter.lab.local
 username: administrator@vsphere.local
 password: "{{ vault_vcenter_password }}"
 validate_certs: false
-with_nested_properties: true
 properties:
   - guest.ipAddress
   - config.name
   - config.guestId
-  - runtime.powerState
+  - summary.runtime.powerState
 hostnames:
-  - config.name
+  - name
 compose:
   ansible_host: guest.ipAddress
 groups:
-  webservers: "'web' in config.name"
-  appservers: "'app' in config.name"
-  databases: "'db' in config.name"
+  webservers: "'web' in name"
+  appservers: "'app' in name"
+  databases: "'db' in name"
 ```
 
 ## Post-Provisioning Configuration
@@ -287,19 +290,21 @@ Before doing anything risky, take snapshots of your VMs.
 ---
 - name: Manage VM snapshots
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   vars_files:
     - ../vars/vcenter_creds.yml
+    - ../vars/infrastructure.yml
 
   tasks:
     # Take a snapshot before upgrades
     - name: Create pre-upgrade snapshots
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
         datacenter: "{{ datacenter }}"
+        folder: "{{ folder }}"
         name: "{{ item }}"
         snapshot_name: "pre-upgrade-{{ ansible_date_time.date }}"
         description: "Snapshot before system upgrade"
@@ -365,17 +370,19 @@ Tie everything together with a master playbook that runs the full provisioning p
 ```yaml
 # playbooks/full-provision.yml
 ---
-- name: Full infrastructure provisioning pipeline
+- name: Provision VMs
+  ansible.builtin.import_playbook: provision-vms.yml
+
+- name: Add extra disks
+  ansible.builtin.import_playbook: add-disks.yml
+
+- name: Wait for VMs to become reachable
   hosts: localhost
   gather_facts: false
+  vars_files:
+    - ../vars/infrastructure.yml
 
   tasks:
-    - name: Provision VMs
-      ansible.builtin.include_tasks: provision-vms.yml
-
-    - name: Add extra disks
-      ansible.builtin.include_tasks: add-disks.yml
-
     - name: Wait for VMs to be reachable
       ansible.builtin.wait_for:
         host: "{{ item.ip }}"
