@@ -12,7 +12,7 @@ Managing configuration files gets complicated when multiple teams or roles need 
 
 ## How the assemble Module Works
 
-The `assemble` module collects all files from a source directory on the Ansible controller (or remote host), concatenates them in sorted order, and writes the result to a destination file on the managed host. The sorting is alphabetical by filename, which means you can control the order of fragments using numeric prefixes.
+The `assemble` module collects all files from a source directory on the managed host by default, or from the Ansible controller when `remote_src` is disabled, concatenates them in sorted order, and writes the result to a destination file on the managed host. The sorting is alphabetical by filename, which means you can control the order of fragments using numeric prefixes.
 
 Here is the basic syntax.
 
@@ -152,15 +152,15 @@ This is handy when your fragment directory contains README files, backup files, 
 
 ## Using assemble with remote_src
 
-By default, the `assemble` module looks for fragments on the Ansible controller. If your fragments are already on the remote host, set `remote_src: yes`.
+By default, the `assemble` module looks for fragments on the remote host. If your fragments are on the Ansible controller instead, set `remote_src: no`.
 
 ```yaml
-# Assemble fragments that already exist on the remote host
-- name: Assemble config from remote fragments
+# Assemble fragments from the Ansible controller
+- name: Assemble config from controller fragments
   ansible.builtin.assemble:
-    src: /opt/app/conf.d/
+    src: files/app/conf.d/
     dest: /opt/app/application.conf
-    remote_src: yes
+    remote_src: no
     owner: appuser
     group: appuser
     mode: '0640'
