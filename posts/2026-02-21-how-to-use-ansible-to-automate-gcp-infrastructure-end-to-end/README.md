@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Infrastructure as Code, Automation, DevOps
 
-Description: Complete guide to automating an entire GCP infrastructure stack with Ansible, from networking to compute to monitoring, with a real-world example.
+Description: Complete guide to automating a core GCP infrastructure stack with Ansible, from networking to compute and managed data services, with a real-world example.
 
 ---
 
-Most Ansible tutorials show you how to create a single resource: a VM, a disk, a network. But real infrastructure is a stack of interconnected components that need to be provisioned in the right order and configured to work together. In this post, we will build a complete, production-ready GCP infrastructure from scratch using Ansible. By the end, you will have a full web application stack with networking, compute, load balancing, databases, and monitoring.
+Most Ansible tutorials show you how to create a single resource: a VM, a disk, a network. But real infrastructure is a stack of interconnected components that need to be provisioned in the right order and configured to work together. In this post, we will build a representative GCP infrastructure from scratch using Ansible. By the end, you will have a web application stack with networking, compute, databases, caching, and secrets.
 
 ## What We Will Build
 
@@ -17,16 +17,13 @@ Our target architecture is a three-tier web application:
 - A VPC network with public and private subnets
 - Cloud NAT for outbound internet access from private VMs
 - A Managed Instance Group with autoscaling web servers
-- An HTTP(S) load balancer with Cloud Armor security
-- A Cloud SQL database in the private subnet
+- A Cloud SQL database reachable over private IP
 - Cloud Memorystore for caching
 - Secret Manager for sensitive configuration
 
 ```mermaid
 graph TD
-    Internet[Internet] --> LB[HTTPS Load Balancer]
-    LB --> CA[Cloud Armor Policy]
-    CA --> MIG[Managed Instance Group]
+    MIG[Managed Instance Group]
     MIG --> VM1[Web Server 1]
     MIG --> VM2[Web Server 2]
     MIG --> VMN[Web Server N]
@@ -36,12 +33,12 @@ graph TD
     VM2 --> Redis
     VMN --> SQL
     VMN --> Redis
-    NAT[Cloud NAT] --> VM1
-    NAT --> VM2
-    NAT --> VMN
-    SM[Secret Manager] -.-> VM1
-    SM -.-> VM2
-    SM -.-> VMN
+    VM1 --> NAT[Cloud NAT]
+    VM2 --> NAT
+    VMN --> NAT
+    VM1 -.-> SM[Secret Manager]
+    VM2 -.-> SM
+    VMN -.-> SM
 ```
 
 ## Project Structure
@@ -59,8 +56,6 @@ gcp-infrastructure/
     compute/
       tasks/main.yml
     database/
-      tasks/main.yml
-    loadbalancer/
       tasks/main.yml
     secrets/
       tasks/main.yml
@@ -90,6 +85,7 @@ environment: "production"
 vpc_name: "{{ app_name }}-vpc"
 public_subnet_cidr: "10.0.1.0/24"
 private_subnet_cidr: "10.0.2.0/24"
+services_range_name: "{{ app_name }}-services-range"
 
 # Compute settings
 machine_type: "e2-medium"
@@ -155,17 +151,16 @@ The networking role creates the VPC, subnets, firewall rules, Cloud Router, and 
     state: present
   register: private_subnet
 
-- name: Create firewall rule for HTTP/HTTPS from load balancer
+- name: Create firewall rule for Google health checks
   google.cloud.gcp_compute_firewall:
-    name: "{{ app_name }}-allow-lb-health-checks"
+    name: "{{ app_name }}-allow-health-checks"
     network: "{{ vpc }}"
     allowed:
       - ip_protocol: "tcp"
         ports:
           - "80"
-          - "443"
     source_ranges:
-      # GCP health check and load balancer IP ranges
+      # GCP health check probe IP ranges
       - "130.211.0.0/22"
       - "35.191.0.0/16"
     target_tags:
@@ -209,17 +204,54 @@ The networking role creates the VPC, subnets, firewall rules, Cloud Router, and 
   register: router
 
 - name: Configure Cloud NAT
-  google.cloud.gcp_compute_router_nat:
-    name: "{{ app_name }}-nat"
-    router: "{{ router }}"
-    region: "{{ region }}"
-    nat_ip_allocate_option: "AUTO_ONLY"
-    source_subnetwork_ip_ranges_to_nat: "ALL_SUBNETWORKS_ALL_IP_RANGES"
-    min_ports_per_vm: 128
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - compute
+      - routers
+      - nats
+      - create
+      - "{{ app_name }}-nat"
+      - "--router={{ app_name }}-router"
+      - "--region={{ region }}"
+      - "--project={{ gcp_project }}"
+      - "--auto-allocate-nat-external-ips"
+      - "--nat-all-subnet-ip-ranges"
+      - "--min-ports-per-vm=128"
+  register: nat_create
+  changed_when: nat_create.rc == 0
+  failed_when:
+    - nat_create.rc != 0
+    - "'already exists' not in nat_create.stderr"
+
+- name: Reserve IP range for private services access
+  google.cloud.gcp_compute_global_address:
+    name: "{{ services_range_name }}"
+    purpose: "VPC_PEERING"
+    address_type: "INTERNAL"
+    prefix_length: 16
+    network: "{{ vpc }}"
     project: "{{ gcp_project }}"
     auth_kind: "{{ gcp_auth_kind }}"
     service_account_file: "{{ gcp_service_account_file }}"
     state: present
+
+- name: Create private services access connection
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - services
+      - vpc-peerings
+      - connect
+      - "--network={{ vpc_name }}"
+      - "--service=servicenetworking.googleapis.com"
+      - "--ranges={{ services_range_name }}"
+      - "--project={{ gcp_project }}"
+  register: psa_create
+  changed_when: psa_create.rc == 0
+  failed_when:
+    - psa_create.rc != 0
+    - "'Cannot modify allocated ranges in CreateConnection' not in psa_create.stderr"
 
 - name: Set network facts for other roles
   ansible.builtin.set_fact:
@@ -236,22 +268,10 @@ Create application secrets before the compute instances need them.
 # roles/secrets/tasks/main.yml - Provision application secrets
 ---
 - name: Create database password secret
-  google.cloud.gcp_secret_manager_secret:
+  google.cloud.gcp_secret_manager:
     name: "{{ app_name }}-db-password"
-    replication:
-      automatic: {}
+    value: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
     labels: "{{ standard_labels }}"
-    project: "{{ gcp_project }}"
-    auth_kind: "{{ gcp_auth_kind }}"
-    service_account_file: "{{ gcp_service_account_file }}"
-    state: present
-  register: db_secret
-
-- name: Set database password value
-  google.cloud.gcp_secret_manager_secret_version:
-    secret: "{{ db_secret }}"
-    payload:
-      data: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
     project: "{{ gcp_project }}"
     auth_kind: "{{ gcp_auth_kind }}"
     service_account_file: "{{ gcp_service_account_file }}"
@@ -259,22 +279,10 @@ Create application secrets before the compute instances need them.
   no_log: true
 
 - name: Create application JWT secret
-  google.cloud.gcp_secret_manager_secret:
+  google.cloud.gcp_secret_manager:
     name: "{{ app_name }}-jwt-secret"
-    replication:
-      automatic: {}
+    value: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits') }}"
     labels: "{{ standard_labels }}"
-    project: "{{ gcp_project }}"
-    auth_kind: "{{ gcp_auth_kind }}"
-    service_account_file: "{{ gcp_service_account_file }}"
-    state: present
-  register: jwt_secret
-
-- name: Set JWT secret value
-  google.cloud.gcp_secret_manager_secret_version:
-    secret: "{{ jwt_secret }}"
-    payload:
-      data: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits') }}"
     project: "{{ gcp_project }}"
     auth_kind: "{{ gcp_auth_kind }}"
     service_account_file: "{{ gcp_service_account_file }}"
@@ -366,7 +374,7 @@ Create application secrets before the compute instances need them.
         - network:
             selfLink: "{{ vpc_self_link }}"
           subnetwork:
-            selfLink: "{{ public_subnet_self_link }}"
+            selfLink: "{{ private_subnet_self_link }}"
       metadata:
         startup-script: |
           #!/bin/bash
@@ -392,7 +400,7 @@ Create application secrets before the compute instances need them.
     type: "HTTP"
     http_health_check:
       port: 80
-      request_path: "/health"
+      request_path: "/"
     check_interval_sec: 10
     healthy_threshold: 2
     unhealthy_threshold: 3
@@ -448,11 +456,14 @@ Bring it all together with the site playbook.
   gather_facts: false
 
   roles:
-    - networking
-    - secrets
-    - database
-    - compute
-    - loadbalancer
+    - role: networking
+      tags: networking
+    - role: secrets
+      tags: secrets
+    - role: database
+      tags: database
+    - role: compute
+      tags: compute
 
   post_tasks:
     - name: Infrastructure deployment complete
@@ -494,10 +505,7 @@ graph TD
     J --> K[Compute Role]
     K --> L[Instance Template]
     K --> M[MIG + Autoscaler]
-    M --> N[Load Balancer Role]
-    N --> O[Backend Service]
-    N --> P[URL Map + HTTPS Proxy]
-    P --> Q[Done]
+    M --> Q[Done]
 ```
 
 ## Tips for End-to-End Automation
@@ -516,4 +524,4 @@ graph TD
 
 ## Conclusion
 
-Building a complete GCP infrastructure with Ansible requires careful planning, but the result is a fully automated, reproducible deployment process. Every component, from the VPC network to the load balancer to the database, is defined in code and can be deployed, modified, or torn down with a single command. This is the foundation of reliable infrastructure management, and it eliminates the drift and inconsistency that inevitably comes from manual configuration.
+Building a complete GCP infrastructure with Ansible requires careful planning, but the result is a fully automated, reproducible deployment process. Every component, from the VPC network to the compute layer to the database, is defined in code and can be deployed, modified, or torn down with a single command. This is the foundation of reliable infrastructure management, and it eliminates the drift and inconsistency that inevitably comes from manual configuration.
