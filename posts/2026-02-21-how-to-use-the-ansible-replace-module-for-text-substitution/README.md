@@ -114,14 +114,14 @@ The `replace` parameter can reference capture groups from the regex pattern:
 
 ## Multi-line Replacements
 
-By default, `^` and `$` match the start and end of each line. You can use the `(?s)` flag for dot-matches-all, or `(?m)` for multi-line mode:
+The `regexp` parameter uses multi-line mode, so `^` and `$` match the start and end of each line. The dot (`.`) does not match newlines unless you enable dot-matches-all mode with `(?s)`:
 
 ```yaml
 # Remove a multi-line comment block
 - name: Remove old commented section
   ansible.builtin.replace:
     path: /etc/myapp/app.conf
-    regexp: "# OLD SECTION START.*?# OLD SECTION END\\n"
+    regexp: "(?s)# OLD SECTION START.*?# OLD SECTION END\\n"
     replace: ""
 ```
 
@@ -221,7 +221,7 @@ Note: Multi-line regex with `replace` can be tricky. For managing multi-line blo
 - name: Remove trailing whitespace
   ansible.builtin.replace:
     path: /etc/myapp/app.conf
-    regexp: "\\s+$"
+    regexp: "[ \\t]+$"
     replace: ""
 ```
 
@@ -241,8 +241,8 @@ Always create a backup when making bulk replacements:
 
 - name: Show backup location
   ansible.builtin.debug:
-    msg: "Backup saved to {{ replace_result.backup }}"
-  when: replace_result.backup is defined
+    msg: "Backup saved to {{ replace_result.backup_file }}"
+  when: replace_result.backup_file is defined
 ```
 
 ## Validation After Replacement
@@ -264,15 +264,16 @@ For critical files, validate after making replacements:
     cmd: nginx -t
   register: nginx_test
   changed_when: false
+  failed_when: false
 
 - name: Rollback if validation fails
   ansible.builtin.copy:
-    src: "{{ nginx_update.backup }}"
+    src: "{{ nginx_update.backup_file }}"
     dest: /etc/nginx/nginx.conf
     remote_src: true
   when:
     - nginx_test.rc != 0
-    - nginx_update.backup is defined
+    - nginx_update.backup_file is defined
 ```
 
 ## Working with Multiple Files
