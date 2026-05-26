@@ -101,6 +101,7 @@ When updating a configuration file, you want the change to be atomic. Write the 
     cmd: /opt/myapp/bin/validate-config /etc/myapp/myapp.conf.tmp
   register: config_valid
   changed_when: false
+  failed_when: false
 
 - name: Atomically replace config file
   ansible.builtin.command:
@@ -157,6 +158,12 @@ Moving an entire directory works the same way.
     cmd: mv /opt/myapp/current /opt/myapp/previous
     removes: /opt/myapp/current
     creates: /opt/myapp/previous
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: /opt/myapp/current
+    state: directory
+    mode: '0755'
 
 - name: Deploy new application version
   ansible.builtin.unarchive:
