@@ -188,17 +188,15 @@ cryptography>=41.0.0
 
 ### Automatic Dependency Resolution
 
-Here is something important: ansible-builder automatically resolves Python dependencies declared by collections. When a collection includes a `requirements.txt` in its metadata, those packages are merged with yours.
+Here is something important: ansible-builder automatically resolves controller-side Python and system dependencies declared by collections. Collections declare these through `meta/execution-environment.yml`, or by including `requirements.txt` and `bindep.txt` files at the root of the collection. Those requirements are merged with yours.
 
-To see what dependencies a collection requires:
+To see the dependencies ansible-builder finds after installing collections locally:
 
 ```bash
-# Check what Python packages a collection needs
-ansible-galaxy collection info community.docker --format json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-print(data.get('metadata', {}).get('dependencies', {}))
-"
+# Check what Python and system packages installed collections need
+ansible-builder introspect ~/.ansible/collections \
+  --write-pip=/tmp/ee-requirements.txt \
+  --write-bindep=/tmp/ee-bindep.txt
 ```
 
 This means you sometimes do not need to list packages in your requirements.txt if the collection already declares them. However, I prefer to be explicit. Relying on transitive dependencies can break when collections update their metadata.
@@ -223,7 +221,7 @@ pip install --dry-run -r requirements.txt
 
 ## System Dependencies (bindep.txt)
 
-The bindep file declares OS-level packages. It uses the bindep format, which supports platform selectors so you can specify different package names for different distributions.
+The bindep file declares OS-level packages. It uses the bindep format, which supports platform selectors. Ansible Builder 3.x requires RPM-based EE base images, so the RPM and RHEL selectors are the ones that matter for EE builds.
 
 A comprehensive bindep file:
 
@@ -281,7 +279,7 @@ The platform selectors in bindep map to the operating system of the base image. 
 # Common platform selectors
 # platform:centos-8 - CentOS 8
 # platform:rhel-8 - RHEL 8
-# platform:rhel-9 - RHEL
+# platform:rhel-9 - RHEL 9
 # platform:fedora - Fedora
 # platform:debian - Debian
 # platform:ubuntu - Ubuntu
@@ -350,8 +348,11 @@ This is important for reproducibility. Without pinning, the version of ansible-c
 Before running a full build, validate your dependency files:
 
 ```bash
-# Validate the Galaxy requirements
-ansible-galaxy collection install -r requirements.yml --dry-run 2>&1 || echo "Galaxy validation failed"
+# Validate the Galaxy collection requirements by installing them into a temp path
+ansible-galaxy collection install -r requirements.yml --collections-path /tmp/ee-collections-test 2>&1 || echo "Galaxy collection validation failed"
+
+# Validate the Galaxy role requirements by installing them into a temp path
+ansible-galaxy role install -r requirements.yml --roles-path /tmp/ee-roles-test 2>&1 || echo "Galaxy role validation failed"
 
 # Validate Python requirements
 pip install --dry-run -r requirements.txt 2>&1 || echo "Python validation failed"
