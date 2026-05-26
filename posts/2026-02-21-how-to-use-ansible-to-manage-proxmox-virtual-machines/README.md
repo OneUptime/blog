@@ -16,16 +16,16 @@ This guide shows you how to create, clone, manage, and monitor Proxmox VMs using
 
 You need:
 
-- Ansible 2.12+ on your control node
-- The `community.general` collection (includes Proxmox modules)
+- ansible-core 2.17+ on your control node
+- The `community.proxmox` collection
 - A Proxmox VE cluster or standalone node
 - An API token or user credentials with appropriate permissions
-- Python `proxmoxer` and `requests` libraries
+- Python `proxmoxer` 2.0+ and `requests` libraries
 
 ```bash
 # Install required collection and Python libraries
 
-ansible-galaxy collection install community.general
+ansible-galaxy collection install community.proxmox
 pip install proxmoxer requests
 ```
 
@@ -66,7 +66,7 @@ graph TD
 
 ## Creating a VM from Scratch
 
-The `community.general.proxmox_kvm` module handles KVM virtual machine management.
+The `community.proxmox.proxmox_kvm` module handles KVM virtual machine management.
 
 ```yaml
 # playbooks/create-vm.yml
@@ -80,7 +80,7 @@ The `community.general.proxmox_kvm` module handles KVM virtual machine managemen
   tasks:
     # Create a new VM with specified hardware
     - name: Create web server VM
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -149,13 +149,14 @@ Cloning from templates is much faster than creating from scratch. First, prepare
   tasks:
     # Clone each VM from the template
     - name: Clone VM from template
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
         api_token_secret: "{{ proxmox_token_secret }}"
         node: "{{ item.node }}"
-        vmid: "{{ item.vmid }}"
+        vmid: "{{ template_vmid }}"
+        newid: "{{ item.vmid }}"
         name: "{{ item.name }}"
         clone: "ubuntu-22.04-template"
         full: true
@@ -167,7 +168,7 @@ Cloning from templates is much faster than creating from scratch. First, prepare
 
     # Update hardware after cloning
     - name: Configure VM resources
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -183,7 +184,7 @@ Cloning from templates is much faster than creating from scratch. First, prepare
 
     # Start the VMs
     - name: Start cloned VMs
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -210,6 +211,7 @@ Proxmox supports cloud-init for VM customization. This is the cleanest way to se
     - ../vars/proxmox_credentials.yml
 
   vars:
+    template_vmid: 9001
     vms:
       - vmid: 110
         name: web-01
@@ -225,13 +227,14 @@ Proxmox supports cloud-init for VM customization. This is the cleanest way to se
   tasks:
     # Clone from cloud-init enabled template
     - name: Clone VM
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
         api_token_secret: "{{ proxmox_token_secret }}"
         node: "{{ item.node }}"
-        vmid: "{{ item.vmid }}"
+        vmid: "{{ template_vmid }}"
+        newid: "{{ item.vmid }}"
         name: "{{ item.name }}"
         clone: "ubuntu-cloudinit-template"
         full: true
@@ -243,7 +246,7 @@ Proxmox supports cloud-init for VM customization. This is the cleanest way to se
 
     # Configure cloud-init settings
     - name: Set cloud-init configuration
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -255,8 +258,10 @@ Proxmox supports cloud-init for VM customization. This is the cleanest way to se
         sshkeys: "{{ lookup('file', '~/.ssh/deploy.pub') }}"
         ipconfig:
           ipconfig0: "ip={{ item.ip }},gw={{ item.gateway }}"
-        nameservers: "192.168.1.53"
-        searchdomains: "lab.local"
+        nameservers:
+          - "192.168.1.53"
+        searchdomains:
+          - "lab.local"
         update: true
       loop: "{{ vms }}"
       loop_control:
@@ -264,7 +269,7 @@ Proxmox supports cloud-init for VM customization. This is the cleanest way to se
 
     # Start VMs
     - name: Start VMs
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -293,7 +298,7 @@ Snapshots are critical for testing and rollback.
   tasks:
     # Take a snapshot before making changes
     - name: Create pre-upgrade snapshot
-      community.general.proxmox_snap:
+      community.proxmox.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -306,7 +311,7 @@ Snapshots are critical for testing and rollback.
 
     # Rollback to a snapshot if something goes wrong
     - name: Rollback to snapshot
-      community.general.proxmox_snap:
+      community.proxmox.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -318,7 +323,7 @@ Snapshots are critical for testing and rollback.
 
     # Clean up old snapshots
     - name: Remove old snapshot
-      community.general.proxmox_snap:
+      community.proxmox.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -345,7 +350,7 @@ Proxmox also supports LXC containers, which are lighter weight than VMs.
   tasks:
     # Create an LXC container
     - name: Create Redis container
-      community.general.proxmox:
+      community.proxmox.proxmox:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -359,13 +364,14 @@ Proxmox also supports LXC containers, which are lighter weight than VMs.
         cores: 2
         memory: 2048
         swap: 512
-        netif: '{"net0":"name=eth0,bridge=vmbr0,ip=192.168.1.201/24,gw=192.168.1.1"}'
+        netif:
+          net0: "name=eth0,bridge=vmbr0,ip=192.168.1.201/24,gw=192.168.1.1"
         pubkey: "{{ lookup('file', '~/.ssh/deploy.pub') }}"
         onboot: true
         state: present
 
     - name: Start container
-      community.general.proxmox:
+      community.proxmox.proxmox:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -390,7 +396,7 @@ Common operational tasks like starting, stopping, and migrating VMs.
   tasks:
     # Graceful shutdown
     - name: Shutdown VM gracefully
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -403,15 +409,14 @@ Common operational tasks like starting, stopping, and migrating VMs.
 
     # Live migrate VM to another node
     - name: Migrate VM to pve02
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
         api_token_secret: "{{ proxmox_token_secret }}"
-        node: pve01
+        node: pve02
         vmid: 110
         migrate: true
-        migrate_target: pve02
         timeout: 600
 ```
 
@@ -441,7 +446,7 @@ Use Proxmox tags to organize VMs and perform bulk operations.
 
     # Filter VMs by tag and snapshot them
     - name: Snapshot all production VMs
-      community.general.proxmox_snap:
+      community.proxmox.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_token_id: "{{ proxmox_token_id }}"
@@ -458,7 +463,7 @@ Use Proxmox tags to organize VMs and perform bulk operations.
 
 1. **Use templates with cloud-init.** It is much faster to clone a template than to install from ISO. Prepare templates with cloud-init pre-installed for the smoothest experience.
 2. **VMID naming conventions matter.** Use a consistent numbering scheme. I use 100-199 for web, 200-299 for app, 300-399 for database. It makes it easy to identify VMs at a glance.
-3. **Shared storage for live migration.** VMs can only be live-migrated between nodes if they are on shared storage (Ceph, NFS, iSCSI). Local storage requires offline migration.
+3. **Shared storage for live migration.** Shared storage (Ceph, NFS, iSCSI) is the simplest path for live migration. Proxmox can also live-migrate local disks, but you must explicitly enable local disk migration, such as with the `with_local_disks` option in Ansible.
 4. **API tokens over passwords.** API tokens can be revoked independently and do not expire with password changes. Always prefer tokens for automation.
 5. **LXC for lightweight services.** If you just need to run a single service like Redis or a DNS server, an LXC container uses far fewer resources than a full VM.
 
