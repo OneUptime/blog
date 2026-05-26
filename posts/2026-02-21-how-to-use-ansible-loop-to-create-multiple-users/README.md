@@ -288,7 +288,6 @@ And the playbook:
         user: "{{ item.0.name }}"
         key: "{{ item.1 }}"
         state: present
-        exclusive: "{{ true if loop.last else false }}"
       loop: "{{ all_active_users | selectattr('ssh_keys', 'defined') | selectattr('ssh_keys') | subelements('ssh_keys') }}"
       loop_control:
         label: "{{ item.0.name }}"
