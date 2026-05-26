@@ -77,8 +77,9 @@ roles_path = roles
 inventory = inventories/production/hosts.yml
 retry_files_enabled = false
 host_key_checking = false
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 # Vault password file at repo root
 vault_password_file = ../scripts/vault-password.sh
@@ -228,7 +229,7 @@ When app code and Ansible live together, deployment playbooks can reference appl
   community.docker.docker_image:
     name: "{{ app_image_name }}"
     tag: "{{ app_version }}"
-    push: yes
+    push: true
     source: local
   delegate_to: localhost
 
@@ -296,6 +297,8 @@ Track all dependencies in a central location:
 # ansible/requirements.yml
 # Ansible-specific dependencies
 collections:
+  - name: ansible.posix
+    version: 2.2.0
   - name: community.general
     version: 8.2.0
   - name: community.docker
