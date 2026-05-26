@@ -60,7 +60,8 @@ curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
 import sys, json
 data = json.load(sys.stdin)
 for cred in data['results']:
-    print(f'{cred[\"name\"]} (type: {cred[\"credential_type_summary\"][\"name\"] if \"credential_type_summary\" in cred else \"unknown\"})')
+    cred_type = cred.get('summary_fields', {}).get('credential_type', {}).get('name', 'unknown')
+    print(f'{cred[\"name\"]} (type: {cred_type})')
 "
 ```
 
@@ -102,16 +103,16 @@ requests
 
 **Causes and fixes**:
 - Slow sudo - The target host's sudo is slow, often due to DNS resolution of the hostname. Add the hostname to `/etc/hosts` on the target.
-- Network latency - Increase the `timeout` setting in the job template or ansible.cfg.
+- Network latency - Increase the Ansible connection timeout in inventory or ansible.cfg. If the whole AWX job is being canceled before it can finish, increase the job template timeout.
 
 ```yaml
-# In your playbook, increase the connection timeout
+# In your playbook, increase SSH connection and task action timeouts
 - name: Tasks for slow hosts
   hosts: all
   gather_facts: false
   vars:
     ansible_timeout: 60
-    ansible_command_timeout: 120
+  timeout: 120
 ```
 
 ### 5. Variable Undefined Errors
