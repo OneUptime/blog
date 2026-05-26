@@ -259,8 +259,10 @@ resource "aws_lb_listener_rule" "version_beta" {
 
   condition {
     query_string {
-      key   = "version"
-      value = "beta"
+      values {
+        key   = "version"
+        value = "beta"
+      }
     }
   }
 }
@@ -311,7 +313,7 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# Redirect old API paths to new ones
+# Redirect old API paths under a new prefix
 resource "aws_lb_listener_rule" "api_redirect" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 500
