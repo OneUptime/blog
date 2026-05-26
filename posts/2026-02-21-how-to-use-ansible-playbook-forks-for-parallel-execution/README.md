@@ -240,10 +240,10 @@ fact_caching_timeout = 3600
 
 [ssh_connection]
 pipelining = True
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o PreferHostKeyChecking=no
+ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=no
 ```
 
-Pipelining is especially important. Without it, Ansible makes multiple SSH connections per task. With pipelining enabled, it reuses a single connection, which reduces overhead significantly when combined with high fork counts.
+Pipelining is especially important. Without it, Ansible often transfers module files to the remote host before running them. With pipelining enabled, many modules run without that extra file transfer, while SSH ControlPersist keeps connections reusable, reducing overhead significantly when combined with high fork counts.
 
 ## When Too Many Forks Cause Problems
 
