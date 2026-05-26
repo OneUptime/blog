@@ -21,6 +21,7 @@ flowchart LR
     C --> D[VM Hardware v19<br>ESXi 7.0U2]
     D --> E[VM Hardware v20<br>ESXi 8.0]
     E --> F[VM Hardware v21<br>ESXi 8.0U2]
+    F --> G[VM Hardware v22<br>ESX 9.0]
 ```
 
 Higher hardware versions support more vCPUs, more memory, and newer virtual device types.
@@ -58,8 +59,8 @@ The `community.vmware.vmware_guest` module handles hardware changes. Some change
         hardware:
           num_cpus: 8
           num_cpu_cores_per_socket: 4
-          cpu_hot_add_enabled: true
-          cpu_hot_remove_enabled: true
+          hotadd_cpu: true
+          hotremove_cpu: true
           # CPU resource limits and reservations
           cpu_limit: 8000       # MHz limit
           cpu_reservation: 2000  # MHz guaranteed
@@ -100,7 +101,7 @@ Memory changes follow a similar pattern to CPU changes.
         datacenter: "DC01"
         hardware:
           memory_mb: 16384
-          mem_hot_add_enabled: true
+          hotadd_memory: true
           # Memory resource management
           memory_reservation_lock: false
           mem_limit: 16384       # MB limit
@@ -115,7 +116,7 @@ Memory changes follow a similar pattern to CPU changes.
 
 ## Full Hardware Reconfiguration
 
-When you need to make multiple hardware changes at once, combine them in a single task.
+When you need to make multiple hardware changes at once, combine the VM hardware changes in a single task and configure boot options with the boot manager module.
 
 ```yaml
 # full-hardware-reconfig.yml
@@ -139,10 +140,16 @@ When you need to make multiple hardware changes at once, combine them in a singl
   tasks:
     # Some hardware changes require the VM to be off
     - name: Shut down VM for hardware changes
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        datacenter: "DC01"
         name: "prod-app-01"
         folder: "/DC01/vm/Production"
         state: shutdown-guest
+        timeout: 600
 
     - name: Wait for VM to power off
       community.vmware.vmware_guest_info:
@@ -162,11 +169,11 @@ When you need to make multiple hardware changes at once, combine them in a singl
           # CPU configuration
           num_cpus: 8
           num_cpu_cores_per_socket: 4
-          cpu_hot_add_enabled: true
-          cpu_hot_remove_enabled: true
+          hotadd_cpu: true
+          hotremove_cpu: true
           # Memory configuration
           memory_mb: 32768
-          mem_hot_add_enabled: true
+          hotadd_memory: true
           # SCSI controller type
           scsi: paravirtual
           # Boot configuration
@@ -174,17 +181,26 @@ When you need to make multiple hardware changes at once, combine them in a singl
           secure_boot: true
           # VM hardware version upgrade
           version: 19
-          # Boot order and delay
-          boot_order:
-            - disk
-            - cdrom
-            - ethernet
-          boot_delay: 5000  # 5 second boot delay in ms
       register: reconfig_result
+
+    - name: Configure VM boot order and delay
+      community.vmware.vmware_guest_boot_manager:
+        name: "prod-app-01"
+        datacenter: "DC01"
+        boot_order:
+          - disk
+          - cdrom
+          - ethernet
+        boot_delay: 5000  # 5 second boot delay in ms
 
     # Power VM back on after changes
     - name: Power on VM after hardware changes
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        datacenter: "DC01"
         name: "prod-app-01"
         folder: "/DC01/vm/Production"
         state: powered-on
@@ -209,7 +225,7 @@ When you need to make multiple hardware changes at once, combine them in a singl
 
 ## Upgrading VM Hardware Version
 
-Upgrading the hardware version unlocks newer features but cannot be reversed.
+Upgrading the hardware version unlocks newer features but cannot be reversed directly in vSphere.
 
 ```yaml
 # upgrade-hardware-version.yml
@@ -250,15 +266,17 @@ Upgrading the hardware version unlocks newer features but cannot be reversed.
 
     # Shut down VMs before upgrading
     - name: Shut down VMs for hardware upgrade
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        datacenter: "DC01"
         name: "{{ item }}"
         folder: "/DC01/vm/Production"
         state: shutdown-guest
+        timeout: 600
       loop: "{{ target_vms }}"
-
-    - name: Wait for VMs to power off
-      ansible.builtin.pause:
-        seconds: 60
 
     # Upgrade hardware version
     - name: Upgrade to VM hardware version 19
@@ -271,7 +289,12 @@ Upgrading the hardware version unlocks newer features but cannot be reversed.
 
     # Power VMs back on
     - name: Power on VMs after upgrade
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        datacenter: "DC01"
         name: "{{ item }}"
         folder: "/DC01/vm/Production"
         state: powered-on
@@ -342,20 +365,20 @@ Define your hardware standards and apply them to all VMs of a given type.
         num_cpus: 4
         num_cpu_cores_per_socket: 2
         memory_mb: 8192
-        cpu_hot_add_enabled: true
-        mem_hot_add_enabled: true
+        hotadd_cpu: true
+        hotadd_memory: true
       app_server:
         num_cpus: 8
         num_cpu_cores_per_socket: 4
         memory_mb: 16384
-        cpu_hot_add_enabled: true
-        mem_hot_add_enabled: true
+        hotadd_cpu: true
+        hotadd_memory: true
       db_server:
         num_cpus: 16
         num_cpu_cores_per_socket: 8
         memory_mb: 65536
-        cpu_hot_add_enabled: false
-        mem_hot_add_enabled: false
+        hotadd_cpu: false
+        hotadd_memory: false
 
     # Map VMs to their roles
     vm_assignments:
