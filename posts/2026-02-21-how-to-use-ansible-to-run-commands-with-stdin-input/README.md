@@ -87,7 +87,7 @@ The shell module lets you use standard shell piping to feed data to commands:
     # Pipe a password to chpasswd for user password changes
     - name: Set user password via stdin pipe
       ansible.builtin.shell:
-        cmd: "echo '{{ username }}:{{ new_password }}' | chpasswd"
+        cmd: "printf '%s:%s\n' {{ username | quote }} {{ new_password | quote }} | chpasswd"
       become: true
       no_log: true
       vars:
@@ -97,7 +97,7 @@ The shell module lets you use standard shell piping to feed data to commands:
     # Pipe JSON to jq for processing
     - name: Process JSON data through jq
       ansible.builtin.shell:
-        cmd: "echo '{{ api_response | to_json }}' | jq '.results[] | .name'"
+        cmd: "printf '%s\n' {{ api_response | to_json | quote }} | jq '.results[] | .name'"
       register: parsed_names
       changed_when: false
       vars:
@@ -349,7 +349,7 @@ Here is a complete playbook that ties several stdin techniques together for sett
             IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '{{ db_user }}') THEN
               CREATE ROLE {{ db_user }} WITH LOGIN PASSWORD '{{ db_password }}';
             END IF;
-          END
+          END;
           $$;
           GRANT ALL PRIVILEGES ON DATABASE {{ db_name }} TO {{ db_user }};
       no_log: true
