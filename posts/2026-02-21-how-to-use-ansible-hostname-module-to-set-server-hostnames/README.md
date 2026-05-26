@@ -114,7 +114,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -270,15 +270,19 @@ In cloud environments, hostnames often need to persist across reboots and not be
   ansible.builtin.hostname:
     name: "{{ inventory_hostname }}"
 
+- name: Check for cloud-init configuration
+  ansible.builtin.stat:
+    path: /etc/cloud/cloud.cfg
+  register: cloud_cfg
+
 - name: Prevent cloud-init from resetting hostname
   ansible.builtin.lineinfile:
     path: /etc/cloud/cloud.cfg
     regexp: '^preserve_hostname'
     line: 'preserve_hostname: true'
-  when: ansible_service_mgr == 'systemd'
+  when: cloud_cfg.stat.exists
 ```
 
 ## Conclusion
 
-Setting hostnames is a fundamental provisioning task. The hostname module handles the OS-specific details of updating hostname files and running the appropriate system commands. Always pair it with /etc/hosts configuration for proper FQDN resolution, prevent cloud-init from overwriting your settings, and verify the result to ensure downstream services see the correct hostname.
-
+Setting hostnames is a fundamental provisioning task. The hostname module handles the OS-specific details of updating hostname files and running the appropriate system commands. Pair it with /etc/hosts configuration when local hostname resolution is needed, prevent cloud-init from overwriting your settings, and verify the result to ensure downstream services see the correct hostname.
