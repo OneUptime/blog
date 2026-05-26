@@ -87,7 +87,7 @@ Here are the pipe patterns you will use most often in Ansible playbooks.
   become: yes
 
   tasks:
-    - name: Count running processes
+    - name: Count processes
       ansible.builtin.shell:
         cmd: "ps aux | wc -l"
       register: process_count
@@ -256,7 +256,7 @@ In a pipeline, the exit code is the exit code of the last command by default. Th
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep "ERROR" /var/log/myapp/app.log 2>/dev/null | wc -l || echo "0"
+          grep "ERROR" /var/log/myapp/app.log 2>/dev/null | wc -l || true
         executable: /bin/bash
       register: error_count
       changed_when: false
@@ -332,7 +332,7 @@ Use `tee` to capture intermediate pipeline output.
             awk '{print $1}' | \
             sort | uniq -c | sort -rn
       register: error_ips
-      changed_when: false
+      changed_when: true
       failed_when: false
 
     - name: Show IPs causing server errors
@@ -375,7 +375,7 @@ Use pipes to feed data into commands that process stdin.
 
     - name: Decode and write via pipe
       ansible.builtin.shell:
-        cmd: "echo '{{ encoded_config }}' | base64 -d > /etc/myapp/config.yml"
+        cmd: "printf '%s' {{ encoded_config | quote }} | base64 -d > /etc/myapp/config.yml"
       when: encoded_config is defined
       no_log: true
 ```
@@ -394,7 +394,9 @@ The `xargs` command builds and executes commands from piped input.
   tasks:
     - name: Kill all processes matching a pattern
       ansible.builtin.shell:
-        cmd: "pgrep -f 'myapp-worker' | xargs -r kill -TERM"
+        cmd: |
+          pids=$(pgrep -f 'myapp-worker') || exit 1
+          printf '%s\n' "$pids" | xargs -r kill -TERM
       register: kill_result
       changed_when: kill_result.rc == 0
       failed_when: false
@@ -409,8 +411,8 @@ The `xargs` command builds and executes commands from piped input.
     - name: Batch rename files
       ansible.builtin.shell:
         cmd: |
-          find /opt/logs -name '*.log.old' | \
-            xargs -I{} sh -c 'mv "{}" "$(echo {} | sed s/.old/.archived/)"'
+          find /opt/logs -name '*.log.old' -print0 | \
+            xargs -0 -r -I{} sh -c 'mv "$1" "${1%.old}.archived"' _ {}
       register: rename_result
       changed_when: rename_result.rc == 0
 ```
