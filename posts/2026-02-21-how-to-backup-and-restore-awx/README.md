@@ -19,7 +19,7 @@ AWX stores data in several places:
 3. **Kubernetes secrets** - The admin password, database connection details, and any custom secrets you created.
 4. **AWX custom resource** - The AWX operator configuration that defines your deployment.
 
-Projects and playbooks are stored in Git, so they do not need to be backed up from AWX itself.
+If your projects and playbooks are stored in Git or another source control system, they do not need to be backed up from AWX itself. If you use manual projects or a persistent projects directory, back up that project storage separately.
 
 ## Backing Up the Database
 
@@ -78,11 +78,12 @@ If you prefer doing it manually (or need to back up an external database), use `
 
 ```bash
 # For the internal containerized database
-kubectl exec -it awx-postgres-13-0 -n awx -- \
+POSTGRES_POD=$(kubectl get pods -n awx --no-headers | awk '/postgres/ {print $1; exit}')
+kubectl exec "${POSTGRES_POD}" -n awx -- \
   pg_dump -U awx -Fc -f /tmp/awx-backup.dump awx
 
 # Copy the dump file out of the pod
-kubectl cp awx/awx-postgres-13-0:/tmp/awx-backup.dump ./awx-backup.dump
+kubectl cp "awx/${POSTGRES_POD}:/tmp/awx-backup.dump" ./awx-backup.dump
 
 # For an external database
 pg_dump -h db.example.com -U awx -Fc -f awx-backup.dump awx
@@ -129,6 +130,7 @@ DB_HOST="db.example.com"
 DB_USER="awx"
 DB_NAME="awx"
 RETENTION_DAYS=30
+S3_BUCKET=""
 
 mkdir -p "${BACKUP_DIR}"
 
@@ -160,8 +162,10 @@ tar -czf "${BACKUP_DIR}.tar.gz" -C "$(dirname ${BACKUP_DIR})" \
 rm -rf "${BACKUP_DIR}"
 
 # 5. Upload to S3 (optional)
-aws s3 cp "${BACKUP_DIR}.tar.gz" \
-  "s3://company-backups/awx/$(basename ${BACKUP_DIR}).tar.gz"
+if [[ -n "${S3_BUCKET}" ]]; then
+  aws s3 cp "${BACKUP_DIR}.tar.gz" \
+    "s3://${S3_BUCKET}/awx/$(basename ${BACKUP_DIR}).tar.gz"
+fi
 
 # 6. Clean up old backups
 echo "Cleaning up backups older than ${RETENTION_DAYS} days..."
@@ -189,7 +193,7 @@ spec:
           serviceAccountName: awx-backup-sa
           containers:
             - name: backup
-              image: bitnami/postgresql:15
+              image: your-registry/awx-backup-tools:latest # include bash, kubectl, pg_dump, and aws CLI if S3 is enabled
               command: ["/bin/bash", "/scripts/awx-backup.sh"]
               volumeMounts:
                 - name: backup-scripts
@@ -211,6 +215,8 @@ spec:
 ### Using the AWX Operator Restore CRD
 
 If you used the operator backup, restore with the corresponding CRD.
+
+Before restoring over an existing AWX deployment, delete the old AWX custom resource and the old PostgreSQL PVC, but do not delete the namespace that contains the backup PVC.
 
 ```yaml
 # awx-restore.yml
@@ -242,6 +248,9 @@ For manual restores, follow this sequence carefully.
 kubectl apply -f awx-secret-key.yml
 kubectl apply -f awx-admin-password.yml
 kubectl apply -f awx-postgres-config.yml
+
+# If you are restoring into a different namespace, update metadata.namespace
+# in the exported secret files before applying them.
 
 # Step 2: Restore the database
 # Drop the existing database and recreate it
@@ -284,8 +293,8 @@ A backup you have never tested is not a backup. Set up a restore test process.
 kubectl create namespace awx-restore-test
 
 # Apply secrets to test namespace
-kubectl apply -f awx-secret-key.yml -n awx-restore-test
-kubectl apply -f awx-admin-password.yml -n awx-restore-test
+sed 's/namespace: awx/namespace: awx-restore-test/' awx-secret-key.yml | kubectl apply -f -
+sed 's/namespace: awx/namespace: awx-restore-test/' awx-admin-password.yml | kubectl apply -f -
 
 # Create a temporary PostgreSQL instance for testing
 kubectl run pg-test -n awx-restore-test \
