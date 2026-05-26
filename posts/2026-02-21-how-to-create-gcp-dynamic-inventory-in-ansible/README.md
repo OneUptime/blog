@@ -20,25 +20,26 @@ Install the Google Cloud Ansible collection and the Python client library:
 ansible-galaxy collection install google.cloud
 
 # Install the required Python libraries
-pip install google-auth google-api-python-client
+pip install google-auth requests
 ```
 
 Set up GCP authentication. The plugin supports service accounts and application default credentials:
 
 ```bash
 # Option 1: Service account JSON key file
+export GCP_AUTH_KIND="serviceaccount"
 export GCP_SERVICE_ACCOUNT_FILE="/path/to/service-account.json"
 
-# Option 2: Application default credentials (when running on GCP)
+# Option 2: Application default credentials
+export GCP_AUTH_KIND="application"
 gcloud auth application-default login
 
-# Option 3: Set project explicitly
-export GCP_PROJECT="my-project-id"
+# Set the project in the inventory file with the projects option
 ```
 
 ## Basic GCP Inventory Configuration
 
-Create a file ending in `gcp.yml` or `gcp.yaml`. The suffix tells Ansible to use the GCP compute inventory plugin.
+Create a file ending in `gcp.yml`, `gcp.yaml`, `gcp_compute.yml`, or `gcp_compute.yaml`. The suffix tells Ansible to use the GCP compute inventory plugin.
 
 ```yaml
 # inventory/gcp.yml
@@ -53,7 +54,7 @@ projects:
 auth_kind: serviceaccount
 service_account_file: /path/to/service-account.json
 
-# Discover instances in these zones (or use regions)
+# Discover instances in these zones
 zones: []
 # Leave empty to discover across all zones
 ```
@@ -70,7 +71,7 @@ ansible-inventory -i inventory/gcp.yml --graph
 
 ## Filtering Instances
 
-Limit discovery to specific zones, regions, or labels:
+Limit discovery to specific zones, labels, or statuses:
 
 ```yaml
 # inventory/gcp.yml
@@ -81,7 +82,7 @@ projects:
 auth_kind: serviceaccount
 service_account_file: /path/to/service-account.json
 
-# Only discover instances in US regions
+# Only discover instances in these zones
 zones:
   - us-east1-b
   - us-east1-c
@@ -146,7 +147,7 @@ With consistent labeling, an instance in `us-east1-b` labeled `role=web` and `en
 
 ## Setting Hostnames
 
-By default, the plugin uses the instance name. You can customize this:
+By default, the plugin tries the public IP, then the private IP, then the instance name. You can customize this:
 
 ```yaml
 # inventory/gcp.yml
@@ -157,13 +158,15 @@ projects:
 auth_kind: serviceaccount
 service_account_file: /path/to/service-account.json
 
-# Use instance name as the hostname (default)
+# Use instance name as the hostname
 hostnames:
   - name
   # Or use the private IP
   # - private_ip
-  # Or use a custom hostname from metadata
-  # - "metadata.items['ansible_hostname']"
+  # Or use the GCP hostname field
+  # - hostname
+  # Or use a hostname stored in a label
+  # - labels.vm_name
 ```
 
 ## Composing Variables
@@ -211,7 +214,7 @@ compose:
   gcp_instance_id: id
   gcp_status: status
   gcp_private_ip: networkInterfaces[0].networkIP
-  gcp_public_ip: networkInterfaces[0].accessConfigs[0].natIP if networkInterfaces[0].accessConfigs else ''
+  gcp_public_ip: networkInterfaces[0].accessConfigs[0].natIP if networkInterfaces[0].accessConfigs | default([]) else ''
   gcp_labels: labels
   gcp_network_tags: tags.items | default([])
 ```
@@ -277,9 +280,9 @@ groups:
   # Preemptible instances
   preemptible: scheduling.preemptible | default(false)
   # Instances with public IPs
-  public_facing: networkInterfaces[0].accessConfigs is defined
-  # SSD instances
-  has_ssd: "'SSD' in (disks | map(attribute='type') | list)"
+  public_facing: networkInterfaces[0].accessConfigs | default([]) | length > 0
+  # Local SSD instances
+  has_local_ssd: disks | selectattr('type', 'equalto', 'SCRATCH') | list | length > 0
 
 # Variable composition
 compose:
@@ -292,11 +295,11 @@ compose:
   gcp_private_ip: networkInterfaces[0].networkIP
   gcp_public_ip: >-
     networkInterfaces[0].accessConfigs[0].natIP
-    if networkInterfaces[0].accessConfigs
+    if networkInterfaces[0].accessConfigs | default([])
     else ''
   gcp_labels: labels
-  gcp_network: networkInterfaces[0].network | regex_replace('.*/', '')
-  gcp_subnet: networkInterfaces[0].subnetwork | regex_replace('.*/', '')
+  gcp_network: networkInterfaces[0].network.name
+  gcp_subnet: networkInterfaces[0].subnetwork.name
   gcp_preemptible: scheduling.preemptible | default(false)
 ```
 
