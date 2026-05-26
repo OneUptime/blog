@@ -160,7 +160,7 @@ This playbook applies zone-specific firewall rules to each host:
         policy: DROP
 
     - name: Save iptables rules
-      ansible.builtin.command: iptables-save > /etc/iptables/rules.v4
+      ansible.builtin.shell: iptables-save > /etc/iptables/rules.v4
       changed_when: true
       when: ansible_os_family == "Debian"
 ```
@@ -302,6 +302,7 @@ Rules for database servers:
         comment: "Block DB outbound to {{ item }}"
       loop:
         - "{{ network_zones.dmz.subnet }}"
+        - "{{ network_zones.app_tier.subnet }}"
 ```
 
 ## Configuring VLAN Interfaces
@@ -385,7 +386,7 @@ Regularly verify that segmentation rules are in place and working:
         success_msg: "INPUT policy correctly set to DROP"
 
     - name: Test connectivity to blocked zones
-      ansible.builtin.command: "timeout 3 bash -c 'echo > /dev/tcp/{{ item }}/22' 2>&1"
+      ansible.builtin.shell: "timeout 3 bash -c 'echo > /dev/tcp/{{ item }}/22' 2>&1"
       loop: "{{ blocked_destinations | default([]) }}"
       register: conn_test
       failed_when: conn_test.rc == 0
