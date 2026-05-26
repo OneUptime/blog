@@ -84,7 +84,7 @@ all:
           http_port: 8080
           ssl_enabled: true          # Real boolean, not a string
           max_connections: 1000      # Real integer, not a string
-          allowed_origins:           # A list, not possible in INI
+          allowed_origins:           # A list, written directly in YAML
             - "https://app.example.com"
             - "https://api.example.com"
         web2.example.com:
@@ -97,7 +97,7 @@ all:
             - "https://api.example.com"
 ```
 
-This is one of the biggest advantages over INI format. You can define lists, nested dictionaries, and properly typed values without worrying about Jinja2 filters to convert strings.
+This is one of the biggest advantages over INI format. You can define lists, nested dictionaries, and typed values consistently without the ambiguity that can come from INI inventory parsing.
 
 ## Adding Group Variables
 
@@ -311,13 +311,13 @@ Stick with INI when:
 - Team members are unfamiliar with YAML syntax
 - You want the fastest possible setup
 
-Both formats are fully supported and there is no performance difference between them. The choice comes down to your team's preferences and the complexity of your infrastructure.
+Both formats are supported. The choice comes down to your team's preferences and the complexity of your infrastructure.
 
 ## Common YAML Inventory Mistakes
 
 Watch out for these common errors:
 
-1. **Missing trailing colons**: `web1.example.com` without a colon will cause a parse error. Always write `web1.example.com:`.
+1. **Missing trailing colons**: `web1.example.com` without a colon can cause parse errors or unexpected inventory parsing. Always write `web1.example.com:`.
 
 2. **Indentation**: YAML is whitespace-sensitive. Use consistent 2-space indentation and never mix tabs with spaces.
 
