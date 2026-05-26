@@ -92,7 +92,7 @@ The `exclude_path` parameter lets you skip specific files or directories.
 # Archive application directory excluding temporary and cache files
 - name: Create clean application archive
   community.general.archive:
-    path: /opt/myapp
+    path: /opt/myapp/*
     dest: /opt/backups/myapp-clean.tar.gz
     format: gz
     exclude_path:
@@ -185,12 +185,20 @@ Create deployment packages from built applications.
     dest: "/opt/releases/myapp-{{ app_version }}.tar.gz"
     format: gz
   delegate_to: build_server
+  run_once: true
+
+- name: Fetch deployment package from build server
+  ansible.builtin.fetch:
+    src: "/opt/releases/myapp-{{ app_version }}.tar.gz"
+    dest: "/tmp/myapp-{{ app_version }}.tar.gz"
+    flat: yes
+  delegate_to: build_server
+  run_once: true
 
 - name: Copy deployment package to target servers
   ansible.builtin.copy:
-    src: "/opt/releases/myapp-{{ app_version }}.tar.gz"
+    src: "/tmp/myapp-{{ app_version }}.tar.gz"
     dest: "/tmp/myapp-{{ app_version }}.tar.gz"
-  delegate_to: build_server
 
 - name: Extract deployment package
   ansible.builtin.unarchive:
@@ -205,7 +213,7 @@ Create deployment packages from built applications.
 # Archive current logs before rotation
 - name: Archive application logs
   community.general.archive:
-    path: /var/log/myapp
+    path: /var/log/myapp/*.log
     dest: "/opt/log-archive/myapp-logs-{{ ansible_date_time.iso8601_basic_short }}.tar.gz"
     format: gz
     exclude_path:
@@ -271,7 +279,7 @@ Here is a full role that handles application backups.
 
 - name: Archive application binaries and libraries
   community.general.archive:
-    path: "{{ app_install_dir }}"
+    path: "{{ app_install_dir }}/*"
     dest: "{{ backup_base_dir }}/app/app-{{ ansible_date_time.date }}.tar.gz"
     format: gz
     exclude_path: "{{ backup_exclude_paths | default([]) }}"
