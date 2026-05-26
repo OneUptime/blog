@@ -52,7 +52,7 @@ Here is what the key facts look like across popular distributions.
 |---|---|---|---|---|
 | Ubuntu 22.04 | Ubuntu | Debian | apt | systemd |
 | Debian 12 | Debian | Debian | apt | systemd |
-| RHEL | RedHat | RedHat | dnf | systemd |
+| RHEL 8/9 | RedHat | RedHat | dnf | systemd |
 | Rocky Linux 9 | Rocky | RedHat | dnf | systemd |
 | AlmaLinux 9 | AlmaLinux | RedHat | dnf | systemd |
 | CentOS Stream 9 | CentOS | RedHat | dnf | systemd |
@@ -125,7 +125,7 @@ For packages with the same name across distributions, the `package` module auto-
 
 ```yaml
 # generic-package.yml
-# The package module uses pkg_mgr fact to pick the right backend
+# The package module uses facts or auto-detection to pick the right backend
 ---
 - name: Install common packages using generic module
   hosts: all
@@ -167,6 +167,12 @@ Different OS versions sometimes need different configuration file paths or synta
                 ansible_facts['distribution_major_version'] | int >= 22)
             else '/etc/ssh/sshd_config'
           }}
+        ssh_service_name: >-
+          {{
+            'ssh'
+            if ansible_facts['os_family'] == 'Debian'
+            else 'sshd'
+          }}
 
     - name: Deploy SSH hardening config
       ansible.builtin.template:
@@ -178,7 +184,7 @@ Different OS versions sometimes need different configuration file paths or synta
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -295,7 +301,7 @@ Templates can reference OS facts to generate platform-appropriate configuration 
 {# templates/system-report.txt.j2 #}
 {# Generates a system report that includes OS information #}
 System Report for {{ ansible_facts['hostname'] }}
-Generated: {{ ansible_date_time.iso8601 }}
+Generated: {{ ansible_facts['date_time']['iso8601'] }}
 
 Operating System:
   Distribution: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}
