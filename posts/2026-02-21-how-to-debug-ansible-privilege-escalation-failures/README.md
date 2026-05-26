@@ -93,7 +93,7 @@ You can automate this with an initial playbook:
 fatal: [web-01]: FAILED! => {"msg": "Timeout (12s) waiting for privilege escalation prompt"}
 ```
 
-Some systems (particularly RHEL/CentOS with default sudoers) require a TTY for sudo:
+Some systems (particularly older RHEL/CentOS configurations) require a TTY for sudo:
 
 ```text
 # In /etc/sudoers
@@ -107,16 +107,16 @@ Defaults requiretty
 Defaults:deploy !requiretty
 ```
 
-**Fix 2: Tell Ansible to use a PTY:**
+**Fix 2: Ensure Ansible is allowed to use a PTY:**
 
 ```ini
 # ansible.cfg
 [ssh_connection]
-# Force pseudo-terminal allocation
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s -tt
+# The SSH connection plugin defaults this to true
+usetty = true
 ```
 
-**Fix 3: Use pipelining (which avoids the issue):**
+**Fix 3: After disabling requiretty, optionally enable pipelining:**
 
 ```ini
 # ansible.cfg
@@ -175,7 +175,7 @@ become_method: doas    # OpenBSD
 become_method: runas   # Windows
 ```
 
-## Common Error: Become User Does Not Exist
+## Common Error: Become User Switch Fails
 
 ```text
 fatal: [web-01]: FAILED! => {"msg": "Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user"}
@@ -197,8 +197,8 @@ When using `become_user` to become a specific non-root user:
 # Verify the user exists on the remote host
 ansible web-01 -m command -a "id postgres" --become
 
-# Check if sudo allows switching to that user
-ansible web-01 -m command -a "sudo -u postgres whoami" --become
+# Check if Ansible can become that user
+ansible web-01 -m command -a "whoami" --become --become-user postgres
 ```
 
 **Fix: Ensure sudoers allows the user switch:**
@@ -216,9 +216,9 @@ deploy ALL=(postgres) NOPASSWD: ALL
 fatal: [web-01]: FAILED! => {"msg": "Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user (rc: 1, err: chmod: changing permissions of '/tmp/ansible-tmp-xyz/': Operation not permitted)"}
 ```
 
-This happens when `become_user` is a non-root user and the temp directory has restrictive permissions.
+This happens when both the connection user and `become_user` are unprivileged users, and Ansible cannot make the temporary module file readable by the `become_user`.
 
-**Fix 1: Allow world-executable temp directories:**
+**Fix 1: Allow world-readable temporary files:**
 
 ```ini
 # ansible.cfg
@@ -226,13 +226,15 @@ This happens when `become_user` is a non-root user and the temp directory has re
 allow_world_readable_tmpfiles = true
 ```
 
-**Fix 2: Use pipelining (avoids temp files):**
+**Fix 2: Use pipelining (avoids temporary module files for many Python modules):**
 
 ```ini
 # ansible.cfg
 [connection]
 pipelining = True
 ```
+
+Note: Pipelining does not work for modules that transfer files, such as `copy`, `fetch`, and `template`, or for non-Python modules.
 
 **Fix 3: Change the remote tmp directory:**
 
@@ -311,9 +313,10 @@ Here is a diagnostic playbook:
 
     - name: Check sudo configuration
       ansible.builtin.command:
-        cmd: sudo -l
+        cmd: sudo -n -l
       register: sudo_list
       changed_when: false
+      ignore_errors: true
 
     - name: Show sudo privileges
       ansible.builtin.debug:
