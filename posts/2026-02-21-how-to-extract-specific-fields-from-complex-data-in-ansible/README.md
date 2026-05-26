@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Data Extraction, Filter, JSON
 
-Description: Learn how to extract specific fields from complex nested data structures in Ansible using map, json_query, dot notation, and custom Jinja2 expressions.
+Description: Learn how to extract specific fields from complex nested data structures in Ansible using map, community.general.json_query, dot notation, and custom Jinja2 expressions.
 
 ---
 
@@ -42,9 +42,9 @@ The simplest method is direct dot notation on Ansible variables:
       ansible.builtin.debug:
         msg: "eth0 IP: {{ server.network.interfaces.eth0.ip }}"
 
-    - name: Access using bracket notation (for variable keys)
+    - name: Access using bracket notation
       ansible.builtin.debug:
-        msg: "Root disk used: {{ server.storage.root.used_gb }}GB"
+        msg: "Root disk used: {{ server['storage']['root']['used_gb'] }}GB"
 ```
 
 ## Using map(attribute=...) on Lists
@@ -93,7 +93,7 @@ When you have a list of objects and want one field from each:
 
 ## Using json_query for Deep Extraction
 
-For deeply nested or complex structures, `json_query` is the most powerful option:
+For deeply nested or complex structures, `community.general.json_query` is the most powerful option. It uses JMESPath and requires the `community.general` collection plus the `jmespath` Python package on the Ansible controller:
 
 ```yaml
 # playbook-json-query-extract.yml
@@ -134,24 +134,24 @@ For deeply nested or complex structures, `json_query` is the most powerful optio
   tasks:
     - name: Get all node IDs across all clusters
       ansible.builtin.debug:
-        msg: "{{ cloud_response | json_query('data.clusters[].nodes[].id') }}"
+        msg: "{{ cloud_response | community.general.json_query('data.clusters[].nodes[].id') }}"
 
     - name: Get CPU cores for all nodes
       ansible.builtin.debug:
-        msg: "{{ cloud_response | json_query('data.clusters[].nodes[].resources.cpu_cores') }}"
+        msg: "{{ cloud_response | community.general.json_query('data.clusters[].nodes[].resources.cpu_cores') }}"
 
     - name: Get worker node IDs only
       ansible.builtin.debug:
-        msg: "{{ cloud_response | json_query(\"data.clusters[].nodes[?labels.role=='worker'].id[]\") }}"
+        msg: "{{ cloud_response | community.general.json_query(\"data.clusters[].nodes[?labels.role=='worker'].id[]\") }}"
 
     - name: Get nodes with 8+ CPU cores
       ansible.builtin.debug:
-        msg: "{{ cloud_response | json_query('data.clusters[].nodes[?resources.cpu_cores>=`8`].id[]') }}"
+        msg: "{{ cloud_response | community.general.json_query('data.clusters[].nodes[?resources.cpu_cores>=`8`].id[]') }}"
 
     - name: Extract specific fields into new objects
       ansible.builtin.debug:
         msg: >-
-          {{ cloud_response | json_query('data.clusters[].nodes[].{node_id: id, cpu: resources.cpu_cores, zone: labels.zone}') }}
+          {{ cloud_response | community.general.json_query('data.clusters[].nodes[].{node_id: id, cpu: resources.cpu_cores, zone: labels.zone}') }}
 ```
 
 ## Using Jinja2 for Custom Extraction
@@ -186,14 +186,16 @@ When you need extraction logic that filters cannot express:
   tasks:
     - name: Extract all service versions across environments
       ansible.builtin.set_fact:
-        all_versions: >-
-          {% set result = [] %}
+        all_versions: "{{ versions_yaml | from_yaml }}"
+      vars:
+        versions_yaml: |-
           {% for env_name, env in deployments.items() %}
           {% for svc in env.services %}
-          {% set _ = result.append({'env': env_name, 'service': svc.name, 'version': svc.version}) %}
+          - env: {{ env_name }}
+            service: {{ svc.name }}
+            version: {{ svc.version }}
           {% endfor %}
           {% endfor %}
-          {{ result }}
 
     - name: Show all versions
       ansible.builtin.debug:
@@ -207,7 +209,7 @@ graph TD
     A[Complex Data Structure] --> B{What do you need?}
     B -->|Single nested value| C[Dot notation]
     B -->|One field from each list item| D["map(attribute='field')"]
-    B -->|Fields from nested lists| E["json_query with JMESPath"]
+    B -->|Fields from nested lists| E["community.general.json_query with JMESPath"]
     B -->|Custom logic needed| F[Jinja2 expression]
     B -->|Conditional extraction| G["selectattr + map"]
     C --> H[Result]
@@ -280,22 +282,20 @@ Sometimes you need to extract and reshape at the same time:
   tasks:
     - name: Build clean server list from AWS data
       ansible.builtin.set_fact:
-        clean_servers: >-
-          {% set result = [] %}
+        clean_servers: "{{ servers_yaml | from_yaml }}"
+      vars:
+        servers_yaml: |-
           {% for inst in aws_instances %}
           {% set name_tag = inst.Tags | selectattr('Key', 'equalto', 'Name') | map(attribute='Value') | first | default('unnamed') %}
           {% set env_tag = inst.Tags | selectattr('Key', 'equalto', 'Environment') | map(attribute='Value') | first | default('unknown') %}
-          {% set _ = result.append({
-            'name': name_tag,
-            'id': inst.InstanceId,
-            'type': inst.InstanceType,
-            'state': inst.State.Name,
-            'env': env_tag,
-            'private_ip': inst.NetworkInterfaces[0].PrivateIpAddress,
-            'public_ip': inst.NetworkInterfaces[0].Association.PublicIp | default('none')
-          }) %}
+          - name: {{ name_tag }}
+            id: {{ inst.InstanceId }}
+            type: {{ inst.InstanceType }}
+            state: {{ inst.State.Name }}
+            env: {{ env_tag }}
+            private_ip: {{ inst.NetworkInterfaces[0].PrivateIpAddress }}
+            public_ip: {{ inst.NetworkInterfaces[0].Association.PublicIp | default('none') }}
           {% endfor %}
-          {{ result }}
 
     - name: Show clean server data
       ansible.builtin.debug:
@@ -386,4 +386,4 @@ Output: `[80, 6379]`
 
 ## Summary
 
-Ansible gives you multiple tools for field extraction, each suited to different complexity levels. Use dot notation for direct access to known paths. Use `map(attribute=...)` to pull a single field from every item in a list. Use `json_query` with JMESPath for complex nested structures, conditional extraction, and reshaping. Use `selectattr` combined with `map` for filtered extraction. And when none of the built-in filters can express your logic, Jinja2 loops with namespace variables handle any custom extraction pattern. Pick the simplest tool that gets the job done.
+Ansible gives you multiple tools for field extraction, each suited to different complexity levels. Use dot notation for direct access to known paths. Use `map(attribute=...)` to pull a single field from every item in a list. Use `community.general.json_query` with JMESPath for complex nested structures, conditional extraction, and reshaping. Use `selectattr` combined with `map` for filtered extraction. And when none of the built-in filters can express your logic, Jinja2 loops can render structured YAML that you parse back with `from_yaml`. Pick the simplest tool that gets the job done.
