@@ -44,10 +44,10 @@ python3 -c "from passlib.hash import sha512_crypt; print(sha512_crypt.using(roun
 openssl passwd -6 -salt xyz MySecretPassword
 
 # Then use the hash in the ad hoc command
-ansible all -m user -a "name=deploy password='$6$xyz$hashedpasswordhere'" --become
+ansible all -m user -a 'name=deploy password=$6$xyz$hashedpasswordhere' --become
 
 # Set password and force the user to change it on first login
-ansible all -m user -a "name=newuser password='$6$xyz$hashedpasswordhere' update_password=always" --become
+ansible all -m user -a 'name=newuser password=$6$xyz$hashedpasswordhere update_password=always' --become
 ansible all -m shell -a "chage -d 0 newuser" --become
 ```
 
@@ -150,11 +150,11 @@ ansible all -m shell -a "id jsmith"
 When someone leaves, remove their access immediately:
 
 ```bash
-# Step 1: Lock the account immediately (prevents login)
+# Step 1: Lock the account password immediately (SSH keys may still work until removed)
 ansible all -m user -a "name=jsmith password_lock=yes" --become
 
 # Step 2: Kill any active sessions
-ansible all -m shell -a "pkill -u jsmith" --become --ignore-errors
+ansible all -m shell -a "pkill -u jsmith || true" --become
 
 # Step 3: Remove SSH keys
 ansible all -m authorized_key -a "user=jsmith key='ssh-ed25519 AAAAC3NzaC1... jsmith@laptop' state=absent" --become
@@ -178,7 +178,7 @@ ansible all -m shell -a "awk -F: '\$3 >= 1000 && \$3 < 65534 {print \$1}' /etc/p
 ansible all -m shell -a "getent group sudo || getent group wheel" --become
 
 # Find users with empty passwords
-ansible all -m shell -a "awk -F: '(\$2 == \"\" || \$2 == \"!\") {print \$1}' /etc/shadow" --become
+ansible all -m shell -a "awk -F: '\$2 == \"\" {print \$1}' /etc/shadow" --become
 
 # Check SSH key presence for a specific user
 ansible all -m shell -a "cat /home/deploy/.ssh/authorized_keys 2>/dev/null | wc -l"
@@ -194,7 +194,7 @@ ansible all -m shell -a "awk -F: '\$5 == \"\" || \$5 == 99999 {print \$1}' /etc/
 NEW_HASH=$(python3 -c "from passlib.hash import sha512_crypt; print(sha512_crypt.using(rounds=5000).hash('NewPassword2026'))")
 
 # Update the password for a service account across all servers
-ansible all -m user -a "name=serviceaccount password='$NEW_HASH' update_password=always" --become
+ansible all -m user -a "name=serviceaccount password=$NEW_HASH update_password=always" --become
 
 # Force password change on next login
 ansible all -m shell -a "chage -d 0 serviceaccount" --become
