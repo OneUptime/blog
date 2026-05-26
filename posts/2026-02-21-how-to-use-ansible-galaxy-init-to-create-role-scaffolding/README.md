@@ -1,14 +1,14 @@
-# How to Use ansible-galaxy init to Create Role Scaffolding
+# How to Use ansible-galaxy role init to Create Role Scaffolding
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ansible Galaxy, Role, Scaffolding
 
-Description: Learn how to use ansible-galaxy init to quickly scaffold Ansible roles with the correct directory structure and customization options.
+Description: Learn how to use ansible-galaxy role init to quickly scaffold Ansible roles with the correct directory structure and customization options.
 
 ---
 
-Every Ansible role follows the same directory convention: tasks, handlers, defaults, vars, templates, files, meta, and tests. Creating all of those directories and placeholder files by hand gets old quickly, especially when you are building multiple roles for a project. The `ansible-galaxy init` command generates the entire scaffolding for you in one shot. This post covers how to use it effectively, customize the output, and integrate it into your workflow.
+Every Ansible role follows the same directory convention: tasks, handlers, defaults, vars, templates, files, meta, and tests. Creating all of those directories and placeholder files by hand gets old quickly, especially when you are building multiple roles for a project. The `ansible-galaxy role init` command generates the entire scaffolding for you in one shot. This post covers how to use it effectively, customize the output, and integrate it into your workflow.
 
 ## Basic Usage
 
@@ -17,7 +17,7 @@ The simplest invocation creates a role in the current directory:
 ```bash
 # Create a new role called "loadbalancer" with the standard directory structure
 
-ansible-galaxy init loadbalancer
+ansible-galaxy role init loadbalancer
 ```
 
 This produces the following tree:
@@ -50,14 +50,14 @@ By default, the role directory is created in your current working directory. If 
 
 ```bash
 # Place the new role inside the project's roles directory
-ansible-galaxy init --init-path roles/ loadbalancer
+ansible-galaxy role init --init-path roles/ loadbalancer
 ```
 
 This creates `roles/loadbalancer/` with the full structure. The `--init-path` flag is particularly useful when you have a standard project layout and want roles to land in the right place without navigating around.
 
 ## What Gets Generated
 
-Let's look at the key files that `ansible-galaxy init` creates and what they contain by default.
+Let's look at the key files that `ansible-galaxy role init` creates and what they contain by default.
 
 ### tasks/main.yml
 
@@ -134,11 +134,11 @@ localhost
 
 ## Preventing Overwrites
 
-If you accidentally run `ansible-galaxy init` for a role that already exists, it will fail with an error:
+If you accidentally run `ansible-galaxy role init` for a role that already exists, it will fail with an error:
 
 ```bash
 # This will fail because the directory already exists
-ansible-galaxy init loadbalancer
+ansible-galaxy role init loadbalancer
 # ERROR! The directory loadbalancer already exists.
 ```
 
@@ -146,14 +146,14 @@ If you genuinely want to regenerate the scaffolding (for example, after deleting
 
 ```bash
 # Overwrite an existing role directory with fresh scaffolding
-ansible-galaxy init --force loadbalancer
+ansible-galaxy role init --force loadbalancer
 ```
 
 Be careful with `--force` because it will overwrite all existing files in the role directory.
 
 ## Using a Custom Skeleton
 
-The default template is fine for most cases, but if your organization has standards (like mandatory CI files, linting configs, or specific README formats), you can point `ansible-galaxy init` at a custom skeleton directory.
+The default template is fine for most cases, but if your organization has standards (like mandatory CI files, linting configs, or specific README formats), you can point `ansible-galaxy role init` at a custom skeleton directory.
 
 First, create your skeleton:
 
@@ -166,18 +166,18 @@ mkdir -p /opt/ansible-skeletons/role_skeleton/meta
 mkdir -p /opt/ansible-skeletons/role_skeleton/molecule/default
 ```
 
-Add your template files. The skeleton supports Jinja2 templating with a few built-in variables:
+Add your template files. The skeleton supports Jinja2 templating for `.j2` files outside of a `templates/` directory. The built-in variable you will usually use is `role_name`:
 
 ```yaml
-# /opt/ansible-skeletons/role_skeleton/tasks/main.yml
+# /opt/ansible-skeletons/role_skeleton/tasks/main.yml.j2
 # {{ role_name }} - main tasks
 ---
-# This role was scaffolded on {{ template_date }}
+# tasks file for {{ role_name }}
 # Owner: platform-engineering
 ```
 
 ```yaml
-# /opt/ansible-skeletons/role_skeleton/meta/main.yml
+# /opt/ansible-skeletons/role_skeleton/meta/main.yml.j2
 ---
 galaxy_info:
   author: platform-engineering
@@ -211,33 +211,30 @@ Now use your skeleton:
 
 ```bash
 # Scaffold a role using your custom template
-ansible-galaxy init --role-skeleton=/opt/ansible-skeletons/role_skeleton loadbalancer
+ansible-galaxy role init --role-skeleton=/opt/ansible-skeletons/role_skeleton loadbalancer
 ```
 
 ## Setting a Default Skeleton in ansible.cfg
 
-If you want every `ansible-galaxy init` to use your custom skeleton without specifying the flag each time:
+If you want every `ansible-galaxy role init` to use your custom skeleton without specifying the flag each time:
 
 ```ini
 # ansible.cfg
 [galaxy]
 role_skeleton = /opt/ansible-skeletons/role_skeleton
-role_skeleton_ignore =
-  - .git
-  - .github
-  - __pycache__
+role_skeleton_ignore = ^.git$,^.github$,^__pycache__$
 ```
 
 The `role_skeleton_ignore` option tells `ansible-galaxy` to skip certain files or directories from the skeleton during scaffolding.
 
 ## Scaffolding Multiple Roles at Once
 
-`ansible-galaxy init` only handles one role at a time. If you need to scaffold several roles for a new project, a simple shell loop works well:
+`ansible-galaxy role init` only handles one role at a time. If you need to scaffold several roles for a new project, a simple shell loop works well:
 
 ```bash
 # Scaffold multiple roles in one go
 for role in webserver database cache loadbalancer monitoring; do
-  ansible-galaxy init --init-path roles/ "$role"
+  ansible-galaxy role init --init-path roles/ "$role"
 done
 ```
 
@@ -272,7 +269,7 @@ Here is how I typically scaffold and flesh out a new role:
 
 ```bash
 # 1. Scaffold the role
-ansible-galaxy init --init-path roles/ loadbalancer
+ansible-galaxy role init --init-path roles/ loadbalancer
 
 # 2. Fill in the metadata
 vim roles/loadbalancer/meta/main.yml
@@ -302,4 +299,4 @@ If your role does not use certain directories (say, `files/` or `library/`), you
 
 ## Wrapping Up
 
-The `ansible-galaxy init` command is a small but effective productivity tool. It saves you from the tedious work of creating directories and boilerplate files, ensures you follow the standard Ansible role layout, and can be customized with skeletons to enforce organizational standards. Whether you are creating a single role or scaffolding a dozen at once, it is the right starting point for every Ansible role you build.
+The `ansible-galaxy role init` command is a small but effective productivity tool. It saves you from the tedious work of creating directories and boilerplate files, ensures you follow the standard Ansible role layout, and can be customized with skeletons to enforce organizational standards. Whether you are creating a single role or scaffolding a dozen at once, it is the right starting point for every Ansible role you build.
