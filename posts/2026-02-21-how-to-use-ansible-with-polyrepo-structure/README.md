@@ -24,7 +24,8 @@ Here is a typical polyrepo layout:
 
 ```text
 GitHub Organization
-├── ansible-shared-roles/        # Shared roles repository
+├── ansible-role-nginx/          # Shared role repository
+├── ansible-role-common/         # Shared role repository
 ├── ansible-inventories/         # Inventory and variables
 ├── ansible-playbooks-web/       # Web team's playbooks
 ├── ansible-playbooks-data/      # Data team's playbooks
@@ -33,12 +34,12 @@ GitHub Organization
 └── ansible-execution-env/       # Execution environment definition
 ```
 
-## The Shared Roles Repository
+## Shared Role Repositories
 
-Shared roles live in a central repo with versioned releases:
+Shared roles live in their own repos with versioned releases:
 
 ```yaml
-# ansible-shared-roles/roles/nginx/meta/main.yml
+# ansible-role-nginx/meta/main.yml
 
 galaxy_info:
   author: platform-team
@@ -52,7 +53,7 @@ galaxy_info:
 ```
 
 ```yaml
-# ansible-shared-roles/roles/nginx/defaults/main.yml
+# ansible-role-nginx/defaults/main.yml
 nginx_worker_processes: auto
 nginx_worker_connections: 1024
 nginx_ssl_enabled: true
@@ -65,19 +66,15 @@ Consume shared roles from team repositories:
 # ansible-playbooks-web/requirements.yml
 # Pin specific versions of shared roles
 roles:
-  - src: git+https://github.com/company/ansible-shared-roles.git
-    version: v2.3.0
-    name: shared_roles
-    scm: git
-
-# Or reference individual roles
-  - src: git+https://github.com/company/ansible-shared-roles.git//roles/nginx
+  - src: git+https://github.com/company/ansible-role-nginx.git
     version: v2.3.0
     name: nginx
+    scm: git
 
-  - src: git+https://github.com/company/ansible-shared-roles.git//roles/common
+  - src: git+https://github.com/company/ansible-role-common.git
     version: v2.3.0
     name: common
+    scm: git
 ```
 
 ## Building an Internal Collection
@@ -87,6 +84,7 @@ Package shared roles and plugins into an Ansible collection for cleaner distribu
 ```text
 ansible-collection-internal/
 ├── galaxy.yml
+├── LICENSE
 ├── roles/
 │   ├── common/
 │   ├── nginx/
@@ -114,7 +112,7 @@ readme: README.md
 authors:
   - Platform Team <platform@company.com>
 description: Internal infrastructure collection
-license: proprietary
+license_file: LICENSE
 dependencies:
   community.general: ">=8.0.0"
   ansible.posix: ">=1.5.0"
