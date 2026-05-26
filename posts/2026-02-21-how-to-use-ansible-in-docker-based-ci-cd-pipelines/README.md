@@ -19,7 +19,7 @@ Start with a Docker image that has everything you need for your Ansible playbook
 ```dockerfile
 # Dockerfile.ansible
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Install system dependencies
 RUN apt-get update && \
@@ -33,8 +33,8 @@ RUN apt-get update && \
 
 # Install Ansible and common dependencies
 RUN pip install --no-cache-dir \
-    ansible==8.7.0 \
-    ansible-lint==6.22.0 \
+    ansible==13.7.0 \
+    ansible-lint==26.4.0 \
     jmespath \
     netaddr \
     boto3 \
@@ -65,8 +65,8 @@ docker tag ansible-runner:latest registry.example.com/ansible-runner:latest
 docker push registry.example.com/ansible-runner:latest
 
 # Also tag with a specific version for pinning
-docker tag ansible-runner:latest registry.example.com/ansible-runner:8.7.0
-docker push registry.example.com/ansible-runner:8.7.0
+docker tag ansible-runner:latest registry.example.com/ansible-runner:13.7.0
+docker push registry.example.com/ansible-runner:13.7.0
 ```
 
 ## Running Locally in Docker
@@ -115,7 +115,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     container:
-      image: registry.example.com/ansible-runner:8.7.0
+      image: registry.example.com/ansible-runner:13.7.0
       credentials:
         username: ${{ secrets.REGISTRY_USER }}
         password: ${{ secrets.REGISTRY_PASSWORD }}
@@ -150,7 +150,8 @@ jobs:
 
 ```yaml
 # .gitlab-ci.yml
-image: registry.example.com/ansible-runner:8.7.0
+default:
+  image: registry.example.com/ansible-runner:13.7.0
 
 stages:
   - lint
@@ -191,7 +192,7 @@ deploy-staging:
 pipeline {
     agent {
         docker {
-            image 'registry.example.com/ansible-runner:8.7.0'
+            image 'registry.example.com/ansible-runner:13.7.0'
             registryUrl 'https://registry.example.com'
             registryCredentialsId 'docker-registry'
         }
@@ -282,23 +283,23 @@ If your playbooks need specific collections or roles, use a multi-stage build to
 ```dockerfile
 # Dockerfile.ansible-multi-stage
 # Stage 1: Download collections and roles
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
-RUN pip install --no-cache-dir ansible==8.7.0
+RUN pip install --no-cache-dir ansible==13.7.0
 
 COPY requirements.yml /tmp/requirements.yml
 RUN ansible-galaxy collection install -r /tmp/requirements.yml -p /collections
 RUN ansible-galaxy role install -r /tmp/requirements.yml -p /roles
 
 # Stage 2: Final image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends openssh-client && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    ansible==8.7.0 \
+    ansible==13.7.0 \
     jmespath
 
 # Copy pre-downloaded collections and roles
@@ -325,9 +326,9 @@ graph TD
 
 ## Handling Network Access
 
-When running Ansible in a Docker container, the container needs network access to your target hosts. In CI/CD environments, this usually works out of the box because containers use the host network. But if you are running Docker-in-Docker or on an isolated network, you might need extra configuration.
+When running Ansible in a Docker container, the container needs network access to your target hosts. In CI/CD environments, this usually works out of the box because containers on the default bridge network can reach external hosts when the Docker host can. But if you are running Docker-in-Docker or on an isolated network, you might need extra configuration.
 
-```yaml
+```bash
 # Docker run with host networking (useful for accessing hosts on the same network)
 docker run --rm \
   --network host \
@@ -343,11 +344,11 @@ Tag your Docker images with the Ansible version and a build number.
 ```bash
 # Tagging strategy
 registry.example.com/ansible-runner:latest
-registry.example.com/ansible-runner:8.7.0
-registry.example.com/ansible-runner:8.7.0-build-42
+registry.example.com/ansible-runner:13.7.0
+registry.example.com/ansible-runner:13.7.0-build-42
 
 # In CI/CD, always use a specific version tag, not latest
-image: registry.example.com/ansible-runner:8.7.0
+image: registry.example.com/ansible-runner:13.7.0
 ```
 
 ## Tips for Docker-Based Ansible CI/CD
