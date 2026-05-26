@@ -8,7 +8,7 @@ Description: Fix Ansible destination not writable errors by resolving permission
 
 ---
 
-The "Destination not writable" error occurs when Ansible tries to write a file to a location where the connecting user does not have write permissions. This is a permission issue on the remote host.
+The "Destination not writable" error occurs when Ansible tries to write a file to a location where the user Ansible is executing as does not have write permissions. This is usually a permission issue on the remote host.
 
 ## The Error
 
@@ -105,16 +105,16 @@ remote_tmp = /tmp/.ansible/tmp
 
 ## Summary
 
-"Destination not writable" is always a permissions issue. The fix is usually adding `become: yes` to run as root, ensuring parent directories exist with the right ownership, or using `become_user` to write as the correct user. Check the ownership and permissions of the target directory if the error persists after adding become.
+"Destination not writable" is usually a permissions or remote temporary directory issue. The fix is usually adding `become: yes` to run as root, ensuring parent directories exist with the right ownership, or using `become_user` to write as the correct user. Check the ownership and permissions of the target directory if the error persists after adding become.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -146,7 +146,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -228,7 +228,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -290,4 +290,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
