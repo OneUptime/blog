@@ -24,12 +24,12 @@ Isolated testing catches all of these.
 
 ## Setting Up Molecule
 
-Molecule is the standard testing framework for Ansible roles. Install it with the Docker driver:
+Molecule is the standard testing framework for Ansible roles. Install it with the Docker driver and testinfra support:
 
 ```bash
-# Install Molecule with Docker support
+# Install Molecule with Docker and testinfra support
 
-pip install molecule molecule-plugins[docker]
+pip install molecule molecule-plugins[docker] pytest-testinfra
 ```
 
 ## Initializing Molecule in a Role
@@ -39,7 +39,7 @@ Navigate to your role and initialize Molecule:
 ```bash
 # Initialize Molecule in an existing role
 cd roles/nginx
-molecule init scenario --driver-name docker
+molecule init scenario
 ```
 
 This creates:
@@ -49,6 +49,8 @@ roles/nginx/
   molecule/
     default/
       converge.yml
+      create.yml
+      destroy.yml
       molecule.yml
       verify.yml
   tasks/
@@ -231,14 +233,14 @@ When you run `molecule test`, it executes these steps in order:
 ```mermaid
 flowchart TD
     A[molecule test] --> B[dependency - install role dependencies]
-    B --> C[lint - run yamllint and ansible-lint]
-    C --> D[cleanup - pre-test cleanup]
-    D --> E[destroy - remove old instances]
-    E --> F[syntax - ansible-playbook --syntax-check]
-    F --> G[create - spin up test instances]
-    G --> H[prepare - run preparation tasks]
-    H --> I[converge - apply the role]
-    I --> J[idempotence - converge again, check for changes]
+    B --> C[cleanup - pre-test cleanup]
+    C --> D[destroy - remove old instances]
+    D --> E[syntax - ansible-playbook --syntax-check]
+    E --> F[create - spin up test instances]
+    F --> G[prepare - run preparation tasks]
+    G --> H[converge - apply the role]
+    H --> I[idempotence - converge again, check for changes]
+    I --> J[side_effect - run optional side-effect tests]
     J --> K[verify - run verification tests]
     K --> L[cleanup - post-test cleanup]
     L --> M[destroy - remove test instances]
@@ -315,7 +317,7 @@ Create different scenarios for different configurations:
 
 ```bash
 # Create an additional scenario
-molecule init scenario --scenario-name tls --driver-name docker
+molecule init scenario tls
 ```
 
 ```text
@@ -403,7 +405,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ansible molecule molecule-plugins[docker]
+          pip install ansible molecule molecule-plugins[docker] pytest-testinfra
 
       - name: Run Molecule tests
         run: molecule test --scenario-name ${{ matrix.scenario }}
