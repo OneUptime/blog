@@ -109,10 +109,10 @@ The `default` filter provides a fallback value when a variable is not defined. T
           - "Debug: {{ debug_mode | default(false) }}"     # false (using default)
 
     # default(omit) is special - it makes the parameter behave as if it was not specified
-    - name: Create user with optional password
+    - name: Create user with optional password hash
       ansible.builtin.user:
         name: appuser
-        password: "{{ user_password | default(omit) }}"
+        password: "{{ user_password_hash | default(omit) }}"
         state: present
       become: true
 ```
@@ -151,7 +151,7 @@ The `omit` placeholder is incredibly useful. When a parameter gets `omit`, Ansib
 
 ## Checking Nested Variable Attributes
 
-Checking if a nested attribute is defined requires careful handling. A direct check like `my_dict.key is defined` will fail if `my_dict` itself is not defined.
+Checking if a nested attribute is defined requires careful handling. In modern Ansible, a direct check like `my_dict.key is defined` returns `false` if `my_dict` itself is not defined, but explicit parent checks still make deeper conditions clearer.
 
 ```yaml
 # nested-defined.yml - Checking nested attributes safely
@@ -278,6 +278,7 @@ Sometimes "defined" is not enough. You want to ensure the variable is defined AN
         msg: "API key is set"
       when:
         - api_key is defined
+        - api_key is not none
         - api_key | length > 0
 ```
 
@@ -310,11 +311,11 @@ Ansible's behavior with undefined variables is controlled by `ansible.cfg`:
 # Default behavior: error on undefined variables
 # error_on_undefined_vars = true
 
-# Set to false to treat undefined variables as empty strings (not recommended)
+# Deprecated in current ansible-core; do not rely on changing this
 # error_on_undefined_vars = false
 ```
 
-Keep `error_on_undefined_vars = true` (the default). Silencing undefined variable errors hides real bugs.
+Keep the default strict behavior. In current ansible-core, `error_on_undefined_vars` is deprecated and no longer used, so do not rely on setting it to `false`. Silencing undefined variable errors hides real bugs.
 
 ## Best Practices
 
