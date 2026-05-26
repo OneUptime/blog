@@ -4,32 +4,32 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terraform Enterprise, LDAP, Active Directory, Authentication, Security
 
-Description: A practical guide to configuring LDAP authentication for Terraform Enterprise, including Active Directory integration, group mapping, and troubleshooting tips.
+Description: A practical guide to configuring LDAP authentication for the Terraform Enterprise installer dashboard, including Active Directory integration, group restrictions, and troubleshooting tips.
 
 ---
 
-Many organizations still rely on LDAP-based directories - particularly Active Directory - as their primary identity store. Terraform Enterprise supports LDAP authentication natively, letting users sign in with their existing directory credentials without needing a separate SAML or OIDC identity provider in between.
+Many organizations still rely on LDAP-based directories - particularly Active Directory - as their primary identity store. Terraform Enterprise's application login is typically integrated with an identity provider through SAML and, when needed, SCIM provisioning. LDAP authentication is supported for the Replicated installer dashboard and can be configured directly against your directory.
 
-This guide covers configuring TFE with LDAP, mapping LDAP groups to TFE teams, and working through the quirks that come with directory integration.
+This guide covers configuring the TFE installer dashboard with LDAP and working through the quirks that come with directory integration.
 
-## When to Use LDAP vs SAML/OIDC
+## When to Use LDAP vs SAML/SCIM
 
 LDAP authentication makes sense when:
 
 - Your organization uses Active Directory without a federated identity provider
-- You want direct authentication against the directory without an intermediary
+- You want direct authentication against the directory for the Replicated installer dashboard
 - Your TFE instance is on the same network as your LDAP servers
-- You need fast, simple integration without configuring a separate IdP application
+- You need fast, simple integration for installer console access
 
-If you already have Okta, Azure AD with OIDC, or another federated identity provider, those are generally better options since they add an abstraction layer that simplifies management.
+If you already have Okta, Microsoft Entra ID with SAML or SCIM, or another federated identity provider, those are generally better options for Terraform Enterprise application users since they are the supported path for SSO and automated team membership management.
 
 ## Prerequisites
 
-- Terraform Enterprise with site admin access
+- Terraform Enterprise with access to the Replicated installer dashboard
 - LDAP server (Active Directory, OpenLDAP, etc.) reachable from TFE
 - A service account for LDAP bind operations
-- Knowledge of your directory structure (base DN, group DN, etc.)
-- LDAPS (LDAP over TLS) is strongly recommended
+- Knowledge of your directory structure (base DN, user search DN, etc.)
+- LDAPS (LDAP over TLS) or StartTLS is strongly recommended
 
 ## Understanding TFE's LDAP Configuration
 
@@ -37,25 +37,24 @@ TFE needs several pieces of information to connect to your directory:
 
 - **Host and port**: Where to find the LDAP server
 - **Bind credentials**: A service account to search the directory
-- **User search base**: Where to look for user accounts
-- **Group search base**: Where to look for groups
-- **Attribute mappings**: Which LDAP attributes map to TFE fields
+- **Base DN**: The root of the LDAP tree to search
+- **User search DN**: Where to look for user accounts under the base DN
+- **User query and username field**: Which LDAP attributes identify users
 
 ## Step 1: Prepare Your LDAP Environment
 
 ### Create a Service Account
 
-```bash
+```powershell
 # For Active Directory, create a service account using PowerShell
 
-New-ADUser -Name "TFE Service Account" \
-  -SamAccountName "svc-tfe-ldap" \
-  -UserPrincipalName "svc-tfe-ldap@corp.example.com" \
-  -Path "OU=Service Accounts,DC=corp,DC=example,DC=com" \
-  -AccountPassword (ConvertTo-SecureString "StrongPassword123!" -AsPlainText -Force) \
-  -Enabled $true \
-  -PasswordNeverExpires $true \
-  -CannotChangePassword $true
+New-ADUser -Name "TFE Service Account" `
+  -SamAccountName "svc-tfe-ldap" `
+  -UserPrincipalName "svc-tfe-ldap@corp.example.com" `
+  -Path "OU=Service Accounts,DC=corp,DC=example,DC=com" `
+  -AccountPassword (ConvertTo-SecureString "StrongPassword123!" -AsPlainText -Force) `
+  -Enabled $true `
+  -PasswordNeverExpires $true
 ```
 
 For OpenLDAP:
@@ -107,160 +106,107 @@ ldapsearch -x -H ldaps://dc01.corp.example.com:636 \
 
 ### Via the Admin UI
 
-Navigate to **Admin** > **LDAP** in the TFE interface.
+Navigate to `https://<TFE_HOSTNAME>:8800`, open the gear icon, select **Console Settings**, then change the console security settings to **LDAP**.
 
 ```text
 LDAP Configuration:
-  Hostname:            dc01.corp.example.com
-  Port:                636
-  Method:              SSL (LDAPS)
+  Server Type:        Active Directory
+  Hostname:           ldaps://dc01.corp.example.com:636
 
-  Bind DN:             svc-tfe-ldap@corp.example.com
-  Bind Password:       StrongPassword123!
+  Search Username:    svc-tfe-ldap@corp.example.com
+  Search Password:    StrongPassword123!
 
-  User Search:
-    Base DN:           OU=Users,DC=corp,DC=example,DC=com
-    Username Attribute: sAMAccountName
-    Email Attribute:    mail
-    Name Attribute:     displayName
-    User Filter:        (objectClass=person)
-
-  Group Search:
-    Base DN:           OU=Groups,DC=corp,DC=example,DC=com
-    Group Name Attr:   cn
-    Group Member Attr: member
-    Group Object Class: group
-    Group Filter:      (objectClass=group)
+  LDAP Schema:
+    Base DN:          DC=corp,DC=example,DC=com
+    User Search DN:   OU=Users
+    User Query:       (sAMAccountName={{username}})
+    Username Field:   sAMAccountName
 ```
 
-### Via API
+### Via Automated Installation
 
-```bash
-# Configure LDAP settings via the TFE Admin API
-curl -s \
-  --header "Authorization: Bearer $TFE_ADMIN_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request PUT \
-  https://tfe.example.com/api/v2/admin/ldap-settings \
-  --data '{
-    "data": {
-      "type": "ldap-settings",
-      "attributes": {
-        "enabled": true,
-        "host": "dc01.corp.example.com",
-        "port": 636,
-        "method": "ssl",
-        "bind-dn": "svc-tfe-ldap@corp.example.com",
-        "bind-password": "StrongPassword123!",
-        "base-dn": "DC=corp,DC=example,DC=com",
-        "user-search-base": "OU=Users",
-        "user-search-filter": "(objectClass=person)",
-        "username-attribute": "sAMAccountName",
-        "email-attribute": "mail",
-        "name-attribute": "displayName",
-        "group-search-base": "OU=Groups",
-        "group-name-attribute": "cn",
-        "group-member-attribute": "member",
-        "group-object-class": "group",
-        "group-search-filter": "(objectClass=group)",
-        "site-admin-group": "TFE-SiteAdmins"
-      }
-    }
-  }'
+```json
+{
+  "DaemonAuthenticationType": "ldap",
+  "ImportSettingsFrom": "/etc/ptfe-settings.json",
+  "LicenseFileLocation": "/tmp/license.rli",
+  "TlsBootstrapType": "server-path",
+  "TlsBootstrapHostname": "tfe.example.com",
+  "TlsBootstrapCert": "/etc/server.crt",
+  "TlsBootstrapKey": "/etc/server.key"
+}
 ```
 
-### Via Environment Variables
+Then define the LDAP settings in the file referenced by `ImportSettingsFrom`, typically `/etc/ptfe-settings.json`:
+
+```json
+{
+  "ldap_hostname": { "value": "dc01.corp.example.com" },
+  "ldap_port": { "value": "636" },
+  "ldap_encryption": { "value": "ldap_encryption_ldaps" },
+  "ldap_search_user": { "value": "svc-tfe-ldap@corp.example.com" },
+  "ldap_search_password": { "value": "StrongPassword123!" },
+  "ldap_schema": { "value": "" },
+  "ldap_base_dn": { "value": "DC=corp,DC=example,DC=com" },
+  "ldap_usersearch_dn": { "value": "OU=Users" },
+  "ldap_advanced_search": { "value": "1" },
+  "ldap_user_query": { "value": "(sAMAccountName={{username}})" },
+  "ldap_username_field": { "value": "sAMAccountName" }
+}
+```
+
+### Export Existing Settings
 
 ```bash
-# LDAP configuration for Docker-based TFE deployment
-TFE_LDAP_ENABLED=true
-TFE_LDAP_HOST=dc01.corp.example.com
-TFE_LDAP_PORT=636
-TFE_LDAP_METHOD=ssl
-TFE_LDAP_BIND_DN="svc-tfe-ldap@corp.example.com"
-TFE_LDAP_BIND_PASSWORD="StrongPassword123!"
-TFE_LDAP_BASE_DN="DC=corp,DC=example,DC=com"
-TFE_LDAP_USER_SEARCH_BASE="OU=Users"
-TFE_LDAP_USER_SEARCH_FILTER="(objectClass=person)"
-TFE_LDAP_USERNAME_ATTRIBUTE=sAMAccountName
-TFE_LDAP_EMAIL_ATTRIBUTE=mail
-TFE_LDAP_NAME_ATTRIBUTE=displayName
-TFE_LDAP_GROUP_SEARCH_BASE="OU=Groups"
-TFE_LDAP_GROUP_NAME_ATTRIBUTE=cn
-TFE_LDAP_GROUP_MEMBER_ATTRIBUTE=member
-TFE_LDAP_GROUP_OBJECT_CLASS=group
+# Export current Replicated app settings, including hidden values
+replicatedctl app-config export --hidden
 ```
 
 ## Step 3: OpenLDAP-Specific Configuration
 
 OpenLDAP has different attribute names and object classes:
 
-```bash
-# OpenLDAP configuration differences
-TFE_LDAP_HOST=ldap.example.com
-TFE_LDAP_PORT=636
-TFE_LDAP_METHOD=ssl
-TFE_LDAP_BIND_DN="cn=svc-tfe,ou=service-accounts,dc=example,dc=com"
-TFE_LDAP_BIND_PASSWORD="StrongPassword123!"
-TFE_LDAP_BASE_DN="dc=example,dc=com"
-TFE_LDAP_USER_SEARCH_BASE="ou=people"
-TFE_LDAP_USER_SEARCH_FILTER="(objectClass=inetOrgPerson)"
-TFE_LDAP_USERNAME_ATTRIBUTE=uid
-TFE_LDAP_EMAIL_ATTRIBUTE=mail
-TFE_LDAP_NAME_ATTRIBUTE=cn
-TFE_LDAP_GROUP_SEARCH_BASE="ou=groups"
-TFE_LDAP_GROUP_NAME_ATTRIBUTE=cn
-TFE_LDAP_GROUP_MEMBER_ATTRIBUTE=uniqueMember
-TFE_LDAP_GROUP_OBJECT_CLASS=groupOfUniqueNames
+```json
+{
+  "ldap_hostname": { "value": "ldap.example.com" },
+  "ldap_port": { "value": "636" },
+  "ldap_encryption": { "value": "ldap_encryption_ldaps" },
+  "ldap_search_user": { "value": "cn=svc-tfe,ou=service-accounts,dc=example,dc=com" },
+  "ldap_search_password": { "value": "StrongPassword123!" },
+  "ldap_schema": { "value": "" },
+  "ldap_base_dn": { "value": "dc=example,dc=com" },
+  "ldap_usersearch_dn": { "value": "ou=people" },
+  "ldap_advanced_search": { "value": "1" },
+  "ldap_user_query": { "value": "(uid={{username}})" },
+  "ldap_username_field": { "value": "uid" }
+}
 ```
 
-## Step 4: Team Mapping with LDAP Groups
+## Step 4: Limit Access with LDAP Groups
 
-Create LDAP groups that correspond to TFE teams:
+Create LDAP groups that correspond to the users allowed to access the installer dashboard:
 
-```bash
-# Create AD groups for TFE access
-New-ADGroup -Name "TFE-Admins" \
-  -GroupCategory Security \
-  -GroupScope Global \
+```powershell
+# Create an AD group for TFE installer dashboard access
+New-ADGroup -Name "TFE-Installer-Admins" `
+  -GroupCategory Security `
+  -GroupScope Global `
   -Path "OU=Groups,DC=corp,DC=example,DC=com"
 
-New-ADGroup -Name "TFE-Developers" \
-  -GroupCategory Security \
-  -GroupScope Global \
-  -Path "OU=Groups,DC=corp,DC=example,DC=com"
-
-New-ADGroup -Name "TFE-Viewers" \
-  -GroupCategory Security \
-  -GroupScope Global \
-  -Path "OU=Groups,DC=corp,DC=example,DC=com"
-
-# Add users to the appropriate groups
-Add-ADGroupMember -Identity "TFE-Developers" -Members "jdoe","asmith"
+# Add users to the appropriate group
+Add-ADGroupMember -Identity "TFE-Installer-Admins" -Members "jdoe","asmith"
 ```
 
-In TFE, create teams that match these group names:
+Then configure a restricted group query in TFE:
 
-```bash
-# Create a TFE team mapped to the LDAP group
-curl -s \
-  --header "Authorization: Bearer $TFE_ORG_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request POST \
-  "https://tfe.example.com/api/v2/organizations/my-org/teams" \
-  --data '{
-    "data": {
-      "type": "teams",
-      "attributes": {
-        "name": "TFE-Developers",
-        "organization-access": {
-          "manage-workspaces": true,
-          "manage-policies": false
-        }
-      }
-    }
-  }'
+```json
+{
+  "ldap_restricted_user_group": { "value": "TFE-Installer-Admins" },
+  "ldap_restricted_group_query": { "value": "(&(cn=TFE-Installer-Admins)(member={{userdn}}))" }
+}
 ```
+
+For Terraform Enterprise application team membership, use SAML team membership mapping or SCIM group mapping rather than LDAP.
 
 ## Troubleshooting LDAP Issues
 
@@ -283,25 +229,25 @@ ldapwhoami -x -H ldaps://dc01.corp.example.com:636 \
 
 **"LDAP bind failed"**: Wrong bind DN or password. For Active Directory, the bind DN can be in UPN format (user@domain.com) or DN format (CN=user,OU=...). Try both.
 
-**"No users found"**: The user search base is wrong. Start with a broad base DN (the domain root) and narrow down after confirming searches work.
+**"User not found"**: The user search DN or user query is wrong. Start with a broad base DN (the domain root) and narrow down after confirming searches work.
 
-**"TLS certificate verification failed"**: TFE does not trust the LDAP server's certificate. Add the CA certificate to TFE's trusted CA bundle using `TFE_TLS_CA_BUNDLE_FILE`.
+**"TLS certificate verification failed"**: TFE does not trust the LDAP server's certificate. Add the CA certificate to the installer CA bundle for Replicated installations, or use `TFE_TLS_CA_BUNDLE_FILE` for current Docker, Kubernetes, or Nomad deployments.
 
-**Group membership not reflected**: Check whether your directory uses `member`, `uniqueMember`, or `memberOf` for group membership. Active Directory uses `member`, while OpenLDAP commonly uses `uniqueMember`.
+**Group restriction not reflected**: Check whether your directory uses `member`, `uniqueMember`, or `memberUid` for group membership. Active Directory commonly uses `member`, while OpenLDAP group membership depends on the group object class.
 
-**Nested groups not working**: TFE performs a simple group lookup by default. If your groups are nested (group A is a member of group B), you may need to use Active Directory's `LDAP_MATCHING_RULE_IN_CHAIN` filter:
+**Nested groups not working**: LDAP group checks are query-based. If your Active Directory groups are nested (group A is a member of group B), you may need to use Active Directory's `LDAP_MATCHING_RULE_IN_CHAIN` filter:
 
 ```text
-(member:1.2.840.113556.1.4.1941:={user-dn})
+(member:1.2.840.113556.1.4.1941:={{userdn}})
 ```
 
 ## Security Considerations
 
 1. **Always use LDAPS** (port 636) or StartTLS (port 389 with upgrade). Never send credentials over unencrypted LDAP.
 2. **Restrict the service account**: The bind account only needs read access to user and group objects. Do not use a domain admin account.
-3. **Use a dedicated OU**: Search only the OUs where TFE users exist, not the entire directory.
+3. **Use a dedicated OU**: Search only the OUs where TFE installer dashboard users exist, not the entire directory.
 4. **Monitor bind failures**: Track authentication failures in both TFE logs and your directory server logs for suspicious activity.
 
 ## Summary
 
-LDAP authentication connects Terraform Enterprise directly to your existing directory infrastructure. The configuration requires knowing your directory's structure - base DNs, attribute names, and object classes. Active Directory and OpenLDAP have different conventions, so match your configuration to your directory type. Test connectivity and search queries with `ldapsearch` before configuring TFE, and always use encrypted connections. Once set up, LDAP gives your users seamless authentication and automatic team assignment based on their directory group memberships.
+LDAP authentication connects the Terraform Enterprise installer dashboard directly to your existing directory infrastructure. The configuration requires knowing your directory's structure - base DNs, user search DNs, attribute names, and object classes. Active Directory and OpenLDAP have different conventions, so match your configuration to your directory type. Test connectivity and search queries with `ldapsearch` before configuring TFE, and always use encrypted connections. For Terraform Enterprise application users and team membership, use SAML and SCIM rather than LDAP.
