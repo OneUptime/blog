@@ -159,9 +159,10 @@ flowchart TD
     C -->|Yes| E[Create group with specified GID]
     C -->|No| F[Create group with auto GID]
     D -->|Yes| G[Report OK]
-    D -->|No| H[Report error - GID mismatch]
+    D -->|No| H[Change group GID if available]
     E --> I[Report Changed]
     F --> I
+    H --> I
 ```
 
 ## Creating Groups from Data Files
@@ -181,10 +182,10 @@ company_groups:
     gid: 5002
     system: false
   monitoring:
-    gid: 5003
+    gid: 950
     system: true
   backup:
-    gid: 5004
+    gid: 951
     system: true
 ```
 
@@ -249,7 +250,7 @@ Different environments might need different groups:
         gid: "{{ item.gid }}"
         state: present
       loop: "{{ production_groups }}"
-      when: env == 'production'
+      when: env | default('') == 'production'
 
     - name: Create development groups
       ansible.builtin.group:
@@ -257,7 +258,7 @@ Different environments might need different groups:
         gid: "{{ item.gid }}"
         state: present
       loop: "{{ development_groups }}"
-      when: env == 'development'
+      when: env | default('') == 'development'
 ```
 
 ## Verifying Group Creation
@@ -324,7 +325,7 @@ When writing Ansible roles, define required groups in the role defaults and crea
 webapp_group: webapp
 webapp_gid: 3000
 webapp_extra_groups:
-  - name: ssl-cert
+  - name: webapp-ssl
     gid: 3001
 ```
 
