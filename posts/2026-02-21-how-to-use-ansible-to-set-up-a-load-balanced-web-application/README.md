@@ -76,7 +76,6 @@ lb_domain: app.example.com
   ansible.builtin.template:
     src: lb.conf.j2
     dest: /etc/nginx/sites-available/loadbalancer.conf
-    validate: nginx -t -c /dev/stdin < %s
   notify: reload nginx
 
 - name: Enable load balancer configuration
@@ -98,6 +97,10 @@ lb_domain: app.example.com
     dest: /etc/nginx/nginx.conf
     validate: nginx -t -c %s
   notify: reload nginx
+
+- name: Test Nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
 
 - name: Ensure Nginx is running
   ansible.builtin.service:
@@ -224,7 +227,7 @@ server {
 
 ## Rolling Deployment
 
-Deploy to backends one at a time without downtime:
+Deploy to backends one at a time and verify each backend before moving on:
 
 ```yaml
 # playbooks/rolling-deploy.yml
@@ -234,7 +237,7 @@ Deploy to backends one at a time without downtime:
   serial: 1
 
   pre_tasks:
-    - name: Disable server in load balancer
+    - name: Check load balancer status before deployment
       ansible.builtin.command:
         cmd: >
           curl -s http://{{ hostvars[groups['loadbalancers'][0]].ansible_host }}/nginx-status
@@ -290,7 +293,7 @@ Deploy to backends one at a time without downtime:
 
 ## Summary
 
-A load-balanced web application with Ansible uses Nginx as a reverse proxy distributing traffic across multiple backend servers. The `least_conn` algorithm sends new requests to the server with the fewest active connections. Built-in health checks remove failed backends automatically. Rolling deployments update one server at a time so the application stays available throughout. The entire configuration is template-driven, making it easy to add or remove backend servers by updating the inventory.
+A load-balanced web application with Ansible uses Nginx as a reverse proxy distributing traffic across multiple backend servers. The `least_conn` algorithm sends new requests to the server with the fewest active connections. Passive health checks temporarily avoid failed backends after connection or response failures. Rolling deployments update one server at a time and verify health before continuing; add explicit load balancer draining if the application cannot tolerate in-flight restarts. The entire configuration is template-driven, making it easy to add or remove backend servers by updating the inventory.
 
 ## Common Use Cases
 
@@ -475,4 +478,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
