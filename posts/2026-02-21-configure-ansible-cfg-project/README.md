@@ -53,13 +53,14 @@ host_key_checking = False
 # Don't create .retry files on playbook failure
 retry_files_enabled = False
 
-# Use YAML output for better readability
-stdout_callback = yaml
+# Use YAML-formatted results for better readability
+stdout_callback = default
+callback_result_format = yaml
 
 # Timeout for SSH connections in seconds
 timeout = 30
 
-# Gather only a subset of facts by default (faster)
+# Reuse cached facts when possible
 gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts_cache
@@ -72,7 +73,7 @@ roles_path = roles:~/.ansible/roles:/usr/share/ansible/roles
 collections_path = collections:~/.ansible/collections
 
 # Show execution time per task
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = timer, profile_tasks
 
 # Vault password file (avoid typing it every time)
 # vault_password_file = .vault_pass
@@ -91,7 +92,7 @@ pipelining = True
 # SSH arguments for connection reuse
 ssh_args = -o ControlMaster=auto -o ControlPersist=300s -o PreferredAuthentications=publickey
 
-# SCP is more reliable than SFTP on some systems
+# Try SFTP first, then fall back to SCP or piped transfer if needed
 transfer_method = smart
 
 [diff]
@@ -114,11 +115,11 @@ Instead of passing `-i inventory.ini` every time you run a playbook, set it here
 # Single inventory file
 inventory = inventory.ini
 
-# Directory of inventory files (Ansible reads all files in it)
+# Directory of inventory sources
 inventory = inventory/
 ```
 
-If you use a directory, Ansible will merge all inventory files in that directory. This is useful for separating static and dynamic inventories.
+If you use a directory, Ansible will combine the inventory sources it can parse in that directory. This is useful for separating static and dynamic inventories.
 
 ### forks
 
@@ -133,7 +134,7 @@ Be careful not to set this too high or you will overwhelm your control node's CP
 
 ### gathering and fact_caching
 
-Fact gathering is one of the most time-consuming parts of a playbook run. By default, Ansible gathers facts at the start of every play. The `smart` gathering mode caches facts and only re-gathers them when the cache expires:
+Fact gathering is one of the most time-consuming parts of a playbook run. By default, Ansible gathers facts at the start of every play. The `smart` gathering mode uses the configured cache plugin and avoids contacting a host again during the same run if facts are already available:
 
 ```ini
 gathering = smart
@@ -146,10 +147,11 @@ This can cut playbook run times significantly, especially when you run playbooks
 
 ### stdout_callback
 
-The default output is hard to read. Switching to the `yaml` callback makes outputs much cleaner:
+The default result output can be hard to read. With ansible-core 2.13 and newer, keep the default stdout callback and set `callback_result_format = yaml` to make task results cleaner:
 
 ```ini
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 ```
 
 Compare the default output:
@@ -167,12 +169,12 @@ ok: [web01] =>
   msg: web01.example.com
 ```
 
-### callback_whitelist
+### callbacks_enabled
 
 Enable additional callback plugins to get execution timing information:
 
 ```ini
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = timer, profile_tasks
 ```
 
 The `timer` callback shows total playbook execution time. The `profile_tasks` callback shows how long each task took, which is invaluable for finding bottlenecks.
@@ -249,7 +251,7 @@ ANSIBLE_VERBOSITY=2 ansible-playbook deploy.yml
 ANSIBLE_BECOME=False ansible-playbook debug.yml
 ```
 
-Every ansible.cfg setting has a corresponding environment variable. The naming convention is `ANSIBLE_` followed by the setting name in uppercase. For settings in non-default sections, it is `ANSIBLE_SECTION_SETTING`.
+Many ansible.cfg settings have corresponding environment variables. Check `ansible-config list` or the Ansible configuration reference for the exact name, because it is not always a direct section-and-setting conversion.
 
 ## Security Considerations
 
