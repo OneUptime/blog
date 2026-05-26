@@ -16,10 +16,10 @@ Managing ECR repositories manually works for a few images. But in a microservice
 
 You need:
 
-- Ansible 2.14+
+- Ansible 2.17+
 - The `community.aws` collection
 - AWS credentials with ECR permissions
-- Python boto3
+- Python boto3 and botocore 1.34.0+
 - Docker installed (for pushing images)
 
 ```bash
@@ -133,6 +133,17 @@ Lifecycle policies automatically clean up old images to control storage costs:
                 tagStatus: tagged
                 tagPrefixList:
                   - "dev-"
+                countType: sinceImagePushed
+                countUnit: days
+                countNumber: 7
+              action:
+                type: expire
+            # Rule 4: Remove feature images after 7 days
+            - rulePriority: 4
+              description: "Remove feature images after 7 days"
+              selection:
+                tagStatus: tagged
+                tagPrefixList:
                   - "feature-"
                 countType: sinceImagePushed
                 countUnit: days
@@ -143,7 +154,7 @@ Lifecycle policies automatically clean up old images to control storage costs:
 ```
 
 This lifecycle policy keeps your repository clean:
-- Untagged images (intermediate build layers) are deleted after 1 day
+- Untagged images are deleted after 1 day
 - Only the 20 most recent release versions (tagged with `v`) are kept
 - Development and feature branch images are deleted after 7 days
 
@@ -267,6 +278,8 @@ Control who can push and pull images:
       }
 ```
 
+Cross-account users and roles also need `ecr:GetAuthorizationToken` in an IAM policy before they can authenticate to a private ECR registry.
+
 ## Pushing Images with Ansible
 
 Automate the build and push process:
@@ -288,19 +301,13 @@ Automate the build and push process:
 
   tasks:
     # Authenticate Docker with ECR
-    - name: Get ECR login token
-      ansible.builtin.command:
+    - name: Docker login to ECR
+      ansible.builtin.shell:
         cmd: >
           aws ecr get-login-password --region {{ aws_region }}
-      register: ecr_token
-      no_log: true
-
-    - name: Docker login to ECR
-      ansible.builtin.command:
-        cmd: >
-          docker login
+          | docker login
           --username AWS
-          --password {{ ecr_token.stdout }}
+          --password-stdin
           {{ registry }}
       no_log: true
 
@@ -329,7 +336,7 @@ Automate the build and push process:
 
 ## Encryption
 
-ECR encrypts images at rest by default using AWS-managed keys. For custom KMS keys:
+ECR encrypts images at rest by default using Amazon S3-managed encryption keys. For custom KMS keys:
 
 ```yaml
 # Create repository with custom KMS encryption
