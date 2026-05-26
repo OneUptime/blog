@@ -36,7 +36,7 @@ Every compliance control follows the same pattern: check the current state, reme
 - name: Ensure password complexity is configured
   ansible.builtin.lineinfile:
     path: /etc/security/pwquality.conf
-    regexp: "^{{ item.key }}"
+    regexp: "^#?\\s*{{ item.key }}\\b"
     line: "{{ item.key }} = {{ item.value }}"
   loop:
     - { key: minlen, value: "14" }
@@ -47,14 +47,14 @@ Every compliance control follows the same pattern: check the current state, reme
 - name: Ensure SSH root login is disabled
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
-    regexp: '^PermitRootLogin'
+    regexp: '^#?\s*PermitRootLogin\b'
     line: 'PermitRootLogin no'
   notify: restart sshd
 
 - name: Ensure account lockout is configured
   ansible.builtin.lineinfile:
     path: /etc/security/faillock.conf
-    regexp: '^deny'
+    regexp: '^#?\s*deny\b'
     line: 'deny = 5'
 ```
 
@@ -85,7 +85,7 @@ Every compliance control follows the same pattern: check the current state, reme
     - name: Assert audit logging is active
       ansible.builtin.assert:
         that:
-          - ansible_facts.services['auditd.service'].state == 'running'
+          - ansible_facts.services.get('auditd.service', {}).get('state') == 'running'
 ```
 
 ## Reporting
@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml -i inventory --check --diff
 ```
 
 
@@ -186,17 +186,23 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Assert LUKS encryption is enabled on data volumes
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "LUKS encryption was not detected on any data volume"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -checkend 0 -noout -in /etc/ssl/certs/app.pem
+  register: cert_check
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_check.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -219,16 +225,18 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+  ansible.builtin.command: "ss -H -tln sport = :{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  failed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout == ""
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
@@ -248,12 +256,12 @@ The real power of compliance automation is combining detection with remediation:
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-        - { regexp: '^X11Forwarding', line: 'X11Forwarding no' }
-        - { regexp: '^MaxAuthTries', line: 'MaxAuthTries 4' }
-        - { regexp: '^ClientAliveInterval', line: 'ClientAliveInterval 300' }
-        - { regexp: '^ClientAliveCountMax', line: 'ClientAliveCountMax 0' }
+        - { regexp: '^#?\s*PermitRootLogin\b', line: 'PermitRootLogin no' }
+        - { regexp: '^#?\s*PasswordAuthentication\b', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?\s*X11Forwarding\b', line: 'X11Forwarding no' }
+        - { regexp: '^#?\s*MaxAuthTries\b', line: 'MaxAuthTries 4' }
+        - { regexp: '^#?\s*ClientAliveInterval\b', line: 'ClientAliveInterval 300' }
+        - { regexp: '^#?\s*ClientAliveCountMax\b', line: 'ClientAliveCountMax 0' }
       notify: restart sshd
 
     - name: Ensure audit logging is configured
@@ -290,9 +298,9 @@ The real power of compliance automation is combining detection with remediation:
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PASS_MAX_DAYS', line: 'PASS_MAX_DAYS 90' }
-        - { regexp: '^PASS_MIN_DAYS', line: 'PASS_MIN_DAYS 7' }
-        - { regexp: '^PASS_WARN_AGE', line: 'PASS_WARN_AGE 14' }
+        - { regexp: '^#?\s*PASS_MAX_DAYS\b', line: 'PASS_MAX_DAYS 90' }
+        - { regexp: '^#?\s*PASS_MIN_DAYS\b', line: 'PASS_MIN_DAYS 7' }
+        - { regexp: '^#?\s*PASS_WARN_AGE\b', line: 'PASS_WARN_AGE 14' }
 
   handlers:
     - name: restart sshd
