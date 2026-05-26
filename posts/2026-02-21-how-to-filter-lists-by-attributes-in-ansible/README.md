@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, Jinja2, Data Manipulation
 
-Description: Learn how to filter lists by attributes in Ansible using selectattr, rejectattr, and custom Jinja2 tests for precise data selection in playbooks.
+Description: Learn how to filter lists by attributes in Ansible using selectattr, rejectattr, and built-in Jinja2 and Ansible tests for precise data selection in playbooks.
 
 ---
 
@@ -62,8 +62,8 @@ You can use these tests with `selectattr`:
 - `in` - value is in a list
 - `greaterthan` (or `gt`) - numeric greater than
 - `lessthan` (or `lt`) - numeric less than
-- `greaterthan` or equal (`ge`) - numeric >=
-- `lessthan` or equal (`le`) - numeric <=
+- `ge` - numeric greater than or equal
+- `le` - numeric less than or equal
 - `defined` - attribute exists
 - `undefined` - attribute does not exist
 - `truthy` - attribute is truthy
