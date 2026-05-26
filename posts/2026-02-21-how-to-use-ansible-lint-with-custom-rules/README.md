@@ -32,7 +32,7 @@ class MyCustomRule(AnsibleLintRule):
     description = "Longer description of what this rule checks."
     severity = "MEDIUM"
     tags = ["custom", "style"]
-    version_added = "1.0.0"
+    version_changed = "1.0.0"
 
     def matchtask(self, task, file=None):
         """Check each task. Return a message string if there is a violation."""
@@ -55,8 +55,6 @@ Then reference it in your `.ansible-lint` configuration:
 ```yaml
 # .ansible-lint - Point to custom rules directory
 ---
-profile: moderate
-
 rulesdir:
   - ./custom_rules/
 ```
@@ -81,10 +79,11 @@ class RequireTagsRule(AnsibleLintRule):
     )
     severity = "MEDIUM"
     tags = ["custom", "tags"]
+    version_changed = "1.0.0"
 
     def matchtask(self, task, file=None):
         """Check if the task has tags defined."""
-        # Skip meta tasks and handlers
+        # Skip meta tasks
         if task.get("action", {}).get("__ansible_module__") == "meta":
             return False
 
@@ -120,16 +119,18 @@ class BannedModulesRule(AnsibleLintRule):
     description = "Prohibits the use of specific Ansible modules."
     severity = "HIGH"
     tags = ["custom", "modules"]
+    version_changed = "1.0.0"
 
     def matchtask(self, task, file=None):
         """Check if the task uses a banned module."""
         module = task.get("action", {}).get("__ansible_module_original__", "")
 
-        # Also check the resolved FQCN
-        fqcn = task.get("action", {}).get("__ansible_module__", "")
+        # Also check the normalized module name
+        normalized = task.get("action", {}).get("__ansible_module__", "")
 
         for banned, reason in BANNED_MODULES.items():
-            if module == banned or fqcn == banned:
+            short_name = banned.split(".")[-1]
+            if module == banned or normalized in (banned, short_name):
                 return f"Module '{banned}' is banned: {reason}"
 
         return False
@@ -156,6 +157,7 @@ class VariableNamingRule(AnsibleLintRule):
     )
     severity = "LOW"
     tags = ["custom", "naming"]
+    version_changed = "1.0.0"
 
     # Pattern for valid variable names
     VALID_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -175,7 +177,7 @@ class VariableNamingRule(AnsibleLintRule):
         """Check set_fact and vars for naming violations."""
         module = task.get("action", {}).get("__ansible_module__", "")
 
-        if module == "ansible.builtin.set_fact":
+        if module in ("set_fact", "ansible.builtin.set_fact"):
             action_data = task.get("action", {})
             for key in action_data:
                 if key.startswith("__") or key in ("_raw_params", "cacheable"):
@@ -208,6 +210,7 @@ class ExplicitBecomeUserRule(AnsibleLintRule):
     )
     severity = "MEDIUM"
     tags = ["custom", "security"]
+    version_changed = "1.0.0"
 
     def matchtask(self, task, file=None):
         """Check tasks for become without become_user."""
@@ -254,6 +257,7 @@ class NoHardcodedSecretsRule(AnsibleLintRule):
     description = "Detects potential hardcoded secrets in task definitions."
     severity = "HIGH"
     tags = ["custom", "security"]
+    version_changed = "1.0.0"
 
     SECRET_PATTERNS = [
         re.compile(r"password\s*[:=]\s*['\"][^{'\"]+'", re.IGNORECASE),
@@ -262,10 +266,10 @@ class NoHardcodedSecretsRule(AnsibleLintRule):
         re.compile(r"token\s*[:=]\s*['\"][A-Za-z0-9+/=]{20,}", re.IGNORECASE),
     ]
 
-    def matchlines(self, file, text):
+    def matchlines(self, file):
         """Scan raw file content for secret patterns."""
         results = []
-        for line_num, line in enumerate(text.splitlines(), start=1):
+        for line_num, line in enumerate(file.content.splitlines(), start=1):
             # Skip lines that reference vault or variables
             if "vault_" in line or "{{" in line or "lookup(" in line:
                 continue
@@ -276,7 +280,7 @@ class NoHardcodedSecretsRule(AnsibleLintRule):
                         self.create_matcherror(
                             message="Possible hardcoded secret detected",
                             filename=file,
-                            linenumber=line_num,
+                            lineno=line_num,
                         )
                     )
                     break
@@ -322,14 +326,17 @@ Run the linter and check the output:
 ansible-lint -c .ansible-lint test_custom_rules.yml
 
 # You should see output like:
+# custom-explicit-become-user: Play has 'become: true' but no 'become_user' specified
+# test_custom_rules.yml:1
+#
 # custom-tags-required: Task is missing tags
-# test_custom_rules.yml:7
+# test_custom_rules.yml:6
 #
-# custom-banned-modules: Module 'ansible.builtin.raw' is banned
-# test_custom_rules.yml:12
+# custom-banned-modules: Module 'ansible.builtin.raw' is banned: Use a specific module instead of raw.
+# test_custom_rules.yml:10
 #
-# custom-var-naming: Variable 'MyBadVariable' does not follow snake_case
-# test_custom_rules.yml:18
+# custom-var-naming: Variable 'MyBadVariable' does not follow snake_case convention
+# test_custom_rules.yml:15
 ```
 
 ## Sharing Custom Rules Across Projects
@@ -339,7 +346,8 @@ Package your custom rules as a Python package so multiple projects can use them:
 ```bash
 # Directory structure for a shareable rules package
 my-ansible-lint-rules/
-  setup.py
+  pyproject.toml
+  setup.cfg
   my_lint_rules/
     __init__.py
     require_tags.py
@@ -347,21 +355,26 @@ my-ansible-lint-rules/
     variable_naming.py
 ```
 
-```python
-# setup.py - Package your rules for pip installation
-from setuptools import setup, find_packages
+```toml
+# pyproject.toml - Use setuptools to build the package
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+```
 
-setup(
-    name="my-ansible-lint-rules",
-    version="1.0.0",
-    packages=find_packages(),
-    install_requires=["ansible-lint>=6.0.0"],
-    entry_points={
-        "ansible_lint.rules": [
-            "my_rules = my_lint_rules",
-        ],
-    },
-)
+```ini
+# setup.cfg - Package your rules for pip installation
+[metadata]
+name = my-ansible-lint-rules
+version = 1.0.0
+
+[options]
+install_requires =
+    ansible-lint>=6.0.0
+packages =
+    ansiblelint.rules.custom.my_lint_rules
+package_dir =
+    ansiblelint.rules.custom.my_lint_rules = my_lint_rules
 ```
 
 Install the package and ansible-lint will automatically discover the rules:
