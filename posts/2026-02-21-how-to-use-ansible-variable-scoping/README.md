@@ -15,10 +15,10 @@ Variable scoping in Ansible is one of those topics that bites you when you least
 Ansible has three variable scopes:
 
 1. **Global scope** - variables set by the command line (`-e`), configuration, or environment. Available everywhere.
-2. **Play scope** - variables set in a play (`vars`, `vars_files`, `vars_prompt`, facts). Available to all tasks in the play.
-3. **Host scope** - variables associated with a specific host (`set_fact`, `register`, inventory variables). Available wherever that host is referenced.
+2. **Play scope** - variables set in a play (`vars`, `vars_files`, `vars_prompt`) or exposed by roles. Available to all tasks in the play.
+3. **Host scope** - variables associated with a specific host (`set_fact`, `register`, inventory variables, facts). Available wherever that host is referenced.
 
-There is no task-level scope in the traditional sense. Variables set in a task are actually host-scoped, meaning they persist beyond the task that created them.
+There is a task-level precedence category for variables defined with `vars` on a task, but they are available only to that task. Variables created by `set_fact` and `register` are host-scoped, meaning they persist beyond the task that created them.
 
 ## Play-Level Variables
 
@@ -200,8 +200,10 @@ The precedence order (simplified) from lowest to highest:
 5. Role `vars` (`roles/x/vars/main.yml`)
 6. Block vars
 7. Task vars
-8. `set_fact` / `register`
-9. Extra vars (`-e`)
+8. `include_vars`
+9. `set_fact` / `register`
+10. Role and include parameters
+11. Extra vars (`-e`)
 
 ## include_role vs import_role Scoping
 
@@ -214,32 +216,28 @@ The way you include a role affects variable scoping.
 - name: Role inclusion scoping
   hosts: all
   tasks:
-    # import_role - vars are available to subsequent tasks
+    # import_role - role defaults and vars are exposed with the default public behavior
     - name: Import a role
       ansible.builtin.import_role:
         name: setup_base
-      vars:
-        base_port: 8080
 
-    # Tasks after import_role can access role variables
+    # Tasks after import_role can access exposed variables defined in the role defaults/vars
     - name: Use variable from imported role
       ansible.builtin.debug:
-        msg: "Base port: {{ base_port | default('NOT AVAILABLE') }}"
+        msg: "Base port: {{ base_default_port | default('NOT AVAILABLE') }}"
 
-    # include_role - vars are scoped to the role
+    # include_role - role defaults and vars are not exposed to the play by default
     - name: Include a role
       ansible.builtin.include_role:
         name: setup_app
-      vars:
-        app_port: 9090
 
-    # Variables from include_role may not be available here
+    # Variables from include_role are not available here unless public: true is set
     - name: Try to use variable from included role
       ansible.builtin.debug:
-        msg: "App port: {{ app_port | default('NOT AVAILABLE') }}"
+        msg: "App port: {{ app_default_port | default('NOT AVAILABLE') }}"
 ```
 
-`import_role` is processed at parse time, and its variables merge into the play scope. `include_role` is processed at runtime and has more isolated scoping.
+`import_role` is processed at parse time, and role defaults and vars are exposed to the play with the default public behavior. `include_role` is processed at runtime and has more isolated scoping; set `public: true` if the role's defaults and vars should be available to later tasks.
 
 ## Variable Precedence in Practice
 
@@ -275,8 +273,7 @@ Here is a practical example showing how multiple sources interact.
         msg: "my_var = {{ my_var }}"
       vars:
         my_var: "from task vars"
-      # Value is "from task vars" for this task only
-      # But this is complicated - see note below
+      # Value is still "from set_fact" because set_fact > task vars
 ```
 
 ## Debugging Variable Scoping Issues
@@ -346,4 +343,4 @@ When variables have unexpected values, these techniques help.
 
 ## Summary
 
-Ansible variable scoping has three levels: global (extra vars), play (vars, vars_files), and host (set_fact, register, inventory). Play vars stay within the play. Block and task vars stay within their scope. Host vars (set_fact, register) persist for the entire playbook run. Role defaults are the lowest priority, while extra vars are the highest. When debugging, check the variable precedence order and use the debug module to inspect actual values. Keeping variable names descriptive and scoped appropriately prevents the most common issues with Ansible variable resolution.
+Ansible variable scoping has three levels: global (extra vars), play (vars, vars_files), and host (set_fact, register, inventory, facts). Play vars stay within the play. Block and task vars stay within their scope. Host vars (set_fact, register) persist for the entire playbook run. Role defaults are the lowest variable priority, while extra vars are the highest. When debugging, check the variable precedence order and use the debug module to inspect actual values. Keeping variable names descriptive and scoped appropriately prevents the most common issues with Ansible variable resolution.
