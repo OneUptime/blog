@@ -73,7 +73,7 @@ The `community.vmware.vmware_guest` module handles cloning when you specify a `t
 
 ## Cloning with Guest Customization
 
-When you clone a VM, the clone has the same hostname, IP address, and other identity as the source. You need guest customization to give the clone its own identity.
+When you clone a VM without customization, the guest OS can retain the same hostname, static network settings, and other identity as the source. You need guest customization to give the clone its own identity.
 
 ```yaml
 # clone-with-customization.yml
@@ -167,7 +167,11 @@ Linked clones use significantly less storage because they share the source VM's 
   tasks:
     # The source VM must have at least one snapshot for linked clones
     - name: Create a snapshot on the source VM if needed
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
         datacenter: "DC01"
         name: "golden-rhel9"
         folder: "/DC01/vm/Templates"
@@ -303,10 +307,7 @@ Sometimes you need to clone a VM to a different location, perhaps moving it from
     # Specify the target datastore explicitly
     datastore: "production-vsan"
     # Convert thin disks to thick if needed for production
-    disk:
-      - size_gb: 100
-        type: thick
-        datastore: "production-vsan"
+    convert: thick
 ```
 
 ## Windows VM Cloning with Sysprep
