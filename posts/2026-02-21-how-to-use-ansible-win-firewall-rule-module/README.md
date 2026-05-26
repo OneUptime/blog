@@ -44,7 +44,7 @@ The most common operation is opening a port for inbound traffic.
         enabled: yes
 ```
 
-Every rule needs a unique `name`. If you run the playbook again with the same name, Ansible updates the existing rule rather than creating a duplicate.
+Every rule needs a `name` unless you are managing rules by `group`. If you run the playbook again with the same name, Ansible updates matching rules rather than creating a duplicate. Windows Firewall can contain multiple rules with the same display name, and the module updates each matching rule.
 
 ## Allowing Port Ranges
 
@@ -109,10 +109,7 @@ Limiting access to specific source IP addresses or subnets is a critical securit
         action: allow
         direction: in
         protocol: tcp
-        remoteip:
-          - 10.0.10.10
-          - 10.0.10.11
-          - 10.0.10.12
+        remoteip: "10.0.10.10,10.0.10.11,10.0.10.12"
         state: present
         enabled: yes
 
@@ -271,7 +268,7 @@ Cleaning up old rules is just as important as creating new ones.
 
 ## Real-World Example: Multi-Tier Application Firewall Configuration
 
-Here is a complete playbook that configures firewall rules for a three-tier application stack.
+Here is an example playbook that configures firewall rules for a three-tier application stack.
 
 ```yaml
 # app-firewall.yml - Configure firewalls for a multi-tier app
@@ -357,7 +354,7 @@ Here is a complete playbook that configures firewall rules for a three-tier appl
         action: allow
         direction: in
         protocol: tcp
-        remoteip: "{{ web_server_ips }}"
+        remoteip: "{{ web_server_ips | join(',') }}"
         state: present
         enabled: yes
 
@@ -375,7 +372,7 @@ Here is a complete playbook that configures firewall rules for a three-tier appl
 
 ## Network Topology with Firewall Rules
 
-Here is how the firewall rules map to the network topology.
+Here is how these firewall rules fit into a broader network topology.
 
 ```mermaid
 flowchart LR
