@@ -29,7 +29,7 @@ If you write custom Ansible modules in Python, you can use Coverage.py directly:
 ```bash
 # Install coverage
 
-pip install coverage
+pip install coverage pytest
 ```
 
 Create a test runner that wraps your module tests with coverage:
@@ -38,9 +38,8 @@ Create a test runner that wraps your module tests with coverage:
 # tests/run_module_coverage.py
 # Run Ansible module unit tests with coverage measurement
 import coverage
-import unittest
+import pytest
 import sys
-import os
 
 # Start coverage measurement before importing modules
 cov = coverage.Coverage(
@@ -49,11 +48,8 @@ cov = coverage.Coverage(
 )
 cov.start()
 
-# Discover and run all module tests
-loader = unittest.TestLoader()
-suite = loader.discover('tests/unit', pattern='test_*.py')
-runner = unittest.TextTestRunner(verbosity=2)
-result = runner.run(suite)
+# Discover and run all pytest-style module tests
+result = pytest.main(['tests/unit'])
 
 # Stop and save coverage data
 cov.stop()
@@ -65,7 +61,7 @@ cov.report(show_missing=True)
 cov.html_report(directory='coverage_html')
 print("HTML report written to coverage_html/index.html")
 
-sys.exit(0 if result.wasSuccessful() else 1)
+sys.exit(result)
 ```
 
 A sample module test:
@@ -164,16 +160,14 @@ class CallbackModule(CallbackBase):
         })
 
     def v2_runner_on_ok(self, result, **kwargs):
-        self._record_task(result._task, 'ok')
-
-    def v2_runner_on_changed(self, result, **kwargs):
-        self._record_task(result._task, 'changed')
+        status = 'changed' if result.is_changed() else 'ok'
+        self._record_task(result.task, status)
 
     def v2_runner_on_skipped(self, result, **kwargs):
-        self._record_task(result._task, 'skipped')
+        self._record_task(result.task, 'skipped')
 
     def v2_runner_on_failed(self, result, **kwargs):
-        self._record_task(result._task, 'failed')
+        self._record_task(result.task, 'failed')
 
     def v2_playbook_on_stats(self, stats):
         """Write coverage data at the end of the playbook run."""
@@ -275,13 +269,13 @@ Track which `when` conditions are satisfied and which are not:
       when: ansible_os_family == 'Debian'
 
     - name: Install on RedHat family
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: myapp
         state: present
       when: ansible_os_family == 'RedHat'
 
     - name: Install on Suse family
-      ansible.builtin.zypper:
+      community.general.zypper:
         name: myapp
         state: present
       when: ansible_os_family == 'Suse'
@@ -315,7 +309,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install ansible-core molecule molecule-docker coverage
+        run: |
+          pip install ansible-core molecule molecule-docker coverage pytest
+          ansible-galaxy collection install ansible.posix community.general
       - name: Run tests with coverage
         run: |
           ANSIBLE_COVERAGE_FILE=coverage.json molecule test
