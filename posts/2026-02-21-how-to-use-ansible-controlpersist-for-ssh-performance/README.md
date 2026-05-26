@@ -16,7 +16,7 @@ Every SSH connection goes through several steps:
 
 1. TCP three-way handshake (SYN, SYN-ACK, ACK)
 2. SSH protocol negotiation
-3. Key exchange (Diffie-Hellman)
+3. Key exchange (for example, Diffie-Hellman or elliptic-curve methods)
 4. User authentication (public key or password)
 5. Channel setup
 
@@ -46,7 +46,7 @@ Ansible enables ControlPersist by default with these settings:
 # Default SSH args in recent Ansible versions
 
 [ssh_connection]
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=60s
 ```
 
 This means:
@@ -59,10 +59,16 @@ The default 60-second timeout works for many playbooks, but longer playbooks or 
 
 Here is my recommended configuration:
 
+```bash
+# Create the control socket directory once
+mkdir -p ~/.ansible/cp
+chmod 700 ~/.ansible/cp
+```
+
 ```ini
 # ansible.cfg - Optimized ControlPersist settings
 [ssh_connection]
-ssh_args = -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=/tmp/ansible-cp-%h-%p-%r -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=~/.ansible/cp/ansible-cp-%C -o ServerAliveInterval=30 -o ServerAliveCountMax=3
 pipelining = True
 ```
 
@@ -70,7 +76,7 @@ Let me explain each parameter:
 
 **ControlPersist=300s**: Keep connections alive for 5 minutes. This is long enough that back-to-back playbook runs reuse connections from the previous run.
 
-**ControlPath=/tmp/ansible-cp-%h-%p-%r**: Where to store the Unix socket for the master connection. The `%h` (host), `%p` (port), and `%r` (remote user) placeholders create unique sockets per connection.
+**ControlPath=~/.ansible/cp/ansible-cp-%C**: Where to store the Unix socket for the master connection. The `%C` placeholder hashes the connection details into a short, unique socket name.
 
 **ServerAliveInterval=30**: Send a keepalive probe every 30 seconds. This prevents intermediate firewalls or NAT devices from closing idle connections.
 
@@ -95,10 +101,11 @@ After the first run, check for master connection sockets:
 
 ```bash
 # List active control sockets
-ls -la /tmp/ansible-cp-*
+ls -la ~/.ansible/cp/ansible-cp-*
 
-# Check a specific connection
-ssh -o ControlPath=/tmp/ansible-cp-web01-22-admin -O check web01
+# Check a specific socket from the listing
+SOCK=$(find ~/.ansible/cp -maxdepth 1 -type s -name 'ansible-cp-*' | head -n 1)
+ssh -S "$SOCK" -O check dummy
 # Master running (pid=12345)
 ```
 
@@ -114,7 +121,9 @@ PLAYBOOK="site.yml"
 VALUES="0 30 60 120 300"
 
 # Clean up any existing control sockets
-rm -f /tmp/ansible-cp-*
+mkdir -p ~/.ansible/cp
+chmod 700 ~/.ansible/cp
+rm -f ~/.ansible/cp/ansible-cp-*
 
 for persist in $VALUES; do
     echo "=== ControlPersist=${persist}s ==="
@@ -122,11 +131,11 @@ for persist in $VALUES; do
     if [ "$persist" -eq 0 ]; then
         SSH_ARGS="-o ControlMaster=no"
     else
-        SSH_ARGS="-o ControlMaster=auto -o ControlPersist=${persist}s -o ControlPath=/tmp/ansible-cp-%h-%p-%r"
+        SSH_ARGS="-C -o ControlMaster=auto -o ControlPersist=${persist}s -o ControlPath=~/.ansible/cp/ansible-cp-%C"
     fi
 
     # Clean sockets between tests
-    rm -f /tmp/ansible-cp-*
+    rm -f ~/.ansible/cp/ansible-cp-*
 
     time ansible-playbook "$PLAYBOOK" \
         --ssh-extra-args="$SSH_ARGS" 2>/dev/null
@@ -152,10 +161,10 @@ The ControlPath must be unique per connection and short enough to fit within the
 
 ```ini
 # Good: short, unique per host/port/user
-ssh_args = -o ControlPath=/tmp/ansible-cp-%h-%p-%r
+ssh_args = -o ControlPath=~/.ansible/cp/ansible-cp-%h-%p-%r
 
 # Better: use %C hash for guaranteed short paths (OpenSSH 6.7+)
-ssh_args = -o ControlPath=/tmp/ansible-cp-%C
+ssh_args = -o ControlPath=~/.ansible/cp/ansible-cp-%C
 
 # Bad: path too long with deep directory structure
 ssh_args = -o ControlPath=/home/deploymentuser/.ansible/connections/ansible-ssh-control-master-%h-%p-%r
@@ -166,7 +175,7 @@ Check the socket path length:
 ```bash
 # Verify path length is under 108 characters
 LONGEST_HOST="very-long-hostname.datacenter.region.company.example.com"
-echo -n "/tmp/ansible-cp-${LONGEST_HOST}-22-admin" | wc -c
+echo -n "$HOME/.ansible/cp/ansible-cp-${LONGEST_HOST}-22-admin" | wc -c
 ```
 
 ## Managing ControlPersist Connections
@@ -175,10 +184,9 @@ echo -n "/tmp/ansible-cp-${LONGEST_HOST}-22-admin" | wc -c
 
 ```bash
 # Show all active control sockets with their status
-for sock in /tmp/ansible-cp-*; do
+for sock in ~/.ansible/cp/ansible-cp-*; do
     [ -S "$sock" ] || continue
-    HOST=$(echo "$sock" | sed 's/.*-cp-//' | cut -d'-' -f1)
-    STATUS=$(ssh -o ControlPath="$sock" -O check "$HOST" 2>&1)
+    STATUS=$(ssh -S "$sock" -O check dummy 2>&1)
     echo "$sock: $STATUS"
 done
 ```
@@ -187,10 +195,9 @@ done
 
 ```bash
 # Close all ControlPersist connections
-for sock in /tmp/ansible-cp-*; do
+for sock in ~/.ansible/cp/ansible-cp-*; do
     [ -S "$sock" ] || continue
-    HOST=$(echo "$sock" | sed 's/.*-cp-//' | cut -d'-' -f1)
-    ssh -o ControlPath="$sock" -O exit "$HOST" 2>/dev/null
+    ssh -S "$sock" -O exit dummy 2>/dev/null
     echo "Closed: $sock"
 done
 ```
@@ -208,10 +215,9 @@ Create a cron job to clean up stale sockets:
 ```bash
 #!/bin/bash
 # cleanup-ansible-sockets.sh
-for sock in /tmp/ansible-cp-*; do
+for sock in ~/.ansible/cp/ansible-cp-*; do
     [ -S "$sock" ] || { rm -f "$sock"; continue; }
-    HOST=$(echo "$sock" | sed 's/.*-cp-//' | cut -d'-' -f1)
-    if ! ssh -o ControlPath="$sock" -O check "$HOST" 2>/dev/null; then
+    if ! ssh -S "$sock" -O check dummy 2>/dev/null; then
         rm -f "$sock"
     fi
 done
@@ -241,12 +247,12 @@ The SSH master connection is established as the connecting user, and become (sud
 
 ## ControlPersist with Jump Hosts
 
-If you connect through a bastion/jump host, ControlPersist applies to both the jump connection and the target:
+If you connect through a bastion/jump host, ControlPersist applies to the target connection through that jump host:
 
 ```ini
 # ansible.cfg - ControlPersist through a jump host
 [ssh_connection]
-ssh_args = -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=/tmp/ansible-cp-%C -o ProxyJump=bastion.example.com
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=~/.ansible/cp/ansible-cp-%C -o ProxyJump=bastion.example.com
 ```
 
 Or in the inventory:
@@ -254,7 +260,7 @@ Or in the inventory:
 ```yaml
 all:
   vars:
-    ansible_ssh_common_args: '-o ProxyJump=bastion.example.com -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=/tmp/ansible-cp-%C'
+    ansible_ssh_common_args: '-o ProxyJump=bastion.example.com -o ControlMaster=auto -o ControlPersist=300s -o ControlPath=~/.ansible/cp/ansible-cp-%C'
   hosts:
     internal-web-01:
       ansible_host: 10.0.1.15
@@ -262,7 +268,7 @@ all:
       ansible_host: 10.0.1.16
 ```
 
-The master connection through the bastion host is reused for all tasks, so the extra latency of the jump host is paid only once.
+The master connection to each target through the bastion host is reused for all tasks. If you also want to reuse the bastion connection across different targets, configure ControlMaster and ControlPersist for the bastion host in your SSH config.
 
 ## Troubleshooting
 
@@ -270,10 +276,10 @@ The master connection through the bastion host is reused for all tasks, so the e
 
 ```bash
 # The previous master connection did not clean up
-rm -f /tmp/ansible-cp-problematic-host-22-admin
+rm -f ~/.ansible/cp/ansible-cp-problematic-host-22-admin
 
 # Or force close it
-ssh -o ControlPath=/tmp/ansible-cp-problematic-host-22-admin -O exit dummy
+ssh -S ~/.ansible/cp/ansible-cp-problematic-host-22-admin -O exit dummy
 ```
 
 ### Connections Hanging After Network Change
@@ -282,7 +288,7 @@ If you change networks (e.g., VPN reconnect), existing control sockets become st
 
 ```bash
 # Remove all stale sockets after a network change
-rm -f /tmp/ansible-cp-*
+rm -f ~/.ansible/cp/ansible-cp-*
 ```
 
 ### "Shared connection closed" Errors
