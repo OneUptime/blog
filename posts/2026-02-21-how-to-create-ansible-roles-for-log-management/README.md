@@ -66,6 +66,7 @@ log_remote_tls_enabled: false
 log_remote_tls_ca_cert: ""
 log_remote_tls_cert: ""
 log_remote_tls_key: ""
+log_remote_tls_permitted_peer: "{{ log_remote_server }}"
 
 # Act as a log server (receive remote logs)
 log_server_enabled: false
@@ -126,7 +127,7 @@ log_rotate_apps: []
   notify: restart rsyslog
 
 - name: Ensure rsyslog is running
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ log_rsyslog_service }}"
     state: started
     enabled: yes
@@ -176,9 +177,9 @@ user.*                          -/var/log/user.log
 *.emerg                         :omusrmsg:*
 
 {% if log_server_enabled %}
-# Template for remote log storage (organize by hostname and date)
+# Template for remote log storage (organize by hostname and program)
 template(name="RemoteLogs" type="string"
-    string="{{ log_server_log_dir }}/%HOSTNAME%/%PROGRAMNAME%.log"
+    string="{{ log_server_log_dir }}/%HOSTNAME:::secpath-replace%/%PROGRAMNAME:::secpath-replace%.log"
 )
 
 # Store remote logs using the template
@@ -256,6 +257,7 @@ action(
     StreamDriver="gtls"
     StreamDriverMode="1"
     StreamDriverAuthMode="x509/name"
+    StreamDriverPermittedPeers="{{ log_remote_tls_permitted_peer }}"
 {% endif %}
     queue.type="LinkedList"
     queue.filename="remote_fwd"
@@ -359,7 +361,7 @@ action(
 ```yaml
 # roles/log_management/handlers/main.yml
 - name: restart rsyslog
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ log_rsyslog_service }}"
     state: restarted
 ```
@@ -416,6 +418,7 @@ For the central log server:
             frequency: daily
             retain: 90
             compress: true
+            postrotate: "systemctl kill -s HUP rsyslog.service"
 ```
 
-This role gives you consistent logging across all your servers. Logs are rotated on schedule, compressed to save disk space, and optionally shipped to a central location for aggregated analysis. The queue-based remote shipping configuration ensures no logs are lost even if the central server is temporarily unreachable.
+This role gives you consistent logging across all your servers. Logs are rotated on schedule, compressed to save disk space, and optionally shipped to a central location for aggregated analysis. The queue-based remote shipping configuration buffers messages when the central server is temporarily unreachable, reducing the risk of log loss.
