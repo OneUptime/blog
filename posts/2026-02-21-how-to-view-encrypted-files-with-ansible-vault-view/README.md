@@ -8,7 +8,7 @@ Description: Learn how to safely view the contents of Ansible Vault encrypted fi
 
 ---
 
-When you need to check the contents of an Ansible Vault encrypted file, your first instinct might be to decrypt it. But that leaves plain-text secrets on disk, which is a security risk. The `ansible-vault view` command solves this by decrypting the file to stdout only. The encrypted file on disk stays encrypted. Nothing changes. You just see the contents in your terminal and move on.
+When you need to check the contents of an Ansible Vault encrypted file, your first instinct might be to decrypt it. But that leaves plain-text secrets on disk, which is a security risk. The `ansible-vault view` command solves this by decrypting the file for viewing without permanently writing the plaintext back to disk. The encrypted file on disk stays encrypted. Nothing changes. You just see the contents in your terminal and move on.
 
 ## Basic Usage
 
@@ -33,7 +33,7 @@ vault_smtp_password: "mail_secret_789"
 vault_redis_password: "redis_auth_token_456"
 ```
 
-The file on disk is still encrypted. No temporary files are created. No changes are made.
+The file on disk is still encrypted. No changes are made.
 
 ## Using a Password File
 
@@ -64,7 +64,7 @@ If the file was encrypted with a specific vault ID:
 
 ```bash
 # View with a specific vault ID
-ansible-vault view --vault-id production@~/.vault_pass_prod.txt \
+ansible-vault view --vault-id production@$HOME/.vault_pass_prod.txt \
   group_vars/production/vault.yml
 
 # Prompt for the password interactively
@@ -91,7 +91,7 @@ $ANSIBLE_VAULT;1.1;AES256
 
 ## Piping and Redirecting Output
 
-Since `ansible-vault view` outputs to stdout, you can pipe and redirect:
+When `ansible-vault view` is not writing to an interactive terminal, you can pipe and redirect its output:
 
 ```bash
 # Search for a specific variable in the encrypted file
@@ -140,7 +140,15 @@ sdiff <(ansible-vault view group_vars/production/vault.yml) \
 
 ## Viewing Multiple Files
 
-`ansible-vault view` only accepts one file at a time. To view multiple files, loop through them:
+`ansible-vault view` accepts multiple files. You can pass them directly:
+
+```bash
+# View multiple vault files
+ansible-vault view --vault-password-file ~/.vault_pass.txt \
+  group_vars/production/vault.yml group_vars/staging/vault.yml
+```
+
+To print file headings between files, loop through them:
 
 ```bash
 # View all vault files in the project
@@ -158,7 +166,7 @@ Or create a small script:
 # view-all-vaults.sh
 # Display contents of all encrypted vault files
 
-VAULT_PASS_FILE="${1:-~/.vault_pass.txt}"
+VAULT_PASS_FILE="${1:-$HOME/.vault_pass.txt}"
 
 find . -name "vault.yml" -type f | sort | while read -r file; do
     if head -1 "$file" | grep -q '^\$ANSIBLE_VAULT'; then
@@ -185,7 +193,7 @@ Use `ansible-vault view` for security audits. Here is a script that checks for c
 # audit-vault-secrets.sh
 # Audit vault files for security issues
 
-VAULT_PASS_FILE="${1:-~/.vault_pass.txt}"
+VAULT_PASS_FILE="${1:-$HOME/.vault_pass.txt}"
 
 find . -name "vault.yml" -type f | while read -r file; do
     if ! head -1 "$file" | grep -q '^\$ANSIBLE_VAULT'; then
@@ -248,8 +256,8 @@ if [ -z "$DB_PASSWORD" ]; then
 fi
 
 # Use the password (it only lives in this variable, never on disk)
-pg_dump -h db.example.com -U myapp -d production \
-  PGPASSWORD="$DB_PASSWORD" > /tmp/backup.sql
+PGPASSWORD="$DB_PASSWORD" pg_dump -h db.example.com -U myapp -d production \
+  > /tmp/backup.sql
 ```
 
 ## Viewing Inline Encrypted Variables
@@ -329,4 +337,4 @@ ansible-vault view secrets.yml
 clear  # or press Ctrl+L
 ```
 
-The `ansible-vault view` command is the go-to tool for reading encrypted files safely. It keeps your secrets encrypted on disk, shows you what you need in the terminal, and leaves no trace on the filesystem. Use it instead of `ansible-vault decrypt` whenever you just need to check a value.
+The `ansible-vault view` command is the go-to tool for reading encrypted files safely. It keeps your secrets encrypted on disk and shows you what you need in the terminal. Use it instead of `ansible-vault decrypt` whenever you just need to check a value.
