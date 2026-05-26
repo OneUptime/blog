@@ -168,12 +168,12 @@ Applications sometimes generate passwords or tokens and write them to files. Use
 
 Always use `no_log: true` when working with sensitive data to prevent passwords from appearing in Ansible output.
 
-## Working with Binary Files
+## Working with Text Files from Other Hosts
 
-The `slurp` module can read binary files too, since everything is base64-encoded.
+The `slurp` module can read text files from other hosts and reuse their contents. Although `slurp` returns base64-encoded data and can read binary files, the `b64decode` filter returns a string, so arbitrary binary blobs are better handled with `fetch` or decoded with a command that writes bytes directly.
 
 ```yaml
-# Read a binary file and copy it to another location
+# Read a text file and copy it to another location
 - name: Read SSH host key from primary server
   ansible.builtin.slurp:
     src: /etc/ssh/ssh_host_rsa_key.pub
@@ -226,10 +226,10 @@ There are several ways to read remote files in Ansible. Here is when to use each
 |--------|----------|---------|
 | slurp | Small text/config files | Base64 content in variable |
 | fetch | Downloading files to controller | File on controller disk |
-| command: cat | Last resort | stdout in registered variable |
+| command: cat | Last resort for text files | stdout in registered variable |
 | lookup('file') | Local files only | File content directly |
 
-Use `slurp` when you need the file content as a variable for logic in your playbook. Use `fetch` when you need to actually save the file on the controller. Avoid `command: cat` because it is not idempotent and does not handle binary content well.
+Use `slurp` when you need the file content as a variable for logic in your playbook. Use `fetch` when you need to actually save the file on the controller. Avoid `command: cat` because it marks the task as changed by default and does not handle binary content well.
 
 ## Data Flow
 
