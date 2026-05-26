@@ -8,7 +8,7 @@ Description: Learn how to use the zip and zip_longest filters in Ansible to pair
 
 ---
 
-When you have two or more related lists and need to combine them element-by-element, the `zip` and `zip_longest` filters are exactly what you need. They take multiple lists and pair up corresponding elements, producing a list of tuples. This is invaluable for cases where data arrives in parallel lists rather than as a single list of dictionaries.
+When you have two or more related lists and need to combine them element-by-element, the `zip` and `zip_longest` filters are exactly what you need. They take multiple lists and pair up corresponding elements, producing a list of lists. This is invaluable for cases where data arrives in parallel lists rather than as a single list of dictionaries.
 
 ## Basic zip Usage
 
@@ -238,17 +238,21 @@ Rows become columns and columns become rows.
 ```yaml
 # Map old paths to new paths for a migration
 - name: Migrate files from old to new paths
-  ansible.builtin.command: mv {{ item.0 }} {{ item.1 }}
+  ansible.builtin.command:
+    argv:
+      - mv
+      - "{{ item.0 }}"
+      - "{{ item.1 }}"
   loop: "{{ old_paths | zip(new_paths) | list }}"
   vars:
     old_paths:
       - /var/app/config.v1.yml
       - /var/app/data.v1.db
-      - /var/app/logs.v1/
+      - /var/app/logs.v1
     new_paths:
       - /opt/app/config/settings.yml
       - /opt/app/data/main.db
-      - /var/log/app/
+      - /var/log/app
   args:
     creates: "{{ item.1 }}"
 ```
@@ -259,14 +263,17 @@ Convert zipped data into a dictionary:
 
 ```yaml
 # Build a lookup table from parallel lists
+- name: Build key/value items from parallel lists
+  ansible.builtin.set_fact:
+    server_items: "{{ (server_items | default([])) + [{'key': item.0, 'value': item.1}] }}"
+  loop: "{{ hostnames | zip(ip_addresses) | list }}"
+  vars:
+    hostnames: ['web01', 'db01', 'cache01']
+    ip_addresses: ['10.0.1.10', '10.0.2.10', '10.0.3.10']
+
 - name: Create server lookup
   ansible.builtin.set_fact:
-    server_lookup: >-
-      {{ hostnames | zip(ip_addresses)
-         | map('list')
-         | map('zip', ['key', 'value'] | map('list'))
-         | list
-         | items2dict }}
+    server_lookup: "{{ server_items | items2dict }}"
 ```
 
 A simpler approach:
