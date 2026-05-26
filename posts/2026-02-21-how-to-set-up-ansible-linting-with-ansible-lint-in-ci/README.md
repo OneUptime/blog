@@ -40,7 +40,7 @@ exclude_paths:
   - tests/
   - molecule/
 
-# Enable specific profiles (basic, moderate, safety, shared, production)
+# Enable specific profiles (min, basic, moderate, safety, shared, production)
 profile: moderate
 
 # Skip specific rules
@@ -60,10 +60,7 @@ enable_list:
 # Set the project directory
 project_dir: .
 
-# Use specific parseable output format for CI
-parseable: true
-
-# Set severity for mock errors
+# Mock modules or roles so syntax checks can pass when they are unavailable
 mock_modules:
   - custom_module
 mock_roles:
@@ -82,13 +79,13 @@ ansible-lint
 ansible-lint playbooks/site.yml
 
 # Lint with a specific profile
-ansible-lint -p production playbooks/
+ansible-lint --profile production playbooks/
 
 # Show all available rules
 ansible-lint -L
 
 # Show detailed rule descriptions
-ansible-lint -R
+ansible-lint -L -f full
 
 # Auto-fix issues that have automatic fixes
 ansible-lint --fix playbooks/
@@ -313,7 +310,7 @@ ansible-lint has built-in profiles that bundle rules by strictness level.
 # moderate: Best practices (recommended starting point)
 # safety: Rules that prevent security issues
 # shared: Rules for shared/reusable content
-# production: Strictest set, all rules enabled
+# production: Strictest profile for validated or certified content
 profile: moderate
 ```
 
