@@ -14,9 +14,9 @@ In this guide, I will walk through the Ansible modules for managing Docker servi
 
 ## Prerequisites
 
-You need the Docker SDK for Python on the control node or target hosts where Docker runs.
+You need the `community.docker` collection and the Docker API Python dependencies on the hosts that execute the Docker modules. The Compose v2 module also needs the Docker Compose CLI plugin.
 
-Install Docker and its Python SDK on target hosts:
+Install Docker and the Python dependencies on target hosts:
 
 ```yaml
 ---
@@ -32,17 +32,20 @@ Install Docker and its Python SDK on target hosts:
           - curl
           - gnupg
           - lsb-release
+          - python3-debian
+          - python3-requests
         state: present
         update_cache: yes
 
-    - name: Add Docker GPG key
-      ansible.builtin.apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
-
     - name: Add Docker repository
-      ansible.builtin.apt_repository:
-        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components:
+          - stable
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
     - name: Install Docker CE
@@ -51,12 +54,10 @@ Install Docker and its Python SDK on target hosts:
           - docker-ce
           - docker-ce-cli
           - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
         state: present
-
-    - name: Install Docker SDK for Python
-      ansible.builtin.pip:
-        name: docker
-        state: present
+        update_cache: yes
 
     - name: Ensure Docker is running
       ansible.builtin.systemd:
@@ -87,11 +88,9 @@ Run a container with full configuration:
           - "6379:6379"
         volumes:
           - redis_data:/data
-        command: redis-server --appendonly yes
+        command: "redis-server --appendonly yes --requirepass {{ redis_password }}"
         memory: "512m"
         cpus: 1.0
-        env:
-          REDIS_PASSWORD: "{{ redis_password }}"
 
     - name: Run PostgreSQL container
       community.docker.docker_container:
@@ -276,13 +275,12 @@ Deploy a replicated web service with rolling updates:
         placement:
           constraints:
             - node.role == worker
-        resources:
-          limits:
-            cpus: "1.0"
-            memory: 512M
-          reservations:
-            cpus: "0.25"
-            memory: 128M
+        limits:
+          cpus: 1.0
+          memory: 512M
+        reservations:
+          cpus: 0.25
+          memory: 128M
         healthcheck:
           test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
           interval: 30s
@@ -307,13 +305,13 @@ Update a service to a new image version:
       order: start-first
 ```
 
-The `start-first` order means a new container starts before the old one stops, giving you zero-downtime deployments.
+The `start-first` order means a new container starts before the old one stops, which can help achieve zero-downtime deployments when the application can run overlapping instances.
 
 ## Docker Compose with Ansible
 
 If you already have docker-compose files, you can manage them with Ansible.
 
-Deploy a stack from a docker-compose file:
+Deploy a Compose project from a docker-compose file:
 
 ```yaml
 - name: Copy docker-compose file
@@ -333,7 +331,7 @@ Deploy a stack from a docker-compose file:
 
 - name: Show compose status
   ansible.builtin.debug:
-    var: compose_output.services
+    var: compose_output.containers
 ```
 
 ## Container Health Checks
