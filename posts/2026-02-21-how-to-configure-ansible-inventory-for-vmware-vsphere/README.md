@@ -8,7 +8,7 @@ Description: Learn how to set up Ansible dynamic inventory for VMware vSphere to
 
 ---
 
-VMware vSphere is the backbone of many enterprise data centers. If you manage hundreds or thousands of VMs through vCenter, manually maintaining an Ansible inventory for them is not practical. The `community.vmware` collection includes a dynamic inventory plugin that queries vCenter and automatically builds your inventory from the VMs it finds. This post walks through the complete setup.
+VMware vSphere is the backbone of many enterprise data centers. If you manage hundreds or thousands of VMs through vCenter, manually maintaining an Ansible inventory for them is not practical. The `community.vmware` collection includes a dynamic inventory plugin that queries vCenter and automatically builds your inventory from the VMs it finds. In current Ansible documentation this plugin is deprecated for a future `community.vmware` 7.0.0 removal in favor of `vmware.vmware.vms`, but it remains the plugin used by existing `community.vmware` 6.x setups. This post walks through the complete setup.
 
 ## Prerequisites
 
@@ -16,6 +16,7 @@ You need:
 - vCenter Server or ESXi host with API access
 - The `community.vmware` Ansible collection
 - The `pyVmomi` Python library (VMware's Python SDK)
+- The vSphere Automation SDK for Python if you use vSphere tags
 
 ```bash
 # Install the VMware collection
@@ -23,12 +24,12 @@ You need:
 ansible-galaxy collection install community.vmware
 
 # Install the Python SDK
-pip install pyVmomi requests
+pip install pyvmomi requests
 ```
 
 ## Basic vSphere Inventory Plugin Configuration
 
-Create an inventory file for the VMware plugin. The filename must end with `vmware.yml` or `vmware.yaml`:
+Create an inventory file for the VMware plugin. The filename must end with `vmware.yml`, `vmware.yaml`, `vmware_vm_inventory.yml`, or `vmware_vm_inventory.yaml`:
 
 ```yaml
 # inventory/vmware.yml
@@ -126,9 +127,9 @@ export VMWARE_PASSWORD="your-password"
 ansible-inventory -i inventory/vmware.yml --graph
 ```
 
-## Grouping VMs by Folder, Cluster, and Datacenter
+## Filtering VMs by Folder, Cluster, and Datacenter
 
-vSphere organizes VMs in a hierarchy: Datacenter > Cluster > Resource Pool > Folder. You can create inventory groups based on this structure:
+vSphere organizes VMs in a hierarchy that includes datacenters, clusters, resource pools, and folders. You can limit the inventory to a specific part of that structure:
 
 ```yaml
 # inventory/vmware_grouped.yml
@@ -149,26 +150,19 @@ properties:
   - config.hardware.numCPU
   - config.hardware.memoryMB
 
-# Group by vSphere organizational structure
-with_nested_properties: true
-
-# Generate groups from these paths
+# Use VM name as the inventory hostname
 hostnames:
   - config.name
 
-keyed_groups:
-  # Group by the VM folder path
-  - key: config.folder | basename
-    prefix: folder
-    separator: "_"
-  # Group by datacenter
-  - key: datacenter
-    prefix: dc
-    separator: "_"
-  # Group by cluster
-  - key: cluster
-    prefix: cluster
-    separator: "_"
+# Limit the vSphere search scope
+resources:
+  - datacenter:
+      - MainDC
+    resources:
+      - compute_resource:
+          - ProdCluster
+      - folder:
+          - WebServers
 
 filters:
   - runtime.powerState == "poweredOn"
@@ -179,11 +173,11 @@ compose:
   vm_memory_mb: config.hardware.memoryMB
 ```
 
-This creates groups like `dc_MainDC`, `cluster_ProdCluster`, `folder_WebServers`.
+This limits the inventory to VMs in `MainDC`, `ProdCluster`, and the `WebServers` folder.
 
-## Grouping by Custom Attributes
+## Grouping by vSphere Tags
 
-If you use vSphere custom attributes (also called custom values or annotations) to tag VMs, you can group on those:
+If you use vSphere tags, you can group on those:
 
 ```yaml
 # inventory/vmware_custom_attrs.yml
@@ -199,20 +193,20 @@ properties:
   - name
   - guest.ipAddress
   - runtime.powerState
-  - customValue
 
 with_tags: true
+with_nested_properties: true
 
 filters:
   - runtime.powerState == "poweredOn"
 
 # Group by vSphere tags
 keyed_groups:
-  - key: tags | default([]) | map(attribute='tag_name') | list
-    prefix: tag
-    separator: "_"
-  - key: tags | default([]) | selectattr('tag_category', 'equalto', 'Environment') | map(attribute='tag_name') | first | default('untagged')
+  - key: tag_category.Environment | default(['untagged'])
     prefix: env
+    separator: "_"
+  - key: tag_category.Role | default([])
+    prefix: role
     separator: "_"
 
 compose:
@@ -325,11 +319,15 @@ username: "{{ lookup('env', 'VMWARE_USER') }}"
 password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
 validate_certs: false
 
-# Only query these datacenters
+# Only query these datacenters and clusters
 resources:
   - datacenter:
       - DC-East
       - DC-West
+    resources:
+      - compute_resource:
+          - ProdCluster
+          - DRCluster
 
 filters:
   - runtime.powerState == "poweredOn"
@@ -370,8 +368,8 @@ ansible -i inventory/vsphere_production.yml os_linux -m ping
 # Run a playbook on web servers (matched by naming convention)
 ansible-playbook -i inventory/ site.yml --limit webservers
 
-# Deploy to VMs in a specific datacenter
-ansible-playbook -i inventory/ deploy.yml --limit dc_DC_East
+# Deploy to VMs selected by a datacenter or cluster filtered inventory
+ansible-playbook -i inventory/vmware_filtered.yml deploy.yml
 ```
 
 ## Troubleshooting
@@ -399,4 +397,4 @@ Common issues:
 - Firewall blocking HTTPS (port 443) to vCenter
 - Insufficient vCenter permissions for the API user
 
-The VMware inventory plugin is the standard way to bring vSphere infrastructure into Ansible. Set up the plugin with proper grouping by folder, cluster, and tags, enable caching to reduce API load on vCenter, and use the constructed plugin for any additional grouping logic you need. This approach scales well from a handful of VMs to thousands.
+The VMware inventory plugin is the established way to bring vSphere infrastructure into Ansible. Set up the plugin with proper filtering by vSphere structure and grouping by tags, enable caching to reduce API load on vCenter, and use the constructed plugin for any additional grouping logic you need. This approach scales well from a handful of VMs to thousands.
