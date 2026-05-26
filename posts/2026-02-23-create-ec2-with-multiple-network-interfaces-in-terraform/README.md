@@ -48,6 +48,16 @@ provider "aws" {
   region = "us-east-1"
 }
 
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+}
+
 # VPC
 
 resource "aws_vpc" "main" {
@@ -61,13 +71,40 @@ resource "aws_vpc" "main" {
 
 # Public subnet for the primary interface
 resource "aws_subnet" "public" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1a"
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
 
   tags = {
     Name = "public-subnet"
   }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "multi-eni-igw"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "public-route-table"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
 }
 
 # Private subnet for the secondary interface
@@ -171,20 +208,20 @@ resource "aws_instance" "multi_eni" {
   instance_type = "t3.medium"  # Supports 3 ENIs
 
   # Primary network interface
-  network_interface {
-    device_index         = 0
+  primary_network_interface {
     network_interface_id = aws_network_interface.public.id
-  }
-
-  # Secondary network interface
-  network_interface {
-    device_index         = 1
-    network_interface_id = aws_network_interface.private.id
   }
 
   tags = {
     Name = "multi-eni-instance"
   }
+}
+
+# Secondary network interface
+resource "aws_network_interface_attachment" "private" {
+  instance_id          = aws_instance.multi_eni.id
+  network_interface_id = aws_network_interface.private.id
+  device_index         = 1
 }
 ```
 
@@ -200,14 +237,8 @@ resource "aws_instance" "multi_eni" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.medium"
 
-  network_interface {
-    device_index         = 0
+  primary_network_interface {
     network_interface_id = aws_network_interface.public.id
-  }
-
-  network_interface {
-    device_index         = 1
-    network_interface_id = aws_network_interface.private.id
   }
 
   user_data = <<-EOF
@@ -219,17 +250,10 @@ resource "aws_instance" "multi_eni" {
       sleep 1
     done
 
-    # Configure the secondary interface
-    cat > /etc/sysconfig/network-scripts/ifcfg-eth1 <<IFCFG
-    DEVICE=eth1
-    BOOTPROTO=dhcp
-    ONBOOT=yes
-    TYPE=Ethernet
-    DEFROUTE=no
-    IFCFG
-
-    # Bring up the secondary interface
-    ifup eth1
+    # Configure the secondary interface without making it the default route
+    nmcli connection add type ethernet ifname eth1 con-name eth1 ipv4.method auto ipv4.never-default yes || \
+      nmcli connection modify eth1 ipv4.method auto ipv4.never-default yes
+    nmcli connection up eth1
 
     # Add a routing table for the secondary interface
     echo "100 management" >> /etc/iproute2/rt_tables
@@ -239,8 +263,8 @@ resource "aws_instance" "multi_eni" {
     GATEWAY=$(echo $SECONDARY_IP | awk -F. '{print $1"."$2"."$3".1"}')
 
     # Add routing rules for the secondary interface
-    ip route add default via $GATEWAY dev eth1 table management
-    ip rule add from $SECONDARY_IP table management
+    ip route replace default via $GATEWAY dev eth1 table management
+    ip rule add from $SECONDARY_IP table management || true
 
     echo "Secondary interface configured successfully"
   EOF
@@ -248,6 +272,12 @@ resource "aws_instance" "multi_eni" {
   tags = {
     Name = "multi-eni-configured"
   }
+}
+
+resource "aws_network_interface_attachment" "private" {
+  instance_id          = aws_instance.multi_eni.id
+  network_interface_id = aws_network_interface.private.id
+  device_index         = 1
 }
 ```
 
@@ -266,9 +296,9 @@ resource "aws_network_interface" "floating" {
     Name = "floating-eni"
   }
 
-  # Prevent destruction when moving between instances
+  # Prevent accidental destruction of the floating interface
   lifecycle {
-    create_before_destroy = true
+    prevent_destroy = true
   }
 }
 
@@ -293,8 +323,7 @@ resource "aws_network_interface" "multi_ip" {
   security_groups = [aws_security_group.web.id]
 
   # Assign multiple private IPs
-  private_ips     = ["10.0.1.10", "10.0.1.11", "10.0.1.12"]
-  private_ips_count = 0  # Set to 0 when using explicit IPs
+  private_ips = ["10.0.1.10", "10.0.1.11", "10.0.1.12"]
 
   tags = {
     Name = "multi-ip-eni"
@@ -374,17 +403,21 @@ resource "aws_instance" "this" {
   ami           = var.ami_id
   instance_type = var.instance_type
 
-  dynamic "network_interface" {
-    for_each = aws_network_interface.this
-    content {
-      device_index         = network_interface.key
-      network_interface_id = network_interface.value.id
-    }
+  primary_network_interface {
+    network_interface_id = aws_network_interface.this[0].id
   }
 
   tags = {
     Name = var.name
   }
+}
+
+resource "aws_network_interface_attachment" "this" {
+  count = max(length(var.interfaces) - 1, 0)
+
+  instance_id          = aws_instance.this.id
+  network_interface_id = aws_network_interface.this[count.index + 1].id
+  device_index         = count.index + 1
 }
 ```
 
