@@ -99,13 +99,19 @@ Automate backups with a dedicated role:
 # roles/backup/tasks/upload_offsite.yml
 # Upload backups to S3 for offsite storage
 
+- name: Find backup files
+  ansible.builtin.find:
+    paths: "{{ backup_base_dir }}/{{ ansible_date_time.date }}"
+    file_type: file
+  register: backup_artifacts
+
 - name: Upload backups to S3
   amazon.aws.s3_object:
     bucket: "{{ backup_s3_bucket }}"
-    object: "{{ inventory_hostname }}/{{ ansible_date_time.date }}/{{ item }}"
-    src: "{{ backup_base_dir }}/{{ ansible_date_time.date }}/{{ item }}"
+    object: "{{ inventory_hostname }}/{{ ansible_date_time.date }}/{{ item.path | basename }}"
+    src: "{{ item.path }}"
     mode: put
-  loop: "{{ lookup('fileglob', backup_base_dir + '/' + ansible_date_time.date + '/*', wantlist=True) | map('basename') | list }}"
+  loop: "{{ backup_artifacts.files }}"
 ```
 
 ## Database Failover Playbook
@@ -144,14 +150,14 @@ Automate database failover for when the primary goes down:
       delay: 2
 
     - name: Verify host is now primary
-      ansible.builtin.command: psql -c "SELECT pg_is_in_recovery()"
+      ansible.builtin.command: psql -tAc "SELECT pg_is_in_recovery()"
       register: recovery_check
       changed_when: false
       become_user: postgres
 
     - name: Confirm promotion succeeded
       ansible.builtin.assert:
-        that: "'f' in recovery_check.stdout"
+        that: recovery_check.stdout | trim == 'f'
         fail_msg: "Promotion failed - host is still in recovery mode"
 
     - name: Log failover event
@@ -206,15 +212,18 @@ When you need to rebuild everything from scratch:
         LATEST_BACKUP=$(aws s3 ls s3://{{ backup_s3_bucket }}/{{ inventory_hostname }}/ \
           --recursive | sort | tail -n 1 | awk '{print $4}')
         aws s3 cp "s3://{{ backup_s3_bucket }}/${LATEST_BACKUP}" /tmp/restore.dump
-        pg_restore -h localhost -U postgres -d {{ database_name }} -c /tmp/restore.dump
+        createdb -T template0 {{ database_name }} || true
+        pg_restore -d {{ database_name }} -c /tmp/restore.dump
       register: restore_result
       no_log: true
+      become_user: postgres
 
     - name: Verify database restoration
       ansible.builtin.command:
-        cmd: psql -U postgres -d {{ database_name }} -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'"
+        cmd: psql -d {{ database_name }} -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'"
       register: table_count
       changed_when: false
+      become_user: postgres
 
     - name: Confirm tables were restored
       ansible.builtin.assert:
@@ -301,13 +310,14 @@ Regularly verify backups can be restored:
           /tmp/restore.dump
 
     - name: Restore backup
-      ansible.builtin.command:
-        cmd: pg_restore -U postgres -d appdb -c /tmp/restore.dump
+      ansible.builtin.shell: |
+        createdb -T template0 appdb || true
+        pg_restore -d appdb -c /tmp/restore.dump
       become_user: postgres
 
     - name: Verify data integrity
       ansible.builtin.command:
-        cmd: psql -U postgres -d appdb -c "{{ item }}"
+        cmd: psql -d appdb -tAc "{{ item }}"
       loop:
         - "SELECT count(*) FROM users"
         - "SELECT count(*) FROM orders WHERE created_at > now() - interval '24 hours'"
@@ -334,22 +344,22 @@ Regularly verify backups can be restored:
 ```yaml
 # playbooks/dr-drill.yml
 # Monthly DR drill - simulates failure and recovery
-- name: DR Drill - Simulate and recover
+- name: DR Drill - Start
   hosts: localhost
   tasks:
     - name: Document drill start
       ansible.builtin.debug:
         msg: "DR drill started at {{ ansible_date_time.iso8601 }}"
 
-    - name: Run backup verification
-      ansible.builtin.include_tasks: verify-backups.yml
+- ansible.builtin.import_playbook: verify-backups.yml
 
-    - name: Test database failover
-      ansible.builtin.include_tasks: test-db-failover.yml
+- ansible.builtin.import_playbook: test-db-failover.yml
 
-    - name: Test application failover
-      ansible.builtin.include_tasks: test-app-failover.yml
+- ansible.builtin.import_playbook: test-app-failover.yml
 
+- name: DR Drill - Report
+  hosts: localhost
+  tasks:
     - name: Generate DR drill report
       ansible.builtin.template:
         src: dr-drill-report.j2
