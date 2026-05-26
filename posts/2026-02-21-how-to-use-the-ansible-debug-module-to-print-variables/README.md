@@ -313,7 +313,7 @@ Here is a complete playbook that uses debug statements to trace a deployment:
 
     - name: Print version comparison
       ansible.builtin.debug:
-        msg: "Upgrading from {{ current_version.stdout | default('N/A') }} to {{ deploy_version }}"
+        msg: "Upgrading from {{ current_version.stdout | default('N/A', true) }} to {{ deploy_version }}"
 
     - name: Extract release
       ansible.builtin.unarchive:
