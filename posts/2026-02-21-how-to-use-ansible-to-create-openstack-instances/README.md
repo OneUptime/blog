@@ -52,6 +52,7 @@ The `openstack.cloud.server` module handles instance creation. Here is the simpl
         flavor: m1.medium
         key_name: my-ssh-key
         network: private-net
+        auto_ip: false
         security_groups:
           - default
           - sg-ssh
@@ -110,6 +111,7 @@ For multi-instance deployments, define your servers in a variable and loop over 
         flavor: "{{ item.flavor }}"
         key_name: deploy-key
         network: "{{ item.network }}"
+        auto_ip: false
         security_groups: "{{ item.security_groups }}"
         state: present
         wait: true
@@ -152,6 +154,7 @@ Cloud-init lets you run scripts and configure the instance during its first boot
         flavor: m1.medium
         key_name: deploy-key
         network: web-net
+        auto_ip: false
         security_groups: [default, sg-web]
         userdata: |
           #cloud-config
@@ -208,6 +211,7 @@ For more complex cloud-init configurations, use a template file.
         flavor: m1.large
         key_name: deploy-key
         network: app-net
+        auto_ip: false
         security_groups: [default, sg-app]
         userdata: "{{ lookup('template', '../templates/app-cloudinit.yml.j2') }}"
         state: present
@@ -239,6 +243,7 @@ write_files:
         port: 6379
 
 runcmd:
+  - mkdir -p /opt/myapp
   - curl -L https://releases.myapp.com/v{{ app_version }}/myapp.jar -o /opt/myapp/myapp.jar
   - systemctl enable myapp
   - systemctl start myapp
@@ -329,6 +334,7 @@ For instances that need persistent storage beyond the root disk, create and atta
         flavor: m1.xlarge
         key_name: deploy-key
         network: db-net
+        auto_ip: false
         security_groups: [default, sg-database]
         volumes:
           - "{{ data_volume.volume.id }}"
@@ -366,6 +372,7 @@ For instances where the root disk should persist beyond the VM lifecycle, boot f
         flavor: m1.large
         key_name: deploy-key
         network: app-net
+        auto_ip: false
         security_groups: [default, sg-app]
         boot_from_volume: true
         volume_size: 100
@@ -397,6 +404,7 @@ After creating instances, build a dynamic inventory so Ansible can configure the
         flavor: m1.medium
         key_name: deploy-key
         network: web-net
+        auto_ip: false
         security_groups: [default, sg-web]
         state: present
         wait: true
@@ -418,12 +426,15 @@ After creating instances, build a dynamic inventory so Ansible can configure the
 - name: Configure web servers
   hosts: webservers
   become: true
-  gather_facts: true
+  gather_facts: false
   tasks:
     - name: Wait for connection
       ansible.builtin.wait_for_connection:
         delay: 15
         timeout: 300
+
+    - name: Gather facts
+      ansible.builtin.setup:
 
     - name: Install nginx
       ansible.builtin.apt:
@@ -464,6 +475,7 @@ Tearing down instances is just as important as creating them. Here is a playbook
         cloud: "{{ cloud_name }}"
         name: "{{ item }}"
         state: absent
+        delete_ips: true
         wait: true
       loop: "{{ instances_to_remove }}"
       loop_control:
@@ -483,7 +495,7 @@ Tearing down instances is just as important as creating them. Here is a playbook
 ## Tips from Production
 
 1. **Always set `wait: true` and a reasonable `timeout`.** Without waiting, subsequent tasks that depend on the instance being ready will fail.
-2. **Use boot-from-volume for anything important.** Ephemeral disks vanish when the instance is deleted or the compute host fails.
+2. **Use boot-from-volume for anything important.** Ephemeral root disks are deleted with the instance and may be unavailable after a compute host failure depending on the storage backend.
 3. **Tag your instances.** OpenStack metadata and server tags help with organization, billing, and dynamic inventory grouping.
 4. **Pre-create your networks and security groups.** Instance creation playbooks are cleaner when they reference existing resources rather than creating everything inline.
 5. **Cloud-init is your friend for bootstrap, but not for ongoing management.** Use it for the initial setup, then switch to Ansible for day-to-day configuration.
