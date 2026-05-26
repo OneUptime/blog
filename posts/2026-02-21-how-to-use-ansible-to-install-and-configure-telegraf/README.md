@@ -8,7 +8,7 @@ Description: Automate Telegraf agent deployment and metric collection configurat
 
 ---
 
-Telegraf is InfluxData's open-source agent for collecting, processing, and writing metrics. It supports over 300 input plugins covering everything from system metrics to database stats to application telemetry. Unlike Node Exporter which is Prometheus-specific, Telegraf can output to InfluxDB, Prometheus, Kafka, Elasticsearch, and many other systems. This flexibility makes it a solid choice if you want a single agent that feeds multiple monitoring backends.
+Telegraf is InfluxData's open-source agent for collecting, processing, and writing metrics. It supports hundreds of plugins, including input plugins covering everything from system metrics to database stats to application telemetry. Unlike Node Exporter which is Prometheus-specific, Telegraf can output to InfluxDB, Prometheus, Kafka, Elasticsearch, and many other systems. This flexibility makes it a solid choice if you want a single agent that feeds multiple monitoring backends.
 
 This post walks through building an Ansible role that installs Telegraf and configures it with the input and output plugins your infrastructure needs.
 
@@ -124,24 +124,25 @@ telegraf_custom_inputs: []
 - name: Install prerequisites
   ansible.builtin.apt:
     name:
-      - curl
-      - gnupg
-      - apt-transport-https
+      - ca-certificates
+      - python3-debian
     state: present
     update_cache: yes
   become: true
 
-- name: Add InfluxData GPG key
-  ansible.builtin.apt_key:
-    url: https://repos.influxdata.com/influxdata-archive_compat.key
-    state: present
-  become: true
-
 - name: Add InfluxData repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://repos.influxdata.com/ubuntu {{ ansible_distribution_release }} stable"
+  ansible.builtin.deb822_repository:
+    name: influxdata
+    types:
+      - deb
+    uris:
+      - https://repos.influxdata.com/debian
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://repos.influxdata.com/influxdata-archive.key
     state: present
-    filename: influxdata
   become: true
 
 - name: Install Telegraf
@@ -377,4 +378,4 @@ Then add the Telegraf endpoint as a scrape target in your Prometheus configurati
 
 ## Summary
 
-Telegraf's massive plugin library and multi-output support make it one of the most flexible metric collection agents available. The Ansible role in this post handles installation from the InfluxData repository, template-driven configuration with support for any input or output plugin, and Docker group membership for container monitoring. Whether you are sending metrics to InfluxDB, Prometheus, or both, this role provides a consistent deployment mechanism across your entire fleet.
+Telegraf's massive plugin library and multi-output support make it one of the most flexible metric collection agents available. The Ansible role in this post handles installation from the InfluxData repository, template-driven configuration for input plugins and the InfluxDB v2 or Prometheus output plugins, and Docker group membership for container monitoring. Whether you are sending metrics to InfluxDB, Prometheus, or both, this role provides a consistent deployment mechanism across your entire fleet.
