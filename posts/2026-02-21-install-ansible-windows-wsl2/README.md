@@ -97,6 +97,7 @@ Generate an SSH key pair for Ansible to use when connecting to managed hosts:
 
 ```bash
 # Generate an ed25519 SSH key
+mkdir -p ~/.ssh
 ssh-keygen -t ed25519 -f ~/.ssh/ansible_wsl -C "ansible-wsl2" -N ""
 
 # Set correct permissions on the .ssh directory
@@ -132,7 +133,8 @@ remote_user = deploy
 private_key_file = ~/.ssh/ansible_wsl
 host_key_checking = False
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 forks = 10
 
 [ssh_connection]
