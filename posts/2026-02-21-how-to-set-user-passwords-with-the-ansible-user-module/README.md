@@ -18,15 +18,15 @@ If you pass a plain-text string to the `password` parameter, Ansible will write 
 
 ## Generating a Password Hash
 
-The simplest way to generate a hash is with Python's `crypt` module or Ansible's `password_hash` filter. Here is how to generate one on the command line:
+The simplest way to generate a hash is with `openssl passwd`, `mkpasswd`, or Ansible's `password_hash` filter. Here is how to generate one on the command line:
 
 ```bash
-# Generate a SHA-512 password hash using Python
+# Generate a SHA-512 password hash using OpenSSL
 
-python3 -c "import crypt; print(crypt.crypt('MySecurePassword123', crypt.mksalt(crypt.METHOD_SHA512)))"
+openssl passwd -6 -salt randomsalt MySecurePassword123
 ```
 
-The output will look something like `$6$rounds=656000$randomsalt$longhashstring`. The `$6$` prefix means SHA-512, which is the standard on modern Linux systems.
+The output will look something like `$6$randomsalt$longhashstring`. The `$6$` prefix means SHA-512, which is the standard on modern Linux systems.
 
 ## Setting a Password in a Playbook
 
@@ -85,11 +85,11 @@ To make password setting idempotent, you need to use a fixed salt:
     - name: Create user with consistent password hash
       ansible.builtin.user:
         name: developer
-        password: "{{ user_password | password_hash('sha512', password_salt) }}"
+        password: "{{ user_password | password_hash('sha512', password_salt, rounds=5001) }}"
         state: present
 ```
 
-With a fixed salt, the same password always produces the same hash, so Ansible correctly detects that no change is needed on subsequent runs.
+With a fixed salt and explicit rounds, the same password produces the same hash, so Ansible correctly detects that no change is needed on subsequent runs.
 
 ## The Password Flow in Ansible
 
@@ -139,7 +139,7 @@ Then reference it in your playbook:
     - name: Create user with vault-encrypted password
       ansible.builtin.user:
         name: developer
-        password: "{{ vault_developer_password | password_hash('sha512', vault_password_salt) }}"
+        password: "{{ vault_developer_password | password_hash('sha512', vault_password_salt, rounds=5001) }}"
         state: present
 ```
 
@@ -163,14 +163,14 @@ By default, the `user` module updates the password every time the playbook runs 
     - name: Create user - password set only once
       ansible.builtin.user:
         name: developer
-        password: "{{ 'InitialPassword' | password_hash('sha512', 'mysalt123456') }}"
+        password: "{{ 'InitialPassword' | password_hash('sha512', 'mysalt123456', rounds=5001) }}"
         update_password: on_create
         state: present
 ```
 
 The `update_password` parameter accepts two values:
 
-- **always** (default): Sets the password every time, regardless of whether the user exists.
+- **always** (default): Updates the password if the current hash differs from the hash you provide.
 - **on_create**: Only sets the password when creating a new user. If the user already exists, the password is left unchanged.
 
 The `on_create` option is useful when you want to give users an initial password that they can then change themselves.
@@ -198,7 +198,7 @@ Here is how to set passwords for a batch of users:
     - name: Create users with individual passwords
       ansible.builtin.user:
         name: "{{ item.name }}"
-        password: "{{ item.password | password_hash('sha512', 'salt' + item.name) }}"
+        password: "{{ item.password | password_hash('sha512', 'salt' + item.name, rounds=5001) }}"
         update_password: on_create
         state: present
       loop: "{{ users }}"
@@ -220,7 +220,7 @@ Sometimes you want users to change their password on first login. You can combin
     - name: Create the user
       ansible.builtin.user:
         name: newuser
-        password: "{{ 'TempPassword123' | password_hash('sha512', 'tempsalt12345') }}"
+        password: "{{ 'TempPassword123' | password_hash('sha512', 'tempsalt12345', rounds=5001) }}"
         state: present
 
     # Force password change on next login
