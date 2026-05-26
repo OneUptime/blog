@@ -192,7 +192,7 @@ Now for the cluster itself. We will enable logging and configure the endpoint ac
 # The EKS cluster
 resource "aws_eks_cluster" "main" {
   name     = "my-cluster"
-  version  = "1.29"
+  version  = "1.33"
   role_arn = aws_iam_role.cluster.arn
 
   vpc_config {
@@ -392,11 +392,30 @@ resource "aws_launch_template" "custom_nodes" {
     http_put_response_hop_limit = 2           # Needed for containerized workloads
   }
 
-  # Bootstrap script to configure the node
+  # AL2023 nodeadm configuration for the node
   user_data = base64encode(<<-EOF
-    #!/bin/bash
-    /etc/eks/bootstrap.sh my-cluster \
-      --kubelet-extra-args '--max-pods=110 --node-labels=custom=true'
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+    --BOUNDARY
+    Content-Type: application/node.eks.aws
+
+    ---
+    apiVersion: node.eks.aws/v1alpha1
+    kind: NodeConfig
+    spec:
+      cluster:
+        name: ${aws_eks_cluster.main.name}
+        apiServerEndpoint: ${aws_eks_cluster.main.endpoint}
+        certificateAuthority: ${aws_eks_cluster.main.certificate_authority[0].data}
+        cidr: ${aws_eks_cluster.main.kubernetes_network_config[0].service_ipv4_cidr}
+      kubelet:
+        config:
+          maxPods: 110
+        flags:
+          - "--node-labels=custom=true"
+
+    --BOUNDARY--
   EOF
   )
 
@@ -410,7 +429,7 @@ resource "aws_launch_template" "custom_nodes" {
 
 # Look up the latest EKS-optimized AMI
 data "aws_ssm_parameter" "eks_ami" {
-  name = "/aws/service/eks/optimized-ami/1.29/amazon-linux-2/recommended/image_id"
+  name = "/aws/service/eks/optimized-ami/1.33/amazon-linux-2023/x86_64/standard/recommended/image_id"
 }
 
 # Node group using the launch template
@@ -507,9 +526,9 @@ A few things I have learned from running EKS in production:
 
 **Use multiple instance types in spot node groups.** If you only specify one instance type, you are competing with everyone else for that type when capacity gets tight. Listing three or four similar types gives the spot fleet more options.
 
-**Always set `max_unavailable` in `update_config`.** Without it, EKS might try to drain all your nodes at once during an AMI update, which will bring your services down.
+**Set `max_unavailable` in `update_config` to match your availability goals.** This controls how many nodes EKS can update in parallel during a managed node group update.
 
-**Tag your node groups for the Cluster Autoscaler.** The autoscaler needs `k8s.io/cluster-autoscaler/enabled` and `k8s.io/cluster-autoscaler/<cluster-name>` tags to discover your node groups. Managed node groups add these automatically when you use the autoscaler annotations.
+**Check your Cluster Autoscaler discovery tags.** The autoscaler discovers Auto Scaling groups with tags such as `k8s.io/cluster-autoscaler/enabled` and `k8s.io/cluster-autoscaler/<cluster-name>`. Managed node groups are automatically tagged for discovery, but if you rely on scale-from-zero behavior with custom labels or taints, make sure the autoscaler can discover those node template details too.
 
 **Put worker nodes in private subnets.** They do not need public IPs. Use a NAT gateway so they can pull images and reach AWS APIs.
 
