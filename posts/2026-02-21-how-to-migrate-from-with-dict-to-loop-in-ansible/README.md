@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Migration, Dictionaries, Automation
 
-Description: Learn how to migrate from the legacy with_dict syntax to the modern loop keyword with dict2items filter in Ansible playbooks.
+Description: Learn how to migrate from the older with_dict syntax to the modern loop keyword with dict2items filter in Ansible playbooks.
 
 ---
 
-The `with_dict` keyword in Ansible was used to iterate over dictionary (hash/map) data structures. It provided each iteration with `item.key` and `item.value` variables. Since Ansible 2.5, the recommended approach is to use `loop` combined with the `dict2items` filter. The behavior is nearly identical, but the new syntax is more consistent with the rest of the loop system.
+The `with_dict` keyword in Ansible is used to iterate over dictionary (hash/map) data structures. It provides each iteration with `item.key` and `item.value` variables. Ansible 2.5 introduced `loop`, and Ansible 2.6 added the `dict2items` filter; in current Ansible versions, the recommended approach for most loops is to use `loop` combined with `dict2items`. The behavior is nearly identical, but the new syntax is more consistent with the rest of the loop system. The `with_<lookup>` syntax is still valid, so this is a modernization rather than a required deprecation fix.
 
 This post covers the migration process with side-by-side examples, explains the `dict2items` filter, and shows how to handle common patterns that relied on `with_dict`.
 
@@ -132,11 +132,11 @@ After:
       fs.file-max: 2097152
 ```
 
-Note: I moved the inline dictionary to a `vars` block for cleaner syntax since `loop` does not support inline dictionaries the way `with_dict` did.
+Note: I moved the inline dictionary to a `vars` block for cleaner syntax. You can also use an inline dictionary expression with `loop`, but task-level `vars` is often easier to read for multi-line dictionaries.
 
 ## Inline Dictionary Migration
 
-With `with_dict`, you could write the dictionary inline right after the keyword. With `loop`, you need to define it in a variable first.
+With `with_dict`, you could write the dictionary inline right after the keyword. With `loop`, the clearest migration is usually to define it in a variable first.
 
 Before:
 
@@ -206,10 +206,10 @@ No changes to the task body at all.
 
 ## Combining dict2items with Filters
 
-The advantage of the new syntax is that you can chain filters. With `with_dict`, you could not easily filter or transform the dictionary before iteration.
+The advantage of the new syntax is that you can chain filters directly in the loop expression. With `with_dict`, filtering or transforming the dictionary before iteration was less direct.
 
 ```yaml
-# Filter dictionary entries before looping (not possible with with_dict)
+# Filter dictionary entries before looping
 - name: Process only databases with replication enabled
   ansible.builtin.debug:
     msg: "{{ item.key }} has replication"
@@ -325,7 +325,7 @@ Here is a step-by-step process for migrating each `with_dict` usage:
 
 1. Find the `with_dict` line
 2. Identify if the dictionary is inline or a variable
-3. If inline, move it to a `vars` block
+3. If inline, move it to a `vars` block or convert it to an inline dictionary expression
 4. Replace `with_dict: "{{ dict_var }}"` with `loop: "{{ dict_var | dict2items }}"`
 5. Verify that `item.key` and `item.value` references in the task body remain correct (they should be fine)
 6. Optionally add `loop_control.label` for cleaner output
@@ -354,4 +354,4 @@ With `loop` and `dict2items`, you can sort dictionary entries, which was not dir
 
 ## Summary
 
-Migrating from `with_dict` to `loop` with `dict2items` is one of the simplest Ansible loop migrations. The `item.key` and `item.value` variable structure remains identical, so your task bodies do not change at all. The main adjustment is moving inline dictionaries to `vars` blocks and adding `| dict2items` to your loop expression. The benefit you get in return is the ability to chain filters for sorting, filtering, and transforming your dictionary data before the loop processes it.
+Migrating from `with_dict` to `loop` with `dict2items` is one of the simplest Ansible loop migrations. The `item.key` and `item.value` variable structure remains identical, so your task bodies do not change at all. The main adjustment is adding `| dict2items` to your loop expression and, for readability, often moving inline dictionaries to `vars` blocks. The benefit you get in return is the ability to chain filters for sorting, filtering, and transforming your dictionary data before the loop processes it.
