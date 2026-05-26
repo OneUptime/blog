@@ -102,7 +102,7 @@ This playbook disables common unnecessary services:
       ansible.builtin.service_facts:
 
     - name: Stop and disable unnecessary services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: stopped
         enabled: false
@@ -123,7 +123,7 @@ This playbook disables common unnecessary services:
 
 Different server roles need different services. A web server needs nginx but not a database. A database server needs PostgreSQL but not a web server. This approach lets you define what each role should have.
 
-This playbook uses host groups to determine which services to keep:
+This playbook uses a `server_role` variable to determine which services to keep:
 
 ```yaml
 # role_based_services.yml - Manage services based on server role
@@ -135,26 +135,26 @@ This playbook uses host groups to determine which services to keep:
   vars:
     # Base services every server needs
     required_services:
-      - sshd
-      - systemd-journald
-      - systemd-resolved
-      - cron
-      - rsyslog
+      - sshd.service
+      - systemd-journald.service
+      - systemd-resolved.service
+      - cron.service
+      - rsyslog.service
 
     # Services per role
     role_services:
       webserver:
-        - nginx
-        - php-fpm
+        - nginx.service
+        - php-fpm.service
       database:
-        - postgresql
-        - postgresql@14-main
+        - postgresql.service
+        - postgresql@14-main.service
       monitoring:
-        - prometheus-node-exporter
-        - telegraf
+        - prometheus-node-exporter.service
+        - telegraf.service
       mail:
-        - postfix
-        - dovecot
+        - postfix.service
+        - dovecot.service
 
   tasks:
     - name: Gather service facts
@@ -165,7 +165,7 @@ This playbook uses host groups to determine which services to keep:
         allowed_services: >-
           {{
             required_services +
-            (role_services[server_role] | default([]))
+            role_services.get(server_role | default(''), [])
           }}
 
     - name: Find services that should be stopped
@@ -220,7 +220,7 @@ This task masks services so they cannot be started even manually:
 
   tasks:
     - name: Mask insecure services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         masked: true
       loop: "{{ services_to_mask }}"
@@ -260,7 +260,7 @@ This playbook handles both the service and its socket:
 
   tasks:
     - name: Stop and disable service units
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}.service"
         state: stopped
         enabled: false
@@ -268,7 +268,7 @@ This playbook handles both the service and its socket:
       failed_when: false
 
     - name: Stop and disable socket units
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}.socket"
         state: stopped
         enabled: false
@@ -276,7 +276,7 @@ This playbook handles both the service and its socket:
       failed_when: false
 
     - name: Mask both service and socket
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         masked: true
       loop: "{{ socket_services_to_disable | product(['.service', '.socket']) | map('join') | list }}"
@@ -315,11 +315,12 @@ This audit task checks against a known-bad service list:
       ansible.builtin.set_fact:
         violations: >-
           {{
-            prohibited_services
-            | select('in', ansible_facts.services)
-            | select('in', ansible_facts.services | dict2items
-              | selectattr('value.state', 'equalto', 'running')
-              | map(attribute='key') | list)
+            ansible_facts.services | dict2items
+            | selectattr('value.state', 'equalto', 'running')
+            | selectattr('key', 'in',
+                prohibited_services +
+                (prohibited_services | map('regex_replace', '$', '.service') | list))
+            | map(attribute='key')
             | list
           }}
 
