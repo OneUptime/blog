@@ -199,8 +199,8 @@ SSM Session Manager lets Ansible connect to EC2 instances without SSH. No open p
 Install the required collection:
 
 ```bash
-# Install the community.aws collection
-ansible-galaxy collection install community.aws
+# Install the amazon.aws collection
+ansible-galaxy collection install amazon.aws
 
 # Install the Session Manager plugin for AWS CLI
 # On macOS
@@ -225,7 +225,7 @@ all:
           ansible_host: i-0abc123def789
       vars:
         # Use SSM Session Manager instead of SSH
-        ansible_connection: community.aws.aws_ssm
+        ansible_connection: amazon.aws.aws_ssm
         ansible_aws_ssm_region: us-east-1
         ansible_aws_ssm_bucket_name: my-ansible-ssm-bucket
 ```
@@ -255,7 +255,7 @@ compose:
   # Use instance ID as the host identifier for SSM connections
   ansible_host: instance_id
   # Use SSM connection instead of SSH
-  ansible_connection: "'community.aws.aws_ssm'"
+  ansible_connection: "'amazon.aws.aws_ssm'"
   ansible_aws_ssm_region: "'us-east-1'"
   ansible_aws_ssm_bucket_name: "'my-ansible-ssm-bucket'"
 ```
@@ -271,22 +271,17 @@ Even if you do not use SSM for the full inventory, you can pull individual secre
 - hosts: webservers
   tasks:
     - name: Get database password from SSM
-      amazon.aws.ssm_parameter:
-        name: "/ansible/inventory/secrets/db_password"
-        region: us-east-1
-        decrypt: true
-      register: db_password_param
+      ansible.builtin.set_fact:
+        db_password: "{{ lookup('amazon.aws.ssm_parameter', '/ansible/inventory/secrets/db_password', region='us-east-1', decrypt=true) }}"
       delegate_to: localhost
 
     - name: Configure application with database credentials
       ansible.builtin.template:
         src: app-config.yml.j2
         dest: /opt/app/config.yml
-      vars:
-        db_password: "{{ db_password_param.parameter.value }}"
 ```
 
-Or use the `aws_ssm` lookup plugin directly:
+Or use the `ssm_parameter` lookup plugin directly:
 
 ```yaml
 - hosts: webservers
@@ -332,16 +327,51 @@ For SSM Session Manager connections, add:
 
 ```json
 {
-    "Effect": "Allow",
-    "Action": [
-        "ssm:StartSession",
-        "ssm:TerminateSession",
-        "ssm:ResumeSession",
-        "ssm:DescribeSessions"
-    ],
-    "Resource": [
-        "arn:aws:ec2:us-east-1:123456789012:instance/*",
-        "arn:aws:ssm:us-east-1:123456789012:document/AWS-StartSSHSession"
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:StartSession"
+            ],
+            "Resource": [
+                "arn:aws:ec2:us-east-1:123456789012:instance/*",
+                "arn:aws:ssm:us-east-1:123456789012:document/SSM-SessionManagerRunShell"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:DescribeSessions",
+                "ssm:GetConnectionStatus",
+                "ssm:DescribeInstanceInformation",
+                "ec2:DescribeInstances"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:TerminateSession",
+                "ssm:ResumeSession",
+                "ssmmessages:OpenDataChannel"
+            ],
+            "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:DeleteObject",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": [
+                "arn:aws:s3:::my-ansible-ssm-bucket",
+                "arn:aws:s3:::my-ansible-ssm-bucket/*"
+            ]
+        }
     ]
 }
 ```
