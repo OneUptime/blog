@@ -427,11 +427,11 @@ For proper testing, use `ansible-test`:
 
 ```bash
 # Run sanity tests (checks documentation, imports, etc.)
-cd my_namespace/my_collection
+cd ~/ansible_collections/my_namespace/my_collection
 ansible-test sanity plugins/modules/app_deploy.py
 
 # Run unit tests
-ansible-test units plugins/modules/test_app_deploy.py
+ansible-test units tests/unit/plugins/modules/test_app_deploy.py
 ```
 
 ## Conclusion
