@@ -173,13 +173,13 @@ resource "aws_lb_target_group" "grpc" {
   name_prefix      = "grpc-"
   port             = 50051
   protocol         = "HTTP"
-  protocol_version = "gRPC"
+  protocol_version = "GRPC"
   vpc_id           = aws_vpc.main.id
 
   health_check {
     enabled  = true
     path     = "/grpc.health.v1.Health/Check"
-    matcher  = "0-99"  # gRPC status codes
+    matcher  = "0"  # gRPC OK
     protocol = "HTTP"
   }
 }
@@ -245,7 +245,7 @@ resource "aws_lb_target_group" "slow_start" {
 }
 ```
 
-Here's how to calculate detection times:
+Here's how to estimate detection times. The interval is approximate, and timeouts can add a few seconds for requests that do not respond:
 
 - **Time to mark unhealthy** = `unhealthy_threshold` x `interval` = 3 x 30 = 90 seconds
 - **Time to mark healthy** = `healthy_threshold` x `interval` = 3 x 30 = 90 seconds
@@ -282,7 +282,7 @@ The ALB doesn't validate the target's SSL certificate during health checks, so s
 
 ## Deregistration Delay
 
-When an instance fails health checks and is removed, the ALB doesn't cut connections immediately. The deregistration delay gives in-flight requests time to complete.
+When an instance is deregistered from a target group, the ALB doesn't cut connections immediately. The deregistration delay gives in-flight requests time to complete before the target finishes draining.
 
 ```hcl
 resource "aws_lb_target_group" "graceful" {
@@ -379,7 +379,7 @@ aws ec2 describe-security-groups --group-ids sg-xxxxx
 Common causes of failing health checks:
 1. Security group doesn't allow traffic from the ALB
 2. Health check path returns non-200 status code
-3. Application hasn't started yet (increase `unhealthy_threshold` or use `slow_start`)
+3. Application hasn't started yet (increase `unhealthy_threshold` or configure an Auto Scaling or ECS health check grace period)
 4. Health check timeout is too short for the application's response time
 5. Application is listening on a different port than configured
 
