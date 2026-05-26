@@ -46,7 +46,7 @@ provider "aws" {
 
 ## Creating the IAM Role for CodeDeploy
 
-CodeDeploy needs an IAM service role to interact with other AWS services on your behalf. This role allows CodeDeploy to read tags on your instances, publish to SNS topics, and perform other deployment-related operations.
+CodeDeploy needs an IAM service role to interact with other AWS services on your behalf. This role allows CodeDeploy to read tags on your instances, publish to SNS topics, and perform other deployment-related operations. The example below is for EC2/on-premises deployments; use the Lambda and ECS service-role policies shown later for those compute platforms.
 
 ```hcl
 # IAM role that CodeDeploy assumes during deployments
@@ -70,7 +70,7 @@ resource "aws_iam_role" "codedeploy_role" {
 # Attach the AWS managed policy for CodeDeploy
 resource "aws_iam_role_policy_attachment" "codedeploy_policy" {
   role       = aws_iam_role.codedeploy_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
 }
 ```
 
@@ -239,11 +239,34 @@ resource "aws_codedeploy_deployment_config" "lambda_canary" {
   }
 }
 
+# IAM role for Lambda deployments
+resource "aws_iam_role" "lambda_codedeploy_role" {
+  name = "lambda-codedeploy-service-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "codedeploy.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_codedeploy_policy" {
+  role       = aws_iam_role.lambda_codedeploy_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForLambda"
+}
+
 # Lambda deployment group
 resource "aws_codedeploy_deployment_group" "lambda_dg" {
   app_name              = aws_codedeploy_app.lambda_app.name
   deployment_group_name = "lambda-production"
-  service_role_arn      = aws_iam_role.codedeploy_role.arn
+  service_role_arn      = aws_iam_role.lambda_codedeploy_role.arn
   deployment_config_name = aws_codedeploy_deployment_config.lambda_canary.deployment_config_name
 
   deployment_style {
@@ -269,11 +292,34 @@ resource "aws_codedeploy_app" "ecs_app" {
   compute_platform = "ECS"
 }
 
+# IAM role for ECS deployments
+resource "aws_iam_role" "ecs_codedeploy_role" {
+  name = "ecs-codedeploy-service-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "codedeploy.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_codedeploy_policy" {
+  role       = aws_iam_role.ecs_codedeploy_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
+}
+
 # ECS deployment group
 resource "aws_codedeploy_deployment_group" "ecs_dg" {
   app_name              = aws_codedeploy_app.ecs_app.name
   deployment_group_name = "ecs-production"
-  service_role_arn      = aws_iam_role.codedeploy_role.arn
+  service_role_arn      = aws_iam_role.ecs_codedeploy_role.arn
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
 
   deployment_style {
