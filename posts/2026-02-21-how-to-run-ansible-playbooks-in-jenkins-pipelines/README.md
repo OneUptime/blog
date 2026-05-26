@@ -26,7 +26,8 @@ For option 1, install Ansible on the agent.
 
 sudo apt-get update
 sudo apt-get install -y python3 python3-pip
-pip3 install ansible==8.7.0
+python3 -m pip install --user ansible
+export PATH="$HOME/.local/bin:$PATH"
 
 # Verify the installation
 ansible --version
@@ -46,6 +47,7 @@ pipeline {
     environment {
         ANSIBLE_HOST_KEY_CHECKING = 'false'
         ANSIBLE_FORCE_COLOR       = 'true'
+        PATH                      = "${env.HOME}/.local/bin:${env.PATH}"
     }
 
     stages {
@@ -58,7 +60,7 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                    pip3 install ansible==8.7.0
+                    python3 -m pip install --user ansible
                     ansible-galaxy collection install -r requirements.yml
                 '''
             }
@@ -67,7 +69,7 @@ pipeline {
         stage('Lint') {
             steps {
                 sh '''
-                    pip3 install ansible-lint
+                    python3 -m pip install --user ansible-lint
                     ansible-lint playbooks/
                     ansible-playbook --syntax-check playbooks/site.yml
                 '''
@@ -124,8 +126,13 @@ pipeline {
                                      usernameVariable: 'SSH_USER')
                 ]) {
                     sh '''
+                        set +x
+                        VAULT_PASS_FILE="$(mktemp)"
+                        trap 'rm -f "$VAULT_PASS_FILE" ~/.ssh/id_rsa' EXIT
+
                         # Write vault password to a temporary file
-                        echo "$VAULT_PASS" > /tmp/vault_pass.txt
+                        printf '%s\n' "$VAULT_PASS" > "$VAULT_PASS_FILE"
+                        chmod 600 "$VAULT_PASS_FILE"
 
                         # Set up SSH key
                         mkdir -p ~/.ssh
@@ -135,13 +142,10 @@ pipeline {
                         # Run the playbook
                         ansible-playbook \
                             -i inventory/staging.ini \
-                            --vault-password-file /tmp/vault_pass.txt \
+                            --vault-password-file "$VAULT_PASS_FILE" \
                             -u "$SSH_USER" \
                             --private-key ~/.ssh/id_rsa \
                             playbooks/site.yml
-
-                        # Clean up
-                        rm -f /tmp/vault_pass.txt ~/.ssh/id_rsa
                     '''
                 }
             }
@@ -168,7 +172,9 @@ pipeline {
                     credentialsId: 'ansible-ssh-key',
                     vaultCredentialsId: 'ansible-vault-pass',
                     colorized: true,
-                    extras: '-e deploy_version=${BUILD_NUMBER}'
+                    extraVars: [
+                        deploy_version: env.BUILD_NUMBER
+                    ]
                 )
             }
         }
@@ -208,13 +214,16 @@ pipeline {
                 ]) {
                     sshagent(credentials: ['ansible-ssh-key']) {
                         sh '''
-                            echo "$VAULT_PASS" > /tmp/vault_pass.txt
+                            set +x
+                            VAULT_PASS_FILE="$(mktemp)"
+                            trap 'rm -f "$VAULT_PASS_FILE"' EXIT
+                            printf '%s\n' "$VAULT_PASS" > "$VAULT_PASS_FILE"
+                            chmod 600 "$VAULT_PASS_FILE"
                             ansible-playbook \
                                 -i inventory/staging.ini \
-                                --vault-password-file /tmp/vault_pass.txt \
+                                --vault-password-file "$VAULT_PASS_FILE" \
                                 -e "deploy_version=${DEPLOY_VERSION}" \
                                 playbooks/site.yml
-                            rm -f /tmp/vault_pass.txt
                         '''
                     }
                 }
@@ -247,13 +256,16 @@ pipeline {
                 ]) {
                     sshagent(credentials: ['ansible-ssh-key']) {
                         sh '''
-                            echo "$VAULT_PASS" > /tmp/vault_pass.txt
+                            set +x
+                            VAULT_PASS_FILE="$(mktemp)"
+                            trap 'rm -f "$VAULT_PASS_FILE"' EXIT
+                            printf '%s\n' "$VAULT_PASS" > "$VAULT_PASS_FILE"
+                            chmod 600 "$VAULT_PASS_FILE"
                             ansible-playbook \
                                 -i inventory/production.ini \
-                                --vault-password-file /tmp/vault_pass.txt \
+                                --vault-password-file "$VAULT_PASS_FILE" \
                                 -e "deploy_version=${DEPLOY_VERSION}" \
                                 playbooks/site.yml
-                            rm -f /tmp/vault_pass.txt
                         '''
                     }
                 }
@@ -344,9 +356,9 @@ pipeline {
             choices: ['staging', 'production'],
             description: 'Target environment'
         )
-        string(
+        choice(
             name: 'PLAYBOOK',
-            defaultValue: 'site.yml',
+            choices: ['site.yml', 'deploy.yml', 'rollback.yml'],
             description: 'Playbook to run'
         )
         booleanParam(
