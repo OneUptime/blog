@@ -62,6 +62,11 @@ For AWS EC2 instances, pass the vault password through cloud-init user data:
 ```yaml
 #cloud-config
 # Provision the vault password and set up ansible-pull
+package_update: true
+packages:
+  - python3-pip
+  - git
+
 write_files:
   - path: /etc/ansible/vault_pass.txt
     permissions: '0600'
@@ -89,7 +94,10 @@ A more secure approach retrieves the vault password from a cloud secrets service
 # Retrieves vault password from AWS Secrets Manager
 # The EC2 instance needs an IAM role with secretsmanager:GetSecretValue permission
 
-REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+REGION=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" \
+  http://169.254.169.254/latest/meta-data/placement/region)
 
 PASSWORD=$(aws secretsmanager get-secret-value \
   --secret-id "ansible/vault-password" \
@@ -188,6 +196,7 @@ Your Git repository needs a playbook that works with local connections:
   become: true
 
   vars_files:
+    - vars/vault.yml
     - vars/common.yml
 
   pre_tasks:
@@ -236,14 +245,17 @@ VAULT_PASS_SCRIPT="/usr/local/bin/vault_pass.sh"
 PLAYBOOK="local.yml"
 
 echo "Installing Ansible..."
-apt-get update -qq && apt-get install -y -qq python3-pip git
-pip3 install ansible boto3
+apt-get update -qq && apt-get install -y -qq python3-pip git awscli
+pip3 install ansible
 
 echo "Setting up vault password script..."
 cat > "${VAULT_PASS_SCRIPT}" << 'SCRIPT'
 #!/bin/bash
 # Retrieve vault password from AWS Secrets Manager
-REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+REGION=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" \
+  http://169.254.169.254/latest/meta-data/placement/region)
 aws secretsmanager get-secret-value \
   --secret-id "ansible/vault-password" \
   --region "${REGION}" \
