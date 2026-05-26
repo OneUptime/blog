@@ -12,7 +12,8 @@ DynamoDB is AWS's fully managed NoSQL database, and it is one of those services 
 
 ## Prerequisites
 
-- Ansible 2.9+ with both the `amazon.aws` and `community.aws` collections
+- ansible-core 2.17+ with both the `amazon.aws` and `community.aws` collections
+- Python dependencies for the AWS collections: `boto3` and `botocore` 1.34.0 or newer
 - AWS credentials with DynamoDB permissions
 
 ```bash
@@ -161,7 +162,7 @@ GSIs let you query the table using different key combinations:
     - name: Display table and index info
       ansible.builtin.debug:
         msg: >
-          Table 'products' created with {{ products_table.global_indexes | default([]) | length }} GSI(s).
+          Table 'products' created with {{ products_table.indexes | default([]) | length }} GSI(s).
           Primary key: product_id. Query by category+price or brand.
 ```
 
@@ -172,7 +173,7 @@ The `type: global_all` means the GSI projects all attributes from the base table
 For predictable workloads, provisioned capacity is cheaper:
 
 ```yaml
-# create-provisioned-table.yml - Table with provisioned capacity and auto-scaling
+# create-provisioned-table.yml - Table with provisioned capacity
 ---
 - name: Create Provisioned DynamoDB Table
   hosts: localhost
@@ -247,7 +248,7 @@ TTL automatically deletes expired items, which is great for session data, cache 
         msg: "TTL enabled on 'expiry_time' attribute for cache_entries table"
 ```
 
-The TTL attribute should contain a Unix epoch timestamp. DynamoDB checks this attribute and deletes items whose timestamp has passed. Deletions are not instantaneous; they typically happen within 48 hours of expiration. Your application should still filter out expired items in queries rather than relying solely on TTL cleanup.
+The TTL attribute should contain a Number value in Unix epoch time format, at seconds granularity. DynamoDB checks this attribute and deletes items whose timestamp has passed. Deletions are not instantaneous; they typically happen within a few days of expiration. Your application should still filter out expired items in queries rather than relying solely on TTL cleanup.
 
 ## Creating Multiple Tables for a Microservice
 
@@ -273,10 +274,11 @@ A single microservice often needs several tables:
         range_type: STRING
         gsis:
           - name: "status-index"
-            hash_key: "status"
-            hash_type: STRING
-            range_key: "created_at"
-            range_type: STRING
+            type: global_all
+            hash_key_name: "status"
+            hash_key_type: STRING
+            range_key_name: "created_at"
+            range_key_type: STRING
       - name: "notification_preferences"
         hash_key: "user_id"
         hash_type: STRING
