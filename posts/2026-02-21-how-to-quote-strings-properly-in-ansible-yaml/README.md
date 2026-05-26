@@ -44,7 +44,7 @@ file_mode: "0644"
 ### Values with Special Characters
 
 ```yaml
-# Colons, hashes, and braces need quoting
+# Quote values with YAML-special characters when they could be ambiguous
 url: "http://example.com:8080"
 comment: "value # with hash"
 template: "{{ variable }}"
@@ -54,7 +54,7 @@ json_string: '{"key": "value"}'
 ### Jinja2 Expressions
 
 ```yaml
-# Always quote Jinja2 in YAML values
+# Quote values that start with Jinja2 expressions
 - name: Set variable
   ansible.builtin.set_fact:
     result: "{{ some_var | default('fallback') }}"
@@ -65,7 +65,7 @@ json_string: '{"key": "value"}'
 ```yaml
 # Single quotes: literal strings, no escaping
 path: 'C:\Users\admin'          # Backslashes are literal
-literal: 'no {{ templating }}'    # Jinja2 not processed
+literal: 'no {{ templating }}'    # Jinja2 is still processed by Ansible
 apostrophe: 'it''s working'       # Escape with double single-quote
 
 # Double quotes: support escape sequences
@@ -113,7 +113,7 @@ count: 5
 
 ## Defensive Quoting Strategy
 
-When in doubt, quote it. The overhead of unnecessary quotes is zero, but the cost of a missing quote can be hours of debugging.
+When in doubt about a string value, quote it. The overhead of unnecessary quotes around string values is zero, but the cost of a missing quote can be hours of debugging.
 
 ```yaml
 # Defensive quoting - quote anything that could be ambiguous
@@ -129,12 +129,12 @@ vars:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this quoting strategy proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this quoting strategy
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -166,7 +166,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -248,7 +248,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this quoting strategy
 - name: Robust task execution
   hosts: all
   tasks:
@@ -261,6 +261,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -287,7 +288,7 @@ Here are several practical scenarios where this module proves essential in real-
   tasks:
     - name: Create scan script
       ansible.builtin.copy:
-        dest: /opt/scripts/compliance_scan.sh
+        dest: /usr/local/bin/compliance_scan.sh
         mode: '0755'
         content: |
           #!/bin/bash
@@ -307,12 +308,11 @@ Here are several practical scenarios where this module proves essential in real-
         minute: "0"
         hour: "3"
         weekday: "1"
-        job: "/opt/scripts/compliance_scan.sh"
+        job: "/usr/local/bin/compliance_scan.sh"
         user: ansible
 ```
 
 
 ## Conclusion
 
-String quoting in Ansible YAML follows a simple principle: quote values that contain special characters, look like other types, or include Jinja2 expressions. Use single quotes for literal strings and double quotes for strings with escape sequences or Jinja2. When in doubt, quoting is always safe and prevents type coercion surprises.
-
+String quoting in Ansible YAML follows a simple principle: quote string values that contain special characters, look like other types, or start with Jinja2 expressions. Use single quotes for YAML-literal strings and double quotes for strings with escape sequences. When in doubt about a string value, quoting is safe and prevents type coercion surprises.
