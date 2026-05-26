@@ -71,53 +71,29 @@ flowchart TD
 
 ## Horizontal Scaling: Adding Execution Nodes
 
-The most direct way to increase capacity is to add more execution nodes. In AWX Operator deployments, you add execution nodes by deploying them and registering them with the control plane.
-
-```yaml
-# execution-node.yml - Deploy an execution node
----
-apiVersion: awx.ansible.com/v1beta1
-kind: AWX
-metadata:
-  name: awx
-  namespace: awx
-spec:
-  # Control plane replicas
-  web_replicas: 2
-  task_replicas: 2
-
-  # Execution node settings
-  extra_settings:
-    - setting: DEFAULT_EXECUTION_QUEUE_NAME
-      value: "'default'"
-```
-
-For standalone execution nodes (not running in Kubernetes), register them via the CLI.
+The most direct way to increase capacity is to add more execution nodes. In AWX Operator deployments, external execution nodes are added from the AWX Instances page or the instances API, then installed with the generated Receptor install bundle.
 
 ```bash
-# Register a standalone execution node with AWX
-# On the execution node, install the receptor package
-dnf install -y receptor
+# Create the instance record in AWX
+curl -s -X POST \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  -H "Content-Type: application/json" \
+  https://awx.example.com/api/v2/instances/ \
+  -d '{
+    "hostname": "exec-node-01.example.com",
+    "node_type": "execution",
+    "enabled": true
+  }'
+```
 
-# Configure receptor to connect to the AWX mesh
-cat > /etc/receptor/receptor.conf <<EOF
----
-- node:
-    id: exec-node-01
+After the instance is created, download the install bundle from the instance details page, edit the generated `inventory.yml` with the SSH user and key for the execution node, and run the included playbook.
 
-- control-service:
-    service: control
-    filename: /var/run/receptor/receptor.sock
+```bash
+tar -xzf exec-node-01-install-bundle.tar.gz
+cd install_receptor
 
-- tcp-peer:
-    address: awx-control.example.com:27199
-    tls: receptor-tls
-
-- work-command:
-    worktype: ansible-runner
-    command: ansible-runner
-    params: worker
-EOF
+ansible-galaxy collection install -r requirements.yml
+ansible-playbook -i inventory.yml install_receptor.yml
 ```
 
 ## Container Groups for Elastic Scaling
@@ -134,39 +110,11 @@ curl -s -X POST \
     "name": "k8s-elastic",
     "is_container_group": true,
     "credential": 5,
-    "pod_spec_override": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {
-        "namespace": "awx-jobs"
-      },
-      "spec": {
-        "serviceAccountName": "awx-job-runner",
-        "containers": [
-          {
-            "name": "worker",
-            "image": "quay.io/ansible/awx-ee:latest",
-            "resources": {
-              "requests": {
-                "cpu": "500m",
-                "memory": "1Gi"
-              },
-              "limits": {
-                "cpu": "2",
-                "memory": "4Gi"
-              }
-            }
-          }
-        ],
-        "nodeSelector": {
-          "workload-type": "ansible-jobs"
-        }
-      }
-    }
+    "pod_spec_override": "metadata:\n  namespace: awx-jobs\nspec:\n  serviceAccountName: awx-job-runner\n  nodeSelector:\n    workload-type: ansible-jobs\n"
   }'
 ```
 
-Assign templates that have bursty workloads to the container group. AWX launches pods as needed and Kubernetes handles scheduling them across nodes.
+Assign templates that have bursty workloads to the container group. AWX launches pods as needed and Kubernetes handles scheduling them across nodes. The execution environment image used for the job is still selected from the job's configured execution environment, so avoid pinning an image in the pod override unless you specifically need to replace the default behavior. For CPU and memory guardrails, use a Kubernetes `LimitRange` in the job namespace or provide a full tested container override.
 
 ## Web and Task Replica Scaling
 
@@ -180,7 +128,8 @@ spec:
 ```
 
 ```bash
-# Or scale dynamically with kubectl
+# For temporary changes, you can also scale the deployments directly.
+# The operator may reconcile these back to the AWX custom resource values.
 kubectl scale deployment awx-web -n awx --replicas=3
 kubectl scale deployment awx-task -n awx --replicas=2
 ```
@@ -223,7 +172,7 @@ min_pool_size = 10
 
 ### Database Read Replicas
 
-For read-heavy workloads (lots of API calls, dashboard queries), point read traffic to a PostgreSQL replica.
+For read-heavy external reporting or analytics, use a PostgreSQL replica so those queries do not compete with AWX's primary database workload. AWX itself is a Django application and does not provide a simple setting that automatically routes normal API or dashboard reads to a replica, so keep the application pointed at the primary unless you have a tested, supported routing configuration.
 
 ```sql
 -- On the primary, check replication status
@@ -304,9 +253,8 @@ kubectl exec -it awx-postgres-0 -n awx -- \
 kubectl exec deployment/awx-task -n awx -- \
   awx-manage cleanup_jobs --days=60
 
-# Set up automated cleanup
-kubectl exec deployment/awx-task -n awx -- \
-  awx-manage cleanup_jobs --days=60
+# Schedule this regularly through AWX management jobs or an external scheduler
+# that runs the same cleanup command during a maintenance window.
 ```
 
 ## Monitoring Capacity at Scale
