@@ -8,7 +8,7 @@ Description: Learn how to use Ansible ad hoc commands with different connection 
 
 ---
 
-Ansible is not limited to managing Linux servers over SSH. It can connect to Windows machines via WinRM, manage Docker containers directly, execute commands on the local machine, interact with network devices, and more. Each connection type has its own module and configuration. Understanding these connection types lets you manage your entire heterogeneous infrastructure with the same tool.
+Ansible is not limited to managing Linux servers over SSH. It can connect to Windows machines via WinRM, manage Docker containers directly, execute commands on the local machine, interact with network devices, and more. Each connection type has its own plugin and configuration. Understanding these connection types lets you manage your entire heterogeneous infrastructure with the same tool.
 
 ## The Default: SSH Connection
 
@@ -78,20 +78,20 @@ ansible localhost -m ping
 
 ## Docker Connection
 
-The `docker` connection plugin lets you manage Docker containers directly, without SSH:
+The `community.docker.docker` connection plugin lets you manage Docker containers directly, without SSH:
 
 ```bash
 # Ping a running Docker container
-ansible my_container -m ping -c docker
+ansible my_container -m ping -c community.docker.docker
 
 # Run a command inside a container
-ansible my_container -m command -a "cat /etc/os-release" -c docker
+ansible my_container -m command -a "cat /etc/os-release" -c community.docker.docker
 
 # Install a package in a container
-ansible my_container -m apt -a "name=curl state=present" -c docker --become
+ansible my_container -m apt -a "name=curl state=present" -c community.docker.docker --become
 
 # Copy a file into a container
-ansible my_container -m copy -a "src=./config.yml dest=/app/config.yml" -c docker
+ansible my_container -m copy -a "src=./config.yml dest=/app/config.yml" -c community.docker.docker
 ```
 
 Inventory setup for Docker containers:
@@ -99,9 +99,9 @@ Inventory setup for Docker containers:
 ```ini
 # inventory/docker.ini
 [containers]
-webapp ansible_connection=docker
-database ansible_connection=docker
-redis_cache ansible_connection=docker ansible_docker_extra_args="--user root"
+webapp ansible_connection=community.docker.docker
+database ansible_connection=community.docker.docker
+redis_cache ansible_connection=community.docker.docker ansible_docker_extra_args="--user root"
 ```
 
 ```bash
@@ -116,7 +116,7 @@ You can also dynamically discover running containers:
 docker ps --format '{{.Names}}'
 
 # Then target them
-ansible webapp -m shell -a "ls /app/" -c docker
+ansible webapp -i webapp, -m shell -a "ls /app/" -c community.docker.docker
 ```
 
 ## WinRM Connection (Windows)
@@ -174,13 +174,13 @@ For network devices (routers, switches, firewalls), Ansible provides specialized
 
 ```bash
 # network_cli: for CLI-based network devices
-ansible routers -m ios_command -a "commands='show version'" -c network_cli
+ansible routers -m cisco.ios.ios_command -a "commands='show version'" -c ansible.netcommon.network_cli
 
 # netconf: for NETCONF-enabled devices
-ansible switches -m netconf_get -c netconf
+ansible switches -m ansible.netcommon.netconf_get -c ansible.netcommon.netconf
 
 # httpapi: for REST API-based network devices
-ansible firewalls -m httpapi -c httpapi
+ansible eos_switches -m arista.eos.eos_command -a "commands='show version'" -c ansible.netcommon.httpapi -e "ansible_network_os=arista.eos.eos"
 ```
 
 Network device inventory example:
@@ -191,8 +191,8 @@ Network device inventory example:
 router1.example.com
 
 [routers:vars]
-ansible_connection=network_cli
-ansible_network_os=ios
+ansible_connection=ansible.netcommon.network_cli
+ansible_network_os=cisco.ios.ios
 ansible_user=admin
 ansible_password=cisco123
 ansible_become=yes
@@ -203,21 +203,21 @@ ansible_become_password=enable_secret
 switch1.example.com
 
 [switches:vars]
-ansible_connection=network_cli
-ansible_network_os=nxos
+ansible_connection=ansible.netcommon.network_cli
+ansible_network_os=cisco.nxos.nxos
 ansible_user=admin
 ansible_password=nxos123
 ```
 
 ```bash
 # Run commands on Cisco IOS devices
-ansible routers -m ios_command -a "commands='show ip interface brief'" -i inventory/network.ini
+ansible routers -m cisco.ios.ios_command -a "commands='show ip interface brief'" -i inventory/network.ini
 
 # Show running config
-ansible routers -m ios_command -a "commands='show running-config'" -i inventory/network.ini
+ansible routers -m cisco.ios.ios_command -a "commands='show running-config'" -i inventory/network.ini
 
 # Configure a network device
-ansible routers -m ios_config -a "lines='hostname ROUTER-01'" -i inventory/network.ini
+ansible routers -m cisco.ios.ios_config -a "lines='hostname ROUTER-01'" -i inventory/network.ini
 ```
 
 ## SSH with Jump Hosts (Bastion)
@@ -253,14 +253,14 @@ ansible private_servers -m ping -i inventory/production.ini
 
 ## Paramiko Connection
 
-The `paramiko` connection plugin is a pure-Python SSH implementation. It is slower than the native SSH client but works on systems where the OpenSSH client is not available:
+The `paramiko_ssh` connection plugin is a pure-Python SSH implementation. It can be useful on systems where OpenSSH lacks ControlPersist support:
 
 ```bash
 # Use paramiko instead of native SSH
-ansible all -m ping -c paramiko
+ansible all -m ping -c paramiko_ssh
 
 # Paramiko can be useful when native SSH has issues
-ansible all -m command -a "uptime" -c paramiko
+ansible all -m command -a "uptime" -c paramiko_ssh
 ```
 
 ## kubectl Connection
@@ -269,7 +269,7 @@ For managing Kubernetes pods directly:
 
 ```bash
 # Run a command in a Kubernetes pod
-ansible mypod -m command -a "cat /etc/hostname" -c kubectl -e "ansible_kubectl_namespace=default"
+ansible mypod -m command -a "cat /etc/hostname" -c kubernetes.core.kubectl -e "ansible_kubectl_namespace=default"
 ```
 
 Inventory for Kubernetes:
@@ -277,7 +277,7 @@ Inventory for Kubernetes:
 ```ini
 # inventory/k8s.ini
 [pods]
-my-app-pod-abc123 ansible_connection=kubectl ansible_kubectl_namespace=production
+my-app-pod-abc123 ansible_connection=kubernetes.core.kubectl ansible_kubectl_namespace=production
 ```
 
 ## Mixing Connection Types
@@ -296,11 +296,11 @@ win1.example.com ansible_connection=winrm ansible_winrm_transport=ntlm
 win2.example.com ansible_connection=winrm ansible_winrm_transport=ntlm
 
 [containers]
-webapp ansible_connection=docker
-worker ansible_connection=docker
+webapp ansible_connection=community.docker.docker
+worker ansible_connection=community.docker.docker
 
 [network_devices]
-router1 ansible_connection=network_cli ansible_network_os=ios
+router1 ansible_connection=ansible.netcommon.network_cli ansible_network_os=cisco.ios.ios
 
 [local]
 localhost ansible_connection=local
@@ -333,7 +333,7 @@ ansible web1.example.com -m ping -vvvv
 ansible win1.example.com -m win_ping -vvvv
 
 # Debug Docker connections
-ansible my_container -m ping -c docker -vvvv
+ansible my_container -m ping -c community.docker.docker -vvvv
 
 # Test a specific connection type
 ansible all -m ping -c ssh -v
