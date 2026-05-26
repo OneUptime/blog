@@ -8,7 +8,7 @@ Description: Automate Arista EOS switches with Ansible for spine-leaf data cente
 
 ---
 
-Arista EOS (Extensible Operating System) is a Linux-based network operating system that powers Arista's line of high-performance data center switches. Arista switches are popular in modern cloud-scale data centers, and EOS is known for its programmability, rich API support, and familiar CLI syntax (it shares a lot of DNA with Cisco IOS). One of EOS's standout features is eAPI, a RESTful API that lets you manage the switch through HTTP, which makes it particularly well-suited for automation.
+Arista EOS (Extensible Operating System) is a Linux-based network operating system that powers Arista's line of high-performance data center switches. Arista switches are popular in modern cloud-scale data centers, and EOS is known for its programmability, rich API support, and familiar CLI syntax (it shares a lot of DNA with Cisco IOS). One of EOS's standout features is eAPI, a JSON-RPC API over HTTP or HTTPS that lets you manage the switch with CLI commands, which makes it particularly well-suited for automation.
 
 Ansible's `arista.eos` collection provides dedicated modules for EOS device management. This post covers the essential automation patterns for managing Arista switches in a data center environment.
 
@@ -64,6 +64,8 @@ ansible_httpapi_use_ssl=true
 ansible_httpapi_validate_certs=false
 ansible_user=admin
 ansible_password={{ vault_eos_password }}
+ansible_become=yes
+ansible_become_method=enable
 ```
 
 ## Enabling eAPI on EOS
@@ -72,7 +74,7 @@ If you want to use the httpapi connection, eAPI needs to be enabled on the switc
 
 ```yaml
 # playbook-enable-eapi.yml
-# Enables eAPI (REST API) on Arista EOS switches
+# Enables eAPI on Arista EOS switches
 - name: Enable eAPI
   hosts: eos
   gather_facts: no
@@ -323,6 +325,7 @@ Modern Arista data centers often use BGP EVPN for overlay networking. Here is a 
 
   vars:
     bgp_asn: 65001
+    router_id: "{{ ansible_host }}"
     spine_peers:
       - 10.0.0.1
       - 10.0.0.2
@@ -351,6 +354,7 @@ Modern Arista data centers often use BGP EVPN for overlay networking. Here is a 
         lines:
           - remote-as 65000
           - update-source Loopback0
+          - ebgp-multihop 3
           - send-community extended
           - maximum-routes 12000
         parents:
