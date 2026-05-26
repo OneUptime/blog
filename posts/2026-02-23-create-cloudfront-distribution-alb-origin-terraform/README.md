@@ -60,7 +60,8 @@ resource "aws_cloudfront_distribution" "app" {
 
   # The ALB as the origin
   origin {
-    domain_name = data.aws_lb.app.dns_name
+    # Use a DNS name that points to the ALB and is covered by the ALB certificate.
+    domain_name = "origin.example.com"
     origin_id   = "alb-origin"
 
     custom_origin_config {
@@ -180,6 +181,19 @@ data "aws_route53_zone" "main" {
   name = "example.com"
 }
 
+# DNS record for the CloudFront origin. The ALB listener certificate must cover this name.
+resource "aws_route53_record" "alb_origin" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = "origin.example.com"
+  type    = "A"
+
+  alias {
+    name                   = data.aws_lb.app.dns_name
+    zone_id                = data.aws_lb.app.zone_id
+    evaluate_target_health = true
+  }
+}
+
 resource "aws_route53_record" "app" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "app.example.com"
@@ -204,7 +218,8 @@ resource "aws_cloudfront_distribution" "mixed" {
   comment         = "Mixed static and dynamic content"
 
   origin {
-    domain_name = data.aws_lb.app.dns_name
+    # Use a DNS name that points to the ALB and is covered by the ALB certificate.
+    domain_name = "origin.example.com"
     origin_id   = "alb-origin"
 
     custom_origin_config {
@@ -246,10 +261,8 @@ resource "aws_cloudfront_distribution" "mixed" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    # Cache for 1 day at minimum
-    min_ttl     = 0
-    default_ttl = 86400
-    max_ttl     = 31536000
+    # The managed caching optimized policy sets default TTL to 1 day
+    # and max TTL to 1 year.
   }
 
   # Cache images
@@ -351,7 +364,7 @@ resource "aws_lb_listener_rule" "deny_direct" {
 
 ### Approach 2: AWS Managed Prefix List
 
-AWS publishes a managed prefix list containing all CloudFront edge IP addresses. You can restrict your ALB's security group to only allow traffic from these IPs.
+AWS publishes a managed prefix list containing the CloudFront origin-facing IP addresses. You can restrict your ALB's security group to only allow traffic from these IPs.
 
 ```hcl
 # Get the CloudFront managed prefix list
@@ -417,13 +430,13 @@ resource "aws_cloudfront_cache_policy" "custom" {
   }
 }
 
-# Origin request policy to forward headers the ALB needs
+# Origin request policy to forward request values the ALB needs
 resource "aws_cloudfront_origin_request_policy" "custom" {
   name    = "custom-origin-request"
-  comment = "Forward necessary headers to ALB"
+  comment = "Forward necessary request values to ALB"
 
   cookies_config {
-    cookie_behavior = "all"  # Forward all cookies to origin
+    cookie_behavior = "none"  # Do not forward cookies for cacheable content
   }
 
   headers_config {
@@ -433,11 +446,7 @@ resource "aws_cloudfront_origin_request_policy" "custom" {
         "Host",
         "Accept",
         "Accept-Language",
-        "Authorization",
-        "Referer",
-        "CloudFront-Forwarded-Proto",
-        "CloudFront-Is-Desktop-Viewer",
-        "CloudFront-Is-Mobile-Viewer"
+        "Referer"
       ]
     }
   }
@@ -537,7 +546,7 @@ output "cloudfront_distribution_id" {
 
 **Always use HTTPS between CloudFront and your ALB.** The `origin_protocol_policy = "https-only"` setting ensures traffic is encrypted in transit even though it is within AWS.
 
-**Increase `origin_read_timeout` for slow APIs.** The default 30 seconds is not enough for some endpoints. You can go up to 180 seconds.
+**Increase `origin_read_timeout` for slow APIs.** The default 30 seconds is not enough for some endpoints. You can set 60 seconds without a quota increase; higher values require a CloudFront quota increase and are subject to CloudFront limits.
 
 **Use managed cache and origin request policies when possible.** They are maintained by AWS and cover most common scenarios. Custom policies add complexity.
 
