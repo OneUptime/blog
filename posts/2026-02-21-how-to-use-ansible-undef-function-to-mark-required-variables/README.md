@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible undef function to explicitly mark vari
 
 ---
 
-When writing Ansible roles, you sometimes have variables that must be provided by the user and have no sensible default value. Before Ansible 2.12, the common workaround was to either leave them undefined (and hope for a cryptic error later) or use `assert` tasks at the beginning of the role. The `undef` function, introduced in Ansible 2.12, gives you a cleaner way to declare that a variable is required and must be set before the role runs.
+When writing Ansible roles, you sometimes have variables that must be provided by the user and have no sensible default value. Before Ansible 2.12, the common workaround was to either leave them undefined (and hope for a cryptic error later) or use `assert` tasks at the beginning of the role. The `undef` function, introduced in Ansible 2.12, gives you a cleaner way to declare that a variable is required and must be set before the role uses it.
 
 ## The Problem undef Solves
 
@@ -31,7 +31,7 @@ db_password: "CHANGE_ME"  # Still could slip through to production
 
 ## Using undef() for Required Variables
 
-The `undef` function marks a variable as explicitly undefined with a helpful error message. If anyone tries to use the variable without setting it, Ansible fails immediately with your custom message.
+The `undef` function marks a variable as explicitly undefined with a helpful error message. If anyone tries to use the variable without setting it, Ansible fails at that access with your custom message.
 
 ```yaml
 # roles/database/defaults/main.yml - The undef way
@@ -99,6 +99,12 @@ app_deploy_health_check_timeout: 60
 ```yaml
 # roles/app_deploy/tasks/main.yml
 ---
+- name: Create application group
+  ansible.builtin.group:
+    name: "{{ app_deploy_group }}"
+    system: true
+  become: true
+
 - name: Create application user
   ansible.builtin.user:
     name: "{{ app_deploy_user }}"
@@ -207,8 +213,7 @@ If you have been using `assert` tasks to validate required variables, migrating 
   ansible.builtin.assert:
     that:
       - db_password is defined
-      - db_password | length > 0
-    fail_msg: "db_password must be defined and non-empty"
+    fail_msg: "db_password must be defined"
 
 - name: Validate API key
   ansible.builtin.assert:
@@ -220,7 +225,7 @@ If you have been using `assert` tasks to validate required variables, migrating 
 ```yaml
 # After: undef in defaults/main.yml
 ---
-db_password: "{{ undef(hint='db_password must be defined and non-empty') }}"
+db_password: "{{ undef(hint='db_password must be defined') }}"
 api_key: "{{ undef(hint='api_key must be set for this role') }}"
 ```
 
