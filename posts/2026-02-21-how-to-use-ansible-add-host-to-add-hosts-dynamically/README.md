@@ -241,13 +241,13 @@ If you need to add multiple hosts, use a loop:
 
 ## Combining add_host with Delegation
 
-When you want one host to trigger the addition of another, `delegate_to` combined with `add_host` is the pattern you want.
+When discovery has to run on a specific existing host, delegate that discovery task and then feed the registered output to `add_host`. The `add_host` task itself is a controller-side inventory action.
 
 ```yaml
 # delegation.yml - Use delegation with add_host
 ---
 - name: Scale out based on load balancer info
-  hosts: load_balancers
+  hosts: localhost
   gather_facts: false
   tasks:
     - name: Get list of backend servers from LB
@@ -255,6 +255,7 @@ When you want one host to trigger the addition of another, `delegate_to` combine
         cmd: /usr/local/bin/lb-list-backends
       register: backend_list
       changed_when: false
+      delegate_to: lb-primary.example.com
 
     - name: Add each backend to inventory
       ansible.builtin.add_host:
@@ -262,7 +263,6 @@ When you want one host to trigger the addition of another, `delegate_to` combine
         groups: lb_backends
         ansible_user: app
       loop: "{{ backend_list.stdout_lines }}"
-      delegate_to: localhost
 ```
 
 ## Common Mistakes to Avoid
@@ -271,6 +271,6 @@ First, do not forget that `add_host` modifies only the in-memory inventory. Your
 
 Second, make sure SSH connectivity is established before trying to run tasks on dynamically added hosts. If you are provisioning cloud instances, include a `wait_for` task that checks for port 22 availability before moving on to the configuration play.
 
-Third, remember that `add_host` bypasses the normal inventory plugin processing. This means host-specific `group_vars` and `host_vars` directories will not automatically apply to dynamically added hosts. You need to pass all necessary variables directly through the `add_host` call.
+Third, do not rely on dynamically added hosts to have every variable you need unless you have verified how your vars plugins are configured. For newly provisioned hosts, pass critical connection variables such as `ansible_host`, `ansible_user`, and `ansible_ssh_private_key_file` directly through the `add_host` call.
 
 The `add_host` module is essential for any workflow that involves provisioning infrastructure and configuring it in the same playbook run. It bridges the gap between "these hosts do not exist yet" and "now configure them," all within a single automation workflow.
