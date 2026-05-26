@@ -14,10 +14,10 @@ In Terraform, parameter groups are their own resource type. This guide covers cr
 
 ## What Are Parameter Groups
 
-Every RDS instance has two types of parameter groups:
+RDS uses two related types of parameter groups:
 
-- **DB Parameter Group** - controls settings for a single instance (like `max_connections`, `shared_buffers`)
-- **DB Cluster Parameter Group** - controls settings for an Aurora cluster (applies to all instances in the cluster)
+- **DB Parameter Group** - controls settings for a single DB instance (like `max_connections`, `shared_buffers`)
+- **DB Cluster Parameter Group** - controls settings for an Aurora or Multi-AZ DB cluster at the cluster level
 
 Parameters can be either **static** or **dynamic**. Dynamic parameters take effect immediately when changed. Static parameters require a reboot of the instance before they take effect. This distinction matters a lot in Terraform.
 
@@ -32,13 +32,15 @@ resource "aws_db_parameter_group" "postgres" {
   description = "Custom PostgreSQL 16 parameters for myapp"
 
   parameter {
-    name  = "max_connections"
-    value = "200"
+    name         = "max_connections"
+    value        = "200"
+    apply_method = "pending-reboot"
   }
 
   parameter {
-    name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"
+    name         = "shared_buffers"
+    value        = "{DBInstanceClassMemory/4}"
+    apply_method = "pending-reboot"
     # Formula: 25% of instance memory
   }
 
@@ -89,14 +91,15 @@ resource "aws_db_parameter_group" "postgres" {
   # If you don't specify apply_method, it defaults to "immediate"
   # This will FAIL for static parameters
   parameter {
-    name  = "max_connections"
-    value = "200"
-    # max_connections is dynamic in PostgreSQL, so "immediate" is fine
+    name         = "max_connections"
+    value        = "200"
+    apply_method = "pending-reboot"
+    # max_connections is static in PostgreSQL, so a reboot is required
   }
 }
 ```
 
-If you set `apply_method = "immediate"` on a static parameter, Terraform will apply the change but the database will not actually use the new value until the next reboot. This can lead to confusion where Terraform shows no pending changes, but the parameter is not actually in effect.
+If you set `apply_method = "immediate"` on a static parameter, RDS rejects the change because `immediate` is only valid for dynamic parameters. This is why static parameters should use `apply_method = "pending-reboot"` and be applied during a planned restart.
 
 ## Lifecycle Management
 
@@ -114,13 +117,14 @@ resource "aws_db_parameter_group" "postgres" {
   }
 
   parameter {
-    name  = "max_connections"
-    value = "200"
+    name         = "max_connections"
+    value        = "200"
+    apply_method = "pending-reboot"
   }
 }
 ```
 
-Using `name_prefix` with `create_before_destroy` is the recommended pattern. Terraform will create a new parameter group with a unique suffix, attach it to the instance, and then delete the old one.
+Using `name_prefix` with `create_before_destroy` is the recommended pattern. Terraform will create a new parameter group with a unique suffix, update the instance if its `parameter_group_name` references the parameter group resource, and then delete the old one after it is no longer attached.
 
 ## MySQL 8.0 Parameter Group
 
@@ -158,9 +162,9 @@ resource "aws_db_parameter_group" "mysql" {
   }
 
   parameter {
-    name  = "innodb_log_file_size"
-    value = "268435456"
-    # 256MB - larger log files improve write performance
+    name  = "innodb_redo_log_capacity"
+    value = "2147483648"
+    # 2GB - current RDS for MySQL 8.0 minor versions use redo log capacity
   }
 
   parameter {
@@ -230,8 +234,9 @@ resource "aws_db_parameter_group" "postgres16" {
 
   # Memory allocation
   parameter {
-    name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"
+    name         = "shared_buffers"
+    value        = "{DBInstanceClassMemory/4}"
+    apply_method = "pending-reboot"
   }
 
   parameter {
@@ -253,8 +258,9 @@ resource "aws_db_parameter_group" "postgres16" {
 
   # WAL settings
   parameter {
-    name  = "wal_buffers"
-    value = "16384"
+    name         = "wal_buffers"
+    value        = "16384"
+    apply_method = "pending-reboot"
     # 16MB
   }
 
@@ -327,9 +333,13 @@ parameter {
 }
 ```
 
-Available variables in formulas:
+Common variables in formulas:
 - `{DBInstanceClassMemory}` - total memory in bytes
-- `{DBInstanceClassHugePagesMemory}` - memory allocated for huge pages
+- `{DBInstanceVCPU}` - number of vCPUs
+- `{AllocatedStorage}` - allocated storage in bytes
+- `{EndPointPort}` - DB instance port
+- `{TrueIfReplica}` - 1 for a read replica, 0 otherwise
+- `{DBInstanceClassHugePagesDefault}` - Boolean value for Oracle HugePages defaults
 
 ## Attaching to an RDS Instance
 
@@ -347,7 +357,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-When you change a parameter group and apply, RDS will show the instance status as "applying" or "pending-reboot" depending on whether the changed parameters are dynamic or static.
+When you change a parameter group and apply, RDS will show the parameter group status as "applying" or "pending-reboot" depending on whether the changed parameters are dynamic or static.
 
 ## Comparing Current vs Desired Parameters
 
