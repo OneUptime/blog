@@ -19,8 +19,9 @@ SysV init is the traditional initialization system used by Linux distributions b
 Runlevels determine which services start at boot:
 - Runlevel 0: Halt
 - Runlevel 1: Single-user mode
-- Runlevel 2: Multi-user without networking (Debian) or with networking (Red Hat)
+- Runlevel 2: Multi-user mode on Debian-based systems; user-definable on Red Hat Enterprise Linux 6
 - Runlevel 3: Full multi-user with networking
+- Runlevel 4: User-definable
 - Runlevel 5: Multi-user with GUI
 - Runlevel 6: Reboot
 
@@ -28,7 +29,7 @@ Runlevels determine which services start at boot:
 
 The generic `ansible.builtin.service` module auto-detects the init system and delegates to the appropriate backend. So why use `sysvinit` directly?
 
-You would reach for `sysvinit` when you need runlevel-specific control. The generic `service` module has no concept of runlevels. If you need a service enabled only in runlevels 3 and 5 but disabled in 2, you need `sysvinit`.
+You would reach for `sysvinit` when you need SysV runlevel-specific control. The generic `service` module has a `runlevel` option for OpenRC, but it does not expose the SysV `runlevels` list that `sysvinit` provides. If you need a service enabled only in runlevels 3 and 5 but disabled in 2, you need `sysvinit`.
 
 ## Basic Usage
 
@@ -167,8 +168,7 @@ start() {
             return 1
         fi
     fi
-    su -s /bin/bash -c "${APP_BIN} >> ${LOG_FILE} 2>&1 &" "$APP_USER"
-    echo $! > "$PID_FILE"
+    su -s /bin/bash -c "cd '${APP_DIR}' && nohup '${APP_BIN}' >> '${LOG_FILE}' 2>&1 & echo \$!" "$APP_USER" > "$PID_FILE"
     echo "${APP_NAME} started"
 }
 
