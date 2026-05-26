@@ -15,7 +15,7 @@ When you are working on Ansible templates, especially complex ones that generate
 There is an important distinction between two types of comments in a template:
 
 1. **Jinja2 comments** - stripped out during rendering, never appear in the output file
-2. **Output comments** - regular text that uses the target format's comment syntax (like `#` for YAML or `//` for JSON) and shows up in the rendered file
+2. **Output comments** - regular text that uses the target format's comment syntax (like `#` for YAML or `//` for JavaScript) and shows up in the rendered file
 
 Here is a template that uses both:
 
@@ -181,24 +181,24 @@ This is far safer than deleting the code, because it preserves the logic for whe
 
 ## Whitespace and Comments
 
-Jinja2 comments support the same whitespace control modifiers as other Jinja2 tags. If your comments are leaving blank lines in the output, use the dash modifier:
+Jinja2 comments support the same whitespace control modifiers as other Jinja2 tags. If your comments are leaving blank lines in the output, use the dash modifier on the side where you want whitespace removed:
 
 ```jinja2
-{#- This comment strips the preceding whitespace -#}
+{# This comment strips the following newline -#}
 ```
 
 This is useful when you have a comment on its own line and do not want that line to produce a blank line in the output:
 
 ```jinja2
 server {
-{#- Health check location block -#}
+    {# Health check location block -#}
     location /health {
         return 200 "OK";
     }
 }
 ```
 
-Without the dashes, you would get a blank line between `server {` and `location /health {`.
+Without the trailing dash, you may get a blank line between `server {` and `location /health {`, depending on the template environment's whitespace settings. Be careful with a leading dash (`{#-`), because it also strips whitespace before the comment.
 
 ## Best Practices for Jinja2 Comments
 
