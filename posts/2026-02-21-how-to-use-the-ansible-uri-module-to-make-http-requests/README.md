@@ -171,7 +171,7 @@ The `uri` module returns the response in the registered variable. For JSON respo
         msg: "Active servers: {{ servers_response.json.data | selectattr('status', 'equalto', 'active') | list | length }}"
 ```
 
-The `return_content: true` parameter is important when you need to work with the response body. Without it, Ansible only returns metadata like status code and headers.
+The `return_content: true` parameter is important when you need the raw response body in the `content` field. For responses with `Content-Type: application/json`, Ansible still loads the parsed JSON into the `json` field even when `return_content` is not set.
 
 ## Timeouts and Retries
 
@@ -229,6 +229,7 @@ A practical use case is sending deployment notifications:
         body:
           routing_key: "{{ pagerduty_routing_key }}"
           event_action: resolve
+          dedup_key: "maintenance-{{ environment }}"
           payload:
             summary: "Maintenance complete on {{ environment }}"
             source: ansible
