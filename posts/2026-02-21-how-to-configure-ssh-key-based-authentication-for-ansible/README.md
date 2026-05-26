@@ -63,7 +63,7 @@ For many hosts, script it:
 #!/bin/bash
 # distribute_keys.sh - Push SSH key to multiple hosts
 HOSTS="192.168.1.10 192.168.1.11 192.168.1.12 192.168.1.20 192.168.1.21"
-KEY="~/.ssh/ansible_key.pub"
+KEY="$HOME/.ssh/ansible_key.pub"
 USER="ansible"
 
 for host in $HOSTS; do
@@ -78,7 +78,7 @@ If you already have password access, use Ansible to distribute keys:
 
 ```bash
 # Use password auth to push SSH keys (one-time bootstrap)
-ansible all -m authorized_key -a "user=ansible key='{{ lookup(\"file\", \"/home/admin/.ssh/ansible_key.pub\") }}' state=present" \
+ansible all -m ansible.posix.authorized_key -a "user=ansible key='{{ lookup(\"file\", \"/home/admin/.ssh/ansible_key.pub\") }}' state=present" \
   --ask-pass --become
 ```
 
@@ -95,7 +95,7 @@ The cleanest approach is setting it in your Ansible configuration file:
 [defaults]
 remote_user = ansible
 private_key_file = ~/.ssh/ansible_key
-host_key_checking = False
+host_key_checking = True
 
 [ssh_connection]
 ssh_args = -o ControlMaster=auto -o ControlPersist=60s
@@ -156,7 +156,7 @@ Best practice is to create a dedicated user for Ansible on all managed hosts. He
 
     # Deploy the SSH public key
     - name: Add SSH authorized key
-      authorized_key:
+      ansible.posix.authorized_key:
         user: "{{ ansible_user_name }}"
         key: "{{ ansible_public_key }}"
         state: present
@@ -215,7 +215,7 @@ Ansible will automatically use keys loaded in the agent.
 
 In larger organizations, you might have separate keys for different environments:
 
-```ini
+```yaml
 # group_vars/production.yml
 ansible_ssh_private_key_file: ~/.ssh/production_key
 
@@ -243,14 +243,14 @@ Keys should be rotated periodically. Here is a playbook to handle rotation:
   tasks:
     # Add the new key first
     - name: Add new SSH key
-      authorized_key:
+      ansible.posix.authorized_key:
         user: ansible
         key: "{{ new_key }}"
         state: present
 
     # Remove the old key
     - name: Remove old SSH key
-      authorized_key:
+      ansible.posix.authorized_key:
         user: ansible
         key: "{{ old_key }}"
         state: absent
