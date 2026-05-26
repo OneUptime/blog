@@ -18,6 +18,7 @@ I have used this combination to manage dozens of Helm releases across multiple c
 # Install the kubernetes.core collection which includes helm modules
 
 ansible-galaxy collection install kubernetes.core
+ansible-galaxy collection install community.general
 pip install kubernetes
 ```
 
@@ -43,7 +44,7 @@ Make sure your Ansible control node has `helm` and `kubectl` configured with clu
     create_namespace: true
     values: "{{ helm_values }}"
     wait: true
-    wait_timeout: "{{ helm_timeout | default('5m0s') }}"
+    timeout: "{{ helm_timeout | default('5m0s') }}"
     atomic: true
   register: helm_result
 
@@ -136,7 +137,7 @@ helm_releases:
       ansible.builtin.assert:
         that:
           - item.status is defined
-          - item.status.status == 'deployed'
+          - item.status.status | lower == 'deployed'
         fail_msg: "Release {{ item.item.name }} is not in deployed state"
       loop: "{{ release_info.results }}"
       loop_control:
@@ -235,7 +236,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -383,4 +384,4 @@ Here are several practical scenarios where this module proves essential in real-
 
 ## Conclusion
 
-Ansible and Helm together provide a powerful deployment workflow for Kubernetes. Ansible handles the orchestration, variable management, and multi-cluster coordination while Helm handles the Kubernetes resource templating and release management. Define your Helm releases in Ansible inventory variables, use environment-specific values, and let the atomic flag ensure that failed deployments automatically roll back.
+Ansible and Helm together provide a powerful deployment workflow for Kubernetes. Ansible handles the orchestration, variable management, and multi-cluster coordination while Helm handles the Kubernetes resource templating and release management. Define your Helm releases in Ansible inventory variables, use environment-specific values, and let the atomic flag roll back failed upgrades or clean up failed installs.
