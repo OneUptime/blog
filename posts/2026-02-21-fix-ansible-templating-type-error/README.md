@@ -8,7 +8,7 @@ Description: Resolve Ansible templating type errors caused by incorrect Jinja2 f
 
 ---
 
-The "Unexpected templating type error" occurs when Jinja2 template rendering produces a value of a type that Ansible does not expect. This typically happens when a filter returns an unexpected type, or when YAML auto-type detection conflicts with Jinja2 output.
+The "Unexpected templating type error" occurs when Jinja2 template rendering produces a value of a type that Ansible does not expect. This typically happens when a filter receives or returns an unexpected type, or when YAML auto-type detection creates a variable type you did not intend.
 
 ## The Error
 
@@ -22,12 +22,12 @@ fatal: [server1]: FAILED! => {
 
 ### Fix 1: Force String Type
 
-When YAML interprets a template result as the wrong type:
+When a variable is not already a string but the next filter or module option expects one:
 
 ```yaml
-# Problem: YAML auto-detects 'true' as boolean
+# Problem: result is a boolean, but the next step expects text
 
-some_var: "{{ result }}"  # If result is 'true', YAML makes it a boolean
+some_var: "{{ result }}"  # If result is true, Ansible can preserve it as a boolean
 
 # Fix: Force string type with the string filter
 some_var: "{{ result | string }}"
@@ -42,7 +42,7 @@ Undefined or None values cause type errors in filters:
 value: "{{ my_var | upper }}"  # Fails if my_var is undefined or None
 
 # Fix: provide a default value
-value: "{{ my_var | default('') | upper }}"
+value: "{{ my_var | default('', true) | upper }}"
 ```
 
 ### Fix 3: List vs String Confusion
@@ -71,21 +71,21 @@ when: ansible_distribution_major_version | int > 20
 # Problem: accessing a dict key on a non-dict object
 value: "{{ result.key }}"  # Fails if result is not a dict
 
-# Fix: check type first or use default
-value: "{{ result.key | default('N/A') }}"
+# Fix: check type first
+value: "{{ result['key'] if result is mapping and 'key' in result else 'N/A' }}"
 ```
 
 ### Fix 6: YAML Boolean Gotcha
 
 ```yaml
 # Problem: YAML converts certain strings to booleans
-enable_feature: "{{ 'yes' }}"  # YAML turns this into boolean True
+enable_feature: yes  # YAML turns this into boolean True
 
-# Fix: use quotes and the string filter
-enable_feature: "{{ 'yes' | string }}"
-
-# Or use explicit string quoting
+# Fix: use quotes for literal strings
 enable_feature: "yes"
+
+# Or use the string filter when the value comes from a variable
+enable_feature: "{{ feature_value | string }}"
 ```
 
 ## Debugging Tips
@@ -98,16 +98,16 @@ enable_feature: "yes"
 
 ## Summary
 
-Templating type errors happen when Jinja2 and YAML disagree about what type a value should be. The key defenses are: use `| default()` for potentially undefined variables, use `| string` or `| int` for explicit type conversion, and use `| type_debug` to inspect types when debugging. These errors become less frequent as you develop an intuition for how YAML auto-typing interacts with Jinja2 output.
+Templating type errors happen when Jinja2 receives or returns a value whose type does not match the operation being performed. The key defenses are: use `| default()` for potentially undefined variables, use `| string` or `| int` for explicit type conversion, quote YAML strings that look like booleans or numbers, and use `| type_debug` to inspect types when debugging.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -139,7 +139,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -221,7 +221,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -283,4 +283,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
