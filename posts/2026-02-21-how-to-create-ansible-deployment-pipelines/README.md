@@ -252,13 +252,15 @@ Every deployment pipeline needs a rollback plan.
 
     - name: Determine previous release
       set_fact:
-        previous_release: "{{ (releases.files | sort(attribute='mtime') | map(attribute='path') | list)[-2] }}"
-      when: releases.files | length >= 2
+        previous_release: "{{ (releases.files | sort(attribute='mtime') | map(attribute='path') | reject('equalto', current_link.stat.lnk_source | default('')) | list)[-1] }}"
+      when:
+        - releases.files | length >= 2
+        - current_link.stat.islnk | default(false)
 
     - name: Fail if no previous release
       fail:
         msg: "No previous release found to roll back to"
-      when: releases.files | length < 2
+      when: previous_release is not defined
 
     - name: Display rollback target
       debug:
@@ -315,7 +317,7 @@ A dedicated health check playbook for use between deployment stages.
     # Check HTTP health endpoint
     - name: Check application health endpoint
       uri:
-        url: "http://{{ ansible_host }}:8080/health"
+        url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/health"
         status_code: 200
         timeout: 10
       register: health_result
@@ -332,7 +334,7 @@ A dedicated health check playbook for use between deployment stages.
     # Check database connectivity
     - name: Check database connection via app
       uri:
-        url: "http://{{ ansible_host }}:8080/health/db"
+        url: "http://{{ ansible_host | default(inventory_hostname) }}:8080/health/db"
         status_code: 200
         timeout: 10
 
@@ -350,7 +352,7 @@ A dedicated health check playbook for use between deployment stages.
     - name: Health check summary
       debug:
         msg: |
-          Host: {{ ansible_host }}
+          Host: {{ ansible_host | default(inventory_hostname) }}
           HTTP Health: {{ 'OK' if health_result.status == 200 else 'FAIL' }}
           Process: {{ 'Running' if process_check.rc == 0 else 'NOT Running' }}
           Disk Usage: {{ disk_usage.stdout }}%
@@ -382,7 +384,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pip install ansible==8.7.0 ansible-lint
+      - run: pip install ansible==13.7.0 ansible-lint
       - run: ansible-lint playbooks/
       - run: |
           for playbook in playbooks/*.yml; do
@@ -391,12 +393,12 @@ jobs:
 
   deploy-staging:
     needs: validate
-    if: ${{ !inputs.skip_staging }}
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_staging }}
     runs-on: ubuntu-latest
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      - run: pip install ansible==8.7.0
+      - run: pip install ansible==13.7.0
       - run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
@@ -406,7 +408,7 @@ jobs:
           ansible-playbook \
             -i inventory/staging.ini \
             --vault-password-file /tmp/vault.txt \
-            -e "deploy_version=${{ inputs.version || github.sha }}" \
+            -e "deploy_version=${{ github.event_name == 'workflow_dispatch' && inputs.version || github.sha }}" \
             playbooks/deploy.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -425,7 +427,7 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - run: pip install ansible==8.7.0
+      - run: pip install ansible==13.7.0
       - run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
@@ -436,7 +438,7 @@ jobs:
           ansible-playbook \
             -i inventory/production.ini \
             --vault-password-file /tmp/vault.txt \
-            -e "deploy_version=${{ inputs.version || github.sha }}" \
+            -e "deploy_version=${{ github.event_name == 'workflow_dispatch' && inputs.version || github.sha }}" \
             -e "serial_count=1" \
             --limit "webservers[0]" \
             playbooks/deploy.yml
@@ -455,7 +457,7 @@ jobs:
           ansible-playbook \
             -i inventory/production.ini \
             --vault-password-file /tmp/vault.txt \
-            -e "deploy_version=${{ inputs.version || github.sha }}" \
+            -e "deploy_version=${{ github.event_name == 'workflow_dispatch' && inputs.version || github.sha }}" \
             -e "serial_count=25%" \
             playbooks/deploy.yml
         env:
