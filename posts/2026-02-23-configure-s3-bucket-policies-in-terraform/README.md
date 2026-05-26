@@ -138,6 +138,12 @@ data "aws_iam_policy_document" "enforce_ssl" {
       variable = "aws:SecureTransport"
       values   = ["false"]
     }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:PrincipalIsAWSService"
+      values   = ["false"]
+    }
   }
 
   # Deny TLS versions below 1.2
@@ -161,6 +167,12 @@ data "aws_iam_policy_document" "enforce_ssl" {
       test     = "NumericLessThan"
       variable = "s3:TlsVersion"
       values   = ["1.2"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:PrincipalIsAWSService"
+      values   = ["false"]
     }
   }
 }
@@ -253,13 +265,14 @@ resource "aws_s3_bucket_policy" "shared" {
 
 ## VPC Endpoint Restriction
 
-Restrict bucket access to traffic coming through a specific VPC endpoint. This ensures the bucket can only be accessed from within your VPC.
+Restrict bucket access to traffic coming through a specific VPC endpoint. This ensures the bucket can only be accessed through that endpoint.
 
 ```hcl
 # VPC endpoint for S3
 resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.${var.region}.s3"
+  vpc_id          = aws_vpc.main.id
+  service_name    = "com.amazonaws.${var.region}.s3"
+  route_table_ids = [aws_route_table.private.id]
 
   tags = {
     Name = "s3-vpc-endpoint"
@@ -286,7 +299,7 @@ data "aws_iam_policy_document" "vpc_only" {
 
     condition {
       test     = "StringNotEquals"
-      variable = "aws:sourceVpce"
+      variable = "aws:SourceVpce"
       values   = [aws_vpc_endpoint.s3.id]
     }
   }
@@ -359,6 +372,12 @@ data "aws_iam_policy_document" "ip_restricted" {
         "198.51.100.0/24",
       ]
     }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:PrincipalIsAWSService"
+      values   = ["false"]
+    }
   }
 }
 ```
@@ -417,6 +436,12 @@ data "aws_iam_policy_document" "production" {
     condition {
       test     = "Bool"
       variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:PrincipalIsAWSService"
       values   = ["false"]
     }
   }
