@@ -8,14 +8,14 @@ Description: Learn how to use ansible-lint to find and fix deprecated syntax in 
 
 ---
 
-Ansible evolves quickly. Features get deprecated, module names change, and syntax that worked perfectly in Ansible 2.9 might throw warnings or break entirely in Ansible 2.16. If you manage a large collection of playbooks, keeping up with these changes manually is painful. That is where ansible-lint comes in. It can scan your entire codebase and flag every piece of deprecated syntax so you can fix things proactively rather than discovering problems during a production deployment.
+Ansible evolves quickly. Features get deprecated, module names change, and syntax that worked perfectly in Ansible 2.9 might throw warnings or break entirely in newer ansible-core releases. If you manage a large collection of playbooks, keeping up with these changes manually is painful. That is where ansible-lint comes in. It can scan your entire codebase and flag many deprecated or discouraged patterns so you can fix things proactively rather than discovering problems during a production deployment.
 
 ## The Deprecation Problem
 
-Every major Ansible release deprecates old patterns and introduces replacements. Some common examples include:
+Many Ansible releases deprecate old patterns and introduce replacements. Some common examples include:
 
 - The `include` keyword was replaced by `include_tasks` and `import_tasks`
-- Short module names like `yum` should now be `ansible.builtin.yum` (FQCNs)
+- Short module names like `yum` should now be written as `ansible.builtin.yum` (FQCNs) to avoid ambiguity
 - The `sudo` keyword was replaced by `become`
 - Various module parameters get renamed or removed across versions
 
@@ -36,50 +36,47 @@ ansible-lint --version
 
 ## Key Deprecation Rules
 
-ansible-lint includes several rules specifically designed to catch deprecated syntax. Here are the most important ones.
+ansible-lint includes several rules that are useful when cleaning up deprecated and outdated syntax. Here are the most important ones.
 
 ### deprecated-module
 
 This rule catches modules that have been deprecated and will be removed in future Ansible versions.
 
 ```yaml
-# BAD: The 'docker' module was deprecated in favor of community.docker modules
-- name: Start application container
-  docker:
-    name: myapp
-    image: myapp:latest
-    state: started
+# BAD: ansible.netcommon.net_vlan is deprecated
+- name: Configure VLAN ID
+  ansible.netcommon.net_vlan:
+    vlan_id: 20
 
-# GOOD: Use the current community collection module
-- name: Start application container
-  community.docker.docker_container:
-    name: myapp
-    image: myapp:latest
-    state: started
+# GOOD: Use a maintained platform-specific module
+- name: Configure VLAN ID
+  dellemc.enterprise_sonic.sonic_vlans:
+    config:
+      - vlan_id: 20
 ```
 
-### deprecated-command-syntax
+### no-free-form
 
 Older playbooks often use the free-form command syntax which is now discouraged.
 
 ```yaml
 # BAD: Free-form syntax for the command module
-- name: Check disk space
-  command: df -h /var creates=/tmp/disk_checked
+- name: Create a placeholder file
+  ansible.builtin.command: chdir=/tmp touch foo
 
 # GOOD: Explicit parameter syntax is clearer and forward-compatible
-- name: Check disk space
+- name: Create a placeholder file
   ansible.builtin.command:
-    cmd: df -h /var
-    creates: /tmp/disk_checked
+    cmd: touch foo
+    chdir: /tmp
 ```
 
 ### fqcn (Fully Qualified Collection Name)
 
-Starting with Ansible 2.10, modules should use fully qualified collection names. This is one of the biggest changes affecting existing playbooks.
+Starting with Ansible 2.10, collections made fully qualified collection names more important. Short module names still work in many cases, but ansible-lint recommends FQCNs because they make module resolution explicit.
 
 ```yaml
-# BAD: Short module names are deprecated
+# BAD: Short module names are ambiguous
 - name: Install packages
   yum:
     name: httpd
@@ -122,7 +119,7 @@ The `local_action` syntax was replaced by `delegate_to: localhost`.
 
 ## Running Deprecation-Focused Scans
 
-You can target only deprecation rules to get a focused view of what needs updating.
+You can target only deprecation rules to get a focused view of deprecated Ansible features.
 
 ```bash
 # Run only deprecation-related rules
@@ -135,11 +132,21 @@ ansible-lint -t deprecations playbooks/
 ansible-lint -t deprecations roles/ playbooks/
 ```
 
-To see all available deprecation rules, list them.
+If you also want to include modernization rules like FQCN and free-form syntax cleanup, add the relevant rule tags.
+
+```bash
+# Include deprecations plus syntax and formatting cleanup rules
+ansible-lint -t deprecations -t syntax -t formatting playbooks/
+```
+
+To see all available rules and tags, list them.
 
 ```bash
 # List all rules and filter for deprecation-related ones
 ansible-lint -L 2>&1 | grep -i deprecat
+
+# List tags and the rules they select
+ansible-lint -T
 ```
 
 ## Configuration for Deprecation Scanning
@@ -150,12 +157,9 @@ Create an `.ansible-lint` configuration file in your project root to customize t
 # .ansible-lint
 # Focus on deprecation detection across the project
 
-# Enable strict mode to treat warnings as errors
-strict: true
-
-# Specify the Ansible version you are targeting
-# This helps ansible-lint know which deprecations apply
-# mock_modules and mock_roles help with scanning without full dependencies
+# Keep strict mode disabled while FQCN findings are warnings.
+# In CI, enable strict mode once you are ready for warnings to fail the build.
+strict: false
 
 # Paths to scan
 exclude_paths:
@@ -163,12 +167,11 @@ exclude_paths:
   - .git/
   - tests/fixtures/  # Skip test fixtures that intentionally use old syntax
 
-# Enable all deprecation-related rules
-enable_list:
-  - fqcn
-  - deprecated-module
-  - deprecated-command-syntax
-  - deprecated-local-action
+# Focus scans on deprecated syntax plus related modernization findings
+tags:
+  - deprecations
+  - syntax
+  - formatting
 
 # These are warnings you want to track but not block on yet
 warn_list:
@@ -182,7 +185,7 @@ When you first run ansible-lint on a large codebase, the number of deprecation w
 
 ```mermaid
 flowchart TD
-    A[Run ansible-lint -t deprecations] --> B[Export results to JSON]
+    A[Run ansible-lint -t deprecations -t syntax -t formatting] --> B[Export results to JSON]
     B --> C[Categorize by rule type]
     C --> D[FQCN issues]
     C --> E[Deprecated modules]
@@ -200,14 +203,14 @@ Start by exporting the results to JSON so you can analyze the scope of changes n
 
 ```bash
 # Export deprecation findings to a JSON file for analysis
-ansible-lint -t deprecations -f json playbooks/ > deprecation-report.json
+ansible-lint -t deprecations -t syntax -t formatting -f json playbooks/ > deprecation-report.json
 
-# Count issues by rule type using jq
+# Count issues by rule type
 cat deprecation-report.json | python3 -c "
 import json, sys
 from collections import Counter
 data = json.load(sys.stdin)
-counts = Counter(item['rule']['id'] for item in data)
+counts = Counter(item['check_name'] for item in data)
 for rule, count in counts.most_common():
     print(f'{rule}: {count} occurrences')
 "
@@ -290,18 +293,18 @@ jobs:
 
 ## Version-Specific Deprecation Profiles
 
-Different Ansible versions deprecate different things. If you are planning an upgrade, scan against the target version's rules.
+Different Ansible versions deprecate different things. If you are planning an upgrade, run ansible-lint in a clean environment with the ansible-core version you want to evaluate. The ansible-lint project generally recommends using a recent ansible-lint release, even if production runs an older Ansible version.
 
 ```bash
 # Check what will break when upgrading to a specific version
-# Install the ansible-lint version that matches your target Ansible release
+# Install ansible-lint and the ansible-core version you want to test
 
 # Create a virtual environment for testing
 python3 -m venv /tmp/lint-test
 source /tmp/lint-test/bin/activate
 
-# Install the specific version of ansible-lint
-pip install ansible-lint==6.22.0
+# Install current ansible-lint with a target ansible-core version
+pip install --upgrade ansible-lint ansible-core==2.16.14
 
 # Run the scan
 ansible-lint -t deprecations playbooks/
@@ -323,7 +326,7 @@ Sometimes you need to acknowledge a deprecation but cannot fix it immediately, p
 # Or suppress in the config file for project-wide exceptions
 # .ansible-lint
 skip_list:
-  - deprecated-module[specific-module]  # Track as tech debt
+  - deprecated-module  # Track as tech debt
 ```
 
 Always add comments explaining why the suppression exists and when it should be removed. Otherwise these suppressions become permanent and defeat the purpose of deprecation scanning.
@@ -334,11 +337,11 @@ If you are migrating a large codebase, track your progress by running periodic s
 
 ```bash
 # Generate a deprecation count baseline
-ansible-lint -t deprecations -f json playbooks/ 2>/dev/null | \
+ansible-lint -t deprecations -t syntax -t formatting -f json playbooks/ 2>/dev/null | \
   python3 -c "import json,sys; print(len(json.load(sys.stdin)))" > baseline.txt
 
 # After making fixes, compare
-ansible-lint -t deprecations -f json playbooks/ 2>/dev/null | \
+ansible-lint -t deprecations -t syntax -t formatting -f json playbooks/ 2>/dev/null | \
   python3 -c "import json,sys; print(len(json.load(sys.stdin)))" > current.txt
 
 echo "Baseline: $(cat baseline.txt) issues"
