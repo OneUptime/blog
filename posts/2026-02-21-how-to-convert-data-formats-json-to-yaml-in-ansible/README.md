@@ -78,12 +78,12 @@ Going the other direction:
 
 ## Available Conversion Filters
 
-Here is a summary of all the conversion filters:
+Here is a summary of common output conversion filters:
 
 ```yaml
 # playbook-all-conversions.yml
-# Demonstrates all available format conversion filters
-- name: All conversion filters
+# Demonstrates common output format conversion filters
+- name: Common output conversion filters
   hosts: localhost
   gather_facts: false
   vars:
