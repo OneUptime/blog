@@ -44,7 +44,6 @@ curl -X POST "https://awx.example.com/api/v2/job_templates/" \
     "inventory": 1,
     "project": 1,
     "playbook": "playbooks/deploy-web.yml",
-    "credential": 1,
     "verbosity": 0,
     "forks": 5,
     "limit": "",
@@ -53,6 +52,15 @@ curl -X POST "https://awx.example.com/api/v2/job_templates/" \
     "ask_limit_on_launch": true,
     "ask_credential_on_launch": false,
     "become_enabled": true
+  }'
+
+# Associate a credential with the job template
+curl -X POST "https://awx.example.com/api/v2/job_templates/1/credentials/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AWX_TOKEN" \
+  -d '{
+    "associate": true,
+    "id": 1
   }'
 ```
 
@@ -84,7 +92,8 @@ Using the `awx.awx` collection is the best way to manage job templates as code.
         project: "Infrastructure Playbooks"
         playbook: "playbooks/deploy-web.yml"
         inventory: "Production Servers"
-        credential: "SSH Production Key"
+        credentials:
+          - "SSH Production Key"
         job_type: "run"
         verbosity: 0
         forks: 10
@@ -107,7 +116,8 @@ Using the `awx.awx` collection is the best way to manage job templates as code.
         project: "Infrastructure Playbooks"
         playbook: "playbooks/backup-databases.yml"
         inventory: "Database Servers"
-        credential: "SSH Production Key"
+        credentials:
+          - "SSH Production Key"
         job_type: "run"
         forks: 3
         become_enabled: true
@@ -127,7 +137,8 @@ Using the `awx.awx` collection is the best way to manage job templates as code.
         project: "Infrastructure Playbooks"
         playbook: "playbooks/patch-servers.yml"
         inventory: "All Servers"
-        credential: "SSH Production Key"
+        credentials:
+          - "SSH Production Key"
         job_type: "run"
         forks: 5
         become_enabled: true
@@ -258,7 +269,8 @@ Surveys provide a form-based interface for users to input variables at launch ti
     project: "Infrastructure Playbooks"
     playbook: "playbooks/deploy-app.yml"
     inventory: "Production Servers"
-    credential: "SSH Production Key"
+    credentials:
+      - "SSH Production Key"
     survey_enabled: true
     survey_spec:
       name: "Deployment Parameters"
