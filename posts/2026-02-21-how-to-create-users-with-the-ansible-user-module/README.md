@@ -137,7 +137,7 @@ When you need to create multiple users, a loop is much cleaner than repeating th
 
 ## Handling SSH Keys During User Creation
 
-You can also set up SSH authorized keys as part of the user creation process. While the `user` module itself can generate SSH keys (covered in a separate post), you will typically want to deploy existing public keys using the `authorized_key` module alongside the user creation:
+You can also set up SSH authorized keys as part of the user creation process. While the `user` module itself can generate SSH keys (covered in a separate post), you will typically want to deploy existing public keys using the `authorized_key` module from the `ansible.posix` collection alongside the user creation:
 
 ```yaml
 # create-user-with-ssh.yml - Create user and deploy SSH key
@@ -154,7 +154,7 @@ You can also set up SSH authorized keys as part of the user creation process. Wh
     - name: Add SSH authorized key for deployer
       ansible.posix.authorized_key:
         user: deployer
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample deployer@company.com"
+        key: "{{ lookup('file', 'files/deployer.pub') }}"
         state: present
 ```
 
@@ -242,7 +242,7 @@ After creating users, you might want to verify that everything was set up correc
 
     - name: Display user info
       ansible.builtin.debug:
-        msg: "User info: {{ getent_passwd['deploy'] }}"
+        msg: "User info: {{ ansible_facts.getent_passwd['deploy'] }}"
 ```
 
 ## Best Practices
