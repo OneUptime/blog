@@ -42,7 +42,7 @@ clouds:
       project_domain_name: Default
       user_domain_name: Default
       username: admin
-      password: "{{ vault_openstack_password }}"
+      password: "REPLACE_WITH_SECURE_PASSWORD"
     region_name: RegionOne
     identity_api_version: 3
   staging:
@@ -52,7 +52,7 @@ clouds:
       project_domain_name: Default
       user_domain_name: Default
       username: admin
-      password: "{{ vault_openstack_staging_password }}"
+      password: "REPLACE_WITH_SECURE_PASSWORD"
     region_name: RegionOne
     identity_api_version: 3
 ```
@@ -166,6 +166,8 @@ Create users and assign them to projects with appropriate roles.
         user: "{{ item.name }}"
         project: "{{ item.project }}"
         role: "{{ item.role }}"
+        user_domain: Default
+        project_domain: Default
         state: present
       loop: "{{ users }}"
       loop_control:
@@ -291,7 +293,12 @@ Flavors define the compute resource templates available to users.
       openstack.cloud.compute_flavor:
         cloud: "{{ cloud_name }}"
         name: "{{ item.name }}"
+        ram: "{{ item.ram }}"
+        vcpus: "{{ item.vcpus }}"
+        disk: "{{ item.disk }}"
+        is_public: "{{ item.is_public | default(true) }}"
         extra_specs: "{{ item.extra_specs }}"
+        state: present
       loop: "{{ flavors | selectattr('extra_specs', 'defined') | list }}"
       loop_control:
         label: "{{ item.name }}"
@@ -344,7 +351,7 @@ Upload and manage Glance images for your OpenStack cloud.
         min_disk: "{{ item.min_disk }}"
         min_ram: "{{ item.min_ram }}"
         properties: "{{ item.properties }}"
-        is_public: true
+        visibility: public
         state: present
       loop: "{{ images }}"
       loop_control:
@@ -423,7 +430,7 @@ Use Ansible to gather and report on your OpenStack infrastructure state.
 ---
 - name: Audit OpenStack infrastructure
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
 
   vars:
     cloud_name: production
@@ -459,7 +466,7 @@ Use Ansible to gather and report on your OpenStack infrastructure state.
 
 Here is what I have found works well when managing OpenStack with Ansible:
 
-1. **Use clouds.yaml over environment variables.** It is easier to manage multiple OpenStack environments when credentials are in a structured file. Use `ansible-vault` to encrypt the passwords.
+1. **Use clouds.yaml over environment variables.** It is easier to manage multiple OpenStack environments when credentials are in a structured file. Keep `clouds.yaml` out of version control, restrict its file permissions, or generate it from an Ansible Vault-protected template.
 2. **Keep quotas in version control.** When a team asks for more resources, the change should go through a pull request. That gives you an audit trail.
 3. **Create project templates.** Most new projects need the same basic setup: a network, a router, default security groups, and sensible quotas. Wrap this in an Ansible role and apply it every time.
 4. **Schedule image updates.** Run a monthly playbook that downloads the latest cloud images and uploads them to Glance. Old images with known vulnerabilities are a common security gap.
