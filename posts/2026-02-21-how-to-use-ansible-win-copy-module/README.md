@@ -254,7 +254,7 @@ flowchart TD
 
 WinRM file transfers are not the fastest because of the base64 encoding overhead. Here are some practical tips:
 
-- For files over 50 MB, consider using `win_get_url` to download from a file share or HTTP server instead.
+- For files over 50 MB, consider using `win_get_url` to download from an HTTP, HTTPS, or FTP server instead.
 - Use `win_copy` with `remote_src: true` to copy files that already exist on the Windows host to a new location without transferring over the network.
 - When deploying many small files, consider zipping them first, copying the archive, and extracting on the remote host.
 
