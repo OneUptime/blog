@@ -309,6 +309,12 @@ With `replace`, the lists from `additions` overwrite the lists in `base`. With `
         src: nginx.conf.j2
         dest: /etc/nginx/nginx.conf
       notify: Reload Nginx
+
+  handlers:
+    - name: Reload Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
 ```
 
 ## Key Points
