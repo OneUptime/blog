@@ -10,7 +10,7 @@ Description: Learn how to set up ECS Service Connect in Terraform for service-to
 
 When you have multiple ECS services that need to talk to each other, the traditional approach is to use internal load balancers or Cloud Map service discovery. Both work, but they require managing additional infrastructure. ECS Service Connect simplifies this by providing a managed service mesh that handles service-to-service communication, load balancing, and observability without extra ALBs or custom DNS configurations.
 
-Service Connect uses an Envoy proxy sidecar that is automatically injected into your tasks. Your services connect to each other using simple hostnames like `api:8080` or `payment-service:3000`, and the proxy handles the routing, retries, and health checking. This guide covers setting up Service Connect in Terraform from scratch.
+Service Connect uses a managed proxy sidecar that Amazon ECS automatically adds to your tasks. Your services connect to each other using simple hostnames like `api:8080` or `payment-service:3000`, and the proxy handles the routing, retries, and health checking. This guide covers setting up Service Connect in Terraform from scratch.
 
 ## How Service Connect Works
 
@@ -19,7 +19,7 @@ Service Connect has two roles a service can play:
 - **Client and server** - the service both exposes endpoints and connects to other services
 - **Client only** - the service connects to other services but does not expose any endpoints
 
-Each service gets an Envoy proxy sidecar automatically. The proxy intercepts outbound connections and routes them to healthy instances of the target service. You get load balancing, circuit breaking, and connection pooling without writing any code.
+Each Service Connect service gets a managed proxy sidecar automatically. Applications connect to Service Connect endpoint names, and the proxy routes those connections to healthy instances of the target service. You get round-robin load balancing, retries, outlier detection, and connection pooling without writing any code.
 
 ## Setting Up the Namespace
 
@@ -151,7 +151,8 @@ resource "aws_ecs_service" "api" {
 
     # Expose the API service to other services
     service {
-      port_name = "api-http"  # Matches the port mapping name
+      port_name      = "api-http"  # Matches the port mapping name
+      discovery_name = "api"
 
       client_alias {
         port     = 8080
@@ -252,7 +253,8 @@ resource "aws_ecs_service" "payment" {
     namespace = aws_service_discovery_http_namespace.main.arn
 
     service {
-      port_name = "payment-http"
+      port_name      = "payment-http"
+      discovery_name = "payment-service"
 
       client_alias {
         port     = 3000
@@ -313,7 +315,7 @@ resource "aws_ecs_task_definition" "worker" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/worker"
+          "awslogs-group"         = aws_cloudwatch_log_group.worker.name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "worker"
         }
@@ -354,6 +356,11 @@ resource "aws_ecs_service" "worker" {
   tags = {
     Name = "worker-service"
   }
+}
+
+resource "aws_cloudwatch_log_group" "worker" {
+  name              = "/ecs/worker"
+  retention_in_days = 30
 }
 ```
 
@@ -450,7 +457,7 @@ resource "aws_iam_role" "ecs_task" {
 
 ## Service Connect Metrics
 
-Service Connect automatically publishes metrics to CloudWatch. You get request counts, latency, and error rates per service without any instrumentation:
+Service Connect automatically publishes metrics to CloudWatch. You get connection counts, request counts, latency, and HTTP response code counts without any instrumentation:
 
 ```hcl
 # Alarm on high error rate between services
@@ -462,7 +469,7 @@ resource "aws_cloudwatch_metric_alarm" "service_connect_errors" {
 
   metric_query {
     id          = "error_rate"
-    expression  = "errors / total * 100"
+    expression  = "IF(total > 0, errors / total * 100, 0)"
     label       = "Error Rate %"
     return_data = true
   }
@@ -471,12 +478,11 @@ resource "aws_cloudwatch_metric_alarm" "service_connect_errors" {
     id = "errors"
     metric {
       metric_name = "HTTPCode_Target_5XX_Count"
-      namespace   = "AWS/ECS/ManagedScaling"
+      namespace   = "AWS/ECS"
       period      = 60
       stat        = "Sum"
       dimensions = {
-        ClusterName = aws_ecs_cluster.main.name
-        ServiceName = "api"
+        TargetDiscoveryName = "api"
       }
     }
   }
@@ -485,12 +491,11 @@ resource "aws_cloudwatch_metric_alarm" "service_connect_errors" {
     id = "total"
     metric {
       metric_name = "RequestCount"
-      namespace   = "AWS/ECS/ManagedScaling"
+      namespace   = "AWS/ECS"
       period      = 60
       stat        = "Sum"
       dimensions = {
-        ClusterName = aws_ecs_cluster.main.name
-        ServiceName = "api"
+        DiscoveryName = "api"
       }
     }
   }
