@@ -242,8 +242,8 @@ job_template:
         state: stopped
       loop: "{{ shutdown_list }}"
       when: >
-        (ansible_date_time.epoch | int) -
-        (item.launch_time | to_datetime('%Y-%m-%dT%H:%M:%S+00:00')).strftime('%s') | int
+        (now(utc=true) -
+        (item.launch_time | to_datetime('%Y-%m-%dT%H:%M:%S%z'))).total_seconds()
         > (item.tags.AutoShutdown | default(8) | int * 3600)
       loop_control:
         label: "{{ item.tags.Name | default(item.instance_id) }}"
@@ -317,7 +317,7 @@ teams:
   team_leads:
     permissions:
       - template: "Self-Service: Clone Production Database"
-        role: approve
+        role: approval
 ```
 
 ## Summary
