@@ -120,7 +120,9 @@ Omit the `key` parameter to get all entries:
 
     - name: Find users with UID >= 1000 (regular users)
       ansible.builtin.debug:
-        msg: "Regular users: {{ getent_passwd | dict2items | selectattr('value.1', 'ge', '1000') | map(attribute='key') | list }}"
+        msg: "Regular user: {{ item.key }}"
+      loop: "{{ getent_passwd | dict2items }}"
+      when: item.value[1] | int >= 1000
 ```
 
 ## Checking If a User Exists
@@ -137,21 +139,20 @@ One of the most common uses of `getent` is checking whether a user exists before
       ansible.builtin.getent:
         database: passwd
         key: olduser
-      register: user_check
-      failed_when: false
+        fail_key: false
 
     - name: Do something if user exists
       ansible.builtin.debug:
         msg: "User olduser exists with UID {{ getent_passwd['olduser'][1] }}"
-      when: user_check is not failed
+      when: "'olduser' in getent_passwd"
 
     - name: Do something else if user does not exist
       ansible.builtin.debug:
         msg: "User olduser does not exist on {{ inventory_hostname }}"
-      when: user_check is failed
+      when: "'olduser' not in getent_passwd"
 ```
 
-The `failed_when: false` is important. Without it, the task fails if the user does not exist, stopping the playbook.
+The `fail_key: false` is important. Without it, the task fails if the user does not exist, stopping the playbook.
 
 ## Querying Group Information
 
@@ -231,11 +232,11 @@ Combine getent queries to build a comprehensive user audit:
     # Find users with UID >= 1000 (interactive users)
     - name: Identify interactive users
       ansible.builtin.set_fact:
-        interactive_users: >-
-          {{ getent_passwd | dict2items
-             | selectattr('value.1', 'ge', '1000')
-             | rejectattr('key', 'equalto', 'nobody')
-             | map(attribute='key') | list }}
+        interactive_users: "{{ (interactive_users | default([])) + [item.key] }}"
+      loop: "{{ getent_passwd | dict2items }}"
+      when:
+        - item.value[1] | int >= 1000
+        - item.key != 'nobody'
 
     - name: Display interactive users
       ansible.builtin.debug:
@@ -332,11 +333,15 @@ Collect user info from all hosts and compare:
 
     - name: Store regular users as fact
       ansible.builtin.set_fact:
-        host_users: >-
-          {{ getent_passwd | dict2items
-             | selectattr('value.1', 'ge', '1000')
-             | rejectattr('key', 'equalto', 'nobody')
-             | map(attribute='key') | sort | list }}
+        host_users: "{{ (host_users | default([])) + [item.key] }}"
+      loop: "{{ getent_passwd | dict2items }}"
+      when:
+        - item.value[1] | int >= 1000
+        - item.key != 'nobody'
+
+    - name: Sort regular users
+      ansible.builtin.set_fact:
+        host_users: "{{ host_users | default([]) | sort }}"
 
 - name: Report user differences
   hosts: localhost
@@ -349,7 +354,7 @@ Collect user info from all hosts and compare:
 
 ## Best Practices
 
-1. **Use `failed_when: false`** when checking for users that might not exist. Otherwise the playbook stops on missing users.
+1. **Use `fail_key: false`** when checking for users that might not exist. Otherwise the playbook stops on missing users.
 
 2. **Remember the variable naming**. The fact is always `getent_` plus the database name. `getent_passwd`, `getent_group`, `getent_shadow`.
 
