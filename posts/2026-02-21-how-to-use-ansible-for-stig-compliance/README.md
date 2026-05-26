@@ -17,7 +17,7 @@ DISA and the community provide Ansible content for STIGs:
 ```bash
 # Install STIG hardening role
 
-ansible-galaxy install ansible-lockdown.rhel9_stig
+ansible-galaxy role install ansible-lockdown.rhel9_stig
 ```
 
 ```yaml
@@ -38,13 +38,13 @@ ansible-galaxy install ansible-lockdown.rhel9_stig
 ```yaml
 # roles/stig/tasks/authentication.yml
 # STIG authentication controls
-- name: "V-230234 - Set password minimum length"
+- name: "V-230369 - Set password minimum length"
   ansible.builtin.lineinfile:
     path: /etc/security/pwquality.conf
     regexp: '^minlen'
     line: 'minlen = 15'
 
-- name: "V-230235 - Require password complexity"
+- name: "V-230357/V-230358/V-230359/V-230375 - Require password complexity"
   ansible.builtin.lineinfile:
     path: /etc/security/pwquality.conf
     regexp: "^{{ item.key }}"
@@ -55,7 +55,7 @@ ansible-galaxy install ansible-lockdown.rhel9_stig
     - { key: 'lcredit', value: '-1' }
     - { key: 'ocredit', value: '-1' }
 
-- name: "V-230269 - Set account lockout threshold"
+- name: "Set account lockout threshold"
   ansible.builtin.lineinfile:
     path: /etc/security/faillock.conf
     regexp: '^deny'
@@ -65,13 +65,13 @@ ansible-galaxy install ansible-lockdown.rhel9_stig
 ```yaml
 # roles/stig/tasks/audit.yml
 # STIG audit logging requirements
-- name: "V-230386 - Enable auditd"
+- name: "Ensure auditd is enabled"
   ansible.builtin.service:
     name: auditd
     state: started
     enabled: true
 
-- name: "V-230392 - Audit privileged commands"
+- name: "V-230386 - Audit privileged commands"
   ansible.builtin.copy:
     dest: /etc/audit/rules.d/stig.rules
     content: |
@@ -97,12 +97,14 @@ ansible-galaxy install ansible-lockdown.rhel9_stig
       ansible.builtin.command: grep -E '^minlen' /etc/security/pwquality.conf
       register: minlen
       changed_when: false
+      failed_when: false
 
     - name: Assert minimum password length meets STIG
       ansible.builtin.assert:
         that:
-          - "'minlen = 15' in minlen.stdout or (minlen.stdout.split('=')[1] | trim | int) >= 15"
-        fail_msg: "V-230234 FAIL: Password minimum length not set to 15+"
+          - "minlen.rc == 0"
+          - "(minlen.stdout.split('=')[1] | trim | int) >= 15"
+        fail_msg: "V-230369 FAIL: Password minimum length not set to 15+"
 
     - name: Check auditd is running
       ansible.builtin.service_facts:
@@ -111,7 +113,7 @@ ansible-galaxy install ansible-lockdown.rhel9_stig
       ansible.builtin.assert:
         that:
           - ansible_facts.services['auditd.service'].state == 'running'
-        fail_msg: "V-230386 FAIL: auditd is not running"
+        fail_msg: "auditd FAIL: auditd is not running"
 ```
 
 
@@ -157,17 +159,17 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
-- name: Check TLS certificate validity
+- name: Check TLS certificate is not expired
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -checkend 0 -noout -in /etc/ssl/certs/app.pem
+  register: cert_check
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_check.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -190,16 +192,19 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+  ansible.builtin.command: ss -tlnH sport = :{{ item }}
+  register: prohibited_port
   changed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - "(item.stdout | length) == 0"
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port.results }}"
+  loop_control:
+    label: "{{ item.item }}"
 ```
 
 ## Automated Remediation Workflow
