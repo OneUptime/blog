@@ -59,6 +59,13 @@ Create a baseline of file checksums and compare against it on subsequent runs.
   loop: "{{ file_checksums.results }}"
   when: item.stat.exists
 
+- name: Ensure baseline directory exists on the controller
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/baselines"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+
 - name: Save baseline to controller
   ansible.builtin.copy:
     content: "{{ baseline | to_nice_json }}"
@@ -80,13 +87,13 @@ Then on subsequent runs, compare against the baseline.
     path: "{{ item }}"
     checksum_algorithm: sha256
   register: current_checksums
-  loop: "{{ saved_baseline.keys() | list }}"
+  loop: "{{ (saved_baseline | default({})).keys() | list }}"
   when: saved_baseline is defined
 
 - name: Detect changed files
   ansible.builtin.debug:
     msg: "CHANGE DETECTED: {{ item.item }} has been modified!"
-  loop: "{{ current_checksums.results }}"
+  loop: "{{ current_checksums.results | default([]) }}"
   when:
     - saved_baseline is defined
     - item.stat.exists
@@ -152,11 +159,12 @@ Track more than just content changes. File permissions, ownership, and attribute
 - name: Alert on permission changes
   ansible.builtin.debug:
     msg: >
-      SECURITY ALERT: {{ item.0.path }} has mode {{ item.1.stat.mode }}
-      (expected {{ item.0.expected_mode }})
-  loop: "{{ file_properties.results | zip(file_properties.results) | list }}"
-  # Simplified - in practice compare item.0 expected vs item.1 actual
-  when: item.1.stat.mode != item.0.item.expected_mode
+      SECURITY ALERT: {{ item.item.path }} has mode {{ item.stat.mode }}
+      (expected {{ item.item.expected_mode }})
+  loop: "{{ file_properties.results }}"
+  when:
+    - item.stat.exists
+    - item.stat.mode != item.item.expected_mode
 ```
 
 ## Using check_mode for Drift Detection
@@ -206,7 +214,7 @@ Run your entire configuration playbook in check mode to detect drift across all 
 
 ## Scheduled File Monitoring with Cron
 
-Set up a scheduled Ansible run that checks for file changes and sends notifications.
+Set up a scheduled file check that sends notifications.
 
 ```yaml
 # Deploy a monitoring script that runs as a cron job
@@ -267,10 +275,16 @@ Monitor an entire directory tree for modifications.
 ```yaml
 # Create a comprehensive directory snapshot
 - name: Create directory snapshot for comparison
-  ansible.builtin.command:
-    cmd: "find /etc/myapp -type f -exec sha256sum {} +"
+  ansible.builtin.shell:
+    cmd: "find /etc/myapp -type f -exec sha256sum {} \\; | sort"
   register: directory_snapshot
   changed_when: false
+
+- name: Ensure snapshot directory exists
+  ansible.builtin.file:
+    path: /var/lib/snapshots
+    state: directory
+    mode: '0700'
 
 - name: Save snapshot to file
   ansible.builtin.copy:
@@ -287,8 +301,8 @@ Monitor an entire directory tree for modifications.
   ignore_errors: yes
 
 - name: Take current snapshot
-  ansible.builtin.command:
-    cmd: "find /etc/myapp -type f -exec sha256sum {} +"
+  ansible.builtin.shell:
+    cmd: "find /etc/myapp -type f -exec sha256sum {} \\; | sort"
   register: current_snapshot
   changed_when: false
 
@@ -340,19 +354,25 @@ For production-grade file integrity monitoring, deploy AIDE (Advanced Intrusion 
 
 - name: Initialize AIDE database
   ansible.builtin.command:
-    cmd: aide --init
-    creates: /var/lib/aide/aide.db.new
+    cmd: aide --config /etc/aide/aide.conf --init
+    creates: /var/lib/aide/aide.db
 
 - name: Move new database to active
   ansible.builtin.command:
     cmd: mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
     creates: /var/lib/aide/aide.db
 
+- name: Ensure AIDE log directory exists
+  ansible.builtin.file:
+    path: /var/log/aide
+    state: directory
+    mode: '0700'
+
 - name: Schedule daily AIDE check
   ansible.builtin.cron:
     name: "AIDE file integrity check"
     special_time: daily
-    job: "/usr/bin/aide --check >> /var/log/aide/aide-check.log 2>&1"
+    job: "/usr/bin/aide --config /etc/aide/aide.conf --check >> /var/log/aide/aide-check.log 2>&1"
 ```
 
 ## Summary
