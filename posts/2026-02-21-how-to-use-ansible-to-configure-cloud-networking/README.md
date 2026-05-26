@@ -25,7 +25,7 @@ graph TD
     E --> F[Private Subnets - Database]
     C --> G[Load Balancer]
     G --> E
-    subgraph VPC 10.0.0.0/16
+    subgraph VPC["VPC 10.0.0.0/16"]
         C
         E
         F
@@ -59,7 +59,8 @@ graph TD
     - name: Create VPC
       amazon.aws.ec2_vpc_net:
         name: "{{ project }}-{{ env }}-vpc"
-        cidr_block: "{{ vpc_cidr }}"
+        cidr_block:
+          - "{{ vpc_cidr }}"
         region: "{{ aws_region }}"
         dns_support: true
         dns_hostnames: true
@@ -227,7 +228,7 @@ graph TD
   tasks:
     # Create peering connection between production and management VPCs
     - name: Create VPC peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         vpc_id: "{{ prod_vpc_id }}"
         peer_vpc_id: "{{ mgmt_vpc_id }}"
         region: "{{ aws_region }}"
@@ -238,7 +239,7 @@ graph TD
 
     # Accept the peering connection
     - name: Accept VPC peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         peering_id: "{{ peering.peering_id }}"
         region: "{{ aws_region }}"
         state: accept
@@ -284,7 +285,8 @@ graph TD
       azure.azcollection.azure_rm_virtualnetwork:
         resource_group: "{{ resource_group }}"
         name: "{{ project }}-{{ env }}-vnet"
-        address_prefixes: "10.1.0.0/16"
+        address_prefixes:
+          - "10.1.0.0/16"
         state: present
 
     # Create subnets
@@ -315,7 +317,7 @@ graph TD
         address_prefix_cidr: "10.1.2.0/24"
         delegations:
           - name: db-delegation
-            serviceName: Microsoft.DBforPostgreSQL/flexibleServers
+            serviceName: Microsoft.Sql/managedInstances
         state: present
 
     # Create Network Security Groups
@@ -395,7 +397,7 @@ graph TD
         service_account_file: "{{ gcp_service_account_file }}"
         state: present
 
-    # Create Cloud NAT for private instances
+    # Create Cloud Router for later NAT or VPN configuration
     - name: Create Cloud Router
       google.cloud.gcp_compute_router:
         name: myapp-router
@@ -410,7 +412,7 @@ graph TD
 
 ## Security Group Management
 
-Security groups are the primary network security tool across all providers.
+Security groups and their provider-specific equivalents are the primary network security tools across cloud providers.
 
 ```yaml
 # playbooks/security-groups.yml
@@ -423,22 +425,22 @@ Security groups are the primary network security tool across all providers.
     security_rules:
       web:
         ingress:
-          - { port: 80, source: "0.0.0.0/0", description: "HTTP" }
-          - { port: 443, source: "0.0.0.0/0", description: "HTTPS" }
+          - { proto: tcp, ports: 80, cidr_ip: "0.0.0.0/0", rule_desc: "HTTP" }
+          - { proto: tcp, ports: 443, cidr_ip: "0.0.0.0/0", rule_desc: "HTTPS" }
         egress:
-          - { port: "all", destination: "0.0.0.0/0", description: "All outbound" }
+          - { proto: all, cidr_ip: "0.0.0.0/0", rule_desc: "All outbound" }
       app:
         ingress:
-          - { port: 8080, source: "10.0.0.0/24", description: "From web tier" }
-          - { port: 22, source: "10.0.100.0/24", description: "SSH from bastion" }
+          - { proto: tcp, ports: 8080, cidr_ip: "10.0.0.0/24", rule_desc: "From web tier" }
+          - { proto: tcp, ports: 22, cidr_ip: "10.0.100.0/24", rule_desc: "SSH from bastion" }
         egress:
-          - { port: 5432, destination: "10.0.20.0/24", description: "To database" }
-          - { port: 443, destination: "0.0.0.0/0", description: "HTTPS out" }
+          - { proto: tcp, ports: 5432, cidr_ip: "10.0.20.0/24", rule_desc: "To database" }
+          - { proto: tcp, ports: 443, cidr_ip: "0.0.0.0/0", rule_desc: "HTTPS out" }
       database:
         ingress:
-          - { port: 5432, source: "10.0.10.0/24", description: "PostgreSQL from app" }
+          - { proto: tcp, ports: 5432, cidr_ip: "10.0.10.0/24", rule_desc: "PostgreSQL from app" }
         egress:
-          - { port: 443, destination: "0.0.0.0/0", description: "Updates only" }
+          - { proto: tcp, ports: 443, cidr_ip: "0.0.0.0/0", rule_desc: "Updates only" }
 
   tasks:
     # Create AWS security groups
@@ -448,7 +450,8 @@ Security groups are the primary network security tool across all providers.
         description: "{{ item.key }} tier security group"
         vpc_id: "{{ vpc_id }}"
         region: "{{ aws_region }}"
-        rules: "{{ item.value.ingress | map('combine', {'proto': 'tcp'}) | list }}"
+        rules: "{{ item.value.ingress }}"
+        rules_egress: "{{ item.value.egress }}"
         state: present
       loop: "{{ security_rules | dict2items }}"
       loop_control:
