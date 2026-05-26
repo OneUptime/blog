@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -186,9 +186,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Assert LUKS encryption is enabled
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted volumes were detected"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -197,7 +203,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
   ansible.builtin.assert:
     that:
       - cert_dates.rc == 0
-    fail_msg: "TLS certificate check failed"
+    fail_msg: "TLS certificate is expired or could not be checked"
     success_msg: "TLS certificate is valid"
 ```
 
@@ -218,17 +224,26 @@ The most effective approach is creating a dedicated compliance role with tasks o
       - "'Status: active' in firewall_status.stdout"
     fail_msg: "Firewall is not active"
 
-- name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+- name: Check for prohibited listening ports
+  ansible.builtin.command:
+    argv:
+      - ss
+      - -H
+      - -tln
+      - sport
+      - "="
+      - ":{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  failed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout == ""
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
@@ -343,6 +358,11 @@ The real power of compliance automation is combining detection with remediation:
       ansible.builtin.set_fact:
         checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
       when: pwquality.rc == 0
+
+    - name: Record password failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['Password minimum length NOT configured'] }}"
+      when: pwquality.rc != 0
 
     - name: Print compliance summary
       ansible.builtin.debug:
