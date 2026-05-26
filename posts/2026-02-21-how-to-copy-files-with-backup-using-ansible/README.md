@@ -137,7 +137,7 @@ Since you know where the backup file is, you can build a rollback task:
 
     - name: Fail the play if rollback was needed
       ansible.builtin.fail:
-        msg: "Nginx config validation failed. Rolled back to previous version."
+        msg: "Nginx config validation failed. Rolled back when a previous backup was available."
       when: nginx_test.rc != 0
 
     - name: Reload Nginx with new config
@@ -187,10 +187,14 @@ For a more thorough cleanup, look for the tilde-suffixed backup pattern:
   ansible.builtin.debug:
     msg: "Found {{ all_backups.matched }} backup files consuming {{ all_backups.files | map(attribute='size') | sum | human_readable }}"
 
-# Keep only the 3 most recent backups per original file
-- name: Group backups by original filename
-  ansible.builtin.set_fact:
-    backup_groups: "{{ all_backups.files | groupby('path | regex_replace(\"\\\\.[0-9T@:~-]+$\", \"\")') }}"
+# Keep only the 3 most recent backup files in this directory
+- name: Remove older backup files beyond the 3 most recent
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (all_backups.files | sort(attribute='mtime', reverse=true) | list)[3:] }}"
+  loop_control:
+    label: "{{ item.path }}"
 ```
 
 ## A Cleanup Role for Backup Files
@@ -353,11 +357,20 @@ Here is a production-ready workflow that deploys, validates, and reports on chan
         - app_check.rc != 0
         - config_deploy.backup_file is defined
 
+    - name: Fail if application check failed without a backup
+      ansible.builtin.fail:
+        msg: "Application check failed and no previous backup was available: {{ app_check.stderr }}"
+      when:
+        - app_check.rc != 0
+        - config_deploy.backup_file is not defined
+
     - name: Restart application with new config
       ansible.builtin.systemd:
         name: myapp
         state: restarted
-      when: config_deploy.changed
+      when:
+        - config_deploy.changed
+        - app_check.rc == 0
 ```
 
 ## Summary
