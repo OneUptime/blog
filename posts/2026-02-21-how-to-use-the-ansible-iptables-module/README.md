@@ -195,10 +195,9 @@ Open a range of ports with a single rule:
   ansible.builtin.iptables:
     chain: INPUT
     protocol: tcp
-    destination_ports: "8000:8010"
+    destination_ports:
+      - "8000:8010"
     jump: ACCEPT
-    match:
-      - multiport
     comment: "Allow app ports 8000-8010"
 
 - name: Allow specific non-contiguous ports
@@ -211,8 +210,6 @@ Open a range of ports with a single rule:
       - "8080"
       - "8443"
     jump: ACCEPT
-    match:
-      - multiport
     comment: "Allow web ports"
 ```
 
