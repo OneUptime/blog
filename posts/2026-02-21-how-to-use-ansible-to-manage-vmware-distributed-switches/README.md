@@ -198,6 +198,7 @@ Port groups on a dvSwitch are configured once and available to all connected hos
         port_binding: static
         state: present
         network_policy:
+          inherited: false
           promiscuous: false
           forged_transmits: false
           mac_changes: false
@@ -234,6 +235,9 @@ Uplink policies determine how traffic is distributed across physical NICs and ho
       #          loadbalance_loadbased, failover_explicit
       load_balance_policy: loadbalance_loadbased
       # Use all uplinks actively
+      active_uplinks:
+        - Uplink1
+        - Uplink2
       inbound_policy: true
       notify_switches: true
       rolling_order: false
@@ -271,11 +275,11 @@ Get details about existing dvSwitches for auditing or troubleshooting.
     - name: Display dvSwitch configuration
       ansible.builtin.debug:
         msg: >
-          Switch: {{ dvs_info.distributed_virtual_switches[0].name }}
-          Version: {{ dvs_info.distributed_virtual_switches[0].version }}
-          MTU: {{ dvs_info.distributed_virtual_switches[0].mtu }}
-          Uplinks: {{ dvs_info.distributed_virtual_switches[0].uplink_portgroup }}
-          Hosts: {{ dvs_info.distributed_virtual_switches[0].hosts | length }}
+          Switch: {{ dvs_info.distributed_virtual_switches[0].configure.settings.properties.general.name }}
+          Version: {{ dvs_info.distributed_virtual_switches[0].configure.settings.properties.general.version }}
+          MTU: {{ dvs_info.distributed_virtual_switches[0].configure.settings.properties.advanced.maxMtu }}
+          Uplinks: {{ dvs_info.distributed_virtual_switches[0].configure.settings.properties.general.numUplinks }}
+          Hosts: {{ dvs_info.distributed_virtual_switches[0].configure.hosts | length }}
       when: dvs_info.distributed_virtual_switches | length > 0
 
     # Get port group details on the dvSwitch
@@ -283,6 +287,7 @@ Get details about existing dvSwitches for auditing or troubleshooting.
       community.vmware.vmware_dvs_portgroup_info:
         datacenter: "DC01"
         dvswitch: "DSwitch-Production"
+        show_vlan_info: true
       register: dpg_info
 
     - name: Display port groups
@@ -298,25 +303,32 @@ Network I/O Control (NIOC) on a dvSwitch lets you prioritize different traffic t
 ```yaml
 # configure-nioc.yml
 - name: Configure network resource pools on the dvSwitch
-  community.vmware.vmware_dvswitch:
+  community.vmware.vmware_dvswitch_nioc:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    datacenter: "DC01"
     switch: "DSwitch-Production"
-    # Enable Network I/O Control
-    network_policy:
+    version: version3
+    resources:
       # These resource allocations help prioritize traffic
       # when the physical links are saturated
-      vmotion:
+      - name: vmotion
         shares_level: high
-      virtual_machine:
+        limit: -1
+        reservation: 0
+      - name: virtualMachine
         shares_level: high
-      iscsi:
+        limit: -1
+        reservation: 0
+      - name: iSCSI
         shares_level: high
-      management:
+        limit: -1
+        reservation: 0
+      - name: management
         shares_level: normal
+        limit: -1
+        reservation: 0
     state: present
 ```
 
@@ -380,6 +392,7 @@ Here is a complete playbook that sets up a dvSwitch from scratch.
         port_binding: static
         state: present
         network_policy:
+          inherited: false
           promiscuous: false
           forged_transmits: false
           mac_changes: false
