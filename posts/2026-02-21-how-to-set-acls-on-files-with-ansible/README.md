@@ -62,13 +62,13 @@ For example, a file owned by `root:root` with mode 640 normally only allows root
 ACLs can be applied recursively to all files and directories within a path.
 
 ```yaml
-# Grant the monitoring group read access to all files in the log directory
+# Grant the monitoring group read/search access through the log directory
 - name: Set recursive ACL on log directory
   ansible.posix.acl:
     path: /var/log/myapp
     entity: monitoring
     etype: group
-    permissions: rx
+    permissions: rX
     recursive: yes
     state: present
 ```
@@ -78,7 +78,7 @@ ACLs can be applied recursively to all files and directories within a path.
 Default ACLs are set on directories and are inherited by new files and subdirectories created within them. This is extremely useful for shared directories where you want consistent permissions.
 
 ```yaml
-# Set a default ACL so new files in /shared inherit devops group read access
+# Set a default ACL so new entries in /opt/shared inherit a devops group ACL
 - name: Set default ACL on shared directory
   ansible.posix.acl:
     path: /opt/shared
@@ -89,7 +89,7 @@ Default ACLs are set on directories and are inherited by new files and subdirect
     state: present
 ```
 
-New files created in `/opt/shared` will automatically have an ACL entry granting the `devops` group rwx access. Without default ACLs, new files would only get standard permissions.
+New entries created in `/opt/shared` will inherit an ACL entry for the `devops` group. For regular files, the final permissions are still limited by the mode used when the file is created, so execute permission is usually not added unless the creating process requests it. Without default ACLs, new files would only get standard permissions.
 
 ```yaml
 # Set both regular and default ACLs for a shared project directory
@@ -127,7 +127,7 @@ Use loops to apply multiple ACL entries to the same path.
     state: present
   loop:
     - { entity: devops, etype: group, permissions: rwx, recursive: yes }
-    - { entity: monitoring, etype: group, permissions: rx, recursive: yes }
+    - { entity: monitoring, etype: group, permissions: rX, recursive: yes }
     - { entity: auditor, etype: user, permissions: r, recursive: yes }
     - { entity: deploy, etype: user, permissions: rwx, recursive: yes }
 ```
@@ -183,7 +183,7 @@ Here is a full role that sets up a shared project directory with proper ACLs.
     group: root
     mode: '0770'
 
-- name: Set group sticky bit on shared directory
+- name: Set setgid bit on shared directory
   ansible.builtin.file:
     path: "{{ shared_dir }}"
     mode: '2770'
