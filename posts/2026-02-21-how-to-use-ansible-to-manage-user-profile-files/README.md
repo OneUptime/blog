@@ -178,7 +178,7 @@ The `blockinfile` approach is nice because it leaves everything else in the file
 
 ## Approach 3: Managing .bash_aliases Separately
 
-Keeping aliases in a separate file is cleaner and avoids touching `.bashrc` at all.
+Keeping aliases in a separate file is cleaner and keeps alias definitions out of `.bashrc`.
 
 ```yaml
 # manage_aliases.yml - Deploy a separate .bash_aliases file
@@ -241,7 +241,7 @@ alias {{ alias.name }}='{{ alias.command }}'
 
 ## Managing System-Wide Profile Files
 
-For changes that should apply to every user on a system, modify the system-wide profile files.
+For changes that should apply to login shell environments system-wide, use the system-wide profile files.
 
 ```yaml
 # system_profile.yml - Manage system-wide profile settings
@@ -255,9 +255,9 @@ For changes that should apply to every user on a system, modify the system-wide 
       ansible.builtin.copy:
         content: |
           # Managed by Ansible - system-wide environment settings
-          export COMPANY_ENV="{{ env_name | default('production') }}"
-          export LOG_LEVEL="{{ log_level | default('info') }}"
-          export TZ="{{ timezone | default('UTC') }}"
+          export COMPANY_ENV="production"
+          export LOG_LEVEL="info"
+          export TZ="UTC"
         dest: /etc/profile.d/company-env.sh
         owner: root
         group: root
@@ -276,7 +276,7 @@ For changes that should apply to every user on a system, modify the system-wide 
         mode: '0644'
 ```
 
-Using `/etc/profile.d/` is the cleanest approach for system-wide settings because you drop in a file rather than editing existing configuration.
+Using `/etc/profile.d/` is the cleanest approach for system-wide login shell settings on distributions that source it because you drop in a file rather than editing existing configuration.
 
 ## Per-Environment Configuration
 
