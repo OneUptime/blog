@@ -71,7 +71,7 @@ Use the `ldap_entry` module to create a user entry in the directory:
         state: present
 ```
 
-Each LDAP attribute maps to a user property. The `objectClass` list defines what attributes are available. The `posixAccount` class provides Unix-specific attributes like `uidNumber` and `homeDirectory`.
+Each LDAP attribute maps to a user property. The `objectClass` list defines what attributes are available. The `posixAccount` class provides Unix-specific attributes like `uidNumber` and `homeDirectory`. The `ldap_entry` module uses these attributes when it creates a new entry; use `ldap_attrs` later if you need to enforce or change attributes on an existing entry.
 
 ## Creating Multiple LDAP Users
 
@@ -169,14 +169,14 @@ The `state: exact` parameter means the attribute value will be set to exactly wh
 
 ## Setting LDAP User Passwords
 
-Password management in LDAP requires generating the appropriate hash:
+Password management in LDAP can use the `ldap_passwd` module to set the plaintext password through LDAP. Use TLS or LDAPS when sending passwords:
 
 ```yaml
 # set-ldap-password.yml - Set LDAP user password
 - name: Set LDAP user password
   hosts: ldap_servers
   tasks:
-    # Generate SSHA hash and set password
+    # Set the password through LDAP
     - name: Set password for alice
       community.general.ldap_passwd:
         dn: "uid=alice,ou=People,dc=example,dc=com"
@@ -296,6 +296,7 @@ Beyond managing LDAP entries, you also need to configure servers to authenticate
           auth_provider = ldap
           ldap_uri = ldap://ldap.example.com
           ldap_search_base = dc=example,dc=com
+          ldap_id_use_start_tls = true
           ldap_tls_reqcert = demand
           ldap_tls_cacert = /etc/ssl/certs/ca-certificates.crt
           cache_credentials = true
@@ -350,6 +351,7 @@ Query LDAP to find users matching certain criteria:
     - name: Search for all users in engineering
       community.general.ldap_search:
         dn: "ou=People,dc=example,dc=com"
+        scope: children
         filter: "(&(objectClass=posixAccount)(departmentNumber=Engineering))"
         attrs:
           - uid
