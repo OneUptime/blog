@@ -12,12 +12,12 @@ When you are writing Ansible playbooks that need to interact with services, you 
 
 ## What Does service_facts Do?
 
-The `service_facts` module queries the service manager on the target host and populates the `ansible_facts.services` dictionary with details about every service it finds. It works across init systems, pulling data from systemd, SysV init, and other service managers.
+The `service_facts` module queries the service manager on the target host and populates the `ansible_facts.services` dictionary with details about every service it finds. It works across supported init systems, including systemd, SysV init, upstart, OpenRC, and AIX SRC.
 
 Each service entry includes:
 - The service name
 - Its current state (running, stopped, etc.)
-- Whether it is enabled at boot
+- Whether it is enabled at boot, when that status is available
 - The service manager type (systemd, sysv, etc.)
 
 ## Basic Usage
@@ -90,7 +90,9 @@ Only configure Nginx if it is installed and running:
       ansible.builtin.template:
         src: nginx.conf.j2
         dest: /etc/nginx/nginx.conf
-      when: "'nginx.service' in ansible_facts.services"
+      when:
+        - "'nginx.service' in ansible_facts.services"
+        - "ansible_facts.services['nginx.service']['state'] == 'running'"
       notify: Restart Nginx
 
     - name: Install Nginx if not present
@@ -101,7 +103,7 @@ Only configure Nginx if it is installed and running:
 
   handlers:
     - name: Restart Nginx
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: nginx
         state: restarted
 ```
@@ -118,15 +120,16 @@ Check if a specific service is running and enabled:
 
 - name: Check PostgreSQL state
   ansible.builtin.debug:
-    msg: "PostgreSQL is {{ ansible_facts.services['postgresql.service']['state'] }}"
+    msg: "PostgreSQL is {{ ansible_facts.services['postgresql.service']['state'] }} and {{ ansible_facts.services['postgresql.service']['status'] }}"
   when: "'postgresql.service' in ansible_facts.services"
 
-- name: Fail if PostgreSQL is not running
+- name: Fail if PostgreSQL is not running and enabled
   ansible.builtin.fail:
-    msg: "PostgreSQL must be running before we proceed!"
+    msg: "PostgreSQL must be running and enabled before we proceed!"
   when: >
     'postgresql.service' not in ansible_facts.services or
-    ansible_facts.services['postgresql.service']['state'] != 'running'
+    ansible_facts.services['postgresql.service']['state'] != 'running' or
+    ansible_facts.services['postgresql.service']['status'] != 'enabled'
 ```
 
 ## Filtering Services by State
@@ -206,7 +209,7 @@ Check for and report unauthorized services:
       when: found_prohibited | length > 0
 
     - name: Stop prohibited services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: stopped
         enabled: no
@@ -261,7 +264,7 @@ Choose firewall management based on which service is present:
   ansible.builtin.service_facts:
 
 - name: Configure firewalld
-  ansible.builtin.firewalld:
+  ansible.posix.firewalld:
     port: "8080/tcp"
     permanent: yes
     state: enabled
