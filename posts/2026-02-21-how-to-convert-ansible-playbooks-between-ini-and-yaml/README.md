@@ -1,4 +1,4 @@
-# How to Convert Ansible Playbooks Between INI and YAML
+# How to Convert Ansible Inventories Between INI and YAML
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Convert Ansible inventory files between INI and YAML formats with p
 
 ---
 
-Ansible supports two inventory formats: the traditional INI format and the YAML format. Each has its strengths, and you may need to convert between them when standardizing your project or migrating to a new structure.
+Ansible supports both the traditional INI inventory format and the YAML inventory format. Each has its strengths, and you may need to convert between them when standardizing your project or migrating to a new structure.
 
 ## INI Format Overview
 
@@ -67,15 +67,26 @@ all:
 #!/usr/bin/env python3
 # scripts/ini_to_yaml.py
 # Convert Ansible INI inventory to YAML format
-import configparser
 import yaml
 import sys
 import re
+import shlex
+import ast
 
 def parse_ini_inventory(filepath):
-    inventory = {'all': {'children': {}, 'hosts': {}}}
+    groups = {}
+    child_groups = set()
     current_section = None
     section_type = None
+
+    def ensure_group(name):
+        return groups.setdefault(name, {'hosts': {}, 'vars': {}, 'children': []})
+
+    def parse_inline_value(value):
+        try:
+            return ast.literal_eval(value)
+        except (ValueError, SyntaxError):
+            return value
 
     with open(filepath) as f:
         for line in f:
@@ -96,30 +107,50 @@ def parse_ini_inventory(filepath):
                 else:
                     current_section = section
                     section_type = 'hosts'
-                    if current_section not in inventory['all']['children']:
-                        inventory['all']['children'][current_section] = {'hosts': {}, 'vars': {}}
+                    ensure_group(current_section)
                 continue
 
             if current_section and section_type == 'hosts':
-                parts = line.split()
+                parts = shlex.split(line)
                 hostname = parts[0]
                 host_vars = {}
                 for part in parts[1:]:
                     if '=' in part:
                         key, value = part.split('=', 1)
-                        host_vars[key] = value
-                inventory['all']['children'][current_section]['hosts'][hostname] = host_vars
+                        host_vars[key] = parse_inline_value(value)
+                ensure_group(current_section)['hosts'][hostname] = host_vars
 
             elif current_section and section_type == 'vars':
                 if '=' in line:
                     key, value = line.split('=', 1)
-                    inventory['all']['children'][current_section].setdefault('vars', {})[key.strip()] = value.strip()
+                    ensure_group(current_section).setdefault('vars', {})[key.strip()] = value.strip()
 
             elif current_section and section_type == 'children':
                 child_name = line.strip()
-                inventory['all']['children'].setdefault(current_section, {}).setdefault('children', {})[child_name] = {}
+                ensure_group(current_section)['children'].append(child_name)
+                ensure_group(child_name)
+                child_groups.add(child_name)
 
-    return inventory
+    def build_group(name):
+        group = groups[name]
+        result = {}
+        if group['hosts']:
+            result['hosts'] = group['hosts']
+        if group['vars']:
+            result['vars'] = group['vars']
+        if group['children']:
+            result['children'] = {child: build_group(child) for child in group['children']}
+        return result
+
+    return {
+        'all': {
+            'children': {
+                name: build_group(name)
+                for name in groups
+                if name not in child_groups
+            }
+        }
+    }
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -132,14 +163,14 @@ if __name__ == '__main__':
 
 ## Key Differences
 
-The INI format is flatter and uses sections. YAML is hierarchical and supports nested structures natively. INI variables are always strings, while YAML can represent integers, booleans, and lists. When converting, remember to quote version numbers and values that look like booleans in YAML.
+The INI format is flatter and uses sections. YAML is hierarchical and supports nested structures natively. INI inventory variables are interpreted differently depending on where they are declared: inline host variables are parsed as Python literals, while variables in `:vars` sections are interpreted as strings. YAML can represent integers, booleans, and lists consistently. When converting, remember to quote version numbers and values that look like booleans in YAML if they should remain strings.
 
 ```yaml
-# INI: version=1.0 (string)
+# INI :vars section: version=1.0 (string)
 # YAML: quote it to prevent float interpretation
 version: "1.0"
 
-# INI: enabled=yes (string "yes")
+# INI :vars section: enabled=yes (string "yes")
 # YAML: quote it to prevent boolean interpretation
 enabled: "yes"
 ```
@@ -147,12 +178,12 @@ enabled: "yes"
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where inventory conversion proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using converted inventory
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -184,7 +215,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -266,7 +297,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in playbooks that use the converted inventory
 - name: Robust task execution
   hosts: all
   tasks:
@@ -333,4 +364,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 Converting between INI and YAML formats is straightforward for simple inventories. YAML provides more flexibility for complex hierarchies and typed values, while INI is simpler for flat host lists. The migration script handles the basic conversion, but you should review the output to ensure version numbers are quoted and boolean strings are handled correctly.
-
