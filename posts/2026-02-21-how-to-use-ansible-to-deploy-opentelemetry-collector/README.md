@@ -22,7 +22,7 @@ flowchart LR
     B[Prometheus Receiver :8888] --> D
     C[Jaeger Receiver :14250] --> D
     D --> E[Exporter: Prometheus]
-    D --> F[Exporter: Jaeger]
+    D --> F[Exporter: Debug]
     D --> G[Exporter: OTLP/gRPC]
 ```
 
@@ -55,7 +55,7 @@ otel-collector/
 
 # Use the "contrib" distribution for more receivers/exporters
 otel_collector_distribution: "otelcol-contrib"
-otel_collector_version: "0.91.0"
+otel_collector_version: "0.153.0"
 otel_collector_platform: "linux_amd64"
 
 # System user
@@ -120,15 +120,15 @@ otel_exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
     namespace: "otel"
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 # Pipeline configuration
 otel_pipelines:
   traces:
     receivers: ["otlp"]
     processors: ["memory_limiter", "batch"]
-    exporters: ["otlp", "logging"]
+    exporters: ["otlp", "debug"]
   metrics:
     receivers: ["otlp", "hostmetrics", "prometheus"]
     processors: ["memory_limiter", "resource", "batch"]
@@ -136,7 +136,7 @@ otel_pipelines:
   logs:
     receivers: ["otlp"]
     processors: ["memory_limiter", "batch"]
-    exporters: ["logging"]
+    exporters: ["debug"]
 
 # Extensions
 otel_extensions:
@@ -313,7 +313,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 ## Systemd Service Template
@@ -415,4 +420,4 @@ curl http://localhost:8889/metrics  # Prometheus exporter
 
 ## Summary
 
-The OpenTelemetry Collector is a forward-looking choice for observability because it supports all three pillars (traces, metrics, logs) in a single agent. The Ansible role in this post handles the full deployment lifecycle: binary installation with version management, YAML configuration with pipeline definitions, and systemd integration. The pipeline-based configuration model lets you mix and match receivers, processors, and exporters to fit your exact observability stack, whether you use Jaeger for traces, Prometheus for metrics, or an all-in-one platform.
+The OpenTelemetry Collector is a forward-looking choice for observability because it supports all three pillars (traces, metrics, logs) in a single agent. The Ansible role in this post handles the full deployment lifecycle: binary installation with version management, YAML configuration with pipeline definitions, and systemd integration. The pipeline-based configuration model lets you mix and match receivers, processors, and exporters to fit your exact observability stack, whether you send OTLP traces to a Jaeger-compatible backend, use Prometheus for metrics, or use an all-in-one platform.
