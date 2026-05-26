@@ -44,7 +44,7 @@ The `name` parameter is important: it is used as a unique identifier for the cro
 | `month` | `*` | Month (1-12) |
 | `weekday` | `*` | Day of week (0-7, where 0 and 7 are Sunday) |
 | `job` | none | The command to run |
-| `user` | root | User whose crontab to manage |
+| `user` | current user | User whose crontab to manage |
 | `state` | present | `present` or `absent` |
 | `special_time` | none | `reboot`, `hourly`, `daily`, `weekly`, `monthly`, `yearly`, `annually` |
 | `cron_file` | none | Custom cron file in /etc/cron.d/ |
