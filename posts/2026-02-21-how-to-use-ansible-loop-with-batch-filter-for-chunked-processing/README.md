@@ -210,7 +210,7 @@ When inserting many records into a database, batching prevents transaction size 
   tasks:
     - name: Insert records in batches of 3
       community.postgresql.postgresql_query:
-        db: myapp
+        login_db: myapp
         query: >
           INSERT INTO records (name, value) VALUES
           {% for record in item %}
@@ -297,7 +297,7 @@ You can chain `batch` with other filters for more control.
 
 ```yaml
 # batch-with-filters.yml
-# Filters items, removes duplicates, sorts, then batches
+# Filters items, then batches
 - name: Process filtered and batched items
   hosts: localhost
   gather_facts: false
