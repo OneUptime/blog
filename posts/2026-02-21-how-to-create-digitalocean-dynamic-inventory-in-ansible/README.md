@@ -15,9 +15,9 @@ DigitalOcean makes it easy to spin up droplets, but keeping track of them in a s
 Install the DigitalOcean Ansible collection:
 
 ```bash
-# Install the community DigitalOcean collection
+# Install the official DigitalOcean collection
 
-ansible-galaxy collection install community.digitalocean
+ansible-galaxy collection install digitalocean.cloud
 
 # Install the required Python library
 pip install pydo
@@ -32,24 +32,21 @@ export DO_API_TOKEN="your-digitalocean-api-token"
 
 ## Basic Configuration
 
-Create a file ending in `digitalocean.yml` or `digital_ocean.yml`:
+Create an inventory file:
 
 ```yaml
 # inventory/digitalocean.yml
 # Basic DigitalOcean dynamic inventory
-plugin: community.digitalocean.digitalocean
+plugin: digitalocean.cloud.droplets
 
 # API token (can also use DO_API_TOKEN environment variable)
-# api_token: "your-token-here"
+# token: "your-token-here"
 
-# Attribute to use as the inventory hostname
+# Droplet attributes to expose as host variables
 attributes:
   - id
   - name
   - networks
-
-# Use private IP for connections
-var_prefix: do_
 ```
 
 Test it:
@@ -64,12 +61,22 @@ ansible-inventory -i inventory/digitalocean.yml --graph
 
 ## Grouping Droplets
 
-The plugin automatically creates groups based on droplet properties:
+You can configure the plugin to create groups based on droplet properties:
 
 ```yaml
 # inventory/digitalocean.yml
 # Group droplets by various properties
-plugin: community.digitalocean.digitalocean
+plugin: digitalocean.cloud.droplets
+
+attributes:
+  - id
+  - name
+  - networks
+  - region
+  - size_slug
+  - image
+  - status
+  - tags
 
 keyed_groups:
   # Group by droplet tag: creates groups like tag_web, tag_database
@@ -78,22 +85,22 @@ keyed_groups:
     separator: "_"
 
   # Group by region: creates groups like region_nyc1, region_sfo3
-  - key: do_region.slug
+  - key: region.slug
     prefix: region
     separator: "_"
 
   # Group by size: creates groups like size_s_2vcpu_4gb
-  - key: do_size_slug
+  - key: size_slug
     prefix: size
     separator: "_"
 
   # Group by image: creates groups like image_ubuntu_22_04
-  - key: do_image.slug | default(do_image.id | string)
+  - key: image.slug | default(image.id | string)
     prefix: image
     separator: "_"
 
   # Group by status
-  - key: do_status
+  - key: status
     prefix: status
     separator: "_"
 ```
@@ -105,37 +112,46 @@ Configure how Ansible connects to discovered droplets:
 ```yaml
 # inventory/digitalocean.yml
 # Configure connection settings
-plugin: community.digitalocean.digitalocean
+plugin: digitalocean.cloud.droplets
+
+attributes:
+  - id
+  - name
+  - networks
+  - region
+  - size_slug
+  - image
+  - tags
 
 keyed_groups:
   - key: do_tags | default([])
     prefix: tag
     separator: "_"
-  - key: do_region.slug
+  - key: region.slug
     prefix: region
     separator: "_"
 
 compose:
   # Use the private IP if available, fall back to public IP
   ansible_host: >-
-    do_networks.v4 | selectattr('type', 'eq', 'private') | map(attribute='ip_address') | first
-    if (do_networks.v4 | selectattr('type', 'eq', 'private') | list | length > 0)
-    else do_networks.v4 | selectattr('type', 'eq', 'public') | map(attribute='ip_address') | first
+    networks.v4 | selectattr('type', 'eq', 'private') | map(attribute='ip_address') | first
+    if (networks.v4 | selectattr('type', 'eq', 'private') | list | length > 0)
+    else networks.v4 | selectattr('type', 'eq', 'public') | map(attribute='ip_address') | first
 
   # Set SSH user (root is default for DO droplets)
   ansible_user: "'root'"
 
   # Map useful properties to variables
-  do_droplet_name: do_name
-  do_droplet_id: do_id
-  do_droplet_region: do_region.slug
-  do_droplet_size: do_size_slug
-  do_droplet_image: do_image.slug | default('custom')
+  do_droplet_name: name
+  do_droplet_id: id
+  do_droplet_region: region.slug
+  do_droplet_size: size_slug
+  do_droplet_image: image.slug | default('custom')
   do_public_ip: >-
-    do_networks.v4 | selectattr('type', 'eq', 'public') | map(attribute='ip_address') | first
+    networks.v4 | selectattr('type', 'eq', 'public') | map(attribute='ip_address') | first
   do_private_ip: >-
-    do_networks.v4 | selectattr('type', 'eq', 'private') | map(attribute='ip_address') | first
-    if (do_networks.v4 | selectattr('type', 'eq', 'private') | list | length > 0)
+    networks.v4 | selectattr('type', 'eq', 'private') | map(attribute='ip_address') | first
+    if (networks.v4 | selectattr('type', 'eq', 'private') | list | length > 0)
     else ''
 ```
 
@@ -146,11 +162,19 @@ Only include specific droplets in your inventory:
 ```yaml
 # inventory/digitalocean.yml
 # Filter to only include certain droplets
-plugin: community.digitalocean.digitalocean
+plugin: digitalocean.cloud.droplets
+
+attributes:
+  - id
+  - name
+  - networks
+  - region
+  - status
+  - tags
 
 # Only include active droplets
 filters:
-  - do_status == 'active'
+  - status == 'active'
 
 # Or filter by tag
 # filters:
@@ -160,7 +184,7 @@ keyed_groups:
   - key: do_tags | default([])
     prefix: tag
     separator: "_"
-  - key: do_region.slug
+  - key: region.slug
     prefix: region
     separator: "_"
 ```
@@ -172,33 +196,48 @@ Here is a full production-ready DigitalOcean inventory:
 ```yaml
 # inventory/digitalocean.yml
 # Production DigitalOcean dynamic inventory
-plugin: community.digitalocean.digitalocean
+plugin: digitalocean.cloud.droplets
 
 # API token from environment variable DO_API_TOKEN
 
 # Cache results for 5 minutes
 cache: true
-cache_plugin: jsonfile
+cache_plugin: ansible.builtin.jsonfile
 cache_timeout: 300
 cache_connection: /tmp/ansible_do_cache
 
 # Only active droplets with the ansible-managed tag
+api_filters:
+  tag_name: ansible-managed
+
 filters:
-  - do_status == 'active'
+  - status == 'active'
+
+attributes:
+  - id
+  - name
+  - networks
+  - region
+  - size_slug
+  - image
+  - status
+  - vcpus
+  - memory
+  - disk
+  - tags
 
 # Group by multiple dimensions
 keyed_groups:
-  - key: do_tags | default([])
+  - key: do_tags | default(['untagged'], true)
     prefix: tag
     separator: "_"
-    default_value: untagged
-  - key: do_region.slug
+  - key: region.slug
     prefix: region
     separator: "_"
-  - key: do_size_slug
+  - key: size_slug
     prefix: size
     separator: "_"
-  - key: do_image.slug | default('custom')
+  - key: image.slug | default('custom')
     prefix: image
     separator: "_"
 
@@ -206,26 +245,26 @@ keyed_groups:
 groups:
   # All droplets with private networking
   private_network: >-
-    (do_networks.v4 | selectattr('type', 'eq', 'private') | list | length) > 0
+    (networks.v4 | selectattr('type', 'eq', 'private') | list | length) > 0
   # High-memory droplets
   high_memory: >-
-    do_memory >= 8192
+    memory >= 8192
 
 # Variable mapping
 compose:
   ansible_host: >-
-    do_networks.v4 | selectattr('type', 'eq', 'private') | map(attribute='ip_address') | first
-    if (do_networks.v4 | selectattr('type', 'eq', 'private') | list | length > 0)
-    else do_networks.v4 | selectattr('type', 'eq', 'public') | map(attribute='ip_address') | first
+    networks.v4 | selectattr('type', 'eq', 'private') | map(attribute='ip_address') | first
+    if (networks.v4 | selectattr('type', 'eq', 'private') | list | length > 0)
+    else networks.v4 | selectattr('type', 'eq', 'public') | map(attribute='ip_address') | first
   ansible_user: "'root'"
   ansible_port: 22
-  droplet_name: do_name
-  droplet_id: do_id
-  droplet_region: do_region.slug
-  droplet_size: do_size_slug
-  droplet_vcpus: do_vcpus
-  droplet_memory_mb: do_memory
-  droplet_disk_gb: do_disk
+  droplet_name: name
+  droplet_id: id
+  droplet_region: region.slug
+  droplet_size: size_slug
+  droplet_vcpus: vcpus
+  droplet_memory_mb: memory
+  droplet_disk_gb: disk
   droplet_tags: do_tags | default([])
 ```
 
@@ -280,6 +319,11 @@ Target by region:
         update_cache: true
         upgrade: safe
 
+    - name: Check if reboot is required
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
     - name: Reboot if required
       reboot:
         msg: "Rebooting for kernel update"
@@ -296,9 +340,7 @@ doctl compute droplet create web-prod-01 \
   --region nyc1 \
   --size s-2vcpu-4gb \
   --image ubuntu-22-04-x64 \
-  --tag-name web \
-  --tag-name production \
-  --tag-name ansible-managed \
+  --tag-names web,production,ansible-managed \
   --ssh-keys your-ssh-key-fingerprint \
   --enable-private-networking
 ```
