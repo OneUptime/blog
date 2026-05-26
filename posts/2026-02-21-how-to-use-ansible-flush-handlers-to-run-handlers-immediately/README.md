@@ -8,7 +8,7 @@ Description: Learn how to use the meta flush_handlers directive in Ansible to tr
 
 ---
 
-By default, Ansible handlers run at the very end of a play. This is usually what you want, but there are situations where you need a handler to execute mid-play, before subsequent tasks run. The `meta: flush_handlers` task forces all pending handlers to run immediately at that point in the playbook. This is crucial for tasks that depend on a service being restarted or a configuration being reloaded before they can proceed.
+By default, Ansible handlers run at the normal handler flush points, such as after the play's main tasks complete. This is usually what you want, but there are situations where you need a handler to execute mid-play, before subsequent tasks run. The `meta: flush_handlers` task forces all pending handlers to run immediately at that point in the playbook. This is crucial for tasks that depend on a service being restarted or a configuration being reloaded before they can proceed.
 
 ## The Problem
 
@@ -48,7 +48,7 @@ Consider this playbook:
       # nginx is still running with the OLD configuration
 ```
 
-The verification task fails because nginx has not been restarted yet. The handler is queued but will not run until after all tasks complete.
+The verification task fails because nginx has not been restarted yet. The handler is queued but will not run until the next normal handler flush point.
 
 ## The Solution: flush_handlers
 
@@ -151,7 +151,7 @@ Here is a real deployment where flush_handlers is essential:
     # Phase 2: Database operations (needs new code running)
     - name: Run database migrations
       command: /opt/myapp/bin/migrate --apply
-      run_once: true
+      when: inventory_hostname == ansible_play_hosts_all[0]
       register: migration
       changed_when: "'Applied' in migration.stdout"
 
@@ -372,7 +372,7 @@ A handler flushed mid-play will not run again at the end of the play unless it i
       meta: flush_handlers
 
     - name: Verify SSL certificate is valid
-      command: >
+      shell: >
         openssl s_client -connect {{ inventory_hostname }}:443
         -servername {{ domain }}
         </dev/null 2>/dev/null |
