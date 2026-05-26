@@ -8,7 +8,7 @@ Description: Learn how to control whitespace in Jinja2 templates for Ansible to 
 
 ---
 
-If you have ever generated a configuration file with Ansible templates and ended up with random blank lines scattered throughout, you know how frustrating whitespace issues can be. Jinja2 templates are powerful, but by default they preserve all the whitespace around your template tags. This means every `{% if %}`, `{% for %}`, and `{% endif %}` block leaves behind empty lines in your output. In this post, we will look at several techniques for taming whitespace in your Ansible Jinja2 templates.
+If you have ever generated a configuration file with Ansible templates and ended up with random blank lines scattered throughout, you know how frustrating whitespace issues can be. Jinja2 templates are powerful, but whitespace around your template tags can be surprising. Plain Jinja2 preserves most whitespace by default, while Ansible's template module enables `trim_blocks` by default and still leaves `lstrip_blocks` disabled unless you turn it on. In this post, we will look at several techniques for taming whitespace in your Ansible Jinja2 templates.
 
 ## Why Whitespace Matters in Templates
 
@@ -24,7 +24,7 @@ Consider a simple template that generates an `/etc/hosts` style file:
 {% endfor %}
 ```
 
-When rendered with three hosts, you might expect a tight list. Instead, you get extra blank lines because each `{% for %}` and `{% endfor %}` tag occupies its own line, and Jinja2 faithfully preserves those newlines.
+When rendered with plain Jinja2's default whitespace settings, you might expect a tight list. Instead, you get extra blank lines because each `{% for %}` and `{% endfor %}` tag occupies its own line, and Jinja2 faithfully preserves those newlines. Ansible's template module uses `trim_blocks: true` by default, so this particular example is already cleaner in Ansible, but the same mechanics matter when you disable `trim_blocks` or need finer control.
 
 ## The Dash Modifier: Your Primary Tool
 
@@ -52,11 +52,11 @@ Let us fix our hosts template using dash modifiers:
 {%- endfor %}
 ```
 
-This produces output with no extra blank lines. The `{%-` at the start of the for loop eats the newline before it, and the `{%-` on the endfor eats the newline that would otherwise appear after the last host entry.
+This produces output with no extra blank lines when `trim_blocks` is disabled. The `{%-` at the start of the for loop eats the newline before it, and the `{%-` on the endfor eats the newline before each end tag. With Ansible's default `trim_blocks: true`, use left-side dashes carefully because they can collapse lines you intended to keep separate.
 
 ## Practical Example: Generating an Nginx Upstream Block
 
-Let us build a real-world example. Suppose you want to generate an Nginx upstream configuration with conditional health checks.
+Let us build a real-world example. Suppose you want to generate an Nginx upstream configuration with conditional keepalive connections.
 
 Here is the playbook:
 
@@ -79,16 +79,17 @@ Here is the playbook:
         port: 8080
         weight: 1
         backup: true
-    health_check: true
-    health_check_interval: 30
+    enable_keepalive: true
+    keepalive_connections: 30
   tasks:
     - name: Render upstream config
       ansible.builtin.template:
         src: upstream.conf.j2
         dest: /etc/nginx/conf.d/upstream.conf
+        trim_blocks: false
 ```
 
-And here is the template without any whitespace control:
+For this example, `trim_blocks` is disabled to show the blank-line problem clearly. Here is the template without any whitespace control:
 
 ```jinja2
 # upstream_bad.conf.j2 - Without whitespace control (produces messy output)
@@ -100,14 +101,14 @@ upstream {{ upstream_name }} {
     server {{ server.address }}:{{ server.port }} weight={{ server.weight }};
 {% endif %}
 {% endfor %}
-{% if health_check %}
-    # Health check configuration
-    health_check interval={{ health_check_interval }};
+{% if enable_keepalive %}
+    # Keepalive configuration
+    keepalive {{ keepalive_connections }};
 {% endif %}
 }
 ```
 
-This will produce output with blank lines between each server entry and around the health check block. Now let us fix it:
+This will produce output with blank lines between each server entry and around the keepalive block. Now let us fix it:
 
 ```jinja2
 # upstream_good.conf.j2 - With whitespace control (clean output)
@@ -119,9 +120,9 @@ upstream {{ upstream_name }} {
     server {{ server.address }}:{{ server.port }} weight={{ server.weight }};
 {%- endif %}
 {%- endfor %}
-{%- if health_check %}
-    # Health check configuration
-    health_check interval={{ health_check_interval }};
+{%- if enable_keepalive %}
+    # Keepalive configuration
+    keepalive {{ keepalive_connections }};
 {%- endif %}
 }
 ```
@@ -133,28 +134,20 @@ upstream backend_pool {
     server 10.0.1.10:8080 weight=5;
     server 10.0.1.11:8080 weight=3;
     server 10.0.1.12:8080 weight=1 backup;
-    # Health check configuration
-    health_check interval=30;
+    # Keepalive configuration
+    keepalive 30;
 }
 ```
 
 Clean and exactly what you would write by hand.
 
-## Global Whitespace Settings in Ansible
+## Whitespace Settings in Ansible
 
-Instead of sprinkling dashes throughout every template, you can configure Ansible to trim whitespace globally. In your `ansible.cfg`:
-
-```ini
-# ansible.cfg - Global Jinja2 whitespace settings
-[defaults]
-jinja2_extensions = jinja2.ext.loopcontrols
-```
-
-And in individual template tasks, you can set `trim_blocks` and `lstrip_blocks`:
+Instead of sprinkling dashes throughout every template, you can configure the template module to trim whitespace. Ansible's `ansible.builtin.template` module uses `trim_blocks: true` by default, and you can turn `lstrip_blocks` on in individual template tasks:
 
 ```yaml
 # playbook.yml - Using trim_blocks and lstrip_blocks per task
-- name: Render config with global whitespace trimming
+- name: Render config with whitespace trimming
   ansible.builtin.template:
     src: myconfig.conf.j2
     dest: /etc/myapp/config.conf
@@ -165,17 +158,15 @@ And in individual template tasks, you can set `trim_blocks` and `lstrip_blocks`:
 What do these options do?
 
 - **trim_blocks**: Removes the first newline after a block tag. So `{% if something %}\n` becomes `{% if something %}` with no trailing newline.
-- **lstrip_blocks**: Strips leading whitespace (spaces and tabs) from the start of a line up to and including a block tag. This lets you indent your Jinja2 tags for readability without that indentation appearing in the output.
+- **lstrip_blocks**: Strips leading whitespace (spaces and tabs) from the start of a line up to a block tag. This lets you indent your Jinja2 tags for readability without that indentation appearing in the output.
 
-You can also set these in `ansible.cfg` globally:
+You can also set Jinja options inside a template file with a `#jinja2` header:
 
-```ini
-# ansible.cfg - Enable both trim and lstrip globally
-[defaults]
-jinja2_native = false
+```jinja2
+#jinja2: trim_blocks: True, lstrip_blocks: True
 ```
 
-Note that as of Ansible 2.14+, you can set `ANSIBLE_JINJA2_NATIVE` and related environment variables as well. But the per-task `trim_blocks` and `lstrip_blocks` options give you fine-grained control.
+The `jinja2_extensions` and `jinja2_native` settings in `ansible.cfg` do not enable whitespace trimming. `jinja2_extensions` is for enabling additional Jinja extensions, and `jinja2_native` controls native type handling rather than whitespace.
 
 ## Combining lstrip_blocks with Indented Templates
 
@@ -280,4 +271,4 @@ The pipe characters make it obvious where your content begins and ends.
 
 ## Wrapping Up
 
-Whitespace control in Jinja2 templates comes down to three mechanisms: the dash modifier inside tags, the `trim_blocks` option, and the `lstrip_blocks` option. For most Ansible projects, enabling `trim_blocks` and `lstrip_blocks` globally and then using dash modifiers for edge cases is the most maintainable approach. Your configuration files will render cleanly, your diffs will be sensible, and anyone reviewing your templates will thank you for keeping things tidy.
+Whitespace control in Jinja2 templates comes down to three mechanisms: the dash modifier inside tags, the `trim_blocks` option, and the `lstrip_blocks` option. For most Ansible projects, keeping Ansible's default `trim_blocks` behavior, enabling `lstrip_blocks` where indented templates need it, and then using dash modifiers for edge cases is the most maintainable approach. Your configuration files will render cleanly, your diffs will be sensible, and anyone reviewing your templates will thank you for keeping things tidy.
