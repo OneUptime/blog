@@ -36,7 +36,7 @@ Output:
 Compare that with `to_json`, which produces:
 
 ```json
-{"debug": false, "name": "myapp", "port": 8080, "tags": ["web", "production"]}
+{"name": "myapp", "port": 8080, "debug": false, "tags": ["web", "production"]}
 ```
 
 ## Customizing Indentation
@@ -199,7 +199,7 @@ Consul uses JSON for its configuration files. Here is a template for a Consul ag
 
 ## Sorting Keys
 
-By default, `to_nice_json` may or may not sort keys depending on the Ansible and Python version. To ensure consistent output (useful for idempotency and diffing), explicitly sort keys:
+By default, `to_nice_json` sorts keys. To make that behavior clear in your template (useful for idempotency and diffing), you can explicitly set `sort_keys`:
 
 ```jinja2
 {# Sort keys for consistent output #}
@@ -288,7 +288,7 @@ If a value comes from a variable that might be a string when it should be a numb
 `to_nice_json` properly handles Unicode characters:
 
 ```jinja2
-{{ {"greeting": "Hej varlden", "emoji_name": "thumbs up"} | to_nice_json(indent=2, ensure_ascii=false) }}
+{{ {"greeting": "Hej världen", "emoji": "👍"} | to_nice_json(indent=2, ensure_ascii=false) }}
 ```
 
 Use `ensure_ascii=false` if you want non-ASCII characters to appear as-is rather than being escaped.
