@@ -28,13 +28,15 @@ flowchart TD
 
 ## Prerequisites
 
-You need Python 3.9 or later installed on your system. Most modern Linux distributions ship with Python 3.9+ by default. Check your version:
+You need a Python version supported by the Ansible version you plan to install. For current `ansible` 13.x and `ansible-core` 2.20/2.21 releases, use Python 3.12 or later. Check your version:
 
 ```bash
 # Check your Python version
 
 python3 --version
 ```
+
+If your distribution installs Python 3.12 as `python3.12`, substitute `python3.12` for `python3` in the commands below.
 
 You also need the `venv` module. On Debian/Ubuntu, install it if it is not already present:
 
@@ -46,15 +48,15 @@ sudo apt install python3-venv python3-pip -y
 On CentOS/RHEL:
 
 ```bash
-# Install venv and pip on CentOS/RHEL
-sudo dnf install python3-pip python3-virtualenv -y
+# Install Python 3.12 and pip on CentOS/RHEL
+sudo dnf install python3.12 python3.12-pip -y
 ```
 
 On macOS with Homebrew:
 
 ```bash
 # Python from Homebrew includes venv by default
-brew install python3
+brew install python
 ```
 
 ## Create the Virtual Environment
@@ -119,10 +121,10 @@ Pinning a specific version is a common practice for production environments. It 
 
 ```bash
 # Install a specific version
-pip install ansible==9.2.0
+pip install ansible==13.7.0
 
 # Or pin ansible-core specifically
-pip install ansible-core==2.16.4
+pip install ansible-core==2.20.6
 ```
 
 To see all available versions:
@@ -138,9 +140,9 @@ For team environments, create a requirements.txt file that pins all your Ansible
 
 ```txt
 # requirements.txt
-ansible==9.2.0
-ansible-lint==24.2.0
-molecule==24.2.0
+ansible==13.7.0
+ansible-lint==26.4.0
+molecule==26.4.0
 jmespath==1.0.1
 netaddr==1.2.1
 ```
@@ -187,30 +189,30 @@ One of the biggest advantages of virtual environments is running multiple Ansibl
 
 ```bash
 # Create environments for different versions
-python3 -m venv ~/ansible-8
-python3 -m venv ~/ansible-9
+python3 -m venv ~/ansible-12
+python3 -m venv ~/ansible-13
 
-# Install Ansible 8.x in the first environment
-source ~/ansible-8/bin/activate
-pip install "ansible>=8.0,<9.0"
+# Install Ansible 12.x in the first environment
+source ~/ansible-12/bin/activate
+pip install "ansible>=12.0,<13.0"
 deactivate
 
-# Install Ansible 9.x in the second
-source ~/ansible-9/bin/activate
-pip install "ansible>=9.0,<10.0"
+# Install Ansible 13.x in the second
+source ~/ansible-13/bin/activate
+pip install "ansible>=13.0,<14.0"
 deactivate
 ```
 
 Switch between them by activating the appropriate environment:
 
 ```bash
-# Use Ansible 8.x
-source ~/ansible-8/bin/activate
+# Use Ansible 12.x
+source ~/ansible-12/bin/activate
 ansible --version
 
-# Switch to Ansible 9.x
+# Switch to Ansible 13.x
 deactivate
-source ~/ansible-9/bin/activate
+source ~/ansible-13/bin/activate
 ansible --version
 ```
 
@@ -226,14 +228,14 @@ source ~/ansible-env/bin/activate
 pip install --upgrade ansible
 
 # Or upgrade to a specific version
-pip install --upgrade ansible==9.3.0
+pip install --upgrade ansible==13.7.0
 ```
 
 If something goes wrong after an upgrade, you can roll back:
 
 ```bash
 # Roll back to a previous version
-pip install ansible==9.2.0
+pip install ansible==13.6.0
 ```
 
 ## Freezing Your Environment
