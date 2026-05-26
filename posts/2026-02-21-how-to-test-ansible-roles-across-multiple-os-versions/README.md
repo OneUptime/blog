@@ -289,6 +289,7 @@ molecule-test:
     - docker:dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - pip install ansible-core molecule molecule-plugins[docker]
     - molecule test -- --limit $DISTRO
@@ -368,7 +369,7 @@ platforms:
     image: "geerlingguy/docker-ubuntu2204-ansible:latest"
     # ...
 
-  # Maintenance mode (will be removed 2025-04)
+  # ESM-only support (remove if you do not support Ubuntu Pro/ESM)
   - name: ubuntu2004
     image: "geerlingguy/docker-ubuntu2004-ansible:latest"
     # ...
@@ -385,11 +386,11 @@ galaxy_info:
   platforms:
     - name: Ubuntu
       versions:
-        - focal   # 20.04 (until April 2025)
+        - focal   # 20.04 (standard support ended May 2025; ESM until April 2030)
         - jammy   # 22.04 (until April 2027)
     - name: Debian
       versions:
-        - bullseye  # 11 (until June 2026)
+        - bullseye  # 11 (until August 2026)
         - bookworm  # 12 (until June 2028)
     - name: EL
       versions:
