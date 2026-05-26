@@ -23,7 +23,6 @@ Molecule exposes several variables automatically that you can use in your molecu
 # MOLECULE_INSTANCE_CONFIG - Path to instance config
 # MOLECULE_INVENTORY_FILE - Generated inventory file path
 # MOLECULE_SCENARIO_NAME - Name of the current scenario
-# MOLECULE_DISTRO - Distribution being tested (if set)
 ```
 
 Use them in molecule.yml with `${}` syntax.
@@ -103,8 +102,8 @@ Use environment variables to switch which platform Molecule tests against.
 ```yaml
 # molecule/default/molecule.yml
 platforms:
-  - name: "instance-${MOLECULE_DISTRO:-ubuntu2204}"
-    image: "geerlingguy/docker-${MOLECULE_DISTRO:-ubuntu2204}-ansible:latest"
+  - name: "instance-${TEST_DISTRO:-ubuntu2204}"
+    image: "geerlingguy/docker-${TEST_DISTRO:-ubuntu2204}-ansible:latest"
     pre_build_image: true
     privileged: true
     cgroupns_mode: host
@@ -119,10 +118,10 @@ Now you can test against different distros by setting a single variable.
 molecule test
 
 # Test on CentOS Stream 9
-MOLECULE_DISTRO=centos9 molecule test
+TEST_DISTRO=centos9 molecule test
 
 # Test on Debian 12
-MOLECULE_DISTRO=debian12 molecule test
+TEST_DISTRO=debian12 molecule test
 ```
 
 This pattern is especially useful in CI where you want to run the same scenario against multiple distros.
@@ -141,7 +140,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run Molecule
         env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+          TEST_DISTRO: ${{ matrix.distro }}
         run: molecule test
 ```
 
@@ -155,7 +154,7 @@ provisioner:
   name: ansible
   env:
     # Reference secrets from the environment
-    ANSIBLE_VAULT_PASSWORD: "${VAULT_PASSWORD}"
+    ANSIBLE_VAULT_PASSWORD_FILE: "${VAULT_PASSWORD_FILE}"
   inventory:
     group_vars:
       all:
@@ -166,7 +165,7 @@ provisioner:
 
 ```bash
 # Set secrets before running tests
-export VAULT_PASSWORD="my-vault-password"
+export VAULT_PASSWORD_FILE="/path/to/vault-password-file"
 export TEST_API_KEY="test-key-12345"
 export TEST_DB_PASSWORD="test-password"
 molecule test
@@ -185,13 +184,13 @@ When using the delegated driver, environment variables control how infrastructur
   gather_facts: false
   vars:
     aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1') }}"
-    instance_type: "{{ lookup('env', 'MOLECULE_INSTANCE_TYPE') | default('t3.micro') }}"
-    ssh_key_name: "{{ lookup('env', 'MOLECULE_SSH_KEY') | default('molecule-test') }}"
+    instance_type: "{{ lookup('env', 'TEST_INSTANCE_TYPE') | default('t3.micro') }}"
+    ssh_key_name: "{{ lookup('env', 'TEST_SSH_KEY') | default('molecule-test') }}"
   tasks:
     - name: Create EC2 instance
       amazon.aws.ec2_instance:
-        name: "molecule-{{ lookup('env', 'USER') }}-{{ ansible_date_time.epoch }}"
-        image_id: "{{ lookup('env', 'MOLECULE_AMI') | default('ami-0c7217cdde317cfec') }}"
+        name: "molecule-{{ lookup('env', 'USER') | default('local', true) }}-{{ lookup('pipe', 'date +%s') }}"
+        image_id: "{{ lookup('env', 'TEST_AMI') | default('ami-0c7217cdde317cfec') }}"
         instance_type: "{{ instance_type }}"
         key_name: "{{ ssh_key_name }}"
         region: "{{ aws_region }}"
@@ -205,17 +204,16 @@ When the same variable is set in multiple places, the precedence order matters.
 
 ```mermaid
 graph TD
-    A[Shell Environment Variables] --> B[molecule.yml provisioner.env]
-    B --> C[molecule.yml inventory group_vars]
-    C --> D[molecule.yml inventory host_vars]
-    D --> E[converge.yml vars section]
-    E --> F[Role defaults/main.yml]
-    F --> G[Role vars/main.yml]
+    A[Role defaults/main.yml] --> B[molecule.yml inventory group_vars]
+    B --> C[molecule.yml inventory host_vars]
+    C --> D[converge.yml vars section]
+    D --> E[Role vars/main.yml]
+    E --> F[Extra vars with -e]
     style A fill:#f99
-    style G fill:#9f9
+    style F fill:#9f9
 ```
 
-Variables set later (lower in the diagram) take higher precedence. So role vars override group_vars, which override environment variables. Keep this in mind when debugging why a variable has an unexpected value.
+Variables set later (lower in the diagram) take higher precedence. Environment variables themselves are not Ansible variables; they become variables only when you read them with `lookup('env', ...)` or copy them into inventory or play vars. So role vars override group_vars, while extra vars passed with `-e` override both. Keep this in mind when debugging why a variable has an unexpected value.
 
 ## .env Files for Local Development
 
@@ -223,7 +221,7 @@ Create a `.env` file for local development variables and source it before runnin
 
 ```bash
 # .env - Local development environment
-export MOLECULE_DISTRO=ubuntu2204
+export TEST_DISTRO=ubuntu2204
 export APP_ENV=testing
 export TEST_DB_PASSWORD=localpass
 export LOG_LEVEL=debug
@@ -248,7 +246,7 @@ if [ -f .env ]; then
 fi
 
 # Set defaults for missing variables
-export MOLECULE_DISTRO="${MOLECULE_DISTRO:-ubuntu2204}"
+export TEST_DISTRO="${TEST_DISTRO:-ubuntu2204}"
 export APP_ENV="${APP_ENV:-testing}"
 export ANSIBLE_FORCE_COLOR="${ANSIBLE_FORCE_COLOR:-true}"
 
@@ -284,14 +282,17 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Job-level variables
-      MOLECULE_DISTRO: ubuntu2204
+      TEST_DISTRO: ubuntu2204
     steps:
       - name: Run Molecule
         env:
           # Step-level variables
           VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
+          VAULT_PASSWORD_FILE: .vault-password
           TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
-        run: molecule test
+        run: |
+          printf '%s\n' "$VAULT_PASSWORD" > "$VAULT_PASSWORD_FILE"
+          molecule test
 ```
 
 ### GitLab CI
@@ -300,13 +301,15 @@ jobs:
 # .gitlab-ci.yml
 variables:
   ANSIBLE_FORCE_COLOR: "true"
-  MOLECULE_DISTRO: ubuntu2204
+  TEST_DISTRO: ubuntu2204
 
 molecule:
   script:
+    - printf '%s\n' "$VAULT_PASSWORD" > "$VAULT_PASSWORD_FILE"
     - molecule test
   variables:
     VAULT_PASSWORD: $ANSIBLE_VAULT_PASSWORD  # From CI/CD settings
+    VAULT_PASSWORD_FILE: .vault-password
 ```
 
 ### Jenkins
@@ -316,12 +319,12 @@ molecule:
 pipeline {
     environment {
         ANSIBLE_FORCE_COLOR = 'true'
-        MOLECULE_DISTRO = 'ubuntu2204'
+        TEST_DISTRO = 'ubuntu2204'
     }
     stages {
         stage('Test') {
             steps {
-                withCredentials([string(credentialsId: 'vault-pass', variable: 'VAULT_PASSWORD')]) {
+                withCredentials([file(credentialsId: 'vault-pass-file', variable: 'VAULT_PASSWORD_FILE')]) {
                     sh 'molecule test'
                 }
             }
@@ -336,7 +339,7 @@ When things are not working, check which variables Molecule sees.
 
 ```bash
 # Print all environment variables that Molecule uses
-env | grep -E "^(MOLECULE_|ANSIBLE_|APP_)" | sort
+env | grep -E "^(MOLECULE_|ANSIBLE_|APP_|TEST_)" | sort
 
 # Run Molecule in debug mode to see variable resolution
 molecule --debug converge 2>&1 | head -50
@@ -350,7 +353,7 @@ Add a debug task to your converge playbook to verify variables are being passed 
   ansible.builtin.debug:
     msg: |
       APP_ENV: {{ lookup('env', 'APP_ENV') }}
-      MOLECULE_DISTRO: {{ lookup('env', 'MOLECULE_DISTRO') }}
+      TEST_DISTRO: {{ lookup('env', 'TEST_DISTRO') }}
       MOLECULE_SCENARIO_NAME: {{ lookup('env', 'MOLECULE_SCENARIO_NAME') }}
       DB_URL: {{ lookup('env', 'DATABASE_URL') | default('NOT SET') }}
 ```
