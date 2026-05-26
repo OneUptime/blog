@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Utils, Data Manipulation, IP Address, DevOps
 
-Description: How to use the ansible.utils collection for data validation, IP address manipulation, JSON path queries, and CLI output parsing in Ansible.
+Description: How to use the ansible.utils collection for data validation, IP address manipulation, path queries, and CLI output parsing in Ansible.
 
 ---
 
@@ -17,11 +17,11 @@ The `ansible.utils` collection is a Swiss army knife of data manipulation tools 
 
 ansible-galaxy collection install ansible.utils
 
-# Install with dependencies (some filters need extra Python packages)
-pip install netaddr jsonschema xmltodict
+# Install with dependencies used in these examples
+pip install "netaddr>=0.10.1" jsonschema textfsm xmltodict
 ```
 
-The `netaddr` Python library is required for IP address filters, and `jsonschema` is needed for data validation.
+The `netaddr` Python library is required for IP address filters, `jsonschema` is needed for data validation, and `textfsm` is needed for TextFSM parsing.
 
 ## IP Address Filters
 
@@ -68,7 +68,7 @@ Network engineers will love these. The IP address filters handle CIDR calculatio
 
     - name: Check if an address is in a subnet
       ansible.builtin.debug:
-        msg: "In subnet: {{ '10.0.5.100' | ansible.utils.ipaddr(subnet) }}"
+        msg: "In subnet: {{ subnet | ansible.utils.network_in_network('10.0.5.100') }}"
 ```
 
 ### IP Address Math for Real Infrastructure
@@ -204,6 +204,7 @@ The `cli_parse` module turns unstructured command output into structured data. T
         command: show ip interface brief
         parser:
           name: ansible.netcommon.native
+          template_path: templates/show_ip_interface_brief.yaml
         set_fact: interfaces
 
     - name: Show parsed data
