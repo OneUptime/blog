@@ -36,8 +36,8 @@ The `--limit` flag supports the same host patterns you can use in the `hosts` fi
 # Wildcard matching
 ansible-playbook site.yml --limit 'web*'
 
-# All hosts starting with "db" followed by two digits
-ansible-playbook site.yml --limit 'db[0-9][0-9]'
+# Regex match for hosts starting with "db" followed by two digits
+ansible-playbook site.yml --limit '~db[0-9][0-9]'
 
 # Regex pattern (prefix with ~)
 ansible-playbook site.yml --limit '~web\d+\.prod\..*'
@@ -116,7 +116,7 @@ This is useful for maintenance windows where you have a specific list of hosts t
 
 ## The retry File and --limit
 
-When a playbook fails on some hosts, Ansible creates a `.retry` file containing the failed hosts. You can rerun the playbook against only those hosts:
+When retry files are enabled and a playbook fails on some hosts, Ansible creates a `.retry` file containing the failed hosts. You can rerun the playbook against only those hosts:
 
 ```bash
 # First run - some hosts might fail
@@ -275,7 +275,7 @@ ansible-playbook site.yml --limit webservers:&production:!staging
 ansible-playbook site.yml --limit 'webservers:&production:!staging'
 ```
 
-The `--limit` flag does not change variable loading. Even if you limit to a single host, Ansible still loads all group_vars and host_vars. This means the playbook behaves identically whether you run on all hosts or a subset.
+The `--limit` flag does not modify inventory variables. Ansible still resolves the relevant group_vars and host_vars for the hosts that run, so limiting to a subset changes the target set, not the variables defined for those hosts.
 
 The `--limit` flag is a runtime filter, not an inventory modification. Your inventory stays unchanged. This makes it safe to use without worrying about accidentally modifying the inventory itself.
 
