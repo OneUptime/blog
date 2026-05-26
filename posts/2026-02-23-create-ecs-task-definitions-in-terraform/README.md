@@ -112,6 +112,8 @@ Fargate has specific valid CPU/memory combinations:
 | 1024 (1 vCPU) | 2048, 3072, 4096, 5120, 6144, 7168, 8192 |
 | 2048 (2 vCPU) | 4096 through 16384 (in 1024 increments) |
 | 4096 (4 vCPU) | 8192 through 30720 (in 1024 increments) |
+| 8192 (8 vCPU) | 16384 through 61440 (in 4096 increments) |
+| 16384 (16 vCPU) | 32768 through 122880 (in 8192 increments) |
 
 ```hcl
 # Variables for task sizing
@@ -186,7 +188,6 @@ resource "aws_ecs_task_definition" "multi_container" {
       memory    = 512
 
       environment = [
-        { name = "DD_API_KEY", value = "" },
         { name = "ECS_FARGATE", value = "true" },
         { name = "DD_APM_ENABLED", value = "true" }
       ]
@@ -283,16 +284,16 @@ In the container definition, reference them:
 "secrets": [
   {
     "name": "DATABASE_URL",
-    "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/database-url"
+    "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/database-url"
   },
   {
     "name": "API_KEY",
-    "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:myapp/production/api-key:api_key::"
+    "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:myapp/production/api-key-AbCdEf:api_key::"
   }
 ]
 ```
 
-The format for Secrets Manager is `arn:secret_name:json_key:version_stage:version_id`.
+The format for Secrets Manager is `arn:aws:secretsmanager:region:account-id:secret:secret-name:json-key:version-stage:version-id`.
 
 ## EFS Volume Mount
 
@@ -314,7 +315,7 @@ resource "aws_ecs_task_definition" "with_efs" {
 
     efs_volume_configuration {
       file_system_id     = aws_efs_file_system.app.id
-      root_directory     = "/data"
+      root_directory     = "/"
       transit_encryption = "ENABLED"
 
       authorization_config {
