@@ -459,7 +459,7 @@ Keep in mind that DynamoDB auto scaling reacts to sustained utilization, not ins
 
 ## Provisioned vs On-Demand: When Auto Scaling Makes Sense
 
-On-demand mode handles capacity management entirely for you, but it costs roughly 6.5x more per unit of capacity than provisioned mode. Auto scaling on provisioned mode is the middle ground - you get automatic capacity management at provisioned pricing.
+On-demand mode handles capacity management entirely for you, but it costs roughly 3.5x more per fully utilized unit of capacity than provisioned mode in many regions. Auto scaling on provisioned mode is the middle ground - you get automatic capacity management at provisioned pricing.
 
 Use provisioned with auto scaling when your traffic is at least somewhat predictable and you want to optimize costs. Use on-demand when traffic is truly unpredictable, during development, or when the operational overhead of tuning auto scaling is not worth it.
 
