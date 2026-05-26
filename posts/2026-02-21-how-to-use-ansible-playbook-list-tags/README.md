@@ -8,7 +8,7 @@ Description: Learn how to use the ansible-playbook --list-tags flag to discover 
 
 ---
 
-Tags in Ansible let you label tasks and then selectively run or skip them. The `--list-tags` flag shows you all available tags in a playbook, giving you a map of what you can target. This is essential for large playbooks where you want to run only specific sections, like deploying code without reconfiguring the web server, or updating SSL certificates without touching the application.
+Tags in Ansible let you label tasks and then selectively run or skip them. The `--list-tags` flag shows you the available tags Ansible can discover statically in a playbook, giving you a map of what you can target. This is essential for large playbooks where you want to run only specific sections, like deploying code without reconfiguring the web server, or updating SSL certificates without touching the application.
 
 ## Basic Usage
 
@@ -171,7 +171,7 @@ playbook: deploy.yml
       Deploy application configuration	TAGS: [app, config]
 ```
 
-This three-step workflow is the safest approach:
+This four-step workflow is the safest approach:
 
 ```bash
 # Step 1: See available tags
@@ -287,10 +287,10 @@ With play-level tags, `--tags infrastructure` runs only the first play, `--tags 
 
 ## Special Tags
 
-Ansible has two special tags:
+Ansible has two special task tags:
 
-- `always`: Tasks with this tag always run, regardless of which tags you specify
-- `never`: Tasks with this tag never run, unless you explicitly include the tag
+- `always`: Tasks with this tag always run, unless you explicitly skip `always` or skip another tag on the same task
+- `never`: Tasks with this tag never run, unless you explicitly include `never` or another tag defined on the task
 
 ```yaml
 # special-tags.yml - Using always and never tags
@@ -303,7 +303,7 @@ Ansible has two special tags:
     - name: Record deployment start time
       set_fact:
         deploy_start: "{{ ansible_date_time.iso8601 }}"
-      tags: [always]  # Runs regardless of tag selection
+      tags: [always]  # Runs unless always is explicitly skipped
 
     - name: Dangerous data cleanup
       command: /opt/scripts/cleanup-old-data.sh
@@ -468,4 +468,4 @@ ansible-playbook --skip-tags nginx site.yml
 
 ## Summary
 
-The `--list-tags` flag gives you a complete inventory of all tags in a playbook. Use it to discover what selective execution options are available, then combine with `--tags` and `--skip-tags` to run exactly the tasks you need. Tag your playbooks by phase (setup, deploy, verify), by component (nginx, app, database), and use `always` and `never` for tasks that should always or conditionally run. Good tagging makes a 200-task playbook as targeted as a 5-task one.
+The `--list-tags` flag gives you an inventory of the tags Ansible can list in a playbook. Use it to discover what selective execution options are available, then combine with `--tags` and `--skip-tags` to run exactly the tasks you need. Tag your playbooks by phase (setup, deploy, verify), by component (nginx, app, database), and use `always` and `never` for tasks that should always or conditionally run. Good tagging makes a 200-task playbook as targeted as a 5-task one.
