@@ -12,6 +12,8 @@ Internet Information Services (IIS) is the web server built into Windows Server.
 
 The `community.windows.win_iis_website` module lets you create, configure, start, stop, and remove IIS websites entirely through Ansible playbooks.
 
+Note: the `community.windows` IIS modules are deprecated in current Ansible documentation and are scheduled for removal in `community.windows` 4.0.0. For new playbooks, use the supported `microsoft.iis.website` and `microsoft.iis.web_app_pool` modules instead. The examples below show the legacy `community.windows.win_iis_website` module.
+
 ## Prerequisites
 
 IIS must be installed on the target server before you can create websites. Here is how to ensure it is installed:
@@ -32,6 +34,7 @@ IIS must be installed on the target server before you can create websites. Here 
           - Web-ISAPI-Ext
           - Web-ISAPI-Filter
           - Web-Mgmt-Console
+          - Web-Scripting-Tools
         state: present
       register: iis_install
 
@@ -110,7 +113,7 @@ In production, you typically bind sites to specific hostnames rather than just p
 
 ## HTTPS Bindings with SSL Certificates
 
-For HTTPS sites, you need to specify the SSL certificate hash and the certificate store:
+For HTTPS sites, create the website and then add an HTTPS binding with the certificate hash and certificate store:
 
 ```yaml
 # playbook-https-site.yml
@@ -118,7 +121,7 @@ For HTTPS sites, you need to specify the SSL certificate hash and the certificat
 - name: Create HTTPS website
   hosts: windows
   vars:
-    cert_thumbprint: "ABC123DEF456789..."
+    cert_thumbprint: "ABC123DEF4567890ABC123DEF4567890ABC123DE"
 
   tasks:
     - name: Create site directory
@@ -126,22 +129,27 @@ For HTTPS sites, you need to specify the SSL certificate hash and the certificat
         path: C:\inetpub\secureapp
         state: directory
 
-    - name: Create HTTPS website
+    - name: Create website
       community.windows.win_iis_website:
         name: SecureApp
         physical_path: C:\inetpub\secureapp
-        port: 443
-        hostname: secure.example.com
-        ssl: true
-        state: started
-      register: site_result
+        state: stopped
 
-    - name: Bind SSL certificate to the site
-      ansible.windows.win_shell: |
-        # Bind the certificate to the HTTPS binding
-        $binding = Get-WebBinding -Name "SecureApp" -Protocol "https"
-        $binding.AddSslCertificate("{{ cert_thumbprint }}", "My")
-      when: site_result.changed
+    - name: Add HTTPS binding with certificate
+      community.windows.win_iis_webbinding:
+        name: SecureApp
+        protocol: https
+        port: 443
+        host_header: secure.example.com
+        certificate_hash: "{{ cert_thumbprint }}"
+        certificate_store_name: My
+        ssl_flags: 1
+        state: present
+
+    - name: Start HTTPS website
+      community.windows.win_iis_website:
+        name: SecureApp
+        state: started
 ```
 
 ## Application Pool Configuration
@@ -212,6 +220,7 @@ Here is a comprehensive playbook that deploys an entire web application stack, i
         name:
           - Web-Server
           - Web-Asp-Net45
+          - Web-Scripting-Tools
         state: present
 
     - name: Create application directory structure
