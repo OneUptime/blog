@@ -8,7 +8,7 @@ Description: Deploy a multi-master Galera Cluster for MySQL/MariaDB using Ansibl
 
 ---
 
-Galera Cluster provides synchronous multi-master replication for MySQL and MariaDB. Every node can accept reads and writes, and data is replicated synchronously to all other nodes. This means no replication lag and no split-brain scenarios. Setting up a Galera cluster manually requires careful coordination because the first node must be bootstrapped differently from the rest. Ansible handles this orchestration cleanly.
+Galera Cluster provides synchronous multi-master replication for MySQL and MariaDB. Every node in the Primary Component can accept reads and writes, and data is replicated synchronously to all other nodes. This means no replica lag, and Galera's quorum model helps prevent split-brain by allowing only a Primary Component to process writes. Setting up a Galera cluster manually requires careful coordination because the first node must be bootstrapped differently from the rest. Ansible handles this orchestration cleanly.
 
 ## Inventory
 
@@ -30,7 +30,6 @@ all:
 
 ```yaml
 # inventories/production/group_vars/galera_cluster.yml
-mariadb_version: "10.11"
 galera_cluster_name: "prod_galera"
 galera_sst_method: mariabackup
 galera_sst_user: sst_user
@@ -52,6 +51,7 @@ galera_cluster_address: "gcomm://{{ groups['galera_cluster'] | map('extract', ho
       - "mariadb-client"
       - "galera-4"
       - "mariadb-backup"
+      - socat
       - python3-mysqldb
     state: present
     update_cache: yes
@@ -90,7 +90,7 @@ galera_cluster_address: "gcomm://{{ groups['galera_cluster'] | map('extract', ho
 
 - name: Wait for cluster sync
   ansible.builtin.command:
-    cmd: mysql -u root -e "SHOW STATUS LIKE 'wsrep_local_state_comment'"
+    cmd: mysql -u root -e "SHOW GLOBAL STATUS LIKE 'wsrep_local_state_comment'"
   register: cluster_state
   until: "'Synced' in cluster_state.stdout"
   retries: 30
@@ -110,7 +110,7 @@ galera_cluster_address: "gcomm://{{ groups['galera_cluster'] | map('extract', ho
   community.mysql.mysql_user:
     name: "{{ galera_sst_user }}"
     password: "{{ galera_sst_password }}"
-    priv: "*.*:RELOAD,PROCESS,LOCK TABLES,REPLICATION CLIENT"
+    priv: "*.*:RELOAD,PROCESS,LOCK TABLES,BINLOG MONITOR"
     host: localhost
     state: present
     login_unix_socket: /var/run/mysqld/mysqld.sock
@@ -179,7 +179,7 @@ long_query_time = 2
   tasks:
     - name: Check cluster size
       ansible.builtin.command:
-        cmd: mysql -u root -e "SHOW STATUS LIKE 'wsrep_cluster_size'"
+        cmd: mysql -u root -e "SHOW GLOBAL STATUS LIKE 'wsrep_cluster_size'"
       register: cluster_size
       changed_when: false
 
@@ -191,7 +191,7 @@ long_query_time = 2
 
     - name: Check node state
       ansible.builtin.command:
-        cmd: mysql -u root -e "SHOW STATUS LIKE 'wsrep_local_state_comment'"
+        cmd: mysql -u root -e "SHOW GLOBAL STATUS LIKE 'wsrep_local_state_comment'"
       register: node_state
       changed_when: false
 
@@ -203,7 +203,7 @@ long_query_time = 2
 
     - name: Check cluster status
       ansible.builtin.command:
-        cmd: mysql -u root -e "SHOW STATUS WHERE Variable_name IN ('wsrep_cluster_size', 'wsrep_cluster_status', 'wsrep_local_state_comment', 'wsrep_ready')"
+        cmd: mysql -u root -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('wsrep_cluster_size', 'wsrep_cluster_status', 'wsrep_local_state_comment', 'wsrep_ready')"
       register: full_status
       changed_when: false
 
@@ -428,4 +428,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
