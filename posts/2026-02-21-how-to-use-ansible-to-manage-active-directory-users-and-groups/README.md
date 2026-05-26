@@ -27,7 +27,7 @@ ansible-galaxy collection install ansible.windows
 
 Your Ansible service account needs the appropriate AD permissions. For user and group management, it typically needs to be a member of the "Account Operators" group or have delegated permissions on the target OUs.
 
-The playbooks in this post should be run against a domain controller or a server with the RSAT AD PowerShell module installed.
+The playbooks in this post should be run against a domain controller or a server with the RSAT AD PowerShell module installed. If you run them from a non-domain-controller Windows host, use Kerberos/CredSSP credential delegation or set domain credentials for the AD modules.
 
 ## Creating Active Directory Users
 
@@ -238,7 +238,7 @@ OUs provide the structure for organizing AD objects:
         path: "DC=corp,DC=local"
         state: present
         description: "New Department organizational unit"
-        protected: true
+        protect_from_deletion: true
 
     - name: Create sub-OUs
       microsoft.ad.ou:
@@ -337,14 +337,14 @@ When employees leave or accounts need to be decommissioned:
 
     - name: Disable the user account
       microsoft.ad.user:
-        name: "{{ departing_user }}"
+        identity: "{{ departing_user }}"
         enabled: false
         description: "Disabled - Departed {{ ansible_date_time.date }}"
         state: present
 
     - name: Move user to Disabled OU
       microsoft.ad.user:
-        name: "{{ departing_user }}"
+        identity: "{{ departing_user }}"
         path: "{{ disabled_ou }}"
         state: present
 ```
@@ -361,10 +361,10 @@ Sometimes you need to gather information from AD before taking action:
   tasks:
     - name: Find all users in Engineering department
       ansible.windows.win_shell: |
-        Get-ADUser -Filter { Department -eq "Engineering" } `
+        $users = Get-ADUser -Filter { Department -eq "Engineering" } `
           -Properties DisplayName, Title, Department, Enabled |
-          Select-Object SamAccountName, DisplayName, Title, Enabled |
-          ConvertTo-Json -AsArray
+          Select-Object SamAccountName, DisplayName, Title, Enabled
+        ConvertTo-Json -InputObject @($users)
       register: engineering_users
 
     - name: Display engineering team
@@ -374,10 +374,10 @@ Sometimes you need to gather information from AD before taking action:
     - name: Find accounts that have not logged in for 90 days
       ansible.windows.win_shell: |
         $cutoff = (Get-Date).AddDays(-90)
-        Get-ADUser -Filter { LastLogonDate -lt $cutoff -and Enabled -eq $true } `
+        $users = Get-ADUser -Filter { LastLogonDate -lt $cutoff -and Enabled -eq $true } `
           -Properties LastLogonDate, DisplayName |
-          Select-Object SamAccountName, DisplayName, LastLogonDate |
-          ConvertTo-Json -AsArray
+          Select-Object SamAccountName, DisplayName, LastLogonDate
+        ConvertTo-Json -InputObject @($users)
       register: stale_accounts
 
     - name: Display stale accounts
@@ -386,9 +386,9 @@ Sometimes you need to gather information from AD before taking action:
 
     - name: Find locked out accounts
       ansible.windows.win_shell: |
-        Search-ADAccount -LockedOut |
-          Select-Object SamAccountName, LockedOut, LastLogonDate |
-          ConvertTo-Json -AsArray
+        $accounts = Search-ADAccount -LockedOut |
+          Select-Object SamAccountName, LockedOut, LastLogonDate
+        ConvertTo-Json -InputObject @($accounts)
       register: locked_accounts
 ```
 
@@ -408,7 +408,7 @@ For helpdesk-type operations where you need to reset passwords:
   tasks:
     - name: Reset password and force change at next logon
       microsoft.ad.user:
-        name: "{{ target_user }}"
+        identity: "{{ target_user }}"
         password: "{{ temp_password }}"
         update_password: always
         password_expired: true
