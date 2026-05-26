@@ -21,7 +21,7 @@ systemd has two axes of dependency: ordering and requirement.
 - `Before=` - Start this service before the named unit
 
 **Requirement** controls whether services must be running:
-- `Requires=` - Hard dependency; if the required unit fails, this unit fails too
+- `Requires=` - Hard dependency; if the required unit fails to activate and this unit is ordered after it, this unit will not start
 - `Wants=` - Soft dependency; if the wanted unit fails, this unit still starts
 - `BindsTo=` - Like Requires, but also stops this unit when the bound unit stops
 - `Conflicts=` - Ensures the conflicting unit is stopped when this unit starts
@@ -183,7 +183,7 @@ Playbook deploying a full stack with proper dependency chains:
 
   handlers:
     - name: Reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
 ```
 
@@ -278,6 +278,7 @@ Deploy a custom target for the application stack:
       Description=MyApp Full Stack
       Requires=myapp-db.service myapp-api.service myapp-proxy.service
       After=myapp-db.service myapp-api.service myapp-proxy.service
+      PropagatesStopTo=myapp-db.service myapp-api.service myapp-proxy.service
 
       [Install]
       WantedBy=multi-user.target
@@ -287,7 +288,7 @@ Deploy a custom target for the application stack:
   notify: Reload systemd
 
 - name: Enable the application target
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: myapp.target
     enabled: yes
     daemon_reload: yes
@@ -311,7 +312,7 @@ Verify the dependency chain is set up correctly:
 
 ```yaml
 - name: Reload systemd
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     daemon_reload: yes
 
 - name: Verify dependency tree
