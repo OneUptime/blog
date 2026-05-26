@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible mandatory filter to enforce that criti
 
 ---
 
-While the `default` filter provides fallback values for optional variables, some variables should never have a default. A database password, a deployment version, or a target environment name are examples of values that must be explicitly provided. If someone forgets to set them, the playbook should fail immediately with a clear error message rather than proceeding with a wrong or empty value. The `mandatory` filter does exactly this.
+While the `default` filter provides fallback values for optional variables, some variables should never have a default. A database password, a deployment version, or a target environment name are examples of values that must be explicitly provided. If someone forgets to set them, the playbook should fail immediately with a clear error message rather than proceeding with an undefined value. The `mandatory` filter does exactly this.
 
 ## Basic Usage
 
-The `mandatory` filter checks if a variable is defined and has a value. If the variable is undefined, empty, or None, it raises an immediate error:
+The `mandatory` filter checks if a variable is defined. If the variable is undefined, it raises an immediate error. It does not reject empty strings or `None`; use `assert` when you also need to validate that a value is non-empty or has a specific type:
 
 ```yaml
 ---
@@ -24,11 +24,11 @@ The `mandatory` filter checks if a variable is defined and has a value. If the v
   become: yes
   vars:
     # These might come from group_vars, host_vars, or extra-vars
-    deploy_version: "{{ deploy_version | mandatory }}"
-    target_environment: "{{ target_environment | mandatory }}"
+    required_deploy_version: "{{ deploy_version | mandatory }}"
+    required_target_environment: "{{ target_environment | mandatory }}"
 
   tasks:
-    - name: Deploy version {{ deploy_version }} to {{ target_environment }}
+    - name: Deploy version {{ required_deploy_version }} to {{ required_target_environment }}
       debug:
         msg: "Starting deployment"
 ```
@@ -39,29 +39,28 @@ If you run this without providing `deploy_version`:
 ansible-playbook mandatory-basic.yml
 ```
 
-You get:
+You get an error like:
 
 ```text
-TASK [Deploy version  to ] ***
 fatal: [web01]: FAILED! => {"msg": "Mandatory variable 'deploy_version' not defined."}
 ```
 
-## Using mandatory in Role Defaults
+## Marking Required Variables in Role Defaults
 
-The most common place to use `mandatory` is in a role's `defaults/main.yml` to mark variables that users must provide:
+In a role's `defaults/main.yml`, the documented way to mark variables that users must provide is to give them an undefined value with `undef()` and a helpful hint:
 
 ```yaml
 # roles/database_backup/defaults/main.yml
 # Variables that the user MUST provide (no sensible default exists)
 
 # The S3 bucket where backups will be stored - required
-backup_s3_bucket: "{{ backup_s3_bucket | mandatory }}"
+backup_s3_bucket: "{{ undef(hint='backup_s3_bucket is required') }}"
 
 # AWS region for the S3 bucket - required
-backup_aws_region: "{{ backup_aws_region | mandatory }}"
+backup_aws_region: "{{ undef(hint='backup_aws_region is required') }}"
 
 # Database name to back up - required
-backup_database_name: "{{ backup_database_name | mandatory }}"
+backup_database_name: "{{ undef(hint='backup_database_name is required') }}"
 
 # Variables that have sensible defaults
 backup_retention_days: 30
@@ -74,7 +73,7 @@ When someone uses this role without providing the required variables:
 
 ```yaml
 ---
-# This will fail with a clear error because mandatory vars are missing
+# This will fail with a clear error because required vars are missing
 - hosts: databases
   roles:
     - database_backup
@@ -84,7 +83,7 @@ But this works:
 
 ```yaml
 ---
-# This works because all mandatory variables are provided
+# This works because all required variables are provided
 - hosts: databases
   roles:
     - role: database_backup
@@ -105,9 +104,9 @@ The `mandatory` filter accepts a custom error message:
 
 - hosts: webservers
   vars:
-    db_host: "{{ database_host | mandatory('You must provide database_host. Set it in group_vars or pass via -e database_host=hostname') }}"
-    db_password: "{{ database_password | mandatory('database_password is required. Use ansible-vault or pass via -e') }}"
-    deploy_env: "{{ environment_name | mandatory('Specify the target environment: -e environment_name=production|staging|development') }}"
+    db_host: "{{ database_host | mandatory(msg='You must provide database_host. Set it in group_vars or pass via -e database_host=hostname') }}"
+    db_password: "{{ database_password | mandatory(msg='database_password is required. Use ansible-vault or pass via -e') }}"
+    deploy_env: "{{ environment_name | mandatory(msg='Specify the target environment: -e environment_name=production|staging|development') }}"
 
   tasks:
     - name: Connect to database
@@ -301,13 +300,13 @@ Here is a clean pattern that documents which variables are required and which ar
 # ===========================================
 
 # The version to deploy (e.g., "2.5.0")
-myapp_version: "{{ myapp_version | mandatory('myapp_version is required: -e myapp_version=X.Y.Z') }}"
+myapp_version: "{{ undef(hint='myapp_version is required: -e myapp_version=X.Y.Z') }}"
 
 # Database connection password
-myapp_db_password: "{{ myapp_db_password | mandatory('myapp_db_password must be set via vault or extra vars') }}"
+myapp_db_password: "{{ undef(hint='myapp_db_password must be set via vault or extra vars') }}"
 
 # The target environment
-myapp_environment: "{{ myapp_environment | mandatory('Specify environment: -e myapp_environment=production') }}"
+myapp_environment: "{{ undef(hint='Specify environment: -e myapp_environment=production') }}"
 
 # ===========================================
 # OPTIONAL VARIABLES (sensible defaults provided)
@@ -331,4 +330,4 @@ myapp_health_check_interval: 30
 
 ## Wrapping Up
 
-The `mandatory` filter and `assert` module serve different but complementary purposes. Use `mandatory` for simple "this must exist" checks, especially in role defaults and templates. Use `assert` when you need to validate format, range, type, or more complex conditions. Both approaches share the same goal: failing fast with a clear error message so that operators know exactly what to fix, rather than letting a playbook run halfway before crashing or, worse, deploying a broken configuration because a critical variable was silently empty.
+The `mandatory` filter and `assert` module serve different but complementary purposes. Use `mandatory` for simple "this must exist" checks, especially in templates and task variables. Use `undef()` in role defaults when a variable must be overridden. Use `assert` when you need to validate format, range, type, or more complex conditions. These approaches share the same goal: failing fast with a clear error message so that operators know exactly what to fix, rather than letting a playbook run halfway before crashing or, worse, deploying a broken configuration because a critical variable was missing or invalid.
