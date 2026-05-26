@@ -43,7 +43,7 @@ Creating a local group is straightforward. You specify the group name and set th
 
 ## Managing Group Membership
 
-The `win_group_membership` module (separate from `win_group`) handles adding and removing users from groups. This separation follows the Unix philosophy of doing one thing well.
+The `win_group_membership` module (separate from `win_group`) handles adding and removing local users, service accounts, domain users, and domain groups from local groups. This separation follows the Unix philosophy of doing one thing well.
 
 ```yaml
 # group-membership.yml - Add and remove group members
@@ -279,6 +279,11 @@ Keeping track of who belongs to which groups is critical for security. Here is a
         $report | ConvertTo-Json
       register: group_report
 
+    - name: Ensure audit directory exists
+      ansible.windows.win_file:
+        path: C:\Audit
+        state: directory
+
     - name: Save group audit report
       ansible.windows.win_copy:
         content: "{{ group_report.stdout | from_json | to_nice_json }}"
@@ -329,7 +334,7 @@ Here are some practical considerations:
 
 1. **Domain vs Local**: The `win_group` module manages local groups only. Domain groups are managed through Active Directory. You can, however, add domain users and groups as members of local groups.
 2. **Built-in groups**: You cannot delete built-in Windows groups like Administrators, Users, or Remote Desktop Users. You can only manage their membership.
-3. **Nested groups**: Windows supports adding groups as members of other groups. This works in `win_group_membership` by specifying the group name as a member.
+3. **Nested groups**: You can add domain groups as members of local groups with `win_group_membership`. Local groups should not be nested inside other local groups.
 4. **State: pure with caution**: Using `state: pure` will remove any members not in your list. Double-check your member list before using this in production to avoid locking yourself out.
 
 ## Summary
