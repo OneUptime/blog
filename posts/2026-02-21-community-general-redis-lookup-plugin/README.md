@@ -48,7 +48,7 @@ This playbook fetches a configuration value stored in Redis:
 
 ## Connection Parameters
 
-By default, the plugin connects to Redis on `localhost:6379`. You can specify different connection settings.
+By default, the plugin connects to Redis on `127.0.0.1:6379`. You can specify a different host, port, or Unix socket.
 
 ```yaml
 # playbook.yml - Redis connection options
@@ -61,15 +61,15 @@ By default, the plugin connects to Redis on `localhost:6379`. You can specify di
       ansible.builtin.debug:
         msg: "{{ lookup('community.general.redis', 'mykey', host='redis.example.com', port=6379) }}"
 
-    # Connect with authentication
-    - name: Read from password-protected Redis
+    # Connect to a non-default port
+    - name: Read from Redis on a custom port
       ansible.builtin.debug:
-        msg: "{{ lookup('community.general.redis', 'mykey', host='redis.example.com', password='redis_secret') }}"
+        msg: "{{ lookup('community.general.redis', 'mykey', host='redis.example.com', port=6380) }}"
 
-    # Connect to a specific database number
-    - name: Read from Redis database 2
+    # Connect over a Unix socket
+    - name: Read from Redis over a socket
       ansible.builtin.debug:
-        msg: "{{ lookup('community.general.redis', 'mykey', host='redis.example.com', db=2) }}"
+        msg: "{{ lookup('community.general.redis', 'mykey', socket='/var/run/redis/redis.sock') }}"
 ```
 
 ## Practical Example: Feature Flag System
@@ -189,7 +189,7 @@ Track deployment state in Redis so multiple playbooks can coordinate.
 
     - name: Check current deployed version
       ansible.builtin.set_fact:
-        current_version: "{{ lookup('community.general.redis', 'deploy:current_version', host=redis_host) | default('unknown') }}"
+        current_version: "{{ lookup('community.general.redis', 'deploy:current_version', host=redis_host) | default('unknown', true) }}"
 
     - name: Show deployment info
       ansible.builtin.debug:
@@ -239,11 +239,11 @@ Check service health status stored in Redis by monitoring systems.
   tasks:
     - name: Check cluster health from Redis
       ansible.builtin.set_fact:
-        cluster_health: "{{ lookup('community.general.redis', 'health:cluster:status', host=redis_host) | default('unknown') }}"
+        cluster_health: "{{ lookup('community.general.redis', 'health:cluster:status', host=redis_host) | default('unknown', true) }}"
 
     - name: Check database health
       ansible.builtin.set_fact:
-        db_health: "{{ lookup('community.general.redis', 'health:database:status', host=redis_host) | default('unknown') }}"
+        db_health: "{{ lookup('community.general.redis', 'health:database:status', host=redis_host) | default('unknown', true) }}"
 
     - name: Abort deployment if infrastructure is unhealthy
       ansible.builtin.fail:
@@ -314,7 +314,7 @@ Handle missing keys and connection failures:
     # Use default for missing keys
     - name: Read with fallback for missing key
       ansible.builtin.set_fact:
-        config_value: "{{ lookup('community.general.redis', 'possibly:missing:key', host=redis_host) | default('fallback_value') }}"
+        config_value: "{{ lookup('community.general.redis', 'possibly:missing:key', host=redis_host) | default('fallback_value', true) }}"
 
     # Block/rescue for connection failures
     - name: Try reading from Redis
@@ -337,11 +337,11 @@ Handle missing keys and connection failures:
 
 2. **Connection pooling**: Each lookup creates a new connection to Redis. If you are fetching many values, consider using a script that reads all needed keys at once and stores them in a local cache file.
 
-3. **Data types**: The Redis lookup returns string values only. It reads keys set with `SET`, not complex Redis data structures like hashes, lists, or sets. For complex types, use the `redis` module or a custom script.
+3. **Data types**: The Redis lookup returns string values only. It reads keys set with `SET`, not complex Redis data structures like hashes, lists, or sets. For complex types, use `redis-cli`, the Redis Python library, or a custom script.
 
-4. **Security**: If Redis contains sensitive data, ensure network-level access control and use Redis AUTH. The password parameter in the lookup passes credentials in plaintext within the playbook, so store it in Ansible Vault.
+4. **Security**: If Redis contains sensitive data, ensure network-level access control. The lookup supports `host`, `port`, and `socket`; it does not expose Redis AUTH or TLS parameters, so use a different integration if you need authenticated or encrypted Redis connections from Ansible.
 
-5. **Availability**: Redis is an in-memory store. If Redis restarts or is unavailable, your playbook will fail. Always have a fallback plan for critical deployments.
+5. **Availability**: Redis is an in-memory data store and can be unavailable during outages or restarts. If Ansible cannot reach Redis during a lookup, your playbook will fail. Always have a fallback plan for critical deployments.
 
 6. **TTL awareness**: Redis keys can have expiration times. A key that exists when you run the playbook might not exist next time. Handle missing keys with defaults.
 
