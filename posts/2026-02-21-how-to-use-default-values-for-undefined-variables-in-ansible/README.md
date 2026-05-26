@@ -153,6 +153,8 @@ A cleaner approach for deeply nested access:
           }}
 ```
 
+This example requires the `community.general` collection and the `jmespath` Python package on the controller.
+
 ## Using default in Templates
 
 The `default` filter is especially useful in Jinja2 templates:
@@ -200,7 +202,7 @@ The special `omit` value tells Ansible to not pass the parameter at all, as if i
 - hosts: webservers
   become: yes
   tasks:
-    # If ssl_cert is not defined, the ssl_certificate parameter is omitted entirely
+    # If nginx_validate_command is not defined, the validate parameter is omitted entirely
     - name: Configure nginx
       template:
         src: nginx.conf.j2
@@ -256,7 +258,9 @@ Sometimes you need to check for existence rather than providing a default:
       assert:
         that:
           - allowed_ips is defined
-          - allowed_ips is iterable
+          - allowed_ips is sequence
+          - allowed_ips is not string
+          - allowed_ips is not mapping
           - allowed_ips | length > 0
         fail_msg: "allowed_ips must be a non-empty list"
       when: firewall_enabled | default(false)
@@ -264,21 +268,17 @@ Sometimes you need to check for existence rather than providing a default:
 
 ## Setting Playbook-Level Error Behavior
 
-You can control how Ansible handles undefined variables globally:
+Older Ansible releases allowed you to control how undefined variables were handled globally with `error_on_undefined_vars`:
 
 ```ini
 # ansible.cfg
 [defaults]
-# Options: error (default), warn, ignore
-# "error" stops playbook execution on undefined variables
-# "warn" prints a warning but continues
-# "ignore" silently uses an empty string
-
-# The safe choice for most environments:
+# Boolean option: true fails templating that references undefined variables.
+# In current Ansible releases this option is deprecated and no longer used.
 error_on_undefined_vars = true
 ```
 
-I strongly recommend keeping `error_on_undefined_vars = true` (the default). Use `default` filters explicitly where you want fallback behavior, rather than silently ignoring all undefined variables.
+I strongly recommend treating undefined variables as errors. Use `default` filters explicitly where you want fallback behavior, rather than silently relying on global undefined-variable behavior.
 
 ## Real-World Example: Flexible Role with Defaults
 
