@@ -37,21 +37,20 @@ Create a `.pre-commit-config.yaml` file in the root of your repository:
 ---
 repos:
   - repo: https://github.com/ansible/ansible-lint
-    rev: v24.10.0  # Use the latest stable version
+    rev: v26.4.0  # Use a stable release tag
     hooks:
       - id: ansible-lint
-        name: ansible-lint
-        description: Run ansible-lint on Ansible files
-        entry: ansible-lint
-        language: python
-        files: \.(yml|yaml)$
-        # Exclude non-Ansible YAML files
-        exclude: >-
-          (?x)^(
-            docker-compose\.yml|
-            .github/.*|
-            .pre-commit-config\.yaml
-          )$
+```
+
+If your repository contains YAML files that are not Ansible content, exclude them in `.ansible-lint`:
+
+```yaml
+# .ansible-lint - Exclude non-Ansible YAML files
+---
+exclude_paths:
+  - docker-compose.yml
+  - .github/
+  - .pre-commit-config.yaml
 ```
 
 ## Installing the Hook
@@ -66,7 +65,7 @@ pre-commit install
 # pre-commit installed at .git/hooks/pre-commit
 ```
 
-From this point on, every `git commit` will trigger ansible-lint on the staged files.
+From this point on, every `git commit` will trigger ansible-lint. The upstream ansible-lint hook runs from the repository root and lets ansible-lint discover Ansible content, rather than passing only the staged file names.
 
 ## Testing the Hook
 
@@ -76,8 +75,8 @@ Run the hook manually against all files to see if everything is working:
 # Run against all files (not just staged ones)
 pre-commit run ansible-lint --all-files
 
-# Run against specific files
-pre-commit run ansible-lint --files playbooks/site.yml
+# Run ansible-lint directly when you want to target a specific playbook
+ansible-lint playbooks/site.yml
 
 # Run all configured hooks
 pre-commit run --all-files
@@ -93,7 +92,7 @@ ansible-lint works well alongside other linting tools. Here is a more complete c
 repos:
   # YAML linting (runs first, catches basic syntax issues)
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+    rev: v1.37.1
     hooks:
       - id: yamllint
         args: [-c, .yamllint.yml]
@@ -101,18 +100,18 @@ repos:
 
   # Ansible-lint (runs after yamllint)
   - repo: https://github.com/ansible/ansible-lint
-    rev: v24.10.0
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
         name: ansible-lint
-        additional_dependencies:
-          # Add any collections your playbooks need
-          - ansible.posix
-          - community.general
+        # Uncomment if you need the full Ansible community package
+        # instead of ansible-core in the hook environment.
+        # additional_dependencies:
+        #   - ansible
 
   # Check for merge conflicts, large files, etc.
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -128,40 +127,38 @@ repos:
 
 ## Handling Additional Dependencies
 
-If your Ansible code uses collections that ansible-lint needs to parse, add them as additional dependencies:
+If your Ansible code uses collections that ansible-lint needs to parse, add them to a `requirements.yml` file. ansible-lint recognizes standard requirements files and installs them automatically.
 
 ```yaml
-# .pre-commit-config.yaml - With collection dependencies
+# requirements.yml - Collection dependencies
 ---
-repos:
-  - repo: https://github.com/ansible/ansible-lint
-    rev: v24.10.0
-    hooks:
-      - id: ansible-lint
-        additional_dependencies:
-          - ansible.posix>=1.5.0
-          - community.general>=8.0.0
-          - community.docker>=3.0.0
-          - amazon.aws>=7.0.0
+collections:
+  - name: ansible.posix
+    version: ">=1.5.0"
+  - name: community.general
+    version: ">=8.0.0"
+  - name: community.docker
+    version: ">=3.0.0"
+  - name: amazon.aws
+    version: ">=7.0.0"
 ```
 
 ## Speeding Up Pre-Commit Runs
 
 ansible-lint can be slow, especially on large projects. Here are ways to speed it up:
 
-### Only Lint Changed Files
+### Understand Hook Scope
 
-By default, pre-commit only passes staged files to the hook. This means only changed files are linted, which is already much faster than linting everything.
+Most pre-commit hooks receive only staged files by default. The upstream ansible-lint hook is different: it sets `pass_filenames: false` and `always_run: true` so ansible-lint can run from the project root and resolve roles, playbooks, and collection dependencies correctly.
 
-### Use the Progressive Profile
+### Use a Suitable Profile
 
-Configure ansible-lint to only report new violations:
+Configure ansible-lint with a profile that matches how strict you want the check to be:
 
 ```yaml
-# .ansible-lint - Enable progressive mode for faster development
+# .ansible-lint - Use a moderate profile for development
 ---
 profile: moderate
-progressive: true
 ```
 
 ### Skip Hooks When Needed
