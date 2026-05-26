@@ -35,7 +35,7 @@ The most straightforward use case is ensuring a list of services are running.
         - memcached
 ```
 
-Each iteration calls `systemctl start <service>` (or the equivalent on your init system). If the service is already running, Ansible reports "ok" and moves on.
+Each iteration asks the detected service manager to start the service (`systemctl start <service>` on systemd hosts, or the equivalent on your init system). If the service is already running, Ansible reports "ok" and moves on.
 
 ## Enabling and Starting Services Together
 
@@ -94,7 +94,7 @@ This pattern is particularly useful when migrating from one web server to anothe
 
 ## Restarting Services After Configuration Changes
 
-A common pattern is to restart services after deploying new configuration files. You can combine `loop` with handlers for this.
+A common pattern is to restart services after deploying new configuration files. You can combine `loop` with registered results for this.
 
 ```yaml
 # config-deploy.yml
@@ -162,8 +162,7 @@ Your playbook stays generic:
         name: "{{ item.name }}"
         state: "{{ item.state }}"
         enabled: "{{ item.enabled }}"
-      loop: "{{ managed_services }}"
-      when: managed_services is defined
+      loop: "{{ managed_services | default([]) }}"
 ```
 
 ## Checking Service Status
@@ -188,8 +187,11 @@ Sometimes you need to verify services are running without changing their state. 
     - name: Check critical services
       ansible.builtin.debug:
         msg: >
-          {{ item }}: {{ ansible_facts.services[item + '.service'].state
-          | default('not found') }}
+          {{ item }}: {{
+          'not found'
+          if (ansible_facts.services[item + '.service'].status | default('not-found')) == 'not-found'
+          else ansible_facts.services[item + '.service'].state | default('unknown')
+          }}
       loop: "{{ critical_services }}"
 
     - name: Fail if any critical service is not running
@@ -198,6 +200,7 @@ Sometimes you need to verify services are running without changing their state. 
       loop: "{{ critical_services }}"
       when: >
         ansible_facts.services[item + '.service'] is not defined or
+        (ansible_facts.services[item + '.service'].status | default('')) == 'not-found' or
         ansible_facts.services[item + '.service'].state != 'running'
 ```
 
@@ -227,7 +230,9 @@ On some hosts, a service might not be installed yet. You can handle this gracefu
         - redis-server
         - node-exporter
         - filebeat
-      when: (item + '.service') in ansible_facts.services
+      when: >
+        ansible_facts.services[item + '.service'] is defined and
+        (ansible_facts.services[item + '.service'].status | default('')) != 'not-found'
 ```
 
 By first gathering service facts and then checking if the service exists, you avoid failures on hosts where the service is not installed.
