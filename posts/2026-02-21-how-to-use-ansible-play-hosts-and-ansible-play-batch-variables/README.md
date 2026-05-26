@@ -8,7 +8,7 @@ Description: Understand the difference between play_hosts and ansible_play_batch
 
 ---
 
-When you are orchestrating deployments across multiple hosts, you often need to know which hosts are part of the current play and which are in the current batch. Ansible provides two special variables for this: `ansible_play_hosts` (also available as `play_hosts`) and `ansible_play_batch`. They look similar at first glance, but they serve different purposes, especially when you are using the `serial` keyword for rolling updates.
+When you are orchestrating deployments across multiple hosts, you often need to know which hosts are part of the current play and which are in the current batch. Ansible provides two special variables for this: `ansible_play_hosts` and `ansible_play_batch`. The deprecated `play_hosts` variable is the same as `ansible_play_batch`. They look similar at first glance, but they serve different purposes, especially when you are using the `serial` keyword for rolling updates.
 
 ## What is ansible_play_hosts?
 
@@ -167,7 +167,7 @@ local_node = {{ ansible_default_ipv4.address }}:5432
 
 ## Calculating Batch Position
 
-You can figure out which batch number you are on by comparing `ansible_play_batch` against `ansible_play_hosts`.
+For a fixed numeric `serial` value, you can figure out which batch number you are on by comparing `ansible_play_batch` against `ansible_play_hosts_all`.
 
 ```yaml
 # batch-position.yml - Determine current batch number
@@ -176,14 +176,16 @@ You can figure out which batch number you are on by comparing `ansible_play_batc
   hosts: webservers
   serial: 3
   gather_facts: false
+  vars:
+    serial_size: 3
   tasks:
     - name: Calculate batch number
       ansible.builtin.set_fact:
         batch_number: >-
-          {{ ((ansible_play_hosts.index(ansible_play_batch[0])) //
-              (ansible_play_batch | length)) + 1 }}
+          {{ ((ansible_play_hosts_all.index(ansible_play_batch[0])) //
+              serial_size) + 1 }}
         total_batches: >-
-          {{ (ansible_play_hosts | length / (ansible_play_batch | length)) | round(0, 'ceil') | int }}
+          {{ (ansible_play_hosts_all | length / serial_size) | round(0, 'ceil') | int }}
       run_once: true
 
     - name: Display batch progress
