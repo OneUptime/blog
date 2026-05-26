@@ -51,11 +51,11 @@ resource "aws_instance" "spot_worker" {
 }
 ```
 
-If you omit `max_price`, AWS uses the on-demand price as the maximum, which means you'll always get the spot instance as long as capacity is available (at whatever the current spot price is).
+If you omit `max_price`, AWS uses the on-demand price as the maximum. The request can still wait or fail if Spot capacity is not available for your selected instance type and Availability Zone, but you avoid losing capacity because of an artificially low bid.
 
 ## Spot Instance Request Resource
 
-For more control over the spot request lifecycle, use the dedicated `aws_spot_instance_request` resource.
+For legacy workflows that need direct Spot request lifecycle control, Terraform also provides the dedicated `aws_spot_instance_request` resource. AWS now strongly discourages the underlying RequestSpotInstances API for new designs; prefer `aws_instance` with `instance_market_options`, an Auto Scaling Group, or EC2 Fleet when possible.
 
 ```hcl
 # Spot instance request with full lifecycle control
@@ -101,7 +101,7 @@ Key options:
 
 ## Spot Fleet for Multiple Instance Types
 
-Spot Fleets let you request capacity across multiple instance types and availability zones, which significantly reduces interruption risk.
+Spot Fleets let you request capacity across multiple instance types and availability zones, which significantly reduces interruption risk. The underlying RequestSpotFleet API is now considered legacy by AWS, so use EC2 Fleet or an Auto Scaling Group for new production designs when possible.
 
 ```hcl
 # Spot fleet request for diversified capacity
@@ -116,7 +116,8 @@ resource "aws_spot_fleet_request" "workers" {
   # "lowestPrice" picks the cheapest options
   # "diversified" spreads across pools for better availability
   # "capacityOptimized" picks pools with most available capacity
-  allocation_strategy = "capacityOptimized"
+  # "priceCapacityOptimized" balances price and capacity, and is the current AWS recommendation
+  allocation_strategy = "priceCapacityOptimized"
 
   # Launch specification for c5.xlarge
   launch_specification {
@@ -234,7 +235,7 @@ resource "aws_autoscaling_group" "app" {
     instances_distribution {
       on_demand_base_capacity                  = 2   # Always keep 2 on-demand
       on_demand_percentage_above_base_capacity = 25  # 25% on-demand above base
-      spot_allocation_strategy                 = "capacity-optimized"
+      spot_allocation_strategy                 = "price-capacity-optimized"
 
       # Maximum spot price (optional, defaults to on-demand price)
       spot_max_price = ""
@@ -289,14 +290,20 @@ You should always plan for interruptions. Here are practical strategies:
 # Run this as a background process on your spot instances
 
 METADATA_URL="http://169.254.169.254/latest/meta-data/spot/instance-action"
+TOKEN_URL="http://169.254.169.254/latest/api/token"
 
 while true; do
+  TOKEN=$(curl -s -X PUT "$TOKEN_URL" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
   # Check for interruption notice
-  RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $METADATA_URL)
+  RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "X-aws-ec2-metadata-token: $TOKEN" \
+    "$METADATA_URL")
 
   if [ "$RESPONSE" -eq 200 ]; then
     # Interruption notice received - we have ~2 minutes
-    ACTION=$(curl -s $METADATA_URL | jq -r '.action')
+    ACTION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "$METADATA_URL" | jq -r '.action')
     echo "Spot interruption notice received: $ACTION"
 
     # Gracefully stop accepting new work
@@ -307,7 +314,9 @@ while true; do
     kill -SIGTERM $(cat /var/run/app.pid)
 
     # Deregister from the load balancer
-    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+    INSTANCE_ID=$(curl -s \
+      -H "X-aws-ec2-metadata-token: $TOKEN" \
+      http://169.254.169.254/latest/meta-data/instance-id)
     aws elbv2 deregister-targets \
       --target-group-arn "$TARGET_GROUP_ARN" \
       --targets "Id=$INSTANCE_ID"
@@ -336,8 +345,8 @@ aws ec2 describe-spot-price-history \
 
 ## Summary
 
-For one-off spot instances, `aws_instance` with `instance_market_options` is the simplest path. For batch workloads that need multiple instances, spot fleets give you instance type diversity. For production services, the Auto Scaling Group with mixed instances policy is the gold standard - it gives you the cost savings of spot with the reliability of on-demand as a fallback.
+For one-off spot instances, `aws_instance` with `instance_market_options` is the simplest path. For batch workloads that need multiple instances, EC2 Fleet or Auto Scaling Groups give you instance type diversity. For production services, the Auto Scaling Group with mixed instances policy is the gold standard - it gives you the cost savings of spot with the reliability of on-demand as a fallback.
 
-The key to making spot work reliably is instance type diversity (use at least 4-6 types), multi-AZ distribution, and graceful interruption handling. Get those right, and you can run production workloads on spot with very few issues.
+The key to making spot work reliably is instance type diversity (AWS recommends being flexible across at least 10 instance types for each workload), multi-AZ distribution, and graceful interruption handling. Get those right, and you can run production workloads on spot with very few issues.
 
 For more on Auto Scaling, see our guide on [creating Auto Scaling groups with Terraform](https://oneuptime.com/blog/post/2026-02-23-create-auto-scaling-groups-with-terraform/view).
