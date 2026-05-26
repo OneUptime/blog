@@ -159,17 +159,18 @@ ansible webservers -m debug -a "msg='Port is {{ http_port }}'" \
   -e "http_port=9090"
 ```
 
-The full precedence order (from lowest to highest) for the relevant levels:
+The simplified precedence order (from lowest to highest) for the relevant levels:
 
 ```mermaid
 graph TD
-    A[Role Defaults] --> B[Inventory Variables]
-    B --> C[Group Variables]
-    C --> D[Host Variables]
-    D --> E[Play Variables]
-    E --> F[Task Variables]
-    F --> G[Extra Variables - Highest Priority]
-    style G fill:#f96,stroke:#333,stroke-width:2px
+    A[Role Defaults] --> B[Inventory Group Variables]
+    B --> C[Inventory Host Variables]
+    C --> D[Play Variables]
+    D --> E[Task Variables]
+    E --> F[include_vars and set_fact]
+    F --> G[Role and Include Parameters]
+    G --> H[Extra Variables - Highest Priority]
+    style H fill:#f96,stroke:#333,stroke-width:2px
 ```
 
 ## Multiple -e Flags
