@@ -106,6 +106,11 @@ You can pass complex dictionaries through the loop for templates that need many 
         mode: '0644'
       loop: "{{ applications }}"
       notify: Reload systemd
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
 ```
 
 The corresponding template accesses nested attributes.
