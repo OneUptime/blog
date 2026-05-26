@@ -57,6 +57,8 @@ With `--host <hostname>`, it expects variables for that specific host:
 }
 ```
 
+When you pass the script directly to Ansible as an inventory source, make sure it is executable and has a valid shebang.
+
 ## Sample Dynamic Inventory Script
 
 Here is a sample inventory script that queries a hypothetical API:
@@ -251,7 +253,7 @@ class TestOutputFormat:
 
 ## Testing Approach 2: CLI Output Validation
 
-Test the script as Ansible would call it, via command line:
+Test the script's command-line interface using a test API endpoint or fixture-backed mode, so the test does not depend on the production CMDB:
 
 ```bash
 #!/bin/bash
@@ -260,10 +262,11 @@ Test the script as Ansible would call it, via command line:
 set -euo pipefail
 
 INVENTORY_SCRIPT="inventory/cloud_inventory.py"
+chmod +x "$INVENTORY_SCRIPT"
 
 # Test --list flag produces valid JSON
 echo "Testing --list output..."
-list_output=$(python3 "$INVENTORY_SCRIPT" --list 2>/dev/null)
+list_output=$("$INVENTORY_SCRIPT" --list 2>/dev/null)
 if echo "$list_output" | python3 -m json.tool > /dev/null 2>&1; then
     echo "  PASS: --list produces valid JSON"
 else
@@ -281,7 +284,7 @@ fi
 
 # Test --host flag produces valid JSON
 echo "Testing --host output..."
-host_output=$(python3 "$INVENTORY_SCRIPT" --host web1.example.com 2>/dev/null)
+host_output=$("$INVENTORY_SCRIPT" --host web1.example.com 2>/dev/null)
 if echo "$host_output" | python3 -m json.tool > /dev/null 2>&1; then
     echo "  PASS: --host produces valid JSON"
 else
@@ -297,6 +300,9 @@ echo "All CLI tests passed"
 Use Ansible's own inventory parser to validate your script:
 
 ```bash
+# Inventory scripts must be executable when Ansible runs them directly
+chmod +x inventory/cloud_inventory.py
+
 # Use ansible-inventory to parse and validate the dynamic inventory
 ansible-inventory -i inventory/cloud_inventory.py --list --output inventory_dump.json
 
