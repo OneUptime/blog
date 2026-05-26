@@ -8,7 +8,7 @@ Description: A complete guide to enabling and troubleshooting Ansible SSH pipeli
 
 ---
 
-Every time Ansible runs a task on a remote host, it goes through a multi-step process: open an SSH connection, create a temporary directory, copy the module over SCP or SFTP, execute the module, and clean up. SSH pipelining collapses several of these steps into a single SSH session by piping the module code directly to the Python interpreter on the remote side. The result is noticeably faster playbook execution, especially when you have many short tasks.
+Every time Ansible runs a task on a remote host, it goes through a multi-step process: open an SSH connection, create a temporary directory, copy the module over the configured SSH transfer method, execute the module, and clean up. SSH pipelining collapses several of these steps by piping Python module code directly to the Python interpreter on the remote side. The result is noticeably faster playbook execution, especially when you have many short tasks.
 
 ## How Ansible Module Execution Works Without Pipelining
 
@@ -16,7 +16,7 @@ To appreciate what pipelining does, let us look at the default behavior. When An
 
 1. Opens an SSH connection to the remote host
 2. Creates a temporary directory under `~/.ansible/tmp/`
-3. Transfers the module code (a Python script) to that directory via SFTP
+3. Transfers the module code (usually a Python script) to that directory via the configured SSH transfer method, such as SFTP
 4. Executes the module via a second SSH command
 5. Reads the JSON output
 6. Removes the temporary files
@@ -42,11 +42,11 @@ export ANSIBLE_PIPELINING=True
 ansible-playbook site.yml
 ```
 
-With pipelining enabled, Ansible sends the module code through the existing SSH connection's stdin pipe directly to the Python interpreter. No temp files, no extra SFTP transfers.
+With pipelining enabled, Ansible sends many Python modules through stdin directly to the Python interpreter. No temporary module file, no extra SFTP or SCP transfer for those modules.
 
 ## The requiretty Problem
 
-There is one common blocker for pipelining: the `requiretty` setting in `/etc/sudoers`. Many RHEL and CentOS systems ship with this enabled by default. When `requiretty` is set, sudo refuses to run unless the user has a real TTY attached. Since pipelining works through stdin pipes rather than PTYs, sudo commands will fail.
+There is one common blocker for pipelining: the `requiretty` setting in `/etc/sudoers`. Some older RHEL and CentOS systems, or hardened sudoers configurations, may have this enabled. When `requiretty` is set, sudo refuses to run unless the user has a real TTY attached. Since pipelining works through stdin pipes rather than PTYs, sudo commands can fail.
 
 Here is how to check if your hosts have this setting:
 
@@ -128,14 +128,14 @@ First, run without pipelining:
 
 ```bash
 # Run with pipelining disabled and time it
-ANSIBLE_PIPELINING=False time ansible-playbook benchmark-playbook.yml
+time env ANSIBLE_PIPELINING=False ansible-playbook benchmark-playbook.yml
 ```
 
 Then with pipelining:
 
 ```bash
 # Run with pipelining enabled and time it
-ANSIBLE_PIPELINING=True time ansible-playbook benchmark-playbook.yml
+time env ANSIBLE_PIPELINING=True ansible-playbook benchmark-playbook.yml
 ```
 
 In my testing across 20 hosts with 8 tasks each, the results were:
@@ -222,7 +222,7 @@ Pipelining is specifically an SSH optimization. If you are using other connectio
 
 ## Making Pipelining the Default
 
-I recommend enabling pipelining in your project's `ansible.cfg` by default. The only real prerequisite is removing `requiretty` from sudoers, which is a one-time fix. After that, pipelining is purely beneficial with no downsides.
+I recommend enabling pipelining in your project's `ansible.cfg` by default after testing it with your privilege escalation settings. The main prerequisite is removing `requiretty` from sudoers where it is present, which is a one-time fix.
 
 ```ini
 # Full recommended SSH configuration
@@ -232,6 +232,6 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=120s -o ControlPath=/tmp/ansi
 retries = 3
 ```
 
-The `retries = 3` setting is a good safety net. If a connection drops mid-pipeline, Ansible will retry the task up to 3 times before failing.
+The `retries = 3` setting is a good safety net for transient SSH connection failures. It retries SSH connection attempts when SSH returns error code 255; it is not a general task retry mechanism.
 
 For any Ansible setup that manages more than a handful of hosts, SSH pipelining should be one of the first optimizations you enable. It is low risk, requires minimal configuration, and delivers consistent performance improvements across all your playbooks.
