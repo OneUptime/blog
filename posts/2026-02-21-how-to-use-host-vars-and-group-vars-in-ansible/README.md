@@ -320,7 +320,7 @@ Use the `debug` module or `ansible-inventory` to verify which variables are load
 # Show all variables for a specific host
 ansible-inventory -i inventory/ --host web01 --yaml
 
-# Show the full inventory graph with variable sources
+# Show the full inventory graph with variables
 ansible-inventory -i inventory/ --graph --vars
 ```
 
