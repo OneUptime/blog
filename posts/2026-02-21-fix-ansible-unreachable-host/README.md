@@ -95,10 +95,12 @@ sudo tail -50 /var/log/auth.log
 # ansible.cfg - Connection timeout and retry settings
 [defaults]
 timeout = 30
+
+[connection]
 retries = 3
 
 [ssh_connection]
-ssh_args = -o ConnectTimeout=30 -o ServerAliveInterval=15
+timeout = 30
 retries = 3
 ```
 
@@ -117,7 +119,7 @@ retries = 3
     - name: Show reachable status
       debug:
         msg: "{{ inventory_hostname }} is reachable"
-      when: ping_result is not failed
+      when: ping_result is not unreachable
 ```
 
 ## Summary
@@ -126,12 +128,12 @@ UNREACHABLE errors are network or SSH connectivity problems, not Ansible issues.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these techniques prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these techniques
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -163,7 +165,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -245,7 +247,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in playbooks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -307,4 +309,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
