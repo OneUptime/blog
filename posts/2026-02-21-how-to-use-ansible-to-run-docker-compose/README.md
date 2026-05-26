@@ -27,11 +27,11 @@ You might wonder why you would use Ansible if Docker Compose already handles mul
 
 ansible-galaxy collection install community.docker
 
-# Install the Docker Python SDK and compose support
-pip install docker docker-compose
+# Confirm Docker Compose V2 is available
+docker compose version
 ```
 
-Docker and Docker Compose must be installed on the target hosts.
+Docker and the Docker Compose CLI plugin must be installed on the target hosts. The `docker_compose_v2` module requires the Docker CLI with the Compose plugin version 2.18.0 or later.
 
 ## Basic Docker Compose Deployment
 
@@ -292,8 +292,8 @@ You can control individual services within a Compose project.
         state: present
         services:
           - worker
-      environment:
-        COMPOSE_PROJECT_NAME: myapp
+        scale:
+          worker: 3
 ```
 
 ## Deploying with Updates
@@ -475,7 +475,7 @@ Instead of hardcoding values, use environment files.
         project_src: "/opt/{{ app_name }}"
         state: present
         env_files:
-          - "/opt/{{ app_name }}/.env"
+          - ".env"
 ```
 
 ## Cleaning Up
