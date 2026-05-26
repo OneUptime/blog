@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CDKTF, Java, Infrastructure as Code, DevOps, CDK for Terraform
 
-Description: A practical guide to building infrastructure with CDKTF and Java, covering Maven project setup, resource creation, custom constructs, unit testing with JUnit, and deployment patterns.
+Description: A practical guide to building infrastructure with CDKTF and Java, covering Gradle project setup, resource creation, custom constructs, unit testing with JUnit, and deployment patterns.
 
 ---
 
-Java might not be the first language that comes to mind for infrastructure as code, but CDKTF's Java support is solid and particularly appealing for organizations that have standardized on the JVM. You get compile-time type checking, mature testing frameworks, and the ability to share code between your application and infrastructure projects. This guide covers building a CDKTF project with Java from setup to deployment.
+Java might not be the first language that comes to mind for infrastructure as code, but CDKTF's Java support is particularly appealing for organizations that have standardized on the JVM. HashiCorp deprecated CDKTF on December 10, 2025, so treat new CDKTF projects as legacy or migration-bound work. You get compile-time type checking, mature testing frameworks, and the ability to share code between your application and infrastructure projects. This guide covers building a CDKTF project with Java from setup to deployment.
 
 ## Prerequisites
 
 You need:
 - JDK 11 or later
-- Maven 3.6 or later
-- Node.js 18 or later (for the CDKTF CLI)
+- Gradle (for the Java template)
+- Node.js 20.9 or later (for the CDKTF CLI)
 - Terraform 1.2 or later
 - CDKTF CLI installed (`npm install -g cdktf-cli`)
 
 ```bash
 java --version
-mvn --version
+gradle --version
 cdktf --version
 ```
 
@@ -36,7 +36,7 @@ cd cdktf-java-demo
 cdktf init --template=java --local
 ```
 
-This creates a Maven project with the following structure:
+This creates a Gradle project with the following structure:
 
 ```text
 cdktf-java-demo/
@@ -45,11 +45,13 @@ cdktf-java-demo/
       java/
         com/mycompany/app/
           Main.java          # Entry point
+          MainStack.java     # Stack definition
     test/
       java/
-        com/mycompany/app/
+        com/company/app/
           MainTest.java      # Tests
-  pom.xml                    # Maven configuration
+  build.gradle               # Gradle configuration
+  gradlew                    # Gradle wrapper
   cdktf.json                 # CDKTF configuration
 ```
 
@@ -60,7 +62,8 @@ Add the AWS provider to `cdktf.json`:
 ```json
 {
   "language": "java",
-  "app": "mvn -e -q compile exec:java",
+  "app": "./gradlew run",
+  "codeMakerOutput": "src/main/java/imports",
   "terraformProviders": [
     "hashicorp/aws@~> 5.30"
   ]
@@ -78,7 +81,7 @@ This creates Java classes under `src/main/java/imports/` with builder patterns f
 Update dependencies:
 
 ```bash
-mvn compile
+./gradlew build
 ```
 
 ## Basic Stack
@@ -288,12 +291,14 @@ public class NetworkingConstruct extends Construct {
         // Create subnets for each AZ
         for (int i = 0; i < availabilityZones.size(); i++) {
             String az = availabilityZones.get(i);
+            String[] cidrParts = vpcCidr.split("\\.");
+            String subnetPrefix = cidrParts[0] + "." + cidrParts[1];
 
             // Public subnet
             Subnet publicSubnet = new Subnet(this, "public-" + i,
                 SubnetConfig.builder()
                     .vpcId(vpc.getId())
-                    .cidrBlock(String.format("10.0.%d.0/24", i))
+                    .cidrBlock(String.format("%s.%d.0/24", subnetPrefix, i))
                     .availabilityZone(az)
                     .mapPublicIpOnLaunch(true)
                     .tags(Map.of("Name", environment + "-public-" + az))
@@ -310,7 +315,7 @@ public class NetworkingConstruct extends Construct {
             Subnet privateSubnet = new Subnet(this, "private-" + i,
                 SubnetConfig.builder()
                     .vpcId(vpc.getId())
-                    .cidrBlock(String.format("10.0.%d.0/24", i + 100))
+                    .cidrBlock(String.format("%s.%d.0/24", subnetPrefix, i + 100))
                     .availabilityZone(az)
                     .tags(Map.of("Name", environment + "-private-" + az))
                     .build());
@@ -345,7 +350,6 @@ import com.mycompany.app.constructs.NetworkingConstruct;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class InfrastructureStack extends TerraformStack {
 
@@ -461,7 +465,7 @@ class InfrastructureStackTest {
         // Verify the stack produces valid Terraform
         var app = Testing.app();
         var stack = new InfrastructureStack(app, "test", testConfig());
-        var synthesized = Testing.synth(stack);
+        var synthesized = Testing.fullSynth(stack);
 
         assertTrue(Testing.toBeValidTerraform(synthesized));
     }
@@ -476,7 +480,7 @@ class InfrastructureStackTest {
     }
 
     @Test
-    void testCorrectNumberOfSubnets() {
+    void testSubnetsAreCreated() {
         var app = Testing.app();
         var config = new StackConfig.Builder()
             .environment("test")
@@ -488,7 +492,6 @@ class InfrastructureStackTest {
         var stack = new InfrastructureStack(app, "test", config);
         var synthesized = Testing.synth(stack);
 
-        // Should have 3 public + 3 private = 6 subnets
         assertTrue(Testing.toHaveResource(synthesized, "aws_subnet"));
     }
 }
@@ -497,28 +500,28 @@ class InfrastructureStackTest {
 Run tests:
 
 ```bash
-mvn test
+./gradlew test
 ```
 
-## Maven POM Configuration
+## Gradle Build Configuration
 
-The generated `pom.xml` handles most dependencies, but you may want to add:
+The generated `build.gradle` handles most dependencies, but make sure JUnit is available:
 
-```xml
-<!-- pom.xml additions for testing -->
-<dependency>
-    <groupId>org.junit.jupiter</groupId>
-    <artifactId>junit-jupiter</artifactId>
-    <version>5.10.0</version>
-    <scope>test</scope>
-</dependency>
+```groovy
+dependencies {
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.0"
+}
+
+test {
+    useJUnitPlatform()
+}
 ```
 
 ## Deployment
 
 ```bash
 # Compile the project
-mvn compile
+./gradlew build
 
 # See the plan
 cdktf diff dev
@@ -535,4 +538,4 @@ cdktf destroy dev
 
 ## Summary
 
-CDKTF with Java brings the discipline of strongly-typed enterprise Java to infrastructure code. The builder pattern maps naturally to resource configuration, custom constructs provide clean encapsulation, and JUnit gives you battle-tested unit testing. The main downside is verbosity compared to Python or TypeScript, but for Java shops, writing infrastructure in the same language as the application reduces the learning curve significantly. For setup instructions, see [Install and Set Up CDKTF](https://oneuptime.com/blog/post/2026-02-23-install-setup-cdktf/view). For other language options, check out [TypeScript](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-typescript/view), [Python](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-python/view), [Go](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-go/view), and [C#](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-csharp/view).
+For existing CDKTF projects, CDKTF with Java brings the discipline of strongly-typed enterprise Java to infrastructure code. The builder pattern maps naturally to resource configuration, custom constructs provide clean encapsulation, and JUnit gives you battle-tested unit testing. The main downside is verbosity compared to Python or TypeScript, but for Java shops, writing infrastructure in the same language as the application reduces the learning curve significantly. For setup instructions, see [Install and Set Up CDKTF](https://oneuptime.com/blog/post/2026-02-23-install-setup-cdktf/view). For other language options, check out [TypeScript](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-typescript/view), [Python](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-python/view), [Go](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-go/view), and [C#](https://oneuptime.com/blog/post/2026-02-23-cdktf-project-csharp/view).
