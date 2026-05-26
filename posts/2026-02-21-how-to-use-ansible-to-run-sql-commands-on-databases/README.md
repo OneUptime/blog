@@ -12,7 +12,7 @@ Database management is a core part of infrastructure automation. Whether you nee
 
 ## Dedicated Database Modules
 
-Ansible ships with modules specifically built for database operations. These are always the preferred approach because they handle idempotency and error reporting properly.
+Ansible community collections provide modules specifically built for database operations. Dedicated modules are the preferred approach for common operations because they handle connection details, structured return values, and, for resource-management tasks, idempotency and error reporting properly.
 
 ### PostgreSQL Operations
 
@@ -97,6 +97,7 @@ Ansible ships with modules specifically built for database operations. These are
         login_password: "{{ vault_mysql_app_password }}"
         query: "SELECT COUNT(*) as total FROM orders WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
       register: recent_orders
+      no_log: true
 
     - name: Show result
       ansible.builtin.debug:
@@ -140,13 +141,13 @@ When dedicated modules do not cover your use case, use command-line database cli
           COMMIT;
           SQL
       register: create_table
-      changed_when: "'CREATE TABLE' in create_table.stderr or 'CREATE INDEX' in create_table.stderr"
+      changed_when: "'CREATE TABLE' in create_table.stdout or 'CREATE INDEX' in create_table.stdout"
 
     - name: Run SQL from a file
       ansible.builtin.command:
         cmd: "psql -d myapp_production -f /opt/myapp/sql/migrations/001_create_tables.sql"
       register: migration
-      changed_when: "'CREATE' in migration.stderr or 'ALTER' in migration.stderr"
+      changed_when: "'CREATE' in migration.stdout or 'ALTER' in migration.stdout"
 
     - name: Run query and get CSV output
       ansible.builtin.shell:
@@ -197,7 +198,7 @@ When dedicated modules do not cover your use case, use command-line database cli
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
           SQL
       register: create_session_table
-      changed_when: "'Query OK' in create_session_table.stdout"
+      changed_when: create_session_table.rc == 0
       no_log: true
 
     - name: Import SQL dump
@@ -263,7 +264,7 @@ Automate migration execution across your database fleet.
       loop_control:
         label: "{{ item.path | basename }}"
       register: migration_results
-      changed_when: "'APPLIED' in item.stdout | default('')"
+      changed_when: "'APPLIED' in migration_results.stdout | default('')"
 ```
 
 ## Database Backup and Restore with SQL
@@ -282,7 +283,7 @@ Backup and restore operations using SQL tools.
     - name: Full PostgreSQL backup with pg_dump
       ansible.builtin.shell:
         cmd: |
-          BACKUP_FILE="/backup/myapp_$(date +%Y%m%d_%H%M%S).sql.gz"
+          BACKUP_FILE="/backup/myapp_$(date +%Y%m%d_%H%M%S).dump"
           pg_dump -Fc myapp_production > "${BACKUP_FILE}"
           echo "Backup saved: ${BACKUP_FILE}"
           ls -lh "${BACKUP_FILE}"
@@ -299,7 +300,7 @@ Backup and restore operations using SQL tools.
       register: table_backup
 
     - name: Backup schema only (no data)
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: "pg_dump -d myapp_production --schema-only -f /backup/schema_$(date +%Y%m%d).sql"
 
     - name: Restore from backup
@@ -335,12 +336,12 @@ Run regular maintenance SQL commands.
         cmd: |
           psql -d myapp_production -c "
             SELECT
-              schemaname || '.' || tablename AS table,
-              pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-              pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS data_size
+              schemaname || '.' || tablename AS table_name,
+              pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+              pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS data_size
             FROM pg_tables
             WHERE schemaname = 'public'
-            ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+            ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
             LIMIT 10;
           "
       register: table_sizes
@@ -469,4 +470,4 @@ Parse and use SQL query results in subsequent Ansible tasks.
 
 ## Summary
 
-Running SQL commands in Ansible ranges from using dedicated database modules (the cleanest approach) to raw SQL execution via `psql`, `mysql`, and other command-line clients. Dedicated modules like `community.postgresql.postgresql_query` and `community.mysql.mysql_query` handle idempotency and connection management automatically. For raw SQL, use the `command` module for simple queries and `shell` for here-documents and pipes. Always use `no_log: true` when commands contain passwords, store credentials in Ansible Vault, and use environment variables like `PGPASSWORD` instead of embedding passwords in command strings. For structured output, use JSON formatting in your SQL queries and parse results with Ansible's `from_json` filter.
+Running SQL commands in Ansible ranges from using dedicated database modules (the cleanest approach) to raw SQL execution via `psql`, `mysql`, and other command-line clients. Dedicated modules like `community.postgresql.postgresql_query` and `community.mysql.mysql_query` handle connection management and structured results, while idempotency for arbitrary SQL still depends on the query you run. For raw SQL, use the `command` module for simple queries and `shell` for here-documents and pipes. Always use `no_log: true` when commands contain passwords, store credentials in Ansible Vault, and use environment variables like `PGPASSWORD` instead of embedding passwords in command strings. For structured output, use JSON formatting in your SQL queries and parse results with Ansible's `from_json` filter.
