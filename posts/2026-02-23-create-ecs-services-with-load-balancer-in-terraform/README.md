@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, ECS, ALB, Load Balancer, Fargate, Container
 
-Description: How to create ECS Fargate services with Application Load Balancer integration in Terraform, covering target groups, health checks, HTTPS listeners, and blue-green deployments.
+Description: How to create ECS Fargate services with Application Load Balancer integration in Terraform, covering target groups, health checks, HTTPS listeners, and rolling deployments.
 
 ---
 
-An ECS service keeps your containers running and connects them to a load balancer. Without a service, you would need to manually start tasks and wire up networking. The service handles task placement, rolling updates, health monitoring, and load balancer registration automatically. When a container fails a health check, the service replaces it. When you push a new image, the service rolls out the update gradually.
+An ECS service keeps your containers running and connects them to a load balancer. Without a service, you would need to manually start tasks and wire up networking. The service handles task placement, rolling updates, health monitoring, and load balancer registration automatically. When a container fails a health check, the service replaces it. When you register a new task definition revision, the service rolls out the update gradually.
 
 This guide covers creating an ECS service with an Application Load Balancer in Terraform. We will build the ALB, target groups, listeners, the service itself, and the deployment configuration that controls how updates roll out.
 
@@ -209,7 +209,7 @@ resource "aws_ecs_service" "app" {
   # Enable ECS Exec for debugging
   enable_execute_command = true
 
-  # Force new deployment when task definition changes
+  # Force a new deployment even when the service configuration has not changed
   force_new_deployment = true
 
   # Ensure the ALB listener exists before creating the service
@@ -347,7 +347,7 @@ resource "aws_ecs_service" "api" {
     rollback = true
   }
 
-  depends_on = [aws_lb_listener.https]
+  depends_on = [aws_lb_listener_rule.api]
 }
 
 # Frontend service
@@ -374,7 +374,7 @@ resource "aws_ecs_service" "frontend" {
     rollback = true
   }
 
-  depends_on = [aws_lb_listener.https]
+  depends_on = [aws_lb_listener_rule.frontend]
 }
 ```
 
