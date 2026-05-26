@@ -8,7 +8,7 @@ Description: Learn how to manage /etc/resolv.conf with Ansible including templat
 
 ---
 
-The `/etc/resolv.conf` file is the central DNS configuration for Linux. Every DNS lookup on your system starts by reading this file to find out which nameservers to query, which search domains to append, and what options to use. Managing it with Ansible seems simple, but there is a catch: on modern Linux systems, multiple services compete to control this file. DHCP clients, NetworkManager, and systemd-resolved all want to write to it.
+The `/etc/resolv.conf` file is the traditional DNS resolver configuration for Linux. The glibc resolver reads this file when it initializes to find out which nameservers to query, which search domains to append, and what options to use. Managing it with Ansible seems simple, but there is a catch: on modern Linux systems, multiple services compete to control this file. DHCP clients, NetworkManager, and systemd-resolved all want to write to it.
 
 This post covers how to manage `/etc/resolv.conf` effectively with Ansible, including dealing with the various subsystems that try to overwrite your changes.
 
@@ -83,7 +83,7 @@ options {{ resolver_options | join(' ') }}
 
 ## Handling systemd-resolved
 
-On Ubuntu 18.04+ and other modern systems, `/etc/resolv.conf` is often a symlink to `/run/systemd/resolve/stub-resolv.conf`. If you overwrite the symlink, systemd-resolved might recreate it.
+On Ubuntu 18.04+ and other modern systems, `/etc/resolv.conf` is often a symlink to `/run/systemd/resolve/stub-resolv.conf`. If you overwrite the symlink, clients that read `/etc/resolv.conf` directly can bypass systemd-resolved, while systemd-resolved continues to maintain its files under `/run/systemd/resolve/`.
 
 Here is how to handle this properly:
 
@@ -109,14 +109,24 @@ Here is how to handle this properly:
 
     - name: Configure via systemd-resolved (if active)
       block:
-        - name: Write systemd-resolved config
+        - name: Ensure systemd-resolved drop-in directory exists
+          ansible.builtin.file:
+            path: /etc/systemd/resolved.conf.d
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Write systemd-resolved config drop-in
           ansible.builtin.copy:
             content: |
               [Resolve]
               DNS={{ nameservers | join(' ') }}
               Domains={{ search_domains | join(' ') }}
               Cache=yes
-            dest: /etc/systemd/resolved.conf
+            dest: /etc/systemd/resolved.conf.d/10-ansible.conf
+            owner: root
+            group: root
             mode: '0644'
 
         - name: Restart systemd-resolved
@@ -278,34 +288,34 @@ Define DNS settings per host or group in your inventory:
 ```yaml
 # inventory group_vars for DNS settings
 # group_vars/all.yaml
-dns_nameservers:
+nameservers:
   - 8.8.8.8
   - 8.8.4.4
-dns_search:
+search_domains:
   - example.com
-dns_options:
+resolver_options:
   - "timeout:2"
   - "attempts:3"
 ```
 
 ```yaml
 # group_vars/datacenter_east.yaml - override for east DC
-dns_nameservers:
+nameservers:
   - 10.1.0.2
   - 10.1.0.3
   - 8.8.8.8
-dns_search:
+search_domains:
   - east.example.com
   - example.com
 ```
 
 ```yaml
 # group_vars/datacenter_west.yaml - override for west DC
-dns_nameservers:
+nameservers:
   - 10.2.0.2
   - 10.2.0.3
   - 8.8.8.8
-dns_search:
+search_domains:
   - west.example.com
   - example.com
 ```
@@ -344,7 +354,7 @@ Always verify your DNS configuration works after applying changes:
         mode: '0644'
       register: dns_deployed
 
-    - name: Verify resolv.conf syntax
+    - name: Read resolv.conf contents
       ansible.builtin.command:
         cmd: cat /etc/resolv.conf
       register: resolv_contents
