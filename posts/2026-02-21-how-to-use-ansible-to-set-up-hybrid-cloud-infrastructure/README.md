@@ -25,7 +25,7 @@ graph TD
     C --> H[EC2 Instances]
     C --> I[RDS Databases]
     D --> J[Azure VMs]
-    B <-->|VPN/ExpressRoute| C
+    B <-->|VPN/Direct Connect| C
     B <-->|VPN/ExpressRoute| D
 ```
 
@@ -33,7 +33,7 @@ graph TD
 
 The first thing to solve is network connectivity. Your Ansible control node needs to reach servers in both environments.
 
-```yaml
+```ini
 # For on-premises, Ansible connects directly
 
 # For cloud, you have several options:
@@ -158,7 +158,7 @@ Use Ansible to configure the VPN tunnels that connect your environments.
 
     # Create Customer Gateway (represents the on-prem side)
     - name: Create Customer Gateway
-      amazon.aws.ec2_customer_gateway:
+      community.aws.ec2_customer_gateway:
         ip_address: 203.0.113.1
         name: onprem-datacenter
         bgp_asn: 65000
@@ -171,7 +171,7 @@ Use Ansible to configure the VPN tunnels that connect your environments.
       amazon.aws.ec2_vpc_vpn:
         vpn_gateway_id: "{{ vpn_gw.vgw.id }}"
         customer_gateway_id: "{{ customer_gw.gateway.customer_gateway_id }}"
-        type: ipsec.1
+        connection_type: ipsec.1
         static_only: true
         routes:
           - 10.0.0.0/8
@@ -242,7 +242,7 @@ Apply the same base configuration everywhere, regardless of location.
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
-      when: ansible_os_family == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Install common packages
       ansible.builtin.apt:
@@ -255,7 +255,7 @@ Apply the same base configuration everywhere, regardless of location.
           - jq
           - ntp
         state: present
-      when: ansible_os_family == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
 
     # Configure NTP based on location
     - name: Configure NTP servers
@@ -266,6 +266,7 @@ Apply the same base configuration everywhere, regardless of location.
       vars:
         ntp_server_list: "{{ ntp_servers[location] }}"
       notify: restart ntp
+      when: ansible_facts['os_family'] == "Debian"
 
     # Centralized logging to on-prem SIEM
     - name: Configure rsyslog forwarding
@@ -282,12 +283,14 @@ Apply the same base configuration everywhere, regardless of location.
       ansible.builtin.apt:
         name: prometheus-node-exporter
         state: present
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Configure node exporter
       ansible.builtin.service:
         name: prometheus-node-exporter
         state: started
         enabled: true
+      when: ansible_facts['os_family'] == "Debian"
 
   handlers:
     - name: restart ntp
@@ -310,10 +313,18 @@ Deploy the same application to servers in both environments.
 - name: Deploy application across hybrid infrastructure
   hosts: webservers
   become: true
-  serial: "{{ '50%' if location == 'on_premises' else '1' }}"
+  serial: "50%"
 
   vars:
-    app_version: "{{ lookup('env', 'APP_VERSION') | default('latest') }}"
+    app_version: "{{ lookup('env', 'APP_VERSION') | default('latest', true) }}"
+    db_hosts:
+      on_premises: onprem-db-01.internal
+      aws: db-aws.rds.amazonaws.com
+      azure: db-azure.postgres.database.azure.com
+    cache_hosts:
+      on_premises: redis.internal
+      aws: redis.aws.cache.amazonaws.com
+      azure: redis.azure.redis.cache.windows.net
 
   tasks:
     - name: Download application package
@@ -336,8 +347,8 @@ Deploy the same application to servers in both environments.
         dest: /opt/myapp/config.yml
         mode: '0640'
       vars:
-        db_host: "{{ 'onprem-db-01.internal' if location == 'on_premises' else 'db-' + location + '.rds.amazonaws.com' }}"
-        cache_host: "{{ 'redis.internal' if location == 'on_premises' else 'redis.' + location + '.cache.amazonaws.com' }}"
+        db_host: "{{ db_hosts[location] }}"
+        cache_host: "{{ cache_hosts[location] }}"
       notify: restart myapp
 
   handlers:
@@ -370,6 +381,7 @@ When services span locations, you need cross-environment service discovery.
       ansible.builtin.apt:
         name: consul
         state: present
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Configure Consul agent
       ansible.builtin.template:
@@ -378,12 +390,14 @@ When services span locations, you need cross-environment service discovery.
         mode: '0640'
         owner: consul
       notify: restart consul
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Start Consul
       ansible.builtin.service:
         name: consul
         state: started
         enabled: true
+      when: ansible_facts['os_family'] == "Debian"
 
   handlers:
     - name: restart consul
@@ -403,6 +417,12 @@ Monitor that connectivity and services are working across all environments.
   hosts: all
   become: true
 
+  vars:
+    db_hosts:
+      on_premises: onprem-db-01.internal
+      aws: db-aws.rds.amazonaws.com
+      azure: db-azure.postgres.database.azure.com
+
   tasks:
     # Check VPN connectivity
     - name: Test connectivity to on-prem services
@@ -421,6 +441,8 @@ Monitor that connectivity and services are working across all environments.
       ansible.builtin.command:
         cmd: "pg_isready -h {{ db_host }} -p 5432"
       changed_when: false
+      vars:
+        db_host: "{{ db_hosts[location] }}"
       when: "'appservers' in group_names"
 
     # Check DNS resolution across environments
