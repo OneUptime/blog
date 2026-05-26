@@ -281,7 +281,7 @@ For organizations that use external secret management tools, you can combine Vau
   tasks:
     - name: Get database password from HashiCorp Vault
       ansible.builtin.set_fact:
-        db_password: "{{ lookup('hashi_vault', 'secret=myapp/data/db:password') }}"
+        db_password: "{{ lookup('community.hashi_vault.hashi_vault', 'secret=myapp/data/db:password') }}"
       no_log: true
 ```
 
