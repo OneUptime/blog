@@ -33,18 +33,18 @@ Every time someone creates or destroys a VM, this file needs updating. With dyna
 First, install the required dependencies.
 
 ```bash
-# Install the VMware collection and Python dependencies
-pip install ansible-core pyVmomi
-ansible-galaxy collection install community.vmware
+# Install Ansible and the VMware collection
+pip install ansible-core
+ansible-galaxy collection install vmware.vmware
 ```
 
 ## Basic Inventory Configuration
 
-Create an inventory file with the `.vmware.yml` or `.vmware.yaml` extension. The extension tells Ansible to use the VMware inventory plugin.
+Create an inventory file with the `.vms.yml`, `.vms.yaml`, `.vmware_vms.yml`, or `.vmware_vms.yaml` extension. The filename pattern tells Ansible that this file can be used by the VMware inventory plugin.
 
 ```yaml
-# inventory/vmware_inventory.vmware.yml
-plugin: community.vmware.vmware_vm_inventory
+# inventory/vmware_inventory.vmware_vms.yml
+plugin: vmware.vmware.vms
 strict: false
 
 # vCenter connection settings
@@ -64,7 +64,7 @@ properties:
   - config.uuid
   - guest.ipAddress
   - guest.guestId
-  - runtime.powerState
+  - summary.runtime.powerState
   - config.guestFullName
   - config.hardware.memoryMB
   - config.hardware.numCPU
@@ -76,7 +76,7 @@ Enable the plugin in your `ansible.cfg`.
 ```ini
 # ansible.cfg
 [inventory]
-enable_plugins = community.vmware.vmware_vm_inventory, auto
+enable_plugins = host_list, script, auto, yaml, ini, toml, vmware.vmware.vms
 ```
 
 ## Testing the Inventory
@@ -88,13 +88,13 @@ Verify that the plugin can connect to vCenter and retrieve VM information.
 export VMWARE_PASSWORD="your-vcenter-password"
 
 # List all discovered hosts
-ansible-inventory -i inventory/vmware_inventory.vmware.yml --list
+ansible-inventory -i inventory/vmware_inventory.vmware_vms.yml --list
 
 # Show a graph of the inventory structure
-ansible-inventory -i inventory/vmware_inventory.vmware.yml --graph
+ansible-inventory -i inventory/vmware_inventory.vmware_vms.yml --graph
 
 # Get details for a specific host
-ansible-inventory -i inventory/vmware_inventory.vmware.yml --host prod-web-01
+ansible-inventory -i inventory/vmware_inventory.vmware_vms.yml --host prod-web-01
 ```
 
 ## Grouping VMs Automatically
@@ -102,8 +102,8 @@ ansible-inventory -i inventory/vmware_inventory.vmware.yml --host prod-web-01
 The power of dynamic inventory is in automatic grouping. Use `keyed_groups` to create Ansible groups based on VM properties.
 
 ```yaml
-# inventory/vmware_inventory.vmware.yml
-plugin: community.vmware.vmware_vm_inventory
+# inventory/vmware_inventory.vmware_vms.yml
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
@@ -117,7 +117,7 @@ properties:
   - name
   - config.name
   - guest.ipAddress
-  - runtime.powerState
+  - summary.runtime.powerState
   - config.guestFullName
   - config.hardware.memoryMB
   - config.hardware.numCPU
@@ -126,7 +126,7 @@ properties:
 # Create groups based on VM properties
 keyed_groups:
   # Group by power state (poweredOn, poweredOff, suspended)
-  - key: runtime.powerState
+  - key: summary.runtime.powerState
     prefix: power
     separator: "_"
 
@@ -145,7 +145,7 @@ groups:
   # VMs with more than 16 GB RAM
   high_memory: config.hardware.memoryMB >= 16384
   # All powered-on VMs
-  running: runtime.powerState == "poweredOn"
+  running: summary.runtime.powerState == "poweredOn"
   # Linux VMs based on guest ID patterns
   linux_vms: "'linux' in (guest.guestId | default('') | lower)"
   # Windows VMs
@@ -156,11 +156,11 @@ This configuration creates groups like `power_poweredOn`, `os_rhel9_64Guest`, an
 
 ## Tag-Based Grouping
 
-If you use VMware tags (which I highly recommend), group VMs by their tags.
+If you use VMware tags (which I highly recommend), group VMs by their tags. The tag examples require the vSphere Automation SDK on the Ansible controller.
 
 ```yaml
-# inventory/vmware_tagged_inventory.vmware.yml
-plugin: community.vmware.vmware_vm_inventory
+# inventory/vmware_tagged_inventory.vmware_vms.yml
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
@@ -171,26 +171,25 @@ hostnames:
   - config.name
 
 # Include tag information
-with_tags: true
+gather_tags: true
 
 properties:
   - name
   - config.name
   - guest.ipAddress
-  - runtime.powerState
-  - tags
+  - summary.runtime.powerState
 
 keyed_groups:
   # Group by Environment tag
-  - key: tags.Environment | default([])
+  - key: tags_by_category.Environment | default({}) | dict2items | map(attribute='value')
     prefix: env
     separator: "_"
   # Group by Application tag
-  - key: tags.Application | default([])
+  - key: tags_by_category.Application | default({}) | dict2items | map(attribute='value')
     prefix: app
     separator: "_"
   # Group by BackupPolicy tag
-  - key: tags.BackupPolicy | default([])
+  - key: tags_by_category.BackupPolicy | default({}) | dict2items | map(attribute='value')
     prefix: backup
     separator: "_"
 
@@ -202,11 +201,11 @@ keyed_groups:
 
 ## Filtering VMs
 
-You probably do not want every VM in vCenter in your inventory. Use filters to include only relevant VMs.
+You probably do not want every VM in vCenter in your inventory. Use filter expressions to exclude irrelevant VMs.
 
 ```yaml
-# inventory/filtered_inventory.vmware.yml
-plugin: community.vmware.vmware_vm_inventory
+# inventory/filtered_inventory.vmware_vms.yml
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
@@ -220,18 +219,16 @@ properties:
   - name
   - config.name
   - guest.ipAddress
-  - runtime.powerState
+  - summary.runtime.powerState
   - config.guestFullName
 
-# Only include VMs that match these filters
-filters:
-  # Only powered-on VMs
-  - runtime.powerState == "poweredOn"
-  # Only VMs with an IP address (skips templates and uninitialized VMs)
-  - guest.ipAddress is defined
-  - guest.ipAddress != ""
+# Exclude VMs that match these filters
+filter_expressions:
+  # Keep only powered-on VMs
+  - summary.runtime.powerState != "poweredOn"
+  # Keep only VMs with an IP address (skips templates and uninitialized VMs)
+  - guest.ipAddress is not defined or guest.ipAddress == ""
 
-# Exclude specific VMs by name pattern
 compose:
   # Set the ansible_host to the guest IP address
   ansible_host: guest.ipAddress
@@ -242,8 +239,8 @@ compose:
 If your VMs are organized in folders, filter by folder path.
 
 ```yaml
-# inventory/folder_filtered.vmware.yml
-plugin: community.vmware.vmware_vm_inventory
+# inventory/folder_filtered.vmware_vms.yml
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
@@ -257,16 +254,12 @@ properties:
   - name
   - config.name
   - guest.ipAddress
-  - runtime.powerState
+  - summary.runtime.powerState
 
 # Only scan specific folders
-resources:
-  - datacenter: "DC01"
-    resources:
-      - type: vm
-        path: "Production"
-      - type: vm
-        path: "Staging"
+search_paths:
+  - /DC01/vm/Production
+  - /DC01/vm/Staging
 ```
 
 ## Using Dynamic Inventory in Playbooks
@@ -275,13 +268,13 @@ Once configured, use the dynamic inventory just like any other inventory.
 
 ```bash
 # Run a playbook against all production web servers (tag-based group)
-ansible-playbook -i inventory/vmware_inventory.vmware.yml playbooks/update-web.yml --limit env_Production
+ansible-playbook -i inventory/vmware_inventory.vmware_vms.yml playbooks/update-web.yml --limit env_Production
 
 # Run against all Linux VMs
-ansible-playbook -i inventory/vmware_inventory.vmware.yml playbooks/security-patch.yml --limit linux_vms
+ansible-playbook -i inventory/vmware_inventory.vmware_vms.yml playbooks/security-patch.yml --limit linux_vms
 
 # Run against a specific host
-ansible-playbook -i inventory/vmware_inventory.vmware.yml playbooks/debug.yml --limit prod-web-01
+ansible-playbook -i inventory/vmware_inventory.vmware_vms.yml playbooks/debug.yml --limit prod-web-01
 ```
 
 ## Setting Connection Variables
@@ -289,8 +282,8 @@ ansible-playbook -i inventory/vmware_inventory.vmware.yml playbooks/debug.yml --
 Configure how Ansible connects to discovered VMs using the `compose` section.
 
 ```yaml
-# inventory/vmware_with_connections.vmware.yml
-plugin: community.vmware.vmware_vm_inventory
+# inventory/vmware_with_connections.vmware_vms.yml
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
@@ -304,7 +297,7 @@ properties:
   - name
   - config.name
   - guest.ipAddress
-  - runtime.powerState
+  - summary.runtime.powerState
   - guest.guestId
 
 # Set connection variables based on VM properties
@@ -314,15 +307,15 @@ compose:
 
   # Set connection type based on OS
   ansible_connection: >-
-    {{ 'winrm' if 'windows' in (guest.guestId | default('') | lower) else 'ssh' }}
+    'winrm' if 'windows' in (guest.guestId | default('') | lower) else 'ssh'
 
   # Set the appropriate user
   ansible_user: >-
-    {{ 'Administrator' if 'windows' in (guest.guestId | default('') | lower) else 'ansible' }}
+    'Administrator' if 'windows' in (guest.guestId | default('') | lower) else 'ansible'
 
-filters:
-  - runtime.powerState == "poweredOn"
-  - guest.ipAddress is defined
+filter_expressions:
+  - summary.runtime.powerState != "poweredOn"
+  - guest.ipAddress is not defined
 ```
 
 ## Caching for Performance
@@ -332,9 +325,9 @@ Querying vCenter on every Ansible run can be slow if you have thousands of VMs. 
 ```ini
 # ansible.cfg - Enable inventory caching
 [inventory]
-enable_plugins = community.vmware.vmware_vm_inventory
+enable_plugins = host_list, script, auto, yaml, ini, toml, vmware.vmware.vms
 cache = true
-cache_plugin = jsonfile
+cache_plugin = ansible.builtin.jsonfile
 cache_prefix = vmware_inventory
 cache_connection = /tmp/ansible_inventory_cache
 cache_timeout = 3600  # Cache for 1 hour
@@ -342,7 +335,7 @@ cache_timeout = 3600  # Cache for 1 hour
 
 ```bash
 # Force a cache refresh when you need current data
-ansible-inventory -i inventory/vmware_inventory.vmware.yml --list --flush-cache
+ansible-inventory -i inventory/vmware_inventory.vmware_vms.yml --list --flush-cache
 ```
 
 ## Multiple Inventory Sources
@@ -351,7 +344,7 @@ You can combine multiple inventory files for different environments or datacente
 
 ```bash
 # Use multiple inventory sources
-ansible-playbook -i inventory/dc01.vmware.yml -i inventory/dc02.vmware.yml playbook.yml
+ansible-playbook -i inventory/dc01.vmware_vms.yml -i inventory/dc02.vmware_vms.yml playbook.yml
 
 # Or put all inventory files in a directory
 ansible-playbook -i inventory/ playbook.yml
@@ -359,8 +352,8 @@ ansible-playbook -i inventory/ playbook.yml
 
 ```mermaid
 flowchart LR
-    A[ansible-playbook -i inventory/] --> B[dc01.vmware.yml<br>Queries vCenter DC01]
-    A --> C[dc02.vmware.yml<br>Queries vCenter DC02]
+    A[ansible-playbook -i inventory/] --> B[dc01.vmware_vms.yml<br>Queries vCenter DC01]
+    A --> C[dc02.vmware_vms.yml<br>Queries vCenter DC02]
     A --> D[static_hosts.yml<br>Non-VMware hosts]
     B --> E[Combined Inventory]
     C --> E
