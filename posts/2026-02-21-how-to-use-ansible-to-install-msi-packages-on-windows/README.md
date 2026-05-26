@@ -54,7 +54,7 @@ The simplest case is installing an MSI that has already been copied to the targe
       when: install_result.reboot_required
 ```
 
-The `product_id` is crucial for idempotency. Ansible uses it to check whether the package is already installed. If the product ID is found in the Windows registry, the task is skipped. You can find the product ID by installing the MSI manually and checking the registry at `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\`.
+The `product_id` is useful for idempotency, especially when installing from a URL or network share. For MSI packages, this is the MSI `ProductCode` GUID, and Ansible uses it to check whether the package is already installed. If the product ID is found in the Windows registry, the task is skipped. You can find the product ID by installing the MSI manually and checking the registry at `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\`.
 
 ## Installing from a Network Share
 
@@ -144,7 +144,7 @@ The `win_package` module also handles EXE installers. The main difference is tha
         state: present
         arguments: /install /quiet /norestart
 
-    - name: Install Node.js (NSIS installer)
+    - name: Install Node.js MSI package
       ansible.windows.win_package:
         path: C:\Temp\node-v20.10.0-x64.msi
         product_id: "{1F923C66-D96C-4BE2-8B0C-E86E1F684713}"
@@ -246,7 +246,7 @@ To uninstall, set `state: absent` and provide the product ID:
 
 ## Handling Return Codes
 
-MSI installers use specific return codes. The module knows the standard ones (0 for success, 3010 for success with reboot required), but some installers use non-standard codes. You can specify expected return codes:
+MSI installers use specific return codes. The module accepts 0 for success and 3010 for success with reboot required by default, but some installers return other success codes such as 1641 for success with reboot initiated. You can specify expected return codes:
 
 ```yaml
 # playbook-return-codes.yml
@@ -264,7 +264,6 @@ MSI installers use specific return codes. The module knows the standard ones (0 
           - 0
           - 3010
           - 1641
-          - 1603
 ```
 
 ## Batch Installation Playbook
@@ -329,7 +328,7 @@ Here is a complete playbook for installing a standard set of software on new Win
 
 ## Tips for MSI Automation
 
-**Always use product IDs.** Without a product ID or `creates_path`, Ansible cannot check if the software is already installed. It will try to install it every time, which wastes time and can cause problems.
+**Use product IDs for remote installers.** For URLs, network shares, and EXE installers, provide a `product_id` or a `creates_path` check so Ansible can determine whether the software is already installed. For local MSI files, Ansible can derive the product code from the MSI, but setting `product_id` is still useful when the installer is not locally accessible.
 
 **Log your installations.** Use the `/L*v` MSI logging flag during development and testing. These logs are invaluable for troubleshooting failed installations.
 
