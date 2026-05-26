@@ -31,11 +31,13 @@ This creates `/data/volume1` through `/data/volume5`. The `item` variable contai
 
 ## with_sequence Parameters
 
-`with_sequence` accepts three parameters:
+`with_sequence` commonly uses these numeric parameters:
 
 - `start` - the first number (default: 1)
 - `end` - the last number (inclusive)
 - `stride` - the step between numbers (default: 1)
+
+It also supports `count` for a fixed number of items and `format` for formatted output.
 
 ```yaml
 # Create even-numbered ports from 8080 to 8090
@@ -223,7 +225,7 @@ You can use sequences as indices into other data:
     instances: >-
       {{
         range(1, instance_count + 1)
-        | map('regex_replace', '^(.*)$', 'instance-\1')
+        | map('regex_replace', '^(.*)$', 'instance-\\1')
         | list
       }}
   vars:
