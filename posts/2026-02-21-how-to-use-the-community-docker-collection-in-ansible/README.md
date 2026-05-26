@@ -42,14 +42,15 @@ ansible-galaxy collection install community.docker:3.8.0
 ansible-galaxy collection install community.docker --upgrade
 ```
 
-You also need the Docker Python SDK installed on the machine where you run Ansible (or on the target host if you are running modules remotely).
+Most Docker API modules need the Python `requests` package installed on the machine where the module runs. Installing the Docker SDK for Python also satisfies this dependency for many environments, but it is no longer required by the core Docker API modules in current `community.docker` releases.
 
 ```bash
-# Install the Docker Python SDK
-pip install docker
+# Install the Python requests package
+pip install requests
 
 # For Docker Compose v2 support
-pip install docker-compose
+# Install Docker with the Compose v2 CLI plugin so docker compose works
+docker compose version
 ```
 
 ## Verifying the Installation
@@ -243,6 +244,7 @@ The `docker_compose_v2` module lets you manage Docker Compose projects.
             api:
               image: node:20-slim
               working_dir: /app
+              command: ["node", "-e", "require('http').createServer((req,res)=>res.end('ok')).listen(3000)"]
               volumes:
                 - ./api:/app
               ports:
@@ -435,7 +437,7 @@ The collection includes a connection plugin that lets you use Ansible to configu
 
 1. **Pin your collection version.** Use a `requirements.yml` file with specific version constraints to avoid breaking changes when upgrading.
 
-2. **Always install the Docker Python SDK.** The community.docker modules require the `docker` Python package. Without it, you get confusing error messages.
+2. **Install the module requirements on the host where the module runs.** Current Docker API modules require `requests`, and `docker_compose_v2` requires the Docker CLI with the Compose v2 plugin.
 
 3. **Use `no_log` for registry credentials.** Never let Ansible print your registry passwords in the console output.
 
