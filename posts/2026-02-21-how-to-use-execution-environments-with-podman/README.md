@@ -8,7 +8,7 @@ Description: Build and run Ansible Execution Environments with Podman, including
 
 ---
 
-Podman is the default container runtime for Ansible Execution Environments. Both ansible-builder and ansible-navigator prefer Podman over Docker when both are available. Podman has several advantages for the Ansible use case: it runs rootless by default, does not require a daemon, and is fully compatible with Docker image formats. This post covers everything specific to using EEs with Podman, from installation through advanced usage.
+Podman is the default container runtime for Ansible Execution Environments. ansible-builder defaults to Podman, and ansible-navigator's `auto` container-engine setting tries Podman before Docker. Podman has several advantages for the Ansible use case: it can run rootless, does not require a daemon, and supports OCI and Docker image formats. This post covers everything specific to using EEs with Podman, from installation through advanced usage.
 
 ## Installing Podman
 
@@ -34,7 +34,7 @@ podman info
 
 ## Setting Podman as the Container Runtime
 
-ansible-builder and ansible-navigator default to Podman, but you can explicitly configure it:
+ansible-builder defaults to Podman, and ansible-navigator tries Podman first when `container-engine` is set to `auto`, but you can explicitly configure it:
 
 ```bash
 # Explicitly use Podman for building
@@ -79,7 +79,7 @@ If rootless mode fails, configure subuid/subgid:
 # Add subuid/subgid mappings for your user
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $(whoami)
 
-# Reset Podman storage after adding mappings
+# Restart Podman's rootless pause process after adding mappings
 podman system migrate
 ```
 
@@ -137,7 +137,7 @@ ansible-navigator run site.yml \
 # With additional Podman options
 ansible-navigator run site.yml \
   --execution-environment-image my-ee:1.0 \
-  --execution-environment-container-options="--net=host" \
+  --container-options="--net=host" \
   --mode stdout
 ```
 
@@ -170,11 +170,11 @@ ansible-navigator:
     container-engine: podman
     volume-mounts:
       - src: "${SSH_AUTH_SOCK}"
-        dest: /run/user/1000/ssh-agent.sock
+        dest: /tmp/ssh-agent.sock
         options: rw
     environment-variables:
       set:
-        SSH_AUTH_SOCK: /run/user/1000/ssh-agent.sock
+        SSH_AUTH_SOCK: /tmp/ssh-agent.sock
 ```
 
 ## Managing Podman Storage
@@ -210,13 +210,13 @@ driver = "overlay"
 graphroot = "/data/podman/storage"
 EOF
 
-# Migrate existing storage
+# Restart Podman's rootless pause process so it reads the updated config
 podman system migrate
 ```
 
 ## Podman Network Configuration for EEs
 
-By default, Podman creates a bridged network for containers. For Ansible, you often need host networking so the container can reach the same networks as your workstation.
+By default, Podman runs containers in their own network namespace. For Ansible, you often need host networking so the container can reach the same networks as your workstation.
 
 ```yaml
 # ansible-navigator.yml - Host networking
@@ -254,18 +254,18 @@ podman login registry.internal.example.com
 # Check your logins
 podman login --get-login quay.io
 
-# Credentials are stored in
-cat ~/.config/containers/auth.json
+# On Linux, default credentials are stored in a runtime auth file
+cat "${XDG_RUNTIME_DIR}/containers/auth.json"
 ```
 
-For automation, use a dedicated auth file:
+For persistent credentials or automation, use a dedicated auth file:
 
 ```bash
 # Create an auth file for automation
-podman login quay.io \
+printf '%s' "$QUAY_TOKEN" | podman login quay.io \
   --username "myorg+cibot" \
-  --password "TOKEN" \
-  --authfile /etc/containers/auth.json
+  --password-stdin \
+  --authfile ./auth.json
 ```
 
 ## Podman and SELinux
@@ -309,7 +309,7 @@ podman manifest add my-ee:multi my-ee:amd64
 podman manifest add my-ee:multi my-ee:arm64
 
 # Push the manifest
-podman manifest push my-ee:multi docker://quay.io/myorg/my-ee:latest
+podman manifest push --all my-ee:multi docker://quay.io/myorg/my-ee:latest
 ```
 
 ## Podman Compose for Complex Scenarios
@@ -389,7 +389,7 @@ podman system prune --filter "until=24h"  # Clean old cache only
 # Issue: Network timeouts inside the container
 # Fix: Use host networking
 ansible-navigator run site.yml \
-  --execution-environment-container-options="--net=host" \
+  --container-options="--net=host" \
   --mode stdout
 
 # Issue: "unable to connect to Podman" on macOS
