@@ -15,17 +15,17 @@ When Ansible runs a task, it prints the task result to the console and any confi
 Consider this playbook that creates a database user:
 
 ```yaml
-# WITHOUT no_log - password visible in output
+# WITHOUT no_log - sensitive data can be visible in output
 
 - name: Create database user
-  mysql_user:
+  community.mysql.mysql_user:
     name: app_user
     password: "SuperSecret123!"
     priv: "mydb.*:ALL"
     state: present
 ```
 
-When this runs, the full task result including the password appears in the terminal output. If you are running this in a CI/CD pipeline, that password is now in your build logs. Anyone with access to those logs can see it.
+When tasks handle secrets without `no_log`, sensitive values can appear in task arguments, loop items, stdout, stderr, or result data. If you are running this in a CI/CD pipeline, that data can end up in your build logs. Anyone with access to those logs can see it.
 
 ## Basic Usage
 
@@ -49,7 +49,7 @@ Adding `no_log: true` to a task hides its output:
 
   tasks:
     - name: Create database users
-      mysql_user:
+      community.mysql.mysql_user:
         name: "{{ item.name }}"
         password: "{{ item.password }}"
         priv: "{{ item.priv }}"
@@ -131,9 +131,11 @@ Here are the most frequent scenarios where you need `no_log`:
 
     # Docker registry login
     - name: Log in to private Docker registry
-      command: docker login -u {{ docker_user }} -p {{ vault_docker_password }} registry.example.com
+      community.docker.docker_login:
+        registry_url: registry.example.com
+        username: "{{ docker_user }}"
+        password: "{{ vault_docker_password }}"
       no_log: true
-      changed_when: false
 ```
 
 ## Conditional no_log
@@ -149,7 +151,7 @@ You might want to show output during development but hide it in production. Use 
 
   vars:
     # Set to false for debugging, true for production
-    hide_sensitive: "{{ lookup('env', 'ANSIBLE_HIDE_SENSITIVE') | default('true') }}"
+    hide_sensitive: "{{ lookup('ansible.builtin.env', 'ANSIBLE_HIDE_SENSITIVE', default='true') }}"
 
   tasks:
     - name: Configure database connection string
@@ -239,7 +241,7 @@ You can set `no_log` at the play level to apply it to all tasks:
 
   tasks:
     - name: Rotate database password
-      mysql_user:
+      community.mysql.mysql_user:
         name: app_user
         password: "{{ new_db_password }}"
         state: present
@@ -326,25 +328,23 @@ ansible-playbook --ask-vault-pass vault-with-nolog.yml
 
 ## Common Mistakes
 
-**Forgetting no_log on debug tasks**: If you register a variable from a no_log task and then debug it, the secret is exposed:
+**Forgetting no_log on debug tasks**: If you register sensitive output from a no_log task and then debug it, the secret is exposed:
 
 ```yaml
-# BAD - leaks the password through debug
-- name: Create user
-  mysql_user:
-    name: admin
-    password: "{{ vault_password }}"
-  register: user_result
+# BAD - leaks the generated token through debug
+- name: Generate API token
+  command: /opt/scripts/create-api-token.sh
+  register: token_result
   no_log: true
 
 - name: Show result
   debug:
-    var: user_result  # This will show the password!
+    var: token_result  # This can show sensitive stdout/stderr!
 
 # GOOD - only show non-sensitive parts
 - name: Show status
   debug:
-    msg: "User creation: {{ 'success' if user_result is succeeded else 'failed' }}"
+    msg: "Token creation: {{ 'success' if token_result is succeeded else 'failed' }}"
 ```
 
 ## Summary
