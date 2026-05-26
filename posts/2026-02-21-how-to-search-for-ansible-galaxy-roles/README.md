@@ -50,11 +50,11 @@ You can also filter by platform if you only care about roles that support a spec
 ansible-galaxy search nginx --platforms Ubuntu
 ```
 
-And you can filter by Galaxy tags (not to be confused with Ansible tags in playbooks):
+And you can include Galaxy tag filters (not to be confused with Ansible tags in playbooks):
 
 ```bash
-# Search for roles tagged with "web" and "proxy"
-ansible-galaxy search --galaxy-tags web,proxy
+# Search for nginx roles tagged with "web" and "proxy"
+ansible-galaxy search nginx --galaxy-tags web,proxy
 ```
 
 ## Combining Search Filters
@@ -99,14 +99,13 @@ Pay attention to a few things here: the download count tells you how popular the
 
 ## Searching on the Galaxy Website
 
-The web interface at https://galaxy.ansible.com provides a richer search experience. You get visual indicators, star ratings, and the ability to browse by category.
+The web interface at https://galaxy.ansible.com provides a richer search experience. You get visual indicators, metadata, and the ability to browse by content type.
 
 On the website, you can:
 
 - Use the search bar with free-text queries
 - Filter by content type (role vs collection)
-- Sort by relevance, download count, or date
-- Browse by platform, cloud provider, or category
+- Filter roles and collections by keyword, tag, and namespace
 - Read the role README without installing it
 
 The web UI is particularly useful when you are exploring a new area and want to browse rather than search for a specific keyword.
@@ -119,14 +118,14 @@ Here is how to search the API with curl:
 
 ```bash
 # Query the Galaxy API for roles matching "postgresql"
-curl -s "https://galaxy.ansible.com/api/v1/search/roles/?search=postgresql" | python3 -m json.tool | head -50
+curl -s "https://galaxy.ansible.com/api/v1/search/roles/?autocomplete=postgresql" | python3 -m json.tool | head -50
 ```
 
 You can also filter API results with query parameters:
 
 ```bash
-# Search with platform and tag filters via the API
-curl -s "https://galaxy.ansible.com/api/v1/search/roles/?search=postgresql&platforms=Ubuntu&tags=database" | python3 -m json.tool
+# Search with a tag filter via the API
+curl -s "https://galaxy.ansible.com/api/v1/search/roles/?autocomplete=postgresql&tags=database" | python3 -m json.tool
 ```
 
 If you want to script role evaluation, you can parse the JSON response:
@@ -140,7 +139,7 @@ import json
 def search_roles(keyword, min_downloads=1000):
     url = f"https://galaxy.ansible.com/api/v1/search/roles/"
     params = {
-        "search": keyword,
+        "autocomplete": keyword,
         "order_by": "-download_count",
         "page_size": 20
     }
@@ -187,10 +186,10 @@ Finding a role is only half the battle. You also need to assess whether it is wo
 
 ## Searching for Collections Instead of Roles
 
-With Ansible 2.10+, collections have become the preferred distribution format. To search for collections instead of roles:
+With Ansible 2.10+, collections have become the preferred distribution format. The `ansible-galaxy` CLI can list installed collections, while Galaxy collection search is available through the website or API:
 
 ```bash
-# Search for collections (not roles)
+# List collections already installed locally
 ansible-galaxy collection list 2>/dev/null
 
 # On the Galaxy website, toggle the content type filter to "Collection"
@@ -215,4 +214,4 @@ This process takes about 15 minutes and consistently leads to good choices. Skip
 
 ## Summary
 
-Ansible Galaxy has thousands of roles covering nearly every infrastructure task you can think of. The `ansible-galaxy search` command with its `--author`, `--platforms`, and `--galaxy-tags` flags gives you precise results from the CLI. The web interface and API offer additional browsing and scripting capabilities. The key to success is not just finding roles but evaluating them carefully before you commit to using them in your automation stack.
+Ansible Galaxy has thousands of roles covering nearly every infrastructure task you can think of. The `ansible-galaxy search` command supports `--author`, `--platforms`, and `--galaxy-tags` flags for more specific CLI queries. The web interface and API offer additional browsing and scripting capabilities. The key to success is not just finding roles but evaluating them carefully before you commit to using them in your automation stack.
