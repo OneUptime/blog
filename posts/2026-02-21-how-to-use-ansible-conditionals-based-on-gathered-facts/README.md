@@ -59,7 +59,7 @@ The most common use of facts is writing OS-specific tasks. This lets one playboo
       when: ansible_os_family == "Debian"
 
     - name: Install packages on RedHat/CentOS
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name:
           - nginx
           - postgresql
@@ -79,7 +79,7 @@ The most common use of facts is writing OS-specific tasks. This lets one playboo
 
 ## Distribution Version Conditionals
 
-Different versions of the same OS often need different configurations. For example, Ubuntu 20.04 and Ubuntu 22.04 have different default package versions and config file locations.
+Different versions of the same OS often need different configurations. For example, Ubuntu 20.04 and Ubuntu 22.04 have different default package versions and supported systemd features.
 
 ```yaml
 # Version-specific configuration
@@ -98,7 +98,7 @@ Different versions of the same OS often need different configurations. For examp
         - ansible_distribution == "Ubuntu"
         - ansible_distribution_version is version('22.04', '>=')
 
-    - name: Use legacy init config on older Ubuntu
+    - name: Use older systemd config on older Ubuntu
       ansible.builtin.template:
         src: service-legacy.j2
         dest: /etc/systemd/system/myapp.service
