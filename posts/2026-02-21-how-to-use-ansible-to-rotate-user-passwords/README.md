@@ -14,11 +14,11 @@ In this guide, I will walk through building a complete password rotation workflo
 
 ## Why Automate Password Rotation?
 
-Most compliance frameworks (SOC 2, PCI-DSS, HIPAA) require regular password changes. Doing this manually on 50 or 500 servers is a recipe for missed machines, inconsistent passwords, and frustration. Ansible lets you define the desired state once and push it everywhere.
+Some compliance programs and internal security policies require password changes on a schedule or after suspected compromise. Doing this manually on 50 or 500 servers is a recipe for missed machines, inconsistent passwords, and frustration. Ansible lets you define the desired state once and push it everywhere.
 
 ## Prerequisites
 
-You need Ansible 2.9 or later installed on your control node. You also need the `passlib` Python library for password hashing.
+You need Ansible 2.10 or later installed on your control node. You also need the `passlib` Python library for password hashing.
 
 Install passlib on your control node:
 
@@ -40,8 +40,8 @@ The simplest approach uses the `user` module with a pre-hashed password. Never p
   become: yes
   vars:
     target_user: deploy
-    # This hash is generated with: python3 -c "from passlib.hash import sha512_crypt; print(sha512_crypt.hash('newpassword123'))"
-    new_password_hash: "$6$rounds=656000$randomsalt$hashedvaluehere"
+    # This hash is generated with: python3 -c "from passlib.hash import sha512_crypt; print(sha512_crypt.using(salt='randomsalt', rounds=656000).hash('newpassword123'))"
+    new_password_hash: "$6$rounds=656000$randomsalt$eevzUtjMlLFqHONjORwqg3Mp.RHUfhV8jA5ChY33nhZtj/.sBFOLmNxncrfGBce3tJ7aeSHVa.RN3FZ3Nranu0"
 
   tasks:
     - name: Update password for target user
@@ -49,6 +49,7 @@ The simplest approach uses the `user` module with a pre-hashed password. Never p
         name: "{{ target_user }}"
         password: "{{ new_password_hash }}"
         update_password: always
+      no_log: true
 ```
 
 This works, but hardcoding a password hash in a playbook is not great practice. Let's improve this.
@@ -86,20 +87,23 @@ Now reference these in your playbook with proper hashing:
     - name: Rotate deploy user password
       ansible.builtin.user:
         name: deploy
-        password: "{{ vault_deploy_password | password_hash('sha512', 'staticsalt') }}"
+        password: "{{ vault_deploy_password | password_hash('sha512', 65534 | random(seed=inventory_hostname + 'deploy') | string) }}"
         update_password: always
+      no_log: true
 
     - name: Rotate admin user password
       ansible.builtin.user:
         name: admin
-        password: "{{ vault_admin_password | password_hash('sha512', 'staticsalt') }}"
+        password: "{{ vault_admin_password | password_hash('sha512', 65534 | random(seed=inventory_hostname + 'admin') | string) }}"
         update_password: always
+      no_log: true
 
     - name: Rotate monitoring user password
       ansible.builtin.user:
         name: monitoring
-        password: "{{ vault_monitoring_password | password_hash('sha512', 'staticsalt') }}"
+        password: "{{ vault_monitoring_password | password_hash('sha512', 65534 | random(seed=inventory_hostname + 'monitoring') | string) }}"
         update_password: always
+      no_log: true
 ```
 
 Run it with:
@@ -135,7 +139,7 @@ When you have many users, loops keep things clean.
     - name: Rotate passwords for all specified users
       ansible.builtin.user:
         name: "{{ item.name }}"
-        password: "{{ item.password | password_hash('sha512') }}"
+        password: "{{ item.password | password_hash('sha512', 65534 | random(seed=inventory_hostname + item.name) | string) }}"
         update_password: always
       loop: "{{ users_to_rotate }}"
       loop_control:
@@ -143,7 +147,7 @@ When you have many users, loops keep things clean.
       no_log: true
 ```
 
-The `no_log: true` directive prevents passwords from showing up in Ansible output. The `loop_control` with `label` shows the username without dumping the password variable.
+The `no_log: true` directive prevents passwords from showing up in Ansible output. The `loop_control` with `label` keeps loop output focused on the username when task details are displayed.
 
 ## Generating Random Passwords
 
@@ -160,7 +164,7 @@ Sometimes you want Ansible to generate passwords rather than specifying them. Th
     - name: Generate and set random password for deploy user
       ansible.builtin.user:
         name: deploy
-        password: "{{ lookup('password', 'credentials/' + inventory_hostname + '/deploy length=20 chars=ascii_letters,digits,punctuation') | password_hash('sha512') }}"
+        password: "{{ lookup('ansible.builtin.password', 'credentials/' + inventory_hostname + '/deploy', length=20, chars=['ascii_letters', 'digits', 'punctuation']) | password_hash('sha512', 65534 | random(seed=inventory_hostname + 'deploy') | string) }}"
         update_password: always
       no_log: true
 
@@ -190,7 +194,7 @@ After rotating passwords, you might want to force users to change their password
     - name: Set new password for deploy user
       ansible.builtin.user:
         name: deploy
-        password: "{{ vault_deploy_password | password_hash('sha512') }}"
+        password: "{{ vault_deploy_password | password_hash('sha512', 65534 | random(seed=inventory_hostname + 'deploy') | string) }}"
         update_password: always
       no_log: true
 
@@ -270,7 +274,7 @@ The main tasks file:
 - name: Rotate password for each user
   ansible.builtin.user:
     name: "{{ item.name }}"
-    password: "{{ item.password | password_hash(password_rotation_hash_algorithm) }}"
+    password: "{{ item.password | password_hash(password_rotation_hash_algorithm, 65534 | random(seed=inventory_hostname + item.name) | string) }}"
     update_password: always
   loop: "{{ password_rotation_users }}"
   loop_control:
