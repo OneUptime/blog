@@ -21,7 +21,9 @@ First, install Vagrant and VirtualBox:
 ```bash
 # Install on macOS with Homebrew
 
-brew install vagrant virtualbox
+brew tap hashicorp/tap
+brew install hashicorp/tap/hashicorp-vagrant
+brew install --cask virtualbox
 
 # Install on Ubuntu
 sudo apt-get install -y vagrant virtualbox
@@ -64,13 +66,13 @@ Vagrant.configure("2") do |config|
       vb.memory = "2048"
       vb.cpus = 2
     end
-  end
 
-  # Ansible provisioner runs after all VMs are up
-  config.vm.provision "ansible" do |ansible|
-    ansible.playbook = "site.yml"
-    ansible.inventory_path = "inventories/local"
-    ansible.limit = "all"
+    # Run Ansible once, after the last VM is up
+    db.vm.provision "ansible" do |ansible|
+      ansible.playbook = "site.yml"
+      ansible.inventory_path = "inventories/local"
+      ansible.limit = "all"
+    end
   end
 end
 ```
@@ -168,6 +170,10 @@ services:
       dockerfile: Dockerfile.ubuntu
     hostname: web.local
     privileged: true
+    cgroup: host
+    tmpfs:
+      - /run
+      - /run/lock
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     networks:
@@ -182,6 +188,10 @@ services:
       dockerfile: Dockerfile.ubuntu
     hostname: app.local
     privileged: true
+    cgroup: host
+    tmpfs:
+      - /run
+      - /run/lock
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     networks:
@@ -196,6 +206,10 @@ services:
       dockerfile: Dockerfile.ubuntu
     hostname: db.local
     privileged: true
+    cgroup: host
+    tmpfs:
+      - /run
+      - /run/lock
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     networks:
@@ -247,7 +261,7 @@ docker compose -f docker-compose.test.yml down
 
 ## Option 3: LXD for System Container Testing
 
-LXD system containers give you the full OS experience of a VM with the speed of containers:
+LXD system containers give you a more complete OS userspace and systemd experience than Docker containers, while still sharing the host kernel:
 
 ```bash
 # Initialize LXD
@@ -314,7 +328,30 @@ case "$COMMAND" in
                 echo "Vagrant test environment is up"
                 ;;
             lxd)
-                bash scripts/setup_lxd.sh
+                lxc launch ubuntu:22.04 web
+                lxc launch ubuntu:22.04 app
+                lxc launch ubuntu:22.04 db
+                bash scripts/setup_lxd_ssh.sh
+                mkdir -p inventories/lxd
+                lxc list --format=json | python3 -c '
+import json, sys
+groups = {"web": "webservers", "app": "appservers", "db": "databases"}
+hosts = {}
+for c in json.load(sys.stdin):
+    if c["name"] not in groups:
+        continue
+    for net in c["state"]["network"].values():
+        for addr in net.get("addresses", []):
+            if addr["family"] == "inet" and addr["scope"] == "global":
+                hosts[c["name"]] = addr["address"]
+for name, group in groups.items():
+    print(f"[{group}]")
+    print(f"{name} ansible_host={hosts[name]}\n")
+print("[all:vars]")
+print("ansible_user=root")
+print("ansible_password=ansible")
+print("ansible_ssh_common_args='\''-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'\''")
+' > inventories/lxd/hosts
                 echo "LXD test environment is up"
                 ;;
         esac
