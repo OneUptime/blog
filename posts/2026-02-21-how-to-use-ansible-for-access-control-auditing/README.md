@@ -85,7 +85,7 @@ Every compliance control follows the same pattern: check the current state, reme
     - name: Assert audit logging is active
       ansible.builtin.assert:
         that:
-          - ansible_facts.services['auditd.service'].state == 'running'
+          - ansible_facts.services.get('auditd.service', {}).state | default('') == 'running'
 ```
 
 ## Reporting
@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -182,21 +182,31 @@ The most effective approach is creating a dedicated compliance role with tasks o
 # roles/compliance_checks/tasks/encryption.yml
 # Verify encryption requirements are met
 - name: Check if LUKS encryption is enabled on data volumes
-  ansible.builtin.command: lsblk -f
-  register: block_devices
+  ansible.builtin.command: "cryptsetup isLuks {{ item }}"
+  register: luks_checks
   changed_when: false
+  failed_when: false
+  loop: "{{ data_volumes }}"
+
+- name: Verify data volumes use LUKS
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: "{{ item.item }} is not a LUKS volume"
+    success_msg: "{{ item.item }} is a LUKS volume"
+  loop: "{{ luks_checks.results }}"
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
+  register: cert_valid
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_valid.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -218,17 +228,18 @@ The most effective approach is creating a dedicated compliance role with tasks o
       - "'Status: active' in firewall_status.stdout"
     fail_msg: "Firewall is not active"
 
-- name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+- name: Check for unauthorized TCP listening ports
+  ansible.builtin.command: "ss -H -tln sport = :{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout == ""
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
