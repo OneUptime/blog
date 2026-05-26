@@ -30,7 +30,7 @@ AWS lets you use tags as conditions in IAM policies, which means you can say thi
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `amazon.aws` collection
+- A supported `ansible-core` version for your installed `amazon.aws` collection
 - AWS credentials with tagging permissions for the resource types you want to tag
 - Some existing AWS resources to practice on
 
@@ -139,7 +139,7 @@ When you know exactly which instances need which tags:
           Team: frontend
           Application: web-app
           CostCenter: CC-5678
-      - id: "i-0ghi789def012345"
+      - id: "i-0abc789def012345"
         tags:
           Environment: development
           Team: backend
@@ -160,7 +160,7 @@ The `combine` filter merges the instance-specific tags with the `ManagedBy` tag,
 
 ## Tagging Multiple Resource Types
 
-Tags are not just for instances. EBS volumes, security groups, VPCs, subnets, and many other resources support tags. The `ec2_tag` module works with any resource that has an AWS resource ID:
+Tags are not just for instances. EBS volumes, security groups, VPCs, subnets, and many other EC2 resources support tags. The `ec2_tag` module works with EC2 resources that have a resource ID:
 
 ```yaml
 # tag-multiple-resources.yml - Tag different resource types in one playbook
@@ -189,12 +189,12 @@ Tags are not just for instances. EBS volumes, security groups, VPCs, subnets, an
           Name: "prod-private-subnet-1a"
           SubnetType: private
       # Security Group
-      - id: "sg-0ghi789def012345"
+      - id: "sg-0abc789def012345"
         extra_tags:
           Name: "prod-web-sg"
           Purpose: web-traffic
       # EBS Volume
-      - id: "vol-0jkl012ghi345678"
+      - id: "vol-0abc012def345678"
         extra_tags:
           Name: "prod-data-volume"
           Purpose: application-data
