@@ -12,12 +12,12 @@ Managing secrets in automation pipelines is one of those problems that gets hard
 
 ## What the community.hashi_vault Collection Provides
 
-The collection includes lookup plugins, modules, and inventory plugins that let Ansible talk to a HashiCorp Vault server. You can read secrets, write them, manage auth methods, and even use Vault as a dynamic inventory source. The main components you will use day to day are:
+The collection includes lookup plugins and modules that let Ansible talk to a HashiCorp Vault server. You can read secrets, write them, manage auth methods, and work with Vault features such as KV, database, token, and PKI secrets engines. The main components you will use day to day are:
 
 - `hashi_vault` lookup plugin for reading secrets inline
 - `vault_read` and `vault_write` modules for more complex operations
 - `vault_login` module for explicit token management
-- Connection plugins for Vault-backed inventory
+- Dedicated modules such as `vault_kv2_get` and `vault_kv2_write` for KV v2 secrets
 
 ## Installing the Collection
 
@@ -38,7 +38,7 @@ You can also pin a specific version in your `requirements.yml` file.
 # requirements.yml - pin collection versions for reproducibility
 collections:
   - name: community.hashi_vault
-    version: ">=5.0.0"
+    version: "7.1.0"
 ```
 
 Then install with:
@@ -91,26 +91,26 @@ For automation pipelines, AppRole is the recommended approach. It gives you a ro
 
     - name: Use the retrieved credentials
       ansible.builtin.debug:
-        msg: "DB user is {{ db_creds.data.username }}"
+        msg: "DB user is {{ db_creds.username }}"
 ```
 
-### Kubernetes Authentication
+### JWT Authentication from Kubernetes
 
-If you are running Ansible from within a Kubernetes pod, you can use the service account token for authentication.
+If you are running Ansible from within a Kubernetes pod and Vault's JWT auth method is configured to trust the service account token issuer, you can use that service account token for authentication.
 
 ```yaml
-# playbook-k8s-auth.yml - authenticate using Kubernetes service account
+# playbook-jwt-auth.yml - authenticate using a Kubernetes service account JWT
 - hosts: localhost
   tasks:
-    - name: Read secret using Kubernetes auth
+    - name: Read secret using JWT auth
       ansible.builtin.set_fact:
         app_secret: "{{ lookup('community.hashi_vault.hashi_vault',
                         'secret/data/myapp/api-keys',
                         url='https://vault.example.com:8200',
-                        auth_method='kubernetes',
-                        role='my-ansible-role',
+                        auth_method='jwt',
+                        role_id='my-ansible-role',
                         jwt=lookup('file', '/var/run/secrets/kubernetes.io/serviceaccount/token'),
-                        mount_point='kubernetes') }}"
+                        mount_point='jwt') }}"
 ```
 
 ## Reading Secrets from KV v2
@@ -178,6 +178,7 @@ You can also write secrets back to Vault, which is useful for rotating credentia
             generated_at: "{{ ansible_date_time.iso8601 }}"
         auth_method: token
         token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+      no_log: true
 ```
 
 ## Using Vault with Dynamic Database Credentials
@@ -210,22 +211,25 @@ One of Vault's killer features is generating short-lived database credentials on
     - name: Log the lease ID for renewal tracking
       ansible.builtin.lineinfile:
         path: /var/log/vault-leases.log
-        line: "{{ lease_id }} - {{ ansible_date_time.iso8601 }}"
+        line: "{{ db_creds.data.lease_id }} - {{ ansible_date_time.iso8601 }}"
         create: yes
 ```
 
 ## Environment Variable Configuration
 
-Instead of passing connection details in every task, you can set environment variables that the collection picks up automatically.
+Instead of passing connection details in every task, you can export environment variables before running Ansible that the collection picks up automatically.
+
+```bash
+export VAULT_ADDR="https://vault.example.com:8200"
+export VAULT_TOKEN="$VAULT_TOKEN_FROM_SECRET_STORE"
+export VAULT_NAMESPACE="my-team"
+export VAULT_SKIP_VERIFY="false"
+ansible-playbook playbook-env-config.yml
+```
 
 ```yaml
-# playbook-env-config.yml - use environment variables for Vault config
+# playbook-env-config.yml - use exported environment variables for Vault config
 - hosts: all
-  environment:
-    VAULT_ADDR: "https://vault.example.com:8200"
-    VAULT_TOKEN: "{{ vault_token_from_ansible_vault }}"
-    VAULT_NAMESPACE: "my-team"
-    VAULT_SKIP_VERIFY: "false"
   tasks:
     - name: Read secret (uses env vars for connection)
       ansible.builtin.set_fact:
@@ -239,10 +243,12 @@ Vault lookups can fail for many reasons: expired tokens, network issues, missing
 ```yaml
 # playbook-error-handling.yml - handle Vault failures gracefully
 - hosts: appservers
+  vars:
+    vault_addr: "https://vault.example.com:8200"
   tasks:
     - name: Try to read a secret from Vault
       community.hashi_vault.vault_read:
-        url: "https://vault.example.com:8200"
+        url: "{{ vault_addr }}"
         path: "secret/data/myapp/config"
         auth_method: token
         token: "{{ lookup('env', 'VAULT_TOKEN') }}"
@@ -255,11 +261,14 @@ Vault lookups can fail for many reasons: expired tokens, network issues, missing
           Could not read secret from Vault. Check that VAULT_TOKEN is set
           and that the Vault server at {{ vault_addr }} is reachable.
           Error: {{ vault_result.msg | default('unknown') }}
-      when: vault_result is failed
+      when:
+        - vault_result is failed
+        - (vault_result.msg | default('')) is not search('404|not found|missing path')
 
     - name: Use fallback values if secret path does not exist
       ansible.builtin.set_fact:
-        app_config: "{{ vault_result.data.data.data | default({'api_key': 'PLACEHOLDER'}) }}"
+        app_config: "{{ (vault_result.data.data.data if vault_result is succeeded else {'api_key': 'PLACEHOLDER'}) }}"
+      when: vault_result is succeeded or (vault_result.msg | default('')) is search('404|not found|missing path')
 ```
 
 ## Tips from Production Use
