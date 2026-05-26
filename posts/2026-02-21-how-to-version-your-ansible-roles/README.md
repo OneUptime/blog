@@ -41,7 +41,7 @@ Examples of version bumps:
 
 ## Using Git Tags for Versions
 
-Git tags are the primary mechanism for versioning Ansible roles. When `ansible-galaxy` installs a role with a version specifier, it checks out the corresponding Git tag.
+Git tags are the primary mechanism for versioning Ansible roles. When `ansible-galaxy` installs a role from a Git repository with a version specifier, that version can be a tag, branch, or commit hash. Galaxy imports Git tags that match semantic versioning as role versions.
 
 ```bash
 # Tag a new version
@@ -60,30 +60,28 @@ git push origin v1.1.0
 
 ### Tag Naming Convention
 
-Use the `v` prefix consistently:
+Use one tag format consistently. If your consumers install directly from Git, a `v` prefix is common and works as long as they specify the same tag in `requirements.yml`. If you publish the role through Galaxy, use semantic version tags without extra prefixes so Galaxy can import them as versions:
 
 ```text
-v1.0.0    # Good - consistent convention
-v1.0.1    # Good
-v1.1.0    # Good
-1.0.0     # Works but less conventional
-release-1.0.0  # Avoid - not standard
+1.0.0     # Good for Galaxy imports
+1.0.1     # Good
+1.1.0     # Good
+v1.0.0    # Works for direct Git installs if consumers specify v1.0.0
+release-1.0.0  # Avoid - not semantic versioning
 ```
 
-## Galaxy Metadata Version
+## Galaxy Metadata
 
-Keep the version in `meta/main.yml` in sync with your Git tags:
+Keep role metadata in `meta/main.yml`, but keep release versions in Git tags. Standalone role metadata describes the role for Galaxy and for tooling; it is not where role release versions are defined:
 
 ```yaml
 # roles/nginx/meta/main.yml
-# Keep this version in sync with your Git tags
 ---
 galaxy_info:
   author: nawazdhandala
   description: Installs and configures Nginx
   license: MIT
   min_ansible_version: "2.14"
-  version: 1.1.0    # Must match the Git tag (without "v" prefix)
   platforms:
     - name: Ubuntu
       versions:
@@ -148,17 +146,14 @@ git commit -m "Add custom error page support"
 # 2. Update the changelog
 vim CHANGELOG.md
 
-# 3. Update the version in meta/main.yml
-vim meta/main.yml
-
-# 4. Merge to main
+# 3. Merge to main
 git checkout main
 git merge feature/custom-error-pages
 
-# 5. Tag the release
+# 4. Tag the release
 git tag -a v1.1.0 -m "Add custom error page support"
 
-# 6. Push everything
+# 5. Push everything
 git push origin main
 git push origin v1.1.0
 ```
@@ -174,13 +169,23 @@ You can automate versioning with a simple script:
 
 set -euo pipefail
 
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 patch|minor|major \"Release message\""
+  exit 1
+fi
+
 BUMP_TYPE=$1
 MESSAGE=$2
 
-# Get current version from meta/main.yml
-CURRENT=$(grep 'version:' meta/main.yml | head -1 | awk '{print $2}' | tr -d '"')
+# Get current version from the latest semantic version tag
+CURRENT_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+CURRENT=${CURRENT_TAG#v}
 
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+if [ -z "$CURRENT" ]; then
+  CURRENT="0.0.0"
+fi
+
+IFS='.' read -r MAJOR MINOR PATCH <<< "${CURRENT%%-*}"
 
 case "$BUMP_TYPE" in
   major)
@@ -204,13 +209,6 @@ esac
 NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 
 echo "Bumping version: ${CURRENT} -> ${NEW_VERSION}"
-
-# Update meta/main.yml
-sed -i "s/version: .*/version: ${NEW_VERSION}/" meta/main.yml
-
-# Commit the version bump
-git add meta/main.yml
-git commit -m "Bump version to ${NEW_VERSION}"
 
 # Create the tag
 git tag -a "v${NEW_VERSION}" -m "${MESSAGE}"
@@ -268,7 +266,7 @@ roles:
 
 ## CI/CD Integration for Version Validation
 
-Add a CI check that ensures the version in `meta/main.yml` matches the Git tag:
+Add a CI check that ensures release tags use the expected semantic version format:
 
 ```yaml
 # .github/workflows/release.yml
@@ -285,23 +283,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract tag version
-        id: tag
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Extract meta version
-        id: meta
+      - name: Validate tag version
         run: |
-          version=$(grep 'version:' meta/main.yml | head -1 | awk '{print $2}' | tr -d '"')
-          echo "version=$version" >> $GITHUB_OUTPUT
-
-      - name: Compare versions
-        run: |
-          if [ "${{ steps.tag.outputs.version }}" != "${{ steps.meta.outputs.version }}" ]; then
-            echo "ERROR: Tag version (${{ steps.tag.outputs.version }}) does not match meta version (${{ steps.meta.outputs.version }})"
+          tag="${GITHUB_REF#refs/tags/}"
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+          if [[ ! "$tag" =~ $semver ]]; then
+            echo "ERROR: Tag ($tag) must match vMAJOR.MINOR.PATCH or a valid prerelease form such as v1.2.3-rc1"
             exit 1
           fi
-          echo "Versions match: ${{ steps.tag.outputs.version }}"
+          echo "Valid release tag: $tag"
 ```
 
 ## Version Compatibility Matrix
