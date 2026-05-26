@@ -32,8 +32,10 @@ Output looks something like this:
 ```text
 Collection        Version
 ----------------- -------
-community.docker  3.8.0
+community.docker  5.2.1
 ```
+
+The exact version will depend on what is current on Galaxy when you run the command.
 
 ## Installing a Specific Version
 
@@ -47,7 +49,7 @@ ansible-galaxy collection install community.docker:3.7.0
 ansible-galaxy collection install 'community.docker:>=3.4.0,<4.0.0'
 ```
 
-The version range syntax follows Python's PEP 440 conventions. Here are the common patterns:
+The version range syntax uses the range identifiers supported by `ansible-galaxy`. Here are the common patterns:
 
 ```bash
 # Exact version
@@ -55,9 +57,6 @@ ansible-galaxy collection install community.docker:3.7.0
 
 # Minimum version
 ansible-galaxy collection install 'community.docker:>=3.4.0'
-
-# Compatible release (same as >=3.4.0,<4.0.0)
-ansible-galaxy collection install 'community.docker:~=3.4'
 
 # Exclude a specific version
 ansible-galaxy collection install 'community.docker:!=3.5.0'
@@ -96,11 +95,11 @@ Install everything at once:
 ansible-galaxy collection install -r requirements.yml
 ```
 
-If you need to upgrade collections that are already installed, add the `--force` flag:
+If you need to upgrade collections that are already installed, add the `--upgrade` flag:
 
 ```bash
-# Force reinstall even if already installed
-ansible-galaxy collection install -r requirements.yml --force
+# Upgrade installed collection artifacts when newer matching versions are available
+ansible-galaxy collection install -r requirements.yml --upgrade
 ```
 
 ## Controlling the Installation Path
@@ -141,25 +140,26 @@ This creates a directory full of `.tar.gz` files plus a `requirements.yml` that 
 
 ```bash
 # Install from the downloaded tarballs
-ansible-galaxy collection install -r ./collection-tarballs/requirements.yml -p ./collections
+cd ./collection-tarballs
+ansible-galaxy collection install -r requirements.yml -p ../collections
 ```
 
 ## Verifying Collection Integrity
 
-Starting with Ansible 2.13, you can verify the integrity of installed collections using the `--verify` flag:
+You can verify the integrity of installed collections with the `verify` subcommand:
 
 ```bash
-# Verify that installed collections match their Galaxy signatures
+# Verify that the installed collection matches the copy on the Galaxy server
 ansible-galaxy collection verify community.docker
 ```
 
-This checks that the files on disk match what was published to Galaxy. If someone modified files in the installed collection (accidentally or otherwise), the verification will flag the differences.
+This checks that the files on disk match what was published to Galaxy. If someone modified files in the installed collection (accidentally or otherwise), the verification will flag the differences. For signed collections, add signature verification options such as `--keyring` as needed.
 
-For a full integrity check of all installed collections:
+For a full integrity check of the installed project collections listed in your requirements file:
 
 ```bash
-# Verify all installed collections
-ansible-galaxy collection verify --offline
+# Verify installed collections from the requirements file
+ansible-galaxy collection verify -r requirements.yml --offline
 ```
 
 ## Understanding the Collection Search Order
