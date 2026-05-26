@@ -16,7 +16,7 @@ You might wonder why you would use DSC through Ansible instead of using DSC dire
 
 ## How win_dsc Works
 
-The `win_dsc` module calls a DSC resource class on the target Windows host. You specify the DSC resource name and its properties as module parameters. Ansible translates these into a DSC configuration, applies it, and reports back whether changes were made.
+The `win_dsc` module invokes a DSC resource on the target Windows host. You specify the DSC resource name and its properties as module parameters. Ansible passes these properties to the DSC engine, tests and sets the resource state, and reports back whether changes were made.
 
 ## Basic Usage
 
@@ -165,17 +165,17 @@ Many DSC resources are not built into Windows and need to be installed from the 
             Install-Module -Name SqlServerDsc -Force -AllowClobber
         }
 
-    # Install xWebAdministration for IIS management
-    - name: Install xWebAdministration module
+    # Install WebAdministrationDsc for IIS management
+    - name: Install WebAdministrationDsc module
       ansible.windows.win_shell: |
-        if (-not (Get-Module -ListAvailable -Name xWebAdministration)) {
-            Install-Module -Name xWebAdministration -Force -AllowClobber
+        if (-not (Get-Module -ListAvailable -Name WebAdministrationDsc)) {
+            Install-Module -Name WebAdministrationDsc -Force -AllowClobber
         }
 
-    # Now use the xWebsite resource to configure an IIS site
+    # Now use the WebSite resource to configure an IIS site
     - name: Configure IIS website
       ansible.windows.win_dsc:
-        resource_name: xWebsite
+        resource_name: WebSite
         Name: MyWebApplication
         PhysicalPath: C:\inetpub\MyApp
         State: Started
@@ -184,10 +184,10 @@ Many DSC resources are not built into Windows and need to be installed from the 
             Port: 8080
             HostName: myapp.corp.local
 
-    # Use xWebAppPool to configure an application pool
+    # Use WebAppPool to configure an application pool
     - name: Configure application pool
       ansible.windows.win_dsc:
-        resource_name: xWebAppPool
+        resource_name: WebAppPool
         Name: MyAppPool
         State: Started
         managedRuntimeVersion: v4.0
@@ -214,9 +214,9 @@ Here is a full playbook that configures IIS using various DSC resources.
 
   tasks:
     # Install required DSC modules
-    - name: Install xWebAdministration DSC module
+    - name: Install WebAdministrationDsc DSC module
       ansible.windows.win_shell: |
-        Install-Module -Name xWebAdministration -Force -AllowClobber -ErrorAction SilentlyContinue
+        Install-Module -Name WebAdministrationDsc -Force -AllowClobber -ErrorAction SilentlyContinue
 
     # Ensure IIS features are installed
     - name: Install IIS
@@ -243,7 +243,7 @@ Here is a full playbook that configures IIS using various DSC resources.
     # Configure the application pool
     - name: Configure application pool
       ansible.windows.win_dsc:
-        resource_name: xWebAppPool
+        resource_name: WebAppPool
         Name: "{{ app_pool_name }}"
         State: Started
         managedRuntimeVersion: v4.0
@@ -255,14 +255,14 @@ Here is a full playbook that configures IIS using various DSC resources.
     # Remove the default website
     - name: Remove default website
       ansible.windows.win_dsc:
-        resource_name: xWebsite
+        resource_name: WebSite
         Name: "Default Web Site"
         Ensure: Absent
 
     # Create the production website
     - name: Configure production website
       ansible.windows.win_dsc:
-        resource_name: xWebsite
+        resource_name: WebSite
         Name: "{{ site_name }}"
         PhysicalPath: "{{ site_path }}"
         ApplicationPool: "{{ app_pool_name }}"
@@ -320,7 +320,7 @@ sequenceDiagram
     participant R as DSC Resource
 
     A->>W: Send win_dsc task parameters
-    W->>DSC: Create temporary DSC configuration
+    W->>DSC: Invoke DSC resource directly
     DSC->>R: Call Test-TargetResource
     R->>DSC: Return current state
     DSC->>DSC: Compare desired vs current state
