@@ -233,11 +233,11 @@ Both `fail` and `assert` can stop a playbook, but they serve different purposes.
           {% if psql_ver.rc != 0 %}
           PostgreSQL client is not installed.
           Install it with: sudo apt install postgresql-client
-          {% elif '14' not in psql_ver.stdout and '15' not in psql_ver.stdout and '16' not in psql_ver.stdout %}
+          {% elif (psql_ver.stdout | regex_search('PostgreSQL\\)\\s+(1[4-9]|[2-9][0-9])\\b')) is none %}
           PostgreSQL client version is too old: {{ psql_ver.stdout }}
           This application requires PostgreSQL 14 or newer.
           {% endif %}
-      when: psql_ver.rc != 0 or ('14' not in psql_ver.stdout and '15' not in psql_ver.stdout and '16' not in psql_ver.stdout)
+      when: psql_ver.rc != 0 or (psql_ver.stdout | regex_search('PostgreSQL\\)\\s+(1[4-9]|[2-9][0-9])\\b')) is none
 ```
 
 ## Using fail in Loops
@@ -300,6 +300,7 @@ Combine fail with block/rescue to create graceful degradation paths.
             cmd: nvidia-smi
           register: gpu_check
           changed_when: false
+          failed_when: false
 
         - name: Fail if no GPU for ML workload
           ansible.builtin.fail:
