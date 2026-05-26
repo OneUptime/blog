@@ -58,7 +58,7 @@ Create or update your `ansible.cfg` at the project root:
 roles_path = ./roles
 ```
 
-Now your playbooks can live anywhere in the project and still find the roles.
+Now, when you run `ansible-playbook` from the project root or otherwise point Ansible at this config file, your playbooks can live anywhere in the project and still find the roles.
 
 Here is an example with playbooks in a subdirectory:
 
@@ -96,7 +96,7 @@ Let's say you have a `common` role that installs base packages, sets the timezon
     update_cache: yes
 
 - name: Set timezone
-  ansible.builtin.timezone:
+  community.general.timezone:
     name: "{{ server_timezone }}"
 
 - name: Set hostname
@@ -230,7 +230,7 @@ When any playbook includes the `nginx` role, Ansible will automatically run `com
     - nginx
 ```
 
-## Using roles_path for External Role Collections
+## Using roles_path for External Role Directories
 
 For larger organizations, you might keep roles in separate Git repositories. You can specify multiple paths in `ansible.cfg`:
 
