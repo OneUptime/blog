@@ -1,14 +1,14 @@
-# How to Use ServerSpec for Ansible Testing
+# How to Use Molecule and Testinfra for Ansible Testing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, ServerSpec, Ruby, RSpec
+Tags: Ansible, Testing, Molecule, Testinfra, Python
 
-Description: Validate Ansible playbook outcomes using ServerSpec Ruby-based infrastructure tests with RSpec matchers.
+Description: Validate Ansible playbook outcomes using Molecule scenarios, Ansible verifier playbooks, and Testinfra infrastructure tests.
 
 ---
 
-ServerSpec is a Ruby-based infrastructure testing framework before changes reach production. This guide covers practical approaches with working code examples.
+Molecule and Testinfra help validate infrastructure changes before they reach production. This guide covers practical approaches with working code examples.
 
 ## Why Testing Ansible Code Matters
 
@@ -51,7 +51,7 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible molecule "molecule-plugins[docker]" ansible-lint yamllint pytest testinfra
 ```
 
 ## Writing Tests
@@ -112,8 +112,8 @@ verifier:
     - name: Assert service is active
       ansible.builtin.assert:
         that:
-          - "'my_service' in ansible_facts.services"
-          - "ansible_facts.services['my_service'].state == 'running'"
+          - "'my_service.service' in ansible_facts.services"
+          - "ansible_facts.services['my_service.service'].state == 'running'"
         fail_msg: "Service my_service is not running"
 
     - name: Check configuration file exists
@@ -178,16 +178,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        platform: [ubuntu2404, rocky9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: pip install ansible molecule "molecule-plugins[docker]"
+      - run: molecule test -- --limit "${{ matrix.platform }}"
 ```
 
 ### GitLab CI
@@ -208,11 +206,14 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: python:3.11
   services:
     - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - pip install ansible molecule molecule-docker
+    - pip install ansible molecule "molecule-plugins[docker]"
     - molecule test
 ```
 
@@ -266,12 +267,12 @@ Testing Ansible code requires multiple layers: linting for style and best practi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -303,7 +304,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -344,7 +345,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_facts.os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -385,7 +386,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -447,4 +448,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
