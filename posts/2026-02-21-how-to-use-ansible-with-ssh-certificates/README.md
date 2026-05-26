@@ -8,7 +8,7 @@ Description: Implement SSH certificate-based authentication with Ansible for sca
 
 ---
 
-SSH keys work great until you have hundreds of servers and dozens of engineers. At that scale, distributing and managing authorized_keys files becomes a maintenance nightmare. SSH certificates solve this by introducing a Certificate Authority (CA) model. Instead of trusting individual keys, servers trust the CA. Any key signed by the CA is automatically accepted. This integrates beautifully with Ansible and fundamentally changes how you manage SSH access.
+SSH keys work great until you have hundreds of servers and dozens of engineers. At that scale, distributing and managing authorized_keys files becomes a maintenance nightmare. SSH certificates solve this by introducing a Certificate Authority (CA) model. Instead of trusting individual keys, servers trust the CA. Any key signed by the CA with a matching principal and policy is automatically accepted. This integrates beautifully with Ansible and fundamentally changes how you manage SSH access.
 
 ## How SSH Certificates Work
 
@@ -20,14 +20,14 @@ graph TD
     CA -->|Signs| HC[Host Certificate]
     UC -->|Trusted by| S[Server]
     HC -->|Trusted by| C[Client]
-    S -->|Verifies user via CA| CA
-    C -->|Verifies host via CA| CA
+    S -->|Verifies user cert with CA public key| CA
+    C -->|Verifies host cert with CA public key| CA
 ```
 
 1. You create an SSH CA (just a regular SSH key pair used for signing)
 2. Servers are configured to trust the CA's public key
 3. User keys are signed by the CA to create certificates
-4. When a user connects, the server verifies the certificate against the CA
+4. When a user connects, the server verifies the certificate signature using the trusted CA public key
 
 No more managing authorized_keys files on hundreds of servers.
 
@@ -100,6 +100,7 @@ Output shows the certificate details:
                 deploy
         Critical Options: (none)
         Extensions:
+                permit-X11-forwarding
                 permit-agent-forwarding
                 permit-port-forwarding
                 permit-pty
@@ -153,20 +154,29 @@ Automate this with Ansible (using traditional key auth for the bootstrap):
         validate: 'sshd -t -f %s'
       notify: restart sshd
 
-    # Optionally restrict principals
-    - name: Create AuthorizedPrincipalsFile
+    # Optionally restrict principals for the ansible account
+    - name: Create authorized principals directory
+      file:
+        path: /etc/ssh/auth_principals
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create AuthorizedPrincipalsFile for ansible
       copy:
         content: |
           ansible
-          deploy
-        dest: /etc/ssh/auth_principals
+        dest: /etc/ssh/auth_principals/ansible
+        owner: root
+        group: root
         mode: '0644'
 
     - name: Configure AuthorizedPrincipalsFile
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^AuthorizedPrincipalsFile'
-        line: 'AuthorizedPrincipalsFile /etc/ssh/auth_principals'
+        line: 'AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u'
         validate: 'sshd -t -f %s'
       notify: restart sshd
 
@@ -300,7 +310,7 @@ Available options:
 - `force-command=/path/to/script` - Only allow a specific command
 - `source-address=10.0.0.0/8` - Restrict source IP range
 
-For Ansible, you typically need at least `permit-pty` and want to restrict source addresses:
+Ansible does not require a PTY by default, though you may need `permit-pty` if your privilege escalation or commands allocate one. A common restriction is to keep the default certificate permissions and limit the certificate to the Ansible control node's source address:
 
 ```bash
 ssh-keygen -s ~/ssh-ca/ca_key \
