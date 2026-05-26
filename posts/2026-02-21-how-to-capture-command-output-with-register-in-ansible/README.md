@@ -96,7 +96,7 @@ The most common use of `register` is making decisions based on command output.
         state: reloaded
       when:
         - nginx_check.rc == 0
-        - nginx_config_test.rc == 0
+        - nginx_config_test is succeeded
 ```
 
 ## Parsing Command Output
