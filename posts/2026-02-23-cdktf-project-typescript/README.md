@@ -8,7 +8,7 @@ Description: A hands-on guide to building infrastructure with CDKTF and TypeScri
 
 ---
 
-TypeScript is the most popular language for CDKTF projects, and for good reason. The type system catches configuration errors at compile time, the IDE support is excellent, and the async/await patterns work naturally for infrastructure that has dependencies. In this guide, we'll build a real infrastructure project with CDKTF and TypeScript from the ground up.
+TypeScript is the most popular language for CDKTF projects, and for good reason. The type system catches configuration errors at compile time, the IDE support is excellent, and TypeScript's composition and control-flow patterns work naturally for infrastructure code. CDKTF is deprecated as of December 10, 2025, so use this guide for maintaining existing projects or for teams that have deliberately chosen CDKTF despite its maintenance status. In this guide, we'll build a real infrastructure project with CDKTF and TypeScript from the ground up.
 
 ## Project Setup
 
@@ -19,8 +19,8 @@ mkdir cdktf-typescript-demo
 cd cdktf-typescript-demo
 cdktf init --template=typescript --local
 
-# Install the AWS provider (pre-built for faster setup)
-npm install @cdktf/provider-aws
+# Generate AWS provider bindings locally
+cdktf provider add hashicorp/aws --force-local
 ```
 
 The generated project includes:
@@ -32,6 +32,7 @@ cdktf-typescript-demo/
   package.json         # Dependencies
   tsconfig.json        # TypeScript config
   jest.config.js       # Testing configuration
+  .gen/                # Generated provider/module bindings
   __tests__/           # Test directory
 ```
 
@@ -58,22 +59,22 @@ app.synth();
 
 ## Building a Complete Infrastructure
 
-Let's build a VPC with subnets, an RDS database, and an ECS service:
+Let's build a VPC with subnets and an RDS database:
 
 ```typescript
 // main.ts
 import { Construct } from "constructs";
 import { App, TerraformStack, TerraformOutput, Fn } from "cdktf";
-import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
-import { Vpc } from "@cdktf/provider-aws/lib/vpc";
-import { Subnet } from "@cdktf/provider-aws/lib/subnet";
-import { InternetGateway } from "@cdktf/provider-aws/lib/internet-gateway";
-import { RouteTable } from "@cdktf/provider-aws/lib/route-table";
-import { Route } from "@cdktf/provider-aws/lib/route";
-import { RouteTableAssociation } from "@cdktf/provider-aws/lib/route-table-association";
-import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
-import { DbInstance } from "@cdktf/provider-aws/lib/db-instance";
-import { DbSubnetGroup } from "@cdktf/provider-aws/lib/db-subnet-group";
+import { AwsProvider } from "./.gen/providers/aws/provider";
+import { Vpc } from "./.gen/providers/aws/vpc";
+import { Subnet } from "./.gen/providers/aws/subnet";
+import { InternetGateway } from "./.gen/providers/aws/internet-gateway";
+import { RouteTable } from "./.gen/providers/aws/route-table";
+import { Route } from "./.gen/providers/aws/route";
+import { RouteTableAssociation } from "./.gen/providers/aws/route-table-association";
+import { SecurityGroup } from "./.gen/providers/aws/security-group";
+import { DbInstance } from "./.gen/providers/aws/db-instance";
+import { DbSubnetGroup } from "./.gen/providers/aws/db-subnet-group";
 
 // Configuration interface for type safety
 interface StackConfig {
@@ -84,7 +85,7 @@ interface StackConfig {
   dbPassword: string;
 }
 
-class InfrastructureStack extends TerraformStack {
+export class InfrastructureStack extends TerraformStack {
   constructor(scope: Construct, id: string, config: StackConfig) {
     super(scope, id);
 
@@ -118,7 +119,7 @@ class InfrastructureStack extends TerraformStack {
     const publicSubnets = config.availabilityZones.map((az, index) => {
       const subnet = new Subnet(this, `public-subnet-${index}`, {
         vpcId: vpc.id,
-        cidrBlock: `10.0.${index}.0/24`,
+        cidrBlock: Fn.cidrsubnet(config.vpcCidr, 8, index),
         availabilityZone: az,
         mapPublicIpOnLaunch: true,
         tags: { Name: `${config.environment}-public-${az}` },
@@ -130,7 +131,7 @@ class InfrastructureStack extends TerraformStack {
     const privateSubnets = config.availabilityZones.map((az, index) => {
       const subnet = new Subnet(this, `private-subnet-${index}`, {
         vpcId: vpc.id,
-        cidrBlock: `10.0.${index + 100}.0/24`,
+        cidrBlock: Fn.cidrsubnet(config.vpcCidr, 8, index + 100),
         availabilityZone: az,
         tags: { Name: `${config.environment}-private-${az}` },
       });
@@ -209,26 +210,28 @@ class InfrastructureStack extends TerraformStack {
   }
 }
 
-// Create the app with multiple environments
-const app = new App();
+if (require.main === module) {
+  // Create the app with multiple environments
+  const app = new App();
 
-new InfrastructureStack(app, "dev", {
-  environment: "dev",
-  region: "us-east-1",
-  vpcCidr: "10.0.0.0/16",
-  availabilityZones: ["us-east-1a", "us-east-1b"],
-  dbPassword: process.env.DEV_DB_PASSWORD || "changeme",
-});
+  new InfrastructureStack(app, "dev", {
+    environment: "dev",
+    region: "us-east-1",
+    vpcCidr: "10.0.0.0/16",
+    availabilityZones: ["us-east-1a", "us-east-1b"],
+    dbPassword: process.env.DEV_DB_PASSWORD || "changeme",
+  });
 
-new InfrastructureStack(app, "prod", {
-  environment: "prod",
-  region: "us-east-1",
-  vpcCidr: "10.1.0.0/16",
-  availabilityZones: ["us-east-1a", "us-east-1b", "us-east-1c"],
-  dbPassword: process.env.PROD_DB_PASSWORD || "changeme",
-});
+  new InfrastructureStack(app, "prod", {
+    environment: "prod",
+    region: "us-east-1",
+    vpcCidr: "10.1.0.0/16",
+    availabilityZones: ["us-east-1a", "us-east-1b", "us-east-1c"],
+    dbPassword: process.env.PROD_DB_PASSWORD || "changeme",
+  });
 
-app.synth();
+  app.synth();
+}
 ```
 
 ## Creating Reusable Constructs
@@ -238,10 +241,10 @@ Constructs are CDKTF's abstraction mechanism - think of them like Terraform modu
 ```typescript
 // constructs/secure-bucket.ts
 import { Construct } from "constructs";
-import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
-import { S3BucketVersioningA } from "@cdktf/provider-aws/lib/s3-bucket-versioning";
-import { S3BucketServerSideEncryptionConfigurationA } from "@cdktf/provider-aws/lib/s3-bucket-server-side-encryption-configuration";
-import { S3BucketPublicAccessBlock } from "@cdktf/provider-aws/lib/s3-bucket-public-access-block";
+import { S3Bucket } from "../.gen/providers/aws/s3-bucket";
+import { S3BucketVersioningA } from "../.gen/providers/aws/s3-bucket-versioning";
+import { S3BucketServerSideEncryptionConfigurationA } from "../.gen/providers/aws/s3-bucket-server-side-encryption-configuration";
+import { S3BucketPublicAccessBlock } from "../.gen/providers/aws/s3-bucket-public-access-block";
 
 interface SecureBucketConfig {
   bucketName: string;
@@ -322,6 +325,10 @@ class MyStack extends TerraformStack {
     new TerraformOutput(this, "logs_bucket_arn", {
       value: logsBucket.bucket.arn,
     });
+
+    new TerraformOutput(this, "data_bucket_arn", {
+      value: dataBucket.bucket.arn,
+    });
   }
 }
 ```
@@ -331,7 +338,6 @@ class MyStack extends TerraformStack {
 You can use existing Terraform modules:
 
 ```json
-// cdktf.json
 {
   "terraformModules": [
     {
@@ -352,7 +358,7 @@ cdktf get
 // Use the module in your code
 import { Vpc } from "./.gen/modules/vpc";
 
-const vpc = new Vpc(this, "vpc", {
+new Vpc(this, "vpc", {
   name: "my-vpc",
   cidr: "10.0.0.0/16",
   azs: ["us-east-1a", "us-east-1b", "us-east-1c"],
@@ -369,7 +375,10 @@ CDKTF generates Terraform JSON, so you can test your infrastructure code:
 
 ```typescript
 // __tests__/main-test.ts
+import "cdktf/lib/testing/adapters/jest";
 import { Testing } from "cdktf";
+import { Vpc } from "../.gen/providers/aws/vpc";
+import { DbInstance } from "../.gen/providers/aws/db-instance";
 import { InfrastructureStack } from "../main";
 
 describe("InfrastructureStack", () => {
@@ -385,7 +394,7 @@ describe("InfrastructureStack", () => {
     });
 
     // Verify the stack synthesizes to valid Terraform
-    expect(Testing.synth(stack)).toBeValidTerraform();
+    expect(Testing.fullSynth(stack)).toBeValidTerraform();
   });
 
   // Test that specific resources are created
@@ -403,7 +412,7 @@ describe("InfrastructureStack", () => {
 
     // Check that a VPC resource exists with the expected CIDR
     expect(synthesized).toHaveResourceWithProperties(
-      "aws_vpc",
+      Vpc,
       { cidr_block: "10.0.0.0/16" }
     );
   });
@@ -422,7 +431,7 @@ describe("InfrastructureStack", () => {
     const synthesized = Testing.synth(stack);
 
     expect(synthesized).toHaveResourceWithProperties(
-      "aws_db_instance",
+      DbInstance,
       { multi_az: true }
     );
   });
