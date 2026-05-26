@@ -8,7 +8,7 @@ Description: Master the Ansible win_stat module to gather file and directory inf
 
 ---
 
-When you are automating Windows infrastructure with Ansible, you frequently need to check whether a file exists, how large it is, when it was last modified, or what permissions it has before taking action. The `win_stat` module is the tool for this job. It gathers detailed information about files and directories on Windows hosts and returns it as structured data you can use in subsequent tasks.
+When you are automating Windows infrastructure with Ansible, you frequently need to check whether a file exists, how large it is, when it was last modified, or who owns it before taking action. The `win_stat` module is the tool for this job. It gathers detailed information about files and directories on Windows hosts and returns it as structured data you can use in subsequent tasks.
 
 Think of `win_stat` as the Windows version of `stat` on Linux. You call it, it inspects a path, and it gives you back a dictionary of facts about that path. From there, you can build conditional logic around those facts.
 
@@ -47,7 +47,7 @@ The most common use case is simply checking whether a file or directory exists b
       ansible.windows.win_copy:
         src: C:\Logs\application.log
         dest: C:\Archive\application-{{ ansible_date_time.date }}.log
-        remote_src: yes
+        remote_src: true
       when: log_file.stat.exists
 ```
 
@@ -79,7 +79,7 @@ Running this will output something like:
 {
     "exists": true,
     "isdir": false,
-    "islink": false,
+    "islnk": false,
     "size": 201216,
     "filename": "notepad.exe",
     "extension": ".exe",
@@ -106,11 +106,11 @@ Key properties you will use most often:
 | `lastwritetime` | float | Last modification time (epoch) |
 | `owner` | string | File owner |
 | `isreadonly` | bool | Whether read-only flag is set |
-| `checksum` | string | File checksum (when requested) |
+| `checksum` | string | File checksum (when checksum calculation is enabled) |
 
 ## Getting File Checksums
 
-By default, `win_stat` does not compute checksums because it adds overhead. You can enable it with the `checksum_algorithm` parameter.
+By default, `win_stat` computes a SHA-1 checksum for files. You can choose a different algorithm with the `checksum_algorithm` parameter, or disable checksum calculation with `get_checksum: false` when you do not need it.
 
 ```yaml
 # playbook-checksum.yml
@@ -121,12 +121,14 @@ By default, `win_stat` does not compute checksums because it adds overhead. You 
     - name: Get checksum of deployed binary
       ansible.windows.win_stat:
         path: C:\App\myservice.exe
+        get_checksum: true
         checksum_algorithm: sha256
       register: deployed_binary
 
     - name: Get checksum of reference binary
       ansible.windows.win_stat:
         path: C:\Staging\myservice.exe
+        get_checksum: true
         checksum_algorithm: sha256
       register: reference_binary
 
@@ -194,21 +196,13 @@ A practical scenario is rotating log files based on their age or size. You can u
         log_age_days: "{{ ((ansible_date_time.epoch | int) - (service_log.stat.lastwritetime | int)) / 86400 }}"
       when: service_log.stat.exists
 
-    - name: Rotate if older than 7 days
+    - name: Rotate if older than 7 days or larger than 100MB
       ansible.windows.win_shell: |
         $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
         Move-Item -Path "C:\Logs\service.log" -Destination "C:\Logs\Archive\service-$timestamp.log"
       when:
         - service_log.stat.exists
-        - (log_age_days | float) > 7
-
-    - name: Rotate if larger than 100MB
-      ansible.windows.win_shell: |
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        Move-Item -Path "C:\Logs\service.log" -Destination "C:\Logs\Archive\service-$timestamp.log"
-      when:
-        - service_log.stat.exists
-        - service_log.stat.size > 104857600
+        - (log_age_days | float) > 7 or service_log.stat.size > 104857600
 ```
 
 ## Pre-deployment Validation Example
@@ -223,7 +217,6 @@ Here is a more comprehensive playbook that validates a deployment target before 
   vars:
     app_dir: C:\WebApp
     backup_dir: C:\WebApp-Backups
-    required_free_space_mb: 500
 
   tasks:
     - name: Check application directory
@@ -239,6 +232,7 @@ Here is a more comprehensive playbook that validates a deployment target before 
     - name: Check current config file
       ansible.windows.win_stat:
         path: "{{ app_dir }}\\appsettings.json"
+        get_checksum: true
         checksum_algorithm: sha256
       register: config_stat
 
@@ -271,7 +265,7 @@ Here is a more comprehensive playbook that validates a deployment target before 
 
 ## Checking Symbolic Links
 
-If you work with symbolic links on Windows (introduced in newer Windows versions), `win_stat` can detect them:
+If you work with symbolic links on Windows, `win_stat` can detect them:
 
 ```yaml
 # playbook-check-link.yml
@@ -289,7 +283,7 @@ If you work with symbolic links on Windows (introduced in newer Windows versions
         msg: "Path is a symlink pointing to {{ link_check.stat.lnk_target }}"
       when:
         - link_check.stat.exists
-        - link_check.stat.islink
+        - link_check.stat.islnk
 ```
 
 ## Tips for Production Use
@@ -298,7 +292,7 @@ If you work with symbolic links on Windows (introduced in newer Windows versions
 
 **Handle the non-existent case.** If a file does not exist, most `stat` properties will not be present. Always check `stat.exists` before accessing other properties, or use the `default` filter: `file_info.stat.size | default(0)`.
 
-**Use checksums sparingly on large files.** Computing a SHA-256 checksum on a multi-gigabyte file takes time. Only request checksums when you actually need them.
+**Use checksums sparingly on large files.** Computing a SHA-256 checksum on a multi-gigabyte file takes time. Set `get_checksum: false` when you do not need a checksum.
 
 **Combine with loops for batch operations.** When checking multiple files, use a loop with `register` to collect all results at once, then process them in a second loop.
 
