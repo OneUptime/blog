@@ -41,9 +41,9 @@ molecule create
 What happens during create:
 
 1. Molecule reads the `platforms` section of `molecule.yml`
-2. It generates or uses a `create.yml` playbook
+2. It runs a bundled or custom `create.yml` playbook
 3. The playbook provisions instances (pulls Docker images, creates containers, starts VMs, etc.)
-4. Molecule records the instance state in `.molecule/` directory
+4. Molecule records scenario state in its ephemeral directory, usually under `~/.cache/molecule/`
 
 After creating, check the instance status.
 
@@ -65,7 +65,7 @@ rocky9           docker         ansible             default          true       
 
 ```bash
 # Create with verbose output to debug issues
-molecule create -- -vvv
+molecule -vvv create
 
 # Create for a specific scenario
 molecule create --scenario-name tls
@@ -102,7 +102,18 @@ For advanced use cases, you can write a custom `create.yml` playbook. This is us
 - name: Create
   hosts: localhost
   gather_facts: false
+  vars:
+    molecule_inventory:
+      all:
+        children:
+          molecule:
+            hosts: {}
   tasks:
+    - name: Create Docker network
+      community.docker.docker_network:
+        name: molecule
+        state: present
+
     - name: Create Docker container with custom settings
       community.docker.docker_container:
         name: "{{ item.name }}"
@@ -117,14 +128,24 @@ For advanced use cases, you can write a custom `create.yml` playbook. This is us
           - name: molecule
       loop: "{{ molecule_yml.platforms }}"
 
-    - name: Wait for containers to be ready
-      ansible.builtin.wait_for:
-        host: "{{ item.name }}"
-        port: 22
-        delay: 5
-        timeout: 30
+    - name: Add containers to Molecule inventory
+      vars:
+        inventory_partial_yaml: |
+          all:
+            children:
+              molecule:
+                hosts:
+                  "{{ item.name }}":
+                    ansible_connection: community.docker.docker
+      ansible.builtin.set_fact:
+        molecule_inventory: "{{ molecule_inventory | combine(inventory_partial_yaml | from_yaml, recursive=true) }}"
       loop: "{{ molecule_yml.platforms }}"
-      when: item.wait_for_ssh | default(false)
+
+    - name: Write Molecule inventory
+      ansible.builtin.copy:
+        content: "{{ molecule_inventory | to_yaml }}"
+        dest: "{{ molecule_ephemeral_directory }}/inventory/molecule_inventory.yml"
+        mode: "0600"
 ```
 
 ## molecule converge
@@ -175,7 +196,7 @@ vim tasks/main.yml
 molecule converge
 ```
 
-Since the instance is already running, converge skips the creation step and goes straight to applying the role. This typically takes 20-60 seconds instead of the 2-5 minutes a full `molecule test` would take.
+Since the instance is already running, the create part of the converge sequence usually has nothing new to provision and Molecule goes quickly to applying the role. This typically takes 20-60 seconds instead of the 2-5 minutes a full `molecule test` would take.
 
 ### Passing Extra Variables
 
@@ -293,14 +314,20 @@ def test_nginx_listening(host):
 Run specific tests during development.
 
 ```bash
-# Run only tests matching a pattern (Testinfra)
-molecule verify -- -k "test_nginx"
-
 # Run with verbose output
-molecule verify -- -v
+molecule -v verify
 
 # Run with very verbose output
-molecule verify -- -vvv
+molecule -vvv verify
+```
+
+For Testinfra-specific options such as `-k`, add them to the verifier configuration.
+
+```yaml
+verifier:
+  name: testinfra
+  options:
+    k: test_nginx
 ```
 
 ### Verify Without Converging
@@ -387,9 +414,12 @@ provisioner:
 
 ### Skip Unnecessary Steps
 
-```bash
-# During development, skip dependency installation
-molecule converge --no-dependency
+Disable dependency installation for a scenario in `molecule.yml`.
+
+```yaml
+dependency:
+  name: galaxy
+  enabled: false
 ```
 
 ## When to Use molecule test Instead
