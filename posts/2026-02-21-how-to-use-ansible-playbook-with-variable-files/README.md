@@ -113,25 +113,25 @@ firewall_package: firewalld
 package_manager: yum
 ```
 
-## vars_files with Fallback
+## vars_files with Defaults
 
-Use a list of possible files with a fallback:
+Use a list of files to load defaults first, then environment-specific overrides:
 
 ```yaml
-# flexible-vars.yml - Load environment-specific vars with fallback
+# flexible-vars.yml - Load defaults and environment-specific vars
 ---
 - name: Deploy with flexible variable loading
   hosts: all
   become: yes
   vars_files:
-    # Try environment-specific file first, fall back to defaults
-    - "vars/{{ env_name | default('development') }}.yml"
+    # Load defaults first, then let environment-specific values override them
     - vars/defaults.yml
+    - "vars/{{ env_name | default('development') }}.yml"
 
   tasks:
     - name: Show loaded configuration
       debug:
-        msg: "Environment: {{ env_name }}, Debug: {{ app_debug }}, Workers: {{ app_workers }}"
+        msg: "Environment: {{ env_name | default('development') }}, Debug: {{ app_debug }}, Workers: {{ app_workers }}"
 ```
 
 If you need optional files (that may not exist), use `include_vars` with `ignore_errors`:
@@ -169,7 +169,7 @@ The `include_vars` module is more flexible than `vars_files` because it can run 
       include_vars:
         file: vars/app-defaults.yml
 
-    # Load based on a condition
+    # Load based on facts
     - name: Load OS-specific variables
       include_vars:
         file: "vars/os/{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
@@ -318,8 +318,8 @@ Variables from different sources have different precedence. Here is the order re
 # 2. group_vars/all
 # 3. group_vars/specific_group
 # 4. host_vars/hostname
-# 5. play vars_files
-# 6. play vars
+# 5. play vars
+# 6. play vars_files
 # 7. include_vars (task level)
 # 8. set_fact / register
 # 9. extra vars -e (highest)
