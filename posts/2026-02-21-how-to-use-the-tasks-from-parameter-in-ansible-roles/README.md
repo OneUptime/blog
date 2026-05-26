@@ -98,6 +98,7 @@ Here is what each file might look like:
     encoding: "{{ item.encoding | default('UTF8') }}"
     lc_collate: "{{ item.lc_collate | default('en_US.UTF-8') }}"
     lc_ctype: "{{ item.lc_ctype | default('en_US.UTF-8') }}"
+    template: template0
     state: present
   become_user: postgres
   loop: "{{ pg_databases }}"
@@ -191,20 +192,22 @@ You can also use `tasks_from` with `import_role`, which processes the tasks at p
 
 The difference between `include_role` and `import_role` matters here. With `import_role`, the tasks are merged into the playbook at parse time, so `when` conditions on the `import_role` task apply to every task inside the role. With `include_role`, the tasks are processed at runtime, so `when` conditions only determine whether the entire include happens or not.
 
-## Using tasks_from in the roles Directive
+## Using tasks_from for Static Role Imports
 
-You can also use `tasks_from` directly in the `roles` section of a play:
+If you know at playbook design time which task file you need, use `import_role`:
 
 ```yaml
 # Only run the install tasks from the postgresql role
 - hosts: databases
   become: yes
-  roles:
-    - role: postgresql
-      tasks_from: install.yml
+  tasks:
+    - name: Install PostgreSQL
+      ansible.builtin.import_role:
+        name: postgresql
+        tasks_from: install.yml
 ```
 
-This is cleaner when you know at playbook design time which task file you need.
+This keeps the role import static while still selecting a specific task file.
 
 ## Combining Multiple tasks_from Calls
 
