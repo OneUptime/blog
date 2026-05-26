@@ -16,7 +16,7 @@ In this post, I will cover how to configure password complexity, expiration, acc
 
 Linux password policies are spread across several configuration files and PAM modules:
 
-- `/etc/login.defs` controls password aging and basic settings
+- `/etc/login.defs` controls password aging defaults for new local accounts
 - `/etc/security/pwquality.conf` sets password complexity rules
 - PAM modules like `pam_pwquality`, `pam_faillock`, and `pam_pwhistory` enforce the policies
 
@@ -126,7 +126,7 @@ dictcheck = 1
 
 ## Setting Password Aging in login.defs
 
-The `/etc/login.defs` file controls password expiration settings that apply to all new user accounts.
+The `/etc/login.defs` file controls password expiration defaults that apply to newly created local user accounts. Changes to these settings do not update existing accounts, so use `chage` for users that already exist.
 
 This playbook configures password aging parameters:
 
@@ -141,7 +141,6 @@ This playbook configures password aging parameters:
     pass_max_days: 90    # Password expires after 90 days
     pass_min_days: 7     # Must wait 7 days before changing again
     pass_warn_age: 14    # Warn 14 days before expiration
-    pass_min_len: 14     # Minimum password length
 
   tasks:
     - name: Set maximum password age
@@ -161,12 +160,6 @@ This playbook configures password aging parameters:
         path: /etc/login.defs
         regexp: "^PASS_WARN_AGE"
         line: "PASS_WARN_AGE   {{ pass_warn_age }}"
-
-    - name: Set minimum password length in login.defs
-      ansible.builtin.lineinfile:
-        path: /etc/login.defs
-        regexp: "^PASS_MIN_LEN"
-        line: "PASS_MIN_LEN    {{ pass_min_len }}"
 
     - name: Apply aging settings to existing users
       ansible.builtin.command: >
@@ -250,10 +243,10 @@ even_deny_root
 root_unlock_time = {{ faillock_unlock_time }}
 {% endif %}
 
-# Audit failed login attempts
+# Log unknown user names for audit purposes
 audit
 
-# Log to syslog
+# Do not print informative messages to users
 silent
 ```
 
