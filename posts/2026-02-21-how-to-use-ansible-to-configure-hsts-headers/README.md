@@ -39,7 +39,7 @@ The key components of an HSTS header:
 
 ## Configuring HSTS on Nginx
 
-This is the most common deployment scenario. Nginx adds the HSTS header to all HTTPS responses.
+This is the most common deployment scenario. Nginx can add the HSTS header to HTTPS responses, but remember that `add_header` inheritance changes if nested locations define their own headers.
 
 This playbook deploys HSTS configuration for Nginx:
 
@@ -69,20 +69,32 @@ This playbook deploys HSTS configuration for Nginx:
         mode: '0644'
       notify: reload nginx
 
-    - name: Include HSTS snippet in all server blocks
+    - name: Find enabled Nginx server block files
+      ansible.builtin.find:
+        paths: /etc/nginx/sites-enabled
+        file_type: file
+        follow: true
+        contains: "listen.*443.*ssl"
+        read_whole_file: true
+      register: nginx_site_files
+
+    - name: Include HSTS snippet in HTTPS server blocks
       ansible.builtin.lineinfile:
-        path: "{{ item }}"
+        path: "{{ item.path }}"
         regexp: "include snippets/hsts.conf"
         line: "    include snippets/hsts.conf;"
         insertafter: "listen.*443.*ssl"
-      with_fileglob:
-        - /etc/nginx/sites-enabled/*
+      loop: "{{ nginx_site_files.files }}"
       notify: reload nginx
 
-    - name: Ensure HTTP to HTTPS redirect exists
-      ansible.builtin.template:
-        src: nginx_redirect.conf.j2
+    - name: Deploy reusable HTTP to HTTPS redirect snippet
+      ansible.builtin.copy:
+        content: |
+          # HTTPS Redirect - Managed by Ansible
+          return 301 https://$host$request_uri;
         dest: /etc/nginx/snippets/https-redirect.conf
+        owner: root
+        group: root
         mode: '0644'
       notify: reload nginx
 
@@ -156,7 +168,7 @@ This playbook configures HSTS for Apache web servers:
         content: |
           # HSTS Configuration - Managed by Ansible
           <IfModule mod_headers.c>
-              Header always set Strict-Transport-Security "max-age={{ hsts_max_age }}{% if hsts_include_subdomains %}; includeSubDomains{% endif %}{% if hsts_preload %}; preload{% endif %}"
+              Header always set Strict-Transport-Security "max-age={{ hsts_max_age }}{% if hsts_include_subdomains %}; includeSubDomains{% endif %}{% if hsts_preload %}; preload{% endif %}" "expr=%{HTTPS} == 'on'"
           </IfModule>
         dest: /etc/apache2/conf-available/hsts.conf
         owner: root
@@ -179,6 +191,12 @@ This playbook configures HSTS for Apache web servers:
           </VirtualHost>
         dest: /etc/apache2/sites-available/000-redirect.conf
         mode: '0644'
+      notify: reload apache
+
+    - name: Enable HTTP redirect VirtualHost
+      ansible.builtin.command: a2ensite 000-redirect
+      register: redirect_site
+      changed_when: "'Enabling site' in redirect_site.stdout"
       notify: reload apache
 
     - name: Validate Apache configuration
@@ -283,8 +301,6 @@ This playbook deploys a full set of security headers:
         value: "nosniff"
       - name: X-Frame-Options
         value: "SAMEORIGIN"
-      - name: X-XSS-Protection
-        value: "1; mode=block"
       - name: Referrer-Policy
         value: "strict-origin-when-cross-origin"
       - name: Permissions-Policy
@@ -328,7 +344,7 @@ After deploying, verify the headers are correct:
         validate_certs: false
         return_content: false
       register: https_response
-      failed_when: "'strict-transport-security' not in https_response.headers | map('lower') | list"
+      failed_when: https_response.strict_transport_security is not defined
 
     - name: Display HSTS header value
       ansible.builtin.debug:
@@ -351,8 +367,11 @@ After deploying, verify the headers are correct:
         fail_msg: "HTTP redirect does not point to HTTPS"
 
     - name: Check HSTS header is NOT on HTTP responses
-      ansible.builtin.debug:
-        msg: "Good - HSTS should only be sent over HTTPS, not HTTP"
+      ansible.builtin.assert:
+        that:
+          - http_response.strict_transport_security is not defined
+        fail_msg: "HSTS should only be sent over HTTPS, not HTTP"
+        success_msg: "Good - HSTS is only sent over HTTPS"
 ```
 
 ## HSTS Preload Submission
@@ -379,19 +398,19 @@ Requirements for preload list submission:
       ansible.builtin.uri:
         url: "https://{{ ansible_fqdn }}"
         method: HEAD
-        validate_certs: false
       register: response
 
     - name: Parse HSTS header
       ansible.builtin.set_fact:
         hsts_header: "{{ response.strict_transport_security | default('') }}"
+        hsts_max_age_value: "{{ response.strict_transport_security | default('') | regex_findall('max-age=([0-9]+)') | first | default('0') }}"
 
     - name: Check preload requirements
       ansible.builtin.assert:
         that:
-          - "'max-age=' in hsts_header"
-          - "'includeSubDomains' in hsts_header"
-          - "'preload' in hsts_header"
+          - hsts_max_age_value | int >= 31536000
+          - "'includesubdomains' in (hsts_header | lower)"
+          - "'preload' in (hsts_header | lower)"
         fail_msg: "HSTS header does not meet preload requirements: {{ hsts_header }}"
         success_msg: "HSTS header meets preload requirements"
 ```
