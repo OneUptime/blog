@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Error Handling, Dictionaries, Jinja2
 
-Description: Learn how to safely handle missing dictionary keys in Ansible using default filter, defined test, ternary, and try/rescue patterns to avoid undefined variable errors.
+Description: Learn how to safely handle missing dictionary keys in Ansible using default filter, defined test, dict.get(), omit, combine, and block/rescue patterns to avoid undefined variable errors.
 
 ---
 
@@ -54,7 +54,7 @@ The `default` filter provides a fallback value when a variable or key is undefin
         msg: "DB host: {{ config.database.host | default('localhost') }}"
 ```
 
-Wait, that last one still fails! If `config.database` does not exist, Ansible errors before the `default` filter can catch it. You need to handle each level:
+In current Ansible versions, that last example works too. Since Ansible 2.8, accessing an attribute of an undefined value returns another undefined value, so the `default` filter can catch missing intermediate keys in a nested path. If you need compatibility with older Ansible versions or want to normalize each intermediate value to a dictionary, handle each level:
 
 ```yaml
     - name: Safely access nested missing key
