@@ -101,7 +101,7 @@ Hosts often have multiple IPs across different interfaces. Here is how to get a 
 
 ```yaml
 # all-ips.yml
-# Collects all IP addresses across all interfaces
+# Collects IPv4 addresses with interface names
 ---
 - name: List all IP addresses
   hosts: all
@@ -115,17 +115,11 @@ Hosts often have multiple IPs across different interfaces. Here is how to get a 
       ansible.builtin.debug:
         msg: "IPv6 addresses: {{ ansible_facts['all_ipv6_addresses'] }}"
 
-    - name: Build detailed IP list with interface names
+    - name: Build detailed IPv4 list with interface names
       ansible.builtin.set_fact:
-        ip_list: >-
-          {{
-            ansible_facts['interfaces']
-            | map('extract', ansible_facts)
-            | selectattr('ipv4', 'defined')
-            | map(attribute='ipv4')
-            | map(attribute='address')
-            | list
-          }}
+        ip_list: "{{ ip_list | default([]) + [{'interface': item, 'address': ansible_facts[item]['ipv4']['address']}] }}"
+      loop: "{{ ansible_facts['interfaces'] }}"
+      when: ansible_facts[item]['ipv4'] is defined
 
     - name: Show detailed IP list
       ansible.builtin.debug:
@@ -218,7 +212,7 @@ You can identify specific interface types to handle bond, bridge, VLAN, and phys
         vlan_interfaces: >-
           {{
             ansible_facts['interfaces']
-            | select('match', '.*\\.\\d+$')
+            | select('match', '.*\.\d+$')
             | list
           }}
 
@@ -250,7 +244,8 @@ Network facts can drive firewall configuration. Here is an example that builds i
         in_interface: "{{ item }}"
         jump: ACCEPT
         comment: "Allow all traffic on {{ item }}"
-      loop: "{{ ansible_facts['interfaces'] | select('match', '^(lo|docker|br-)') | list }}"
+      loop: "{{ ansible_facts['interfaces'] }}"
+      when: ansible_facts[item]['active'] | default(false)
 
     - name: Allow established connections on external interfaces
       ansible.builtin.iptables:
@@ -337,7 +332,7 @@ Sometimes you need to bind a service to a specific interface, not the default on
   hosts: appservers
   gather_facts: yes
   vars:
-    mgmt_network: "10.0.100."
+    mgmt_network: '^10\.0\.100\.'
   tasks:
     - name: Find management interface
       ansible.builtin.set_fact:
