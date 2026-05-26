@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Cloud Function, Serverless, FaaS
 
-Description: Deploy and manage GCP Cloud Functions with Ansible including HTTP triggers, Pub/Sub triggers, environment variables, and VPC connectors.
+Description: Deploy and manage GCP Cloud Functions with Ansible including HTTP triggers, Pub/Sub triggers, Cloud Storage triggers, and environment variables.
 
 ---
 
@@ -12,16 +12,25 @@ Cloud Functions is Google's serverless compute platform for running event-driven
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
-- GCP service account with Cloud Functions Developer role
-- Cloud Functions API and Cloud Build API enabled
-- Source code packaged and uploaded to a Cloud Storage bucket
+- ansible-core 2.16+ with the `google.cloud` and `community.general` collections
+- GCP service account with Cloud Functions Developer role and supporting IAM permissions for Cloud Build, Artifact Registry, Eventarc, Pub/Sub or Cloud Storage triggers, and the runtime service account
+- Cloud Functions, Cloud Build, Cloud Run, Artifact Registry, Eventarc, Pub/Sub, Cloud Storage, and Cloud Logging APIs enabled as needed
+- Source code available locally, in a source repository, or packaged as a zip file in a Cloud Storage bucket
 
 ```bash
-ansible-galaxy collection install google.cloud
+ansible-galaxy collection install google.cloud community.general
 pip install google-auth requests google-api-python-client
 
-gcloud services enable cloudfunctions.googleapis.com cloudbuild.googleapis.com --project=my-project-123
+gcloud services enable \
+  cloudfunctions.googleapis.com \
+  cloudbuild.googleapis.com \
+  run.googleapis.com \
+  artifactregistry.googleapis.com \
+  eventarc.googleapis.com \
+  pubsub.googleapis.com \
+  storage.googleapis.com \
+  logging.googleapis.com \
+  --project=my-project-123
 ```
 
 ## Cloud Functions Architecture
@@ -40,7 +49,7 @@ graph TD
 
 ## Preparing Function Source Code
 
-Cloud Functions expects source code in a Cloud Storage bucket as a zip file. Let's first create a simple function and upload it:
+Cloud Functions can deploy source from a local directory, a source repository, or a zip file in a Cloud Storage bucket. Let's first create a simple function and upload it:
 
 ```yaml
 # prepare-function-source.yml - Package and upload function source code
@@ -107,14 +116,30 @@ Cloud Functions expects source code in a Cloud Storage bucket as a zip file. Let
         mode: "0644"
 
     - name: Create zip archive of the function source
-      ansible.builtin.archive:
+      community.general.archive:
         path: "{{ source_dir }}/"
         dest: "/tmp/{{ function_name }}.zip"
         format: zip
 
+    - name: Check whether the source bucket exists
+      ansible.builtin.command: >
+        gcloud storage buckets describe gs://{{ bucket_name }}
+        --project={{ gcp_project }}
+      register: bucket_result
+      changed_when: false
+      failed_when: false
+
+    - name: Create the source bucket
+      ansible.builtin.command: >
+        gcloud storage buckets create gs://{{ bucket_name }}
+        --project={{ gcp_project }}
+        --location=US
+      when: bucket_result.rc != 0
+      changed_when: true
+
     - name: Upload source to Cloud Storage
       ansible.builtin.command: >
-        gsutil cp /tmp/{{ function_name }}.zip
+        gcloud storage cp /tmp/{{ function_name }}.zip
         gs://{{ bucket_name }}/functions/{{ function_name }}/{{ function_name }}.zip
       changed_when: true
 ```
@@ -143,6 +168,7 @@ Using gcloud through Ansible for Cloud Functions deployment (the google.cloud co
     - name: Deploy the Cloud Function
       ansible.builtin.command: >
         gcloud functions deploy {{ function_name }}
+        --gen2
         --project={{ gcp_project }}
         --region={{ region }}
         --runtime={{ runtime }}
@@ -163,9 +189,10 @@ Using gcloud through Ansible for Cloud Functions deployment (the google.cloud co
     - name: Get the function URL
       ansible.builtin.command: >
         gcloud functions describe {{ function_name }}
+        --gen2
         --project={{ gcp_project }}
         --region={{ region }}
-        --format="value(httpsTrigger.url)"
+        --format="value(serviceConfig.uri)"
       register: function_url
       changed_when: false
 
@@ -205,8 +232,14 @@ Functions triggered by Pub/Sub messages are common for event-driven architecture
         gcloud pubsub topics create {{ topic_name }}
         --project={{ gcp_project }}
       register: topic_result
-      changed_when: "'Created topic' in topic_result.stderr"
-      failed_when: "topic_result.rc != 0 and 'already exists' not in topic_result.stderr"
+      changed_when: "'Created topic' in (topic_result.stdout ~ topic_result.stderr)"
+      failed_when: "topic_result.rc != 0 and 'already exists' not in (topic_result.stdout ~ topic_result.stderr)"
+
+    - name: Create the function source directory
+      ansible.builtin.file:
+        path: "/tmp/{{ function_name }}"
+        state: directory
+        mode: "0755"
 
     - name: Write the event processing function
       ansible.builtin.copy:
@@ -245,6 +278,7 @@ Functions triggered by Pub/Sub messages are common for event-driven architecture
     - name: Deploy the Pub/Sub function
       ansible.builtin.command: >
         gcloud functions deploy {{ function_name }}
+        --gen2
         --project={{ gcp_project }}
         --region={{ region }}
         --runtime=python311
@@ -284,11 +318,16 @@ React to file uploads in a bucket:
     trigger_bucket: "{{ gcp_project }}-uploads"
 
   tasks:
+    - name: Create the function source directory
+      ansible.builtin.file:
+        path: "/tmp/{{ function_name }}"
+        state: directory
+        mode: "0755"
+
     - name: Write the file processing function
       ansible.builtin.copy:
         content: |
           import functions_framework
-          from google.cloud import storage, vision
 
           @functions_framework.cloud_event
           def process_upload(cloud_event):
@@ -304,23 +343,25 @@ React to file uploads in a bucket:
                   print(f"Skipping non-image file: {file_name}")
                   return
 
-              # Process the image
-              storage_client = storage.Client()
-              bucket = storage_client.bucket(bucket_name)
-              blob = bucket.blob(file_name)
-
-              print(f"Image processed: {file_name}, size: {blob.size}")
+              print(f"Image processed: {file_name}, size: {data.get('size', 'unknown')}")
         dest: "/tmp/{{ function_name }}/main.py"
+        mode: "0644"
+
+    - name: Write requirements for the function
+      ansible.builtin.copy:
+        content: |
+          functions-framework==3.*
+        dest: "/tmp/{{ function_name }}/requirements.txt"
         mode: "0644"
 
     - name: Deploy the GCS-triggered function
       ansible.builtin.command: >
         gcloud functions deploy {{ function_name }}
+        --gen2
         --project={{ gcp_project }}
         --region={{ region }}
         --runtime=python311
-        --trigger-event=google.storage.object.finalize
-        --trigger-resource={{ trigger_bucket }}
+        --trigger-bucket={{ trigger_bucket }}
         --entry-point=process_upload
         --source=/tmp/{{ function_name }}
         --memory=256MB
@@ -366,6 +407,7 @@ Managing a suite of functions in one playbook:
     - name: Deploy each function
       ansible.builtin.command: >
         gcloud functions deploy {{ item.name }}
+        --gen2
         --project={{ gcp_project }}
         --region={{ region }}
         --runtime=python311
