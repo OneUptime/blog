@@ -123,7 +123,7 @@ Reference it in your playbooks:
   tasks:
     - name: Show version being deployed
       ansible.builtin.debug:
-        msg: "Deploying Ansible version {{ lookup('file', '../VERSION') }}"
+        msg: "Deploying Ansible version {{ lookup('ansible.builtin.file', '../VERSION') }}"
       run_once: true
       tags: [always]
 ```
@@ -137,15 +137,19 @@ Stamp each server with the version of Ansible that last configured it:
 # Record which Ansible version configured this server
 
 - name: Write Ansible version stamp
-  ansible.builtin.copy:
-    content: |
-      ansible_project_version: {{ lookup('file', playbook_dir + '/../VERSION') | trim }}
-      last_run: {{ ansible_date_time.iso8601 }}
-      playbook: {{ ansible_play_name }}
-      git_commit: {{ lookup('pipe', 'git rev-parse HEAD') }}
+  ansible.builtin.template:
+    src: ansible-version.j2
     dest: /etc/ansible-version
     mode: '0644'
   tags: [always]
+```
+
+```jinja2
+# roles/common/templates/ansible-version.j2
+ansible_project_version: {{ lookup('ansible.builtin.file', playbook_dir + '/../VERSION') | trim }}
+last_run: {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}
+playbook: {{ ansible_play_name }}
+git_commit: {{ lookup('ansible.builtin.pipe', 'git rev-parse HEAD') }}
 ```
 
 This lets you query what version any server is running:
@@ -194,6 +198,9 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Install PyYAML
+        run: python3 -m pip install pyyaml
+
       - name: Extract changelog for this version
         run: |
           python3 -c "
@@ -211,10 +218,10 @@ jobs:
           " > release-notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           body_path: release-notes.md
-          tag_name: ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
 ```
 
 ## Rollback Strategy
