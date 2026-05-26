@@ -29,6 +29,8 @@ app_version: main
 mongodb_bind_ip: "127.0.0.1"
 mongodb_port: 27017
 mongodb_db_name: myapp
+mongodb_admin_user: admin
+mongodb_admin_password: "{{ vault_mongodb_admin_password }}"
 mongodb_app_user: appuser
 mongodb_app_password: "{{ vault_mongodb_app_password }}"
 
@@ -86,14 +88,22 @@ nginx_server_name: app.example.com
 # roles/mongodb/tasks/main.yml
 # Install and configure MongoDB
 
-- name: Import MongoDB GPG key
-  ansible.builtin.apt_key:
-    url: "https://pgp.mongodb.com/server-{{ mongodb_version }}.asc"
+- name: Install MongoDB prerequisites
+  ansible.builtin.apt:
+    name:
+      - curl
+      - gnupg
     state: present
+
+- name: Import MongoDB GPG key
+  ansible.builtin.shell: |
+    curl -fsSL https://www.mongodb.org/static/pgp/server-{{ mongodb_version }}.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-{{ mongodb_version }}.gpg
+  args:
+    creates: "/usr/share/keyrings/mongodb-server-{{ mongodb_version }}.gpg"
 
 - name: Add MongoDB repository
   ansible.builtin.apt_repository:
-    repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }} multiverse"
+    repo: "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-{{ mongodb_version }}.gpg ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }} multiverse"
     state: present
 
 - name: Install MongoDB
@@ -123,6 +133,19 @@ nginx_server_name: app.example.com
     delay: 5
     timeout: 30
 
+- name: Create MongoDB admin user
+  community.mongodb.mongodb_user:
+    database: admin
+    name: "{{ mongodb_admin_user }}"
+    password: "{{ mongodb_admin_password }}"
+    roles:
+      - root
+    state: present
+    login_port: "{{ mongodb_port }}"
+    create_for_localhost_exception: /root/.mongodb_admin_user_created
+    update_password: always
+  no_log: true
+
 - name: Create application database and user
   community.mongodb.mongodb_user:
     database: "{{ mongodb_db_name }}"
@@ -131,6 +154,9 @@ nginx_server_name: app.example.com
     roles:
       - dbOwner
     state: present
+    login_user: "{{ mongodb_admin_user }}"
+    login_password: "{{ mongodb_admin_password }}"
+    login_database: admin
     login_port: "{{ mongodb_port }}"
   no_log: true
 ```
@@ -183,9 +209,14 @@ security:
     production: yes
   become_user: "{{ app_user }}"
 
+- name: Install frontend dependencies
+  community.general.npm:
+    path: "{{ app_dir }}/client"
+  become_user: "{{ app_user }}"
+
 - name: Build Angular frontend
   ansible.builtin.command:
-    cmd: npm run build --production
+    cmd: npm run build -- --configuration production
     chdir: "{{ app_dir }}/client"
   become_user: "{{ app_user }}"
   changed_when: true
@@ -207,7 +238,7 @@ security:
 
 - name: Start application with PM2
   ansible.builtin.command:
-    cmd: "pm2 start ecosystem.config.js --env {{ app_env }}"
+    cmd: "pm2 startOrReload ecosystem.config.js --env {{ app_env }}"
     chdir: "{{ app_dir }}"
   become_user: "{{ app_user }}"
   changed_when: true
