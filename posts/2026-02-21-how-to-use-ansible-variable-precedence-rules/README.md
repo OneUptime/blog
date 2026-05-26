@@ -33,7 +33,7 @@ Here is the complete list from lowest to highest precedence. A variable defined 
 # 13.  play vars_prompt
 # 14.  play vars_files
 # 15.  role vars (roles/x/vars/main.yml)
-# 16.  block vars (in a block/when task)
+# 16.  block vars (for tasks in the block only)
 # 17.  task vars (only for the specific task)
 # 18.  include_vars
 # 19.  set_facts / registered vars
@@ -163,9 +163,9 @@ The `include_vars` module has higher precedence than group_vars and host_vars:
 
 If the included file defines a variable that is also in your `host_vars`, the `include_vars` value wins. Be aware of this when designing roles that dynamically load variables.
 
-### Pitfall 3: set_fact Overriding Everything Below Extra Vars
+### Pitfall 3: set_fact Overriding Most Variables
 
-Once you use `set_fact`, that value sticks for the rest of the play and overrides almost everything:
+Once you use `set_fact`, that value sticks for the rest of the playbook run and overrides most variables:
 
 ```yaml
 # This set_fact overrides group_vars, play vars, and even role vars
@@ -174,7 +174,7 @@ Once you use `set_fact`, that value sticks for the rest of the play and override
     app_port: 5555
 
 # From this point on, app_port is 5555 regardless of other definitions
-# Only extra vars (-e) can override a set_fact
+# Role/include parameters and extra vars (-e) can still override set_fact
 ```
 
 ## Debugging Variable Precedence
@@ -203,7 +203,8 @@ ansible-inventory -i inventory/ --graph --vars
 ### Using -vvv Verbose Mode
 
 ```bash
-# Verbose output shows where each variable is defined
+# Verbose output can show inventory parsing and included files,
+# which helps narrow down where values came from
 ansible-playbook deploy.yml -vvv
 ```
 
