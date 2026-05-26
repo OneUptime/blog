@@ -81,7 +81,7 @@ A well-crafted `.gitignore` file prevents unwanted files from being tracked: bui
 
 ## Language-Specific .gitignore Templates
 
-Use variables to compose language-specific ignore patterns:
+Use variables with a template to compose language-specific ignore patterns:
 
 ```yaml
 # playbook-lang-gitignore.yml
@@ -150,22 +150,26 @@ Use variables to compose language-specific ignore patterns:
 
   tasks:
     - name: Build and deploy .gitignore
-      ansible.builtin.copy:
-        content: |
-          # .gitignore - managed by Ansible
-          # Project type: {{ project_type }}
-
-          # Common patterns
-          {% for pattern in gitignore_patterns.common %}
-          {{ pattern }}
-          {% endfor %}
-
-          # {{ project_type | capitalize }} specific
-          {% for pattern in gitignore_patterns[project_type] | default([]) %}
-          {{ pattern }}
-          {% endfor %}
+      ansible.builtin.template:
+        src: gitignore.j2
         dest: "{{ app_dir }}/.gitignore"
         mode: "0644"
+```
+
+```jinja
+# templates/gitignore.j2
+# .gitignore - managed by Ansible
+# Project type: {{ project_type }}
+
+# Common patterns
+{% for pattern in gitignore_patterns.common %}
+{{ pattern }}
+{% endfor %}
+
+# {{ project_type | capitalize }} specific
+{% for pattern in gitignore_patterns[project_type] | default([]) %}
+{{ pattern }}
+{% endfor %}
 ```
 
 ## Adding Entries to Existing .gitignore
@@ -217,13 +221,13 @@ graph TD
     F --> G
 ```
 
-## Global .gitignore (User Level)
+## Global .gitignore (System Level)
 
-Deploy a global .gitignore that applies to all repositories for a user:
+Deploy a global .gitignore that applies to all repositories on a host:
 
 ```yaml
 # playbook-global-gitignore.yml
-# Deploys a global .gitignore for the system user and configures Git to use it
+# Deploys a system-wide global .gitignore and configures Git to use it
 - name: Deploy global .gitignore
   hosts: all
   become: true
@@ -233,7 +237,7 @@ Deploy a global .gitignore that applies to all repositories for a user:
       ansible.builtin.copy:
         content: |
           # Global gitignore - managed by Ansible
-          # Applied to ALL repositories for this user
+          # Applied to ALL repositories on this host
 
           # OS generated files
           .DS_Store
@@ -409,9 +413,9 @@ When a file was accidentally committed before being added to `.gitignore`:
       loop: "{{ files_to_untrack }}"
 
     - name: Remove files from Git tracking (keep on disk)
-      ansible.builtin.shell: |
-        cd {{ app_dir }}
-        git rm --cached {{ item }} 2>/dev/null || true
+      ansible.builtin.shell:
+        cmd: git rm --cached --ignore-unmatch -- {{ item | quote }}
+        chdir: "{{ app_dir }}"
       loop: "{{ files_to_untrack }}"
       register: untrack_result
       changed_when: "'rm ' in untrack_result.stdout"
@@ -462,4 +466,4 @@ When a file was accidentally committed before being added to `.gitignore`:
 
 ## Summary
 
-Managing `.gitignore` files with Ansible ensures consistency across all your repositories. Use the `copy` module to deploy complete `.gitignore` files, `lineinfile` to add individual patterns without replacing existing ones, and the `.git/info/exclude` file for local-only exclusions. Compose language-specific patterns using variables and templates. Deploy global gitignore files at the system level for OS and editor patterns that apply everywhere. Audit existing gitignore files to catch missing patterns, and untrack accidentally committed files with `git rm --cached`. Consistent `.gitignore` management prevents secrets from being committed, keeps repositories clean, and makes deployments predictable.
+Managing `.gitignore` files with Ansible ensures consistency across all your repositories. Use the `copy` module to deploy complete `.gitignore` files, `lineinfile` to add individual patterns without replacing existing ones, and the `.git/info/exclude` file for local-only exclusions. Compose language-specific patterns using variables and templates. Deploy global gitignore files at the system level for OS and editor patterns that apply across a host. Audit existing gitignore files to catch missing patterns, and untrack accidentally committed files with `git rm --cached`. Consistent `.gitignore` management prevents secrets from being committed, keeps repositories clean, and makes deployments predictable.
