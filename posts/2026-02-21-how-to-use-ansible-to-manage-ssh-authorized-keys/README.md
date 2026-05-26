@@ -279,10 +279,10 @@ graph TD
 3. Use `key_options` to restrict service account keys to specific commands
 4. Store key files in your Ansible repository and track changes with git
 5. Run key management playbooks regularly to enforce compliance
-6. Use `no_log: true` if you are dynamically generating keys
+6. Use `no_log: true` if you are dynamically generating private keys or other sensitive key material
 
 ```yaml
-# Enforce Ed25519 keys only by checking key type
+# Enforce Ed25519 or ECDSA keys by checking key type
 - name: Validate key types before deployment
   ansible.builtin.assert:
     that:
