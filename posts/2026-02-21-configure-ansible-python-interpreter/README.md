@@ -8,7 +8,7 @@ Description: Configure the Ansible Python interpreter for managed hosts to avoid
 
 ---
 
-Ansible modules are Python scripts that run on managed hosts, so Ansible needs to know which Python interpreter to use on each host. Getting this wrong leads to confusing errors, failed tasks, and hours of debugging. Newer versions of Ansible have an auto-discovery mechanism, but it does not always pick the right interpreter, especially on systems with multiple Python versions or custom installations. This guide explains how the interpreter discovery works and how to configure it explicitly.
+Most Ansible modules that run under POSIX are Python code executed on managed hosts, so Ansible needs to know which Python interpreter to use on each host. Getting this wrong leads to confusing errors, failed tasks, and hours of debugging. Newer versions of Ansible have an auto-discovery mechanism, but it does not always pick the right interpreter, especially on systems with multiple Python versions or custom installations. This guide explains how the interpreter discovery works and how to configure it explicitly.
 
 ## Why the Python Interpreter Matters
 
@@ -31,17 +31,17 @@ Starting with Ansible 2.8, there is an interpreter discovery feature that tries 
 [defaults]
 # auto_silent: auto-detect but don't show warnings (recommended)
 # auto: auto-detect and show warnings
-# auto_legacy: backward-compatible auto-detection
+# auto_legacy: deprecated alias for auto
 interpreter_python = auto_silent
 ```
 
-The `auto_silent` option is the cleanest choice for most environments. It auto-detects the interpreter and does not clutter your output with deprecation warnings.
+The `auto_silent` option is the cleanest choice for most environments. It auto-detects the interpreter and does not clutter your output with interpreter discovery warnings.
 
 However, auto-discovery has limitations:
 
 - It does not know about Python installations in non-standard locations
 - It can pick up the wrong version on systems with multiple Python installations
-- It adds a small overhead to every connection as it probes for Python
+- It adds a small overhead the first time Ansible discovers Python for a host
 - It may not work correctly on minimal or embedded systems
 
 ## Setting the Interpreter Explicitly
@@ -57,7 +57,7 @@ web01 ansible_host=10.0.0.10 ansible_python_interpreter=/usr/bin/python3
 web02 ansible_host=10.0.0.11 ansible_python_interpreter=/usr/bin/python3.11
 
 [legacy_servers]
-old01 ansible_host=10.0.0.50 ansible_python_interpreter=/usr/bin/python2.7
+old01 ansible_host=10.0.0.50 ansible_python_interpreter=/usr/bin/python3
 ```
 
 ### Per Group in Inventory
@@ -136,9 +136,9 @@ Ubuntu 22.04+ ships with Python 3 as the default. The binary is at `/usr/bin/pyt
 ansible_python_interpreter=/usr/bin/python3
 ```
 
-### Scenario 2: CentOS/RHEL
+### Scenario 2: RHEL 9
 
-RHEL has Python 3.9 as the system Python:
+RHEL 9 provides `/usr/bin/python3` as the system Python:
 
 ```ini
 [rhel9:vars]
@@ -201,20 +201,21 @@ Some containers or embedded systems do not have Python installed at all. For the
       ansible.builtin.setup:
 ```
 
-## The interpreter_python_fallback Setting
+## The ansible_interpreter_python_fallback Setting
 
-You can specify a list of interpreter paths to try in order:
+You can specify a list of interpreter paths to try in order when interpreter discovery is enabled:
 
-```ini
-# ansible.cfg
-[defaults]
-# Try these interpreters in order
-interpreter_python = auto_silent
-
-# Alternatively, specify fallback paths in inventory
+```yaml
+# group_vars/all.yml
+ansible_python_interpreter: auto_silent
+ansible_interpreter_python_fallback:
+  - /usr/bin/python3.11
+  - /usr/bin/python3.10
+  - /usr/bin/python3.9
+  - /usr/bin/python3
 ```
 
-In practice, the `auto_silent` discovery mode tries a well-known list of paths. But if you need a custom fallback order, set `ansible_python_interpreter` to a script that finds the right Python:
+In practice, the `auto_silent` discovery mode tries a default list of well-known paths. But if you need a custom fallback order, set `ansible_interpreter_python_fallback` as shown above, or set `ansible_python_interpreter` to a script that finds the right Python:
 
 ```bash
 #!/bin/bash
@@ -233,11 +234,11 @@ exit 1
 ### Check What Python Ansible is Using
 
 ```bash
-# Run a quick test to see the Python interpreter on each host
+# Run a quick test to see the configured interpreter value on each host
 ansible all -m ansible.builtin.debug -a "msg={{ ansible_python_interpreter }}"
 
 # Get detailed Python info from managed hosts
-ansible all -m ansible.builtin.setup -a "filter=ansible_python*"
+ansible all -m ansible.builtin.setup -a "filter=ansible_python"
 ```
 
 ### Verbose Mode for Interpreter Discovery
