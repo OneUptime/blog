@@ -12,18 +12,20 @@ Google Cloud Run is a serverless platform that runs containers without requiring
 
 ## Prerequisites
 
-```bash
-# Install Google Cloud collection
+Install the Google Cloud CLI and make sure `gcloud` is available on your Ansible control node.
 
-ansible-galaxy collection install google.cloud
-pip install google-auth google-api-python-client
+```bash
+# Install Ansible collections used in these examples
+
+ansible-galaxy collection install community.general
 ```
 
 Authenticate with Google Cloud:
 
 ```bash
-# Set up application default credentials
-gcloud auth application-default login
+# Authenticate the gcloud CLI and select a project
+gcloud auth login
+gcloud config set project my-project-id
 export GCP_PROJECT=my-project-id
 ```
 
@@ -37,7 +39,6 @@ export GCP_PROJECT=my-project-id
     cmd: >
       gcloud run deploy {{ service_name }}
       --image {{ container_image }}
-      --platform managed
       --region {{ gcp_region }}
       --port {{ container_port }}
       --memory {{ memory_limit }}
@@ -56,7 +57,6 @@ export GCP_PROJECT=my-project-id
   ansible.builtin.command:
     cmd: >
       gcloud run services describe {{ service_name }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
       --format 'value(status.url)'
@@ -108,7 +108,6 @@ env_vars:
     cmd: >
       gcloud run deploy {{ service_name }}
       --image {{ container_image }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
       --no-traffic
@@ -121,16 +120,26 @@ env_vars:
     cmd: >
       gcloud run services update-traffic {{ service_name }}
       --to-tags canary={{ canary_percent }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
   changed_when: true
 
+- name: Get canary URL
+  ansible.builtin.command:
+    cmd: >
+      gcloud run services describe {{ service_name }}
+      --region {{ gcp_region }}
+      --project {{ gcp_project }}
+      --format json
+  register: canary_service
+  changed_when: false
+
 - name: Verify canary health
   ansible.builtin.uri:
-    url: "https://canary---{{ service_name }}-{{ gcp_run_hash }}.a.run.app/health"
+    url: "{{ ((canary_service.stdout | from_json).status.traffic | selectattr('tag', 'equalto', 'canary') | map(attribute='url') | first) }}/health"
     status_code: 200
   register: canary_health
+  until: canary_health.status == 200
   retries: 5
   delay: 10
 
@@ -139,7 +148,6 @@ env_vars:
     cmd: >
       gcloud run services update-traffic {{ service_name }}
       --to-latest
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
   when: promote_canary | default(false)
@@ -156,7 +164,6 @@ env_vars:
     cmd: >
       gcloud run deploy {{ service_name }}
       --image {{ container_image }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
       --set-secrets "DB_PASSWORD=db-password:latest,API_KEY=api-key:latest"
@@ -166,16 +173,17 @@ env_vars:
 
 ## Custom Domain Mapping
 
+Cloud Run domain mappings are in Preview and have regional limitations. For production services, Google recommends using a global external Application Load Balancer for custom domains.
+
 ```yaml
 # roles/cloudrun_deploy/tasks/domain.yml
 # Map a custom domain to Cloud Run service
 - name: Map custom domain
   ansible.builtin.command:
     cmd: >
-      gcloud run domain-mappings create
+      gcloud beta run domain-mappings create
       --service {{ service_name }}
       --domain {{ custom_domain }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
   register: domain_result
@@ -193,7 +201,6 @@ env_vars:
     cmd: >
       gcloud run revisions list
       --service {{ service_name }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
       --format 'value(name)'
@@ -205,7 +212,6 @@ env_vars:
   ansible.builtin.command:
     cmd: >
       gcloud run revisions delete {{ item }}
-      --platform managed
       --region {{ gcp_region }}
       --project {{ gcp_project }}
       --quiet
@@ -254,7 +260,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
