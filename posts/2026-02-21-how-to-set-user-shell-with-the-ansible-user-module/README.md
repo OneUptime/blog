@@ -34,7 +34,7 @@ The `shell` parameter on the `user` module sets the user's login shell:
         state: present
 ```
 
-If you do not specify a shell, the system uses whatever is configured as the default in `/etc/default/useradd` (typically `/bin/bash` on most distributions, but sometimes `/bin/sh`).
+If you do not specify a shell, the system uses whatever default is chosen by the underlying account-management tool (commonly configured through `/etc/default/useradd` on Linux distributions that use `useradd`; often `/bin/bash`, but sometimes `/bin/sh`).
 
 ## Common Shell Paths
 
@@ -260,6 +260,7 @@ Different environments might require different shell configurations. You can han
   hosts: all
   become: yes
   vars:
+    env: production
     # In production, use bash for consistency
     # In development, let people use their preferred shell
     user_shell: "{{ '/bin/zsh' if env == 'development' else '/bin/bash' }}"
@@ -298,6 +299,7 @@ When managing shells for a team, use a loop with per-user shell preferences:
         path: "{{ item }}"
       register: shell_checks
       loop: "{{ required_shells }}"
+      failed_when: not shell_checks.stat.exists
 
     - name: Set user shells
       ansible.builtin.user:
