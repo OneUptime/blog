@@ -19,7 +19,7 @@ Both work well for Ansible fact caching, but they have different characteristics
 | Data persistence | No (memory only) | Optional (RDB/AOF) |
 | Data structures | Key-value only | Rich (strings, hashes, lists) |
 | Memory efficiency | Higher for simple k/v | Slightly lower |
-| Clustering | Built-in distributed | Sentinel/Cluster |
+| Clustering | Client-side distribution | Sentinel/Cluster |
 | Max value size | 1 MB default | 512 MB |
 | Setup complexity | Minimal | Low |
 
@@ -27,13 +27,16 @@ For Ansible fact caching, both are overkill in terms of features. Memcached's si
 
 ## Installing Prerequisites
 
-Install Memcached and the Python client:
+Install Memcached, the Ansible collection, and the Python client:
 
 ```bash
 # Install Memcached server on Ubuntu/Debian
 
 sudo apt-get update
 sudo apt-get install -y memcached
+
+# Install the collection that provides the Memcached cache plugin
+ansible-galaxy collection install community.general
 
 # Install the Python memcached library on the control node
 pip install python-memcached
@@ -58,7 +61,7 @@ Configure Ansible to use Memcached in `ansible.cfg`:
 # Configure Memcached fact caching
 [defaults]
 gathering = smart
-fact_caching = memcached
+fact_caching = community.general.memcached
 fact_caching_connection = localhost:11211
 fact_caching_timeout = 86400
 ```
@@ -74,23 +77,23 @@ ansible-playbook site.yml
 
 ## Multiple Memcached Servers
 
-Memcached supports distributed caching natively. You can specify multiple servers and the client library will distribute keys across them using consistent hashing:
+Memcached deployments are distributed by the client. You can specify multiple servers and the Python memcached client used by Ansible will choose a server for each cache key:
 
 ```ini
 # Distribute fact cache across multiple Memcached servers
 [defaults]
 gathering = smart
-fact_caching = memcached
+fact_caching = community.general.memcached
 fact_caching_connection = memcache1.internal:11211,memcache2.internal:11211,memcache3.internal:11211
 fact_caching_timeout = 86400
 ```
 
-The client library handles all the distribution logic. Keys (host facts) are spread evenly across servers. If one server goes down, only the keys stored on that server are lost, and Ansible will simply re-gather facts for those hosts on the next run.
+The client library handles the distribution logic. Keys (host facts) are mapped across the configured servers, so keep the server list stable across control nodes. If one server goes down, cache entries mapped to that server become unavailable and Ansible will re-gather facts for those hosts on the next run.
 
 ```mermaid
 graph TD
     A[Ansible Control Node] --> B[Python-memcached client]
-    B --> C[Consistent Hash Ring]
+    B --> C[Client-side hash selection]
     C --> D[Memcached Server 1]
     C --> E[Memcached Server 2]
     C --> F[Memcached Server 3]
