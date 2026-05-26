@@ -22,7 +22,7 @@ The `ansible.builtin.wait_for_connection` module waits until Ansible can establi
 # If you need more control than the reboot module provides:
 - name: Initiate reboot
   ansible.builtin.command: /sbin/shutdown -r now
-  async: 0
+  async: 1
   poll: 0
   ignore_errors: true
 
@@ -38,24 +38,32 @@ The `ansible.builtin.wait_for_connection` module waits until Ansible can establi
 ```yaml
 # Wait for newly provisioned cloud instances
 - name: Provision EC2 instance
-  amazon.aws.ec2_instance:
-    name: web-server
-    instance_type: t3.medium
-    image_id: ami-12345678
-    wait: true
-  register: ec2
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create EC2 instance
+      amazon.aws.ec2_instance:
+        name: web-server
+        instance_type: t3.medium
+        image_id: ami-12345678
+        wait: true
+      register: ec2
 
-- name: Add new instance to inventory
-  ansible.builtin.add_host:
-    name: "{{ ec2.instances[0].public_ip_address }}"
-    groups: new_instances
+    - name: Add new instance to inventory
+      ansible.builtin.add_host:
+        name: web-server
+        ansible_host: "{{ ec2.instances[0].public_ip_address }}"
+        groups: new_instances
 
-- name: Wait for SSH to be ready on new instance
-  ansible.builtin.wait_for_connection:
-    delay: 60
-    timeout: 600
-    sleep: 15
-  delegate_to: "{{ ec2.instances[0].public_ip_address }}"
+- name: Wait for SSH to be ready on the new instance
+  hosts: new_instances
+  gather_facts: false
+  tasks:
+    - name: Wait for SSH to be ready on new instance
+      ansible.builtin.wait_for_connection:
+        delay: 60
+        timeout: 600
+        sleep: 15
 ```
 
 ## Parameters
@@ -87,7 +95,7 @@ The `ansible.builtin.wait_for_connection` module waits until Ansible can establi
   ansible.builtin.service:
     name: networking
     state: restarted
-  async: 0
+  async: 1
   poll: 0
   ignore_errors: true
 
@@ -110,16 +118,21 @@ The `ansible.builtin.wait_for_connection` module waits until Ansible can establi
         name: linux-generic
         state: latest
 
+    - name: Check whether a reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
     - name: Reboot if needed
       ansible.builtin.reboot:
         reboot_timeout: 300
-      when: reboot_required
+      when: reboot_required.stat.exists
 
     - name: Wait for connection
       ansible.builtin.wait_for_connection:
         delay: 30
         timeout: 300
-      when: reboot_required
+      when: reboot_required.stat.exists
 
     - name: Verify services are running
       ansible.builtin.service_facts:
@@ -128,7 +141,7 @@ The `ansible.builtin.wait_for_connection` module waits until Ansible can establi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical Ansible scenarios that often appear alongside connection-waiting workflows.
 
 ### Infrastructure Provisioning Workflow
 
@@ -137,8 +150,12 @@ Here are several practical scenarios where this module proves essential in real-
 - name: Infrastructure provisioning
   hosts: all
   become: true
-  gather_facts: true
+  gather_facts: false
   tasks:
+    - name: Wait for hosts to become reachable
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+
     - name: Gather system information
       ansible.builtin.setup:
         gather_subset:
@@ -247,7 +264,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -314,4 +331,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `wait_for_connection` module is the correct way to handle post-reboot and post-provisioning scenarios in Ansible. It uses Ansible's native connection mechanism rather than just checking a port, which means it verifies that the host is truly ready for Ansible operations. Use it after reboots, cloud instance provisioning, and network configuration changes.
-
