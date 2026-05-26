@@ -8,7 +8,7 @@ Description: Integrate AWX with GitHub for source control, webhook-driven deploy
 
 ---
 
-GitHub and AWX work together in several ways. GitHub hosts your playbooks and roles, AWX pulls them automatically when they change, webhooks trigger jobs on push events, and AWX can report job status back to GitHub commit checks. This post covers each integration point with working examples.
+GitHub and AWX work together in several ways. GitHub hosts your playbooks and roles, AWX pulls them automatically when they change, webhooks trigger jobs on push events, and AWX can report job status back to GitHub for supported pull request webhook events. This post covers each integration point with working examples.
 
 ## Integration Overview
 
@@ -45,39 +45,53 @@ AWX needs credentials to clone private repositories and update commit statuses. 
 
 ```bash
 # Create an SCM credential for GitHub
+SCM_CREDENTIAL_TYPE_ID=$(curl -s \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  https://awx.example.com/api/v2/credential_types/?namespace=scm \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
 
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/credentials/ \
-  -d '{
+  -d @- <<EOF
+{
     "name": "GitHub SCM Credential",
     "organization": 1,
-    "credential_type": 2,
+    "credential_type": ${SCM_CREDENTIAL_TYPE_ID},
     "inputs": {
       "username": "your-github-username",
       "password": "ghp_your_personal_access_token"
     }
-  }'
+}
+EOF
 ```
 
-Credential type ID 2 is "Source Control" in AWX. For SSH-based authentication, use an SSH key instead.
+The `namespace=scm` lookup returns the "Source Control" credential type in AWX. For SSH-based authentication, use an SSH key instead.
 
 ```bash
 # Create an SSH credential for GitHub
+SCM_CREDENTIAL_TYPE_ID=$(curl -s \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  https://awx.example.com/api/v2/credential_types/?namespace=scm \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
+
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/credentials/ \
-  -d '{
+  -d @- <<EOF
+{
     "name": "GitHub SSH Key",
     "organization": 1,
-    "credential_type": 2,
+    "credential_type": ${SCM_CREDENTIAL_TYPE_ID},
     "inputs": {
+      "username": "git",
       "ssh_key_data": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
       "ssh_key_unlock": ""
     }
-  }'
+}
+EOF
 ```
 
 ## Creating a Project Linked to GitHub
@@ -111,21 +125,17 @@ Key settings:
 
 ## Auto-Syncing on GitHub Push
 
-You can configure the project to sync automatically when code is pushed to GitHub using a webhook.
+AWX does not expose an unauthenticated GitHub webhook for project updates. To sync a project immediately after a push, call the authenticated project update endpoint from GitHub Actions or another CI system.
 
 ```bash
-# Enable webhook-based project updates
-curl -s -X PATCH \
+# Trigger a project update from CI after a push
+curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
-  https://awx.example.com/api/v2/projects/3/ \
-  -d '{
-    "scm_update_on_launch": false,
-    "allow_override": true
-  }'
+  https://awx.example.com/api/v2/projects/3/update/
 ```
 
-Then set up a GitHub webhook pointed at the project update endpoint. But for most teams, `scm_update_on_launch: true` is simpler and works well enough.
+For most teams, `scm_update_on_launch: true` is simpler and works well enough.
 
 ## Linking Job Templates to GitHub Webhooks
 
@@ -139,7 +149,7 @@ curl -s -X PATCH \
   https://awx.example.com/api/v2/job_templates/10/ \
   -d '{"webhook_service": "github"}'
 
-# Get the webhook URL
+# Get the webhook key
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   https://awx.example.com/api/v2/job_templates/10/ \
   | python3 -c "
@@ -159,27 +169,34 @@ Configure the webhook in GitHub:
 
 ## Commit Status Updates
 
-AWX can update GitHub commit statuses so you can see whether a triggered job passed or failed directly in the GitHub UI, next to the commit or on the pull request.
+AWX can update GitHub commit statuses so you can see whether a pull request-triggered job passed or failed directly in the GitHub UI.
 
 For this to work, create a GitHub Personal Access Token credential in AWX.
 
 ```bash
 # Create a GitHub PAT credential for status updates
+GITHUB_CREDENTIAL_TYPE_ID=$(curl -s \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  https://awx.example.com/api/v2/credential_types/?namespace=github_token \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['results'][0]['id'])")
+
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/credentials/ \
-  -d '{
+  -d @- <<EOF
+{
     "name": "GitHub Status Token",
     "organization": 1,
-    "credential_type": 13,
+    "credential_type": ${GITHUB_CREDENTIAL_TYPE_ID},
     "inputs": {
-      "token": "ghp_your_token_with_repo_status_scope"
+      "token": "ghp_your_token_with_repo_scope"
     }
-  }'
+}
+EOF
 ```
 
-Credential type 13 is "GitHub Personal Access Token." Then attach it to the job template as a webhook credential.
+The `namespace=github_token` lookup returns the "GitHub Personal Access Token" credential type. Then attach it to the job template as a webhook credential.
 
 ```bash
 # Attach the GitHub token credential to the template
@@ -190,11 +207,13 @@ curl -s -X PATCH \
   -d '{"webhook_credential": 10}'
 ```
 
-Now when a webhook triggers a job, AWX updates the commit status in GitHub: pending when the job starts, success when it passes, and failure or error when it does not.
+Now when a pull request webhook triggers a job, AWX updates the commit status in GitHub: pending when the job starts, success when it passes, and failure or error when it does not.
 
 ## GitHub Actions Integration
 
 You can also trigger AWX jobs from GitHub Actions workflows. This is useful when AWX handles deployment but GitHub Actions handles testing and building.
+
+If you pass `extra_vars` through the launch API, make sure the job template prompts for variables or has a survey that accepts them.
 
 ```yaml
 # .github/workflows/deploy.yml
