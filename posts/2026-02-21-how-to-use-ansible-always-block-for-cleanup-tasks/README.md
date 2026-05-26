@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible always block to guarantee cleanup task
 
 ---
 
-The `always` section in an Ansible block structure runs no matter what. Whether the block tasks all succeeded, whether one failed and rescue handled it, or whether rescue itself failed, the `always` section executes. This makes it the perfect place for cleanup operations, status reporting, temporary file removal, lock releases, and anything else that must happen regardless of the outcome.
+The `always` section in an Ansible block structure runs regardless of whether the block tasks all succeeded, whether one failed and rescue handled it, or whether rescue itself failed. Invalid task definitions and unreachable hosts do not trigger block error handling, but for normal task results this makes `always` the perfect place for cleanup operations, status reporting, temporary file removal, lock releases, and anything else that must happen regardless of the outcome.
 
 ## Basic always Behavior
 
@@ -79,11 +79,13 @@ One of the most common uses is removing temporary files and directories that wer
             url: "{{ vault_credentials_url }}"
             dest: "{{ secure_tmpdir.path }}/encrypted_creds"
             mode: '0600'
+          no_log: true
 
         - name: Decrypt credentials
           ansible.builtin.command:
             cmd: "gpg --decrypt {{ secure_tmpdir.path }}/encrypted_creds"
           register: decrypted_creds
+          no_log: true
 
         - name: Apply credentials to application config
           ansible.builtin.template:
@@ -92,6 +94,7 @@ One of the most common uses is removing temporary files and directories that wer
             mode: '0600'
           vars:
             credentials: "{{ decrypted_creds.stdout }}"
+          no_log: true
 
       rescue:
         - name: Log credential processing failure
@@ -105,10 +108,11 @@ One of the most common uses is removing temporary files and directories that wer
             state: absent
           when: secure_tmpdir is defined and secure_tmpdir.path is defined
 
-        - name: Clear any cached decrypted data
+        - name: Overwrite decrypted data fact
           ansible.builtin.set_fact:
             decrypted_creds: "CLEARED"
           when: decrypted_creds is defined
+          no_log: true
 ```
 
 ## Lock Management
@@ -116,32 +120,36 @@ One of the most common uses is removing temporary files and directories that wer
 When tasks require exclusive access to a resource, you need to acquire a lock at the start and release it when done. The `always` block ensures the lock is released even if the task fails.
 
 ```yaml
-# Lock file management with guaranteed release
+# Lock directory management with guaranteed release
 ---
 - name: Exclusive operation with locking
   hosts: app_servers
   become: true
 
   vars:
-    lock_file: /var/lock/deployment.lock
+    lock_dir: /var/lock/deployment.lock
 
   tasks:
     - name: Perform exclusive deployment
       block:
         - name: Acquire deployment lock
+          ansible.builtin.command:
+            cmd: "mkdir {{ lock_dir }}"
+          register: lock_acquired
+
+        - name: Record deployment lock owner
           ansible.builtin.copy:
             content: |
               pid: {{ ansible_play_batch | join(',') }}
               time: {{ ansible_date_time.iso8601 }}
               host: {{ inventory_hostname }}
-            dest: "{{ lock_file }}"
-            force: false  # Fails if lock already exists
-          register: lock_acquired
+            dest: "{{ lock_dir }}/owner"
+            mode: '0644'
 
         - name: Run deployment steps
           ansible.builtin.command:
             cmd: /opt/deploy/run.sh
-          when: lock_acquired is not failed
+          when: lock_acquired is success
 
         - name: Run post-deployment verification
           ansible.builtin.command:
@@ -155,9 +163,9 @@ When tasks require exclusive access to a resource, you need to acquire a lock at
       always:
         - name: Release deployment lock
           ansible.builtin.file:
-            path: "{{ lock_file }}"
+            path: "{{ lock_dir }}"
             state: absent
-          when: lock_acquired is defined and lock_acquired is not failed
+          when: lock_acquired is defined and lock_acquired is success
 ```
 
 ## Service State Restoration
@@ -180,7 +188,7 @@ When you need to stop a service temporarily, the `always` block ensures it gets 
             dest: /var/www/html/maintenance.html
 
         - name: Stop application for maintenance
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: myapp
             state: stopped
 
@@ -200,7 +208,7 @@ When you need to stop a service temporarily, the `always` block ensures it gets 
 
       always:
         - name: Start application
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: myapp
             state: started
 
@@ -210,6 +218,7 @@ When you need to stop a service temporarily, the `always` block ensures it gets 
             status_code: 200
           retries: 10
           delay: 5
+          until: health_check.status == 200
           register: health_check
           ignore_errors: true
 
@@ -238,7 +247,7 @@ Using `always` for reporting ensures you always get a record of what happened.
   tasks:
     - name: Track deployment timing
       ansible.builtin.set_fact:
-        deploy_start_time: "{{ ansible_date_time.epoch }}"
+        deploy_start_time: "{{ lookup('pipe', 'date +%s') }}"
 
     - name: Execute deployment
       block:
@@ -255,7 +264,7 @@ Using `always` for reporting ensures you always get a record of what happened.
           register: deps_result
 
         - name: Restart application
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: app
             state: restarted
           register: restart_result
@@ -273,7 +282,7 @@ Using `always` for reporting ensures you always get a record of what happened.
       always:
         - name: Calculate deployment duration
           ansible.builtin.set_fact:
-            deploy_duration: "{{ ansible_date_time.epoch | int - deploy_start_time | int }}"
+            deploy_duration: "{{ lookup('pipe', 'date +%s') | int - deploy_start_time | int }}"
 
         - name: Write deployment log entry
           ansible.builtin.lineinfile:
@@ -324,10 +333,12 @@ When working with cloud APIs, always close sessions and release resources.
               client_id: "{{ vault_client_id }}"
               client_secret: "{{ vault_client_secret }}"
           register: auth_response
+          no_log: true
 
         - name: Set auth token
           ansible.builtin.set_fact:
             api_token: "{{ auth_response.json.access_token }}"
+          no_log: true
 
         - name: Create resources
           ansible.builtin.uri:
@@ -340,6 +351,7 @@ When working with cloud APIs, always close sessions and release resources.
               name: "worker-{{ item }}"
               type: "small"
           loop: "{{ range(1, 4) | list }}"
+          no_log: true
 
       rescue:
         - name: Resource creation failed
@@ -355,11 +367,13 @@ When working with cloud APIs, always close sessions and release resources.
               Authorization: "Bearer {{ api_token }}"
           when: api_token is defined
           ignore_errors: true
+          no_log: true
 
-        - name: Clear token from memory
+        - name: Overwrite token fact
           ansible.builtin.set_fact:
             api_token: "REVOKED"
           when: api_token is defined
+          no_log: true
 ```
 
 ## always Without rescue
