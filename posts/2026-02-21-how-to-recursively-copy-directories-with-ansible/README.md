@@ -35,9 +35,9 @@ The `directory_mode` parameter sets permissions on directories separately from f
 
 ## Performance Warning with copy
 
-The `copy` module checks every file individually using checksums. For small directory trees (a few dozen files), this is fine. But for large directories with hundreds or thousands of files, it becomes extremely slow because Ansible transfers each file as a separate SSH operation.
+The `copy` module's recursive copy facility does not scale well to lots of files. For small directory trees (a few dozen files), this is fine. But for large directories with hundreds or thousands of files, it can become slow because Ansible is doing the recursive copy work rather than using rsync's delta-transfer algorithm.
 
-If your directory has more than about 50 files, consider using the `synchronize` module instead.
+If your directory has hundreds of files, consider using the `synchronize` module instead.
 
 ## Using synchronize for Large Directories
 
@@ -165,12 +165,20 @@ For very large directory trees, archiving first and then extracting is often the
 ```yaml
 # Archive locally, copy, and extract - fastest for very large dirs
 - name: Create archive of application files
-  ansible.builtin.archive:
+  community.general.archive:
     path: /opt/build/output/myapp/
     dest: /tmp/myapp-deploy.tar.gz
     format: gz
   delegate_to: localhost
   run_once: true
+
+- name: Ensure application directory exists
+  ansible.builtin.file:
+    path: /opt/myapp/
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: '0755'
 
 - name: Extract application archive on remote hosts
   ansible.builtin.unarchive:
@@ -229,8 +237,8 @@ Or use the `file` module with the `recurse` option and the `X` permission trick.
 
 ```mermaid
 graph LR
-    A[Small dir - < 50 files] --> B[copy module]
-    C[Medium dir - 50-500 files] --> D[synchronize module]
+    A[Small dir - dozens of files] --> B[copy module]
+    C[Medium dir - hundreds of files] --> D[synchronize module]
     E[Large dir - 500+ files] --> F[archive + unarchive]
     G[Ongoing syncs] --> D
     B --> H[Simple, built-in]
@@ -240,7 +248,7 @@ graph LR
 
 | Method | Files | Speed | Idempotent | Delta Transfer |
 |--------|-------|-------|------------|----------------|
-| copy | < 50 | Slow for many files | Yes | No |
+| copy | Dozens | Slow for many files | Yes | No |
 | synchronize | Any | Fast | Yes | Yes |
 | archive + unarchive | Any | Fastest initial | With creates | No |
 | command: rsync | Any | Fast | Manual | Yes |
