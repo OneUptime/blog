@@ -84,6 +84,12 @@ The most basic list operation is looping:
       - /opt/myapp/logs
       - /opt/myapp/data
 
+    users:
+      - name: alice
+        shell: /bin/bash
+      - name: bob
+        shell: /bin/zsh
+
   tasks:
     # Loop over a simple list with the loop keyword
     - name: Install packages
@@ -279,11 +285,12 @@ Ansible provides many Jinja2 filters for working with lists:
     deprecated_packages: [vim, htop]
 
   tasks:
+    # Set filters return unique items; in ansible-core 2.16+, result order is not guaranteed
     # Intersection: packages that are both installed and required
     - name: Already installed required packages
       debug:
         msg: "{{ installed_packages | intersect(required_packages) }}"
-    # Output: [nginx, python3, curl]
+    # Output contains: nginx, python3, curl
 
     # Difference: required but not installed
     - name: Packages that need to be installed
@@ -293,7 +300,7 @@ Ansible provides many Jinja2 filters for working with lists:
     - name: Show packages to install
       debug:
         msg: "Need to install: {{ to_install }}"
-    # Output: [jq, tree]
+    # Output contains: jq, tree
 
     # Union: all unique packages from both lists
     - name: All packages combined
@@ -304,7 +311,7 @@ Ansible provides many Jinja2 filters for working with lists:
     - name: Packages in only one list
       debug:
         msg: "{{ installed_packages | symmetric_difference(required_packages) }}"
-    # Output: [vim, git, htop, jq, tree]
+    # Output contains: vim, git, htop, jq, tree
 ```
 
 ## Building Lists Dynamically
@@ -350,7 +357,7 @@ Ansible provides many Jinja2 filters for working with lists:
 ```yaml
 ---
 # firewall-rules.yml
-# Use lists to manage iptables/firewalld rules
+# Use lists to manage UFW rules
 
 - hosts: webservers
   become: yes
@@ -384,7 +391,7 @@ Ansible provides many Jinja2 filters for working with lists:
 
   tasks:
     - name: Open firewall ports
-      ufw:
+      community.general.ufw:
         rule: allow
         port: "{{ item.port | string }}"
         proto: "{{ item.protocol }}"
