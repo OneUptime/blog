@@ -295,17 +295,48 @@ Here is a playbook that sets up a full maintenance schedule for production serve
         content: |
           # Disk cleanup script
           $threshold = 10  # GB
-          Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
+          $source = "MaintenanceScript"
+          if (-not [System.Diagnostics.EventLog]::SourceExists($source)) {
+              New-EventLog -LogName Application -Source $source
+          }
+
+          Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
               $freeGB = [math]::Round($_.FreeSpace / 1GB, 2)
               if ($freeGB -lt $threshold) {
                   # Clean temp files
                   Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
                   Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
                   # Log the event
-                  Write-EventLog -LogName Application -Source "MaintenanceScript" -EventId 1001 -Message "Disk cleanup performed on $($_.DeviceID) - Free space was $freeGB GB"
+                  Write-EventLog -LogName Application -Source $source -EventId 1001 -Message "Disk cleanup performed on $($_.DeviceID) - Free space was $freeGB GB"
               }
           }
         dest: "{{ scripts_path }}\\disk-cleanup.ps1"
+
+    - name: Deploy log archive script
+      ansible.windows.win_copy:
+        content: |
+          # Event log archival script
+          $archiveRoot = Join-Path $PSScriptRoot "EventLogArchive"
+          New-Item -ItemType Directory -Path $archiveRoot -Force | Out-Null
+          $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+
+          foreach ($logName in @("Application", "System")) {
+              $destination = Join-Path $archiveRoot "$logName-$timestamp.evtx"
+              wevtutil epl $logName $destination
+          }
+        dest: "{{ scripts_path }}\\archive-logs.ps1"
+
+    - name: Deploy certificate expiry check script
+      ansible.windows.win_copy:
+        content: |
+          # Certificate expiry check script
+          $warningDate = (Get-Date).AddDays(30)
+          Get-ChildItem Cert:\LocalMachine\My | Where-Object {
+              $_.NotAfter -lt $warningDate
+          } | ForEach-Object {
+              Write-Warning "Certificate $($_.Subject) expires on $($_.NotAfter)"
+          }
+        dest: "{{ scripts_path }}\\check-certs.ps1"
 
     # Disk space monitoring - every 15 minutes
     - name: Schedule disk space monitoring
