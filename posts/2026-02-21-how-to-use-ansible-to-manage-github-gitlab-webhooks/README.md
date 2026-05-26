@@ -33,7 +33,8 @@ Webhooks connect your Git repositories to external systems like CI/CD pipelines,
         method: POST
         headers:
           Authorization: "Bearer {{ github_token }}"
-          Accept: "application/vnd.github.v3+json"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         body_format: json
         body:
           name: web
@@ -52,7 +53,7 @@ Webhooks connect your Git repositories to external systems like CI/CD pipelines,
 
     - name: Show webhook details
       ansible.builtin.debug:
-        msg: "Webhook ID: {{ webhook_result.json.id | default('already exists') }}"
+        msg: "Webhook ID: {{ webhook_result.json.id | default('not created; check the validation response') }}"
 ```
 
 ## Creating a GitLab Webhook
@@ -135,7 +136,8 @@ graph LR
         method: POST
         headers:
           Authorization: "Bearer {{ github_token }}"
-          Accept: "application/vnd.github.v3+json"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         body_format: json
         body:
           name: web
@@ -178,6 +180,8 @@ graph LR
         url: "https://api.github.com/repos/{{ github_org }}/{{ github_repo }}/hooks"
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
       register: webhooks
 
     - name: Display webhooks
@@ -205,6 +209,7 @@ graph LR
     github_org: myorg
     github_repo: myapp
     new_webhook_url: "https://new-ci.example.com/hooks/github"
+    webhook_secret: "{{ lookup('env', 'WEBHOOK_SECRET') }}"
 
   tasks:
     - name: Get existing webhooks
@@ -212,6 +217,8 @@ graph LR
         url: "https://api.github.com/repos/{{ github_org }}/{{ github_repo }}/hooks"
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
       register: existing_hooks
 
     - name: Find webhook by URL pattern
@@ -225,11 +232,14 @@ graph LR
         method: PATCH
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         body_format: json
         body:
           config:
             url: "{{ new_webhook_url }}"
             content_type: json
+            secret: "{{ webhook_secret }}"
           events:
             - push
             - pull_request
@@ -263,6 +273,8 @@ graph LR
         method: DELETE
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         status_code: 204
 ```
 
@@ -285,6 +297,8 @@ graph LR
         url: "https://api.github.com/repos/{{ github_org }}/{{ github_repo }}/hooks"
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
       register: hooks
 
     - name: Ping each webhook
@@ -293,6 +307,8 @@ graph LR
         method: POST
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         status_code: 204
       loop: "{{ hooks.json }}"
       loop_control:
@@ -303,6 +319,8 @@ graph LR
         url: "https://api.github.com/repos/{{ github_org }}/{{ github_repo }}/hooks/{{ hooks.json[0].id }}/deliveries"
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
       register: deliveries
       when: hooks.json | length > 0
 
@@ -327,7 +345,7 @@ graph LR
     github_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
     org: myorg
     repo: new-project
-    webhook_secret: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+    webhook_secret: "{{ lookup('env', 'WEBHOOK_SECRET') }}"
 
   tasks:
     - name: Create CI/CD webhook
@@ -336,6 +354,8 @@ graph LR
         method: POST
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         body_format: json
         body:
           config:
@@ -352,6 +372,8 @@ graph LR
         method: POST
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         body_format: json
         body:
           config:
@@ -362,24 +384,27 @@ graph LR
           active: true
         status_code: [201, 422]
 
-    - name: Create Slack notification webhook
+    - name: Create chat notification webhook
       ansible.builtin.uri:
         url: "https://api.github.com/repos/{{ org }}/{{ repo }}/hooks"
         method: POST
         headers:
           Authorization: "Bearer {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2026-03-10"
         body_format: json
         body:
           config:
-            url: "https://hooks.slack.com/services/{{ lookup('env', 'SLACK_WEBHOOK_PATH') }}"
+            url: "https://chatops.example.com/hooks/github"
             content_type: json
+            secret: "{{ webhook_secret }}"
           events: [push, pull_request, issues]
           active: true
         status_code: [201, 422]
 
-    - name: Store webhook secret in vault
+    - name: Remind where to store webhook secret
       ansible.builtin.debug:
-        msg: "Webhook secret: {{ webhook_secret }} (store this securely)"
+        msg: "Store WEBHOOK_SECRET securely in Ansible Vault and rotate it periodically."
 ```
 
 ## Summary
