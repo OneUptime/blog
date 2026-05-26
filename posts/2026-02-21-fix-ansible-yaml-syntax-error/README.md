@@ -29,8 +29,8 @@ YAML uses spaces, not tabs. Two spaces is the standard indentation:
 
 - hosts: all
   tasks:
-      - name: Task one  # 6 spaces instead of 4
-        command: echo hello
+    - name: Task one
+     command: echo hello  # 5 spaces instead of 6
 
 # CORRECT: consistent 2-space indentation
 - hosts: all
@@ -65,7 +65,7 @@ YAML uses spaces, not tabs. Two spaces is the standard indentation:
     msg: "Error: something failed"
 ```
 
-Characters that need quoting: `: { } [ ] , & * # ? | - < > = ! % @ \`
+Characters that can need quoting when they are used as YAML syntax: `: { } [ ] , & * # ? | - < > = ! % @ \`. Quote values that contain a colon followed by a space, values that start with YAML indicator characters, and values where you want to avoid automatic type conversion.
 
 ### Fix 4: Boolean Values
 
@@ -127,12 +127,12 @@ YAML syntax errors in Ansible are almost always about indentation, missing colon
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where YAML validation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -164,7 +164,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -246,7 +246,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -308,4 +308,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
