@@ -109,6 +109,9 @@ echo "${ANSIBLE_VAULT_PASSWORD}"
 #   --secret-id ansible-vault-password \
 #   --query SecretString \
 #   --output text
+
+# Make the script executable
+# chmod +x scripts/vault-password.sh
 ```
 
 ```ini
@@ -175,7 +178,7 @@ For enterprise environments, pull secrets from external systems at runtime inste
 # Using AWS Secrets Manager
 - name: Retrieve secrets from AWS Secrets Manager
   ansible.builtin.set_fact:
-    app_secrets: "{{ lookup('amazon.aws.aws_secret',
+    app_secrets: "{{ lookup('amazon.aws.secretsmanager_secret',
       'production/app-secrets',
       region='us-east-1'
     ) | from_json }}"
