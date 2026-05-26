@@ -26,8 +26,7 @@ fatal: [remote-server]: UNREACHABLE! => {
 # ansible.cfg - Increase timeout values
 
 [defaults]
-timeout = 60           # Connection timeout in seconds (default: 10)
-gather_timeout = 60    # Fact gathering timeout
+timeout = 60           ; Connection plugin timeout in seconds (default: 10)
 
 [ssh_connection]
 ssh_args = -o ConnectTimeout=60 -o ServerAliveInterval=30 -o ServerAliveCountMax=5
@@ -35,7 +34,7 @@ ssh_args = -o ConnectTimeout=60 -o ServerAliveInterval=30 -o ServerAliveCountMax
 
 ### Fix 2: Enable SSH Pipelining
 
-Pipelining reduces the number of SSH connections per task:
+Pipelining reduces the number of SSH operations needed to run modules:
 
 ```ini
 # ansible.cfg
@@ -74,8 +73,8 @@ server1 ansible_host=10.0.1.10 ansible_ssh_common_args='-o ProxyJump=bastion.exa
 ### Fix 6: Increase Retries
 
 ```ini
-# ansible.cfg - Retry failed connections
-[defaults]
+# ansible.cfg - Retry failed SSH connections
+[connection]
 retries = 3
 
 [ssh_connection]
@@ -99,12 +98,12 @@ Connection timeouts on slow networks require a multi-pronged approach: increase 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow that benefits from resilient connection settings
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -136,7 +135,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -218,7 +217,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in Ansible
 - name: Robust task execution
   hosts: all
   tasks:
@@ -280,4 +279,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
