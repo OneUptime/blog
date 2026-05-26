@@ -8,7 +8,7 @@ Description: Learn patterns and techniques to make Ansible shell and command mod
 
 ---
 
-Idempotency means running something multiple times produces the same result as running it once. Built-in Ansible modules like `apt`, `user`, and `file` are inherently idempotent. But when you reach for the `command` or `shell` module, you lose that guarantee. The task runs every time, always reports "changed", and might cause problems if repeated. Here are the patterns I use to make shell commands behave idempotently.
+Idempotency means running something multiple times produces the same result as running it once. Built-in Ansible modules like `apt`, `user`, and `file` are inherently idempotent. But when you reach for the `command` or `shell` module, you lose that guarantee. By default, the task runs every time, always reports "changed", and might cause problems if repeated. Here are the patterns I use to make shell commands behave idempotently.
 
 ## Why Idempotency Matters
 
@@ -118,8 +118,12 @@ Let the command run every time, but use `changed_when` to accurately report whet
 
     - name: Update configuration file
       ansible.builtin.shell: |
-        if ! grep -q 'max_connections = 200' /etc/postgresql/main/postgresql.conf; then
-          sed -i 's/max_connections = .*/max_connections = 200/' /etc/postgresql/main/postgresql.conf
+        if ! grep -q '^max_connections[[:space:]]*=[[:space:]]*200$' /etc/postgresql/main/postgresql.conf; then
+          if grep -q '^max_connections[[:space:]]*=' /etc/postgresql/main/postgresql.conf; then
+            sed -i 's/^max_connections[[:space:]]*=.*/max_connections = 200/' /etc/postgresql/main/postgresql.conf
+          else
+            printf '\nmax_connections = 200\n' >> /etc/postgresql/main/postgresql.conf
+          fi
           echo "CHANGED"
         else
           echo "OK"
@@ -257,24 +261,25 @@ The `stat` module gives you detailed file information to make decisions.
         curl -sL https://releases.example.com/myapp-latest.tar.gz | tar xz -C /opt/
       when: not app_binary.stat.exists
 
-    - name: Check if SSL certificate is about to expire
+    - name: Check if SSL certificate exists
       ansible.builtin.stat:
         path: /etc/ssl/certs/myapp.crt
       register: cert_file
 
-    - name: Check certificate expiry
-      ansible.builtin.shell:
-        cmd: "openssl x509 -enddate -noout -in /etc/ssl/certs/myapp.crt | cut -d= -f2"
-      register: cert_expiry
+    - name: Check whether SSL certificate is valid for at least 30 more days
+      ansible.builtin.command:
+        cmd: openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/myapp.crt
+      register: cert_valid_for_30_days
       when: cert_file.stat.exists
       changed_when: false
+      failed_when: false
 
     - name: Renew certificate if expiring within 30 days
       ansible.builtin.command:
         cmd: /opt/myapp/bin/renew-cert
       when:
         - cert_file.stat.exists
-        - cert_expiry.stdout is defined
+        - cert_valid_for_30_days.rc != 0
 ```
 
 ## Pattern 7: Atomic Operations with Temp Files
