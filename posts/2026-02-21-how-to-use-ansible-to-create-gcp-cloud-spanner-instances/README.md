@@ -59,8 +59,8 @@ A Spanner instance is the container that holds your databases. You choose the in
         name: "app-spanner-instance"
         display_name: "Application Spanner Instance"
         # Regional config - data stays in one region (cheaper)
-        config: "projects/{{ gcp_project }}/instanceConfigs/regional-us-central1"
-        # Node count - each node provides ~10,000 QPS reads, ~2,000 QPS writes
+        config: "regional-us-central1"
+        # Node count - each node provides up to ~22,500 QPS reads and ~3,500 QPS writes for regional SSD instances
         node_count: 1
         labels:
           environment: "production"
@@ -103,7 +103,7 @@ For smaller workloads, you can use processing units instead of full nodes. One n
       google.cloud.gcp_spanner_instance:
         name: "dev-spanner"
         display_name: "Development Spanner Instance"
-        config: "projects/{{ gcp_project }}/instanceConfigs/regional-us-central1"
+        config: "regional-us-central1"
         # Use processing units for fine-grained sizing
         # 100 PU is the minimum, increments of 100 up to 1000
         processing_units: 100
@@ -148,7 +148,7 @@ For applications that need global distribution and the highest availability, use
         display_name: "Global Spanner Instance"
         # nam7 = North America multi-region
         # Other options: nam-eur-asia1, eur6, nam6
-        config: "projects/{{ gcp_project }}/instanceConfigs/nam7"
+        config: "nam7"
         node_count: 3
         labels:
           environment: "production"
@@ -191,7 +191,7 @@ After creating the instance, you need to create databases within it. Databases c
       google.cloud.gcp_spanner_instance:
         name: "app-spanner-instance"
         display_name: "Application Spanner Instance"
-        config: "projects/{{ gcp_project }}/instanceConfigs/regional-us-central1"
+        config: "regional-us-central1"
         node_count: 1
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
@@ -260,7 +260,7 @@ graph TD
 
 ## Scaling a Spanner Instance
 
-One of Spanner's strengths is that you can scale up without downtime. Just increase the node count or processing units.
+One of Spanner's strengths is that you can scale up without downtime. The `google.cloud.gcp_spanner_instance` module creates and deletes instances, but it does not update existing instances, so use the Cloud SDK from Ansible when changing compute capacity.
 
 ```yaml
 # scale-spanner.yml - Scale a Spanner instance up or down
@@ -272,30 +272,25 @@ One of Spanner's strengths is that you can scale up without downtime. Just incre
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "/path/to/service-account-key.json"
 
   tasks:
     - name: Scale up the Spanner instance to 3 nodes
-      google.cloud.gcp_spanner_instance:
-        name: "app-spanner-instance"
-        display_name: "Application Spanner Instance"
-        config: "projects/{{ gcp_project }}/instanceConfigs/regional-us-central1"
-        # Increase from 1 to 3 nodes for higher throughput
-        node_count: 3
-        labels:
-          environment: "production"
-          managed_by: "ansible"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - spanner
+          - instances
+          - update
+          - app-spanner-instance
+          - --nodes=3
+          - "--project={{ gcp_project }}"
+      changed_when: true
 
     - name: Scaling complete
       ansible.builtin.debug:
         msg: |
           Instance scaled to 3 nodes.
-          Estimated capacity: ~30,000 QPS reads, ~6,000 QPS writes.
+          Estimated regional SSD capacity: up to ~67,500 QPS reads, ~10,500 QPS writes.
           Scaling is online - no downtime required.
 ```
 
@@ -322,7 +317,7 @@ Here is a playbook that sets up a complete Spanner environment with multiple dat
       google.cloud.gcp_spanner_instance:
         name: "{{ environment_name }}-spanner"
         display_name: "{{ environment_name | title }} Spanner Instance"
-        config: "projects/{{ gcp_project }}/instanceConfigs/regional-us-central1"
+        config: "regional-us-central1"
         node_count: 2
         labels:
           environment: "{{ environment_name }}"
@@ -403,7 +398,7 @@ Be very careful with this. Deleting a Spanner instance destroys all databases an
       google.cloud.gcp_spanner_instance:
         name: "dev-spanner"
         display_name: "Development Spanner Instance"
-        config: "projects/{{ gcp_project }}/instanceConfigs/regional-us-central1"
+        config: "regional-us-central1"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
