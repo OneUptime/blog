@@ -154,24 +154,26 @@ A workaround is to create a wrapper validation script:
 
 ## Apache Configuration
 
+Apache's `configtest` does not accept a file argument. It tests the entire running configuration, and Ansible's `validate` command must include `%s`. For Apache virtual hosts, use a wrapper approach similar to the nginx one above:
+
 ```yaml
-# Validate Apache configuration before deploying
-- name: Deploy Apache virtual host
+# Use a wrapper script for validating Apache virtual hosts
+- name: Deploy Apache validation script
+  ansible.builtin.copy:
+    content: |
+      #!/bin/bash
+      test_conf="/etc/apache2/sites-enabled/_ansible_validate.conf"
+      trap 'rm -f "$test_conf"' EXIT
+      cp "$1" "$test_conf"
+      apache2ctl -t
+    dest: /usr/local/bin/validate-apache-vhost.sh
+    mode: '0755'
+
+- name: Deploy Apache virtual host with validation
   ansible.builtin.template:
     src: vhost.conf.j2
     dest: /etc/apache2/sites-available/{{ site_name }}.conf
-    validate: 'apachectl configtest'
-```
-
-Wait, there is a problem. Apache's `configtest` does not accept a file argument. It tests the entire running configuration. For Apache, you need to use `apachectl -t` or a wrapper approach similar to the nginx one above:
-
-```yaml
-# Apache validation approach using a syntax check
-- name: Deploy Apache config with validation
-  ansible.builtin.template:
-    src: vhost.conf.j2
-    dest: /etc/apache2/sites-available/{{ site_name }}.conf
-    validate: 'apache2ctl -t'
+    validate: '/usr/local/bin/validate-apache-vhost.sh %s'
 ```
 
 ## PHP Configuration
@@ -235,7 +237,7 @@ For YAML configuration files, use a Python-based validator:
   ansible.builtin.template:
     src: app_config.yml.j2
     dest: /etc/myapp/config.yml
-    validate: 'python3 -c "import yaml; yaml.safe_load(open(\"%s\"))"'
+    validate: 'python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" %s'
 ```
 
 ## JSON File Validation
@@ -246,7 +248,7 @@ For YAML configuration files, use a Python-based validator:
   ansible.builtin.template:
     src: config.json.j2
     dest: /etc/myapp/config.json
-    validate: 'python3 -c "import json; json.load(open(\"%s\"))"'
+    validate: 'python3 -c "import sys, json; json.load(open(sys.argv[1]))" %s'
 ```
 
 ## Custom Validation Scripts
@@ -292,7 +294,7 @@ exit 0
 
 ## Multiple Validation Steps
 
-If you need multiple validation checks, chain them:
+If you need multiple validation checks, be careful with shell syntax. Ansible passes the validation command securely, so shell operators only work if you explicitly invoke a shell:
 
 ```yaml
 # Chain multiple validation commands
@@ -300,7 +302,7 @@ If you need multiple validation checks, chain them:
   ansible.builtin.template:
     src: complex.conf.j2
     dest: /etc/myapp/complex.conf
-    validate: 'bash -c "python3 -c \"import yaml; yaml.safe_load(open(\\\"$1\\\"))\" && /opt/myapp/bin/validate %s"'
+    validate: 'bash -c "python3 -c \"import sys, yaml; yaml.safe_load(open(sys.argv[1]))\" \"$1\" && /opt/myapp/bin/validate \"$1\"" _ %s'
 ```
 
 This gets unwieldy quickly. A cleaner approach is a wrapper script:
