@@ -53,7 +53,9 @@ jobs:
           ssh-keyscan ${{ secrets.TARGET_HOST }} >> ~/.ssh/known_hosts
 
       - name: Create vault password file
-        run: echo "${{ secrets.VAULT_PASSWORD }}" > .vault_pass
+        run: |
+          printf '%s\n' "${{ secrets.VAULT_PASSWORD }}" > .vault_pass
+          chmod 600 .vault_pass
 
       - name: Run playbook with Execution Environment
         run: |
@@ -109,13 +111,21 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan ${{ secrets.TARGET_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Create vault password file
+        run: |
+          printf '%s\n' "${{ secrets.VAULT_PASSWORD }}" > .vault_pass
+          chmod 600 .vault_pass
+
       - name: Run playbook
         run: |
           ansible-playbook deploy.yml \
             -i inventory/production.yml \
+            --vault-password-file .vault_pass \
             --extra-vars "app_version=${{ github.sha }}"
-        env:
-          ANSIBLE_VAULT_PASSWORD: ${{ secrets.VAULT_PASSWORD }}
+
+      - name: Cleanup
+        if: always()
+        run: rm -f .vault_pass ~/.ssh/id_rsa
 ```
 
 This approach runs the entire job inside the EE container, so you have direct access to all the collections and Python packages without any additional setup.
@@ -308,7 +318,7 @@ jobs:
 
 Pulling large EE images on every pipeline run wastes time and bandwidth. Most CI systems support image caching.
 
-GitHub Actions with Docker layer caching:
+GitHub Actions with a cached image archive:
 
 ```yaml
 # Cache the EE image between runs
@@ -334,15 +344,27 @@ Never put secrets into the EE image itself. Always inject them at runtime:
 
 ```yaml
 # Secure secrets handling in CI
+- name: Prepare runtime secrets
+  run: |
+    mkdir -p /tmp/ansible-secrets
+    printf '%s\n' "${{ secrets.VAULT_PASSWORD }}" > /tmp/ansible-secrets/vault_pass
+    printf '%s\n' "${{ secrets.EXTRA_VARS_YML }}" > /tmp/ansible-secrets/vars.yml
+    chmod 600 /tmp/ansible-secrets/vault_pass /tmp/ansible-secrets/vars.yml
+
 - name: Run playbook with injected secrets
   run: |
     ansible-navigator run deploy.yml \
       --execution-environment-image quay.io/myorg/ansible-ee:2.1.0 \
       --mode stdout \
-      --execution-environment-volume-mounts "/tmp/secrets:/secrets:ro" \
+      --execution-environment-volume-mounts "/tmp/ansible-secrets:/secrets:ro" \
+      --vault-password-file /secrets/vault_pass \
       --extra-vars "@/secrets/vars.yml"
-  env:
-    ANSIBLE_VAULT_PASSWORD_FILE: /tmp/vault_pass
+
+- name: Cleanup runtime secrets
+  if: always()
+  run: |
+    rm -f /tmp/ansible-secrets/vault_pass /tmp/ansible-secrets/vars.yml
+    rmdir /tmp/ansible-secrets
 ```
 
 ## Wrapping Up
