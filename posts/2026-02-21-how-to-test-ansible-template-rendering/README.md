@@ -244,7 +244,7 @@ Integrate template testing into your Molecule workflow. After converging, verify
 
 ## Method 5: Testing Ansible Filters in Templates
 
-Ansible adds many filters beyond standard Jinja2. Testing templates that use Ansible-specific filters requires using Ansible itself or mocking those filters.
+Ansible adds many filters beyond standard Jinja2, and some filters live in collections such as `ansible.utils.ipaddr`. Testing templates that use Ansible-specific filters requires using Ansible itself or mocking those filters.
 
 ```python
 # tests/test_ansible_filters.py
@@ -275,6 +275,7 @@ def create_ansible_env():
         lstrip_blocks=True,
     )
     env.filters['ipaddr'] = ansible_ipaddr
+    env.filters['ansible.utils.ipaddr'] = ansible_ipaddr
     env.filters['to_nice_yaml'] = ansible_to_nice_yaml
     return env
 
@@ -314,6 +315,7 @@ The `test_all_templates.sh` script discovers and runs all template tests:
 # scripts/test_all_templates.sh
 # Find and run all template tests across all roles
 set -euo pipefail
+shopt -s nullglob
 
 FAILED=0
 for test_file in roles/*/tests/test_templates.py; do
