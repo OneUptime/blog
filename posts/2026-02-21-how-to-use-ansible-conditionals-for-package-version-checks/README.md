@@ -72,7 +72,7 @@ You can also skip tasks when a package is missing:
 
 ## Comparing Package Versions
 
-Checking for existence is useful, but the real power comes from version comparisons. Ansible includes the `version` test (also called `version_compare` in older releases) that handles semantic versioning correctly.
+Checking for existence is useful, but the real power comes from version comparisons. Ansible includes the `version` test (also called `version_compare` in older releases) that compares version strings using loose comparison by default and can also use strict, semantic versioning, or PEP 440 comparison modes when you ask for them.
 
 Here is how to check if the installed version of a package meets a minimum requirement:
 
@@ -90,7 +90,7 @@ Here is how to check if the installed version of a package meets a minimum requi
     - "ansible_facts.packages['python3'][0].version is version('3.9', '>=')"
 ```
 
-The `version` test supports these operators: `<`, `<=`, `==`, `!=`, `>=`, `>`. It also understands the `strict` parameter for strict semantic versioning comparison.
+The `version` test supports these operators: `<`, `<=`, `==`, `!=`, `>=`, `>`. It also understands the `strict` parameter for strict version parsing, and the `version_type` parameter for modes such as `semver`, `semantic`, and `pep440`.
 
 ## Handling Multiple Version Comparison Scenarios
 
@@ -136,19 +136,19 @@ In real-world playbooks, you often need to handle several version ranges differe
         - "pg_version is version('14.0', '<')"
 ```
 
-## Using the version Test with Strict Mode
+## Using the version Test with Semantic Versioning
 
-By default, the `version` test uses loose comparison, which handles most version strings. But if your packages follow strict semver (MAJOR.MINOR.PATCH), you can enforce strict comparison:
+By default, the `version` test uses loose comparison, which handles most version strings. But if your application versions follow semantic versioning (MAJOR.MINOR.PATCH), you can enforce semantic version comparison:
 
 ```yaml
-# Use strict semver comparison for application version checks
-- name: Check application version strictly
+# Use semantic version comparison for application version checks
+- name: Check application version with semver
   ansible.builtin.debug:
     msg: "App version is compatible"
-  when: "app_version is version('2.1.0', '>=', strict=true)"
+  when: "app_version is version('2.1.0', '>=', version_type='semver')"
 ```
 
-Strict mode will raise an error if the version string does not conform to semantic versioning rules, which is actually helpful for catching unexpected version formats early.
+Semantic version mode will raise an error if the version string does not conform to semantic versioning rules, which is actually helpful for catching unexpected version formats early.
 
 ## Checking Versions Across Different Package Managers
 
@@ -166,9 +166,10 @@ Different Linux distributions use different package managers, and the version st
     - name: Set Java package name based on OS family
       ansible.builtin.set_fact:
         java_pkg_name: >-
-          {{ 'java-17-openjdk' if ansible_os_family == 'RedHat'
-             else 'openjdk-17-jdk' if ansible_os_family == 'Debian'
+          {{ 'java-17-openjdk' if ansible_facts['os_family'] == 'RedHat'
+             else 'openjdk-17-jdk' if ansible_facts['os_family'] == 'Debian'
              else 'java-17-openjdk' }}
+        java_min_version: "17.0.0"
 
     - name: Check if Java is installed
       ansible.builtin.set_fact:
@@ -183,7 +184,7 @@ Different Linux distributions use different package managers, and the version st
       ansible.builtin.package:
         name: "{{ java_pkg_name }}"
         state: latest
-      when: not java_installed
+      when: not java_installed or java_version is version(java_min_version, '<')
 ```
 
 ## Using Shell Commands for Version Checks
