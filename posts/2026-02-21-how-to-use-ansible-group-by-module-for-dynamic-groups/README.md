@@ -184,7 +184,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -333,4 +333,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `group_by` module enables runtime host organization based on any variable or fact. This is particularly valuable when managing heterogeneous environments where you need different task sets for different operating systems, hardware configurations, or deployment roles. Create the groups in an early play, then target them in subsequent plays.
-
