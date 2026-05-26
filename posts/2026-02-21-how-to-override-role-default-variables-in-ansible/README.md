@@ -92,14 +92,13 @@ When including roles in the `roles` list, you can pass variables directly as rol
   become: yes
   roles:
     - role: nginx
-      vars:
-        nginx_port: 8080
-        nginx_ssl_enabled: true
-        nginx_ssl_cert: /etc/ssl/certs/myapp.crt
-        nginx_ssl_key: /etc/ssl/private/myapp.key
+      nginx_port: 8080
+      nginx_ssl_enabled: true
+      nginx_ssl_cert: /etc/ssl/certs/myapp.crt
+      nginx_ssl_key: /etc/ssl/private/myapp.key
 ```
 
-Role parameters passed through `vars` under the role entry have the same precedence as play `vars`. This approach is cleaner when you have multiple roles and want to keep each role's overrides visually associated with the role.
+Role parameters have higher precedence than play `vars`, `vars_files`, role `vars`, `include_vars`, and `set_fact`. Extra vars still override them. This approach is cleaner when you have multiple roles and want to keep each role's overrides visually associated with the role.
 
 ## Method 3: Override with include_role
 
@@ -232,29 +231,25 @@ When applying multiple roles, keep overrides organized by role.
   become: yes
   roles:
     - role: base_system
-      vars:
-        base_timezone: "America/New_York"
-        base_ntp_servers:
-          - ntp1.internal
-          - ntp2.internal
+      base_timezone: "America/New_York"
+      base_ntp_servers:
+        - ntp1.internal
+        - ntp2.internal
 
     - role: nginx
-      vars:
-        nginx_port: 8080
-        nginx_ssl_enabled: true
-        nginx_server_name: app.example.com
+      nginx_port: 8080
+      nginx_ssl_enabled: true
+      nginx_server_name: app.example.com
 
     - role: postgresql
-      vars:
-        postgresql_version: 15
-        postgresql_max_connections: 200
-        postgresql_shared_buffers: 2GB
+      postgresql_version: 15
+      postgresql_max_connections: 200
+      postgresql_shared_buffers: 2GB
 
     - role: myapp
-      vars:
-        myapp_version: "2.4.1"
-        myapp_workers: 8
-        myapp_db_host: localhost
+      myapp_version: "2.4.1"
+      myapp_workers: 8
+      myapp_db_host: localhost
 ```
 
 ## Role vars vs Role defaults
@@ -278,7 +273,7 @@ myapp_internal_supported_platforms:
   - RedHat
 ```
 
-Role `vars` have higher priority than play `vars`, `vars_files`, and most other sources. Only extra vars and `set_fact` can override them. If a role author puts a variable in `vars/main.yml` instead of `defaults/main.yml`, it is intentionally hard to override.
+Role `vars` have higher priority than inventory variables, play `vars`, and `vars_files`. They can still be overridden by more explicit sources such as block vars, task vars, `include_vars`, registered vars, `set_fact`, role or include parameters, include parameters, and extra vars. If a role author puts a variable in `vars/main.yml` instead of `defaults/main.yml`, it is intentionally hard to override.
 
 ```yaml
 # This override WILL work for defaults
@@ -292,10 +287,10 @@ Role `vars` have higher priority than play `vars`, `vars_files`, and most other 
     - myapp
 ```
 
-To override role `vars`, you need extra vars:
+To override role `vars` from the command line, use extra vars:
 
 ```bash
-# Only extra vars can override role vars
+# Extra vars can override role vars
 ansible-playbook site.yml -e "myapp_internal_config_dir=/custom"
 ```
 
@@ -374,4 +369,4 @@ myapp_log_output: file
 
 ## Summary
 
-Ansible provides multiple ways to override role defaults, each with different precedence levels. From lowest to highest priority: role defaults, inventory group vars, inventory host vars, play vars, vars_files, role parameters, include_vars, set_fact, and extra vars. Use play vars or role parameters for standard customization, inventory variables for environment-specific settings, and extra vars for one-off overrides. Understanding the difference between role `defaults` (meant to be overridden) and role `vars` (internal configuration) helps you work with roles as their authors intended.
+Ansible provides multiple ways to override role defaults, each with different precedence levels. From lowest to highest priority among the sources covered here: role defaults, inventory group vars, inventory host vars, play vars, vars_files, role vars, include_vars, registered vars and set_fact, role and include_role parameters, include parameters, and extra vars. Use play vars or role parameters for standard customization, inventory variables for environment-specific settings, and extra vars for one-off overrides. Understanding the difference between role `defaults` (meant to be overridden) and role `vars` (internal configuration) helps you work with roles as their authors intended.
