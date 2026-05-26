@@ -217,7 +217,7 @@ Dynamic inventories automatically discover hosts from external sources like AWS,
       hostnames:
         - name
         - private_ipv4_addresses | first
-      compose:
+      hostvar_expressions:
         ansible_host: private_ipv4_addresses | first
     update_on_launch: true
     state: present
@@ -256,8 +256,16 @@ graph TD
     controller_oauthtoken: "{{ awx_token }}"
     name: "webservers_east"
     inventory: "Production Servers"
+    state: present
+
+- name: Nest child group under parent
+  awx.awx.group:
+    controller_host: "{{ awx_host }}"
+    controller_oauthtoken: "{{ awx_token }}"
+    name: "us_east"
+    inventory: "Production Servers"
     children:
-      - "us_east"
+      - "webservers_east"
     state: present
 ```
 
@@ -298,6 +306,9 @@ Constructed inventories combine multiple inventories and apply grouping logic.
     description: "Constructed inventory from all environment inventories"
     organization: "Default"
     kind: "constructed"
+    input_inventories:
+      - "Production Servers"
+      - "Staging Servers"
     state: present
 ```
 
@@ -308,10 +319,10 @@ Configure the constructed inventory source.
   awx.awx.inventory_source:
     controller_host: "{{ awx_host }}"
     controller_oauthtoken: "{{ awx_token }}"
-    name: "Constructed Source"
+    name: "Auto-created source for: All Environments"
     inventory: "All Environments"
-    source: "constructed"
     source_vars:
+      plugin: constructed
       strict: false
       groups:
         # Create a group of all web servers across all inventories
