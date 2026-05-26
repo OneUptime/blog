@@ -44,7 +44,6 @@ RUN apt-get update && \
     systemd systemd-sysv \
     python3 python3-apt \
     sudo iproute2 curl ca-certificates \
-    # Add packages your role commonly needs
     apt-transport-https gnupg2 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -275,7 +274,7 @@ If you are checking whether packages are installed before installing them, this 
 
 ## 9. Disable Retry Files
 
-Ansible creates retry files on failure, which adds unnecessary I/O.
+Current Ansible versions disable retry files by default. If you are using an older configuration that enables them, turn them off to avoid unnecessary I/O on failure.
 
 ```yaml
 # molecule/default/molecule.yml
@@ -297,9 +296,8 @@ provisioner:
   config_options:
     defaults:
       callbacks_enabled: timer, profile_tasks
-      # Show the 20 slowest tasks
-      callback_whitelist: timer, profile_tasks
   env:
+    # Show the 20 slowest tasks
     PROFILE_TASKS_SORT_ORDER: descending
     PROFILE_TASKS_TASK_OUTPUT_LIMIT: 20
 ```
