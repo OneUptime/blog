@@ -191,8 +191,8 @@ jobs:
         id: tf-output
         run: |
           cd terraform/
-          echo "web_ips=$(terraform output -json web_server_ips)" >> $GITHUB_OUTPUT
-          echo "db_ip=$(terraform output -raw db_server_ip)" >> $GITHUB_OUTPUT
+          echo "web_ips=$(terraform output -json web_server_ips | jq -c '.')" >> "$GITHUB_OUTPUT"
+          echo "db_ip=$(terraform output -raw db_server_ip)" >> "$GITHUB_OUTPUT"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -229,7 +229,7 @@ jobs:
 
           cat > ansible/inventory/ci.ini << EOF
           [webservers]
-          $(echo $WEB_IPS | jq -r '.[]' | while read ip; do echo "$ip ansible_user=ubuntu"; done)
+          $(printf '%s\n' "$WEB_IPS" | jq -r '.[]' | while read ip; do echo "$ip ansible_user=ubuntu"; done)
 
           [dbservers]
           $DB_IP ansible_user=ubuntu
@@ -242,7 +242,7 @@ jobs:
       - name: Wait for SSH
         run: |
           WEB_IPS='${{ needs.terraform.outputs.web_ips }}'
-          for ip in $(echo $WEB_IPS | jq -r '.[]'); do
+          for ip in $(printf '%s\n' "$WEB_IPS" | jq -r '.[]'); do
             echo "Waiting for $ip..."
             for i in $(seq 1 30); do
               ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@$ip "echo ready" && break
