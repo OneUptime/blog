@@ -39,6 +39,7 @@ export ANSIBLE_HOST_KEY_CHECKING=False
 
 ```bash
 # Scan and add host keys before running Ansible
+# Verify the fingerprints through a trusted channel before trusting them
 ssh-keyscan -H 10.0.1.10 >> ~/.ssh/known_hosts
 ssh-keyscan -H 10.0.1.11 >> ~/.ssh/known_hosts
 ```
@@ -78,7 +79,7 @@ ssh-keyscan -H 10.0.1.10 >> ~/.ssh/known_hosts
 
 ## Security Considerations
 
-Disabling host key checking removes protection against man-in-the-middle attacks. For production, pre-populate known_hosts using `ssh-keyscan` or manage keys through your configuration management. The `StrictHostKeyChecking accept-new` option is a good middle ground as it accepts keys for new hosts but rejects changed keys.
+Disabling host key checking removes protection against man-in-the-middle attacks. For production, pre-populate known_hosts with verified host keys or manage keys through your configuration management. If you use `ssh-keyscan`, verify the fingerprints through a trusted channel before trusting them. The `StrictHostKeyChecking accept-new` option is a good middle ground as it accepts keys for new hosts but rejects changed keys.
 
 ## Summary
 
@@ -123,7 +124,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -267,4 +268,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
