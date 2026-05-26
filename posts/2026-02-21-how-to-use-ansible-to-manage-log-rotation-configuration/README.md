@@ -79,10 +79,11 @@ The template file.
 # Managed by Ansible - do not edit manually
 
 {{ log_dir }}/{{ app_name }}/*.log {
-    {{ rotation_frequency | default('daily') }}
     rotate {{ rotation_count | default(14) }}
 {% if max_log_size is defined %}
     size {{ max_log_size }}
+{% else %}
+    {{ rotation_frequency | default('daily') }}
 {% endif %}
     compress
     delaycompress
@@ -159,26 +160,26 @@ The template file.
 
 ```yaml
 # Manage Docker container JSON log rotation
-- name: Deploy Docker log rotation config
+- name: Configure Docker JSON log rotation
   ansible.builtin.copy:
     content: |
-      /var/lib/docker/containers/*/*.log {
-          daily
-          rotate 7
-          compress
-          delaycompress
-          missingok
-          notifempty
-          copytruncate
-          size 100M
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "100m",
+          "max-file": "7",
+          "compress": "true"
+        }
       }
-    dest: /etc/logrotate.d/docker-containers
+    dest: /etc/docker/daemon.json
     owner: root
     group: root
     mode: '0644'
 ```
 
-The `copytruncate` directive is important for applications that hold the log file open and do not support signal-based log reopening. Instead of renaming the log file, it copies the content and truncates the original.
+Docker container JSON logs should be rotated with Docker's logging driver options instead of managing files under `/var/lib/docker/containers/` directly. Restart Docker after changing `/etc/docker/daemon.json`; the new defaults apply to newly created containers.
+
+The `copytruncate` directive is important for non-Docker applications that hold the log file open and do not support signal-based log reopening. Instead of renaming the log file, it copies the content and truncates the original.
 
 ## Size-Based Rotation
 
@@ -263,10 +264,11 @@ The generic template.
 {{ path }}
 {% endfor %}
 {
-    {{ item.frequency | default('daily') }}
     rotate {{ item.count | default(14) }}
 {% if item.size is defined %}
     size {{ item.size }}
+{% else %}
+    {{ item.frequency | default('daily') }}
 {% endif %}
     compress
     delaycompress
@@ -294,9 +296,7 @@ Always validate your logrotate configurations after deploying them.
     cmd: logrotate --debug /etc/logrotate.conf
   register: logrotate_validate
   changed_when: false
-  failed_when: >
-    'error' in logrotate_validate.stderr | lower
-    and 'missingok' not in logrotate_validate.stderr | lower
+  failed_when: logrotate_validate.rc != 0
 ```
 
 ## Forcing a Rotation
@@ -373,4 +373,4 @@ Pair log rotation with monitoring to catch issues early.
 
 ## Summary
 
-Managing logrotate configurations with Ansible prevents the all-too-common "disk full" outages caused by unmanaged log files. Use drop-in files in `/etc/logrotate.d/` for each application, choose between time-based and size-based rotation depending on your log volume, and always configure `compress` to save disk space. The `postrotate` script is critical for applications that hold log files open. Templates with variable-driven configuration keep your playbooks DRY when managing many applications. Test your logrotate configs with the `--debug` flag after deployment, and remove configs when decommissioning applications.
+Managing logrotate configurations with Ansible prevents the all-too-common "disk full" outages caused by unmanaged log files. Use drop-in files in `/etc/logrotate.d/` for each application, choose between time-based and size-based rotation depending on your log volume, and always configure `compress` to save disk space. The `postrotate` script is important for applications that can reopen log files after rotation. Templates with variable-driven configuration keep your playbooks DRY when managing many applications. Test your logrotate configs with the `--debug` flag after deployment, and remove configs when decommissioning applications.
