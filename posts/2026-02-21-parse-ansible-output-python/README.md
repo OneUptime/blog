@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Parsing, JSON, Automation
 
-Description: Parse Ansible playbook output in Python using the JSON callback plugin and regex patterns for reporting and monitoring integration.
+Description: Parse Ansible playbook output in Python using the ansible.posix JSON callback plugin and regex patterns for reporting and monitoring integration.
 
 ---
 
@@ -12,7 +12,7 @@ When you run Ansible from Python scripts or CI/CD pipelines, you often need to p
 
 ## Using the JSON Callback Plugin
 
-The cleanest approach is to tell Ansible to output JSON:
+The cleanest approach is to tell Ansible to output JSON with the ansible.posix JSON callback:
 
 ```python
 # parse_json_output.py - Parse Ansible JSON callback output
@@ -25,8 +25,7 @@ import os
 def run_and_parse(playbook, inventory):
     """Run a playbook with JSON output and parse the results."""
     env = os.environ.copy()
-    env['ANSIBLE_STDOUT_CALLBACK'] = 'json'
-    env['ANSIBLE_LOAD_CALLBACK_PLUGINS'] = '1'
+    env['ANSIBLE_STDOUT_CALLBACK'] = 'ansible.posix.json'
 
     result = subprocess.run(
         ['ansible-playbook', playbook, '-i', inventory],
@@ -212,7 +211,7 @@ def save_report(report, filepath):
 
 ## Summary
 
-Parsing Ansible output in Python is best done with the JSON callback plugin, which gives you structured data that maps directly to Python dictionaries. For standard text output, use regex patterns to extract the PLAY RECAP and task results. Build report generators on top of the parsed data for deployment tracking, compliance auditing, and monitoring integration. Always prefer the JSON callback when you have control over the execution environment.
+Parsing Ansible output in Python is best done with the ansible.posix JSON callback plugin, which gives you structured data that maps directly to Python dictionaries. For standard text output, use regex patterns to extract the PLAY RECAP and task results. Build report generators on top of the parsed data for deployment tracking, compliance auditing, and monitoring integration. Always prefer the JSON callback when you have control over the execution environment.
 
 ## Common Use Cases
 
@@ -253,7 +252,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -397,4 +396,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
