@@ -86,6 +86,8 @@ Each block is independently managed. You can update the database config without 
 
 Not all configuration files use `#` for comments. Custom markers let you match the file's native comment syntax:
 
+The examples below are about matching file syntax. `ansible.builtin.blockinfile` itself is a POSIX-target module, so use these Windows-style markers only when managing those file formats on a POSIX host.
+
 ### XML Files
 
 ```yaml
@@ -387,7 +389,7 @@ marker: "# {mark} ANSIBLE:MYAPP:DATABASE"
 
   handlers:
     - name: Restart myapp
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: restarted
 ```
