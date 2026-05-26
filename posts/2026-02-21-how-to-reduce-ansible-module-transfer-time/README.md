@@ -8,7 +8,7 @@ Description: Reduce the time Ansible spends transferring modules to remote hosts
 
 ---
 
-Every time Ansible runs a task, it transfers a Python module to the remote host, executes it, and cleans up. This transfer step happens over SSH using either SFTP or SCP, and for playbooks with many tasks across many hosts, the cumulative transfer time is significant. This post covers practical methods to reduce or eliminate that overhead.
+For most Python-backed modules, Ansible transfers module code to the remote host, executes it, and cleans up. This transfer step happens over SSH using SFTP, SCP, or a piped transfer method, and for playbooks with many tasks across many hosts, the cumulative transfer time is significant. This post covers practical methods to reduce or eliminate that overhead.
 
 ## Understanding Module Transfer
 
@@ -44,7 +44,7 @@ The single most impactful change is enabling pipelining, which eliminates the SF
 pipelining = True
 ```
 
-With pipelining, Ansible pipes the module code directly to the Python interpreter on the remote host through the existing SSH session. No temp files, no SFTP, no chmod. The four SSH operations per task drop to one.
+With pipelining, supported connection plugins can execute many modules without an actual file transfer by piping the module code through the SSH connection. This avoids the SFTP or SCP transfer path for those modules and reduces the number of network operations required per task.
 
 ```mermaid
 graph LR
@@ -60,19 +60,19 @@ graph LR
     end
 ```
 
-Pipelining alone reduces per-task transfer overhead by 70-80%.
+Pipelining alone can significantly reduce per-task transfer overhead. If you use privilege escalation with sudo, first make sure `requiretty` is disabled on the managed hosts; Ansible disables pipelining when `ANSIBLE_KEEP_REMOTE_FILES` is enabled.
 
 ## Method 2: Use Module Compression
 
 Ansible can compress modules before transferring them, reducing the amount of data sent over the wire:
 
 ```ini
-# ansible.cfg - Enable module compression
+# ansible.cfg - Use compressed module transfer
 [defaults]
-module_compression = ZIP
+module_compression = ZIP_DEFLATED
 ```
 
-This compresses the module's ZIP archive before transfer. The benefit depends on network bandwidth between your control node and remote hosts. On a fast LAN, the compression overhead might not help much. On WAN connections or satellite links, it can make a meaningful difference.
+`ZIP_DEFLATED` is Ansible's default compression scheme for Python module transfer. The benefit depends on network bandwidth between your control node and remote hosts. On a fast LAN, the compression overhead might not help much. On WAN connections or satellite links, keeping compressed module transfer can make a meaningful difference.
 
 ## Method 3: Use the raw Module for Simple Tasks
 
@@ -102,7 +102,7 @@ The `raw` module is useful for:
 - Hosts that do not have Python installed
 - Bootstrap tasks that install Python on new hosts
 
-The downside is that `raw` returns unstructured text output, so you cannot use features like `changed_when` based on module return values (though you can parse stdout).
+The downside is that `raw` returns unstructured text output. You can still use task conditionals like `changed_when` with fields such as `stdout`, `stderr`, and `rc`, but you do not get structured module-specific return values.
 
 ## Method 4: Use the command Module Over Shell
 
@@ -122,9 +122,9 @@ The `command` module is slightly faster than `shell` because it does not invoke 
 
 This is a minor optimization, but it adds up across many tasks.
 
-## Method 5: Reduce Module Size with set_fact
+## Method 5: Reduce Payload Size with set_fact
 
-When you use `set_fact` to store large data structures, that data gets sent to the remote host with every subsequent module call. Keep facts lean:
+When you use `set_fact` to store large data structures, those variables stay in Ansible's host variable data on the control node. They are not automatically sent to the remote host with every subsequent module call, but they can make later tasks heavier if you pass them into module arguments or render them into templates. Keep facts lean:
 
 ```yaml
 # Bad: storing large output as a fact
@@ -135,7 +135,7 @@ When you use `set_fact` to store large data structures, that data gets sent to t
 - name: Store all package names
   set_fact:
     package_list: "{{ all_packages.stdout }}"
-    # This large string gets transferred with every subsequent task
+    # This large string is expensive if later tasks pass or render it
 
 # Better: store only what you need
 - name: Check specific package
@@ -146,7 +146,7 @@ When you use `set_fact` to store large data structures, that data gets sent to t
 - name: Store just the version
   set_fact:
     nginx_version: "{{ nginx_package.stdout_lines[5].split()[2] }}"
-    # Much smaller fact to carry around
+    # Much smaller fact to reuse
 ```
 
 ## Method 6: Use synchronize Instead of copy
@@ -203,10 +203,10 @@ Some environments are faster with SCP than SFTP for module transfer. You can cha
 ```ini
 # ansible.cfg - Use SCP instead of SFTP
 [ssh_connection]
-scp_if_ssh = True
+transfer_method = scp
 ```
 
-Or use the smart mode that tries SFTP first and falls back to SCP:
+Or use the smart mode that tries SFTP first, then SCP, then a piped transfer:
 
 ```ini
 # Try SFTP first, fall back to SCP
@@ -215,6 +215,8 @@ transfer_method = smart
 ```
 
 In my testing, SCP is sometimes 10-15% faster than SFTP on high-latency connections.
+
+Note that OpenSSH 9.0 and newer use SFTP for `scp` by default, and Ansible documents the `scp` transfer method as deprecated in OpenSSH. If you need legacy SCP behavior with OpenSSH 9.0 or newer, configure `scp_extra_args = -O`.
 
 ## Method 9: Combine Tasks to Reduce Round Trips
 
@@ -233,7 +235,7 @@ Each task is a separate module transfer. Combining related operations into fewer
 - name: Create dir 5
   file: path=/opt/app/bin state=directory
 
-# Better: 1 task with a loop = 1 module transfer (with loop optimization)
+# Better: 1 task in the playbook, but still one module execution per item
 - name: Create all directories
   file:
     path: "{{ item }}"
@@ -251,7 +253,7 @@ Even better, use a single `command` call:
 ```yaml
 # Best: single command for multiple directories
 - name: Create all directories at once
-  command: mkdir -p /opt/app/{logs,data,tmp,config,bin}
+  command: mkdir -p /opt/app/logs /opt/app/data /opt/app/tmp /opt/app/config /opt/app/bin
   args:
     creates: /opt/app/logs
 ```
@@ -263,15 +265,15 @@ Profile module transfer time specifically:
 ```bash
 # Measure time with and without pipelining
 echo "=== Without pipelining ==="
-ANSIBLE_PIPELINING=False ANSIBLE_CALLBACKS_ENABLED=profile_tasks \
+ANSIBLE_PIPELINING=False ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks \
     ansible-playbook benchmark.yml 2>&1 | tail -20
 
 echo "=== With pipelining ==="
-ANSIBLE_PIPELINING=True ANSIBLE_CALLBACKS_ENABLED=profile_tasks \
+ANSIBLE_PIPELINING=True ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks \
     ansible-playbook benchmark.yml 2>&1 | tail -20
 ```
 
-The difference between these two runs is almost entirely module transfer overhead, since the actual module execution time is the same.
+The difference between these two runs is mostly module transfer and connection overhead, assuming the benchmark tasks do the same remote work in both runs.
 
 ## Recommended Configuration
 
