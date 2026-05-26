@@ -183,9 +183,10 @@ jobs:
 
       - name: Run Molecule tests
         run: |
+          . scripts/set_molecule_vars.sh
           molecule test -s ${{ matrix.scenario }}
         env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+          TEST_DISTRO: ${{ matrix.distro }}
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
 ```
@@ -196,17 +197,17 @@ Instead of hardcoding platforms in each scenario, use environment variables to s
 
 ```yaml
 # molecule/default/molecule.yml
-# Platform selected dynamically via MOLECULE_DISTRO env var
+# Platform selected dynamically via TEST_DISTRO env var
 dependency:
   name: galaxy
 driver:
   name: docker
 platforms:
-  - name: ${MOLECULE_DISTRO:-ubuntu2204}
-    image: ${MOLECULE_IMAGE:-ubuntu:22.04}
+  - name: ${TEST_DISTRO:-ubuntu2204}
+    image: ${TEST_IMAGE:-ubuntu:22.04}
     pre_build_image: true
     privileged: true
-    command: ${MOLECULE_COMMAND:-/sbin/init}
+    command: ${TEST_COMMAND:-/sbin/init}
 provisioner:
   name: ansible
 verifier:
@@ -219,29 +220,29 @@ Create a lookup script that maps distro names to Docker images:
 #!/bin/bash
 # scripts/set_molecule_vars.sh
 # Map distro short names to Docker image details
-case "${MOLECULE_DISTRO}" in
+case "${TEST_DISTRO}" in
     ubuntu2204)
-        export MOLECULE_IMAGE="ubuntu:22.04"
-        export MOLECULE_COMMAND="/sbin/init"
+        export TEST_IMAGE="ubuntu:22.04"
+        export TEST_COMMAND="/sbin/init"
         ;;
     ubuntu2404)
-        export MOLECULE_IMAGE="ubuntu:24.04"
-        export MOLECULE_COMMAND="/sbin/init"
+        export TEST_IMAGE="ubuntu:24.04"
+        export TEST_COMMAND="/sbin/init"
         ;;
     debian12)
-        export MOLECULE_IMAGE="debian:12"
-        export MOLECULE_COMMAND="/sbin/init"
+        export TEST_IMAGE="debian:12"
+        export TEST_COMMAND="/sbin/init"
         ;;
     rockylinux9)
-        export MOLECULE_IMAGE="rockylinux:9"
-        export MOLECULE_COMMAND="/usr/sbin/init"
+        export TEST_IMAGE="rockylinux:9"
+        export TEST_COMMAND="/usr/sbin/init"
         ;;
     almalinux9)
-        export MOLECULE_IMAGE="almalinux:9"
-        export MOLECULE_COMMAND="/usr/sbin/init"
+        export TEST_IMAGE="almalinux:9"
+        export TEST_COMMAND="/usr/sbin/init"
         ;;
     *)
-        echo "Unknown distro: ${MOLECULE_DISTRO}"
+        echo "Unknown distro: ${TEST_DISTRO}"
         exit 1
         ;;
 esac
@@ -360,15 +361,19 @@ test-all:
 	@for scenario in $(SCENARIOS); do \
 		for distro in $(DISTROS); do \
 			echo "=== Testing $$scenario on $$distro ==="; \
-			MOLECULE_DISTRO=$$distro molecule test -s $$scenario || exit 1; \
+			export TEST_DISTRO=$$distro; \
+			. scripts/set_molecule_vars.sh; \
+			molecule test -s $$scenario || exit 1; \
 		done; \
 	done
 
 test-quick:
 	@for distro in $(DISTROS); do \
 		echo "=== Quick test on $$distro ==="; \
-		MOLECULE_DISTRO=$$distro molecule converge || exit 1; \
-		MOLECULE_DISTRO=$$distro molecule verify || exit 1; \
+		export TEST_DISTRO=$$distro; \
+		. scripts/set_molecule_vars.sh; \
+		molecule converge || exit 1; \
+		molecule verify || exit 1; \
 	done
 ```
 
