@@ -8,7 +8,7 @@ Description: Learn how to connect GitHub, GitLab, Bitbucket, and Azure DevOps re
 
 ---
 
-Connecting a version control system to HCP Terraform is what turns infrastructure code into a collaborative workflow. Once connected, pushing code to a branch triggers a plan. Opening a pull request shows the plan output as a comment. Merging to main applies the changes. This is the VCS-driven workflow, and it starts with connecting your VCS provider.
+Connecting a version control system to HCP Terraform is what turns infrastructure code into a collaborative workflow. Once connected, pushing code to the configured branch triggers a normal run. Opening a pull request triggers a speculative plan and reports the result as a status check. Merging to main triggers a normal plan and apply cycle, depending on the workspace's apply method. This is the VCS-driven workflow, and it starts with connecting your VCS provider.
 
 This guide covers connecting GitHub, GitLab, Bitbucket, and Azure DevOps to HCP Terraform.
 
@@ -17,10 +17,10 @@ This guide covers connecting GitHub, GitLab, Bitbucket, and Azure DevOps to HCP 
 When you link a workspace to a repository:
 
 1. HCP Terraform registers a webhook on the repository
-2. Pushing to the configured branch triggers a speculative plan
+2. Pushing to the configured branch triggers a normal run
 3. Opening a PR triggers a plan and posts the results as a status check
 4. Merging to the default branch triggers a full plan and (optionally) auto-apply
-5. HCP Terraform only runs when files in the workspace's working directory change
+5. HCP Terraform can limit automatic runs to specific paths when you configure VCS trigger patterns or prefixes
 
 The entire flow is automatic. Your team reviews infrastructure changes through the same PR process they use for application code.
 
@@ -32,7 +32,7 @@ Before connecting repositories, register a VCS provider with your organization.
 
 1. Navigate to **Settings** > **VCS Providers** > **Add a VCS Provider**
 2. Select **GitHub.com**
-3. Follow the OAuth flow:
+3. Follow the GitHub App flow:
    - HCP Terraform asks you to create (or select) a GitHub App installation
    - Authorize the app for the GitHub organization that contains your repos
    - Choose which repositories to grant access to (all or selected)
@@ -47,9 +47,9 @@ For self-hosted GitHub Enterprise:
 2. Enter your GitHub Enterprise URL: `https://github.mycompany.com`
 3. Register an OAuth application in GitHub Enterprise:
    - Homepage URL: `https://app.terraform.io`
-   - Callback URL: `https://app.terraform.io/auth/YOUR_CALLBACK_ID/callback`
+   - Callback URL: Provided by HCP Terraform during setup
 4. Enter the Client ID and Client Secret from the OAuth app
-5. Provide an optional personal access token for API access
+5. Optionally add an SSH key if the repository uses SSH-based Git submodules
 
 ### GitLab.com
 
@@ -73,14 +73,15 @@ For self-hosted GitHub Enterprise:
 2. In Bitbucket, create an OAuth consumer:
    - Navigate to your workspace settings > **OAuth consumers**
    - Callback URL: Provided by HCP Terraform
-   - Permissions: `Repositories: Read`, `Pull Requests: Read`, `Webhooks: Read and Write`
+   - Permissions: `Account: Write`, `Repositories: Admin`, `Pull Requests: Write`, `Webhooks: Read and Write`
 3. Enter the Key and Secret in HCP Terraform
 
 ### Azure DevOps
 
-1. Select **Azure DevOps Server** or **Azure DevOps Services**
-2. Register an OAuth app in Azure DevOps or provide a personal access token
-3. Configure the connection details
+1. Select **Azure DevOps Server**, **Azure DevOps Services (OAuth)**, or **Azure DevOps Services (PAT)**
+2. For Azure DevOps Services OAuth, register an OAuth app in Azure DevOps
+3. For Azure DevOps Services PAT or Azure DevOps Server, provide a personal access token
+4. Configure the connection details
 
 ## Step 2: Link a Workspace to a Repository
 
@@ -108,7 +109,7 @@ VCS Triggers:
 ### Through the tfe Provider
 
 ```hcl
-# First, get the OAuth token ID from your VCS provider connection
+# For OAuth-based VCS connections, get the OAuth token ID from your VCS provider connection
 
 data "tfe_oauth_client" "github" {
   organization     = var.organization
@@ -129,10 +130,12 @@ resource "tfe_workspace" "production" {
 }
 ```
 
+If you use the GitHub App connection instead of an OAuth connection, set `github_app_installation_id` in the `vcs_repo` block instead of `oauth_token_id`.
+
 ### Through the API
 
 ```bash
-# Link a workspace to a VCS repository
+# Link a workspace to an OAuth-based VCS repository
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
@@ -176,6 +179,7 @@ infrastructure/
 ```hcl
 resource "tfe_workspace" "prod_networking" {
   name              = "production-networking"
+  organization      = var.organization
   working_directory = "environments/production/networking"
 
   vcs_repo {
@@ -186,6 +190,7 @@ resource "tfe_workspace" "prod_networking" {
 
 resource "tfe_workspace" "prod_compute" {
   name              = "production-compute"
+  organization      = var.organization
   working_directory = "environments/production/compute"
 
   vcs_repo {
@@ -195,7 +200,7 @@ resource "tfe_workspace" "prod_compute" {
 }
 ```
 
-Changes to `environments/production/networking/` only trigger the networking workspace. Changes to shared modules trigger all workspaces that use them - configure this with trigger patterns.
+With path-based VCS triggers enabled, changes to `environments/production/networking/` only trigger the networking workspace. Changes to shared modules can trigger all workspaces that use them if you include those module paths in trigger patterns.
 
 ## Trigger Patterns
 
@@ -203,7 +208,8 @@ By default, a workspace runs whenever any file in the repository changes. For mo
 
 ```hcl
 resource "tfe_workspace" "prod_networking" {
-  name = "production-networking"
+  name         = "production-networking"
+  organization = var.organization
 
   # Only trigger when these paths change
   trigger_patterns = [
@@ -240,7 +246,8 @@ You can configure which branch triggers runs:
 
 ```hcl
 resource "tfe_workspace" "production" {
-  name = "production-app"
+  name         = "production-app"
+  organization = var.organization
 
   vcs_repo {
     identifier     = "myorg/infrastructure"
@@ -250,7 +257,8 @@ resource "tfe_workspace" "production" {
 }
 
 resource "tfe_workspace" "staging" {
-  name = "staging-app"
+  name         = "staging-app"
+  organization = var.organization
 
   vcs_repo {
     identifier     = "myorg/infrastructure"
@@ -280,7 +288,8 @@ data "tfe_oauth_client" "gitlab" {
 }
 
 resource "tfe_workspace" "app_infra" {
-  name = "app-infrastructure"
+  name         = "app-infrastructure"
+  organization = var.organization
 
   vcs_repo {
     identifier     = "myorg/app-infra"
@@ -289,7 +298,8 @@ resource "tfe_workspace" "app_infra" {
 }
 
 resource "tfe_workspace" "platform_infra" {
-  name = "platform-infrastructure"
+  name         = "platform-infrastructure"
+  organization = var.organization
 
   vcs_repo {
     identifier     = "myorg/platform-infra"
