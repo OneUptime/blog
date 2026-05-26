@@ -34,7 +34,7 @@ ansible-vault encrypt_string --vault-password-file ~/.vault_pass \
   --stdin-name 'db_password'
 ```
 
-After running this command, type the secret value and press `Ctrl+D` (on Linux/macOS) to signal end of input. The output will be something like:
+After running this command, type the secret value and press `Ctrl+D` (on Linux/macOS) to signal end of input. Do not press `Enter` first unless you want a newline in the encrypted value. The output will be something like:
 
 ```yaml
 db_password: !vault |
@@ -159,7 +159,7 @@ vault_smtp_password=mailpass789
 
 ## Verifying the Encrypted String
 
-After encrypting, you can verify the value decrypts correctly by placing it in a test file and using `ansible-vault decrypt`:
+After encrypting, you can verify the value decrypts correctly by placing it in a test file and running a small playbook:
 
 ```bash
 # Create a test playbook to verify the encrypted string
@@ -211,14 +211,18 @@ EOF
 When in doubt, test your encrypted value by decrypting it and checking for unexpected whitespace:
 
 ```bash
-# Quick test to see exactly what was encrypted (including hidden characters)
+tmp_vars=$(mktemp)
+
 echo -n 'password123' | ansible-vault encrypt_string \
   --vault-password-file ~/.vault_pass \
-  --stdin-name 'test' | python3 -c "
-import yaml, sys
-data = yaml.safe_load(sys.stdin)
-print(repr(data['test']))
-"
+  --stdin-name 'test' > "$tmp_vars"
+
+ansible localhost -m ansible.builtin.debug \
+  -a var="test" \
+  -e "@$tmp_vars" \
+  --vault-password-file ~/.vault_pass
+
+rm "$tmp_vars"
 ```
 
 ## Integrating with CI/CD
