@@ -16,12 +16,12 @@ This guide covers creating NAT Gateways with Ansible, configuring them for high 
 
 You need:
 
-- Ansible 2.14+
+- Ansible core 2.16+
 - The `amazon.aws` collection
 - AWS credentials with VPC and EC2 permissions
 - A VPC with public and private subnets
 - An Internet Gateway attached to the VPC
-- Python boto3
+- Python boto3 and botocore 1.34.0+
 
 ```bash
 # Install dependencies
@@ -383,6 +383,7 @@ Delete in the right order: NAT Gateway first, then the Elastic IP:
     region: us-east-1
     state: absent
     public_ip: 203.0.113.10
+    release_on_disassociation: true
 ```
 
 The Elastic IP cannot be released while it is still associated with the NAT Gateway, so wait for the deletion to complete first.
