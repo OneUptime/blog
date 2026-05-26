@@ -26,10 +26,10 @@ pip install boto3 botocore
 For a locked-down setup, pin versions in your requirements.
 
 ```yaml
-# requirements.yml - pin collection and dependencies
+# requirements.yml - pin the collection version
 collections:
   - name: amazon.aws
-    version: ">=7.0.0"
+    version: "==10.3.1"
 ```
 
 ## Authentication Setup
@@ -200,15 +200,16 @@ With networking in place, you can launch instances.
         instance_type: t3.medium
         image_id: ami-0c55b159cbfafe1f0
         key_name: my-keypair
-        vpc_subnet_id: "subnet-abc123"
-        security_groups:
-          - "web-servers-sg"
+        network_interfaces:
+          - assign_public_ip: true
+            groups:
+              - "web-servers-sg"
+            subnet_id: "subnet-abc123"
         volumes:
           - device_name: /dev/xvda
             ebs:
               volume_size: 50
               volume_type: gp3
-              encrypted: true
               delete_on_termination: true
         tags:
           Environment: production
@@ -263,7 +264,8 @@ S3 bucket management includes creation, policy configuration, and object operati
         object: "config/app-settings.json"
         src: "files/app-settings.json"
         mode: put
-        encryption: "AES256"
+        encrypt: true
+        encryption_mode: "AES256"
 
     - name: Download a file from S3
       amazon.aws.s3_object:
