@@ -30,7 +30,7 @@ graph LR
 # roles/traefik/defaults/main.yml
 
 # Default values for Traefik deployment
-traefik_version: "3.0"
+traefik_version: "3.0.0"
 traefik_install_dir: /opt/traefik
 traefik_config_dir: /etc/traefik
 traefik_dynamic_config_dir: /etc/traefik/dynamic
@@ -80,6 +80,15 @@ traefik_group: traefik
     - "{{ traefik_dynamic_config_dir }}"
     - "{{ traefik_log_dir }}"
     - "{{ traefik_config_dir }}/acme"
+
+- name: Create ACME storage file
+  ansible.builtin.copy:
+    dest: "{{ traefik_config_dir }}/acme/acme.json"
+    content: ""
+    force: false
+    owner: "{{ traefik_user }}"
+    group: "{{ traefik_group }}"
+    mode: '0600'
 
 - name: Download Traefik binary
   ansible.builtin.get_url:
