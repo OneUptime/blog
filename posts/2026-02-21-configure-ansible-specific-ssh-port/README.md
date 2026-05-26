@@ -99,8 +99,7 @@ Override the port for a single command:
 
 ```bash
 # Set the default remote port via environment variable
-export ANSIBLE_REMOTE_PORT=2222
-ansible all -m ping
+ANSIBLE_REMOTE_PORT=2222 ansible all -m ping
 ```
 
 ## Method 6: In the SSH Config File
@@ -136,7 +135,7 @@ web02
 db01
 ```
 
-And make sure Ansible does not override the SSH config settings. In ansible.cfg, avoid setting `ansible_port` or `remote_port` if you want SSH config to take precedence.
+And make sure Ansible does not override the SSH config settings. Avoid setting `ansible_port` in inventory or `remote_port` in ansible.cfg if you want SSH config to take precedence.
 
 ## Method 7: Command Line Override
 
@@ -176,7 +175,7 @@ prod-db01 ansible_host=10.0.0.20 ansible_port=5422
 - name: Deploy through bastion
   hosts: webservers
   vars:
-    ansible_ssh_common_args: '-o ProxyJump=bastion01'
+    ansible_ssh_common_args: '-o ProxyJump=203.0.113.5:22222'
 
   tasks:
     - name: Deploy application
@@ -197,6 +196,7 @@ If you want to use Ansible to change the SSH port on your managed hosts, you nee
   become: true
   vars:
     new_ssh_port: 2222
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
 
   tasks:
     - name: Update SSH configuration
@@ -235,7 +235,7 @@ If you want to use Ansible to change the SSH port on your managed hosts, you nee
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
