@@ -28,8 +28,8 @@ flowchart TD
 ```
 
 Key components:
-- **PK (Platform Key)**: The root of trust, usually owned by the hardware vendor
-- **KEK (Key Exchange Key)**: Authorized to update the signature database
+- **PK (Platform Key)**: The platform owner's key used to authorize changes to the KEK database
+- **KEK (Key Exchange Key)**: Authorized to update the signature and revocation databases
 - **db**: Database of trusted signatures and certificates
 - **dbx**: Database of revoked/forbidden signatures
 - **MOK (Machine Owner Key)**: Additional keys managed by the OS
@@ -80,7 +80,7 @@ This playbook checks whether Secure Boot is enabled on each server:
 
     - name: Count enrolled keys
       ansible.builtin.debug:
-        msg: "Enrolled MOK keys: {{ enrolled_keys.stdout_lines | select('match', '^SHA1.*') | list | length }}"
+        msg: "Enrolled MOK keys: {{ enrolled_keys.stdout_lines | select('search', 'Fingerprint:') | list | length }}"
       when: efi_check.stat.exists and enrolled_keys.rc == 0
 ```
 
@@ -102,9 +102,11 @@ This playbook installs Secure Boot management utilities:
       ansible.builtin.apt:
         name:
           - mokutil
+          - openssl
           - sbsigntool
           - efitools
           - pesign
+          - "linux-headers-{{ ansible_kernel }}"
         state: present
         update_cache: true
       when: ansible_os_family == "Debian"
@@ -113,9 +115,11 @@ This playbook installs Secure Boot management utilities:
       ansible.builtin.yum:
         name:
           - mokutil
+          - openssl
           - sbsigntools
           - efivar
           - pesign
+          - "kernel-devel-{{ ansible_kernel }}"
         state: present
       when: ansible_os_family == "RedHat"
 ```
@@ -159,7 +163,7 @@ This playbook generates a MOK key pair and prepares it for enrollment:
         -keyout {{ mok_key_dir }}/MOK.priv
         -outform DER
         -out {{ mok_key_dir }}/MOK.der
-        -nodes
+        -noenc
         -days {{ mok_key_validity_days }}
         -subj "/CN={{ mok_key_cn }}/"
       when: not mok_key.stat.exists
@@ -208,6 +212,7 @@ This playbook signs kernel modules:
 
   vars:
     mok_key_dir: /var/lib/shim-signed/mok
+    sign_file_path: "/lib/modules/{{ ansible_kernel }}/build/scripts/sign-file"
     modules_to_sign:
       - vboxdrv        # VirtualBox
       - vboxnetflt
@@ -225,7 +230,7 @@ This playbook signs kernel modules:
 
     - name: Sign each module
       ansible.builtin.command: >
-        /usr/src/linux-headers-{{ ansible_kernel }}/scripts/sign-file
+        {{ sign_file_path }}
         sha256
         {{ mok_key_dir }}/MOK.priv
         {{ mok_key_dir }}/MOK.der
@@ -268,42 +273,12 @@ This playbook configures DKMS to auto-sign modules:
     mok_key_dir: /var/lib/shim-signed/mok
 
   tasks:
-    - name: Deploy DKMS signing script
-      ansible.builtin.copy:
-        content: |
-          #!/bin/bash
-          # DKMS post-build hook for Secure Boot module signing
-          # Managed by Ansible
-
-          SIGN_FILE="/usr/src/linux-headers-$(uname -r)/scripts/sign-file"
-          MOK_KEY="{{ mok_key_dir }}/MOK.priv"
-          MOK_CERT="{{ mok_key_dir }}/MOK.der"
-
-          # Arguments from DKMS: $1=module_name $2=module_version $3=kernel_version
-          MODULE_NAME="$1"
-          MODULE_VERSION="$2"
-          KERNEL_VERSION="${3:-$(uname -r)}"
-
-          MODULE_DIR="/lib/modules/${KERNEL_VERSION}/updates/dkms"
-          MODULE_FILE="${MODULE_DIR}/${MODULE_NAME}.ko"
-
-          if [ -f "$MODULE_FILE" ] && [ -f "$SIGN_FILE" ] && [ -f "$MOK_KEY" ]; then
-              echo "Signing ${MODULE_FILE} for Secure Boot..."
-              "$SIGN_FILE" sha256 "$MOK_KEY" "$MOK_CERT" "$MODULE_FILE"
-              echo "Module signed successfully."
-          else
-              echo "Warning: Could not sign module ${MODULE_NAME}"
-          fi
-        dest: /etc/dkms/sign-module.sh
-        owner: root
-        group: root
-        mode: '0700'
-
-    - name: Configure DKMS to use signing script
-      ansible.builtin.lineinfile:
+    - name: Configure DKMS signing key
+      ansible.builtin.blockinfile:
         path: /etc/dkms/framework.conf
-        regexp: "^POST_BUILD="
-        line: 'POST_BUILD="/etc/dkms/sign-module.sh $module $module_version $kernelver"'
+        block: |
+          mok_signing_key="{{ mok_key_dir }}/MOK.priv"
+          mok_certificate="{{ mok_key_dir }}/MOK.der"
         create: true
         mode: '0644'
 ```
@@ -386,15 +361,15 @@ When the kernel is updated, you need to make sure the new kernel is signed and c
         fail_msg: "Shim boot loader not installed - Secure Boot may not work"
       failed_when: false
 
-    - name: Verify GRUB is signed
-      ansible.builtin.command: sbverify --cert /usr/share/secureboot/keys/grub.pem /boot/efi/EFI/ubuntu/grubx64.efi
-      register: grub_signed
+    - name: List GRUB Secure Boot signatures
+      ansible.builtin.command: sbverify --list /boot/efi/EFI/ubuntu/grubx64.efi
+      register: grub_signatures
       changed_when: false
       failed_when: false
 
     - name: Report GRUB signature status
       ansible.builtin.debug:
-        msg: "GRUB signature: {{ 'VALID' if grub_signed.rc == 0 else 'INVALID or MISSING' }}"
+        msg: "GRUB signature: {{ 'PRESENT' if grub_signatures.rc == 0 else 'MISSING or unreadable at the configured path' }}"
 ```
 
 ## Important Considerations
