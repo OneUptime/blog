@@ -8,18 +8,18 @@ Description: Provision and configure GCP Cloud SQL instances with Ansible includ
 
 ---
 
-Cloud SQL is GCP's managed relational database service supporting MySQL, PostgreSQL, and SQL Server. It handles patching, backups, replication, and failover so you can focus on your application. But the initial setup still involves a lot of configuration: instance tier, storage, networking, backup schedules, maintenance windows, and database flags. Ansible lets you capture all these settings as code, making it trivial to create consistent database instances across environments.
+Cloud SQL is GCP's managed relational database service supporting MySQL, PostgreSQL, and SQL Server. It handles patching, backups, replication, and failover so you can focus on your application. But the initial setup still involves a lot of configuration: instance tier, storage, networking, backup schedules, maintenance windows, and database flags. Ansible lets you capture many of these settings as code, making it easier to create consistent database instances across environments.
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- Ansible Core 2.16+ with the `google.cloud` collection
 - GCP service account with Cloud SQL Admin role
 - Cloud SQL Admin API enabled
-- Service Networking API enabled (for private IP)
+- Service Networking API enabled and private services access configured for the VPC (for private IP)
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 
 # Enable required APIs
 
@@ -67,31 +67,18 @@ Here is a playbook that creates a production-ready PostgreSQL instance:
           tier: "db-custom-4-16384"
           ip_configuration:
             ipv4_enabled: false
-            private_network: "projects/{{ gcp_project }}/global/networks/production-vpc"
+            private_network: "/projects/{{ gcp_project }}/global/networks/production-vpc"
           backup_configuration:
             enabled: true
             start_time: "03:00"
-            point_in_time_recovery_enabled: true
-            transaction_log_retention_days: 7
-            backup_retention_settings:
-              retained_backups: 14
-              retention_unit: COUNT
-          maintenance_window:
-            day: 7
-            hour: 4
-            update_track: stable
           availability_type: REGIONAL
-          disk_type: PD_SSD
-          disk_size: 100
-          disk_autoresize: true
-          disk_autoresize_limit: 500
           database_flags:
             - name: max_connections
               value: "200"
             - name: log_min_duration_statement
               value: "1000"
             - name: shared_buffers
-              value: "4096"
+              value: "524288"
           user_labels:
             environment: production
             team: backend
@@ -107,7 +94,7 @@ Here is a playbook that creates a production-ready PostgreSQL instance:
         msg:
           - "Instance: {{ sql_instance.name }}"
           - "Connection: {{ sql_instance.connectionName }}"
-          - "IP: {{ sql_instance.ipAddresses[0].ipAddress | default('pending') }}"
+          - "IP: {{ ((sql_instance.ipAddresses | default([]) | first) | default({})).ipAddress | default('pending') }}"
 ```
 
 Let me walk through the important settings:
@@ -115,8 +102,7 @@ Let me walk through the important settings:
 - `tier: db-custom-4-16384` creates an instance with 4 vCPUs and 16 GB RAM. You can also use predefined tiers like `db-n1-standard-4`.
 - `ipv4_enabled: false` with `private_network` set means the instance only has a private IP within your VPC. This is the recommended setup for production.
 - `availability_type: REGIONAL` enables high availability with automatic failover to a standby in a different zone.
-- `disk_autoresize: true` with a limit prevents running out of storage without letting costs spiral.
-- The `database_flags` section tunes PostgreSQL parameters. `log_min_duration_statement: 1000` logs queries that take longer than 1 second, which is invaluable for performance troubleshooting.
+- The `database_flags` section tunes PostgreSQL parameters. `log_min_duration_statement: 1000` logs queries that take longer than 1 second, and `shared_buffers` is specified in 8 KB units for Cloud SQL.
 
 ## Creating a MySQL Instance
 
@@ -145,18 +131,17 @@ The module works the same way for MySQL with different version and flags:
           tier: "db-custom-2-8192"
           ip_configuration:
             ipv4_enabled: false
-            private_network: "projects/{{ gcp_project }}/global/networks/production-vpc"
+            private_network: "/projects/{{ gcp_project }}/global/networks/production-vpc"
           backup_configuration:
             enabled: true
             binary_log_enabled: true
             start_time: "03:00"
           availability_type: REGIONAL
-          disk_type: PD_SSD
-          disk_size: 50
-          disk_autoresize: true
           database_flags:
             - name: slow_query_log
               value: "on"
+            - name: log_output
+              value: "FILE"
             - name: long_query_time
               value: "2"
             - name: innodb_buffer_pool_size
@@ -205,7 +190,8 @@ After the instance is up, create databases and users:
       google.cloud.gcp_sql_user:
         name: "app_user"
         password: "{{ vault_db_password }}"
-        instance: "{{ instance_name }}"
+        instance:
+          name: "{{ instance_name }}"
         host: "%"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
@@ -240,16 +226,11 @@ For read-heavy workloads, add read replicas:
         region: "us-central1"
         database_version: "POSTGRES_15"
         master_instance_name: "{{ primary_instance }}"
-        replica_configuration:
-          failover_target: false
         settings:
           tier: "db-custom-2-8192"
           ip_configuration:
             ipv4_enabled: false
-            private_network: "projects/{{ gcp_project }}/global/networks/production-vpc"
-          disk_type: PD_SSD
-          disk_size: 100
-          disk_autoresize: true
+            private_network: "/projects/{{ gcp_project }}/global/networks/production-vpc"
           user_labels:
             role: read-replica
             primary: "{{ primary_instance }}"
@@ -294,16 +275,12 @@ Putting it all together in a single playbook:
         settings:
           tier: "db-custom-4-16384"
           availability_type: REGIONAL
-          disk_type: PD_SSD
-          disk_size: 100
-          disk_autoresize: true
           ip_configuration:
             ipv4_enabled: false
-            private_network: "projects/{{ gcp_project }}/global/networks/production-vpc"
+            private_network: "/projects/{{ gcp_project }}/global/networks/production-vpc"
           backup_configuration:
             enabled: true
             start_time: "03:00"
-            point_in_time_recovery_enabled: true
           user_labels:
             environment: production
         project: "{{ gcp_project }}"
@@ -324,7 +301,9 @@ Putting it all together in a single playbook:
       google.cloud.gcp_sql_user:
         name: "app_user"
         password: "{{ vault_db_password }}"
-        instance: "{{ instance_name }}"
+        instance:
+          name: "{{ instance_name }}"
+        host: "%"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
@@ -338,12 +317,9 @@ Putting it all together in a single playbook:
         master_instance_name: "{{ instance_name }}"
         settings:
           tier: "db-custom-2-8192"
-          disk_type: PD_SSD
-          disk_size: 100
-          disk_autoresize: true
           ip_configuration:
             ipv4_enabled: false
-            private_network: "projects/{{ gcp_project }}/global/networks/production-vpc"
+            private_network: "/projects/{{ gcp_project }}/global/networks/production-vpc"
           user_labels:
             role: read-replica
         project: "{{ gcp_project }}"
@@ -389,4 +365,4 @@ Always delete replicas before deleting the primary instance, or the deletion wil
 
 ## Summary
 
-Cloud SQL management with Ansible gives you reproducible database infrastructure across all your environments. The most important configuration decisions are: choose the right tier based on your workload, enable high availability for production, use private IP networking to keep database traffic off the public internet, configure automated backups with point-in-time recovery, and tune database flags based on your application's needs. Having all of this in a playbook means spinning up a new environment with a fully configured database is a single command.
+Cloud SQL management with Ansible gives you reproducible database infrastructure across all your environments. The most important configuration decisions are: choose the right tier based on your workload, enable high availability for production, use private IP networking to keep database traffic off the public internet, configure automated backups, and tune database flags based on your application's needs. Having all of this in a playbook means spinning up a new environment with a fully configured database is a single command.
