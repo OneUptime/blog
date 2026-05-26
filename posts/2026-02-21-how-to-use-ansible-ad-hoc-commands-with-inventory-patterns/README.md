@@ -149,23 +149,23 @@ ansible '~(web|db).*' -a "hostname"
 # Match hosts with a number in the name
 ansible '~.*[0-9]+' -a "hostname"
 
-# Match hosts in a specific IP range pattern
-ansible '~10\.0\.1\.*' -a "hostname"
+# Match staging hosts with web or db in the name
+ansible '~staging-(web|db).*' -a "hostname"
 ```
 
-## Numeric Range Patterns
+## Group Slice Patterns
 
-Ansible supports numeric ranges in square brackets for sequentially named hosts:
+Ansible supports slice notation in square brackets for selecting hosts by their position in a group:
 
 ```bash
-# Target web01 through web03
-ansible 'web[01:03]' -a "hostname"
+# Target the first three hosts in the webservers group
+ansible 'webservers[0:2]' -a "hostname"
 
-# Target hosts with alphabetic ranges
-ansible 'web[a:c]' -a "hostname"
+# Target the second and third hosts in the webservers group
+ansible 'webservers[1:2]' -a "hostname"
 ```
 
-This is especially useful when your servers follow a predictable naming convention.
+This is especially useful when your inventory group has a predictable order.
 
 ## Limiting Hosts at Runtime
 
@@ -207,7 +207,7 @@ Target subsets of a group for rolling operations:
 
 ```bash
 # Restart nginx on web01 and web02 first
-ansible 'web[01:02]' -m service -a "name=nginx state=restarted" --become
+ansible 'web01:web02' -m service -a "name=nginx state=restarted" --become
 
 # Then restart on web03 after verifying
 ansible 'web03' -m service -a "name=nginx state=restarted" --become
@@ -274,8 +274,8 @@ ansible 'web*' -a "hostname"
 # Regex
 ansible '~(web|db).*' -a "hostname"
 
-# Numeric range
-ansible 'web[01:05]' -a "hostname"
+# Group slice
+ansible 'webservers[0:1]' -a "hostname"
 
 # Index (first host)
 ansible 'webservers[0]' -a "hostname"
@@ -289,11 +289,12 @@ ansible all -a "hostname" --limit 'web*:!web03'
 A few things to watch out for when using patterns:
 
 ```bash
-# WRONG: Shell interprets the brackets
+# WRONG: Host ranges are for defining inventory, not selecting ad hoc targets
 ansible web[01:03] -a "hostname"
 
-# RIGHT: Quote the pattern
-ansible 'web[01:03]' -a "hostname"
+# RIGHT: Use group slices or explicit host unions
+ansible 'webservers[0:2]' -a "hostname"
+ansible 'web01:web02:web03' -a "hostname"
 
 # WRONG: Space after colon
 ansible 'webservers: dbservers' -a "hostname"
