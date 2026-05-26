@@ -210,7 +210,7 @@ flowchart TB
 
 ## Associating Subnets with Route Tables
 
-Subnets need route table associations to control traffic flow. Without an explicit route table, a subnet uses the VPC's main route table (which only has local routing).
+Subnets need route table associations to control traffic flow. Without an explicit route table, a subnet uses the VPC's main route table, which contains only local routes by default in a new nondefault VPC unless you add more routes.
 
 ```yaml
     # Associate public subnets with the public route table
@@ -268,7 +268,7 @@ RDS requires a DB subnet group that spans at least two availability zones. Your 
 
 ## Creating Large Subnets for EKS
 
-EKS clusters need large subnets because each pod can get its own VPC IP address.
+EKS clusters need large subnets because the default Amazon VPC CNI assigns each pod an IP address from your VPC.
 
 ```yaml
     # Large subnets for EKS pods
@@ -420,7 +420,7 @@ Network ACLs (NACLs) provide a second layer of network security at the subnet le
     state: absent
 ```
 
-A subnet can only be deleted if it has no running instances or other resources attached. Terminate all instances in the subnet first.
+A subnet can only be deleted if it has no running instances, network interfaces, or other resources attached. Terminate instances and remove dependent resources in the subnet first.
 
 ## Capacity Planning Tips
 
