@@ -100,23 +100,25 @@ Here is the classic rolling update pattern that combines serial processing with 
     # Phase 3: Put host in maintenance mode in monitoring
     - name: Set downtime in monitoring
       ansible.builtin.uri:
-        url: "http://monitoring.internal:9090/api/v1/silence"
+        url: "http://alertmanager.internal:9093/api/v2/silences"
         method: POST
         body_format: json
         body:
           matchers:
             - name: instance
               value: "{{ inventory_hostname }}"
-          startsAt: "{{ now(utc=true).isoformat() }}"
-          endsAt: "{{ (now(utc=true) + timedelta(minutes=15)).isoformat() if timedelta is defined else now(utc=true).isoformat() }}"
+              isRegex: false
+          startsAt: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(ansible_date_time.epoch | int, utc=true) }}"
+          endsAt: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime((ansible_date_time.epoch | int) + 900, utc=true) }}"
+          createdBy: "ansible"
           comment: "Rolling update in progress"
-        status_code: [200, 201]
+        status_code: 200
       delegate_to: localhost
       ignore_errors: true
 
     # Phase 4: Deploy
     - name: Stop application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: stopped
       become: true
@@ -128,7 +130,7 @@ Here is the classic rolling update pattern that combines serial processing with 
       become: true
 
     - name: Start application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: started
       become: true
@@ -192,7 +194,7 @@ The progressive serial list enables canary deployments. Deploy to one host first
       become: true
 
     - name: Restart application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: restarted
       become: true
@@ -305,7 +307,7 @@ When a batch fails, you want to stop the deployment and not proceed to the next 
           become: true
 
         - name: Restart
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: myapp
             state: restarted
           become: true
