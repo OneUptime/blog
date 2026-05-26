@@ -53,14 +53,15 @@ This playbook demonstrates retry patterns for common flaky operations:
       until: apt_result is succeeded
 ```
 
-## Using Retry Files (--retry)
+## Using Retry Files (--limit @file)
 
-When an Ansible playbook fails, it creates a `.retry` file containing the hostnames of failed hosts. You can rerun the playbook targeting only those hosts.
+When retry files are enabled, a failed Ansible playbook creates a `.retry` file containing the hostnames of failed hosts. You can rerun the playbook targeting only those hosts.
 
 Here is the workflow:
 
 ```bash
-# Run the original playbook
+# Run the original playbook with retry files enabled
+export ANSIBLE_RETRY_FILES_ENABLED=True
 ansible-playbook deploy.yml
 
 # If it fails, Ansible creates deploy.retry with failed hosts
@@ -80,7 +81,7 @@ You can control retry file behavior in `ansible.cfg`:
 # Enable or disable retry file creation
 retry_files_enabled = True
 
-# Where to save retry files (default is same directory as playbook)
+# Where to save retry files (leave unset to use Ansible's default location)
 retry_files_save_path = /tmp/ansible-retries
 ```
 
@@ -95,23 +96,24 @@ For CI/CD pipelines, you might want automatic retries of the entire playbook. He
 
 PLAYBOOK=$1
 shift
-EXTRA_ARGS="$@"
+EXTRA_ARGS=("$@")
 MAX_RETRIES=3
 RETRY_DELAY=30
+export ANSIBLE_RETRY_FILES_ENABLED=True
 
 for attempt in $(seq 1 $MAX_RETRIES); do
     echo "=== Attempt $attempt of $MAX_RETRIES ==="
 
     if [ $attempt -eq 1 ]; then
         # First run: target all hosts
-        ansible-playbook "$PLAYBOOK" $EXTRA_ARGS
+        ansible-playbook "$PLAYBOOK" "${EXTRA_ARGS[@]}"
     else
         # Subsequent runs: target only failed hosts from retry file
-        RETRY_FILE="${PLAYBOOK%.yml}.retry"
+        RETRY_FILE="${PLAYBOOK%.*}.retry"
         if [ -f "$RETRY_FILE" ]; then
             echo "Retrying failed hosts from $RETRY_FILE"
             sleep $RETRY_DELAY
-            ansible-playbook "$PLAYBOOK" --limit "@$RETRY_FILE" $EXTRA_ARGS
+            ansible-playbook "$PLAYBOOK" --limit "@$RETRY_FILE" "${EXTRA_ARGS[@]}"
         else
             echo "No retry file found, all hosts succeeded"
             exit 0
@@ -166,58 +168,80 @@ Ansible does not natively support exponential backoff, but you can implement it:
 
     - name: True exponential backoff using shell
       ansible.builtin.shell: |
-        # Attempt the API call with curl
-        RESPONSE=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
-          -X POST \
-          -H "Content-Type: application/json" \
-          -d '{"action": "deploy", "version": "2.0.1"}' \
-          https://api.example.com/v1/deploy)
+        delay=2
+        for attempt in 1 2 3 4 5; do
+          RESPONSE=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"action": "deploy", "version": "2.0.1"}' \
+            https://api.example.com/v1/deploy)
 
-        if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "201" ]; then
-          echo "SUCCESS: HTTP $RESPONSE"
-          exit 0
-        elif [ "$RESPONSE" = "429" ]; then
-          echo "RATE_LIMITED: HTTP $RESPONSE"
-          exit 1
-        else
-          echo "FAILED: HTTP $RESPONSE"
-          exit 2
-        fi
+          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "201" ]; then
+            echo "SUCCESS: HTTP $RESPONSE"
+            exit 0
+          fi
+
+          if [ "$RESPONSE" != "429" ] && [ "$attempt" -eq 1 ]; then
+            echo "FAILED: HTTP $RESPONSE"
+            exit 2
+          fi
+
+          if [ "$attempt" -lt 5 ]; then
+            echo "Attempt $attempt failed with HTTP $RESPONSE; retrying in ${delay}s"
+            sleep "$delay"
+            delay=$((delay * 2))
+          fi
+        done
+
+        echo "FAILED after retries: HTTP $RESPONSE"
+        exit 1
       register: backoff_result
-      retries: 5
-      delay: "{{ item }}"
-      until: backoff_result.rc == 0
-      loop: [2, 4, 8, 16, 32]  # Exponential delays
-      when: backoff_result is not defined or backoff_result.rc != 0
 ```
 
 ## Block-Level Retry Pattern
 
-You can retry a group of tasks using `block` and a workaround with `include_tasks`.
+You cannot apply `until` directly to a block, and `include_tasks` does not support do-until retries. You can still retry a group of tasks by including the task file in a loop and stopping the loop once the group succeeds.
 
 Create a task file that contains the block you want to retry:
 
 ```yaml
 # tasks/deploy-block.yml - Tasks that should be retried as a group
 ---
-- name: Pull latest code
-  ansible.builtin.git:
-    repo: https://github.com/myorg/myapp.git
-    dest: /opt/myapp
-    version: "{{ app_version }}"
+- block:
+    - name: Wait before retrying deployment
+      ansible.builtin.pause:
+        seconds: 30
+      when: deploy_attempt | int > 1
 
-- name: Install dependencies
-  ansible.builtin.pip:
-    requirements: /opt/myapp/requirements.txt
-    virtualenv: /opt/myapp/venv
+    - name: Pull latest code
+      ansible.builtin.git:
+        repo: https://github.com/myorg/myapp.git
+        dest: /opt/myapp
+        version: "{{ app_version }}"
 
-- name: Run database migrations
-  ansible.builtin.shell: |
-    cd /opt/myapp
-    source venv/bin/activate
-    python manage.py migrate --no-input
-  become: true
-  become_user: appuser
+    - name: Install dependencies
+      ansible.builtin.pip:
+        requirements: /opt/myapp/requirements.txt
+        virtualenv: /opt/myapp/venv
+
+    - name: Run database migrations
+      ansible.builtin.shell: |
+        cd /opt/myapp
+        source venv/bin/activate
+        python manage.py migrate --no-input
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: appuser
+
+    - name: Mark deployment attempt as successful
+      ansible.builtin.set_fact:
+        deploy_succeeded: true
+
+  rescue:
+    - name: Mark deployment attempt as failed
+      ansible.builtin.set_fact:
+        deploy_succeeded: false
 ```
 
 Then call it with retries:
@@ -230,10 +254,15 @@ Then call it with retries:
   tasks:
     - name: Attempt deployment (with retries)
       ansible.builtin.include_tasks: tasks/deploy-block.yml
-      register: deploy_attempt
-      retries: 3
-      delay: 30
-      until: deploy_attempt is succeeded
+      loop: [1, 2, 3]
+      loop_control:
+        loop_var: deploy_attempt
+      when: not (deploy_succeeded | default(false))
+
+    - name: Fail if deployment did not succeed
+      ansible.builtin.fail:
+        msg: "Deployment failed after retries"
+      when: not (deploy_succeeded | default(false))
 ```
 
 ## Selective Retry Based on Error Type
