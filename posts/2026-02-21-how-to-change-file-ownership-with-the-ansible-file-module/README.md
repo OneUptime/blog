@@ -132,7 +132,7 @@ For files that need different ownership, use a list of dictionaries:
 
 ## Handling the User and Group Creation
 
-Before changing ownership to a user or group, they need to exist on the target system. A common pattern is to create them first:
+Before changing ownership to a named user or group, they need to exist on the target system. A common pattern is to create them first:
 
 ```yaml
 # Ensure the user and group exist before setting ownership
@@ -335,7 +335,7 @@ Some modules like `unarchive` have their own `owner` and `group` parameters that
 
 ## Ownership on Symlinks
 
-When changing ownership on a symlink, Ansible changes the ownership of the symlink itself, not the target:
+When changing ownership on a symlink, Ansible follows the link by default and can change the target. To change the ownership of the symlink itself, set `follow: false`:
 
 ```yaml
 # Change ownership of a symlink (not its target)
@@ -346,6 +346,7 @@ When changing ownership on a symlink, Ansible changes the ownership of the symli
     src: /opt/myapp/releases/v2.0
     owner: myapp
     group: myapp
+    follow: false
 ```
 
 On Linux, symlink ownership rarely matters because the kernel follows through to the target for permission checks. But on some systems with strict security policies, symlink ownership can be relevant.
