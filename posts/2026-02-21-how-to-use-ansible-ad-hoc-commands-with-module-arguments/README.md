@@ -77,7 +77,7 @@ ansible all -m user -a 'name=deploy comment="Deploy User Account" shell=/bin/bas
 ansible all -m shell -a "echo 'DATABASE_URL=postgres://localhost/mydb' >> /etc/environment"
 
 # JSON values need careful quoting
-ansible all -m copy -a 'content={"key": "value", "port": 8080} dest=/etc/app/config.json'
+ansible all -m copy -a "content='{\"key\": \"value\", \"port\": 8080}' dest=/etc/app/config.json"
 
 # Multiline content with the shell module
 ansible all -m shell -a "printf 'line1\nline2\nline3\n' > /tmp/multiline.txt"
@@ -109,8 +109,9 @@ ansible all -m copy -a "src={{ src_file }} dest={{ dest_path }}" -e "src_file=./
 # Pass variables as JSON
 ansible all -m user -a "name={{ user_name }} groups={{ user_groups }}" -e '{"user_name": "deploy", "user_groups": "sudo,docker"}'
 
-# Use extra vars for dynamic host selection too
-ansible "{{ target_group }}" -m ping -e "target_group=webservers"
+# Use a shell variable for dynamic host selection
+target_group=webservers
+ansible "$target_group" -m ping
 ```
 
 ## Common Module Argument Patterns
