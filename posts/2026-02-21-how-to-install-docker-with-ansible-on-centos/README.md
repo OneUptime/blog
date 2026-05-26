@@ -8,7 +8,7 @@ Description: Complete guide to installing Docker Engine on CentOS and RHEL serve
 
 ---
 
-CentOS and RHEL are the go-to operating systems for many enterprise environments. Installing Docker on these systems has a few differences compared to Ubuntu, mainly around the package manager (yum/dnf instead of apt) and some SELinux considerations. In this post, we will build a thorough Ansible playbook that installs Docker Engine on CentOS 7, CentOS Stream 8/9, and RHEL 8/9.
+CentOS and RHEL are the go-to operating systems for many enterprise environments. Installing Docker on these systems has a few differences compared to Ubuntu, mainly around the package manager (yum/dnf instead of apt) and some SELinux considerations. In this post, we will build a thorough Ansible playbook that installs Docker Engine on maintained CentOS Stream and RHEL releases.
 
 ## Key Differences from Ubuntu
 
@@ -18,11 +18,12 @@ If you have installed Docker on Ubuntu before, here is what changes for CentOS:
 - The Docker repository URL is different
 - You may need to handle SELinux policies
 - `firewalld` might need configuration
-- The `podman` and `buildah` packages from CentOS repos can conflict with Docker
+- The `podman` and `runc` packages from distribution repos can conflict with Docker on RHEL
 
 ## Prerequisites
 
 - Ansible 2.10+ on your control machine
+- The `ansible.posix` collection if you use the SELinux module example
 - SSH access to your CentOS/RHEL servers
 - Sudo privileges on target servers
 
@@ -55,10 +56,11 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
     docker_users:
       - centos
     docker_edition: "ce"
+    docker_repo_os: "{{ 'rhel' if ansible_distribution == 'RedHat' else 'centos' }}"
 
   tasks:
     # Step 1: Remove conflicting packages
-    - name: Remove conflicting packages (podman, buildah, old docker)
+    - name: Remove conflicting packages (podman, runc, old docker)
       ansible.builtin.yum:
         name:
           - docker
@@ -70,7 +72,6 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
           - docker-logrotate
           - docker-engine
           - podman
-          - buildah
           - runc
         state: absent
       when: ansible_os_family == "RedHat"
@@ -79,9 +80,7 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
     - name: Install prerequisite packages
       ansible.builtin.yum:
         name:
-          - yum-utils
-          - device-mapper-persistent-data
-          - lvm2
+          - dnf-plugins-core
           - python3
           - python3-pip
         state: present
@@ -91,9 +90,9 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
       ansible.builtin.yum_repository:
         name: docker-ce-stable
         description: "Docker CE Stable - $basearch"
-        baseurl: "https://download.docker.com/linux/centos/$releasever/$basearch/stable"
+        baseurl: "https://download.docker.com/linux/{{ docker_repo_os }}/$releasever/$basearch/stable"
         gpgcheck: true
-        gpgkey: "https://download.docker.com/linux/centos/gpg"
+        gpgkey: "https://download.docker.com/linux/{{ docker_repo_os }}/gpg"
         enabled: true
 
     # Step 4: Install Docker Engine
@@ -156,23 +155,19 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
         state: present
         executable: pip3
 
-    # Step 10: Configure firewalld for Docker (if active)
+    # Step 10: Check Docker/firewalld integration (if active)
     - name: Check if firewalld is running
       ansible.builtin.systemd:
         name: firewalld
       register: firewalld_status
       ignore_errors: true
 
-    - name: Allow Docker through firewalld
-      ansible.posix.firewalld:
-        zone: trusted
-        interface: docker0
-        permanent: true
-        state: enabled
+    - name: Report Docker firewalld integration
+      ansible.builtin.debug:
+        msg: "Docker creates a firewalld zone named docker and adds bridge interfaces such as docker0 automatically."
       when:
         - firewalld_status.status is defined
         - firewalld_status.status.ActiveState == "active"
-      notify: reload firewalld
 
     # Step 11: Handle SELinux
     - name: Check SELinux status
@@ -217,10 +212,6 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
         name: docker
         state: restarted
 
-    - name: reload firewalld
-      ansible.builtin.systemd:
-        name: firewalld
-        state: reloaded
 ```
 
 ## Running the Playbook
@@ -248,15 +239,15 @@ graph TD
     F --> G[Start Docker Service]
     G --> H[Add Users to Docker Group]
     H --> I[Install Python SDK]
-    I --> J[Configure Firewalld]
+    I --> J[Check Firewalld]
     J --> K[Handle SELinux]
     K --> L[Verify Installation]
     L --> M[Done]
 ```
 
-## Handling CentOS 7 vs Stream 8/9
+## Handling CentOS Stream and RHEL
 
-CentOS 7 uses `yum` while CentOS Stream 8+ and RHEL 8+ use `dnf`. Ansible's `yum` module handles both transparently, but there are some version-specific considerations.
+Maintained CentOS Stream and RHEL releases use `dnf`. Ansible's `yum` module can select a `dnf` backend automatically, but there are some distribution-specific repository considerations.
 
 ```yaml
 # version-aware-install.yml - Handle different CentOS/RHEL versions
@@ -271,52 +262,30 @@ CentOS 7 uses `yum` while CentOS Stream 8+ and RHEL 8+ use `dnf`. Ansible's `yum
       ansible.builtin.debug:
         msg: "Detected: {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
 
-    # CentOS 7 specific: install EPEL for newer Python
-    - name: Install EPEL repository on CentOS 7
-      ansible.builtin.yum:
-        name: epel-release
-        state: present
-      when:
-        - ansible_distribution == "CentOS"
-        - ansible_distribution_major_version == "7"
-
-    # CentOS 7 specific: some packages have different names
-    - name: Install prerequisites for CentOS 7
-      ansible.builtin.yum:
-        name:
-          - yum-utils
-          - device-mapper-persistent-data
-          - lvm2
-        state: present
-      when: ansible_distribution_major_version == "7"
-
-    # CentOS 8/9 and RHEL 8/9
-    - name: Install prerequisites for CentOS/RHEL 8+
+    # CentOS Stream 9/10 and RHEL 8/9/10
+    - name: Install prerequisites for maintained CentOS/RHEL releases
       ansible.builtin.dnf:
         name:
           - dnf-plugins-core
-          - device-mapper-persistent-data
-          - lvm2
         state: present
-      when: ansible_distribution_major_version | int >= 8
 
-    # Add Docker repo differently for CentOS 7
-    - name: Add Docker repo for CentOS 7
-      ansible.builtin.command: >
-        yum-config-manager --add-repo
-        https://download.docker.com/linux/centos/docker-ce.repo
-      args:
-        creates: /etc/yum.repos.d/docker-ce.repo
-      when: ansible_distribution_major_version == "7"
-
-    # Add Docker repo for CentOS 8/9
-    - name: Add Docker repo for CentOS/RHEL 8+
+    # Add Docker repo for CentOS Stream
+    - name: Add Docker repo for CentOS Stream
       ansible.builtin.command: >
         dnf config-manager --add-repo
         https://download.docker.com/linux/centos/docker-ce.repo
       args:
         creates: /etc/yum.repos.d/docker-ce.repo
-      when: ansible_distribution_major_version | int >= 8
+      when: ansible_distribution == "CentOS"
+
+    # Add Docker repo for RHEL
+    - name: Add Docker repo for RHEL
+      ansible.builtin.command: >
+        dnf config-manager --add-repo
+        https://download.docker.com/linux/rhel/docker-ce.repo
+      args:
+        creates: /etc/yum.repos.d/docker-ce.repo
+      when: ansible_distribution == "RedHat"
 
     - name: Install Docker Engine
       ansible.builtin.yum:
@@ -391,9 +360,9 @@ galaxy_info:
   platforms:
     - name: EL
       versions:
-        - "7"
         - "8"
         - "9"
+        - "10"
 ```
 
 ## Uninstalling Docker
@@ -441,7 +410,7 @@ galaxy_info:
 
 1. **"package docker-ce-3:xx requires containerd.io >= 1.6"**: This means the containerd version in the repo is too old. Make sure you are using the Docker repository, not the OS repository.
 
-2. **Firewalld blocking Docker networking**: Docker adds iptables rules, which can conflict with firewalld. Adding the docker0 interface to the trusted zone resolves most issues.
+2. **Firewalld and Docker networking**: Docker adds firewall rules for bridge networks. When firewalld is enabled, Docker creates a `docker` zone, adds bridge interfaces such as `docker0` to it, and creates a forwarding policy.
 
 3. **SELinux denials with volume mounts**: Use the `:z` or `:Z` suffix on volume mounts, or check `audit2allow` for the specific denial messages.
 
