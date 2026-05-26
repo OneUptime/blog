@@ -8,7 +8,7 @@ Description: A hands-on guide to deploying Amazon Aurora MySQL clusters with Ter
 
 ---
 
-Amazon Aurora MySQL is a drop-in replacement for MySQL that runs on AWS's custom storage engine. It delivers up to five times the throughput of standard MySQL, automatic storage scaling up to 128TB, and replication lag measured in milliseconds rather than seconds. The architecture is fundamentally different from regular RDS MySQL - you have a shared storage layer with separate compute instances that read from and write to it.
+Amazon Aurora MySQL is a drop-in replacement for MySQL that runs on AWS's custom storage engine. It delivers up to five times the throughput of standard MySQL, automatic storage scaling up to 256 TiB on current Aurora MySQL 3.10 and later releases, and replica lag that is usually much less than 100 milliseconds. The architecture is fundamentally different from regular RDS MySQL - you have a shared storage layer with separate compute instances that read from and write to it.
 
 This guide walks through creating an Aurora MySQL cluster in Terraform, from the cluster resource and instances to endpoints, parameter groups, and the MySQL-specific settings you need to know about.
 
@@ -34,7 +34,7 @@ resource "aws_rds_cluster" "mysql" {
 
   # Engine configuration
   engine         = "aurora-mysql"
-  engine_version = "8.0.mysql_aurora.3.07.1"
+  engine_version = "8.0.mysql_aurora.3.12.0"
 
   # Database settings
   database_name   = "myapp"
@@ -110,7 +110,7 @@ resource "aws_rds_cluster_instance" "mysql" {
 
   tags = {
     Name  = "myapp-aurora-mysql-${count.index}"
-    Role  = count.index == 0 ? "writer" : "reader"
+    Role  = count.index == 0 ? "initial-writer" : "reader"
   }
 }
 
@@ -127,7 +127,7 @@ variable "instance_class" {
 }
 ```
 
-The first instance in the cluster becomes the writer. Additional instances become readers. If the writer fails, Aurora automatically promotes one of the readers.
+The first instance created in the cluster becomes the initial writer. Additional instances become readers. If the writer fails, Aurora automatically promotes one of the readers, so do not rely on Terraform indexes or tags to identify the current writer after failover.
 
 ## Cluster Parameter Group
 
@@ -156,17 +156,6 @@ resource "aws_rds_cluster_parameter_group" "mysql" {
     name         = "binlog_format"
     value        = "ROW"
     apply_method = "pending-reboot"
-  }
-
-  # Slow query logging
-  parameter {
-    name  = "slow_query_log"
-    value = "1"
-  }
-
-  parameter {
-    name  = "long_query_time"
-    value = "2"
   }
 
   # Audit logging
@@ -204,6 +193,17 @@ resource "aws_db_parameter_group" "aurora_mysql" {
     # Aurora supports more connections than standard MySQL
   }
 
+  # Slow query logging
+  parameter {
+    name  = "slow_query_log"
+    value = "1"
+  }
+
+  parameter {
+    name  = "long_query_time"
+    value = "2"
+  }
+
   # InnoDB settings
   parameter {
     name  = "innodb_flush_log_at_trx_commit"
@@ -215,10 +215,10 @@ resource "aws_db_parameter_group" "aurora_mysql" {
     value = "50"
   }
 
-  # Thread pool (Aurora-specific)
+  # Thread cache
   parameter {
-    name  = "thread_handling"
-    value = "pool-of-threads"
+    name  = "thread_cache_size"
+    value = "100"
   }
 
   tags = {
@@ -339,11 +339,11 @@ output "instance_endpoints" {
 
 A few things work differently on Aurora MySQL compared to standard RDS MySQL:
 
-- Storage is automatic. You do not set `allocated_storage` - Aurora grows as needed up to 128TB.
-- Replication lag is typically under 20ms because readers share the same storage volume.
+- Storage is automatic. You do not set `allocated_storage` - Aurora grows as needed up to 256 TiB on Aurora MySQL 3.10 and later, and up to 128 TiB on earlier supported Aurora MySQL versions.
+- Replica lag is usually much less than 100 milliseconds because readers share the same storage volume.
 - You can have up to 15 reader instances instead of 5 read replicas.
 - Backups are continuous and incremental, taken from the shared storage layer.
-- The `innodb_buffer_pool_size` parameter works differently - Aurora manages the buffer pool across the shared storage layer.
+- The `innodb_buffer_pool_size` parameter is still instance-level and defaults to a formula based on instance memory; Aurora's shared storage changes other InnoDB behavior around data persistence and replication.
 
 ## Summary
 
