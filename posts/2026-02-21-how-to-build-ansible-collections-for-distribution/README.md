@@ -39,13 +39,16 @@ The tarball contains everything Ansible needs to install and use the collection.
 The build process includes all files in the collection directory except:
 
 - Files and directories listed in `build_ignore` in `galaxy.yml`
-- Hidden files (starting with `.`)
-- Common VCS directories (`.git`, `.svn`)
+- `galaxy.yml`
+- `*.pyc` and `*.retry` files
+- `tests/output`
+- Previously built tarballs in the collection root
+- Common VCS directories such as `.git`
 
 It also generates two metadata files inside the tarball:
 
 - `MANIFEST.json` - contains checksums and metadata for verification
-- `FILES.json` - lists every file in the tarball with checksums
+- `FILES.json` - lists the collection content files and directories; file entries include checksums
 
 ### Controlling Inclusions with build_ignore
 
