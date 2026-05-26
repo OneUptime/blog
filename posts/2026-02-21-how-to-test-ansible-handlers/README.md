@@ -43,7 +43,7 @@ Here is a typical handler setup:
 
 ## Strategy 1: Using Check Mode to Validate Handler Wiring
 
-The simplest test is running your playbook in check mode and verifying that the handler notification chain is intact. While check mode will not actually execute tasks, it helps catch wiring issues.
+The simplest test is running your playbook in check mode and verifying that the handler notification chain is intact. Check mode does not make changes on remote systems, but modules that support it still run in simulation and report the changes they would have made. That makes it useful for catching wiring issues.
 
 ```yaml
 # tests/test_handler_wiring.yml
@@ -63,7 +63,8 @@ The simplest test is running your playbook in check mode and verifying that the 
     - name: Verify the task would trigger change
       ansible.builtin.assert:
         that:
-          - config_result.changed or config_result is not changed
+          - config_result is defined
+          - config_result is changed
         fail_msg: "Template task did not register properly"
 ```
 
@@ -134,11 +135,11 @@ The verify playbook checks that the handler actually did its job:
 
 ## Strategy 3: Force Handler Execution for Testing
 
-Sometimes you want to test the handler itself in isolation without relying on a task to trigger it. You can use `meta: flush_handlers` to force immediate handler execution during testing.
+Sometimes you want to test the handler immediately after a deliberate notification instead of waiting until the end of the play. You can use `meta: flush_handlers` to force execution of handlers that have already been notified during testing.
 
 ```yaml
 # tests/test_handler_direct.yml
-# Force handler execution to test the handler logic directly
+# Force notified handler execution to test the handler logic directly
 - name: Test handler in isolation
   hosts: testhost
   become: true
@@ -170,13 +171,13 @@ Sometimes you want to test the handler itself in isolation without relying on a 
           - service_status.stdout == 'active'
 ```
 
-## Strategy 4: Testing Handler Idempotency
+## Strategy 4: Testing Handler Notification Idempotency
 
-A good handler should be idempotent. Running it multiple times should produce the same result. Here is how to test that:
+A good handler should be safe to run when notified, but many handler actions are intentionally not idempotent in Ansible's changed-state sense. For example, `state: restarted` always restarts a service. What you usually want to test is that a second converge does not notify the handler unexpectedly. Here is how to test that:
 
 ```yaml
 # tests/test_handler_idempotency.yml
-# Run the playbook twice and verify no unexpected changes
+# Run the playbook twice and verify no unexpected handler notifications
 - name: First run - apply configuration
   hosts: testhost
   become: true
