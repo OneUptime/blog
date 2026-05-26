@@ -36,6 +36,8 @@ nginx-rate-limit/
       templates/
         rate_limit.conf.j2
         nginx_site.conf.j2
+      handlers/
+        main.yml
       defaults/
         main.yml
   playbook.yml
@@ -217,22 +219,23 @@ Now let us put the tasks together. The role installs Nginx, deploys the configur
   become: true
 ```
 
-You will also need a handler to validate the Nginx configuration before reloading, so you do not accidentally break a running server.
+You will also need handlers to validate the Nginx configuration before reloading, so you do not accidentally break a running server.
 
 ```yaml
 # roles/nginx_rate_limit/handlers/main.yml
 ---
-- name: Validate and reload nginx
+- name: Validate nginx configuration
   ansible.builtin.command: nginx -t
   become: true
   changed_when: false
-  notify: Reload nginx
+  listen: Validate and reload nginx
 
 - name: Reload nginx
   ansible.builtin.systemd:
     name: nginx
     state: reloaded
   become: true
+  listen: Validate and reload nginx
 ```
 
 ## The Playbook
@@ -325,18 +328,18 @@ Then change the zone key from `$binary_remote_addr` to `$rate_limit_key`. When t
 
 ## Monitoring Rate Limit Events
 
-In production, you want visibility into how often rate limits are being triggered. Add a status endpoint to your Nginx config:
+In production, you want visibility into how often rate limits are being triggered. The custom access log above includes `$limit_req_status`, and rejected or delayed requests are also written to the Nginx error log. For overall Nginx connection and request visibility, you can also add a status endpoint to your Nginx config:
 
 ```nginx
 location /nginx_status {
-    stub_status on;
+    stub_status;
     allow 10.0.0.0/8;
     deny all;
 }
 ```
 
-Then scrape this endpoint with Prometheus or your monitoring tool of choice to track connection counts and request rates over time.
+Then scrape this endpoint with Prometheus or your monitoring tool of choice to track connection counts and total requests over time.
 
 ## Summary
 
-Automating Nginx rate limiting with Ansible gives you a consistent, version-controlled way to protect your web applications. The approach in this post uses separate rate limit zones for different endpoints, which lets you tune the limits based on the sensitivity and expected traffic of each part of your application. The handler chain ensures that Nginx configuration is always validated before reloading, preventing accidental downtime from a syntax error.
+Automating Nginx rate limiting with Ansible gives you a consistent, version-controlled way to protect your web applications. The approach in this post uses separate rate limit zones for different endpoints, which lets you tune the limits based on the sensitivity and expected traffic of each part of your application. The handlers ensure that Nginx configuration is always validated before reloading, preventing accidental downtime from a syntax error.
