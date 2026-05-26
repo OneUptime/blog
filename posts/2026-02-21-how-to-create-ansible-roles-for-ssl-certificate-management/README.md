@@ -15,7 +15,7 @@ Managing SSL certificates by hand is a recipe for outages. Certificates expire, 
 The role will handle:
 
 - Installing Certbot and its dependencies
-- Obtaining certificates from Let's Encrypt via HTTP-01 or DNS-01 challenges
+- Obtaining certificates from Let's Encrypt via HTTP-01 challenges
 - Configuring automatic renewal via systemd timer
 - Deploying renewal hooks that reload your web server
 - Supporting both standalone and webroot validation methods
@@ -35,7 +35,6 @@ roles/ssl_certs/
     renewal.yml
   templates/
     renewal_hook.sh.j2
-    openssl.cnf.j2
   meta/main.yml
 ```
 
@@ -50,13 +49,12 @@ ssl_provider: letsencrypt
 # Let's Encrypt settings
 ssl_letsencrypt_email: ""
 ssl_letsencrypt_staging: false
-ssl_letsencrypt_challenge: http
+ssl_letsencrypt_method: webroot
 ssl_letsencrypt_webroot: /var/www/letsencrypt
 
 # Certbot settings
 ssl_certbot_package: certbot
-ssl_certbot_plugin_packages:
-  - python3-certbot-nginx
+ssl_certbot_plugin_packages: []
 
 # Domains to get certificates for
 ssl_domains: []
@@ -81,9 +79,6 @@ ssl_private_key_dir: /etc/ssl/private
 # Renewal settings
 ssl_renewal_service: nginx
 ssl_renewal_hook_command: "systemctl reload {{ ssl_renewal_service }}"
-
-# Pre-check if ports are available (for standalone mode)
-ssl_check_ports: true
 ```
 
 ## Installation Tasks
@@ -110,14 +105,21 @@ ssl_check_ports: true
 ```yaml
 # roles/ssl_certs/tasks/letsencrypt.yml
 # Obtain certificates from Let's Encrypt
+- name: Validate Let's Encrypt email
+  ansible.builtin.assert:
+    that:
+      - ssl_letsencrypt_email | length > 0
+    fail_msg: "ssl_letsencrypt_email is required for Let's Encrypt certificate requests."
+
 - name: Create webroot directory for HTTP validation
   ansible.builtin.file:
-    path: "{{ ssl_letsencrypt_webroot }}"
+    path: "{{ item.webroot | default(ssl_letsencrypt_webroot) }}"
     state: directory
     owner: www-data
     group: www-data
     mode: '0755'
-  when: ssl_letsencrypt_challenge == "http"
+  loop: "{{ ssl_domains }}"
+  when: ssl_letsencrypt_method == "webroot"
 
 - name: Check existing certificates
   ansible.builtin.stat:
@@ -143,7 +145,7 @@ ssl_check_ports: true
       {% endif %}
   loop: "{{ existing_certs.results }}"
   when:
-    - ssl_letsencrypt_challenge == "http"
+    - ssl_letsencrypt_method == "webroot"
     - not item.stat.exists
   notify: reload web server
 
@@ -164,7 +166,7 @@ ssl_check_ports: true
       {% endif %}
   loop: "{{ existing_certs.results }}"
   when:
-    - ssl_letsencrypt_challenge == "standalone"
+    - ssl_letsencrypt_method == "standalone"
     - not item.stat.exists
   notify: reload web server
 ```
@@ -233,7 +235,7 @@ ssl_check_ports: true
   when: ssl_provider == "letsencrypt"
 
 - name: Ensure certbot renewal timer is enabled
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: certbot.timer
     state: started
     enabled: yes
@@ -245,11 +247,10 @@ ssl_check_ports: true
   changed_when: false
   when: ssl_provider == "letsencrypt"
   register: renewal_test
-  failed_when: false
 
 - name: Report renewal test result
   ansible.builtin.debug:
-    msg: "Certificate renewal dry-run {{ 'succeeded' if renewal_test.rc == 0 else 'FAILED' }}"
+    msg: "Certificate renewal dry-run succeeded"
   when: ssl_provider == "letsencrypt"
 ```
 
@@ -286,7 +287,7 @@ echo "Services reloaded at $(date)"
 ```yaml
 # roles/ssl_certs/handlers/main.yml
 - name: reload web server
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ ssl_renewal_service }}"
     state: reloaded
 ```
@@ -304,7 +305,7 @@ For production with Let's Encrypt:
       vars:
         ssl_provider: letsencrypt
         ssl_letsencrypt_email: admin@example.com
-        ssl_letsencrypt_challenge: http
+        ssl_letsencrypt_method: webroot
         ssl_renewal_service: nginx
         ssl_domains:
           - domain: example.com
@@ -337,19 +338,20 @@ For internal services with self-signed certificates:
 Add a task to check certificate expiry as part of your monitoring playbook:
 
 ```yaml
-# Check certificate expiry dates across all servers
+# Check whether certificates expire within 30 days across all servers
 - name: Check SSL certificate expiry
   ansible.builtin.command:
-    cmd: openssl x509 -enddate -noout -in /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem
+    cmd: openssl x509 -checkend 2592000 -noout -in /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem
   loop: "{{ ssl_domains }}"
-  register: cert_expiry
+  register: cert_expiry_check
   changed_when: false
+  failed_when: false
 
 - name: Warn about certificates expiring within 30 days
   ansible.builtin.debug:
-    msg: "WARNING: Certificate for {{ item.item.domain }} expires {{ item.stdout }}"
-  loop: "{{ cert_expiry.results }}"
-  when: item.stdout is defined
+    msg: "WARNING: Certificate for {{ item.item.domain }} expires within 30 days"
+  loop: "{{ cert_expiry_check.results }}"
+  when: item.rc != 0
 ```
 
 This role covers both automated Let's Encrypt certificates for public-facing services and self-signed certificates for internal infrastructure. The renewal hooks ensure your web server picks up new certificates automatically, and the dry-run test validates that the renewal process works before you actually need it.
