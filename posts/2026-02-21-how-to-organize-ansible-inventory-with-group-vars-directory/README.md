@@ -82,7 +82,7 @@ pg_data_directory: /var/lib/postgresql/16/main
 
 ## How Ansible Finds group_vars
 
-Ansible searches for `group_vars` in two locations:
+When you run `ansible-playbook`, Ansible searches for `group_vars` in two locations:
 
 1. Next to the inventory file
 2. Next to the playbook file
@@ -100,7 +100,9 @@ graph TD
 
 If both locations have group_vars, Ansible merges them. The playbook-adjacent `group_vars` takes precedence over the inventory-adjacent one.
 
-You can configure the paths in `ansible.cfg` if you want a custom location:
+Other commands that do not run a playbook, such as `ansible` and `ansible-inventory`, only use inventory-adjacent `group_vars` unless you pass `--playbook-dir`.
+
+You can configure the inventory path in `ansible.cfg`, which controls where inventory-adjacent `group_vars` is found:
 
 ```ini
 # ansible.cfg
@@ -134,7 +136,7 @@ project/
       monitoring.yml
 ```
 
-Ansible loads every YAML file inside the directory and merges them into a single set of variables for the group.
+Ansible loads valid variable files inside the directory in lexicographical order and merges them into a single set of variables for the group. Valid extensions are `.yml`, `.yaml`, `.json`, or no extension.
 
 ```yaml
 # group_vars/webservers/nginx.yml
@@ -283,7 +285,7 @@ rate_limiting_enabled: false
 debug_mode: true
 ```
 
-The variable precedence flows from general to specific: `all` < `production` < `webservers` < `web_prod`.
+The variable precedence flows from general to specific: `all` < parent groups < child groups. In this example, the default same-level alphabetical merge order means `all` < `production` < `webservers` < `web_prod`.
 
 ## Production-Ready Directory Layout
 
@@ -360,7 +362,7 @@ The triple-verbose flag (`-vvv`) shows which files Ansible loads and in what ord
 
 2. **Wrong directory location**: group_vars must be in the same directory as the inventory file or the playbook. Putting it somewhere else means Ansible will not find it.
 
-3. **YAML syntax errors**: A single indentation mistake in a group_vars file can cause Ansible to silently ignore variables or fail with cryptic errors. Always validate your YAML.
+3. **YAML syntax errors**: A single indentation mistake in a group_vars file can cause Ansible to fail before it runs your tasks. Always validate your YAML.
 
 4. **Variable name collisions**: If `group_vars/webservers/nginx.yml` and `group_vars/webservers/app.yml` both define `max_connections`, one will silently override the other. Use distinct, prefixed variable names.
 
