@@ -122,7 +122,7 @@ The `timeout` parameter is clean and straightforward. When the time limit is rea
 
 ## Method 4: Connection-Level Timeouts
 
-Ansible has several connection timeout settings that affect how long it waits for SSH connections and command responses.
+Ansible has several connection timeout settings that affect how long it waits for SSH connections and persistent connection responses.
 
 ```yaml
 # connection_timeouts.yml - Connection-level timeout configuration
@@ -132,8 +132,7 @@ Ansible has several connection timeout settings that affect how long it waits fo
   become: yes
 
   vars:
-    ansible_connect_timeout: 30    # SSH connection timeout in seconds
-    ansible_command_timeout: 60    # Command execution timeout
+    ansible_ssh_timeout: 30        # SSH connection/read timeout in seconds
 
   tasks:
     - name: Command that respects connection timeout
@@ -152,11 +151,12 @@ You can also set these in `ansible.cfg`:
 timeout = 30
 
 [ssh_connection]
-# SSH connection timeout
+# SSH connection/read timeout
 timeout = 30
 
-# How long to wait for a command to complete
-# (Note: this is different from the task timeout)
+[persistent_connection]
+# How long persistent network connections wait for commands to return
+command_timeout = 60
 ```
 
 ## Combining Timeouts with Retries
@@ -195,13 +195,12 @@ Timeouts work well with retry logic for transient failures.
       until: db_check.rc == 0
       changed_when: false
 
-    - name: API call with exponential backoff
+    - name: API call with retries
       ansible.builtin.shell:
         cmd: "timeout 30 curl -sf https://api.example.com/status"
       register: api_check
       retries: 5
-      delay: "{{ item | int }}"
-      with_sequence: start=2 end=32 stride=0
+      delay: 10
       until: api_check.rc == 0
       changed_when: false
       failed_when: false
@@ -304,18 +303,17 @@ Combine timeouts with block/rescue for graceful error handling.
 For complex timeout behavior, use a wrapper script.
 
 ```bash
-# scripts/run_with_timeout.sh - Wrapper for complex timeout logic
 #!/bin/bash
+# scripts/run_with_timeout.sh - Wrapper for complex timeout logic
 # Usage: run_with_timeout.sh <timeout_seconds> <command> [args...]
 TIMEOUT=$1
 shift
-CMD="$@"
 
-echo "Starting command with ${TIMEOUT}s timeout: $CMD"
+echo "Starting command with ${TIMEOUT}s timeout: $*"
 START=$(date +%s)
 
 # Run command in background
-eval "$CMD" &
+"$@" &
 PID=$!
 
 # Monitor the command
