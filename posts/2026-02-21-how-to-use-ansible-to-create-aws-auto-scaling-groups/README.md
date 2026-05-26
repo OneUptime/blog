@@ -19,6 +19,7 @@ You need:
 - Ansible 2.14+
 - The `amazon.aws` and `community.aws` collections
 - AWS credentials with EC2 and Auto Scaling permissions
+- AWS CLI
 - An existing VPC, subnets, and security groups
 - Python boto3
 
@@ -95,16 +96,6 @@ Launch templates define how instances are configured when the ASG creates them:
         tags:
           Name: "{{ template_name }}"
           Environment: production
-        tag_specifications:
-          - resource_type: instance
-            tags:
-              Name: myapp-web
-              Environment: production
-              ManagedBy: asg
-          - resource_type: volume
-            tags:
-              Name: myapp-web-volume
-              Environment: production
       register: template_result
 
     - name: Show template details
@@ -208,15 +199,14 @@ The simplest scaling approach is target tracking:
         "PredefinedMetricSpecification": {
           "PredefinedMetricType": "ASGAverageCPUUtilization"
         },
-        "TargetValue": 60.0,
-        "ScaleOutCooldown": 60,
-        "ScaleInCooldown": 300
+        "TargetValue": 60.0
       }'
+      --estimated-instance-warmup 60
       --region us-east-1
   changed_when: true
 ```
 
-This automatically adds instances when average CPU exceeds 60% and removes them when it drops below. The asymmetric cooldowns (60s out, 300s in) mean it scales out quickly but scales in cautiously.
+This automatically adds or removes instances to keep average CPU utilization close to 60%. The estimated instance warmup tells Auto Scaling how long a newly launched instance needs before it contributes to the policy's CloudWatch metrics.
 
 ## Step Scaling Policy
 
@@ -349,15 +339,14 @@ Use a mix of instance types and purchase options for cost optimization:
   amazon.aws.autoscaling_group:
     name: myapp-cost-optimized-asg
     region: us-east-1
+    launch_template:
+      launch_template_name: myapp-web-template
+      version: "$Latest"
     mixed_instances_policy:
-      launch_template:
-        launch_template_specification:
-          launch_template_name: myapp-web-template
-          version: "$Latest"
-        overrides:
-          - instance_type: t3.medium
-          - instance_type: t3.large
-          - instance_type: m5.large
+      instance_types:
+        - t3.medium
+        - t3.large
+        - m5.large
       instances_distribution:
         on_demand_base_capacity: 2
         on_demand_percentage_above_base_capacity: 25
@@ -379,14 +368,16 @@ This keeps 2 on-demand instances as a baseline, then uses 75% spot instances for
 ```yaml
 # Delete the ASG (terminates all instances)
 - name: Delete Auto Scaling Group
-  amazon.aws.autoscaling_group:
-    name: myapp-web-asg
-    region: us-east-1
-    state: absent
-    force_delete: true
+  ansible.builtin.command:
+    cmd: >
+      aws autoscaling delete-auto-scaling-group
+      --auto-scaling-group-name myapp-web-asg
+      --force-delete
+      --region us-east-1
+  changed_when: true
 ```
 
-Setting `force_delete: true` terminates all instances immediately. Without it, the ASG waits for instances to drain.
+The `--force-delete` option deletes the group without waiting for all instances to terminate first.
 
 ## Wrapping Up
 
