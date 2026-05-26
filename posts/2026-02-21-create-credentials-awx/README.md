@@ -95,20 +95,20 @@ Machine credentials are used to connect to managed hosts via SSH.
 
 ```bash
 # Create an SSH key credential via API
-curl -X POST "https://awx.example.com/api/v2/credentials/" \
+jq -n --arg ssh_key_data "$(cat ~/.ssh/production_key)" '{
+  "name": "Production SSH Key",
+  "description": "SSH key for production access",
+  "organization": 1,
+  "credential_type": 1,
+  "inputs": {
+    "username": "deploy",
+    "ssh_key_data": $ssh_key_data,
+    "become_method": "sudo"
+  }
+}' | curl -X POST "https://awx.example.com/api/v2/credentials/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $AWX_TOKEN" \
-  -d '{
-    "name": "Production SSH Key",
-    "description": "SSH key for production access",
-    "organization": 1,
-    "credential_type": 1,
-    "inputs": {
-      "username": "deploy",
-      "ssh_key_data": "'"$(cat ~/.ssh/production_key)"'",
-      "become_method": "sudo"
-    }
-  }'
+  -d @-
 ```
 
 ## Source Control Credentials
@@ -349,13 +349,18 @@ Then link other credentials to use this lookup.
         credential_type: "Machine"
         inputs:
           username: deploy
-          ssh_key_data: "{{ lookup('env', 'SSH_KEY_PLACEHOLDER') }}"
-        credential_input_sources:
-          - source_credential: "HashiCorp Vault Lookup"
-            target_field: "ssh_key_data"
-            metadata:
-              secret_path: "secret/data/ansible/ssh-keys"
-              secret_key: "production_key"
+        state: present
+
+    - name: Link SSH key field to HashiCorp Vault lookup
+      awx.awx.credential_input_source:
+        controller_host: "{{ awx_host }}"
+        controller_oauthtoken: "{{ awx_token }}"
+        target_credential: "Server SSH Key (from Vault)"
+        input_field_name: "ssh_key_data"
+        source_credential: "HashiCorp Vault Lookup"
+        metadata:
+          secret_path: "secret/data/ansible/ssh-keys"
+          secret_key: "production_key"
         state: present
 ```
 
@@ -375,10 +380,11 @@ Then link other credentials to use this lookup.
 
 ```bash
 # Grant a team permission to use a credential
-curl -X POST "https://awx.example.com/api/v2/credentials/1/object_roles/" \
+# Replace team, role_definition, and object_id with your team ID, credential use-role definition ID, and credential ID.
+curl -X POST "https://awx.example.com/api/v2/role_team_assignments/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $AWX_TOKEN" \
-  -d '{"id": 1, "content_type": "credential", "role_field": "use_role"}'
+  -d '{"team": 2, "role_definition": 4, "object_id": "1"}'
 ```
 
 Credentials are the most security-sensitive objects in AWX. Take the time to set them up properly with appropriate access controls, use external vault lookups for production environments, and create custom credential types for anything that does not fit the built-in types.
