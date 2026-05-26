@@ -30,7 +30,7 @@ By default, the `lookup()` function joins all results with a comma and returns a
       # Output: Type is AnsibleUnsafeText, value is configs/a.yml,configs/b.yml,configs/c.yml
 ```
 
-If you try to loop over this string, Ansible will iterate over each character, not each file path. That is almost never what you want.
+If you try to pass this string to `loop`, Ansible will fail because `loop` requires a list. That is almost never what you want.
 
 ## Using wantlist=True
 
@@ -155,28 +155,17 @@ When you need to load and merge multiple configuration files, `wantlist` ensures
 ### Building Dynamic Variables from Templates
 
 ```yaml
-# Using wantlist with template lookup to generate multiple values
+# Using wantlist with template lookup to keep rendered templates as list items
 - hosts: localhost
   gather_facts: false
-  vars:
-    services:
-      - name: nginx
-        port: 80
-      - name: api
-        port: 3000
-      - name: worker
-        port: 5672
-
   tasks:
-    - name: Generate systemd unit names
+    - name: Render systemd unit templates
       set_fact:
-        unit_names: "{{ lookup('template', 'unit_name.j2', wantlist=True) }}"
-      vars:
-        service_list: "{{ services }}"
+        rendered_units: "{{ lookup('template', 'nginx.service.j2', 'api.service.j2', 'worker.service.j2', wantlist=True) }}"
 
-    - name: Show generated unit names
+    - name: Show rendered units
       debug:
-        msg: "{{ unit_names }}"
+        msg: "{{ rendered_units }}"
 ```
 
 ## wantlist vs query: Which to Use
@@ -261,7 +250,7 @@ When a lookup returns only one item, `wantlist=True` still wraps it in a list. T
 
 ### Empty Results
 
-When no results are found, `wantlist=True` returns an empty list, not an empty string. This makes boolean checks work as expected.
+When no results are found, `wantlist=True` keeps the result as a list. Some plugins, including `fileglob`, also return an empty list when there are no matches even without `wantlist=True`.
 
 ```yaml
 # Empty result behavior
@@ -270,15 +259,14 @@ When no results are found, `wantlist=True` returns an empty list, not an empty s
   tasks:
     - name: No matches without wantlist
       set_fact:
-        empty_str: "{{ lookup('fileglob', 'nonexistent/*') }}"
-      # empty_str is "" (empty string)
+        empty_result: "{{ lookup('fileglob', 'nonexistent/*') }}"
+      # empty_result is [] for fileglob when no files match
 
     - name: No matches with wantlist
       set_fact:
         empty_list: "{{ lookup('fileglob', 'nonexistent/*', wantlist=True) }}"
       # empty_list is [] (empty list)
 
-    # Empty string is truthy in some Jinja2 contexts, empty list is not
     - name: Reliable emptiness check
       debug:
         msg: "No files found"
