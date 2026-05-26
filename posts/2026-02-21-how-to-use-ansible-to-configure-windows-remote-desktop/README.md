@@ -130,15 +130,28 @@ Changing the default port from 3389 to something else is a simple way to reduce 
         state: present
         enabled: yes
 
+    - name: Add UDP firewall rule for new port
+      community.windows.win_firewall_rule:
+        name: "Remote Desktop - Custom Port (UDP-In)"
+        localport: "{{ rdp_port }}"
+        action: allow
+        direction: in
+        protocol: udp
+        state: present
+        enabled: yes
+
     - name: Remove default port firewall rule
       community.windows.win_firewall_rule:
         name: Remote Desktop - User Mode (TCP-In)
         state: absent
 
-    - name: Restart Remote Desktop Services to apply port change
-      ansible.windows.win_service:
-        name: TermService
-        state: restarted
+    - name: Remove default UDP port firewall rule
+      community.windows.win_firewall_rule:
+        name: Remote Desktop - User Mode (UDP-In)
+        state: absent
+
+    - name: Reboot to apply port change
+      ansible.windows.win_reboot: {}
       when: port_changed.changed
 ```
 
@@ -165,7 +178,7 @@ Controlling who can connect via RDP is critical. By default, the local Administr
         members: "{{ rdp_allowed_groups + rdp_allowed_users }}"
         state: pure
 
-    - name: Restrict RDP access via Group Policy registry setting
+    - name: Always prompt for password upon connection
       ansible.windows.win_regedit:
         path: HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
         name: fPromptForPassword
@@ -175,6 +188,8 @@ Controlling who can connect via RDP is critical. By default, the local Administr
 ```
 
 The `state: pure` parameter ensures that ONLY the specified accounts are members of the group. Any existing members not in the list will be removed.
+
+The `fPromptForPassword` setting forces users to provide a password when connecting, even if the client supplied saved credentials.
 
 ## Session Configuration
 
@@ -318,7 +333,7 @@ Here is a comprehensive playbook that applies a full set of RDP security setting
         data: "{{ disconnect_timeout_ms }}"
         type: dword
 
-    - name: Require password prompt on reconnection
+    - name: Require password prompt on connection
       ansible.windows.win_regedit:
         path: HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
         name: fPromptForPassword
@@ -338,6 +353,16 @@ Here is a comprehensive playbook that applies a full set of RDP security setting
         action: allow
         direction: in
         protocol: tcp
+        state: present
+        enabled: yes
+
+    - name: Ensure firewall allows RDP over UDP
+      community.windows.win_firewall_rule:
+        name: "Remote Desktop (UDP-In)"
+        localport: "{{ rdp_port }}"
+        action: allow
+        direction: in
+        protocol: udp
         state: present
         enabled: yes
 
@@ -375,11 +400,15 @@ For servers that should not have RDP enabled (like servers managed entirely thro
         state: present
         enabled: yes
 
-    - name: Stop Remote Desktop Services
-      ansible.windows.win_service:
-        name: TermService
-        state: stopped
-        start_mode: disabled
+    - name: Block RDP UDP in firewall
+      community.windows.win_firewall_rule:
+        name: "Remote Desktop - User Mode (UDP-In)"
+        action: block
+        direction: in
+        protocol: udp
+        localport: 3389
+        state: present
+        enabled: yes
 ```
 
 ## Practical Considerations
