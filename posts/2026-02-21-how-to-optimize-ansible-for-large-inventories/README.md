@@ -25,7 +25,7 @@ For dynamic inventories, caching prevents redundant API calls:
 
 [inventory]
 cache = true
-cache_plugin = jsonfile
+cache_plugin = ansible.builtin.jsonfile
 cache_connection = /var/cache/ansible/inventory
 cache_timeout = 3600
 ```
@@ -45,17 +45,17 @@ With caching, the first run fetches from the cloud API, and subsequent runs use 
 Never run against all hosts when you only need a subset:
 
 ```bash
-# Bad: processes all 5000 hosts even though only webservers are targeted
+# Bad: if deploy.yml targets all hosts, it processes all 5000 hosts
 ansible-playbook deploy.yml
 
 # Better: limit to specific hosts
 ansible-playbook deploy.yml --limit webservers
 
-# Even better: limit to specific hosts within a group
-ansible-playbook deploy.yml --limit "web-[01:10].example.com"
+# Even better: limit to a slice within a group
+ansible-playbook deploy.yml --limit "webservers[0:9]"
 ```
 
-The `--limit` flag reduces the number of hosts Ansible needs to process. For a targeted deployment to 10 out of 5,000 hosts, this makes a massive difference.
+The `--limit` flag reduces the number of hosts Ansible runs tasks against, though Ansible may still load the configured inventory sources. For a targeted deployment to 10 out of 5,000 hosts, this makes a massive difference during play execution.
 
 ## Split Large Inventories
 
@@ -133,22 +133,22 @@ Instead of defining groups statically, use the `constructed` inventory plugin to
 plugin: constructed
 strict: false
 keyed_groups:
-  # Create groups based on OS family
+  # Create groups based on an existing inventory variable
   - prefix: os
-    key: ansible_os_family
+    key: os_family
   # Create groups based on region tag
   - prefix: region
     key: tags.region
     default_value: unknown
 groups:
   # Create a group for large instances
-  big_instances: ansible_memtotal_mb | default(0) | int > 16384
+  big_instances: memory_mb | default(0) | int > 16384
 compose:
   # Create a variable from existing data
   datacenter: tags.datacenter | default('unknown')
 ```
 
-This avoids maintaining large static group definitions and keeps the inventory lean.
+This avoids maintaining large static group definitions and keeps the inventory lean. The constructed plugin works from variables already present in inventory or fact cache, so use variables provided by an earlier inventory source.
 
 ## Tune Forks for Your Inventory Size
 
@@ -164,7 +164,7 @@ But be aware that high fork counts with large inventories can exhaust memory on 
 
 ```bash
 # Watch memory during a large playbook run
-watch -n 2 "free -m && echo '---' && ps aux | grep ansible | wc -l"
+watch -n 2 "free -m && echo '---' && pgrep -af ansible | wc -l"
 ```
 
 A formula that works well:
@@ -173,23 +173,20 @@ A formula that works well:
 forks = min(host_count, available_ram_gb * 10, cpu_cores * 25)
 ```
 
-## Disable Unnecessary Variable Lookups
+## Disable Unnecessary Vars Plugins
 
-Ansible loads variables from multiple sources by default: host_vars, group_vars, extra vars, role defaults, etc. For large inventories, the filesystem lookups add up:
+Ansible can load variable data from vars plugins in addition to inventory, playbooks, and roles. For large inventories, unnecessary custom vars plugins can add overhead:
 
 ```ini
 # ansible.cfg - Speed up variable loading
 [defaults]
-# Only look for variable files in specific locations
+# Keep only the built-in plugin that loads host_vars and group_vars
 vars_plugins_enabled = host_group_vars
-
-# Disable vault auto-decrypt if not using vault
-# (this skips vault header checks on every file)
 ```
 
 ## Use serial for Staged Execution
 
-With thousands of hosts, running all tasks on all hosts simultaneously is impractical. Use `serial` to process in batches:
+With thousands of hosts, letting a play advance across the entire target set at once is impractical. Use `serial` to process in batches:
 
 ```yaml
 ---
@@ -225,10 +222,19 @@ Fact gathering is proportional to host count. At 5,000 hosts, even with 100 fork
 # ansible.cfg - Minimize fact overhead at scale
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = redis.internal:6379:0
 fact_caching_timeout = 86400
-gather_subset = min
+```
+
+Then set a smaller fact subset in plays that gather facts:
+
+```yaml
+---
+- hosts: all
+  gather_facts: true
+  gather_subset:
+    - "!all"
 ```
 
 Or disable facts and use cached infrastructure data:
@@ -355,7 +361,7 @@ Strategies to reduce memory:
 
 # Better: process and discard
 - name: Check for errors in logs
-  shell: journalctl --no-pager | grep -c ERROR
+  shell: journalctl --no-pager | grep -c ERROR || true
   register: error_count
   changed_when: false
 ```
