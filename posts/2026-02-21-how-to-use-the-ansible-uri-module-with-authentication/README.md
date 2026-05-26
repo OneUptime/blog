@@ -8,7 +8,7 @@ Description: Learn how to authenticate HTTP requests in Ansible using basic auth
 
 ---
 
-Almost every API you interact with requires some form of authentication. The Ansible `uri` module supports all common authentication methods: HTTP Basic Auth, Bearer tokens, API keys, OAuth, and client certificate authentication. Getting authentication right is critical because a misconfigured request either fails silently or, worse, exposes credentials in logs.
+Almost every API you interact with requires some form of authentication. The Ansible `uri` module can be used with common authentication methods: HTTP Basic Auth, Bearer tokens, API keys, OAuth, and client certificate authentication. Getting authentication right is critical because a misconfigured request either fails or, worse, exposes credentials in logs.
 
 This post covers each authentication method with working examples and security best practices.
 
@@ -63,6 +63,7 @@ Bearer tokens are the most common authentication method for modern REST APIs. Yo
           Authorization: "Bearer {{ api_token }}"
         return_content: true
       register: resources
+      no_log: true
 
     - name: Create resource with bearer token
       ansible.builtin.uri:
@@ -75,6 +76,7 @@ Bearer tokens are the most common authentication method for modern REST APIs. Yo
           name: new-resource
           type: compute
         status_code: 201
+      no_log: true
 ```
 
 ## API Key Authentication
@@ -97,6 +99,7 @@ APIs use keys in different locations: headers, query parameters, or the request 
           X-API-Key: "{{ vault_api_key }}"
         return_content: true
       register: result_header
+      no_log: true
 
     # API key as query parameter
     - name: Auth with API key in query string
@@ -105,6 +108,7 @@ APIs use keys in different locations: headers, query parameters, or the request 
         method: GET
         return_content: true
       register: result_query
+      no_log: true
 
     # API key in request body (some legacy APIs)
     - name: Auth with API key in body
@@ -117,6 +121,7 @@ APIs use keys in different locations: headers, query parameters, or the request 
           query: "servers"
         return_content: true
       register: result_body
+      no_log: true
 ```
 
 ## OAuth 2.0 Client Credentials Flow
@@ -135,11 +140,12 @@ OAuth is common for service-to-service authentication. First you get a token, th
       ansible.builtin.uri:
         url: https://auth.example.com/oauth/token
         method: POST
+        url_username: "{{ vault_oauth_client_id }}"
+        url_password: "{{ vault_oauth_client_secret }}"
+        force_basic_auth: true
         body_format: form-urlencoded
         body:
           grant_type: client_credentials
-          client_id: "{{ vault_oauth_client_id }}"
-          client_secret: "{{ vault_oauth_client_secret }}"
           scope: "read write"
         status_code: 200
       register: oauth_response
@@ -160,6 +166,7 @@ OAuth is common for service-to-service authentication. First you get a token, th
           Authorization: "Bearer {{ access_token }}"
         return_content: true
       register: api_data
+      no_log: true
 
     - name: Create resource with OAuth token
       ansible.builtin.uri:
@@ -171,6 +178,7 @@ OAuth is common for service-to-service authentication. First you get a token, th
         body:
           name: oauth-created-resource
         status_code: 201
+      no_log: true
 ```
 
 ## Client Certificate Authentication (mTLS)
@@ -193,7 +201,7 @@ Some APIs, especially internal ones, use client certificates for authentication:
         return_content: true
       register: secure_response
 
-    - name: Call API with PKCS12 cert and CA validation
+    - name: Call API with separate PEM cert/key and CA validation
       ansible.builtin.uri:
         url: https://api.partner.com/exchange
         method: POST
@@ -246,11 +254,12 @@ Long-running playbooks might need to refresh expired tokens:
       ansible.builtin.uri:
         url: "{{ auth_url }}"
         method: POST
+        url_username: "{{ vault_client_id }}"
+        url_password: "{{ vault_client_secret }}"
+        force_basic_auth: true
         body_format: form-urlencoded
         body:
           grant_type: client_credentials
-          client_id: "{{ vault_client_id }}"
-          client_secret: "{{ vault_client_secret }}"
         status_code: 200
       register: token_response
       no_log: true
@@ -347,8 +356,9 @@ For CI/CD pipelines, tokens often come from environment variables:
           Authorization: "Bearer {{ api_token }}"
         return_content: true
       register: result
+      no_log: true
 ```
 
 ## Summary
 
-The Ansible `uri` module supports every common authentication method. Use `url_username`/`url_password` with `force_basic_auth: true` for Basic Auth. Use the `Authorization` header for Bearer tokens and OAuth. Use `client_cert`/`client_key` for certificate-based auth. Always store credentials in Ansible Vault or environment variables, never in plaintext. Add `no_log: true` to any task that handles credentials. For OAuth flows, implement the token-then-request pattern and consider adding token refresh logic for long-running playbooks.
+The Ansible `uri` module can be used with every common authentication method. Use `url_username`/`url_password` with `force_basic_auth: true` for Basic Auth. Use the `Authorization` header for Bearer tokens and OAuth access tokens. Use `client_cert`/`client_key` for certificate-based auth. Always store credentials in Ansible Vault or environment variables, never in plaintext. Add `no_log: true` to any task that handles credentials. For OAuth flows, implement the token-then-request pattern and consider adding token refresh logic for long-running playbooks.
