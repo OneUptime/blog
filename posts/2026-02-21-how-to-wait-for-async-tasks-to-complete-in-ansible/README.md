@@ -41,7 +41,7 @@ The `async_status` module queries the status of an async task using its job ID. 
       # Total max wait: 120 * 30 = 3600 seconds (1 hour)
 ```
 
-The `until` loop keeps calling `async_status` until the `.finished` attribute is `1` (truthy). The `retries` and `delay` parameters control how long and how often to check.
+The `until` loop keeps calling `async_status` until the `.finished` attribute is `true` (or `1` in older Ansible versions). The `retries` and `delay` parameters control how long and how often to check.
 
 ## Understanding async_status Return Values
 
@@ -55,7 +55,7 @@ The `async_status` module returns several useful fields:
 
   tasks:
     - name: Start a background command
-      command: sleep 30 && echo "done"
+      shell: sleep 30 && echo "done"
       async: 120
       poll: 0
       register: bg_job
@@ -75,7 +75,7 @@ The `async_status` module returns several useful fields:
           - "Results file: {{ job_status.results_file | default('unknown') }}"
 ```
 
-When a task is still running, `finished` is 0. When it completes (success or failure), `finished` is 1. The rest of the return data depends on the module that was run asynchronously.
+When a task is still running, `finished` is false. When it completes (success or failure), `finished` is true. Older Ansible versions returned `0` and `1` for `finished` and `started`. The rest of the return data depends on the module that was run asynchronously.
 
 ## Waiting for Multiple Async Tasks
 
@@ -188,8 +188,8 @@ When you launch async tasks in a loop, you need to wait for each one:
     - name: Verify all downloads succeeded
       assert:
         that:
-          - item.finished == 1
-          - item.failed is not defined or item.failed == false
+          - item.finished
+          - item.failed is not defined or not item.failed
         fail_msg: "Download of {{ item.item.item.name }} failed"
       loop: "{{ download_results.results }}"
       loop_control:
@@ -229,7 +229,7 @@ Async tasks can fail in several ways. Handle each case:
           debug:
             msg: "Migration timed out after 30 minutes on {{ inventory_hostname }}"
 
-        - name: Kill the background process
+        - name: Clean up the async status file
           async_status:
             jid: "{{ migration_job.ansible_job_id }}"
             mode: cleanup
@@ -299,7 +299,7 @@ You can clean up async job status files using the `cleanup` mode:
     # Or clean up all old async job files
     - name: Remove old async status files
       find:
-        paths: ~/.ansible_async
+        paths: "{{ ansible_env.HOME }}/.ansible_async"
         age: 1d
       register: old_async_files
 
