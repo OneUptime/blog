@@ -85,7 +85,7 @@ Start by creating a VM that will become your template. This VM gets the OS insta
       register: base_vm
 
     - name: Power on VM for OS installation
-      community.vmware.vmware_guest_powerstate:
+      community.vmware.vmware_guest:
         name: "{{ template_name }}-build"
         folder: "/DC01/vm/Templates/Build"
         state: powered-on
@@ -127,13 +127,13 @@ After the OS is installed (either via kickstart/preseed or manually), configure 
         state: present
 
     - name: Enable and start VMware Tools
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: vmtoolsd
         enabled: true
         state: started
 
     - name: Enable and start chronyd for time sync
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: chronyd
         enabled: true
         state: started
@@ -213,13 +213,20 @@ Before converting to a template, clean up machine-specific data so each clone ge
         cmd: dnf clean all
       changed_when: true
 
+    - name: Find temporary files
+      ansible.builtin.find:
+        paths:
+          - /tmp
+          - /var/tmp
+        file_type: any
+        hidden: true
+      register: temp_files
+
     - name: Remove temporary files
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ item.path }}"
         state: absent
-      loop:
-        - /tmp/*
-        - /var/tmp/*
+      loop: "{{ temp_files.files }}"
 
     - name: Truncate log files
       ansible.builtin.shell:
@@ -234,7 +241,7 @@ Before converting to a template, clean up machine-specific data so each clone ge
     - name: Shutdown the VM for template conversion
       ansible.builtin.command:
         cmd: shutdown -h now
-      async: 0
+      async: 1
       poll: 0
       ignore_errors: true
 ```
@@ -248,7 +255,7 @@ Once the VM is generalized and powered off, convert it to a template.
 ---
 - name: Convert VM to template
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
 
   module_defaults:
     group/community.vmware.vmware:
@@ -295,10 +302,11 @@ Once the VM is generalized and powered off, convert it to a template.
     # Rename the template to its final name
     - name: Rename template to production name
       community.vmware.vmware_guest:
-        name: "{{ template_name }}-build"
+        uuid: "{{ vm_info.instance.hw_product_uuid }}"
         datacenter: "DC01"
         name: "{{ template_name }}-{{ ansible_date_time.date | default('2026-02-21') }}"
         is_template: true
+        state: present
 ```
 
 ## Template Update Workflow
@@ -336,18 +344,18 @@ Templates should be updated regularly with security patches. Here is the workflo
 
     # Power on the VM
     - name: Power on the template VM
-      community.vmware.vmware_guest_powerstate:
+      community.vmware.vmware_guest:
         name: "{{ template_name }}"
         folder: "/DC01/vm/Templates"
         state: powered-on
 
-    # Wait for the VM to be reachable
-    - name: Wait for SSH to become available
+    # Wait for the VM to report an IP address
+    - name: Wait for VM IP address to become available
       community.vmware.vmware_guest_info:
         datacenter: "DC01"
         name: "{{ template_name }}"
       register: template_vm_info
-      until: template_vm_info.instance.ipv4 is defined
+      until: template_vm_info.instance.ipv4 is defined and template_vm_info.instance.ipv4
       retries: 30
       delay: 10
 
@@ -376,14 +384,14 @@ Templates should be updated regularly with security patches. Here is the workflo
     - name: Shutdown for re-conversion to template
       ansible.builtin.command:
         cmd: shutdown -h now
-      async: 0
+      async: 1
       poll: 0
       ignore_errors: true
 
 # Convert back to template
 - name: Re-convert updated VM to template
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
 
   module_defaults:
     group/community.vmware.vmware:
@@ -397,6 +405,7 @@ Templates should be updated regularly with security patches. Here is the workflo
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
     template_name: "golden-rhel9-base-2026-02-21"
+    updated_template_name: "golden-rhel9-base-{{ ansible_date_time.date }}"
 
   tasks:
     - name: Wait for VM to power off
@@ -408,9 +417,16 @@ Templates should be updated regularly with security patches. Here is the workflo
       retries: 30
       delay: 10
 
+    - name: Rename VM to updated template name
+      community.vmware.vmware_guest:
+        uuid: "{{ vm_state.instance.hw_product_uuid }}"
+        datacenter: "DC01"
+        name: "{{ updated_template_name }}"
+        state: present
+
     - name: Convert back to template
       community.vmware.vmware_guest:
-        name: "{{ template_name }}"
+        name: "{{ updated_template_name }}"
         datacenter: "DC01"
         is_template: true
 ```
