@@ -243,8 +243,8 @@ Collect health information from every server:
       register: uptime_info
       changed_when: false
 
-    - name: Check for pending security updates
-      ansible.builtin.command: apt list --upgradable 2>/dev/null
+    - name: Check for pending package updates
+      ansible.builtin.shell: apt list --upgradable 2>/dev/null
       register: pending_updates
       changed_when: false
 
