@@ -22,7 +22,7 @@ A collection tarball is a compressed archive file that contains all the files fo
 
 For example: `community-docker-3.8.0.tar.gz`
 
-Inside the tarball, you will find the standard collection structure: `galaxy.yml`, `plugins/`, `roles/`, `docs/`, and any other content the collection provides. There is also a `MANIFEST.json` and `FILES.json` that ansible-galaxy uses for verification and installation.
+Inside the tarball, you will find the collection content, such as `plugins/`, `roles/`, `docs/`, and any other files the collection provides. The source collection has a `galaxy.yml` file, but built collection artifacts exclude it by default and include `MANIFEST.json` and `FILES.json` files that ansible-galaxy uses for verification and installation.
 
 ## Downloading Tarballs from Galaxy
 
@@ -235,7 +235,7 @@ Check a collection's dependencies by reading its `galaxy.yml`:
 ---
 dependencies:
   community.library_inventory_filtering_v1: ">=1.0.0"
-  ansible.utils: ">=2.0.0"
+  ansible.utils: ">=2.5.2"
 ```
 
 Make sure you have tarballs for every dependency listed here, and for their dependencies too. It is recursive.
@@ -243,8 +243,7 @@ Make sure you have tarballs for every dependency listed here, and for their depe
 ```mermaid
 flowchart TD
     A[community.docker 3.8.0] --> B[community.library_inventory_filtering_v1 1.0.0]
-    C[community.postgresql 3.2.0] --> D[ansible.utils 2.0.0]
-    D --> E[ansible.netcommon 4.0.0]
+    C[ansible.netcommon 4.0.0] --> D[ansible.utils 2.5.2]
     style A fill:#f0f0f0
     style C fill:#f0f0f0
 ```
@@ -253,7 +252,7 @@ Using `ansible-galaxy collection download` is always the safer approach because 
 
 ## Setting Up a Local File Server as a Collection Repository
 
-For larger teams working in restricted environments, you can set up a simple web server to serve tarballs as a collection repository:
+For larger teams working in restricted environments, you can set up a simple web server to serve tarballs:
 
 ```bash
 # Simple approach: serve tarballs with Python's HTTP server
@@ -261,18 +260,20 @@ cd /opt/ansible/collection-tarballs/
 python3 -m http.server 8080
 ```
 
-Then configure `ansible.cfg` to use it:
+Then point a requirements file at the tarball URLs:
 
-```ini
-# ansible.cfg - Local tarball server
-[galaxy]
-server_list = local_server
+```yaml
+# requirements.yml - Local tarball server
+---
+collections:
+  - name: http://fileserver.internal:8080/community-docker-3.8.0.tar.gz
+    type: url
 
-[galaxy_server.local_server]
-url = http://fileserver.internal:8080/
+  - name: http://fileserver.internal:8080/community-library_inventory_filtering_v1-1.0.0.tar.gz
+    type: url
 ```
 
-This is not a full Galaxy API server, so it has limitations. For a proper solution, consider deploying a private Automation Hub instance, which can serve tarballs natively and handle dependency resolution.
+A plain HTTP server is not a full Galaxy API server, so you cannot configure it as a `galaxy_server` and install collections from it by collection name. For a proper solution, consider deploying a private Automation Hub instance, which can serve tarballs natively and handle dependency resolution.
 
 ## Common Issues and Fixes
 
