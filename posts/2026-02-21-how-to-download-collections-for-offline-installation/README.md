@@ -92,7 +92,7 @@ ansible-galaxy collection download -r requirements.yml -p "$PACKAGE_DIR/"
 echo "Downloading roles..."
 # Roles don't have a download command, so we install and package them
 TEMP_ROLES=$(mktemp -d)
-ansible-galaxy install -r requirements.yml -p "$TEMP_ROLES/"
+ansible-galaxy role install -r requirements.yml -p "$TEMP_ROLES/"
 
 # Package each role as a tarball
 mkdir -p "$PACKAGE_DIR/roles"
@@ -146,26 +146,28 @@ tar czf ansible-offline-20260221.tar.gz ansible-offline-20260221/
 set -e
 
 PACKAGE_DIR="${1:?Usage: $0 <package-directory>}"
-COLLECTIONS_PATH="./collections"
-ROLES_PATH="./roles"
+PACKAGE_DIR=$(cd "$PACKAGE_DIR" && pwd)
+COLLECTIONS_PATH="$(pwd)/collections"
+ROLES_PATH="$(pwd)/roles"
 
 # Verify integrity
 echo "Verifying checksums..."
 cd "$PACKAGE_DIR"
 sha256sum -c checksums.sha256
-cd -
 
 # Install collections from the downloaded tarballs
 echo "Installing collections..."
 ansible-galaxy collection install \
-    -r "$PACKAGE_DIR/requirements.yml" \
-    -p "$COLLECTIONS_PATH"
+    -r requirements.yml \
+    -p "$COLLECTIONS_PATH" \
+    --offline
+cd -
 
 # Install roles from tarballs
 echo "Installing roles..."
 for role_tarball in "$PACKAGE_DIR/roles"/*.tar.gz; do
     if [ -f "$role_tarball" ]; then
-        ansible-galaxy install "$role_tarball" -p "$ROLES_PATH"
+        ansible-galaxy role install "$role_tarball" -p "$ROLES_PATH"
     fi
 done
 
@@ -175,7 +177,7 @@ echo "Collections:"
 ansible-galaxy collection list -p "$COLLECTIONS_PATH"
 echo ""
 echo "Roles:"
-ansible-galaxy list -p "$ROLES_PATH"
+ansible-galaxy role list -p "$ROLES_PATH"
 ```
 
 ## Downloading from Specific Servers
@@ -215,7 +217,6 @@ The `download` command resolves dependencies automatically. But you should verif
 ```python
 #!/usr/bin/env python3
 # verify-offline-deps.py - Verify all dependencies are downloaded
-import yaml
 import json
 import tarfile
 import os
@@ -291,17 +292,12 @@ echo "---" > "$REPO_DIR/requirements.yml"
 echo "collections:" >> "$REPO_DIR/requirements.yml"
 
 for tarball in "$REPO_DIR/collections"/*.tar.gz; do
-    filename=$(basename "$tarball")
-    name_part=$(echo "$filename" | sed 's/-[0-9].*//')
-    namespace=$(echo "$name_part" | cut -d'-' -f1)
-    collection=$(echo "$name_part" | cut -d'-' -f2)
-
-    echo "  - name: ${namespace}.${collection}" >> "$REPO_DIR/requirements.yml"
-    echo "    source: file://${tarball}" >> "$REPO_DIR/requirements.yml"
+    echo "  - name: ${tarball}" >> "$REPO_DIR/requirements.yml"
+    echo "    type: file" >> "$REPO_DIR/requirements.yml"
 done
 
 echo "Local repository created at ${REPO_DIR}/"
-echo "Install with: ansible-galaxy collection install -r ${REPO_DIR}/requirements.yml"
+echo "Install with: ansible-galaxy collection install -r ${REPO_DIR}/requirements.yml --offline"
 ```
 
 ## Automating Periodic Downloads
@@ -354,9 +350,11 @@ When you need to update collections in an air-gapped environment:
 ansible-galaxy collection download community.general:8.2.0 -p ./update-package/
 
 # Transfer and install with --force to overwrite
+cd ./update-package/
 ansible-galaxy collection install \
-    -r ./update-package/requirements.yml \
-    -p ./collections/ \
+    -r requirements.yml \
+    -p ../collections/ \
+    --offline \
     --force
 ```
 
