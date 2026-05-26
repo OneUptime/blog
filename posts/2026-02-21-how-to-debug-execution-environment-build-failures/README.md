@@ -17,7 +17,7 @@ The single most helpful thing you can do is increase verbosity. The default outp
 ```bash
 # Build with maximum verbosity
 
-ansible-builder build --tag debug-ee:latest --verbosity 3 2>&1 | tee build.log
+ansible-builder build --container-runtime podman --tag debug-ee:latest --verbosity 3 2>&1 | tee build.log
 ```
 
 The `--verbosity 3` flag shows:
@@ -34,7 +34,7 @@ Before the build even runs, look at what ansible-builder plans to do. The `creat
 
 ```bash
 # Generate the build context
-ansible-builder create --file execution-environment.yml
+ansible-builder create --file execution-environment.yml --output-filename Containerfile
 
 # View the generated Containerfile
 cat context/Containerfile
@@ -54,8 +54,8 @@ Collection installation typically fails for three reasons: the collection does n
 Check if a collection exists and what versions are available:
 
 ```bash
-# Search for a collection on Galaxy
-ansible-galaxy collection list community.general --format json 2>/dev/null
+# Check collection metadata on Galaxy
+curl -s "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/community/general/" | python3 -m json.tool | head -30
 
 # Check available versions of a collection
 curl -s "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/community/general/versions/" | python3 -m json.tool | head -30
@@ -130,7 +130,7 @@ podman run --rm quay.io/ansible/ansible-runner:latest \
   dnf provides "*/libxml2.so"
 ```
 
-A common gotcha: RHEL 8 and RHEL sometimes have different package names. Check which OS your base image uses:
+A common gotcha: RHEL 8 and RHEL 9 sometimes have different package names. Check which OS your base image uses:
 
 ```bash
 # Check the base image OS
@@ -204,7 +204,7 @@ First, generate the build context:
 
 ```bash
 # Generate the Containerfile
-ansible-builder create --file execution-environment.yml
+ansible-builder create --file execution-environment.yml --output-filename Containerfile
 ```
 
 Then build specific stages:
@@ -239,7 +239,7 @@ Sometimes builds fail because of stale cache layers. Force a clean build:
 
 ```bash
 # Build without any cache
-ansible-builder build --tag my-ee:latest --no-cache --verbosity 3
+ansible-builder build --container-runtime podman --tag my-ee:latest --no-cache --verbosity 3
 ```
 
 If specific layers are cached incorrectly:
@@ -249,7 +249,7 @@ If specific layers are cached incorrectly:
 podman system prune -a
 
 # Then rebuild
-ansible-builder build --tag my-ee:latest --verbosity 3
+ansible-builder build --container-runtime podman --tag my-ee:latest --verbosity 3
 ```
 
 ## Disk Space Issues
@@ -292,7 +292,7 @@ dependencies:
 Build it to verify the base works:
 
 ```bash
-ansible-builder build --tag debug-ee:latest --file debug-ee.yml --verbosity 3
+ansible-builder build --container-runtime podman --tag debug-ee:latest --file debug-ee.yml --verbosity 3
 ```
 
 Then add one collection at a time:
