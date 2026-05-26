@@ -8,7 +8,7 @@ Description: Learn how to write Ansible inventory files in TOML format as an alt
 
 ---
 
-TOML (Tom's Obvious, Minimal Language) is a configuration file format that emphasizes readability. If you work with tools like Rust's Cargo, Python's pyproject.toml, or Hugo, you already know TOML. Ansible supports TOML as an inventory format through the community.general collection, giving you another option alongside INI and YAML.
+TOML (Tom's Obvious, Minimal Language) is a configuration file format that emphasizes readability. If you work with tools like Rust's Cargo, Python's pyproject.toml, or Hugo, you already know TOML. Ansible supports TOML as an inventory format through the ansible-core package, giving you another option alongside INI and YAML.
 
 ## Why TOML for Inventory?
 
@@ -29,25 +29,24 @@ graph LR
 
 ## Prerequisites
 
-Install the community.general collection which includes the TOML inventory plugin:
+Install the ansible-core package which includes the TOML inventory plugin:
 
 ```bash
-# Install the collection
+# Install Ansible if needed
+python -m pip install ansible-core
 
-ansible-galaxy collection install community.general
-
-# Install the Python TOML library
-pip install toml
+# Python 3.11+ includes tomllib. For older Python versions, install a TOML parser:
+python -m pip install tomli
 ```
 
 ## Enabling the TOML Inventory Plugin
 
-The TOML plugin is not enabled by default. Add it to your `ansible.cfg`:
+The TOML plugin is enabled by default in current Ansible versions. If you customize `enable_plugins` in your `ansible.cfg`, make sure `toml` stays in the list:
 
 ```ini
 # ansible.cfg
 [inventory]
-enable_plugins = community.general.toml, host_list, script, auto, yaml, ini
+enable_plugins = host_list, script, auto, yaml, ini, toml
 ```
 
 ## Basic TOML Inventory
@@ -58,16 +57,16 @@ Create a file ending in `.toml`:
 # inventory.toml
 # Basic TOML inventory with groups and hosts
 
-[all.children.webservers.hosts.web1]
+[webservers.hosts.web1]
 ansible_host = "10.0.1.10"
 
-[all.children.webservers.hosts.web2]
+[webservers.hosts.web2]
 ansible_host = "10.0.1.11"
 
-[all.children.databases.hosts.db1]
+[databases.hosts.db1]
 ansible_host = "10.0.2.10"
 
-[all.children.databases.hosts.db2]
+[databases.hosts.db2]
 ansible_host = "10.0.2.11"
 ```
 
@@ -89,7 +88,7 @@ TOML lets you add variables with proper types directly under each host:
 # inventory.toml
 # Hosts with typed variables
 
-[all.children.webservers.hosts.web1]
+[webservers.hosts.web1]
 ansible_host = "10.0.1.10"
 ansible_user = "deploy"
 http_port = 8080
@@ -97,7 +96,7 @@ ssl_enabled = true
 max_workers = 4
 allowed_origins = ["https://app.example.com", "https://api.example.com"]
 
-[all.children.webservers.hosts.web2]
+[webservers.hosts.web2]
 ansible_host = "10.0.1.11"
 ansible_user = "deploy"
 http_port = 8081
@@ -105,7 +104,7 @@ ssl_enabled = true
 max_workers = 8
 allowed_origins = ["https://app.example.com"]
 
-[all.children.databases.hosts."db-primary"]
+[databases.hosts."db-primary"]
 ansible_host = "10.0.2.10"
 ansible_user = "dbadmin"
 db_role = "primary"
@@ -113,7 +112,7 @@ max_connections = 200
 replication_enabled = true
 ```
 
-Note how `db-primary` uses quotes because TOML keys with hyphens need quoting. Booleans, integers, and arrays work naturally without any special handling.
+Note how `db-primary` uses quotes because quoted TOML keys are useful for host names that include characters outside the bare-key set. Hyphens are allowed in bare TOML keys, so `[databases.hosts.db-primary]` would also be valid. Booleans, integers, and arrays work naturally without any special handling.
 
 ## Adding Group Variables
 
@@ -123,65 +122,74 @@ Group variables go under a `vars` table within the group:
 # inventory.toml
 # Group variables
 
-[all.children.webservers.vars]
+[webservers.vars]
 ansible_user = "deploy"
 http_port = 80
 document_root = "/var/www/html"
 nginx_worker_processes = "auto"
 
-[all.children.webservers.hosts.web1]
+[webservers.hosts.web1]
 ansible_host = "10.0.1.10"
 http_port = 8080    # Override the group default
 
-[all.children.webservers.hosts.web2]
+[webservers.hosts.web2]
 ansible_host = "10.0.1.11"
 
-[all.children.databases.vars]
+[databases.vars]
 ansible_user = "dbadmin"
 postgresql_version = 16
 listen_port = 5432
 
-[all.children.databases.hosts."db-primary"]
+[databases.hosts."db-primary"]
 ansible_host = "10.0.2.10"
 
-[all.children.databases.hosts."db-replica"]
+[databases.hosts."db-replica"]
 ansible_host = "10.0.2.11"
 ```
 
 ## Nested Groups
 
-TOML handles nested groups through the hierarchical table structure:
+TOML handles nested groups through group tables and `children` lists:
 
 ```toml
 # inventory.toml
 # Nested group hierarchy
 
+[all]
+children = ["production", "staging"]
+
+[production]
+children = ["prod_web", "prod_db"]
+
+[staging]
+children = ["stg_web", "stg_db"]
+
 # Production web servers
-[all.children.production.children.prod_web.hosts."web-prod-01"]
+[prod_web.hosts."web-prod-01"]
 ansible_host = "10.0.1.10"
 
-[all.children.production.children.prod_web.hosts."web-prod-02"]
+[prod_web.hosts."web-prod-02"]
 ansible_host = "10.0.1.11"
 
 # Production database servers
-[all.children.production.children.prod_db.hosts."db-prod-01"]
+[prod_db.hosts."db-prod-01"]
 ansible_host = "10.0.2.10"
 
 # Staging web servers
-[all.children.staging.children.stg_web.hosts."web-stg-01"]
+[stg_web.hosts."web-stg-01"]
 ansible_host = "10.1.1.10"
 
 # Staging database servers
-[all.children.staging.children.stg_db.hosts."db-stg-01"]
+[stg_db.hosts."db-stg-01"]
 ansible_host = "10.1.2.10"
 
 # Production environment variables
-[all.children.production.vars]
+[production.vars]
 env = "production"
 monitoring_enabled = true
 
 # Staging environment variables
-[all.children.staging.vars]
+[staging.vars]
 env = "staging"
 monitoring_enabled = false
 ```
@@ -194,6 +202,9 @@ Here is a full TOML inventory for a multi-tier application:
 # inventory.toml
 # Production infrastructure inventory
 
+[production]
+children = ["webservers", "databases", "cache", "loadbalancers"]
+
 # ---- Global Variables ----
 [all.vars]
 ansible_python_interpreter = "/usr/bin/python3"
@@ -202,68 +213,68 @@ dns_servers = ["10.0.0.2", "10.0.0.3"]
 timezone = "UTC"
 
 # ---- Web Servers ----
-[all.children.webservers.vars]
+[webservers.vars]
 ansible_user = "deploy"
 nginx_version = "1.24"
 ssl_enabled = true
 
-[all.children.webservers.hosts."web-01"]
+[webservers.hosts."web-01"]
 ansible_host = "10.0.1.10"
 http_port = 8080
 
-[all.children.webservers.hosts."web-02"]
+[webservers.hosts."web-02"]
 ansible_host = "10.0.1.11"
 http_port = 8081
 
-[all.children.webservers.hosts."web-03"]
+[webservers.hosts."web-03"]
 ansible_host = "10.0.1.12"
 http_port = 8082
 
 # ---- Database Servers ----
-[all.children.databases.vars]
+[databases.vars]
 ansible_user = "dbadmin"
 postgresql_version = 16
 backup_enabled = true
 
-[all.children.databases.hosts."db-primary"]
+[databases.hosts."db-primary"]
 ansible_host = "10.0.2.10"
 db_role = "primary"
 max_connections = 300
 
-[all.children.databases.hosts."db-replica-01"]
+[databases.hosts."db-replica-01"]
 ansible_host = "10.0.2.11"
 db_role = "replica"
 max_connections = 200
 
-[all.children.databases.hosts."db-replica-02"]
+[databases.hosts."db-replica-02"]
 ansible_host = "10.0.2.12"
 db_role = "replica"
 max_connections = 200
 
 # ---- Cache Servers ----
-[all.children.cache.vars]
+[cache.vars]
 redis_version = "7.2"
 redis_maxmemory = "4gb"
 
-[all.children.cache.hosts."redis-01"]
+[cache.hosts."redis-01"]
 ansible_host = "10.0.3.10"
 redis_role = "master"
 
-[all.children.cache.hosts."redis-02"]
+[cache.hosts."redis-02"]
 ansible_host = "10.0.3.11"
 redis_role = "replica"
 
 # ---- Load Balancers ----
-[all.children.loadbalancers.hosts."lb-01"]
+[loadbalancers.hosts."lb-01"]
 ansible_host = "10.0.0.10"
 haproxy_role = "active"
 
-[all.children.loadbalancers.hosts."lb-02"]
+[loadbalancers.hosts."lb-02"]
 ansible_host = "10.0.0.11"
 haproxy_role = "standby"
 
 # ---- Parent Group: Production ----
-[all.children.production.vars]
+[production.vars]
 env = "production"
 monitoring_enabled = true
 log_level = "warn"
@@ -309,13 +320,13 @@ ansible-playbook -i inventory.toml site.yml
 
 | Feature | INI | TOML | YAML |
 |---------|-----|------|------|
-| Data types | Strings only | Full types | Full types |
-| Lists | No | Yes | Yes |
+| Data types | Limited; inline host vars are parsed as Python literals, but `:vars` entries are strings | Full types | Full types |
+| Lists | Limited to inline host vars | Yes | Yes |
 | Nested structures | Limited | Yes | Yes |
 | Whitespace-sensitive | No | No | Yes |
 | Learning curve | Low | Low | Medium |
 | Comment syntax | `#` or `;` | `#` | `#` |
-| Ansible default | Yes | No (needs plugin) | Yes |
+| Ansible default | Yes | Yes (built-in plugin) | Yes |
 
 ## Converting Between Formats
 
@@ -327,15 +338,18 @@ ansible-inventory -i inventory.toml --list
 
 # Dump TOML inventory as YAML
 ansible-inventory -i inventory.toml --list --yaml > inventory.yml
+
+# Dump inventory in TOML format
+ansible-inventory -i inventory.toml --list --toml > exported-inventory.toml
 ```
 
-Going from YAML or INI to TOML requires manual conversion since there is no built-in tool for that direction.
+You can use `ansible-inventory --toml` to export inventory in TOML format, but review the result before treating it as a hand-maintained inventory file.
 
 ## Limitations
 
 The TOML inventory plugin has a few limitations compared to INI and YAML:
 
-1. **Not built-in**: You need the community.general collection and the Python toml library
+1. **Parser requirement**: You need Ansible 2.8 or later and an available TOML parser, such as Python 3.11+'s `tomllib` or `tomli`/`toml` on older Python versions
 2. **Less common in Ansible ecosystem**: Most documentation and examples use INI or YAML
 3. **No host range support**: Unlike INI format, TOML does not support `web-[01:10]` range patterns
 4. **Verbose for large inventories**: The table syntax can get long with many nested groups
