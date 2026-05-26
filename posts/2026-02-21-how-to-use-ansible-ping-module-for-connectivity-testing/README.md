@@ -26,6 +26,8 @@ ansible web1 -m ping
 
 ## In a Playbook
 
+Although the module is most useful from the `ansible` ad-hoc command, you can also use it as a lightweight sanity check in a playbook.
+
 ```yaml
 - name: Verify all hosts are reachable
   hosts: all
@@ -50,11 +52,11 @@ ansible web1 -m ping
       ansible.builtin.ping:
       register: ping_result
 
-    - name: Fail early if hosts are unreachable
+    - name: Confirm the ping response
       ansible.builtin.assert:
         that:
           - ping_result.ping == 'pong'
-        fail_msg: "Cannot reach {{ inventory_hostname }}"
+        fail_msg: "Unexpected ping response from {{ inventory_hostname }}"
 ```
 
 ## Custom Return Value
@@ -88,12 +90,12 @@ ansible all -m ping --ask-pass
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical Ansible scenarios that commonly follow an initial connectivity check.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow after validating connectivity
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -125,7 +127,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -207,7 +209,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible tasks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -273,5 +275,4 @@ Here are several practical scenarios where this module proves essential in real-
 
 ## Conclusion
 
-The ping module is your first debugging tool when Ansible cannot reach hosts. It verifies SSH connectivity, Python availability, and basic Ansible execution. Run it before complex playbooks to catch connectivity issues early, and use verbose mode to diagnose connection problems.
-
+The ping module is your first debugging tool when Ansible cannot reach hosts. It verifies the configured connection method, Python availability, and basic Ansible execution. Run it before complex playbooks to catch connectivity issues early, and use verbose mode to diagnose connection problems.
