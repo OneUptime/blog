@@ -278,7 +278,10 @@ This sets up a daily AIDE check with email reporting:
           $AIDE_BIN --check >> "$LOGFILE" 2>&1
           EXIT_CODE=$?
 
-          if [ $EXIT_CODE -ne 0 ]; then
+          if [ $EXIT_CODE -ge 14 ]; then
+              mail -s "AIDE Error: Check failed on $(hostname)" \
+                  {{ aide_alert_email }} < "$LOGFILE"
+          elif [ $EXIT_CODE -ne 0 ]; then
               echo "AIDE detected changes on $(hostname)" | \
                   mail -s "AIDE Alert: Changes detected on $(hostname)" \
                   {{ aide_alert_email }} < "$LOGFILE"
@@ -322,6 +325,7 @@ This playbook updates the AIDE baseline after authorized changes:
       async: 600
       poll: 30
       register: aide_update
+      failed_when: aide_update.rc >= 14
 
     - name: Backup current database
       ansible.builtin.copy:
@@ -376,6 +380,8 @@ If you deploy applications with Ansible, integrate AIDE database updates into yo
       ansible.builtin.command: aide --update
       async: 600
       poll: 30
+      register: aide_update
+      failed_when: aide_update.rc >= 14
 
     - name: Activate new AIDE database
       ansible.builtin.copy:
@@ -410,7 +416,7 @@ For visibility across your fleet, collect AIDE reports to a central location:
         content: |
           Host: {{ inventory_hostname }}
           Date: {{ ansible_date_time.iso8601 }}
-          Status: {{ 'CHANGES DETECTED' if aide_result.rc != 0 else 'OK' }}
+          Status: {{ 'AIDE ERROR' if aide_result.rc >= 14 else ('CHANGES DETECTED' if aide_result.rc != 0 else 'OK') }}
           ---
           {{ aide_result.stdout }}
         dest: /var/log/aide/latest-check.txt
