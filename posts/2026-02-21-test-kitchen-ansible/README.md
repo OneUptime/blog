@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Testing, Test Kitchen, Chef, Integration
 
-Description: Use Test Kitchen with the Ansible provisioner to test playbooks and roles in disposable VM and container environments.
+Description: Use Test Kitchen with the Ansible provisioner to test playbooks and roles in disposable VM environments.
 
 ---
 
-Test Kitchen is a testing framework originally from the Chef ecosystem before changes reach production. This guide covers practical approaches with working code examples.
+Test Kitchen is a testing framework originally from the Chef ecosystem that creates temporary instances, converges them, runs verification tests, and then destroys them before changes reach production. This guide covers practical approaches with working code examples.
 
 ## Why Testing Ansible Code Matters
 
@@ -32,63 +32,61 @@ project/
         test_default.yml
   playbooks/
     site.yml
+  kitchen.yml
   tests/
     integration/
-      test_deployment.yml
-    validation/
-      test_services.yml
-  molecule/
-    default/
-      molecule.yml
-      converge.yml
-      verify.yml
+      default/
+        default_test.rb
 ```
 
 ## Setting Up the Test Environment
 
-Install the required testing tools:
+Install Ruby, Vagrant, and a Vagrant provider such as VirtualBox on the workstation or runner, then install the required testing tools:
 
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+gem install test-kitchen kitchen-ansible kitchen-vagrant kitchen-inspec
+pip install ansible-core ansible-lint yamllint
+ansible-galaxy collection install community.general
 ```
 
 ## Writing Tests
 
-### Molecule Configuration
+### Test Kitchen Configuration
 
 ```yaml
-# molecule/default/molecule.yml
-dependency:
-  name: galaxy
+# kitchen.yml
+---
 driver:
-  name: docker
-platforms:
-  - name: ubuntu2404
-    image: ubuntu:24.04
-    pre_build_image: true
-    command: /bin/systemd
-    privileged: true
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-  - name: rocky9
-    image: rockylinux:9
-    pre_build_image: true
-    command: /usr/sbin/init
-    privileged: true
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  name: vagrant
+
 provisioner:
-  name: ansible
+  name: ansible_playbook
+  roles_path: roles
+  playbook: playbooks/site.yml
+  hosts: all
+  require_ansible_repo: true
+  require_chef_for_busser: false
+
 verifier:
-  name: ansible
+  name: inspec
+
+platforms:
+  - name: ubuntu-24.04
+  - name: rockylinux-9
+
+suites:
+  - name: default
+    verifier:
+      inspec_tests:
+        - tests/integration/default
 ```
 
 ### Converge Playbook
 
 ```yaml
-# molecule/default/converge.yml
+# playbooks/site.yml
 ---
 - name: Converge
   hosts: all
@@ -97,67 +95,44 @@ verifier:
     - role: my_role
 ```
 
-### Verification Playbook
+### Verification Tests
 
-```yaml
-# molecule/default/verify.yml
----
-- name: Verify
-  hosts: all
-  become: true
-  tasks:
-    - name: Check that the service is running
-      ansible.builtin.service_facts:
+```ruby
+# tests/integration/default/default_test.rb
+describe service('my_service') do
+  it { should be_installed }
+  it { should be_enabled }
+  it { should be_running }
+end
 
-    - name: Assert service is active
-      ansible.builtin.assert:
-        that:
-          - "'my_service' in ansible_facts.services"
-          - "ansible_facts.services['my_service'].state == 'running'"
-        fail_msg: "Service my_service is not running"
+describe file('/etc/my_service/config.yml') do
+  it { should exist }
+  its('mode') { should cmp '0644' }
+end
 
-    - name: Check configuration file exists
-      ansible.builtin.stat:
-        path: /etc/my_service/config.yml
-      register: config_file
+describe port(8080) do
+  it { should be_listening }
+end
 
-    - name: Assert config file exists
-      ansible.builtin.assert:
-        that:
-          - config_file.stat.exists
-          - config_file.stat.mode == '0644'
-
-    - name: Test service responds on expected port
-      ansible.builtin.wait_for:
-        port: 8080
-        timeout: 10
-
-    - name: Verify HTTP response
-      ansible.builtin.uri:
-        url: http://localhost:8080/health
-        status_code: 200
-      register: health_check
-
-    - name: Assert healthy response
-      ansible.builtin.assert:
-        that:
-          - health_check.status == 200
+describe command('curl -fsS http://localhost:8080/health') do
+  its('exit_status') { should eq 0 }
+end
 ```
 
 ## Running Tests
 
 ```bash
 # Run the full test lifecycle
-molecule test
+kitchen test
 
 # Run individual stages
-molecule create    # Create test instances
-molecule converge  # Run the playbook
-molecule verify    # Run verification tests
-molecule destroy   # Clean up
+kitchen create    # Create test instances
+kitchen converge  # Run the playbook
+kitchen verify    # Run verification tests
+kitchen destroy   # Clean up
 
 # Run with specific platform
-molecule test -- --limit ubuntu2404
+kitchen test default-ubuntu-2404
 
 # Run linting
 ansible-lint roles/my_role/
@@ -174,20 +149,23 @@ name: Test Ansible Role
 on: [push, pull_request]
 
 jobs:
-  molecule:
-    runs-on: ubuntu-latest
+  kitchen:
+    runs-on: self-hosted
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        instance: [default-ubuntu-2404, default-rockylinux-9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - run: gem install test-kitchen kitchen-ansible kitchen-vagrant kitchen-inspec
+      - run: pip install ansible-core ansible-lint yamllint
+      - run: ansible-galaxy collection install community.general
+      - run: kitchen test ${{ matrix.instance }}
 ```
 
 ### GitLab CI
@@ -206,14 +184,15 @@ lint:
     - ansible-lint .
     - yamllint .
 
-molecule:
+kitchen:
   stage: test
-  image: docker:latest
-  services:
-    - docker:dind
+  tags:
+    - vagrant
   script:
-    - pip install ansible molecule molecule-docker
-    - molecule test
+    - gem install test-kitchen kitchen-ansible kitchen-vagrant kitchen-inspec
+    - pip install ansible-core ansible-lint yamllint
+    - ansible-galaxy collection install community.general
+    - kitchen test
 ```
 
 ## Advanced Testing Patterns
@@ -221,61 +200,67 @@ molecule:
 ### Testing Idempotency
 
 ```bash
-# Molecule automatically tests idempotency by running converge twice
-# The second run should have zero changes
-molecule converge
-molecule idempotence
+# kitchen-ansible can run the playbook twice and fail on changes
+# during the second run when idempotency_test is enabled
+kitchen converge
+```
+
+```yaml
+# kitchen.yml
+provisioner:
+  name: ansible_playbook
+  idempotency_test: true
 ```
 
 ### Testing with Different Variables
 
 ```yaml
-# molecule/custom-vars/molecule.yml
+# kitchen.yml
 provisioner:
-  name: ansible
-  inventory:
-    group_vars:
-      all:
-        custom_port: 9090
-        enable_ssl: true
+  name: ansible_playbook
+  extra_vars:
+    custom_port: 9090
+    enable_ssl: true
 ```
 
-### Testinfra Tests (Python-Based)
+### InSpec Tests
 
-```python
-# tests/test_default.py
-def test_service_is_running(host):
-    service = host.service("my_service")
-    assert service.is_running
-    assert service.is_enabled
+```ruby
+# tests/integration/default/default_test.rb
+describe service('my_service') do
+  it { should be_running }
+  it { should be_enabled }
+end
 
-def test_config_file(host):
-    config = host.file("/etc/my_service/config.yml")
-    assert config.exists
-    assert config.user == "root"
-    assert config.mode == 0o644
+describe file('/etc/my_service/config.yml') do
+  it { should exist }
+  its('owner') { should eq 'root' }
+  its('mode') { should cmp '0644' }
+end
 
-def test_port_is_listening(host):
-    socket = host.socket("tcp://0.0.0.0:8080")
-    assert socket.is_listening
+describe port(8080) do
+  it { should be_listening }
+end
 ```
 
 ## Summary
 
-Testing Ansible code requires multiple layers: linting for style and best practices, unit tests for individual roles, integration tests for multi-role interactions, and validation tests for the final system state. Molecule is the standard testing tool for Ansible roles, supporting multiple platforms and verification strategies. Integrate tests into your CI/CD pipeline so every change gets validated automatically. The investment in testing pays off quickly by catching issues before they reach production.
+Testing Ansible code requires multiple layers: linting for style and best practices, unit tests for individual roles, integration tests for multi-role interactions, and validation tests for the final system state. Test Kitchen can test Ansible playbooks across multiple platforms and verification strategies through provisioner and verifier plugins. Integrate tests into your CI/CD pipeline so every change gets validated automatically. The investment in testing pays off quickly by catching issues before they reach production.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this workflow proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this testing approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
   gather_facts: true
+  vars:
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Gather system information
       ansible.builtin.setup:
@@ -303,7 +288,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -324,7 +309,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -335,16 +320,18 @@ Here are several practical scenarios where this module proves essential in real-
         - "22"
         - "80"
         - "443"
+      when: ansible_os_family == 'Debian'
 
     - name: Enable firewall
       community.general.ufw:
         state: enabled
         policy: deny
+      when: ansible_os_family == 'Debian'
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -385,7 +372,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this testing approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -447,4 +434,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
