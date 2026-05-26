@@ -33,27 +33,20 @@ You can pin to a specific Git tag, branch, or commit:
 
 ```bash
 # Install a specific tag
-ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,v3.1.0
+ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,3.1.0
 
 # Install a specific branch
-ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,develop
+ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,master
 
 # Install a specific commit
-ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,a1b2c3d4
+ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,0baeabebe84fc8be64644db32a46fd9062d8606f
 ```
 
 The version is specified after a comma, with no spaces.
 
 ## Naming the Installed Role
 
-By default, the role is named after the repository. You can override this:
-
-```bash
-# Install with a custom name
-ansible-galaxy install git+https://github.com/geerlingguy/ansible-role-nginx.git,v3.1.0 --name nginx
-```
-
-Or in `requirements.yml`:
+By default, the role is named after the repository. To override this, use `requirements.yml`:
 
 ```yaml
 # requirements.yml
@@ -61,7 +54,7 @@ Or in `requirements.yml`:
 roles:
   - name: nginx
     src: git+https://github.com/geerlingguy/ansible-role-nginx.git
-    version: v3.1.0
+    version: "3.1.0"
 ```
 
 ## Installing from Private GitHub Repos via SSH
@@ -88,7 +81,7 @@ If you prefer HTTPS with a personal access token:
 
 ```bash
 # Install using a GitHub personal access token
-ansible-galaxy install git+https://oauth2:YOUR_TOKEN@github.com/myorg/ansible-role-nginx.git,v1.0.0 -p roles/
+ansible-galaxy install git+https://YOUR_USERNAME:YOUR_TOKEN@github.com/myorg/ansible-role-nginx.git,v1.0.0 -p roles/
 ```
 
 For CI/CD pipelines, use an environment variable:
@@ -96,7 +89,7 @@ For CI/CD pipelines, use an environment variable:
 ```bash
 # Use an environment variable for the token
 export GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
-ansible-galaxy install "git+https://oauth2:${GITHUB_TOKEN}@github.com/myorg/ansible-role-nginx.git,v1.0.0" -p roles/
+ansible-galaxy install "git+https://YOUR_USERNAME:${GITHUB_TOKEN}@github.com/myorg/ansible-role-nginx.git,v1.0.0" -p roles/
 ```
 
 ## Bulk Installation with requirements.yml
@@ -115,7 +108,7 @@ roles:
   # From a public GitHub repo
   - name: nginx
     src: git+https://github.com/geerlingguy/ansible-role-nginx.git
-    version: v3.1.0
+    version: "3.1.0"
 
   # From a private GitHub repo via SSH
   - name: common
@@ -166,7 +159,7 @@ ansible-galaxy list -p roles/
 Output:
 
 ```text
-- nginx, v3.1.0
+- nginx, 3.1.0
 - common, v2.0.0
 - postgresql, v1.2.0
 - app_deploy, v1.5.3
@@ -219,8 +212,8 @@ You can set default behaviors in `ansible.cfg`:
 roles_path = roles
 
 [galaxy]
-# Timeout for Git operations
-role_skeleton_ignore = .git,.github,__pycache__
+# Timeout for Galaxy API operations
+server_timeout = 60
 ```
 
 ## CI/CD Pipeline Integration
