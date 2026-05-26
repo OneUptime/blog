@@ -156,7 +156,7 @@ For CI/CD pipelines, pass the password through an environment variable.
 
 ```bash
 # Set the become password as an environment variable
-export ANSIBLE_BECOME_PASSWORD="your_sudo_password"
+export ANSIBLE_BECOME_PASS="your_sudo_password"
 
 # Run the playbook
 ansible-playbook playbooks/deploy.yml
@@ -174,7 +174,7 @@ jobs:
 
       - name: Run Ansible playbook
         env:
-          ANSIBLE_BECOME_PASSWORD: ${{ secrets.SUDO_PASSWORD }}
+          ANSIBLE_BECOME_PASS: ${{ secrets.SUDO_PASSWORD }}
         run: ansible-playbook playbooks/deploy.yml
 ```
 
@@ -183,10 +183,8 @@ jobs:
 deploy:
   stage: deploy
   script:
-    - export ANSIBLE_BECOME_PASSWORD="$SUDO_PASSWORD"
+    - export ANSIBLE_BECOME_PASS="$SUDO_PASSWORD"
     - ansible-playbook playbooks/deploy.yml
-  variables:
-    SUDO_PASSWORD: $SUDO_PASSWORD
 ```
 
 The password is stored as a CI/CD secret, never in code.
@@ -198,10 +196,10 @@ Use lookup plugins to retrieve the password from external secret stores.
 ```yaml
 # group_vars/all/main.yml
 # Retrieve become password from HashiCorp Vault
-ansible_become_pass: "{{ lookup('hashi_vault', 'secret=secret/data/ansible:become_pass') }}"
+ansible_become_pass: "{{ lookup('community.hashi_vault.hashi_vault', 'secret=secret/data/ansible:become_pass') }}"
 
 # Retrieve from AWS Secrets Manager
-ansible_become_pass: "{{ lookup('amazon.aws.aws_secret', 'ansible/become-password') }}"
+ansible_become_pass: "{{ lookup('amazon.aws.secretsmanager_secret', 'ansible/become-password') }}"
 
 # Retrieve from a local file
 ansible_become_pass: "{{ lookup('file', '~/.ansible_become_pass') }}"
@@ -215,7 +213,7 @@ ansible_become_pass: "{{ lookup('file', '~/.ansible_become_pass') }}"
   hosts: all
   become: true
   vars:
-    ansible_become_pass: "{{ lookup('hashi_vault', 'secret=secret/data/ansible:become_pass') }}"
+    ansible_become_pass: "{{ lookup('community.hashi_vault.hashi_vault', 'secret=secret/data/ansible:become_pass') }}"
 
   tasks:
     - name: Verify access
@@ -260,8 +258,8 @@ Here are the insecure practices you should avoid.
 ansible_become_pass=MyPassword123
 
 # BAD: Password in ansible.cfg
-[privilege_escalation]
-become_pass = MyPassword123
+[sudo_become_plugin]
+password = MyPassword123
 
 # BAD: Password on the command line (visible in process list and shell history)
 ansible-playbook playbooks/deploy.yml -e "ansible_become_pass=MyPassword123"
@@ -322,8 +320,8 @@ Make sure your passwords are not leaking anywhere.
 
 ```bash
 # Check that vault files are actually encrypted
-file group_vars/all/vault.yml
-# Should show: ASCII text (encrypted content)
+head -n 1 group_vars/all/vault.yml
+# Should show: $ANSIBLE_VAULT;...
 
 # Check that .vault_pass is in .gitignore
 git check-ignore .vault_pass
