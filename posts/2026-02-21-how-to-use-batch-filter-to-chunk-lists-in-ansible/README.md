@@ -82,7 +82,7 @@ The most practical use case for batch is rolling deployments where you update a 
 
 ```yaml
 # playbook-staged-deploy.yml
-# Deploys to servers in batches of 2, pausing between each batch
+# Deploys to servers in batches of 2
 - name: Staged deployment with batch
   hosts: localhost
   gather_facts: false
@@ -225,17 +225,33 @@ Combine batch with async tasks for actual parallel processing:
       - http://service-f:8080/health
 
   tasks:
-    - name: Check endpoints in batches of 3
-      ansible.builtin.uri:
-        url: "{{ item }}"
-        method: GET
-        timeout: 5
-      loop: "{{ batch }}"
-      async: 30
-      poll: 0
-      register: health_checks
-      vars:
-        batch: "{{ endpoints | batch(3) | list | first }}"
+    - name: Run each endpoint batch
+      ansible.builtin.include_tasks: health-check-batch.yml
+      loop: "{{ endpoints | batch(3) | list }}"
+      loop_control:
+        loop_var: endpoint_batch
+```
+
+```yaml
+# health-check-batch.yml
+- name: Start health checks for current batch
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: GET
+    timeout: 5
+  loop: "{{ endpoint_batch }}"
+  async: 30
+  poll: 0
+  register: health_checks
+
+- name: Wait for current batch to finish
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ health_checks.results }}"
+  register: health_check_results
+  until: health_check_results is finished
+  retries: 30
+  delay: 1
 ```
 
 ## Batch Size Calculation
