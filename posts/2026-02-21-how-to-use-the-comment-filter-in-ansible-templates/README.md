@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, Template, Jinja2, Configuration Management
 
-Description: Learn how to use the comment filter in Ansible to automatically wrap text in language-specific comment syntax for any configuration format.
+Description: Learn how to use the comment filter in Ansible to wrap text in language-specific comment syntax for configuration files.
 
 ---
 
-Every configuration file format has its own comment syntax. Shell scripts use `#`, C-style configs use `//` or `/* */`, XML uses `<!-- -->`, and SQL uses `--`. When generating config files with Ansible templates, you often want to add header comments or inline documentation. The `comment` filter automatically wraps text in the appropriate comment syntax for the target format.
+Every configuration file format has its own comment syntax. Shell scripts use `#`, C-style configs use `//` or `/* */`, XML uses `<!-- -->`, and SQL uses `--`. When generating config files with Ansible templates, you often want to add header comments or inline documentation. The `comment` filter wraps text in the comment syntax you choose for the target format.
 
 Instead of manually formatting comment blocks in every template, you can let the filter handle it. This keeps your templates cleaner and makes it easy to switch comment styles when needed.
 
@@ -70,13 +70,22 @@ Output:
 
 --- C block style ---
 /*
+ *
  * Managed by Ansible
+ *
  */
+
+--- Erlang style ---
+%
+% Managed by Ansible
+%
 
 --- XML style ---
 <!--
+ -
  - Managed by Ansible
- -->
+ -
+-->
 ```
 
 ## Custom Comment Characters
