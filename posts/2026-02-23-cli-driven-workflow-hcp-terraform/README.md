@@ -349,9 +349,12 @@ This is useful for debugging or when you need local tools (like `aws` CLI) durin
 If you need to cancel a running plan or apply:
 
 ```bash
-# Press Ctrl+C in your terminal
-# Terraform sends a cancellation request to HCP Terraform
-# The run is marked as canceled
+# For a remote plan, press Ctrl+C to stop streaming logs.
+# The plan continues running remotely.
+#
+# For a remote apply, Ctrl+C cancels the apply only if it is still pending.
+# If the apply has already started, Ctrl+C stops streaming logs but does not stop
+# the apply running remotely.
 
 # Or cancel from the UI:
 # Go to the run page and click "Cancel Run"
