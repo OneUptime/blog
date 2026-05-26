@@ -169,22 +169,22 @@ Some applications use structured configuration files:
 ---
 payment:
   provider: stripe
-  secret_key: {{ stripe_secret_key }}
-  webhook_secret: {{ stripe_webhook_secret }}
+  secret_key: {{ stripe_secret_key | to_json }}
+  webhook_secret: {{ stripe_webhook_secret | to_json }}
 
 monitoring:
   datadog:
-    api_key: {{ datadog_api_key }}
+    api_key: {{ datadog_api_key | to_json }}
   pagerduty:
-    api_key: {{ pagerduty_api_key }}
+    api_key: {{ pagerduty_api_key | to_json }}
 
 notifications:
   email:
     provider: sendgrid
-    api_key: {{ sendgrid_api_key }}
+    api_key: {{ sendgrid_api_key | to_json }}
   sms:
     provider: twilio
-    auth_token: {{ twilio_auth_token }}
+    auth_token: {{ twilio_auth_token | to_json }}
 ```
 
 ## Using API Keys in Ansible Tasks
@@ -225,16 +225,16 @@ For cases where you want the key encrypted directly in a vars file:
 
 ```bash
 # Encrypt individual API keys as inline strings
-echo -n 'sk_live_abc123def456ghi789' | ansible-vault encrypt_string \
+ansible-vault encrypt_string \
   --vault-password-file vault_pass.txt \
   --stdin-name 'vault_stripe_secret_key'
 
-echo -n 'SG.abc123.def456ghi789jkl012' | ansible-vault encrypt_string \
+ansible-vault encrypt_string \
   --vault-password-file vault_pass.txt \
   --stdin-name 'vault_sendgrid_api_key'
 ```
 
-Paste the results into your vars file:
+Enter each API key when prompted, then paste the results into your vars file:
 
 ```yaml
 # group_vars/production/vault.yml
@@ -283,7 +283,6 @@ When deploying Docker containers with API keys:
 
 ```jinja2
 {# docker-compose.yml.j2 #}
-version: '3.8'
 services:
   web:
     image: myapp:{{ app_version }}
