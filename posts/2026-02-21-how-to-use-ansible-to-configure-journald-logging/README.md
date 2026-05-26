@@ -56,7 +56,7 @@ Complete journald configuration template:
 # Where to store journal data: volatile (RAM), persistent (disk), auto, none
 Storage={{ journald_storage | default('persistent') }}
 
-# Compress journal files above this threshold
+# Compress journal data objects above the default threshold
 Compress={{ journald_compress | default('yes') }}
 
 # Seal journal files with Forward Secure Sealing
@@ -85,7 +85,7 @@ RuntimeMaxFileSize={{ journald_runtime_max_file_size | default('64M') }}
 # Maximum time to keep journal entries
 MaxRetentionSec={{ journald_max_retention_sec | default('1month') }}
 
-# Maximum number of journal files to keep
+# Maximum time to store entries in a single journal file before rotation
 MaxFileSec={{ journald_max_file_sec | default('1week') }}
 
 #-- Forwarding --#
@@ -112,7 +112,7 @@ RateLimitIntervalSec={{ journald_rate_limit_interval | default('30s') }}
 RateLimitBurst={{ journald_rate_limit_burst | default(10000) }}
 
 #-- Misc --#
-# Split journals per user (yes) or keep one system journal (no)
+# Split journals per user (uid) or keep one system journal (none)
 SplitMode={{ journald_split_mode | default('uid') }}
 
 # Maximum level to store (0=emerg to 7=debug)
@@ -124,7 +124,7 @@ MaxLevelSyslog={{ journald_max_level_syslog | default('debug') }}
 # Maximum level for wall messages
 MaxLevelWall={{ journald_max_level_wall | default('emerg') }}
 
-# Audit log integration
+# Tell the kernel to generate audit records on journald startup
 Audit={{ journald_audit | default('yes') }}
 ```
 
@@ -371,6 +371,11 @@ Verify journal health and configuration:
   register: journal_header
   changed_when: false
 
+- name: Get disk usage of journals
+  ansible.builtin.command: journalctl --disk-usage
+  register: disk_usage
+  changed_when: false
+
 - name: Display journal statistics
   ansible.builtin.debug:
     msg: |
@@ -385,6 +390,12 @@ Configure services to log at specific levels:
 
 ```yaml
 # Configure a service to only log warnings and above to journal
+- name: Create drop-in directory for chatty service
+  ansible.builtin.file:
+    path: /etc/systemd/system/chatty-service.service.d
+    state: directory
+    mode: '0755'
+
 - name: Set service log level via drop-in
   ansible.builtin.copy:
     dest: /etc/systemd/system/chatty-service.service.d/logging.conf
