@@ -114,7 +114,7 @@ The `become_user` directive lets you run tasks as any user, not just root. This 
 ---
 - name: Configure application as service user
   hosts: app_servers
-  become: yes  # We need root first to switch to other users
+  become: yes  # Enable privilege escalation for tasks that switch users
 
   tasks:
     - name: Run database migration as postgres user
@@ -125,8 +125,6 @@ The `become_user` directive lets you run tasks as any user, not just root. This 
       template:
         src: app-config.yml.j2
         dest: /opt/myapp/config.yml
-        owner: appuser
-        group: appuser
         mode: '0640'
       become_user: appuser
 
@@ -254,6 +252,17 @@ Here is a realistic deployment playbook that uses multiple users:
           - redis-tools
         state: present
 
+    - name: Create application directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+      loop:
+        - "{{ app_dir }}/releases"
+        - "{{ app_dir }}/current"
+
     # Application tasks as the app user
     - name: Download application release
       get_url:
@@ -343,7 +352,7 @@ You can pass additional flags to the become method:
 - name: Use custom become flags
   hosts: all
   become: yes
-  become_flags: '-H -S'  # Preserve HOME, read password from stdin
+  become_flags: '-H -S'  # Set HOME to the target user's home, read password from stdin
 
   tasks:
     - name: Run task with custom sudo flags
