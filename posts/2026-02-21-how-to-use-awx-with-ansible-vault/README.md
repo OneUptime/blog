@@ -19,8 +19,15 @@ The key thing to understand: AWX stores vault passwords encrypted in its own dat
 ## Creating a Vault Credential in AWX
 
 ```bash
-# Create a Vault credential
+# Get the Vault credential type ID for this AWX instance
+VAULT_CREDENTIAL_TYPE_ID=$(
+  curl -s \
+    -H "Authorization: Bearer ${AWX_TOKEN}" \
+    "https://awx.example.com/api/v2/credential_types/?namespace=vault" \
+    | jq -r '.results[0].id'
+)
 
+# Create a Vault credential
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -28,14 +35,14 @@ curl -s -X POST \
   -d '{
     "name": "Playbook Vault Password",
     "organization": 1,
-    "credential_type": 3,
+    "credential_type": '"${VAULT_CREDENTIAL_TYPE_ID}"',
     "inputs": {
       "vault_password": "your-vault-password-here"
     }
   }'
 ```
 
-Credential type 3 is "Vault" in AWX. The password is encrypted when stored in the AWX database.
+The built-in "Vault" credential type ID can vary between AWX instances, so look it up before creating the credential. The password is encrypted when stored in the AWX database.
 
 ## Using a Vault ID
 
@@ -50,7 +57,7 @@ curl -s -X POST \
   -d '{
     "name": "Production Vault",
     "organization": 1,
-    "credential_type": 3,
+    "credential_type": '"${VAULT_CREDENTIAL_TYPE_ID}"',
     "inputs": {
       "vault_password": "prod-vault-password",
       "vault_id": "production"
@@ -67,7 +74,7 @@ curl -s -X POST \
   -d '{
     "name": "Staging Vault",
     "organization": 1,
-    "credential_type": 3,
+    "credential_type": '"${VAULT_CREDENTIAL_TYPE_ID}"',
     "inputs": {
       "vault_password": "staging-vault-password",
       "vault_id": "staging"
@@ -94,14 +101,14 @@ curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/job_templates/10/credentials/ \
-  -d '{"id": 7}'
+  -d '{"associate": true, "id": 7}'
 
 # Attach a second vault credential for a different vault ID
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/job_templates/10/credentials/ \
-  -d '{"id": 8}'
+  -d '{"associate": true, "id": 8}'
 ```
 
 ## Vault-Encrypted Variable Files
@@ -291,4 +298,4 @@ Most production setups use both. Machine credentials and cloud credentials come 
 
 ## Wrapping Up
 
-Ansible Vault and AWX work together seamlessly. Encrypt your secrets in Git with vault, create corresponding vault credentials in AWX, and attach them to the right job templates. The secrets stay encrypted in your repository, and AWX provides the decryption password at runtime. Combine this with `no_log: true` on sensitive tasks, and you have secrets that are encrypted at rest, encrypted in transit, and hidden from job output.
+Ansible Vault and AWX work together seamlessly. Encrypt your secrets in Git with vault, create corresponding vault credentials in AWX, and attach them to the right job templates. The secrets stay encrypted in your repository, and AWX provides the decryption password at runtime. Combine this with `no_log: true` on sensitive tasks, and you have secrets that are encrypted at rest and hidden from job output.
