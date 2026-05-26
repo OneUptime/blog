@@ -129,7 +129,7 @@ AnsibleFilterError: int() argument must be a string, a bytes-like object or a nu
 **Common type issues:**
 
 ```jinja2
-{# WRONG: Comparing string to integer #}
+{# WRONG: Comparing a number to a string #}
 {% if ansible_memtotal_mb > '4096' %}
 {# FIX: Convert to int first #}
 {% if ansible_memtotal_mb | int > 4096 %}
@@ -222,19 +222,19 @@ server {
 {% endfor %}
 ```
 
-If the template fails at "Section 2," you know the issue is with SSL-related variables.
+If the template only fails when "Section 2" is enabled, you know the issue is with SSL-related variables.
 
 ## Debugging Technique: The ansible.builtin.template Lookup
 
-You can test template rendering inline without a separate file:
+You can test template rendering with the `ansible.builtin.template` lookup:
 
 ```yaml
 # Test a Jinja2 expression directly
 - name: Test template expression
   ansible.builtin.debug:
-    msg: "{{ lookup('template', 'test.j2') }}"
+    msg: "{{ lookup('ansible.builtin.template', 'test.j2') }}"
 
-# Or test inline
+# Or test a small inline expression directly in a task
 - name: Test Jinja2 expression inline
   ansible.builtin.debug:
     msg: >-
@@ -248,7 +248,7 @@ You can test template rendering inline without a separate file:
 Filters that do not exist or receive wrong input:
 
 ```text
-AnsibleFilterError: No filter named 'to_yaml'
+AnsibleFilterError: No filter named 'my_custom_filter'
 ```
 
 or
@@ -309,7 +309,9 @@ events {
 http {
     {% include 'includes/mime_types.j2' %}
     {% include 'includes/logging.j2' %}
-    {% include 'includes/ssl.j2' if enable_ssl else '' %}
+    {% if enable_ssl %}
+    {% include 'includes/ssl.j2' %}
+    {% endif %}
 
     {% for site in nginx_sites %}
     {% include 'includes/server_block.j2' %}
