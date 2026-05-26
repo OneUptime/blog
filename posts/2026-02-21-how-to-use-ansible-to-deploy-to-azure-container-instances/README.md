@@ -16,7 +16,7 @@ Azure Container Instances (ACI) is the simplest way to run containers in Azure. 
 # Install Azure collection and SDK
 
 ansible-galaxy collection install azure.azcollection
-pip install azure-identity azure-mgmt-containerinstance azure-mgmt-resource
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 ```
 
 ## Basic ACI Deployment
@@ -35,11 +35,9 @@ pip install azure-identity azure-mgmt-containerinstance azure-mgmt-resource
     resource_group: "{{ resource_group }}"
     name: "{{ container_group_name }}"
     os_type: linux
-    restart_policy: Always
+    restart_policy: always
     ip_address: public
     dns_name_label: "{{ dns_label }}"
-    ports:
-      - "{{ app_port }}"
     containers:
       - name: "{{ app_name }}"
         image: "{{ container_image }}"
@@ -52,13 +50,13 @@ pip install azure-identity azure-mgmt-containerinstance azure-mgmt-resource
             value: "{{ database_url }}"
           - name: LOG_LEVEL
             value: "{{ log_level }}"
-        secure_environment_variables:
           - name: API_SECRET
             value: "{{ vault_api_secret }}"
+            is_secure: true
     state: present
   register: aci_result
 
-- name: Display container FQDN
+- name: Display container IP
   ansible.builtin.debug:
     msg: "Container accessible at: {{ aci_result.ip_address }}"
 ```
@@ -76,8 +74,6 @@ ACI supports running multiple containers in a group that share the same network:
     name: "{{ container_group_name }}"
     os_type: linux
     ip_address: public
-    ports:
-      - 8080
     containers:
       - name: webapp
         image: "{{ app_image }}:{{ app_version }}"
@@ -107,7 +103,8 @@ ACI supports running multiple containers in a group that share the same network:
     resource_group: "{{ resource_group }}"
     name: "{{ container_group_name }}"
     os_type: linux
-    restart_policy: Always
+    restart_policy: always
+    ip_address: private
     subnet_ids:
       - "{{ aci_subnet_id }}"
     containers:
@@ -158,15 +155,16 @@ ACI supports running multiple containers in a group that share the same network:
     name: "{{ container_group_name }}"
   register: aci_info
 
-- name: Assert container is running
+- name: Assert container group has an IP address
   ansible.builtin.assert:
     that:
-      - aci_info.containerinstances[0].containers[0].instance_view.current_state.state == 'Running'
-    fail_msg: "Container is not in Running state"
+      - aci_info.container_groups | length > 0
+      - aci_info.container_groups[0].ip_address | length > 0
+    fail_msg: "Container group was not found or does not have an IP address"
 
 - name: Check application health endpoint
   ansible.builtin.uri:
-    url: "http://{{ aci_info.containerinstances[0].ip_address }}:{{ app_port }}/health"
+    url: "http://{{ aci_info.container_groups[0].ip_address }}:{{ app_port }}/health"
     status_code: 200
   register: health
   until: health.status == 200
@@ -189,7 +187,7 @@ ACI supports running multiple containers in a group that share the same network:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical Ansible patterns for real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
