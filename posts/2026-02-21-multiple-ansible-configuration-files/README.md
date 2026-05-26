@@ -51,7 +51,8 @@ inventory = inventory.ini
 host_key_checking = False
 forks = 5
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 gathering = implicit
 
 [privilege_escalation]
@@ -66,7 +67,8 @@ inventory = inventory.ini
 host_key_checking = True
 forks = 15
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 log_path = /var/log/ansible/staging.log
 gathering = smart
 fact_caching = jsonfile
@@ -87,14 +89,15 @@ inventory = inventory.ini
 host_key_checking = True
 forks = 30
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 log_path = /var/log/ansible/production.log
 vault_password_file = .vault_pass
 gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_prod_facts
 fact_caching_timeout = 1800
-callbacks_enabled = timer, profile_tasks, log_plays
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, community.general.log_plays
 
 [privilege_escalation]
 become = True
@@ -142,21 +145,22 @@ Each config references its own inventory:
 ```ini
 # configs/dev.cfg
 [defaults]
-inventory = inventory/dev.ini
+inventory = ../inventory/dev.ini
 host_key_checking = False
 forks = 5
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 ```
 
 ```ini
 # configs/production.cfg
 [defaults]
-inventory = inventory/production.ini
+inventory = ../inventory/production.ini
 host_key_checking = True
 forks = 30
 log_path = /var/log/ansible/production.log
-vault_password_file = .vault_pass
-callbacks_enabled = timer, profile_tasks
+vault_password_file = ../.vault_pass
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [ssh_connection]
 pipelining = True
@@ -225,13 +229,14 @@ Or use a shell wrapper script:
 # run-ansible.sh
 
 ENVIRONMENT="${1}"
-shift
 
 if [ -z "$ENVIRONMENT" ]; then
     echo "Usage: $0 <environment> <ansible-playbook args>"
     echo "Environments: dev, staging, production"
     exit 1
 fi
+
+shift
 
 CONFIG_FILE="configs/${ENVIRONMENT}.cfg"
 
@@ -263,7 +268,8 @@ Use a base ansible.cfg with common settings and override environment-specific se
 [defaults]
 roles_path = roles
 collections_path = collections
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 retry_files_enabled = False
 
 [ssh_connection]
@@ -287,7 +293,7 @@ export ANSIBLE_HOST_KEY_CHECKING=True
 export ANSIBLE_FORKS=30
 export ANSIBLE_LOG_PATH=/var/log/ansible/production.log
 export ANSIBLE_VAULT_PASSWORD_FILE=.vault_pass
-export ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks,log_plays
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks,community.general.log_plays
 ```
 
 Source the environment file before running:
