@@ -43,7 +43,7 @@ When running playbooks from the command line, `set_stats` requires the `ansible.
           deployment_status: "success"
 ```
 
-In AWX, these statistics appear in the job details under "Extra Variables" for the job artifacts, and they are accessible through the API at `/api/v2/jobs/<id>/`.
+In AWX, these statistics are stored as job artifacts, and they are accessible through the API at `/api/v2/jobs/<id>/`.
 
 ## Passing Data Between Workflow Jobs
 
@@ -159,9 +159,11 @@ Track deployment metrics that AWX can expose through its API.
 - name: Deploy and track metrics
   hosts: appservers
   become: yes
-  vars:
-    deploy_start: "{{ ansible_date_time.epoch }}"
   tasks:
+    - name: Record deployment start time
+      ansible.builtin.set_fact:
+        deploy_start: "{{ lookup('ansible.builtin.pipe', 'date +%s') | int }}"
+
     - name: Stop application
       ansible.builtin.service:
         name: myapp
@@ -198,7 +200,7 @@ Track deployment metrics that AWX can expose through its API.
 
     - name: Calculate deployment duration
       ansible.builtin.set_fact:
-        deploy_duration: "{{ ansible_date_time.epoch | int - deploy_start | int }}"
+        deploy_duration: "{{ lookup('ansible.builtin.pipe', 'date +%s') | int - deploy_start | int }}"
 
     - name: Report deployment metrics
       ansible.builtin.set_stats:
@@ -215,11 +217,11 @@ Track deployment metrics that AWX can expose through its API.
 
 ## Conditional Workflow Routing
 
-AWX workflows can use `set_stats` data to decide which path to take (success/failure/always).
+AWX workflows route to success, failure, or always paths based on the job status. Use `set_stats` to record validation details that downstream jobs can consume on those paths.
 
 ```yaml
 # validation-step.yml
-# Sets stats that AWX workflow can use for routing decisions
+# Sets stats that downstream AWX workflow jobs can consume
 ---
 - name: Pre-deployment validation
   hosts: appservers
@@ -260,7 +262,7 @@ AWX workflows can use `set_stats` data to decide which path to take (success/fai
       when: not (disk_ok and memory_ok and db_check is success)
 ```
 
-In the AWX workflow, the validation job connects to the deployment job on success and a notification job on failure. The `set_stats` data is available in both paths.
+In the AWX workflow, the validation job connects to the deployment job on success and a notification job on failure. The validation job status controls the path, and the `set_stats` data is available to downstream jobs.
 
 ## Enabling set_stats on the Command Line
 
@@ -296,9 +298,10 @@ CUSTOM STATS: ******************************************************************
 After a job completes, you can retrieve the stats through the AWX REST API.
 
 ```bash
-# Get job artifacts (set_stats data) from AWX API
+# Get job details from the AWX API and print artifacts (set_stats data)
 curl -s -H "Authorization: Bearer $AWX_TOKEN" \
-  https://awx.example.com/api/v2/jobs/42/artifacts/ | python3 -m json.tool
+  https://awx.example.com/api/v2/jobs/42/ \
+  | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin).get("artifacts", {}), indent=2))'
 
 # Response:
 # {
@@ -324,11 +327,11 @@ AWX_TOKEN = "your-api-token"
 def get_job_stats(job_id):
     """Get set_stats data from a completed AWX job."""
     resp = requests.get(
-        f"{AWX_URL}/api/v2/jobs/{job_id}/artifacts/",
+        f"{AWX_URL}/api/v2/jobs/{job_id}/",
         headers={"Authorization": f"Bearer {AWX_TOKEN}"}
     )
     resp.raise_for_status()
-    return resp.json()
+    return resp.json().get("artifacts", {})
 
 if __name__ == "__main__":
     job_id = sys.argv[1]
@@ -340,7 +343,7 @@ if __name__ == "__main__":
 
 ## Accumulating Statistics
 
-By default, `set_stats` replaces previous values. Use `aggregate: true` to accumulate numeric values.
+By default, `set_stats` aggregates values with existing stats. Use `aggregate: false` when you want a later value to replace an earlier value instead.
 
 ```yaml
 # aggregate-stats.yml
@@ -376,4 +379,4 @@ By default, `set_stats` replaces previous values. Use `aggregate: true` to accum
 
 ## Summary
 
-The `set_stats` module is the bridge between Ansible playbook execution and AWX/Tower's reporting and workflow systems. Use it to pass data between workflow jobs, report deployment metrics, enable conditional workflow routing, and expose custom statistics through the AWX API. Set `per_host: false` with `run_once: true` for aggregate stats, and `per_host: true` for host-specific data. Outside of AWX, enable `show_custom_stats` in `ansible.cfg` to see the output in the play recap. This module turns playbooks from fire-and-forget scripts into observable, data-rich automation that integrates into larger operational workflows.
+The `set_stats` module is the bridge between Ansible playbook execution and AWX/Tower's reporting and workflow systems. Use it to pass data between workflow jobs, report deployment metrics, provide context for conditional workflow paths, and expose custom statistics through the AWX API. Set `per_host: false` with `run_once: true` for aggregate stats, and `per_host: true` for host-specific data. Outside of AWX, enable `show_custom_stats` in `ansible.cfg` to see the output in the play recap. This module turns playbooks from fire-and-forget scripts into observable, data-rich automation that integrates into larger operational workflows.
