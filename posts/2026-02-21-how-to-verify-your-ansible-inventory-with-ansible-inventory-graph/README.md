@@ -8,7 +8,7 @@ Description: Learn how to use ansible-inventory --graph and related commands to 
 
 ---
 
-Before you run a playbook, you should know exactly what your inventory looks like. The `ansible-inventory` command is the official tool for inspecting your inventory from the command line. Its `--graph` flag gives you a visual tree of hosts and groups, and the other flags let you drill into variables, host details, and more. This post covers all the ways to use `ansible-inventory` to verify your setup.
+Before you run a playbook, you should know exactly what your inventory looks like. The `ansible-inventory` command is the official tool for inspecting your inventory from the command line. Its `--graph` flag gives you a visual tree of hosts and groups, and the other flags let you drill into variables, host details, and more. This post covers common ways to use `ansible-inventory` to verify your setup.
 
 ## The --graph Flag
 
@@ -135,13 +135,13 @@ ansible-inventory -i inventory/hosts.yml --list | python3 -m json.tool
 # Extract specific groups with jq
 ansible-inventory -i inventory/hosts.yml --list | jq '.webservers'
 
-# Count hosts per group
+# Count direct hosts per group
 ansible-inventory -i inventory/hosts.yml --list | jq 'to_entries | map(select(.value.hosts?)) | map({key: .key, count: (.value.hosts | length)}) | sort_by(.count) | reverse'
 ```
 
 ## Inspecting a Single Host
 
-The `--host` flag shows all variables for a specific host, after all precedence rules are applied:
+The `--host` flag shows inventory-derived variables for a specific host, after inventory variable precedence is applied:
 
 ```bash
 # Show final variables for a specific host
@@ -162,7 +162,7 @@ Output:
 }
 ```
 
-This is the definitive view of what variables a host will have when a playbook runs. It accounts for all group_vars, host_vars, and variable precedence.
+This is the definitive view of the host variables resolved from inventory. It accounts for inventory variables, `group_vars`, `host_vars`, and inventory variable precedence, but it will not include variables added later by a play, role, task, registered result, `set_fact`, or extra vars unless you pass those values to the command.
 
 ## The --yaml Flag
 
@@ -173,11 +173,11 @@ Output the inventory in YAML format instead of JSON:
 ansible-inventory -i inventory/hosts.yml --list --yaml
 ```
 
-This is handy if you want to convert a dynamic inventory to a static YAML file:
+This is handy if you want to convert a dynamic inventory to an export-oriented static YAML file:
 
 ```bash
 # Convert any inventory source to a static YAML file
-ansible-inventory -i dynamic_inventory.py --list --yaml > static_export.yml
+ansible-inventory -i dynamic_inventory.py --list --yaml --export > static_export.yml
 ```
 
 ## Verifying Dynamic Inventories
@@ -223,7 +223,7 @@ print(f'Total unique hosts: {len(hosts)}')
 ansible-inventory -i inventory/ --graph ungrouped
 ```
 
-If you see hosts under `ungrouped`, they are not assigned to any group, which might indicate a typo or missing group assignment.
+If you see hosts under `ungrouped`, they are not assigned to any group other than `all`, which might indicate a typo or missing group assignment.
 
 **Check 3: Critical variables are set**
 
@@ -250,8 +250,14 @@ for host in webservers:
 ansible-inventory -i inventory/ --list | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-staging = set(data.get('staging', {}).get('hosts', []))
-production = set(data.get('production', {}).get('hosts', []))
+def group_hosts(group):
+    info = data.get(group, {})
+    hosts = set(info.get('hosts', []))
+    for child in info.get('children', []):
+        hosts.update(group_hosts(child))
+    return hosts
+staging = group_hosts('staging')
+production = group_hosts('production')
 overlap = staging & production
 if overlap:
     print(f'WARNING: These hosts are in BOTH staging and production: {overlap}')
@@ -288,7 +294,7 @@ echo '```' >> inventory_report.md
 ansible-inventory -i inventory/ --graph >> inventory_report.md
 echo '```' >> inventory_report.md
 echo "" >> inventory_report.md
-echo "## Host Count by Group" >> inventory_report.md
+echo "## Direct Host Count by Group" >> inventory_report.md
 ansible-inventory -i inventory/ --list | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
