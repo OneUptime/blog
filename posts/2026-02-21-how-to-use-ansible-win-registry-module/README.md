@@ -1,8 +1,8 @@
-# How to Use Ansible win_registry Module
+# How to Use Ansible win_regedit Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Window, Registry, Configuration, Automation
+Tags: Ansible, Windows, Registry, Configuration, Automation
 
 Description: Read and write Windows registry keys and values using the Ansible win_regedit module for system configuration and application settings.
 
@@ -150,6 +150,17 @@ Many Windows security settings are controlled through registry values. Here is a
         type: dword
         state: present
 
+    - name: Remove SMBv1 client dependency
+      ansible.windows.win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation
+        name: DependOnService
+        data:
+          - Bowser
+          - MRxSmb20
+          - NSI
+        type: multistring
+        state: present
+
     # Enable NTLMv2 only
     - name: Enforce NTLMv2 authentication
       ansible.windows.win_regedit:
@@ -191,6 +202,22 @@ Many Windows security settings are controlled through registry values. Here is a
         path: HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging
         name: LogFileSize
         data: 16384
+        type: dword
+        state: present
+
+    - name: Log dropped firewall packets
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging
+        name: LogDroppedPackets
+        data: 1
+        type: dword
+        state: present
+
+    - name: Log successful firewall connections
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\DomainProfile\Logging
+        name: LogSuccessfulConnections
+        data: 1
         type: dword
         state: present
 ```
@@ -382,4 +409,4 @@ You can read registry values using `win_reg_stat` for auditing or conditional lo
 
 ## Summary
 
-The `win_regedit` module (commonly referred to as win_registry) is essential for deep Windows configuration management. From security hardening to application configuration to RDP settings, the registry touches every aspect of Windows behavior. Using Ansible to manage registry settings ensures consistency across your fleet, provides version control through your playbooks, and makes compliance auditing straightforward. Always test registry changes in a non-production environment first, as incorrect registry modifications can render a system unbootable.
+The `win_regedit` module is essential for deep Windows configuration management. From security hardening to application configuration to RDP settings, the registry touches every aspect of Windows behavior. Using Ansible to manage registry settings ensures consistency across your fleet, provides version control through your playbooks, and makes compliance auditing straightforward. Always test registry changes in a non-production environment first, as incorrect registry modifications can render a system unbootable.
