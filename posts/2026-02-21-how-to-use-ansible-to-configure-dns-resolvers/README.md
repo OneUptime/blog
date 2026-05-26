@@ -131,7 +131,7 @@ On RHEL-based systems, NetworkManager manages DNS. You can configure it through 
     - name: Restart connection to apply DNS
       ansible.builtin.command:
         cmd: "nmcli connection up '{{ active_connection.stdout }}'"
-      when: dns_set.changed or search_set.changed
+      when: dns_set.changed or search_set.changed or ignore_auto.changed
 ```
 
 ## Using the community.general.nmcli Module
@@ -145,9 +145,15 @@ The nmcli module provides a cleaner approach for NetworkManager:
   hosts: rhel_servers
   become: true
   tasks:
+    - name: Get active connection name
+      ansible.builtin.shell:
+        cmd: "nmcli -t -f NAME connection show --active | head -1"
+      register: active_connection
+      changed_when: false
+
     - name: Set DNS configuration
       community.general.nmcli:
-        conn_name: "{{ ansible_default_ipv4.alias }}"
+        conn_name: "{{ active_connection.stdout }}"
         type: ethernet
         dns4:
           - 8.8.8.8
@@ -162,7 +168,7 @@ The nmcli module provides a cleaner approach for NetworkManager:
   handlers:
     - name: Restart network connection
       ansible.builtin.command:
-        cmd: "nmcli connection up {{ ansible_default_ipv4.alias }}"
+        cmd: "nmcli connection up '{{ active_connection.stdout }}'"
 ```
 
 ## Direct resolv.conf Configuration
@@ -288,6 +294,9 @@ Handle multiple distributions in one playbook:
     dns_search:
       - example.com
   tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
     - name: Configure DNS via systemd-resolved
       ansible.builtin.copy:
         content: |
@@ -299,11 +308,19 @@ Handle multiple distributions in one playbook:
       notify: Restart resolved
       when:
         - ansible_service_mgr == 'systemd'
-        - "'systemd-resolved' in ansible_facts.services | default({})"
+        - "'systemd-resolved.service' in ansible_facts.services | default({})"
+
+    - name: Get active NetworkManager connection name
+      ansible.builtin.shell:
+        cmd: "nmcli -t -f NAME connection show --active | head -1"
+      register: active_connection
+      changed_when: false
+      when:
+        - ansible_os_family == 'RedHat'
 
     - name: Configure DNS via nmcli
       ansible.builtin.command:
-        cmd: "nmcli connection modify '{{ ansible_default_ipv4.alias }}' ipv4.dns '{{ dns_servers | join(' ') }}' ipv4.dns-search '{{ dns_search | join(' ') }}'"
+        cmd: "nmcli connection modify '{{ active_connection.stdout }}' ipv4.dns '{{ dns_servers | join(' ') }}' ipv4.dns-search '{{ dns_search | join(' ') }}'"
       when:
         - ansible_os_family == 'RedHat'
       notify: Restart nm connection
@@ -324,17 +341,17 @@ Handle multiple distributions in one playbook:
 
     - name: Restart nm connection
       ansible.builtin.command:
-        cmd: "nmcli connection up '{{ ansible_default_ipv4.alias }}'"
+        cmd: "nmcli connection up '{{ active_connection.stdout }}'"
 ```
 
 ## Internal DNS with Fallback
 
-A common setup uses internal DNS for corporate domains and public DNS as fallback:
+A common setup uses internal DNS as the primary resolver and public DNS entries as systemd-resolved fallback servers when no other DNS server information is available:
 
 ```yaml
-# configure split DNS with internal and external resolvers
+# configure internal DNS with fallback resolvers
 ---
-- name: Split DNS configuration
+- name: Internal DNS configuration
   hosts: all
   become: true
   vars:
@@ -349,7 +366,7 @@ A common setup uses internal DNS for corporate domains and public DNS as fallbac
       - internal.example.com
       - example.com
   tasks:
-    - name: Configure split DNS with systemd-resolved
+    - name: Configure internal DNS with systemd-resolved
       ansible.builtin.copy:
         content: |
           [Resolve]
@@ -416,4 +433,4 @@ After applying DNS settings, verify they work:
 
 ## Summary
 
-DNS resolver configuration in Ansible depends on which subsystem manages DNS on your target systems. Use systemd-resolved configuration for modern Ubuntu, nmcli for RHEL-based distributions, and direct `/etc/resolv.conf` editing for minimal or containerized systems. Always verify DNS resolution after making changes with `dig` or `nslookup`. For enterprise environments, configure split DNS with internal servers for corporate domains and public DNS as fallback. And consider making `/etc/resolv.conf` immutable with `chattr +i` on systems where DHCP clients might overwrite your static configuration.
+DNS resolver configuration in Ansible depends on which subsystem manages DNS on your target systems. Use systemd-resolved configuration for modern Ubuntu, nmcli for RHEL-based distributions, and direct `/etc/resolv.conf` editing for minimal or containerized systems. Always verify DNS resolution after making changes with `dig` or `nslookup`. For enterprise environments, configure internal DNS servers for corporate domains and use systemd-resolved fallback DNS only for systems with no other DNS server information. And consider making `/etc/resolv.conf` immutable with `chattr +i` on systems where DHCP clients might overwrite your static configuration.
