@@ -62,11 +62,15 @@ Build an assessment playbook that checks for common debt indicators:
       ansible.builtin.command: apt list --upgradable
       register: upgradable_packages
       changed_when: false
+      failed_when: false
+      when: ansible_os_family == 'Debian'
 
-    - name: Check for known vulnerable packages
+    - name: Capture installed package inventory
       ansible.builtin.command: apt list --installed
       register: installed_packages
       changed_when: false
+      failed_when: false
+      when: ansible_os_family == 'Debian'
 
     - name: Check SSH configuration for weak settings
       ansible.builtin.command: sshd -T
@@ -83,7 +87,7 @@ Build an assessment playbook that checks for common debt indicators:
       when: "'3des' in sshd_config.stdout or 'arcfour' in sshd_config.stdout"
 
     - name: Check TLS configuration
-      ansible.builtin.command: openssl s_client -connect localhost:443 -tls1_1 < /dev/null
+      ansible.builtin.shell: timeout 5 openssl s_client -connect localhost:443 -tls1_1 < /dev/null
       register: tls11_check
       changed_when: false
       failed_when: false
@@ -92,10 +96,16 @@ Build an assessment playbook that checks for common debt indicators:
       ansible.builtin.set_fact:
         tls_debt: "{{ tls11_check.rc == 0 }}"
 
+    - name: Check for Ansible run marker
+      ansible.builtin.stat:
+        path: /var/log/ansible-last-run
+      register: ansible_last_run_marker
+
     - name: Check for manual configuration changes
       ansible.builtin.command: "find /etc -newer /var/log/ansible-last-run -name '*.conf' -type f"
       register: manual_changes
       changed_when: false
+      when: ansible_last_run_marker.stat.exists
 
     - name: Compile debt report
       ansible.builtin.set_fact:
@@ -103,10 +113,10 @@ Build an assessment playbook that checks for common debt indicators:
           hostname: "{{ inventory_hostname }}"
           os_version: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
           os_needs_upgrade: "{{ os_debt }}"
-          pending_updates: "{{ (upgradable_packages.stdout_lines | length) - 1 }}"
+          pending_updates: "{{ [(upgradable_packages.stdout_lines | default([]) | length) - 1, 0] | max }}"
           ssh_issues: "{{ ssh_debt_items }}"
           tls_11_enabled: "{{ tls_debt | default(false) }}"
-          manual_changes: "{{ manual_changes.stdout_lines | length }}"
+          manual_changes: "{{ manual_changes.stdout_lines | default([]) | length }}"
           kernel: "{{ kernel_version.stdout }}"
 
     - name: Display debt report
@@ -135,7 +145,7 @@ Create a role that standardizes package versions:
   loop: "{{ standardized_packages }}"
   when: item.version is defined
 
-- name: Apply security updates
+- name: Apply available package updates
   ansible.builtin.apt:
     upgrade: safe
     update_cache: yes
@@ -283,7 +293,7 @@ One of the biggest debt items is outdated operating systems:
 
     - name: Save running services list
       ansible.builtin.copy:
-        content: "{{ services | to_nice_json }}"
+        content: "{{ ansible_facts.services | to_nice_json }}"
         dest: /root/pre-upgrade-services.json
         mode: '0644'
 
@@ -318,10 +328,12 @@ Track progress over time:
       ansible.builtin.set_fact:
         outdated_os: "{{ ansible_distribution_version is version('22.04', '<') }}"
 
-    - name: Count pending security updates
-      ansible.builtin.command: apt list --upgradable 2>/dev/null
+    - name: Count pending package updates
+      ansible.builtin.command: apt list --upgradable
       register: updates
       changed_when: false
+      failed_when: false
+      when: ansible_os_family == 'Debian'
 
     - name: Write metrics
       ansible.builtin.copy:
@@ -330,7 +342,7 @@ Track progress over time:
             "date": "{{ ansible_date_time.date }}",
             "host": "{{ inventory_hostname }}",
             "outdated_os": {{ outdated_os | lower }},
-            "pending_updates": {{ (updates.stdout_lines | length) - 1 }},
+            "pending_updates": {{ [(updates.stdout_lines | default([]) | length) - 1, 0] | max }},
             "os_version": "{{ ansible_distribution_version }}"
           }
         dest: "/tmp/debt-metrics-{{ inventory_hostname }}.json"
