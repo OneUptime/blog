@@ -148,9 +148,7 @@ These two directives work well together to give you complete control over task s
       command: apt-get update
       register: apt_update
       changed_when: "'packages can be upgraded' in apt_update.stdout"
-      failed_when:
-        - apt_update.rc != 0
-        - "'W:' not in apt_update.stderr"  # Warnings are ok
+      failed_when: apt_update.rc != 0
 ```
 
 ## Multiple Conditions
@@ -206,9 +204,7 @@ Here is a real-world playbook for running database migrations with proper failur
       command: psql -d {{ app_db }} -c "SELECT 1"
       register: db_check
       changed_when: false
-      failed_when:
-        - db_check.rc != 0
-        - "'connection refused' in db_check.stderr | lower"
+      failed_when: db_check.rc != 0
 
     - name: Check for pending migrations
       command: /opt/myapp/bin/migrate --pending
@@ -218,7 +214,9 @@ Here is a real-world playbook for running database migrations with proper failur
       failed_when: pending.rc > 1
 
     - name: Create pre-migration backup
-      shell: pg_dump {{ app_db }} | gzip > /backups/pre-migration-$(date +%Y%m%d%H%M%S).sql.gz
+      shell: set -o pipefail && pg_dump {{ app_db }} | gzip > /backups/pre-migration-$(date +%Y%m%d%H%M%S).sql.gz
+      args:
+        executable: /bin/bash
       register: backup
       failed_when: >
         backup.rc != 0 or
@@ -245,9 +243,10 @@ Here is a real-world playbook for running database migrations with proper failur
             body_format: json
             body:
               text: "Partial migration failure on {{ inventory_hostname }}. Manual review needed."
-      when:
-        - pending.rc == 1
-        - migration.rc == 1
+      when: >
+        pending.rc == 1 and
+        migration is defined and
+        migration.rc == 1
 
     - name: Verify migration status
       command: /opt/myapp/bin/migrate --verify
@@ -258,7 +257,7 @@ Here is a real-world playbook for running database migrations with proper failur
 
 ## failed_when: false
 
-Setting `failed_when: false` means the task will never be considered failed, regardless of what happens. This is more explicit than `ignore_errors` because it changes the task state itself rather than just ignoring the failure:
+Setting `failed_when: false` means the task will not be considered failed because of its result. This is more explicit than `ignore_errors` because it changes the task state itself rather than just ignoring the failure:
 
 ```yaml
 # never-fail.yml - Tasks that should never fail the playbook
