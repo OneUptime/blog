@@ -104,15 +104,13 @@ A production deployment typically has more steps:
         - name: Run database migrations
           ansible.builtin.shell: |
             cd {{ app_dir }}
-            source venv/bin/activate
-            python manage.py migrate --noinput
+            ./venv/bin/python manage.py migrate --noinput
           become_user: "{{ app_user }}"
 
         - name: Collect static files
           ansible.builtin.shell: |
             cd {{ app_dir }}
-            source venv/bin/activate
-            python manage.py collectstatic --noinput
+            ./venv/bin/python manage.py collectstatic --noinput
           become_user: "{{ app_user }}"
 
         - name: Restart application
@@ -127,6 +125,7 @@ A production deployment typically has more steps:
           retries: 10
           delay: 3
           register: health_check
+          until: health_check.status == 200
 
     - name: Report deployment status
       ansible.builtin.debug:
@@ -206,6 +205,8 @@ Deploy one server at a time with health checks:
         status_code: 200
       retries: 15
       delay: 2
+      register: health_check
+      until: health_check.status == 200
 
     - name: Re-enable in load balancer
       ansible.builtin.shell: |
@@ -271,6 +272,8 @@ Maintain two deployment directories and switch between them:
         status_code: 200
       retries: 10
       delay: 3
+      register: health_check
+      until: health_check.status == 200
 
     - name: Report
       ansible.builtin.debug:
@@ -281,7 +284,7 @@ Maintain two deployment directories and switch between them:
 
 ```yaml
 # playbook-notify-deploy.yml
-# Deploys with Slack notifications at start, completion, and failure
+# Deploys with Slack notifications at start and completion
 - name: Deploy with notifications
   hosts: webservers
   become: true
