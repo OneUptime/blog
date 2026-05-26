@@ -112,27 +112,25 @@ FAILED=0
 for vault_id in dev staging prod; do
   echo "=== Rekeying vault ID: ${vault_id} ==="
 
+  FOUND=0
+
   # Find files with this vault ID
-  FILES=$(grep -rl "^\$ANSIBLE_VAULT;1\.[12];AES256;${vault_id}" . \
-    --include="*.yml" --include="*.yaml" 2>/dev/null)
-
-  if [ -z "${FILES}" ]; then
-    echo "  No files found for vault ID '${vault_id}'"
-    continue
-  fi
-
-  echo "${FILES}" | while read -r file; do
+  while IFS= read -r file; do
+    FOUND=1
     echo "  Rekeying: ${file}"
-    ansible-vault rekey \
+    if ! ansible-vault rekey \
       --vault-id "${vault_id}@${OLD_PASS[$vault_id]}" \
       --new-vault-id "${vault_id}@${NEW_PASS[$vault_id]}" \
-      "${file}" 2>&1
-
-    if [ $? -ne 0 ]; then
+      "${file}"; then
       echo "  ERROR: Failed to rekey ${file}"
       FAILED=1
     fi
-  done
+  done < <(grep -rl "^\$ANSIBLE_VAULT;1\.[12];AES256;${vault_id}" . \
+    --include="*.yml" --include="*.yaml" 2>/dev/null)
+
+  if [ ${FOUND} -eq 0 ]; then
+    echo "  No files found for vault ID '${vault_id}'"
+  fi
 done
 
 if [ ${FAILED} -eq 1 ]; then
@@ -149,10 +147,16 @@ For a single vault password (no vault IDs):
 
 ```bash
 # Simple rekey for projects using a single vault password
-ansible-vault rekey \
-  --vault-password-file ~/.vault_pass.txt \
-  --new-vault-password-file /tmp/new_vault_pass.txt \
-  $(grep -rl '^\$ANSIBLE_VAULT' . --include="*.yml" --include="*.yaml")
+mapfile -t VAULT_FILES < <(grep -rl '^\$ANSIBLE_VAULT' . --include="*.yml" --include="*.yaml")
+
+if [ ${#VAULT_FILES[@]} -gt 0 ]; then
+  ansible-vault rekey \
+    --vault-password-file ~/.vault_pass.txt \
+    --new-vault-password-file /tmp/new_vault_pass.txt \
+    "${VAULT_FILES[@]}"
+else
+  echo "No vault-encrypted files found."
+fi
 ```
 
 ## Step 4: Handle Inline Encrypted Strings
@@ -185,17 +189,18 @@ For each file with inline encrypted strings, you need to:
 2. Re-encrypt with the new password
 3. Replace the encrypted blob in the file
 
-This is tedious but necessary. A helper script can automate parts of it:
+This is tedious but necessary. A helper command can help you view the original value before re-encrypting it:
 
 ```bash
-# For each inline encrypted variable, decrypt and re-encrypt
+# For each inline encrypted variable, decrypt the value
 # Example for a single variable:
-OLD_VALUE=$(ansible localhost -m debug -a "var=vault_db_password" \
+ansible localhost -m ansible.builtin.debug -a var="vault_db_password" \
   -e "@group_vars/prod/vars.yml" \
-  --vault-password-file ~/.vault_pass_old.txt 2>/dev/null | grep -oP '(?<=: ).*')
+  --vault-password-file ~/.vault_pass_old.txt
 
-# Re-encrypt with new password
-echo -n "${OLD_VALUE}" | ansible-vault encrypt_string \
+# Re-encrypt the exact plaintext value with the new password.
+# Do not press Enter after typing the value; use Ctrl+D to finish input.
+ansible-vault encrypt_string \
   --vault-password-file /tmp/new_vault_pass.txt \
   --stdin-name 'vault_db_password'
 ```
@@ -210,27 +215,34 @@ Before committing, verify all vault files decrypt correctly with the new passwor
 # Verifies all vault files can be decrypted with the new password
 
 NEW_PASS_FILE="/tmp/new_vault_pass.txt"
+VAULT_ARGS=(--vault-password-file "${NEW_PASS_FILE}")
+# For multiple vault IDs, use one entry per ID instead:
+# VAULT_ARGS=(--vault-id dev@/tmp/new_vault_pass_dev.txt --vault-id prod@/tmp/new_vault_pass_prod.txt)
 FAILED=0
 
 echo "Testing vault decryption with new password..."
 echo ""
 
-grep -rl '^\$ANSIBLE_VAULT' . \
-  --include="*.yml" --include="*.yaml" | while read -r file; do
-  ansible-vault view --vault-password-file "${NEW_PASS_FILE}" "${file}" > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
+while IFS= read -r file; do
+  if ansible-vault decrypt --output - "${VAULT_ARGS[@]}" "${file}" > /dev/null 2>&1; then
     echo "  OK: ${file}"
   else
     echo "  FAIL: ${file}"
     FAILED=1
   fi
-done
+done < <(grep -rl '^\$ANSIBLE_VAULT' . --include="*.yml" --include="*.yaml")
+
+if [ ${FAILED} -eq 1 ]; then
+  echo ""
+  echo "Some files failed to decrypt with the new password."
+  exit 1
+fi
 
 # Also run the playbook in check mode
 echo ""
 echo "Running playbook in check mode..."
 ansible-playbook site.yml \
-  --vault-password-file "${NEW_PASS_FILE}" \
+  "${VAULT_ARGS[@]}" \
   --check \
   --diff
 ```
