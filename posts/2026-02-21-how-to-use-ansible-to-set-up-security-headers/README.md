@@ -21,7 +21,7 @@ Here is the full set of security headers and what each one does:
 | Content-Security-Policy | Controls which resources the browser can load |
 | X-Frame-Options | Prevents clickjacking by controlling iframe embedding |
 | X-Content-Type-Options | Prevents MIME type sniffing |
-| X-XSS-Protection | Legacy XSS filter (for older browsers) |
+| X-XSS-Protection | Disables the deprecated legacy XSS filter |
 | Strict-Transport-Security | Forces HTTPS connections |
 | Referrer-Policy | Controls how much referrer info is sent |
 | Permissions-Policy | Controls which browser features can be used |
@@ -73,8 +73,8 @@ nginx_x_frame_options: "DENY"
 # X-Content-Type-Options
 nginx_x_content_type_options: "nosniff"
 
-# X-XSS-Protection (legacy, but still useful for IE)
-nginx_x_xss_protection: "1; mode=block"
+# X-XSS-Protection (deprecated; disable legacy browser filters)
+nginx_x_xss_protection: "0"
 
 # HSTS settings
 nginx_hsts_max_age: 31536000
@@ -136,7 +136,7 @@ add_header X-Frame-Options "{{ nginx_x_frame_options }}" always;
 # Prevent MIME type sniffing
 add_header X-Content-Type-Options "{{ nginx_x_content_type_options }}" always;
 
-# XSS protection for legacy browsers
+# Disable deprecated legacy browser XSS filters
 add_header X-XSS-Protection "{{ nginx_x_xss_protection }}" always;
 
 {% if nginx_ssl_enabled %}
@@ -175,7 +175,8 @@ server {
 
 server {
 {% if nginx_ssl_enabled %}
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     ssl_certificate /etc/letsencrypt/live/{{ nginx_security_server_name }}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{{ nginx_security_server_name }}/privkey.pem;
 {% else %}
@@ -225,7 +226,9 @@ server {
     group: root
     mode: "0644"
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx
+    - Reload nginx
 
 - name: Deploy site configuration
   ansible.builtin.template:
@@ -235,7 +238,9 @@ server {
     group: root
     mode: "0644"
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx
+    - Reload nginx
 
 - name: Enable site
   ansible.builtin.file:
@@ -243,14 +248,18 @@ server {
     dest: /etc/nginx/sites-enabled/secure_site.conf
     state: link
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx
+    - Reload nginx
 
 - name: Remove default site
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx
+    - Reload nginx
 
 - name: Ensure Nginx is running
   ansible.builtin.systemd:
@@ -265,11 +274,10 @@ server {
 ```yaml
 # roles/security_headers/handlers/main.yml
 ---
-- name: Validate and reload nginx
+- name: Validate nginx
   ansible.builtin.command: nginx -t
   become: true
   changed_when: false
-  notify: Reload nginx
 
 - name: Reload nginx
   ansible.builtin.systemd:
