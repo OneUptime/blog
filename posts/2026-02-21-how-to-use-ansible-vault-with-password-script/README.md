@@ -42,7 +42,7 @@ On macOS, you can store the vault password in the system keychain and retrieve i
 
 ```bash
 # First, store the password in the keychain
-# This prompts you to enter the password once
+# Replace "your-vault-password" with the password to store
 security add-generic-password \
   -a "${USER}" \
   -s "ansible-vault" \
@@ -182,13 +182,13 @@ This cascading approach tries the environment variable first, then the keyring, 
 
 ## Script with Vault ID Awareness
 
-When Ansible calls a password script with vault IDs, it passes the vault ID label as the first argument. Your script can use this to return different passwords for different vault IDs:
+When Ansible calls a vault password client script with vault IDs, it passes `--vault-id <label>` as arguments. Client script filenames must end in `-client` or `-client.EXTENSION`. Your script can use this to return different passwords for different vault IDs:
 
 ```bash
 #!/bin/bash
-# vault_pass_multi.sh
+# vault_pass_multi-client.sh
 # Returns different passwords based on the vault ID passed by Ansible
-# Ansible invokes this as: ./vault_pass_multi.sh --vault-id <label>
+# Ansible invokes this as: ./vault_pass_multi-client.sh --vault-id <label>
 
 VAULT_ID="${1}"
 
@@ -221,7 +221,7 @@ Configure it in `ansible.cfg`:
 ```ini
 # ansible.cfg
 [defaults]
-vault_identity_list = dev@./vault_pass_multi.sh, staging@./vault_pass_multi.sh, prod@./vault_pass_multi.sh
+vault_identity_list = dev@./vault_pass_multi-client.sh, staging@./vault_pass_multi-client.sh, prod@./vault_pass_multi-client.sh
 ```
 
 ## Error Handling Best Practices
@@ -261,7 +261,7 @@ Key rules for password scripts:
 1. Print the password (and only the password) to stdout.
 2. Send all error messages and debug output to stderr.
 3. Exit with code 0 on success and non-zero on failure.
-4. Never print extra whitespace or newlines after the password.
+4. Never print extra output after the password. A single trailing newline from `echo` is fine.
 
 ## Testing Your Password Script
 
