@@ -15,12 +15,11 @@ The SSH connection plugin is the workhorse of Ansible. It handles all communicat
 SSH connection options can be configured in several places, listed from lowest to highest precedence:
 
 ```ini
-# 1. ansible.cfg [ssh_connection] section
-
-# 2. Environment variables (ANSIBLE_SSH_*)
-# 3. Inventory variables (ansible_ssh_*)
-# 4. Playbook variables
-# 5. Command-line flags
+# 1. ansible.cfg configuration settings
+# 2. Environment variables
+# 3. Command-line flags (when available for the option)
+# 4. Playbook keywords (when available for the option)
+# 5. Inventory or playbook variables, such as ansible_ssh_* variables
 ```
 
 ## Core SSH Connection Options
@@ -30,7 +29,7 @@ SSH connection options can be configured in several places, listed from lowest t
 ```ini
 # ansible.cfg
 [ssh_connection]
-# Arguments passed to the ssh command
+# Arguments passed to all SSH CLI tools
 ssh_args = -o ControlMaster=auto -o ControlPersist=60s
 
 # Additional SSH arguments (appended to ssh_args)
@@ -104,14 +103,11 @@ ansible_password: !vault |
 ```ini
 # ansible.cfg
 [ssh_connection]
-# Skip password auth, go straight to public key
-ssh_args = -o PreferredAuthentications=publickey
+# Skip password auth, go straight to public key, and specify the identity file
+ssh_args = -o PreferredAuthentications=publickey -o IdentityFile=~/.ssh/ansible_key -o IdentitiesOnly=yes
 
 # Try multiple auth methods in order
-ssh_args = -o PreferredAuthentications=publickey,keyboard-interactive
-
-# Specify identity file in ssh_args
-ssh_args = -o IdentityFile=~/.ssh/ansible_key -o IdentitiesOnly=yes
+# ssh_args = -o PreferredAuthentications=publickey,keyboard-interactive -o IdentityFile=~/.ssh/ansible_key -o IdentitiesOnly=yes
 ```
 
 ## Timeout Options
@@ -125,11 +121,9 @@ timeout = 30
 [ssh_connection]
 # SSH connection timeout (passed to ssh -o ConnectTimeout)
 # This is controlled by the defaults timeout above
-# but can also be set via ssh_args
-ssh_args = -o ConnectTimeout=10
-
-# Keep connections alive
-ssh_args = -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+# but can also be set in [ssh_connection] or via ssh_args
+timeout = 30
+ssh_args = -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
 ```
 
 The `ServerAliveInterval` sends keepalive packets every 15 seconds. `ServerAliveCountMax=3` means the connection drops after 3 missed keepalives (45 seconds of unresponsiveness).
@@ -147,10 +141,10 @@ transfer_method = smart
 # sftp: Use SFTP only
 transfer_method = sftp
 
-# scp: Use SCP only (some old systems need this)
+# scp: Use SCP only (some old systems need this; OpenSSH 9+ may need scp_extra_args = -O)
 transfer_method = scp
 
-# piped: Use shell commands (cat) for transfer
+# piped: Use an SSH pipe with dd on either side for transfer
 transfer_method = piped
 ```
 
@@ -209,10 +203,10 @@ ansible_ssh_pipelining=true
 ansible_ssh_retries=3
 ```
 
-All available SSH inventory variables:
+Common SSH inventory variables:
 
 ```yaml
-# Full list of SSH-related inventory variables
+# Common SSH-related inventory variables
 ansible_host: 10.0.1.10              # Target hostname/IP
 ansible_port: 22                      # SSH port
 ansible_user: deploy                  # SSH username
@@ -223,6 +217,8 @@ ansible_ssh_extra_args: ""            # Extra args for ssh only
 ansible_sftp_extra_args: ""           # Extra args for sftp only
 ansible_scp_extra_args: ""            # Extra args for scp only
 ansible_ssh_pipelining: true          # Enable pipelining
+ansible_ssh_transfer_method: smart    # Transfer method: smart, sftp, scp, piped
+ansible_ssh_retries: 3                # Retry SSH errors with return code 255
 ansible_ssh_executable: /usr/bin/ssh  # SSH binary path
 ```
 
@@ -242,7 +238,7 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts
 fact_caching_timeout = 7200
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = timer, profile_tasks
 
 [ssh_connection]
 ssh_args = -o ControlMaster=auto -o ControlPersist=120s -o PreferredAuthentications=publickey -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=10
@@ -302,7 +298,7 @@ This shows you exactly what SSH arguments Ansible is using, which is invaluable 
 
 ## Environment Variable Overrides
 
-Every SSH option has a corresponding environment variable:
+Many SSH options have a corresponding environment variable:
 
 ```bash
 # Override SSH args
@@ -317,7 +313,7 @@ export ANSIBLE_SSH_RETRIES=5
 # Override transfer method
 export ANSIBLE_SSH_TRANSFER_METHOD=scp
 
-# Override control path
+# Override control path directory
 export ANSIBLE_SSH_CONTROL_PATH_DIR=~/.ansible/cp
 ```
 
