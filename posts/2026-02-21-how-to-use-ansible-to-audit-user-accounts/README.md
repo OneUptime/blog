@@ -38,14 +38,18 @@ Start by collecting the user database from each host.
       ansible.builtin.getent:
         database: passwd
 
+    - name: Initialize user audit lists
+      ansible.builtin.set_fact:
+        human_users: []
+        system_login_accounts: []
+
     - name: Build list of human user accounts (UID >= 1000)
       ansible.builtin.set_fact:
-        human_users: >-
-          {{ getent_passwd | dict2items
-             | selectattr('value.1', 'ge', '1000')
-             | rejectattr('value.1', 'eq', '65534')
-             | map(attribute='key')
-             | list }}
+        human_users: "{{ human_users + [item.key] }}"
+      loop: "{{ ansible_facts.getent_passwd | dict2items }}"
+      when:
+        - item.value[1] | int >= 1000
+        - item.value[1] | int < 65534
 
     - name: Display human users on this host
       ansible.builtin.debug:
@@ -53,13 +57,12 @@ Start by collecting the user database from each host.
 
     - name: Get system accounts with login shells
       ansible.builtin.set_fact:
-        system_login_accounts: >-
-          {{ getent_passwd | dict2items
-             | selectattr('value.1', 'lt', '1000')
-             | rejectattr('value.5', 'search', 'nologin')
-             | rejectattr('value.5', 'search', '/bin/false')
-             | map(attribute='key')
-             | list }}
+        system_login_accounts: "{{ system_login_accounts + [item.key] }}"
+      loop: "{{ ansible_facts.getent_passwd | dict2items }}"
+      when:
+        - item.value[1] | int < 1000
+        - "'nologin' not in item.value[5]"
+        - "item.value[5] != '/bin/false'"
 
     - name: Flag system accounts with login shells
       ansible.builtin.debug:
@@ -122,7 +125,9 @@ Knowing which users have sudo access is essential for compliance.
 
     - name: Read content of each custom sudoers file
       ansible.builtin.command:
-        cmd: "cat {{ item.path }}"
+        argv:
+          - cat
+          - "{{ item.path }}"
       register: sudoers_contents
       loop: "{{ custom_sudoers.files }}"
       loop_control:
@@ -145,45 +150,41 @@ Accounts that have not been used in a long time should be reviewed for deactivat
     stale_threshold_days: 90
 
   tasks:
-    - name: Get last login information for all users
+    - name: Get stale last login records
+      ansible.builtin.command:
+        argv:
+          - lastlog
+          - --before
+          - "{{ stale_threshold_days | string }}"
+      register: stale_lastlog_output
+      changed_when: false
+
+    - name: Get accounts that have never logged in
       ansible.builtin.command:
         cmd: lastlog
       register: lastlog_output
       changed_when: false
 
-    - name: Get current timestamp
-      ansible.builtin.command:
-        cmd: date +%s
-      register: current_time
-      changed_when: false
-
-    - name: Check each human user's last login via lastlog
-      ansible.builtin.shell:
-        cmd: |
-          lastlog -u {{ item }} | tail -1 | awk '{print $4, $5, $6, $9}'
-      register: user_lastlogin
-      loop: "{{ human_users | default([]) }}"
-      changed_when: false
-      failed_when: false
-
     - name: Report stale accounts
       ansible.builtin.debug:
-        msg: "{{ item.item }} last login: {{ item.stdout | default('Never') }}"
-      loop: "{{ user_lastlogin.results }}"
-      loop_control:
-        label: "{{ item.item }}"
-      when: "'Never' in item.stdout or item.stdout == ''"
+        msg: "{{ stale_lastlog_output.stdout_lines }}"
+      when: stale_lastlog_output.stdout_lines | length > 1
 
-    - name: Check for accounts with no password set
-      ansible.builtin.command:
-        cmd: "awk -F: '($2 == \"\" || $2 == \"!\") {print $1}' /etc/shadow"
-      register: no_password_accounts
+    - name: Report accounts that have never logged in
+      ansible.builtin.debug:
+        msg: "{{ lastlog_output.stdout_lines | select('search', 'Never logged in') | list }}"
+      when: (lastlog_output.stdout_lines | select('search', 'Never logged in') | list | length) > 0
+
+    - name: Check for accounts with empty password fields
+      ansible.builtin.shell:
+        cmd: "awk -F: '($2 == \"\") {print $1}' /etc/shadow"
+      register: empty_password_accounts
       changed_when: false
 
-    - name: Report accounts without passwords
+    - name: Report accounts with empty password fields
       ansible.builtin.debug:
-        msg: "Accounts with no password on {{ inventory_hostname }}: {{ no_password_accounts.stdout_lines }}"
-      when: no_password_accounts.stdout_lines | length > 0
+        msg: "Accounts with empty password fields on {{ inventory_hostname }}: {{ empty_password_accounts.stdout_lines }}"
+      when: empty_password_accounts.stdout_lines | length > 0
 ```
 
 ## Auditing Password Age and Expiry
@@ -203,7 +204,10 @@ Check how old passwords are and which ones are past their expiry.
   tasks:
     - name: Get password aging info for each user
       ansible.builtin.command:
-        cmd: "chage -l {{ item }}"
+        argv:
+          - chage
+          - -l
+          - "{{ item }}"
       register: chage_results
       loop: "{{ human_users | default([]) }}"
       changed_when: false
@@ -218,17 +222,30 @@ Check how old passwords are and which ones are past their expiry.
       loop_control:
         label: "{{ item.item }}"
 
-    - name: Check for passwords that have never been changed
+    - name: Check for passwords older than policy
       ansible.builtin.shell:
         cmd: |
-          awk -F: '{if ($3 == 0 || $3 == "") print $1}' /etc/shadow
-      register: never_changed
+          awk -F: -v now_days="$(($(date +%s) / 86400))" -v max_age="{{ max_password_age_days }}" \
+            '($3 ~ /^[0-9]+$/ && $3 > 0 && (now_days - $3) > max_age) {print $1}' /etc/shadow
+      register: old_passwords
       changed_when: false
 
-    - name: Report users who never changed password
+    - name: Report passwords older than policy
       ansible.builtin.debug:
-        msg: "Users who never changed password on {{ inventory_hostname }}: {{ never_changed.stdout_lines }}"
-      when: never_changed.stdout_lines | length > 0
+        msg: "Users with passwords older than {{ max_password_age_days }} days on {{ inventory_hostname }}: {{ old_passwords.stdout_lines }}"
+      when: old_passwords.stdout_lines | length > 0
+
+    - name: Check for accounts forced to change password at next login
+      ansible.builtin.shell:
+        cmd: |
+          awk -F: '{if ($3 == 0) print $1}' /etc/shadow
+      register: must_change_password
+      changed_when: false
+
+    - name: Report users forced to change password at next login
+      ansible.builtin.debug:
+        msg: "Users forced to change password at next login on {{ inventory_hostname }}: {{ must_change_password.stdout_lines }}"
+      when: must_change_password.stdout_lines | length > 0
 ```
 
 ## Auditing SSH Keys
@@ -253,7 +270,9 @@ SSH key auditing tells you which users can authenticate via key-based login.
 
     - name: Read authorized keys for each user
       ansible.builtin.command:
-        cmd: "cat {{ item.path }}"
+        argv:
+          - cat
+          - "{{ item.path }}"
       register: auth_keys_content
       loop: "{{ auth_keys_files.files }}"
       loop_control:
@@ -300,7 +319,8 @@ Pull everything together into a single report saved as a file.
           awk -F: '$3 >= 1000 && $3 < 65534 {print $1, "UID="$3, "Shell="$7}' /etc/passwd
           echo ""
           echo "--- Privileged Users ---"
-          getent group sudo 2>/dev/null || getent group wheel 2>/dev/null
+          getent group sudo 2>/dev/null || true
+          getent group wheel 2>/dev/null || true
           echo ""
           echo "--- Last Login ---"
           lastlog | grep -v "Never"
