@@ -51,7 +51,7 @@ Installs and configures Nginx as a reverse proxy with SSL termination.
       nginx_vhosts:
         - server_name: app.example.com
           proxy_pass: http://127.0.0.1:8080
-```bash
+```
 
 ## Handlers
 
@@ -63,7 +63,7 @@ Installs and configures Nginx as a reverse proxy with SSL termination.
 - `nginx` - All nginx tasks
 - `nginx_config` - Configuration tasks only
 - `nginx_install` - Installation tasks only
-```text
+```
 
 ## Documenting Variables Inline
 
@@ -154,7 +154,7 @@ When a task does something non-obvious, explain why:
 # under memory pressure. Setting overcommit to 2 ensures the kernel
 # only commits memory it can actually back with RAM + swap.
 - name: Set kernel overcommit memory policy
-  ansible.builtin.sysctl:
+  ansible.posix.sysctl:
     name: vm.overcommit_memory
     value: '2'
     state: present
@@ -162,7 +162,7 @@ When a task does something non-obvious, explain why:
 
 # The checkpoint_completion_target of 0.9 spreads checkpoint writes
 # across 90% of the checkpoint interval, reducing I/O spikes.
-# Default of 0.5 causes bursty writes that impact query latency.
+# Lower values complete checkpoints faster and can increase I/O bursts.
 - name: Configure WAL checkpoint settings
   ansible.builtin.lineinfile:
     path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
