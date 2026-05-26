@@ -8,7 +8,7 @@ Description: Learn how to securely store and deploy TLS certificates and private
 
 ---
 
-TLS certificates and their private keys are essential for encrypted communication. While the certificate itself is public (your browser sees it during every HTTPS handshake), the private key must be kept strictly confidential. If someone obtains your TLS private key, they can impersonate your server and decrypt traffic. Ansible Vault provides a practical way to store these sensitive files encrypted in your repository and deploy them to your web servers, load balancers, and internal services.
+TLS certificates and their private keys are essential for encrypted communication. While the certificate itself is public (your browser sees it during every HTTPS handshake), the private key must be kept strictly confidential. If someone obtains your TLS private key, they can impersonate your server and may be able to decrypt traffic from sessions that did not use forward secrecy. Ansible Vault provides a practical way to store these sensitive files encrypted in your repository and deploy them to your web servers, load balancers, and internal services.
 
 ## What to Encrypt (and What Not To)
 
@@ -125,7 +125,8 @@ The Nginx template:
 ```jinja2
 {# nginx_ssl.conf.j2 #}
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {{ domain }};
 
     ssl_certificate {{ tls_cert_path }}/{{ domain }}.crt;
@@ -178,19 +179,12 @@ server {
   no_log: true
   notify: reload apache
 
-- name: Deploy TLS certificate
+- name: Deploy TLS certificate (with CA chain)
   ansible.builtin.copy:
-    content: "{{ tls_certificate }}"
+    content: |
+      {{ tls_certificate }}
+      {{ tls_ca_chain }}
     dest: "/etc/ssl/certs/{{ domain }}.crt"
-    owner: root
-    group: root
-    mode: '0644'
-  notify: reload apache
-
-- name: Deploy CA chain
-  ansible.builtin.copy:
-    content: "{{ tls_ca_chain }}"
-    dest: "/etc/ssl/certs/{{ domain }}-chain.crt"
     owner: root
     group: root
     mode: '0644'
@@ -324,9 +318,9 @@ Verify deployed certificates are valid:
 
 - name: Verify certificate matches private key
   ansible.builtin.shell: |
-    CERT_MD5=$(openssl x509 -noout -modulus -in {{ tls_cert_path }}/{{ domain }}.crt | openssl md5)
-    KEY_MD5=$(openssl rsa -noout -modulus -in {{ tls_key_path }}/{{ domain }}.key | openssl md5)
-    [ "${CERT_MD5}" = "${KEY_MD5}" ] && echo "MATCH" || echo "MISMATCH"
+    CERT_PUBKEY=$(openssl x509 -in {{ (tls_cert_path ~ '/' ~ domain ~ '.crt') | quote }} -pubkey -noout | openssl sha256)
+    KEY_PUBKEY=$(openssl pkey -in {{ (tls_key_path ~ '/' ~ domain ~ '.key') | quote }} -pubout | openssl sha256)
+    [ "${CERT_PUBKEY}" = "${KEY_PUBKEY}" ] && echo "MATCH" || echo "MISMATCH"
   register: cert_key_match
   changed_when: false
   no_log: true
