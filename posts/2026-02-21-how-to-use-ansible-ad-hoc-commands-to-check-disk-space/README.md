@@ -85,7 +85,7 @@ The `setup` module provides structured disk data that is easier to parse than co
 ansible all -m setup -a "filter=ansible_mounts"
 
 # Get just device and mount facts
-ansible all -m setup -a "filter=ansible_device*"
+ansible all -m setup -a '{"filter":["ansible_devices","ansible_mounts"]}'
 ```
 
 The `ansible_mounts` fact returns a list of dictionaries with fields like `mount`, `device`, `size_total`, `size_available`, and `fstype`. This is much more structured than parsing `df` output.
@@ -150,7 +150,7 @@ echo ""
 echo "Server                     Usage  Available  Mount"
 echo "--------------------------------------------"
 
-ansible all -i "$INVENTORY" -m shell -a "df -h / | awk 'NR==2 {printf \"%-25s %5s  %9s  %s\n\", \"$(hostname)\", \$5, \$4, \$6}'" --one-line 2>/dev/null | \
+ansible all -i "$INVENTORY" -m shell -a "HOST=\$(hostname); df -h / | awk -v host=\"\$HOST\" 'NR==2 {printf \"%-25s %5s  %9s  %s\n\", host, \$5, \$4, \$6}'" --one-line 2>/dev/null | \
     grep "CHANGED" | \
     sed 's/.*| (stdout) //' | \
     sort
@@ -198,7 +198,7 @@ You can create a cron job via ad hoc commands to monitor disk space regularly:
 
 ```bash
 # Add a cron job that checks disk space every hour and logs warnings
-ansible all -m cron -a "name='disk space check' minute=0 job='USAGE=\$(df / | awk \"NR==2 {gsub(/%/,\\\"\\\"); print \\\$5}\"); [ \$USAGE -gt 90 ] && echo \"\$(date): WARNING root partition at \${USAGE}%%\" >> /var/log/disk_warning.log'" --become
+ansible all -m cron -a "name='disk space check' minute=0 job='USAGE=\$(df / | awk \"NR==2 {print \\\$5+0}\"); [ \$USAGE -gt 90 ] && echo \"\$(date): WARNING root partition at \${USAGE} percent\" >> /var/log/disk_warning.log'" --become
 ```
 
 ## Checking Disk I/O
