@@ -92,7 +92,7 @@ This returns the raw uptime in seconds, which is easier to parse programmaticall
 
 ```bash
 # Get uptime with hostname for easier identification
-ansible all -m shell -a "echo $(hostname): $(uptime -p)"
+ansible all -m shell -a 'echo "$(hostname): $(uptime -p)"'
 ```
 
 The `-p` flag on uptime gives a human-readable format like "up 2 weeks, 3 days, 7 hours, 12 minutes."
@@ -117,10 +117,10 @@ web01 | SUCCESS => {
 }
 ```
 
-You can also filter for multiple related facts:
+You can also filter for date/time facts when you need timestamps for correlation:
 
 ```bash
-# Get date/time facts that include uptime info
+# Get date/time facts
 ansible all -m setup -a "filter=ansible_date_time"
 ```
 
@@ -149,7 +149,7 @@ For a cleaner approach, you can filter results:
 
 ```bash
 # Only show servers up for less than 1 day (86400 seconds)
-ansible all -m shell -a "uptime_secs=$(awk '{print int(\$1)}' /proc/uptime); if [ \$uptime_secs -lt 86400 ]; then echo \"UP \${uptime_secs}s - RECENTLY REBOOTED\"; fi"
+ansible all -m shell -a 'uptime_secs=$(awk "{print int(\$1)}" /proc/uptime); if [ "$uptime_secs" -lt 86400 ]; then echo "UP ${uptime_secs}s - RECENTLY REBOOTED"; fi'
 ```
 
 ## Parallelism with Forks
