@@ -8,7 +8,7 @@ Description: Learn how to use the intersect filter in Ansible to find common ele
 
 ---
 
-When managing infrastructure, you frequently need to find what two lists have in common. Which packages are both installed and approved? Which users exist in both the local system and the LDAP directory? Which servers belong to both the "webservers" and "monitoring" groups? The `intersect` filter in Ansible answers these questions by returning only the items that appear in both lists.
+When managing infrastructure, you frequently need to find what two lists have in common. Which packages are both installed and approved? Which users exist in both the local system and the LDAP directory? Which servers belong to both the "webservers" and "monitoring" groups? The `intersect` filter in Ansible answers these questions by returning the unique items that appear in both lists.
 
 If you know set theory, this is the intersection operation. Given two sets, you get back only the elements they share.
 
@@ -25,9 +25,15 @@ If you know set theory, this is the intersection operation. Given two sets, you 
     list_b: [3, 4, 5, 6, 7]
 ```
 
+Output contains the common unique elements. If you need stable display order, sort the result:
+
+```yaml
+{{ list_a | intersect(list_b) | sort }}
+```
+
 Output: `[3, 4, 5]`
 
-Unlike `difference`, the `intersect` filter is commutative. `A | intersect(B)` gives the same result as `B | intersect(A)`.
+Unlike `difference`, the `intersect` filter is commutative. `A | intersect(B)` gives the same set of common elements as `B | intersect(A)`, although the list order is not guaranteed.
 
 ## Practical Example: Compliance Checking
 
@@ -36,7 +42,9 @@ One of the most valuable uses of intersect is verifying compliance. You can chec
 ```yaml
 # Check compliance: which required packages are already installed
 - name: Get installed packages
-  ansible.builtin.shell: dpkg --get-selections | awk '{print $1}'
+  ansible.builtin.shell: >
+    dpkg-query -W -f='${binary:Package}\t${db:Status-Status}\n' |
+    awk '$2 == "installed" {print $1}'
   register: installed_raw
   changed_when: false
 
@@ -56,8 +64,8 @@ One of the most valuable uses of intersect is verifying compliance. You can chec
   ansible.builtin.debug:
     msg: |
       Compliance Report:
-      Installed (compliant): {{ compliant_packages | join(', ') }}
-      Missing (non-compliant): {{ missing_packages | join(', ') }}
+      Installed (compliant): {{ compliant_packages | sort | join(', ') }}
+      Missing (non-compliant): {{ missing_packages | sort | join(', ') }}
       Score: {{ compliant_packages | length }}/{{ required_packages | length }}
 ```
 
