@@ -12,7 +12,7 @@ Every server you provision needs to be monitored. Every server you decommission 
 
 ## Registering Hosts with Prometheus
 
-Prometheus uses file-based service discovery or API-based targets. Here is how to update Prometheus target files when provisioning new hosts:
+Prometheus uses file-based service discovery or HTTP service discovery for dynamic targets. Here is how to update Prometheus target files when provisioning new hosts:
 
 ```yaml
 # prometheus-register.yml - Register hosts with Prometheus
@@ -210,16 +210,15 @@ For SaaS monitoring like Datadog, delegate API calls to localhost:
         body_format: json
         body:
           name: "HTTP Health Check - {{ inventory_hostname }}"
-          type: http
-          query: ""
+          type: service check
+          query: '"http.can_connect".over("host:{{ inventory_hostname }}").last(2).count_by_status()'
           message: "Health check failed on {{ inventory_hostname }}"
           options:
             thresholds:
               critical: 3
             notify_no_data: true
-        status_code: [200, 201, 409]
+        status_code: [200]
       delegate_to: localhost
-      run_once: true
 
   handlers:
     - name: Restart Datadog agent
@@ -254,7 +253,7 @@ During deployments, you need to suppress alerts. Here are patterns for different
             - name: job
               value: "myapp"
           startsAt: "{{ now(utc=true).isoformat() }}"
-          endsAt: "{{ '%Y-%m-%dT%H:%M:%S' | strftime(now().timestamp() | int + 1800) }}Z"
+          endsAt: "{{ '%Y-%m-%dT%H:%M:%S' | strftime(seconds=now(utc=true).timestamp() | int + 1800, utc=true) }}Z"
           createdBy: "ansible-deployer"
           comment: "Deployment of v{{ version }} in progress"
         status_code: [200, 201]
@@ -264,17 +263,24 @@ During deployments, you need to suppress alerts. Here are patterns for different
     # Datadog downtime
     - name: Set Datadog downtime
       ansible.builtin.uri:
-        url: "https://api.datadoghq.com/api/v1/downtime"
+        url: "https://api.datadoghq.com/api/v2/downtime"
         method: POST
         headers:
           DD-API-KEY: "{{ datadog_api_key }}"
           DD-APPLICATION-KEY: "{{ datadog_app_key }}"
         body_format: json
         body:
-          scope: "host:{{ inventory_hostname }}"
-          start: "{{ now().timestamp() | int }}"
-          end: "{{ now().timestamp() | int + 1800 }}"
-          message: "Deployment v{{ version }}"
+          data:
+            type: downtime
+            attributes:
+              monitor_identifier:
+                monitor_tags:
+                  - "*"
+              scope: "host:{{ inventory_hostname }}"
+              message: "Deployment v{{ version }}"
+              schedule:
+                start: "{{ now(utc=true).isoformat() }}"
+                end: "{{ '%Y-%m-%dT%H:%M:%S' | strftime(seconds=now(utc=true).timestamp() | int + 1800, utc=true) }}Z"
       register: downtime
       delegate_to: localhost
 
@@ -318,14 +324,14 @@ During deployments, you need to suppress alerts. Here are patterns for different
 
     - name: Cancel Datadog downtime
       ansible.builtin.uri:
-        url: "https://api.datadoghq.com/api/v1/downtime/{{ downtime.json.id }}"
+        url: "https://api.datadoghq.com/api/v2/downtime/{{ downtime.json.data.id }}"
         method: DELETE
         headers:
           DD-API-KEY: "{{ datadog_api_key }}"
           DD-APPLICATION-KEY: "{{ datadog_app_key }}"
         status_code: [200, 204, 404]
       delegate_to: localhost
-      when: downtime is defined and downtime.json is defined
+      when: downtime is defined and downtime.json is defined and downtime.json.data is defined
 ```
 
 ## Deregistering Hosts from Monitoring
