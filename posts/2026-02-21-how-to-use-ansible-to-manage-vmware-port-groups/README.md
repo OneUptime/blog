@@ -222,8 +222,9 @@ Distributed port groups are managed at the vCenter level and apply to all hosts 
         num_ports: 128
         port_binding: static
         state: present
-        # Network resource pool for QoS
+        # Security policy
         network_policy:
+          inherited: false
           promiscuous: false
           forged_transmits: false
           mac_changes: false
@@ -238,6 +239,7 @@ Distributed port groups are managed at the vCenter level and apply to all hosts 
         port_binding: static
         state: present
         network_policy:
+          inherited: false
           promiscuous: false
           forged_transmits: false
           mac_changes: false
@@ -335,7 +337,6 @@ One common problem is port group configuration drift, where different hosts end 
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
 
-    # Get host list dynamically
     cluster_name: "Production"
 
     # Standard port group definitions
@@ -354,24 +355,19 @@ One common problem is port group configuration drift, where different hosts end 
         forged_transmits: false
 
   tasks:
-    - name: Get all hosts in the cluster
-      community.vmware.vmware_host_info:
-        datacenter: "DC01"
-      register: host_info
-
-    - name: Apply standard port group configuration to every host
+    - name: Apply standard port group configuration to every host in the cluster
       community.vmware.vmware_portgroup:
-        esxi_hostname: "{{ item.0.key }}"
-        switch: "{{ item.1.vswitch }}"
-        portgroup: "{{ item.1.name }}"
-        vlan_id: "{{ item.1.vlan_id }}"
+        cluster_name: "{{ cluster_name }}"
+        switch: "{{ item.vswitch }}"
+        portgroup: "{{ item.name }}"
+        vlan_id: "{{ item.vlan_id }}"
         security:
-          promiscuous_mode: "{{ item.1.promiscuous }}"
-          mac_changes: "{{ item.1.mac_changes }}"
-          forged_transmits: "{{ item.1.forged_transmits }}"
-      loop: "{{ host_info.hosts | dict2items | product(standard_portgroups) | list }}"
+          promiscuous_mode: "{{ item.promiscuous }}"
+          mac_changes: "{{ item.mac_changes }}"
+          forged_transmits: "{{ item.forged_transmits }}"
+      loop: "{{ standard_portgroups }}"
       loop_control:
-        label: "{{ item.0.key }} - {{ item.1.name }}"
+        label: "{{ cluster_name }} - {{ item.name }}"
 ```
 
 Port group management is one of those areas where consistency is everything. A missing port group on one host means VMs cannot vMotion there. A port group with the wrong VLAN ID means network connectivity breaks. By defining your port groups in Ansible and applying them uniformly, you eliminate an entire category of networking issues that plague manually managed VMware environments.
