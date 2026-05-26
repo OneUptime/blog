@@ -50,18 +50,18 @@ This playbook lists all listening ports on each server:
 
   tasks:
     - name: Get all listening TCP ports
-      ansible.builtin.shell: ss -tlnp | tail -n +2
+      ansible.builtin.command: ss -H -O -tlnp
       register: tcp_ports
       changed_when: false
 
     - name: Get all listening UDP ports
-      ansible.builtin.shell: ss -ulnp | tail -n +2
+      ansible.builtin.command: ss -H -O -ulnp
       register: udp_ports
       changed_when: false
 
     - name: Parse TCP listening ports
       ansible.builtin.set_fact:
-        open_tcp_ports: "{{ tcp_ports.stdout_lines | map('regex_search', ':([0-9]+)\\s', '\\1') | select('string') | list }}"
+        open_tcp_ports: "{{ tcp_ports.stdout_lines | map('regex_replace', '^.*:([0-9]+)\\s+.*$', '\\1') | list | unique | sort }}"
 
     - name: Display open TCP ports
       ansible.builtin.debug:
@@ -88,9 +88,9 @@ This playbook lists all listening ports on each server:
         flat: true
 ```
 
-## Method 2: Using the wait_for Module for Remote Scanning
+## Method 2: Using the wait_for Module for Remote TCP Checks
 
-Ansible's `wait_for` module can check if specific ports are open on remote hosts. This is useful for verifying connectivity between servers.
+Ansible's `wait_for` module can check if specific TCP ports are open on remote hosts. This is useful for verifying connectivity between servers.
 
 This playbook checks specific ports from the Ansible controller:
 
@@ -122,11 +122,11 @@ This playbook checks specific ports from the Ansible controller:
         state: started
       loop: "{{ targets | subelements('expected_ports') }}"
       register: port_checks
-      failed_when: false
+      ignore_errors: true
 
     - name: Report port check results
       ansible.builtin.debug:
-        msg: "{{ item.item.0.name }}:{{ item.item.1 }} - {{ 'OPEN' if item.failed is not defined or not item.failed else 'CLOSED' }}"
+        msg: "{{ item.item.0.name }}:{{ item.item.1 }} - {{ 'CLOSED' if item.failed | default(false) else 'OPEN' }}"
       loop: "{{ port_checks.results }}"
 ```
 
@@ -174,9 +174,8 @@ This playbook installs Nmap and performs a comprehensive scan:
 
     - name: Parse open ports from Nmap output
       ansible.builtin.shell: >
-        grep "^[0-9]" {{ nmap_output_dir }}/scan_{{ ansible_date_time.date }}.txt |
-        grep "open" |
-        awk '{print $1}'
+        awk '$1 ~ /^[0-9]/ && $2 == "open" {print $1}'
+        {{ nmap_output_dir }}/scan_{{ ansible_date_time.date }}.txt || true
       register: nmap_open_ports
       changed_when: false
 
@@ -216,7 +215,7 @@ This playbook compares current open ports against expected baselines:
 
   tasks:
     - name: Get current listening TCP ports
-      ansible.builtin.shell: ss -tlnp | awk 'NR>1 {print $4}' | grep -oP '(?<=:)\d+$' | sort -un
+      ansible.builtin.shell: ss -H -O -tlnp | awk '{local=$4; sub(/^.*:/, "", local); print local}' | sort -un
       register: current_tcp
       changed_when: false
 
@@ -269,16 +268,16 @@ This playbook identifies the process behind each open port:
 
   tasks:
     - name: Get detailed socket information
-      ansible.builtin.shell: ss -tlnp | tail -n +2
+      ansible.builtin.command: ss -H -O -tlnp
       register: socket_info
       changed_when: false
 
     - name: Parse socket details into structured data
       ansible.builtin.shell: |
-        ss -tlnp | tail -n +2 | while read state recv send local peer process; do
-          port=$(echo "$local" | grep -oP '(?<=:)\d+$')
-          proc=$(echo "$process" | grep -oP '(?<=\(\")[^"]+')
-          pid=$(echo "$process" | grep -oP '(?<=pid=)\d+')
+        ss -H -O -tlnp | while read state recv send local peer process; do
+          port=$(echo "$local" | awk -F: '{print $NF}')
+          proc=$(echo "$process" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')
+          pid=$(echo "$process" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')
           echo "$port|$proc|$pid"
         done
       register: port_details
@@ -318,16 +317,16 @@ Set up regular automated scans with reporting:
           mkdir -p "$LOGDIR"
 
           # Capture current listening ports
-          ss -tlnp > "$LOGDIR/tcp-$DATE.txt"
-          ss -ulnp > "$LOGDIR/udp-$DATE.txt"
+          ss -H -O -tlnp > "$LOGDIR/tcp-$DATE.txt"
+          ss -H -O -ulnp > "$LOGDIR/udp-$DATE.txt"
 
           # Compare with baseline
           BASELINE="$LOGDIR/baseline.txt"
           CURRENT="$LOGDIR/tcp-$DATE.txt"
 
           if [ -f "$BASELINE" ]; then
-              DIFF=$(diff <(awk 'NR>1{print $4}' "$BASELINE" | sort) \
-                         <(awk 'NR>1{print $4}' "$CURRENT" | sort))
+              DIFF=$(diff <(awk '{print $4}' "$BASELINE" | sort) \
+                         <(awk '{print $4}' "$CURRENT" | sort))
               if [ -n "$DIFF" ]; then
                   echo "Port changes detected on $(hostname):" > /tmp/port-alert.txt
                   echo "$DIFF" >> /tmp/port-alert.txt
