@@ -85,6 +85,7 @@ Every compliance control follows the same pattern: check the current state, reme
     - name: Assert audit logging is active
       ansible.builtin.assert:
         that:
+          - ansible_facts.services['auditd.service'] is defined
           - ansible_facts.services['auditd.service'].state == 'running'
 ```
 
@@ -139,8 +140,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Ansible
+        run: python -m pip install ansible-core
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -188,15 +191,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
+  register: cert_check
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_check.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -219,16 +222,18 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+  ansible.builtin.command: ss -tlnH "sport = :{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  failed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout | length == 0
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
@@ -253,7 +258,7 @@ The real power of compliance automation is combining detection with remediation:
         - { regexp: '^X11Forwarding', line: 'X11Forwarding no' }
         - { regexp: '^MaxAuthTries', line: 'MaxAuthTries 4' }
         - { regexp: '^ClientAliveInterval', line: 'ClientAliveInterval 300' }
-        - { regexp: '^ClientAliveCountMax', line: 'ClientAliveCountMax 0' }
+        - { regexp: '^ClientAliveCountMax', line: 'ClientAliveCountMax 3' }
       notify: restart sshd
 
     - name: Ensure audit logging is configured
@@ -334,7 +339,7 @@ The real power of compliance automation is combining detection with remediation:
       when: "'permitrootlogin no' not in sshd_config.stdout"
 
     - name: Check password complexity
-      ansible.builtin.command: grep -E '^minlen' /etc/security/pwquality.conf
+      ansible.builtin.command: grep -E '^[[:space:]]*minlen[[:space:]]*=[[:space:]]*14([[:space:]]|$)' /etc/security/pwquality.conf
       register: pwquality
       changed_when: false
       failed_when: false
