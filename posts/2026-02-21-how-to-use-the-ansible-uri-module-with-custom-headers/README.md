@@ -97,7 +97,7 @@ These headers control how data is sent and received:
         status_code: 200
 ```
 
-Note that when you use `body_format: json`, Ansible sets `Content-Type: application/json` automatically. You only need to set it manually when using raw body strings.
+Note that when you use `body_format: json`, Ansible sets `Content-Type: application/json` automatically. You only need to set it manually when using raw body strings or when you need to override the generated header.
 
 ## API Versioning Headers
 
@@ -113,13 +113,14 @@ Many APIs use headers for version selection:
     api_base: https://api.example.com
   tasks:
     # GitHub-style version header
-    - name: Use GitHub API v3
+    - name: Use GitHub REST API version header
       ansible.builtin.uri:
         url: "{{ api_base }}/repos"
         method: GET
         headers:
-          Accept: "application/vnd.github.v3+json"
-          Authorization: "token {{ github_token }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "2022-11-28"
+          Authorization: "Bearer {{ github_token }}"
         return_content: true
       register: repos
 
@@ -297,7 +298,7 @@ Some APIs use headers to communicate rate limit information:
 
 ## Security Headers for Webhooks
 
-When receiving webhooks, you often need to send verification headers:
+When sending webhooks to endpoints that verify signatures, you often need to send verification headers:
 
 ```yaml
 # send HMAC signature headers for webhook verification
