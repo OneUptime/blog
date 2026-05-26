@@ -232,6 +232,7 @@ find . -name "vault.yml" -exec ansible-vault rekey \
 echo "${NEW_PASS}" | gpg --encrypt \
   --recipient alice@example.com \
   --recipient bob@example.com \
+  --yes \
   --output vault_pass.gpg
 
 # Step 6: Clean up
@@ -253,6 +254,7 @@ echo "${VAULT_PASS}" | gpg --encrypt \
   --recipient alice@example.com \
   --recipient bob@example.com \
   --recipient newperson@example.com \
+  --yes \
   --output vault_pass.gpg
 
 # Commit the updated file
@@ -265,14 +267,24 @@ When someone leaves, re-encrypt without their key AND rotate the vault password 
 ```bash
 # Re-encrypt without the departed person's key
 # AND use a new vault password (since they knew the old one)
+OLD_PASS=$(gpg --quiet --batch --decrypt vault_pass.gpg)
 NEW_PASS=$(openssl rand -base64 32)
+
+echo "${OLD_PASS}" > /tmp/old_vault_pass.txt
+echo "${NEW_PASS}" > /tmp/new_vault_pass.txt
+
+# Rekey all vault files before replacing the GPG-encrypted password
+find . -name "vault.yml" -exec ansible-vault rekey \
+  --vault-password-file /tmp/old_vault_pass.txt \
+  --new-vault-password-file /tmp/new_vault_pass.txt {} +
 
 echo "${NEW_PASS}" | gpg --encrypt \
   --recipient alice@example.com \
   --recipient bob@example.com \
+  --yes \
   --output vault_pass.gpg
 
-# Then rekey all vault files with the new password
+shred -u /tmp/old_vault_pass.txt /tmp/new_vault_pass.txt
 ```
 
 ## Troubleshooting
