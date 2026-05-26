@@ -58,7 +58,6 @@ The filter plugin:
 # plugins/filter/network_utils.py
 
 import ipaddress
-import re
 
 
 class FilterModule:
@@ -196,7 +195,6 @@ Lookup plugins are trickier because they depend on Ansible internals. Use mockin
 
 ```python
 # tests/unit/plugins/lookup/test_api_lookup.py
-import pytest
 from unittest.mock import patch, MagicMock
 import json
 
