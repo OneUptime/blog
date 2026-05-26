@@ -109,7 +109,7 @@ You can also use custom machine types:
 - name: Create instance with custom machine type
   google.cloud.gcp_compute_instance:
     name: "custom-instance"
-    machine_type: "custom-4-16384"
+    machine_type: "e2-custom-4-16384"
     zone: "us-central1-a"
     project: "{{ gcp_project }}"
     auth_kind: "{{ gcp_cred_kind }}"
@@ -125,7 +125,7 @@ You can also use custom machine types:
     state: present
 ```
 
-The `custom-4-16384` notation means 4 vCPUs and 16384 MB (16 GB) of memory.
+The `e2-custom-4-16384` notation means an E2 custom machine type with 4 vCPUs and 16384 MB (16 GB) of memory.
 
 ## Creating an Instance with a Startup Script
 
@@ -174,7 +174,7 @@ Startup scripts run when the instance first boots, letting you install software 
             systemctl start nginx
             echo "Managed by Ansible - $(hostname)" > /var/www/html/index.html
         tags:
-          items:
+          tag_values:
             - http-server
             - https-server
         labels:
@@ -188,7 +188,7 @@ Startup scripts run when the instance first boots, letting you install software 
         msg: "Nginx running at http://{{ web_instance.networkInterfaces[0].accessConfigs[0].natIP }}"
 ```
 
-The `tags.items` field adds network tags to the instance, which are used by firewall rules to target specific instances. The `http-server` and `https-server` tags are commonly used with default GCP firewall rules that allow inbound traffic on ports 80 and 443.
+The `tags.tag_values` field adds network tags to the instance, which are used by firewall rules to target specific instances. The `http-server` and `https-server` tags are commonly used with firewall rules that allow inbound traffic on ports 80 and 443, including rules created by the Google Cloud console when you allow HTTP or HTTPS traffic.
 
 ## Creating an Instance with Additional Disks
 
@@ -303,7 +303,7 @@ Deploying a fleet of instances for a web tier:
               - name: "External NAT"
                 type: "ONE_TO_ONE_NAT"
         tags:
-          items:
+          tag_values:
             - http-server
             - web-tier
         labels:
@@ -317,7 +317,7 @@ Deploying a fleet of instances for a web tier:
     - name: Show created instances
       ansible.builtin.debug:
         msg: "{{ item.name }} ({{ item.zone }}): {{ item.networkInterfaces[0].accessConfigs[0].natIP }}"
-      loop: "{{ fleet_results.results | map(attribute='invocation') | list }}"
+      loop: "{{ fleet_results.results }}"
 ```
 
 ## Stopping and Starting Instances
