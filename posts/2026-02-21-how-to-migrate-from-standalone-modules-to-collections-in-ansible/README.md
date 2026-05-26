@@ -8,7 +8,7 @@ Description: Step-by-step guide to migrating Ansible playbooks from legacy stand
 
 ---
 
-If you have been using Ansible for a few years, you probably have playbooks written before the collections system was introduced in Ansible 2.9. Those playbooks use short module names like `docker_container`, `mysql_db`, or `ec2_instance` without any namespace prefix. While Ansible still supports these legacy names through redirect mappings, relying on them is not a long-term strategy. This post walks through the migration process from standalone modules to properly namespaced collections.
+If you have been using Ansible for a few years, you probably have playbooks written before collections became the standard packaging model in the Ansible 2.9 and 2.10 era. Those playbooks use short module names like `docker_container`, `mysql_db`, or `ec2_instance` without any namespace prefix. While Ansible still supports many legacy names through redirect mappings, relying on them is not a long-term strategy. This post walks through the migration process from standalone modules to properly namespaced collections.
 
 ## Why the Migration Happened
 
@@ -19,7 +19,7 @@ Before collections, all Ansible modules shipped in a single monolithic package c
 - The package was enormous and kept growing.
 - Testing was becoming unmanageable.
 
-Collections solved this by splitting modules into independently versioned, independently releasable packages. The `ansible` package became `ansible-core` (the engine) plus individual collections (the modules).
+Collections solved this by splitting modules into independently versioned, independently releasable packages. Today, `ansible-core` provides the engine and the `ansible.builtin` collection, while the `ansible` community package bundles `ansible-core` plus a curated set of community collections.
 
 ## Understanding the Naming Change
 
@@ -60,21 +60,22 @@ The FQCN format is `namespace.collection.module_name`. Here are some common mapp
 First, figure out which modules you are actually using. Here is a quick way to find them.
 
 ```bash
-# Find all module references in your playbooks
-# Look for task lines that do not use FQCN format
-grep -rn '^\s*-\s*name:' playbooks/ roles/ | head -20
+# Find likely short-form module references in your playbooks
+grep -RnoE '^[[:space:]]{2,}[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*(#.*)?$' \
+  playbooks/ roles/ --include="*.yml" --include="*.yaml"
 
 # A more targeted search for non-FQCN module usage
-# (lines with a module name that does not contain a dot)
-grep -rn '^\s\+\w\+:$' playbooks/ roles/ --include="*.yml" --include="*.yaml"
+# (requires ansible-lint)
+ansible-lint -p playbooks/ roles/ | grep 'fqcn'
 ```
 
 Build a list of every unique module name used across your codebase.
 
 ```bash
-# Extract module names from playbook tasks
-ansible-playbook playbooks/site.yml --list-tasks 2>/dev/null | \
-  grep -oP '(?<=: )\S+' | sort -u
+# Extract likely short-form module names from YAML task keys
+grep -RhoE '^[[:space:]]{2,}[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*(#.*)?$' \
+  playbooks/ roles/ --include="*.yml" --include="*.yaml" | \
+  sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*):.*/\1/' | sort -u
 ```
 
 ## Step 2: Identify the Required Collections
@@ -106,6 +107,18 @@ collections:
   # General purpose modules (ldap, redis, etc.)
   - name: community.general
     version: ">=8.0.0"
+
+  # POSIX modules (authorized_key, mount, synchronize, sysctl, etc.)
+  - name: ansible.posix
+    version: ">=2.0.0"
+
+  # Utility filters such as ipaddr
+  - name: ansible.utils
+    version: ">=3.0.0"
+
+  # HashiCorp Vault lookup plugins
+  - name: community.hashi_vault
+    version: ">=6.0.0"
 
   # Windows modules
   - name: ansible.windows
@@ -308,8 +321,8 @@ Common renames:
 
 | Old Module | New Module |
 |---|---|
-| `include` | `ansible.builtin.include_tasks` |
-| `include_role` (static) | `ansible.builtin.import_role` |
+| `include` | `ansible.builtin.include_tasks` or `ansible.builtin.import_tasks` |
+| `include_role` | `ansible.builtin.include_role` (`ansible.builtin.import_role` if you need static import behavior) |
 | `ec2` | `amazon.aws.ec2_instance` |
 | `s3` | `amazon.aws.s3_object` |
 
@@ -336,13 +349,19 @@ For large codebases, a script can help with the bulk of the renaming.
 
 # Built-in modules
 for module in apt yum dnf copy template file service systemd command shell \
-    raw script lineinfile blockinfile replace stat find fetch synchronize \
+    raw script lineinfile blockinfile replace stat find fetch \
     uri get_url unarchive debug fail assert set_fact pause wait_for \
-    group user cron mount sysctl authorized_key known_hosts pip \
-    git subversion; do
-  find . -name "*.yml" -o -name "*.yaml" | while read f; do
+    group user cron known_hosts pip git; do
+  find . \( -name "*.yml" -o -name "*.yaml" \) -type f | while IFS= read -r f; do
     # Only match module usage at proper indentation level
     sed -i "s/^\(\s\+\)${module}:/\1ansible.builtin.${module}:/g" "$f"
+  done
+done
+
+# POSIX modules
+for module in authorized_key mount synchronize sysctl; do
+  find . \( -name "*.yml" -o -name "*.yaml" \) -type f | while IFS= read -r f; do
+    sed -i "s/^\(\s\+\)${module}:/\1ansible.posix.${module}:/g" "$f"
   done
 done
 
