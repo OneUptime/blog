@@ -75,7 +75,7 @@ This distinction is critical in Ansible:
         msg: "null_var is none"
       when: null_var is none
 
-    - name: This would fail if uncommented - undefined_var is not defined
+    - name: This is skipped - undefined_var is not defined
       ansible.builtin.debug:
         msg: "never reached"
       when: undefined_var is defined  # This is false, task skipped
@@ -93,7 +93,7 @@ This distinction is critical in Ansible:
     - name: Default does not replace null by default
       ansible.builtin.debug:
         msg: "{{ null_var | default('fallback') }}"
-      # Output: "" (empty, because null_var is defined)
+      # Output: the null value, because null_var is defined
 
     - name: Use default with boolean true to also replace null
       ansible.builtin.debug:
@@ -175,12 +175,12 @@ optional_feature: "enabled"
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -294,7 +294,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -360,4 +360,4 @@ Here are several practical scenarios where this module proves essential in real-
 
 ## Conclusion
 
-Null values in YAML and Ansible are a defined absence of value. They are different from undefined variables (which raise errors when accessed) and empty strings (which are valid string values). Use `is none` to test for null, `default(value, true)` to replace null with a fallback, and `omit` to conditionally skip module parameters. Understanding these distinctions prevents subtle bugs that are hard to track down in complex playbooks.
+Null values in YAML and Ansible are a defined absence of value. They are different from undefined variables (which raise errors when accessed by default) and empty strings (which are valid string values). Use `is none` to test for null, `default(value, true)` to replace null with a fallback, and `omit` to conditionally skip module parameters. Understanding these distinctions prevents subtle bugs that are hard to track down in complex playbooks.
