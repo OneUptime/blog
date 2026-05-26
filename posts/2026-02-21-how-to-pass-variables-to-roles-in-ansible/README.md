@@ -10,7 +10,7 @@ Description: Learn every method for passing variables to Ansible roles including
 
 One of the main reasons Ansible roles exist is reusability, and reusability depends on being able to customize role behavior through variables. There are multiple ways to pass variables to roles in Ansible, and each method has different precedence. Understanding these methods lets you build roles that are flexible without being fragile. This post covers every way to pass variables to roles and explains when each approach makes sense.
 
-## Method 1: Role Parameters (Highest Precedence)
+## Method 1: Role Parameters (Very High Precedence)
 
 When you list a role under the `roles:` keyword, you can pass variables directly as role parameters:
 
@@ -22,13 +22,12 @@ When you list a role under the `roles:` keyword, you can pass variables directly
 - hosts: web_servers
   roles:
     - role: nginx
-      vars:
-        nginx_port: 8080
-        nginx_server_name: app.example.com
-        nginx_worker_processes: 4
+      nginx_port: 8080
+      nginx_server_name: app.example.com
+      nginx_worker_processes: 4
 ```
 
-Role parameters have very high precedence. They override role defaults, group vars, host vars, and even role vars. Only extra vars (`-e`) can override them.
+Role parameters have very high precedence. They override role defaults, group vars, host vars, play vars, task vars, `set_fact` values, and even role vars. Include params and extra vars can override them, and extra vars (`-e`) have the highest precedence overall.
 
 ## Method 2: Using include_role with vars
 
@@ -158,7 +157,7 @@ You can compute variables before applying a role:
 
     - name: Set application version from deployment manifest
       ansible.builtin.set_fact:
-        app_version: "{{ lookup('file', 'manifest.json') | from_json | json_query('version') }}"
+        app_version: "{{ (lookup('file', 'manifest.json') | from_json).version }}"
 
   roles:
     - nginx
@@ -175,14 +174,15 @@ Here is the precedence order for variables that affect roles, from lowest to hig
 flowchart TB
     A["1. Role defaults (defaults/main.yml)"] --> B["2. Inventory group_vars"]
     B --> C["3. Inventory host_vars"]
-    C --> D["4. Play vars"]
+    C --> D["4. Play vars and vars_files"]
     D --> E["5. Role vars (vars/main.yml)"]
-    E --> F["6. Role params (roles: section vars)"]
-    F --> G["7. Task vars"]
-    G --> H["8. set_fact / register"]
-    H --> I["9. Extra vars (-e)"]
+    E --> F["6. Task, block, and include_vars values"]
+    F --> G["7. set_fact / register"]
+    G --> H["8. Role and include_role params"]
+    H --> I["9. Include params"]
+    I --> J["10. Extra vars (-e)"]
     style A fill:#6f9
-    style I fill:#f96
+    style J fill:#f96
 ```
 
 ## Practical Example: Passing Variables at Multiple Levels
@@ -223,8 +223,7 @@ app_replicas: 5
 - hosts: production
   roles:
     - role: app_deploy
-      vars:
-        app_name: myapp-v2
+      app_name: myapp-v2
 ```
 
 For host `app01.example.com`, the final variable values would be:
