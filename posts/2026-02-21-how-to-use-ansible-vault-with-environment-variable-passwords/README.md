@@ -24,7 +24,7 @@ Ansible Vault does not natively read passwords from environment variables. It re
 
 # Ansible calls this script and captures stdout as the password
 
-echo "${ANSIBLE_VAULT_PASS}"
+printf '%s\n' "${ANSIBLE_VAULT_PASS}"
 ```
 
 Make it executable and use it:
@@ -54,7 +54,7 @@ if [ -z "${ANSIBLE_VAULT_PASS}" ]; then
   exit 1
 fi
 
-echo "${ANSIBLE_VAULT_PASS}"
+printf '%s\n' "${ANSIBLE_VAULT_PASS}"
 ```
 
 The error message goes to stderr (using `>&2`) so it does not get captured as the password. The non-zero exit code tells Ansible that the password retrieval failed.
@@ -88,7 +88,7 @@ if [ -z "${VAULT_PASS_DEV}" ]; then
   echo "ERROR: VAULT_PASS_DEV not set" >&2
   exit 1
 fi
-echo "${VAULT_PASS_DEV}"
+printf '%s\n' "${VAULT_PASS_DEV}"
 ```
 
 ```bash
@@ -98,7 +98,7 @@ if [ -z "${VAULT_PASS_PROD}" ]; then
   echo "ERROR: VAULT_PASS_PROD not set" >&2
   exit 1
 fi
-echo "${VAULT_PASS_PROD}"
+printf '%s\n' "${VAULT_PASS_PROD}"
 ```
 
 Configure both in `ansible.cfg`:
@@ -216,7 +216,7 @@ ansible-playbook site.yml --vault-password-file ./vault_pass.py
 
 Environment variables have some security properties you should understand.
 
-Environment variables are visible to anyone who can inspect the process environment. On Linux, the `/proc/<pid>/environ` file exposes them. Any process running as the same user (or root) can read them.
+Environment variables are visible to anyone who can inspect the process environment. On typical Linux systems, the `/proc/<pid>/environ` file exposes them to processes that pass the kernel's access checks, such as root or other sufficiently privileged same-user processes.
 
 ```bash
 # Demonstrating that environment variables can be read from /proc
