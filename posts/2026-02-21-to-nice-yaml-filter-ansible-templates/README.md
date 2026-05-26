@@ -8,7 +8,7 @@ Description: Learn how to use the to_nice_yaml filter in Ansible to generate wel
 
 ---
 
-The `to_nice_yaml` filter is the human-friendly version of `to_yaml`. While `to_yaml` gives you functional YAML output, `to_nice_yaml` lets you control indentation, line width, and other formatting options to produce YAML that looks clean and is easy to read. This matters a lot when the generated files will be reviewed by team members, stored in version control, or inspected during troubleshooting.
+The `to_nice_yaml` filter is the human-friendly version of `to_yaml`. While `to_yaml` gives you functional YAML output, `to_nice_yaml` defaults to expanded block-style YAML and lets you control indentation, line width, and other formatting options to produce YAML that looks clean and is easy to read. This matters a lot when the generated files will be reviewed by team members, stored in version control, or inspected during troubleshooting.
 
 ## Basic Usage
 
@@ -44,22 +44,22 @@ With `indent=2`:
 
 ```yaml
 server:
+  features:
+  - auth
+  - logging
   host: 0.0.0.0
   port: 8080
-  features:
-    - auth
-    - logging
 ```
 
 With `indent=4`:
 
 ```yaml
 server:
+    features:
+    - auth
+    - logging
     host: 0.0.0.0
     port: 8080
-    features:
-        - auth
-        - logging
 ```
 
 ## Controlling Line Width
@@ -236,10 +236,10 @@ config: {{ my_data | to_nice_yaml(indent=2) | trim }}
 
 | Feature | to_yaml | to_nice_yaml |
 |---------|---------|--------------|
-| Indentation | Fixed 2 spaces | Configurable via indent= |
-| Line width | Default PyYAML | Configurable via width= |
-| Output style | Compact | Expanded, readable |
-| Best for | Machine processing | Human reading |
+| Indentation | Configurable via indent= | Configurable via indent= |
+| Line width | Configurable via width= | Configurable via width= |
+| Output style | May use compact flow style | Expanded, readable |
+| Best for | Simple serialization and debugging | Human reading |
 
 ## Generating Helm Values Files
 
@@ -328,21 +328,27 @@ You can even use `to_nice_yaml` to generate default variable files for Ansible r
 
 ## Dealing with Strings That Look Like Other Types
 
-PyYAML can sometimes serialize strings in unexpected ways. Values like "yes", "no", "true", "false", "null", "1.0" might get treated as booleans, nulls, or floats:
+PyYAML quotes strings that could be misread as other YAML types. If the value is already a string in Ansible, `to_nice_yaml` keeps it as a string:
 
 ```jinja2
-{# This might render "on" as a boolean true #}
+{# This renders "on" as a quoted string #}
 {{ {"feature_flag": "on"} | to_nice_yaml }}
 ```
 
-To force string output, you may need to quote the value explicitly in your variables or use a workaround:
+Output:
+
+```yaml
+feature_flag: 'on'
+```
+
+The place to be careful is when defining variables: unquoted YAML scalars such as `on`, `yes`, `no`, `true`, `false`, `null`, or `1.0` may be parsed as booleans, nulls, or floats before the filter sees them. Quote values in your variables when they must remain strings:
 
 ```yaml
 # Force string types where needed
 vars:
   config:
-    feature_flag: "on"  # PyYAML might still interpret this
-    version: "1.0"      # Could become float 1.0
+    feature_flag: "on"
+    version: "1.0"
 ```
 
 If this is a concern, consider using `to_nice_json` instead, which has unambiguous string handling, or post-process the YAML output.
