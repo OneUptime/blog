@@ -53,7 +53,7 @@ Ansible uses two key directives for user switching:
           Postgres task: {{ postgres_result.stdout }}
 ```
 
-When you set `become: yes` without `become_user`, it defaults to root. When you add `become_user`, Ansible escalates to root first (via sudo), then switches to the target user (via su or sudo -u).
+When you set `become: yes` without `become_user`, it defaults to root. When you add `become_user`, Ansible runs the task as that target user through the configured become method, such as `sudo -u` for sudo-based escalation.
 
 ## Play-Level vs Task-Level become
 
@@ -383,4 +383,4 @@ When things go wrong with user switching, these tasks help diagnose the problem.
 
 ## Summary
 
-Running commands as different users in Ansible revolves around the `become` and `become_user` directives. Set `become: yes` at the play level for tasks that mostly run as root, then override with `become_user` at the task or block level for specific users. Use blocks to group tasks that share the same user context. Remember that `become_user` requires `become: yes` to work, since Ansible needs to escalate privileges first before switching to another user. For database operations, application management, and service-specific tasks, always run as the appropriate user rather than root to follow the principle of least privilege.
+Running commands as different users in Ansible revolves around the `become` and `become_user` directives. Set `become: yes` at the play level for tasks that mostly run as root, then override with `become_user` at the task or block level for specific users. Use blocks to group tasks that share the same user context. Remember that `become_user` requires `become: yes` to work, because setting `become_user` alone does not enable privilege escalation. For database operations, application management, and service-specific tasks, always run as the appropriate user rather than root to follow the principle of least privilege.
