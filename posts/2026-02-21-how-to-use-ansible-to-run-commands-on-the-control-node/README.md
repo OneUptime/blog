@@ -59,6 +59,7 @@ This is particularly useful when you need to do something locally that depends o
         line: "{{ inventory_hostname }},{{ ansible_default_ipv4.address }},{{ ansible_distribution }}"
         create: yes
       delegate_to: localhost
+      throttle: 1
 
     - name: Add CSV header if missing
       ansible.builtin.lineinfile:
@@ -69,7 +70,7 @@ This is particularly useful when you need to do something locally that depends o
       run_once: true
 ```
 
-The key difference from `local_action` is that `delegate_to` keeps the host context. So `inventory_hostname` and `ansible_default_ipv4.address` still refer to the remote host being iterated over, even though the task runs locally.
+Like `local_action`, `delegate_to: localhost` lets task arguments use the current inventory host context. So `inventory_hostname` and `ansible_default_ipv4.address` still refer to the remote host being iterated over, even though the task runs locally. The `throttle: 1` setting prevents multiple hosts from writing to the same local file at the same time.
 
 ## Using connection: local
 
@@ -102,7 +103,7 @@ If your entire playbook or play is meant to run on the control node, setting `co
         dest: /tmp/ansible_workspace/config.yaml
 ```
 
-When you use `hosts: localhost` with `connection: local`, Ansible skips SSH entirely. It just runs the modules directly on the control node using the local Python interpreter.
+When you use `hosts: localhost` with `connection: local`, Ansible skips SSH entirely and runs the tasks on the control node. If you need a specific Python interpreter, set `ansible_python_interpreter` for localhost explicitly.
 
 ## Comparing the Three Approaches
 
