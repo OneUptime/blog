@@ -74,7 +74,7 @@ The `community.digitalocean.digital_ocean_droplet` module handles Droplet creati
 
     - name: Show Droplet info
       ansible.builtin.debug:
-        msg: "Droplet {{ droplet_result.data.droplet.name }} created at {{ droplet_result.data.droplet.networks.v4[0].ip_address }}"
+        msg: "Droplet {{ droplet_result.data.droplet.name }} created at {{ (droplet_result.data.droplet.networks.v4 | selectattr('type', 'equalto', 'public') | first).ip_address }}"
 ```
 
 ## Managing SSH Keys
@@ -100,7 +100,7 @@ Before creating Droplets, upload your SSH keys.
         state: present
       register: ssh_key
 
-    - name: Store SSH key fingerprint
+    - name: Store SSH key ID
       ansible.builtin.set_fact:
         deploy_key_id: "{{ ssh_key.data.ssh_key.id }}"
 
@@ -338,7 +338,7 @@ Snapshots are essential for backups and creating golden images.
       community.digitalocean.digital_ocean_snapshot:
         oauth_token: "{{ do_api_token }}"
         snapshot_type: droplet
-        snapshot_name: "web-01-backup-{{ ansible_date_time.date | default('manual') }}"
+        snapshot_name: "web-01-backup-{{ now(utc=true, fmt='%Y-%m-%d') }}"
         droplet_id: "{{ all_droplets.data | selectattr('name', 'equalto', 'web-01') | map(attribute='id') | first }}"
         state: present
         wait: true
@@ -395,7 +395,7 @@ Scale Droplets up when you need more resources.
     - name: Power off Droplet before resize
       community.digitalocean.digital_ocean_droplet:
         oauth_token: "{{ do_api_token }}"
-        state: present
+        state: inactive
         name: app-01
         unique_name: true
         region: nyc3
@@ -418,8 +418,8 @@ Scale Droplets up when you need more resources.
 
 1. **Always use `unique_name: true`.** Without it, running the playbook twice creates duplicate Droplets with the same name. The unique_name flag makes the module idempotent.
 2. **Use tags extensively.** Tags drive firewall rules and dynamic inventory grouping. Assign them during Droplet creation and reference them in your security rules.
-3. **VPC networking is free.** DigitalOcean assigns a private IP to every Droplet in the same region. Use private IPs for inter-service communication to avoid bandwidth charges.
+3. **VPC networking is free.** DigitalOcean adds new Droplets to a VPC network by default. Use private IPs for communication within the same VPC, or between peered VPCs in the same datacenter, to avoid bandwidth charges.
 4. **Snapshots cost money.** Unlike some providers, DigitalOcean charges for snapshot storage. Automate snapshot cleanup to remove old backups.
-5. **Monitoring is built in.** Enable the `monitoring: true` flag when creating Droplets to get metrics without installing a separate agent.
+5. **Monitoring can be enabled during creation.** Enable the `monitoring: true` flag when creating Droplets to install the DigitalOcean metrics agent and get enhanced metrics.
 
 DigitalOcean plus Ansible is a combination that punches well above its weight. You get the simplicity of DigitalOcean with the power of Ansible's configuration management, and the whole setup is easier to maintain than most enterprise cloud deployments.
