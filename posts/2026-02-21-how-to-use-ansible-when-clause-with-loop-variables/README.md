@@ -42,7 +42,7 @@ The loop variable is called `item` by default, but you can rename it using `loop
 - name: Manage user accounts
   ansible.builtin.user:
     name: "{{ account.username }}"
-    state: "{{ 'present' if account.active else 'absent' }}"
+    state: present
     shell: "{{ account.shell | default('/bin/bash') }}"
   loop:
     - { username: "deploy", active: true, shell: "/bin/bash" }
@@ -134,7 +134,7 @@ The `>` YAML scalar lets you write the condition on multiple lines for readabili
 When your loop items are more complex data structures, you can dig into nested attributes:
 
 ```yaml
-# Deploy applications only if their health check endpoint responds and they are scheduled for this host
+# Deploy applications only if they are scheduled for this host
 - name: Define applications
   ansible.builtin.set_fact:
     applications:
@@ -187,7 +187,7 @@ This processes only items at even indices (0, 2), which could be useful for blue
 
 ## Practical Example: Conditional Package Installation
 
-Here is a real-world scenario where you manage a heterogeneous fleet and need to install different packages based on host properties:
+Here is a real-world scenario where you manage a heterogeneous Linux fleet and need to install different packages based on host properties:
 
 ```yaml
 # Install monitoring agents based on the host's role and OS
@@ -198,7 +198,6 @@ Here is a real-world scenario where you manage a heterogeneous fleet and need to
       - { name: "node-exporter", roles: ["all"], os_families: ["Debian", "RedHat"] }
       - { name: "mysqld-exporter", roles: ["database"], os_families: ["Debian", "RedHat"] }
       - { name: "nginx-exporter", roles: ["webserver"], os_families: ["Debian"] }
-      - { name: "windows-exporter", roles: ["webserver"], os_families: ["Windows"] }
   tasks:
     - name: Install appropriate monitoring packages
       ansible.builtin.package:
