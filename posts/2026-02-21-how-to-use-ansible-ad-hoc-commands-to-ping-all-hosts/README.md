@@ -194,10 +194,10 @@ When you have a large inventory, you want to focus on the failures:
 ansible all -m ping | grep -B1 "UNREACHABLE"
 
 # Use the tree callback to save results to files
-ANSIBLE_CALLBACK_PLUGINS=tree ansible all -m ping --tree=/tmp/ping_results/
+ansible all -m ping --tree=/tmp/ping_results/
 
-# Use JSON output for parsing
-ANSIBLE_STDOUT_CALLBACK=json ansible all -m ping 2>/dev/null | python3 -m json.tool
+# Use JSON output for parsing (requires the ansible.posix collection)
+ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible all -m ping 2>/dev/null | python3 -m json.tool
 ```
 
 For a more structured approach, use a quick playbook that registers the result:
@@ -294,8 +294,8 @@ For hosts that might be slow to respond, adjust the timeout:
 # Set SSH connection timeout to 30 seconds
 ansible all -m ping -T 30
 
-# Set both connection timeout and command timeout
-ansible all -m ping -T 30 -e "ansible_command_timeout=60"
+# Set both connection timeout and task timeout
+ansible all -m ping -T 30 --task-timeout 60
 ```
 
 ## Summary
