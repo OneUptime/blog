@@ -123,7 +123,7 @@ This gives you the best of both worlds. New servers work without prompts, but yo
 
 ## Pre-Populating known_hosts
 
-The most secure approach is to add host keys to `known_hosts` before connecting:
+The most secure approach is to add verified host keys to `known_hosts` before connecting. If you use `ssh-keyscan`, verify the returned keys through a trusted channel before relying on them:
 
 ```bash
 # Scan a host's SSH key and add it to known_hosts
@@ -150,7 +150,7 @@ Automate it with Ansible using the `known_hosts` module:
   tasks:
     # Scan and register host keys
     - name: Scan host keys
-      command: "ssh-keyscan -H {{ item }}"
+      command: "ssh-keyscan {{ item }}"
       register: host_keys
       loop:
         - 192.168.1.10
@@ -174,7 +174,7 @@ In cloud environments where servers come and go, host keys change constantly. He
 ```yaml
 # group_vars/cloud_instances.yml
 # For ephemeral cloud instances, disable strict checking
-# but still warn about changed keys
+# but still reject changed keys
 ansible_ssh_extra_args: >-
   -o StrictHostKeyChecking=accept-new
   -o UserKnownHostsFile=~/.ssh/known_hosts_ansible
@@ -245,7 +245,7 @@ Automate stale key cleanup:
       ignore_errors: yes
 
     - name: Scan new host keys
-      command: "ssh-keyscan -H {{ item }}"
+      command: "ssh-keyscan {{ item }}"
       register: new_keys
       loop: "{{ groups['webservers'] | map('extract', hostvars, 'ansible_host') | list }}"
 
