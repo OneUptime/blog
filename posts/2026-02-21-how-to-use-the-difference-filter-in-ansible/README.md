@@ -10,7 +10,7 @@ Description: Learn how to use the difference filter in Ansible to find items pre
 
 Set operations are fundamental to configuration management. You need to know what packages should be removed (present on the system but not in your desired state), which users to delete (exist on the server but not in your approved list), or which firewall rules are outdated. The `difference` filter in Ansible handles exactly this by returning items from the first list that are not in the second list.
 
-Think of it as subtraction for lists. If list A contains `[1, 2, 3, 4, 5]` and list B contains `[3, 4, 5, 6, 7]`, then `A | difference(B)` gives you `[1, 2]`.
+Think of it as subtraction for lists. If list A contains `[1, 2, 3, 4, 5]` and list B contains `[3, 4, 5, 6, 7]`, then `A | difference(B)` gives you the items `1` and `2`. The result is unique, but Ansible returns set filter results in arbitrary order, so add `| sort` when you need deterministic output.
 
 ## Basic Usage
 
@@ -19,7 +19,7 @@ Think of it as subtraction for lists. If list A contains `[1, 2, 3, 4, 5]` and l
 
 - name: Basic difference example
   ansible.builtin.debug:
-    msg: "{{ list_a | difference(list_b) }}"
+    msg: "{{ list_a | difference(list_b) | sort }}"
   vars:
     list_a: [1, 2, 3, 4, 5]
     list_b: [3, 4, 5, 6, 7]
@@ -33,7 +33,7 @@ The order matters. `A | difference(B)` is not the same as `B | difference(A)`:
 # Order matters - B difference A gives different results
 - name: Reverse difference
   ansible.builtin.debug:
-    msg: "{{ list_b | difference(list_a) }}"
+    msg: "{{ list_b | difference(list_a) | sort }}"
   vars:
     list_a: [1, 2, 3, 4, 5]
     list_b: [3, 4, 5, 6, 7]
@@ -129,9 +129,10 @@ When you want to remove old firewall rules that are no longer needed:
   ansible.builtin.debug:
     msg: "Ports to open: {{ desired_ports | difference(current_ports) }}"
 
-- name: Close stale firewall ports
+- name: Remove stale allow rules
   community.general.ufw:
-    rule: deny
+    rule: allow
+    delete: true
     port: "{{ item }}"
     proto: tcp
   loop: "{{ current_ports | difference(desired_ports) }}"
@@ -200,7 +201,7 @@ You can use difference to detect configuration drift:
 
 ## Difference with Complex Data
 
-For lists of dictionaries, difference compares entire objects. If you need to compare by a specific attribute, extract that attribute first:
+For lists of dictionaries, compare by a specific attribute instead of passing whole dictionaries to the set filter:
 
 ```yaml
 # Compare server lists by hostname only
@@ -284,4 +285,4 @@ graph LR
 
 ## Summary
 
-The difference filter is your go-to tool for identifying what is in one list but not another. Use it for cleanup tasks (finding things to remove), drift detection (spotting unauthorized changes), and synchronization (keeping desired state and actual state aligned). Remember that order matters and that it compares complete objects for dictionaries. Pair it with `intersect` and `union` for a full set of operations that cover virtually any list comparison scenario in your automation workflows.
+The difference filter is your go-to tool for identifying what is in one list but not another. Use it for cleanup tasks (finding things to remove), drift detection (spotting unauthorized changes), and synchronization (keeping desired state and actual state aligned). Remember that operand order matters, result order is arbitrary unless you sort it, and complex objects should usually be compared by a specific attribute. Pair it with `intersect` and `union` for a full set of operations that cover virtually any list comparison scenario in your automation workflows.
