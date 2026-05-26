@@ -93,7 +93,7 @@ port = {{ db_port }}
 username = {{ db_user }}
 password = {{ db_pass }}
 database = {{ db_name }}
-sslmode = {{ db_query | regex_search('sslmode=([^&]+)', '\\1') | first | default('prefer') }}
+sslmode = {{ (db_query | regex_search('sslmode=([^&]+)', '\\1') | default(['prefer'], true)) | first }}
 ```
 
 ## Parsing Redis Connection URLs
@@ -108,9 +108,9 @@ sslmode = {{ db_query | regex_search('sslmode=([^&]+)', '\\1') | first | default
     - name: Extract Redis connection details
       ansible.builtin.set_fact:
         redis_host: "{{ redis_url | urlsplit('hostname') }}"
-        redis_port: "{{ redis_url | urlsplit('port') | default(6379) }}"
+        redis_port: "{{ redis_url | urlsplit('port') | default(6379, true) }}"
         redis_password: "{{ redis_url | urlsplit('password') }}"
-        redis_db: "{{ (redis_url | urlsplit('path') | regex_replace('^/', '')) | default('0') }}"
+        redis_db: "{{ (redis_url | urlsplit('path') | regex_replace('^/', '')) | default('0', true) }}"
 
     - name: Generate Redis config snippet
       ansible.builtin.template:
@@ -169,7 +169,7 @@ upstream {{ service.name }}_backend {
 
 location {{ service.location }} {
 {% if scheme == 'ws' or scheme == 'wss' %}
-    proxy_pass http://{{ service.name }}_backend{{ path }};
+    proxy_pass {{ 'https' if scheme == 'wss' else 'http' }}://{{ service.name }}_backend{{ path }};
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -192,7 +192,7 @@ When a URL does not include a port, `urlsplit('port')` returns `None`. You need 
 ```jinja2
 {# Handle missing port by defaulting based on scheme #}
 {% set url = service_url | urlsplit %}
-{% set port = url.port | default(443 if url.scheme == 'https' else 80) %}
+{% set port = url.port if url.port is not none else (443 if url.scheme == 'https' else 80) %}
 
 server {{ url.hostname }}:{{ port }};
 ```
@@ -209,7 +209,8 @@ In a playbook:
   ansible.builtin.set_fact:
     service_port: >-
       {{ parsed_url.port
-         | default(443 if parsed_url.scheme == 'https' else 80) }}
+         if parsed_url.port is not none
+         else (443 if parsed_url.scheme == 'https' else 80) }}
 ```
 
 ## Parsing Multiple URLs
@@ -270,7 +271,7 @@ Use `urlsplit` to validate that a URL has the required components:
   ansible.builtin.assert:
     that:
       - item | urlsplit('scheme') in ['http', 'https']
-      - item | urlsplit('hostname') | length > 0
+      - item | urlsplit('hostname') | default('', true) | length > 0
       - item | urlsplit('path') | length > 0
     fail_msg: "Invalid URL: {{ item }}"
     success_msg: "URL is valid: {{ item }}"
@@ -285,7 +286,8 @@ Parse service discovery URLs to configure connections:
 # service_discovery.yml - Parse discovered service URLs
 - name: Get service URLs from Consul
   ansible.builtin.shell: >
-    consul catalog services -format=json | jq -r '.[].ServiceAddress'
+    curl --fail --silent http://127.0.0.1:8500/v1/catalog/service/myapp |
+    jq -r '.[] | "http://\(((.ServiceAddress | select(length > 0)) // .Address)):\(.ServicePort)"'
   register: consul_urls
   changed_when: false
 
