@@ -321,6 +321,14 @@ Use group membership to dynamically build service configurations.
     - name: Show registered services
       ansible.builtin.debug:
         msg: "{{ inventory_hostname }} will register services: {{ services_to_register }}"
+      vars:
+        services_to_register: >-
+          {{
+            (['web'] if 'webservers' in group_names else []) +
+            (['api'] if 'apiservers' in group_names else []) +
+            (['db'] if 'dbservers' in group_names else []) +
+            (['cache'] if 'cacheservers' in group_names else [])
+          }}
 ```
 
 ## Checking Group Size
@@ -337,7 +345,7 @@ You can make decisions based on how many hosts are in a group.
   tasks:
     - name: Check if we have enough web servers
       ansible.builtin.debug:
-        msg: "WARNING: Only {{ groups['webservers'] | length }} web servers. Minimum recommended is 3."
+        msg: "WARNING: Only {{ groups['webservers'] | default([]) | length }} web servers. Minimum recommended is 3."
       when: groups['webservers'] | default([]) | length < 3
 
     - name: Determine deployment strategy
