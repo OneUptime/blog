@@ -17,7 +17,7 @@ Let us measure exactly how much time fact gathering takes. Enable the `profile_t
 ```bash
 # Measure fact gathering time
 
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook -i inventory ping.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook -i inventory ping.yml
 ```
 
 With a playbook like this:
@@ -77,7 +77,7 @@ If you need some facts but not all, use `gather_subset` to collect only what you
 
 ```yaml
 ---
-# Only gather network facts
+# Gather network facts plus the default minimum facts
 - hosts: all
   gather_facts: true
   gather_subset:
@@ -93,7 +93,7 @@ Available subsets include:
 | Subset | What It Collects | Typical Time |
 |---|---|---|
 | all | Everything (default) | 2-4s per host |
-| min (or minimum) | Basic info (hostname, python version) | 0.3s per host |
+| min | Basic info (hostname, python version) | 0.3s per host |
 | network | Network interfaces, IPs, DNS | 0.5s per host |
 | hardware | CPU, memory, disk, devices | 1-2s per host |
 | virtual | Virtualization info | 0.3s per host |
@@ -216,6 +216,7 @@ Or use `run_once` to gather facts from a single host when you just need general 
           - min
       run_once: true
       delegate_to: "{{ groups['webservers'][0] }}"
+      delegate_facts: true
 
     - name: Use the gathered facts
       debug:
@@ -251,9 +252,9 @@ primary_interface: "eth0"
 
 This is faster and more predictable, but it requires you to keep the variables updated when infrastructure changes.
 
-## Strategy 7: Custom Fact Gathering Module
+## Strategy 7: Custom Lightweight Fact Gathering Tasks
 
-If you only need a few specific pieces of information, write a custom fact module instead of using the full setup module:
+If you only need a few specific pieces of information, run lightweight tasks instead of using the full setup module:
 
 ```yaml
 ---
