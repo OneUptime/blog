@@ -114,14 +114,12 @@ Services run under a specific account. The default is LocalSystem, but productio
       ansible.windows.win_service:
         name: MyWebService
         username: NT AUTHORITY\NetworkService
-        password: ""
 
     # Use the Local Service account
     - name: Set service to Local Service
       ansible.windows.win_service:
         name: MyHelperService
         username: NT AUTHORITY\LocalService
-        password: ""
 
     # Use a domain service account
     - name: Set service to domain account
@@ -157,9 +155,8 @@ Some services depend on others and must start in a specific order. You can confi
       ansible.windows.win_service:
         name: MyAppService
         dependencies:
-          - MSSQLSERVER
-          - W3SVC
           - MyHelperService
+        dependency_action: add
 ```
 
 ## Setting Service Description and Display Name
@@ -181,7 +178,7 @@ You can update the service metadata that appears in the Windows Services console
 
 ## Service Recovery Options
 
-While `win_service` does not directly manage recovery options, you can use `win_shell` alongside it to configure what happens when a service crashes.
+You can use `win_service` to configure what happens when a service crashes.
 
 ```yaml
 # service-recovery.yml - Configure service recovery options
@@ -197,14 +194,22 @@ While `win_service` does not directly manage recovery options, you can use `win_
 
     # Configure recovery: restart on first, second, and subsequent failures
     - name: Set service recovery options
-      ansible.windows.win_shell: |
-        sc.exe failure MyAppService reset= 86400 actions= restart/5000/restart/10000/restart/30000
-      register: recovery_config
+      ansible.windows.win_service:
+        name: MyAppService
+        failure_reset_period_sec: 86400
+        failure_actions:
+          - type: restart
+            delay_ms: 5000
+          - type: restart
+            delay_ms: 10000
+          - type: restart
+            delay_ms: 30000
 
     # Enable recovery for non-crash exits too
     - name: Enable recovery for non-crash stops
-      ansible.windows.win_shell: |
-        sc.exe failureflag MyAppService 1
+      ansible.windows.win_service:
+        name: MyAppService
+        failure_actions_on_non_crash_failure: true
 ```
 
 ## Real-World Example: Application Stack Management
@@ -264,7 +269,7 @@ Here is a complete playbook that manages an entire application stack's services 
 
     # Verify all services are running
     - name: Verify service status
-      ansible.windows.win_service:
+      ansible.windows.win_service_info:
         name: "{{ item.name }}"
       register: service_status
       loop: "{{ stack_services }}"
@@ -273,7 +278,7 @@ Here is a complete playbook that manages an entire application stack's services 
 
     - name: Report service states
       ansible.builtin.debug:
-        msg: "{{ item.item.display }}: {{ item.state }}"
+        msg: "{{ item.item.display }}: {{ item.services[0].state }}"
       loop: "{{ service_status.results }}"
       loop_control:
         label: "{{ item.item.display }}"
@@ -299,7 +304,7 @@ stateDiagram-v2
 
 ## Querying Service Information
 
-The `win_service` module returns useful information about the service that you can use in later tasks.
+The `win_service_info` module returns useful information about the service that you can use in later tasks.
 
 ```yaml
 # query-service.yml - Get service information
@@ -308,20 +313,20 @@ The `win_service` module returns useful information about the service that you c
   hosts: windows_servers
   tasks:
     - name: Get IIS service info
-      ansible.windows.win_service:
+      ansible.windows.win_service_info:
         name: W3SVC
       register: iis_info
 
     - name: Display service details
       ansible.builtin.debug:
         msg: |
-          Name: {{ iis_info.name }}
-          Display Name: {{ iis_info.display_name }}
-          State: {{ iis_info.state }}
-          Start Mode: {{ iis_info.start_mode }}
-          Username: {{ iis_info.username }}
-          Path: {{ iis_info.path }}
-          Dependencies: {{ iis_info.dependencies }}
+          Name: {{ iis_info.services[0].name }}
+          Display Name: {{ iis_info.services[0].display_name }}
+          State: {{ iis_info.services[0].state }}
+          Start Mode: {{ iis_info.services[0].start_mode }}
+          Username: {{ iis_info.services[0].username }}
+          Path: {{ iis_info.services[0].path }}
+          Dependencies: {{ iis_info.services[0].dependencies }}
 ```
 
 ## Summary
