@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible failed test in when clauses to build r
 
 ---
 
-When a task fails in Ansible, the default behavior is to stop execution on that host. But sometimes you want to continue and make decisions based on whether a task succeeded or failed. The `failed` test (and its companion `succeeded` test) let you check the outcome of a registered task and branch your logic accordingly. This is different from `ignore_errors` because it gives you programmatic control over what happens next.
+When a task fails in Ansible, the default behavior is to stop execution on that host. But sometimes you want to continue and make decisions based on whether a task succeeded or failed. The `failed` test (and its companion `succeeded` test) let you check the outcome of a registered task and branch your logic accordingly. When you need the play to continue after a failed task, register the result and use `ignore_errors: true` so the failed status is still available for later conditionals.
 
 ## Understanding the failed Test
 
@@ -27,7 +27,7 @@ The `failed` Jinja2 test checks whether a registered variable represents a faile
         url: http://api.internal/health
         timeout: 5
       register: api_check
-      failed_when: false  # Prevent task from stopping the play
+      ignore_errors: true  # Keep the failed result but continue the play
 
     - name: API is reachable
       ansible.builtin.debug:
@@ -40,7 +40,7 @@ The `failed` Jinja2 test checks whether a registered variable represents a faile
       when: api_check is failed
 ```
 
-The `failed_when: false` on the first task is critical. Without it, a failed HTTP request would stop the playbook before reaching the conditional tasks.
+The `ignore_errors: true` on the first task is critical. Without it, a failed HTTP request would stop the playbook before reaching the conditional tasks.
 
 ## failed vs succeeded vs not failed
 
@@ -57,7 +57,7 @@ Ansible provides several related tests:
       ansible.builtin.command:
         cmd: ls /nonexistent/path
       register: cmd_result
-      failed_when: false
+      ignore_errors: true
       changed_when: false
 
     - name: Check using different tests
@@ -90,14 +90,14 @@ A real deployment scenario where you check multiple services and fall back to al
       ansible.builtin.command:
         cmd: "pg_isready -h {{ primary_db }} -p 5432 -t 5"
       register: primary_db_check
-      failed_when: false
+      ignore_errors: true
       changed_when: false
 
     - name: Check secondary database if primary failed
       ansible.builtin.command:
         cmd: "pg_isready -h {{ secondary_db }} -p 5432 -t 5"
       register: secondary_db_check
-      failed_when: false
+      ignore_errors: true
       changed_when: false
       when: primary_db_check is failed
 
@@ -182,7 +182,7 @@ The block/rescue pattern uses failure detection implicitly, but you can also use
           ansible.builtin.debug:
             msg: "Deployment failed at step: {{ failure_step }}"
 
-        - name: Rollback only if deployment was attempted
+        - name: Rollback only if deployment completed
           ansible.builtin.copy:
             src: /opt/app/backup/
             dest: /opt/app/
@@ -211,14 +211,14 @@ When you need to evaluate the success or failure of multiple prior tasks:
       ansible.builtin.command:
         cmd: redis-cli ping
       register: redis_check
-      failed_when: false
+      ignore_errors: true
       changed_when: false
 
     - name: Check PostgreSQL
       ansible.builtin.command:
         cmd: pg_isready
       register: postgres_check
-      failed_when: false
+      ignore_errors: true
       changed_when: false
 
     - name: Check Elasticsearch
@@ -226,7 +226,7 @@ When you need to evaluate the success or failure of multiple prior tasks:
         url: http://localhost:9200/_cluster/health
         timeout: 5
       register: es_check
-      failed_when: false
+      ignore_errors: true
 
     - name: Build service status report
       ansible.builtin.set_fact:
@@ -291,11 +291,11 @@ The `until` loop can use the `failed` test to retry until a task succeeds:
 
 ```mermaid
 flowchart TD
-    A[Task Executes] --> B{failed_when: false?}
-    B -->|No| C{Task Failed?}
-    C -->|Yes| D[Play Stops for Host]
-    C -->|No| E[Register Result]
-    B -->|Yes| E
+    A[Task Executes] --> B{Task Failed?}
+    B -->|No| E[Register Result]
+    B -->|Yes| C{ignore_errors: true?}
+    C -->|No| D[Play Stops for Host]
+    C -->|Yes| E
     E --> F[Next Task]
     F --> G{when: result is failed?}
     G -->|True - task failed| H[Execute Error Handling]
@@ -304,7 +304,7 @@ flowchart TD
 
 ## failed Test with Skipped Tasks
 
-A subtle point: if a task was skipped (due to a `when` clause), it is neither failed nor succeeded. You need to check for `skipped` separately:
+A subtle point: if a task was skipped (due to a `when` clause), it is not failed. You need to check for `skipped` separately before treating `is not failed` as success:
 
 ```yaml
 # skipped-vs-failed.yml - Handle all three states
@@ -315,10 +315,10 @@ A subtle point: if a task was skipped (due to a `when` clause), it is neither fa
   tasks:
     - name: Conditional task
       ansible.builtin.command:
-        cmd: echo "only on certain hosts"
+        cmd: /usr/bin/test -f /tmp/required-file
       register: conditional_result
       when: inventory_hostname in groups.get('special', [])
-      failed_when: false
+      ignore_errors: true
       changed_when: false
 
     - name: Handle all outcomes
@@ -346,7 +346,7 @@ You can combine `failed` with other conditions for precise control:
       ansible.builtin.command:
         cmd: /opt/deploy.sh
       register: deploy_result
-      failed_when: false
+      ignore_errors: true
       changed_when: true
 
     - name: Handle specific failure cases
@@ -374,6 +374,6 @@ You can combine `failed` with other conditions for precise control:
 
 ## Best Practices
 
-Always use `failed_when: false` (not `ignore_errors: true`) when you plan to check the result with the `failed` test. The `ignore_errors` directive is noisier and does not integrate as cleanly with conditional logic. Check for `is skipped` separately from `is failed` when a task might have been conditionally skipped. Use descriptive variable names for registered results so the failure chain is readable. Combine the `failed` test with string matching on stderr for granular error classification. In retry loops, `until: result is not failed` is the cleanest syntax. Remember that `is failed` checks the registered result, not the current state of the system, so if a service has recovered since the check, the registered variable still shows the old failure.
+Use `ignore_errors: true` when you plan to check the result with the `failed` test after a task fails. Use `failed_when` when you need to define custom failure criteria, but do not use `failed_when: false` if later tasks depend on `result is failed` because it marks the task as successful. Check for `is skipped` separately from `is failed` when a task might have been conditionally skipped. Use descriptive variable names for registered results so the failure chain is readable. Combine the `failed` test with string matching on stderr for granular error classification. In retry loops, `until: result is not failed` is the cleanest syntax. Remember that `is failed` checks the registered result, not the current state of the system, so if a service has recovered since the check, the registered variable still shows the old failure.
 
 The `failed` test turns Ansible from a "stop on error" tool into one that handles errors as data. Once you start using it, your playbooks become significantly more resilient and your deployments require less manual intervention when things go sideways.
