@@ -35,7 +35,7 @@ Here are the common algorithm identifiers:
 
 ## Method 1: Python crypt Module
 
-The most portable method is using Python's built-in `crypt` module. This works on any system with Python installed:
+On Python 3.12 and older, you can use Python's built-in `crypt` module on Unix-like systems where the module is available:
 
 ```bash
 # Generate SHA-512 hash with auto-generated salt
@@ -50,7 +50,7 @@ You can also specify a fixed salt for reproducibility:
 python3 -c "import crypt; print(crypt.crypt('YourPassword', '\$6\$mysaltvalue\$'))"
 ```
 
-Note: The `crypt` module was deprecated in Python 3.11 and removed in Python 3.13. For newer Python versions, use the `passlib` library instead.
+Note: The `crypt` module was deprecated in Python 3.11 and removed in Python 3.13. For newer Python versions, or for a more portable option, use the `passlib` library instead.
 
 ## Method 2: passlib Library
 
@@ -121,7 +121,7 @@ This is probably the most convenient method because it runs inline in your playb
       no_log: yes
 ```
 
-For idempotent runs with a fixed salt:
+For idempotent runs with a fixed salt and explicit rounds:
 
 ```yaml
 # inline-hash-idempotent.yml - Idempotent inline hash
@@ -132,7 +132,7 @@ For idempotent runs with a fixed salt:
     - name: Create user with consistent hash
       ansible.builtin.user:
         name: testuser
-        password: "{{ 'YourPassword' | password_hash('sha512', 'fixedsalt12345') }}"
+        password: "{{ 'YourPassword' | password_hash('sha512', 'fixedsalt12345', rounds=100000) }}"
         state: present
       no_log: yes
 ```
@@ -146,12 +146,12 @@ flowchart TD
     A[Need Password Hash] --> B{Where are you generating it?}
     B -->|In a playbook| C[Use password_hash filter]
     B -->|On command line| D{Python available?}
-    D -->|Yes| E{Python 3.13+?}
+    D -->|Yes| E{crypt module available?}
     D -->|No| F[Use mkpasswd or openssl]
-    E -->|Yes| G[Use passlib library]
-    E -->|No| H[Use crypt module]
+    E -->|No| G[Use passlib library]
+    E -->|Yes| H[Use crypt module]
     C --> I{Need idempotency?}
-    I -->|Yes| J[Add fixed salt parameter]
+    I -->|Yes| J[Add fixed salt and rounds parameters]
     I -->|No| K[Default random salt is fine]
 ```
 
@@ -169,7 +169,7 @@ You can also generate password hashes using Ansible's `password` lookup plugin, 
       ansible.builtin.user:
         name: appuser
         # This generates a random password, stores it in a file, and hashes it
-        password: "{{ lookup('password', '/tmp/appuser_password length=20 chars=ascii_letters,digits') | password_hash('sha512', 'stablesalt1234') }}"
+        password: "{{ lookup('password', '/tmp/appuser_password length=20 chars=ascii_letters,digits') | password_hash('sha512', 'stablesalt1234', rounds=100000) }}"
         state: present
       no_log: yes
 ```
@@ -213,7 +213,7 @@ python3 generate_hashes.py
 
 ## Verifying Your Hash
 
-After generating a hash, you should verify it works correctly. Here is a quick Python snippet to test:
+After generating a hash, you should verify it works correctly. Here is a quick Python 3.12-and-older snippet to test:
 
 ```python
 #!/usr/bin/env python3
@@ -234,9 +234,9 @@ else:
 
 A few things to keep in mind about salts:
 
-1. **Salt length**: For SHA-512, the salt can be up to 16 characters. Longer salts are silently truncated.
+1. **Salt length**: For SHA-512, the salt can be up to 16 characters. Some implementations truncate longer salts, while libraries such as `passlib` may reject them, so keep salts at 16 characters or fewer.
 2. **Salt characters**: Use only `[a-zA-Z0-9./]`. Other characters may cause issues.
-3. **Fixed vs random salt**: Use fixed salts for Ansible idempotency. Use random salts when you do not care about change detection (like one-time provisioning).
+3. **Fixed vs random salt**: Use fixed salts and explicit rounds for Ansible idempotency. Use random salts when you do not care about change detection (like one-time provisioning).
 4. **Salt uniqueness**: When using fixed salts across multiple users, include the username in the salt to ensure each user has a unique salt. For example, `'salt_' + item.name`.
 
 ## Rounds Configuration
@@ -248,6 +248,6 @@ The `rounds` parameter controls how many iterations the hash algorithm runs. Mor
 python3 -c "from passlib.hash import sha512_crypt; print(sha512_crypt.using(rounds=100000).hash('YourPassword'))"
 ```
 
-The default is usually 5000 rounds, but many systems use 656000. Higher values make brute-force attacks harder but also make every login slightly slower. For most servers, the default is fine.
+The traditional `crypt` default is 5000 rounds, while `passlib` defaults to 656000 rounds for `sha512_crypt`. Ansible's `password_hash` filter can produce different results depending on whether `passlib` is installed, so set `rounds` explicitly when you need repeatable output across control-node environments. Higher values make brute-force attacks harder but also make every login slightly slower. For most servers, the default is fine.
 
 Password hashing is a critical step in Ansible user management. Get it wrong and users cannot log in. Get it right and you have a secure, repeatable process for managing credentials across your entire infrastructure.
