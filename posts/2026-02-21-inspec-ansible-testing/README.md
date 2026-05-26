@@ -1,14 +1,14 @@
-# How to Use InSpec for Ansible Testing
+# How to Use Molecule for Ansible Testing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, InSpec, Compliance, Chef
+Tags: Ansible, Testing, Molecule, Testinfra, CI/CD
 
-Description: Validate Ansible playbook results using Chef InSpec compliance profiles for security and configuration auditing.
+Description: Validate Ansible playbook results using Molecule, Ansible verification playbooks, and Testinfra.
 
 ---
 
-InSpec is a compliance testing framework from Chef before changes reach production. This guide covers practical approaches with working code examples.
+Molecule is a testing framework for developing and testing Ansible roles, collections, and playbooks before changes reach production. This guide covers practical approaches with working code examples.
 
 ## Why Testing Ansible Code Matters
 
@@ -51,7 +51,7 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+python3 -m pip install ansible-core molecule "molecule-plugins[docker]" ansible-lint yamllint pytest-testinfra
 ```
 
 ## Writing Tests
@@ -176,18 +176,13 @@ on: [push, pull_request]
 jobs:
   molecule:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        distro: [ubuntu2404, rocky9, debian12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
+      - run: python3 -m pip install ansible-core molecule "molecule-plugins[docker]"
       - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,11 +203,14 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: docker:stable-dind
   services:
     - docker:dind
+  before_script:
+    - apk add --no-cache python3 python3-dev py3-pip gcc git curl build-base autoconf automake py3-cryptography linux-headers musl-dev libffi-dev openssl-dev openssh
+    - docker info
+    - python3 -m pip install ansible-core molecule "molecule-plugins[docker]"
   script:
-    - pip install ansible molecule molecule-docker
     - molecule test
 ```
 
@@ -266,12 +264,12 @@ Testing Ansible code requires multiple layers: linting for style and best practi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -303,7 +301,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -324,7 +322,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -342,9 +340,9 @@ Here are several practical scenarios where this module proves essential in real-
         policy: deny
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -385,7 +383,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in playbooks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -447,4 +445,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
