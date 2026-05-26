@@ -1,18 +1,18 @@
-# How to Use Ansible win_domain Module
+# How to Use the Ansible microsoft.ad.domain Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Window, Active Directory, Domain, Automation
 
-Description: Create and configure Active Directory domains with the Ansible win_domain module including forest creation and domain setup.
+Description: Create and configure Active Directory domains with the Ansible microsoft.ad.domain module including forest creation and domain setup.
 
 ---
 
-Setting up an Active Directory domain is typically a multi-step process involving Server Manager, configuration wizards, and reboots. The `win_domain` module compresses this into a single Ansible task, letting you create new AD forests and domains as part of your infrastructure-as-code pipeline. This is particularly valuable for spinning up test environments, disaster recovery scenarios, and greenfield deployments.
+Setting up an Active Directory domain is typically a multi-step process involving Server Manager, configuration wizards, and reboots. The `microsoft.ad.domain` module, which replaces the removed `ansible.windows.win_domain` module, compresses new forest creation into a single Ansible task as part of your infrastructure-as-code pipeline. This is particularly valuable for spinning up test environments, disaster recovery scenarios, and greenfield deployments.
 
-## What win_domain Does
+## What microsoft.ad.domain Does
 
-The `win_domain` module creates a new Active Directory domain. It can:
+The `microsoft.ad.domain` module creates a new Active Directory forest root domain. Together with the related `microsoft.ad.domain_child` module, it can:
 - Create a new AD forest with a root domain
 - Create a child domain in an existing forest
 - Create a new tree in an existing forest
@@ -21,7 +21,7 @@ It handles installing the required AD DS role, running dcpromo (or its modern eq
 
 ## Prerequisites
 
-Before using `win_domain`, the target server needs the AD DS role installed. You can use `win_feature` for this.
+The `microsoft.ad.domain` and `microsoft.ad.domain_child` modules can install the AD DS role during promotion. You can also install it explicitly with `win_feature` before domain creation.
 
 ```yaml
 # prerequisites.yml - Install AD DS prerequisites
@@ -79,7 +79,7 @@ The most common operation is creating a brand new AD forest. This is your first 
         sysvol_path: C:\Windows\SYSVOL
       register: domain_result
 
-    # The server will reboot automatically as part of domain creation
+    # The module returns reboot_required when promotion needs a reboot
     - name: Reboot after domain creation
       ansible.windows.win_reboot:
         reboot_timeout: 900
@@ -137,11 +137,9 @@ You can create a child domain within an existing forest.
 
     # Create child domain under existing forest
     - name: Create child domain
-      microsoft.ad.domain:
+      microsoft.ad.domain_child:
         dns_domain_name: dev.corp.example.com
         safe_mode_password: "{{ vault_dsrm_password }}"
-        domain_netbios_name: DEV
-        parent_domain_name: corp.example.com
         domain_admin_user: CORP\Administrator
         domain_admin_password: "{{ vault_parent_admin_password }}"
         install_dns: true
@@ -219,6 +217,7 @@ Here is a comprehensive playbook that creates a new forest with proper DNS confi
         $OUs = @(
             "OU=Servers,DC=corp,DC=example,DC=com",
             "OU=Workstations,DC=corp,DC=example,DC=com",
+            "OU=Corp,DC=corp,DC=example,DC=com",
             "OU=Users,OU=Corp,DC=corp,DC=example,DC=com",
             "OU=Groups,OU=Corp,DC=corp,DC=example,DC=com",
             "OU=ServiceAccounts,DC=corp,DC=example,DC=com"
@@ -316,10 +315,10 @@ A few critical things to keep in mind:
 
 1. **DSRM Password**: The Directory Services Restore Mode password is used for disaster recovery. Store it securely in Ansible Vault and document its location for your team.
 2. **DNS**: The first domain controller typically runs DNS too. Make sure the server's DNS points to itself (127.0.0.1) before creating the forest.
-3. **Reboot timing**: Domain creation triggers a reboot. The post_reboot_delay should be generous (120+ seconds) because AD DS services take time to initialize after reboot.
-4. **Idempotency**: The `win_domain` module is idempotent. Running it again on an existing domain controller will not recreate the domain.
+3. **Reboot timing**: Domain creation requires a reboot. The post_reboot_delay should be generous (120+ seconds) because AD DS services take time to initialize after reboot.
+4. **Idempotency**: The `microsoft.ad.domain` module is idempotent. Running it again on an existing domain controller will not recreate the domain.
 5. **Network**: The server must have a static IP before becoming a domain controller. DHCP addresses on DCs cause all kinds of issues.
 
 ## Summary
 
-The `win_domain` module automates one of the most critical infrastructure tasks: creating Active Directory domains and forests. Combined with `win_feature` for role installation and `win_domain_controller` for adding additional DCs, you can fully automate your AD infrastructure deployment. This is especially valuable for test environments where you need to spin up and tear down AD forests frequently, and for disaster recovery procedures where speed and consistency matter most.
+The `microsoft.ad.domain` module automates one of the most critical infrastructure tasks: creating Active Directory forests. Combined with `win_feature` for role installation, `microsoft.ad.domain_child` for child and tree domains, and `microsoft.ad.domain_controller` for adding additional DCs, you can fully automate your AD infrastructure deployment. This is especially valuable for test environments where you need to spin up and tear down AD forests frequently, and for disaster recovery procedures where speed and consistency matter most.
