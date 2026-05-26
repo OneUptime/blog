@@ -169,6 +169,8 @@ This playbook configures NTP for Kerberos compatibility:
     ntp_servers:
       - kdc1.example.com  # Use KDC as NTP source for consistency
       - ntp.example.com
+    chrony_conf_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    chrony_service_name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
 
   tasks:
     - name: Install chrony
@@ -177,9 +179,15 @@ This playbook configures NTP for Kerberos compatibility:
         state: present
 
     - name: Configure chrony for Kerberos
-      ansible.builtin.template:
-        src: chrony.conf.j2
-        dest: /etc/chrony/chrony.conf
+      ansible.builtin.copy:
+        content: |
+          {% for server in ntp_servers %}
+          server {{ server }} iburst
+          {% endfor %}
+          driftfile /var/lib/chrony/drift
+          makestep 1.0 3
+          rtcsync
+        dest: "{{ chrony_conf_path }}"
         owner: root
         group: root
         mode: '0644'
@@ -187,7 +195,7 @@ This playbook configures NTP for Kerberos compatibility:
 
     - name: Enable and start chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: started
         enabled: true
 
@@ -208,7 +216,7 @@ This playbook configures NTP for Kerberos compatibility:
   handlers:
     - name: restart chrony
       ansible.builtin.service:
-        name: chronyd
+        name: "{{ chrony_service_name }}"
         state: restarted
 ```
 
@@ -237,7 +245,7 @@ This playbook manages keytab distribution:
         owner: root
         group: root
         mode: '0600'
-      when: inventory_hostname + '.keytab' is file
+      when: (keytab_source_dir + '/' + inventory_hostname + '.keytab') is file
 
     - name: Verify keytab contents
       ansible.builtin.command: klist -kt {{ keytab_path }}
@@ -273,6 +281,9 @@ This playbook configures SSH for Kerberos authentication:
   hosts: all
   become: true
 
+  vars:
+    ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+
   tasks:
     - name: Enable Kerberos authentication in SSHD
       ansible.builtin.lineinfile:
@@ -300,7 +311,7 @@ This playbook configures SSH for Kerberos authentication:
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -323,6 +334,13 @@ This playbook configures SSSD with Kerberos and LDAP:
     ldap_search_base: "dc=example,dc=com"
 
   tasks:
+    - name: Install SSSD packages
+      ansible.builtin.package:
+        name:
+          - sssd
+          - sssd-krb5
+        state: present
+
     - name: Deploy SSSD configuration with Kerberos
       ansible.builtin.copy:
         content: |
@@ -416,7 +434,7 @@ After deployment, verify everything works:
 
     - name: Test time offset with KDC
       ansible.builtin.shell: |
-        ntpdate -q kdc1.example.com 2>/dev/null | grep offset | awk '{print $NF}'
+        chronyc tracking | awk -F: '/Last offset/ {print $2}'
       register: time_offset
       changed_when: false
       failed_when: false
