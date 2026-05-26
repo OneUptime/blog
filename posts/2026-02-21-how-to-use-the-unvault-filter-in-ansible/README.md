@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible unvault filter to decrypt vault-encryp
 
 ---
 
-The `unvault` filter in Ansible decrypts vault-encrypted content directly within Jinja2 expressions. While Ansible automatically decrypts vault-encrypted variables when you reference them, there are situations where you need explicit decryption control, particularly when dealing with vault-encrypted file contents loaded at runtime. This filter was introduced in Ansible 2.12 and provides a programmatic way to handle decrypted data within templates and task parameters.
+The `unvault` filter in Ansible decrypts vault-encrypted content directly within Jinja2 expressions when you pass it the vault secret. While Ansible automatically decrypts vault-encrypted variables when you reference them, there are situations where you need explicit decryption control, particularly when dealing with vault-encrypted file contents loaded at runtime. This filter was introduced in Ansible 2.12 and provides a programmatic way to handle decrypted data within templates and task parameters.
 
 ## What the unvault Filter Does
 
-The `unvault` filter takes a vault-encrypted string and returns the decrypted plaintext. It is the Jinja2 filter equivalent of running `ansible-vault decrypt`, but it operates on variables and expressions at runtime rather than on files.
+The `unvault` filter takes a vault-encrypted string and a vault secret, then returns the decrypted plaintext. It is the Jinja2 filter equivalent of running `ansible-vault decrypt`, but it operates on variables and expressions at runtime rather than on files.
 
 The most common use case is when you load the contents of a vault-encrypted file using the `file` lookup or `slurp` module and need to decrypt the result within a template or task.
 
@@ -28,20 +28,17 @@ Here is the simplest example of the `unvault` filter:
 - name: Demonstrate unvault filter
   hosts: localhost
   vars:
-    # This variable holds raw vault-encrypted content
-    encrypted_content: !vault |
-              $ANSIBLE_VAULT;1.1;AES256
-              62313365396662343061393464336163383764316462616131633538343062376662
-              31303031633534393463313865303732646463376565326435613066643831386237
-              6337
+    vault_passphrase: "{{ lookup('env', 'MY_VAULT_PASSPHRASE') }}"
+    # This variable holds raw vault-encrypted content, not a !vault tagged value
+    encrypted_content: "{{ lookup('file', 'secrets/raw_secret.vault') }}"
 
   tasks:
     - name: Display decrypted content using unvault filter
       ansible.builtin.debug:
-        msg: "{{ encrypted_content | unvault }}"
+        msg: "{{ encrypted_content | unvault(vault_passphrase) }}"
 ```
 
-In this simple case, Ansible would decrypt `encrypted_content` automatically when you reference it. The `unvault` filter becomes necessary in more advanced scenarios.
+If `encrypted_content` were a `!vault` tagged value loaded as an Ansible variable, Ansible would normally decrypt it automatically when you reference it. The `unvault` filter is for raw vault text that you want to decrypt explicitly.
 
 ## Loading and Decrypting Vault-Encrypted Files
 
@@ -53,6 +50,8 @@ The primary real-world use for the `unvault` filter is when you read vault-encry
 ---
 - name: Load and decrypt vault-encrypted file
   hosts: localhost
+  vars:
+    vault_passphrase: "{{ lookup('env', 'MY_VAULT_PASSPHRASE') }}"
   tasks:
     - name: Read the vault-encrypted file contents
       ansible.builtin.set_fact:
@@ -60,7 +59,7 @@ The primary real-world use for the `unvault` filter is when you read vault-encry
 
     - name: Decrypt the file contents
       ansible.builtin.set_fact:
-        decrypted_secret: "{{ raw_secret | unvault }}"
+        decrypted_secret: "{{ raw_secret | unvault(vault_passphrase) }}"
 
     - name: Parse the decrypted YAML content
       ansible.builtin.set_fact:
@@ -77,6 +76,11 @@ When fetching vault-encrypted files from remote hosts:
 
 ```yaml
 # Fetch and decrypt a vault-encrypted file from a remote host
+- name: Set the vault passphrase
+  ansible.builtin.set_fact:
+    vault_passphrase: "{{ lookup('env', 'MY_VAULT_PASSPHRASE') }}"
+  no_log: true
+
 - name: Fetch encrypted config from remote server
   ansible.builtin.slurp:
     src: /etc/myapp/encrypted_secrets.yml
@@ -84,7 +88,7 @@ When fetching vault-encrypted files from remote hosts:
 
 - name: Decrypt the fetched content
   ansible.builtin.set_fact:
-    decrypted_config: "{{ (slurped_content.content | b64decode) | unvault }}"
+    decrypted_config: "{{ (slurped_content.content | b64decode) | unvault(vault_passphrase) }}"
 
 - name: Parse and use the decrypted configuration
   ansible.builtin.set_fact:
@@ -102,10 +106,10 @@ The `unvault` filter works in Jinja2 templates too:
 [database]
 host = {{ db_host }}
 port = {{ db_port }}
-password = {{ vault_encrypted_db_pass | unvault }}
+password = {{ vault_encrypted_db_pass | unvault(vault_passphrase) }}
 
 [api]
-key = {{ vault_encrypted_api_key | unvault }}
+key = {{ vault_encrypted_api_key | unvault(vault_passphrase) }}
 ```
 
 Though in practice, you would usually decrypt in tasks and pass plaintext variables to templates. The template approach is useful when you need to selectively decrypt some values but not others.
@@ -118,17 +122,17 @@ The `unvault` filter can be chained with other Jinja2 filters:
 # Chain unvault with from_yaml to parse encrypted YAML content
 - name: Load and parse encrypted YAML
   ansible.builtin.set_fact:
-    parsed_secrets: "{{ lookup('file', 'encrypted_vars.yml') | unvault | from_yaml }}"
+    parsed_secrets: "{{ lookup('file', 'encrypted_vars.yml') | unvault(vault_passphrase) | from_yaml }}"
 
 # Chain unvault with from_json for encrypted JSON content
 - name: Load and parse encrypted JSON
   ansible.builtin.set_fact:
-    api_config: "{{ lookup('file', 'encrypted_api_config.json') | unvault | from_json }}"
+    api_config: "{{ lookup('file', 'encrypted_api_config.json') | unvault(vault_passphrase) | from_json }}"
 
 # Chain unvault with b64encode for base64-encoded output
 - name: Decrypt and base64-encode for Kubernetes secrets
   ansible.builtin.set_fact:
-    k8s_secret_value: "{{ vault_encrypted_password | unvault | b64encode }}"
+    k8s_secret_value: "{{ vault_encrypted_password | unvault(vault_passphrase) | b64encode }}"
 ```
 
 ## Practical Example: Dynamic Secret Selection
@@ -142,6 +146,7 @@ Here is a scenario where the `unvault` filter is genuinely useful: selecting and
   hosts: all
   vars:
     env: "{{ target_environment | default('dev') }}"
+    vault_passphrase: "{{ lookup('env', 'MY_VAULT_PASSPHRASE') }}"
 
   tasks:
     - name: Load the appropriate encrypted secrets file
@@ -150,7 +155,7 @@ Here is a scenario where the `unvault` filter is genuinely useful: selecting and
 
     - name: Decrypt and parse the secrets
       ansible.builtin.set_fact:
-        secrets: "{{ raw_secrets | unvault | from_yaml }}"
+        secrets: "{{ raw_secrets | unvault(vault_passphrase) | from_yaml }}"
 
     - name: Deploy configuration with decrypted secrets
       ansible.builtin.template:
@@ -163,7 +168,7 @@ Here is a scenario where the `unvault` filter is genuinely useful: selecting and
       no_log: true
 ```
 
-## Using unvault with vault_encrypted File Lookup
+## Using unvault with the file Lookup
 
 A common pattern for managing many encrypted files:
 
@@ -171,8 +176,8 @@ A common pattern for managing many encrypted files:
 # Loop through multiple encrypted files and decrypt them
 - name: Process multiple encrypted credential files
   ansible.builtin.set_fact:
-    "{{ item | basename | regex_replace('.yml$', '') }}_creds": >-
-      {{ lookup('file', item) | unvault | from_yaml }}
+    "{{ item | basename | regex_replace('\\.yml$', '') }}_creds": >-
+      {{ lookup('file', item) | unvault(vault_passphrase) | from_yaml }}
   loop:
     - secrets/database.yml
     - secrets/redis.yml
@@ -191,7 +196,7 @@ When decryption fails (wrong password, corrupted data), the `unvault` filter rai
   block:
     - name: Decrypt the secrets file
       ansible.builtin.set_fact:
-        app_secrets: "{{ lookup('file', 'secrets/app.yml') | unvault | from_yaml }}"
+        app_secrets: "{{ lookup('file', 'secrets/app.yml') | unvault(vault_passphrase) | from_yaml }}"
 
     - name: Deploy with secrets
       ansible.builtin.template:
@@ -215,14 +220,14 @@ Ansible automatically decrypts vault-encrypted variables when you reference them
 |----------|---------------------|----------------|
 | Vault-encrypted variable in vars | Works automatically | Not needed |
 | Inline !vault tagged value | Works automatically | Not needed |
-| File loaded with `file` lookup | Does not decrypt | Required |
-| Content from `slurp` module | Does not decrypt | Required |
+| File loaded with `file` lookup | Does not decrypt | Required, with a vault secret argument |
+| Content from `slurp` module | Does not decrypt | Required, with a vault secret argument |
 | Conditional decryption logic | Not possible | Useful |
 | Chaining with from_yaml/from_json | Not needed separately | Enables pipeline |
 
 ## Version Compatibility
 
-The `unvault` filter requires Ansible 2.12 or later. If you are on an older version, you can achieve similar results by using `include_vars` with the vault-encrypted file, which triggers automatic decryption:
+The `unvault` filter requires Ansible 2.12 or later. If you are on an older version, or you do not want to manage the vault secret as a variable, you can achieve similar results by using `include_vars` with the vault-encrypted file, which triggers automatic decryption:
 
 ```yaml
 # Fallback for Ansible versions before 2.12
