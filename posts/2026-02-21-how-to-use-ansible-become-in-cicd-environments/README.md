@@ -132,6 +132,7 @@ deploy_production:
   image: python:3.11-slim
 
   before_script:
+    - apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*
     - pip install ansible pywinrm
     - mkdir -p ~/.ssh
     - echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
@@ -219,7 +220,7 @@ If your target hosts require a sudo password (NOPASSWD is not configured), you c
 
 ```bash
 # Set the become password from a CI/CD secret
-export ANSIBLE_BECOME_PASSWORD="${SUDO_PASSWORD}"
+export ANSIBLE_BECOME_PASS="${SUDO_PASSWORD}"
 ansible-playbook playbooks/deploy.yml
 ```
 
@@ -422,12 +423,12 @@ Common CI/CD-specific issues:
 - Missing `known_hosts` entries causing SSH to hang waiting for confirmation
 - The CI runner's Python version conflicting with Ansible requirements
 - Pipeline timeout killing Ansible before long-running tasks complete
-- Vault password file created with a trailing newline that causes decryption to fail
+- Vault password secret copied with unintended whitespace or line endings
 
-For the vault password newline issue:
+For the vault password whitespace issue:
 
 ```bash
-# Write vault password without trailing newline
+# Write the vault password exactly as stored in the CI/CD secret
 printf '%s' "$ANSIBLE_VAULT_PASSWORD" > .vault_pass
 ```
 
