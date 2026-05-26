@@ -43,7 +43,7 @@ Check what version got installed:
 ansible --version
 ```
 
-The default repo on Ubuntu 22.04 ships Ansible core 2.12.x. This is perfectly fine for most use cases, but if you need a newer release, use one of the methods below.
+The default repo on Ubuntu 22.04 ships the `ansible` package as 2.10.7+merged+base+2.10.8. This is perfectly fine for many basic use cases, but if you need a newer release, use one of the methods below.
 
 ## Method 2: Install from the Ansible PPA
 
@@ -67,7 +67,7 @@ Verify the version again:
 ansible --version
 ```
 
-With the PPA, you will typically get Ansible 2.16.x or later (as of early 2026), which includes the latest modules and bug fixes.
+With the PPA on Ubuntu 22.04, you will typically get a much newer Ansible community package than the default repository provides; as of early 2026, the Jammy PPA publishes Ansible 10.x with ansible-core 2.17.x. This includes newer modules and bug fixes than the default Ubuntu repository package.
 
 ## Method 3: Install with pip
 
