@@ -8,7 +8,7 @@ Description: Learn how to use Ansible for tag-based application deployments from
 
 ---
 
-Tag-based deployment from Git is one of the most reliable deployment strategies. Each release gets a Git tag, and deploying means checking out a specific tag. This gives you immutable, reproducible deployments with easy rollback capability. This post covers the complete workflow from tag selection to post-deployment verification.
+Tag-based deployment from Git is one of the most reliable deployment strategies. Each release gets a Git tag, and deploying means checking out a specific tag. This gives you reproducible deployments with easy rollback capability when tags are treated as protected release artifacts. This post covers the complete workflow from tag selection to post-deployment verification.
 
 ## Basic Tag-Based Deployment
 
@@ -66,7 +66,7 @@ Usage: `ansible-playbook playbook-tag-deploy.yml -e "version=v2.1.0"`
     - name: Validate version format
       ansible.builtin.assert:
         that:
-          - app_version is match('^v[0-9]+\.[0-9]+\.[0-9]+')
+          - app_version is match('^v[0-9]+\.[0-9]+\.[0-9]+$')
         fail_msg: "Version must match pattern v0.0.0, got: {{ app_version }}"
       run_once: true
 
@@ -112,6 +112,8 @@ Usage: `ansible-playbook playbook-tag-deploy.yml -e "version=v2.1.0"`
             source venv/bin/activate
             python manage.py migrate --noinput
           become_user: "{{ app_user }}"
+          args:
+            executable: /bin/bash
           when: code_pull.changed
 
         - name: Build static assets
@@ -120,10 +122,12 @@ Usage: `ansible-playbook playbook-tag-deploy.yml -e "version=v2.1.0"`
             source venv/bin/activate
             python manage.py collectstatic --noinput
           become_user: "{{ app_user }}"
+          args:
+            executable: /bin/bash
           when: code_pull.changed
 
         - name: Restart application
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ app_service }}"
             state: restarted
           when: code_pull.changed
@@ -132,6 +136,8 @@ Usage: `ansible-playbook playbook-tag-deploy.yml -e "version=v2.1.0"`
           ansible.builtin.uri:
             url: "http://localhost:8080/health"
             status_code: 200
+          register: health_check
+          until: health_check.status == 200
           retries: 15
           delay: 2
 
@@ -144,7 +150,7 @@ Usage: `ansible-playbook playbook-tag-deploy.yml -e "version=v2.1.0"`
             force: true
 
         - name: Restart with rollback version
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ app_service }}"
             state: restarted
 
@@ -228,7 +234,7 @@ Deploy multiple services that need coordinated versions:
         label: "{{ item.item.key }}"
 
     - name: Restart services that changed
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item.item.value.service }}"
         state: restarted
       loop: "{{ deploy_results.results }}"
@@ -305,6 +311,8 @@ Deploy to a subset first, then expand:
       ansible.builtin.uri:
         url: "http://localhost:8080/health"
         status_code: 200
+      register: canary_health
+      until: canary_health.status == 200
       retries: 20
       delay: 3
 
@@ -315,7 +323,6 @@ Deploy to a subset first, then expand:
   tasks:
     - name: Wait for metrics to stabilize
       ansible.builtin.pause:
-        minutes: 5
         prompt: "Canary deployed. Check metrics and press Enter to continue or Ctrl+C to abort"
 
 - name: Full rollout
@@ -337,10 +344,12 @@ Deploy to a subset first, then expand:
       ansible.builtin.uri:
         url: "http://localhost:8080/health"
         status_code: 200
+      register: rollout_health
+      until: rollout_health.status == 200
       retries: 10
       delay: 3
 ```
 
 ## Summary
 
-Tag-based Git deployment with Ansible gives you reproducible, auditable deployments with built-in rollback capability. The core workflow is: validate the tag, save the current version, checkout the new tag, run build steps, restart services, and verify health. Use `block/rescue` for automatic rollback on failure. Track deployments in a log file or JSON record for auditing. For production environments, use serial deployment, canary releases, or blue-green patterns to minimize risk. Always register the git module output and use `.changed` to skip unnecessary build and restart steps when the code has not actually changed.
+Tag-based Git deployment with Ansible gives you reproducible, auditable deployments with built-in rollback capability when release tags are protected. The core workflow is: validate the tag, save the current version, checkout the new tag, run build steps, restart services, and verify health. Use `block/rescue` for automatic rollback on failure. Track deployments in a log file or JSON record for auditing. For production environments, use serial deployment, canary releases, or blue-green patterns to minimize risk. Always register the git module output and use `.changed` to skip unnecessary build and restart steps when the code has not actually changed.
