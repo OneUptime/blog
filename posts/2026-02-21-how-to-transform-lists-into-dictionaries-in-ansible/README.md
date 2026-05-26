@@ -100,7 +100,7 @@ This produces:
 }
 ```
 
-## Using zip and dict2items (Combining Two Lists)
+## Using zip and dict (Combining Two Lists)
 
 If you have two separate lists, one for keys and one for values, you can combine them using the `zip` filter and then convert the result with the `dict` constructor.
 
