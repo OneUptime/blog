@@ -71,7 +71,7 @@ Set the inventory in `ansible.cfg` to avoid typing `-i` every time:
 inventory = inventory/static.yml,inventory/aws_ec2.yml,scripts/consul_inventory.py
 
 # Or just point to the directory
-inventory = inventory/
+# inventory = inventory/
 ```
 
 ## How Merging Works
@@ -250,15 +250,15 @@ If you use multiple `-i` flags pointing to separate directories, each directory 
 static_inventory/
   hosts.yml
   group_vars/
-    webservers.yml    # Only for this inventory's webservers
+    webservers.yml    # Applies to the merged webservers group
 cloud_inventory/
   aws_ec2.yml
   group_vars/
-    webservers.yml    # Only for this inventory's webservers
+    webservers.yml    # Loaded later, so matching variables can override earlier ones
 ```
 
 ```bash
-# Each inventory's group_vars apply to its own hosts
+# group_vars are loaded relative to each inventory source and merged by group name
 ansible-playbook -i static_inventory/ -i cloud_inventory/ site.yml
 ```
 
