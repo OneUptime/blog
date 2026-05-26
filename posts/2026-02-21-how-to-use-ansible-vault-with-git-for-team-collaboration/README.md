@@ -12,7 +12,7 @@ Committing vault-encrypted files to Git is how most teams share Ansible secrets.
 
 ## Why Vault-Encrypted Files in Git Work
 
-Vault-encrypted files are plain text (base64-encoded encrypted data with a header). Git handles them perfectly well. They are not binary blobs. The encrypted text diffs, merges, and transfers over the wire just like any other text file.
+Vault-encrypted files are plain text (text-armored, hex-encoded encrypted data with a header). Git handles them perfectly well. They are not binary blobs. The encrypted text diffs, merges, and transfers over the wire just like any other text file.
 
 The real question is not whether to put them in Git, but how to organize them so your team stays productive.
 
@@ -98,7 +98,7 @@ Now `git diff` and `git log -p` will show the decrypted content for vault files,
 git diff HEAD~1 group_vars/prod/vault.yml
 ```
 
-For this to work, you need the vault password available (via `ansible.cfg` or environment variable).
+For this to work, you need the vault password available (via `ansible.cfg`, `--vault-password-file`, or the `ANSIBLE_VAULT_PASSWORD_FILE` environment variable).
 
 ## Handling Merge Conflicts
 
