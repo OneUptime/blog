@@ -45,11 +45,13 @@ In large projects, you need reproducible builds. Pin every external dependency:
 # Pin exact versions for reproducibility
 collections:
   - name: community.general
-    version: 8.2.0
+    version: 12.6.1
   - name: ansible.posix
-    version: 1.5.4
+    version: 2.2.0
   - name: community.crypto
-    version: 2.16.0
+    version: 3.2.1
+  - name: amazon.aws
+    version: 10.3.1
 
 roles:
   - name: geerlingguy.docker
@@ -63,9 +65,10 @@ Also pin Ansible itself in your project:
 ```text
 # requirements.txt
 # Pin Ansible version for consistency across the team
-ansible-core==2.16.2
-ansible-lint==6.22.1
-molecule==6.0.3
+ansible-core==2.20.6
+ansible-lint==26.4.0
+molecule==26.4.0
+molecule-plugins[docker]==25.8.12
 ```
 
 ## Implement Variable Precedence Properly
@@ -214,6 +217,8 @@ Also be selective with fact gathering in playbooks:
     - name: Gather only network and hardware facts
       ansible.builtin.setup:
         gather_subset:
+          - '!all'
+          - '!min'
           - network
           - hardware
 ```
@@ -269,8 +274,8 @@ verifier:
     - name: Assert nginx service is active
       ansible.builtin.assert:
         that:
-          - "'nginx.service' in services"
-          - "services['nginx.service'].state == 'running'"
+          - "'nginx.service' in ansible_facts['services']"
+          - "ansible_facts['services']['nginx.service'].state == 'running'"
 ```
 
 ## Deployment Flow for Large Projects
