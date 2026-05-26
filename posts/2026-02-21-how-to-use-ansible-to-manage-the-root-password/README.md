@@ -62,11 +62,13 @@ Using the same root password across all servers is a risk. If one server is comp
   become: yes
   vars_files:
     - vars/secrets.yml
+  vars:
+    root_password_salt: "{{ 65534 | random(seed=inventory_hostname) | string }}"
   tasks:
     - name: Set unique root password
       ansible.builtin.user:
         name: root
-        password: "{{ vault_root_passwords[inventory_hostname] | password_hash('sha512', 'salt' + inventory_hostname) }}"
+        password: "{{ vault_root_passwords[inventory_hostname] | password_hash('sha512', root_password_salt) }}"
         update_password: always
         state: present
       no_log: yes
@@ -91,27 +93,39 @@ For even better security, generate random passwords and store them centrally:
 - name: Generate and set random root passwords
   hosts: all
   become: yes
+  vars:
+    root_password_salt: "{{ 65534 | random(seed=inventory_hostname) | string }}"
   tasks:
     # Generate a random password for each host
     - name: Generate random root password
       ansible.builtin.set_fact:
-        new_root_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits,punctuation') }}"
+        new_root_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits', 'punctuation']) }}"
       no_log: yes
 
     # Set the password
     - name: Set root password
       ansible.builtin.user:
         name: root
-        password: "{{ new_root_password | password_hash('sha512', 'salt' + inventory_hostname) }}"
+        password: "{{ new_root_password | password_hash('sha512', root_password_salt) }}"
         update_password: always
         state: present
+      no_log: yes
+
+    # Create the password directory on the control node
+    - name: Create secure password directory
+      ansible.builtin.file:
+        path: "{{ lookup('ansible.builtin.env', 'HOME') }}/secure-passwords"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: no
       no_log: yes
 
     # Store the password securely on the control node
     - name: Store password in secure location
       ansible.builtin.copy:
         content: "{{ inventory_hostname }}: {{ new_root_password }}"
-        dest: "/root/secure-passwords/{{ inventory_hostname }}.txt"
+        dest: "{{ lookup('ansible.builtin.env', 'HOME') }}/secure-passwords/{{ inventory_hostname }}.txt"
         mode: '0600'
       delegate_to: localhost
       become: no
@@ -127,7 +141,7 @@ flowchart TD
     A[Schedule Rotation] --> B[Generate New Passwords]
     B --> C[Store in Vault/Secret Manager]
     C --> D[Deploy via Ansible]
-    D --> E[Verify Access with New Password]
+    D --> E[Verify Management Access]
     E --> F{Verification OK?}
     F -->|Yes| G[Update Documentation]
     F -->|No| H[Rollback - Use Old Password]
@@ -157,8 +171,8 @@ The biggest risk with root password changes is getting locked out. Here is a saf
       no_log: yes
       register: password_change
 
-    # Verify we can still connect
-    - name: Verify SSH connectivity after password change
+    # Verify Ansible can still manage the host
+    - name: Verify management connectivity after password change
       ansible.builtin.ping:
       when: password_change.changed
 
@@ -167,6 +181,7 @@ The biggest risk with root password changes is getting locked out. Here is a saf
       ansible.builtin.command: "whoami"
       become: yes
       register: sudo_check
+      changed_when: false
       when: password_change.changed
 
     - name: Confirm sudo works
@@ -214,6 +229,8 @@ The best practice is to use sudo instead of direct root login:
 - name: Set up sudo access
   hosts: all
   become: yes
+  vars:
+    ssh_service_name: "{{ 'ssh' if ansible_facts.os_family == 'Debian' else 'sshd' }}"
   tasks:
     - name: Create admin group
       ansible.builtin.group:
@@ -249,7 +266,7 @@ The best practice is to use sudo instead of direct root login:
   handlers:
     - name: restart sshd
       ansible.builtin.systemd:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
@@ -262,16 +279,18 @@ For enterprise environments, integrate with a secrets manager:
 - name: Set root password from HashiCorp Vault
   hosts: all
   become: yes
+  vars:
+    root_password_salt: "{{ 65534 | random(seed=inventory_hostname) | string }}"
   tasks:
     - name: Read root password from Vault
       ansible.builtin.set_fact:
-        root_password: "{{ lookup('hashi_vault', 'secret=secret/data/servers/{{ inventory_hostname }}:root_password') }}"
+        root_password: "{{ (lookup('community.hashi_vault.vault_kv2_get', 'servers/' ~ inventory_hostname, engine_mount_point='secret')).secret.root_password }}"
       no_log: yes
 
     - name: Set root password
       ansible.builtin.user:
         name: root
-        password: "{{ root_password | password_hash('sha512', inventory_hostname[:16]) }}"
+        password: "{{ root_password | password_hash('sha512', root_password_salt) }}"
         update_password: always
         state: present
       no_log: yes
@@ -312,8 +331,10 @@ Check how old root passwords are across your fleet:
 
     - name: Alert on old root passwords
       ansible.builtin.debug:
-        msg: "WARNING: Root password on {{ inventory_hostname }} is {{ password_age.stdout }} days old"
-      when: password_age.stdout | int > 90
+        msg: >-
+          WARNING: Root password on {{ inventory_hostname }} is
+          {{ 'not set' if password_age.stdout == 'NEVER_SET' else password_age.stdout ~ ' days old' }}
+      when: password_age.stdout == "NEVER_SET" or password_age.stdout | int > 90
 ```
 
 ## Best Practices
