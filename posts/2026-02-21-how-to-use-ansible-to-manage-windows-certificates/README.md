@@ -42,6 +42,11 @@ The most common operation is importing a PFX (PKCS#12) file that contains a cert
     cert_password: "{{ vault_cert_password }}"
 
   tasks:
+    - name: Ensure temporary certificate directory exists
+      ansible.windows.win_file:
+        path: C:\Temp
+        state: directory
+
     - name: Copy PFX file to target server
       ansible.windows.win_copy:
         src: files/webserver.pfx
@@ -57,6 +62,9 @@ The most common operation is importing a PFX (PKCS#12) file that contains a cert
         store_location: LocalMachine
         state: present
       register: cert_import
+      become: true
+      become_method: runas
+      become_user: SYSTEM
 
     - name: Display imported certificate thumbprint
       ansible.builtin.debug:
@@ -76,6 +84,8 @@ Key parameters for PFX import:
 - **store_name**: `My` for personal, `Root` for trusted roots, `CA` for intermediates
 - **store_location**: `LocalMachine` or `CurrentUser`
 
+For password-protected PFX imports, use `become` or a WinRM authentication method with credential delegation so Windows can load the private key correctly.
+
 ## Importing a Root CA Certificate
 
 When deploying internal CA certificates to trust stores, you typically have a DER or PEM encoded certificate (no private key):
@@ -86,6 +96,11 @@ When deploying internal CA certificates to trust stores, you typically have a DE
 - name: Deploy Root CA Certificate
   hosts: windows
   tasks:
+    - name: Ensure temporary certificate directory exists
+      ansible.windows.win_file:
+        path: C:\Temp
+        state: directory
+
     - name: Copy CA certificate to target
       ansible.windows.win_copy:
         src: files/internal-root-ca.cer
@@ -133,17 +148,17 @@ Certificate cleanup is often overlooked but important for security hygiene. Here
     - name: Find expired certificates
       ansible.windows.win_shell: |
         # Get all expired certificates from the Personal store
-        $expired = Get-ChildItem -Path Cert:\LocalMachine\My |
+        $expired = @(Get-ChildItem -Path Cert:\LocalMachine\My |
           Where-Object { $_.NotAfter -lt (Get-Date) } |
           Select-Object Thumbprint, Subject, NotAfter |
           ForEach-Object {
-            @{
+            [PSCustomObject]@{
               Thumbprint = $_.Thumbprint
               Subject = $_.Subject
               ExpiredOn = $_.NotAfter.ToString("yyyy-MM-dd")
             }
-          }
-        $expired | ConvertTo-Json -AsArray
+          })
+        ConvertTo-Json -InputObject $expired -Compress
       register: expired_certs
 
     - name: Display expired certificates
@@ -179,19 +194,19 @@ Proactive monitoring of certificate expiry is critical. This playbook checks for
     - name: Check for expiring certificates
       ansible.windows.win_shell: |
         $warningDate = (Get-Date).AddDays({{ warning_days }})
-        $expiring = Get-ChildItem -Path Cert:\LocalMachine\My |
+        $expiring = @(Get-ChildItem -Path Cert:\LocalMachine\My |
           Where-Object { $_.NotAfter -lt $warningDate -and $_.NotAfter -gt (Get-Date) } |
           Select-Object Thumbprint, Subject, NotAfter, Issuer |
           ForEach-Object {
-            @{
+            [PSCustomObject]@{
               Thumbprint = $_.Thumbprint
               Subject = $_.Subject
               ExpiresOn = $_.NotAfter.ToString("yyyy-MM-dd")
               DaysLeft = [math]::Floor(($_.NotAfter - (Get-Date)).TotalDays)
               Issuer = $_.Issuer
             }
-          }
-        $expiring | ConvertTo-Json -AsArray
+          })
+        ConvertTo-Json -InputObject $expiring -Compress
       register: expiring_certs
 
     - name: Alert on expiring certificates
@@ -223,7 +238,7 @@ For development and testing environments, you might need to generate self-signed
   hosts: windows
   vars:
     cert_cn: "dev.example.local"
-    cert_sans: "dev.example.local,localhost,127.0.0.1"
+    cert_sans: "dev.example.local,localhost"
     cert_years: 2
 
   tasks:
@@ -266,23 +281,40 @@ Here is a full certificate renewal workflow that backs up the old cert, imports 
   vars:
     site_name: MyWebApp
     cert_password: "{{ vault_cert_password }}"
+    backup_password: "{{ vault_backup_cert_password }}"
     new_cert_file: files/renewed-cert.pfx
 
   tasks:
+    - name: Ensure certificate working directories exist
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - C:\Temp
+        - C:\CertBackups
+
     - name: Get current certificate thumbprint from IIS binding
       ansible.windows.win_shell: |
-        $binding = Get-WebBinding -Name "{{ site_name }}" -Protocol "https"
-        $binding.certificateHash
+        $binding = Get-WebBinding -Name "{{ site_name }}" -Protocol "https" | Select-Object -First 1
+        if ($binding) {
+          $hash = $binding.GetAttributeValue("certificateHash")
+          if ($hash -is [byte[]]) {
+            -join ($hash | ForEach-Object { $_.ToString("X2") })
+          } else {
+            $hash
+          }
+        }
       register: old_thumbprint
 
     - name: Export current certificate as backup
       ansible.windows.win_shell: |
         $thumb = "{{ old_thumbprint.stdout | trim }}"
         $cert = Get-ChildItem -Path "Cert:\LocalMachine\My\$thumb"
-        $bytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, "BackupPassword123!")
+        $bytes = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, "{{ backup_password }}")
         [System.IO.File]::WriteAllBytes("C:\CertBackups\backup-$thumb.pfx", $bytes)
         Write-Output "Backed up certificate $thumb"
       when: old_thumbprint.stdout | trim | length > 0
+      no_log: true
 
     - name: Copy new certificate to server
       ansible.windows.win_copy:
@@ -299,6 +331,9 @@ Here is a full certificate renewal workflow that backs up the old cert, imports 
         store_location: LocalMachine
         state: present
       register: new_cert
+      become: true
+      become_method: runas
+      become_user: SYSTEM
 
     - name: Bind new certificate to IIS site
       ansible.windows.win_shell: |
@@ -308,14 +343,10 @@ Here is a full certificate renewal workflow that backs up the old cert, imports 
         Write-Output "Bound certificate $newThumb to {{ site_name }}"
 
     - name: Verify HTTPS is working
-      ansible.windows.win_shell: |
-        try {
-          $response = Invoke-WebRequest -Uri "https://localhost" -UseBasicParsing -SkipCertificateCheck
-          Write-Output "HTTPS OK - Status: $($response.StatusCode)"
-        } catch {
-          Write-Output "HTTPS FAILED - $($_.Exception.Message)"
-          exit 1
-        }
+      ansible.windows.win_uri:
+        url: https://localhost
+        validate_certs: false
+        status_code: 200
 
     - name: Clean up temp files
       ansible.windows.win_file:
