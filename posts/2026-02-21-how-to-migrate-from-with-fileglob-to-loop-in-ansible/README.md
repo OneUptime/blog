@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Migration, File Management, Automation
 
-Description: Learn how to migrate from the legacy with_fileglob syntax to the modern loop keyword with the fileglob lookup plugin in Ansible.
+Description: Learn how to migrate from the older with_fileglob syntax to the loop keyword with the fileglob lookup plugin in Ansible.
 
 ---
 
-The `with_fileglob` keyword in Ansible matched files on the control node using glob patterns and iterated over the results. It was commonly used to copy or template multiple files from a directory without listing each one individually. The modern replacement is `loop` combined with the `lookup('fileglob', ...)` plugin or the `query('fileglob', ...)` function.
+The `with_fileglob` keyword in Ansible matched files on the control node using glob patterns and iterated over the results. It was commonly used to copy or template multiple files from a directory without listing each one individually. A loop-based equivalent is `loop` combined with the `lookup('fileglob', ...)` plugin or the `query('fileglob', ...)` function.
 
 This post covers the migration, explains the differences between the old and new syntax, and shows practical patterns for file globbing in modern Ansible.
 
@@ -33,6 +33,8 @@ Important: The glob runs on the control machine where Ansible executes, not on t
 ## The Basic Migration
 
 Replace `with_fileglob` with `loop` and the `fileglob` lookup.
+
+Note: Ansible's official loop guide says lookup-based `with_*` loops such as `with_fileglob` can still be clearer to leave as `with_fileglob`. Use this migration when you want a consistent `loop` style across your playbooks.
 
 Before:
 
@@ -146,7 +148,7 @@ The `basename` filter extracts just the filename, and `regex_replace` strips the
 
 ## Handling the Path Differences
 
-One subtle difference between `with_fileglob` and the `fileglob` lookup is how paths are resolved. With `with_fileglob`, relative paths were resolved from the role's `files/` directory (when used in a role). The `fileglob` lookup behaves the same way, but it is worth verifying after migration.
+One subtle detail with `with_fileglob` and the `fileglob` lookup is how paths are resolved. With `with_fileglob`, relative paths were resolved using Ansible's task path search, including the role's `files/` directory when used in a role. The `fileglob` lookup follows the same local task path search, but it is worth verifying after migration.
 
 ```yaml
 # In a role, both resolve relative to roles/myrole/files/
@@ -160,7 +162,7 @@ One subtle difference between `with_fileglob` and the `fileglob` lookup is how p
 # Resolves to: roles/myrole/files/configs/*.conf (same behavior)
 ```
 
-For templates, the lookup resolves relative to the role's `templates/` directory.
+For templates in a role, include the `templates/` path in the glob (for example, `templates/myapp/*.j2`) or verify the search path before migration. The `fileglob` lookup finds local files; it does not use the `template` module's `src` resolution rules by itself.
 
 ## Copying Files and Preserving Structure
 
@@ -174,18 +176,22 @@ When you want to preserve the subdirectory structure of matched files, you need 
   become: true
   tasks:
     - name: Find all static files
-      ansible.builtin.set_fact:
-        static_files: "{{ query('fileglob', 'files/static/**/*') }}"
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/files/static"
+        file_type: file
+        recurse: true
+      delegate_to: localhost
+      register: static_files
 
     - name: Copy static files
       ansible.builtin.copy:
-        src: "{{ item }}"
-        dest: "/var/www/{{ item | relpath('files/') }}"
+        src: "{{ item.path }}"
+        dest: "/var/www/{{ item.path | relpath(playbook_dir + '/files/static') }}"
         mode: '0644'
-      loop: "{{ static_files }}"
+      loop: "{{ static_files.files }}"
 ```
 
-Note: The `fileglob` lookup does NOT recurse into subdirectories by default. If you need recursive globbing, use `find` module on the control node or the `filetree` lookup.
+Note: The `fileglob` lookup does NOT recurse into subdirectories. If you need recursive globbing, use the `find` module on the control node or the `community.general.filetree` lookup.
 
 ## Recursive File Discovery
 
@@ -202,7 +208,7 @@ Since `fileglob` does not recurse into subdirectories, you may need an alternati
   # Does NOT match: files/configs/subdir/other.conf
 ```
 
-For recursive needs, use the `filetree` lookup or the `find` module.
+For recursive needs, use the `community.general.filetree` lookup or the `find` module.
 
 ```yaml
 # Recursive alternative using find on the control node
@@ -317,4 +323,4 @@ grep -rn "with_fileglob" --include="*.yml" --include="*.yaml" .
 
 ## Summary
 
-Migrating from `with_fileglob` to `loop` with `query('fileglob', ...)` is a clean replacement. The `query` function always returns a list, making it ideal for `loop`. The key things to remember are: `fileglob` runs on the control node (not remote hosts), it does not recurse into subdirectories, and the file order is not guaranteed so add `| sort` if needed. For recursive file discovery, switch to the `find` module or the `filetree` lookup. After migration, verify that relative path resolution still works correctly, especially when using roles.
+Migrating from `with_fileglob` to `loop` with `query('fileglob', ...)` is a valid loop-based replacement when you want consistent `loop` syntax. The `query` function always returns a list, making it ideal for `loop`. The key things to remember are: `fileglob` runs on the control node (not remote hosts), it does not recurse into subdirectories, and the file order is not guaranteed so add `| sort` if needed. For recursive file discovery, switch to the `find` module or the `community.general.filetree` lookup. After migration, verify that relative path resolution still works correctly, especially when using roles.
