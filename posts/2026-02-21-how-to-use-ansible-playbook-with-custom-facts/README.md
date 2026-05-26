@@ -40,9 +40,11 @@ Or you can use JSON format:
 
 ```json
 {
-    "app_name": "mywebapp",
-    "app_version": "2.4.1",
-    "environment": "production",
+    "general": {
+        "app_name": "mywebapp",
+        "app_version": "2.4.1",
+        "environment": "production"
+    },
     "database": {
         "cluster": "db-east-01",
         "role": "primary"
@@ -298,8 +300,9 @@ To see what custom facts are available on a host:
 # Display all custom (local) facts from a specific host
 ansible webserver1 -m setup -a 'filter=ansible_local'
 
-# Display a specific custom fact file's contents
-ansible webserver1 -m setup -a 'filter=ansible_local' | python3 -m json.tool
+# Save the custom facts as JSON, then pretty-print the saved output
+ansible webserver1 -m setup -a 'filter=ansible_local' --tree /tmp/ansible-facts
+python3 -m json.tool /tmp/ansible-facts/webserver1
 ```
 
 ## Wrapping Up
