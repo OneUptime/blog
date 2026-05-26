@@ -187,7 +187,7 @@ Rather than making individual lookups for each secret, fetch entire secret paths
     db_pass: "{{ db_secrets.password }}"
 ```
 
-## Using the hashi_vault_secret Module
+## Using the vault_read Module
 
 For a more structured approach, use the module instead of the lookup plugin:
 
@@ -227,8 +227,8 @@ One of HashiCorp Vault's most powerful features is dynamic secrets. Instead of s
     dest: /etc/myapp/config.yml
     mode: '0600'
   vars:
-    db_user: "{{ dynamic_db_creds.data.username }}"
-    db_pass: "{{ dynamic_db_creds.data.password }}"
+    db_user: "{{ dynamic_db_creds.data.data.username }}"
+    db_pass: "{{ dynamic_db_creds.data.data.password }}"
     # These credentials expire after the lease TTL
     db_lease_id: "{{ dynamic_db_creds.data.lease_id }}"
 ```
@@ -257,9 +257,10 @@ Here is a full playbook that ties everything together:
       register: app_secrets
 
     - name: Fetch TLS certificate from Vault
-      community.hashi_vault.vault_read:
+      community.hashi_vault.vault_pki_generate_certificate:
         url: "{{ vault_url }}"
-        path: "pki/issue/webserver"
+        role_name: webserver
+        common_name: "{{ inventory_hostname }}"
         auth_method: token
         token: "{{ vault_token }}"
       register: tls_cert
