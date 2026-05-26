@@ -14,7 +14,7 @@ I have found this pattern especially useful in multi-stage deployments where lat
 
 ## Understanding Task Skip Behavior
 
-When Ansible skips a task, the registered variable (if any) gets a special structure. Instead of the usual task output, you get an object with `skipped: true` and a `skip_reason` field. The `is skipped` test checks this property.
+When Ansible skips a task, the registered variable (if any) gets a special structure. Instead of the usual task output, you get an object with `skipped: true` and, depending on the skip path, a reason field. The `is skipped` test checks for a `skipped` key set to `true`.
 
 Here is a basic example to see how it works.
 
@@ -214,7 +214,7 @@ The `skipped` test also works with tasks inside `block` structures. This is usef
         code_deployed: "{{ code_pull is defined and code_pull is not skipped }}"
 ```
 
-Notice the `is defined` check before testing for `skipped`. When a task inside a conditional block is skipped, the registered variable might still be undefined if the entire block was skipped. Always pair `is defined` with `is skipped` when working with blocks to avoid undefined variable errors.
+Notice the `is defined` check before testing for `skipped`. A `when` on a block is inherited by the tasks inside the block, so registered task results are still created when those tasks are skipped by that condition. The `is defined` guard is still useful if the task might not be present in the play run at all, such as when it comes from a dynamically included task file that was not included.
 
 ## Building a Status Summary
 
