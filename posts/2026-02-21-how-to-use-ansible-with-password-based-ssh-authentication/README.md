@@ -14,7 +14,7 @@ Whatever the reason, Ansible fully supports password-based SSH authentication. T
 
 ## Prerequisites
 
-Password-based SSH requires the `sshpass` utility on the Ansible controller. Ansible uses `sshpass` to feed the password to the SSH client non-interactively.
+Password-based SSH often uses the `sshpass` utility on the Ansible controller. Ansible can use `sshpass` to feed the password to the SSH client non-interactively.
 
 ```bash
 # Install sshpass on Ubuntu/Debian
@@ -31,7 +31,7 @@ brew install hudochenkov/sshpass/sshpass
 sshpass -V
 ```
 
-Without `sshpass`, Ansible will throw an error when you try to use password authentication.
+If you configure Ansible to use the `sshpass` password mechanism, Ansible will throw an error without `sshpass` installed.
 
 ## Basic Password Authentication
 
@@ -202,12 +202,12 @@ Here is a complete playbook that works with password-based authentication.
         path: /etc/ssh/sshd_config
         regexp: "^#?PubkeyAuthentication"
         line: "PubkeyAuthentication yes"
-      notify: restart sshd
+      notify: restart ssh
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -224,10 +224,13 @@ timeout = 30
 
 [ssh_connection]
 ssh_args = -o ControlMaster=auto -o ControlPersist=60s
+password_mechanism = sshpass
 pipelining = false
 ```
 
-Note that `pipelining` is set to `false`. Pipelining with password authentication can cause issues because `sshpass` interacts with the SSH session differently than key-based auth.
+Note that `password_mechanism` is set to `sshpass` so Ansible uses the `sshpass` utility installed earlier.
+
+Note that `pipelining` is set to `false`. Pipelining can conflict with privilege escalation, and it is disabled by default.
 
 Also, `host_key_checking = false` is important for new servers where you have not yet accepted the host key. In production, you should manage known_hosts properly instead of disabling this check.
 
@@ -256,19 +259,19 @@ Password-based authentication with Ansible is inherently less secure than key-ba
         path: /etc/ssh/sshd_config
         regexp: "^#?PasswordAuthentication"
         line: "PasswordAuthentication no"
-      notify: restart sshd
+      notify: restart ssh
 
-    - name: Disable challenge-response authentication
+    - name: Disable keyboard-interactive authentication
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
-        regexp: "^#?ChallengeResponseAuthentication"
-        line: "ChallengeResponseAuthentication no"
-      notify: restart sshd
+        regexp: "^#?KbdInteractiveAuthentication"
+        line: "KbdInteractiveAuthentication no"
+      notify: restart ssh
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
