@@ -59,7 +59,6 @@ all:
 keepalived_vip: 10.0.1.100
 keepalived_interface: eth0
 keepalived_router_id: 51
-keepalived_auth_pass: "{{ vault_keepalived_pass }}"
 
 haproxy_frontend_port: 80
 haproxy_stats_port: 8404
@@ -76,9 +75,11 @@ app_health_path: /health
 # roles/keepalived/tasks/main.yml
 # Install and configure Keepalived for VIP failover
 
-- name: Install Keepalived
+- name: Install Keepalived and curl
   ansible.builtin.apt:
-    name: keepalived
+    name:
+      - keepalived
+      - curl
     state: present
     update_cache: yes
 
@@ -134,11 +135,6 @@ vrrp_instance VI_1 {
     virtual_router_id {{ keepalived_router_id }}
     priority {{ keepalived_priority }}
     advert_int 1
-
-    authentication {
-        auth_type PASS
-        auth_pass {{ keepalived_auth_pass }}
-    }
 
     virtual_ipaddress {
         {{ keepalived_vip }}/24
@@ -293,6 +289,7 @@ listen stats
 # Test HA failover by stopping HAProxy on the master
 - name: Test failover
   hosts: ha_nodes
+  become: yes
   serial: 1
   tasks:
     - name: Stop HAProxy on current host
