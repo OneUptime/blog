@@ -23,11 +23,11 @@ When `backrefs: true` is set, the `line` parameter can reference regex capture g
   ansible.builtin.lineinfile:
     path: /etc/myapp/app.conf
     regexp: "^(MAX_CONNECTIONS=).*"
-    line: "\\1500"
+    line: "\\g<1>500"
     backrefs: true
 ```
 
-If the file contains `MAX_CONNECTIONS=200`, it becomes `MAX_CONNECTIONS=500`. The `\\1` refers to the first capture group `(MAX_CONNECTIONS=)`, so the key name is preserved exactly as it was, and only the value after it changes.
+If the file contains `MAX_CONNECTIONS=200`, it becomes `MAX_CONNECTIONS=500`. The `\\g<1>` refers to the first capture group `(MAX_CONNECTIONS=)`, so the key name is preserved exactly as it was, and only the value after it changes.
 
 ## Important: backrefs Changes the Default Behavior
 
@@ -48,7 +48,7 @@ This makes sense because backreference values like `\1` would be meaningless if 
   ansible.builtin.lineinfile:
     path: /etc/myapp/app.conf
     regexp: "^(MAX_CONNECTIONS=).*"
-    line: "\\1500"
+    line: "\\g<1>500"
     backrefs: true
 ```
 
@@ -190,7 +190,7 @@ Apply backrefs-based updates to multiple settings:
 
 ### Forgetting to Escape Backslashes
 
-In YAML, backslashes need to be doubled. `\1` in YAML becomes the literal string `\1` which is what Python regex expects. But if you use double quotes in YAML, you need to be extra careful:
+In YAML double-quoted strings, backslashes need to be doubled so Ansible passes the literal string `\1` to Python's regex engine. Single-quoted strings do not interpret backslashes, so they can be easier for regex replacements:
 
 ```yaml
 # CORRECT - double backslash in double-quoted YAML
@@ -215,22 +215,33 @@ In YAML, backslashes need to be doubled. `\1` in YAML becomes the literal string
 Remember that `backrefs: true` will never add a line. If you need "update if exists, add if missing" behavior with a specific format, you need two tasks:
 
 ```yaml
-# Two-step pattern: update if exists, add if missing
+# Check first, then update if the key exists or add it if missing
+- name: Check whether max_connections exists
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Eq
+      - "^[[:space:]]*max_connections[[:space:]]*="
+      - /etc/myapp/app.conf
+  register: max_connections_present
+  changed_when: false
+  failed_when: false
+
 - name: Try to update existing line with backrefs
   ansible.builtin.lineinfile:
     path: /etc/myapp/app.conf
     regexp: "^(\\s*max_connections\\s*=\\s*).*"
     line: "\\g<1>500"
     backrefs: true
-  register: update_result
+  when: max_connections_present.rc == 0
 
-# If the line did not exist (backrefs made no change), add it
+# If the line did not exist, add it
 - name: Add line if it did not exist
   ansible.builtin.lineinfile:
     path: /etc/myapp/app.conf
     line: "max_connections = 500"
     insertafter: "^\\[server\\]"
-  when: not update_result.changed
+  when: max_connections_present.rc != 0
 ```
 
 ## Complete Example: Migration of Configuration Format
