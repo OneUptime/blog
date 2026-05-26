@@ -35,7 +35,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -75,7 +75,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
           cache-dependency-path: |
             requirements-dev.txt
@@ -94,16 +94,16 @@ Create the requirements file for consistent dependency versions.
 
 ```text
 # requirements-dev.txt - pinned development dependencies
-ansible-core>=2.15,<2.17
-molecule>=6.0,<7.0
-molecule-plugins[docker]>=23.0
-ansible-lint>=6.0
+ansible-core>=2.19,<2.21
+molecule>=26.0,<27.0
+molecule-plugins[docker]>=25.8,<26.0
+ansible-lint>=26.0,<27.0
 yamllint>=1.0
 ```
 
 ## Matrix Builds for Multiple Platforms
 
-Test across different operating systems using a build matrix.
+If your Molecule scenario defines matching platform names, test across different operating systems using a build matrix.
 
 ```yaml
 # .github/workflows/molecule.yml - matrix build across platforms
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
       - run: pip install ansible-core ansible-lint yamllint
       - name: Run yamllint
@@ -149,7 +149,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
@@ -180,15 +180,14 @@ jobs:
           - ubuntu2204
           - rocky9
         ansible-version:
-          - "2.15"
-          - "2.16"
-          - "2.17"
+          - "2.19"
+          - "2.20"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install Ansible ${{ matrix.ansible-version }}
@@ -228,7 +227,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
@@ -271,7 +270,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install linting tools
@@ -297,11 +296,11 @@ jobs:
           - rocky9
           - rocky8
         ansible:
-          - "2.16"
+          - "2.19"
         include:
           # Test latest Ansible only on Ubuntu 22.04
           - distro: ubuntu2204
-            ansible: "2.17"
+            ansible: "2.20"
 
     steps:
       - name: Check out code
@@ -310,7 +309,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
@@ -359,9 +358,9 @@ If your role needs secrets (API keys, registry credentials), use GitHub Actions 
 ```yaml
       - name: Login to private registry
         run: |
-          docker login registry.example.com \
-            -u "${{ secrets.REGISTRY_USER }}" \
-            -p "${{ secrets.REGISTRY_PASSWORD }}"
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login registry.example.com \
+            --username "${{ secrets.REGISTRY_USER }}" \
+            --password-stdin
 
       - name: Run Molecule with secrets
         run: molecule test
