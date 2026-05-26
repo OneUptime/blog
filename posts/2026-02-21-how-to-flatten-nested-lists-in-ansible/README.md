@@ -102,7 +102,7 @@ Real data often has a mix of single items and lists. The `flatten` filter handle
 
 ## Flattening Results from Loops
 
-One of the most common use cases is flattening results collected from loop tasks. When you use `register` inside a loop, the results come back as a nested structure.
+One of the most common use cases is flattening results collected from loop tasks. When you use `register` with a loop, the registered variable contains a `results` list with one result per loop item.
 
 ```yaml
 # playbook-loop-results.yml
@@ -113,21 +113,17 @@ One of the most common use cases is flattening results collected from loop tasks
 
   tasks:
     - name: Simulate gathering package lists from different sources
-      ansible.builtin.set_fact:
-        source_packages:
-          - packages:
-              - httpd
-              - mod_ssl
-          - packages:
-              - postgresql-server
-              - postgresql-contrib
-          - packages:
-              - python3
-              - python3-pip
+      ansible.builtin.shell: 'printf "%s\n" {{ item | join(" ") }}'
+      loop:
+        - [httpd, mod_ssl]
+        - [postgresql-server, postgresql-contrib]
+        - [python3, python3-pip]
+      register: source_package_results
+      changed_when: false
 
     - name: Flatten all packages from all sources
       ansible.builtin.set_fact:
-        all_packages: "{{ source_packages | map(attribute='packages') | flatten }}"
+        all_packages: "{{ source_package_results.results | map(attribute='stdout_lines') | flatten }}"
 
     - name: Install all packages (demonstration)
       ansible.builtin.debug:
@@ -136,7 +132,7 @@ One of the most common use cases is flattening results collected from loop tasks
 
 ## Flattening with subelements
 
-The `subelements` lookup is another approach when you have a list of items, each with a sublist you want to iterate over:
+The `subelements` filter is another approach when you have a list of items, each with a sublist you want to iterate over:
 
 ```yaml
 # playbook-subelements.yml
@@ -290,6 +286,7 @@ Combine `flatten` with `unique` to get a deduplicated flat list:
       ansible.posix.firewalld:
         rich_rule: "rule family=ipv4 source address={{ item }} accept"
         permanent: true
+        immediate: true
         state: enabled
       loop: "{{ allow_list }}"
 ```
