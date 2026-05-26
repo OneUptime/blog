@@ -70,6 +70,7 @@ Many modules report whether they changed anything. You can use this to trigger f
         cmd: /opt/myapp/bin/validate-config /etc/myapp/app.conf
       when: config_result.changed
       register: validation
+      failed_when: false
       changed_when: false
 
     - name: Rollback if validation failed
@@ -80,7 +81,7 @@ Many modules report whether they changed anything. You can use this to trigger f
         mode: '0640'
       when:
         - config_result.changed
-        - validation is defined
+        - validation is not skipped
         - validation.rc != 0
 
     - name: Restart service if config is valid
@@ -89,6 +90,7 @@ Many modules report whether they changed anything. You can use this to trigger f
         state: restarted
       when:
         - config_result.changed
+        - validation is not skipped
         - validation.rc == 0
 ```
 
@@ -128,7 +130,7 @@ Here is a realistic deployment workflow where each step depends on the previous 
         src: "/releases/myapp-{{ app_version }}.tar.gz"
         dest: /opt/myapp/
         remote_src: true
-      when: stop_result is changed
+      when: stop_result is succeeded
       register: deploy_result
 
     # Step 4: Run migrations only if deployment succeeded
@@ -136,7 +138,7 @@ Here is a realistic deployment workflow where each step depends on the previous 
       ansible.builtin.command:
         cmd: /opt/myapp/bin/migrate
       when:
-        - deploy_result is changed
+        - deploy_result is succeeded
         - inventory_hostname == ansible_play_batch[0]  # Only on first host in batch
       register: migration_result
       changed_when: "'Migrated' in migration_result.stdout"
@@ -147,7 +149,7 @@ Here is a realistic deployment workflow where each step depends on the previous 
       ansible.builtin.systemd:
         name: myapp
         state: started
-      when: deploy_result is changed
+      when: deploy_result is succeeded
       register: start_result
 
     # Step 6: Health check
@@ -159,7 +161,7 @@ Here is a realistic deployment workflow where each step depends on the previous 
       until: health_check.status == 200
       retries: 30
       delay: 5
-      when: start_result is changed
+      when: start_result is succeeded
 
     # Step 7: Re-enable in load balancer only if healthy
     - name: Enable in load balancer
@@ -167,7 +169,7 @@ Here is a realistic deployment workflow where each step depends on the previous 
         url: "http://lb.internal/api/enable/{{ inventory_hostname }}"
         method: POST
       delegate_to: localhost
-      when: health_check is not skipped and health_check.status == 200
+      when: health_check is not skipped and health_check is succeeded and health_check.status == 200
 ```
 
 ## Handling Command Output Parsing
@@ -300,13 +302,7 @@ When a chain of dependent tasks needs error recovery:
             msg: >
               Deployment of {{ new_version }} failed.
               Rolled back to {{ current_version }}.
-              Last successful step: {{
-                'smoke test' if smoke_test is defined else
-                'restart' if restart_result is defined else
-                'symlink' if symlink_result is defined else
-                'deploy' if deploy_result is defined else
-                'backup'
-              }}
+              Failed step: {{ ansible_failed_task.name | default('unknown') }}
 ```
 
 ## Collecting Results Across Multiple Steps
@@ -360,6 +356,6 @@ When you need to make a decision based on the combined results of several prior 
 
 ## Best Practices
 
-Always use `failed_when: false` on check tasks that might return non-zero exit codes. Use `changed_when: false` on tasks that are read-only checks. Check `is changed` rather than `.changed == true` for readability. Use `is skipped` to detect tasks that were conditionally skipped. When building long chains, use blocks with rescue for clean error handling. Name your registered variables descriptively so the chain is easy to follow. Remember that a skipped task's registered variable exists but lacks the usual module-specific fields.
+Use `failed_when: false` on check tasks where non-zero exit codes are expected and should not stop the play. Use `changed_when: false` on tasks that are read-only checks. Check `is changed` rather than `.changed == true` for readability. Use `is skipped` to detect tasks that were conditionally skipped. When building long chains, use blocks with rescue for clean error handling. Name your registered variables descriptively so the chain is easy to follow. Remember that a skipped task's registered variable exists but lacks the usual module-specific fields.
 
 Chaining tasks based on previous results transforms flat playbooks into intelligent workflows. The combination of `register` and `when` is the closest thing Ansible has to programming control flow, and mastering it is essential for building production-grade automation.
