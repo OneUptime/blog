@@ -93,7 +93,7 @@ resource "helm_release" "cluster_autoscaler" {
   repository = "https://kubernetes.github.io/autoscaler"
   chart      = "cluster-autoscaler"
   namespace  = "kube-system"
-  version    = "9.35.0"
+  version    = "9.57.0"
 
   values = [
     yamlencode({
@@ -160,7 +160,7 @@ resource "helm_release" "cluster_autoscaler" {
 
 ## Cluster Autoscaler on GKE
 
-GKE has built-in cluster autoscaling, but you can also deploy the standalone autoscaler for more control.
+GKE has built-in cluster autoscaling, so Terraform usually configures the managed autoscaler instead of deploying a separate autoscaler pod.
 
 ```hcl
 # GKE with built-in autoscaling (preferred approach)
@@ -168,7 +168,7 @@ resource "google_container_cluster" "primary" {
   name     = var.cluster_name
   location = var.region
 
-  # Enable cluster autoscaling at the cluster level
+  # Enable node auto-provisioning at the cluster level
   cluster_autoscaling {
     enabled = true
 
@@ -225,13 +225,13 @@ resource "azurerm_kubernetes_cluster" "cluster" {
   dns_prefix          = var.cluster_name
 
   default_node_pool {
-    name                = "default"
-    vm_size             = "Standard_D4s_v3"
-    enable_auto_scaling = true
-    min_count           = 2
-    max_count           = 20
+    name                 = "default"
+    vm_size              = "Standard_D4s_v3"
+    auto_scaling_enabled = true
+    min_count            = 2
+    max_count            = 20
 
-    # Temporary name for OS disk
+    # OS disk size
     os_disk_size_gb = 100
   }
 
