@@ -12,20 +12,20 @@ Environment variables shape how applications behave on Linux. A database connect
 
 ## Where Environment Variables Live
 
-Linux loads environment variables from multiple places, and the order matters:
+Linux loads environment variables from multiple places, and the order depends on how the session or process is started:
 
 ```mermaid
 flowchart TD
-    A[System Boot] --> B[/etc/environment]
-    B --> C[/etc/profile]
-    C --> D[/etc/profile.d/*.sh]
-    D --> E[~/.bash_profile or ~/.profile]
-    E --> F[~/.bashrc]
-    F --> G[Application-specific env files]
-    G --> H[User Session Ready]
+    A[PAM-managed login] --> B[/etc/environment]
+    B --> C[Login shell starts]
+    C --> D[/etc/profile]
+    D --> E[/etc/profile.d/*.sh, if sourced by /etc/profile]
+    E --> F[~/.bash_profile, ~/.bash_login, or ~/.profile]
+    G[Interactive non-login shell] --> H[~/.bashrc]
+    I[Application or service] --> J[Application-specific env files]
 ```
 
-Each level can add or override variables from previous levels.
+Each level can add or override variables that are already present in that session or process.
 
 ## Setting System-Wide Environment Variables
 
@@ -57,7 +57,7 @@ For variables that should be available to all users, use `/etc/environment`:
         line: 'APP_CONFIG_DIR=/etc/myapp'
 ```
 
-Note: `/etc/environment` uses `KEY=value` format without `export`. It is read by PAM, not the shell, so it works for all login methods including SSH and GUI.
+Note: `/etc/environment` uses `KEY=value` format without `export`. It is read by PAM when the login service uses `pam_env`, not by the shell, so it works for many SSH, console, and GUI login configurations.
 
 ## Using /etc/profile.d/ for Shell Variables
 
@@ -85,7 +85,7 @@ For variables that need shell features (like variable expansion), use `/etc/prof
         group: root
 ```
 
-Scripts in `/etc/profile.d/` are sourced for every login shell session. They support full bash syntax including variable expansion and conditionals.
+Scripts in `/etc/profile.d/` are commonly sourced by `/etc/profile` for login shell sessions on many distributions. Use POSIX-compatible shell syntax unless you know the target shell startup files source them with Bash.
 
 ## Setting Per-User Environment Variables
 
@@ -129,7 +129,7 @@ The distinction between these files matters:
 - **~/.bash_profile** (or ~/.profile): Loaded for login shells (SSH, console login)
 - **~/.bashrc**: Loaded for interactive non-login shells (opening a terminal in a GUI)
 
-Most distributions have `.bash_profile` source `.bashrc`, so putting variables in `.bashrc` usually covers both cases. But if you want to be thorough:
+Many distributions have `.bash_profile` source `.bashrc`, so putting variables in `.bashrc` can cover both cases when that chain exists. But if you want to be thorough:
 
 ```yaml
 # profile-setup.yml - Ensure proper shell profile chain
@@ -231,14 +231,14 @@ Services managed by systemd need their environment set differently:
         dest: /etc/systemd/system/myapp.service.d/environment.conf
         content: |
           [Service]
-          Environment="SECRET_KEY=supersecretvalue"
-          Environment="API_TOKEN=abc123def456"
+          Environment="FEATURE_FLAG=new-dashboard"
+          Environment="API_ENDPOINT=https://api.internal.example.com"
         mode: '0640'
       notify: reload systemd
 
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
 ```
 
@@ -378,13 +378,13 @@ To remove a variable, use `state: absent` with `lineinfile`:
 
 ## Best Practices
 
-1. **Use `/etc/environment`** for variables needed by all users and services. It is the most universal method.
+1. **Use `/etc/environment`** for variables needed by PAM-managed login sessions. It is a common system-wide method for user sessions.
 
 2. **Use `/etc/profile.d/`** for variables that need shell features like PATH manipulation.
 
 3. **Use systemd `EnvironmentFile`** for service-specific variables. Do not rely on user profile files for services.
 
-4. **Never put secrets in profile files**. Use Ansible Vault, environment files with restricted permissions, or a secrets manager.
+4. **Never put secrets in profile files or inline systemd `Environment=` values**. Use Ansible Vault to protect secrets at rest, and prefer a secrets manager or service credential mechanism at runtime. If you must use environment files, set restrictive permissions.
 
 5. **Use `blockinfile` for groups of related variables**. It keeps them organized and makes updates clean.
 
