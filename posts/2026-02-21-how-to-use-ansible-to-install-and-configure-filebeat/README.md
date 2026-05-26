@@ -53,7 +53,7 @@ filebeat/
 ```yaml
 # roles/filebeat/defaults/main.yml
 
-filebeat_version: "8.11"
+filebeat_repository_version: "9.x"
 
 # Output configuration (choose one)
 filebeat_output_type: "logstash"
@@ -115,17 +115,23 @@ filebeat_queue_mem_events: 4096
 ```yaml
 # roles/filebeat/tasks/install.yml
 ---
-- name: Add Elastic GPG key
-  ansible.builtin.apt_key:
-    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+- name: Install deb822 repository support
+  ansible.builtin.apt:
+    name: python3-debian
     state: present
+    update_cache: yes
   become: true
 
 - name: Add Elastic repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://artifacts.elastic.co/packages/{{ filebeat_version }}/apt stable main"
+  ansible.builtin.deb822_repository:
+    name: elastic
+    types: deb
+    uris: "https://artifacts.elastic.co/packages/{{ filebeat_repository_version }}/apt"
+    suites: stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
     state: present
-    filename: elastic
   become: true
 
 - name: Install Filebeat
@@ -184,6 +190,10 @@ filebeat_queue_mem_events: 4096
   ansible.builtin.command: >
     filebeat setup
     --index-management
+    --dashboards
+    --pipelines
+    --modules {{ filebeat_modules | join(',') }}
+    --force-enable-module-filesets
     -E output.logstash.enabled=false
     -E output.elasticsearch.hosts={{ filebeat_elasticsearch_hosts | to_json }}
     -E setup.kibana.host={{ filebeat_kibana_host }}
