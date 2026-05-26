@@ -51,6 +51,13 @@ Every compliance control follows the same pattern: check the current state, reme
     line: 'PermitRootLogin no'
   notify: restart sshd
 
+- name: Ensure SSH password authentication is disabled
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+  notify: restart sshd
+
 - name: Ensure account lockout is configured
   ansible.builtin.lineinfile:
     path: /etc/security/faillock.conf
@@ -186,9 +193,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Assert LUKS encryption is present
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted volumes were found"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -219,16 +232,18 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+  ansible.builtin.command: "ss -H -tln sport = :{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  failed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout == ""
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
