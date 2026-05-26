@@ -24,19 +24,29 @@ To see what callback plugins are available on your system:
 ansible-doc -t callback -l
 
 # Get details about a specific plugin
-ansible-doc -t callback yaml
+ansible-doc -t callback ansible.builtin.default
 ```
 
 Common built-in plugins include:
 
 - `default` - the standard output you are used to
-- `yaml` - YAML-formatted output (much more readable)
-- `json` - machine-parseable JSON output
-- `dense` - minimal, one-line-per-task output
-- `minimal` - bare minimum output
-- `debug` - shows stdout/stderr on failed tasks
-- `timer` - adds timing information
-- `profile_tasks` - shows per-task timing
+- `minimal` - minimal Ansible screen output
+- `oneline` - one-line screen output
+- `junit` - writes playbook output to a JUnit XML file
+
+Common collection plugins include:
+
+- `ansible.posix.debug` - formatted stdout/stderr display
+- `ansible.posix.json` - machine-parseable JSON output
+- `ansible.posix.timer` - adds timing information
+- `ansible.posix.profile_tasks` - shows per-task timing
+- `community.general.dense` - minimal, one-line-per-task output
+
+If you installed only `ansible-core`, install the `ansible.posix` collection before using the `ansible.posix.*` callbacks:
+
+```bash
+ansible-galaxy collection install ansible.posix
+```
 
 ## Changing the stdout Callback Plugin
 
@@ -45,29 +55,32 @@ Common built-in plugins include:
 ```ini
 # ansible.cfg
 [defaults]
-# Change the default output format
-stdout_callback = yaml
+# Change the default callback's result format
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 ```
 
 ### Method 2: Environment Variable
 
 ```bash
 # Set for a single run
-ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook deploy.yml
+ANSIBLE_STDOUT_CALLBACK=ansible.builtin.default ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible-playbook deploy.yml
 
 # Or export for the session
-export ANSIBLE_STDOUT_CALLBACK=yaml
+export ANSIBLE_STDOUT_CALLBACK=ansible.builtin.default
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
 ansible-playbook deploy.yml
 ```
 
-## The yaml Callback Plugin
+## The default Callback Plugin with YAML Results
 
-This is my recommended default. It formats output as YAML instead of JSON, making it significantly more readable:
+This is my recommended default. It formats task results as YAML instead of JSON, making them significantly more readable:
 
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 ```
 
 Default output (hard to read):
@@ -93,7 +106,7 @@ The debug callback plugin is specifically designed for troubleshooting. It shows
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = debug
+stdout_callback = ansible.posix.debug
 ```
 
 When a task fails, the output looks like:
@@ -121,16 +134,17 @@ This is much more useful than the default output, which stuffs everything into a
 
 ## Enabling Multiple Callback Plugins
 
-You can have one stdout callback and multiple notification callbacks active simultaneously:
+You can have one stdout callback and multiple aggregate or notification callbacks active simultaneously:
 
 ```ini
 # ansible.cfg
 [defaults]
 # The main output format
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 
 # Enable additional (non-stdout) callback plugins
-callbacks_enabled = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 ```
 
 ## The timer Callback Plugin
@@ -140,7 +154,7 @@ Adds total playbook execution time to the output:
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = timer
+callbacks_enabled = ansible.posix.timer
 ```
 
 Output at the end of the run:
@@ -159,7 +173,7 @@ Shows how long each task took, sorted by duration:
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Output:
@@ -185,7 +199,7 @@ Outputs everything as JSON, which is perfect for piping to other tools:
 
 ```bash
 # Get JSON output for programmatic processing
-ANSIBLE_STDOUT_CALLBACK=json ansible-playbook deploy.yml > results.json
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook deploy.yml > results.json
 ```
 
 The JSON output structure:
@@ -313,8 +327,9 @@ webhook_url = https://hooks.example.com/ansible-failures
 ```ini
 # ansible.cfg for development
 [defaults]
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 display_skipped_hosts = true
 display_ok_hosts = true
 
@@ -327,21 +342,22 @@ diff = true
 ```ini
 # ansible.cfg for CI/CD
 [defaults]
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks, junit
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.builtin.junit
 # JUnit callback creates XML files that CI tools can parse
-
-[callback_junit]
-output_dir = ./test-results/
 ```
+
+Set `JUNIT_OUTPUT_DIR=./test-results/` in the CI environment if you want the JUnit callback to write files somewhere other than its default directory.
 
 ### Production Operations
 
 ```ini
 # ansible.cfg for production
 [defaults]
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks, failure_webhook
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, failure_webhook
 
 # Reduce noise
 display_skipped_hosts = false
@@ -355,13 +371,16 @@ Several popular callback plugins are available through Ansible collections:
 ```bash
 # Install community.general for additional callbacks
 ansible-galaxy collection install community.general
+
+# Install community.grafana for Grafana annotations
+ansible-galaxy collection install community.grafana
 ```
 
 Notable options:
 - `community.general.say` - text-to-speech on macOS (fun for demos)
 - `community.general.slack` - sends notifications to Slack
 - `community.general.logstash` - sends results to Logstash/ELK
-- `community.general.grafana_annotations` - creates Grafana annotations during deployments
+- `community.grafana.grafana_annotations` - creates Grafana annotations during deployments
 
 ## Combining Plugins for Maximum Visibility
 
@@ -370,8 +389,9 @@ My recommended setup for most teams:
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 # Also useful settings that affect output
 show_task_path_on_failure = true
@@ -379,8 +399,8 @@ display_skipped_hosts = false
 any_errors_fatal = false
 ```
 
-This gives you readable YAML output, total run time, per-task timing, and shows the file path when a task fails. Skipped hosts are hidden to reduce noise.
+This gives you readable YAML-formatted results, total run time, per-task timing, and shows the file path when a task fails. Skipped hosts are hidden to reduce noise.
 
 ## Summary
 
-Callback plugins are one of Ansible's most underused features. Start by switching your stdout callback to `yaml` for immediate readability improvements. Add `timer` and `profile_tasks` for performance visibility. Use the `json` callback in CI/CD pipelines for programmatic processing. For team workflows, consider notification callbacks that post to Slack or monitoring systems. The right combination of callbacks transforms Ansible output from a wall of JSON into actionable, readable information.
+Callback plugins are one of Ansible's most underused features. Start by using the default stdout callback with `callback_result_format = yaml` for immediate readability improvements. Add `ansible.posix.timer` and `ansible.posix.profile_tasks` for performance visibility. Use the `ansible.posix.json` callback in CI/CD pipelines for programmatic processing. For team workflows, consider notification callbacks that post to Slack or monitoring systems. The right combination of callbacks transforms Ansible output from a wall of JSON into actionable, readable information.
