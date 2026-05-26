@@ -227,12 +227,12 @@ all_packages: "{{ base_packages + extra_packages }}"
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where shared configuration patterns commonly appear in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow in a real-world playbook
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -264,7 +264,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -346,7 +346,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in a playbook
 - name: Robust task execution
   hosts: all
   tasks:
