@@ -311,12 +311,7 @@ Here is a sudoers entry that works well with Ansible.
 deploy ALL=(ALL) NOPASSWD: ALL
 ```
 
-For more restrictive access, limit what commands the user can run.
-
-```text
-# Allow only specific commands without a password
-deploy ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/systemctl, /usr/bin/cp, /usr/bin/mv, /usr/bin/mkdir
-```
+Avoid limiting the Ansible service account to a short list of command paths for normal module-based playbooks. Ansible often runs generated module code from temporary files, so sudoers rules that only allow commands like `/usr/bin/apt-get` or `/usr/bin/systemctl` can cause otherwise valid tasks to fail.
 
 ## Best Practices
 
