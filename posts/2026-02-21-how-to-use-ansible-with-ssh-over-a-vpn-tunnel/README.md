@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SSH, VPN, Networking, DevOps
 
-Description: Configure Ansible to manage remote hosts through VPN tunnels including WireGuard, OpenVPN, and IPSec connections
+Description: Configure Ansible to manage remote hosts through VPN tunnels including WireGuard and OpenVPN connections
 
 ---
 
 Managing servers behind a VPN is a common scenario in enterprise environments. Your Ansible controller sits on one network, your target servers sit on another, and a VPN tunnel bridges the gap. While the concept is simple, the actual configuration can trip you up if you do not account for routing, DNS resolution, and the quirks of running SSH over a VPN.
 
-This guide covers configuring Ansible with the most common VPN setups: WireGuard, OpenVPN, and IPSec tunnels.
+This guide covers configuring Ansible with common VPN setups such as WireGuard and OpenVPN tunnels.
 
 ## Network Architecture Overview
 
@@ -86,7 +86,7 @@ ip addr show tun0
 ip route | grep 172.16
 ```
 
-The Ansible configuration is identical to the WireGuard example since both create standard network interfaces. The only difference is that OpenVPN tends to have higher latency, so you may want to adjust timeouts.
+The Ansible configuration is identical to the WireGuard example since both create standard network interfaces. OpenVPN connections can have higher latency depending on the network and configuration, so you may want to adjust timeouts.
 
 ```ini
 # ansible.cfg tuned for OpenVPN connections
@@ -153,10 +153,10 @@ web1 ansible_host=172.16.1.10
 ```bash
 # Configure split DNS with systemd-resolved
 sudo resolvectl dns wg0 172.16.0.1
-sudo resolvectl domain wg0 internal.example.com
+sudo resolvectl domain wg0 ~internal.example.com
 
 # Verify DNS resolution works for internal domains
-dig web1.internal.example.com
+resolvectl query web1.internal.example.com
 ```
 
 ## Playbook for VPN-Connected Hosts
