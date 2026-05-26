@@ -29,7 +29,7 @@ TFE acts as the Service Provider. Your IdP needs to know about TFE (the SP metad
 - Terraform Enterprise with admin access
 - Access to your identity provider's admin console
 - The TFE hostname (e.g., `tfe.example.com`)
-- TFE's SAML metadata URL: `https://tfe.example.com/users/saml/metadata`
+- TFE's SAML metadata document URL: `https://tfe.example.com/users/saml/metadata.xml`
 
 ## Step 1: Gather TFE SAML Metadata
 
@@ -38,12 +38,11 @@ Before configuring your IdP, grab the TFE SAML metadata:
 ```bash
 # Download the TFE SP metadata
 
-curl -o tfe-sp-metadata.xml https://tfe.example.com/users/saml/metadata
+curl -o tfe-sp-metadata.xml https://tfe.example.com/users/saml/metadata.xml
 
 # Key values you will need from this:
 # - Entity ID: https://tfe.example.com/users/saml/metadata
 # - ACS URL: https://tfe.example.com/users/saml/auth
-# - SLO URL: https://tfe.example.com/users/saml/slo (if using single logout)
 ```
 
 ## Step 2: Configure Your Identity Provider
@@ -70,12 +69,10 @@ Name ID format:        EmailAddress
 Application username:  Email
 
 Attribute Statements:
-  - Name: email,     Value: user.email
-  - Name: firstName, Value: user.firstName
-  - Name: lastName,  Value: user.lastName
+  - Name: SiteAdmin, Value: user.TFEAdmin
 
 Group Attribute Statements:
-  - Name: memberOf,  Filter: Matches regex, Value: .*
+  - Name: MemberOf,  Filter: Matches regex, Value: .*
 ```
 
 5. Download the IdP metadata XML from Okta after saving the application.
@@ -93,13 +90,10 @@ Basic SAML Configuration:
   Identifier (Entity ID):  https://tfe.example.com/users/saml/metadata
   Reply URL (ACS URL):     https://tfe.example.com/users/saml/auth
   Sign on URL:             https://tfe.example.com
-  Logout URL:              https://tfe.example.com/users/saml/slo
 
 Attributes & Claims:
-  email:     user.mail
-  firstName: user.givenname
-  lastName:  user.surname
-  memberOf:  user.groups (or a filtered set)
+  SiteAdmin: user.TFEAdmin
+  MemberOf:  user.groups (or a filtered set)
 ```
 
 4. Download the **Federation Metadata XML** from the SAML configuration page.
@@ -112,7 +106,7 @@ For Active Directory Federation Services, create a new Relying Party Trust:
 # Add the relying party trust using TFE metadata URL
 Add-AdfsRelyingPartyTrust `
   -Name "Terraform Enterprise" `
-  -MetadataUrl "https://tfe.example.com/users/saml/metadata" `
+  -MetadataUrl "https://tfe.example.com/users/saml/metadata.xml" `
   -IssuanceAuthorizationRules '@RuleTemplate = "AllowAllAuthzRule" => issue(Type = "http://schemas.microsoft.com/authorization/claims/permit", Value = "true");'
 
 # Configure claim rules
@@ -127,7 +121,7 @@ c:[Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"]
 # Rule 2: Send group membership
 $rule2 = '@RuleName = "Group Membership"
 c:[Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/groupsid", Value =~ ".*"]
-=> issue(Type = "memberOf", Value = c.Value);'
+=> issue(Type = "MemberOf", Value = c.Value);'
 
 Set-AdfsRelyingPartyTrust -TargetName "Terraform Enterprise" `
   -IssuanceTransformRules "$rule1 $rule2"
@@ -145,9 +139,9 @@ Now configure TFE with your IdP metadata. Go to the TFE admin console at `https:
 
 ```text
 Single Sign-On URL:      [from your IdP metadata]
-Single Log-Out URL:      [from your IdP metadata, optional]
+Single Log-Out URL:      [from your IdP metadata, optional; TFE exposes this setting but does not yet support Single Logout]
 IdP Certificate:         [paste the PEM-encoded certificate from IdP metadata]
-Team Attribute Name:     memberOf
+Team Attribute Name:     MemberOf
 Site Admin Role:         site-admins (matches a group name in your IdP)
 ```
 
@@ -169,15 +163,11 @@ curl -s \
         "sso-api-token-session-timeout": 1209600,
         "slo-endpoint-url": "https://idp.example.com/saml/slo",
         "sso-endpoint-url": "https://idp.example.com/saml/sso",
-        "attr-username": "email",
-        "attr-groups": "memberOf",
-        "attr-site-admin": "isSiteAdmin",
+        "attr-username": "Username",
+        "attr-groups": "MemberOf",
+        "attr-site-admin": "SiteAdmin",
         "site-admin-role": "site-admins",
-        "team-management-enabled": true,
-        "authn-requests-signed": false,
-        "want-assertions-signed": true,
-        "signature-signing-method": "SHA256",
-        "signature-digest-method": "SHA256"
+        "debug": false
       }
     }
   }'
@@ -185,7 +175,7 @@ curl -s \
 
 ## Step 4: Team Mapping
 
-One of the most useful features of SAML in TFE is automatic team mapping. When the IdP sends group information in the SAML assertion, TFE can automatically add users to the correct teams.
+One of the most useful features of SAML in TFE is automatic team mapping. When SCIM is not enabled and the IdP sends group information in the SAML assertion, TFE can automatically add users to the correct teams.
 
 ```text
 IdP Group Name    ->    TFE Team
@@ -198,9 +188,9 @@ tfe-security      ->    security-reviewers
 
 To set this up, make sure:
 
-1. Your IdP sends group membership in the attribute specified by `attr-groups` (default: `memberOf`)
+1. Your IdP sends group membership in the attribute specified by `attr-groups` (default: `MemberOf`)
 2. TFE teams exist with names matching the group values from the IdP
-3. **Team Management Enabled** is turned on in the SAML settings
+3. **Use SAML to manage team memberships** is turned on in the SAML settings
 
 ## Step 5: Testing the Configuration
 
@@ -224,7 +214,7 @@ curl -s \
 # Step 5: Verify team membership
 curl -s \
   --header "Authorization: Bearer $TFE_USER_TOKEN" \
-  https://tfe.example.com/api/v2/teams | jq '.data[].attributes.name'
+  https://tfe.example.com/api/v2/organizations/$TFE_ORG/teams | jq '.data[].attributes.name'
 ```
 
 ## Troubleshooting SAML Issues
@@ -261,6 +251,6 @@ Always keep at least one local admin account that can log in without SAML. If yo
 
 ## Summary
 
-SAML integration in Terraform Enterprise centralizes authentication and makes life easier for both users and administrators. The setup involves configuring your IdP with TFE's metadata, then configuring TFE with your IdP's metadata. Team mapping through SAML groups keeps permissions in sync automatically. Test thoroughly before enforcing SSO, and always keep a backdoor admin account in case your IdP has an outage.
+SAML integration in Terraform Enterprise centralizes authentication and makes life easier for both users and administrators. The setup involves configuring your IdP with TFE's metadata, then configuring TFE with your IdP's metadata. When SCIM is not enabled, team mapping through SAML groups keeps permissions in sync automatically. Test thoroughly before enforcing SSO, and always keep a backdoor admin account in case your IdP has an outage.
 
 For other authentication options, see [How to Configure Terraform Enterprise OIDC Authentication](https://oneuptime.com/blog/post/2026-02-23-configure-terraform-enterprise-oidc-authentication/view) and [How to Configure Terraform Enterprise LDAP Authentication](https://oneuptime.com/blog/post/2026-02-23-configure-terraform-enterprise-ldap-authentication/view).
