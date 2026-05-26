@@ -43,7 +43,7 @@ nagios/
         hosts.cfg.j2
         services.cfg.j2
         contacts.cfg.j2
-        commands.cfg.j2
+        nrpe-commands.cfg.j2
       defaults/
         main.yml
       handlers/
@@ -67,8 +67,8 @@ nagios/
 ```yaml
 # roles/nagios_server/defaults/main.yml
 
-nagios_version: "4.4.14"
-nagios_plugins_version: "2.4.8"
+nagios_version: "4.5.12"
+nagios_plugins_version: "2.4.11"
 
 # System settings
 nagios_user: "nagios"
@@ -120,8 +120,8 @@ nagios_services:
   - name: "Disk Usage"
     check_command: "check_nrpe!check_disk"
     hostgroups: ["all"]
-  - name: "Memory"
-    check_command: "check_nrpe!check_mem"
+  - name: "Swap"
+    check_command: "check_nrpe!check_swap"
     hostgroups: ["all"]
 ```
 
@@ -215,10 +215,11 @@ nagios_services:
   become: true
   changed_when: true
 
-- name: Enable Apache CGI module
-  ansible.builtin.command: a2enmod cgi
+- name: Enable Apache modules for Nagios
+  ansible.builtin.command: a2enmod rewrite cgi
+  register: apache_modules
   become: true
-  changed_when: true
+  changed_when: "'Enabling module' in apache_modules.stdout"
   notify: Restart apache
 
 - name: Clean up Nagios source
@@ -319,11 +320,19 @@ nagios_services:
 
 - name: Deploy commands configuration
   ansible.builtin.template:
-    src: commands.cfg.j2
-    dest: "{{ nagios_config_dir }}/objects/commands.cfg"
+    src: nrpe-commands.cfg.j2
+    dest: "{{ nagios_config_dir }}/objects/nrpe-commands.cfg"
     owner: "{{ nagios_user }}"
     group: "{{ nagios_group }}"
     mode: "0644"
+  become: true
+  notify: Validate and reload nagios
+
+- name: Add NRPE command config to nagios.cfg
+  ansible.builtin.lineinfile:
+    path: "{{ nagios_config_dir }}/nagios.cfg"
+    line: "cfg_file={{ nagios_config_dir }}/objects/nrpe-commands.cfg"
+    state: present
   become: true
   notify: Validate and reload nagios
 
@@ -410,27 +419,12 @@ define service {
 ### Commands Configuration Template
 
 ```ini
-# roles/nagios_server/templates/commands.cfg.j2
-# Command definitions - managed by Ansible
+# roles/nagios_server/templates/nrpe-commands.cfg.j2
+# NRPE command definitions - managed by Ansible
 
 define command {
     command_name    check_nrpe
     command_line    $USER1$/check_nrpe -H $HOSTADDRESS$ -c $ARG1$
-}
-
-define command {
-    command_name    check_http
-    command_line    $USER1$/check_http -H $HOSTADDRESS$
-}
-
-define command {
-    command_name    check_ssh
-    command_line    $USER1$/check_ssh $HOSTADDRESS$
-}
-
-define command {
-    command_name    check_ping
-    command_line    $USER1$/check_ping -H $HOSTADDRESS$ -w $ARG1$ -c $ARG2$ -p 5
 }
 ```
 
@@ -464,7 +458,7 @@ define command {
 - name: Validate and reload nagios
   ansible.builtin.command: "{{ nagios_home }}/bin/nagios -v {{ nagios_config_dir }}/nagios.cfg"
   become: true
-  changed_when: false
+  changed_when: true
   notify: Reload nagios
 
 - name: Reload nagios
@@ -493,7 +487,7 @@ nrpe_port: 5666
 nrpe_commands:
   check_load: "/usr/lib/nagios/plugins/check_load -w 5.0,4.0,3.0 -c 10.0,6.0,4.0"
   check_disk: "/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p /"
-  check_mem: "/usr/lib/nagios/plugins/check_mem -w 80 -c 90"
+  check_swap: "/usr/lib/nagios/plugins/check_swap -w 20% -c 10%"
   check_procs: "/usr/lib/nagios/plugins/check_procs -w 250 -c 400"
   check_zombie: "/usr/lib/nagios/plugins/check_procs -w 5 -c 10 -s Z"
 ```
@@ -526,6 +520,16 @@ nrpe_commands:
     name: nagios-nrpe-server
     state: started
     enabled: true
+  become: true
+```
+
+```yaml
+# roles/nagios_nrpe/handlers/main.yml
+---
+- name: Restart nrpe
+  ansible.builtin.systemd:
+    name: nagios-nrpe-server
+    state: restarted
   become: true
 ```
 
