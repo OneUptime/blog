@@ -1,20 +1,20 @@
-# How to Use Execution Environments with AWX/Tower
+# How to Use Execution Environments with AWX/Automation Controller
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Ansible Tower, Execution Environments, Automation
+Tags: Ansible, AWX, Ansible Automation Platform, Execution Environments, Automation
 
-Description: Configure AWX and Ansible Automation Platform to use custom Execution Environments for job templates, workflows, and project updates.
+Description: Configure AWX and Ansible Automation Platform to use custom Execution Environments for job templates, workflows, and project defaults.
 
 ---
 
-AWX and Ansible Automation Platform (formerly Tower) are the go-to solutions for running Ansible at scale through a web interface and API. Starting with AWX 18+ and AAP 2.0+, Execution Environments replaced the older concept of virtual environments for isolating playbook dependencies. This post covers how to register, configure, and use EEs in AWX and Tower for running job templates and workflows.
+AWX and Ansible Automation Platform automation controller (the successor to Tower) are the go-to solutions for running Ansible at scale through a web interface and API. Starting with AWX 18+ and AAP 2.0+, Execution Environments replaced the older concept of virtual environments for isolating playbook dependencies. This post covers how to register, configure, and use EEs in AWX and automation controller for running job templates and workflows.
 
-## How AWX/Tower Uses Execution Environments
+## How AWX/Automation Controller Uses Execution Environments
 
-In older versions, AWX/Tower used Python virtual environments to isolate dependencies. Each project could point to a different venv. The problem was managing these venvs across all your Tower nodes, keeping them in sync, and dealing with conflicting package versions.
+In older versions, AWX/Tower used Python virtual environments to isolate dependencies. Job templates, projects, inventory sources, and organizations could point to a custom venv. The problem was managing these venvs across all your Tower nodes, keeping them in sync, and dealing with conflicting package versions.
 
-Execution Environments replace all of that with container images. When a job runs, AWX/Tower pulls the specified EE image and executes the playbook inside it. Every Tower node runs the exact same container image, so there are no drift or version mismatch issues.
+Execution Environments replace all of that with container images. When a job runs, AWX or automation controller pulls the specified EE image and executes the playbook inside it. Every execution node runs the exact same container image, so there are no drift or version mismatch issues.
 
 ## Registering an EE in AWX
 
@@ -62,7 +62,13 @@ awx execution_environments list --all
 
 If your EE is in a private registry, AWX needs credentials to pull the image.
 
-Create a credential for the container registry:
+Create a credential for the container registry. The numeric `credential_type` ID is installation-specific, so look up the Container Registry credential type first:
+
+```bash
+# Find the Container Registry credential type ID
+CREDENTIAL_TYPE_ID=$(curl -s "https://awx.example.com/api/v2/credential_types/?name=Container%20Registry" \
+  -H "Authorization: Bearer ${AWX_TOKEN}" | jq -r '.results[0].id')
+```
 
 ```bash
 # Create a registry credential in AWX
@@ -71,7 +77,7 @@ curl -X POST "https://awx.example.com/api/v2/credentials/" \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -d '{
     "name": "Quay.io Registry",
-    "credential_type": 17,
+    "credential_type": '"${CREDENTIAL_TYPE_ID}"',
     "organization": 1,
     "inputs": {
       "host": "quay.io",
@@ -112,9 +118,21 @@ curl -X POST "https://awx.example.com/api/v2/job_templates/" \
     "inventory": 1,
     "project": 1,
     "playbook": "deploy.yml",
-    "execution_environment": 3,
-    "credentials": [1, 2]
+    "execution_environment": 3
   }'
+
+# Associate credentials with the job template
+JOB_TEMPLATE_ID=10
+
+curl -X POST "https://awx.example.com/api/v2/job_templates/${JOB_TEMPLATE_ID}/credentials/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  -d '{"associate": true, "id": 1}'
+
+curl -X POST "https://awx.example.com/api/v2/job_templates/${JOB_TEMPLATE_ID}/credentials/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  -d '{"associate": true, "id": 2}'
 
 # Update an existing job template to use a different EE
 curl -X PATCH "https://awx.example.com/api/v2/job_templates/10/" \
@@ -141,12 +159,15 @@ curl -X PATCH "https://awx.example.com/api/v2/organizations/1/" \
 
 The EE resolution order in AWX is:
 1. Job template EE (highest priority)
-2. Organization default EE
-3. Global default EE (lowest priority)
+2. Project default EE
+3. Organization default EE for the job
+4. Organization default EE for the inventory
+5. Global default EE settings
+6. Other global execution environments (lowest priority)
 
 ## Using EEs in Workflow Job Templates
 
-Workflow templates can use different EEs for different nodes in the workflow. Each node can override the EE of its underlying job template.
+Workflow templates can use different EEs for different nodes in the workflow. Each node can pass an EE as a prompt to its underlying job template when that job template has Prompt on launch enabled for the execution environment.
 
 ```bash
 # Create a workflow job template
@@ -163,6 +184,14 @@ curl -X POST "https://awx.example.com/api/v2/workflow_job_templates/" \
 Then add nodes with different EEs:
 
 ```bash
+# Allow workflow nodes to prompt for the EE on this job template
+curl -X PATCH "https://awx.example.com/api/v2/job_templates/10/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AWX_TOKEN}" \
+  -d '{
+    "ask_execution_environment_on_launch": true
+  }'
+
 # Add a build node using a build-specific EE
 curl -X POST "https://awx.example.com/api/v2/workflow_job_templates/1/workflow_nodes/" \
   -H "Content-Type: application/json" \
@@ -244,12 +273,12 @@ podman run --rm quay.io/myorg/ansible-ee:2.1.0 id
 podman run --rm quay.io/myorg/ansible-ee:2.1.0 ls -la /runner
 ```
 
-## EE for Project Updates
+## Default EE for Projects
 
-AWX also uses an EE for project sync operations (pulling playbook code from Git). You can specify a separate EE for this purpose:
+Projects can also specify a default EE. This affects jobs that use the project when the job template does not specify its own EE:
 
 ```bash
-# Set the EE used for project updates
+# Set the default EE used by jobs that use this project
 curl -X PATCH "https://awx.example.com/api/v2/projects/1/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
@@ -258,7 +287,7 @@ curl -X PATCH "https://awx.example.com/api/v2/projects/1/" \
   }'
 ```
 
-The project sync EE needs Git and any authentication tools required to access your source code repositories.
+Project sync operations themselves use the control plane execution environment by default, so that environment needs Git and any authentication tools required to access your source code repositories.
 
 ## Practical Multi-EE Setup
 
@@ -285,4 +314,4 @@ Each EE contains only the dependencies needed for its use case, keeping images l
 
 ## Wrapping Up
 
-Execution Environments in AWX/Tower bring consistency and reproducibility to your automation platform. Register your EEs with proper registry credentials, assign them to job templates based on what dependencies each playbook needs, and use immutable version tags for production workloads. The move from virtual environments to EEs is one of the best improvements in the Ansible ecosystem because it eliminates an entire class of "it worked yesterday" problems.
+Execution Environments in AWX and automation controller bring consistency and reproducibility to your automation platform. Register your EEs with proper registry credentials, assign them to job templates based on what dependencies each playbook needs, and use immutable version tags for production workloads. The move from virtual environments to EEs is one of the best improvements in the Ansible ecosystem because it eliminates an entire class of "it worked yesterday" problems.
