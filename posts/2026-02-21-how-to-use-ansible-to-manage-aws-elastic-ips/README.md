@@ -14,7 +14,7 @@ If you have ever manually clicked through the AWS console to allocate and associ
 
 Before you start writing playbooks, you need a few things in place:
 
-- Ansible 2.9 or later installed on your control machine
+- A supported `ansible-core` version for your installed `amazon.aws` collection
 - The `amazon.aws` collection installed
 - AWS credentials configured (either environment variables, AWS CLI profile, or IAM role)
 - An existing VPC with at least one running EC2 instance
@@ -38,7 +38,7 @@ export AWS_REGION="us-east-1"
 
 ## Understanding Elastic IPs in AWS
 
-Elastic IPs are static IPv4 addresses that you own until you explicitly release them. They are tied to your AWS account, not to any specific instance. This means you can move them between instances without changing DNS records or firewall rules. The catch is that AWS charges you for allocated EIPs that are not associated with a running instance, so keeping them managed properly matters for your bill.
+Elastic IPs are static IPv4 addresses that you own until you explicitly release them. They are tied to your AWS account, not to any specific instance. This means you can move them between instances without changing DNS records or firewall rules. The catch is that AWS charges for Elastic IPs whether they are associated with a resource or sitting idle, so keeping them managed properly matters for your bill.
 
 Here is how the workflow looks:
 
@@ -69,8 +69,8 @@ The `amazon.aws.ec2_eip` module handles all Elastic IP operations. Let's start w
         region: us-east-1
         state: present
         in_vpc: true
-        tag_name: Name
-        tag_value: web-server-eip
+        tags:
+          Name: web-server-eip
       register: eip_result
 
     - name: Show the allocated EIP details
@@ -104,6 +104,7 @@ Having an EIP sitting around unattached costs money and does nothing useful. Her
         public_ip: "{{ eip_address }}"
         state: present
         in_vpc: true
+        allow_reassociation: true
       register: association_result
 
     - name: Confirm the association
@@ -111,7 +112,7 @@ Having an EIP sitting around unattached costs money and does nothing useful. Her
         msg: "EIP {{ eip_address }} is now associated with {{ target_instance_id }}"
 ```
 
-If the EIP was previously associated with another instance, Ansible will move it over. This is useful for failover scenarios where you want to point traffic at a standby instance.
+With `allow_reassociation: true`, Ansible can move the EIP if it was previously associated with another instance. This is useful for failover scenarios where you want to point traffic at a standby instance.
 
 ## Allocating and Associating in One Step
 
@@ -137,6 +138,8 @@ Most of the time, you want to do both in a single task. The module supports this
         in_vpc: true
         tag_name: Name
         tag_value: "eip-{{ instance_id }}"
+        tags:
+          Name: "eip-{{ instance_id }}"
         reuse_existing_ip_allowed: true
       register: eip
 
@@ -145,7 +148,7 @@ Most of the time, you want to do both in a single task. The module supports this
         msg: "Instance {{ instance_id }} now has public IP {{ eip.public_ip }}"
 ```
 
-The `reuse_existing_ip_allowed` flag is worth noting. When set to true, Ansible will check if there is an unassociated EIP available that matches your tag criteria before allocating a new one. This prevents you from accumulating unused EIPs across repeated playbook runs.
+The `reuse_existing_ip_allowed` flag is worth noting. When set to true, Ansible will check if there is an unassociated EIP available that matches your `tag_name` and `tag_value` criteria before allocating a new one. The `tags` value applies the same `Name` tag to any newly allocated EIP. This prevents you from accumulating unused EIPs across repeated playbook runs.
 
 ## Releasing an Elastic IP
 
@@ -161,13 +164,16 @@ When you no longer need an EIP, release it to avoid charges:
 
   vars:
     eip_to_release: "52.10.20.30"
+    eip_instance_id: "i-0abc123def456789"
 
   tasks:
     - name: Disassociate and release the EIP
       amazon.aws.ec2_eip:
         region: us-east-1
+        device_id: "{{ eip_instance_id }}"
         public_ip: "{{ eip_to_release }}"
         state: absent
+        release_on_disassociation: true
       register: release_result
 
     - name: Confirm release
@@ -175,7 +181,7 @@ When you no longer need an EIP, release it to avoid charges:
         msg: "EIP {{ eip_to_release }} has been released"
 ```
 
-Setting `state: absent` handles both disassociation and release in one step. If the EIP is currently attached to an instance, Ansible will detach it first and then release it.
+Setting `state: absent` with `release_on_disassociation: true` handles both disassociation and release in one step when you provide the associated instance or network interface. If the EIP is already unattached, you can release it with `state: absent` and `public_ip` alone.
 
 ## Managing Multiple EIPs with a Loop
 
@@ -207,6 +213,8 @@ In production, you often need to assign EIPs to several instances at once. Here 
         in_vpc: true
         tag_name: Name
         tag_value: "eip-{{ item.name }}"
+        tags:
+          Name: "eip-{{ item.name }}"
         reuse_existing_ip_allowed: true
       loop: "{{ instance_eip_map }}"
       register: eip_results
@@ -222,7 +230,7 @@ In production, you often need to assign EIPs to several instances at once. Here 
 
 One thing I have learned from running these playbooks in CI/CD pipelines is that idempotency matters a lot with EIPs. If you run the association playbook twice with the same instance and EIP, it should not fail or create duplicates. The `amazon.aws.ec2_eip` module handles this well as long as you provide consistent identifiers.
 
-However, watch out for this gotcha: if you specify `reuse_existing_ip_allowed: true` but your tag filters match multiple unassociated EIPs, the module will pick one and you might not get the same one on every run. To avoid surprises, use specific allocation IDs when you need deterministic behavior.
+However, watch out for this gotcha: if you specify `reuse_existing_ip_allowed: true` but your tag filters match multiple unassociated EIPs, the module will pick one and you might not get the same one on every run. To avoid surprises, use more specific tags, or pass the exact `public_ip` when you need deterministic behavior.
 
 ## Putting It All Together
 
@@ -253,10 +261,12 @@ A production-ready playbook typically combines allocation, association, and clea
         in_vpc: true
         tag_name: Name
         tag_value: "eip-{{ item.name }}"
+        tags:
+          Name: "eip-{{ item.name }}"
         reuse_existing_ip_allowed: true
       loop: "{{ active_instances }}"
 
-    - name: Release decommissioned EIPs
+    - name: Release decommissioned unattached EIPs
       amazon.aws.ec2_eip:
         region: "{{ aws_region }}"
         public_ip: "{{ item }}"
