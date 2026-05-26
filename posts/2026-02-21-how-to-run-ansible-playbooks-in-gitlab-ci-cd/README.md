@@ -19,7 +19,7 @@ GitLab CI/CD uses a `.gitlab-ci.yml` file in the root of your repository. Here i
 ```yaml
 # .gitlab-ci.yml
 
-image: python:3.11-slim
+image: python:3.12-slim
 
 stages:
   - lint
@@ -27,8 +27,9 @@ stages:
   - deploy_production
 
 variables:
-  ANSIBLE_HOST_KEY_CHECKING: "false"
+  ANSIBLE_HOST_KEY_CHECKING: "true"
   ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_COLLECTIONS_PATH: "$CI_PROJECT_DIR/.ansible/collections"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
 # Cache pip packages across pipeline runs
@@ -40,8 +41,8 @@ cache:
 
 # Install Ansible before all jobs
 before_script:
-  - pip install ansible==8.7.0 ansible-lint
-  - ansible-galaxy collection install -r requirements.yml --collections-path .ansible/collections
+  - pip install ansible==13.7.0 ansible-lint
+  - ansible-galaxy collection install -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
   - ansible --version
 ```
 
@@ -71,8 +72,9 @@ Configure SSH key access so the GitLab runner can connect to your target hosts. 
 # SSH setup template that other jobs can extend
 .ssh_setup: &ssh_setup
   before_script:
-    - pip install ansible==8.7.0
-    - ansible-galaxy collection install -r requirements.yml --collections-path .ansible/collections
+    - apt-get update && apt-get install -y --no-install-recommends openssh-client
+    - pip install ansible==13.7.0
+    - ansible-galaxy collection install -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
     # Set up SSH for connecting to target hosts
     - mkdir -p ~/.ssh
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
@@ -141,7 +143,7 @@ Here is the full pipeline combining all stages.
 
 ```yaml
 # .gitlab-ci.yml - Complete Ansible deployment pipeline
-image: python:3.11-slim
+image: python:3.12-slim
 
 stages:
   - validate
@@ -150,21 +152,23 @@ stages:
   - deploy_production
 
 variables:
-  ANSIBLE_HOST_KEY_CHECKING: "false"
+  ANSIBLE_HOST_KEY_CHECKING: "true"
   ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_COLLECTIONS_PATH: "$CI_PROJECT_DIR/.ansible/collections"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
 cache:
   key: ansible-deps-v1
   paths:
     - .cache/pip
+    - .ansible/collections
 
 # Shared SSH setup
 .ssh_config: &ssh_config
   before_script:
-    - apt-get update && apt-get install -y openssh-client
-    - pip install ansible==8.7.0
-    - ansible-galaxy collection install -r requirements.yml
+    - apt-get update && apt-get install -y --no-install-recommends openssh-client
+    - pip install ansible==13.7.0
+    - ansible-galaxy collection install -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
     - mkdir -p ~/.ssh
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
@@ -174,7 +178,8 @@ cache:
 validate:
   stage: validate
   script:
-    - pip install ansible==8.7.0 ansible-lint
+    - pip install ansible==13.7.0 ansible-lint
+    - ansible-galaxy collection install -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
     - ansible-lint playbooks/
     - ansible-playbook --syntax-check playbooks/site.yml
     - ansible-inventory -i inventory/staging.ini --list > /dev/null
@@ -257,7 +262,7 @@ Installing Ansible from pip on every pipeline run is slow. Build a custom Docker
 
 ```dockerfile
 # Dockerfile.ansible-runner
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -266,7 +271,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    ansible==8.7.0 \
+    ansible==13.7.0 \
     ansible-lint \
     jmespath
 
@@ -281,13 +286,13 @@ ENTRYPOINT ["/bin/bash"]
 Reference it in your pipeline.
 
 ```yaml
-# Use custom image instead of python:3.11-slim
+# Use custom image instead of python:3.12-slim
 image: registry.example.com/ansible-runner:latest
 ```
 
 ## Handling Dynamic Inventories
 
-If your infrastructure is in AWS or another cloud, use dynamic inventory scripts.
+If your infrastructure is in AWS or another cloud, use dynamic inventory plugins.
 
 ```yaml
 deploy_aws:
@@ -296,7 +301,7 @@ deploy_aws:
   script:
     - pip install boto3 botocore
     - echo "$ANSIBLE_VAULT_PASSWORD" > .vault_pass
-    # Use AWS dynamic inventory
+    # Use the AWS dynamic inventory plugin
     - >
       AWS_ACCESS_KEY_ID=$AWS_KEY
       AWS_SECRET_ACCESS_KEY=$AWS_SECRET
@@ -332,7 +337,7 @@ stop_staging:
 For production security:
 
 1. Mark production CI/CD variables as "Protected" so they are only available on protected branches.
-2. Set the production environment to require approval from specific team members.
+2. Set the production environment to require approval from specific team members if your GitLab tier supports deployment approvals.
 3. Limit production deployments to the `main` branch only.
 
 ## Tips for GitLab CI/CD with Ansible
