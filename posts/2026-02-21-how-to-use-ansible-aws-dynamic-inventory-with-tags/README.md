@@ -27,7 +27,8 @@ The `amazon.aws.aws_ec2` inventory plugin handles this. It queries EC2, processe
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `amazon.aws` collection
+- A supported `ansible-core` version for your `amazon.aws` collection (current `amazon.aws` 10.x supports `ansible-core` 2.16.0 or newer)
+- Python dependencies for the inventory plugin: `boto3` and `botocore`
 - AWS credentials with `ec2:DescribeInstances` permission
 - EC2 instances with consistent tags
 
@@ -138,7 +139,7 @@ The `:&` syntax is an intersection operator. It means "hosts that are in BOTH gr
 You can filter which instances the plugin discovers using AWS API filters:
 
 ```yaml
-# inventory/production_ec2.yml - Targeted inventory for production only
+# inventory/production.aws_ec2.yml - Targeted inventory for production only
 ---
 plugin: amazon.aws.aws_ec2
 regions:
@@ -151,7 +152,7 @@ filters:
   "tag:Environment": production
   "tag:ManagedBy": ansible
 
-# Exclude specific instance types (like spot instances used for batch jobs)
+# Exclude instances with an Ephemeral=true tag
 exclude_filters:
   - "tag:Ephemeral":
       - "true"
@@ -292,7 +293,7 @@ inventory = inventory/
 host_key_checking = False
 
 [inventory]
-enable_plugins = amazon.aws.aws_ec2, host_list, auto
+enable_plugins = host_list, script, auto, yaml, ini, toml, amazon.aws.aws_ec2
 ```
 
 The `enable_plugins` setting tells Ansible which inventory plugins to try when loading inventory files.
