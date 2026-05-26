@@ -54,7 +54,7 @@ The most classic use case is building a load balancer backend configuration:
 
     - name: Verify all backends are reachable
       ansible.builtin.wait_for:
-        host: "{{ item }}"
+        host: "{{ hostvars[item]['ansible_host'] | default(item) }}"
         port: "{{ backend_port }}"
         timeout: 5
       loop: "{{ groups['webservers'] }}"
@@ -103,7 +103,10 @@ The `hostvars[item]` dictionary contains all variables for the host named `item`
 ```yaml
 # Add all inventory hosts to the known_hosts file
 - name: Gather SSH host keys from all servers
-  ansible.builtin.command: ssh-keyscan -H {{ hostvars[item]['ansible_host'] | default(item) }}
+  ansible.builtin.command:
+    argv:
+      - ssh-keyscan
+      - "{{ hostvars[item]['ansible_host'] | default(item) }}"
   loop: "{{ groups['all'] }}"
   register: ssh_keys
   changed_when: false
@@ -113,13 +116,13 @@ The `hostvars[item]` dictionary contains all variables for the host named `item`
 
 - name: Add keys to known_hosts
   ansible.builtin.known_hosts:
-    name: "{{ item.item }}"
-    key: "{{ item.stdout }}"
+    name: "{{ hostvars[item.0.item]['ansible_host'] | default(item.0.item) }}"
+    key: "{{ item.1 }}"
     state: present
-  loop: "{{ ssh_keys.results }}"
-  when: item.stdout | length > 0
+  loop: "{{ ssh_keys.results | subelements('stdout_lines', skip_missing=True) }}"
+  when: item.1 | length > 0
   loop_control:
-    label: "{{ item.item }}"
+    label: "{{ item.0.item }}"
 ```
 
 ## The inventory_hostnames Lookup
@@ -167,7 +170,7 @@ This returns hosts that are in BOTH the `webservers` AND `production` groups. Th
     - name: Add replication entries to pg_hba.conf
       ansible.builtin.lineinfile:
         path: /etc/postgresql/14/main/pg_hba.conf
-        line: "host replication {{ replication_user }} {{ hostvars[item]['ansible_host'] }}/32 md5"
+        line: "host replication {{ replication_user }} {{ hostvars[item]['ansible_host'] | default(item) }}/32 md5"
         state: present
       loop: "{{ groups['db_replicas'] }}"
       loop_control:
@@ -298,7 +301,7 @@ Sometimes you need sequential numbering for cluster nodes:
 
     - name: Open cluster communication port for all members
       ansible.posix.firewalld:
-        rich_rule: "rule family=ipv4 source address={{ hostvars[item]['ansible_host'] }}/32 port port={{ cluster_port }} protocol=tcp accept"
+        rich_rule: "rule family=ipv4 source address={{ hostvars[item]['ansible_host'] | default(item) }}/32 port port={{ cluster_port }} protocol=tcp accept"
         permanent: yes
         state: enabled
         immediate: yes
