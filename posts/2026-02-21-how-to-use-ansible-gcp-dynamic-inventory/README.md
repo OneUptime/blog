@@ -23,9 +23,9 @@ This means:
 
 ## Prerequisites
 
-- Ansible 2.10+ with the `google.cloud` collection
+- Ansible 2.16+ with the `google.cloud` collection
 - A GCP service account with `compute.instances.list` permission
-- Python `google-auth` library installed
+- Python `google-auth` and `requests` libraries installed
 
 ```bash
 # Install the GCP Ansible collection
@@ -38,7 +38,7 @@ pip install google-auth requests
 
 ## Setting Up the Inventory Plugin
 
-The GCP dynamic inventory uses a plugin configuration file. This file must end in `.gcp.yml` or `.gcp.yaml` for Ansible to recognize it as a GCP inventory source.
+The GCP dynamic inventory uses a plugin configuration file. This file must end in `.gcp.yml`, `.gcp.yaml`, `.gcp_compute.yml`, or `.gcp_compute.yaml` for Ansible to recognize it as a GCP inventory source.
 
 ```yaml
 # inventory.gcp.yml - GCP dynamic inventory configuration
@@ -89,9 +89,6 @@ compose:
   ansible_host: networkInterfaces[0].networkIP
   # Or use the public IP if instances have one
   # ansible_host: networkInterfaces[0].accessConfigs[0].natIP
-
-# Host variables to set
-hostvar_expressions:
   # Make instance metadata available as host vars
   gcp_zone: zone
   gcp_machine_type: machineType
@@ -237,10 +234,10 @@ projects:
 filters:
   # Only running instances
   - status = RUNNING
-  # Only instances with the 'managed-by-ansible' label
+  # Only instances with the 'managed_by' label set to 'ansible'
   - labels.managed_by = ansible
-  # Only specific machine type families
-  - machineType ~ e2-.*
+  # Only machine types whose resource path contains 'machineTypes/e2-'
+  - "machineType : machineTypes/e2-"
 
 keyed_groups:
   - key: labels.environment
@@ -252,8 +249,8 @@ keyed_groups:
 
 compose:
   ansible_host: networkInterfaces[0].networkIP
-  ansible_user: ubuntu
-  ansible_ssh_private_key_file: ~/.ssh/gcp_key
+  ansible_user: "'ubuntu'"
+  ansible_ssh_private_key_file: "'~/.ssh/gcp_key'"
 ```
 
 ## Connecting Through a Bastion Host
@@ -280,9 +277,9 @@ keyed_groups:
 
 compose:
   ansible_host: networkInterfaces[0].networkIP
-  ansible_user: ubuntu
+  ansible_user: "'ubuntu'"
   # Configure SSH to jump through the bastion
-  ansible_ssh_common_args: '-o ProxyJump=bastion-user@bastion.example.com'
+  ansible_ssh_common_args: "'-o ProxyJump=bastion-user@bastion.example.com'"
 ```
 
 Alternatively, configure this in your `ansible.cfg`:
