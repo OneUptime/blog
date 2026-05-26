@@ -93,7 +93,7 @@ This file lives at the project root and configures Ansible for the project:
 inventory = inventories/production/hosts.ini
 roles_path = roles
 retry_files_enabled = False
-host_key_checking = False
+host_key_checking = True
 forks = 20
 gathering = smart
 fact_caching = jsonfile
@@ -314,7 +314,7 @@ Use `group_vars` for variables shared across hosts in a group:
 ---
 nginx_sites:
   - name: myapp
-    template: myapp-site.conf.j2
+    template: site.conf.j2
     server_name: myapp.example.com
     ssl_certificate: /etc/ssl/certs/myapp.crt
     ssl_key: /etc/ssl/private/myapp.key
@@ -383,7 +383,6 @@ Install them:
 ```bash
 # Install all external roles and collections
 ansible-galaxy install -r requirements.yml
-ansible-galaxy collection install -r requirements.yml
 ```
 
 ## Task Organization Within Roles
@@ -425,6 +424,12 @@ For complex roles, split tasks into separate files:
   get_url:
     url: "{{ myapp_release_url }}"
     dest: /tmp/myapp-latest.tar.gz
+
+- name: Ensure application directory exists
+  file:
+    path: /opt/myapp
+    state: directory
+    mode: '0755'
 
 - name: Extract release
   unarchive:
