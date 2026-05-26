@@ -148,10 +148,10 @@ ansible '~^web-[0-9]+' -i inventory.ini --list-hosts
 
 ## Inspecting a Single Host
 
-Use `--host` to see all variables for a specific host:
+Use `--host` to see inventory variables for a specific host:
 
 ```bash
-# Show all variables for web1.example.com
+# Show inventory variables for web1.example.com
 ansible-inventory -i inventory.ini --host web1.example.com
 ```
 
@@ -166,7 +166,7 @@ Output:
 }
 ```
 
-This is invaluable for debugging variable precedence. The output shows the final merged value of every variable the host will receive, after all group_vars, host_vars, and inline variables are merged.
+This is invaluable for debugging inventory variable precedence. The output shows the merged inventory variables for that host, after group_vars, host_vars, and inline inventory variables are merged.
 
 ## Counting Hosts
 
@@ -317,24 +317,28 @@ Or use a simple playbook to generate a report:
   gather_facts: false
   tasks:
     - name: Generate inventory report
-      copy:
-        content: |
-          Ansible Inventory Report
-          Generated: {{ now() }}
-
-          Total hosts: {{ groups['all'] | length }}
-
-          {% for group in groups | sort %}
-          {% if group != 'all' and group != 'ungrouped' %}
-          Group: {{ group }}
-            Hosts: {{ groups[group] | length }}
-          {% for host in groups[group] | sort %}
-              - {{ host }}
-          {% endfor %}
-
-          {% endif %}
-          {% endfor %}
+      template:
+        src: inventory-report.j2
         dest: ./inventory-report.txt
+```
+
+```jinja
+# inventory-report.j2
+Ansible Inventory Report
+Generated: {{ now() }}
+
+Total hosts: {{ groups['all'] | length }}
+
+{% for group in groups | sort %}
+{% if group != 'all' and group != 'ungrouped' %}
+Group: {{ group }}
+  Hosts: {{ groups[group] | length }}
+{% for host in groups[group] | sort %}
+    - {{ host }}
+{% endfor %}
+
+{% endif %}
+{% endfor %}
 ```
 
 ## Quick Reference
@@ -344,7 +348,7 @@ Or use a simple playbook to generate a report:
 | `ansible-inventory --list` | Full inventory as JSON |
 | `ansible-inventory --graph` | Group hierarchy tree |
 | `ansible-inventory --graph --vars` | Tree with variables |
-| `ansible-inventory --host HOST` | All variables for one host |
+| `ansible-inventory --host HOST` | Inventory variables for one host |
 | `ansible GROUP --list-hosts` | Hosts in a group |
 | `ansible-playbook --list-hosts` | Hosts a playbook targets |
 | `ansible-inventory --list --yaml` | Full inventory as YAML |
