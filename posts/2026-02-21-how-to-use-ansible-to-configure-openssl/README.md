@@ -41,7 +41,7 @@ This playbook installs OpenSSL and the development libraries on both Debian and 
       when: ansible_os_family == "Debian"
 
     - name: Install OpenSSL on RHEL/CentOS
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name:
           - openssl
           - openssl-devel
@@ -108,7 +108,6 @@ And the corresponding Jinja2 template for the configuration file:
 # templates/openssl.cnf.j2 - Hardened OpenSSL configuration
 # Managed by Ansible - do not edit manually
 
-[default]
 openssl_conf = default_conf
 
 [default_conf]
@@ -234,7 +233,7 @@ This task checks every certificate and flags any expiring within the defined thr
 
     - name: Check each certificate expiration
       ansible.builtin.shell: |
-        openssl x509 -in {{ item.path }} -noout -enddate 2>/dev/null | cut -d= -f2
+        openssl x509 -in {{ item.path | quote }} -noout -enddate 2>/dev/null | cut -d= -f2
       loop: "{{ cert_files.files }}"
       register: cert_dates
       changed_when: false
@@ -242,17 +241,18 @@ This task checks every certificate and flags any expiring within the defined thr
 
     - name: Check if certificates expire soon
       ansible.builtin.shell: |
-        openssl x509 -in {{ item.item.path }} -noout -checkend {{ expiry_warning_days * 86400 }}
+        openssl x509 -in {{ item.item.path | quote }} -noout -checkend {{ expiry_warning_days * 86400 }}
       loop: "{{ cert_dates.results }}"
       register: expiry_check
       changed_when: false
       failed_when: false
+      when: item.rc == 0
 
     - name: Report expiring certificates
       ansible.builtin.debug:
         msg: "WARNING: Certificate {{ item.item.item.path }} expires within {{ expiry_warning_days }} days"
       loop: "{{ expiry_check.results }}"
-      when: item.rc != 0
+      when: item.rc is defined and item.rc != 0
 ```
 
 ## Creating an OpenSSL Role
@@ -264,6 +264,8 @@ roles/openssl/
   tasks/main.yml
   templates/openssl.cnf.j2
   defaults/main.yml
+  vars/Debian.yml
+  vars/RedHat.yml
   handlers/main.yml
 ```
 
@@ -314,7 +316,7 @@ A few things I have learned the hard way when managing OpenSSL with Ansible:
 
 1. **Always back up before changes.** OpenSSL misconfigurations can lock you out of SSH if your SSH daemon uses the same libraries.
 2. **Test cipher strings before deploying.** Use `openssl ciphers -v 'YOUR_CIPHER_STRING'` in a task to validate before applying.
-3. **Use the community.crypto collection.** The built-in modules for key and certificate management are much more reliable than shelling out to the openssl command.
+3. **Use the community.crypto collection.** The collection modules for key and certificate management are much more reliable than shelling out to the openssl command.
 4. **Pin your OpenSSL version in production.** Using `state: latest` is fine for dev, but in production you want to know exactly which version you are running.
 
 ## Wrapping Up
