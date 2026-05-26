@@ -23,52 +23,37 @@ Consul knows which nodes are alive, what services they run, and their health sta
 
 You need:
 - A running Consul cluster (or single agent for testing)
-- The `community.general` Ansible collection installed
+- Ansible installed on your control node
+- The Python `requests` package installed for the custom inventory script
 - Network access from your Ansible control node to the Consul HTTP API
 
-Install the collection if you do not have it:
+Install `requests` if you do not have it:
 
 ```bash
-# Install the community.general collection which includes the consul plugin
-
-ansible-galaxy collection install community.general
+# Install the requests package used by the inventory script
+python3 -m pip install requests
 ```
 
-## Method 1: The consul Inventory Plugin
+## Method 1: Ansible Script Inventory
 
-Ansible includes a `community.general.consul` inventory plugin. Create a configuration file for it:
+Current Ansible collections do not include a maintained Consul inventory plugin. The supported way to use Consul directly as inventory is to provide an executable inventory script that returns JSON in Ansible's dynamic inventory format.
 
-```yaml
-# inventory/consul.yml
-# Consul dynamic inventory plugin configuration
-plugin: community.general.consul
-url: http://consul.example.com:8500
-token: "your-consul-acl-token"
-
-# Only include nodes with passing health checks
-want_health: true
-
-# Group hosts by their services
-compose:
-  ansible_host: node_meta.get('ansible_host', address)
-```
-
-Enable the plugin in your ansible.cfg:
+The script inventory plugin is enabled by default. If you override the inventory plugin list in your ansible.cfg, include `script`:
 
 ```ini
 # ansible.cfg
 [inventory]
-enable_plugins = community.general.consul, ansible.builtin.yaml, ansible.builtin.ini
+enable_plugins = host_list, script, auto, yaml, ini, toml
 ```
 
-Test the inventory:
+After creating the script in the next section, test the inventory:
 
 ```bash
 # List all hosts and groups from Consul
-ansible-inventory -i inventory/consul.yml --graph
+ansible-inventory -i consul_inventory.py --graph
 
 # Show detailed host variables
-ansible-inventory -i inventory/consul.yml --list
+ansible-inventory -i consul_inventory.py --list
 ```
 
 ## Consul Node and Service Setup
@@ -85,15 +70,17 @@ For the inventory to be useful, your Consul nodes should have services registere
       "ansible_user": "deploy",
       "environment": "production"
     },
-    "check": {
-      "http": "http://localhost:8080/health",
-      "interval": "10s"
-    }
+    "checks": [
+      {
+        "http": "http://localhost:8080/health",
+        "interval": "10s"
+      }
+    ]
   }
 }
 ```
 
-When this service is registered, the consul inventory plugin automatically creates a group for it and places the node in that group.
+When this service is registered, the inventory script can create a group for it and place the node in that group.
 
 ## Method 2: Custom Dynamic Inventory Script
 
@@ -108,18 +95,28 @@ import json
 import sys
 import os
 import requests
+import re
 
 CONSUL_URL = os.environ.get('CONSUL_HTTP_ADDR', 'http://127.0.0.1:8500')
 CONSUL_TOKEN = os.environ.get('CONSUL_HTTP_TOKEN', '')
 
-def consul_get(path):
+def consul_get(path, raw=False):
     """Make a GET request to the Consul HTTP API."""
     headers = {}
     if CONSUL_TOKEN:
         headers['X-Consul-Token'] = CONSUL_TOKEN
     response = requests.get(f'{CONSUL_URL}/v1/{path}', headers=headers)
     response.raise_for_status()
+    if raw:
+        return response.text
     return response.json()
+
+def group_name(name):
+    """Return a safe Ansible group name."""
+    safe_name = re.sub(r'[^A-Za-z0-9_]', '_', name)
+    if not re.match(r'^[A-Za-z_]', safe_name):
+        safe_name = f'_{safe_name}'
+    return safe_name
 
 def get_nodes():
     """Get all nodes from the Consul catalog."""
@@ -179,14 +176,14 @@ def build_inventory():
                 hostvars[node_name]['ansible_port'] = int(meta['ansible_port'])
 
         # Create group for this service
-        inventory[service_name] = {
+        inventory[group_name(service_name)] = {
             'hosts': group_hosts,
             'vars': {},
         }
 
         # Create groups based on service tags
         for tag in tags:
-            tag_group = f'tag_{tag}'
+            tag_group = group_name(f'tag_{tag}')
             if tag_group not in inventory:
                 inventory[tag_group] = {'hosts': [], 'vars': {}}
             inventory[tag_group]['hosts'].extend(group_hosts)
@@ -201,7 +198,7 @@ def build_inventory():
         dc_groups[dc].append(node['Node'])
 
     for dc, hosts in dc_groups.items():
-        inventory[f'dc_{dc}'] = {'hosts': hosts, 'vars': {}}
+        inventory[group_name(f'dc_{dc}')] = {'hosts': hosts, 'vars': {}}
 
     inventory['_meta'] = {'hostvars': hostvars}
     return inventory
@@ -248,10 +245,10 @@ The custom script above creates groups for datacenter and tags. You can target s
 ansible -i consul_inventory.py tag_production -m ping
 
 # Target a specific datacenter
-ansible -i consul_inventory.py dc_us-east-1 -m ping
+ansible -i consul_inventory.py dc_us_east_1 -m ping
 
 # Combine service and tag filters
-ansible -i consul_inventory.py web:&tag_production -m shell -a "uptime"
+ansible -i consul_inventory.py 'web:&tag_production' -m shell -a "uptime"
 ```
 
 ## Using Consul KV for Extra Variables
@@ -262,10 +259,10 @@ Consul's key-value store can hold additional configuration that your inventory s
 def get_kv_vars(service_name):
     """Pull variables from Consul KV store for a service."""
     try:
-        kv_data = consul_get(f'kv/ansible/services/{service_name}?raw')
+        kv_data = json.loads(consul_get(f'kv/ansible/services/{service_name}?raw', raw=True))
         if isinstance(kv_data, dict):
             return kv_data
-    except requests.exceptions.HTTPError:
+    except (json.JSONDecodeError, requests.exceptions.HTTPError):
         pass
     return {}
 ```
@@ -310,7 +307,7 @@ def build_healthy_inventory():
             }
 
         if group_hosts:
-            inventory[service_name] = {'hosts': group_hosts, 'vars': {}}
+            inventory[group_name(service_name)] = {'hosts': group_hosts, 'vars': {}}
 
     inventory['_meta'] = {'hostvars': hostvars}
     return inventory
@@ -347,4 +344,4 @@ Or set it up in ansible.cfg:
 inventory = inventory/static.yml,consul_inventory.py
 ```
 
-Using Consul as your Ansible inventory source eliminates the need to manually maintain host lists and keeps your inventory in sync with your actual running infrastructure. The built-in plugin handles simple setups well, while a custom script gives you full control over grouping, filtering, and variable mapping. The health-aware filtering is particularly valuable because it ensures your playbooks only target nodes that are actually operational.
+Using Consul as your Ansible inventory source eliminates the need to manually maintain host lists and keeps your inventory in sync with your actual running infrastructure. A custom script gives you full control over grouping, filtering, and variable mapping. The health-aware filtering is particularly valuable because it ensures your playbooks only target nodes that are actually operational.
