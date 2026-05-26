@@ -8,7 +8,7 @@ Description: Step-by-step guide to upgrading AWX to a new version using the AWX 
 
 ---
 
-AWX releases new versions frequently, and staying current matters for security patches, bug fixes, and new features. The upgrade process depends on how you deployed AWX. If you are using the AWX Operator on Kubernetes (the officially supported method), upgrades are relatively smooth. This post walks through the full upgrade lifecycle from planning to verification.
+When new AWX releases are available, staying current matters for security patches, bug fixes, and new features. The upgrade process depends on how you deployed AWX. If you are using the AWX Operator on Kubernetes (the officially supported method), upgrades are relatively smooth. This post walks through the full upgrade lifecycle from planning to verification.
 
 ## Understanding AWX Versioning
 
@@ -17,7 +17,7 @@ AWX has two version numbers you need to track:
 1. **AWX Operator version** - The Kubernetes operator that manages AWX deployments. This is what you upgrade first.
 2. **AWX application version** - The actual AWX web and task containers. The operator controls which application version gets deployed.
 
-These versions are not always in lockstep. A new operator version might support multiple AWX application versions. Always check the compatibility matrix in the AWX Operator release notes.
+These versions are not always in lockstep. A new operator version might support multiple AWX application versions. Always check the AWX Operator release notes and the `DEFAULT_AWX_VERSION` value for the operator release you plan to install.
 
 ## Pre-Upgrade Checklist
 
@@ -69,7 +69,7 @@ spec:
 ```bash
 # Create the backup and wait for it to complete
 kubectl apply -f pre-upgrade-backup.yml
-kubectl wait --for=condition=complete \
+kubectl wait --for=condition=Successful \
   awxbackup/pre-upgrade-backup-20260221 -n awx --timeout=600s
 
 # Also backup secrets manually
@@ -88,11 +88,11 @@ kind: Kustomization
 namespace: awx
 
 resources:
-  - github.com/ansible/awx-operator/config/default?ref=2.12.0
+  - github.com/ansible/awx-operator/config/default?ref=2.15.0
 
 images:
   - name: quay.io/ansible/awx-operator
-    newTag: 2.12.0
+    newTag: 2.15.0
 ```
 
 ```bash
@@ -115,7 +115,7 @@ helm search repo awx-operator --versions
 # Upgrade the operator
 helm upgrade awx-operator awx-operator/awx-operator \
   --namespace awx \
-  --version 2.12.0
+  --version 2.15.0
 ```
 
 ## Upgrading the AWX Application
@@ -147,7 +147,7 @@ kubectl apply -f awx-instance.yml
 kubectl get pods -n awx -w
 ```
 
-The operator detects the version change and performs a rolling update of the web and task pods. Database migrations run automatically during startup.
+The operator detects the version change and performs a rolling update of the web and task pods. Database migrations run automatically as part of the operator-managed upgrade.
 
 ## Monitoring the Upgrade
 
@@ -222,6 +222,10 @@ kubectl edit awx awx -n awx
 # Change image_version back to the previous value
 
 # Option 2: Restore from backup
+# Delete the existing AWX CR and database PVC before restoring
+kubectl delete awx awx -n awx
+kubectl delete pvc postgres-15-awx-postgres-15-0 -n awx
+
 kubectl apply -f - <<EOF
 apiVersion: awx.ansible.com/v1beta1
 kind: AWXRestore
@@ -286,11 +290,21 @@ Plan upgrades during low-traffic periods. Disable all schedules before upgrading
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   "https://awx.example.com/api/v2/schedules/?enabled=true" \
   | python3 -c "
-import sys, json, requests
+import sys, json
 data = json.load(sys.stdin)
 for sched in data['results']:
-    print(f'Disabling schedule: {sched[\"name\"]} (ID: {sched[\"id\"]})')
-"
+    print(f'Disabling schedule: {sched[\"name\"]} (ID: {sched[\"id\"]})', file=sys.stderr)
+    print(sched['id'])
+" | while read -r sched_id; do
+  case "$sched_id" in
+    ''|*[!0-9]*) continue ;;
+  esac
+  curl -s -X PATCH \
+    -H "Authorization: Bearer ${AWX_TOKEN}" \
+    -H "Content-Type: application/json" \
+    "https://awx.example.com/api/v2/schedules/${sched_id}/" \
+    -d '{"enabled": false}'
+done
 
 # Re-enable after upgrade is verified
 # (manually or with a script that re-enables each schedule by ID)
