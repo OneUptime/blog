@@ -39,7 +39,7 @@ timeout = 30
 
 [ssh_connection]
 # Additional SSH arguments for fine-grained control
-ssh_args = -o ConnectTimeout=30 -o ConnectionAttempts=3
+ssh_common_args = -o ConnectTimeout=30 -o ConnectionAttempts=3
 # Pipelining reduces the number of SSH connections needed
 pipelining = True
 ```
@@ -62,26 +62,19 @@ db1.internal ansible_ssh_timeout=10
 db2.internal ansible_ssh_timeout=10
 ```
 
-## Handling Connection Timeouts with Retries
+## Handling Transient Task Failures with Retries
 
-Network hiccups happen. Instead of failing immediately on the first timeout, you can configure retries at the task level.
+Network hiccups happen. Task-level retries can help when a module runs and returns a failed result, but they do not recover a host that Ansible has marked as `UNREACHABLE` because the initial connection failed. Use `wait_for_connection` for host reachability, then use task retries for transient task failures.
 
-This playbook demonstrates retry logic for unreliable connections:
+This playbook demonstrates retry logic after the host is reachable:
 
 ```yaml
-# retry-on-timeout.yml - Retrying tasks that fail due to connection issues
+# retry-on-timeout.yml - Retrying tasks that fail after connection succeeds
 ---
-- name: Handle connection timeouts with retries
+- name: Handle transient task failures with retries
   hosts: remote_servers
   tasks:
-    - name: Gather facts with retry on connection failure
-      ansible.builtin.setup:
-      register: setup_result
-      retries: 3
-      delay: 10
-      until: setup_result is succeeded
-
-    - name: Install package with connection retry
+    - name: Install package with task retry
       ansible.builtin.apt:
         name: nginx
         state: present
@@ -155,7 +148,7 @@ connect_timeout = 60
 # How long to wait for a command response on an established connection
 command_timeout = 60
 
-# How long an idle connection stays in the pool before being closed
+# How long to retry connecting to the persistent connection's local control socket
 connect_retry_timeout = 30
 ```
 
@@ -168,8 +161,8 @@ Here is a playbook that configures a network switch with appropriate timeouts:
   hosts: switches
   gather_facts: false
   vars:
-    ansible_connection: network_cli
-    ansible_network_os: ios
+    ansible_connection: ansible.netcommon.network_cli
+    ansible_network_os: cisco.ios.ios
     ansible_command_timeout: 120    # Some show commands take a while
     ansible_connect_timeout: 60
   tasks:
