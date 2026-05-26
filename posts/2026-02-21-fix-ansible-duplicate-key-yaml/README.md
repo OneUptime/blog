@@ -51,10 +51,10 @@ vars:
   app_host: localhost
 ```
 
-### Cause 3: Duplicate Handler Names
+### Related Issue: Duplicate Handler Names
 
 ```yaml
-# WRONG: two handlers with the same name
+# WRONG: not a YAML duplicate-key error, but duplicate handler names can shadow each other
 handlers:
   - name: restart nginx
     systemd:
@@ -91,12 +91,12 @@ Duplicate keys in YAML are usually copy-paste errors. Use yamllint or a YAML-awa
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where YAML validation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow that benefits from duplicate-key validation
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -128,7 +128,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -210,7 +210,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with YAML validation
 - name: Robust task execution
   hosts: all
   tasks:
@@ -223,6 +223,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -272,4 +273,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
