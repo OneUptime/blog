@@ -66,9 +66,8 @@ roles:
   - name: custom_role
     src: https://artifacts.internal.com/roles/custom_role-1.0.0.tar.gz
 
-  # From a specific Galaxy server
+  # From Galaxy, when ansible-galaxy is configured to use a specific server
   - name: myorg.common
-    src: https://hub.internal.com/api/galaxy/
     version: "1.0.0"
 ```
 
@@ -76,10 +75,10 @@ roles:
 
 | Field | Description | Required |
 |-------|-------------|----------|
-| name | Local name for the role | Yes |
-| src | Source URL or Galaxy name | No (defaults to name) |
+| name | Local name for the role, or the Galaxy role name when `src` is omitted | Yes (unless `src` is used as the source) |
+| src | Source URL or Galaxy name | No (use either `name` or `src` as the source) |
 | scm | Source control type (git, hg) | No (defaults to git) |
-| version | Tag, branch, or commit SHA | No (defaults to main/master) |
+| version | Tag, branch, or commit SHA | No (defaults to the repository default branch, or master) |
 
 ## Including Collections
 
@@ -129,6 +128,8 @@ Or install everything at once (Ansible 2.10+):
 # Install both roles and collections
 ansible-galaxy install -r requirements.yml
 ```
+
+If you need custom install paths, install roles and collections separately. Ansible skips the collections section when a combined requirements file is installed with a custom role or collection path.
 
 ## Version Pinning Strategies
 
@@ -303,7 +304,7 @@ ansible-galaxy install -r requirements.yml -p roles/
 Check that your requirements file is syntactically valid:
 
 ```bash
-# Dry run to verify the file parses correctly
+# Install into a temporary directory to verify the file parses correctly
 ansible-galaxy install -r requirements.yml -p /tmp/test-roles --force
 ```
 
