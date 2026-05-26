@@ -12,7 +12,7 @@ Ansible's `delegate_to` directive is one of the most powerful features for orche
 
 ## Basic delegate_to Usage
 
-The `delegate_to` keyword redirects task execution to a specified host while keeping the context (variables, facts) of the original target host.
+The `delegate_to` keyword redirects task execution to a specified host while `inventory_hostname` still refers to the original target host.
 
 This playbook demonstrates removing a web server from a load balancer, updating it, then adding it back:
 
@@ -60,11 +60,11 @@ This playbook demonstrates removing a web server from a load balancer, updating 
       delegate_to: lb.example.com
 ```
 
-Notice that even though the tasks run on `lb.example.com` or `localhost`, the `{{ inventory_hostname }}` variable still refers to the current web server being processed. This is the key behavior of delegation: the task executes on another host, but the variable context remains the original host.
+Notice that even though the tasks run on `lb.example.com` or `localhost`, the `{{ inventory_hostname }}` variable still refers to the current web server being processed. This is the key behavior of delegation: the task executes on another host, while `inventory_hostname` still identifies the original host.
 
 ## Understanding Variable Context in Delegation
 
-This is where people often get confused. When you delegate a task, the variables and facts come from the original host, not the delegate host.
+This is where people often get confused. When you delegate a task, `inventory_hostname` remains the original host, but connection-related variables such as `ansible_host` refer to the delegated host. Facts gathered by delegated tasks are assigned to the original host by default unless you use `delegate_facts: true`.
 
 ```yaml
 # variable-context.yml - Demonstrating variable context in delegation
@@ -72,23 +72,26 @@ This is where people often get confused. When you delegate a task, the variables
 - name: Show variable context in delegation
   hosts: webservers
   tasks:
-    - name: Show which host is running this task
+    - name: Check which host is running this task
+      ansible.builtin.command: hostname
+      register: delegated_hostname
+      changed_when: false
+      delegate_to: localhost
+
+    - name: Show original and delegated host information
       ansible.builtin.debug:
         msg: >
           Task delegated to localhost, but inventory_hostname is {{ inventory_hostname }}.
-          ansible_host is {{ ansible_host }}.
-          The task physically runs on localhost.
-      delegate_to: localhost
+          The command ran on {{ delegated_hostname.stdout }}.
 
     - name: Access delegate host facts (if gathered)
       ansible.builtin.debug:
         msg: >
           Original host: {{ inventory_hostname }}
           Delegate host OS: {{ hostvars['localhost']['ansible_os_family'] | default('facts not gathered') }}
-      delegate_to: localhost
 ```
 
-If you need facts from the delegate host, you need to have gathered facts for that host earlier, or use `delegate_facts: true` (covered in a separate post).
+If you need facts from the delegate host, you need to have gathered facts for that host earlier, or gather them with `ansible.builtin.setup` and `delegate_facts: true` (covered in a separate post).
 
 ## Delegating to Multiple Hosts
 
@@ -130,7 +133,7 @@ When using `delegate_to` with `become`, the privilege escalation happens on the 
         # nsupdate requires root to read the TSIG key
         nsupdate -k /etc/bind/keys/update.key << EOF
         server dns.example.com
-        update add {{ inventory_hostname }} 300 A {{ ansible_host }}
+        update add {{ inventory_hostname }} 300 A {{ hostvars[inventory_hostname]['ansible_host'] }}
         send
         EOF
       delegate_to: dns.example.com
@@ -184,8 +187,9 @@ A common real-world pattern is coordinating between application servers and data
           --database myapp_production \
           --version {{ app_version }}
       delegate_to: db-primary.example.com
-      run_once: true        # Only run migrations once, not per app server
-      when: pending_migrations.stdout | int > 0
+      when:
+        - inventory_hostname == ansible_play_hosts_all[0]
+        - pending_migrations.stdout | int > 0
 
     - name: Deploy application code
       ansible.builtin.copy:
@@ -252,7 +256,7 @@ There are a few gotchas with `delegate_to` that trip up even experienced Ansible
 
 First, SSH keys and credentials: when you delegate to a host, Ansible needs to be able to connect to that host. Make sure your SSH keys or credentials work for the delegate target.
 
-Second, fact caching: if you delegate a task that uses `ansible_*` facts, those facts are from the original host. If you need facts from the delegate host, use `hostvars['delegate_host_name']`.
+Second, facts: if you delegate a task that uses `ansible_*` facts, those facts are from the original host. If you need facts from the delegate host, use `hostvars['delegate_host_name']`.
 
 Third, connection type: the connection type used for the delegated task is the one configured for the delegate host, not the original host. If your original host uses SSH but the delegate host uses WinRM, the delegated task uses WinRM.
 
@@ -277,4 +281,4 @@ Third, connection type: the connection type used for the delegated task is the o
 
 ## Summary
 
-The `delegate_to` directive is essential for any playbook that coordinates actions across multiple hosts. It enables rolling deployments with load balancer management, centralized API calls, cross-host orchestration, and more. The key thing to remember is that variables and facts stay with the original host while execution happens on the delegate. Combine it with `serial`, `block`/`rescue`, and `run_once` for production-grade orchestration workflows.
+The `delegate_to` directive is essential for any playbook that coordinates actions across multiple hosts. It enables rolling deployments with load balancer management, centralized API calls, cross-host orchestration, and more. The key thing to remember is that `inventory_hostname` stays with the original host while execution happens on the delegate. Combine it with `serial`, `block`/`rescue`, and `run_once` for production-grade orchestration workflows.
