@@ -60,7 +60,7 @@ A playbook can now target either group:
 
 ## Using an Inventory Directory
 
-Instead of listing every file with `-i`, point Ansible at a directory. It will load every file inside that directory as an inventory source.
+Instead of listing every file with `-i`, point Ansible at a directory. It will load the eligible inventory sources it finds inside that directory.
 
 ```text
 inventory/
@@ -130,7 +130,7 @@ inventory = ./inventory
 # inventory = ./inventory/production.ini
 ```
 
-With this setting, running `ansible-playbook site.yml` automatically loads everything in the `./inventory` directory.
+With this setting, running `ansible-playbook site.yml` automatically loads the eligible inventory sources in the `./inventory` directory.
 
 ## Organizing by Environment
 
@@ -267,19 +267,21 @@ graph LR
 
 ## Excluding Files from Inventory Directories
 
-Ansible ignores certain file patterns in inventory directories by default:
+Ansible ignores certain file patterns in inventory directories by default, including:
 
 - Files ending in `~` (backup files)
 - Files ending in `.retry`
 - Files ending in `.pyc`
+- Files ending in `.orig`
+- Files ending in `.cfg`
 
-You can configure additional exclusion patterns in `ansible.cfg`:
+You can configure the ignored extensions in `ansible.cfg`. When you set `ignore_extensions`, include the defaults you still want to ignore:
 
 ```ini
 # ansible.cfg
 [inventory]
-# Ignore files matching these patterns
-ignore_extensions = .bak, .old, .orig, .swp
+# Ignore files ending with these extensions
+ignore_extensions = ~, .orig, .cfg, .retry, .pyc, .pyo, .bak, .old, .swp
 ```
 
 This is important because editors often create backup files that could be accidentally loaded as inventory.
