@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ad Hoc Commands, Service Management, Systemd
 
-Description: Learn how to start, stop, restart, and manage services across your infrastructure using Ansible ad hoc commands with the service and systemd modules.
+Description: Learn how to start, stop, restart, and manage services across your infrastructure using Ansible ad hoc commands with the service and systemd_service modules.
 
 ---
 
@@ -25,11 +25,11 @@ ansible webservers -m service -a "name=nginx state=stopped" --become
 # Restart a service
 ansible webservers -m service -a "name=nginx state=restarted" --become
 
-# Reload a service (reload config without full restart)
+# Reload a service (reload config without full restart; starts it if it is stopped)
 ansible webservers -m service -a "name=nginx state=reloaded" --become
 ```
 
-The `--become` flag is required because service management needs root privileges on most systems.
+The `--become` flag is usually required because service management needs root privileges on most systems.
 
 ## Ensuring Services Start on Boot
 
@@ -51,7 +51,7 @@ ansible all -m service -a "name=bluetooth state=stopped enabled=no" --become
 
 ## Checking Service Status
 
-Before making changes, check the current state of services:
+Before making changes, check the current state of services on systemd hosts:
 
 ```bash
 # Check the status of a service (using shell module)
@@ -70,28 +70,28 @@ ansible webservers -m shell -a "systemctl list-units --type=service --state=runn
 ansible all -m shell -a "systemctl list-units --type=service --state=failed"
 ```
 
-## The Systemd Module
+## The Systemd Service Module
 
-For hosts running systemd (which is most modern Linux distributions), you can use the `systemd` module for more specific control:
+For hosts running systemd (which is most modern Linux distributions), you can use the `systemd_service` module for more specific control:
 
 ```bash
 # Reload the systemd daemon (needed after modifying unit files)
-ansible all -m systemd -a "daemon_reload=yes" --become
+ansible all -m systemd_service -a "daemon_reload=yes" --become
 
 # Start a service using systemd specifically
-ansible webservers -m systemd -a "name=nginx state=started" --become
+ansible webservers -m systemd_service -a "name=nginx state=started" --become
 
 # Restart and enable a service
-ansible webservers -m systemd -a "name=nginx state=restarted enabled=yes" --become
+ansible webservers -m systemd_service -a "name=nginx state=restarted enabled=yes" --become
 
 # Mask a service (prevent it from being started at all)
-ansible all -m systemd -a "name=cups masked=yes" --become
+ansible all -m systemd_service -a "name=cups masked=yes" --become
 
 # Unmask a service
-ansible all -m systemd -a "name=cups masked=no" --become
+ansible all -m systemd_service -a "name=cups masked=no" --become
 ```
 
-The difference between `service` and `systemd` modules is that `systemd` provides systemd-specific features like daemon reload and service masking. If your hosts all run systemd, the `systemd` module gives you more control. If you have mixed init systems, stick with `service`.
+The difference between `service` and `systemd_service` modules is that `systemd_service` provides systemd-specific features like daemon reload and service masking. If your hosts all run systemd, the `systemd_service` module gives you more control. If you have mixed init systems, stick with `service`.
 
 ## Practical Scenarios
 
@@ -119,10 +119,10 @@ After copying a new systemd unit file, you need to reload the daemon and start t
 ansible appservers -m copy -a "src=./myapp.service dest=/etc/systemd/system/myapp.service" --become
 
 # Step 2: Reload systemd to pick up the new unit file
-ansible appservers -m systemd -a "daemon_reload=yes" --become
+ansible appservers -m systemd_service -a "daemon_reload=yes" --become
 
 # Step 3: Start and enable the service
-ansible appservers -m systemd -a "name=myapp state=started enabled=yes" --become
+ansible appservers -m systemd_service -a "name=myapp state=started enabled=yes" --become
 
 # Step 4: Verify it is running
 ansible appservers -m shell -a "systemctl status myapp | head -10" --become
@@ -133,21 +133,21 @@ ansible appservers -m shell -a "systemctl status myapp | head -10" --become
 If you detect a compromised service, stop it everywhere immediately:
 
 ```bash
-# Stop the service with maximum parallelism
+# Stop the service with high parallelism
 ansible all -m service -a "name=suspicious-service state=stopped" --become -f 50
 
 # Disable it so it does not restart on reboot
 ansible all -m service -a "name=suspicious-service enabled=no" --become -f 50
 
 # Verify it is stopped everywhere
-ansible all -m shell -a "systemctl is-active suspicious-service" -f 50
+ansible all -m shell -a "systemctl is-active suspicious-service || true" -f 50
 ```
 
 ### Checking Service Health After Deployment
 
 ```bash
 # Verify all critical services are running after a deployment
-ansible webservers -m shell -a "for svc in nginx php-fpm redis; do echo \"$svc: $(systemctl is-active $svc)\"; done"
+ansible webservers -m shell -a 'for svc in nginx php-fpm redis; do echo "$svc: $(systemctl is-active "$svc")"; done'
 ```
 
 Output:
@@ -175,8 +175,8 @@ ansible appservers -m shell -a "systemctl start postgresql redis nginx" --become
 # Stop everything in reverse order
 ansible appservers -m shell -a "systemctl stop nginx redis postgresql" --become
 
-# Check multiple services at once
-ansible all -m shell -a "systemctl is-active nginx postgresql redis" --become
+# Print each service's active state
+ansible all -m shell -a 'for svc in nginx postgresql redis; do echo "$svc: $(systemctl is-active "$svc")"; done' --become
 ```
 
 For a more Ansible-native approach, you would use a playbook with a loop, but for quick operations, the shell module works fine.
@@ -231,4 +231,4 @@ ansible webservers -m shell -a "curl -s -o /dev/null -w '%{http_code}' http://lo
 
 ## Summary
 
-Ansible ad hoc commands for service management let you control services across your entire infrastructure from a single terminal session. Use the `service` module for cross-platform compatibility, the `systemd` module for systemd-specific features, and the `shell` module for quick status checks and log inspection. Control restart parallelism with the `-f` flag for rolling restarts, and always verify service health after making changes. These patterns form the foundation of reliable infrastructure operations.
+Ansible ad hoc commands for service management let you control services across your entire infrastructure from a single terminal session. Use the `service` module for cross-platform compatibility, the `systemd_service` module for systemd-specific features, and the `shell` module for quick status checks and log inspection. Control restart parallelism with the `-f` flag for rolling restarts, and always verify service health after making changes. These patterns form the foundation of reliable infrastructure operations.
