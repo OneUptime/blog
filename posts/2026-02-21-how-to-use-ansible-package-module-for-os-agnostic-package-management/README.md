@@ -8,12 +8,12 @@ Description: Use the Ansible package module for OS-agnostic package management t
 
 ---
 
-The `ansible.builtin.package` module is a generic package manager that automatically detects and uses the system's native package manager (apt, dnf, yum, zypper, etc.). This lets you write playbooks that work across different Linux distributions without conditional blocks.
+The `ansible.builtin.package` module is a generic package manager that automatically detects and uses the system's native package manager (apt, dnf, yum, zypper, etc.). This lets you write playbooks that work across supported Linux distributions without conditional blocks for common package tasks.
 
 ## Basic Usage
 
 ```yaml
-# Works on any Linux distribution
+# Works on supported Linux distributions when package names are the same
 
 - name: Install common packages
   ansible.builtin.package:
@@ -42,7 +42,7 @@ The `ansible.builtin.package` module is a generic package manager that automatic
   when: ansible_os_family == 'RedHat'
 
 # With package module - single task
-- name: Install nginx on any OS
+- name: Install nginx on supported Linux distributions
   ansible.builtin.package:
     name: nginx
     state: present
@@ -53,12 +53,14 @@ The `ansible.builtin.package` module is a generic package manager that automatic
 Some packages have different names across distributions. Use variables to handle this:
 
 ```yaml
-# group_vars/debian.yml
+# group_vars/debian.yml for an inventory group named debian
 firewall_package: ufw
 
-# group_vars/redhat.yml
+---
+# group_vars/redhat.yml for an inventory group named redhat
 firewall_package: firewalld
 
+---
 # Playbook
 - name: Install firewall
   ansible.builtin.package:
@@ -69,7 +71,7 @@ firewall_package: firewalld
 ## Updating Packages
 
 ```yaml
-# Update all packages to latest
+# Update all installed packages to latest when supported by the underlying package manager
 - name: Update all packages
   ansible.builtin.package:
     name: '*'
@@ -99,7 +101,7 @@ firewall_package: firewalld
 
 The `package` module does not support all features of OS-specific modules. You cannot use it for:
 - Repository management (use `apt_repository` or `yum_repository`)
-- Cache updates (use `apt` with `update_cache` or `dnf` directly)
+- Portable cache updates (use `apt` with `update_cache`, `dnf` with `update_cache`, or another OS-specific module directly)
 - Package holds or pinning
 
 
@@ -141,6 +143,12 @@ Here are several practical scenarios where this module proves essential in real-
           - jq
         state: present
 
+    - name: Install UFW on Debian hosts
+      ansible.builtin.package:
+        name: ufw
+        state: present
+      when: ansible_os_family == 'Debian'
+
     - name: Configure system timezone
       ansible.builtin.timezone:
         name: "{{ system_timezone | default('UTC') }}"
@@ -174,16 +182,18 @@ Here are several practical scenarios where this module proves essential in real-
         - "22"
         - "80"
         - "443"
+      when: ansible_os_family == 'Debian'
 
     - name: Enable firewall
       community.general.ufw:
         state: enabled
         policy: deny
+      when: ansible_os_family == 'Debian'
 
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -224,7 +234,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in a playbook
 - name: Robust task execution
   hosts: all
   tasks:
@@ -261,6 +271,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create script directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -291,4 +307,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `ansible.builtin.package` module simplifies cross-platform package management for common tasks. Use it for installing, updating, and removing packages that have the same name across distributions. Fall back to OS-specific modules when you need features like cache management, repository configuration, or version pinning.
-
