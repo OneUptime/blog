@@ -61,15 +61,15 @@ The `in` operator works on strings as a substring check. This is useful for exam
       register: kernel_version
       changed_when: false
 
-    - name: Warn about old kernel series
+    - name: Detect generic kernel package
       ansible.builtin.debug:
-        msg: "Host is running an older 4.x kernel: {{ kernel_version.stdout }}"
-      when: "'4.' in kernel_version.stdout"
+        msg: "Host is running a generic kernel: {{ kernel_version.stdout }}"
+      when: "'generic' in kernel_version.stdout"
 
-    - name: Confirm modern kernel
+    - name: Detect cloud provider kernel variant
       ansible.builtin.debug:
-        msg: "Host is running kernel {{ kernel_version.stdout }}"
-      when: "'5.' in kernel_version.stdout or '6.' in kernel_version.stdout"
+        msg: "Host is running a cloud provider kernel: {{ kernel_version.stdout }}"
+      when: "'aws' in kernel_version.stdout or 'azure' in kernel_version.stdout"
 ```
 
 Notice that string values on the left side of `in` need to be quoted. Without quotes, Ansible would try to interpret them as variable names.
