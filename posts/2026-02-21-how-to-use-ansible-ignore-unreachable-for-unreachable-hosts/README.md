@@ -8,7 +8,7 @@ Description: Learn how to use Ansible ignore_unreachable to continue playbook ex
 
 ---
 
-If you manage a fleet of servers with Ansible, you have probably seen this scenario: you need to push a configuration update to 50 servers, but two of them are in maintenance mode and unreachable. By default, Ansible marks those hosts as failed and removes them from subsequent plays. The `ignore_unreachable` directive gives you a way to keep running tasks on unreachable hosts without removing them from the play entirely. This is different from `ignore_errors` and solves a very specific problem.
+If you manage a fleet of servers with Ansible, you have probably seen this scenario: you need to push a configuration update to 50 servers, but two of them are in maintenance mode and unreachable. By default, Ansible marks those hosts as unreachable and removes them from the active host list. The `ignore_unreachable` directive gives you a way to keep running tasks on unreachable hosts without removing them from the play entirely. This is different from `ignore_errors` and solves a very specific problem.
 
 ## How Ansible Handles Unreachable Hosts by Default
 
@@ -155,14 +155,14 @@ One of the most common use cases for `ignore_unreachable` is performing health c
       register: ssh_check
 
     - name: Check disk usage
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: df --output=pcent / | tail -1
       register: disk_check
       when: ssh_check is not unreachable
       changed_when: false
 
     - name: Check memory usage
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: free -m | awk '/Mem:/{printf "%d/%dMB (%.1f%%)", $3, $2, $3/$2*100}'
       register: mem_check
       when: ssh_check is not unreachable
@@ -211,6 +211,7 @@ Another common scenario is rebooting servers and waiting for them to come back. 
         cmd: systemctl is-system-running
       register: system_status
       changed_when: false
+      failed_when: false
 
     - name: Report unhealthy systems
       ansible.builtin.fail:
@@ -243,19 +244,9 @@ In large deployments, you might want to tolerate some unreachable hosts but fail
 
 This play will abort if more than 20% of hosts are unreachable, giving you a safety net while still tolerating a few offline machines.
 
-## Setting it in ansible.cfg
+## Setting it Globally
 
-You can also set the default behavior in your Ansible configuration file:
-
-```ini
-# ansible.cfg
-[defaults]
-# This sets the default for all plays
-# Individual plays/tasks can still override this
-ignore_unreachable = true
-```
-
-However, I would not recommend setting this globally. It is better to be explicit in your playbooks about which tasks or plays should tolerate unreachable hosts. Setting it globally can mask genuine connectivity problems.
+Ansible does not provide an `ansible.cfg` setting for `ignore_unreachable`. Set it explicitly in your playbooks at the play, block, or task level where unreachable hosts should be tolerated. This avoids masking genuine connectivity problems across unrelated automation.
 
 ## Checking Unreachable Status in Conditionals
 
