@@ -8,7 +8,7 @@ Description: Manage GCP IAM policies with Ansible to control access to cloud res
 
 ---
 
-IAM in Google Cloud Platform controls who can do what on which resources. Getting IAM right is critical because misconfigured permissions are one of the most common causes of security incidents in the cloud. Managing IAM through the console is error-prone and leaves no audit trail of who changed what. Ansible lets you define your IAM policies as code, making every change reviewable, testable, and reversible.
+IAM in Google Cloud Platform controls who can do what on which resources. Getting IAM right is critical because misconfigured permissions are one of the most common causes of security incidents in the cloud. Managing IAM through the console is error-prone and leaves no version-controlled record of what changed. Ansible lets you define your IAM policies as code, making every change reviewable, testable, and reversible.
 
 ## GCP IAM Concepts
 
@@ -31,9 +31,10 @@ A binding connects one or more members to a single role. An IAM policy is a coll
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
-- GCP service account with IAM Admin role (or at minimum, the specific permissions to manage IAM)
-- Cloud Resource Manager API enabled
+- ansible-core 2.16+ with the `google.cloud` collection
+- Google Cloud CLI (`gcloud`) installed and authenticated
+- GCP service account with Project IAM Admin or Security Admin role (or at minimum, the specific permissions to manage IAM)
+- Cloud Resource Manager API and IAM API enabled
 
 ```bash
 ansible-galaxy collection install google.cloud
@@ -42,7 +43,7 @@ pip install google-auth requests google-api-python-client
 
 ## Granting a Role to a User
 
-The `google.cloud.gcp_resourcemanager_policy` module manages project-level IAM policies. However, for individual bindings, it is often simpler to use the `gcloud` command through Ansible:
+The `google.cloud` collection includes modules for resources such as service accounts and custom roles. For project-level IAM role bindings, it is often simplest to use the `gcloud` command through Ansible:
 
 ```yaml
 # grant-role.yml - Grant a specific IAM role to a user
@@ -329,12 +330,12 @@ GCP supports conditions on IAM bindings, letting you restrict access based on re
         gcloud projects add-iam-policy-binding {{ gcp_project }}
         --member="group:developers@example.com"
         --role="roles/compute.instanceAdmin.v1"
-        --condition='expression=resource.name.startsWith("projects/{{ gcp_project }}/zones/us-central1-a/instances/dev-"),title=dev-instances-only,description=Only manage instances with dev- prefix'
+        --condition='expression=resource.type != "compute.googleapis.com/Instance" || resource.name.extract("/instances/{name}").startsWith("dev-"),title=dev-instances-only,description=Only manage instances with dev- prefix'
         --quiet
       changed_when: true
 ```
 
-This binding only grants instance admin permissions on instances whose names start with `dev-`. Developers cannot touch production instances even though they have the `instanceAdmin` role.
+For Compute Engine instances, this binding only grants the role when the instance name starts with `dev-`. Developers cannot touch production instances even though they have the `instanceAdmin` role.
 
 ## Summary
 
