@@ -58,6 +58,7 @@ um_users: []
 #       - "ssh-ed25519 AAAAC3... jsmith@laptop"
 #     sudo: true
 #     sudo_nopasswd: false
+#     password_lock: false
 
 # Users to remove (shorthand for state: absent)
 um_removed_users: []
@@ -123,13 +124,18 @@ um_skeleton_dir: /etc/skel
     name: "{{ item.name }}"
     comment: "{{ item.fullname | default(item.name) }}"
     shell: "{{ item.shell | default(um_default_shell) }}"
-    groups: "{{ item.groups | default([]) | join(',') }}"
+    groups: "{{ item.groups | default(omit) }}"
     append: yes
     create_home: "{{ um_create_home }}"
     home: "{{ item.home | default(um_home_base + '/' + item.name) }}"
+    skeleton: "{{ um_skeleton_dir }}"
     uid: "{{ item.uid | default(omit) }}"
     state: present
     password: "{{ item.password_hash | default('!') }}"
+    password_lock: "{{ item.password_lock | default(omit) }}"
+    password_expire_max: "{{ um_password_max_days if um_password_policy_enabled else omit }}"
+    password_expire_min: "{{ um_password_min_days if um_password_policy_enabled else omit }}"
+    password_expire_warn: "{{ um_password_warn_days if um_password_policy_enabled else omit }}"
   loop: "{{ um_users | selectattr('state', 'undefined') | list +
             um_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'present') | list }}"
   no_log: true
@@ -147,13 +153,6 @@ um_skeleton_dir: /etc/skel
     state: absent
     remove: false
   loop: "{{ um_removed_users }}"
-
-- name: Lock removed user accounts (keep home dir intact)
-  ansible.builtin.command:
-    cmd: "usermod -L {{ item }}"
-  loop: "{{ um_removed_users }}"
-  changed_when: false
-  failed_when: false
 ```
 
 ## SSH Key Management Tasks
@@ -163,14 +162,14 @@ um_skeleton_dir: /etc/skel
 # Deploy SSH authorized keys for each user
 - name: Deploy SSH authorized keys
   ansible.posix.authorized_key:
-    user: "{{ item.0.name }}"
-    key: "{{ item.1 }}"
+    user: "{{ item.name }}"
+    key: "{{ item.ssh_keys | join('\n') }}"
     exclusive: "{{ um_ssh_key_exclusive }}"
     state: present
-  loop: "{{ um_users | subelements('ssh_keys', skip_missing=True) }}"
+  loop: "{{ um_users }}"
   when:
-    - item.0.state | default('present') == 'present'
-    - item.0.ssh_keys is defined
+    - item.state | default('present') == 'present'
+    - item.ssh_keys is defined
 
 - name: Set correct permissions on .ssh directories
   ansible.builtin.file:
@@ -179,6 +178,18 @@ um_skeleton_dir: /etc/skel
     owner: "{{ item.name }}"
     group: "{{ item.name }}"
     mode: "{{ um_ssh_dir_mode }}"
+  loop: "{{ um_users }}"
+  when:
+    - item.state | default('present') == 'present'
+    - item.ssh_keys is defined
+
+- name: Set correct permissions on authorized_keys files
+  ansible.builtin.file:
+    path: "{{ item.home | default(um_home_base + '/' + item.name) }}/.ssh/authorized_keys"
+    state: file
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "{{ um_authorized_keys_mode }}"
   loop: "{{ um_users }}"
   when:
     - item.state | default('present') == 'present'
@@ -238,26 +249,14 @@ um_skeleton_dir: /etc/skel
 
 ```yaml
 # roles/user_management/tasks/password_policy.yml
-# Configure password aging policies
-- name: Set password aging for managed users
-  ansible.builtin.command:
-    cmd: >
-      chage
-      --maxdays {{ um_password_max_days }}
-      --mindays {{ um_password_min_days }}
-      --warndays {{ um_password_warn_days }}
-      {{ item.name }}
-  loop: "{{ um_users }}"
-  when:
-    - item.state | default('present') == 'present'
-    - um_password_policy_enabled
-  changed_when: false
-
+# Install password complexity support on Debian-family systems
 - name: Install libpam-pwquality for password complexity
   ansible.builtin.apt:
     name: libpam-pwquality
     state: present
-  when: um_password_policy_enabled
+  when:
+    - um_password_policy_enabled
+    - ansible_os_family == 'Debian'
 ```
 
 ## Main Task File
@@ -294,6 +293,7 @@ um_skeleton_dir: /etc/skel
           - name: developers
           - name: deployers
           - name: monitoring
+          - name: docker
 
         um_users:
           - name: jsmith
