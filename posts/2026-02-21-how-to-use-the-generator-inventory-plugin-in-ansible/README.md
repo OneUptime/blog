@@ -18,41 +18,40 @@ For example, if you have 3 data centers, 2 environments, and 5 servers per combi
 
 ## Enabling the Plugin
 
-The generator plugin ships with Ansible but is not enabled by default. You need to enable it in your `ansible.cfg`:
+The generator plugin ships with Ansible. YAML inventory plugin configuration files are usually handled by the default `auto` inventory plugin, but if you customize `enable_plugins`, include the generator plugin in your `ansible.cfg`:
 
 ```ini
 # ansible.cfg
 
 [inventory]
 # Enable the generator plugin alongside the default ones
-enable_plugins = ansible.builtin.generator, ansible.builtin.yaml, ansible.builtin.ini
+enable_plugins = host_list, script, auto, yaml, ini, toml, ansible.builtin.generator
 ```
 
 ## Basic Generator Configuration
 
-Create a generator inventory file with the `.yml` extension. The file must start with `plugin: ansible.builtin.generator`:
+Create a generator inventory file with the `.yml` or `.yaml` extension. The file must start with `plugin: ansible.builtin.generator`:
 
 ```yaml
 # inventory/generator.yml
 # Generate a simple set of web server hostnames
 plugin: ansible.builtin.generator
-strict: false
 hosts:
-  name: "{{ operation }}-{{ environment }}-web{{ sequence }}.example.com"
+  name: "{{ operation }}-{{ env }}-web{{ sequence }}.example.com"
   parents:
-    - name: "{{ operation }}-{{ environment }}"
+    - name: "{{ operation }}_{{ env }}"
       parents:
         - name: "{{ operation }}"
           vars:
             operation: "{{ operation }}"
-        - name: "{{ environment }}"
+        - name: "{{ env }}"
           vars:
-            environment: "{{ environment }}"
+            deployment_env: "{{ env }}"
 layers:
   operation:
     - web
     - api
-  environment:
+  env:
     - prod
     - staging
   sequence:
@@ -93,7 +92,7 @@ Here is how the layers combine:
 ```mermaid
 graph TD
     A[operation: web, api] --> D[Cartesian Product]
-    B[environment: prod, staging] --> D
+    B[env: prod, staging] --> D
     C[sequence: 01, 02, 03] --> D
     D --> E["12 hosts generated<br/>(2 x 2 x 3)"]
 ```
@@ -105,14 +104,13 @@ You can attach variables at any level of the group hierarchy:
 ```yaml
 # inventory/generator-with-vars.yml
 plugin: ansible.builtin.generator
-strict: false
 hosts:
   name: "{{ region }}-{{ role }}-{{ num }}.infra.example.com"
   parents:
     - name: "{{ role }}"
       vars:
         server_role: "{{ role }}"
-    - name: "{{ region }}"
+    - name: "{{ region | replace('-', '_') }}"
       vars:
         aws_region: "{{ region }}"
         # Set variables based on region
@@ -129,7 +127,7 @@ layers:
     - "02"
 ```
 
-With this configuration, a host like `us-east-1-frontend-01.infra.example.com` will belong to both the `frontend` and `us-east-1` groups, inheriting variables from each.
+With this configuration, a host like `us-east-1-frontend-01.infra.example.com` will belong to both the `frontend` and `us_east_1` groups, inheriting variables from each.
 
 ## Verifying Generated Inventory
 
@@ -137,13 +135,13 @@ Use the `ansible-inventory` command to see what the generator produces:
 
 ```bash
 # Show the generated inventory as a tree
-ansible-inventory -i inventory/generator.yml --graph
+ansible-inventory -i inventory/generator-with-vars.yml --graph
 
 # Show the full inventory with all variables as JSON
-ansible-inventory -i inventory/generator.yml --list
+ansible-inventory -i inventory/generator-with-vars.yml --list
 
 # Check variables for a specific generated host
-ansible-inventory -i inventory/generator.yml --host us-east-1-frontend-01.infra.example.com
+ansible-inventory -i inventory/generator-with-vars.yml --host us-east-1-frontend-01.infra.example.com
 ```
 
 The `--graph` output will show you the group hierarchy:
@@ -159,11 +157,14 @@ The `--graph` output will show you the group hierarchy:
   |--@backend:
   |  |--us-east-1-backend-01.infra.example.com
   |  |--...
-  |--@us-east-1:
+  |--@worker:
+  |  |--us-east-1-worker-01.infra.example.com
+  |  |--...
+  |--@us_east_1:
   |  |--us-east-1-frontend-01.infra.example.com
   |  |--us-east-1-backend-01.infra.example.com
   |  |--...
-  |--@eu-west-1:
+  |--@eu_west_1:
   |  |--eu-west-1-frontend-01.infra.example.com
   |  |--...
 ```
@@ -176,7 +177,6 @@ One of the best uses for the generator plugin is creating large test inventories
 # inventory/test-scale.yml
 # Generate 1000 hosts for scale testing
 plugin: ansible.builtin.generator
-strict: false
 hosts:
   name: "test-{{ dc }}-{{ tier }}-{{ seq }}"
   parents:
@@ -273,7 +273,6 @@ The generator is great for spinning up consistent lab environments. Here is a co
 ```yaml
 # inventory/lab-generator.yml
 plugin: ansible.builtin.generator
-strict: false
 hosts:
   name: "lab-{{ service }}-{{ instance }}.dev.internal"
   parents:
@@ -303,7 +302,7 @@ The generator plugin has some constraints worth knowing about:
 
 You cannot use conditional logic within the layers. Every combination of layer values produces a host. If you need to skip certain combinations, you will need to use `--limit` when running playbooks or create a custom inventory plugin.
 
-The layer values must be strings. You cannot generate numeric ranges directly; instead, you list out each value (like "01", "02", etc.).
+The layer values are listed explicitly. You cannot generate numeric ranges directly inside the generator plugin; instead, you list out each value. Use strings when formatting matters, such as preserving leading zeros in values like "01" and "02".
 
 The plugin generates host names but does not create actual infrastructure. It is purely an inventory generation tool. For actually provisioning the machines, you would pair it with a tool like Terraform or a cloud provisioning playbook.
 
