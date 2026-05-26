@@ -12,7 +12,7 @@ The `script` inventory plugin is Ansible's mechanism for running external progra
 
 ## How the Script Plugin Works
 
-When you pass an executable file to Ansible's `-i` flag, the script inventory plugin kicks in. It runs the file with `--list` to get all inventory data, and optionally with `--host <hostname>` to get variables for a specific host.
+When you pass an executable file to Ansible's `-i` flag, the script inventory plugin kicks in. It runs the file with `--list` to get all inventory data, and with `--host <hostname>` to get variables for a specific host if `_meta.hostvars` is not provided.
 
 ```mermaid
 graph TD
@@ -28,7 +28,7 @@ The script must:
 1. Be executable (`chmod +x`)
 2. Output valid JSON to stdout
 3. Support the `--list` argument
-4. Optionally support `--host <hostname>`
+4. Support the `--host <hostname>` argument, even if it only returns an empty JSON object
 
 ## The Required JSON Format
 
@@ -226,17 +226,21 @@ elif [ "$1" == "--host" ]; then
 fi
 ```
 
-## Script Plugin Configuration File
+## Using Scripts in an Inventory Directory
 
-While scripts can be passed directly to `-i`, you can also create a plugin configuration file that references the script:
+The script inventory plugin uses the executable script itself as the inventory source. It does not use a YAML configuration file with a `path` option. If you want to include a script-based inventory source alongside other inventory sources, place the executable script in an inventory directory:
 
-```yaml
-# inventory/custom_script.yml
-plugin: ansible.builtin.script
-path: /path/to/my_inventory.py
+```text
+inventory/
+  my_inventory.py
+  hosts.yml
 ```
 
-This is useful when you want to include a script-based inventory source alongside other inventory plugin configurations in a directory.
+Then point Ansible at the directory:
+
+```bash
+ansible-inventory -i inventory --graph
+```
 
 ## Error Handling
 
