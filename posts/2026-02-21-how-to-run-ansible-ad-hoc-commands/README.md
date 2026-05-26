@@ -104,10 +104,10 @@ ansible webservers -m command -a "df -h"
 ansible webservers -m shell -a "ps aux | grep nginx | wc -l"
 
 # Use the shell module for environment variable expansion
-ansible webservers -m shell -a "echo $HOSTNAME"
+ansible webservers -m shell -a 'echo $HOSTNAME'
 ```
 
-The difference between `command` and `shell` is important. The `command` module runs the command directly without a shell, which is safer but does not support pipes, redirection, or environment variable expansion. The `shell` module runs through `/bin/sh`, which supports all shell features but could be affected by the user's shell configuration.
+The difference between `command` and `shell` is important. The `command` module runs the command directly without a shell, which is safer but does not support pipes or redirection. Environment variables are expanded by Ansible, not by a shell. The `shell` module runs through `/bin/sh`, which supports shell features but requires more careful quoting.
 
 ## Common Module Examples
 
@@ -159,8 +159,8 @@ ansible web1.example.com -m ping
 # Use wildcard patterns
 ansible '*.example.com' -m ping
 
-# Target by numeric range
-ansible 'web[1:5].example.com' -m ping
+# Target a range by group position
+ansible 'webservers[0:4]' -m ping
 ```
 
 ## Key Command-Line Options
@@ -224,20 +224,20 @@ This whole workflow took five commands and maybe two minutes. Writing a playbook
 
 ## Output Formatting
 
-Ansible offers different output formats through callback plugins:
+Ansible offers a few ways to change ad hoc command output:
 
 ```bash
 # Use one-line output for quick scanning
-ANSIBLE_STDOUT_CALLBACK=oneline ansible all -m ping
+ansible all -m ping -o
 
-# Use minimal output
-ANSIBLE_STDOUT_CALLBACK=minimal ansible webservers -a "uptime"
+# Use minimal output, which is the default for ad hoc commands
+ansible webservers -a "uptime"
 
-# Use JSON output for parsing with other tools
-ANSIBLE_STDOUT_CALLBACK=json ansible all -m ping
+# Write per-host JSON result files for parsing with other tools
+ansible all -m ping --tree ./ansible-output
 
-# Use YAML output for readability
-ANSIBLE_STDOUT_CALLBACK=yaml ansible webservers -a "uptime"
+# Format module results as YAML for readability
+ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible webservers -a "uptime"
 ```
 
 ## When to Use Ad Hoc Commands vs Playbooks
