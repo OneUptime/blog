@@ -152,13 +152,31 @@ Manage which users have access to the Git server:
         access: readwrite
 
   tasks:
+    - name: Create read-only Git command wrapper
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          case "$SSH_ORIGINAL_COMMAND" in
+            git-upload-pack\ *)
+              exec /usr/bin/git-shell -c "$SSH_ORIGINAL_COMMAND"
+              ;;
+            *)
+              echo "This key is read-only." >&2
+              exit 1
+              ;;
+          esac
+        dest: /opt/git/git-readonly-shell
+        owner: git
+        group: git
+        mode: "0755"
+
     - name: Build authorized_keys file
       ansible.builtin.copy:
         content: |
           {% for user in git_users %}
           # {{ user.name }} ({{ user.access }})
           {% if user.access == 'readonly' %}
-          no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty {{ user.key }}
+          restrict,command="/opt/git/git-readonly-shell" {{ user.key }}
           {% else %}
           {{ user.key }}
           {% endif %}
@@ -300,12 +318,13 @@ For public repositories that should be accessible without authentication:
           BACKUP_DIR="/opt/git-backups"
           REPO_DIR="/opt/git/repositories"
           DATE=$(date +%Y%m%d-%H%M%S)
+          shopt -s nullglob
 
           for repo in "$REPO_DIR"/*.git; do
               repo_name=$(basename "$repo" .git)
               backup_file="$BACKUP_DIR/${repo_name}-${DATE}.tar.gz"
 
-              tar czf "$backup_file" -C "$REPO_DIR" "$(basename $repo)"
+              tar czf "$backup_file" -C "$REPO_DIR" "$(basename "$repo")"
               echo "Backed up $repo_name to $backup_file"
           done
 
@@ -320,7 +339,7 @@ For public repositories that should be accessible without authentication:
         name: "Git repository backup"
         minute: "0"
         hour: "2"
-        job: "/opt/git/backup.sh >> /var/log/git-backup.log 2>&1"
+        job: "/opt/git/backup.sh >> /opt/git-backups/git-backup.log 2>&1"
         user: git
 ```
 
