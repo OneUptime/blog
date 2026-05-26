@@ -22,7 +22,7 @@ The filter converts a number (assumed to be in bytes) into a human-friendly stri
     msg: "{{ 107374182400 | human_readable }}"
 ```
 
-Output: `100.0 GB`
+Output: `100.00 GB`
 
 By default, it uses binary units (powers of 1024), which is what most system tools report.
 
@@ -36,9 +36,9 @@ The most common use case is formatting values from gathered facts:
   ansible.builtin.debug:
     msg: |
       Host: {{ inventory_hostname }}
-      Total RAM: {{ ansible_memtotal_mb * 1024 * 1024 | human_readable }}
-      Free RAM: {{ ansible_memfree_mb * 1024 * 1024 | human_readable }}
-      Swap Total: {{ ansible_swaptotal_mb * 1024 * 1024 | human_readable }}
+      Total RAM: {{ (ansible_memtotal_mb * 1024 * 1024) | human_readable }}
+      Free RAM: {{ (ansible_memfree_mb * 1024 * 1024) | human_readable }}
+      Swap Total: {{ (ansible_swaptotal_mb * 1024 * 1024) | human_readable }}
 
 - name: Show disk info
   ansible.builtin.debug:
@@ -53,43 +53,43 @@ The most common use case is formatting values from gathered facts:
 
 ## Specifying the Unit
 
-You can tell the filter what unit the input is already in, and what unit you want the output in:
+You can tell the filter what unit you want the output in:
 
 ```yaml
-# Convert from megabytes to human readable
-- name: Convert from different input units
+# Force different output units
+- name: Convert to different output units
   ansible.builtin.debug:
     msg: |
-      From bytes: {{ 1073741824 | human_readable }}
-      From KB: {{ 1048576 | human_readable(unit='K') }}
-      From MB: {{ 1024 | human_readable(unit='M') }}
-      From GB: {{ 1 | human_readable(unit='G') }}
+      Automatic: {{ 1073741824 | human_readable }}
+      As KB: {{ 1073741824 | human_readable(unit='K') }}
+      As MB: {{ 1073741824 | human_readable(unit='M') }}
+      As GB: {{ 1073741824 | human_readable(unit='G') }}
 ```
 
-All four examples above output approximately `1.0 GB` since they all represent the same amount of data.
+The examples above output `1.00 GB`, `1048576.00 KB`, `1024.00 MB`, and `1.00 GB`.
 
-Wait, let me clarify the parameter usage. The `unit` parameter specifies the unit of the input value, not the output:
+The `unit` parameter forces the output unit. It does not change the unit of the input value, which is still interpreted as bytes unless you use `isbits=true`:
 
 ```yaml
-# The unit parameter says what the INPUT is measured in
+# Convert a value already measured in megabytes before formatting it
 - name: Input is in megabytes
   ansible.builtin.debug:
-    msg: "{{ ansible_memtotal_mb | human_readable(unit='M') }}"
+    msg: "{{ (ansible_memtotal_mb * 1048576) | human_readable }}"
 ```
 
-If your host has 16384 MB of RAM, this outputs `16.0 GB`.
+If your host has 16384 MB of RAM, this outputs `16.00 GB`.
 
-## Binary vs Decimal Units
+## Bytes vs Bits
 
-The filter supports both binary (isbits=false, default) and decimal (isbits=true) modes:
+The filter treats the input as bytes by default. Set `isbits=true` when the input value is measured in bits:
 
 ```yaml
-# Compare binary (1024-based) vs decimal display
-- name: Binary vs decimal
+# Compare byte and bit display
+- name: Bytes vs bits
   ansible.builtin.debug:
     msg: |
-      Binary (default): {{ 1000000000 | human_readable }}
-      With isbits: {{ 1000000000 | human_readable(isbits=true) }}
+      Bytes (default): {{ 1000000000 | human_readable }}
+      Bits: {{ 1000000000 | human_readable(isbits=true) }}
 ```
 
 The `isbits=true` parameter treats the input as bits instead of bytes, which is useful for network bandwidth values.
@@ -153,14 +153,6 @@ Use human_readable in alert messages:
 
 ```yaml
 # Alert on low disk space with readable messages
-- name: Check disk space
-  ansible.builtin.set_fact:
-    low_disk_mounts: >-
-      {{ ansible_mounts
-         | selectattr('size_total', 'gt', 0)
-         | list
-         | json_query('[?to_number(size_available) / to_number(size_total) < `0.1`]') }}
-
 - name: Alert on low disk space
   ansible.builtin.debug:
     msg: >
@@ -168,10 +160,12 @@ Use human_readable in alert messages:
       {{ item.size_available | human_readable }} free
       out of {{ item.size_total | human_readable }}
       ({{ (item.size_available / item.size_total * 100) | round(1) }}% free)
-  loop: "{{ low_disk_mounts }}"
+  loop: "{{ ansible_mounts }}"
   loop_control:
     label: "{{ item.mount }}"
-  when: low_disk_mounts | length > 0
+  when:
+    - item.size_total > 0
+    - (item.size_available / item.size_total) < 0.1
 ```
 
 ## Container Resource Reports
@@ -272,4 +266,4 @@ For network-related values measured in bits:
 
 ## Summary
 
-The `human_readable` filter is a simple but essential tool for making byte values comprehensible. Use it in health reports, alert messages, resource checks, and anywhere else you display storage or memory values to humans. Remember that the `unit` parameter specifies the input unit (not the output), and use `isbits=true` for network bandwidth values. Pair it with `human_to_bytes` (the inverse filter) for round-trip conversions between human-readable strings and raw byte values.
+The `human_readable` filter is a simple but essential tool for making byte values comprehensible. Use it in health reports, alert messages, resource checks, and anywhere else you display storage or memory values to humans. Remember that the `unit` parameter forces the output unit, and use `isbits=true` for network bandwidth values measured in bits. Pair it with `human_to_bytes` (the inverse filter) for round-trip conversions between human-readable strings and raw byte values.
