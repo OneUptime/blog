@@ -8,11 +8,11 @@ Description: Learn how to use Ansible meta clear_facts to reset cached facts dur
 
 ---
 
-Ansible caches facts about hosts after gathering them. This cache persists across plays within a single playbook run and can even persist across separate runs if you use a fact caching backend. The `meta: clear_facts` directive lets you wipe this cache for the current host, forcing Ansible to start fresh the next time it gathers facts. This is useful in scenarios where system state changes during the playbook run and the cached facts become stale.
+Ansible caches facts about hosts after gathering them. This cache persists across plays within a single playbook run and can even persist across separate runs if you use a fact caching backend. The `meta: clear_facts` directive lets you wipe gathered facts for the hosts targeted by the play, forcing Ansible to start fresh the next time it gathers facts. This is useful in scenarios where system state changes during the playbook run and the cached facts become stale.
 
 ## Why You Would Need to Clear Facts
 
-Consider a playbook that installs a new kernel, reboots the host, and then needs to verify the new kernel version. The `ansible_kernel` fact was gathered before the reboot and still contains the old kernel version. Without clearing facts, your verification check would pass or fail based on outdated information.
+Consider a playbook that installs a new kernel, reboots the host, and then needs to verify the new kernel version. The kernel fact was gathered before the reboot and still contains the old kernel version. Without clearing facts, your verification check would pass or fail based on outdated information.
 
 ```yaml
 # The problem: stale facts after system changes
@@ -26,7 +26,7 @@ Consider a playbook that installs a new kernel, reboots the host, and then needs
   tasks:
     - name: Show current kernel (from initial gather)
       ansible.builtin.debug:
-        msg: "Current kernel: {{ ansible_kernel }}"
+        msg: "Current kernel: {{ ansible_facts.kernel }}"
 
     - name: Install new kernel
       ansible.builtin.apt:
@@ -39,10 +39,10 @@ Consider a playbook that installs a new kernel, reboots the host, and then needs
         reboot_timeout: 300
       when: kernel_install is changed
 
-    # Problem: ansible_kernel still has the OLD value
+    # Problem: the kernel fact still has the OLD value
     - name: Show kernel after reboot (THIS IS STALE)
       ansible.builtin.debug:
-        msg: "Kernel after reboot: {{ ansible_kernel }}"
+        msg: "Kernel after reboot: {{ ansible_facts.kernel }}"
       # This will show the OLD kernel version
 ```
 
@@ -61,7 +61,7 @@ Here is how `meta: clear_facts` fixes the stale fact problem.
   tasks:
     - name: Show current kernel
       ansible.builtin.debug:
-        msg: "Current kernel: {{ ansible_kernel }}"
+        msg: "Current kernel: {{ ansible_facts.kernel }}"
 
     - name: Install new kernel
       ansible.builtin.apt:
@@ -84,23 +84,24 @@ Here is how `meta: clear_facts` fixes the stale fact problem.
 
     - name: Show kernel after reboot (FRESH DATA)
       ansible.builtin.debug:
-        msg: "Kernel after reboot: {{ ansible_kernel }}"
+        msg: "Kernel after reboot: {{ ansible_facts.kernel }}"
       # This now shows the NEW kernel version
 ```
 
-The sequence is: `clear_facts` wipes the cache, then `setup` re-gathers all facts, and now `ansible_kernel` reflects the actual running kernel.
+The sequence is: `clear_facts` clears the gathered facts, then `setup` re-gathers all facts, and now `ansible_facts.kernel` reflects the actual running kernel.
 
 ## What clear_facts Actually Clears
 
-The `clear_facts` directive removes all cached facts for the current host. This includes:
+The `clear_facts` directive removes gathered facts for the hosts targeted by the play. This includes:
 
 - All facts gathered by the `setup` module (OS info, network, hardware, etc.)
-- Custom facts set with `set_fact` that have `cacheable: true`
-- Facts from custom fact scripts in `/etc/ansible/facts.d/`
+- The cached `ansible_facts` copy of custom facts set with `set_fact` that have `cacheable: true`
+- Gathered custom facts from custom fact scripts in `/etc/ansible/facts.d/`
 
 It does NOT remove:
 - Regular variables defined in `vars`, `vars_files`, or `extra_vars`
 - Facts set with `set_fact` that are not cacheable (these are technically host variables, not facts)
+- The current-run host variable copy created by `set_fact`, even when `cacheable: true` is used
 - Inventory variables
 
 ```yaml
@@ -120,16 +121,17 @@ It does NOT remove:
 
     - name: Set a cacheable fact
       ansible.builtin.set_fact:
-        my_cached_fact: "I will be cleared"
+        my_cached_fact: "My ansible_facts copy will be cleared"
         cacheable: true
 
     - name: Show before clearing
       ansible.builtin.debug:
         msg: |
-          OS: {{ ansible_distribution | default('CLEARED') }}
+          OS: {{ ansible_facts.distribution | default('CLEARED') }}
           Regular var: {{ regular_var }}
           Regular fact: {{ my_regular_fact | default('CLEARED') }}
-          Cached fact: {{ my_cached_fact | default('CLEARED') }}
+          Cached fact host var: {{ my_cached_fact | default('CLEARED') }}
+          Cached ansible_facts copy: {{ ansible_facts.my_cached_fact | default('CLEARED') }}
 
     - name: Clear all facts
       ansible.builtin.meta: clear_facts
@@ -137,10 +139,11 @@ It does NOT remove:
     - name: Show after clearing
       ansible.builtin.debug:
         msg: |
-          OS: {{ ansible_distribution | default('CLEARED') }}
+          OS: {{ ansible_facts.distribution | default('CLEARED') }}
           Regular var: {{ regular_var }}
           Regular fact: {{ my_regular_fact | default('CLEARED') }}
-          Cached fact: {{ my_cached_fact | default('CLEARED') }}
+          Cached fact host var: {{ my_cached_fact | default('CLEARED') }}
+          Cached ansible_facts copy: {{ ansible_facts.my_cached_fact | default('CLEARED') }}
 ```
 
 ## Use Case: System Configuration Changes
@@ -158,7 +161,7 @@ When you make changes that affect system facts (like changing the hostname, addi
   tasks:
     - name: Show original network config
       ansible.builtin.debug:
-        msg: "Primary IP: {{ ansible_default_ipv4.address }}"
+        msg: "Primary IP: {{ ansible_facts.default_ipv4.address }}"
 
     - name: Add secondary network interface
       ansible.builtin.template:
@@ -188,19 +191,19 @@ When you make changes that affect system facts (like changing the hostname, addi
 
     - name: Show updated network config
       ansible.builtin.debug:
-        msg: "Interfaces: {{ ansible_interfaces | join(', ') }}"
+        msg: "Interfaces: {{ ansible_facts.interfaces | join(', ') }}"
 
     - name: Verify new interface is present
       ansible.builtin.assert:
         that:
-          - "'eth1' in ansible_interfaces"
+          - "'eth1' in ansible_facts.interfaces"
         fail_msg: "Secondary interface eth1 was not detected after reconfiguration"
       when: nic_config is changed
 ```
 
 ## Use Case: Hostname Changes
 
-After changing a hostname, the `ansible_hostname` fact becomes stale.
+After changing a hostname, the hostname fact becomes stale.
 
 ```yaml
 # Refresh facts after hostname change
@@ -216,7 +219,7 @@ After changing a hostname, the `ansible_hostname` fact becomes stale.
   tasks:
     - name: Show current hostname
       ansible.builtin.debug:
-        msg: "Current hostname fact: {{ ansible_hostname }}"
+        msg: "Current hostname fact: {{ ansible_facts.hostname }}"
 
     - name: Set new hostname
       ansible.builtin.hostname:
@@ -244,7 +247,7 @@ After changing a hostname, the `ansible_hostname` fact becomes stale.
 
     - name: Verify hostname change
       ansible.builtin.debug:
-        msg: "Hostname is now: {{ ansible_hostname }}"
+        msg: "Hostname is now: {{ ansible_facts.hostname }}"
 ```
 
 ## Use Case: Disk Changes
@@ -262,7 +265,7 @@ After creating partitions or mounting filesystems, fact data about mounts become
   tasks:
     - name: Show current mounts
       ansible.builtin.debug:
-        msg: "Current mounts: {{ ansible_mounts | map(attribute='mount') | list }}"
+        msg: "Current mounts: {{ ansible_facts.mounts | map(attribute='mount') | list }}"
 
     - name: Create filesystem on new volume
       community.general.filesystem:
@@ -290,12 +293,12 @@ After creating partitions or mounting filesystems, fact data about mounts become
 
     - name: Verify new mount appears in facts
       ansible.builtin.debug:
-        msg: "Updated mounts: {{ ansible_mounts | map(attribute='mount') | list }}"
+        msg: "Updated mounts: {{ ansible_facts.mounts | map(attribute='mount') | list }}"
 
     - name: Assert data volume is mounted
       ansible.builtin.assert:
         that:
-          - ansible_mounts | selectattr('mount', 'equalto', '/data') | list | length > 0
+          - ansible_facts.mounts | selectattr('mount', 'equalto', '/data') | list | length > 0
         fail_msg: "/data mount is not reflected in facts"
 ```
 
@@ -324,7 +327,7 @@ If you use a fact caching plugin (like Redis or JSON file caching), `clear_facts
 
     - name: Now all facts are current
       ansible.builtin.debug:
-        msg: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+        msg: "{{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
 ```
 
 ## Selective Fact Re-Gathering
