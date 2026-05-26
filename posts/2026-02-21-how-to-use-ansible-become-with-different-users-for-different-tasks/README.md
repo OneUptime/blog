@@ -60,10 +60,18 @@ Here is a straightforward example that uses different users for different operat
 
     - name: Create database user
       community.postgresql.postgresql_user:
-        db: myapp
+        login_db: myapp
         name: myapp_user
         password: "{{ db_password }}"
-        priv: ALL
+      become: true
+      become_user: postgres
+
+    - name: Grant database privileges
+      community.postgresql.postgresql_privs:
+        login_db: myapp
+        type: database
+        privs: ALL
+        roles: myapp_user
       become: true
       become_user: postgres
 
@@ -167,7 +175,7 @@ Blocks make the code cleaner when you have multiple consecutive tasks for the sa
 
         - name: Grant permissions
           community.postgresql.postgresql_privs:
-            database: myapp_production
+            login_db: myapp_production
             type: table
             objs: ALL_IN_SCHEMA
             privs: SELECT,INSERT,UPDATE,DELETE
@@ -213,10 +221,20 @@ When creating roles, you can set become_user at the role level or let the callin
 
 - name: Create database users
   community.postgresql.postgresql_user:
+    login_db: "{{ item.database }}"
     name: "{{ item.name }}"
     password: "{{ item.password }}"
-    db: "{{ item.database }}"
-    priv: "{{ item.priv | default('ALL') }}"
+  loop: "{{ postgresql_users }}"
+  become: true
+  become_user: postgres
+  no_log: true
+
+- name: Grant database privileges
+  community.postgresql.postgresql_privs:
+    login_db: "{{ item.database }}"
+    type: database
+    privs: "{{ item.priv | default('ALL') }}"
+    roles: "{{ item.name }}"
   loop: "{{ postgresql_users }}"
   become: true
   become_user: postgres
@@ -300,11 +318,18 @@ For maximum flexibility, use variables to determine which user runs each task.
       become: true
       become_user: "{{ system_user }}"
 
-    - name: Database operations
-      ansible.builtin.command: "psql -c '{{ item }}'"
-      loop:
-        - "CREATE DATABASE IF NOT EXISTS mydb;"
-        - "GRANT ALL ON DATABASE mydb TO myapp;"
+    - name: Create database
+      community.postgresql.postgresql_db:
+        name: mydb
+      become: true
+      become_user: "{{ db_user }}"
+
+    - name: Grant database privileges
+      community.postgresql.postgresql_privs:
+        login_db: mydb
+        type: database
+        privs: ALL
+        roles: "{{ app_user }}"
       become: true
       become_user: "{{ db_user }}"
 
@@ -349,7 +374,7 @@ Here is a playbook to set this up automatically.
   become: true
 
   vars:
-    ansible_ssh_user: deploy
+    sudo_user: deploy
     allowed_become_users:
       - root
       - postgres
@@ -370,7 +395,7 @@ Here is a playbook to set this up automatically.
 # templates/ansible-sudoers.j2
 # Sudoers configuration for Ansible multi-user access
 {% for user in allowed_become_users %}
-{{ ansible_ssh_user }} ALL=({{ user }}) NOPASSWD: ALL
+{{ sudo_user }} ALL=({{ user }}) NOPASSWD: ALL
 {% endfor %}
 ```
 
@@ -378,7 +403,7 @@ Here is a playbook to set this up automatically.
 
 ### Home Directory Access
 
-When you become a user, the HOME environment variable changes. Tasks that reference `~` or `$HOME` will point to the new user's home directory.
+When you become a user, tasks that reference `~` or `$HOME` can point to the effective user's home directory. With typical sudo settings, a task running as root will resolve `~` to root's home directory.
 
 ```yaml
 # This creates the file in /root/ when become_user is root
