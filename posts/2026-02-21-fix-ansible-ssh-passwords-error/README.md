@@ -8,7 +8,7 @@ Description: Resolve the Ansible error requiring sshpass for SSH password authen
 
 ---
 
-When you try to use password-based SSH authentication with Ansible, you may encounter this error if the sshpass utility is not installed. Ansible needs sshpass to pass passwords to the SSH command non-interactively.
+When you try to use password-based SSH authentication with Ansible, you may encounter this error if the sshpass utility is not installed. Older Ansible versions, and newer versions configured with the `sshpass` password mechanism, need sshpass to pass passwords to the SSH command non-interactively.
 
 ## The Error
 
@@ -28,10 +28,10 @@ The quickest fix is to install sshpass on your Ansible control machine:
 sudo apt-get install sshpass
 
 # CentOS/RHEL
-sudo yum install sshpass
+sudo dnf install sshpass
 
 # macOS (via Homebrew)
-brew install hudochenkov/sshpass/sshpass
+brew install sshpass
 ```
 
 ## Fix 2: Switch to SSH Key-Based Authentication (Recommended)
@@ -94,18 +94,24 @@ Use password auth once to distribute SSH keys, then switch:
     ansible_password: "{{ initial_password }}"
   tasks:
     - name: Distribute SSH public key
-      authorized_key:
+      ansible.posix.authorized_key:
         user: "{{ ansible_user }}"
         key: "{{ lookup('file', '~/.ssh/ansible_key.pub') }}"
         state: present
 
     - name: Disable password authentication
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^PasswordAuthentication'
         line: 'PasswordAuthentication no'
       become: yes
       notify: restart sshd
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.service:
+        name: "{{ ssh_service_name | default('sshd') }}"
+        state: restarted
 ```
 
 ## Summary
@@ -151,7 +157,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -295,4 +301,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
