@@ -8,15 +8,15 @@ Description: Learn how to create DynamoDB global tables with Terraform for multi
 
 ---
 
-When your application needs to serve users across multiple regions with low latency reads and writes, DynamoDB global tables are one of the simplest solutions on AWS. They give you fully managed, multi-region, active-active replication. Write to a table in us-east-1, and the data shows up in eu-west-1 within a second or two. No custom replication logic, no eventual consistency headaches to manage yourself.
+When your application needs to serve users across multiple regions with low latency reads and writes, DynamoDB global tables are one of the simplest solutions on AWS. They give you fully managed, multi-region, active-active replication. Write to a table in us-east-1, and the data shows up in eu-west-1 within a second or two. No custom replication logic to manage yourself.
 
-Global tables use last-writer-wins conflict resolution. If two regions write to the same item at nearly the same time, the write with the later timestamp wins. For most applications this is fine, but if you have workloads where the same item gets updated from multiple regions simultaneously, you need to think about your data model.
+By default, global tables use multi-Region eventual consistency and last-writer-wins conflict resolution. If two regions write to the same item at nearly the same time, the write with the later internal timestamp wins. For most applications this is fine, but if you have workloads where the same item gets updated from multiple regions simultaneously, you need to think about your data model.
 
 This guide covers creating global tables in Terraform, including the DynamoDB table configuration, multi-region provider setup, and important considerations for production use.
 
 ## Understanding Global Tables Versions
 
-DynamoDB has two versions of global tables. Version 2017.11.29 is the old version that required a separate `aws_dynamodb_global_table` resource. Version 2019.11.21 (the current version) is much simpler - you just add `replica` blocks to your regular table resource. This guide uses the current version.
+DynamoDB has two versions of global tables. Version 2017.11.29 is the old version that required a separate `aws_dynamodb_global_table` resource. Version 2019.11.21 (the current version) is much simpler - you just add `replica` blocks to your regular table resource. This guide uses the current version with the default multi-Region eventual consistency mode.
 
 ## Provider Setup for Multiple Regions
 
@@ -121,7 +121,7 @@ resource "aws_dynamodb_table" "users" {
 A few things to note here:
 
 - **DynamoDB Streams must be enabled** with `NEW_AND_OLD_IMAGES` view type. Global tables use streams for replication.
-- **On-demand billing mode is strongly recommended.** Provisioned mode works but adds complexity because you need to manage capacity in each region independently.
+- **On-demand billing mode is strongly recommended.** Provisioned mode works but adds complexity because write capacity is synchronized across replicas while read capacity can be configured or overridden per replica.
 - **GSIs are replicated automatically.** You define them once and they appear in all regions.
 - **The table name must be the same across all regions.** You cannot have different table names in different replicas.
 
@@ -203,7 +203,7 @@ resource "aws_dynamodb_table" "sensitive_data" {
 
 ## Global Table with Provisioned Capacity
 
-If you use provisioned mode, you need to set capacity for the base table and manage auto scaling for each replica independently.
+If you use provisioned mode, you need to set capacity for the base table. With current global tables, write capacity and write auto scaling are synchronized across replicas, while read capacity and read auto scaling can be configured or overridden per replica. The example below shows read auto scaling targets in each region when managing auto scaling directly with Terraform.
 
 ```hcl
 resource "aws_dynamodb_table" "orders" {
@@ -366,7 +366,7 @@ resource "aws_cloudwatch_metric_alarm" "replication_latency" {
 
 ## Important Considerations
 
-**Replication is asynchronous.** Changes typically replicate within one to two seconds, but there is no guarantee. If strong consistency across regions is critical, global tables might not be the right fit.
+**Replication is asynchronous by default.** Changes in the default multi-Region eventual consistency mode typically replicate within one to two seconds, but there is no guarantee. If strong consistency across regions is critical, use multi-Region strong consistency where it is supported, or confirm that the default mode fits your application.
 
 **You cannot add or remove replicas and update the table in the same apply.** If you need to add a replica and modify an attribute, do it in two separate applies.
 
@@ -374,7 +374,7 @@ resource "aws_cloudwatch_metric_alarm" "replication_latency" {
 
 **TTL deletes are replicated.** When an item expires via TTL in one region, the deletion is replicated to other regions. The item might be readable briefly in replica regions before the delete arrives.
 
-**Costs add up.** You pay for replicated write capacity in each replica region. A 10 WCU write to the primary table costs an additional 10 replicated WCUs in each replica region. Factor this into your cost estimates.
+**Costs add up.** You pay for replicated write units in every region that contains a replica table, and cross-region data transfer fees apply. For current global tables, a 1 KB write consumes one replicated write unit in each replica table. Factor this into your cost estimates.
 
 **Terraform state considerations.** The table resource lives in one Terraform state, but the replicas are in other regions. If you manage infrastructure per-region with separate state files, you need to decide where the global table definition lives.
 
