@@ -81,8 +81,8 @@ Define variables that hold the brace characters:
     src: alert_rules.yml.j2
     dest: /etc/prometheus/rules/alerts.yml
   vars:
-    left_brace: "{{"
-    right_brace: "}}"
+    left_brace: "{{ '{{' }}"
+    right_brace: "{{ '}}' }}"
 ```
 
 Then in the template:
