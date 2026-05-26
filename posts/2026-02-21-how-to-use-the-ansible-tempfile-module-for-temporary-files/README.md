@@ -109,7 +109,7 @@ One of the best uses for temp files is the atomic deployment pattern. Write to a
 
 ## Staging Directory for Multi-File Deployments
 
-When deploying multiple files that need to be swapped atomically, a temporary directory is the way to go.
+When deploying multiple files that need to be staged and promoted together, a temporary directory is the way to go.
 
 ```yaml
 # Stage a complete application deployment in a temp directory
@@ -149,12 +149,12 @@ When deploying multiple files that need to be swapped atomically, a temporary di
   when: not item.stat.exists
   loop: "{{ staged_files.results }}"
 
-- name: Swap staging directory with live directory
+- name: Promote staging directory to live directory
   ansible.builtin.shell: |
     # Move current live directory to backup
     mv /opt/myapp/current /opt/myapp/previous 2>/dev/null || true
     # Move staging directory to live
-    mv {{ staging.path }} /opt/myapp/current
+    mv {{ staging.path | quote }} /opt/myapp/current
   notify: Restart application
 
 # No cleanup needed since we moved the staging dir to its final location
@@ -262,7 +262,7 @@ graph TD
     G --> H[Temp file removed]
 ```
 
-## Using Temp Files with ansible.builtin.command
+## Using Temp Files with Command-Line Tools
 
 The `tempfile` module pairs well with command-line tools that expect file paths as arguments.
 
@@ -276,7 +276,7 @@ The `tempfile` module pairs well with command-line tools that expect file paths 
 
 - name: Export database schema
   ansible.builtin.shell: >
-    pg_dump --schema-only mydb > {{ sql_temp.path }}
+    pg_dump --schema-only mydb > {{ sql_temp.path | quote }}
   become_user: postgres
 
 - name: Read exported schema
