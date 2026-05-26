@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ansible-lint, Naming Convention, Best Practice
 
-Description: Fix all types of ansible-lint task naming warnings including missing names, casing issues, template usage in names, and prefix requirements.
+Description: Fix common ansible-lint task naming warnings including missing names, casing issues, and template usage in names.
 
 ---
 
 Task naming warnings are among the most frequent ansible-lint findings. They might seem like nitpicking, but consistent task names make your playbook output readable, your logs searchable, and your team's code reviews smoother. When you run a playbook, the task names are what scroll across your terminal. Good names tell you exactly what is happening at each step.
 
-Let us go through every task naming rule in ansible-lint and how to fix violations for each one.
+Let us go through the most common task naming rules in ansible-lint and how to fix violations for each one.
 
 ## name[missing]: All Tasks Should Be Named
 
@@ -132,9 +132,9 @@ ansible-lint expects task names to start with a capital letter. This is a readab
 
 Note: Play names follow the same rule.
 
-## name[template]: Task Names Should Not Use Jinja2 Templates
+## name[template]: Task Names Should Keep Jinja2 Templates at the End
 
-Putting variables in task names makes the output inconsistent across different runs and hosts. It also makes searching logs harder because the task name changes based on variable values.
+Putting variables in the middle of task names makes the output inconsistent across different runs and hosts. It also makes searching logs harder because the task name changes based on variable values. ansible-lint discourages templating in task names and flags Jinja2 templates unless they are at the end of the name.
 
 **The problem:**
 
@@ -149,12 +149,12 @@ Putting variables in task names makes the output inconsistent across different r
         name: "{{ app_name }}={{ app_version }}"
         state: present
 
-    - name: "Create user {{ app_user }}"
+    - name: "Create {{ app_user }} service user"
       ansible.builtin.user:
         name: "{{ app_user }}"
         state: present
 
-    - name: "Deploy config to {{ inventory_hostname }}"
+    - name: "Deploy {{ inventory_hostname }} configuration file"
       ansible.builtin.template:
         src: app.conf.j2
         dest: "/etc/{{ app_name }}/app.conf"
@@ -199,7 +199,7 @@ If you absolutely need dynamic information in the output, use the `ansible.built
 
 ## name[play]: Play Names Must Follow Rules
 
-Play names follow the same rules as task names: they must exist, start with a capital letter, and avoid templates.
+Play names follow the same rules as task names: they must exist, start with a capital letter, and keep templates at the end if templates are used.
 
 **The problem:**
 
@@ -209,7 +209,7 @@ Play names follow the same rules as task names: they must exist, start with a ca
 - hosts: webservers  # No name at all
   tasks: []
 
-- name: "deploy to {{ env }}"  # Template in name
+- name: "deploy {{ env }} application"  # Template in the middle of the name
   hosts: webservers
   tasks: []
 
@@ -332,10 +332,10 @@ Handlers follow the same rules as tasks. Name them descriptively:
     state: restarted
 ```
 
-Make sure the handler name matches the `notify` directive in your tasks:
+When you notify a handler by name, make sure the handler name matches the `notify` directive in your tasks:
 
 ```yaml
-# tasks/main.yml - notify must match handler name exactly
+# tasks/main.yml - notify must match the handler name exactly
 - name: Deploy nginx configuration
   ansible.builtin.template:
     src: nginx.conf.j2
@@ -349,7 +349,7 @@ Sometimes a naming rule genuinely does not work for a specific situation. Use in
 
 ```yaml
 # When you truly need a template in the name for loop clarity
-- name: "Create virtual host for {{ item.domain }}"  # noqa: name[template]
+- name: "Create {{ item.domain }} virtual host"  # noqa: name[template]
   ansible.builtin.template:
     src: vhost.conf.j2
     dest: "/etc/nginx/sites-available/{{ item.domain }}.conf"
