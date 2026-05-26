@@ -20,7 +20,7 @@ flowchart TD
     B --> C[Flush pre_tasks handlers]
     C --> D[roles]
     D --> E[tasks]
-    E --> F[Flush tasks handlers]
+    E --> F[Flush roles and tasks handlers]
     F --> G[post_tasks]
     G --> H[Flush post_tasks handlers]
     H --> I[End Play]
@@ -29,10 +29,10 @@ flowchart TD
 The key points:
 1. `pre_tasks` run before any roles
 2. Handlers notified during `pre_tasks` are flushed before roles start
-3. All roles run in the order listed
+3. Roles run in the order listed, with role dependencies running before the role that depends on them
 4. Regular `tasks` run after all roles
 5. `post_tasks` run last, after everything else
-6. Each section flushes its own handlers
+6. Handlers are flushed after `pre_tasks`, after the combined `roles` and `tasks` phase, and after `post_tasks`
 
 ## Basic Usage
 
