@@ -47,10 +47,10 @@ blue-green-deploy/
       blue.yml
       green.yml
   playbooks/
+    determine-target.yml
     deploy.yml
     switch.yml
     rollback.yml
-    health-check.yml
   roles/
     app-deploy/
     lb-switch/
@@ -96,7 +96,7 @@ health_endpoint: "/health"
 lb_type: nginx  # or haproxy, aws_alb, etc.
 
 # Track which environment is currently active
-# This gets updated by the switch playbook
+# The playbooks below derive this from the load balancer config
 active_environment: blue
 ```
 
@@ -155,6 +155,8 @@ Deploy to the inactive environment.
 - name: Determine target environment
   hosts: loadbalancer
   gather_facts: false
+  vars:
+    deploy_version: "{{ lookup('env', 'DEPLOY_VERSION') | default('latest', true) }}"
   tasks:
     - name: Get current active environment
       shell: grep -oP 'upstream\s+\K(blue|green)' /etc/nginx/conf.d/app.conf | head -1
@@ -176,7 +178,7 @@ Deploy to the inactive environment.
   gather_facts: true
 
   vars:
-    deploy_version: "{{ lookup('env', 'DEPLOY_VERSION') | default('latest') }}"
+    deploy_version: "{{ lookup('env', 'DEPLOY_VERSION') | default('latest', true) }}"
 
   tasks:
     # Stop the application on inactive environment
@@ -470,7 +472,9 @@ If you use an AWS Application Load Balancer, switch target groups instead of Ngi
       register: target_health
       retries: 30
       delay: 10
-      until: "'unhealthy' not in target_health.stdout"
+      until:
+        - target_health.stdout.split() | length > 0
+        - target_health.stdout.split() | unique == ['healthy']
       changed_when: false
 
     - name: Switch complete
@@ -495,6 +499,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    outputs:
+      traffic_switched: ${{ steps.switch.outputs.traffic_switched }}
     steps:
       - uses: actions/checkout@v4
       - run: pip install ansible==8.7.0
@@ -511,8 +517,10 @@ jobs:
           ANSIBLE_HOST_KEY_CHECKING: "false"
 
       - name: Switch traffic
+        id: switch
         run: |
           ansible-playbook -i inventory/production.ini playbooks/switch.yml
+          echo "traffic_switched=true" >> "$GITHUB_OUTPUT"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
 
@@ -522,7 +530,7 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     needs: deploy
-    if: failure()
+    if: failure() && needs.deploy.outputs.traffic_switched == 'true'
     steps:
       - uses: actions/checkout@v4
       - run: pip install ansible==8.7.0
