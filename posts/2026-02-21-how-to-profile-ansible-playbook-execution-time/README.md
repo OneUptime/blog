@@ -8,15 +8,19 @@ Description: Learn how to measure and profile Ansible playbook execution time us
 
 ---
 
-You cannot optimize what you do not measure. Before tuning your Ansible playbooks for speed, you need to know exactly where time is being spent. Is it fact gathering? Module execution? SSH connection setup? This post covers the profiling tools and techniques available in Ansible, from built-in callback plugins to custom timing scripts.
+You cannot optimize what you do not measure. Before tuning your Ansible playbooks for speed, you need to know exactly where time is being spent. Is it fact gathering? Module execution? SSH connection setup? This post covers the profiling tools and techniques available in Ansible, from callback plugins to custom timing scripts.
 
-## Built-in Profiling Callback Plugins
+## Profiling Callback Plugins
 
-Ansible ships with three profiling callback plugins:
+The `ansible.posix` collection provides three profiling callback plugins. If you installed the full `ansible` package, you might already have this collection; if you installed `ansible-core`, install it first:
 
-- `profile_tasks`: Shows execution time for each task
-- `profile_roles`: Shows execution time for each role
-- `timer`: Shows total playbook execution time
+```bash
+ansible-galaxy collection install ansible.posix
+```
+
+- `ansible.posix.profile_tasks`: Shows execution time for each task
+- `ansible.posix.profile_roles`: Shows execution time for each role
+- `ansible.posix.timer`: Shows total playbook execution time
 
 You can enable them in `ansible.cfg`:
 
@@ -24,14 +28,14 @@ You can enable them in `ansible.cfg`:
 # Enable all three profiling callbacks
 
 [defaults]
-callbacks_enabled = profile_tasks, profile_roles, timer
+callbacks_enabled = ansible.posix.profile_tasks, ansible.posix.profile_roles, ansible.posix.timer
 ```
 
 Or via environment variable for a single run:
 
 ```bash
 # Enable profiling for one run without changing ansible.cfg
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.timer ansible-playbook site.yml
 ```
 
 ## Using profile_tasks
@@ -40,19 +44,19 @@ The `profile_tasks` callback is the most useful profiling tool. It shows the exe
 
 ```bash
 # Run with profile_tasks enabled
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook deploy.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook deploy.yml
 ```
 
 The output includes timestamps during execution:
 
 ```text
 TASK [Install packages] ********************************************************
-Thursday 21 February 2026  10:15:03 +0000 (0:00:02.345)       0:00:05.678 ****
+Saturday 21 February 2026  10:15:03 +0000 (0:00:02.345)       0:00:05.678 ****
 ok: [web-01]
 ok: [web-02]
 
 TASK [Copy configuration] ******************************************************
-Thursday 21 February 2026  10:15:48 +0000 (0:00:45.123)       0:00:50.801 ****
+Saturday 21 February 2026  10:15:48 +0000 (0:00:45.123)       0:00:50.801 ****
 changed: [web-01]
 changed: [web-02]
 ```
@@ -60,7 +64,7 @@ changed: [web-02]
 And a sorted summary at the end:
 
 ```text
-Thursday 21 February 2026  10:17:30 +0000 (0:00:01.234)       0:02:30.456 ****
+Saturday 21 February 2026  10:17:30 +0000 (0:00:01.234)       0:02:30.456 ****
 ===============================================================================
 Install packages ----------------------------------------- 45.12s
 Run database migration ----------------------------------- 32.45s
@@ -78,7 +82,7 @@ The `profile_roles` callback aggregates time by role, which is useful for comple
 
 ```bash
 # Profile by role
-ANSIBLE_CALLBACKS_ENABLED=profile_roles ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_roles ansible-playbook site.yml
 ```
 
 Output:
@@ -100,7 +104,7 @@ The `timer` callback simply shows the total playbook execution time:
 
 ```bash
 # Show total execution time
-ANSIBLE_CALLBACKS_ENABLED=timer ansible-playbook site.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer ansible-playbook site.yml
 ```
 
 Output:
@@ -184,7 +188,7 @@ echo "Started: $(date)" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"
 
 # Run with profiling enabled and capture output
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer \
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.timer \
     /usr/bin/time -v ansible-playbook "$PLAYBOOK" 2>&1 | tee -a "$LOG_FILE"
 
 echo "" >> "$LOG_FILE"
@@ -250,12 +254,12 @@ fi
 
 # Run the playbook and capture timing
 START=$(date +%s)
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook "$PLAYBOOK" > /tmp/ansible-profile-output.txt 2>&1
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook "$PLAYBOOK" > /tmp/ansible-profile-output.txt 2>&1
 END=$(date +%s)
 DURATION=$((END - START))
 
 # Count hosts and tasks from output
-HOSTS=$(grep -c "ok:" /tmp/ansible-profile-output.txt | head -1)
+HOSTS=$(awk '/PLAY RECAP/{flag=1; next} flag && /^[^[:space:]]+[[:space:]]+:/ {count++} END{print count+0}' /tmp/ansible-profile-output.txt)
 TASKS=$(grep -c "TASK \[" /tmp/ansible-profile-output.txt)
 
 # Append to CSV
@@ -335,7 +339,7 @@ Run it with profiling:
 
 ```bash
 # Profile infrastructure performance
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook profile-infrastructure.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook profile-infrastructure.yml
 ```
 
 This gives you a baseline for different operation types. If "File write" is disproportionately slow, you know to investigate disk I/O or SFTP performance. If "Raw SSH connectivity" is slow, the problem is at the network or SSH layer.
@@ -348,13 +352,15 @@ Integrate profiling into your CI/CD pipeline:
 # .gitlab-ci.yml example
 ansible-deploy:
   script:
-    - ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer ansible-playbook deploy.yml 2>&1 | tee profile-output.txt
+    - START=$(date +%s)
+    - ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.timer ansible-playbook deploy.yml 2>&1 | tee profile-output.txt
+    - END=$(date +%s)
     - grep "Playbook run took" profile-output.txt
     # Fail if playbook takes longer than 10 minutes
     - |
-      DURATION=$(grep -oP '\d+ minutes' profile-output.txt | grep -oP '\d+')
-      if [ "$DURATION" -gt 10 ]; then
-        echo "WARNING: Playbook took $DURATION minutes (threshold: 10)"
+      DURATION=$((END - START))
+      if [ "$DURATION" -gt 600 ]; then
+        echo "WARNING: Playbook took $DURATION seconds (threshold: 600)"
         exit 1
       fi
   artifacts:
@@ -362,4 +368,4 @@ ansible-deploy:
       - profile-output.txt
 ```
 
-Profiling is the foundation of performance optimization. Enable `profile_tasks` as a standard practice, track execution times over time, and use the data to focus your optimization efforts where they will have the most impact. Without measurement, you are just guessing.
+Profiling is the foundation of performance optimization. Enable `ansible.posix.profile_tasks` as a standard practice, track execution times over time, and use the data to focus your optimization efforts where they will have the most impact. Without measurement, you are just guessing.
