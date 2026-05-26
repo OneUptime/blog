@@ -10,7 +10,7 @@ Description: Learn how to run Ansible sanity tests to validate code quality, doc
 
 Ansible sanity tests are a built-in quality gate that checks your Ansible code for common problems. They validate everything from Python syntax and import errors to documentation formatting and GPL license headers. If you are building Ansible collections or custom modules, sanity tests are the first line of defense against shipping broken code.
 
-I started using sanity tests after I shipped a custom module that worked perfectly on Python 3.9 but crashed on Python 3.6 because I used an f-string. Sanity tests would have caught that in seconds.
+I started using sanity tests after I shipped a custom module that worked perfectly on Python 3.10 but crashed on Python 3.9 because I used structural pattern matching. Sanity tests would have caught that in seconds.
 
 ## What Are Sanity Tests?
 
@@ -54,7 +54,7 @@ ansible_collections/
       roles/
       tests/
         sanity/
-          ignore-2.16.txt
+          ignore-2.20.txt
 ```
 
 ## Running Sanity Tests
@@ -72,8 +72,8 @@ The `--docker` flag runs tests in a container so you do not pollute your local e
 ```bash
 # Run sanity tests for specific Python versions
 ansible-test sanity --docker --python 3.10
-ansible-test sanity --docker --python 3.11
 ansible-test sanity --docker --python 3.12
+ansible-test sanity --docker --python 3.13
 ```
 
 Run a specific test by name:
@@ -113,6 +113,7 @@ except ImportError:
 
 from ansible.module_utils.basic import AnsibleModule
 
+
 def main():
     module = AnsibleModule(
         argument_spec=dict(
@@ -121,10 +122,13 @@ def main():
     )
 
     if not HAS_BOTO3:
-        module.fail_json(msg="boto3 is required for this module. Install it with: pip install boto3")
+        module.fail_json(
+            msg="boto3 is required for this module. Install it with: pip install boto3",
+        )
 
     # Module logic here
     module.exit_json(changed=False)
+
 
 if __name__ == '__main__':
     main()
@@ -230,7 +234,7 @@ ansible-test sanity --test compile --docker
 Sometimes you need to suppress specific test failures. Ansible supports ignore files for each version:
 
 ```text
-# tests/sanity/ignore-2.16.txt
+# tests/sanity/ignore-2.20.txt
 # Format: path test-name [optional message]
 # Ignore a specific pylint warning for a specific file
 plugins/modules/legacy_module.py pylint:no-member  # third-party library issue
@@ -258,7 +262,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
         with:
@@ -286,11 +290,11 @@ jobs:
 See all available sanity tests for your version of Ansible:
 
 ```bash
-# List all available sanity tests
-ansible-test sanity --list-tests
+# List all available sanity tests, including disabled tests
+ansible-test sanity --list-tests --allow-disabled
 ```
 
-Common tests you will see include: `compile-test`, `import`, `pep8`, `pylint`, `validate-modules`, `yamllint`, `no-wildcard-import`, `no-basestring`, `no-dict-iteritems`, and `metaclass-boilerplate`.
+Common tests you will see include: `compile`, `import`, `pep8`, `pylint`, `validate-modules`, `yamllint`, `no-basestring`, `no-dict-iteritems`, `no-dict-iterkeys`, and `no-dict-itervalues`.
 
 ## Practical Tips
 
