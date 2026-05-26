@@ -17,7 +17,7 @@ This guide walks through creating Lambda functions with Ansible, packaging code,
 You need:
 
 - Ansible 2.14+
-- The `amazon.aws` collection
+- The `amazon.aws` and `community.general` collections
 - AWS credentials with Lambda permissions
 - Python boto3
 - An IAM role for Lambda execution (covered in a previous post)
@@ -25,7 +25,7 @@ You need:
 ```bash
 # Install dependencies
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install amazon.aws community.general
 pip install boto3 botocore
 ```
 
@@ -93,7 +93,7 @@ Now create the Ansible playbook to deploy it:
     # Package the Lambda code into a zip file
     - name: Create deployment package
       community.general.archive:
-        path: "{{ lambda_src }}/"
+        path: "{{ lambda_src }}/*"
         dest: /tmp/lambda-package.zip
         format: zip
 
@@ -140,13 +140,14 @@ For larger deployment packages, upload to S3 first:
     aws_region: us-east-1
     function_name: myapp-heavy-processor
     s3_bucket: myapp-deploy-artifacts
+    version: "1.0.0"
     s3_key: "lambda/myapp-processor-{{ version }}.zip"
 
   tasks:
     # Package the code
     - name: Create deployment package
       community.general.archive:
-        path: files/lambda/
+        path: files/lambda/*
         dest: /tmp/lambda-package.zip
         format: zip
 
@@ -220,7 +221,7 @@ When your function needs third-party libraries, you need to include them in the 
     # Package everything together
     - name: Create deployment package
       community.general.archive:
-        path: "{{ build_dir }}/"
+        path: "{{ build_dir }}/*"
         dest: /tmp/lambda-api-package.zip
         format: zip
 
@@ -250,7 +251,8 @@ For dependencies shared across multiple functions, use Lambda layers:
     description: "Shared Python libraries for myapp"
     compatible_runtimes:
       - python3.12
-    zip_file: /tmp/layer-package.zip
+    content:
+      zip_file: /tmp/layer-package.zip
     region: us-east-1
     state: present
   register: layer_result
@@ -266,7 +268,7 @@ For dependencies shared across multiple functions, use Lambda layers:
     role: arn:aws:iam::123456789012:role/myapp-lambda-role
     zip_file: /tmp/function-only.zip
     layers:
-      - "{{ layer_result.layer_version_arn }}"
+      - layer_version_arn: "{{ layer_result.layer_versions[0].layer_version_arn }}"
 ```
 
 ## Event Source Mappings
@@ -279,7 +281,7 @@ Connect Lambda to event sources like SQS or DynamoDB Streams:
   amazon.aws.lambda_event:
     state: present
     event_source: sqs
-    function_arn: "{{ lambda_result.configuration.function_arn }}"
+    lambda_function_arn: "{{ lambda_result.configuration.function_arn }}"
     source_params:
       source_arn: arn:aws:sqs:us-east-1:123456789012:myapp-work-queue
       batch_size: 10
@@ -292,7 +294,7 @@ Connect Lambda to event sources like SQS or DynamoDB Streams:
   amazon.aws.lambda_event:
     state: present
     event_source: stream
-    function_arn: "{{ lambda_result.configuration.function_arn }}"
+    lambda_function_arn: "{{ lambda_result.configuration.function_arn }}"
     source_params:
       source_arn: arn:aws:dynamodb:us-east-1:123456789012:table/myapp-events/stream/2024-01-01T00:00:00.000
       batch_size: 100
@@ -315,13 +317,14 @@ Publish versions and create aliases for safe deployments:
     runtime: python3.12
     handler: handler.lambda_handler
     role: arn:aws:iam::123456789012:role/myapp-lambda-role
+  register: lambda_version_result
 
 # Create an alias pointing to the latest version
 - name: Create production alias
   amazon.aws.lambda_alias:
     function_name: myapp-processor
     name: production
-    function_version: "{{ lambda_result.configuration.version }}"
+    function_version: "{{ lambda_version_result.configuration.version | int }}"
     description: "Production traffic"
     region: us-east-1
     state: present
@@ -342,10 +345,10 @@ Query existing Lambda functions:
 - name: Show function details
   ansible.builtin.debug:
     msg:
-      - "Runtime: {{ func_info.function.runtime }}"
-      - "Memory: {{ func_info.function.memory_size }}MB"
-      - "Timeout: {{ func_info.function.timeout }}s"
-      - "Last Modified: {{ func_info.function.last_modified }}"
+      - "Runtime: {{ func_info.functions[0].runtime }}"
+      - "Memory: {{ func_info.functions[0].memory_size }}MB"
+      - "Timeout: {{ func_info.functions[0].timeout }}s"
+      - "Last Modified: {{ func_info.functions[0].last_modified }}"
 ```
 
 ## Deleting Lambda Functions
