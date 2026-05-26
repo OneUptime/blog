@@ -83,7 +83,7 @@ resource "local_file" "ansible_inventory" {
 }
 
 # Run Ansible after inventory is generated
-resource "null_resource" "ansible_provisioner" {
+resource "terraform_data" "ansible_provisioner" {
   depends_on = [
     local_file.ansible_inventory,
     aws_instance.web,
@@ -91,9 +91,9 @@ resource "null_resource" "ansible_provisioner" {
   ]
 
   # Re-run Ansible whenever instances change
-  triggers = {
-    web_ids = join(",", aws_instance.web[*].id)
-    db_ids  = join(",", aws_instance.db[*].id)
+  triggers_replace = {
+    web_ids = aws_instance.web[*].id
+    db_ids  = aws_instance.db[*].id
   }
 
   provisioner "local-exec" {
@@ -124,14 +124,14 @@ ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 
 ## Pattern 3: Dynamic Inventory Script
 
-Instead of generating a static inventory file, write a dynamic inventory script that queries Terraform state directly.
+Instead of generating a static inventory file, write a dynamic inventory script that queries Terraform outputs.
 
 ```python
 #!/usr/bin/env python3
 # ansible/inventory/terraform_dynamic.py
 """
-Dynamic Ansible inventory from Terraform state.
-Reads terraform.tfstate and generates inventory.
+Dynamic Ansible inventory from Terraform outputs.
+Runs terraform output -json and generates inventory.
 """
 
 import json
@@ -145,7 +145,8 @@ def get_terraform_output():
         ["terraform", "output", "-json"],
         cwd="../terraform",
         capture_output=True,
-        text=True
+        text=True,
+        check=True
     )
     return json.loads(result.stdout)
 
@@ -246,14 +247,16 @@ Then in Ansible, load these outputs.
     # Load Terraform outputs into variables
     - name: Read Terraform outputs
       ansible.builtin.slurp:
-        src: "{{ playbook_dir }}/../terraform/terraform_outputs.json"
+        src: "{{ playbook_dir }}/../terraform_outputs.json"
       delegate_to: localhost
+      become: false
       register: tf_raw
       run_once: true
 
     - name: Parse Terraform outputs
       ansible.builtin.set_fact:
         tf: "{{ tf_raw.content | b64decode | from_json }}"
+      become: false
       run_once: true
 
   tasks:
