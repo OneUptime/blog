@@ -12,11 +12,13 @@ Starting a new Ansible collection from scratch means creating dozens of director
 
 ## The Basic Command
 
-The syntax is straightforward. You provide the namespace and collection name in `namespace.collection` format:
+The syntax is straightforward. You provide the namespace and collection name in `namespace.collection` format. For a development checkout that `ansible-test` can discover, run it from a directory named `ansible_collections`:
 
 ```bash
 # Initialize a new collection
 
+mkdir -p ~/projects/collections/ansible_collections
+cd ~/projects/collections/ansible_collections
 ansible-galaxy collection init myorg.infrastructure
 ```
 
@@ -34,7 +36,7 @@ myorg/infrastructure/
     README.md
 ```
 
-The namespace (`myorg`) becomes the parent directory, and the collection name (`infrastructure`) is the subdirectory. This two-level structure matches how collections are stored when installed.
+The namespace (`myorg`) becomes the parent directory, and the collection name (`infrastructure`) is the subdirectory. Under an `ansible_collections` directory, this structure matches how collections are stored when installed.
 
 ## Specifying an Output Directory
 
@@ -42,10 +44,10 @@ By default, the collection is created in the current working directory. Use `--i
 
 ```bash
 # Create the collection in a specific directory
-ansible-galaxy collection init myorg.infrastructure --init-path ~/projects/ansible-collections/
+ansible-galaxy collection init myorg.infrastructure --init-path ~/projects/collections/ansible_collections/
 ```
 
-This creates `~/projects/ansible-collections/myorg/infrastructure/`.
+This creates `~/projects/collections/ansible_collections/myorg/infrastructure/`.
 
 ## What Each File Does
 
@@ -67,7 +69,8 @@ authors:
 description: your collection description
 license:
   - GPL-2.0-or-later
-tags: [Ansible, Ansible Galaxy, Collections, Development]
+license_file: ""
+tags: []
 dependencies: {}
 repository: http://example.com/repository
 documentation: http://docs.example.com
@@ -158,7 +161,7 @@ mkdir -p myorg/infrastructure/roles/webserver/{tasks,defaults,handlers,templates
 
 ### docs/ Directory
 
-Place documentation here. Galaxy renders RST files from this directory.
+Place documentation here. Automation Hub displays Markdown files from the main `docs/` directory, while community collections included in the Ansible package use reStructuredText under `docs/docsite/rst/` for docs.ansible.com.
 
 ## Building Out the Collection
 
@@ -171,6 +174,8 @@ Create a Python module file in `plugins/modules/`:
 ```python
 #!/usr/bin/python
 # plugins/modules/server_config.py - Module for managing server configuration
+# Copyright: (c) 2026, DevOps Team
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -325,11 +330,10 @@ Create test infrastructure alongside the collection:
 mkdir -p myorg/infrastructure/tests/{unit,integration,sanity}
 ```
 
-Add a basic sanity test ignore file:
+Add sanity test ignore files only for real, temporary issues that occur in a specific Ansible release. For `tests/sanity/ignore-2.14.txt`, the format is one file-relative path and one sanity test name per line, with an optional inline comment:
 
 ```text
-# tests/sanity/ignore-2.14.txt - Ignore known issues for specific versions
-plugins/modules/server_config.py validate-modules:missing-gplv3-license
+plugins/modules/server_config.py validate-modules:missing-gplv3-license # ignore license check
 ```
 
 ## Setting Up for Development
