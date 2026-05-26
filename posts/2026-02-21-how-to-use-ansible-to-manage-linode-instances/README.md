@@ -19,13 +19,13 @@ You need:
 - Ansible 2.12+ on your control node
 - The `linode.cloud` collection
 - A Linode API token with read/write access
-- Python `linode_api4` library
+- The Python dependencies listed by the `linode.cloud` collection
 
 ```bash
-# Install the Linode collection and Python SDK
+# Install the Linode collection and its Python dependencies
 
 ansible-galaxy collection install linode.cloud
-pip install linode_api4
+pip install -r ~/.ansible/collections/ansible_collections/linode/cloud/requirements.txt
 ```
 
 Create an API token from the Linode Cloud Manager under your profile settings. Give it the scopes you need (Linodes, Volumes, Firewalls, etc.).
@@ -34,6 +34,7 @@ Create an API token from the Linode Cloud Manager under your profile settings. G
 # vars/linode_credentials.yml (encrypt with ansible-vault)
 ---
 linode_api_token: "your-linode-api-token-here"
+vault_root_password: "your-secure-root-password-here"
 ```
 
 ## Creating a Single Instance
@@ -219,15 +220,7 @@ Linode Cloud Firewalls work at the network level, providing an additional securi
               addresses:
                 ipv4: ["10.0.0.0/8"]
           inbound_policy: DROP
-          outbound:
-            - label: allow-all-outbound
-              action: ACCEPT
-              protocol: TCP
-              ports: "1-65535"
-              addresses:
-                ipv4: ["0.0.0.0/0"]
-                ipv6: ["::/0"]
-          outbound_policy: DROP
+          outbound_policy: ACCEPT
         state: present
       register: web_fw
 
@@ -366,7 +359,7 @@ Linode StackScripts are like cloud-init scripts specific to Linode. You can refe
 
 ## NodeBalancers
 
-Linode's load balancers (NodeBalancers) can be managed through the API, though direct Ansible module support varies. Use the URI module for full control.
+Linode's load balancers (NodeBalancers) can be managed directly with the `linode.cloud.nodebalancer` module.
 
 ```yaml
 # playbooks/manage-nodebalancer.yml
@@ -378,45 +371,32 @@ Linode's load balancers (NodeBalancers) can be managed through the API, though d
     - ../vars/linode_credentials.yml
 
   tasks:
-    # Create a NodeBalancer via API
+    # Create a NodeBalancer with an HTTPS configuration
     - name: Create NodeBalancer
-      ansible.builtin.uri:
-        url: "https://api.linode.com/v4/nodebalancers"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ linode_api_token }}"
-          Content-Type: "application/json"
-        body_format: json
-        body:
-          region: us-east
-          label: web-lb
-          tags:
-            - production
-        status_code: 200
+      linode.cloud.nodebalancer:
+        api_token: "{{ linode_api_token }}"
+        region: us-east
+        label: web-lb
+        tags:
+          - production
+        configs:
+          - port: 443
+            protocol: https
+            algorithm: roundrobin
+            check: http
+            check_path: "/health"
+            check_interval: 10
+            check_timeout: 5
+            check_attempts: 3
+            ssl_cert: "{{ lookup('file', '/path/to/cert.pem') }}"
+            ssl_key: "{{ lookup('file', '/path/to/key.pem') }}"
+            nodes:
+              - label: web-01
+                address: "{{ web_01_private_ip }}:443"
+              - label: web-02
+                address: "{{ web_02_private_ip }}:443"
+        state: present
       register: nodebalancer
-
-    # Add a configuration to the NodeBalancer
-    - name: Configure NodeBalancer port 443
-      ansible.builtin.uri:
-        url: "https://api.linode.com/v4/nodebalancers/{{ nodebalancer.json.id }}/configs"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ linode_api_token }}"
-          Content-Type: "application/json"
-        body_format: json
-        body:
-          port: 443
-          protocol: https
-          algorithm: roundrobin
-          check: http
-          check_path: "/health"
-          check_interval: 10
-          check_timeout: 5
-          check_attempts: 3
-          ssl_cert: "{{ lookup('file', '/path/to/cert.pem') }}"
-          ssl_key: "{{ lookup('file', '/path/to/key.pem') }}"
-        status_code: 200
-      register: nb_config
 ```
 
 ## Instance Lifecycle Management
@@ -439,6 +419,7 @@ Handle common operational tasks like resizing, rebooting, and deleting.
         api_token: "{{ linode_api_token }}"
         label: app-01
         type: g6-standard-8
+        allow_implicit_reboots: true
         state: present
 
     # Delete an instance
