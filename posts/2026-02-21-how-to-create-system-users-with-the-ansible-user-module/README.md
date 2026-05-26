@@ -14,9 +14,9 @@ System users are a special category of Linux user accounts designed to run servi
 
 System users have a few characteristics that set them apart from regular user accounts:
 
-- **UID range**: System users get UIDs from a lower range (typically 100-999 on most distributions), while regular users start at 1000.
-- **No home directory by default**: System users usually do not need a home directory, though you can create one if the service requires it.
-- **No login shell**: System users typically use `/usr/sbin/nologin` or `/bin/false` as their shell, preventing interactive login.
+- **UID range**: System users get UIDs from a lower range configured by the target system, often below 1000, while regular users commonly start at 1000.
+- **No home directory for many service accounts**: System users usually do not need a home directory, though you can create one if the service requires it.
+- **No login shell**: System users typically use the target distribution's `nologin` path, such as `/usr/sbin/nologin` or `/sbin/nologin`, or `/bin/false` as their shell, preventing interactive login.
 - **No password aging**: System accounts are not subject to password expiration policies.
 
 ## Creating a Basic System User
@@ -39,7 +39,7 @@ The `system` parameter is what tells Ansible to create a system user instead of 
         state: present
 ```
 
-When `system: yes` is set, Ansible passes the `--system` flag to `useradd`, which tells it to allocate a UID from the system range and skip creating a home directory by default.
+When `system: yes` is set on Linux targets, Ansible creates a system account, which uses the system UID range when Ansible does not set an explicit UID. Linux `useradd --system` does not create a home directory unless asked to, but Ansible's `create_home` option defaults to `yes`, so set `create_home: no` explicitly when the service account should not have a home directory.
 
 ## System User vs Regular User
 
@@ -50,11 +50,11 @@ flowchart TD
     A[Create User] --> B{system: yes?}
     B -->|Yes| C[System User]
     B -->|No| D[Regular User]
-    C --> C1[UID: 100-999]
-    C --> C2[No home directory by default]
+    C --> C1[UID: system range]
+    C --> C2[Home directory optional]
     C --> C3[No password aging]
     D --> D1[UID: 1000+]
-    D --> D2[Home directory created]
+    D --> D2[Home directory commonly created]
     D --> D3[Subject to password policies]
 ```
 
@@ -136,7 +136,7 @@ Database services often need specific directory structures:
         state: directory
 ```
 
-For PostgreSQL, we use `/bin/bash` as the shell because database administrators sometimes need to `su - postgres` to run maintenance commands. The UID and GID are set to 26, which is the conventional value for PostgreSQL on many distributions.
+For PostgreSQL, we use `/bin/bash` as the shell because database administrators sometimes need to `su - postgres` to run maintenance commands. The UID and GID are set to 26, which is the conventional value for PostgreSQL on some RPM-based distributions. Check your target distribution before hard-coding service UIDs and GIDs.
 
 ## Creating a Monitoring Agent User
 
@@ -297,9 +297,9 @@ Use the role in a playbook:
 
 ## Best Practices for System Users
 
-1. **Always use `system: yes`**. This ensures the UID is allocated from the system range, keeping your UID space organized.
+1. **Use `system: yes` for service accounts**. When you are not setting an explicit UID, this allocates from the system range, keeping your UID space organized.
 
-2. **Set the shell to `/usr/sbin/nologin`** unless there is a specific reason the service needs an interactive shell.
+2. **Set the shell to your distribution's `nologin` path** unless there is a specific reason the service needs an interactive shell.
 
 3. **Use `/opt/` or `/var/lib/` for home directories**. Do not put service account home directories under `/home/`. That path is for human users.
 
