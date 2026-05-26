@@ -47,7 +47,7 @@ myorg-infra/
     values.yml                # Not Ansible
 ```
 
-The problem: ansible-lint will try to parse every YAML file in the repo, including Kubernetes manifests, Helm values, Docker Compose files, and GitHub Actions workflows. These will produce a flood of false positives.
+The problem: ansible-lint uses heuristics to identify Ansible content when you run it without explicit targets. In a mixed repository, Kubernetes manifests, Helm values, Docker Compose files, and GitHub Actions workflows can still be picked up or reported as YAML issues if they are not scoped or excluded correctly.
 
 ## Strategy 1: Exclude Everything Non-Ansible
 
@@ -157,15 +157,15 @@ Run linting per team:
 
 ```bash
 # Lint platform team's Ansible code
-ansible-lint team-platform/ansible/
+(cd team-platform/ansible && ansible-lint)
 
 # Lint security team's Ansible code
-ansible-lint team-security/ansible/
+(cd team-security/ansible && ansible-lint)
 
 # Or lint everything (each project uses its own config)
 for dir in team-*/ansible; do
   echo "Linting $dir..."
-  ansible-lint "$dir/"
+  (cd "$dir" && ansible-lint)
 done
 ```
 
@@ -255,11 +255,11 @@ roles_path = ./roles:../shared/ansible/roles
 ```
 
 ```yaml
-# ansible/.ansible-lint - Include shared roles in linting
+# ansible/.ansible-lint - Resolve shared roles during linting
 ---
 profile: moderate
 
-# ansible-lint will follow roles_path from ansible.cfg
+# ansible-lint uses ansible.cfg during syntax checks, so roles_path helps resolve shared roles
 exclude_paths:
   - .cache/
   - molecule/
@@ -301,14 +301,14 @@ Configure pre-commit to only check Ansible files:
 ---
 repos:
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         files: ^ansible/.*\.(yml|yaml)$
         args: [-c, ansible/.yamllint.yml]
 
   - repo: https://github.com/ansible/ansible-lint
-    rev: v24.10.0
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
         files: ^ansible/.*\.(yml|yaml)$
@@ -356,7 +356,7 @@ Green nodes are linted by ansible-lint. Red nodes are excluded.
 
 ### Kubernetes YAML Files
 
-Kubernetes manifests use YAML but are not Ansible. If they are not excluded, ansible-lint will try to parse them as playbooks and fail.
+Kubernetes manifests use YAML but are not Ansible. If they are not excluded or scoped away, ansible-lint can report them as YAML issues or misclassify them as Ansible content.
 
 ```yaml
 # .ansible-lint - Exclude K8s manifests
