@@ -39,15 +39,14 @@ The `config_checks` variable will have this structure:
   "results": [
     {
       "item": "/etc/nginx/nginx.conf",
-      "stat": { "exists": true, ... },
+      "stat": { "exists": true },
       "changed": false
     },
     {
       "item": "/etc/postgresql/14/main/postgresql.conf",
-      "stat": { "exists": true, ... },
+      "stat": { "exists": true },
       "changed": false
-    },
-    ...
+    }
   ],
   "changed": false,
   "msg": "All items completed"
@@ -166,7 +165,7 @@ You can construct new variables from registered loop results:
 
 - name: Build version report
   ansible.builtin.set_fact:
-    version_report: "{{ version_report | default({}) | combine({item.item: item.stdout | default('NOT INSTALLED')}) }}"
+    version_report: "{{ version_report | default({}) | combine({item.item: (item.rc == 0) | ternary(item.stdout, 'NOT INSTALLED')}) }}"
   loop: "{{ pkg_versions.results }}"
   loop_control:
     label: "{{ item.item }}"
@@ -239,7 +238,7 @@ This three-step chain finds files, validates them, and deploys only the valid on
 
 - name: Build health summary
   ansible.builtin.set_fact:
-    healthy_count: "{{ health_checks.results | selectattr('status', 'defined') | selectattr('status', 'equalto', 200) | list | length }}"
+    healthy_count: "{{ health_checks.results | selectattr('status', 'defined') | selectattr('status', 'in', [200, 301, 302]) | list | length }}"
     total_count: "{{ health_checks.results | length }}"
 
 - name: Report health status
@@ -250,7 +249,7 @@ This three-step chain finds files, validates them, and deploys only the valid on
   ansible.builtin.debug:
     msg: "UNHEALTHY: {{ item.item }}"
   loop: "{{ health_checks.results }}"
-  when: item is failed or (item.status is defined and item.status != 200)
+  when: item is failed or (item.status is defined and item.status not in [200, 301, 302])
   loop_control:
     label: "{{ item.item }}"
 ```
