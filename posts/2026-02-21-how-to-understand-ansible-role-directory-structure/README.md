@@ -42,7 +42,7 @@ Not every role needs all of these directories. Most roles only use a subset. But
 
 ## tasks/ - The Core Logic
 
-This is the only directory that is truly required. When Ansible applies a role, it looks for `tasks/main.yml` and executes the tasks listed there.
+This is where the role's main execution logic normally lives. A role can be valid without a `tasks/` directory if it only provides other artifacts, but when Ansible applies a role with tasks, it looks for `tasks/main.yml` and executes the tasks listed there.
 
 ```yaml
 # roles/myrole/tasks/main.yml
@@ -207,11 +207,11 @@ When Ansible processes this role, it first processes the roles listed in `depend
 
 ## library/ - Custom Modules
 
-If your role ships a custom module, place the Python file here. Ansible adds this directory to the module search path when the role is active.
+If your standalone role ships a custom module, place the Python file here. Ansible adds this directory to the module search path for the role itself and for roles called after it.
 
 ```python
 # roles/myrole/library/myapp_config.py
-# Custom module available only when this role is used
+# Custom module available to this role and later roles in the play
 from ansible.module_utils.basic import AnsibleModule
 
 def main():
@@ -238,7 +238,7 @@ These directories let you ship custom Jinja2 filters or lookup plugins with your
 
 ```python
 # roles/myrole/filter_plugins/myfilters.py
-# Custom Jinja2 filter available within this role
+# Custom Jinja2 filter available to this role and later roles in the play
 def reverse_domain(value):
     return '.'.join(reversed(value.split('.')))
 
@@ -270,9 +270,10 @@ localhost ansible_connection=local
 
 Ansible searches for roles in this order:
 
-1. A `roles/` directory relative to the playbook file
-2. Directories listed in the `roles_path` configuration
-3. The current working directory
+1. Installed collections, if you use collection roles
+2. A `roles/` directory relative to the playbook file
+3. Directories listed in the `roles_path` configuration
+4. The directory where the playbook file is located
 
 You can also specify absolute or relative paths directly in your playbook:
 
@@ -303,8 +304,8 @@ flowchart TD
 |-----------|----------|-------------|---------|
 | tasks/ | N/A | Yes (main.yml) | Core role logic |
 | handlers/ | N/A | Yes (main.yml) | Event-driven actions |
-| defaults/ | Low (2) | Yes (main.yml) | Overridable defaults |
-| vars/ | High (18) | Yes (main.yml) | Internal constants |
+| defaults/ | Very low | Yes (main.yml) | Overridable defaults |
+| vars/ | High | Yes (main.yml) | Internal constants |
 | templates/ | N/A | Search path | Jinja2 templates |
 | files/ | N/A | Search path | Static files |
 | meta/ | N/A | Yes (main.yml) | Dependencies, metadata |
