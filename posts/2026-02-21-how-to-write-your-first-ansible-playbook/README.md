@@ -56,7 +56,7 @@ Let me break down each line:
 - `---` marks the start of a YAML document
 - `name` is a human-readable label for the play
 - `hosts` tells Ansible which inventory group to target
-- `become: yes` means run tasks with sudo privileges
+- `become: yes` means run tasks with privilege escalation, usually sudo
 - `tasks` is the list of actions to perform
 
 ## Writing a Real Playbook
@@ -207,16 +207,16 @@ Sometimes you need tasks to run only under certain conditions. The `when` clause
       apt:
         name: nginx
         state: present
-      when: ansible_os_family == "Debian"
+      when: ansible_facts['os_family'] == "Debian"
 
-    - name: Install nginx on RedHat/CentOS
-      yum:
+    - name: Install nginx on Red Hat-family systems
+      dnf:
         name: nginx
         state: present
-      when: ansible_os_family == "RedHat"
+      when: ansible_facts['os_family'] == "RedHat"
 ```
 
-Ansible gathers facts about each host before running tasks (that is the "Gathering Facts" step in the output). The `ansible_os_family` fact tells you what type of OS the host is running, so you can branch your logic accordingly.
+Ansible gathers facts about each host before running tasks (that is the "Gathering Facts" step in the output). The `ansible_facts['os_family']` fact tells you what type of OS the host is running, so you can branch your logic accordingly.
 
 ## Playbook Execution Flow
 
