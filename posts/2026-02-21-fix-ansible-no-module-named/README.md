@@ -8,7 +8,7 @@ Description: Resolve Ansible no module named errors caused by missing Python lib
 
 ---
 
-The "No module named" error means a Python library required by an Ansible module is not installed on the target host (or sometimes the control node). Ansible modules are Python scripts that run on the target, so they need their dependencies available there.
+The "No module named" error means a Python library required by an Ansible module is not installed on the target host (or sometimes the control node). Most Ansible modules that execute under POSIX need a Python interpreter on the target, so they need their dependencies available for that interpreter.
 
 ## The Error
 
@@ -22,7 +22,7 @@ Or:
 
 ```text
 fatal: [server1]: FAILED! => {
-    "msg": "Failed to import the required Python library (docker) on server1's Python /usr/bin/python3"
+    "msg": "Failed to import the required Python library (requests) on server1's Python /usr/bin/python3"
 }
 ```
 
@@ -51,11 +51,11 @@ Common module dependencies:
 
 | Ansible Module | Python Package | Apt Package |
 |---|---|---|
-| mysql_db / mysql_user | pymysql | python3-pymysql |
-| postgresql_db | psycopg2 | python3-psycopg2 |
-| docker_container | docker | python3-docker |
+| ansible.mysql.mysql_db / ansible.mysql.mysql_user | pymysql | python3-pymysql |
+| community.postgresql.postgresql_db | psycopg2 | python3-psycopg2 |
+| community.docker.docker_login / community.docker.docker_image_info | requests | python3-requests |
 | pip | pip | python3-pip |
-| uri (with HTTPS) | urllib3 | python3-urllib3 |
+| ansible.builtin.uri (with GSSAPI) | gssapi | python3-gssapi |
 
 ### Fix 2: Wrong Python Interpreter
 
@@ -77,9 +77,10 @@ If the error mentions an Ansible module (not a Python library):
 
 ```bash
 # Install the required collection
-ansible-galaxy collection install community.mysql
+ansible-galaxy collection install ansible.mysql
 ansible-galaxy collection install community.docker
 ansible-galaxy collection install community.postgresql
+ansible-galaxy collection install community.general
 ```
 
 ### Fix 4: Virtual Environment Issues
@@ -105,23 +106,23 @@ ansible-galaxy collection install community.postgresql
         state: present
   tasks:
     - name: Create database
-      mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp
         state: present
 ```
 
 ## Summary
 
-"No module named" errors mean a Python dependency is missing where Ansible needs it. The fix is installing the package on the target host using pip or the system package manager. Check which Python interpreter Ansible is using with `-vvv` and install the library for that specific Python version. Using a pre-task to install dependencies before the main tasks guarantees availability.
+"No module named" errors mean a Python dependency is missing where Ansible needs it. The fix is usually installing the package on the target host using pip or the system package manager. Check which Python interpreter Ansible is using with `-vvv` and install the library for that specific Python version. Using a pre-task to install dependencies before the main tasks guarantees availability.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -153,7 +154,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -235,7 +236,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -297,4 +298,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
