@@ -12,13 +12,13 @@ Transferring large files with Ansible can be surprisingly painful if you stick t
 
 ## Why the copy Module Struggles with Large Files
 
-The `copy` module has a fundamental limitation for large files: it computes a checksum on the local file, transfers the entire file over the SSH connection, and then verifies the checksum on the remote side. For files above a few hundred megabytes, this process is slow and memory-hungry. The module also base64-encodes the content during transfer, which inflates the payload by roughly 33%.
+The `copy` module has a fundamental limitation for large files: it computes a checksum on the local file, stages the file through Ansible's connection plugin, and then verifies the checksum on the remote side. For files above a few hundred megabytes, this process is slow compared with tools that are optimized for bulk transfers and incremental updates.
 
 For anything beyond about 100 MB, you should reach for other tools.
 
 ## The synchronize Module
 
-The `synchronize` module wraps `rsync`, which is purpose-built for efficient file transfers. It uses delta compression, meaning it only sends the parts of a file that changed. For initial transfers, it is still faster than `copy` because it does not base64-encode the data.
+The `synchronize` module wraps `rsync`, which is purpose-built for efficient file transfers. It uses rsync's delta-transfer algorithm, meaning it only sends the parts of a file that changed. For initial transfers, it is still often faster than `copy` because it delegates the transfer to `rsync`.
 
 Here is a basic example that syncs a large directory to remote hosts:
 
@@ -72,14 +72,14 @@ If the file is hosted on an HTTP server, S3 bucket, or artifact repository, skip
 
 The `checksum` parameter is important for large downloads. It verifies the file integrity and also makes the task idempotent. If the file already exists with the correct checksum, Ansible skips the download.
 
-For S3 downloads, use the `amazon.aws.aws_s3` module:
+For S3 downloads, use the `amazon.aws.s3_object` module:
 
 ```yaml
 # Download a large file from S3 directly to the target
 - name: Download database dump from S3
-  amazon.aws.aws_s3:
+  amazon.aws.s3_object:
     bucket: my-backups
-    object: /db/dump_20260221.sql.gz
+    object: db/dump_20260221.sql.gz
     dest: /tmp/dump_20260221.sql.gz
     mode: get
 ```
@@ -113,7 +113,7 @@ In your playbook:
   gather_facts: no
   vars:
     ansible_ssh_timeout: 120
-    ansible_command_timeout: 600
+    ansible_ssh_common_args: '-o ServerAliveInterval=30 -o ServerAliveCountMax=20'
   tasks:
     - name: Transfer large file
       ansible.posix.synchronize:
@@ -155,8 +155,9 @@ For very large files going to many hosts, the most efficient approach is to stag
         remote_src: yes
 
     - name: Start HTTP server in background
-      ansible.builtin.shell: |
-        cd /tmp/staging && python3 -m http.server 8888 &
+      ansible.builtin.command: python3 -m http.server 8888
+      args:
+        chdir: /tmp/staging
       async: 3600
       poll: 0
 
@@ -171,30 +172,32 @@ For very large files going to many hosts, the most efficient approach is to stag
         timeout: 300
 ```
 
-## Using async for Parallel Transfers
+## Using forks for Parallel Transfers
 
-If you must use the `copy` or `synchronize` module for large files across many hosts, async execution prevents serial bottlenecks:
+Ansible already runs tasks across hosts in parallel up to the configured `forks` limit. If large transfers across many hosts are still starting too slowly, raise `forks` in `ansible.cfg` or with the `--forks` command-line option. For background execution, use `async` with long-running commands rather than `copy`, because the `copy` module does not support background file transfers.
+
+```ini
+# ansible.cfg - allow more hosts to transfer in parallel
+[defaults]
+forks = 25
+```
+
+For long-running pull commands, async is still useful:
 
 ```yaml
-# Start the transfer asynchronously on all hosts
-- name: Start large file transfer (async)
-  ansible.posix.synchronize:
-    src: /opt/releases/bigapp.tar.gz
-    dest: /opt/releases/bigapp.tar.gz
+# Start a long-running pull transfer asynchronously on all hosts
+- name: Start large file download with curl
+  ansible.builtin.command:
+    cmd: curl -fL --retry 3 -o /opt/releases/bigapp.tar.gz http://staging.example.com/bigapp.tar.gz
   async: 1800
   poll: 0
   register: transfer_job
 
-# Do other work here while the transfer runs...
-- name: Run pre-deployment checks
-  ansible.builtin.command: /opt/scripts/pre_deploy_check.sh
-
-# Wait for the transfer to complete
 - name: Wait for transfer to finish
   ansible.builtin.async_status:
     jid: "{{ transfer_job.ansible_job_id }}"
   register: transfer_result
-  until: transfer_result.finished
+  until: transfer_result is finished
   retries: 60
   delay: 30
 ```
@@ -205,7 +208,7 @@ If you must use the `copy` or `synchronize` module for large files across many h
 graph TD
     A[Need to transfer large file] --> B{File source?}
     B -->|Local to control node| C{Number of targets?}
-    B -->|Remote URL / S3| D[Use get_url or aws_s3]
+    B -->|Remote URL / S3| D[Use get_url or s3_object]
     C -->|1-5 hosts| E[Use synchronize module]
     C -->|6+ hosts| F[Stage on HTTP server + get_url]
     A --> G{Is it an archive?}
