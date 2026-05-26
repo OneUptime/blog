@@ -65,7 +65,7 @@ Specify a branch, tag, or commit hash with the `version` parameter:
 
 ## Clone with Authentication
 
-For private repositories, you can use HTTPS with tokens or SSH with keys:
+For private repositories, you can use HTTPS with tokens or SSH with keys. When using a GitHub personal access token over HTTPS, include a username and use the token as the password:
 
 ```yaml
 # playbook-auth-clone.yml
@@ -77,10 +77,11 @@ For private repositories, you can use HTTPS with tokens or SSH with keys:
   tasks:
     - name: Clone with HTTPS token
       ansible.builtin.git:
-        repo: "https://{{ github_token }}@github.com/myorg/private-repo.git"
+        repo: "https://{{ github_user }}:{{ github_token }}@github.com/myorg/private-repo.git"
         dest: /opt/private-app
         version: main
       vars:
+        github_user: "{{ lookup('env', 'GITHUB_USER') }}"
         github_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
 
     - name: Clone with SSH
@@ -89,7 +90,7 @@ For private repositories, you can use HTTPS with tokens or SSH with keys:
         dest: /opt/private-app-ssh
         version: main
         key_file: /home/deploy/.ssh/deploy_key
-        accept_hostkey: true
+        accept_newhostkey: true
 ```
 
 ## Module Parameters Overview
@@ -102,7 +103,7 @@ graph TD
     A --> E[depth: Shallow clone depth]
     A --> F[force: Discard local changes]
     A --> G[key_file: SSH private key]
-    A --> H[accept_hostkey: Auto-accept SSH key]
+    A --> H[accept_newhostkey: Accept new SSH host key]
     A --> I[recursive: Clone submodules]
     A --> J[update: Pull updates if exists]
 ```
@@ -141,11 +142,25 @@ Control the ownership of the cloned files:
   become: true
 
   tasks:
+    - name: Ensure app group exists
+      ansible.builtin.group:
+        name: appuser
+        system: true
+
     - name: Ensure app user exists
       ansible.builtin.user:
         name: appuser
+        group: appuser
         system: true
         create_home: false
+
+    - name: Ensure application directory exists
+      ansible.builtin.file:
+        path: /opt/myapp
+        state: directory
+        owner: appuser
+        group: appuser
+        mode: "0755"
 
     - name: Clone repository as appuser
       ansible.builtin.git:
@@ -154,7 +169,7 @@ Control the ownership of the cloned files:
         version: main
       become_user: appuser
 
-    - name: Alternative: clone then chown
+    - name: "Alternative: clone then chown"
       ansible.builtin.git:
         repo: "https://github.com/example/myapp.git"
         dest: /opt/myapp-alt
@@ -330,4 +345,4 @@ When the destination already exists, the git module will update it:
 
 ## Summary
 
-The `ansible.builtin.git` module is the standard tool for cloning and updating Git repositories on remote hosts. Use `version` to pin to a branch, tag, or commit. Use `depth: 1` for shallow clones that save time and bandwidth. Use `key_file` for SSH authentication and token-embedded URLs for HTTPS. The module is idempotent, so it will only pull changes when the remote has new commits. Register the result and check `.changed` to conditionally run post-deployment tasks like building, migrating, and restarting services.
+The `ansible.builtin.git` module is the standard tool for cloning and updating Git repositories on remote hosts. Use `version` to pin to a branch, tag, or commit. Use `depth: 1` for shallow clones that save time and bandwidth. Use `key_file` for SSH authentication and HTTPS credentials or a credential helper for token-based HTTPS access. The module is idempotent, so it will only pull changes when the remote has new commits. Register the result and check `.changed` to conditionally run post-deployment tasks like building, migrating, and restarting services.
