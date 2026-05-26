@@ -126,6 +126,8 @@ Parameters:
     Default: 2
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
+  VPC:
+    Type: AWS::EC2::VPC::Id
 
 Resources:
   WebInstance1:
@@ -178,7 +180,7 @@ Outputs:
 A cleaner approach for EC2 instances is to use the `aws_ec2` dynamic inventory plugin filtered by CloudFormation stack tags. When CloudFormation creates EC2 instances, it automatically tags them with `aws:cloudformation:stack-name`:
 
 ```yaml
-# inventory/aws_ec2_cfn.yml
+# inventory/cfn.aws_ec2.yml
 # Use the AWS EC2 plugin filtered to CloudFormation-managed instances
 plugin: amazon.aws.aws_ec2
 regions:
@@ -213,7 +215,7 @@ This approach is simpler because it uses a built-in plugin and automatically pic
 
 ```bash
 # Verify the inventory groups
-ansible-inventory -i inventory/aws_ec2_cfn.yml --graph
+ansible-inventory -i inventory/cfn.aws_ec2.yml --graph
 ```
 
 The output shows groups based on stack names:
@@ -257,15 +259,27 @@ You can also use an Ansible playbook to query CloudFormation and build inventory
       register: cfn_results
       loop: "{{ stacks }}"
 
+    - name: Build host records from stack outputs
+      ansible.builtin.set_fact:
+        cfn_hosts: "{{ (cfn_hosts | default([])) + ((host_records | from_yaml) or []) }}"
+      vars:
+        outputs: "{{ item.cloudformation[item.item.name].stack_outputs | default({}) }}"
+        host_records: |
+          {% for host_ip in outputs.get(item.item.output_key, '').split(',') if host_ip | trim %}
+          - ip: "{{ host_ip | trim }}"
+            group: "{{ item.item.group }}"
+            stack: "{{ item.item.name }}"
+          {% endfor %}
+      loop: "{{ cfn_results.results }}"
+
     - name: Add hosts from stack outputs to inventory
       ansible.builtin.add_host:
-        name: "{{ item.1 }}"
-        groups: "{{ item.0.item.group }}"
-        ansible_host: "{{ item.1 }}"
+        name: "{{ item.ip }}"
+        groups: "{{ item.group }}"
+        ansible_host: "{{ item.ip }}"
         ansible_user: ec2-user
-        cfn_stack: "{{ item.0.item.name }}"
-      loop: "{{ cfn_results.results | subelements('cloudformation', skip_missing=True) }}"
-      when: item.0.cloudformation is defined
+        cfn_stack: "{{ item.stack }}"
+      loop: "{{ cfn_hosts | default([]) }}"
 
 # Now run your actual configuration against the dynamically built inventory
 - hosts: webservers
