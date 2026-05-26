@@ -324,7 +324,7 @@ CSV can have quoting, escaping, and encoding issues. Here are tips for common pr
 
     - name: Handle empty fields with defaults
       ansible.builtin.debug:
-        msg: "{{ item.hostname }}: port {{ item.port | default('8080') }}"
+        msg: "{{ item.hostname }}: port {{ item.port | default('8080', true) }}"
       loop: "{{ quoted_csv.list }}"
 ```
 
