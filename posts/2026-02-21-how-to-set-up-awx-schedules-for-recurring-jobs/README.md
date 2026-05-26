@@ -12,7 +12,7 @@ AWX schedules let you run job templates on a recurring basis without human inter
 
 ## How AWX Schedules Work
 
-AWX uses the iCal RRULE format for defining recurrence patterns. If you have worked with calendar invites, you have seen this format before. An RRULE like `DTSTART:20260301T020000Z RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR` means "start March 1st 2026 at 2 AM UTC, then repeat every Monday, Wednesday, and Friday."
+AWX uses the iCal RRULE format for defining recurrence patterns. If you have worked with calendar invites, you have seen this format before. An RRULE like `DTSTART:20260301T020000Z RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE,FR` means "start March 1st 2026 at 2 AM UTC, then repeat every Monday, Wednesday, and Friday."
 
 The schedule engine evaluates RRULEs and creates pending jobs at the right times. AWX checks for pending scheduled jobs every 30 seconds.
 
@@ -50,7 +50,7 @@ curl -s -X POST \
   https://awx.example.com/api/v2/job_templates/12/schedules/ \
   -d '{
     "name": "Database Backup - Tue/Thu",
-    "rrule": "DTSTART:20260221T230000Z RRULE:FREQ=WEEKLY;BYDAY=TU,TH",
+    "rrule": "DTSTART:20260221T230000Z RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=TU,TH",
     "enabled": true
   }'
 ```
@@ -67,12 +67,12 @@ curl -s -X POST \
   https://awx.example.com/api/v2/job_templates/15/schedules/ \
   -d '{
     "name": "Monthly Compliance Report",
-    "rrule": "DTSTART:20260302T060000Z RRULE:FREQ=MONTHLY;BYDAY=1MO",
+    "rrule": "DTSTART:20260302T060000Z RRULE:FREQ=MONTHLY;INTERVAL=1;BYSETPOS=1;BYDAY=MO",
     "enabled": true
   }'
 ```
 
-The `1MO` means "first Monday." Use `2MO` for the second Monday, `-1FR` for the last Friday, and so on.
+The `BYSETPOS=1;BYDAY=MO` combination means "first Monday." Use `BYSETPOS=2;BYDAY=MO` for the second Monday, `BYSETPOS=-1;BYDAY=FR` for the last Friday, and so on.
 
 ## Hourly Schedule
 
@@ -103,7 +103,7 @@ curl -s -X POST \
   https://awx.example.com/api/v2/job_templates/10/schedules/ \
   -d '{
     "name": "Migration Window - Daily Check",
-    "rrule": "DTSTART:20260221T080000Z RRULE:FREQ=DAILY;UNTIL=20260331T235959Z",
+    "rrule": "DTSTART:20260221T080000Z RRULE:FREQ=DAILY;INTERVAL=1;UNTIL=20260331T235959Z",
     "enabled": true
   }'
 ```
@@ -173,7 +173,7 @@ flowchart TD
 
 ## Timezone Considerations
 
-RRULE timestamps use UTC. If your team thinks in local time, convert carefully. A job scheduled for "3 AM Eastern" during daylight saving time is `DTSTART:20260221T080000Z` (UTC-5), but shifts to `T070000Z` when daylight saving ends.
+RRULE timestamps usually use UTC. If your team thinks in local time, convert carefully. A job scheduled for "3 AM Eastern" on February 21st 2026 is `DTSTART:20260221T080000Z` (UTC-5), but shifts to `T070000Z` during daylight saving time.
 
 The simplest approach is to pick a UTC time that works year-round and document what local time that translates to. If you need exact local-time scheduling, AWX also supports timezone-aware RRULEs.
 
@@ -196,16 +196,16 @@ Here are the RRULE patterns for common automation scenarios.
 
 ```text
 # Every weekday at 9 AM UTC (skip weekends)
-DTSTART:20260223T090000Z RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR
+DTSTART:20260223T090000Z RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR
 
 # Every 15 minutes during business hours (use multiple schedules for hour range)
 DTSTART:20260221T090000Z RRULE:FREQ=MINUTELY;INTERVAL=15;BYHOUR=9,10,11,12,13,14,15,16,17
 
 # Quarterly on the first day of each quarter
-DTSTART:20260401T060000Z RRULE:FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=1
+DTSTART:20260401T060000Z RRULE:FREQ=YEARLY;INTERVAL=1;BYMONTH=1,4,7,10;BYMONTHDAY=1
 
 # Every Sunday at midnight (maintenance window)
-DTSTART:20260222T000000Z RRULE:FREQ=WEEKLY;BYDAY=SU
+DTSTART:20260222T000000Z RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=SU
 ```
 
 ## Monitoring Scheduled Jobs
@@ -213,7 +213,7 @@ DTSTART:20260222T000000Z RRULE:FREQ=WEEKLY;BYDAY=SU
 Check the unified jobs list to see upcoming and past scheduled runs.
 
 ```bash
-# Get the next 5 scheduled runs for a schedule
+# Get the next scheduled run for a schedule
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   "https://awx.example.com/api/v2/schedules/5/" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print('Next run:', d.get('next_run'))"
