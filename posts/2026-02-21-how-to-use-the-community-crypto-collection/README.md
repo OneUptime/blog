@@ -17,11 +17,11 @@ TLS certificates are everywhere in modern infrastructure: web servers, API endpo
 
 ansible-galaxy collection install community.crypto
 
-# Install the Python cryptography library on target hosts
+# Install the Python cryptography library on hosts that execute the modules
 pip install cryptography
 ```
 
-The `cryptography` Python library (version 1.6 or newer) is required. For ACME operations, you also need `cryptography >= 1.5`.
+The `cryptography` Python library (version 3.3 or newer) is required for the private key, CSR, certificate, and information modules. For ACME operations, you need either the `openssl` command or `cryptography >= 3.3` on the host that executes the module.
 
 ```yaml
 # requirements.yml
@@ -239,15 +239,30 @@ For organizations that need an internal Certificate Authority:
           - "DNS:{{ ansible_fqdn }}"
           - "IP:{{ ansible_default_ipv4.address }}"
 
+    - name: Read server CSR
+      ansible.builtin.slurp:
+        path: /etc/ssl/certs/server.csr
+      register: server_csr
+
     - name: Sign server certificate with CA
       community.crypto.x509_certificate:
-        path: /etc/ssl/certs/server.crt
-        csr_path: /etc/ssl/certs/server.csr
+        path: "{{ ca_dir }}/certs/{{ inventory_hostname }}.crt"
+        csr_content: "{{ server_csr.content | b64decode }}"
         ownca_path: "{{ ca_dir }}/certs/ca.crt"
         ownca_privatekey_path: "{{ ca_dir }}/private/ca.key"
         provider: ownca
         ownca_not_after: "+365d"
+        return_content: true
       delegate_to: "{{ groups['ca_server'][0] }}"
+      register: signed_server_cert
+
+    - name: Install signed server certificate
+      ansible.builtin.copy:
+        content: "{{ signed_server_cert.certificate }}"
+        dest: /etc/ssl/certs/server.crt
+        owner: root
+        group: root
+        mode: "0644"
 ```
 
 ## ACME/Let's Encrypt Certificates
