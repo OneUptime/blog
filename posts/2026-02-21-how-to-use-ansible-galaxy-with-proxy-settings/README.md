@@ -8,14 +8,14 @@ Description: Configure Ansible Galaxy to work behind corporate proxies including
 
 ---
 
-Corporate networks almost always have proxy servers between your workstation and the internet. If you try to run `ansible-galaxy install` without configuring proxy settings, the connection will either hang or fail with a timeout error. This post covers every way to configure proxy settings for Ansible Galaxy, from environment variables to ansible.cfg settings.
+Corporate networks almost always have proxy servers between your workstation and the internet. If you try to run `ansible-galaxy role install` without configuring proxy settings, the connection will either hang or fail with a timeout error. This post covers every way to configure proxy settings for Ansible Galaxy, from environment variables to ansible.cfg settings.
 
 ## The Problem
 
-When you run `ansible-galaxy install` behind a proxy without configuration, you will see something like this:
+When you run `ansible-galaxy role install` behind a proxy without configuration, you will see something like this:
 
 ```text
-$ ansible-galaxy install geerlingguy.nginx
+$ ansible-galaxy role install geerlingguy.nginx
 - downloading role 'nginx', owned by geerlingguy
 [WARNING]: - geerlingguy.nginx was NOT installed successfully:
 Connection refused
@@ -35,7 +35,7 @@ export HTTPS_PROXY="http://proxy.corp.com:8080"
 export NO_PROXY="localhost,127.0.0.1,.corp.com,galaxy.internal.com"
 
 # Now Galaxy commands will use the proxy
-ansible-galaxy install geerlingguy.nginx
+ansible-galaxy role install geerlingguy.nginx
 ```
 
 These variables work because `ansible-galaxy` uses Python's `urllib` and `requests` libraries, which respect standard proxy environment variables.
@@ -109,8 +109,8 @@ If your network uses a SOCKS proxy (common with SSH tunnels):
 export HTTP_PROXY="socks5://proxy.corp.com:1080"
 export HTTPS_PROXY="socks5://proxy.corp.com:1080"
 
-# You may need to install PySocks
-pip install pysocks
+# You may need the Requests SOCKS dependencies, which install PySocks
+python -m pip install 'requests[socks]'
 ```
 
 For SSH-based SOCKS proxies, set up a tunnel first:
@@ -124,7 +124,7 @@ export HTTP_PROXY="socks5://127.0.0.1:1080"
 export HTTPS_PROXY="socks5://127.0.0.1:1080"
 
 # Install roles through the tunnel
-ansible-galaxy install geerlingguy.nginx
+ansible-galaxy role install geerlingguy.nginx
 ```
 
 ## Method 4: Configure in ansible.cfg
@@ -138,7 +138,7 @@ You can set proxy-related configuration in `ansible.cfg`, though the options are
 server = https://galaxy.ansible.com
 
 # Timeout for Galaxy API calls (increase for slow proxies)
-timeout = 60
+server_timeout = 60
 
 # SSL verification (disable if proxy uses a custom CA)
 # Not recommended for production
@@ -191,7 +191,7 @@ Only use this for testing, never in production:
 
 ```bash
 # Skip SSL verification (NOT recommended)
-ansible-galaxy install geerlingguy.nginx --ignore-certs
+ansible-galaxy role install geerlingguy.nginx --ignore-certs
 ```
 
 ## Configuring Proxy for Git-Based Roles
@@ -207,7 +207,7 @@ git config --global https.proxy http://proxy.corp.com:8080
 git config --global http.https://gitlab.internal.com.proxy ""
 ```
 
-This ensures that `ansible-galaxy install` works for both Galaxy-hosted roles and Git-hosted roles.
+This ensures that `ansible-galaxy role install` works for both Galaxy-hosted roles and Git-hosted roles.
 
 ## NO_PROXY Configuration
 
@@ -272,7 +272,7 @@ jobs:
 
       - name: Install Galaxy dependencies
         run: |
-          ansible-galaxy install -r requirements.yml -p ./roles/
+          ansible-galaxy role install -r requirements.yml -p ./roles/
           ansible-galaxy collection install -r requirements.yml -p ./collections/
 ```
 
@@ -288,7 +288,7 @@ variables:
 
 deploy:
   script:
-    - ansible-galaxy install -r requirements.yml -p ./roles/
+    - ansible-galaxy role install -r requirements.yml -p ./roles/
     - ansible-playbook -i inventory playbook.yml
 ```
 
