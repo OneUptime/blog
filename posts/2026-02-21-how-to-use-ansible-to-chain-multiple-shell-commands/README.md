@@ -178,7 +178,7 @@ Instead of chaining commands in a single shell task, you can use separate tasks 
     - name: Start application
       ansible.builtin.command:
         cmd: /opt/myapp/bin/start
-      when: stop_result is defined or git_result.changed
+      when: app_check.rc == 0 or git_result.changed
 ```
 
 This approach gives you per-step visibility in the Ansible output, making it much easier to debug when something goes wrong.
@@ -211,6 +211,7 @@ The `block` directive groups tasks together with shared error handling. This is 
         - name: Install and build
           ansible.builtin.shell:
             cmd: |
+              set -e
               cd {{ app_dir }}
               npm ci
               npm run build
