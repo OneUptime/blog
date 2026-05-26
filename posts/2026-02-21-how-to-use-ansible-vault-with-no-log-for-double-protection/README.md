@@ -238,16 +238,16 @@ This is cleaner than adding `no_log: true` to every task individually. Just be a
 
 ## Setting a Default in ansible.cfg
 
-You can configure Ansible to default to `no_log` for all tasks using the `display_args_to_stdout` setting, though this is a blunt instrument:
+You can configure Ansible to default to `no_log` for all tasks using the `no_log` setting, though this is a blunt instrument:
 
 ```ini
-# ansible.cfg - reduce information in default output
+# ansible.cfg - hide task details by default
 [defaults]
-display_args_to_stdout = False
+no_log = True
 no_target_syslog = True
 ```
 
-This does not replace per-task `no_log`, but it reduces the surface area for accidental exposure.
+This does not replace thinking carefully about which tasks handle secrets, but it reduces the surface area for accidental exposure. Keeping `display_args_to_stdout` disabled, which is the default, also avoids adding task arguments and variable values to Ansible's task headers.
 
 ## Summary
 
