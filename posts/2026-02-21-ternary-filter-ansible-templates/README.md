@@ -12,7 +12,7 @@ The `ternary` filter provides inline conditional logic in Ansible, similar to th
 
 ## Basic Syntax
 
-The `ternary` filter takes two arguments: the value to return when the expression is truthy, and the value to return when it is falsy.
+The `ternary` filter takes two arguments: the value to return when the expression is true, and the value to return when it is false.
 
 ```jinja2
 {# Basic ternary: true_value if condition, else false_value #}
@@ -37,8 +37,8 @@ server {
     listen {{ (enable_ssl | default(false)) | ternary('443 ssl', '80') }};
     server_name {{ server_name }};
 
-    {{ (enable_ssl | default(false)) | ternary('ssl_certificate /etc/ssl/certs/' ~ ssl_cert_name ~ '.crt;', '') }}
-    {{ (enable_ssl | default(false)) | ternary('ssl_certificate_key /etc/ssl/private/' ~ ssl_cert_name ~ '.key;', '') }}
+    {{ (enable_ssl | default(false)) | ternary('ssl_certificate /etc/ssl/certs/' ~ (ssl_cert_name | default('')) ~ '.crt;', '') }}
+    {{ (enable_ssl | default(false)) | ternary('ssl_certificate_key /etc/ssl/private/' ~ (ssl_cert_name | default('')) ~ '.key;', '') }}
 
     access_log /var/log/nginx/{{ server_name }}_access.log {{ (detailed_logging | default(false)) | ternary('combined', 'main') }};
 
@@ -170,9 +170,9 @@ The filter works in task parameters too, not just templates:
 
 ```yaml
 # conditional_tasks.yml - Use ternary in task parameters
-- name: Install appropriate package
+- name: Install appropriate web server package
   ansible.builtin.package:
-    name: "{{ (ansible_os_family == 'Debian') | ternary('nginx', 'nginx-mainline') }}"
+    name: "{{ (ansible_os_family == 'Debian') | ternary('nginx', 'httpd') }}"
     state: present
 
 - name: Set appropriate firewall rule
@@ -185,7 +185,7 @@ The filter works in task parameters too, not just templates:
   ansible.builtin.template:
     src: logrotate.j2
     dest: /etc/logrotate.d/myapp
-    mode: "{{ (app_env == 'production') | ternary('0644', '0666') }}"
+    mode: "{{ (app_env == 'production') | ternary('0644', '0600') }}"
 ```
 
 ## Nested ternary Expressions
@@ -226,15 +226,13 @@ timeout = {{ (service_type | default('http') == 'websocket') | ternary(3600, 60)
 max_connections = {{ (app_env == 'production') | ternary(1000, 100) | int }}
 
 {# ternary to choose between two filter chains #}
-output = {{ data | ternary(data | to_nice_json, '{}') }}
+output = {{ (data | default({})) | ternary(data | default({}) | to_nice_json, '{}') }}
 ```
 
 ## Docker Compose Generation
 
 ```jinja2
 {# docker-compose.yml.j2 - Conditional Docker Compose settings #}
-version: "3.8"
-
 services:
   app:
     image: {{ app_image }}:{{ app_version }}
@@ -261,18 +259,18 @@ services:
 
 ## Third Argument: None/Undefined Handling
 
-The `ternary` filter also accepts an optional third argument for when the value is `None` or undefined:
+The `ternary` filter also accepts an optional `none_val` keyword argument for when the input value is `None`. If the variable might be undefined, use `default(none)` first:
 
 ```jinja2
-{# Three-argument ternary: true_val, false_val, none_val #}
-{{ some_variable | ternary("defined_and_true", "defined_and_false", "not_defined") }}
+{# ternary with none_val: true_val, false_val, none_val #}
+{{ some_variable | default(none) | ternary("defined_and_true", "defined_and_false", none_val="not_defined") }}
 ```
 
 This is useful when you need to distinguish between "explicitly false" and "not set at all":
 
 ```jinja2
 {# Distinguish between false and undefined #}
-{{ enable_feature | default(none) | ternary("enabled", "disabled", "not configured") }}
+{{ enable_feature | default(none) | ternary("enabled", "disabled", none_val="not configured") }}
 ```
 
 ## Wrapping Up
