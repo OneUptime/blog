@@ -14,7 +14,7 @@ CPU information is critical for tuning application worker counts, setting parall
 
 Ansible provides CPU information through several fact keys:
 
-- `ansible_facts['processor']` - a list containing CPU model strings
+- `ansible_facts['processor']` - a platform-dependent list containing processor IDs, vendors, and model strings
 - `ansible_facts['processor_count']` - number of physical CPUs (sockets)
 - `ansible_facts['processor_cores']` - cores per physical CPU
 - `ansible_facts['processor_threads_per_core']` - threads per core (hyperthreading)
@@ -43,7 +43,7 @@ Ansible provides CPU information through several fact keys:
 
     - name: Show CPU model
       ansible.builtin.debug:
-        msg: "CPU model: {{ ansible_facts['processor'] | select('match', '.*[A-Za-z].*') | first }}"
+        msg: "CPU model: {{ ansible_facts['processor'] | reject('match', '^[0-9]+$') | list | last | default('Unknown') }}"
 ```
 
 ## Understanding vCPU Count
@@ -318,7 +318,7 @@ Build servers need CPU-aware parallelism settings for `make`, `maven`, and other
         content: |
           # Auto-configured by Ansible for {{ ansible_facts['processor_vcpus'] }} vCPUs
           export MAKEFLAGS="-j{{ make_jobs }}"
-          export MAVEN_OPTS="-T {{ maven_threads }}"
+          export MAVEN_ARGS="-T {{ maven_threads }}"
           export GRADLE_OPTS="-Dorg.gradle.workers.max={{ gradle_workers }}"
         mode: '0644'
 ```
@@ -344,7 +344,7 @@ Generate a report showing CPU capacity across your entire fleet.
           {{ ansible_facts['processor_cores'] }} cores,
           {{ ansible_facts['processor_threads_per_core'] }} threads/core)
           {{ ansible_facts['architecture'] }}
-          {{ ansible_facts['processor'] | select('match', '.*[A-Za-z].*') | first | default('Unknown') }}
+          {{ ansible_facts['processor'] | reject('match', '^[0-9]+$') | list | last | default('Unknown') }}
 ```
 
 ## Summary
