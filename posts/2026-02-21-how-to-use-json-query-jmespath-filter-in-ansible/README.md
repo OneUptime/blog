@@ -4,19 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, JMESPath, JSON, Data Querying
 
-Description: Learn how to use the json_query filter with JMESPath expressions in Ansible for powerful data querying, filtering, and transformation of complex data structures.
+Description: Learn how to use the community.general.json_query filter with JMESPath expressions in Ansible for powerful data querying, filtering, and transformation of complex data structures.
 
 ---
 
-The `json_query` filter is one of the most powerful data manipulation tools in Ansible. It uses JMESPath (JSON Matching Expression paths), a query language specifically designed for JSON data. If you have ever wished for SQL-like querying on your Ansible data structures, `json_query` is the closest thing you will get.
+The `community.general.json_query` filter is one of the most powerful data manipulation tools in Ansible. It uses JMESPath (JSON Matching Expression paths), a query language specifically designed for JSON data. If you have ever wished for SQL-like querying on your Ansible data structures, `community.general.json_query` is the closest thing you will get.
 
 ## Prerequisites
 
-The `json_query` filter requires the `jmespath` Python library. Install it on your Ansible controller:
+The `community.general.json_query` filter is part of the `community.general` collection and requires the `jmespath` Python library. Install them on your Ansible controller:
 
 ```bash
-# Install the jmespath library required by json_query
+# Install the collection and jmespath library required by json_query
 
+ansible-galaxy collection install community.general
 pip install jmespath
 ```
 
@@ -43,11 +44,11 @@ The simplest JMESPath expressions access nested fields:
   tasks:
     - name: Query nested field
       ansible.builtin.debug:
-        msg: "{{ server | json_query('network.public_ip') }}"
+        msg: "{{ server | community.general.json_query('network.public_ip') }}"
 
     - name: Query tag value
       ansible.builtin.debug:
-        msg: "{{ server | json_query('tags.environment') }}"
+        msg: "{{ server | community.general.json_query('tags.environment') }}"
 ```
 
 ## Querying Arrays
@@ -84,15 +85,15 @@ JMESPath shines when querying arrays (lists):
   tasks:
     - name: Get all instance IDs
       ansible.builtin.debug:
-        msg: "{{ instances | json_query('[].id') }}"
+        msg: "{{ instances | community.general.json_query('[].id') }}"
 
     - name: Get all instance types
       ansible.builtin.debug:
-        msg: "{{ instances | json_query('[].type') }}"
+        msg: "{{ instances | community.general.json_query('[].type') }}"
 
     - name: Get IDs and types together
       ansible.builtin.debug:
-        msg: "{{ instances | json_query('[].[id, type]') }}"
+        msg: "{{ instances | community.general.json_query('[].[id, type]') }}"
 ```
 
 ## Filtering with Conditions
@@ -132,19 +133,19 @@ JMESPath supports filtering with bracket notation:
   tasks:
     - name: Get only running instances
       ansible.builtin.debug:
-        msg: "{{ instances | json_query(\"[?state=='running']\") }}"
+        msg: "{{ instances | community.general.json_query(\"[?state=='running']\") }}"
 
     - name: Get production instances
       ansible.builtin.debug:
-        msg: "{{ instances | json_query(\"[?tags.env=='prod'].id\") }}"
+        msg: "{{ instances | community.general.json_query(\"[?tags.env=='prod'].id\") }}"
 
     - name: Get instances with high CPU
       ansible.builtin.debug:
-        msg: "{{ instances | json_query('[?cpu>`80`].tags.Name') }}"
+        msg: "{{ instances | community.general.json_query('[?cpu>`80`].tags.Name') }}"
 
     - name: Combine multiple conditions
       ansible.builtin.debug:
-        msg: "{{ instances | json_query(\"[?state=='running' && tags.env=='prod'].id\") }}"
+        msg: "{{ instances | community.general.json_query(\"[?state=='running' && tags.env=='prod'].id\") }}"
 ```
 
 ## Projection and Reshaping
@@ -183,15 +184,15 @@ You can reshape the output with multi-select expressions:
   tasks:
     - name: Select specific fields into new objects
       ansible.builtin.debug:
-        msg: "{{ employees | json_query('[].{person: name, dept: department}') }}"
+        msg: "{{ employees | community.general.json_query('[].{person: name, dept: department}') }}"
 
     - name: Get engineering team members
       ansible.builtin.debug:
-        msg: "{{ employees | json_query(\"[?department=='engineering'].name\") }}"
+        msg: "{{ employees | community.general.json_query(\"[?department=='engineering'].name\") }}"
 
     - name: Flatten all skills
       ansible.builtin.debug:
-        msg: "{{ employees | json_query('[].skills[]') }}"
+        msg: "{{ employees | community.general.json_query('[].skills[]') }}"
 ```
 
 ## JMESPath Built-in Functions
@@ -219,23 +220,23 @@ JMESPath has several useful built-in functions:
   tasks:
     - name: Count servers
       ansible.builtin.debug:
-        msg: "{{ data | json_query('length(servers)') }}"
+        msg: "{{ data | community.general.json_query('length(servers)') }}"
 
     - name: Get max memory
       ansible.builtin.debug:
-        msg: "{{ data | json_query('max_by(servers, &memory_gb)') }}"
+        msg: "{{ data | community.general.json_query('max_by(servers, &memory_gb)') }}"
 
     - name: Get min memory
       ansible.builtin.debug:
-        msg: "{{ data | json_query('min_by(servers, &memory_gb)') }}"
+        msg: "{{ data | community.general.json_query('min_by(servers, &memory_gb)') }}"
 
     - name: Sort by memory
       ansible.builtin.debug:
-        msg: "{{ data | json_query('sort_by(servers, &memory_gb)[].name') }}"
+        msg: "{{ data | community.general.json_query('sort_by(servers, &memory_gb)[].name') }}"
 
     - name: Get server names sorted
       ansible.builtin.debug:
-        msg: "{{ data | json_query('sort(servers[].name)') }}"
+        msg: "{{ data | community.general.json_query('sort(servers[].name)') }}"
 ```
 
 ## Complex Nested Queries
@@ -280,22 +281,22 @@ For deeply nested data like cloud API responses:
   tasks:
     - name: Get all instance IDs across all regions
       ansible.builtin.debug:
-        msg: "{{ cloud_infra | json_query('regions[].vpcs[].subnets[].instances[].id') }}"
+        msg: "{{ cloud_infra | community.general.json_query('regions[].vpcs[].subnets[].instances[].id') }}"
 
     - name: Get all running instance IDs
       ansible.builtin.debug:
-        msg: "{{ cloud_infra | json_query(\"regions[].vpcs[].subnets[].instances[?state=='running'].id[]\") }}"
+        msg: "{{ cloud_infra | community.general.json_query(\"regions[].vpcs[].subnets[].instances[?state=='running'].id[]\") }}"
 
     - name: Get all subnet CIDRs
       ansible.builtin.debug:
-        msg: "{{ cloud_infra | json_query('regions[].vpcs[].subnets[].cidr') }}"
+        msg: "{{ cloud_infra | community.general.json_query('regions[].vpcs[].subnets[].cidr') }}"
 ```
 
 ## Query Flow
 
 ```mermaid
 graph TD
-    A[Complex Data Structure] --> B["json_query(expression)"]
+    A[Complex Data Structure] --> B["community.general.json_query(expression)"]
     B --> C{Expression Type}
     C -->|"field.subfield"| D[Dot notation access]
     C -->|"[].field"| E[Array projection]
@@ -340,7 +341,7 @@ When you need to use Ansible variables inside a JMESPath expression, use string 
 
     - name: Execute dynamic query
       ansible.builtin.debug:
-        msg: "{{ instances | json_query(query) }}"
+        msg: "{{ instances | community.general.json_query(query) }}"
 ```
 
 ## Practical Example: Processing AWS API Response
@@ -379,13 +380,13 @@ When you need to use Ansible variables inside a JMESPath expression, use string 
     - name: Get all running instance IDs
       ansible.builtin.debug:
         msg: >-
-          {{ ec2_response | json_query("Reservations[].Instances[?State.Name=='running'].InstanceId[]") }}
+          {{ ec2_response | community.general.json_query("Reservations[].Instances[?State.Name=='running'].InstanceId[]") }}
 
     - name: Get instance types
       ansible.builtin.debug:
-        msg: "{{ ec2_response | json_query('Reservations[].Instances[].{id: InstanceId, type: InstanceType}') }}"
+        msg: "{{ ec2_response | community.general.json_query('Reservations[].Instances[].{id: InstanceId, type: InstanceType}') }}"
 ```
 
 ## Summary
 
-The `json_query` filter with JMESPath gives you a concise, expressive way to query complex data structures. Use dot notation for field access, `[]` for array projection, `[?condition]` for filtering, and built-in functions like `sort_by`, `max_by`, and `length` for computation. For dynamic queries, build the expression string with Ansible variable interpolation. While `selectattr` and `map` handle simple cases well, `json_query` becomes essential when you are dealing with deeply nested structures or need to combine multiple operations in a single expression.
+The `community.general.json_query` filter with JMESPath gives you a concise, expressive way to query complex data structures. Use dot notation for field access, `[]` for array projection, `[?condition]` for filtering, and built-in functions like `sort_by`, `max_by`, and `length` for computation. For dynamic queries, build the expression string with Ansible variable interpolation. While `selectattr` and `map` handle simple cases well, `community.general.json_query` becomes essential when you are dealing with deeply nested structures or need to combine multiple operations in a single expression.
