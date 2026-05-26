@@ -8,16 +8,16 @@ Description: Automate HTTP/2 configuration in Nginx using Ansible playbooks to i
 
 ---
 
-HTTP/2 brings major performance improvements over HTTP/1.1: multiplexed streams over a single connection, header compression, and server push. Enabling HTTP/2 in Nginx is straightforward on a single server, but when you manage a fleet of web servers, Ansible ensures the configuration is consistent and the SSL prerequisites are in place everywhere.
+HTTP/2 brings major performance improvements over HTTP/1.1: multiplexed streams over a single connection and header compression. Enabling HTTP/2 in Nginx is straightforward on a single server, but when you manage a fleet of web servers, Ansible ensures the configuration is consistent and the SSL prerequisites are in place everywhere.
 
 This post covers building an Ansible role that configures Nginx with HTTP/2 support, including SSL certificate management, recommended cipher suites, and performance tuning.
 
 ## HTTP/2 Requirements
 
-HTTP/2 in Nginx requires SSL/TLS. While the HTTP/2 specification technically allows unencrypted connections, all major browsers require HTTPS. So before enabling HTTP/2, you need:
+HTTP/2 for browser traffic in Nginx requires SSL/TLS. While Nginx and the HTTP/2 specification technically allow unencrypted connections, all major browsers require HTTPS. So before enabling HTTP/2 for a public site, you need:
 
 1. A valid SSL certificate (we will use Let's Encrypt via certbot).
-2. Nginx compiled with the `ngx_http_v2_module` (included in all modern Nginx packages).
+2. Nginx compiled with the `ngx_http_v2_module` (included in most modern distribution packages).
 3. TLS 1.2 or higher.
 
 ```mermaid
@@ -70,8 +70,7 @@ nginx_certbot_email: "admin@example.com"
 
 # HTTP/2 specific tuning
 nginx_http2_max_concurrent_streams: 128
-nginx_http2_max_field_size: "8k"
-nginx_http2_max_header_size: "32k"
+nginx_large_client_header_buffers: "4 32k"
 
 # HSTS (HTTP Strict Transport Security)
 nginx_hsts_max_age: 31536000
@@ -116,7 +115,7 @@ This task file handles SSL certificate provisioning using certbot.
     name: "Renew SSL certificates"
     minute: "30"
     hour: "2"
-    job: "certbot renew --quiet --post-hook 'systemctl reload nginx'"
+    job: "certbot renew --quiet --deploy-hook 'systemctl reload nginx'"
     user: root
   become: true
 ```
@@ -155,7 +154,7 @@ ssl_dhparam /etc/nginx/dhparam.pem;
 
 ## HTTP/2 Site Configuration Template
 
-This is the main server block with HTTP/2 enabled. Note the `http2` parameter on the `listen` directive.
+This is the main server block with HTTP/2 enabled. Current Nginx versions use the `http2 on;` directive instead of the deprecated `http2` parameter on the `listen` directive.
 
 ```nginx
 # roles/nginx_http2/templates/http2_site.conf.j2
@@ -170,7 +169,8 @@ server {
 
 server {
     # Enable HTTP/2 on the SSL listener
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {{ nginx_http2_server_name }};
 
     # SSL certificate paths
@@ -182,8 +182,7 @@ server {
 
     # HTTP/2 tuning
     http2_max_concurrent_streams {{ nginx_http2_max_concurrent_streams }};
-    http2_max_field_size {{ nginx_http2_max_field_size }};
-    http2_max_header_size {{ nginx_http2_max_header_size }};
+    large_client_header_buffers {{ nginx_large_client_header_buffers }};
 
 {% if nginx_hsts_max_age > 0 %}
     # HSTS header to enforce HTTPS
@@ -343,7 +342,7 @@ openssl s_client -connect myapp.com:443 -alpn h2 </dev/null 2>/dev/null | grep "
 
 ## Performance Impact
 
-HTTP/2 provides the biggest improvements when a page loads many resources (CSS, JS, images). The multiplexing feature allows all these resources to be fetched over a single TCP connection, eliminating the head-of-line blocking problem in HTTP/1.1. Header compression (HPACK) also reduces overhead for repeated headers across requests.
+HTTP/2 provides the biggest improvements when a page loads many resources (CSS, JS, images). The multiplexing feature allows all these resources to be fetched over a single TCP connection, reducing HTTP/1.1 request head-of-line blocking at the application layer. Header compression (HPACK) also reduces overhead for repeated headers across requests.
 
 For API-heavy applications, the improvement is less dramatic but still noticeable, especially when clients make many concurrent requests.
 
