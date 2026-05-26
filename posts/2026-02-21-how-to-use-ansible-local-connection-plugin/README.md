@@ -131,7 +131,7 @@ Ansible has a built-in implicit `localhost` entry. If you reference `localhost` 
         msg: "Running as {{ user_result.stdout }}"
 ```
 
-However, if you explicitly define `localhost` in your inventory without setting `ansible_connection=local`, Ansible will try to SSH to 127.0.0.1.
+However, if you explicitly define `localhost` in your inventory without setting `ansible_connection=local`, Ansible treats it like any other inventory host and will use the default SSH connection to `localhost`.
 
 ## Practical Use Cases
 
@@ -206,6 +206,7 @@ Many cloud modules run on the control node because they call APIs, not remote se
         vpc_id: "{{ vpc.vpc.id }}"
         cidr: 10.0.1.0/24
         az: us-east-1a
+        region: us-east-1
         state: present
       register: subnet
 
@@ -215,6 +216,7 @@ Many cloud modules run on the control node because they call APIs, not remote se
         instance_type: t3.micro
         image_id: ami-0c55b159cbfafe1f0
         subnet_id: "{{ subnet.subnet.id }}"
+        region: us-east-1
         state: running
       register: ec2
 ```
