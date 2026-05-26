@@ -36,7 +36,7 @@ The `type_debug` filter returns a string representing the Python type name of th
     - name: Display type of each variable
       ansible.builtin.debug:
         msg:
-          - "my_string: {{ my_string | type_debug }}"    # AnsibleUnicode
+          - "my_string: {{ my_string | type_debug }}"    # str
           - "my_int: {{ my_int | type_debug }}"          # int
           - "my_float: {{ my_float | type_debug }}"      # float
           - "my_bool: {{ my_bool | type_debug }}"        # bool
@@ -58,8 +58,8 @@ Here is a scenario that bites people regularly. You pass a port number as an ext
   vars:
     expected_port: 8080
   tasks:
-    # Simulating a variable passed via -e on the command line
-    - name: Set port from extra var (comes in as string)
+    # Simulating a variable passed via -e key=value on the command line
+    - name: Set port from extra var (key=value comes in as string)
       ansible.builtin.set_fact:
         actual_port: "8080"  # String, not integer
 
@@ -67,7 +67,7 @@ Here is a scenario that bites people regularly. You pass a port number as an ext
       ansible.builtin.debug:
         msg:
           - "expected_port type: {{ expected_port | type_debug }}"  # int
-          - "actual_port type: {{ actual_port | type_debug }}"      # AnsibleUnicode
+          - "actual_port type: {{ actual_port | type_debug }}"      # str
           - "Are they equal? {{ expected_port == actual_port }}"    # false!
 
     - name: Fix with int filter
@@ -99,7 +99,7 @@ The output of `register` always wraps results in a dictionary, but the sub-field
       ansible.builtin.debug:
         msg:
           - "cmd_result type: {{ cmd_result | type_debug }}"            # dict
-          - "stdout type: {{ cmd_result.stdout | type_debug }}"         # AnsibleUnicode
+          - "stdout type: {{ cmd_result.stdout | type_debug }}"         # str
           - "rc type: {{ cmd_result.rc | type_debug }}"                 # int
           - "changed type: {{ cmd_result.changed | type_debug }}"       # bool
           - "stdout_lines type: {{ cmd_result.stdout_lines | type_debug }}" # list
@@ -125,7 +125,7 @@ YAML's type coercion can produce unexpected types:
     actual_string_yes: "yes"      # str
     looks_like_float: 1.0         # float
     looks_like_int: 1             # int
-    scientific: 1e10              # float
+    scientific: 1.0e+10           # float
     octal_problem: 0777           # int (octal in YAML 1.1)
     version_number: 1.2           # float, not string!
     version_string: "1.2"         # str
@@ -137,7 +137,7 @@ YAML's type coercion can produce unexpected types:
           - "'yes' with quotes: {{ actual_string_yes | type_debug }}"
           - "1.0: {{ looks_like_float | type_debug }}"
           - "1: {{ looks_like_int | type_debug }}"
-          - "1e10: {{ scientific | type_debug }}"
+          - "1.0e+10: {{ scientific | type_debug }}"
           - "version 1.2: {{ version_number | type_debug }}"
           - "version '1.2': {{ version_string | type_debug }}"
 ```
@@ -307,6 +307,6 @@ Some Jinja2 filters fail silently by returning unexpected values when the input 
 
 ## Best Practices
 
-Add `type_debug` to your debugging toolkit alongside `debug` messages. When a conditional or filter does not work as expected, the first thing to check is the variable type. Use explicit type casting (`| int`, `| bool`, `| string`) after checking types with `type_debug`. Be especially careful with variables from extra vars (always strings), registered command output (stdout is always a string), and YAML values that look like numbers or booleans. Remove `type_debug` tasks before committing since they are debugging aids, not production code.
+Add `type_debug` to your debugging toolkit alongside `debug` messages. When a conditional or filter does not work as expected, the first thing to check is the variable type. Use explicit type casting (`| int`, `| bool`, `| string`) after checking types with `type_debug`. Be especially careful with variables from extra vars passed in key=value form (strings), registered command output (stdout is always a string), and YAML values that look like numbers or booleans. Remove `type_debug` tasks before committing since they are debugging aids, not production code.
 
 The `type_debug` filter is the Ansible equivalent of a type inspector. It takes about 10 seconds to add to a debug task and can save you hours of staring at output that looks correct but is not.
