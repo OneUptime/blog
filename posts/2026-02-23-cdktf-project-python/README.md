@@ -10,6 +10,8 @@ Description: A practical guide to building infrastructure with CDKTF and Python,
 
 Python is a natural fit for CDKTF if your team already uses it for automation, scripting, or data engineering. The syntax is clean, the ecosystem is mature, and you can integrate infrastructure code with your existing Python tooling. This guide walks through creating a CDKTF project in Python, building real infrastructure, creating reusable constructs, and testing your code.
 
+Note: CDKTF was deprecated by HashiCorp on December 10, 2025, and is no longer supported or maintained by HashiCorp. Existing projects can still use it, but new projects should account for that maintenance status.
+
 ## Project Setup
 
 ```bash
@@ -30,7 +32,7 @@ cdktf-python-demo/
   cdktf.json             # CDKTF configuration
   Pipfile                # Python dependencies (or requirements.txt)
   help                   # Usage guide
-  .gen/                  # Generated provider bindings
+  imports/               # Generated provider bindings
 ```
 
 Activate the virtual environment:
@@ -48,15 +50,15 @@ source .venv/bin/activate
 Add the AWS provider:
 
 ```bash
-# Install pre-built AWS provider
-pip install cdktf-cdktf-provider-aws
+# Generate local AWS provider bindings
+cdktf provider add hashicorp/aws --force-local
 
 # Or add it to cdktf.json and generate bindings
-# cdktf.json: "terraformProviders": ["hashicorp/aws@~> 5.0"]
+# cdktf.json: "terraformProviders": ["hashicorp/aws@~> 6.0"]
 # cdktf get
 ```
 
-Pre-built providers are recommended because they come with type hints that Python IDEs can use for autocomplete.
+Local provider bindings are recommended for current CDKTF projects because HashiCorp stopped publishing and supporting pre-built provider packages on December 10, 2025. The generated bindings still include type hints that Python IDEs can use for autocomplete.
 
 ## Your First Stack
 
@@ -64,10 +66,10 @@ Pre-built providers are recommended because they come with type hints that Pytho
 # main.py
 from constructs import Construct
 from cdktf import App, TerraformStack, TerraformOutput
-from cdktf_cdktf_provider_aws.provider import AwsProvider
-from cdktf_cdktf_provider_aws.vpc import Vpc
-from cdktf_cdktf_provider_aws.subnet import Subnet
-from cdktf_cdktf_provider_aws.instance import Instance
+from imports.aws.provider import AwsProvider
+from imports.aws.vpc import Vpc
+from imports.aws.subnet import Subnet
+from imports.aws.instance import Instance
 
 
 class WebServerStack(TerraformStack):
@@ -123,25 +125,26 @@ app.synth()
 
 ## Building a Multi-Tier Architecture
 
-Here's a more complete example with networking, database, and compute layers:
+Here's a more complete example with networking and database layers:
 
 ```python
 # main.py
+import ipaddress
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 from constructs import Construct
 from cdktf import App, TerraformStack, TerraformOutput, S3Backend
-from cdktf_cdktf_provider_aws.provider import AwsProvider
-from cdktf_cdktf_provider_aws.vpc import Vpc
-from cdktf_cdktf_provider_aws.subnet import Subnet
-from cdktf_cdktf_provider_aws.internet_gateway import InternetGateway
-from cdktf_cdktf_provider_aws.route_table import RouteTable
-from cdktf_cdktf_provider_aws.route import Route
-from cdktf_cdktf_provider_aws.route_table_association import RouteTableAssociation
-from cdktf_cdktf_provider_aws.security_group import SecurityGroup
-from cdktf_cdktf_provider_aws.db_instance import DbInstance
-from cdktf_cdktf_provider_aws.db_subnet_group import DbSubnetGroup
+from imports.aws.provider import AwsProvider
+from imports.aws.vpc import Vpc
+from imports.aws.subnet import Subnet
+from imports.aws.internet_gateway import InternetGateway
+from imports.aws.route_table import RouteTable
+from imports.aws.route import Route
+from imports.aws.route_table_association import RouteTableAssociation
+from imports.aws.security_group import SecurityGroup
+from imports.aws.db_instance import DbInstance
+from imports.aws.db_subnet_group import DbSubnetGroup
 
 
 @dataclass
@@ -191,12 +194,13 @@ class NetworkingLayer(Construct):
         # Create subnets for each AZ
         self.public_subnets = []
         self.private_subnets = []
+        subnet_cidrs = list(ipaddress.ip_network(config.vpc_cidr).subnets(new_prefix=24))
 
         for i, az in enumerate(config.availability_zones):
             # Public subnet
             public_subnet = Subnet(self, f"public-{i}",
                 vpc_id=self.vpc.id,
-                cidr_block=f"10.0.{i}.0/24",
+                cidr_block=str(subnet_cidrs[i]),
                 availability_zone=az,
                 map_public_ip_on_launch=True,
                 tags={"Name": f"{config.environment}-public-{az}"}
@@ -212,7 +216,7 @@ class NetworkingLayer(Construct):
             # Private subnet
             private_subnet = Subnet(self, f"private-{i}",
                 vpc_id=self.vpc.id,
-                cidr_block=f"10.0.{i + 100}.0/24",
+                cidr_block=str(subnet_cidrs[i + 100]),
                 availability_zone=az,
                 tags={"Name": f"{config.environment}-private-{az}"}
             )
@@ -417,7 +421,7 @@ def test_stack_synthesizes(dev_config):
     """Test that the stack synthesizes without errors."""
     app = Testing.app()
     stack = InfrastructureStack(app, "test", dev_config)
-    synthesized = Testing.synth(stack)
+    synthesized = Testing.full_synth(stack)
     assert Testing.to_be_valid_terraform(synthesized)
 
 
@@ -461,8 +465,10 @@ pytest tests/ -v
 Reference modules from the Terraform Registry:
 
 ```json
-// cdktf.json
 {
+  "language": "python",
+  "app": "python main.py",
+  "terraformProviders": [],
   "terraformModules": [
     {
       "name": "vpc",
