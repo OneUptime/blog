@@ -31,12 +31,13 @@ You need Vagrant and a VM provider installed.
 # Install Vagrant
 
 # macOS
-brew install vagrant
+brew tap hashicorp/tap
+brew install hashicorp/tap/hashicorp-vagrant
 
 # Ubuntu/Debian
 wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt-get update && sudo apt-get install vagrant
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install -y vagrant
 
 # Install VirtualBox (the most common provider)
 # macOS
@@ -98,8 +99,6 @@ driver:
   name: vagrant
   provider:
     name: virtualbox
-    options:
-      linked_clone: true  # faster VM creation using linked clones
 
 platforms:
   - name: webserver
@@ -114,6 +113,7 @@ platforms:
         ip: "192.168.56.10"
     provider_options:
       gui: false
+      linked_clone: true  # faster VM creation using linked clones
     provider_raw_config_args:
       - "customize ['modifyvm', :id, '--natdnshostresolver1', 'on']"
     config_options:
@@ -142,11 +142,11 @@ driver:
   name: vagrant
   provider:
     name: virtualbox
-    options:
-      linked_clone: true
 
 platforms:
   - name: webserver
+    groups:
+      - webservers
     box: "bento/ubuntu-22.04"
     memory: 1024
     cpus: 1
@@ -157,6 +157,8 @@ platforms:
         ip: "192.168.56.10"
 
   - name: database
+    groups:
+      - databases
     box: "bento/ubuntu-22.04"
     memory: 2048
     cpus: 2
@@ -167,6 +169,8 @@ platforms:
         ip: "192.168.56.11"
 
   - name: loadbalancer
+    groups:
+      - loadbalancers
     box: "bento/ubuntu-22.04"
     memory: 512
     cpus: 1
@@ -179,16 +183,6 @@ platforms:
 provisioner:
   name: ansible
   inventory:
-    hosts:
-      webservers:
-        hosts:
-          webserver: {}
-      databases:
-        hosts:
-          database: {}
-      loadbalancers:
-        hosts:
-          loadbalancer: {}
     group_vars:
       all:
         db_host: "192.168.56.11"
@@ -228,8 +222,6 @@ driver:
   name: vagrant
   provider:
     name: libvirt
-    options:
-      driver: kvm
 
 platforms:
   - name: instance
@@ -237,6 +229,7 @@ platforms:
     memory: 2048
     cpus: 2
     provider_options:
+      driver: kvm
       video_type: "virtio"
       channel:
         type: "unix"
@@ -258,8 +251,6 @@ driver:
   name: vagrant
   provider:
     name: virtualbox
-    options:
-      linked_clone: true
 
 platforms:
   - name: ubuntu2204
@@ -336,8 +327,8 @@ platforms:
     cpus: 1
     config_options:
       synced_folder: true
-    provider_raw_config_args:
-      - "synced_folder '.', '/vagrant', type: 'rsync'"
+    instance_raw_config_args:
+      - "vm.synced_folder '.', '/vagrant', type: 'rsync'"
 ```
 
 ## Performance Optimization
@@ -350,8 +341,6 @@ driver:
   name: vagrant
   provider:
     name: virtualbox
-    options:
-      linked_clone: true  # share base image across VMs
 
 platforms:
   - name: instance
@@ -360,6 +349,8 @@ platforms:
     cpus: 2
     config_options:
       synced_folder: false  # disable synced folders for speed
+    provider_options:
+      linked_clone: true  # share base image across VMs
     provider_raw_config_args:
       - "customize ['modifyvm', :id, '--ioapic', 'on']"
       - "customize ['modifyvm', :id, '--paravirtprovider', 'kvm']"
