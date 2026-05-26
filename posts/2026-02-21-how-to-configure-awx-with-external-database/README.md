@@ -22,7 +22,7 @@ The containerized PostgreSQL that comes with AWX shares resources with the AWX a
 
 ## Prerequisites
 
-You need a PostgreSQL server (version 13 or higher) that AWX can reach over the network. The database user needs the ability to create tables and indexes in the AWX database.
+You need a PostgreSQL server that AWX can reach over the network. For current AWX Operator releases, PostgreSQL 15 is the tested default version; newer PostgreSQL versions may work as external databases, but should be tested with your AWX version. The database user needs the ability to create tables and indexes in the AWX database.
 
 ## Setting Up the External PostgreSQL Instance
 
@@ -111,6 +111,7 @@ stringData:
   username: "awx"
   password: "your-strong-password-here"
   sslmode: "prefer"
+  target_session_attrs: "read-write"
   type: "unmanaged"
 ```
 
@@ -264,11 +265,11 @@ stringData:
   username: "awx"
   password: "your-strong-password-here"
   sslmode: "verify-full"
-  sslrootcert: "/etc/ssl/certs/rds-ca-2019-root.pem"
+  target_session_attrs: "read-write"
   type: "unmanaged"
 ```
 
-For RDS, download the AWS RDS root certificate and mount it into the AWX pods.
+For RDS, download the current AWS RDS regional or global certificate bundle and trust it in the AWX pods, for example with the AWX Operator `bundle_cacert_secret` setting.
 
 ## Migrating from Internal to External Database
 
