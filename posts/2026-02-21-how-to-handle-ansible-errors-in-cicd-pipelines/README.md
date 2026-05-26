@@ -12,7 +12,7 @@ Running Ansible in CI/CD pipelines introduces challenges you do not face when ru
 
 ## Understanding Ansible Exit Codes
 
-Ansible uses specific exit codes to indicate different outcomes. Your CI/CD pipeline should act on these codes.
+Ansible uses exit codes to indicate different outcomes. Your CI/CD pipeline should act on these codes, while treating them as broad categories because some codes can overlap depending on where the error occurs.
 
 ```bash
 # Exit code reference:
@@ -20,7 +20,9 @@ Ansible uses specific exit codes to indicate different outcomes. Your CI/CD pipe
 # 0 - Success, no changes or changes applied successfully
 # 1 - Error during execution
 # 2 - One or more hosts had failures
-# 4 - One or more hosts were unreachable
+# 4 - One or more hosts were unreachable, or a parser error before execution
+# 5 - Invalid command-line option
+# 6 - Host failures and unreachable hosts both occurred
 # 99 - User interrupted execution (Ctrl+C)
 # 250 - Unexpected error
 ```
@@ -52,8 +54,15 @@ case $EXIT_CODE in
         grep "fatal:" /tmp/ansible-output.log | head -20
         ;;
     4)
-        echo "UNREACHABLE: One or more hosts could not be contacted"
-        echo "Check network connectivity and SSH configuration"
+        echo "UNREACHABLE OR PARSER ERROR: Hosts could not be contacted, or Ansible failed before execution"
+        echo "Check network connectivity, SSH configuration, and playbook parsing errors"
+        ;;
+    5)
+        echo "ERROR: Invalid ansible-playbook command-line option"
+        ;;
+    6)
+        echo "FAILURE: Some hosts failed and some hosts were unreachable"
+        grep -E "fatal:|UNREACHABLE!" /tmp/ansible-output.log | head -20
         ;;
     *)
         echo "UNEXPECTED: Exit code $EXIT_CODE"
@@ -77,6 +86,7 @@ stages:
 
 variables:
   ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_RETRY_FILES_ENABLED: "true"
   ANSIBLE_RETRY_FILES_SAVE_PATH: "${CI_PROJECT_DIR}/retry-files"
   ANSIBLE_LOG_PATH: "${CI_PROJECT_DIR}/ansible.log"
 
@@ -97,11 +107,13 @@ deploy-staging:
     - mkdir -p retry-files
     # First attempt
     - |
+      set +e
       ansible-playbook deploy.yml \
         -i inventory/staging \
         -e "version=${CI_COMMIT_TAG}" \
         -e "environment=staging"
       DEPLOY_EXIT=$?
+      set -e
 
     # If failed, try once more on failed hosts
     - |
@@ -113,6 +125,8 @@ deploy-staging:
           -e "version=${CI_COMMIT_TAG}" \
           -e "environment=staging" \
           --limit @retry-files/deploy.retry
+      else
+        exit $DEPLOY_EXIT
       fi
   artifacts:
     when: always
@@ -306,7 +320,8 @@ Use the JSON callback plugin for machine-readable output that your CI/CD system 
 
 ```bash
 # Run with JSON output for CI/CD parsing
-ANSIBLE_STDOUT_CALLBACK=json ansible-playbook deploy.yml \
+# Install ansible.posix first if you use ansible-core instead of the full ansible package
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook deploy.yml \
   -e version=2.0.1 > ansible-result.json 2>ansible-stderr.log
 
 # Parse the result in your CI script
