@@ -23,7 +23,7 @@ flowchart TD
     E --> F[Physical Network]
 ```
 
-Ansible can manage the VM-level components (vNICs and their port group assignments) and, with the right modules, the infrastructure-level components too (port groups, switches).
+Ansible can manage the VM-level components (vNICs and their port group assignments) and, with the right modules, the infrastructure-level components too (port groups, switches). IP settings specified in `vmware_guest` network entries are applied through VMware guest customization when cloning from a template or applying customization to a supported guest; existing guest OS network settings are often better handled inside the guest.
 
 ## Adding Network Adapters to a VM
 
@@ -58,19 +58,11 @@ Use the `community.vmware.vmware_guest` module to add or modify network adapters
           # Primary network adapter for production traffic
           - name: "VLAN-100-Production"
             device_type: vmxnet3
-            ip: "10.100.1.51"
-            netmask: "255.255.255.0"
-            gateway: "10.100.1.1"
-            dns_servers:
-              - "10.100.1.10"
-              - "10.100.1.11"
             connected: true
             start_connected: true
           # Secondary adapter for management/monitoring
           - name: "VLAN-200-Management"
             device_type: vmxnet3
-            ip: "10.200.1.51"
-            netmask: "255.255.255.0"
             connected: true
             start_connected: true
       register: network_result
@@ -87,7 +79,7 @@ VMware supports several virtual network adapter types. Choose the right one base
 ```yaml
 # The device_type parameter controls which virtual NIC type is used
 
-# vmxnet3 - Best performance, requires VMware Tools
+# vmxnet3 - Best performance, requires a supported guest driver
 # Recommended for all modern Linux and Windows VMs
 - name: "VLAN-100"
   device_type: vmxnet3
@@ -146,9 +138,9 @@ Moving a VM from one port group to another is a common operation during migratio
         start_connected: true
       register: nic_change
 
-    - name: Display updated MAC address
+    - name: Display change result
       ansible.builtin.debug:
-        msg: "NIC updated. MAC: {{ nic_change.network_info['Network adapter 1'].mac_address }}"
+        msg: "NIC update changed={{ nic_change.changed }}"
 ```
 
 ## Managing Multiple NICs with vmware_guest_network
@@ -201,7 +193,7 @@ The `vmware_guest_network` module gives you finer control over individual networ
       community.vmware.vmware_guest_network:
         datacenter: "DC01"
         name: "prod-db-01"
-        label: "Network adapter 3"
+        mac_address: "00:50:56:aa:bb:cc"
         state: absent
 ```
 
@@ -238,11 +230,11 @@ Before making changes, gather the current network configuration of your VMs.
     - name: Display network adapter details
       ansible.builtin.debug:
         msg: >
-          Adapter: {{ item.key }}
-          MAC: {{ item.value.macaddress }}
-          Network: {{ item.value.label }}
-          Connected: {{ item.value.connected }}
-      loop: "{{ vm_info.instance.hw_interfaces | dict2items }}"
+          Adapter: {{ item }}
+          MAC: {{ vm_info.instance['hw_' ~ item].macaddress }}
+          Network: {{ vm_info.instance['hw_' ~ item].summary }}
+          Label: {{ vm_info.instance['hw_' ~ item].label }}
+      loop: "{{ vm_info.instance.hw_interfaces }}"
       when: vm_info.instance.hw_interfaces is defined
 ```
 
@@ -272,16 +264,12 @@ When you need to move many VMs from one VLAN to another, define the migration as
     old_network: "VLAN-100-Legacy"
     new_network: "VLAN-150-Production"
 
-    # VMs to migrate with their new IP assignments
+    # VMs to migrate. Configure the guest IPs separately after the port group change.
     migration_list:
       - name: "prod-web-01"
-        new_ip: "10.150.1.10"
       - name: "prod-web-02"
-        new_ip: "10.150.1.11"
       - name: "prod-app-01"
-        new_ip: "10.150.1.20"
       - name: "prod-app-02"
-        new_ip: "10.150.1.21"
 
   tasks:
     - name: Migrate VMs to new VLAN
@@ -291,12 +279,8 @@ When you need to move many VMs from one VLAN to another, define the migration as
         networks:
           - name: "{{ new_network }}"
             device_type: vmxnet3
-            ip: "{{ item.new_ip }}"
-            netmask: "255.255.255.0"
-            gateway: "10.150.1.1"
-            dns_servers:
-              - "10.150.1.5"
-              - "10.150.1.6"
+            connected: true
+            start_connected: true
       loop: "{{ migration_list }}"
       register: migration_results
 
@@ -360,19 +344,42 @@ Build an audit report to ensure all VMs are connected to the correct networks.
 
 ```yaml
 # audit-networks.yml
+---
 - name: Audit VM network assignments
-  community.vmware.vmware_vm_info:
-    hostname: "{{ vcenter_hostname }}"
-    username: "{{ vcenter_username }}"
-    password: "{{ vcenter_password }}"
-    validate_certs: false
-  register: all_vms
+  hosts: localhost
+  gather_facts: false
 
-- name: Report VMs on unexpected networks
-  ansible.builtin.debug:
-    msg: "WARNING: {{ item.guest_name }} is on network {{ item.mac_address }}"
-  loop: "{{ all_vms.virtual_machines }}"
-  when: "'Legacy' in (item.guest_name | default(''))"
+  module_defaults:
+    group/community.vmware.vmware:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: false
+
+  vars:
+    vcenter_hostname: "vcenter.example.com"
+    vcenter_username: "administrator@vsphere.local"
+    vcenter_password: "{{ vault_vcenter_password }}"
+
+  tasks:
+    - name: Gather registered VMs
+      community.vmware.vmware_vm_info:
+        vm_type: vm
+      register: all_vms
+
+    - name: Gather VM network adapter details
+      community.vmware.vmware_guest_network:
+        uuid: "{{ item.uuid }}"
+        datacenter: "DC01"
+        gather_network_info: true
+      loop: "{{ all_vms.virtual_machines }}"
+      register: vm_networks
+
+    - name: Report VMs on unexpected networks
+      ansible.builtin.debug:
+        msg: "WARNING: {{ item.0.item.guest_name }} is on network {{ item.1.network_name }}"
+      loop: "{{ vm_networks.results | subelements('network_info', skip_missing=True) }}"
+      when: "'Legacy' in (item.1.network_name | default(''))"
 ```
 
 Network management is one of those areas where a small mistake can have outsized impact. A VM connected to the wrong VLAN can be a security issue or cause application failures. By managing network configurations through Ansible, you get version-controlled changes, consistent configurations, and the ability to audit your entire VM fleet's network state at any time.
