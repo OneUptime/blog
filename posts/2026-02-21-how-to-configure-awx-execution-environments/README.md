@@ -45,9 +45,13 @@ build_arg_defaults:
 
 images:
   base_image:
-    name: "quay.io/ansible/ansible-runner:latest"
+    name: "docker.io/redhat/ubi9:latest"
 
 dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
   system: bindep.txt
@@ -58,7 +62,6 @@ additional_build_steps:
     - RUN cat /etc/os-release
   append_final:
     - RUN echo "Custom EE build complete"
-    - COPY --from=quay.io/ansible/ansible-runner:latest /usr/bin/ssh /usr/bin/ssh
 ```
 
 The three dependency files control what gets installed at different layers.
@@ -95,8 +98,9 @@ jmespath
 # bindep.txt - System packages (RPM-based format)
 gcc [compile]
 python3-devel [compile]
-libpq-devel [compile platform:centos-8 platform:centos-9]
-openssl-devel [platform:centos-8 platform:centos-9]
+libpq-devel [compile platform:rpm]
+openssl-devel [platform:rpm]
+openssh-clients [platform:rpm]
 ```
 
 The bindep file uses a specific syntax where tags in brackets control when packages are installed. The `[compile]` tag means the package is only needed during the build phase.
@@ -218,12 +222,19 @@ stages:
 
 build-ee:
   stage: build
-  image: quay.io/ansible/ansible-builder:latest
+  image: docker:27-cli
   services:
-    - docker:dind
+    - docker:27-dind
   variables:
     DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apk add --no-cache python3 py3-pip
+    - python3 -m venv /tmp/ansible-builder
+    - . /tmp/ansible-builder/bin/activate
+    - pip install ansible-builder
   script:
+    - . /tmp/ansible-builder/bin/activate
     - ansible-builder build
         --tag ${CI_REGISTRY_IMAGE}/custom-ee:${CI_COMMIT_SHORT_SHA}
         --container-runtime docker
