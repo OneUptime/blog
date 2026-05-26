@@ -49,7 +49,7 @@ This playbook configures Nginx with TLS 1.3 support:
 
   vars:
     nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
-    nginx_ssl_ciphers: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+    nginx_ssl_ciphers: "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
     nginx_ssl_certificate: /etc/ssl/certs/server.crt
     nginx_ssl_certificate_key: /etc/ssl/private/server.key
     nginx_ssl_session_timeout: "1d"
@@ -58,8 +58,8 @@ This playbook configures Nginx with TLS 1.3 support:
     nginx_ssl_stapling: true
 
   tasks:
-    - name: Check Nginx version supports TLS 1.3
-      ansible.builtin.command: nginx -v
+    - name: Check Nginx build supports TLS 1.3
+      ansible.builtin.command: nginx -V
       register: nginx_version
       changed_when: false
 
@@ -71,7 +71,7 @@ This playbook configures Nginx with TLS 1.3 support:
     - name: Display versions
       ansible.builtin.debug:
         msg:
-          - "Nginx: {{ nginx_version.stderr }}"
+          - "Nginx: {{ nginx_version.stderr_lines }}"
           - "OpenSSL: {{ openssl_version.stdout }}"
 
     - name: Deploy Nginx TLS configuration snippet
@@ -104,8 +104,8 @@ The Nginx SSL configuration template:
 ssl_protocols {{ nginx_ssl_protocols }};
 
 # Cipher suite configuration
-# TLS 1.3 ciphers are configured separately in OpenSSL
-# The listed ciphers cover both TLS 1.2 and 1.3
+# ssl_ciphers applies to TLS 1.2 and earlier; TLS 1.3 cipher suites
+# are controlled by OpenSSL defaults unless configured separately.
 ssl_ciphers {{ nginx_ssl_ciphers }};
 ssl_prefer_server_ciphers off;  # TLS 1.3 ciphers are all strong
 
@@ -176,7 +176,7 @@ server {
 
 ## Configuring TLS 1.3 on Apache
 
-Apache supports TLS 1.3 with version 2.4.36+ and OpenSSL 1.1.1+.
+Apache added TLS 1.3 support with OpenSSL 1.1.1 in version 2.4.36, but the Apache project recommends version 2.4.43+ or newer for operating a TLS 1.3 web server with OpenSSL 1.1.1.
 
 This playbook configures Apache with TLS 1.3:
 
@@ -189,7 +189,8 @@ This playbook configures Apache with TLS 1.3:
 
   vars:
     apache_ssl_protocols: "all -SSLv3 -TLSv1 -TLSv1.1"
-    apache_ssl_cipher_suite: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    apache_ssl_cipher_suite: "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    apache_tls13_cipher_suite: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256"
     apache_ssl_certificate: /etc/ssl/certs/server.crt
     apache_ssl_key: /etc/ssl/private/server.key
 
@@ -208,7 +209,8 @@ This playbook configures Apache with TLS 1.3:
           # TLS 1.3 configuration for Apache - Managed by Ansible
 
           SSLProtocol {{ apache_ssl_protocols }}
-          SSLCipherSuite {{ apache_ssl_cipher_suite }}
+          SSLCipherSuite SSL {{ apache_ssl_cipher_suite }}
+          SSLCipherSuite TLSv1.3 {{ apache_tls13_cipher_suite }}
           SSLHonorCipherOrder off
 
           # Session settings
@@ -292,7 +294,7 @@ After deploying, verify that TLS 1.3 is working correctly:
         -tls1_3 -brief
       register: tls13_test
       changed_when: false
-      failed_when: "'Protocol  : TLSv1.3' not in tls13_test.stderr"
+      failed_when: tls13_test.rc != 0
 
     - name: Report TLS 1.3 status
       ansible.builtin.debug:
@@ -356,13 +358,16 @@ If TLS 1.3 causes issues with older clients:
   become: true
 
   tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
     - name: Update Nginx to TLS 1.2 only
       ansible.builtin.lineinfile:
         path: /etc/nginx/snippets/ssl-params.conf
         regexp: "^ssl_protocols"
         line: "ssl_protocols TLSv1.2;"
       notify: reload nginx
-      when: "'nginx' in ansible_facts.services | default({})"
+      when: "'nginx.service' in ansible_facts.services or 'nginx' in ansible_facts.services"
 
   handlers:
     - name: reload nginx
