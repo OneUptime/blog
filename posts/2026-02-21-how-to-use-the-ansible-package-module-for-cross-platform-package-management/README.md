@@ -23,7 +23,7 @@ The `package` module has a deliberately simple interface:
     state: present
 ```
 
-This works on Ubuntu (uses apt), RHEL (uses dnf), SUSE (uses zypper), Arch (uses pacman), and any other distribution that Ansible supports. The module detects the package manager through the `ansible_pkg_mgr` fact and delegates accordingly.
+This works on Ubuntu (uses apt), RHEL (uses dnf), SUSE (uses zypper), Arch (uses pacman through the `community.general` collection when that collection is available), and other distributions with a supported package backend. The module uses existing package-manager facts or auto-detection and delegates accordingly.
 
 ## Installing Multiple Packages
 
@@ -286,16 +286,16 @@ graph TD
 
 ## Limitations of the package Module
 
-The `package` module intentionally keeps a minimal interface. It does NOT support:
+The portable interface of the `package` module is intentionally minimal. Do not rely on it for cross-platform support of:
 
-- Cache updates (`update_cache` is apt-specific)
+- Cache updates (`update_cache` is supported by some backends, but is not part of the portable interface)
 - Repository management (use `apt_repository` or `yum_repository`)
 - Package pinning/holding
 - Installing from local files
 - Package group installation
 - Module streams (dnf-specific)
 
-For any of these features, you need the platform-specific module. The `package` module is best for straightforward "install this package" scenarios.
+For any of these features, use the platform-specific module or explicitly limit the task to backends that support the option. The `package` module is best for straightforward "install this package" scenarios.
 
 ## Tips for Cross-Platform Package Management
 
