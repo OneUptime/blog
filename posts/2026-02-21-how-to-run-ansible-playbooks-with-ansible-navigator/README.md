@@ -8,11 +8,11 @@ Description: Learn to run Ansible playbooks using ansible-navigator with executi
 
 ---
 
-ansible-navigator is the modern replacement for running ansible-playbook. It runs your playbooks inside Execution Environments (containers), giving you a consistent runtime regardless of what is installed on your local machine. It also provides an interactive text-based UI that makes it much easier to inspect playbook output and debug problems. This post covers how to use it effectively for everyday playbook execution.
+ansible-navigator is a modern interface for running and troubleshooting Ansible content, including playbooks. It can run your playbooks inside Execution Environments (containers), giving you a consistent runtime regardless of what is installed on your local machine. It also provides an interactive text-based UI that makes it much easier to inspect playbook output and debug problems. This post covers how to use it effectively for everyday playbook execution.
 
 ## Installing ansible-navigator
 
-Install it from PyPI alongside ansible-builder:
+Install it from PyPI:
 
 ```bash
 # Install ansible-navigator
@@ -79,7 +79,7 @@ ansible-navigator run test.yml --mode stdout
 
 ## Specifying an Execution Environment
 
-By default, ansible-navigator pulls and uses a community EE image. You can specify your own:
+By default, ansible-navigator uses execution environments when a container runtime is available. You can specify a community EE image or your own:
 
 ```bash
 # Use a specific execution environment image
@@ -174,7 +174,7 @@ ansible-navigator supports Ansible Vault just like ansible-playbook:
 ansible-navigator run site.yml \
   -i inventory.yml \
   --ask-vault-pass \
-  --mode stdout
+  --enable-prompts
 
 # Use a vault password file
 ansible-navigator run site.yml \
@@ -183,7 +183,7 @@ ansible-navigator run site.yml \
   --mode stdout
 ```
 
-For vault password files, you need to make sure the file is accessible inside the container. ansible-navigator handles this by mounting common paths, but you may need to specify additional volume mounts:
+For vault password files, you need to make sure the file is accessible inside the container. If the file is outside your project directory, you may need to specify additional volume mounts:
 
 ```bash
 # Mount a custom path into the EE container
@@ -228,7 +228,7 @@ You can use ansible-navigator without containers, running playbooks directly on 
 # Disable execution environments
 ansible-navigator run site.yml \
   -i inventory.yml \
-  --execution-environment false \
+  --execution-environment False \
   --mode stdout
 ```
 
@@ -236,11 +236,11 @@ In this mode, ansible-navigator uses whatever Ansible installation is on your sy
 
 ## Viewing Playbook Artifacts
 
-ansible-navigator saves detailed artifacts from each playbook run. These are JSON files that contain the full output of every task.
+ansible-navigator saves detailed artifacts from each playbook run by default. These are JSON files that contain the full output of every task.
 
 ```bash
-# Artifacts are saved by default in the current directory
-ls -la *-artifact-*.json
+# Artifacts are saved by default next to the playbook
+ls -la /path/to/playbook-dir/*-artifact-*.json
 
 # Replay a previous run in the interactive TUI
 ansible-navigator replay my-playbook-artifact-2024-01-15.json
@@ -254,7 +254,7 @@ Control artifact behavior:
 # Disable artifact saving
 ansible-navigator run site.yml \
   --mode stdout \
-  --playbook-artifact-enable false
+  --playbook-artifact-enable False
 
 # Save artifacts to a specific directory
 ansible-navigator run site.yml \
@@ -289,8 +289,6 @@ And the corresponding playbook:
   hosts: webservers
   become: true
   serial: "25%"
-  vars:
-    app_version: "{{ app_version }}"
   tasks:
     - name: Pull the application image
       community.docker.docker_image:
