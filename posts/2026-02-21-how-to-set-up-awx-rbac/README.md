@@ -14,7 +14,7 @@ AWX ships with a granular RBAC system that controls who can do what with every r
 
 AWX RBAC is built around a few key concepts:
 
-**Organizations** are the top-level grouping. Every resource (inventory, project, credential, template) belongs to an organization. Users can be members of multiple organizations.
+**Organizations** are the top-level grouping. Core automation resources such as inventories, projects, credentials, and templates are associated with an organization. Users can be members of multiple organizations.
 
 **Teams** are groups of users within an organization. Instead of assigning permissions to individual users, you assign them to teams. When someone joins the team, they get all the team's permissions.
 
@@ -43,7 +43,7 @@ Each resource type in AWX has its own set of roles. Here are the most important 
 - Read - View only
 
 **Credential roles:**
-- Admin - Full control
+- Owner - Full control
 - Use - Can use the credential in job templates (but cannot see the secret value)
 - Read - Can see the credential exists but not its value
 
@@ -104,43 +104,43 @@ This is where the real access control happens. You grant specific roles on speci
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
-  https://awx.example.com/api/v2/roles/ROLE_ID/teams/ \
-  -d '{"id": TEAM_ID}'
+  https://awx.example.com/api/v2/role_team_assignments/ \
+  -d '{"team": TEAM_ID, "role_definition": ROLE_DEFINITION_ID, "object_id": "3"}'
 ```
 
-To find the role ID, you need to look at the resource's `object_roles` field.
+To find the role definition ID, query the role definitions for the resource type.
 
 ```bash
-# Get the roles available on inventory ID 3
+# Get the inventory role definitions
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
-  https://awx.example.com/api/v2/inventories/3/ \
+  'https://awx.example.com/api/v2/role_definitions/?content_type__model=inventory' \
   | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for role_name, role_data in data['summary_fields']['object_roles'].items():
-    print(f'{role_name}: ID {role_data[\"id\"]} - {role_data[\"description\"]}')
+for role in data['results']:
+    print(f'{role[\"name\"]}: ID {role[\"id\"]} - {role.get(\"description\", \"\")}')
 "
 ```
 
 This outputs something like:
 
 ```text
-admin_role: ID 45 - Can manage all aspects of the inventory
-update_role: ID 46 - May update the inventory
-adhoc_role: ID 47 - May run ad hoc commands on the inventory
-use_role: ID 48 - Can use the inventory in a job template
-read_role: ID 49 - May view settings for the inventory
+Inventory Admin: ID 45 - Can manage all aspects of the inventory
+Inventory Update: ID 46 - May update the inventory
+Inventory Ad Hoc: ID 47 - May run ad hoc commands on the inventory
+Inventory Use: ID 48 - Can use the inventory in a job template
+Inventory Read: ID 49 - May view settings for the inventory
 ```
 
 Now grant the role.
 
 ```bash
-# Give Operations team (ID 3) the admin role (ID 45) on the production inventory
+# Give Operations team (ID 3) the inventory admin role definition (ID 45) on inventory ID 3
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
-  https://awx.example.com/api/v2/roles/45/teams/ \
-  -d '{"id": 3}'
+  https://awx.example.com/api/v2/role_team_assignments/ \
+  -d '{"team": 3, "role_definition": 45, "object_id": "3"}'
 ```
 
 ## Permission Matrix Example
@@ -157,7 +157,7 @@ flowchart LR
     subgraph "Operations Team"
         O1[Admin: All Job Templates]
         O2[Admin: Production Inventory]
-        O3[Admin: All Credentials]
+        O3[Owner: All Credentials]
         O4[Execute: All Templates]
     end
     subgraph "Auditors Team"
@@ -174,12 +174,12 @@ For auditor-type roles, you want read access across the board. The easiest way i
 ```bash
 # Get organization-level roles
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
-  https://awx.example.com/api/v2/organizations/1/ \
+  'https://awx.example.com/api/v2/role_definitions/?content_type__model=organization' \
   | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for role_name, role_data in data['summary_fields']['object_roles'].items():
-    print(f'{role_name}: ID {role_data[\"id\"]} - {role_data[\"description\"]}')
+for role in data['results']:
+    print(f'{role[\"name\"]}: ID {role[\"id\"]} - {role.get(\"description\", \"\")}')
 "
 ```
 
@@ -188,22 +188,24 @@ for role_name, role_data in data['summary_fields']['object_roles'].items():
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
-  https://awx.example.com/api/v2/roles/ORG_AUDITOR_ROLE_ID/teams/ \
-  -d '{"id": 4}'
+  https://awx.example.com/api/v2/role_team_assignments/ \
+  -d '{"team": 4, "role_definition": ORG_AUDITOR_ROLE_DEFINITION_ID, "object_id": "1"}'
 ```
 
 The organization auditor role grants read access to all resources within that organization.
 
 ## User Types
 
-AWX has three user types that work alongside RBAC:
+AWX has three system user types that work alongside RBAC:
 
 - **Normal User** - Can only access resources they have been explicitly granted roles on.
-- **Organization Admin** - Has full control over everything in their organization(s).
+- **System Auditor** - Has read-only access to all objects in the environment.
 - **System Administrator** - Has full control over the entire AWX instance.
 
+Organization administrator is an organization-level role, not a separate system user type.
+
 ```bash
-# Check a user's type
+# Check a user's system-level type
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   https://awx.example.com/api/v2/users/5/ \
   | python3 -c "
@@ -245,7 +247,7 @@ This is configured in AWX settings under Authentication. The exact configuration
 
 **Giving everyone admin access** - Start with the minimum permissions needed and add more as requested. It is much harder to remove access after people are used to having it.
 
-**Forgetting credential "Use" vs "Admin"** - A user with "Use" on a credential can reference it in templates but cannot see the actual secret. This is by design. Do not give "Admin" on credentials unless the user needs to manage (create/edit/delete) them.
+**Forgetting credential "Use" vs "Owner"** - A user with "Use" on a credential can reference it in templates but cannot see the actual secret. This is by design. Do not give "Owner" on credentials unless the user needs to manage (create/edit/delete) them.
 
 **Not using teams** - Assigning roles to individual users works but does not scale. When someone leaves the team, you have to hunt down and remove all their individual role assignments. With teams, you just remove them from the team.
 
