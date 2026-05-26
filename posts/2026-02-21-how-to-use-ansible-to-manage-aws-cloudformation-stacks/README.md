@@ -16,16 +16,16 @@ This guide covers how to manage CloudFormation stacks from Ansible playbooks, pa
 
 You need:
 
-- Ansible 2.14+
+- ansible-core 2.16+
 - The `amazon.aws` collection
 - AWS credentials with CloudFormation permissions
-- Python boto3
+- Python boto3 and botocore 1.34+
 
 ```bash
 # Install dependencies
 
 ansible-galaxy collection install amazon.aws
-pip install boto3 botocore
+pip install "boto3>=1.34.0" "botocore>=1.34.0"
 ```
 
 ## Why Use Ansible with CloudFormation?
@@ -149,7 +149,7 @@ For larger templates, use separate files:
         stack_name: "myapp-{{ environment }}-database"
         region: "{{ aws_region }}"
         state: present
-        template: templates/database.yml
+        template_body: "{{ lookup('file', 'templates/database.yml') }}"
         template_parameters:
           Environment: "{{ environment }}"
           DBInstanceClass: db.t3.medium
@@ -202,7 +202,7 @@ The real power comes from chaining stacks where one stack's outputs feed into an
         stack_name: "myapp-{{ env }}-network"
         region: "{{ aws_region }}"
         state: present
-        template: templates/network.yml
+        template_body: "{{ lookup('file', 'templates/network.yml') }}"
         template_parameters:
           Environment: "{{ env }}"
       register: network_stack
@@ -213,7 +213,7 @@ The real power comes from chaining stacks where one stack's outputs feed into an
         stack_name: "myapp-{{ env }}-security"
         region: "{{ aws_region }}"
         state: present
-        template: templates/security.yml
+        template_body: "{{ lookup('file', 'templates/security.yml') }}"
         template_parameters:
           VpcId: "{{ network_stack.stack_outputs.VpcId }}"
           Environment: "{{ env }}"
@@ -225,7 +225,7 @@ The real power comes from chaining stacks where one stack's outputs feed into an
         stack_name: "myapp-{{ env }}-database"
         region: "{{ aws_region }}"
         state: present
-        template: templates/database.yml
+        template_body: "{{ lookup('file', 'templates/database.yml') }}"
         template_parameters:
           VpcId: "{{ network_stack.stack_outputs.VpcId }}"
           SubnetIds: "{{ network_stack.stack_outputs.PrivateSubnetIds }}"
@@ -239,7 +239,7 @@ The real power comes from chaining stacks where one stack's outputs feed into an
         stack_name: "myapp-{{ env }}-application"
         region: "{{ aws_region }}"
         state: present
-        template: templates/application.yml
+        template_body: "{{ lookup('file', 'templates/application.yml') }}"
         template_parameters:
           VpcId: "{{ network_stack.stack_outputs.VpcId }}"
           SubnetIds: "{{ network_stack.stack_outputs.PublicSubnetIds }}"
@@ -264,7 +264,7 @@ By default, the module waits for the stack to reach a complete state. You can co
     stack_name: myapp-full-stack
     region: us-east-1
     state: present
-    template: templates/full-stack.yml
+    template_body: "{{ lookup('file', 'templates/full-stack.yml') }}"
     create_timeout: 30
   register: stack_result
 ```
@@ -282,7 +282,7 @@ When you change the template or parameters and run the playbook again, Ansible d
     stack_name: myapp-production-database
     region: us-east-1
     state: present
-    template: templates/database.yml
+    template_body: "{{ lookup('file', 'templates/database.yml') }}"
     template_parameters:
       Environment: production
       DBInstanceClass: db.r6g.xlarge
@@ -334,7 +334,7 @@ For production stacks, enable termination protection:
     stack_name: myapp-production-database
     region: us-east-1
     state: present
-    template: templates/database.yml
+    template_body: "{{ lookup('file', 'templates/database.yml') }}"
     termination_protection: true
     template_parameters:
       Environment: production
