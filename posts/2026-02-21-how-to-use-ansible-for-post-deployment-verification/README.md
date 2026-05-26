@@ -31,7 +31,7 @@ Start with simple HTTP health checks:
 
     - name: Check application health endpoint
       ansible.builtin.uri:
-        url: "http://localhost:{{ app_port }}/health"
+        url: "http://localhost:{{ app_port | default(8080) }}/health"
         status_code: 200
         return_content: yes
         timeout: 10
@@ -68,8 +68,8 @@ Start with simple HTTP health checks:
     - name: Assert application service is active
       ansible.builtin.assert:
         that:
-          - "'{{ app_service_name }}.service' in services"
-          - "services['{{ app_service_name }}.service'].state == 'running'"
+          - "app_service_name ~ '.service' in ansible_facts.services"
+          - "ansible_facts.services[app_service_name ~ '.service'].state == 'running'"
         fail_msg: "{{ app_service_name }} is not running after deployment"
 
     - name: Check application health
@@ -191,6 +191,7 @@ Check application metrics after deployment:
 - name: Query Prometheus for error rate
   ansible.builtin.uri:
     url: "{{ prometheus_url }}/api/v1/query"
+    method: POST
     body_format: form-urlencoded
     body:
       query: "rate(http_requests_total{status=~'5..', instance='{{ inventory_hostname }}:{{ app_port }}'}[5m])"
@@ -209,6 +210,7 @@ Check application metrics after deployment:
 - name: Query response time p99
   ansible.builtin.uri:
     url: "{{ prometheus_url }}/api/v1/query"
+    method: POST
     body_format: form-urlencoded
     body:
       query: "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{instance='{{ inventory_hostname }}:{{ app_port }}'}[5m]))"
