@@ -138,6 +138,7 @@ Output:
 
 ```text
 @all:
+  |--@ungrouped:
   |--@production:
   |  |--@web_prod:
   |  |  |--web-prod-01.example.com
