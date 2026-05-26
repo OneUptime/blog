@@ -16,26 +16,38 @@ Multi-architecture container images allow a single image tag to work on differen
 # roles/multiarch_build/tasks/setup.yml
 
 # Set up Docker Buildx and QEMU for multi-architecture builds
-- name: Install QEMU user static binaries
+- name: Install binfmt support package
   ansible.builtin.package:
-    name: qemu-user-static
+    name: binfmt-support
     state: present
 
 - name: Register QEMU binary formats
   ansible.builtin.command:
-    cmd: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+    cmd: docker run --privileged --rm tonistiigi/binfmt --install all
   changed_when: true
+
+- name: Check for existing Buildx builder instance
+  ansible.builtin.command:
+    cmd: docker buildx inspect multiarch
+  register: buildx_inspect
+  failed_when: false
+  changed_when: false
 
 - name: Create Buildx builder instance
   ansible.builtin.command:
-    cmd: docker buildx create --name multiarch --driver docker-container --use
-  register: buildx_create
-  failed_when: false
-  changed_when: "'multiarch' not in buildx_create.stderr"
+    cmd: docker buildx create --name multiarch --driver docker-container --bootstrap --use
+  when: buildx_inspect.rc != 0
+  changed_when: true
+
+- name: Use existing Buildx builder instance
+  ansible.builtin.command:
+    cmd: docker buildx use multiarch
+  when: buildx_inspect.rc == 0
+  changed_when: false
 
 - name: Bootstrap Buildx builder
   ansible.builtin.command:
-    cmd: docker buildx inspect --bootstrap
+    cmd: docker buildx inspect multiarch --bootstrap
   changed_when: true
 ```
 
@@ -184,7 +196,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
