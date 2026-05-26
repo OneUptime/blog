@@ -32,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -69,10 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -125,16 +125,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python with pip cache
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Cache Ansible collections
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.ansible/collections
           key: collections-${{ hashFiles('collections/requirements.yml') }}
@@ -173,10 +173,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -193,10 +193,10 @@ jobs:
     needs: yamllint
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -239,10 +239,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -251,21 +251,26 @@ jobs:
         run: pip install ansible-lint
 
       - name: Run ansible-lint with SARIF output
-        run: ansible-lint --sarif-file ansible-lint-results.sarif || true
+        id: ansible_lint
+        run: ansible-lint --sarif-file ansible-lint-results.sarif
         continue-on-error: true
 
       - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ansible-lint-results.sarif
         if: always()
+
+      - name: Fail if ansible-lint found violations
+        run: exit 1
+        if: steps.ansible_lint.outcome == 'failure'
 ```
 
 The `continue-on-error: true` ensures the SARIF file gets uploaded even when ansible-lint finds violations.
 
 ## Pull Request Annotations
 
-For inline annotations on pull requests without SARIF, use the parseable output format and a problem matcher:
+For inline annotations on pull requests without SARIF, use ansible-lint's GitHub Actions annotation output and keep the command output parseable:
 
 ```yaml
 # .github/workflows/ansible-lint.yml - With PR annotations
@@ -282,10 +287,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -296,7 +301,7 @@ jobs:
       - name: Run ansible-lint
         run: ansible-lint -f pep8
         env:
-          ANSIBLE_FORCE_COLOR: "false"
+          NO_COLOR: "1"
 ```
 
 ## Only Lint Changed Files
@@ -318,13 +323,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Get changed YAML files
         id: changed-files
-        uses: tj-actions/changed-files@v44
+        uses: tj-actions/changed-files@v47
         with:
           files: |
             **/*.yml
@@ -332,9 +337,10 @@ jobs:
           files_ignore: |
             .github/**
             docker-compose*.yml
+          separator: "\n"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -346,7 +352,7 @@ jobs:
 
       - name: Run ansible-lint on changed files
         run: |
-          ansible-lint ${{ steps.changed-files.outputs.all_changed_files }}
+          printf '%s\n' "${{ steps.changed-files.outputs.all_changed_files }}" | xargs -r -d '\n' ansible-lint
         if: steps.changed-files.outputs.any_changed == 'true'
 ```
 
