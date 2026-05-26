@@ -24,7 +24,7 @@ The response lists all top-level endpoints: job templates, inventories, projects
 
 ## Authentication Options
 
-AWX supports three main authentication methods for API calls: session tokens, personal access tokens (PATs), and OAuth2 application tokens.
+AWX supports Basic Authentication and OAuth2 token authentication for API calls. The browsable API also works with the same session cookie you use in the web UI.
 
 For scripting, personal access tokens are the simplest approach. You create one in the AWX UI under your user profile, then pass it as a Bearer token.
 
@@ -34,7 +34,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -u admin:password \
   https://awx.example.com/api/v2/users/1/personal_tokens/ \
-  -d '{"scope": "write"}'
+  -d '{"description": "CI automation token", "application": null, "scope": "write"}'
 ```
 
 The response includes a `token` field. Store that securely, because AWX will not show it again.
@@ -47,11 +47,11 @@ curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   https://awx.example.com/api/v2/me/
 ```
 
-For CI/CD systems that need scoped access, OAuth2 application tokens give you more control. You register an application in AWX, then exchange client credentials for a token with a defined expiry.
+For CI/CD systems that need scoped access, OAuth2 application tokens give you more control. You register an application in AWX, then use one of the supported OAuth2 grant types, such as password or authorization code, to obtain a token with a defined expiry.
 
 ## Launching a Job Template
 
-This is the most common API task. You need the job template ID (visible in the URL when you open it in the UI) and any extra variables you want to pass.
+This is the most common API task. You need the job template ID (visible in the URL when you open it in the UI) and any extra variables you want to pass. Extra variables supplied at launch are accepted when the job template has variables prompted on launch or exposes them through a survey.
 
 ```bash
 # Launch job template ID 7 with extra variables
@@ -199,7 +199,7 @@ if any(s != "successful" for s in results.values()):
 
 ## Pagination
 
-AWX paginates list endpoints. The default page size is 25. You handle it by following the `next` field in the response.
+AWX paginates list endpoints. You handle pagination by following the `next` field in the response, and you can request a specific page size with the `page_size` query parameter within the server's configured limits.
 
 ```python
 def get_all_pages(endpoint):
@@ -246,7 +246,7 @@ Most list endpoints accept query parameters for filtering. This is much faster t
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   "https://awx.example.com/api/v2/hosts/?name__startswith=web-prod"
 
-# Find failed jobs from the last 24 hours
+# Find failed jobs after a specific timestamp
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   "https://awx.example.com/api/v2/jobs/?status=failed&created__gt=2026-02-20T00:00:00Z"
 ```
