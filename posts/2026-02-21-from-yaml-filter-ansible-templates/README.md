@@ -119,7 +119,7 @@ A powerful pattern is reading the current configuration, comparing it with the d
 
 ## Parsing Multi-Document YAML
 
-YAML supports multiple documents in a single file, separated by `---`. The `from_yaml` filter parses only the first document. For multi-document YAML, use `from_yaml_all`:
+YAML supports multiple documents in a single file, separated by `---`. The `from_yaml` filter expects a single YAML document. For multi-document YAML, use `from_yaml_all`:
 
 ```yaml
 # multi_doc.yml - Parse multi-document YAML
@@ -128,7 +128,7 @@ YAML supports multiple documents in a single file, separated by `---`. The `from
     src: /opt/k8s/all-resources.yml
   register: manifests_raw
 
-# from_yaml would only get the first document
+# from_yaml expects a single document
 # from_yaml_all returns a list of all documents
 - name: Parse all YAML documents
   ansible.builtin.set_fact:
@@ -255,7 +255,7 @@ Read and analyze CI/CD configuration files:
 
 - name: List all workflow triggers
   ansible.builtin.debug:
-    msg: "Workflow triggers: {{ workflow.on | default({}) | list | join(', ') }}"
+    msg: "Workflow triggers: {{ workflow.get('on', workflow.get(true, {})) | list | join(', ') }}"
 ```
 
 ## Handling Invalid YAML Gracefully
