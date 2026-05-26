@@ -51,10 +51,10 @@ grep vault_password_file ansible.cfg
 
 **Common reasons for wrong password:**
 - Different password was used to encrypt different files
-- Password file has a trailing newline
-- Password file has wrong encoding
+- Password file has extra whitespace or Windows line endings
+- Password file has the wrong encoding
 
-**Fix trailing newline issues:**
+**Fix password file whitespace issues:**
 
 ```bash
 # Check if password file has extra whitespace
@@ -62,8 +62,8 @@ cat -A .vault_pass
 # If you see a '$' at the end, there is a newline (which is normal)
 # But if you see '^M$' there is a Windows carriage return
 
-# Write password without trailing newline
-echo -n "mypassword" > .vault_pass
+# Write the password as a single line without extra whitespace
+printf '%s\n' "mypassword" > .vault_pass
 chmod 600 .vault_pass
 ```
 
@@ -102,7 +102,7 @@ ansible-playbook deploy.yml
 
 ## Cause 3: Vault ID Mismatch
 
-If you use multiple vault IDs (different passwords for different environments), a mismatch produces:
+If you use multiple vault IDs (different passwords for different environments), forgetting to provide the password source for one of the encrypted files can produce:
 
 ```text
 ERROR! Decryption failed (no vault secrets were found that could decrypt)
@@ -116,7 +116,9 @@ ansible-vault encrypt --vault-id prod@.vault_pass_prod group_vars/production/vau
 ansible-vault encrypt --vault-id dev@.vault_pass_dev group_vars/development/vault.yml
 ```
 
-**Fix: Provide all vault IDs when running:**
+Vault ID labels are hints by default. Ansible normally tries the provided vault secrets until one decrypts the content, unless `vault_id_match` is enabled.
+
+**Fix: Provide all required vault IDs when running:**
 
 ```bash
 # Provide multiple vault passwords
@@ -133,13 +135,13 @@ Or configure in ansible.cfg:
 vault_identity_list = prod@.vault_pass_prod, dev@.vault_pass_dev
 ```
 
-**Check which vault ID was used for a file:**
+**Check which vault ID label is stored in a file:**
 
 ```bash
-# The first line of an encrypted file shows the vault ID
+# The first line of an encrypted file shows the vault ID label, if one was used
 head -1 group_vars/production/vault.yml
 # $ANSIBLE_VAULT;1.2;AES256;prod
-# The "prod" at the end is the vault ID
+# The "prod" at the end is the vault ID label
 ```
 
 ## Cause 4: Corrupted Vault File
@@ -181,7 +183,7 @@ git checkout --ours group_vars/production/vault.yml
 git checkout HEAD~1 -- group_vars/production/vault.yml
 ```
 
-## Cause 5: Encrypted File Inside Unencrypted File
+## Cause 5: Encrypted String Inside Unencrypted File
 
 When you embed an encrypted string in a YAML file, the formatting must be exact:
 
@@ -256,12 +258,12 @@ If using a script as a vault password source:
 vault_password_file = ./vault_password_script.sh
 ```
 
-The script must be executable and output only the password:
+The script must be executable and print the password to standard output:
 
 ```bash
 #!/bin/bash
 # vault_password_script.sh
-# Must output ONLY the password, nothing else
+# Must print the password on a single line
 
 # Example: Read from environment variable
 echo "$VAULT_PASSWORD"
@@ -276,7 +278,7 @@ chmod +x vault_password_script.sh
 
 # Test it manually
 ./vault_password_script.sh
-# Should output just the password, no extra lines or whitespace
+# Should output the password on a single line
 ```
 
 ## Diagnostic Commands
