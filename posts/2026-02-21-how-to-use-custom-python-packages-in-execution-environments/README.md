@@ -24,9 +24,13 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
+    name: docker.io/redhat/ubi9:latest
 
 dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
   system: bindep.txt
@@ -67,9 +71,9 @@ ansible-builder build --tag my-ee:1.0 --verbosity 2
 
 ## Packages That Need Compilation
 
-Some Python packages include C extensions that need to be compiled during installation. These packages require system-level build tools in your EE.
+Some Python packages include native extensions that need to be compiled during installation. These packages require system-level build tools in your EE.
 
-For example, `cryptography`, `lxml`, and `psycopg2` all need C compilers and development libraries.
+For example, source builds of `cryptography`, `lxml`, and `psycopg2` need compilers and development libraries. `cryptography` also needs a Rust compiler when it is built from source.
 
 Add the build dependencies to bindep.txt:
 
@@ -77,12 +81,14 @@ Add the build dependencies to bindep.txt:
 # bindep.txt - System packages needed for compilation
 gcc [compile]
 make [compile]
-python3-devel [platform:rhel-8 platform:rhel-9]
-libffi-devel [platform:rhel-8 platform:rhel-9]
-openssl-devel [platform:rhel-8 platform:rhel-9]
-libxml2-devel [platform:rhel-8 platform:rhel-9]
-libxslt-devel [platform:rhel-8 platform:rhel-9]
-postgresql-devel [platform:rhel-8 platform:rhel-9]
+rust [compile platform:rhel-8 platform:rhel-9]
+cargo [compile platform:rhel-8 platform:rhel-9]
+python3-devel [compile platform:rhel-8 platform:rhel-9]
+libffi-devel [compile platform:rhel-8 platform:rhel-9]
+openssl-devel [compile platform:rhel-8 platform:rhel-9]
+libxml2-devel [compile platform:rhel-8 platform:rhel-9]
+libxslt-devel [compile platform:rhel-8 platform:rhel-9]
+postgresql-devel [compile platform:rhel-8 platform:rhel-9]
 ```
 
 The `[compile]` tag tells ansible-builder that these packages are only needed during the build, not in the final image. This keeps the final image smaller since compiler toolchains are not included.
@@ -112,7 +118,7 @@ psycopg2-binary>=2.9.0
 cryptography>=41.0.0
 ```
 
-Note that psycopg2-binary is a separate package from psycopg2. The binary version includes the PostgreSQL client library statically linked, so you do not need postgresql-devel in bindep.txt.
+Note that psycopg2-binary is a separate package from psycopg2. The binary version bundles its own PostgreSQL client library, so you do not need postgresql-devel in bindep.txt.
 
 ## Installing Packages from Private PyPI Repositories
 
@@ -137,7 +143,7 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
+    name: docker.io/redhat/ubi9:latest
 
 additional_build_files:
   - src: files/pip.conf
@@ -148,6 +154,10 @@ additional_build_steps:
     - COPY _build/configs/pip.conf /etc/pip.conf
 
 dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
   system: bindep.txt
@@ -180,40 +190,38 @@ git+https://github.com/myorg/ansible-helpers.git@develop
 
 # From a specific commit
 git+https://github.com/myorg/ansible-helpers.git@abc123def456
-
-# From a private repo using SSH (requires SSH key in build context)
-git+ssh://git@github.com/myorg/private-lib.git@v1.0.0
 ```
 
-For private repositories that need SSH authentication, add the SSH key to the build:
+For private repositories that need SSH authentication, do not copy private keys into the build context. Pass the key as a build secret and install the private package in a build step instead of listing it in requirements.txt:
 
 ```yaml
-# execution-environment.yml - With SSH key for Git access
+# execution-environment.yml - With SSH key as a build secret
 ---
 version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
-
-additional_build_files:
-  - src: files/deploy_key
-    dest: ssh
+    name: docker.io/redhat/ubi9:latest
 
 additional_build_steps:
-  prepend_builder:
-    - RUN mkdir -p /root/.ssh
-    - COPY _build/ssh/deploy_key /root/.ssh/id_rsa
-    - RUN chmod 600 /root/.ssh/id_rsa
-    - RUN ssh-keyscan github.com >> /root/.ssh/known_hosts
   append_final:
-    # Remove the SSH key from the final image for security
-    - RUN rm -f /root/.ssh/id_rsa
+    - RUN --mount=type=secret,id=deploy_key mkdir -p /root/.ssh && cp /run/secrets/deploy_key /root/.ssh/id_rsa && chmod 600 /root/.ssh/id_rsa && ssh-keyscan github.com >> /root/.ssh/known_hosts && GIT_SSH_COMMAND="ssh -i /root/.ssh/id_rsa -o UserKnownHostsFile=/root/.ssh/known_hosts" $PYCMD -m pip install "git+ssh://git@github.com/myorg/private-lib.git@v1.0.0" && rm -f /root/.ssh/id_rsa
 
 dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
-  system: bindep.txt
+  system:
+    - git
+```
+
+Build with the secret passed to the container runtime:
+
+```bash
+ansible-builder build --tag my-ee:1.0 --verbosity 2 --extra-build-cli-args="--secret id=deploy_key,src=files/deploy_key"
 ```
 
 ## Including Local Python Packages
@@ -243,17 +251,22 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
+    name: docker.io/redhat/ubi9:latest
 
 additional_build_files:
   - src: packages/
     dest: packages
 
 additional_build_steps:
-  append_builder:
-    - RUN pip install /output/packages/*.whl /output/packages/*.tar.gz
+  append_final:
+    - COPY _build/packages /tmp/packages
+    - RUN $PYCMD -m pip install /tmp/packages/*.whl /tmp/packages/*.tar.gz && rm -rf /tmp/packages
 
 dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
   system: bindep.txt
@@ -297,13 +310,13 @@ class FilterModule:
     def next_usable_ip(subnet):
         """Get the next usable IP address in a subnet."""
         network = IPNetwork(subnet)
-        hosts = list(network.iter_hosts())
-        return str(hosts[0]) if hosts else None
+        first_host = next(network.iter_hosts(), None)
+        return str(first_host) if first_host is not None else None
 
     @staticmethod
     def subnet_size(subnet):
         """Get the number of usable hosts in a subnet."""
-        return IPNetwork(subnet).size - 2
+        return sum(1 for _ in IPNetwork(subnet).iter_hosts())
 ```
 
 Use these filters in a playbook:
@@ -333,7 +346,7 @@ After building your EE, verify that all expected packages are present:
 
 ```bash
 # List all installed Python packages
-podman run --rm my-ee:1.0 pip list
+podman run --rm my-ee:1.0 python3 -m pip list
 
 # Check for a specific package
 podman run --rm my-ee:1.0 python3 -c "import boto3; print(boto3.__version__)"
@@ -342,7 +355,7 @@ podman run --rm my-ee:1.0 python3 -c "import boto3; print(boto3.__version__)"
 podman run --rm my-ee:1.0 python3 -c "import mycompany_helpers; print('OK')"
 
 # Run pip check to find broken dependencies
-podman run --rm my-ee:1.0 pip check
+podman run --rm my-ee:1.0 python3 -m pip check
 ```
 
 The `pip check` command is especially valuable. It verifies that all installed packages have compatible dependency versions. Run this as part of your build pipeline.
