@@ -396,7 +396,7 @@ subnets:
 
 ## VPC Flow Logs
 
-Enable VPC Flow Logs for network traffic monitoring and troubleshooting.
+Create a CloudWatch Logs log group before enabling VPC Flow Logs for network traffic monitoring and troubleshooting. A complete CloudWatch Logs flow log also needs a VPC flow log resource and an IAM role that can publish to the log group.
 
 ```yaml
     - name: Create CloudWatch log group for flow logs
@@ -435,12 +435,12 @@ Enable VPC Flow Logs for network traffic monitoring and troubleshooting.
 
 ## Deleting a VPC
 
-Deleting a VPC requires removing all dependent resources first. Here is the teardown order.
+Deleting a VPC requires removing all dependent resources first. Here is the teardown order for the resources created in this tutorial.
 
 ```yaml
 # teardown-vpc.yml
 ---
-- name: Tear down VPC and all resources
+- name: Tear down Ansible-managed VPC resources
   hosts: localhost
   connection: local
   gather_facts: false
@@ -463,16 +463,72 @@ Deleting a VPC requires removing all dependent resources first. Here is the tear
       when: vpc_info.vpcs | length > 0
 
     # Teardown order: NAT GWs, then route tables, then IGW,
-    # then subnets, then security groups, then VPC
+    # then subnets, then VPC
+
+    - name: Get NAT gateways in VPC
+      amazon.aws.ec2_vpc_nat_gateway_info:
+        region: "{{ aws_region }}"
+        filters:
+          vpc-id: "{{ vpc_id }}"
+          state:
+            - pending
+            - available
+      register: nat_gateways
+      when: vpc_info.vpcs | length > 0
 
     - name: Delete NAT gateways
       amazon.aws.ec2_vpc_nat_gateway:
         nat_gateway_id: "{{ item.nat_gateway_id }}"
         region: "{{ aws_region }}"
         state: absent
+        release_eip: true
         wait: true
-      loop: "{{ nat_gateways }}"
-      when: nat_gateways is defined
+      loop: "{{ nat_gateways.result }}"
+      when: vpc_info.vpcs | length > 0
+
+    - name: Get Ansible-managed route tables in VPC
+      amazon.aws.ec2_vpc_route_table_info:
+        region: "{{ aws_region }}"
+        filters:
+          vpc-id: "{{ vpc_id }}"
+          "tag:ManagedBy": ansible
+      register: route_tables
+      when: vpc_info.vpcs | length > 0
+
+    - name: Delete route tables
+      amazon.aws.ec2_vpc_route_table:
+        vpc_id: "{{ vpc_id }}"
+        route_table_id: "{{ item.id }}"
+        lookup: id
+        region: "{{ aws_region }}"
+        state: absent
+      loop: "{{ route_tables.route_tables }}"
+      when: vpc_info.vpcs | length > 0
+
+    - name: Delete internet gateway
+      amazon.aws.ec2_vpc_igw:
+        vpc_id: "{{ vpc_id }}"
+        region: "{{ aws_region }}"
+        state: absent
+      when: vpc_info.vpcs | length > 0
+
+    - name: Get Ansible-managed subnets in VPC
+      amazon.aws.ec2_vpc_subnet_info:
+        region: "{{ aws_region }}"
+        filters:
+          vpc-id: "{{ vpc_id }}"
+          "tag:ManagedBy": ansible
+      register: subnets
+      when: vpc_info.vpcs | length > 0
+
+    - name: Delete subnets
+      amazon.aws.ec2_vpc_subnet:
+        vpc_id: "{{ vpc_id }}"
+        cidr: "{{ item.cidr_block }}"
+        region: "{{ aws_region }}"
+        state: absent
+      loop: "{{ subnets.subnets }}"
+      when: vpc_info.vpcs | length > 0
 
     - name: Delete VPC
       amazon.aws.ec2_vpc_net:
