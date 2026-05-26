@@ -111,8 +111,10 @@ Create a promotion playbook that handles the entire flow:
       ansible.builtin.include_tasks: tasks/lb-drain.yml
       when: "'webservers' in group_names"
 
-  roles:
-    - role: "{{ promote_role }}"
+  tasks:
+    - name: Run promotion role
+      ansible.builtin.include_role:
+        name: "{{ promote_role }}"
       when: promote_role is defined
       tags: [promote]
 
@@ -218,7 +220,7 @@ jobs:
 
       - name: Deploy to staging
         run: |
-          ansible-playbook playbooks/site.yml \
+          ansible-playbook playbooks/promote.yml \
             -i inventories/staging/hosts.yml \
             -e "promote_version=${{ inputs.version }}" \
             -e "promotion_verified_in_lower_env=true"
@@ -237,6 +239,11 @@ jobs:
         with:
           ref: "v${{ inputs.version }}"
 
+      - name: Install Ansible
+        run: |
+          pip install ansible-core
+          ansible-galaxy collection install -r requirements.yml
+
       - name: Verify staging deployment
         run: |
           # Check that this version was successfully deployed to staging
@@ -246,7 +253,7 @@ jobs:
 
       - name: Deploy to production
         run: |
-          ansible-playbook playbooks/site.yml \
+          ansible-playbook playbooks/promote.yml \
             -i inventories/production/hosts.yml \
             -e "promote_version=${{ inputs.version }}" \
             -e "promotion_verified_in_lower_env=true"
