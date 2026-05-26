@@ -8,7 +8,7 @@ Description: Securely manage container secrets with Ansible using Docker secrets
 
 ---
 
-Container secrets management is about getting sensitive data like passwords, API keys, and certificates into your containers without exposing them in images, environment variables visible in process listings, or plain-text files. Ansible provides multiple strategies for handling secrets, each with different trade-offs.
+Container secrets management is about getting sensitive data like passwords, API keys, and certificates into your containers without exposing them in images, environment variables visible in Docker inspect output, or unprotected plain-text files. Ansible provides multiple strategies for handling secrets, each with different trade-offs.
 
 ## Strategies for Container Secrets
 
@@ -19,7 +19,7 @@ graph TD
     A --> D[Environment Variables]
     A --> E[External Secret Stores]
     B --> B1[In-memory tmpfs mount]
-    C --> C1[Ansible Vault encrypted files]
+    C --> C1[Vault-sourced files with strict permissions]
     D --> D1[Simple but visible in inspect]
     E --> E1[HashiCorp Vault, AWS Secrets Manager]
 ```
@@ -57,6 +57,8 @@ Docker Swarm has a native secrets management feature:
 ## Volume-Mounted Secret Files
 
 For standalone Docker (non-Swarm), mount secrets as files:
+
+If the values come from Ansible Vault, Ansible decrypts them during playbook execution; the mounted host files are still plaintext and rely on host permissions and filesystem controls.
 
 ```yaml
 # roles/container_secrets/tasks/file_secrets.yml
@@ -148,7 +150,17 @@ For maximum security, store secrets in memory only:
 
 - name: Copy secrets into running container
   ansible.builtin.command:
-    cmd: "docker exec {{ app_name }} sh -c 'echo {{ item.value }} > /run/secrets/{{ item.name }}'"
+    argv:
+      - docker
+      - exec
+      - -i
+      - "{{ app_name }}"
+      - sh
+      - -c
+      - 'umask 077 && cat > "/run/secrets/$1"'
+      - sh
+      - "{{ item.name }}"
+    stdin: "{{ item.value }}"
   loop: "{{ app_secrets }}"
   no_log: true
   changed_when: true
@@ -161,7 +173,7 @@ For maximum security, store secrets in memory only:
 # Rotate container secrets
 - name: Generate new secret value
   ansible.builtin.set_fact:
-    new_secret: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+    new_secret: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}"
   no_log: true
 
 - name: Update secret in external store
