@@ -177,8 +177,8 @@ Run health checks as a gate before deployment proceeds:
         timeout: 10
         status_code: 200
       loop:
-        - https://database.internal:5432/health
-        - https://redis.internal:6379/health
+        - https://database-health.internal/health
+        - https://redis-health.internal/health
         - https://rabbitmq.internal:15672/api/health/checks/alarms
       register: dependency_checks
 
@@ -296,7 +296,6 @@ Send alerts when health checks fail:
         body_format: json
         body:
           text: "Health Check FAILED for: {{ failed_services | join(', ') }}"
-          channel: "#alerts"
         status_code: 200
       when: failed_services | length > 0
 
@@ -365,9 +364,8 @@ Different services expose health data differently. Here are patterns for common 
         url_username: guest
         url_password: guest
         force_basic_auth: true
-        return_content: true
+        status_code: 200
       register: rmq_health
-      failed_when: rmq_health.json.status != 'ok'
 ```
 
 ## Summary
