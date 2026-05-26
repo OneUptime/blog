@@ -10,6 +10,8 @@ Description: Learn how to create AWS App Mesh service meshes with virtual nodes,
 
 AWS App Mesh is a service mesh that provides application-level networking so your services can communicate across different compute environments. It standardizes how your microservices communicate, giving you consistent visibility and traffic controls regardless of whether your services run on ECS, EKS, or EC2. Managing App Mesh through Terraform lets you define your entire service mesh topology in code, making it reproducible and easy to review.
 
+AWS has announced that App Mesh support ends on September 30, 2026. Use this guide for existing App Mesh environments, and plan migrations for new long-term workloads.
+
 This guide covers creating a mesh, defining virtual nodes and virtual services, setting up routing with virtual routers, and configuring traffic policies.
 
 ## Prerequisites
@@ -80,7 +82,7 @@ resource "aws_appmesh_virtual_node" "frontend" {
     service_discovery {
       aws_cloud_map {
         namespace_name = aws_service_discovery_private_dns_namespace.main.name
-        service_name   = "frontend"
+        service_name   = aws_service_discovery_service.frontend.name
       }
     }
 
@@ -144,7 +146,7 @@ resource "aws_appmesh_virtual_node" "api" {
     service_discovery {
       aws_cloud_map {
         namespace_name = aws_service_discovery_private_dns_namespace.main.name
-        service_name   = "api"
+        service_name   = aws_service_discovery_service.api.name
       }
     }
 
@@ -190,7 +192,7 @@ resource "aws_appmesh_virtual_node" "api_v2" {
     service_discovery {
       aws_cloud_map {
         namespace_name = aws_service_discovery_private_dns_namespace.main.name
-        service_name   = "api-v2"
+        service_name   = aws_service_discovery_service.api_v2.name
       }
     }
 
@@ -236,7 +238,7 @@ resource "aws_appmesh_virtual_node" "auth" {
     service_discovery {
       aws_cloud_map {
         namespace_name = aws_service_discovery_private_dns_namespace.main.name
-        service_name   = "auth"
+        service_name   = aws_service_discovery_service.auth.name
       }
     }
 
@@ -348,7 +350,7 @@ resource "aws_appmesh_route" "api_v2_header_route" {
   mesh_name           = aws_appmesh_mesh.main.name
   virtual_router_name = aws_appmesh_virtual_router.api.name
 
-  # Higher priority routes are evaluated first
+  # Lower priority numbers are evaluated first; 0 is the highest priority.
   spec {
     priority = 1
 
@@ -445,6 +447,20 @@ resource "aws_appmesh_virtual_service" "api" {
   }
 }
 
+# Virtual service backed directly by the frontend virtual node
+resource "aws_appmesh_virtual_service" "frontend" {
+  name      = "frontend.${aws_service_discovery_private_dns_namespace.main.name}"
+  mesh_name = aws_appmesh_mesh.main.name
+
+  spec {
+    provider {
+      virtual_node {
+        virtual_node_name = aws_appmesh_virtual_node.frontend.name
+      }
+    }
+  }
+}
+
 # Virtual service backed by a virtual router
 resource "aws_appmesh_virtual_service" "auth" {
   name      = "auth.${aws_service_discovery_private_dns_namespace.main.name}"
@@ -527,7 +543,7 @@ resource "aws_appmesh_gateway_route" "frontend" {
       action {
         target {
           virtual_service {
-            virtual_service_name = "frontend.${aws_service_discovery_private_dns_namespace.main.name}"
+            virtual_service_name = aws_appmesh_virtual_service.frontend.name
           }
         }
       }
@@ -575,6 +591,66 @@ resource "aws_service_discovery_private_dns_namespace" "main" {
   name        = "mesh.local"
   description = "Service discovery namespace for App Mesh"
   vpc         = aws_vpc.main.id
+}
+
+resource "aws_service_discovery_service" "frontend" {
+  name = "frontend"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+}
+
+resource "aws_service_discovery_service" "api" {
+  name = "api"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+}
+
+resource "aws_service_discovery_service" "api_v2" {
+  name = "api-v2"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+}
+
+resource "aws_service_discovery_service" "auth" {
+  name = "auth"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
 }
 ```
 
