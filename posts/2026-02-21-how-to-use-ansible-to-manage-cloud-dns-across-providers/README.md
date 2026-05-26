@@ -27,7 +27,7 @@ ansible-galaxy collection install community.general
 # Install Python SDKs
 pip install boto3 botocore
 pip install azure-mgmt-dns azure-identity
-pip install google-cloud-dns
+pip install google-auth requests
 pip install cloudflare
 ```
 
@@ -118,12 +118,11 @@ dns_zones:
     - ../vars/dns_records.yml
 
   tasks:
-    # Get the hosted zone ID
-    - name: Get Route53 hosted zone
+    # Ensure the hosted zone exists
+    - name: Ensure Route53 hosted zone exists
       amazon.aws.route53_zone:
         zone: "example.com"
         state: present
-      register: zone_info
 
     # Create or update each record
     - name: Manage Route53 records
@@ -172,7 +171,7 @@ dns_zones:
         record_type: "{{ item.type }}"
         time_to_live: "{{ item.ttl }}"
         records:
-          - entry: "{{ record_value }}"
+          - entry: "{{ item.values[0] }}"
       vars:
         zone_records: "{{ (dns_zones | selectattr('zone', 'equalto', azure_zone) | first).records }}"
       loop: "{{ zone_records | selectattr('type', 'equalto', 'A') | list }}"
@@ -208,16 +207,16 @@ dns_zones:
         auth_kind: serviceaccount
         service_account_file: "{{ gcp_service_account_file }}"
         state: present
+      register: gcp_managed_zone
 
     # Create DNS record sets
     - name: Manage GCP DNS records
       google.cloud.gcp_dns_resource_record_set:
-        managed_zone:
-          name: "{{ gcp_zone_name }}"
+        managed_zone: "{{ gcp_managed_zone }}"
         name: "{{ item.name }}.{{ gcp_dns_zone }}."
         type: "{{ item.type }}"
         ttl: "{{ item.ttl }}"
-        rrdatas: "{{ item.values }}"
+        target: "{{ item.values }}"
         project: "{{ gcp_project }}"
         auth_kind: serviceaccount
         service_account_file: "{{ gcp_service_account_file }}"
@@ -277,10 +276,10 @@ Wrap all providers into a single role that picks the right module based on the p
 # roles/dns_manager/tasks/main.yml
 ---
 - name: Process DNS zones
-  ansible.builtin.include_tasks: "provider-{{ item.provider }}.yml"
+  ansible.builtin.include_tasks: "provider-{{ zone_config.provider }}.yml"
   loop: "{{ dns_zones }}"
   loop_control:
-    label: "{{ item.zone }} ({{ item.provider }})"
+    label: "{{ zone_config.zone }} ({{ zone_config.provider }})"
     loop_var: zone_config
 ```
 
