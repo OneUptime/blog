@@ -107,11 +107,11 @@ The key in `/usr/share/keyrings/grafana.gpg` is now only trusted for packages fr
 
 ## A Cleaner Approach with the shell Module
 
-Some GPG keys are already in binary (dearmored) format. In that case, you can skip the dearmor step:
+Some GPG keys are already in binary (dearmored) format. In that case, you can skip the dearmor step. For keys like Kubernetes `Release.key`, which is ASCII-armored, you should dearmor it:
 
 ```yaml
-# Download a binary GPG key directly
-- name: Download Kubernetes GPG key (already dearmored)
+# Download a GPG key
+- name: Download Kubernetes GPG key
   ansible.builtin.get_url:
     url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
     dest: /tmp/kubernetes.key
@@ -120,10 +120,10 @@ Some GPG keys are already in binary (dearmored) format. In that case, you can sk
 - name: Install Kubernetes GPG key
   ansible.builtin.shell:
     cmd: |
-      if file /tmp/kubernetes.key | grep -q 'PGP public key'; then
-        cp /tmp/kubernetes.key /usr/share/keyrings/kubernetes-apt-keyring.gpg
-      else
+      if file /tmp/kubernetes.key | grep -q 'PGP public key block'; then
         gpg --dearmor -o /usr/share/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes.key
+      else
+        cp /tmp/kubernetes.key /usr/share/keyrings/kubernetes-apt-keyring.gpg
       fi
     creates: /usr/share/keyrings/kubernetes-apt-keyring.gpg
 ```
@@ -246,7 +246,7 @@ graph TD
 
 ## Tips and Common Pitfalls
 
-1. **Always dearmor ASCII-armored keys.** Apt expects binary format in keyring files. If you put an ASCII-armored key in `/usr/share/keyrings/`, apt will silently fail to verify signatures.
+1. **Match the key format to the file extension.** Use `.gpg` for binary keyring files. ASCII-armored keys can be used with apt 1.4 and later when saved with an `.asc` extension, but should be dearmored if you are saving them as `.gpg` files.
 
 2. **Use `creates` for idempotency.** The `gpg --dearmor` command will fail if the output file already exists. The `creates` parameter prevents the task from running when the file is already there.
 
