@@ -132,7 +132,7 @@ The biggest challenge with nested access is that any level in the chain might be
         msg: "Cache host: {{ config | default({}) | community.general.json_query('cache.host') | default('localhost', true) }}"
 ```
 
-### Using the Ansible-Specific ternary Pattern
+### Using a Jinja Conditional Expression
 
 ```yaml
     # Check if the key exists before accessing it
@@ -152,12 +152,7 @@ The biggest challenge with nested access is that any level in the chain might be
     # Set a computed fact with safe access
     - name: Safely extract nested value
       set_fact:
-        cache_host: >-
-          {% if config.cache is defined and config.cache.host is defined %}
-          {{ config.cache.host }}
-          {% else %}
-          localhost
-          {% endif %}
+        cache_host: "{{ config.cache.host if (config.cache is defined and config.cache.host is defined) else 'localhost' }}"
 ```
 
 ## Accessing Nested Values from Ansible Facts
@@ -237,14 +232,17 @@ Working with lists of dictionaries is extremely common:
         msg: "{{ item.name }} runs on port {{ item.port }} with {{ item.workers }} workers"
       loop: "{{ applications }}"
 
-    # Nested loop using subelements
+    # Convert each application's environment dictionary into key/value items
     - name: Show all environment variables for each app
       debug:
-        msg: "{{ item.0.name }}: {{ item.1.key }}={{ item.1.value }}"
-      loop: "{{ applications | subelements('env_vars | dict2items') }}"
-      # Note: subelements works with list attributes, for dicts use dict2items first
+        msg: |
+          {% for env_var in item.env_vars | dict2items %}
+          {{ item.name }}: {{ env_var.key }}={{ env_var.value }}
+          {% endfor %}
+      loop: "{{ applications }}"
+      # Note: subelements works with list attributes. For dicts, use dict2items.
 
-    # Alternative: use with_items and dict2items in the message
+    # Alternative: use a Jinja loop in the message
     - name: Show environment variables per application
       debug:
         msg: |
@@ -291,7 +289,7 @@ server {
 
     location / {
         proxy_pass http://{{ app.name }}_backend;
-        {% if app.env_vars.get('CORS_ORIGIN') is defined %}
+        {% if 'CORS_ORIGIN' in app.env_vars %}
         add_header Access-Control-Allow-Origin {{ app.env_vars.CORS_ORIGIN }};
         {% endif %}
     }
@@ -324,7 +322,7 @@ API responses from the uri module are often deeply nested:
       set_fact:
         pod_info: >-
           {{
-            pods_response.json.items
+            pods_response.json['items']
             | map(attribute='metadata.name')
             | list
           }}
@@ -336,7 +334,7 @@ API responses from the uri module are often deeply nested:
           Pod: {{ item.metadata.name }}
           Containers: {{ item.spec.containers | map(attribute='image') | join(', ') }}
           Status: {{ item.status.phase }}
-      loop: "{{ pods_response.json.items }}"
+      loop: "{{ pods_response.json['items'] }}"
       loop_control:
         label: "{{ item.metadata.name }}"
 ```
