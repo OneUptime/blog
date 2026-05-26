@@ -12,7 +12,7 @@ SSH connection problems are probably the most common issues Ansible users face. 
 
 ## Start with Verbose Mode
 
-The first step in debugging any Ansible connection issue is increasing verbosity. Ansible supports four levels:
+The first step in debugging any Ansible connection issue is increasing verbosity. Ansible supports multiple verbosity levels; for SSH connection problems, these are the most useful ones:
 
 ```bash
 # Level 1: Basic output
@@ -130,9 +130,11 @@ ssh root@10.0.1.10 "ls -la /home/deploy/.ssh/"
 The SSH daemon is not running or not listening on the expected port:
 
 ```bash
-# Check if sshd is running on the remote host
+# Check if SSH is running on the remote host
 # (if you have another way to access, like console)
 systemctl status sshd
+# or, on Debian/Ubuntu systems:
+systemctl status ssh
 
 # Check what port sshd is listening on
 ss -tlnp | grep sshd
@@ -188,10 +190,10 @@ rm -f ~/.ansible/cp/*
 ### Wrong Python Interpreter
 
 ```text
-/bin/sh: /usr/bin/python: No such file or directory
+/bin/sh: /custom/python/path: No such file or directory
 ```
 
-The remote host does not have Python where Ansible expects it:
+Most modern Ansible versions try to discover a usable Python interpreter automatically. If discovery fails, or if inventory points Ansible at the wrong path, set the interpreter explicitly:
 
 ```ini
 # inventory/hosts
@@ -232,7 +234,7 @@ cat /etc/ssh/sshd_config | grep -v "^#" | grep -v "^$"
 # PasswordAuthentication no         - If using keys only
 # AllowUsers deploy ansible         - If set, your user must be listed
 # AllowGroups ssh-users             - If set, your user must be in the group
-# MaxSessions 10                    - Must be high enough for multiplexing
+# MaxSessions 10                    - Increase if multiplexed connections need more sessions
 # MaxStartups 10:30:60              - Might throttle parallel connections
 # UseDNS no                         - Set to no to speed up connections
 # AuthorizedKeysFile .ssh/authorized_keys  - Default location
@@ -313,7 +315,7 @@ dig TARGET_HOST +short
 ssh -i ~/.ssh/ansible_key -o StrictHostKeyChecking=no USER@TARGET_HOST hostname
 
 # 5. Ansible with maximum verbosity
-ansible TARGET_HOST -m ping -vvvv
+ansible TARGET_HOST -i TARGET_HOST, -m ping -vvvv
 
 # 6. Check key permissions
 stat ~/.ssh/ansible_key
@@ -330,7 +332,7 @@ ssh root@TARGET_HOST "tail -50 /var/log/secure"
 rm -f ~/.ansible/cp/*
 
 # 10. Test with minimal configuration
-ANSIBLE_CONFIG=/dev/null ansible TARGET_HOST -m ping -u USER --private-key=~/.ssh/key -vvvv
+ANSIBLE_CONFIG=/dev/null ansible TARGET_HOST -i TARGET_HOST, -m ping -u USER --private-key=~/.ssh/key -vvvv
 ```
 
 ## Creating a Debug Script
@@ -373,7 +375,7 @@ ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes -i "$KEY" "
 echo ""
 
 echo "--- Step 6: Ansible Ping ---"
-ansible "$HOST" -m ping -u "$USER" --private-key="$KEY" -v 2>&1
+ansible "$HOST" -i "$HOST," -m ping -u "$USER" --private-key="$KEY" -v 2>&1
 echo ""
 
 echo "=== Debug Complete ==="
