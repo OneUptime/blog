@@ -8,7 +8,7 @@ Description: Learn how to create and manage AWS Systems Manager Parameter Store 
 
 ---
 
-AWS Systems Manager Parameter Store is a free, hierarchical key-value store for configuration data. It is simpler and cheaper than Secrets Manager for non-rotating configuration values, and it integrates tightly with other AWS services. Many teams use Parameter Store for application configuration (feature flags, endpoint URLs, resource names) and Secrets Manager for actual secrets (passwords, API keys).
+AWS Systems Manager Parameter Store is a hierarchical key-value store for configuration data, with standard parameters available at no additional charge. It is simpler and cheaper than Secrets Manager for non-rotating configuration values, and it integrates tightly with other AWS services. Many teams use Parameter Store for application configuration (endpoint URLs, resource names, simple static flags) and Secrets Manager for actual secrets (passwords, API keys).
 
 This guide covers creating and managing SSM parameters with Ansible, organizing them hierarchically, using encrypted parameters, and retrieving them in playbooks and applications.
 
@@ -17,14 +17,14 @@ This guide covers creating and managing SSM parameters with Ansible, organizing 
 You need:
 
 - Ansible 2.14+
-- The `amazon.aws` collection
+- The `community.aws` and `amazon.aws` collections
 - AWS credentials with SSM permissions
 - Python boto3
 
 ```bash
 # Install dependencies
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install community.aws amazon.aws
 pip install boto3 botocore
 ```
 
@@ -43,7 +43,7 @@ graph TD
     C --> H[/myapp/staging/database/port]
 ```
 
-This hierarchy lets you retrieve all parameters for an environment with a single API call.
+This hierarchy lets you retrieve all parameters for an environment with `GetParametersByPath`, which is paginated when needed.
 
 ## Creating Basic Parameters
 
@@ -63,7 +63,7 @@ This hierarchy lets you retrieve all parameters for an environment with a single
   tasks:
     # Create a simple string parameter
     - name: Set application version parameter
-      amazon.aws.ssm_parameter:
+      community.aws.ssm_parameter:
         name: "/{{ app }}/{{ env }}/version"
         description: "Current application version"
         string_type: String
@@ -76,7 +76,7 @@ This hierarchy lets you retrieve all parameters for an environment with a single
 
     # Create a parameter with a list of values (StringList)
     - name: Set allowed origins parameter
-      amazon.aws.ssm_parameter:
+      community.aws.ssm_parameter:
         name: "/{{ app }}/{{ env }}/allowed-origins"
         description: "CORS allowed origins"
         string_type: StringList
@@ -86,7 +86,7 @@ This hierarchy lets you retrieve all parameters for an environment with a single
 
     # Create an encrypted parameter (SecureString)
     - name: Set database password parameter
-      amazon.aws.ssm_parameter:
+      community.aws.ssm_parameter:
         name: "/{{ app }}/{{ env }}/database/password"
         description: "Database password"
         string_type: SecureString
@@ -166,7 +166,7 @@ ssm_parameters:
   tasks:
     # Create all parameters defined in the variable file
     - name: Create SSM parameters
-      amazon.aws.ssm_parameter:
+      community.aws.ssm_parameter:
         name: "{{ item.name }}"
         description: "{{ item.description }}"
         string_type: "{{ item.type }}"
@@ -186,7 +186,7 @@ Use a custom KMS key instead of the default `aws/ssm` key:
 ```yaml
 # Create a SecureString with a custom KMS key
 - name: Set encrypted parameter with custom key
-  amazon.aws.ssm_parameter:
+  community.aws.ssm_parameter:
     name: "/myapp/production/jwt-secret"
     description: "JWT signing secret"
     string_type: SecureString
@@ -305,7 +305,7 @@ Parameter Store keeps a history of values. You can reference specific versions:
 ```yaml
 # Update a parameter (creates a new version)
 - name: Update feature flags
-  amazon.aws.ssm_parameter:
+  community.aws.ssm_parameter:
     name: "/myapp/production/feature-flags"
     string_type: StringList
     value: "dark-mode,notifications,beta-dashboard,new-checkout"
@@ -364,7 +364,7 @@ Query parameters across environments to spot differences:
 ```yaml
 # Delete a parameter
 - name: Remove old parameter
-  amazon.aws.ssm_parameter:
+  community.aws.ssm_parameter:
     name: "/myapp/production/deprecated-setting"
     region: us-east-1
     state: absent
@@ -372,4 +372,4 @@ Query parameters across environments to spot differences:
 
 ## Wrapping Up
 
-SSM Parameter Store with Ansible gives you centralized, version-controlled configuration management. Use the hierarchical naming convention to organize parameters by application and environment. Store plain configuration as String parameters and sensitive values as SecureString. The free tier covers most use cases, and the tight integration with ECS, Lambda, and EC2 makes it easy for your applications to consume configuration at runtime without any custom code.
+SSM Parameter Store with Ansible gives you centralized, versioned configuration management. Use the hierarchical naming convention to organize parameters by application and environment. Store plain configuration as String parameters and sensitive values as SecureString. The standard tier covers many use cases at no additional charge, and the tight integration with ECS, Lambda, and EC2 makes it easy for your applications to consume configuration at runtime without any custom code.
