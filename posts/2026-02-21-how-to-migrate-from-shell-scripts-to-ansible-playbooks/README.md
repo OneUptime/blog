@@ -70,6 +70,7 @@ Problems with this script: no error recovery, no rollback, runs on one server at
         cmd: /opt/myapp/venv/bin/python manage.py migrate --noinput
         chdir: /opt/myapp
       run_once: true
+      when: inventory_hostname == ansible_play_hosts_all[0]
       register: migrate_result
       changed_when: "'No migrations to apply' not in migrate_result.stdout"
       become_user: deploy
@@ -148,14 +149,29 @@ sed -i "s/DB_HOST/10.0.1.5/g" /opt/myapp/config.yml
 
 ```yaml
 # Ansible equivalent
-- name: Create application directory
+- name: Ensure application directory exists
+  ansible.builtin.file:
+    path: /opt/myapp
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: '0750'
+
+- name: Ensure application tree is owned by deploy
+  ansible.builtin.file:
+    path: /opt/myapp
+    state: directory
+    owner: deploy
+    group: deploy
+    recurse: yes
+
+- name: Create application logs directory
   ansible.builtin.file:
     path: /opt/myapp/logs
     state: directory
     owner: deploy
     group: deploy
     mode: '0750'
-    recurse: yes
 
 - name: Deploy configuration file
   ansible.builtin.template:
@@ -231,7 +247,7 @@ graph TD
 
 ## Handling Complex Shell Logic
 
-Some scripts have logic that does not map to a single module. For these, use command/shell as a bridge during migration:
+Some scripts have logic that does not map to a single module. For these, use script, command, or shell as a bridge during migration:
 
 ```yaml
 # Phase 1: Wrap the shell script in Ansible (quick migration)
@@ -249,7 +265,7 @@ Some scripts have logic that does not map to a single module. For these, use com
   become_user: postgres
 
 - name: Compress backup
-  ansible.builtin.archive:
+  community.general.archive:
     path: "/opt/backups/{{ db_name }}-{{ ansible_date_time.date }}.sql"
     dest: "/opt/backups/{{ db_name }}-{{ ansible_date_time.date }}.tar.gz"
     format: gz
