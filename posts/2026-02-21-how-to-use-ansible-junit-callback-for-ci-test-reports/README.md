@@ -22,37 +22,25 @@ The JUnit callback plugin comes with Ansible. Just enable it in your configurati
 [defaults]
 # Enable the junit callback plugin
 callbacks_enabled = junit
-
-[callback_junit]
-# Directory where JUnit XML files will be written
-output_dir = ./junit-reports
-
-# Include the task class name (useful for filtering)
-task_class = true
-
-# Fail on change - treat changed tasks as test failures (optional)
-fail_on_change = false
-
-# Include task output in the report
-include_setup_tasks_in_report = true
 ```
 
-Alternatively, configure via environment variables.
+Configure the JUnit callback options with environment variables.
 
 ```bash
 # Enable junit callback and set output directory
-export ANSIBLE_CALLBACK_PLUGINS=junit
 export ANSIBLE_CALLBACKS_ENABLED=junit
 export JUNIT_OUTPUT_DIR=./junit-reports
 export JUNIT_TASK_CLASS=true
+export JUNIT_FAIL_ON_CHANGE=false
+export JUNIT_INCLUDE_SETUP_TASKS_IN_REPORT=true
 ```
 
 ## How It Works
 
 The JUnit callback maps Ansible concepts to JUnit concepts:
 
-- Each host becomes a test suite
-- Each task becomes a test case
+- Each playbook run becomes a test suite
+- Each host/task result becomes a test case
 - OK tasks are "passed" tests
 - Failed tasks are "failed" tests
 - Skipped tasks are "skipped" tests
@@ -66,8 +54,8 @@ graph LR
     D --> E[Test Results UI]
 
     subgraph "Mapping"
-        F[Host] -->|maps to| G[Test Suite]
-        H[Task] -->|maps to| I[Test Case]
+        F[Playbook Run] -->|maps to| G[Test Suite]
+        H[Host/Task Result] -->|maps to| I[Test Case]
         J[Task OK] -->|maps to| K[Test Pass]
         L[Task Failed] -->|maps to| M[Test Failure]
     end
@@ -86,7 +74,7 @@ ansible-playbook -i inventory/staging.ini playbooks/site.yml
 
 # Check the generated reports
 ls junit-reports/
-# Output: staging-host-01.xml staging-host-02.xml
+# Output: site-1772012345.123456.xml
 ```
 
 ## JUnit XML Output Format
@@ -96,19 +84,21 @@ Here is what the generated XML looks like.
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-  <testsuite name="staging-host-01" tests="15" failures="1" errors="0" skipped="2" time="42.3">
-    <testcase name="Install packages" classname="deploy.yml" time="12.5">
+  <testsuite name="site" tests="4" failures="1" errors="0" skipped="1" time="42.3">
+    <testcase name="[staging-host-01] Deploy: Install packages" classname="deploy.yml" time="12.5">
+      <system-out>...</system-out>
     </testcase>
-    <testcase name="Configure nginx" classname="deploy.yml" time="3.2">
+    <testcase name="[staging-host-01] Deploy: Configure nginx" classname="deploy.yml" time="3.2">
+      <system-out>...</system-out>
     </testcase>
-    <testcase name="Deploy application" classname="deploy.yml" time="8.7">
+    <testcase name="[staging-host-01] Deploy: Deploy application" classname="deploy.yml" time="8.7">
       <failure message="Failed to deploy application">
         msg: Could not find application artifact
         rc: 1
       </failure>
     </testcase>
-    <testcase name="Check disk space" classname="deploy.yml" time="0.5">
-      <skipped message="Conditional check failed"/>
+    <testcase name="[staging-host-01] Deploy: Check disk space" classname="deploy.yml" time="0.5">
+      <skipped>Conditional check failed</skipped>
     </testcase>
   </testsuite>
 </testsuites>
@@ -134,7 +124,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Ansible
-        run: pip install ansible==8.7.0
+        run: pip install ansible
 
       - name: Create report directory
         run: mkdir -p junit-reports
@@ -158,7 +148,7 @@ jobs:
 
       # Publish JUnit test results
       - name: Publish Test Results
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Ansible Deployment Results
@@ -184,7 +174,7 @@ deploy:
   stage: deploy
   image: python:3.11-slim
   script:
-    - pip install ansible==8.7.0
+    - pip install ansible
     - mkdir -p junit-reports
     - apt-get update && apt-get install -y openssh-client
     - mkdir -p ~/.ssh
@@ -210,7 +200,7 @@ GitLab will display the test results directly in the merge request UI and pipeli
 
 ## Jenkins Integration
 
-Jenkins has excellent JUnit support through the built-in JUnit plugin.
+Jenkins has excellent JUnit support through the JUnit plugin.
 
 ```groovy
 // Jenkinsfile
@@ -250,7 +240,7 @@ Azure DevOps also supports JUnit XML natively.
 steps:
   - script: |
       mkdir -p junit-reports
-      pip install ansible==8.7.0
+      pip install ansible
       ANSIBLE_CALLBACKS_ENABLED=junit \
       JUNIT_OUTPUT_DIR=junit-reports \
       ansible-playbook -i inventory/staging.ini playbooks/site.yml
@@ -273,25 +263,20 @@ You can use the JUnit callback alongside other callbacks.
 # ansible.cfg
 [defaults]
 # Use yaml for readable console output
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 
 # Enable junit for file output plus other plugins
 callbacks_enabled = junit, timer, profile_tasks
-
-[callback_junit]
-output_dir = ./junit-reports
 ```
 
 ## Treating Changed Tasks as Failures
 
 For idempotency testing, you might want to treat "changed" tasks as failures. If your playbook reports changes on a second run, something is not idempotent.
 
-```ini
-# ansible.cfg
-[callback_junit]
-output_dir = ./junit-reports
+```bash
 # Changed tasks will appear as failures in the report
-fail_on_change = true
+export JUNIT_FAIL_ON_CHANGE=true
 ```
 
 This is useful in a CI pipeline that runs the playbook twice to verify idempotency.
@@ -312,7 +297,7 @@ This is useful in a CI pipeline that runs the playbook twice to verify idempoten
     ansible-playbook -i inventory/test.ini playbooks/site.yml
 
 - name: Publish idempotency results
-  uses: dorny/test-reporter@v1
+  uses: dorny/test-reporter@v3
   if: always()
   with:
     name: Idempotency Check
@@ -322,7 +307,7 @@ This is useful in a CI pipeline that runs the playbook twice to verify idempoten
 
 ## Custom Test Names
 
-By default, the JUnit callback uses the task name as the test case name. Make your task names descriptive so the reports are useful.
+By default, the JUnit callback includes the host, play, and task name in the test case name. Make your task names descriptive so the reports are useful.
 
 ```yaml
 # Good - descriptive task names appear clearly in JUnit reports
