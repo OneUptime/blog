@@ -45,7 +45,7 @@ This is the standard pattern for cloud provisioning playbooks where every task c
 
 ## delegate_to: localhost
 
-`delegate_to: localhost` redirects a single task to run on the controller while the play targets remote hosts. The variable context stays with the original remote host.
+`delegate_to: localhost` redirects a single task to run on the controller while the play targets remote hosts. `inventory_hostname` still identifies the original remote host, but connection variables such as `ansible_host` are evaluated for the delegated host. Use `hostvars[inventory_hostname]` when a delegated task needs a connection variable from the original host.
 
 ```yaml
 # delegate-to-localhost.yml - Most tasks run remotely, some delegated locally
@@ -64,10 +64,11 @@ This is the standard pattern for cloud provisioning playbooks where every task c
         zone: example.com
         record: "{{ inventory_hostname }}.example.com"
         type: A
-        value: "{{ ansible_host }}"
+        value: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
         state: present
       delegate_to: localhost
-      # inventory_hostname and ansible_host refer to the REMOTE web server
+      # inventory_hostname refers to the REMOTE web server
+      # hostvars[inventory_hostname].ansible_host reads that remote host's connection address
 ```
 
 ## The Key Differences
@@ -85,7 +86,8 @@ flowchart TD
     subgraph "delegate_to: localhost"
         E[Play targets hosts X, Y, Z] --> F[Most tasks run on X, Y, Z via SSH]
         E --> G[Delegated tasks run on controller]
-        G --> H[Variables still from X, Y, Z]
+        G --> H[inventory_hostname stays X, Y, Z]
+        G --> I[Delegated connection vars come from localhost]
     end
 ```
 
@@ -240,7 +242,7 @@ Mixed remote and local tasks:
         zone: example.com
         record: "{{ inventory_hostname }}"
         type: A
-        value: "{{ ansible_host }}"
+        value: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
         state: present
       delegate_to: localhost
 
@@ -299,7 +301,8 @@ You can also set the connection type per task, which provides another way to ach
         echo "Host {{ inventory_hostname }} uptime: {{ uptime_result.stdout }}" >> /tmp/uptime-report.txt
       vars:
         ansible_connection: local
-      # This is equivalent to delegate_to: localhost
+      # This runs locally for the current inventory host, but it is not the same
+      # as delegating the task to the localhost inventory entry
 ```
 
 ## Performance Considerations
