@@ -188,25 +188,18 @@ backend_servers:
 
 ```jinja2
 {# Build server:port strings and join with commas #}
-upstream_servers = {{ backend_servers | map('regex_replace', '(.*)', '') | join(', ') }}
-```
-
-Actually, for this pattern it is cleaner to use a loop inside a list comprehension:
-
-```jinja2
-{# Build host:port strings using a for loop with join #}
-upstream_servers = {% for s in backend_servers %}{{ s.host }}:{{ s.port }}{% if not loop.last %}, {% endif %}{% endfor %}
-```
-
-But there is an even cleaner way using `map` with `format`:
-
-```jinja2
-{# Alternative: Format each entry and join #}
 {% set server_strings = [] %}
 {% for s in backend_servers %}
 {%   set _ = server_strings.append(s.host ~ ":" ~ s.port) %}
 {% endfor %}
 upstream_servers = {{ server_strings | join(', ') }}
+```
+
+For this pattern, you can also use a loop and add the separator manually:
+
+```jinja2
+{# Build host:port strings using a for loop with join #}
+upstream_servers = {% for s in backend_servers %}{{ s.host }}:{{ s.port }}{% if not loop.last %}, {% endif %}{% endfor %}
 ```
 
 ## Real-World Example: Environment File
@@ -317,11 +310,10 @@ This first ensures `cors_origins` is at least an empty list, then joins it. If t
 The `join` filter is not limited to templates. You can use it in task parameters too:
 
 ```yaml
-# Install a list of packages as a comma-separated string
-- name: Install required packages
-  ansible.builtin.apt:
-    name: "{{ required_packages | join(',') }}"
-    state: present
+# Render a comma-separated list in a task message
+- name: Show required packages
+  ansible.builtin.debug:
+    msg: "Required packages: {{ required_packages | join(', ') }}"
   vars:
     required_packages:
       - nginx
