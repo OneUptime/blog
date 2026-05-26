@@ -82,6 +82,8 @@ The simplest installation method uses the file path directly:
 ansible-galaxy install ./my_webserver-1.0.0.tar.gz
 ```
 
+When installing a tarball directly, Ansible names the installed role directory from the archive argument. If you need a specific role directory name, use `requirements.yml` with a `name` value.
+
 To control the installation path:
 
 ```bash
@@ -242,6 +244,7 @@ set -e
 
 TARBALL_DIR="./offline-roles"
 ROLES_DIR="./roles"
+REQUIREMENTS_FILE="${TARBALL_DIR}/requirements-offline.yml"
 
 # Verify all tarballs
 echo "Verifying tarball integrity..."
@@ -249,11 +252,8 @@ cd "$TARBALL_DIR"
 sha256sum -c checksums.sha256
 cd -
 
-# Install each tarball
-for tarball in "$TARBALL_DIR"/*.tar.gz; do
-    echo "Installing $(basename "$tarball")..."
-    ansible-galaxy install "$tarball" -p "$ROLES_DIR"
-done
+# Install roles using the generated requirements file
+ansible-galaxy install -r "$REQUIREMENTS_FILE" -p "$ROLES_DIR"
 
 echo "All roles installed and verified."
 ```
@@ -273,15 +273,15 @@ roles:
     src: https://nexus.internal.com/repository/ansible-roles/my_database-2.1.0.tar.gz
 ```
 
-If the artifact server requires authentication, configure it in your `ansible.cfg`:
+If the artifact server requires authentication for direct tarball downloads, use an authentication method that the URL downloader can use, such as a `.netrc` file:
 
-```ini
-# ansible.cfg - configure HTTP authentication for tarball downloads
-[galaxy]
-token = your_api_token
+```text
+machine nexus.internal.com
+  login your_username
+  password your_api_token
 ```
 
-Or use environment variables in your CI pipeline:
+The `ansible.cfg` Galaxy token settings are for Galaxy API servers, not generic HTTP artifact repositories. For uploads, use environment variables in your CI pipeline:
 
 ```bash
 # Upload a role tarball to Nexus
@@ -292,7 +292,7 @@ curl -u "${NEXUS_USER}:${NEXUS_PASS}" \
 
 ## Troubleshooting Tarball Installation
 
-**"Unable to determine role name" error.** This happens when the tarball structure is wrong. The tarball must contain a single top-level directory with the role contents inside it. A flat tarball with files at the root will not work.
+**Unexpected installed role directory name.** When installing a tarball directly, the role directory is based on the archive argument or URL basename. Use `requirements.yml` with a `name` value when you need the installed directory to be `my_webserver` instead of something like `my_webserver-1.0.0`.
 
 **Missing meta/main.yml.** Galaxy expects this file to identify the role. Add one with at minimum the `galaxy_info` section.
 
