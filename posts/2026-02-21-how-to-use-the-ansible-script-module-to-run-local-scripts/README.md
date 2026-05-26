@@ -12,7 +12,7 @@ Sometimes you have a script on your Ansible control node that you want to run on
 
 ## How the script Module Works
 
-The `script` module takes a script from your control node, transfers it to the remote host via SSH, makes it executable, runs it, and then removes it. The script can be written in any language that has an interpreter on the remote host (Bash, Python, Perl, Ruby, etc.).
+The `script` module takes a script from your control node, transfers it to the remote host using Ansible's configured connection, runs it through the remote shell or the configured executable, and then removes it. The script can be written in any language that has an interpreter on the remote host (Bash, Python, Perl, Ruby, etc.).
 
 ## Basic Usage
 
@@ -60,7 +60,7 @@ Run it across your fleet:
         msg: "{{ disk_report.stdout_lines }}"
 ```
 
-The script path is relative to the playbook location, not the current working directory.
+Ansible resolves the script path using its local task search path, such as the current role or task file location and then the playbook location, not the current working directory.
 
 ## Passing Arguments to Scripts
 
