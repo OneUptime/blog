@@ -24,7 +24,7 @@ version: 2.1
 executors:
   ansible-executor:
     docker:
-      - image: python:3.11-slim
+      - image: python:3.12-slim
     working_directory: ~/project
     environment:
       ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -38,7 +38,7 @@ jobs:
       - run:
           name: Install Ansible and lint tools
           command: |
-            pip install ansible==8.7.0 ansible-lint
+            pip install ansible==13.7.0 ansible-lint
       - run:
           name: Lint playbooks
           command: |
@@ -56,7 +56,7 @@ jobs:
           name: Install dependencies
           command: |
             apt-get update && apt-get install -y openssh-client
-            pip install ansible==8.7.0
+            pip install ansible==13.7.0
             ansible-galaxy collection install -r requirements.yml
       - run:
           name: Set up SSH key
@@ -135,7 +135,7 @@ version: 2.1
 executors:
   ansible:
     docker:
-      - image: python:3.11-slim
+      - image: python:3.12-slim
     environment:
       ANSIBLE_HOST_KEY_CHECKING: "false"
       ANSIBLE_FORCE_COLOR: "true"
@@ -149,18 +149,19 @@ commands:
           command: apt-get update && apt-get install -y openssh-client git
       - restore_cache:
           keys:
-            - pip-v1-{{ checksum "requirements.txt" }}
+            - pip-v1-{{ checksum "requirements.yml" }}
             - pip-v1-
       - run:
           name: Install Ansible
-          command: pip install ansible==8.7.0 ansible-lint
-      - save_cache:
-          key: pip-v1-{{ checksum "requirements.txt" }}
-          paths:
-            - /usr/local/lib/python3.11/site-packages
+          command: pip install ansible==13.7.0 ansible-lint
       - run:
           name: Install collections
           command: ansible-galaxy collection install -r requirements.yml
+      - save_cache:
+          key: pip-v1-{{ checksum "requirements.yml" }}
+          paths:
+            - ~/.cache/pip
+            - ~/.ansible/collections
 
   # Reusable command for SSH setup
   setup-ssh:
@@ -305,7 +306,7 @@ Build a custom Docker image to avoid installing Ansible on every run.
 
 ```dockerfile
 # Dockerfile.circleci-ansible
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -313,13 +314,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    ansible==8.7.0 \
+    ansible==13.7.0 \
     ansible-lint \
     jmespath
 
 RUN ansible-galaxy collection install \
     community.general \
-    ansible.posix
+    ansible.posix \
+    -p /usr/share/ansible/collections
 
 # Create a non-root user for CircleCI
 RUN useradd -m circleci
@@ -384,6 +386,6 @@ jobs:
 3. Base64-encode your SSH keys when storing them as environment variables. Raw multi-line strings in environment variables can cause issues.
 4. The `when: always` condition on cleanup steps ensures secrets are removed even when the playbook fails.
 5. Use `restore_cache` / `save_cache` to cache pip packages and Ansible collections between builds.
-6. The `approval` job type provides manual gates between environments. Only users with the right permissions can approve.
+6. The `approval` job type provides manual gates between environments. Jobs downstream from an approval can be protected with restricted contexts so unauthorized approvers cannot run production deployments.
 
 CircleCI's clean YAML syntax and reusable commands make it a great platform for Ansible deployments. The workflow model maps naturally to multi-environment deployment pipelines.
