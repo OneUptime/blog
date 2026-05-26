@@ -23,7 +23,7 @@ Start and enable a list of services:
   become: yes
   tasks:
     - name: Ensure critical services are running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: started
         enabled: yes
@@ -74,14 +74,14 @@ The playbook then combines base services with role-specific ones:
   become: yes
   tasks:
     - name: Enable base services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: started
         enabled: yes
       loop: "{{ base_services }}"
 
     - name: Enable role-specific services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: started
         enabled: yes
@@ -120,7 +120,7 @@ Manage services with different desired states:
 
   tasks:
     - name: Apply service configuration
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item.name }}"
         state: "{{ item.state }}"
         enabled: "{{ item.enabled }}"
@@ -139,7 +139,7 @@ In older Ansible versions, you would use `with_items`. The modern `loop` keyword
 ```yaml
 # Modern syntax (recommended)
 - name: Start services (loop)
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: started
   loop:
@@ -148,7 +148,7 @@ In older Ansible versions, you would use `with_items`. The modern `loop` keyword
 
 # Legacy syntax (still works)
 - name: Start services (with_items)
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: started
   with_items:
@@ -212,7 +212,7 @@ Full service specification with config files and handlers:
       notify: "{{ item.restart_handler }}"
 
     - name: Manage service state
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item.name }}"
         state: "{{ item.state }}"
         enabled: "{{ item.enabled }}"
@@ -222,17 +222,17 @@ Full service specification with config files and handlers:
 
   handlers:
     - name: Restart Nginx
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: nginx
         state: restarted
 
     - name: Restart Redis
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: redis-server
         state: restarted
 
     - name: Restart MyApp
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: restarted
 ```
@@ -261,7 +261,7 @@ vars:
 
 tasks:
   - name: Manage services (exclude production-only in staging)
-    ansible.builtin.systemd:
+    ansible.builtin.systemd_service:
       name: "{{ item.name }}"
       state: "{{ item.state }}"
       enabled: "{{ item.enabled }}"
@@ -271,7 +271,7 @@ tasks:
     when: env != 'production'
 
   - name: Manage all services in production
-    ansible.builtin.systemd:
+    ansible.builtin.systemd_service:
       name: "{{ item.name }}"
       state: "{{ item.state }}"
       enabled: "{{ item.enabled }}"
@@ -303,12 +303,12 @@ tasks:
     ansible.builtin.service_facts:
 
   - name: Stop unwanted services that exist on this host
-    ansible.builtin.systemd:
+    ansible.builtin.systemd_service:
       name: "{{ item }}"
       state: stopped
       enabled: no
     loop: "{{ unwanted_services }}"
-    when: "(item + '.service') in ansible_facts.services"
+    when: ansible_facts.services[item + '.service'].status | default('not-found') != 'not-found'
     loop_control:
       label: "{{ item }}"
 ```
@@ -323,7 +323,7 @@ Start services with retry on failure:
 
 ```yaml
 - name: Start services with retry
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: started
   loop:
@@ -354,10 +354,10 @@ Generate a service status report for all managed services:
       {{ service_report | default({}) | combine({
         item: {
           'state': ansible_facts.services[item + '.service']['state']
-                   if (item + '.service') in ansible_facts.services
+                   if ansible_facts.services[item + '.service'].status | default('not-found') != 'not-found'
                    else 'not installed',
           'enabled': ansible_facts.services[item + '.service']['status']
-                     if (item + '.service') in ansible_facts.services
+                     if ansible_facts.services[item + '.service'].status | default('not-found') != 'not-found'
                      else 'n/a'
         }
       }) }}
@@ -408,13 +408,13 @@ Include a task file for each service:
   register: config_result
 
 - name: "Restart {{ svc.name }} if config changed"
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ svc.name }}"
     state: restarted
   when: config_result.changed
 
 - name: "Enable {{ svc.name }}"
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ svc.name }}"
     enabled: yes
     state: started
@@ -430,7 +430,7 @@ Start services in parallel using async:
 
 ```yaml
 - name: Start all services in parallel
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: started
   loop:
@@ -450,7 +450,7 @@ Start services in parallel using async:
   loop_control:
     label: "{{ item.item }}"
   register: job_results
-  until: job_results.finished
+  until: job_results is finished
   retries: 30
   delay: 5
 ```
