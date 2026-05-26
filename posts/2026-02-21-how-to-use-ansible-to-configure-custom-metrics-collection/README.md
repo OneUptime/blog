@@ -76,7 +76,7 @@ custom-metrics/
 
 ## Approach 1: Textfile Collector
 
-The textfile collector is the simplest way to expose custom metrics. You write a script that generates metrics in the Prometheus text format, schedule it with cron, and Node Exporter picks up the output.
+The textfile collector is the simplest way to expose custom metrics. You write a script that generates metrics in the Prometheus text format, schedule it with cron, and Node Exporter picks up the output from the directory configured with `--collector.textfile.directory`.
 
 ### Default Variables
 
@@ -173,7 +173,7 @@ backup_directories:
 
 - name: Write initial metric files
   ansible.builtin.copy:
-    content: "{{ item.stdout }}"
+    content: "{{ item.stdout }}\n"
     dest: "{{ textfile_collector_dir }}/{{ item.item.name }}.prom"
     owner: "{{ textfile_metrics_user }}"
     group: "{{ textfile_metrics_user }}"
@@ -277,6 +277,7 @@ For metrics that need to be collected in real time (not just every cron interval
 custom_exporter_port: 9200
 custom_exporter_user: "exporter"
 custom_exporter_dir: "/opt/custom-exporter"
+custom_exporter_venv: "{{ custom_exporter_dir }}/venv"
 
 # Application database for collecting business metrics
 custom_exporter_db_host: "localhost"
@@ -401,6 +402,8 @@ if __name__ == '__main__':
       - prometheus_client
       - psycopg2-binary
     state: present
+    virtualenv: "{{ custom_exporter_venv }}"
+    virtualenv_command: "python3 -m venv"
   become: true
 
 - name: Deploy custom exporter script
@@ -444,7 +447,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User={{ custom_exporter_user }}
-ExecStart=/usr/bin/python3 {{ custom_exporter_dir }}/custom_exporter.py
+ExecStart={{ custom_exporter_venv }}/bin/python {{ custom_exporter_dir }}/custom_exporter.py
 Restart=always
 RestartSec=5
 
@@ -454,13 +457,13 @@ WantedBy=multi-user.target
 
 ## Approach 3: Pushgateway
 
-For batch jobs and short-lived processes, deploy a Pushgateway and scripts that push metrics to it.
+For service-level batch jobs and short-lived processes, deploy a Pushgateway and scripts that push metrics to it.
 
 ### Default Variables
 
 ```yaml
 # roles/pushgateway/defaults/main.yml
-pushgateway_version: "1.7.0"
+pushgateway_version: "1.11.2"
 pushgateway_port: 9091
 pushgateway_user: "pushgateway"
 ```
