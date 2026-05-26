@@ -14,18 +14,20 @@ This guide breaks down how become scope works in Ansible and gives you practical
 
 ## How Scope Inheritance Works
 
-Ansible evaluates become directives in a hierarchy. More specific settings override more general ones.
+Ansible evaluates `become` settings using its normal precedence rules. Within playbook keywords, more specific settings override more general ones.
 
 ```mermaid
 graph TD
-    A[ansible.cfg defaults] --> B[Inventory Variables]
-    B --> C[Play Level]
-    C --> D[Block Level]
-    D --> E[Task Level]
-    E --> F[Final become value for task execution]
+    A[ansible.cfg defaults] --> B[Command-line options]
+    B --> C[Playbook Keywords]
+    C --> D[Play Level]
+    D --> E[Block Level]
+    E --> F[Task Level]
+    F --> G[Connection Variables such as ansible_become]
+    G --> H[Final become value for task execution]
 ```
 
-A task-level `become` overrides a play-level `become`, which overrides inventory-level settings, which override ansible.cfg defaults. The most specific setting always wins.
+A task-level `become` overrides a play-level `become` within playbook keywords. However, connection variables such as `ansible_become` can be defined in inventory or other variable sources and override the `become` directive. Be careful not to treat inventory variables and playbook keywords as the same precedence layer.
 
 ## Play-Level become
 
@@ -225,7 +227,7 @@ There are several concrete reasons to prefer task-level become over play-level.
 
 ### File Ownership Issues
 
-When become is enabled, files created by Ansible modules are owned by the become_user (usually root). This can cause unexpected ownership.
+When become is enabled, new files created by Ansible modules usually use the become_user (often root) as the current user unless ownership is specified. If the destination already exists, modules such as `copy` and `template` can preserve existing ownership. This can cause unexpected ownership.
 
 ```yaml
 # Problem: files end up owned by root when become is at play level
