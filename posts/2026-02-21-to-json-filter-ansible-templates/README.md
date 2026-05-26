@@ -12,7 +12,7 @@ JSON is everywhere in modern infrastructure. From API payloads to configuration 
 
 ## Basic Usage
 
-The `to_json` filter converts an Ansible data structure into a compact JSON string:
+The `to_json` filter converts an Ansible data structure into a JSON string:
 
 ```jinja2
 {# Convert a dictionary to JSON #}
@@ -26,7 +26,7 @@ The `to_json` filter converts an Ansible data structure into a compact JSON stri
 {# Output: ["nginx", "postgresql", "redis"] #}
 ```
 
-The output is a single line with no extra whitespace. This is the default behavior and is useful when you need compact JSON, like in API calls or inline configuration values.
+The output is a single line by default, with normal JSON separator spacing. This is useful when you need non-pretty-printed JSON, like in API calls or inline configuration values.
 
 ## Using to_json in Templates
 
@@ -63,11 +63,11 @@ Here is a practical example where you generate a JSON configuration file for an 
         dest: /etc/myapp/config.json
 ```
 
-This produces a compact, single-line JSON file. For human-readable output, use `to_nice_json` instead (covered in a separate post).
+This produces a single-line JSON file. For human-readable output, use `to_nice_json` instead (covered in a separate post).
 
 ## Generating JSON for API Calls
 
-When making API calls with the `uri` module, `to_json` is essential for building request bodies:
+When making API calls with the `uri` module, `to_json` can be used for building request bodies. If `body_format: json` is set, the module also accepts a data structure directly and serializes it when needed:
 
 ```yaml
 # api_call.yml - Send JSON data to an API
@@ -207,7 +207,7 @@ Here is a real-world template for generating Consul service registration files:
 The `to_json` filter accepts parameters to control the output format. While `to_nice_json` is the preferred way to get pretty-printed output, you can pass options directly:
 
 ```jinja2
-{# Compact output (default) #}
+{# Single-line output (default) #}
 {{ data | to_json }}
 
 {# With sorting of keys #}
@@ -254,11 +254,11 @@ Quick comparison to help you choose:
 
 | Feature | to_json | to_nice_json |
 |---------|---------|--------------|
-| Output | Compact, single line | Pretty-printed, indented |
+| Output | Single line | Pretty-printed, indented |
 | Best for | API bodies, inline values, env vars | Configuration files, human-readable output |
 | File size | Smaller | Larger |
 
-Use `to_json` when file size matters or when the JSON will be parsed by machines. Use `to_nice_json` when humans need to read or edit the output.
+Use `to_json` when you want single-line output or when the JSON will be parsed by machines. Use `to_nice_json` when humans need to read or edit the output.
 
 ## Handling Data Types
 
@@ -293,4 +293,4 @@ When generating JSON for typed systems, make sure your values have the correct P
 
 ## Wrapping Up
 
-The `to_json` filter is a fundamental tool for generating JSON output in Ansible. Whether you are building API request bodies, creating configuration files, embedding JSON values in environment variables, or serializing Ansible facts for reporting, `to_json` handles the serialization correctly, including proper escaping of special characters. For compact machine-readable output, use `to_json`. For human-readable configuration files, check out `to_nice_json` instead.
+The `to_json` filter is a fundamental tool for generating JSON output in Ansible. Whether you are building API request bodies, creating configuration files, embedding JSON values in environment variables, or serializing Ansible facts for reporting, `to_json` handles the serialization correctly, including proper escaping of special characters. For single-line machine-readable output, use `to_json`. For human-readable configuration files, check out `to_nice_json` instead.
