@@ -73,7 +73,7 @@ One of the most useful applications is generating vault-encrypted variable files
     - name: Create encrypted variable entries
       ansible.builtin.set_fact:
         encrypted_vars: "{{ encrypted_vars | default({}) | combine({
-          'vault_' + item.key: item.value | vault(vault_password)
+          'vault_' + item.key: item.value | vault(vault_password, wrap_object=True)
         }) }}"
       loop: "{{ secrets_to_encrypt | dict2items }}"
       no_log: true
@@ -87,7 +87,7 @@ One of the most useful applications is generating vault-encrypted variable files
 
 ## Encrypting with Vault IDs
 
-The `vault` filter supports vault IDs through an optional second argument:
+The `vault` filter supports vault IDs through an optional keyword argument:
 
 ```yaml
 # Encrypt with a specific vault ID
@@ -96,7 +96,7 @@ The `vault` filter supports vault IDs through an optional second argument:
     encrypted_value: "{{ 'my-secret' | vault(vault_password, vault_id='prod') }}"
 ```
 
-This adds the vault ID label to the encrypted output, matching what you would get with `ansible-vault encrypt_string --vault-id prod@password`.
+This adds the vault ID label to the encrypted output, matching what you would get with a command such as `ansible-vault encrypt_string --vault-id prod@password_file`.
 
 ## Migrating Secrets Between Encryption Methods
 
@@ -122,9 +122,12 @@ The `vault` filter is helpful when migrating from one secrets storage to another
       ansible.builtin.copy:
         content: |
           ---
-          vault_db_password: {{ aws_db_pass | vault(vault_password) | indent(2) }}
-          vault_api_key: {{ aws_api_key | vault(vault_password) | indent(2) }}
-          vault_redis_password: {{ aws_redis_pass | vault(vault_password) | indent(2) }}
+          vault_db_password: !vault |
+          {{ aws_db_pass | vault(vault_password) | indent(10, true) }}
+          vault_api_key: !vault |
+          {{ aws_api_key | vault(vault_password) | indent(10, true) }}
+          vault_redis_password: !vault |
+          {{ aws_redis_pass | vault(vault_password) | indent(10, true) }}
         dest: "{{ playbook_dir }}/group_vars/production/vault.yml"
         mode: '0644'
       no_log: true
@@ -162,7 +165,8 @@ With the template:
 {# k8s_secrets_vault.yml.j2 #}
 ---
 {% for key, value in app_secrets.items() %}
-vault_k8s_{{ key | lower }}: {{ value | vault(vault_password) }}
+vault_k8s_{{ key | lower }}: !vault |
+{{ value | vault(vault_password) | indent(10, true) }}
 {% endfor %}
 ```
 
@@ -178,7 +182,7 @@ You can verify the encrypt-decrypt round trip:
 
 - name: Decrypt it back
   ansible.builtin.set_fact:
-    decrypted: "{{ encrypted | unvault }}"
+    decrypted: "{{ encrypted | unvault(vault_password) }}"
 
 - name: Verify round trip
   ansible.builtin.assert:
@@ -212,9 +216,12 @@ The `vault` filter enables automated secret rotation workflows:
       ansible.builtin.copy:
         content: |
           ---
-          vault_db_password: {{ new_db_password | vault(vault_password) }}
-          vault_api_key: {{ new_api_key | vault(vault_password) }}
-          vault_session_secret: {{ new_session_secret | vault(vault_password) }}
+          vault_db_password: !vault |
+          {{ new_db_password | vault(vault_password) | indent(10, true) }}
+          vault_api_key: !vault |
+          {{ new_api_key | vault(vault_password) | indent(10, true) }}
+          vault_session_secret: !vault |
+          {{ new_session_secret | vault(vault_password) | indent(10, true) }}
         dest: "{{ playbook_dir }}/group_vars/production/vault.yml"
         mode: '0644'
       no_log: true
@@ -233,9 +240,9 @@ The `vault` filter has a few things to watch out for.
 
 The vault password must be available as a plaintext string to the filter. This means your playbook needs access to the raw vault password, which has security implications. Be careful about how you source this password and make sure `no_log: true` is set on any task that handles it.
 
-The encrypted output from the `vault` filter matches the format produced by `ansible-vault encrypt_string`, so files generated this way are fully compatible with standard vault operations.
+The encrypted payload from the `vault` filter matches the vault payload format used by `ansible-vault encrypt_string`. When you generate YAML variable files, emit it as an inline vault value with the `!vault |` tag, or use `wrap_object=True` with a YAML filter, so Ansible loads it as encrypted content.
 
-Each call to the `vault` filter produces different encrypted output even for the same input and password. This is expected behavior because AES-256 uses a random salt. It means that running the same playbook twice will produce different encrypted strings, which can create noisy git diffs.
+Each call to the `vault` filter produces different encrypted output even for the same input and password. This is expected behavior because Ansible Vault uses a random salt unless you provide one explicitly. It means that running the same playbook twice will produce different encrypted strings, which can create noisy git diffs.
 
 ## Version Requirements
 
