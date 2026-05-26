@@ -176,9 +176,14 @@ Gather resource utilization from every host:
     disk_critical_threshold: 90
 
   tasks:
+    - name: Get CPU load average
+      ansible.builtin.command: cat /proc/loadavg
+      register: alert_loadavg
+      changed_when: false
+
     - name: Calculate current utilization
       ansible.builtin.set_fact:
-        cpu_pct: "{{ (ansible_processor_count | float / ansible_processor_vcpus * 100) | round(1) }}"
+        cpu_pct: "{{ (alert_loadavg.stdout.split()[0] | float / ansible_processor_vcpus * 100) | round(1) }}"
         mem_pct: "{{ ((ansible_memtotal_mb - ansible_memfree_mb) / ansible_memtotal_mb * 100) | round(1) }}"
         disk_pct: "{{ (100 - (ansible_mounts | selectattr('mount', 'equalto', '/') | first).size_available / (ansible_mounts | selectattr('mount', 'equalto', '/') | first).size_total * 100) | round(1) }}"
 
@@ -222,6 +227,7 @@ graph TD
     - name: Check if web tier needs scaling
       ansible.builtin.uri:
         url: "{{ prometheus_url }}/api/v1/query"
+        method: POST
         body_format: form-urlencoded
         body:
           query: "avg(100 - (avg by(instance)(rate(node_cpu_seconds_total{mode='idle', job='webservers'}[5m])) * 100))"
@@ -232,6 +238,8 @@ graph TD
         name: "web-{{ ansible_date_time.epoch }}"
         instance_type: t3.medium
         image_id: "{{ web_ami }}"
+        vpc_subnet_id: "{{ web_subnet_id }}"
+        security_group: "{{ web_security_group }}"
         state: running
       when: web_cpu.json.data.result[0].value[1] | float > 75
       register: new_instance
