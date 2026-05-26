@@ -41,7 +41,7 @@ rules:
     spaces: 2
     indent-sequences: true
   truthy:
-    allowed-values: ['true', 'false', 'yes', 'no']
+    allowed-values: ['true', 'false']
   comments:
     min-spaces-from-content: 1
   braces:
@@ -117,7 +117,7 @@ Define which modules to use for common operations:
     owner: myapp
     group: myapp
     mode: '0750'
-    recurse: yes
+    recurse: true
 
 # BAD
 - name: Set permissions
@@ -191,17 +191,26 @@ certificate: "secret"    # Hardcoded secret
 # Rule: Task files over 50 lines must be split into includes
 # roles/nginx/tasks/main.yml
 - name: Include installation tasks
-  ansible.builtin.include_tasks: install.yml
-  tags: [nginx, install]
+  ansible.builtin.include_tasks:
+    file: install.yml
+    apply:
+      tags: [nginx, install]
+  tags: [always]
 
 - name: Include configuration tasks
-  ansible.builtin.include_tasks: configure.yml
-  tags: [nginx, configure]
+  ansible.builtin.include_tasks:
+    file: configure.yml
+    apply:
+      tags: [nginx, configure]
+  tags: [always]
 
 - name: Include SSL tasks
-  ansible.builtin.include_tasks: ssl.yml
+  ansible.builtin.include_tasks:
+    file: ssl.yml
+    apply:
+      tags: [nginx, ssl]
   when: nginx_ssl_enabled
-  tags: [nginx, ssl]
+  tags: [always]
 ```
 
 ## Error Handling Standards
@@ -315,7 +324,7 @@ graph TD
 # GOOD
 - name: Configure web servers
   hosts: webservers
-  become: yes
+  become: true
   roles:
     - role: common
       tags: [common]
@@ -325,7 +334,7 @@ graph TD
 # BAD - logic in playbook
 - name: Configure web servers
   hosts: webservers
-  become: yes
+  become: true
   tasks:
     - name: Install nginx
       ansible.builtin.apt:
