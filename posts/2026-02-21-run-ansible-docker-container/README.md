@@ -121,14 +121,15 @@ docker run --rm \
     playbooks/deploy.yml
 ```
 
-Or pass it through an environment variable:
+Or set the vault password file path through an environment variable:
 
 ```bash
-# Pass vault password via environment variable
+# Configure the vault password file via environment variable
 docker run --rm \
-  -e ANSIBLE_VAULT_PASSWORD=mysecretpassword \
+  -e ANSIBLE_VAULT_PASSWORD_FILE=/root/.vault_pass \
   -v ~/.ssh:/root/.ssh:ro \
   -v $(pwd):/ansible:rw \
+  -v ~/.vault_pass:/root/.vault_pass:ro \
   -w /ansible \
   ansible-runner:9.2.0 \
   ansible-playbook -i inventory.ini \
@@ -155,8 +156,6 @@ If you run Ansible from Docker frequently, create a docker-compose.yml to simpli
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   ansible:
     build:
@@ -331,7 +330,7 @@ chmod +x ansible-docker.sh
 By default, Docker containers use a bridge network. If your managed hosts are on the local network, the container can reach them through the bridge. If you need the container to use the host's network stack directly:
 
 ```bash
-# Use host networking (Linux only)
+# Use host networking
 docker run --rm --network host \
   -v ~/.ssh:/root/.ssh:ro \
   -v $(pwd):/ansible:rw \
@@ -340,7 +339,7 @@ docker run --rm --network host \
   ansible-playbook -i inventory.ini playbooks/deploy.yml
 ```
 
-On macOS and Windows, `--network host` does not work the same way because Docker runs in a VM. The default bridge network should work for reaching external hosts.
+On Docker Desktop for macOS and Windows, Docker runs Linux containers inside a VM. Host networking is available only as an opt-in feature in Docker Desktop 4.34 and later; otherwise, the default bridge network should work for reaching external hosts.
 
 ## Summary
 
