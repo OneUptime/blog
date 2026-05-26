@@ -39,9 +39,9 @@ In this play, even though we are targeting `webservers`, the apt task actually r
 
 ## The Connection User Problem
 
-The trickiest part of combining delegation with become is understanding which credentials get used. By default, when you delegate to a host, Ansible uses the connection variables (like `ansible_user` and `ansible_ssh_pass`) from the delegated host's inventory entry, but it uses the become settings from the task itself.
+The trickiest part of combining delegation with become is understanding which credentials get used. By default, when you delegate to a host, Ansible uses the connection variables (like `ansible_user` and `ansible_ssh_pass`) from the delegated host's inventory entry. Become directives set on the task still apply to that delegated task, but host-specific become variables such as `ansible_become_user` or `ansible_become_password` can override those directives for the delegated host.
 
-If the delegated host is not in your inventory, Ansible falls back to the connection settings of the current play.
+If the delegated host is not in your inventory, Ansible does not add it to inventory and does not inherit variables from the host that is delegating the task. It can still inherit broad variables such as those from the `all` group, but for reliable behavior, define the delegated host in inventory or add it with `add_host`.
 
 ```yaml
 # connection_user_example.yml - Showing which credentials apply where
@@ -49,8 +49,6 @@ If the delegated host is not in your inventory, Ansible falls back to the connec
 - name: Show credential behavior with delegation
   hosts: appservers
   become: false
-  vars:
-    ansible_user: deploy
   tasks:
     # This task connects to db.example.com as whatever user
     # is defined for db.example.com in inventory,
@@ -132,7 +130,7 @@ Sometimes your play-level `become` settings do not match what the delegated host
 
     - name: Record deployment in local log (no become needed)
       ansible.builtin.lineinfile:
-        path: /var/log/deployments.log
+        path: /tmp/deployments.log
         line: "{{ inventory_hostname }} deployed at {{ ansible_date_time.iso8601 }}"
         create: true
       delegate_to: localhost
@@ -184,10 +182,11 @@ When you register the output of a delegated task, the registered variable is ass
   gather_facts: false
   tasks:
     - name: Check nginx status on each web server
-      ansible.builtin.systemd:
-        name: nginx
+      ansible.builtin.command: systemctl is-active nginx
       delegate_to: "{{ item }}"
       become: true
+      changed_when: false
+      failed_when: false
       register: nginx_status
       loop: "{{ groups['webservers'] }}"
 
@@ -195,7 +194,7 @@ When you register the output of a delegated task, the registered variable is ass
       ansible.builtin.debug:
         msg: "nginx is NOT running on {{ item.item }}"
       loop: "{{ nginx_status.results }}"
-      when: item.status.ActiveState != "active"
+      when: item.stdout != "active"
 ```
 
 ## Flow Diagram
@@ -206,15 +205,18 @@ Here is how Ansible resolves credentials when you combine delegation with become
 flowchart TD
     A[Task with delegate_to + become] --> B{Is delegated host in inventory?}
     B -->|Yes| C[Use inventory connection vars for delegated host]
-    B -->|No| D[Use play-level connection vars]
+    B -->|No| D[Use all-group and explicit task/play vars only]
     C --> E{become set at task level?}
     D --> E
     E -->|Yes| F[Use task-level become settings]
     E -->|No| G{become set at play level?}
     G -->|Yes| H[Use play-level become settings]
     G -->|No| I[No privilege escalation]
-    F --> J[Connect to delegated host and escalate]
-    H --> J
+    F --> L{Host-specific become vars set?}
+    H --> L
+    L -->|Yes| M[Host-specific become vars override directives]
+    L -->|No| J[Connect to delegated host and escalate]
+    M --> J
     I --> K[Connect to delegated host without escalation]
 ```
 
