@@ -20,7 +20,7 @@ In a standard TFE deployment, the application reaches out to the internet for se
 - Downloading Terraform CLI binaries
 - Downloading provider plugins (aws, azurerm, google, etc.)
 - Connecting to VCS providers (GitHub, GitLab)
-- Checking the HashiCorp license server
+- Sending automated license and usage reports to HashiCorp
 
 In an air-gapped deployment, all of these must be handled differently.
 
@@ -40,19 +40,19 @@ You need a "transfer workstation" - a machine with internet access that you use 
 
 # Log in to the HashiCorp registry
 
-echo "${HASHICORP_TOKEN}" | docker login images.releases.hashicorp.com -u terraform --password-stdin
+echo "${HASHICORP_LICENSE}" | docker login images.releases.hashicorp.com -u terraform --password-stdin
 
 # Pull the TFE image
-docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1
+docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:2.0.2
 
 # Save the image to a tar file for transfer
-docker save images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1 \
-  -o tfe-v202402-1.tar
+docker save images.releases.hashicorp.com/hashicorp/terraform-enterprise:2.0.2 \
+  -o tfe-2.0.2.tar
 
 # Compress it for easier transfer
-gzip tfe-v202402-1.tar
+gzip tfe-2.0.2.tar
 
-echo "Image saved: tfe-v202402-1.tar.gz ($(du -h tfe-v202402-1.tar.gz | cut -f1))"
+echo "Image saved: tfe-2.0.2.tar.gz ($(du -h tfe-2.0.2.tar.gz | cut -f1))"
 ```
 
 Transfer the file to the air-gapped network, then load it:
@@ -61,14 +61,14 @@ Transfer the file to the air-gapped network, then load it:
 # On the air-gapped network:
 
 # Load the image into Docker
-gunzip tfe-v202402-1.tar.gz
-docker load -i tfe-v202402-1.tar
+gunzip tfe-2.0.2.tar.gz
+docker load -i tfe-2.0.2.tar
 
 # Tag and push to your internal registry
-docker tag images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1 \
-  registry.internal.example.com/hashicorp/terraform-enterprise:v202402-1
+docker tag images.releases.hashicorp.com/hashicorp/terraform-enterprise:2.0.2 \
+  registry.internal.example.com/hashicorp/terraform-enterprise:2.0.2
 
-docker push registry.internal.example.com/hashicorp/terraform-enterprise:v202402-1
+docker push registry.internal.example.com/hashicorp/terraform-enterprise:2.0.2
 ```
 
 ## Step 2: Mirror Terraform CLI Binaries
@@ -101,18 +101,54 @@ After transferring to the air-gapped network:
 
 ```bash
 # On the air-gapped network:
-# Set up a local Terraform binary mirror
+# Publish the Terraform zip files from an internal artifact server
 
-MIRROR_DIR="/opt/tfe/terraform-binaries"
-mkdir -p "${MIRROR_DIR}"
+ARTIFACT_DIR="/var/www/html/terraform"
+mkdir -p "${ARTIFACT_DIR}"
 
 for ZIP in /transfer/terraform-binaries/terraform_*.zip; do
   VERSION=$(echo "${ZIP}" | grep -oP '\d+\.\d+\.\d+')
-  TARGET_DIR="${MIRROR_DIR}/${VERSION}"
-  mkdir -p "${TARGET_DIR}"
-  unzip -o "${ZIP}" -d "${TARGET_DIR}"
-  chmod +x "${TARGET_DIR}/terraform"
+  mkdir -p "${ARTIFACT_DIR}/${VERSION}"
+  cp "${ZIP}" "${ARTIFACT_DIR}/${VERSION}/"
 done
+```
+
+Then use the Terraform Enterprise Admin Terraform Versions API to point each Terraform version at the internal URL and SHA-256 checksum:
+
+```bash
+# On a machine that can reach TFE and the internal artifact server:
+VERSION="1.9.8"
+SHA=$(grep "terraform_${VERSION}_linux_amd64.zip" \
+  "/transfer/terraform-binaries/terraform_${VERSION}_SHA256SUMS" | awk '{print $1}')
+
+cat > terraform-version.json << EOF
+{
+  "data": {
+    "type": "terraform-versions",
+    "attributes": {
+      "version": "${VERSION}",
+      "official": true,
+      "enabled": true,
+      "beta": false,
+      "archs": [
+        {
+          "url": "https://artifacts.internal.example.com/terraform/${VERSION}/terraform_${VERSION}_linux_amd64.zip",
+          "sha": "${SHA}",
+          "os": "linux",
+          "arch": "amd64"
+        }
+      ]
+    }
+  }
+}
+EOF
+
+curl \
+  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  --data @terraform-version.json \
+  https://tfe.internal.example.com/api/v2/admin/terraform-versions
 ```
 
 ## Step 3: Create a Provider Mirror
@@ -150,8 +186,8 @@ for PROVIDER_VERSION in "${PROVIDERS[@]}"; do
 
   echo "Downloading ${PROVIDER} v${VERSION}..."
 
-  # Create directory structure matching Terraform's filesystem mirror layout
-  DEST="${PROVIDERS_DIR}/registry.terraform.io/${NAMESPACE}/${NAME}/${VERSION}/linux_amd64"
+  # Create directory structure matching Terraform's packed filesystem mirror layout
+  DEST="${PROVIDERS_DIR}/registry.terraform.io/${NAMESPACE}/${NAME}"
   mkdir -p "${DEST}"
 
   # Download the provider binary
@@ -189,6 +225,8 @@ EOF
 terraform providers mirror -platform=linux_amd64 ./provider-mirror
 ```
 
+Use the built-in mirror command if you plan to serve the mirror over HTTPS, because it also generates the JSON index files required by Terraform's provider network mirror protocol. The manual download example above matches the packed filesystem mirror layout.
+
 ## Step 4: Configure TFE for Air-Gapped Operation
 
 ```bash
@@ -200,13 +238,11 @@ terraform providers mirror -platform=linux_amd64 ./provider-mirror
 # Disable internet-dependent features
 TFE_RUN_PIPELINE_DRIVER=docker
 TFE_CAPACITY_CONCURRENCY=10
+TFE_LICENSE_REPORTING_OPT_OUT=true
+TFE_USAGE_REPORTING_OPT_OUT=true
 
-# Point to the local Terraform binary mirror
-TFE_TERRAFORM_BINARY_PATH=/opt/tfe/terraform-binaries
-
-# Configure the provider mirror as a filesystem mirror
-# This is done via the Terraform CLI config, not TFE itself
-# Create a .terraformrc that TFE will use for runs
+# Configure the provider mirror through the Terraform CLI config used by runs
+# In TFE, use a custom run pipeline image with hooks that update the generated CLI config
 ```
 
 ### Docker Compose for Air-Gapped Deployment
@@ -217,10 +253,16 @@ version: "3.9"
 services:
   tfe:
     # Use the internal registry image
-    image: registry.internal.example.com/hashicorp/terraform-enterprise:v202402-1
+    image: registry.internal.example.com/hashicorp/terraform-enterprise:2.0.2
     environment:
       TFE_HOSTNAME: tfe.internal.example.com
       TFE_LICENSE_PATH: /etc/tfe/license.rli
+      TFE_ENCRYPTION_PASSWORD: "${TFE_ENCRYPTION_PASSWORD}"
+      TFE_OPERATIONAL_MODE: external
+      TFE_RUN_PIPELINE_DRIVER: docker
+      TFE_RUN_PIPELINE_IMAGE: registry.internal.example.com/hashicorp/tfc-agent-with-mirror:latest
+      TFE_RUN_PIPELINE_DOCKER_EXTRA_HOSTS: "artifacts.internal.example.com:10.0.1.20"
+      TFE_DISK_CACHE_VOLUME_NAME: "${COMPOSE_PROJECT_NAME}_terraform-enterprise-cache"
       TFE_OBJECT_STORAGE_TYPE: s3
       TFE_OBJECT_STORAGE_S3_BUCKET: tfe-objects
       TFE_OBJECT_STORAGE_S3_ENDPOINT: https://minio.internal.example.com
@@ -231,47 +273,49 @@ services:
       TFE_DATABASE_USER: tfe
       TFE_DATABASE_PASSWORD: "${DB_PASSWORD}"
       TFE_DATABASE_NAME: tfe
-      TFE_REDIS_HOST: redis.internal.example.com
-      TFE_REDIS_PORT: "6379"
-      TFE_REDIS_PASSWORD: "${REDIS_PASSWORD}"
       TFE_TLS_CERT_FILE: /etc/tfe/tls/tfe.crt
       TFE_TLS_KEY_FILE: /etc/tfe/tls/tfe.key
       TFE_TLS_CA_BUNDLE_FILE: /etc/tfe/tls/ca-bundle.crt
+      TFE_LICENSE_REPORTING_OPT_OUT: "true"
+      TFE_USAGE_REPORTING_OPT_OUT: "true"
       # Air-gap specific settings
       TFE_IACT_SUBNETS: "10.0.0.0/8"
     volumes:
+      - /var/run/docker.sock:/run/docker.sock
       - ./license.rli:/etc/tfe/license.rli:ro
       - ./certs:/etc/tfe/tls:ro
-      - ./terraform-binaries:/opt/tfe/terraform-binaries:ro
-      - ./provider-mirror:/opt/tfe/provider-mirror:ro
       - tfe-data:/var/lib/terraform-enterprise
+      - terraform-enterprise-cache:/var/cache/tfe-task-worker/terraform
     ports:
+      - "80:80"
       - "443:443"
     extra_hosts:
       - "registry.internal.example.com:10.0.1.10"
 volumes:
   tfe-data:
+  terraform-enterprise-cache:
 ```
 
 ## Step 5: Configure Provider Mirrors in Workspaces
 
-Each workspace needs to know where to find providers. You can set this through the Terraform CLI configuration:
+Each workspace needs to know where to find providers. Terraform Enterprise dynamically generates the Terraform CLI configuration for each run, so do not replace it with a static `TF_CLI_CONFIG_FILE`. Instead, serve the mirror from an internal HTTPS endpoint and use a custom run pipeline image with hooks that append the provider installation block before `terraform init` runs:
 
-```hcl
-# terraform.rc - Provider mirror configuration
-# Place this in the TFE configuration directory
+```bash
+#!/bin/bash
+# hooks/terraform-pre-plan and hooks/terraform-pre-apply
 
+cat <<'EOF' >> "${HOME}/.terraformrc"
 provider_installation {
-  filesystem_mirror {
-    path    = "/opt/tfe/provider-mirror"
+  network_mirror {
+    url     = "https://artifacts.internal.example.com/provider-mirror/"
     include = ["registry.terraform.io/*/*"]
   }
 
-  # Optionally, add a network mirror if you run one
-  # network_mirror {
-  #   url = "https://terraform-mirror.internal.example.com/providers/"
-  # }
+  direct {
+    exclude = ["registry.terraform.io/*/*"]
+  }
 }
+EOF
 ```
 
 ## Step 6: VCS Integration Without Internet
