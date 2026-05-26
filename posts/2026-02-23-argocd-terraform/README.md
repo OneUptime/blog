@@ -431,10 +431,10 @@ data:
   service.slack: |
     token: $slack-token
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed]
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [app-sync-succeeded]
   template.app-sync-failed: |
     slack:
