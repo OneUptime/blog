@@ -1,10 +1,10 @@
-# How to Use Ansible with OpenSCAP for Security Compliance
+# How to Use Ansible for Security Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, OpenSCAP, SCAP, Security, Compliance
+Tags: Ansible, Security, Compliance
 
-Description: Integrate OpenSCAP security scanning with Ansible for automated SCAP content evaluation and remediation.
+Description: Use Ansible playbooks for automated security compliance validation and remediation.
 
 ---
 
@@ -36,7 +36,7 @@ Every compliance control follows the same pattern: check the current state, reme
 - name: Ensure password complexity is configured
   ansible.builtin.lineinfile:
     path: /etc/security/pwquality.conf
-    regexp: "^{{ item.key }}"
+    regexp: '^{{ item.key }}\s*='
     line: "{{ item.key }} = {{ item.value }}"
   loop:
     - { key: minlen, value: "14" }
@@ -54,7 +54,7 @@ Every compliance control follows the same pattern: check the current state, reme
 - name: Ensure account lockout is configured
   ansible.builtin.lineinfile:
     path: /etc/security/faillock.conf
-    regexp: '^deny'
+    regexp: '^deny\s*='
     line: 'deny = 5'
 ```
 
@@ -85,7 +85,7 @@ Every compliance control follows the same pattern: check the current state, reme
     - name: Assert audit logging is active
       ansible.builtin.assert:
         that:
-          - ansible_facts.services['auditd.service'].state == 'running'
+          - ansible_facts.services.get('auditd.service', {}).state == 'running'
 ```
 
 ## Reporting
@@ -139,8 +139,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Ansible
+        run: python -m pip install ansible
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -186,9 +188,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Assert LUKS encryption is enabled
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted data volumes were detected"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -219,14 +227,14 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
+  ansible.builtin.command: ss -H -tln
   register: listening_ports
   changed_when: false
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - "':{{ item }} ' not in listening_ports.stdout"
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
