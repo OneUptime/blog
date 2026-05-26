@@ -8,22 +8,23 @@ Description: A practical guide to creating, configuring, and attaching AWS EBS v
 
 ---
 
-EBS volumes are the bread and butter of persistent storage in AWS. Every EC2 instance needs at least one, and most production workloads need several with different performance profiles. Managing these volumes by hand through the console is fine when you have three instances. When you have thirty or three hundred, you need automation. Ansible makes EBS volume management declarative and repeatable, so your storage configuration lives in version control right next to your application code.
+EBS volumes are the bread and butter of persistent storage in AWS. Most EC2 instances use at least one, and most production workloads need several with different performance profiles. Managing these volumes by hand through the console is fine when you have three instances. When you have thirty or three hundred, you need automation. Ansible makes EBS volume management declarative and repeatable, so your storage configuration lives in version control right next to your application code.
 
 ## Prerequisites
 
 You will need the following before getting started:
 
-- Ansible 2.9+ with the `amazon.aws` collection
+- A current Ansible installation with the `amazon.aws`, `community.general`, and `ansible.posix` collections
+- `boto3` and `botocore` installed for the Python interpreter that runs the AWS modules
 - AWS credentials with permissions for EC2 and EBS operations
 - A running EC2 instance to attach volumes to (for the attachment examples)
 
-Install the collection and verify your setup:
+Install the collections and verify your setup:
 
 ```bash
-# Install the AWS collection
+# Install the required collections
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install amazon.aws community.general ansible.posix
 
 # Verify Ansible can reach AWS
 ansible localhost -m amazon.aws.ec2_instance_info -a "region=us-east-1"
@@ -45,7 +46,7 @@ graph TD
     E --> I[Infrequent access archives]
 ```
 
-The `gp3` type is the default and covers most use cases. It gives you a baseline of 3,000 IOPS and 125 MiB/s throughput regardless of volume size, which is a nice improvement over the older `gp2` type where performance scaled with size.
+The `gp3` type is a strong default choice and covers most use cases. It gives you a baseline of 3,000 IOPS and 125 MiB/s throughput regardless of volume size, which is a nice improvement over the older `gp2` type where performance scaled with size.
 
 ## Creating a Basic EBS Volume
 
@@ -83,7 +84,7 @@ The `amazon.aws.ec2_vol` module handles EBS volume creation. Here is a straightf
         msg: "Created volume {{ vol_result.volume_id }} in {{ availability_zone }}"
 ```
 
-A few things to note here. The `zone` parameter is required because EBS volumes exist in a specific availability zone. You cannot attach a volume in `us-east-1a` to an instance in `us-east-1b`. This is a common mistake that will cause your playbook to fail at the attachment step. The `name` tag is used by Ansible to find existing volumes on subsequent runs, which is what makes the module idempotent.
+A few things to note here. The `zone` parameter is required for standalone volume creation because EBS volumes exist in a specific availability zone. If you create and attach a volume by specifying an `instance`, the module can use the instance's availability zone instead. You cannot attach a volume in `us-east-1a` to an instance in `us-east-1b`. This is a common mistake that will cause your playbook to fail at the attachment step. The `name` parameter sets the EBS `Name` tag and is used by Ansible to find existing volumes on subsequent runs, so keep it unique for the volumes you manage this way.
 
 ## Creating a High-Performance Volume
 
@@ -270,7 +271,7 @@ The `nofail` mount option is critical. Without it, if the EBS volume fails to at
 
 ## Detaching and Deleting Volumes
 
-When decommissioning infrastructure, clean up your volumes:
+When decommissioning infrastructure, detach volumes before deleting them:
 
 ```yaml
 # cleanup-volumes.yml - Detach and delete EBS volumes
@@ -286,7 +287,14 @@ When decommissioning infrastructure, clean up your volumes:
       - vol-0def456abc789012b
 
   tasks:
-    - name: Detach and delete volumes
+    - name: Detach volumes
+      amazon.aws.ec2_vol:
+        region: us-east-1
+        id: "{{ item }}"
+        instance: None
+      loop: "{{ volumes_to_remove }}"
+
+    - name: Delete detached volumes
       amazon.aws.ec2_vol:
         region: us-east-1
         id: "{{ item }}"
