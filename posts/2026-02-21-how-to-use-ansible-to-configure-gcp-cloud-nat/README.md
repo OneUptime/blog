@@ -38,7 +38,8 @@ graph TD
 
 ## Prerequisites
 
-- Ansible 2.10+ with the `google.cloud` collection
+- Ansible Core 2.16+ with the `google.cloud` collection
+- Google Cloud CLI (`gcloud`) installed for the Cloud NAT commands
 - A GCP project with a VPC network and at least one subnet
 - A service account with Network Admin permissions
 
@@ -123,37 +124,66 @@ Now we attach a NAT configuration to the Cloud Router. The simplest setup uses a
         state: present
       register: router
 
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - auth
+          - activate-service-account
+          - "--key-file={{ gcp_service_account_file }}"
+          - "--project={{ gcp_project }}"
+      changed_when: false
+
+    - name: Check whether the NAT configuration already exists
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - describe
+          - my-nat-config
+          - "--router=nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+      register: existing_nat
+      failed_when: false
+      changed_when: false
+
     - name: Configure Cloud NAT on the router
-      google.cloud.gcp_compute_router_nat:
-        name: "my-nat-config"
-        router: "{{ router }}"
-        region: "{{ region }}"
-        # AUTO_ONLY lets GCP assign NAT IPs automatically
-        nat_ip_allocate_option: "AUTO_ONLY"
-        # Apply NAT to all subnets in the region
-        source_subnetwork_ip_ranges_to_nat: "ALL_SUBNETWORKS_ALL_IP_RANGES"
-        # Logging configuration
-        log_config:
-          enable: true
-          filter: "ERRORS_ONLY"
-        # Timeouts for NAT connections
-        min_ports_per_vm: 64
-        udp_idle_timeout_sec: 30
-        icmp_idle_timeout_sec: 30
-        tcp_established_idle_timeout_sec: 1200
-        tcp_transitory_idle_timeout_sec: 30
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - create
+          - my-nat-config
+          - "--router=nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+          # Automatic allocation lets GCP assign NAT IPs automatically
+          - --auto-allocate-nat-external-ips
+          # Apply NAT to all subnets in the region
+          - --nat-all-subnet-ip-ranges
+          # Logging configuration
+          - --enable-logging
+          - --log-filter=ERRORS_ONLY
+          # Timeouts for NAT connections
+          - --min-ports-per-vm=64
+          - --udp-idle-timeout=30s
+          - --icmp-idle-timeout=30s
+          - --tcp-established-idle-timeout=1200s
+          - --tcp-transitory-idle-timeout=30s
+      when: existing_nat.rc != 0
       register: nat_config
 
     - name: Display NAT configuration
       ansible.builtin.debug:
         msg: |
-          Cloud NAT configured: {{ nat_config.name }}
-          NAT IP allocation: AUTO_ONLY
-          Subnet range: ALL_SUBNETWORKS_ALL_IP_RANGES
+          Cloud NAT configured: my-nat-config
+          NAT IP allocation: automatic
+          Subnet range: all subnet IP ranges
           Logging: Errors only
 ```
 
@@ -208,23 +238,51 @@ Sometimes you need a fixed external IP for your NAT traffic. This is common when
         state: present
       register: router
 
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - auth
+          - activate-service-account
+          - "--key-file={{ gcp_service_account_file }}"
+          - "--project={{ gcp_project }}"
+      changed_when: false
+
+    - name: Check whether the static NAT configuration already exists
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - describe
+          - nat-with-static-ips
+          - "--router=nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+      register: existing_nat
+      failed_when: false
+      changed_when: false
+
     - name: Configure NAT with static IPs
-      google.cloud.gcp_compute_router_nat:
-        name: "nat-with-static-ips"
-        router: "{{ router }}"
-        region: "{{ region }}"
-        # Use manual allocation with our reserved IPs
-        nat_ip_allocate_option: "MANUAL_ONLY"
-        nat_ips: "{{ nat_ips.results | map(attribute='selfLink') | list }}"
-        source_subnetwork_ip_ranges_to_nat: "ALL_SUBNETWORKS_ALL_IP_RANGES"
-        min_ports_per_vm: 128
-        log_config:
-          enable: true
-          filter: "ALL"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - create
+          - nat-with-static-ips
+          - "--router=nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+          # Use manual allocation with our reserved IPs
+          - "--nat-external-ip-pool={{ nat_ips.results | map(attribute='name') | join(',') }}"
+          - --nat-all-subnet-ip-ranges
+          - --min-ports-per-vm=128
+          - --enable-logging
+          - --log-filter=ALL
+      when: existing_nat.rc != 0
 
     - name: Show whitelist-ready IPs
       ansible.builtin.debug:
@@ -267,28 +325,50 @@ You might not want NAT for all subnets. Maybe only your application subnet needs
         state: present
       register: router
 
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - auth
+          - activate-service-account
+          - "--key-file={{ gcp_service_account_file }}"
+          - "--project={{ gcp_project }}"
+      changed_when: false
+
+    - name: Check whether the selective NAT configuration already exists
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - describe
+          - selective-nat
+          - "--router=nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+      register: existing_nat
+      failed_when: false
+      changed_when: false
+
     - name: Configure NAT for specific subnets only
-      google.cloud.gcp_compute_router_nat:
-        name: "selective-nat"
-        router: "{{ router }}"
-        region: "{{ region }}"
-        nat_ip_allocate_option: "AUTO_ONLY"
-        # Only apply to specific subnets
-        source_subnetwork_ip_ranges_to_nat: "LIST_OF_SUBNETWORKS"
-        subnetworks:
-          - name: "projects/{{ gcp_project }}/regions/{{ region }}/subnetworks/app-subnet"
-            source_ip_ranges_to_nat:
-              - "ALL_IP_RANGES"
-          - name: "projects/{{ gcp_project }}/regions/{{ region }}/subnetworks/worker-subnet"
-            source_ip_ranges_to_nat:
-              - "ALL_IP_RANGES"
-        log_config:
-          enable: true
-          filter: "ERRORS_ONLY"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - create
+          - selective-nat
+          - "--router=nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+          - --auto-allocate-nat-external-ips
+          # Only apply to specific subnets
+          - --nat-custom-subnet-ip-ranges=app-subnet:ALL,worker-subnet:ALL
+          - --enable-logging
+          - --log-filter=ERRORS_ONLY
+      when: existing_nat.rc != 0
 ```
 
 ## Complete Setup Playbook
@@ -344,21 +424,50 @@ Here is a single playbook that sets up everything from scratch: the VPC, subnets
         state: present
       register: router
 
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - auth
+          - activate-service-account
+          - "--key-file={{ gcp_service_account_file }}"
+          - "--project={{ gcp_project }}"
+      changed_when: false
+
+    - name: Check whether the NAT configuration already exists
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - describe
+          - app-nat
+          - "--router=app-nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+      register: existing_nat
+      failed_when: false
+      changed_when: false
+
     - name: Configure Cloud NAT
-      google.cloud.gcp_compute_router_nat:
-        name: "app-nat"
-        router: "{{ router }}"
-        region: "{{ region }}"
-        nat_ip_allocate_option: "AUTO_ONLY"
-        source_subnetwork_ip_ranges_to_nat: "ALL_SUBNETWORKS_ALL_IP_RANGES"
-        min_ports_per_vm: 128
-        log_config:
-          enable: true
-          filter: "ERRORS_ONLY"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - routers
+          - nats
+          - create
+          - app-nat
+          - "--router=app-nat-router"
+          - "--region={{ region }}"
+          - "--project={{ gcp_project }}"
+          - --auto-allocate-nat-external-ips
+          - --nat-all-subnet-ip-ranges
+          - --min-ports-per-vm=128
+          - --enable-logging
+          - --log-filter=ERRORS_ONLY
+      when: existing_nat.rc != 0
 
     - name: Setup complete
       ansible.builtin.debug:
@@ -378,7 +487,7 @@ If your VMs cannot reach the internet after setting up NAT, check these common i
 
 3. **Wrong region**: Cloud NAT is regional. The NAT configuration in `us-central1` will not help VMs in `us-east1`.
 
-4. **Port exhaustion**: If you have many VMs making lots of connections, you might run out of NAT ports. Increase `min_ports_per_vm` or add more NAT IPs.
+4. **Port exhaustion**: If you have many VMs making lots of connections, you might run out of NAT ports. Increase the minimum ports per VM setting or add more NAT IPs.
 
 ## Monitoring Cloud NAT
 
