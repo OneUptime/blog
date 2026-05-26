@@ -31,7 +31,7 @@ You need the AWS collection for Ansible and properly configured AWS credentials:
 ansible-galaxy collection install amazon.aws
 
 # Install the required Python libraries
-pip install boto3 botocore
+pip install "boto3>=1.34.0" "botocore>=1.34.0"
 ```
 
 Ensure your AWS credentials are configured:
@@ -64,9 +64,9 @@ aws secretsmanager create-secret \
   --secret-string '{"host":"prod-db.example.com","port":"5432","username":"app_user","password":"DBPass456","database":"app_prod"}'
 ```
 
-## Fetching Secrets with the aws_secret Lookup
+## Fetching Secrets with the secretsmanager_secret Lookup
 
-The `amazon.aws.aws_secret` lookup plugin retrieves secrets during playbook execution:
+The `amazon.aws.secretsmanager_secret` lookup plugin retrieves secrets during playbook execution:
 
 ```yaml
 # playbook.yml
@@ -77,7 +77,7 @@ The `amazon.aws.aws_secret` lookup plugin retrieves secrets during playbook exec
   tasks:
     - name: Fetch database password from Secrets Manager
       ansible.builtin.set_fact:
-        db_password: "{{ lookup('amazon.aws.aws_secret', 'myapp/production/db-password') }}"
+        db_password: "{{ lookup('amazon.aws.secretsmanager_secret', 'myapp/production/db-password') }}"
 
     - name: Deploy database configuration
       ansible.builtin.template:
@@ -96,7 +96,7 @@ When your secret contains JSON, parse it to extract individual fields:
 # Fetch a JSON secret and parse it
 - name: Fetch database credentials (JSON format)
   ansible.builtin.set_fact:
-    db_creds: "{{ lookup('amazon.aws.aws_secret', 'myapp/production/database') | from_json }}"
+    db_creds: "{{ lookup('amazon.aws.secretsmanager_secret', 'myapp/production/database') | from_json }}"
 
 # Use individual fields from the parsed JSON
 - name: Configure database connection
@@ -112,23 +112,19 @@ When your secret contains JSON, parse it to extract individual fields:
     db_name: "{{ db_creds.database }}"
 ```
 
-## Using the aws_secret Module
+## Using Lookup Options
 
-For better error handling and more control, use the module form:
+For better error handling and more control, use lookup options:
 
 ```yaml
-# Using the aws_secretsmanager_secret_info module
-- name: Retrieve secret metadata
-  amazon.aws.secretsmanager_secret:
-    name: "myapp/production/database"
-    state: present
-  register: secret_info
-
+# Fetch the current secret version and warn instead of failing if it is missing
 - name: Fetch the actual secret value
-  amazon.aws.aws_secret:
-    name: "myapp/production/database"
-    version_stage: AWSCURRENT
-  register: secret_value
+  ansible.builtin.set_fact:
+    secret_value: "{{ lookup('amazon.aws.secretsmanager_secret',
+      'myapp/production/database',
+      version_stage='AWSCURRENT',
+      on_missing='warn'
+    ) }}"
 ```
 
 ## Specifying AWS Region and Profile
@@ -139,7 +135,7 @@ When your secrets are in a specific region or you use named AWS profiles:
 # Specify region and profile for the lookup
 - name: Fetch secret from specific region
   ansible.builtin.set_fact:
-    api_key: "{{ lookup('amazon.aws.aws_secret',
+    api_key: "{{ lookup('amazon.aws.secretsmanager_secret',
       'myapp/production/api-key',
       region='eu-west-1',
       profile='production'
@@ -201,19 +197,19 @@ Here is a full example deploying a web application with all secrets from AWS Sec
   tasks:
     - name: Fetch application secrets
       ansible.builtin.set_fact:
-        app_secrets: "{{ lookup('amazon.aws.aws_secret',
+        app_secrets: "{{ lookup('amazon.aws.secretsmanager_secret',
           'myapp/' + env + '/app-config',
           region=aws_region) | from_json }}"
 
     - name: Fetch database credentials
       ansible.builtin.set_fact:
-        db_creds: "{{ lookup('amazon.aws.aws_secret',
+        db_creds: "{{ lookup('amazon.aws.secretsmanager_secret',
           'myapp/' + env + '/database',
           region=aws_region) | from_json }}"
 
     - name: Fetch Redis credentials
       ansible.builtin.set_fact:
-        redis_password: "{{ lookup('amazon.aws.aws_secret',
+        redis_password: "{{ lookup('amazon.aws.secretsmanager_secret',
           'myapp/' + env + '/redis-password',
           region=aws_region) }}"
 
@@ -310,7 +306,7 @@ Add error handling for cases where secrets might not exist:
 # Handle missing secrets gracefully
 - name: Try to fetch optional API key
   ansible.builtin.set_fact:
-    optional_api_key: "{{ lookup('amazon.aws.aws_secret',
+    optional_api_key: "{{ lookup('amazon.aws.secretsmanager_secret',
       'myapp/production/optional-api-key',
       on_missing='skip') | default('') }}"
 
@@ -324,4 +320,4 @@ Add error handling for cases where secrets might not exist:
 
 ## Summary
 
-AWS Secrets Manager provides a robust, managed alternative to storing secrets in Ansible Vault files. The integration is straightforward using the `amazon.aws.aws_secret` lookup plugin. You get IAM-based access control, CloudTrail auditing, and automatic rotation without managing vault passwords. For teams already running on AWS, this is often the cleanest path to production-grade secrets management with Ansible.
+AWS Secrets Manager provides a robust, managed alternative to storing secrets in Ansible Vault files. The integration is straightforward using the `amazon.aws.secretsmanager_secret` lookup plugin. You get IAM-based access control, CloudTrail auditing, and automatic rotation without managing vault passwords. For teams already running on AWS, this is often the cleanest path to production-grade secrets management with Ansible.
