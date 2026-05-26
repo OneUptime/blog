@@ -50,17 +50,20 @@ The playbook supplies the variables:
 
 ## Variable Sources
 
-Variables in Ansible templates can come from many places. Here is the priority order (highest to lowest):
+Variables in Ansible templates can come from many places. Here is a simplified priority order for common variable sources (highest to lowest):
 
 1. Extra vars (`-e` command line)
-2. Task vars (defined in the task)
-3. Block vars
-4. Role and include vars
-5. Play vars
-6. Host facts
-7. Host vars
-8. Group vars
-9. Role defaults
+2. Include parameters and role parameters
+3. Registered vars and `set_fact` variables
+4. `include_vars`
+5. Task vars (defined in the task)
+6. Block vars
+7. Role vars
+8. Play vars, `vars_prompt`, and `vars_files`
+9. Host facts and cached `set_fact` values
+10. Host vars
+11. Group vars and other inventory variables
+12. Role defaults
 
 ```yaml
 # All of these are accessible in templates
@@ -278,6 +281,8 @@ backend http_back
 ```
 
 This generates a HAProxy backend configuration with the actual IP addresses of all hosts in the `webservers` group.
+
+Facts for the referenced hosts must already be gathered or cached before this template can read `ansible_default_ipv4`.
 
 ## Environment Variables
 
