@@ -60,13 +60,12 @@ If you want to remove both the package and its configuration files, use `purge: 
 This is equivalent to `apt-get purge mysql-server`. It removes:
 
 - The package binaries
-- System-wide configuration files in `/etc`
-- Any systemd service files
-- Data directories that were created by the package maintainer scripts
+- Package-managed configuration files, including conffiles under `/etc`
+- Additional package-managed state only if the package maintainer scripts remove it during purge
 
 It does NOT remove:
 
-- User data (like MySQL databases in `/var/lib/mysql` unless the package scripts handle it)
+- User data (like MySQL databases in `/var/lib/mysql` unless the package maintainer scripts explicitly handle it)
 - Log files created during runtime
 - Anything you created manually
 
@@ -107,15 +106,16 @@ Removing packages does not clean up the downloaded `.deb` files stored in `/var/
     autoclean: yes
 ```
 
-For a more aggressive cleanup that removes all cached packages (not just outdated ones), use a shell command:
+For a more aggressive cleanup that removes all cached packages (not just outdated ones), use `clean: yes`:
 
 ```yaml
 # Remove all cached .deb files
 - name: Clear entire apt cache
-  ansible.builtin.command:
-    cmd: apt-get clean
-  changed_when: true
+  ansible.builtin.apt:
+    clean: yes
 ```
+
+The `clean` parameter requires ansible-core 2.13 or newer. On older Ansible versions, you can run `apt-get clean` with `ansible.builtin.command`.
 
 ## A Complete Cleanup Playbook
 
@@ -165,6 +165,11 @@ Here is a playbook that removes unwanted packages, cleans up dependencies, and f
 Sometimes you only want to remove packages under certain conditions. Here are some common patterns:
 
 ```yaml
+# Gather package facts before checking ansible_facts.packages
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: apt
+
 # Only remove a package if a certain condition is met
 - name: Remove old PHP version if PHP 8.2 is installed
   ansible.builtin.apt:
@@ -177,10 +182,6 @@ Sometimes you only want to remove packages under certain conditions. Here are so
   when: "'php8.2' in ansible_facts.packages"
 
 # Check if a package is installed before attempting removal
-- name: Gather package facts
-  ansible.builtin.package_facts:
-    manager: apt
-
 - name: Remove nginx only if it is installed
   ansible.builtin.apt:
     name: nginx
@@ -238,7 +239,7 @@ A common scenario is migrating from one service to another. For example, switchi
         enabled: yes
 ```
 
-Notice the `ignore_errors: yes` on the stop task. If Apache is already stopped (or was never running), the task would fail without this flag. The removal tasks do not need it because `apt` handles "package not installed" gracefully when using `state: absent`.
+Notice the `ignore_errors: yes` on the stop task. Stopping an already stopped service is idempotent, but the task can fail if Apache is not installed or the service name is not present. The removal tasks do not need it because `apt` handles "package not installed" gracefully when using `state: absent`.
 
 ## Server Hardening: Removing Insecure Packages
 
@@ -273,7 +274,7 @@ graph TD
     E -->|Yes| F[Add autoremove: yes]
     E -->|No| G[Done]
     F --> H{Free disk space?}
-    H -->|Yes| I[Add autoclean: yes]
+    H -->|Yes| I[Add autoclean: yes or clean: yes]
     H -->|No| G
     I --> G
 ```
@@ -281,7 +282,7 @@ graph TD
 ## Key Things to Remember
 
 1. `state: absent` removes binaries, keeps config. Safe for "I might reinstall this later."
-2. `purge: yes` removes everything the package manager knows about. Use this when you are done with a service for good.
+2. `purge: yes` removes package configuration files along with the package. Use this when you are done with a service for good.
 3. `autoremove: yes` cleans up orphaned dependencies. Always run this after removing packages that pulled in many dependencies.
 4. Always stop services before removing them. While `apt` usually handles this, explicitly stopping first avoids race conditions.
 5. The `apt` module is idempotent for removals. Running `state: absent` on an already-removed package produces no changes and no errors.
