@@ -38,7 +38,7 @@ steps:
     displayName: 'Set up Python 3.11'
 
   - script: |
-      pip install ansible==8.7.0
+      pip install ansible==12.3.0
       ansible-galaxy collection install -r ansible/requirements.yml
     displayName: 'Install Ansible and collections'
 
@@ -116,7 +116,7 @@ stages:
               versionSpec: '3.11'
 
           - script: |
-              pip install ansible==8.7.0 ansible-lint
+              pip install ansible==12.3.0 ansible-lint==26.4.0
               ansible-lint ansible/playbooks/
               ansible-playbook --syntax-check ansible/playbooks/site.yml
             displayName: 'Lint and syntax check'
@@ -141,7 +141,7 @@ stages:
                     versionSpec: '3.11'
 
                 - script: |
-                    pip install ansible==8.7.0
+                    pip install ansible==12.3.0
                     ansible-galaxy collection install -r ansible/requirements.yml
                   displayName: 'Install Ansible'
 
@@ -153,7 +153,8 @@ stages:
 
                 # Write vault password from pipeline variable
                 - script: |
-                    echo "$(ANSIBLE_VAULT_PASSWORD)" > /tmp/vault_pass.txt
+                    umask 077
+                    printf '%s\n' "$(ANSIBLE_VAULT_PASSWORD)" > /tmp/vault_pass.txt
                   displayName: 'Set up vault password'
 
                 - script: |
@@ -203,7 +204,7 @@ stages:
                     versionSpec: '3.11'
 
                 - script: |
-                    pip install ansible==8.7.0
+                    pip install ansible==12.3.0
                     ansible-galaxy collection install -r ansible/requirements.yml
                   displayName: 'Install Ansible'
 
@@ -213,7 +214,8 @@ stages:
                     sshKeySecureFile: 'ansible-ssh-key'
 
                 - script: |
-                    echo "$(ANSIBLE_VAULT_PASSWORD)" > /tmp/vault_pass.txt
+                    umask 077
+                    printf '%s\n' "$(ANSIBLE_VAULT_PASSWORD)" > /tmp/vault_pass.txt
                   displayName: 'Set up vault password'
 
                 - script: |
@@ -255,11 +257,12 @@ steps:
     inputs:
       azureSubscription: 'My-Azure-Connection'
       KeyVaultName: 'my-ansible-vault'
-      SecretsFilter: 'ansible-vault-password,ssh-private-key'
+      SecretsFilter: 'ansible-vault-password'
     displayName: 'Fetch secrets from Key Vault'
 
   - script: |
-      echo "$(ansible-vault-password)" > /tmp/vault_pass.txt
+      umask 077
+      printf '%s\n' "$(ansible-vault-password)" > /tmp/vault_pass.txt
       ansible-playbook \
         -i inventory/staging.ini \
         --vault-password-file /tmp/vault_pass.txt \
@@ -282,14 +285,14 @@ pool:
 Set up a self-hosted agent.
 
 ```bash
-# On the agent machine, install the Azure Pipelines agent
+# On the agent machine, download the current Linux agent package from
+# Organization Settings > Agent Pools > your pool > New agent
 mkdir myagent && cd myagent
-wget https://vstsagentpackage.azureedge.net/agent/3.x.x/vsts-agent-linux-x64-3.x.x.tar.gz
-tar zxvf vsts-agent-linux-x64-*.tar.gz
+tar zxvf ~/Downloads/vsts-agent-linux-x64-*.tar.gz
 ./config.sh
 
 # Install Ansible on the agent
-pip install ansible==8.7.0
+pip install ansible==12.3.0
 
 # Register 'ansible' as a capability
 # In Azure DevOps: Organization Settings > Agent Pools > Agents > Capabilities
@@ -313,7 +316,7 @@ steps:
       versionSpec: '3.11'
 
   - script: |
-      pip install ansible==8.7.0
+      pip install ansible==12.3.0
       ansible-galaxy collection install -r ansible/requirements.yml
     displayName: 'Install Ansible'
 
@@ -323,7 +326,8 @@ steps:
       sshKeySecureFile: 'ansible-ssh-key'
 
   - script: |
-      echo "$(ANSIBLE_VAULT_PASSWORD)" > /tmp/vault_pass.txt
+      umask 077
+      printf '%s\n' "$(ANSIBLE_VAULT_PASSWORD)" > /tmp/vault_pass.txt
       cd ansible
       ansible-playbook \
         -i inventory/${{ parameters.inventory }} \
