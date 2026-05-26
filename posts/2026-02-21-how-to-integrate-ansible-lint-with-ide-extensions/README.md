@@ -201,7 +201,7 @@ For automatic linting on save, use File Watchers.
 File type: YAML
 Scope: Project Files
 Program: ansible-lint
-Arguments: --parseable $FilePath$
+Arguments: -f pep8 $FilePath$
 Output filters: $FILE_PATH$:$LINE$:$COLUMN$: $MESSAGE$
 ```
 
