@@ -48,12 +48,12 @@ jobs:
 
       # Write the vault password to a temporary file
       - name: Create vault password file
-        run: echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/vault_pass.txt
+        run: printf '%s\n' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/vault_pass.txt
 
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
       - name: Run Ansible playbook
@@ -83,7 +83,7 @@ deploy:
   script:
     - pip install ansible==8.7.0
     # Write vault password from CI variable (set in GitLab UI)
-    - echo "$ANSIBLE_VAULT_PASSWORD" > /tmp/vault_pass.txt
+    - printf '%s\n' "$ANSIBLE_VAULT_PASSWORD" > /tmp/vault_pass.txt
     - >
       ansible-playbook
       -i inventory/production.ini
@@ -119,7 +119,7 @@ pipeline {
                 ]) {
                     sh '''
                         # Write vault password to temp file
-                        echo "$VAULT_PASS" > /tmp/vault_pass.txt
+                        printf '%s\n' "$VAULT_PASS" > /tmp/vault_pass.txt
 
                         ansible-playbook \
                             -i inventory/production.ini \
@@ -151,7 +151,7 @@ Instead of writing the vault password to a file, you can use a script that outpu
 #!/bin/bash
 # vault_password_script.sh
 # This script reads the vault password from an environment variable
-echo "$ANSIBLE_VAULT_PASSWORD"
+printf '%s\n' "$ANSIBLE_VAULT_PASSWORD"
 ```
 
 Reference it in your playbook command.
@@ -171,7 +171,7 @@ Reference it in your playbook command.
 
 ## Using the ANSIBLE_VAULT_PASSWORD Environment Variable
 
-Ansible does not natively read the vault password from an environment variable, but you can make it work with the `ANSIBLE_VAULT_PASSWORD_FILE` environment variable pointing to a script.
+Ansible does not natively read the vault password from an environment variable, but you can make it work by configuring `vault_password_file` to point to a script.
 
 ```yaml
 # ansible.cfg
@@ -183,7 +183,7 @@ vault_password_file = scripts/vault_pass.sh
 #!/bin/bash
 # scripts/vault_pass.sh
 # Reads vault password from environment variable
-echo "$ANSIBLE_VAULT_PASSWORD"
+printf '%s\n' "$ANSIBLE_VAULT_PASSWORD"
 ```
 
 Now the vault password is sourced from the environment variable automatically.
@@ -212,8 +212,8 @@ In CI/CD, provide multiple vault password files.
 # GitHub Actions example with multiple vault passwords
 - name: Set up vault passwords
   run: |
-    echo "${{ secrets.VAULT_PASS_STAGING }}" > /tmp/vault_staging.txt
-    echo "${{ secrets.VAULT_PASS_PRODUCTION }}" > /tmp/vault_production.txt
+    printf '%s\n' "${{ secrets.VAULT_PASS_STAGING }}" > /tmp/vault_staging.txt
+    printf '%s\n' "${{ secrets.VAULT_PASS_PRODUCTION }}" > /tmp/vault_production.txt
 
 - name: Run playbook with multiple vaults
   run: |
