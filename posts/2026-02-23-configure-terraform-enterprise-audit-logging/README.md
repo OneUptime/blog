@@ -8,67 +8,48 @@ Description: Learn how to configure and use Terraform Enterprise audit logging f
 
 ---
 
-When your infrastructure is managed through Terraform Enterprise, every action matters - who created a workspace, who triggered a run, who approved an apply, who changed variables. Audit logging captures all of these events and gives your security and compliance teams the visibility they need. Whether you are meeting SOC 2 requirements, investigating an incident, or just want to understand who did what, TFE audit logs are the source of truth.
+When your infrastructure is managed through Terraform Enterprise, every security-relevant action matters - who logged in, who failed authentication, who accessed the admin console, and which system API endpoints were called. Audit logging captures these events and gives your security and compliance teams the visibility they need. Whether you are meeting SOC 2 requirements, investigating an incident, or just want to understand who did what, TFE audit logs are an important source of operational evidence.
 
-This guide covers enabling audit logging, understanding the log format, forwarding logs to external systems, and building useful queries.
+This guide covers enabling log forwarding, understanding the log format, forwarding logs to external systems, and building useful queries.
 
 ## What TFE Audit Logs Capture
 
-Terraform Enterprise tracks events across several categories:
+Terraform Enterprise tracks several audit event types:
 
-- **Authentication events**: Logins, logouts, failed authentication attempts
-- **Organization events**: Creating or deleting organizations, changing settings
-- **Workspace events**: Creating, updating, deleting workspaces, changing settings
-- **Run events**: Triggering plans, approving applies, canceling runs
-- **Variable events**: Creating, updating, deleting variables (values are not logged for sensitive variables)
-- **Team and user events**: Adding or removing team members, changing permissions
-- **Policy events**: Creating or updating Sentinel policies, policy check results
-- **VCS events**: Connecting or disconnecting VCS providers, webhook events
-- **API token events**: Creating or revoking tokens
+- **Authentication success events**: Successful logins and logouts through the admin console
+- **Authentication failure events**: Failed login attempts, invalid tokens, and expired sessions
+- **CSRF violation events**: Cross-site request forgery attempts detected by Terraform Enterprise
+- **Admin console access**: Requests to admin console endpoints
+- **System API access**: Requests to system API endpoints
 
-## Accessing Audit Logs via the API
+Audit logs include fields such as `timestamp`, `level`, `component`, `event_type`, `method`, `resource`, `source_ip`, `user_agent`, `status_code`, `request_id`, and `actor_id`.
+
+## Accessing Audit Logs from Service Logs
+
+Terraform Enterprise writes service logs to standard output and standard error. It also stores individual service logs inside the Terraform Enterprise container under `/var/log/terraform-enterprise`.
 
 ### List Audit Log Events
 
 ```bash
-# Get the most recent audit log events
-
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?page[size]=20" | \
-  jq '.data[] | {
-    timestamp: .attributes.timestamp,
-    type: .attributes.type,
-    action: .attributes.action,
-    actor: .attributes.actor.email,
-    resource: .attributes.resource
-  }'
+# Get the most recent audit log events from the Terraform Enterprise container logs
+docker logs terraform-enterprise 2>&1 | \
+  grep 'terraform-enterprise.audit: audit event:' | \
+  tail -20
 ```
 
 ### Filter by Event Type
 
 ```bash
-# Get only authentication events
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=authentication&page[size]=50" | \
-  jq '.data[] | {
-    timestamp: .attributes.timestamp,
-    action: .attributes.action,
-    actor: .attributes.actor,
-    ip_address: .attributes["actor-ip"]
-  }'
+# Get failed admin login requests by looking for non-2xx login responses
+docker logs terraform-enterprise 2>&1 | \
+  grep 'terraform-enterprise.audit: audit event:' | \
+  grep 'resource=/api/v1/admin/login' | \
+  grep -Ev 'status_code=2[0-9][0-9]'
 
-# Get workspace modification events
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=workspace&page[size]=50" | \
-  jq '.data[] | {
-    timestamp: .attributes.timestamp,
-    action: .attributes.action,
-    workspace: .attributes.resource.name,
-    actor: .attributes.actor.email
-  }'
+# Get admin console requests
+docker logs terraform-enterprise 2>&1 | \
+  grep 'terraform-enterprise.audit: audit event:' | \
+  grep 'resource=/api/v1/admin/'
 ```
 
 ### Filter by Date Range
@@ -76,125 +57,63 @@ curl -s \
 ```bash
 # Get events from a specific time period
 # Useful for incident investigation
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[since]=2026-02-20T00:00:00Z&filter[before]=2026-02-23T23:59:59Z&page[size]=100" | \
-  jq '.data | length'
+docker logs terraform-enterprise 2>&1 | \
+  grep 'terraform-enterprise.audit: audit event:' | \
+  awk '$1 >= "2026-02-20T00:00:00.000Z" && $1 <= "2026-02-23T23:59:59.999Z"'
 ```
 
 ## Configuring Log Forwarding
 
+Terraform Enterprise can forward logs using native platform tooling, such as Docker logging drivers or Kubernetes logging architectures. Docker-deployed Terraform Enterprise installations can also use Terraform Enterprise's built-in Fluent Bit integration by mounting a Fluent Bit `[OUTPUT]` configuration file into the container and setting `TFE_LOG_FORWARDING_CONFIG_PATH` to that file path.
+
 ### Stream to Splunk
 
-```bash
-#!/bin/bash
-# forward-audit-logs-splunk.sh
-# Forward TFE audit logs to Splunk via HEC (HTTP Event Collector)
+```conf
+# fluent-bit.conf
+# Forward TFE logs to Splunk via HEC (HTTP Event Collector)
 
-SPLUNK_HEC_URL="https://splunk.example.com:8088/services/collector/event"
-SPLUNK_TOKEN="your-hec-token"
-LAST_TIMESTAMP_FILE="/var/lib/tfe-audit/last-timestamp"
-
-# Read the last processed timestamp
-if [ -f "${LAST_TIMESTAMP_FILE}" ]; then
-  SINCE=$(cat "${LAST_TIMESTAMP_FILE}")
-else
-  SINCE=$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ')
-fi
-
-# Fetch new audit events
-EVENTS=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[since]=${SINCE}&page[size]=100")
-
-# Forward each event to Splunk
-echo "${EVENTS}" | jq -c '.data[]' | while read -r EVENT; do
-  TIMESTAMP=$(echo "${EVENT}" | jq -r '.attributes.timestamp')
-
-  # Format for Splunk HEC
-  SPLUNK_EVENT=$(jq -n \
-    --arg time "${TIMESTAMP}" \
-    --argjson event "${EVENT}" \
-    '{
-      time: $time,
-      sourcetype: "terraform:enterprise:audit",
-      source: "tfe-api",
-      event: $event
-    }')
-
-  # Send to Splunk
-  curl -s -k \
-    -H "Authorization: Splunk ${SPLUNK_TOKEN}" \
-    -d "${SPLUNK_EVENT}" \
-    "${SPLUNK_HEC_URL}"
-
-  # Update last timestamp
-  echo "${TIMESTAMP}" > "${LAST_TIMESTAMP_FILE}"
-done
+[OUTPUT]
+    Name          splunk
+    Match         *
+    Host          splunk.example.com
+    Port          8088
+    Splunk_Token  your-hec-token
 ```
+
+After forwarding, filter audit events in Splunk by the `terraform-enterprise.audit` component or the `audit event` message.
 
 ### Stream to CloudWatch Logs
 
-```bash
-#!/bin/bash
-# forward-audit-logs-cloudwatch.sh
-# Forward TFE audit logs to AWS CloudWatch
+```conf
+# fluent-bit.conf
+# Forward TFE logs to AWS CloudWatch Logs
 
-LOG_GROUP="/tfe/audit-logs"
-LOG_STREAM="tfe-$(hostname)"
-
-# Create log group if it does not exist
-aws logs create-log-group --log-group-name "${LOG_GROUP}" 2>/dev/null
-
-# Create log stream
-aws logs create-log-stream \
-  --log-group-name "${LOG_GROUP}" \
-  --log-stream-name "${LOG_STREAM}" 2>/dev/null
-
-# Fetch audit events
-EVENTS=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?page[size]=100")
-
-# Build CloudWatch log events
-CW_EVENTS=$(echo "${EVENTS}" | jq '[.data[] | {
-  timestamp: (.attributes.timestamp | fromdateiso8601 * 1000),
-  message: (. | tostring)
-}]')
-
-# Put events into CloudWatch
-aws logs put-log-events \
-  --log-group-name "${LOG_GROUP}" \
-  --log-stream-name "${LOG_STREAM}" \
-  --log-events "${CW_EVENTS}"
+[OUTPUT]
+    Name               cloudwatch_logs
+    Match              *
+    region             us-east-1
+    log_group_name     /tfe/audit-logs
+    log_stream_name    tfe
+    auto_create_group  On
 ```
+
+Sending to CloudWatch Logs through the built-in Fluent Bit integration is supported when Terraform Enterprise is located within AWS, because Fluent Bit reads AWS credentials from the Terraform Enterprise environment.
 
 ### Stream to Elasticsearch
 
-```bash
-#!/bin/bash
-# forward-audit-logs-elastic.sh
-# Forward TFE audit logs to Elasticsearch
+```conf
+# fluent-bit.conf
+# Forward TFE logs to a downstream Fluent Bit or Fluentd collector
+# that can route audit events to Elasticsearch
 
-ES_URL="https://elasticsearch.example.com:9200"
-ES_INDEX="tfe-audit"
-
-# Fetch audit events
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?page[size]=100" | \
-  jq -c '.data[]' | while read -r EVENT; do
-
-  # Extract the event ID for the document ID
-  DOC_ID=$(echo "${EVENT}" | jq -r '.id')
-
-  # Index the event in Elasticsearch
-  curl -s -X POST \
-    "${ES_URL}/${ES_INDEX}/_doc/${DOC_ID}" \
-    -H "Content-Type: application/json" \
-    -d "${EVENT}"
-done
+[OUTPUT]
+    Name   forward
+    Match  *
+    Host   fluent.example.com
+    Port   24224
 ```
+
+Terraform Enterprise's documented native destinations do not include a direct Elasticsearch output. If you need Elasticsearch, forward logs to a supported downstream Fluent Bit or Fluentd collector and route the filtered audit events from there.
 
 ## Automated Audit Log Analysis
 
@@ -205,45 +124,35 @@ done
 # detect-suspicious-activity.sh
 # Check audit logs for suspicious patterns
 
+LOG_FILE="${1:-/var/log/tfe/audit.log}"
+
 echo "=== TFE Security Audit Report ==="
 echo "Date: $(date)"
 echo ""
 
-# 1. Failed login attempts in the last hour
-FAILED_LOGINS=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=authentication&filter[action]=login_failed&page[size]=100" | \
-  jq '.data | length')
-echo "Failed login attempts (last fetch): ${FAILED_LOGINS}"
+# 1. Failed admin login attempts in the collected logs
+FAILED_LOGINS=$(grep 'resource=/api/v1/admin/login' "${LOG_FILE}" | grep -Evc 'status_code=2[0-9][0-9]' || true)
+echo "Failed login attempts: ${FAILED_LOGINS}"
 
-# 2. API tokens created
-TOKEN_EVENTS=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=token&page[size]=50" | \
-  jq '[.data[] | select(.attributes.action == "created")] | length')
-echo "API tokens created: ${TOKEN_EVENTS}"
+# 2. Invalid or expired token activity
+TOKEN_FAILURES=$(grep -Ec 'invalid token|expired session' "${LOG_FILE}" || true)
+echo "Invalid or expired token events: ${TOKEN_FAILURES}"
 
-# 3. Workspaces deleted
-DELETED_WS=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=workspace&filter[action]=deleted&page[size]=50" | \
-  jq '.data | length')
-echo "Workspaces deleted: ${DELETED_WS}"
+# 3. Admin console access
+ADMIN_REQUESTS=$(grep -c 'resource=/api/v1/admin/' "${LOG_FILE}" || true)
+echo "Admin console requests: ${ADMIN_REQUESTS}"
 
-# 4. Admin setting changes
-ADMIN_CHANGES=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=admin&page[size]=50" | \
-  jq '.data | length')
-echo "Admin setting changes: ${ADMIN_CHANGES}"
+# 4. CSRF violations
+CSRF_VIOLATIONS=$(grep -ic 'csrf' "${LOG_FILE}" || true)
+echo "CSRF violations: ${CSRF_VIOLATIONS}"
 
 # Alert if thresholds are exceeded
 if [ "${FAILED_LOGINS}" -gt 10 ]; then
   echo "ALERT: High number of failed login attempts!"
 fi
 
-if [ "${DELETED_WS}" -gt 5 ]; then
-  echo "ALERT: Multiple workspace deletions detected!"
+if [ "${CSRF_VIOLATIONS}" -gt 0 ]; then
+  echo "ALERT: CSRF violations detected!"
 fi
 ```
 
@@ -254,69 +163,38 @@ fi
 # compliance-report.sh
 # Generate a compliance report from TFE audit logs
 
+LOG_FILE="${1:-/var/log/tfe/audit.log}"
 REPORT_FILE="/tmp/tfe-compliance-report-$(date +%Y%m%d).json"
 
 # Collect all events for the reporting period
-SINCE="2026-02-01T00:00:00Z"
-BEFORE="2026-02-28T23:59:59Z"
+SINCE="2026-02-01T00:00:00.000Z"
+BEFORE="2026-02-28T23:59:59.999Z"
 
-ALL_EVENTS="[]"
-PAGE=1
-
-while true; do
-  RESPONSE=$(curl -s \
-    --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-    "${TFE_URL}/api/v2/organization/audit-trail?filter[since]=${SINCE}&filter[before]=${BEFORE}&page[number]=${PAGE}&page[size]=100")
-
-  EVENTS=$(echo "${RESPONSE}" | jq '.data')
-  COUNT=$(echo "${EVENTS}" | jq 'length')
-
-  if [ "${COUNT}" -eq 0 ]; then
-    break
-  fi
-
-  ALL_EVENTS=$(echo "${ALL_EVENTS}" "${EVENTS}" | jq -s 'add')
-  PAGE=$((PAGE + 1))
-done
-
-# Generate summary
-echo "${ALL_EVENTS}" | jq '{
-  report_period: {since: "'"${SINCE}"'", before: "'"${BEFORE}"'"},
-  total_events: length,
-  events_by_type: (group_by(.attributes.type) | map({type: .[0].attributes.type, count: length})),
-  unique_actors: ([.[].attributes.actor.email] | unique | length),
-  apply_events: [.[] | select(.attributes.action == "applied")] | length,
-  destroy_events: [.[] | select(.attributes["is-destroy"] == true)] | length
-}' > "${REPORT_FILE}"
+awk -v since="${SINCE}" -v before="${BEFORE}" '
+  /terraform-enterprise.audit: audit event:/ && $1 >= since && $1 <= before
+' "${LOG_FILE}" | jq -R -s --arg since "${SINCE}" --arg before "${BEFORE}" '
+  split("\n") | map(select(length > 0)) as $events |
+  {
+    report_period: {since: $since, before: $before},
+    total_events: ($events | length),
+    failed_admin_logins: ($events | map(select(contains("resource=/api/v1/admin/login") and (contains("status_code=2") | not))) | length),
+    successful_logins: ($events | map(select(contains("event_type=auth.login.success"))) | length),
+    csrf_violations: ($events | map(select(test("csrf"; "i"))) | length),
+    admin_requests: ($events | map(select(contains("resource=/api/v1/admin/"))) | length)
+  }
+' > "${REPORT_FILE}"
 
 echo "Compliance report saved to ${REPORT_FILE}"
 ```
 
 ## Retention and Storage
 
-Configure how long audit logs are retained:
+Terraform Enterprise automatically rotates log files, and HashiCorp does not guarantee a specific retention period for audit logs stored locally. For long-term retention, forward logs to an external system (Splunk, CloudWatch Logs, Elasticsearch through a downstream collector, or another supported destination) where you control the retention policy independently.
 
-```bash
-# Set audit log retention via admin settings
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request PATCH \
-  "${TFE_URL}/api/v2/admin/general-settings" \
-  --data '{
-    "data": {
-      "type": "general-settings",
-      "attributes": {
-        "audit-log-retention-days": 365
-      }
-    }
-  }'
-```
-
-For long-term retention, forward logs to an external system (Splunk, CloudWatch, Elasticsearch) where you control the retention policy independently.
+For Docker-deployed Terraform Enterprise installations that use the built-in Fluent Bit integration, provide the Fluent Bit `[OUTPUT]` configuration in a file mounted into the Terraform Enterprise container and set `TFE_LOG_FORWARDING_CONFIG_PATH` to the path of that file. For Kubernetes deployments, use your cluster's standard log forwarding architecture instead of the built-in Fluent Bit integration.
 
 ## Summary
 
-Audit logging in Terraform Enterprise gives you a detailed record of every significant action. For compliance, forward these logs to your SIEM and set up automated reporting. For security, build alerts around suspicious patterns like failed logins, token creation, and workspace deletion. For operations, use audit logs to understand who changed what when something breaks. The TFE audit API makes it straightforward to extract, filter, and forward these events to whatever external systems your organization uses.
+Audit logging in Terraform Enterprise gives you a detailed record of security-relevant activity. For compliance, forward these logs to your SIEM and set up automated reporting. For security, build alerts around suspicious patterns like failed logins, invalid tokens, CSRF violations, and admin console access. For operations, use audit logs to understand when sensitive endpoints were accessed. Terraform Enterprise does not expose the HCP Terraform Audit Trails API; use service logs and log forwarding for Terraform Enterprise audit data.
 
 Use [OneUptime](https://oneuptime.com) alongside your audit logging to correlate infrastructure changes tracked in TFE with application performance and uptime metrics.
