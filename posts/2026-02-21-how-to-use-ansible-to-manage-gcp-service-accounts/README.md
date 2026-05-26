@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Service Account, IAM, Security
 
-Description: Create and manage GCP service accounts with Ansible including key rotation, role assignments, and workload identity configuration.
+Description: Create and manage GCP service accounts with Ansible including key rotation and role assignments.
 
 ---
 
@@ -23,17 +23,17 @@ graph TD
     C --> H[Who can create keys for it]
 ```
 
-Every GCP project comes with default service accounts, but best practice is to create purpose-specific service accounts with only the permissions they need.
+GCP projects can include default service accounts that are created automatically when you enable or use certain Google Cloud services, but best practice is to create purpose-specific service accounts with only the permissions they need.
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
-- GCP service account with IAM Admin and Service Account Admin roles
+- ansible-core 2.16+ with the `google.cloud` collection
+- GCP service account with Service Account Admin, Service Account Key Admin, and Project IAM Admin roles
 - IAM API enabled
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 ```
 
 ## Creating a Service Account
@@ -57,7 +57,6 @@ pip install google-auth requests google-api-python-client
       google.cloud.gcp_iam_service_account:
         name: "webapp@{{ gcp_project }}.iam.gserviceaccount.com"
         display_name: "Web Application Service Account"
-        description: "Used by web application instances to access Cloud Storage and Cloud SQL"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
@@ -71,7 +70,7 @@ pip install google-auth requests google-api-python-client
           - "Unique ID: {{ webapp_sa.uniqueId }}"
 ```
 
-The service account email format is `NAME@PROJECT_ID.iam.gserviceaccount.com`. The name portion can only contain lowercase letters, digits, and hyphens.
+The service account email format is `NAME@PROJECT_ID.iam.gserviceaccount.com`. The name portion must be 6 to 30 characters, start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits, and hyphens.
 
 ## Creating Multiple Service Accounts
 
@@ -92,19 +91,16 @@ A typical project needs several service accounts for different components:
     service_accounts:
       - name: "webapp"
         display_name: "Web Application"
-        description: "Web application backend instances"
         roles:
           - "roles/storage.objectViewer"
           - "roles/cloudsql.client"
       - name: "worker"
         display_name: "Background Worker"
-        description: "Background job processing workers"
         roles:
           - "roles/storage.objectAdmin"
           - "roles/pubsub.subscriber"
       - name: "cicd-deploy"
         display_name: "CI/CD Deployment"
-        description: "Deployment pipeline service account"
         roles:
           - "roles/compute.instanceAdmin.v1"
           - "roles/storage.admin"
@@ -112,7 +108,6 @@ A typical project needs several service accounts for different components:
           - "roles/iam.serviceAccountUser"
       - name: "monitoring"
         display_name: "Monitoring Agent"
-        description: "Monitoring and alerting system"
         roles:
           - "roles/monitoring.viewer"
           - "roles/logging.viewer"
@@ -122,7 +117,6 @@ A typical project needs several service accounts for different components:
       google.cloud.gcp_iam_service_account:
         name: "{{ item.name }}@{{ gcp_project }}.iam.gserviceaccount.com"
         display_name: "{{ item.display_name }}"
-        description: "{{ item.description }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
@@ -175,18 +169,18 @@ When applications outside GCP need to authenticate (like CI/CD systems or on-pre
         service_account:
           name: "projects/{{ gcp_project }}/serviceAccounts/{{ sa_email }}"
         private_key_type: TYPE_GOOGLE_CREDENTIALS_FILE
+        path: "{{ key_output_dir }}/{{ sa_email | regex_replace('@.*', '') }}-key.json"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
         state: present
       register: sa_key
 
-    - name: Save the key file
-      ansible.builtin.copy:
-        content: "{{ sa_key.privateKeyData | b64decode }}"
-        dest: "{{ key_output_dir }}/{{ sa_email | regex_replace('@.*', '') }}-key.json"
+    - name: Restrict key file permissions
+      ansible.builtin.file:
+        path: "{{ sa_key.path }}"
         mode: "0600"
-      when: sa_key.privateKeyData is defined
+      when: sa_key.path is defined
 ```
 
 A critical note about service account keys: once created, the private key is your responsibility. GCP does not store it and cannot recover it. Treat these keys like passwords. Store them in a secrets manager (like HashiCorp Vault or GCP Secret Manager), never commit them to version control, and rotate them regularly.
@@ -207,6 +201,8 @@ Regular key rotation limits the window of exposure if a key is compromised:
     gcp_project: "my-project-123"
     sa_email: "cicd-deploy@{{ gcp_project }}.iam.gserviceaccount.com"
     key_output_dir: "/opt/ansible/sa-keys"
+    delete_old_keys: false
+    old_key_ids_to_delete: []
 
   tasks:
     - name: List existing keys for the service account
@@ -238,17 +234,17 @@ Regular key rotation limits the window of exposure if a key is compromised:
       ansible.builtin.debug:
         msg: "New key created. Update your applications to use the new key before deleting the old one."
 
-    - name: Delete old keys (keeping only the newest)
+    - name: Delete old keys after applications use the new key
       ansible.builtin.command: >
-        gcloud iam service-accounts keys delete {{ item.name | regex_replace('.*/','') }}
+        gcloud iam service-accounts keys delete {{ item }}
         --iam-account={{ sa_email }}
         --quiet
-      loop: "{{ current_keys }}"
-      when: current_keys | length > 1
+      loop: "{{ old_key_ids_to_delete }}"
+      when: delete_old_keys | bool
       changed_when: true
 ```
 
-The rotation follows a safe pattern: create the new key first, deploy it to your applications, then delete the old key. Never delete the old key before the new one is in use.
+The rotation follows a safe pattern: create the new key first, deploy it to your applications, then set `delete_old_keys` to `true` with the old key IDs you want to remove. Never delete the old key before the new one is in use.
 
 ## Disabling and Enabling Service Accounts
 
@@ -359,10 +355,10 @@ Check for service accounts with excessive permissions or unused keys:
 
     - name: Confirm deletion
       ansible.builtin.debug:
-        msg: "Service account deleted. Note: GCP retains the name for 30 days before allowing reuse."
+        msg: "Service account deleted. Note: GCP can undelete the account for up to 30 days."
 ```
 
-GCP has a 30-day retention period on deleted service account names. You cannot create a new service account with the same name during this period.
+GCP can undelete a deleted service account for up to 30 days. After 30 days, IAM permanently removes it. If you create a new service account with the same name instead of undeleting the original account, the new account is treated as a separate identity and does not inherit the original account's role bindings.
 
 ## Summary
 
