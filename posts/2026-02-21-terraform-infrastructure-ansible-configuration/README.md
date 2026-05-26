@@ -121,7 +121,7 @@ terraform apply tfplan
 
 echo "=== Phase 2: Generate Inventory ==="
 terraform output -json > /tmp/tf_outputs.json
-python3 scripts/generate_inventory.py /tmp/tf_outputs.json > ../ansible/inventory/hosts.ini
+python3 ../scripts/generate_inventory.py /tmp/tf_outputs.json > ../ansible/inventory/hosts.ini
 
 echo "=== Phase 3: Ansible ==="
 cd ../ansible
@@ -134,12 +134,12 @@ The key to using Terraform and Ansible together effectively is clear separation 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this separation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this separation
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -168,10 +168,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -212,7 +213,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -253,7 +254,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this separation
 - name: Robust task execution
   hosts: all
   tasks:
@@ -315,4 +316,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
