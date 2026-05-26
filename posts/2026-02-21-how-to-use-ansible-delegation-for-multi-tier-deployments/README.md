@@ -41,7 +41,7 @@ Here is a comprehensive playbook that deploys across all tiers:
   tasks:
     - name: Set deployment start time
       ansible.builtin.set_fact:
-        deploy_start: "{{ now(utc=true).isoformat() }}"
+        deploy_start: "{{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S') }}"
 
     - name: Notify team about deployment start
       ansible.builtin.uri:
@@ -240,6 +240,7 @@ Here is a comprehensive playbook that deploys across all tiers:
           -v --tb=short
       register: integration_tests
       delegate_to: localhost
+      failed_when: false
 
     - name: Remove monitoring maintenance window
       ansible.builtin.uri:
@@ -255,9 +256,14 @@ Here is a comprehensive playbook that deploys across all tiers:
         body:
           text: >
             Deployment complete: v{{ version }} to {{ env }}
-            Duration: {{ ((now(utc=true) - deploy_start | to_datetime).total_seconds() / 60) | round(1) }} minutes
+            Duration: {{ (((now(utc=true, fmt='%Y-%m-%d %H:%M:%S') | to_datetime) - (deploy_start | to_datetime)).total_seconds() / 60) | round(1) }} minutes
             Integration tests: {{ 'PASSED' if integration_tests.rc == 0 else 'FAILED' }}
       delegate_to: localhost
+
+    - name: Fail deployment if integration tests failed
+      ansible.builtin.fail:
+        msg: "Integration tests failed"
+      when: integration_tests.rc != 0
 ```
 
 ## Handling Cross-Tier Dependencies
@@ -273,7 +279,7 @@ Sometimes one tier depends on another being in a specific state. Here is how to 
   tasks:
     - name: Verify database is accessible
       community.postgresql.postgresql_ping:
-        db: myapp_production
+        login_db: myapp_production
         login_host: "{{ groups['databases'][0] }}"
         login_user: myapp
       delegate_to: "{{ groups['databases'][0] }}"
@@ -288,7 +294,7 @@ Sometimes one tier depends on another being in a specific state. Here is how to 
 
     - name: Verify queue system is running
       ansible.builtin.uri:
-        url: "http://{{ groups['queue_servers'][0] }}:15672/api/healthchecks/node"
+        url: "http://{{ groups['queue_servers'][0] }}:15672/api/health/checks/ready-to-serve-clients"
         url_username: "{{ rabbitmq_admin_user }}"
         url_password: "{{ rabbitmq_admin_password }}"
         force_basic_auth: true
@@ -377,4 +383,4 @@ When a multi-tier deployment fails, you need to roll back in reverse order:
 
 ## Summary
 
-Multi-tier deployments with Ansible delegation follow a pattern: prepare, migrate database, deploy application tier (rolling), deploy worker tier, clear caches, verify. Delegation is the glue that connects these tiers, letting you run database tasks from the app server play, manage load balancers from the controller, and coordinate cache operations centrally. Use separate plays for each tier to keep the logic clean, `serial` for rolling updates on stateless tiers, and `run_once` for operations that should happen exactly once across the fleet. Always have a rollback playbook ready that reverses the operations in the correct order.
+Multi-tier deployments with Ansible delegation follow a pattern: prepare, migrate database, deploy application tier (rolling), deploy worker tier, clear caches, verify. Delegation is the glue that connects these tiers, letting you run database tasks from the app server play, manage load balancers on their own hosts, and coordinate cache operations centrally. Use separate plays for each tier to keep the logic clean, `serial` for rolling updates on stateless tiers, and `run_once` for operations that should happen exactly once across the fleet. Always have a rollback playbook ready that reverses the operations in the correct order.
