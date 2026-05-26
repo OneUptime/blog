@@ -35,15 +35,16 @@ ansible all -a "uname -r"
 ansible all -a "who"
 ```
 
-Because `command` does not invoke a shell, it is safer and slightly faster. However, it does not support shell features like pipes, redirects, environment variable expansion, or glob patterns.
+Because `command` does not invoke a shell, it is safer and slightly faster. However, it does not support shell features like pipes, redirects, shell variable expansion, or glob patterns.
 
 ```bash
 # This will FAIL because command does not support pipes
 ansible all -a "ps aux | grep nginx"
-# Error: No such file or directory: '|'
+# The pipe is passed as a literal argument instead of being interpreted by a shell
 
-# This will FAIL because command does not support redirects
+# This will NOT redirect output because command does not support redirects
 ansible all -a "echo hello > /tmp/test.txt"
+# The > is passed as a literal argument to echo
 
 # This will FAIL because command does not expand globs
 ansible all -a "ls /var/log/*.log"
@@ -61,10 +62,10 @@ ansible webservers -m shell -a "ps aux | grep nginx | grep -v grep"
 ansible all -m shell -a "df -h > /tmp/disk_report.txt"
 
 # Using environment variables
-ansible all -m shell -a "echo $HOSTNAME - $USER"
+ansible all -m shell -a 'echo "$HOSTNAME - $USER"'
 
 # Using command substitution
-ansible all -m shell -a "echo 'Server booted at: $(who -b)'"
+ansible all -m shell -a 'echo "Server booted at: $(who -b)"'
 
 # Using glob patterns
 ansible all -m shell -a "ls -la /var/log/*.log | head -10"
@@ -129,17 +130,17 @@ ansible all -m shell -a "cat /etc/shadow | wc -l" --become
 
 ```bash
 # Specify which shell to use
-ansible all -m shell -a "source /opt/app/env.sh && echo $APP_VERSION" -e "ansible_shell_executable=/bin/bash"
+ansible all -m shell -a 'source /opt/app/env.sh && echo "$APP_VERSION" executable=/bin/bash'
 ```
 
 ### Conditional Execution
 
 ```bash
-# Only run if a file exists (creates parameter)
-ansible all -m command -a "service nginx restart creates=/etc/nginx/nginx.conf" --become
+# Only run if a marker file does NOT already exist (creates parameter)
+ansible all -m command -a "/opt/setup.sh creates=/opt/app/.configured" --become
 
-# Only run if a file does NOT exist (removes parameter)
-ansible all -m command -a "/opt/setup.sh removes=/opt/setup_needed" --become
+# Only run if a file exists (removes parameter)
+ansible all -m command -a "/opt/cleanup.sh removes=/opt/cleanup_needed" --become
 ```
 
 The `creates` parameter tells Ansible to skip the command if the specified file already exists. The `removes` parameter skips the command if the file does not exist. These are useful for making ad hoc commands idempotent.
@@ -164,7 +165,7 @@ db1 | CHANGED | rc=0 | (stdout) db1.example.com
 
 ```bash
 # JSON output for programmatic processing
-ANSIBLE_STDOUT_CALLBACK=json ansible all -a "uptime" 2>/dev/null
+ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible all -a "uptime" 2>/dev/null
 ```
 
 ### Capturing Errors
@@ -174,7 +175,7 @@ ANSIBLE_STDOUT_CALLBACK=json ansible all -a "uptime" 2>/dev/null
 ansible all -m shell -a "cat /var/log/app/error.log 2>&1 | tail -5"
 
 # Check the return code of a command
-ansible all -m shell -a "systemctl is-active nginx; echo \"Exit code: $?\""
+ansible all -m shell -a 'systemctl is-active nginx; echo "Exit code: $?"'
 ```
 
 ## Practical Scenarios
@@ -243,7 +244,7 @@ ansible all -m command -a "id deploy"
 ansible all -m shell -a "mysql -u root -pMyPassword -e 'SHOW DATABASES;'"
 
 # BETTER: Use appropriate modules
-ansible databases -m mysql_db -a "login_user=root login_password=MyPassword name=all state=dump target=/tmp/dump.sql"
+ansible databases -m community.mysql.mysql_db -a "login_user=root login_password=MyPassword name=all state=dump target=/tmp/dump.sql"
 ```
 
 ## Performance Tips
