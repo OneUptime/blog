@@ -216,7 +216,7 @@ resource "aws_network_acl" "private" {
 }
 ```
 
-The inline approach is fine for straightforward configurations, but separate rule resources give you more control when you need to conditionally add rules or manage them independently.
+The inline approach is fine for straightforward configurations, but separate rule resources give you more control when you need to conditionally add rules or manage them independently. Do not mix inline rules and separate `aws_network_acl_rule` resources for the same NACL, because Terraform will overwrite rule settings.
 
 ## Dynamic Rules with for_each
 
@@ -257,8 +257,8 @@ One of the most practical uses for NACLs is blocking known malicious IP ranges. 
 variable "blocked_cidrs" {
   type = list(string)
   default = [
-    "198.51.100.0/24",  # Known bad actor range
-    "203.0.113.0/24",   # Another blocked range
+    "198.51.100.0/24",  # Example blocked range
+    "203.0.113.0/24",   # Another example blocked range
   ]
 }
 
@@ -295,10 +295,18 @@ locals {
         { rule_no = 110, protocol = "tcp", action = "allow", cidr = "0.0.0.0/0", from_port = 443, to_port = 443 },
         { rule_no = 200, protocol = "tcp", action = "allow", cidr = "0.0.0.0/0", from_port = 1024, to_port = 65535 },
       ]
+      outbound_rules = [
+        { rule_no = 100, protocol = "tcp", action = "allow", cidr = "0.0.0.0/0", from_port = 80, to_port = 80 },
+        { rule_no = 110, protocol = "tcp", action = "allow", cidr = "0.0.0.0/0", from_port = 443, to_port = 443 },
+        { rule_no = 200, protocol = "tcp", action = "allow", cidr = "0.0.0.0/0", from_port = 1024, to_port = 65535 },
+      ]
     }
     private = {
       subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
       inbound_rules = [
+        { rule_no = 100, protocol = "tcp", action = "allow", cidr = "10.0.0.0/16", from_port = 0, to_port = 65535 },
+      ]
+      outbound_rules = [
         { rule_no = 100, protocol = "tcp", action = "allow", cidr = "10.0.0.0/16", from_port = 0, to_port = 65535 },
       ]
     }
@@ -307,6 +315,10 @@ locals {
       inbound_rules = [
         { rule_no = 100, protocol = "tcp", action = "allow", cidr = "10.0.2.0/24", from_port = 3306, to_port = 3306 },
         { rule_no = 110, protocol = "tcp", action = "allow", cidr = "10.0.3.0/24", from_port = 3306, to_port = 3306 },
+      ]
+      outbound_rules = [
+        { rule_no = 100, protocol = "tcp", action = "allow", cidr = "10.0.2.0/24", from_port = 1024, to_port = 65535 },
+        { rule_no = 110, protocol = "tcp", action = "allow", cidr = "10.0.3.0/24", from_port = 1024, to_port = 65535 },
       ]
     }
   }
@@ -318,6 +330,32 @@ resource "aws_network_acl" "tier" {
 
   vpc_id     = aws_vpc.main.id
   subnet_ids = each.value.subnet_ids
+
+  dynamic "ingress" {
+    for_each = each.value.inbound_rules
+
+    content {
+      rule_no    = ingress.value.rule_no
+      protocol   = ingress.value.protocol
+      action     = ingress.value.action
+      cidr_block = ingress.value.cidr
+      from_port  = ingress.value.from_port
+      to_port    = ingress.value.to_port
+    }
+  }
+
+  dynamic "egress" {
+    for_each = each.value.outbound_rules
+
+    content {
+      rule_no    = egress.value.rule_no
+      protocol   = egress.value.protocol
+      action     = egress.value.action
+      cidr_block = egress.value.cidr
+      from_port  = egress.value.from_port
+      to_port    = egress.value.to_port
+    }
+  }
 
   tags = {
     Name = "${each.key}-nacl"
