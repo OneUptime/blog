@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, PAM, Authentication, Security, Linux
 
-Description: Learn how to configure PAM (Pluggable Authentication Modules) with Ansible for password policies, account lockout, and multi-factor authentication.
+Description: Learn how to configure PAM (Pluggable Authentication Modules) with Ansible for password policies, account lockout, SSH access control, and resource limits.
 
 ---
 
@@ -87,14 +87,12 @@ Account lockout after failed login attempts is a common security requirement:
         mode: '0644'
         backup: yes
 
-    # On Debian/Ubuntu, use pam_tally2 or pam_faillock
-    - name: Configure pam_faillock on Debian
-      ansible.builtin.blockinfile:
-        path: /etc/pam.d/common-auth
-        insertbefore: "^auth.*pam_unix.so"
-        block: |
-          auth    required    pam_faillock.so preauth silent deny=5 unlock_time=900
-        marker: "# {mark} ANSIBLE MANAGED - faillock preauth"
+    # On Debian/Ubuntu, manage /etc/pam.d/common-* with pam-auth-update
+    # or a tested site profile. Adding only a preauth line is not enough
+    # to enforce lockout and can break the default common-auth control flow.
+    - name: Remind operators to manage Debian PAM stack with distro tooling
+      ansible.builtin.debug:
+        msg: "Enable pam_faillock through pam-auth-update or a tested site PAM profile before relying on faillock.conf."
       when: ansible_os_family == "Debian"
 ```
 
@@ -182,10 +180,10 @@ SSH PAM configuration controls how SSH sessions are authenticated:
           + : root : 192.168.0.0/16
 
           # Allow admin group from anywhere
-          + : @admins : ALL
+          + : (admins) : ALL
 
           # Allow developers only from office network
-          + : @developers : 10.10.0.0/16
+          + : (developers) : 10.10.0.0/16
 
           # Deny everything else
           - : ALL : ALL
@@ -261,14 +259,13 @@ Use `pam_time` to restrict when users can log in:
         dest: /etc/security/time.conf
         content: |
           # Syntax: services;ttys;users;times
-          # Allow contractors only during business hours (Mon-Fri 8am-6pm)
-          sshd;*;@contractors;Wk0800-1800
+          # Deny the contractors netgroup outside business hours (Mon-Fri 8am-6pm)
+          sshd;*;@contractors;!Wk0800-1800
 
-          # Allow admins anytime
-          *;*;@admins;Al0000-2400
+          # The admins netgroup is exempted by the next rule
 
           # Block all other SSH access outside business hours
-          # sshd;*;!@admins;!Wk0800-1800
+          sshd;*;!@admins;!Wk0800-1800
         mode: '0644'
 
     - name: Enable pam_time in SSH PAM stack
@@ -321,15 +318,17 @@ Here is a comprehensive playbook that ties together multiple PAM configurations:
     - name: Configure password history on RHEL
       ansible.builtin.lineinfile:
         path: /etc/pam.d/system-auth
-        regexp: '^password.*pam_unix.so'
-        line: "password    sufficient    pam_unix.so sha512 shadow remember={{ password_remember }} use_authtok"
+        line: "password    required    pam_pwhistory.so remember={{ password_remember }}"
+        insertbefore: "^password.*pam_unix.so"
+        state: present
       when: ansible_os_family == "RedHat"
 
     - name: Configure password history on Debian
       ansible.builtin.lineinfile:
         path: /etc/pam.d/common-password
-        regexp: '^password.*pam_unix.so'
-        line: "password    [success=1 default=ignore]    pam_unix.so obscure sha512 remember={{ password_remember }}"
+        line: "password    required    pam_pwhistory.so remember={{ password_remember }}"
+        insertbefore: "^password.*pam_unix.so"
+        state: present
       when: ansible_os_family == "Debian"
 ```
 
