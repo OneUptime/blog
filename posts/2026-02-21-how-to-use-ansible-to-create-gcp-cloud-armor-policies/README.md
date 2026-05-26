@@ -8,7 +8,7 @@ Description: Learn how to create and manage GCP Cloud Armor security policies us
 
 ---
 
-Cloud Armor is Google Cloud's edge security service that protects your applications from DDoS attacks, cross-site scripting, SQL injection, and other web-based threats. It sits in front of your HTTP(S) load balancers and evaluates every incoming request against a set of rules you define. In this post, we will use Ansible to create and manage Cloud Armor security policies, giving you version-controlled, repeatable security configurations.
+Cloud Armor is Google Cloud's edge security service that protects your applications from DDoS attacks, cross-site scripting, SQL injection, and other web-based threats. It sits in front of your HTTP(S) load balancers and evaluates every incoming request against a set of rules you define. In this post, we will use Ansible to create and manage Cloud Armor security policies, giving you version-controlled security configurations.
 
 ## What Cloud Armor Does
 
@@ -22,19 +22,19 @@ Cloud Armor provides several layers of protection:
 
 ## Prerequisites
 
-- Ansible 2.10+ with the `google.cloud` collection
+- Ansible with the Google Cloud CLI installed
 - A GCP project with an HTTP(S) load balancer
-- A service account with Compute Security Admin permissions
+- A service account with Compute Security Admin permissions to create policies and Compute Network Admin permissions to attach them to backend services
 
 ```bash
-# Install the GCP Ansible collection
+# Authenticate the Google Cloud CLI with a service account
 
-ansible-galaxy collection install google.cloud
+gcloud auth activate-service-account --key-file=/path/to/service-account-key.json
 ```
 
 ## Creating a Basic Security Policy
 
-Let us start with a simple policy that blocks traffic from specific IP ranges and allows everything else.
+Let us start with a simple policy that blocks traffic from example IP ranges and allows everything else.
 
 ```yaml
 # create-armor-policy.yml - Create a basic Cloud Armor security policy
@@ -46,56 +46,49 @@ Let us start with a simple policy that blocks traffic from specific IP ranges an
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "/path/to/service-account-key.json"
+    policy_name: "web-app-security-policy"
 
   tasks:
     - name: Create the security policy
-      google.cloud.gcp_compute_security_policy:
-        name: "web-app-security-policy"
-        description: "Security policy for the web application load balancer"
-        # The default rule applies when no other rule matches
-        rules:
-          # Rule 1: Block known malicious IP ranges
-          - action: "deny(403)"
-            priority: 1000
-            description: "Block known bad IPs"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "198.51.100.0/24"
-                  - "203.0.113.0/24"
-          # Rule 2: Allow traffic from corporate office
-          - action: "allow"
-            priority: 2000
-            description: "Allow corporate office IPs"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "35.200.100.0/24"
-                  - "35.200.101.0/24"
-          # Default rule: Allow all other traffic
-          - action: "allow"
-            priority: 2147483647
-            description: "Default allow rule"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: policy
+      ansible.builtin.command: >-
+        gcloud compute security-policies create {{ policy_name }}
+        --project={{ gcp_project }}
+        --type=CLOUD_ARMOR
+        --description="Security policy for the web application load balancer"
+
+    - name: Add security policy rules
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        # Rule 1: Block example IP ranges
+        - >-
+          gcloud compute security-policies rules create 1000
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --src-ip-ranges=198.51.100.0/24,203.0.113.0/24
+          --description="Block example IPs"
+        # Rule 2: Allow traffic from corporate office
+        - >-
+          gcloud compute security-policies rules create 2000
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=allow
+          --src-ip-ranges=35.200.100.0/24,35.200.101.0/24
+          --description="Allow corporate office IPs"
+
+    - name: Set the default rule to allow all other traffic
+      ansible.builtin.command: >-
+        gcloud compute security-policies rules update 2147483647
+        --security-policy={{ policy_name }}
+        --project={{ gcp_project }}
+        --action=allow
+        --src-ip-ranges="*"
+        --description="Default allow rule"
 
     - name: Show policy info
       ansible.builtin.debug:
         msg: |
-          Security policy created: {{ policy.name }}
-          Rules count: {{ policy.rules | length }}
+          Security policy created: {{ policy_name }}
           Attach this to your backend service.
 ```
 
@@ -113,35 +106,33 @@ If your application only serves users in specific countries, you can block traff
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "/path/to/service-account-key.json"
+    policy_name: "geo-restricted-policy"
 
   tasks:
-    - name: Create policy with geo-based rules
-      google.cloud.gcp_compute_security_policy:
-        name: "geo-restricted-policy"
-        description: "Allow traffic only from US, CA, GB, DE"
-        rules:
-          # Allow traffic from specific countries
-          - action: "allow"
-            priority: 1000
-            description: "Allow US, Canada, UK, Germany"
-            match:
-              expr:
-                expression: "origin.region_code == 'US' || origin.region_code == 'CA' || origin.region_code == 'GB' || origin.region_code == 'DE'"
-          # Block everything else
-          - action: "deny(403)"
-            priority: 2147483647
-            description: "Block all other countries"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+    - name: Create policy
+      ansible.builtin.command: >-
+        gcloud compute security-policies create {{ policy_name }}
+        --project={{ gcp_project }}
+        --type=CLOUD_ARMOR
+        --description="Allow traffic only from US, CA, GB, DE"
+
+    - name: Allow traffic from specific countries
+      ansible.builtin.command: >-
+        gcloud compute security-policies rules create 1000
+        --security-policy={{ policy_name }}
+        --project={{ gcp_project }}
+        --action=allow
+        --expression="origin.region_code == 'US' || origin.region_code == 'CA' || origin.region_code == 'GB' || origin.region_code == 'DE'"
+        --description="Allow US, Canada, UK, Germany"
+
+    - name: Block everything else
+      ansible.builtin.command: >-
+        gcloud compute security-policies rules update 2147483647
+        --security-policy={{ policy_name }}
+        --project={{ gcp_project }}
+        --action=deny-403
+        --src-ip-ranges="*"
+        --description="Block all other countries"
 ```
 
 ## WAF Rules for Common Attacks
@@ -158,70 +149,76 @@ Cloud Armor includes preconfigured WAF rules that protect against OWASP Top 10 a
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "/path/to/service-account-key.json"
+    policy_name: "waf-security-policy"
 
   tasks:
+    - name: Create policy
+      ansible.builtin.command: >-
+        gcloud compute security-policies create {{ policy_name }}
+        --project={{ gcp_project }}
+        --type=CLOUD_ARMOR
+        --description="WAF policy with OWASP Top 10 protection"
+
     - name: Create policy with WAF rules
-      google.cloud.gcp_compute_security_policy:
-        name: "waf-security-policy"
-        description: "WAF policy with OWASP Top 10 protection"
-        rules:
-          # Block SQL injection attempts
-          - action: "deny(403)"
-            priority: 1000
-            description: "Block SQL injection"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('sqli-v33-stable')"
-          # Block cross-site scripting (XSS)
-          - action: "deny(403)"
-            priority: 1100
-            description: "Block XSS attacks"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('xss-v33-stable')"
-          # Block remote code execution
-          - action: "deny(403)"
-            priority: 1200
-            description: "Block remote code execution"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('rce-v33-stable')"
-          # Block local file inclusion
-          - action: "deny(403)"
-            priority: 1300
-            description: "Block local file inclusion"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('lfi-v33-stable')"
-          # Block remote file inclusion
-          - action: "deny(403)"
-            priority: 1400
-            description: "Block remote file inclusion"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('rfi-v33-stable')"
-          # Block protocol attacks
-          - action: "deny(403)"
-            priority: 1500
-            description: "Block protocol attacks"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('protocolattack-v33-stable')"
-          # Default: allow everything else
-          - action: "allow"
-            priority: 2147483647
-            description: "Default allow"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        # Block SQL injection attempts
+        - >-
+          gcloud compute security-policies rules create 1000
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('sqli-v422-stable')"
+          --description="Block SQL injection"
+        # Block cross-site scripting (XSS)
+        - >-
+          gcloud compute security-policies rules create 1100
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('xss-v422-stable')"
+          --description="Block XSS attacks"
+        # Block remote code execution
+        - >-
+          gcloud compute security-policies rules create 1200
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('rce-v422-stable')"
+          --description="Block remote code execution"
+        # Block local file inclusion
+        - >-
+          gcloud compute security-policies rules create 1300
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('lfi-v422-stable')"
+          --description="Block local file inclusion"
+        # Block remote file inclusion
+        - >-
+          gcloud compute security-policies rules create 1400
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('rfi-v422-stable')"
+          --description="Block remote file inclusion"
+        # Block protocol attacks
+        - >-
+          gcloud compute security-policies rules create 1500
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('protocolattack-v422-stable')"
+          --description="Block protocol attacks"
+
+    - name: Set the default rule to allow everything else
+      ansible.builtin.command: >-
+        gcloud compute security-policies rules update 2147483647
+        --security-policy={{ policy_name }}
+        --project={{ gcp_project }}
+        --action=allow
+        --src-ip-ranges="*"
+        --description="Default allow"
 ```
 
 ## Cloud Armor Architecture
@@ -255,59 +252,55 @@ Rate limiting prevents any single source from overwhelming your application with
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "/path/to/service-account-key.json"
+    policy_name: "rate-limited-policy"
 
   tasks:
-    - name: Create policy with rate limiting
-      google.cloud.gcp_compute_security_policy:
-        name: "rate-limited-policy"
-        description: "Policy with rate limiting for API protection"
-        rules:
-          # Rate limit: 100 requests per minute per IP
-          - action: "rate_based_ban"
-            priority: 1000
-            description: "Rate limit to 100 req/min per IP"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-            rate_limit_options:
-              conform_action: "allow"
-              exceed_action: "deny(429)"
-              rate_limit_threshold:
-                count: 100
-                interval_sec: 60
-              ban_duration_sec: 300
-              enforce_on_key: "IP"
-          # Stricter rate limit for login endpoint
-          - action: "throttle"
-            priority: 900
-            description: "Rate limit login to 10 req/min per IP"
-            match:
-              expr:
-                expression: "request.path.matches('/api/login')"
-            rate_limit_options:
-              conform_action: "allow"
-              exceed_action: "deny(429)"
-              rate_limit_threshold:
-                count: 10
-                interval_sec: 60
-              enforce_on_key: "IP"
-          # Default allow
-          - action: "allow"
-            priority: 2147483647
-            description: "Default allow"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+    - name: Create policy
+      ansible.builtin.command: >-
+        gcloud compute security-policies create {{ policy_name }}
+        --project={{ gcp_project }}
+        --type=CLOUD_ARMOR
+        --description="Policy with rate limiting for API protection"
+
+    - name: Add rate limiting rules
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        # Rate limit: 100 requests per minute per IP
+        - >-
+          gcloud compute security-policies rules create 1000
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=rate-based-ban
+          --src-ip-ranges="*"
+          --rate-limit-threshold-count=100
+          --rate-limit-threshold-interval-sec=60
+          --ban-duration-sec=300
+          --conform-action=allow
+          --exceed-action=deny-429
+          --enforce-on-key=IP
+          --description="Rate limit to 100 req/min per IP"
+        # Stricter rate limit for login endpoint
+        - >-
+          gcloud compute security-policies rules create 900
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=throttle
+          --expression="request.path.matches('/api/login')"
+          --rate-limit-threshold-count=10
+          --rate-limit-threshold-interval-sec=60
+          --conform-action=allow
+          --exceed-action=deny-429
+          --enforce-on-key=IP
+          --description="Rate limit login to 10 req/min per IP"
+
+    - name: Set the default rule to allow everything else
+      ansible.builtin.command: >-
+        gcloud compute security-policies rules update 2147483647
+        --security-policy={{ policy_name }}
+        --project={{ gcp_project }}
+        --action=allow
+        --src-ip-ranges="*"
+        --description="Default allow"
 ```
 
 ## Attaching a Policy to a Backend Service
@@ -324,30 +317,16 @@ The security policy needs to be attached to a backend service to take effect.
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "{{ gcp_service_account_file }}"
+    backend_service: "web-backend-service"
+    policy_name: "waf-security-policy"
 
   tasks:
-    - name: Get the security policy
-      google.cloud.gcp_compute_security_policy:
-        name: "waf-security-policy"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: policy
-
     - name: Attach policy to the backend service
-      google.cloud.gcp_compute_backend_service:
-        name: "web-backend-service"
-        security_policy:
-          selfLink: "{{ policy.selfLink }}"
-        health_checks:
-          - selfLink: "projects/{{ gcp_project }}/global/healthChecks/web-health-check"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command: >-
+        gcloud compute backend-services update {{ backend_service }}
+        --project={{ gcp_project }}
+        --global
+        --security-policy={{ policy_name }}
 ```
 
 ## Comprehensive Production Policy
@@ -364,10 +343,9 @@ Here is a complete policy that combines multiple protection layers.
 
   vars:
     gcp_project: "my-project-id"
-    gcp_auth_kind: "serviceaccount"
-    gcp_service_account_file: "/path/to/service-account-key.json"
+    policy_name: "production-security-policy"
 
-    # IPs that should always be blocked
+    # Example IPs that should always be blocked
     blocked_ips:
       - "198.51.100.0/24"
     # IPs that should always be allowed (bypasses all rules)
@@ -376,75 +354,76 @@ Here is a complete policy that combines multiple protection layers.
 
   tasks:
     - name: Create comprehensive security policy
-      google.cloud.gcp_compute_security_policy:
-        name: "production-security-policy"
-        description: "Multi-layer security for production workloads"
-        rules:
-          # Priority 100: Always allow trusted IPs
-          - action: "allow"
-            priority: 100
-            description: "Allowlist trusted IPs"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges: "{{ allowlisted_ips }}"
-          # Priority 200: Block known bad IPs
-          - action: "deny(403)"
-            priority: 200
-            description: "Block known bad IPs"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges: "{{ blocked_ips }}"
-          # Priority 1000-1500: WAF rules
-          - action: "deny(403)"
-            priority: 1000
-            description: "WAF - SQL injection"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('sqli-v33-stable')"
-          - action: "deny(403)"
-            priority: 1100
-            description: "WAF - XSS"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('xss-v33-stable')"
-          - action: "deny(403)"
-            priority: 1200
-            description: "WAF - RCE"
-            match:
-              expr:
-                expression: "evaluatePreconfiguredExpr('rce-v33-stable')"
-          # Priority 2000: Rate limiting
-          - action: "rate_based_ban"
-            priority: 2000
-            description: "Global rate limit"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-            rate_limit_options:
-              conform_action: "allow"
-              exceed_action: "deny(429)"
-              rate_limit_threshold:
-                count: 500
-                interval_sec: 60
-              ban_duration_sec: 600
-              enforce_on_key: "IP"
-          # Default: allow
-          - action: "allow"
-            priority: 2147483647
-            description: "Default allow"
-            match:
-              versioned_expr: "SRC_IPS_V1"
-              config:
-                src_ip_ranges:
-                  - "*"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command: >-
+        gcloud compute security-policies create {{ policy_name }}
+        --project={{ gcp_project }}
+        --type=CLOUD_ARMOR
+        --description="Multi-layer security for production workloads"
+
+    - name: Add comprehensive security policy rules
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        # Priority 100: Always allow trusted IPs
+        - >-
+          gcloud compute security-policies rules create 100
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=allow
+          --src-ip-ranges={{ allowlisted_ips | join(',') }}
+          --description="Allowlist trusted IPs"
+        # Priority 200: Block example IPs
+        - >-
+          gcloud compute security-policies rules create 200
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --src-ip-ranges={{ blocked_ips | join(',') }}
+          --description="Block example IPs"
+        # Priority 1000-1500: WAF rules
+        - >-
+          gcloud compute security-policies rules create 1000
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('sqli-v422-stable')"
+          --description="WAF - SQL injection"
+        - >-
+          gcloud compute security-policies rules create 1100
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('xss-v422-stable')"
+          --description="WAF - XSS"
+        - >-
+          gcloud compute security-policies rules create 1200
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=deny-403
+          --expression="evaluatePreconfiguredWaf('rce-v422-stable')"
+          --description="WAF - RCE"
+        # Priority 2000: Rate limiting
+        - >-
+          gcloud compute security-policies rules create 2000
+          --security-policy={{ policy_name }}
+          --project={{ gcp_project }}
+          --action=rate-based-ban
+          --src-ip-ranges="*"
+          --rate-limit-threshold-count=500
+          --rate-limit-threshold-interval-sec=60
+          --ban-duration-sec=600
+          --conform-action=allow
+          --exceed-action=deny-429
+          --enforce-on-key=IP
+          --description="Global rate limit"
+
+    - name: Set the default rule to allow everything else
+      ansible.builtin.command: >-
+        gcloud compute security-policies rules update 2147483647
+        --security-policy={{ policy_name }}
+        --project={{ gcp_project }}
+        --action=allow
+        --src-ip-ranges="*"
+        --description="Default allow"
 ```
 
 ## Best Practices
@@ -463,4 +442,4 @@ Here is a complete policy that combines multiple protection layers.
 
 ## Conclusion
 
-Cloud Armor provides essential protection for any internet-facing application on GCP, and Ansible makes it manageable. By defining your security policies as code, you get repeatable, auditable, and version-controlled security configurations. Start with basic IP blocking and rate limiting, then layer on WAF rules as you understand your application's traffic patterns. The combination of Cloud Armor's capabilities and Ansible's automation gives you a strong security posture without the operational overhead of managing it manually.
+Cloud Armor provides essential protection for any internet-facing application on GCP, and Ansible makes it manageable. By defining your security policies as code, you get auditable and version-controlled security configurations. Start with basic IP blocking and rate limiting, then layer on WAF rules as you understand your application's traffic patterns. The combination of Cloud Armor's capabilities and Ansible's automation gives you a strong security posture without the operational overhead of managing it manually.
