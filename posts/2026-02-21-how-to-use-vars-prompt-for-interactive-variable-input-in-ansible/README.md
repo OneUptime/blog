@@ -149,12 +149,12 @@ You can encrypt the input using a hashing algorithm. This is useful when setting
         append: yes
 ```
 
-Available encryption schemes include `sha512_crypt`, `sha256_crypt`, `md5_crypt`, and `blowfish_crypt`. For Linux systems, `sha512_crypt` is the standard choice.
+Available encryption schemes include `sha512_crypt`, `sha256_crypt`, `md5_crypt`, and `bcrypt`. For Linux systems, `sha512_crypt` is a common choice.
 
-Note: You need the `passlib` Python library installed on the control node for encryption to work.
+Note: Ansible can use the Python `crypt` library as a fallback, but installing the `passlib` Python library on the control node gives you access to the full set of Passlib-supported schemes.
 
 ```bash
-# Install passlib for password encryption support
+# Install passlib for broader password encryption support
 pip install passlib
 ```
 
@@ -195,7 +195,7 @@ pip install passlib
 
 ## Combining vars_prompt with vars and vars_files
 
-`vars_prompt` works alongside other variable sources. Prompted values have higher precedence than `vars` and `vars_files`.
+`vars_prompt` works alongside other variable sources. Prompted values have higher precedence than play-level `vars`, but lower precedence than `vars_files` and extra vars.
 
 ```yaml
 # combined-vars.yml
@@ -339,7 +339,7 @@ ansible-playbook skippable-prompt.yml \
   -e deploy_version="${RELEASE_VERSION}"
 ```
 
-When a variable is already defined (via `-e`, inventory, or elsewhere), the prompt is skipped automatically.
+When a variable is already defined through `--extra-vars` or `-e`, the prompt is skipped automatically. Prompts are also skipped in non-interactive sessions such as cron or Ansible AWX.
 
 ## Practical Example: Interactive Server Setup
 
