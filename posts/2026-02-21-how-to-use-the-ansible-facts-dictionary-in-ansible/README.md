@@ -8,7 +8,7 @@ Description: A practical guide to using the ansible_facts dictionary for accessi
 
 ---
 
-Every time Ansible connects to a managed host, it runs a setup module that collects a huge amount of system information. This information is stored in a dictionary called `ansible_facts`. Knowing how to navigate and use this dictionary is fundamental to writing playbooks that adapt to different environments.
+At the start of a play, Ansible usually runs a setup module that collects a huge amount of system information from managed hosts. This information is stored in a dictionary called `ansible_facts`. Knowing how to navigate and use this dictionary is fundamental to writing playbooks that adapt to different environments.
 
 ## How Ansible Collects Facts
 
@@ -26,7 +26,7 @@ The output is usually several hundred lines of JSON. It covers everything from t
 
 ## Accessing Facts: Two Styles
 
-Ansible supports two ways to access facts. The modern way uses the `ansible_facts` dictionary directly. The legacy way uses top-level variable names with the `ansible_` prefix.
+Ansible supports two ways to access facts. The modern way uses the `ansible_facts` dictionary directly. By default, the legacy way also exposes some facts as top-level variable names with the `ansible_` prefix.
 
 ```yaml
 # Modern style - preferred in Ansible 2.10+
@@ -102,7 +102,7 @@ Facts are most powerful when combined with `when` conditions. This lets you writ
       when: ansible_facts['os_family'] == "Debian"
 
     - name: Install nginx on RHEL/CentOS
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name: nginx
         state: present
       when: ansible_facts['os_family'] == "RedHat"
@@ -140,9 +140,11 @@ The facts dictionary has several levels of nesting, especially for network inter
   tasks:
     - name: Show all IPv4 addresses across interfaces
       ansible.builtin.debug:
-        msg: "{{ item.key }}: {{ item.value.ipv4.address | default('no ipv4') }}"
-      loop: "{{ ansible_facts['interfaces'] | map('regex_replace', '^(.*)$', 'ansible_facts[\"\\1\"]') | list }}"
-      when: false  # Placeholder - see better approach below
+        msg: "{{ item }}: {{ ansible_facts[item]['ipv4']['address'] }}"
+      loop: "{{ ansible_facts['interfaces'] }}"
+      when:
+        - ansible_facts[item] is defined
+        - ansible_facts[item]['ipv4'] is defined
 
     # A cleaner approach using the ansible_facts interfaces list
     - name: List all network interfaces
@@ -164,11 +166,11 @@ The facts dictionary has several levels of nesting, especially for network inter
 
 ## Filtering Facts with the setup Module
 
-You do not always need every fact. The setup module accepts a `filter` parameter to collect only specific facts, which speeds up execution.
+You do not always need to display every fact. The setup module accepts a `filter` parameter to return only selected first-level facts, which keeps the output smaller. To reduce how much fact data Ansible collects, use `gather_subset`.
 
 ```yaml
 # filtered-facts.yml
-# Gathers only network-related facts to save time
+# Returns only the default IPv4 fact
 ---
 - name: Gather only network facts
   hosts: all
