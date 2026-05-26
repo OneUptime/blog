@@ -156,17 +156,17 @@ Always verify downloads in production. Several checksum methods are supported:
         expected_checksum: "abc123def456..."
 ```
 
-## Conditional Downloads (Only If Changed)
+## Conditional Downloads
 
-Avoid re-downloading files that have not changed:
+Avoid downloading files that are already present, or compare metadata before a `uri` download:
 
 ```yaml
-# skip download if file already exists and matches
+# skip download if file already exists, or compare metadata first
 ---
 - name: Conditional download
   hosts: all
   tasks:
-    # get_url handles this automatically with force: false
+    # get_url skips the download when the destination file already exists
     - name: Download only if file does not exist
       ansible.builtin.get_url:
         url: https://releases.example.com/myapp-2.3.1.tar.gz
@@ -305,7 +305,7 @@ Add retry logic for unreliable connections:
       register: download
       until: download is succeeded
 
-    - name: Download from mirrors with fallback
+    - name: Try each mirror until that mirror succeeds
       ansible.builtin.get_url:
         url: "{{ item }}"
         dest: /tmp/myapp.tar.gz
@@ -318,7 +318,7 @@ Add retry logic for unreliable connections:
       until: mirror_download is succeeded
       retries: 1
       delay: 5
-      # Stops on first successful download due to loop behavior
+      # Ansible still evaluates each loop item; use this to retry individual mirrors
       ignore_errors: true
 ```
 
@@ -351,4 +351,4 @@ This is more efficient than having every host download the same file from the in
 
 ## Summary
 
-For file downloads in Ansible, `get_url` is the go-to module with built-in checksum verification and conditional download support. Use the `uri` module when you need custom headers, authentication patterns beyond basic auth, or want to inspect response headers before downloading. Always verify downloads with checksums in production. Use `force: false` to skip re-downloading unchanged files. For large files, add retry logic with `retries` and `until`. When distributing the same file to many hosts, download once to the control node and then use `copy` to push it out. This saves bandwidth and speeds up your playbook execution.
+For file downloads in Ansible, `get_url` is the go-to module with built-in checksum verification and conditional download support. Use the `uri` module when you need custom headers, authentication patterns beyond basic auth, or want to inspect response headers before downloading. Always verify downloads with checksums in production. Use `force: false` to skip downloading when the destination file already exists, or provide a checksum when you need content-based verification. For large files, add retry logic with `retries` and `until`. When distributing the same file to many hosts, download once to the control node and then use `copy` to push it out. This saves bandwidth and speeds up your playbook execution.
