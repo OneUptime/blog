@@ -130,9 +130,9 @@ flowchart TD
     E --> F[Processes inherit parent limits]
     F --> G[Child processes get parent limits]
     G --> H{Process opens files/forks}
-    H -->|Under limit| I[Success]
-    H -->|Over soft limit| J[Warning or error]
-    H -->|Over hard limit| K[Hard failure]
+    H -->|Under soft limit| I[Success]
+    H -->|Over soft limit| J[Operation fails]
+    E --> L[Users may raise soft limits up to hard limits]
 ```
 
 ## Per-Service Limits with systemd
@@ -225,8 +225,8 @@ Some limits are system-wide, not per-user. These are controlled through sysctl:
         state: present
         reload: yes
 
-    # Maximum PID count
-    - name: Set max PID
+    # Maximum PID value before allocation wraps
+    - name: Set max PID value
       ansible.posix.sysctl:
         name: kernel.pid_max
         value: '4194304'
@@ -329,7 +329,7 @@ After setting limits, verify they are applied correctly:
 
     - name: Display fd usage
       ansible.builtin.debug:
-        msg: "{{ inventory_hostname }} - fd usage: {{ fd_usage.stdout }} (allocated/free/max)"
+        msg: "{{ inventory_hostname }} - fd usage: {{ fd_usage.stdout }} (allocated/free handles/max)"
 ```
 
 ## Ensuring PAM Loads limits.conf
@@ -365,7 +365,7 @@ For limits.conf to work, PAM must be configured to use `pam_limits`:
 
 3. **Use systemd overrides for services**. Limits in limits.conf only apply to PAM sessions. Systemd services need their own configuration.
 
-4. **Do not forget sysctl**. Per-user limits cannot exceed system-wide limits. If `fs.file-max` is 65536, no user can have more than 65536 file descriptors regardless of their ulimit setting.
+4. **Do not forget sysctl**. Per-user limits still depend on system-wide kernel limits. If `fs.file-max` is too low, the system can run out of file handles even when individual users have higher `nofile` limits.
 
 5. **Verify after deploying**. Always check that limits are actually applied. A missing PAM module or a systemd override can silently ignore your configuration.
 
