@@ -14,7 +14,7 @@ I have managed Kong deployments that handle tens of thousands of requests per se
 
 ## Kong Architecture
 
-Kong runs as a reverse proxy with a PostgreSQL or Cassandra database backing its configuration. In database-less (declarative) mode, Kong loads its configuration from a YAML file, which is even better for Ansible management.
+Kong runs as a reverse proxy with PostgreSQL backing its configuration in traditional mode. In database-less (declarative) mode, Kong loads its configuration from a YAML file, which is even better for Ansible management.
 
 ```mermaid
 graph LR
@@ -33,8 +33,9 @@ graph LR
 
 # Default configuration for Kong API Gateway
 kong_version: "3.5"
+kong_version_slug: "{{ kong_version | replace('.', '') }}"
 kong_mode: "db"  # or "dbless" for declarative mode
-kong_database: postgres
+kong_database: "{{ 'off' if kong_mode == 'dbless' else 'postgres' }}"
 kong_pg_host: "{{ db_host | default('127.0.0.1') }}"
 kong_pg_port: 5432
 kong_pg_user: kong
@@ -51,15 +52,23 @@ kong_declarative_config_path: /etc/kong/kong.yml
 ```yaml
 # roles/kong/tasks/install.yml
 # Install Kong Gateway from official repository
-- name: Add Kong GPG key
-  ansible.builtin.apt_key:
-    url: "https://download.konghq.com/gateway-{{ kong_version }}/gpg-key"
+- name: Install repository dependencies
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
     state: present
+    update_cache: true
   when: ansible_os_family == 'Debian'
 
 - name: Add Kong repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://download.konghq.com/gateway-{{ kong_version }}/apt {{ ansible_distribution_release }} main"
+  ansible.builtin.deb822_repository:
+    name: "kong-gateway-{{ kong_version_slug }}"
+    types: deb
+    uris: "https://packages.konghq.com/public/gateway-{{ kong_version_slug }}/deb/ubuntu"
+    suites: "{{ ansible_distribution_release }}"
+    components: main
+    signed_by: "https://packages.konghq.com/public/gateway-{{ kong_version_slug }}/gpg.501204D36929F3AE.key"
     state: present
   when: ansible_os_family == 'Debian'
 
@@ -135,13 +144,17 @@ nginx_worker_processes = auto
     url: "{{ kong_admin_api }}/services/{{ item.name }}"
     method: PUT
     body_format: json
-    body:
-      name: "{{ item.name }}"
-      url: "{{ item.url }}"
-      connect_timeout: "{{ item.connect_timeout | default(60000) }}"
-      read_timeout: "{{ item.read_timeout | default(60000) }}"
-      write_timeout: "{{ item.write_timeout | default(60000) }}"
-      retries: "{{ item.retries | default(5) }}"
+    body: >-
+      {{
+        {
+          'name': item.name,
+          'url': item.url,
+          'connect_timeout': item.connect_timeout | default(60000),
+          'read_timeout': item.read_timeout | default(60000),
+          'write_timeout': item.write_timeout | default(60000),
+          'retries': item.retries | default(5)
+        }
+      }}
     status_code: [200, 201]
   loop: "{{ kong_services }}"
   loop_control:
@@ -152,12 +165,16 @@ nginx_worker_processes = auto
     url: "{{ kong_admin_api }}/services/{{ item.0.name }}/routes/{{ item.1.name }}"
     method: PUT
     body_format: json
-    body:
-      name: "{{ item.1.name }}"
-      paths: "{{ item.1.paths }}"
-      methods: "{{ item.1.methods | default(omit) }}"
-      strip_path: "{{ item.1.strip_path | default(true) }}"
-      preserve_host: "{{ item.1.preserve_host | default(false) }}"
+    body: >-
+      {{
+        {
+          'name': item.1.name,
+          'paths': item.1.paths,
+          'strip_path': item.1.strip_path | default(true),
+          'preserve_host': item.1.preserve_host | default(false)
+        }
+        | combine({'methods': item.1.methods} if item.1.methods is defined else {})
+      }}
     status_code: [200, 201]
   loop: "{{ kong_services | subelements('routes') }}"
   loop_control:
