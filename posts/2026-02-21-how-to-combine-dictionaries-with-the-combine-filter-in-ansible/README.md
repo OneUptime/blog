@@ -204,10 +204,10 @@ When you have a list of dictionaries to merge:
         var: merged_config
     # Result: {port: 8080, workers: 8, log_level: debug, timeout: 60}
 
-    # One-liner alternative using reduce (Ansible 2.11+)
+    # One-liner alternative using combine directly
     - name: Merge all layers in one expression
       set_fact:
-        merged_oneliner: "{{ config_layers | ansible.builtin.reduce('combine') }}"
+        merged_oneliner: "{{ config_layers | combine }}"
 ```
 
 ## Practical Example: Building Docker Compose-Style Configuration
@@ -288,7 +288,7 @@ When you have a list of dictionaries to merge:
         label: "{{ item.key }}"
 ```
 
-## Combining with list_merging Option
+## Combining with list_merge Option
 
 When dictionaries contain lists, you can control how those lists are merged:
 
@@ -357,8 +357,8 @@ The `list_merge` parameter accepts:
 - `keep`: Lists from the first dict are kept, second dict's lists are ignored
 - `append`: Lists are concatenated
 - `prepend`: Second dict's list items are prepended
-- `append_rp`: Append and remove duplicates
-- `prepend_rp`: Prepend and remove duplicates
+- `append_rp`: Append newer entries and overwrite duplicates
+- `prepend_rp`: Prepend newer entries and discard duplicates
 
 ## Conditional Combining
 
