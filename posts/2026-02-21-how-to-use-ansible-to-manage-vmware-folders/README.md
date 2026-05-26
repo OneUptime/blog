@@ -32,7 +32,7 @@ The VM & Templates folder type is the one you will work with most often. It orga
 
 ## Creating VM Folders
 
-The `community.vmware.vmware_folder` module creates folders in the vSphere inventory.
+The `vmware.vmware.folder` module creates folders in the vSphere inventory.
 
 ```yaml
 # create-folders.yml
@@ -43,7 +43,7 @@ The `community.vmware.vmware_folder` module creates folders in the vSphere inven
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.folder:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -56,9 +56,9 @@ The `community.vmware.vmware_folder` module creates folders in the vSphere inven
 
   tasks:
     - name: Create top-level environment folders
-      community.vmware.vmware_folder:
-        datacenter_name: "DC01"
-        folder_name: "{{ item }}"
+      vmware.vmware.folder:
+        datacenter: "DC01"
+        relative_path: "{{ item }}"
         folder_type: vm
         state: present
       loop:
@@ -77,7 +77,7 @@ The `community.vmware.vmware_folder` module creates folders in the vSphere inven
 
 ## Creating Nested Folder Structures
 
-For deeper organization, create nested folders by specifying the parent path.
+For deeper organization, create nested folders by specifying the nested relative path.
 
 ```yaml
 # create-nested-folders.yml
@@ -87,7 +87,7 @@ For deeper organization, create nested folders by specifying the parent path.
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.folder:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -130,9 +130,9 @@ For deeper organization, create nested folders by specifying the parent path.
 
   tasks:
     - name: Create each folder in the hierarchy
-      community.vmware.vmware_folder:
-        datacenter_name: "DC01"
-        folder_name: "{{ item }}"
+      vmware.vmware.folder:
+        datacenter: "DC01"
+        relative_path: "{{ item }}"
         folder_type: vm
         state: present
       loop: "{{ folder_hierarchy }}"
@@ -217,25 +217,29 @@ As VMs change roles or environments, move them to the appropriate folder.
 Use folders to build your Ansible dynamic inventory by mapping folder paths to Ansible groups.
 
 ```yaml
-# vmware_inventory.yml - Dynamic inventory plugin configuration
-plugin: community.vmware.vmware_vm_inventory
+# vmware_vms.yml - Dynamic inventory plugin configuration
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
 password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
 validate_certs: false
+group_by_paths: true
 
 # Group VMs by their folder path
+properties:
+  - name
+  - config.name
 hostnames:
   - config.name
 
 # Create Ansible groups based on VM folder paths
 groups:
-  production_web: "'Production/WebServers' in path"
-  production_app: "'Production/AppServers' in path"
-  production_db: "'Production/Databases' in path"
-  staging: "'Staging' in path"
-  development: "'Development' in path"
+  production_web: "'/DC01/vm/Production/WebServers' in path"
+  production_app: "'/DC01/vm/Production/AppServers' in path"
+  production_db: "'/DC01/vm/Production/Databases' in path"
+  staging: "'/DC01/vm/Staging' in path"
+  development: "'/DC01/vm/Development' in path"
 ```
 
 ## Auditing Folder Structure
@@ -276,18 +280,18 @@ Check that your folder structure matches the expected hierarchy.
 
 ## Removing Empty Folders
 
-Clean up folders that are no longer needed. The folder must be empty before removal.
+Clean up folders that are no longer needed after verifying they no longer contain VMs or other inventory objects.
 
 ```yaml
 # remove-empty-folders.yml
 - name: Remove deprecated folders
-  community.vmware.vmware_folder:
+  vmware.vmware.folder:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    datacenter_name: "DC01"
-    folder_name: "{{ item }}"
+    datacenter: "DC01"
+    relative_path: "{{ item }}"
     folder_type: vm
     state: absent
   loop:
@@ -307,7 +311,7 @@ When a new project or team spins up, create their folder structure automatically
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.folder:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -329,9 +333,9 @@ When a new project or team spins up, create their folder structure automatically
 
   tasks:
     - name: Create project folder structure
-      community.vmware.vmware_folder:
-        datacenter_name: "DC01"
-        folder_name: "{{ item }}"
+      vmware.vmware.folder:
+        datacenter: "DC01"
+        relative_path: "{{ item }}"
         folder_type: vm
         state: present
       loop: "{{ project_folders }}"
