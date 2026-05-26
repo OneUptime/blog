@@ -16,17 +16,18 @@ This guide covers creating ALBs from scratch, configuring target groups, setting
 
 You will need:
 
-- Ansible 2.14+
-- The `amazon.aws` collection
+- Ansible 2.17+
+- The `amazon.aws` and `community.aws` collections
 - AWS credentials with ELBv2 permissions
 - An existing VPC with subnets
-- Python boto3 library
+- Python boto3 and botocore libraries
 
 ```bash
 # Install dependencies
 
 ansible-galaxy collection install amazon.aws
-pip install boto3 botocore
+ansible-galaxy collection install community.aws
+pip install "boto3>=1.34.0" "botocore>=1.34.0"
 ```
 
 ## ALB Architecture
@@ -52,7 +53,7 @@ Listeners receive connections on a port. Rules evaluate conditions and forward t
 
 ## Creating an ALB Step by Step
 
-ALB creation in Ansible requires three separate modules: one for the ALB itself, one for target groups, and one for listeners. Here is the complete flow:
+ALB creation in Ansible uses separate modules for the target groups and the ALB itself. The `amazon.aws.elb_application_lb` module can define listeners and listener rules as part of the ALB configuration. Here is the complete flow:
 
 ```yaml
 # create-alb.yml - Full ALB setup with target group and listeners
@@ -268,7 +269,7 @@ Not every ALB needs to face the internet. Internal ALBs are useful for microserv
             TargetGroupArn: "{{ internal_tg.target_group_arn }}"
 ```
 
-The key difference is `scheme: internal`. This places the ALB in private subnets and gives it a private DNS name only resolvable within the VPC.
+The key difference is `scheme: internal`. Use private subnets for an internal ALB; its nodes have only private IP addresses, and its DNS name resolves to those private IPs for clients that have network access to the VPC.
 
 ## Target Group Health Checks
 
