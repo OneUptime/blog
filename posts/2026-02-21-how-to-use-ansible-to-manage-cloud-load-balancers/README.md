@@ -175,6 +175,11 @@ For TCP/UDP traffic or when you need static IPs and ultra-low latency.
 
   vars:
     aws_region: us-east-1
+    vpc_id: vpc-0123456789abcdef0
+    public_subnets:
+      - subnet-0aaa
+      - subnet-0bbb
+      - subnet-0ccc
 
   tasks:
     # Create NLB target group
@@ -201,7 +206,7 @@ For TCP/UDP traffic or when you need static IPs and ultra-low latency.
 
     # Create the Network Load Balancer
     - name: Create Network Load Balancer
-      amazon.aws.elb_network_lb:
+      community.aws.elb_network_lb:
         name: myapp-prod-nlb
         subnets: "{{ public_subnets }}"
         scheme: internet-facing
@@ -413,20 +418,20 @@ After configuring load balancers, verify health checks are passing.
 
     - name: Display target health
       ansible.builtin.debug:
-        msg: "{{ item.target_id }}: {{ item.target_health.state }}"
+        msg: "{{ item.target.id }}: {{ item.target_health.state }}"
       loop: "{{ tg_health.target_groups[0].targets_health_description }}"
       loop_control:
-        label: "{{ item.target_id }}"
+        label: "{{ item.target.id }}"
 
     # Assert all targets are healthy
     - name: Verify all targets are healthy
       ansible.builtin.assert:
         that:
           - item.target_health.state == 'healthy'
-        fail_msg: "Target {{ item.target_id }} is {{ item.target_health.state }}"
+        fail_msg: "Target {{ item.target.id }} is {{ item.target_health.state }}"
       loop: "{{ tg_health.target_groups[0].targets_health_description }}"
       loop_control:
-        label: "{{ item.target_id }}"
+        label: "{{ item.target.id }}"
 
     # Test the load balancer endpoint
     - name: Test ALB endpoint
@@ -461,7 +466,7 @@ Use target group switching for zero-downtime deployments.
   tasks:
     # Get current listener rules
     - name: Get ALB listener info
-      community.aws.elb_application_lb_info:
+      amazon.aws.elb_application_lb_info:
         names:
           - myapp-prod-alb
         region: "{{ aws_region }}"
@@ -488,6 +493,8 @@ Use target group switching for zero-downtime deployments.
         url: "https://{{ alb_dns_name }}/health"
         method: GET
         status_code: 200
+      register: deploy_health
+      until: deploy_health.status == 200
       retries: 5
       delay: 10
 ```
