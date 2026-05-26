@@ -36,7 +36,7 @@ project/
     integration/
       test_deployment.yml
     validation/
-      test_services.yml
+      goss.yaml
   molecule/
     default/
       molecule.yml
@@ -51,7 +51,13 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest pytest-testinfra
+ansible-galaxy collection install community.general
+
+# Install Goss
+mkdir -p bin
+curl -L https://github.com/goss-org/goss/releases/latest/download/goss-linux-amd64 -o bin/goss
+chmod +rx bin/goss
 ```
 
 ## Writing Tests
@@ -97,6 +103,31 @@ verifier:
     - role: my_role
 ```
 
+### Goss Validation File
+
+```yaml
+# tests/validation/goss.yaml
+service:
+  my_service:
+    enabled: true
+    running: true
+
+file:
+  /etc/my_service/config.yml:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+
+port:
+  tcp:8080:
+    listening: true
+
+http:
+  http://localhost:8080/health:
+    status: 200
+```
+
 ### Verification Playbook
 
 ```yaml
@@ -106,42 +137,22 @@ verifier:
   hosts: all
   become: true
   tasks:
-    - name: Check that the service is running
-      ansible.builtin.service_facts:
+    - name: Install Goss binary on the test instance
+      ansible.builtin.copy:
+        src: ../../bin/goss
+        dest: /usr/local/bin/goss
+        mode: "0755"
 
-    - name: Assert service is active
-      ansible.builtin.assert:
-        that:
-          - "'my_service' in ansible_facts.services"
-          - "ansible_facts.services['my_service'].state == 'running'"
-        fail_msg: "Service my_service is not running"
+    - name: Copy Goss validation file
+      ansible.builtin.copy:
+        src: ../../tests/validation/goss.yaml
+        dest: /tmp/goss.yaml
+        mode: "0644"
 
-    - name: Check configuration file exists
-      ansible.builtin.stat:
-        path: /etc/my_service/config.yml
-      register: config_file
-
-    - name: Assert config file exists
-      ansible.builtin.assert:
-        that:
-          - config_file.stat.exists
-          - config_file.stat.mode == '0644'
-
-    - name: Test service responds on expected port
-      ansible.builtin.wait_for:
-        port: 8080
-        timeout: 10
-
-    - name: Verify HTTP response
-      ansible.builtin.uri:
-        url: http://localhost:8080/health
-        status_code: 200
-      register: health_check
-
-    - name: Assert healthy response
-      ansible.builtin.assert:
-        that:
-          - health_check.status == 200
+    - name: Run Goss validation
+      ansible.builtin.command:
+        cmd: goss -g /tmp/goss.yaml validate --format documentation --retry-timeout 10s --sleep 1s
+      changed_when: false
 ```
 
 ## Running Tests
@@ -178,14 +189,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        distro: [ubuntu2404, rocky9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
+      - run: pip install ansible-core molecule molecule-docker
+      - run: |
+          mkdir -p bin
+          curl -L https://github.com/goss-org/goss/releases/latest/download/goss-linux-amd64 -o bin/goss
+          chmod +rx bin/goss
+      - run: molecule test -- --limit ${{ matrix.distro }}
         env:
           MOLECULE_DISTRO: ${{ matrix.distro }}
 ```
@@ -208,11 +223,17 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: python:3.11
   services:
     - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - pip install ansible molecule molecule-docker
+    - pip install ansible-core molecule molecule-docker
+    - mkdir -p bin
+    - curl -L https://github.com/goss-org/goss/releases/latest/download/goss-linux-amd64 -o bin/goss
+    - chmod +rx bin/goss
     - molecule test
 ```
 
@@ -447,4 +468,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
