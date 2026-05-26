@@ -10,7 +10,7 @@ Description: Learn how to deduplicate lists in Ansible using the unique filter t
 
 When you aggregate data from multiple sources in Ansible, duplicates are almost inevitable. You might pull package lists from group_vars and host_vars, merge IP addresses from different inventory groups, or combine tags from various roles. The `unique` filter strips out those duplicates and gives you a clean list to work with.
 
-This filter is not part of standard Jinja2. It is an Ansible-specific addition, which means it works in playbooks and Ansible templates but would not work in a plain Jinja2 environment outside of Ansible.
+Ansible provides this as the `ansible.builtin.unique` filter plugin, and modern Jinja2 also includes a `unique` filter. In Ansible playbooks and templates, the short name `unique` works, though the fully qualified name is useful when you want to link directly to the Ansible plugin documentation or avoid name conflicts with other collections.
 
 ## Basic Usage
 
@@ -128,13 +128,13 @@ Here is where things get a bit tricky. The `unique` filter works great on simple
 
 Output: Three items remain. The two entries for "alice" with role "admin" collapse into one, but "alice" with role "developer" stays because it is a different dictionary.
 
-If you want to deduplicate by a specific attribute (like just the name), you need a different approach:
+If you want to deduplicate by a specific attribute while keeping the original dictionaries, use the `attribute` parameter:
 
 ```yaml
-# Deduplicate by a specific attribute using map and unique
-- name: Get unique usernames
+# Deduplicate dictionaries by a specific attribute
+- name: Get unique users by name
   ansible.builtin.debug:
-    msg: "{{ users | map(attribute='name') | unique | list }}"
+    msg: "{{ users | unique(attribute='name') | list }}"
   vars:
     users:
       - name: alice
@@ -143,6 +143,14 @@ If you want to deduplicate by a specific attribute (like just the name), you nee
         role: developer
       - name: alice
         role: developer
+```
+
+Output: Two dictionaries remain: the first "alice" entry and the "bob" entry. The later "alice" entry is skipped because its name was already seen.
+
+If you only need the names, `map` still works well:
+
+```yaml
+{{ users | map(attribute='name') | unique | list }}
 ```
 
 Output: `['alice', 'bob']`
@@ -262,11 +270,11 @@ $TTL 86400
 
 ## Case Sensitivity
 
-The unique filter is case-sensitive by default. This means "Nginx" and "nginx" are treated as different values:
+The unique filter is case-insensitive by default. This means "Nginx", "nginx", and "NGINX" are treated as duplicates:
 
 ```yaml
-# Case-sensitive unique comparison
-- name: Show case sensitivity
+# Case-insensitive unique comparison
+- name: Show default case handling
   ansible.builtin.debug:
     msg: "{{ items | unique | list }}"
   vars:
@@ -276,20 +284,28 @@ The unique filter is case-sensitive by default. This means "Nginx" and "nginx" a
       - NGINX
 ```
 
-Output: `['Nginx', 'nginx', 'NGINX']` - all three remain.
+Output: `['Nginx']` - the first spelling is preserved.
 
-To do a case-insensitive dedup, convert to lowercase first:
+To treat different capitalization as separate values, pass `case_sensitive=true`:
 
 ```yaml
-# Case-insensitive deduplication using lower filter
-- name: Case-insensitive unique
+# Case-sensitive unique comparison
+- name: Case-sensitive unique
   ansible.builtin.debug:
-    msg: "{{ items | map('lower') | unique | list }}"
+    msg: "{{ items | unique(case_sensitive=true) | list }}"
   vars:
     items:
       - Nginx
       - nginx
       - NGINX
+```
+
+Output: `['Nginx', 'nginx', 'NGINX']` - all three remain.
+
+If you want the final output normalized to lowercase, convert to lowercase first:
+
+```yaml
+{{ items | map('lower') | unique | list }}
 ```
 
 Output: `['nginx']`
