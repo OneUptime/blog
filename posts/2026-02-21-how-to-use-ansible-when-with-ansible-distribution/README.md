@@ -70,14 +70,26 @@ When different distributions within the same OS family need different handling:
   become: true
   tasks:
     - name: Add Docker repo on Ubuntu
-      ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
         state: present
       when: ansible_distribution == "Ubuntu"
 
     - name: Add Docker repo on Debian
-      ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/debian
+        suites: "{{ ansible_distribution_release }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/debian/gpg
         state: present
       when: ansible_distribution == "Debian"
 
@@ -178,7 +190,7 @@ Ubuntu and Debian use release codenames (jammy, focal, bookworm, bullseye). Thes
 
     - name: Install version-specific package
       ansible.builtin.apt:
-        name: "python3-{{ '10' if ansible_distribution_release == 'focal' else '11' if ansible_distribution_release == 'jammy' else '12' }}"
+        name: "python3.{{ '8' if ansible_distribution_release == 'focal' else '10' if ansible_distribution_release == 'jammy' else '12' }}"
         state: present
       when: ansible_distribution == "Ubuntu"
 ```
@@ -279,16 +291,17 @@ Different distributions require different approaches to install Node.js:
               - ca-certificates
               - curl
               - gnupg
-            state: present
-
-        - name: Add NodeSource GPG key
-          ansible.builtin.apt_key:
-            url: "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
+              - python3-debian
             state: present
 
         - name: Add NodeSource repository
-          ansible.builtin.apt_repository:
-            repo: "deb https://deb.nodesource.com/node_{{ node_version }}.x nodistro main"
+          ansible.builtin.deb822_repository:
+            name: nodesource
+            types: deb
+            uris: "https://deb.nodesource.com/node_{{ node_version }}.x"
+            suites: nodistro
+            components: main
+            signed_by: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
             state: present
 
         - name: Install Node.js
@@ -301,9 +314,10 @@ Different distributions require different approaches to install Node.js:
       when: ansible_os_family == "RedHat"
       block:
         - name: Add NodeSource repository
-          ansible.builtin.command:
-            cmd: "curl -fsSL https://rpm.nodesource.com/setup_{{ node_version }}.x | bash -"
-            creates: /etc/yum.repos.d/nodesource-el.repo
+          ansible.builtin.shell:
+            cmd: "set -o pipefail && curl -fsSL https://rpm.nodesource.com/setup_{{ node_version }}.x | bash -"
+            creates: /etc/yum.repos.d/nodesource-nodejs.repo
+            executable: /bin/bash
 
         - name: Install Node.js
           ansible.builtin.dnf:
@@ -313,7 +327,7 @@ Different distributions require different approaches to install Node.js:
     - name: Install Node.js on Alpine
       when: ansible_distribution == "Alpine"
       community.general.apk:
-        name: "nodejs={{ node_version }}"
+        name: nodejs
         state: present
 
     - name: Verify installation
