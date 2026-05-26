@@ -49,6 +49,12 @@ Host web02
     User deploy
     Port 2222
     IdentityFile ~/.ssh/deploy_key
+
+Host web03
+    HostName 10.0.1.12
+    User deploy
+    Port 22
+    IdentityFile ~/.ssh/deploy_key
 ```
 
 When Ansible connects to `web01`, SSH reads the config and knows to connect to `10.0.1.10` as user `deploy` using the specified key.
@@ -120,20 +126,20 @@ With these patterns, any host matching the pattern automatically gets the right 
 ```ini
 # inventory/hosts
 [production_web]
-prod-web01 ansible_host=10.0.1.10
-prod-web02 ansible_host=10.0.1.11
-prod-web03 ansible_host=10.0.1.12
+prod-web01
+prod-web02
+prod-web03
 
 [production_db]
-prod-db01 ansible_host=10.0.2.10
-prod-db02 ansible_host=10.0.2.11
+prod-db01
+prod-db02
 
 [staging]
-staging-web01 ansible_host=10.0.10.10
-staging-db01 ansible_host=10.0.10.20
+staging-web01
+staging-db01
 ```
 
-The SSH config handles users, keys, ports, and proxy settings based on hostname patterns.
+The SSH config handles users, keys, ports, and proxy settings based on hostname patterns. If you set `ansible_host` to an IP address, SSH sees that IP address as the target, so IP-based `Host` patterns apply instead of inventory-name patterns.
 
 ## Bastion Hosts via SSH Config
 
@@ -173,13 +179,13 @@ Your Ansible inventory has zero bastion configuration:
 ```ini
 # inventory/hosts - No bastion config needed
 [production]
-prod-web01 ansible_host=10.0.1.10
-prod-web02 ansible_host=10.0.1.11
-prod-db01 ansible_host=10.0.2.10
+prod-web01
+prod-web02
+prod-db01
 
 [staging]
-staging-web01 ansible_host=10.0.10.10
-staging-db01 ansible_host=10.0.10.20
+staging-web01
+staging-db01
 ```
 
 ## SSH Config with ControlMaster
@@ -330,16 +336,16 @@ Matching Ansible inventory:
 ```ini
 # inventory/production/hosts
 [webservers_east]
-prod-east-web01 ansible_host=10.0.1.10
-prod-east-web02 ansible_host=10.0.1.11
+prod-east-web01
+prod-east-web02
 
 [webservers_west]
-prod-west-web01 ansible_host=10.1.1.10
-prod-west-web02 ansible_host=10.1.1.11
+prod-west-web01
+prod-west-web02
 
 [dbservers]
-prod-east-db01 ansible_host=10.0.2.10
-prod-west-db01 ansible_host=10.1.2.10
+prod-east-db01
+prod-west-db01
 ```
 
 Notice how clean the inventory is. All connection logic is in the SSH config.
