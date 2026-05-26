@@ -329,7 +329,9 @@ http {
 {% if nginx_upstreams is defined %}
 {% for upstream in nginx_upstreams %}
     upstream {{ upstream.name | lower | replace(' ', '_') }} {
-        {{ upstream.method | default('round_robin') }};
+{% if upstream.method is defined and upstream.method != 'round_robin' %}
+        {{ upstream.method }};
+{% endif %}
 {% for server in upstream.servers | sort(attribute='host') %}
         server {{ server.host }}:{{ server.port | default(80) }}{{ ' weight=' + (server.weight | string) if server.weight is defined else '' }};
 {% endfor %}
@@ -343,7 +345,7 @@ http {
         listen {{ vhost.listen | default('80') }};
         server_name {{ vhost.server_name | join(' ') if vhost.server_name is iterable and vhost.server_name is not string else vhost.server_name }};
 
-        root {{ vhost.root | default('/var/www/' + (vhost.server_name | first if vhost.server_name is iterable else vhost.server_name) | replace('.', '_')) }};
+        root {{ vhost.root | default('/var/www/' + (((vhost.server_name | first) if vhost.server_name is iterable and vhost.server_name is not string else vhost.server_name) | replace('.', '_'))) }};
 
 {% if vhost.locations is defined %}
 {% for location in vhost.locations %}
