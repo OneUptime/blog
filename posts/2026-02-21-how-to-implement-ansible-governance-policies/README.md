@@ -226,7 +226,7 @@ Prevent dangerous operations at the playbook level:
 - name: Verify executor identity
   ansible.builtin.assert:
     that:
-      - lookup('env', 'AWX_JOB_ID') | length > 0
+      - awx_job_id is defined
     fail_msg: "This playbook must be executed through AWX, not directly via CLI"
   when: env_name == 'production'
 
