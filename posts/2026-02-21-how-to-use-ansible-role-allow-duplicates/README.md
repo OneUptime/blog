@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Role, Configuration, Automation
 
-Description: Learn how to use the allow_duplicates setting in Ansible roles to run the same role multiple times with different parameters in a single play.
+Description: Learn how to use the allow_duplicates setting in Ansible roles to run the same role multiple times with different variable values in a single play.
 
 ---
 
-By default, Ansible only runs a role once per play, even if you list it multiple times. This is usually what you want. You do not want to install Nginx twice just because it appears in two dependency chains. But sometimes you genuinely need to run a role more than once with different parameters. Think about creating multiple database instances, setting up several virtual hosts through a generic role, or provisioning multiple application instances on the same server. The `allow_duplicates` setting makes this possible.
+By default, Ansible only runs a role once per play, even if you list it multiple times. This is usually what you want. You do not want to install Nginx twice just because it appears in two dependency chains. But sometimes you genuinely need to run a role more than once with different variable values. Think about creating multiple database instances, setting up several virtual hosts through a generic role, or provisioning multiple application instances on the same server. The `allow_duplicates` setting makes this possible.
 
 ## The Default Behavior
 
@@ -30,7 +30,7 @@ Let's start with what happens without `allow_duplicates`:
         vhost_port: 8081
 ```
 
-Even though the role appears twice with different variables, Ansible sees it as the same role and skips the second execution. The output will show something like:
+Even though the role appears twice with different values under `vars`, Ansible sees it as the same role and skips the second execution. Role variables are not the same as role parameters for deduplication. The output will show something like:
 
 ```text
 TASK [virtual_host : ...] ******
@@ -47,7 +47,7 @@ To tell Ansible that it is okay to run a role multiple times, add `allow_duplica
 
 ```yaml
 # roles/virtual_host/meta/main.yml
-# Allow this role to be applied multiple times with different parameters
+# Allow this role to be applied multiple times with different variable values
 allow_duplicates: true
 dependencies: []
 ```
@@ -236,7 +236,7 @@ Another approach for running a role multiple times is to use `include_role` insi
       loop: "{{ vhosts }}"
 ```
 
-This approach does not require `allow_duplicates` because `include_role` bypasses the deduplication logic. It is also more dynamic since the list of virtual hosts can come from a variable.
+This approach does not require the role metadata setting because `include_role` allows duplicate role execution by default. It is also more dynamic since the list of virtual hosts can come from a variable.
 
 ## Another Use Case: Multiple Database Instances
 
@@ -250,33 +250,32 @@ dependencies: []
 # roles/postgresql_instance/defaults/main.yml
 pg_instance_name: main
 pg_instance_port: 5432
-pg_instance_data_dir: "/var/lib/postgresql/data/{{ pg_instance_name }}"
+pg_instance_data_dir: "/var/lib/postgresql/16/{{ pg_instance_name }}"
+pg_instance_config_dir: "/etc/postgresql/16/{{ pg_instance_name }}"
 pg_instance_max_connections: 100
 pg_instance_shared_buffers: "256MB"
 ```
 
 ```yaml
 # roles/postgresql_instance/tasks/main.yml
-# Create and configure a single PostgreSQL instance
-- name: Create data directory for instance {{ pg_instance_name }}
-  ansible.builtin.file:
-    path: "{{ pg_instance_data_dir }}"
-    state: directory
-    owner: postgres
-    group: postgres
-    mode: '0700'
-
-- name: Initialize database cluster for {{ pg_instance_name }}
+# Create and configure a single PostgreSQL cluster on Debian/Ubuntu
+- name: Create database cluster for {{ pg_instance_name }}
   ansible.builtin.command:
-    cmd: "pg_ctlcluster 16 {{ pg_instance_name }} start"
+    cmd: "pg_createcluster 16 {{ pg_instance_name }} --port {{ pg_instance_port }} --datadir {{ pg_instance_data_dir }}"
     creates: "{{ pg_instance_data_dir }}/PG_VERSION"
-  become_user: postgres
 
 - name: Deploy instance configuration
   ansible.builtin.template:
     src: postgresql.conf.j2
-    dest: "{{ pg_instance_data_dir }}/postgresql.conf"
+    dest: "{{ pg_instance_config_dir }}/postgresql.conf"
   notify: "restart postgresql {{ pg_instance_name }}"
+
+- name: Start database cluster for {{ pg_instance_name }}
+  ansible.builtin.command:
+    cmd: "pg_ctlcluster 16 {{ pg_instance_name }} start"
+  register: pg_instance_start
+  changed_when: pg_instance_start.rc == 0
+  failed_when: pg_instance_start.rc not in [0, 2]
 ```
 
 ```yaml
@@ -317,6 +316,6 @@ Do not use it when:
 
 Handlers in a duplicated role can be tricky. If both invocations notify the same handler, it still only runs once at the end of the play. This is usually fine (you only need to reload Nginx once after configuring all virtual hosts), but be aware of it.
 
-Variable scoping is important. Each invocation gets its own set of variables, but if you rely on registered variables or facts, later invocations can overwrite values from earlier ones. Use unique variable names or collect results into a list.
+Variable scoping is important. On current Ansible versions, variables passed under `vars` in the play-level `roles` section do not leak into the whole play, but if you rely on registered variables or facts, later invocations can overwrite values from earlier ones. Use unique variable names or collect results into a list.
 
 The `allow_duplicates` setting is a property of the role, not the playbook. Once you set it, any playbook using the role can invoke it multiple times. Make sure this is the behavior you actually want before enabling it, because it changes the contract of the role for all consumers.
