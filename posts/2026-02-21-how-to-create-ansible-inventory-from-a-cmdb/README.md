@@ -21,7 +21,7 @@ Maintaining separate lists of servers in both a CMDB and Ansible inventory creat
 
 ## Generic CMDB API Structure
 
-Most CMDBs expose a REST API. While the specifics differ between products (ServiceNow, Device42, Ralph, NetBox, etc.), the general pattern is similar. Here is a generic dynamic inventory script that works with any REST-based CMDB:
+Most CMDBs expose a REST API. While the specifics differ between products (ServiceNow, Device42, Ralph, NetBox, etc.), the general pattern is similar. Here is a generic dynamic inventory script that you can adapt for REST-based CMDBs:
 
 ```python
 #!/usr/bin/env python3
@@ -162,7 +162,7 @@ def get_host_vars(hostname):
         return {}
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1 and sys.argv[1] == '--host':
+    if len(sys.argv) > 2 and sys.argv[1] == '--host':
         print(json.dumps(get_host_vars(sys.argv[2]), indent=2))
     else:
         print(json.dumps(build_inventory(), indent=2))
@@ -299,7 +299,6 @@ CMDB APIs can be slow, especially for large inventories. Add caching to your inv
 
 ```python
 import time
-import hashlib
 
 CACHE_FILE = '/tmp/cmdb_inventory_cache.json'
 CACHE_TTL = int(os.environ.get('CMDB_CACHE_TTL', '1800'))  # 30 minutes
