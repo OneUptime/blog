@@ -34,8 +34,8 @@ This task calls the health endpoint, checks if the status is 200, and if not, wa
 The flow of an `until` loop is:
 
 1. Execute the task
-2. Register the result (you must use `register` with `until`)
-3. Evaluate the `until` condition against the registered result
+2. Register the result if the condition needs task output
+3. Evaluate the `until` condition
 4. If the condition is true, the task succeeds and moves on
 5. If the condition is false, wait for `delay` seconds
 6. Repeat from step 1
@@ -50,7 +50,7 @@ The most common use case is waiting for a service to become available after star
 ```yaml
 # Start a service and wait for it to be ready
 - name: Start PostgreSQL
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: postgresql
     state: started
 
@@ -158,13 +158,14 @@ Cloud resources often take time to provision:
   register: ec2_result
 
 - name: Wait for instance to pass status checks
-  amazon.aws.ec2_instance_info:
+  amazon.aws.ec2_instance:
     instance_ids:
       - "{{ ec2_result.instance_ids[0] }}"
-  register: instance_info
-  until: >
-    instance_info.instances[0].state.name == 'running' and
-    instance_info.instances[0].instance_status is defined
+    state: started
+    wait: true
+    wait_timeout: 15
+  register: instance_wait
+  until: instance_wait is succeeded
   retries: 40
   delay: 15
 ```
@@ -197,7 +198,7 @@ You can build sophisticated retry conditions:
 # Wait for a database migration to complete by checking a status table
 - name: Check migration status
   community.postgresql.postgresql_query:
-    db: myapp
+    login_db: myapp
     query: "SELECT status FROM migrations WHERE version = %s"
     positional_args:
       - "{{ migration_version }}"
