@@ -29,7 +29,7 @@ Here is the most common pattern: running build tools that expect to be in the pr
   tasks:
     - name: Install Node.js dependencies
       ansible.builtin.command:
-        cmd: npm install --production
+        cmd: npm install --omit=dev
         chdir: /opt/myapp
 
     - name: Build the application
