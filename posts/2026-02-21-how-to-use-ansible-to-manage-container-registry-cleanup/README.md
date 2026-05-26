@@ -18,7 +18,7 @@ graph TD
     A --> C[Keep N Recent Versions]
     A --> D[Remove Untagged Manifests]
     A --> E[Remove Old Dev Tags]
-    B --> F[Protected: latest, stable, v*]
+    B --> F[Protected: latest, stable]
     C --> G[Keep last 10 versions]
     D --> H[Garbage collection]
     E --> I[Delete tags older than 30 days]
@@ -32,7 +32,7 @@ graph TD
 # Clean up old images from Docker Hub
 - name: Get repository tags
   ansible.builtin.uri:
-    url: "https://hub.docker.com/v2/repositories/{{ dockerhub_user }}/{{ repo_name }}/tags?page_size=100"
+    url: "https://hub.docker.com/v2/namespaces/{{ dockerhub_user }}/repositories/{{ repo_name }}/tags?page_size=100"
     headers:
       Authorization: "Bearer {{ dockerhub_token }}"
   register: tags_response
@@ -40,16 +40,14 @@ graph TD
 - name: Identify tags to delete
   ansible.builtin.set_fact:
     tags_to_delete: >-
-      {{ tags_response.json.results
+      {{ (tags_response.json.results
          | rejectattr('name', 'in', protected_tags)
          | sort(attribute='last_updated')
-         | list
-         | slice(0, -keep_count)
-         | list }}
+         | list)[:-keep_count] }}
 
 - name: Delete old tags
   ansible.builtin.uri:
-    url: "https://hub.docker.com/v2/repositories/{{ dockerhub_user }}/{{ repo_name }}/tags/{{ item.name }}/"
+    url: "https://hub.docker.com/v2/namespaces/{{ dockerhub_user }}/repositories/{{ repo_name }}/tags/{{ item.name }}"
     method: DELETE
     headers:
       Authorization: "Bearer {{ dockerhub_token }}"
@@ -70,7 +68,7 @@ graph TD
       aws ecr describe-images
       --repository-name {{ repo_name }}
       --region {{ aws_region }}
-      --query 'imageDetails[?imagePushedAt<`{{ cutoff_date }}`].imageDigest'
+      --query 'imageDetails[?imagePushedAt<`{{ cutoff_date }}`].{imageDigest:imageDigest}'
       --output json
   register: old_images
   changed_when: false
@@ -81,7 +79,8 @@ graph TD
       aws ecr batch-delete-image
       --repository-name {{ repo_name }}
       --region {{ aws_region }}
-      --image-ids '{{ old_images.stdout }}'
+      --image-ids '{{ item | to_json }}'
+  loop: "{{ (old_images.stdout | from_json) | batch(100) | list }}"
   when: (old_images.stdout | from_json | length) > 0
   changed_when: true
 
@@ -121,6 +120,8 @@ ecr_lifecycle_policy:
 
 ## Private Registry Garbage Collection
 
+Run garbage collection while the registry is stopped or configured as read-only so manifests are not changed during the sweep.
+
 ```yaml
 # roles/registry_cleanup/tasks/private.yml
 # Run garbage collection on private Docker registry
@@ -128,8 +129,8 @@ ecr_lifecycle_policy:
   ansible.builtin.command:
     cmd: >
       docker exec registry bin/registry
-      garbage-collect /etc/docker/registry/config.yml
-      --delete-untagged
+      garbage-collect --delete-untagged
+      /etc/docker/registry/config.yml
   changed_when: true
   when: registry_type == 'distribution'
 ```
@@ -200,7 +201,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
