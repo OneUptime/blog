@@ -16,10 +16,10 @@ This guide walks through provisioning an EKS cluster from scratch with Ansible, 
 
 You need:
 
-- Ansible 2.14+
+- ansible-core 2.17+
 - The `amazon.aws` and `community.aws` collections
 - AWS credentials with EKS, EC2, and IAM permissions
-- Python boto3
+- Python boto3 and botocore 1.34.0+
 - kubectl installed locally
 
 ```bash
@@ -104,7 +104,7 @@ EKS needs two roles: one for the cluster and one for the node groups.
         managed_policies:
           - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
           - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
-          - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+          - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
       register: node_role
 
     - name: Show role ARNs
@@ -127,13 +127,13 @@ EKS needs two roles: one for the cluster and one for the node groups.
   vars:
     aws_region: us-east-1
     cluster_name: myapp-production
-    k8s_version: "1.29"
+    k8s_version: "1.34"
     cluster_role_arn: arn:aws:iam::123456789012:role/myapp-eks-cluster-role
     subnet_ids:
-      - subnet-private-az-a
-      - subnet-private-az-b
-      - subnet-public-az-a
-      - subnet-public-az-b
+      - subnet-0a1b2c3d4e5f67890
+      - subnet-0123456789abcdef0
+      - subnet-0fedcba9876543210
+      - subnet-0987654321fedcba0
     security_group_ids:
       - sg-0abc123def456789
 
@@ -188,8 +188,8 @@ After the cluster is up, add worker nodes:
         region: "{{ aws_region }}"
         state: present
         subnets:
-          - subnet-private-az-a
-          - subnet-private-az-b
+          - subnet-0a1b2c3d4e5f67890
+          - subnet-0123456789abcdef0
         instance_types:
           - t3.large
         scaling_config:
@@ -214,8 +214,8 @@ After the cluster is up, add worker nodes:
         region: "{{ aws_region }}"
         state: present
         subnets:
-          - subnet-private-az-a
-          - subnet-private-az-b
+          - subnet-0a1b2c3d4e5f67890
+          - subnet-0123456789abcdef0
         instance_types:
           - t3.large
           - t3.xlarge
@@ -274,11 +274,11 @@ EKS clusters need core add-ons:
       aws eks create-addon
       --cluster-name {{ cluster_name }}
       --addon-name vpc-cni
-      --addon-version v1.16.0-eksbuild.1
+      --resolve-conflicts OVERWRITE
       --region {{ aws_region }}
   register: cni_result
-  failed_when: false
-  changed_when: "'ACTIVE' not in cni_result.stdout"
+  failed_when: cni_result.rc != 0 and 'ResourceInUseException' not in cni_result.stderr
+  changed_when: cni_result.rc == 0
 
 - name: Install CoreDNS add-on
   ansible.builtin.command:
@@ -286,11 +286,11 @@ EKS clusters need core add-ons:
       aws eks create-addon
       --cluster-name {{ cluster_name }}
       --addon-name coredns
-      --addon-version v1.11.1-eksbuild.6
+      --resolve-conflicts OVERWRITE
       --region {{ aws_region }}
   register: coredns_result
-  failed_when: false
-  changed_when: "'ACTIVE' not in coredns_result.stdout"
+  failed_when: coredns_result.rc != 0 and 'ResourceInUseException' not in coredns_result.stderr
+  changed_when: coredns_result.rc == 0
 
 - name: Install kube-proxy add-on
   ansible.builtin.command:
@@ -298,11 +298,24 @@ EKS clusters need core add-ons:
       aws eks create-addon
       --cluster-name {{ cluster_name }}
       --addon-name kube-proxy
-      --addon-version v1.29.0-eksbuild.1
+      --resolve-conflicts OVERWRITE
       --region {{ aws_region }}
   register: proxy_result
-  failed_when: false
-  changed_when: "'ACTIVE' not in proxy_result.stdout"
+  failed_when: proxy_result.rc != 0 and 'ResourceInUseException' not in proxy_result.stderr
+  changed_when: proxy_result.rc == 0
+
+- name: Wait for EKS add-ons to become active
+  ansible.builtin.command:
+    cmd: >
+      aws eks wait addon-active
+      --cluster-name {{ cluster_name }}
+      --addon-name {{ item }}
+      --region {{ aws_region }}
+  loop:
+    - vpc-cni
+    - coredns
+    - kube-proxy
+  changed_when: false
 ```
 
 ## Complete EKS Setup Playbook
@@ -320,7 +333,7 @@ Here is a full playbook that brings everything together:
   vars:
     aws_region: us-east-1
     cluster_name: myapp-production
-    k8s_version: "1.29"
+    k8s_version: "1.34"
     env: production
 
   tasks:
@@ -357,7 +370,7 @@ Here is a full playbook that brings everything together:
         managed_policies:
           - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
           - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
-          - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+          - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
       register: node_role
 
     # Pause to let IAM roles propagate
@@ -371,8 +384,8 @@ Here is a full playbook that brings everything together:
         version: "{{ k8s_version }}"
         role_arn: "{{ cluster_role.iam_role.arn }}"
         subnets:
-          - subnet-private-az-a
-          - subnet-private-az-b
+          - subnet-0a1b2c3d4e5f67890
+          - subnet-0123456789abcdef0
         region: "{{ aws_region }}"
         state: present
         wait: true
@@ -386,8 +399,8 @@ Here is a full playbook that brings everything together:
         region: "{{ aws_region }}"
         state: present
         subnets:
-          - subnet-private-az-a
-          - subnet-private-az-b
+          - subnet-0a1b2c3d4e5f67890
+          - subnet-0123456789abcdef0
         instance_types:
           - t3.large
         scaling_config:
