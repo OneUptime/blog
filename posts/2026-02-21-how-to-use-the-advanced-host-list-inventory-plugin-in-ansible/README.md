@@ -36,10 +36,10 @@ The `advanced_host_list` plugin ships with Ansible but might not be enabled by d
 ```ini
 # ansible.cfg
 [inventory]
-enable_plugins = ansible.builtin.advanced_host_list, ansible.builtin.yaml, ansible.builtin.ini, ansible.builtin.host_list
+enable_plugins = ansible.builtin.advanced_host_list, ansible.builtin.host_list, ansible.builtin.script, ansible.builtin.auto, ansible.builtin.yaml, ansible.builtin.ini, ansible.builtin.toml
 ```
 
-The ordering matters. Plugins are tried in order, and you want `advanced_host_list` to be checked before `host_list` to get the expanded feature set.
+Setting `enable_plugins` replaces Ansible's default enabled inventory plugin list, so keep the default plugins you still use. The ordering matters. Plugins are tried in order, and you want `advanced_host_list` to be checked before `host_list` to get the expanded feature set.
 
 ## Range Patterns
 
