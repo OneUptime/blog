@@ -45,6 +45,7 @@ Use assert at the beginning of your playbook to catch missing or invalid variabl
           - app_name is defined
           - app_version is defined
           - deploy_env is defined
+          - app_port is defined
           - deploy_env in ['staging', 'production']
           - app_port | int > 0
           - app_port | int < 65536
@@ -262,6 +263,7 @@ Here is a complete pre-flight check playbook that runs before deployments:
           - deploy_env is defined
           - db_host is defined
           - redis_host is defined
+          - rabbitmq_host is defined
         fail_msg: "Missing required deployment variables"
         quiet: true
 
@@ -307,8 +309,9 @@ Here is a complete pre-flight check playbook that runs before deployments:
     - name: Assert OS is supported
       ansible.builtin.assert:
         that:
-          - ansible_distribution in ['Ubuntu', 'Debian']
-          - ansible_distribution_major_version | int >= 20
+          - >
+            (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int >= 20) or
+            (ansible_distribution == 'Debian' and ansible_distribution_major_version | int >= 11)
         fail_msg: "Unsupported OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
         quiet: true
 
@@ -373,6 +376,7 @@ In roles, use assert in the first task to validate that required variables are p
       - postgresql_version is defined
       - postgresql_version in ['14', '15', '16']
       - postgresql_data_dir is defined
+      - postgresql_max_connections is defined
       - postgresql_max_connections | int > 0
     fail_msg: |
       Invalid PostgreSQL role parameters:
