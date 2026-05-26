@@ -109,7 +109,7 @@ The most common use case is generating config files that reference other hosts:
     - name: Build database connection string
       set_fact:
         db_primary_host: "{{ hostvars[groups['databases'][0]]['ansible_default_ipv4']['address'] }}"
-        db_replica_host: "{{ hostvars[groups['databases'][1]]['ansible_default_ipv4']['address'] | default('') }}"
+        db_replica_host: "{{ hostvars[groups['databases'][1]]['ansible_default_ipv4']['address'] if (groups['databases'] | length > 1) else '' }}"
         redis_host: "{{ hostvars[groups['cache'][0]]['ansible_default_ipv4']['address'] }}"
 
     - name: Deploy application configuration
@@ -199,7 +199,7 @@ The `extract` filter is a cleaner way to pull specific values from `hostvars`:
 
 ## Delegation: Running Tasks on One Host Using Another's Data
 
-The `delegate_to` keyword runs a task on a different host while keeping the original host's variables available:
+The `delegate_to` keyword runs a task on a different host while keeping the original host's variables available. Connection variables such as `ansible_host` can refer to the delegated host, so use `hostvars[inventory_hostname]` when you need the original host's connection details:
 
 ```yaml
 ---
@@ -216,14 +216,14 @@ The `delegate_to` keyword runs a task on a different host while keeping the orig
         body_format: json
         body:
           name: "{{ inventory_hostname }}"
-          address: "{{ ansible_host }}"
+          address: "{{ hostvars[inventory_hostname]['ansible_host'] | default(inventory_hostname) }}"
           port: "{{ app_port | default(8080) }}"
           type: webserver
       delegate_to: monitoring01
 
     # Add each web server to the load balancer
     - name: Add to HAProxy backend
-      haproxy:
+      community.general.haproxy:
         state: enabled
         host: "{{ inventory_hostname }}"
         socket: /var/run/haproxy/admin.sock
