@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SOPS, Secrets Management, Security, Encryption
 
-Description: Integrate Mozilla SOPS with Ansible for encrypted secrets management, enabling safe storage of sensitive data in version control.
+Description: Integrate SOPS with Ansible for encrypted secrets management, enabling safe storage of sensitive data in version control.
 
 ---
 
-Secrets management is one of the hardest problems in infrastructure automation. You need passwords, API keys, certificates, and other sensitive data available to your playbooks, but you cannot store them in plain text in your repository. Ansible Vault is the built-in solution, but it has limitations: it encrypts entire files, makes diffs useless, and managing multiple encryption keys is awkward.
+Secrets management is one of the hardest problems in infrastructure automation. You need passwords, API keys, certificates, and other sensitive data available to your playbooks, but you cannot store them in plain text in your repository. Ansible Vault is the built-in solution, but file-level vault encryption has limitations: it encrypts entire files, makes diffs useless, and managing multiple encryption keys is awkward.
 
-Mozilla SOPS (Secrets OPerationS) takes a different approach. It encrypts only the values in a YAML or JSON file, leaving keys visible. This means you can see the structure of your secrets files, get meaningful diffs, and use multiple encryption backends (AWS KMS, GCP KMS, Azure Key Vault, PGP, or age). In this post, I will show you how to integrate SOPS with Ansible for practical secrets management.
+SOPS (Secrets OPerationS) takes a different approach. It encrypts only the values in a YAML or JSON file, leaving keys visible. This means you can see the structure of your secrets files, get meaningful diffs, and use multiple encryption backends (AWS KMS, GCP KMS, Azure Key Vault, PGP, or age). In this post, I will show you how to integrate SOPS with Ansible for practical secrets management.
 
 ## Why SOPS Over Ansible Vault?
 
@@ -37,7 +37,7 @@ First, install SOPS on your Ansible controller and optionally on target hosts.
 This playbook installs SOPS:
 
 ```yaml
-# install_sops.yml - Install Mozilla SOPS
+# install_sops.yml - Install SOPS
 
 ---
 - name: Install SOPS
@@ -146,7 +146,7 @@ This playbook creates the SOPS configuration for your project:
       - age1def456...  # CI/CD key
     sops_rules:
       - path_regex: ".*secrets.*\\.ya?ml$"
-        encrypted_regex: "^(password|secret|key|token|api_key|private_key)$"
+        encrypted_regex: "^(.*password.*|.*secret.*|.*key.*|.*token.*|api_key|private_key)$"
       - path_regex: ".*credentials.*\\.ya?ml$"
 
   tasks:
@@ -278,7 +278,7 @@ This playbook sets up SOPS with AWS KMS:
           creation_rules:
             - path_regex: ".*secrets.*\\.ya?ml$"
               kms: '{{ kms_key_arn }}'
-              encrypted_regex: '^(password|secret|key|token|api_key|private_key|cert)$'
+              encrypted_regex: '^(.*password.*|.*secret.*|.*key.*|.*token.*|.*cert.*|api_key|private_key)$'
             - path_regex: ".*credentials.*\\.ya?ml$"
               kms: '{{ kms_key_arn }}'
         dest: .sops.yaml
@@ -286,7 +286,7 @@ This playbook sets up SOPS with AWS KMS:
 
     - name: Test SOPS encryption with KMS
       ansible.builtin.shell: |
-        echo "test_secret: hello" | sops -e --input-type yaml --output-type yaml /dev/stdin
+        echo "test_secret: hello" | sops -e --filename-override test.secrets.yaml --input-type yaml --output-type yaml /dev/stdin
       register: sops_test
       changed_when: false
       environment:
@@ -421,13 +421,16 @@ Track who has access to decrypt secrets:
     - name: Find all SOPS-encrypted files
       ansible.builtin.find:
         paths: .
-        patterns: "*.yml,*.yaml"
+        patterns:
+          - "*.yml"
+          - "*.yaml"
         recurse: true
         contains: "sops:"
+        read_whole_file: true
       register: sops_files
 
     - name: Extract recipient info from each file
-      ansible.builtin.shell: "sops -d --extract '[\"sops\"]' {{ item.path }} 2>/dev/null | grep -A1 recipient || true"
+      ansible.builtin.shell: "grep -E 'recipient:|arn:|fp:' {{ item.path }} || true"
       loop: "{{ sops_files.files }}"
       register: recipient_info
       changed_when: false
