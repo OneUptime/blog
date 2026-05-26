@@ -18,7 +18,7 @@ This guide covers creating Client VPN endpoints with different authentication me
 - AWS CLI configured with appropriate permissions
 - A VPC with subnets for the VPN endpoint
 - Server and client certificates (for mutual authentication)
-- Active Directory or SAML IdP (for federated authentication)
+- Active Directory (for directory authentication) or a SAML IdP (for federated authentication)
 
 ## Provider Configuration
 
@@ -60,14 +60,14 @@ resource "aws_acm_certificate" "vpn_server" {
   }
 }
 
-# Import a client root certificate for mutual authentication
-resource "aws_acm_certificate" "vpn_client_root" {
-  private_key       = file("${path.module}/certs/client-root.key")
-  certificate_body  = file("${path.module}/certs/client-root.crt")
+# Import a client certificate for mutual authentication
+resource "aws_acm_certificate" "vpn_client" {
+  private_key       = file("${path.module}/certs/client1.key")
+  certificate_body  = file("${path.module}/certs/client1.crt")
   certificate_chain = file("${path.module}/certs/ca.crt")
 
   tags = {
-    Purpose = "client-vpn-client-root"
+    Purpose = "client-vpn-client"
   }
 
   lifecycle {
@@ -132,7 +132,7 @@ resource "aws_ec2_client_vpn_endpoint" "mutual_auth" {
   # Mutual certificate authentication
   authentication_options {
     type                       = "certificate-authentication"
-    root_certificate_chain_arn = aws_acm_certificate.vpn_client_root.arn
+    root_certificate_chain_arn = aws_acm_certificate.vpn_client.arn
   }
 
   connection_log_options {
@@ -144,7 +144,7 @@ resource "aws_ec2_client_vpn_endpoint" "mutual_auth" {
   # Split tunnel - only VPC traffic goes through the VPN
   split_tunnel = true
 
-  # Use TCP for environments where UDP is blocked
+  # Use UDP by default; switch to "tcp" for environments where UDP is blocked
   transport_protocol = "udp"
   vpn_port           = 443
 
@@ -354,7 +354,7 @@ resource "aws_ec2_client_vpn_endpoint" "dual_auth" {
   # First factor: mutual certificate authentication
   authentication_options {
     type                       = "certificate-authentication"
-    root_certificate_chain_arn = aws_acm_certificate.vpn_client_root.arn
+    root_certificate_chain_arn = aws_acm_certificate.vpn_client.arn
   }
 
   # Second factor: SAML federated authentication
@@ -393,7 +393,7 @@ resource "aws_ec2_client_vpn_endpoint" "with_banner" {
 
   authentication_options {
     type                       = "certificate-authentication"
-    root_certificate_chain_arn = aws_acm_certificate.vpn_client_root.arn
+    root_certificate_chain_arn = aws_acm_certificate.vpn_client.arn
   }
 
   connection_log_options {
@@ -442,7 +442,7 @@ output "vpn_self_service_portal_url" {
 
 1. **Use split tunnel for most use cases.** Split tunnel only routes VPC-destined traffic through the VPN, reducing bandwidth costs and improving internet performance for users. Use full tunnel only when you need to inspect all traffic.
 
-2. **Enable connection logging.** CloudWatch logs give you visibility into who connected, when, and what they accessed. This is essential for security audits.
+2. **Enable connection logging.** CloudWatch logs give you visibility into who connected, when they connected or disconnected, and connection-level byte and packet counts. This is essential for security audits.
 
 3. **Use dual authentication for production.** Requiring both a client certificate and SAML/AD authentication provides two-factor security.
 
