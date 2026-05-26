@@ -8,19 +8,19 @@ Description: Deep dive into the Ansible docker_container module covering all maj
 
 ---
 
-The `docker_container` module from the `community.docker` collection is probably the module you will use most when managing Docker with Ansible. It handles the full lifecycle of containers: creating, starting, stopping, restarting, and removing them. It also manages port mappings, volumes, environment variables, resource limits, health checks, and pretty much every other Docker container configuration option. In this post, we will explore the module in depth with practical examples.
+The `docker_container` module from the `community.docker` collection is probably the module you will use most when managing Docker with Ansible. It handles the full lifecycle of containers: creating, starting, stopping, restarting, and removing them. It also manages port mappings, volumes, environment variables, resource limits, health checks, and many other Docker container configuration options. In this post, we will explore the module in depth with practical examples.
 
 ## Prerequisites
 
-You need the `community.docker` collection and the Docker Python SDK installed.
+You need the `community.docker` collection and the Python `requests` library installed on the host that executes the module.
 
 ```bash
 # Install the collection
 
 ansible-galaxy collection install community.docker
 
-# Install the Python SDK
-pip install docker
+# Install the Python dependency
+pip install requests
 ```
 
 Docker must be installed and running on the target host.
@@ -74,6 +74,7 @@ graph TD
     C[state: started] -->|Creates and starts| D[Container Running]
     E[state: stopped] -->|Stops if running| F[Container Stopped]
     G[state: absent] -->|Removes container| H[Container Gone]
+    I[state: healthy] -->|Creates, starts, and waits for health| J[Container Running and Healthy]
     D -->|state: stopped| F
     F -->|state: started| D
     B -->|state: started| D
@@ -83,6 +84,7 @@ graph TD
 
 - **present**: Ensures the container exists but does not start it
 - **started**: Ensures the container exists AND is running
+- **healthy**: Ensures the container exists, is running, and its health check reports healthy
 - **stopped**: Ensures the container is stopped (but not removed)
 - **absent**: Removes the container entirely
 
@@ -562,8 +564,8 @@ Here is a real-world example deploying a multi-container application.
 
 5. **Use `no_log: true` when passing secrets.** Environment variables often contain passwords and API keys.
 
-6. **Use `pull: true` to ensure the latest image.** Without it, Docker will use a locally cached image if one exists.
+6. **Use `pull: always` to ensure the latest image.** Without it, Docker will use a locally cached image if one exists.
 
 ## Conclusion
 
-The `docker_container` module is a comprehensive tool for managing Docker containers with Ansible. It covers every container configuration option Docker supports, from basic port mappings to advanced resource limits and health checks. By using this module in your playbooks, you get declarative, idempotent container management that integrates seamlessly with the rest of your Ansible automation.
+The `docker_container` module is a comprehensive tool for managing Docker containers with Ansible. It covers a wide range of container configuration options, from basic port mappings to advanced resource limits and health checks. By using this module in your playbooks, you get declarative, idempotent container management that integrates seamlessly with the rest of your Ansible automation.
