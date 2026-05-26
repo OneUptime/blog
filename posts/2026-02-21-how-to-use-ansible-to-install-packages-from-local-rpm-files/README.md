@@ -76,7 +76,7 @@ You can also pass the URL directly to dnf:
     disable_gpg_check: yes
 ```
 
-The direct URL approach is simpler but less robust. There is no caching, no checksum verification, and the download happens each time Ansible checks the package state.
+The direct URL approach is simpler but less robust. There is no Ansible-managed caching or checksum verification, and the RPM may need to be fetched again when Ansible checks the package state.
 
 ## Handling Dependencies
 
@@ -156,7 +156,7 @@ For production deployments, you should verify RPM signatures. Import the vendor'
     state: present
 ```
 
-Without `disable_gpg_check`, dnf will verify the RPM signature against the imported keys and refuse to install if the signature does not match.
+Without `disable_gpg_check`, dnf can verify package signatures against imported keys and refuse to install if the signature does not match. For RPM files installed from the filesystem or a URL, make sure local package signature checking is enabled in dnf, for example with `localpkg_gpgcheck=1` in `/etc/dnf/dnf.conf`.
 
 ## Making RPM Installation Idempotent
 
@@ -328,7 +328,7 @@ For rare situations where the dnf module does not do what you need:
 
 2. **Always verify checksums for remote downloads.** Use the `checksum` parameter in `get_url` to ensure you got the right file.
 
-3. **Import GPG keys before deployment.** This avoids interactive prompts during installation.
+3. **Import GPG keys before deployment.** This avoids signature verification failures during installation.
 
 4. **Use version variables.** Centralize version numbers so updating to a new release requires changing one variable, not editing multiple tasks.
 
