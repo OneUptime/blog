@@ -16,17 +16,19 @@ In this post, I will walk through how to automate VMware HA configuration using 
 
 Before you start, you need a few things in place:
 
-- Ansible 2.10 or newer installed on your control node
-- The `community.vmware` collection installed
+- ansible-core 2.19 or newer installed on your control node
+- The `vmware.vmware` collection installed
+- The `community.vmware` collection installed if you want to run the datastore verification example
 - A vCenter Server with admin-level credentials
 - Python packages `pyvmomi` and `requests` installed
 - At least one ESXi cluster with two or more hosts
 
-Install the required collection and Python dependencies first.
+Install the required collections and Python dependencies first.
 
 ```bash
-# Install the VMware community collection
+# Install the VMware collection
 
+ansible-galaxy collection install vmware.vmware
 ansible-galaxy collection install community.vmware
 
 # Install required Python libraries
@@ -35,15 +37,15 @@ pip install pyvmomi requests
 
 ## Understanding VMware HA Architecture
 
-VMware HA works at the cluster level. When you enable HA on a cluster, vCenter elects a master host that monitors all other hosts in the cluster. If a host fails, the master host restarts the affected VMs on surviving hosts.
+VMware HA works at the cluster level. When you enable HA on a cluster, vSphere HA elects a primary host that monitors the other hosts in the cluster. If a host fails, HA restarts the affected VMs on surviving hosts.
 
 ```mermaid
 graph TD
     A[vCenter Server] --> B[HA Cluster]
-    B --> C[Master Host]
-    B --> D[Slave Host 1]
-    B --> E[Slave Host 2]
-    B --> F[Slave Host 3]
+    B --> C[Primary Host]
+    B --> D[Secondary Host 1]
+    B --> E[Secondary Host 2]
+    B --> F[Secondary Host 3]
     C -->|Monitors| D
     C -->|Monitors| E
     C -->|Monitors| F
@@ -75,7 +77,7 @@ all:
 
 ## Enabling VMware HA on a Cluster
 
-The `community.vmware.vmware_cluster_ha` module gives you direct control over HA settings. Here is a playbook that enables HA with sensible production defaults.
+The `vmware.vmware.cluster_ha` module gives you direct control over HA settings. Here is a playbook that enables HA with sensible production defaults.
 
 ```yaml
 # playbooks/configure-vmware-ha.yml
@@ -89,7 +91,7 @@ The `community.vmware.vmware_cluster_ha` module gives you direct control over HA
   tasks:
     # Enable HA with host monitoring and admission control
     - name: Enable VMware HA on cluster
-      community.vmware.vmware_cluster_ha:
+      vmware.vmware.cluster_ha:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -97,14 +99,15 @@ The `community.vmware.vmware_cluster_ha` module gives you direct control over HA
         cluster_name: "{{ vcenter_cluster }}"
         validate_certs: "{{ validate_certs }}"
         enable: true
-        ha_host_monitoring: enabled
-        ha_vm_monitoring: vmMonitoringOnly
-        ha_vm_min_up_time: 120
-        ha_vm_max_failures: 3
-        ha_vm_max_failure_window: 24
-        ha_restart_priority: medium
-        ha_vm_failure_interval: 30
-        ha_vm_monitoring_sensitivity: 2
+        host_failure_response:
+          restart_vms: true
+          default_vm_restart_priority: medium
+        vm_monitoring:
+          mode: vmMonitoringOnly
+          minimum_uptime: 120
+          maximum_resets: 3
+          maximum_resets_window: 86400
+          failure_interval: 30
       register: ha_result
 
     - name: Show HA configuration result
@@ -128,7 +131,7 @@ Admission control prevents you from powering on VMs if the cluster does not have
   tasks:
     # Set admission control to reserve resources for one host failure
     - name: Configure admission control policy
-      community.vmware.vmware_cluster_ha:
+      vmware.vmware.cluster_ha:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -136,11 +139,8 @@ Admission control prevents you from powering on VMs if the cluster does not have
         cluster_name: "{{ vcenter_cluster }}"
         validate_certs: "{{ validate_certs }}"
         enable: true
-        ha_admission_control: true
-        ha_failover_level: 1
-        reservation_based_admission_control:
-          auto_compute_percentages: true
-          failover_level: 1
+        admission_control_policy: cluster_resource
+        admission_control_failover_level: 1
       register: admission_result
 
     - name: Print admission control status
@@ -150,7 +150,7 @@ Admission control prevents you from powering on VMs if the cluster does not have
 
 ## Setting VM Restart Priority by Group
 
-Not all VMs are equal. Your domain controllers and database servers should come back before your dev environments. Ansible lets you set per-VM restart priorities.
+Not all VMs are equal. Your domain controllers and database servers should have a higher restart priority than your dev environments. The current `vmware.vmware.cluster_ha` module lets you set the cluster's default VM restart priority; per-VM HA overrides still need to be managed through vCenter, PowerCLI, or the vSphere API.
 
 ```yaml
 # playbooks/set-vm-restart-priority.yml
@@ -162,57 +162,12 @@ Not all VMs are equal. Your domain controllers and database servers should come 
     - ../vars/vcenter_creds.yml
 
   vars:
-    # Define VM groups with their restart priorities
-    critical_vms:
-      - name: dc01
-        priority: high
-      - name: dc02
-        priority: high
-      - name: sql-prod-01
-        priority: high
-    standard_vms:
-      - name: app-server-01
-        priority: medium
-      - name: app-server-02
-        priority: medium
-    low_priority_vms:
-      - name: dev-vm-01
-        priority: low
-      - name: monitoring-01
-        priority: low
+    default_restart_priority: high
 
   tasks:
-    # Configure restart priority for each critical VM
-    - name: Set HA restart priority for critical VMs
-      community.vmware.vmware_vm_ha:
-        hostname: "{{ vcenter_hostname }}"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vm_name: "{{ item.name }}"
-        ha_restart_priority: "{{ item.priority }}"
-      loop: "{{ critical_vms + standard_vms + low_priority_vms }}"
-      loop_control:
-        label: "{{ item.name }} -> {{ item.priority }}"
-```
-
-## Configuring Heartbeat Datastores
-
-HA uses datastore heartbeating as a secondary mechanism to determine if a host is really down or just network-isolated. You should explicitly specify which datastores to use for heartbeating rather than letting vCenter pick automatically.
-
-```yaml
-# playbooks/configure-heartbeat-datastores.yml
----
-- name: Configure HA heartbeat datastores
-  hosts: localhost
-  gather_facts: false
-  vars_files:
-    - ../vars/vcenter_creds.yml
-
-  tasks:
-    # Set specific datastores for HA heartbeating
-    - name: Configure heartbeat datastore policy
-      community.vmware.vmware_cluster_ha:
+    # Configure the cluster default restart priority
+    - name: Set default HA restart priority
+      vmware.vmware.cluster_ha:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -220,15 +175,52 @@ HA uses datastore heartbeating as a secondary mechanism to determine if a host i
         cluster_name: "{{ vcenter_cluster }}"
         validate_certs: "{{ validate_certs }}"
         enable: true
-        ha_datastore_heartbeating: allFeasibleDsWithUserPreference
-        ha_heartbeat_datastore:
-          - ds-shared-01
-          - ds-shared-02
+        host_failure_response:
+          restart_vms: true
+          default_vm_restart_priority: "{{ default_restart_priority }}"
+```
+
+## Configuring Heartbeat Datastores
+
+HA uses datastore heartbeating as a secondary mechanism to determine if a host is really down or just network-isolated. The current Ansible HA module does not expose heartbeat datastore selection, so configure the heartbeat datastore policy in vCenter, PowerCLI, or the vSphere API, and use Ansible to verify that the shared datastores you plan to select are visible to the cluster.
+
+```yaml
+# playbooks/verify-heartbeat-datastores.yml
+---
+- name: Verify candidate HA heartbeat datastores
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../vars/vcenter_creds.yml
+
+  vars:
+    heartbeat_datastores:
+      - ds-shared-01
+      - ds-shared-02
+
+  tasks:
+    # Confirm the datastores exist before selecting them for HA heartbeating
+    - name: Gather datastore info for the cluster
+      community.vmware.vmware_datastore_info:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        datacenter_name: "{{ vcenter_datacenter }}"
+        cluster: "{{ vcenter_cluster }}"
+        validate_certs: "{{ validate_certs }}"
+      register: datastore_info
+
+    - name: Verify candidate datastores exist
+      ansible.builtin.assert:
+        that:
+          - item in datastore_info.datastores | map(attribute='name') | list
+        fail_msg: "Candidate heartbeat datastore {{ item }} was not found"
+      loop: "{{ heartbeat_datastores }}"
 ```
 
 ## Advanced HA Settings
 
-Sometimes you need to tweak settings that are not exposed through the standard module parameters. You can use the `vmware_cluster_ha` module's `advanced_settings` parameter or fall back to the REST API.
+Sometimes you need to tweak settings that are not exposed through the standard module parameters. You can use the `cluster_ha` module's `advanced_settings` parameter or fall back to the vSphere API.
 
 ```yaml
 # playbooks/advanced-ha-settings.yml
@@ -242,7 +234,7 @@ Sometimes you need to tweak settings that are not exposed through the standard m
   tasks:
     # Apply advanced HA configuration options
     - name: Set advanced HA parameters
-      community.vmware.vmware_cluster_ha:
+      vmware.vmware.cluster_ha:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -250,11 +242,8 @@ Sometimes you need to tweak settings that are not exposed through the standard m
         cluster_name: "{{ vcenter_cluster }}"
         validate_certs: "{{ validate_certs }}"
         enable: true
+        host_isolation_response: powerOff
         advanced_settings:
-          # Isolation response when host loses network
-          das.isolationResponse: "powerOff"
-          # Time to wait before declaring host isolated
-          das.isolationShutdownTimeout: "300"
           # Use specific isolation addresses
           das.useDefaultIsolationAddress: "false"
           das.isolationAddress0: "10.0.0.1"
@@ -269,7 +258,7 @@ For production use, wrap everything in a reusable role that you can apply across
 # roles/vmware_ha/tasks/main.yml
 ---
 - name: Enable and configure HA
-  community.vmware.vmware_cluster_ha:
+  vmware.vmware.cluster_ha:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
@@ -277,11 +266,13 @@ For production use, wrap everything in a reusable role that you can apply across
     cluster_name: "{{ ha_cluster_name }}"
     validate_certs: "{{ validate_certs }}"
     enable: true
-    ha_host_monitoring: enabled
-    ha_vm_monitoring: vmAndAppMonitoring
-    ha_admission_control: true
-    ha_failover_level: "{{ ha_failover_hosts | default(1) }}"
-    ha_restart_priority: "{{ ha_default_restart_priority | default('medium') }}"
+    host_failure_response:
+      restart_vms: true
+      default_vm_restart_priority: "{{ ha_default_restart_priority | default('medium') }}"
+    vm_monitoring:
+      mode: vmAndAppMonitoring
+    admission_control_policy: cluster_resource
+    admission_control_failover_level: "{{ ha_failover_hosts | default(1) }}"
     advanced_settings: "{{ ha_advanced_settings | default({}) }}"
   register: ha_config
 
@@ -309,11 +300,11 @@ After deploying, you should validate that HA is actually working. This playbook 
   tasks:
     # Pull cluster info and verify HA is active
     - name: Gather cluster info
-      community.vmware.vmware_cluster_info:
+      vmware.vmware.cluster_info:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
-        datacenter: "{{ vcenter_datacenter }}"
+        datacenter_name: "{{ vcenter_datacenter }}"
         cluster_name: "{{ vcenter_cluster }}"
         validate_certs: "{{ validate_certs }}"
       register: cluster_info
@@ -332,7 +323,7 @@ A few things I have learned the hard way when automating VMware HA:
 
 1. **Network partition issues**: If your management network is unreliable, HA will declare false positives. Always configure multiple isolation addresses.
 2. **Admission control too aggressive**: Setting failover level to 2 on a 3-host cluster means you can only use one-third of your capacity. Balance availability against cost.
-3. **Forgetting to set VM restart order**: Without explicit priorities, your database servers might come up after the application servers that depend on them.
+3. **Forgetting to set VM restart priority**: Without the right default or per-VM priorities, your database servers might come up after the application servers that depend on them.
 4. **Not testing failover**: Automated configuration is great, but simulate a host failure at least once to verify VMs actually restart where you expect them to.
 
 ## Wrapping Up
