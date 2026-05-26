@@ -17,8 +17,11 @@ The `community.docker` collection brings Docker management into Ansible. Instead
 
 ansible-galaxy collection install community.docker
 
-# The Docker SDK for Python is required on the target hosts
-pip install docker
+# Install Python requirements on the hosts that execute Docker API modules
+python3 -m pip install requests
+
+# docker_compose_v2 also requires the Docker CLI with the Compose plugin
+docker compose version
 ```
 
 Add to your requirements:
@@ -336,7 +339,7 @@ The `docker_compose_v2` module manages Docker Compose stacks:
       ansible.builtin.debug:
         msg: "Docker {{ docker_host.host_info.ServerVersion }} on {{ docker_host.host_info.OperatingSystem }}"
 
-    - name: List all containers
+    - name: Get application container information
       community.docker.docker_container_info:
         name: myapp
       register: container_info
@@ -472,4 +475,4 @@ graph TD
 
 ## Conclusion
 
-The `community.docker` collection turns Docker management into declarative Ansible code. Containers, images, networks, volumes, and Compose stacks all become idempotent resources. The modules handle the complexity of checking current state, making changes only when needed, and providing clean output. Make sure the `docker` Python SDK is installed on your target hosts, and you have a complete Docker automation toolkit within your playbooks.
+The `community.docker` collection turns Docker management into declarative Ansible code. Containers, images, networks, volumes, and Compose stacks all become idempotent resources. The modules handle the complexity of checking current state, making changes only when needed, and providing clean output. Make sure the module requirements are installed on the hosts where the modules execute, and you have a complete Docker automation toolkit within your playbooks.
