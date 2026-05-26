@@ -103,14 +103,20 @@ One of the most common uses is generating timestamped backup filenames:
 
 ```yaml
 # Rotate application logs with date-stamped archives
+- name: Check application log size
+  ansible.builtin.stat:
+    path: /var/log/myapp/app.log
+  register: log_stat
+
 - name: Rotate logs
   ansible.builtin.shell: |
     mv /var/log/myapp/app.log /var/log/myapp/app.log.{{ '%Y%m%d' | strftime }}
-  when: log_stat.stat.size > 104857600  # > 100MB
+  when: log_stat.stat.exists and log_stat.stat.size > 104857600  # > 100MB
 
 - name: Compress old logs
   ansible.builtin.shell: |
     gzip /var/log/myapp/app.log.{{ '%Y%m%d' | strftime }}
+  when: log_stat.stat.exists and log_stat.stat.size > 104857600  # > 100MB
 ```
 
 ## Configuration File Headers
@@ -198,7 +204,7 @@ Generate reports with formatted timestamps:
 
 ## Cleanup Tasks Based on Date
 
-Use strftime to calculate date thresholds for cleanup:
+Use strftime to calculate date labels for cleanup reports:
 
 ```yaml
 # Clean up backups older than 30 days
@@ -219,7 +225,7 @@ Use strftime to calculate date thresholds for cleanup:
     state: absent
   loop: "{{ old_backups.files }}"
   loop_control:
-    label: "{{ item.path | basename }}"
+    label: "{{ item.path | basename }} (cutoff {{ cutoff_date }})"
 ```
 
 ## Using strftime with ansible_date_time
@@ -243,7 +249,7 @@ Ansible provides the `ansible_date_time` fact, which already has many formatted 
 
 ## Timezone Considerations
 
-By default, strftime uses the system's local timezone. Keep this in mind when running playbooks across hosts in different timezones:
+By default, strftime uses the local timezone of the Ansible control node where templates are evaluated. Keep this in mind when formatting timestamps from hosts in different timezones:
 
 ```yaml
 # Show timezone information
@@ -255,6 +261,14 @@ By default, strftime uses the system's local timezone. Keep this in mind when ru
 ```
 
 If you need consistent UTC timestamps across all hosts, use `ansible_date_time.epoch` as the base and handle timezone conversion in your template logic.
+In ansible-core 2.14 and later, you can also pass `utc=true` to format the timestamp as UTC:
+
+```yaml
+# Format a timestamp in UTC
+- name: Display UTC time
+  ansible.builtin.debug:
+    msg: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(seconds=ansible_date_time.epoch, utc=true) }}"
+```
 
 ## Cron Job Comments
 
@@ -272,4 +286,4 @@ Add readable timestamps to cron jobs:
 
 ## Summary
 
-The `strftime` filter is your go-to for formatting timestamps in Ansible. Use it for backup filenames (`%Y%m%d_%H%M%S`), configuration headers (`%Y-%m-%d at %H:%M:%S`), deployment reports (`%B %d, %Y`), and log entries (`%Y-%m-%d %H:%M:%S`). Remember that it uses the local timezone by default, accepts Unix epoch timestamps as optional input, and follows Python's strftime format codes. For consistent cross-host timestamps, work with epoch values and format them at the point of output.
+The `strftime` filter is your go-to for formatting timestamps in Ansible. Use it for backup filenames (`%Y%m%d_%H%M%S`), configuration headers (`%Y-%m-%d at %H:%M:%S`), deployment reports (`%B %d, %Y`), and log entries (`%Y-%m-%d %H:%M:%S`). Remember that it uses the control node's local timezone by default, accepts Unix epoch timestamps as optional input, and follows Python's strftime format codes. For consistent cross-host timestamps, work with epoch values and format them at the point of output.
