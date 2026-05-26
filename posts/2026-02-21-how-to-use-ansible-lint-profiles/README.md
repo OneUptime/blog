@@ -46,7 +46,7 @@ Or from the command line:
 
 ```bash
 # Override profile from CLI
-ansible-lint -p production playbook.yml
+ansible-lint --profile production playbook.yml
 ansible-lint --profile safety playbook.yml
 ```
 
@@ -92,14 +92,14 @@ The `basic` profile adds rules about common mistakes that could lead to unexpect
 - `deprecated-local-action`: Using `local_action` instead of `delegate_to`
 - `deprecated-module`: Using modules that are deprecated
 - `inline-env-var`: Setting environment variables inline in commands
-- `key-order[task]`: Task key ordering
+- `key-order`: Task key ordering
 - `literal-compare`: Using `when: result == True` instead of `when: result`
-- `jinja[spacing]`: Jinja2 template spacing
+- `jinja`: Jinja2 template spacing
 - `no-free-form`: Using free-form syntax instead of proper module parameters
 - `no-jinja-when`: Using `{{ }}` in `when` conditions
 - `no-tabs`: Tabs in YAML files
-- `partial-become[task]`: Setting become without become_user
-- `playbook-extension`: Playbook files should use .yml extension
+- `partial-become`: Setting `become_user` without `become`
+- `playbook-extension`: Playbook files should use a `.yml` or `.yaml` extension
 - `role-name`: Role names should match expectations
 - `schema`: YAML schema validation
 - `name`: Various task naming rules
@@ -125,11 +125,11 @@ Example of what `basic` catches that `min` does not:
 - name: List files
   ansible.builtin.shell: ls -la /var/log  # Should use command, not shell
 
-# basic catches deprecated bare variables
-- name: Install package
-  ansible.builtin.apt:
-    name: my_package_var  # Should be {{ my_package_var }}
-    state: present
+# basic catches deprecated bare variables in loops
+- name: Print each item
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  with_items: package_list  # Should be {{ package_list }} if this is a variable
 ```
 
 ## Profile: moderate
@@ -138,9 +138,9 @@ The `moderate` profile adds rules about best practices and maintainability.
 
 **Rules added on top of basic:**
 - `name[template]`: Task names should not use Jinja2 templates
-- `name[imperative]`: Task names should start with a capital letter (verb)
+- `name[imperative]`: Task names should start with an imperative verb
+- `name[casing]`: Task names should start with an uppercase letter
 - `spell-var-name`: Variable names should be meaningful
-- Additional YAML formatting rules
 
 **When to use:** This is the sweet spot for most active projects. It enforces good practices without being overly strict.
 
@@ -175,9 +175,9 @@ Example of what `moderate` catches:
 The `safety` profile adds rules focused on security and safe operations.
 
 **Rules added on top of moderate:**
-- `latest[git]`: Git operations should specify a version
-- `latest[hg]`: Mercurial operations should specify a version
-- `latest[pip]`: pip should install specific versions
+- `avoid-implicit`: Avoid dangerous implicit behaviors
+- `latest`: Source control operations should specify a version
+- `package-latest`: Package installs should avoid uncontrolled latest updates
 - `risky-file-permissions`: File tasks should set explicit permissions
 - `risky-octal`: Octal permissions should be quoted strings
 - `risky-shell-pipe`: Shell pipes can hide errors
@@ -209,10 +209,11 @@ Example of what `safety` catches:
     group: root
     mode: "0644"
 
-# safety catches unversioned pip installs
+# safety catches pip installs that request the latest version
 - name: Install Python packages
   ansible.builtin.pip:
-    name: requests  # No version pinned!
+    name: requests
+    state: latest
 
 # Fixed:
 - name: Install Python packages
@@ -225,13 +226,20 @@ Example of what `safety` catches:
 The `shared` profile is designed for code that will be shared publicly, like Ansible Galaxy roles and collections.
 
 **Rules added on top of safety:**
-- `galaxy[no-changelog]`: Roles/collections should have a changelog
-- `galaxy[version-incorrect]`: Version in galaxy.yml should follow semver
-- `galaxy[no-runtime]`: Collections should have meta/runtime.yml
+- `galaxy`: Galaxy metadata checks
+- `ignore-errors`: Avoid ignoring all errors
+- `layout`: Layout checks for shareable content
 - `meta-incorrect`: Role meta information should be complete
 - `meta-no-tags`: Roles should have tags in meta
 - `meta-video-links`: Video links in meta should be valid
-- `meta-runtime[unsupported-version]`: Runtime version checks
+- `meta-version`: Role metadata version checks
+- `meta-runtime`: Runtime version checks
+- `no-changed-when`: Commands should define when they change state
+- `no-handler`: Tasks that look like handlers should be handlers
+- `no-relative-paths`: Avoid relative paths
+- `max-block-depth`: Limit deeply nested blocks
+- `max-tasks`: Limit excessive task counts
+- `unsafe-loop`: Avoid unsafe loop variable patterns
 
 **When to use:** When you are developing roles or collections that will be published to Ansible Galaxy or shared across organizations.
 
@@ -272,9 +280,13 @@ dependencies: []
 The `production` profile is the strictest. It includes everything and adds rules that enforce the highest standards.
 
 **Rules added on top of shared:**
-- `avoid-implicit`: Avoid relying on implicit behaviors
-- `sanity[cannot-ignore]`: Cannot ignore certain sanity checks
 - `fqcn`: Strict FQCN enforcement everywhere
+- `sanity`: Ansible sanity checks
+- `avoid-dot-notation`: Avoid dot notation for variable access
+- `import-task-no-when`: Avoid applying `when` directly to imported task files
+- `meta-no-dependencies`: Avoid role dependencies in metadata
+- `single-entry-point`: Collections should have a clear entry point
+- `use-loop`: Prefer `loop` over legacy looping constructs
 
 **When to use:** For mission-critical infrastructure where every playbook must meet the highest quality standards. Most teams will not need this level of strictness.
 
@@ -295,7 +307,7 @@ Here is a quick comparison to help you decide:
   hosts: localhost
   tasks:
     # min: would catch syntax errors only
-    # basic: catches missing FQCN, yaml formatting
+    # basic: catches common style and formatting issues
     - name: install package
       apt:
         name: nginx
@@ -307,7 +319,7 @@ Here is a quick comparison to help you decide:
         src: test.txt
         dest: /tmp/test.txt
 
-    # production: catches everything above plus implicit behaviors
+    # shared: catches command tasks that do not define changed_when
     - name: Run a quick check
       ansible.builtin.command: echo hello
 ```
@@ -316,19 +328,19 @@ Results by profile:
 
 ```bash
 # min: 0 violations (no syntax errors)
-ansible-lint -p min test_playbook.yml
+ansible-lint --profile min test_playbook.yml
 
-# basic: ~3 violations (fqcn, yaml issues)
-ansible-lint -p basic test_playbook.yml
+# basic: reports common style and formatting violations
+ansible-lint --profile basic test_playbook.yml
 
-# moderate: ~4 violations (adds naming issues)
-ansible-lint -p moderate test_playbook.yml
+# moderate: adds stricter naming violations
+ansible-lint --profile moderate test_playbook.yml
 
-# safety: ~5 violations (adds file permissions)
-ansible-lint -p safety test_playbook.yml
+# safety: adds file permissions and other safety checks
+ansible-lint --profile safety test_playbook.yml
 
-# production: ~6 violations (adds implicit behavior flags)
-ansible-lint -p production test_playbook.yml
+# production: adds the strictest checks, including FQCN enforcement
+ansible-lint --profile production test_playbook.yml
 ```
 
 ## Migration Strategy
@@ -339,7 +351,7 @@ The best approach is to start at a lower profile and work your way up:
 2. Move to `basic` and fix the violations
 3. Stay at `moderate` for regular development
 4. Use `safety` for sensitive infrastructure
-5. Adopt `production` for shared roles and collections
+5. Adopt `shared` or `production` for content you plan to publish or certify
 
 ```yaml
 # Week 1: Start here
