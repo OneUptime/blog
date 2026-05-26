@@ -84,11 +84,11 @@ AWX supports several question types, each suited for different kinds of input.
 
 **Textarea** - A multi-line text area. Useful for passing in lists of items, one per line, or longer configuration snippets.
 
-**Password** - A text field where the input is masked and encrypted at rest. The value is never shown in job logs. Perfect for API keys or temporary credentials.
+**Password** - A text field where the input is masked, encrypted, and treated as sensitive in job output. Perfect for API keys or temporary credentials.
 
 **Multiple Choice** - A dropdown with predefined options. The user picks exactly one. Best for environment selectors, region pickers, or any controlled set of values.
 
-**Multiple Select** - Like multiple choice but the user can pick more than one option. The variable receives a newline-separated string of selected values.
+**Multiple Select** - Like multiple choice but the user can pick more than one option. The variable receives a list of selected values.
 
 **Integer** - A number field that validates the input is a whole number. You can set min and max bounds. Great for replica counts, port numbers, or batch sizes.
 
@@ -129,6 +129,8 @@ Survey answers become extra variables passed to the playbook. They work exactly 
       ansible.builtin.uri:
         url: "http://localhost:8080/health"
         status_code: 200
+      register: health_check
+      until: health_check is succeeded
       retries: 5
       delay: 10
 ```
@@ -243,7 +245,7 @@ Surveys become really powerful when combined with AWX role-based access control.
 
 ## Limitations to Be Aware Of
 
-Surveys have a few rough edges. There is no way to make one question depend on another in the UI. The variable names must be valid Ansible variable names, so no hyphens or spaces. Password-type answers are encrypted, which means you cannot use them in job output or debug statements. And the total survey payload is limited in size, so do not try to pass large configuration blocks through a textarea field. For complex inputs, consider having the playbook pull configuration from a Git repo or an external data source instead.
+Surveys have a few rough edges. There is no way to make one question depend on another in the UI. The variable names must be valid Ansible variable names, so no hyphens or spaces. Password-type answers are encrypted and redacted in job output, so do not rely on debug statements to inspect them. And the total survey payload is limited in size, so do not try to pass large configuration blocks through a textarea field. For complex inputs, consider having the playbook pull configuration from a Git repo or an external data source instead.
 
 ## Final Thoughts
 
