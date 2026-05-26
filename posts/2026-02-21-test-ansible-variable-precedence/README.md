@@ -51,7 +51,8 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible molecule "molecule-plugins[docker]" ansible-lint yamllint pytest testinfra
+ansible-galaxy collection install community.general
 ```
 
 ## Writing Tests
@@ -178,16 +179,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        distro: [ubuntu2404, rocky9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: pip install ansible molecule "molecule-plugins[docker]"
+      - run: ansible-galaxy collection install community.general
+      - run: molecule test -- --limit ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,11 +208,14 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: docker:stable-dind
   services:
     - docker:dind
+  before_script:
+    - apk add --no-cache python3 py3-pip
   script:
-    - pip install ansible molecule molecule-docker
+    - python3 -m pip install ansible molecule "molecule-plugins[docker]"
+    - ansible-galaxy collection install community.general
     - molecule test
 ```
 
@@ -266,12 +269,12 @@ Testing Ansible code requires multiple layers: linting for style and best practi
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these testing patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -303,7 +306,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -385,7 +388,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -447,4 +450,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
