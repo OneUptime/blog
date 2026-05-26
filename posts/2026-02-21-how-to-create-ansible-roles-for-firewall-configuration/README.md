@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Firewall, UFW, Security, Role
 
-Description: Build an Ansible role for consistent firewall management using UFW with support for custom rules, application profiles, and rate limiting.
+Description: Build an Ansible role for consistent firewall management using UFW with support for custom rules, port ranges, and rate limiting.
 
 ---
 
@@ -24,8 +24,6 @@ roles/firewall/
     configure.yml
     rules.yml
     logging.yml
-  templates/
-    before.rules.j2
   meta/main.yml
 ```
 
@@ -81,13 +79,9 @@ fw_port_ranges: []
 
 # Logging
 fw_logging: "on"
-fw_log_level: low
 
 # Advanced: enable IP forwarding (needed for VPNs, Docker)
 fw_ip_forward: false
-
-# Advanced: custom before.rules for NAT, etc.
-fw_custom_before_rules: []
 
 # Reset existing rules before applying
 fw_reset_rules: false
@@ -138,14 +132,14 @@ fw_reset_rules: false
 - name: Configure IP forwarding in UFW
   ansible.builtin.lineinfile:
     path: /etc/ufw/sysctl.conf
-    regexp: '^net/ipv4/ip_forward='
+    regexp: '^#?net/ipv4/ip_forward='
     line: "net/ipv4/ip_forward={{ '1' if fw_ip_forward else '0' }}"
   notify: restart ufw
 
 - name: Configure IPv6 forwarding in UFW
   ansible.builtin.lineinfile:
     path: /etc/ufw/sysctl.conf
-    regexp: '^net/ipv6/conf/default/forwarding='
+    regexp: '^#?net/ipv6/conf/default/forwarding='
     line: "net/ipv6/conf/default/forwarding={{ '1' if fw_ip_forward else '0' }}"
   notify: restart ufw
 ```
