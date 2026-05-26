@@ -122,16 +122,14 @@ fi
 
 ## Method 4: Audit All Files in a Project
 
-Scan your entire project to find all encrypted and unencrypted YAML files:
+Scan your entire project to find encrypted YAML files and vault-named YAML files that are not encrypted:
 
 ```bash
 #!/bin/bash
 # audit_vault_files.sh
-# Scans a project directory and reports vault encryption status of all YAML files
+# Scans a project directory and reports encrypted YAML files plus unencrypted vault files
 
 PROJECT_DIR="${1:-.}"
-ENCRYPTED=0
-PLAINTEXT=0
 
 echo "Vault Encryption Audit"
 echo "======================"
@@ -300,19 +298,19 @@ if [ ${ERRORS} -gt 0 ]; then
 fi
 ```
 
-## Method 8: Using ansible-vault is-encrypted (Ansible 2.12+)
+## Method 8: Using ansible-vault view to Verify Decryption
 
-Starting with Ansible 2.12, you can use the `ansible-vault` command to check:
+The `ansible-vault` command does not provide an `is-encrypted` subcommand. If you need to verify that a file is both vault-formatted and decryptable with your configured vault secret, use `ansible-vault view`:
 
 ```bash
-# Check if a file is vault-encrypted (returns exit code 0 if encrypted)
-ansible-vault is-encrypted group_vars/production/vault.yml
+# Verify that a vault file can be decrypted
+ansible-vault view group_vars/production/vault.yml >/dev/null
 echo $?
-# 0 = encrypted
-# 1 = not encrypted
+# 0 = decrypted successfully
+# non-zero = not decryptable with the provided vault secret, not a vault file, or another error
 ```
 
-This is the most idiomatic way to check, but requires a newer Ansible version.
+This requires a vault password source, such as `--ask-vault-pass`, `--vault-password-file`, or `--vault-id`. For a simple no-password detection check, inspect the `$ANSIBLE_VAULT;` header instead.
 
 ## CI/CD Integration
 
@@ -389,4 +387,4 @@ echo "Lines: $(wc -l < "${FILE}")"
 
 ## Summary
 
-Checking whether a file is Ansible Vault encrypted boils down to inspecting its first line for the `$ANSIBLE_VAULT;` header. The `file` command, the `head` command, and `ansible-vault is-encrypted` all provide quick answers from the command line. For automation, use shell scripts or Python to check headers programmatically. Integrate these checks into pre-commit hooks and CI pipelines to ensure vault files stay encrypted throughout your development workflow. The naming convention of `vault.yml` combined with automated checks gives you a reliable safety net against accidental plaintext commits.
+Checking whether a file is Ansible Vault encrypted boils down to inspecting its first line for the `$ANSIBLE_VAULT;` header. The `file` command and the `head` command provide quick answers from the command line, while `ansible-vault view` verifies that the file can actually be decrypted with your vault secret. For automation, use shell scripts or Python to check headers programmatically. Integrate these checks into pre-commit hooks and CI pipelines to ensure vault files stay encrypted throughout your development workflow. The naming convention of `vault.yml` combined with automated checks gives you a reliable safety net against accidental plaintext commits.
