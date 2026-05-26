@@ -12,20 +12,20 @@ When an Ansible role does not work as expected, the default output often does no
 
 ## Verbosity Levels
 
-The most basic debugging tool is the `-v` flag. Ansible supports four levels of verbosity:
+The most basic debugging tool is the `-v` flag. Ansible increases verbosity each time you add another `v`; the commonly used levels are:
 
 ```bash
 # Level 1: Show task results
 
 ansible-playbook site.yml -v
 
-# Level 2: Show task input parameters
+# Level 2: Show more task and result detail
 ansible-playbook site.yml -vv
 
 # Level 3: Show connection details and task execution info
 ansible-playbook site.yml -vvv
 
-# Level 4: Show everything including connection plugin internals
+# Level 4: Show connection plugin internals
 ansible-playbook site.yml -vvvv
 ```
 
@@ -33,11 +33,11 @@ Each level adds more information:
 
 **-v** shows the result of each task. For command/shell tasks, this includes stdout and stderr. For template tasks, it shows the destination path and whether the file changed.
 
-**-vv** shows the input parameters for each task. This is where you see what variables were resolved to. If a variable is not what you expected, this level reveals it.
+**-vv** adds more task and result detail, including task file paths. Depending on the module and callback output, this can make resolved values easier to inspect.
 
 **-vvv** adds connection-level details. You see the SSH commands being run, the temporary files being created, and the Python interpreter being used on the remote host. Useful for connection problems and privilege escalation issues.
 
-**-vvvv** is the nuclear option. It shows the raw data being sent over the connection, including the module arguments and the module code itself. Rarely needed, but invaluable for module-level bugs.
+**-vvvv** is the nuclear option for most playbook debugging. It is commonly needed for connection debugging and can expose low-level connection and module execution details.
 
 ## Using the debug Module
 
@@ -151,16 +151,16 @@ When a template produces unexpected output, you need to see what the template en
 ansible-playbook deploy.yml --check --diff -v
 ```
 
-The `--diff` flag shows the difference between the current file and the rendered template. Combined with `-v`, this gives you full visibility into template output.
+The `--diff` flag shows before-and-after differences for files and templates when the module supports diff mode. Combined with `-v`, this gives you visibility into template changes without applying them.
 
 **Approach 3: Debug Jinja2 expressions locally**
 
 ```bash
 # Test Jinja2 expressions without running a full playbook
-ansible localhost -m debug -a "msg={{ '{{ 4 * 2 }}' }}"
+ansible localhost -m debug -a "msg={{ 4 * 2 }}"
 
-# Test with inventory variables
-ansible webserver01 -m debug -a "var=ansible_default_ipv4.address"
+# Test with an inventory variable
+ansible webserver01 -m debug -a "var=myapp_port"
 ```
 
 ## Using the assert Module for Validation
@@ -242,16 +242,20 @@ ansible-playbook deploy.yml --tags debug
 
 ## Checking Role Variable Precedence
 
-When variables are not what you expect, precedence is usually the culprit. Dump the variable from multiple sources:
+When variables are not what you expect, precedence is usually the culprit. Dump the effective value and the host variables Ansible sees:
 
 ```yaml
-- name: Debug - show variable sources
+- name: Debug - show effective variable value
   ansible.builtin.debug:
     msg: |
-      From defaults: {{ role_defaults.myvar | default('not in defaults') }}
-      From vars: {{ role_vars.myvar | default('not in vars') }}
       Effective value: {{ myvar }}
       Variable type: {{ myvar | type_debug }}
+```
+
+You can also inspect inventory variables from the command line:
+
+```bash
+ansible-inventory --host webserver01 --yaml
 ```
 
 ## Using the ANSIBLE_KEEP_REMOTE_FILES Setting
@@ -270,14 +274,14 @@ After the playbook runs, you can SSH into the remote host and inspect the module
 Ansible supports different output formats via callback plugins:
 
 ```bash
-# Use the yaml callback for more readable output
-ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook deploy.yml -v
+# Use YAML-formatted task results with the default callback
+ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible-playbook deploy.yml -v
 
 # Use the debug callback for detailed failure info
-ANSIBLE_STDOUT_CALLBACK=debug ansible-playbook deploy.yml
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.debug ansible-playbook deploy.yml
 
 # Profile task timing to find slow tasks
-ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks ansible-playbook deploy.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks ansible-playbook deploy.yml
 ```
 
 Set these in `ansible.cfg` for permanent use:
@@ -285,8 +289,8 @@ Set these in `ansible.cfg` for permanent use:
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [callback_profile_tasks]
 task_output_limit = 20
@@ -298,10 +302,10 @@ sort_order = descending
 When a role is not working:
 
 1. Run with `-v` to see task results
-2. If variables look wrong, run with `-vv` to see resolved parameters
+2. If variables look wrong, add targeted `debug` tasks or run with more verbosity for additional context
 3. Add `debug` tasks to inspect specific variables
 4. If a template is wrong, use `--check --diff` to see the rendered output
-5. If a module behaves unexpectedly, run with `-vvv` to see raw module input
+5. If a module behaves unexpectedly, run with `-vvv` or `-vvvv` to see connection and module execution details
 6. If all else fails, use `ANSIBLE_KEEP_REMOTE_FILES=1` and inspect on the target
 
 Remove all debug tasks before merging to your main branch. Or better yet, keep them gated behind a debug variable that defaults to false, so they are always available when needed but never clutter the normal output.
