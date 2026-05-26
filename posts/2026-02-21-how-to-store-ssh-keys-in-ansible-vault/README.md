@@ -58,18 +58,17 @@ Use it in a playbook:
 
 ### Method 2: Store the Key as a Vault Variable
 
-Store the key contents in a variable file:
+To encrypt the key as a single variable instead of an entire file, read the key from stdin:
 
 ```bash
 # Read the key and encrypt it as a variable
 # The key content needs to be properly formatted for YAML
-ansible-vault encrypt_string \
+cat /tmp/deploy_key | ansible-vault encrypt_string \
   --vault-password-file vault_pass.txt \
-  --name 'vault_deploy_ssh_key' \
-  "$(cat /tmp/deploy_key)"
+  --stdin-name 'vault_deploy_ssh_key'
 ```
 
-Place it in your vault file:
+Alternatively, place the plaintext key in a variable file before encrypting the whole file:
 
 ```yaml
 # group_vars/production/vault.yml (encrypted)
@@ -296,9 +295,9 @@ The overlap period (both old and new public keys authorized) ensures zero downti
 
 ## Common Pitfalls
 
-**Trailing newlines**: SSH keys are sensitive to formatting. Make sure the key content in your vault variable has exactly the right newlines. An extra newline at the end can cause `ssh` to reject the key.
+**Trailing newlines**: SSH keys are sensitive to formatting. Make sure the key content in your vault variable has exactly the right newlines. A normal final newline is fine, but removing the final newline or folding the key lines can cause `ssh` to reject the key.
 
-**File permissions**: SSH strictly enforces permissions. The private key file must be `0600` and the `.ssh` directory must be `0700`. If permissions are wrong, SSH silently refuses to use the key.
+**File permissions**: SSH strictly enforces permissions. Use `0600` for the private key file and `0700` for the `.ssh` directory so the private key is not accessible by other users. If permissions are wrong, SSH refuses to use the key.
 
 **YAML multi-line strings**: Use the pipe (`|`) for multi-line YAML values to preserve newlines in the key content. Do not use `>` (folded style), which replaces newlines with spaces.
 
