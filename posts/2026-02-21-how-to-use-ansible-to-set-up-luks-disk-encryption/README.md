@@ -27,7 +27,7 @@ flowchart LR
 
 ## Prerequisites
 
-Before encrypting disks, you need cryptsetup installed on your target hosts.
+Before encrypting disks, you need cryptsetup installed on your target hosts. You also need the `community.crypto`, `community.general`, and `ansible.posix` collections installed on your Ansible control node.
 
 This playbook installs the required packages:
 
@@ -115,7 +115,7 @@ This playbook creates a LUKS-encrypted volume on a specified device:
         type: luks2
         cipher: aes-xts-plain64
         hash: sha256
-        key_size: 512
+        keysize: 512
       when: is_luks.rc != 0
 
     - name: Open LUKS volume
@@ -146,7 +146,7 @@ This playbook creates a LUKS-encrypted volume on a specified device:
 
 ## Managing LUKS Key Slots
 
-LUKS supports up to 8 key slots. You can add backup keys, admin keys, or recovery keys alongside the primary key.
+LUKS1 supports up to 8 key slots, and LUKS2 supports key slot numbers 0-31. You can add backup keys, admin keys, or recovery keys alongside the primary key.
 
 This playbook manages LUKS key slots:
 
@@ -190,7 +190,7 @@ This playbook manages LUKS key slots:
 
     - name: Display key slot info
       ansible.builtin.debug:
-        msg: "{{ luks_dump.stdout_lines | select('match', '.*Key Slot.*') | list }}"
+        msg: "{{ luks_dump.stdout_lines | select('match', '(^Key Slot|^Keyslots:|^\\s+[0-9]+:)') | list }}"
 ```
 
 ## Configuring Automatic Unlocking with crypttab
@@ -354,7 +354,7 @@ Verify that all volumes that should be encrypted actually are:
 
     - name: Verify encryption algorithm
       ansible.builtin.debug:
-        msg: "{{ item.stdout_lines | select('match', '.*Cipher.*') | list }}"
+        msg: "{{ item.stdout_lines | select('search', '(?i)cipher') | list }}"
       loop: "{{ luks_details.results }}"
 ```
 
