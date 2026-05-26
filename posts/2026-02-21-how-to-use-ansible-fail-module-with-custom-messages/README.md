@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible fail module to enforce custom validati
 
 ---
 
-When you are building Ansible playbooks for production use, you need more than just running tasks and hoping they succeed. You need to validate inputs, check preconditions, and stop execution with clear messages when something is wrong. The `fail` module is your primary tool for this. It lets you explicitly abort a playbook run with a custom error message that tells the operator exactly what went wrong and what to do about it.
+When you are building Ansible playbooks for production use, you need more than just running tasks and hoping they succeed. You need to validate inputs, check preconditions, and stop execution with clear messages when something is wrong. The `fail` module is one built-in tool for this. It lets you explicitly fail a task for the current host with a custom error message that tells the operator exactly what went wrong and what to do about it.
 
 I have seen too many playbooks that silently proceed with bad inputs, only to fail twenty tasks later with a cryptic error. Using `fail` strategically saves hours of debugging.
 
