@@ -51,7 +51,7 @@ With Homebrew ready, installing Ansible is a single command:
 brew install ansible
 ```
 
-This installs ansible-core and all the standard dependencies, including a compatible Python version managed by Homebrew. The installation typically takes a minute or two depending on what dependencies need to be fetched.
+This installs the full Ansible community package, which includes ansible-core, a curated set of Ansible collections, and a compatible Python version managed by Homebrew. The installation typically takes a minute or two depending on what dependencies need to be fetched.
 
 Verify the installation:
 
@@ -63,17 +63,17 @@ ansible --version
 You should see output like:
 
 ```text
-ansible [core 2.16.x]
+ansible [core 2.20.x]
   config file = None
   configured module search path = ['/Users/yourname/.ansible/plugins/modules']
-  ansible python module location = /opt/homebrew/lib/python3.12/site-packages/ansible
+  ansible python module location = /opt/homebrew/Cellar/ansible/13.7.0/libexec/lib/python3.14/site-packages/ansible
   executable location = /opt/homebrew/bin/ansible
-  python version = 3.12.x
+  python version = 3.14.x
 ```
 
 ## Install Additional Ansible Collections
 
-Homebrew installs ansible-core, which includes the built-in modules. If you need cloud modules (AWS, Azure, GCP) or other community collections, install them separately:
+Homebrew installs the full Ansible community package, which already includes many commonly used collections. If you need a collection that is not included, or you want to upgrade a collection independently, install it separately:
 
 ```bash
 # Install common community collections
@@ -109,7 +109,8 @@ inventory = inventory.ini
 remote_user = deploy
 host_key_checking = False
 retry_files_enabled = False
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 
 [ssh_connection]
 ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=no
@@ -144,6 +145,12 @@ ssh-keygen -t ed25519 -f ~/.ssh/ansible_key -C "ansible-macbook" -N ""
 
 # Copy the key to a remote server
 ssh-copy-id -i ~/.ssh/ansible_key.pub deploy@192.168.1.50
+```
+
+If `ssh-copy-id` is not available on your Mac, install it with Homebrew:
+
+```bash
+brew install ssh-copy-id
 ```
 
 You can also configure SSH in your `~/.ssh/config` to simplify connections:
@@ -241,18 +248,21 @@ mkdir -p ~/.ssh/sockets
 
 ### Homebrew Python Conflicts
 
-If you have multiple Python versions installed via Homebrew, pyenv, or other tools, Ansible might pick up the wrong one. Check which Python Ansible is using:
+If you have multiple Python versions installed via Homebrew, pyenv, or other tools, first check which Ansible executable and control-node Python you are using:
 
 ```bash
-# See which Python Ansible uses
+# See which Ansible and Python are being used
+which ansible
 ansible --version | grep "python version"
 ```
 
-If it is not the right one, you can pin it in ansible.cfg:
+If the command points to the wrong installation, adjust your PATH, activate the intended virtual environment, or reinstall Ansible with the package manager you want to use.
+
+The `interpreter_python` setting in `ansible.cfg` is different: it controls the Python interpreter Ansible uses on managed nodes when running Python modules. Use it only when the remote hosts need an explicit interpreter path:
 
 ```ini
 [defaults]
-interpreter_python = /opt/homebrew/bin/python3
+interpreter_python = /usr/bin/python3
 ```
 
 ### Permission Denied on macOS Keychain
@@ -288,7 +298,7 @@ If you prefer pip over Homebrew (for example, to pin a specific version), you ca
 # Create a venv and install Ansible via pip
 python3 -m venv ~/ansible-venv
 source ~/ansible-venv/bin/activate
-pip install ansible==2.16.0
+python -m pip install ansible==13.7.0
 ```
 
 The Homebrew method is easier to maintain, but pip gives you exact version control. Pick whichever fits your workflow.
