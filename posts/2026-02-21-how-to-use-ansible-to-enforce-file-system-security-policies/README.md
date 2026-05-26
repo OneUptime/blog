@@ -188,17 +188,24 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
+
+- name: Verify LUKS encryption is enabled
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted volumes were detected"
+    success_msg: "LUKS encryption is enabled"
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
       - cert_dates.rc == 0
-    fail_msg: "TLS certificate check failed"
-    success_msg: "TLS certificate is valid"
+    fail_msg: "TLS certificate is expired or could not be checked"
+    success_msg: "TLS certificate is not expired"
 ```
 
 ## Networking and Firewall Validation
@@ -219,16 +226,17 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
-  register: listening_ports
+  ansible.builtin.command: ss -tlnH "sport = :{{ item }}"
+  register: prohibited_port_checks
   changed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout == ""
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ prohibited_port_checks.results }}"
 ```
 
 ## Automated Remediation Workflow
