@@ -18,7 +18,7 @@ fatal: [server1]: FAILED! => {
 }
 ```
 
-## Common Mutually Exclusive Parameters
+## Common Incompatible Parameter Combinations
 
 ### copy Module: src vs content
 
@@ -70,20 +70,21 @@ fatal: [server1]: FAILED! => {
     deb: /tmp/nginx.deb     # Install from local .deb file
 ```
 
-### lineinfile: line vs insertbefore/insertafter without state=present
+### lineinfile: insertbefore vs insertafter
 
 ```yaml
-# WRONG: insertafter only works with state=present
+# WRONG: cannot use both insertbefore and insertafter
 - lineinfile:
     path: /etc/config
     insertafter: "# Settings"
-    state: absent  # Cannot use insertafter with absent
+    insertbefore: "# End Settings"
+    line: "new_setting=value"
 
 # FIX: remove the incompatible parameter
 - lineinfile:
     path: /etc/config
-    regexp: "old_setting"
-    state: absent
+    insertafter: "# Settings"
+    line: "new_setting=value"
 ```
 
 ## How to Find Valid Combinations
@@ -283,4 +284,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
