@@ -95,7 +95,7 @@ Transform flat inventory into grouped structures:
 
 ```yaml
 # playbook-group-hosts.yml
-# Groups hosts by OS family and by custom variables like environment
+# Groups hosts by OS family and by custom variables like app_environment
 - name: Group hosts by attributes
   hosts: all
   gather_facts: true
@@ -122,12 +122,12 @@ Transform flat inventory into grouped structures:
       ansible.builtin.debug:
         var: by_os
 
-    - name: Group hosts by environment variable
+    - name: Group hosts by app_environment variable
       ansible.builtin.set_fact:
         by_environment: >-
           {% set result = {} %}
           {% for host in groups['all'] %}
-          {% set env = hostvars[host].get('environment', 'undefined') %}
+          {% set env = hostvars[host].get('app_environment', 'undefined') %}
           {% if env not in result %}{% set _ = result.update({env: []}) %}{% endif %}
           {% set _ = result[env].append(host) %}
           {% endfor %}
@@ -307,11 +307,11 @@ Combine inventory data with external sources:
         common_services: >-
           {% set lists = service_matrix.values() | list %}
           {% if lists | length > 0 %}
-          {% set result = lists[0] %}
+          {% set ns = namespace(result=lists[0]) %}
           {% for svc_list in lists[1:] %}
-          {% set result = result | intersect(svc_list) %}
+          {% set ns.result = ns.result | intersect(svc_list) %}
           {% endfor %}
-          {{ result }}
+          {{ ns.result }}
           {% else %}
           {{ [] }}
           {% endif %}
