@@ -57,7 +57,7 @@ resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
   alarm_name          = "api-high-error-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "5XXError"
+  metric_name         = "HTTPCode_Target_5XX_Count"
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Sum"
@@ -80,7 +80,7 @@ resource "aws_cloudwatch_metric_alarm" "high_latency" {
   metric_name         = "TargetResponseTime"
   namespace           = "AWS/ApplicationELB"
   period              = 60
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = 2.0  # 2 seconds
   alarm_description   = "API p99 latency exceeds 2 seconds for 3 consecutive minutes"
   treat_missing_data  = "notBreaching"
@@ -140,6 +140,11 @@ resource "aws_cloudwatch_metric_alarm" "high_memory" {
   threshold           = 85
   alarm_description   = "ECS service memory utilization above 85% for 3 minutes"
   treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ClusterName = "production"
+    ServiceName = "api"
+  }
 }
 ```
 
@@ -160,7 +165,7 @@ resource "aws_cloudwatch_composite_alarm" "api_degraded" {
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
 
-  # Only notify once when the alarm transitions to ALARM state
+  # Enable actions when the composite alarm changes state
   actions_enabled = true
 }
 ```
@@ -348,7 +353,7 @@ resource "aws_cloudwatch_composite_alarm" "platform_health" {
 
 ## Action Suppression
 
-You can configure composite alarms to suppress actions from their child alarms. This prevents double-notifications where both the metric alarm and the composite alarm fire.
+You can configure a composite alarm to suppress its own actions while another alarm is in the `ALARM` state. This is useful for preventing notifications during maintenance or another known condition.
 
 ```hcl
 resource "aws_cloudwatch_composite_alarm" "api_degraded_suppressed" {
@@ -356,16 +361,18 @@ resource "aws_cloudwatch_composite_alarm" "api_degraded_suppressed" {
 
   alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.high_error_rate.alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.high_latency.alarm_name})"
 
-  # Suppress actions on child alarms when this composite is in ALARM state
-  actions_suppressor                    = aws_cloudwatch_composite_alarm.api_degraded_suppressed.alarm_name
-  actions_suppressor_wait_period        = 120   # Wait 2 minutes before suppressing
-  actions_suppressor_extension_period   = 300   # Keep suppressing for 5 minutes after composite resolves
+  actions_suppressor {
+    # Suppress this composite alarm's actions while maintenance mode is ALARM
+    alarm            = aws_cloudwatch_metric_alarm.maintenance_mode.alarm_name
+    wait_period      = 120   # Wait 2 minutes for the suppressor alarm to enter ALARM
+    extension_period = 300   # Keep suppressing for 5 minutes after the suppressor returns to OK
+  }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
 }
 ```
 
-Note that action suppression on composite alarms is a feature that requires the child metric alarms to have their `alarm_actions` set. The composite alarm then prevents those actions from being executed when the suppression conditions are met.
+Note that action suppression applies to the actions configured on the composite alarm itself. It does not disable actions on the child metric alarms referenced by the `alarm_rule`.
 
 ## Best Practices
 
