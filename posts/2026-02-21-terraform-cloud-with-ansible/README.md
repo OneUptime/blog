@@ -24,11 +24,11 @@ TFC_TOKEN="$TF_CLOUD_TOKEN"
 
 WORKSPACE_ID=$(curl -s   --header "Authorization: Bearer $TFC_TOKEN"   "https://app.terraform.io/api/v2/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE"   | jq -r '.data.id')
 
-# Get the current state version
-STATE_VERSION=$(curl -s   --header "Authorization: Bearer $TFC_TOKEN"   "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/current-state-version?include=outputs"   | jq -r '.included')
+# Get the current state version outputs
+OUTPUTS=$(curl -s   --header "Authorization: Bearer $TFC_TOKEN"   --header "Content-Type: application/vnd.api+json"   "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/current-state-version-outputs"   | jq -r '.data')
 
 # Extract outputs
-echo "$STATE_VERSION" | jq -r '.[] | select(.attributes.name == "web_ips") | .attributes.value[]'
+echo "$OUTPUTS" | jq -r '.[] | select(.attributes.name == "web_ips") | .attributes.value[]'
 ```
 
 ## Generating Inventory from TFC
@@ -57,17 +57,21 @@ def get_outputs():
 
     # Get state outputs
     req = urllib.request.Request(
-        f'https://app.terraform.io/api/v2/workspaces/{ws_id}/current-state-version?include=outputs',
+        f'https://app.terraform.io/api/v2/workspaces/{ws_id}/current-state-version-outputs',
         headers=headers)
     state = json.loads(urllib.request.urlopen(req).read())
 
     outputs = {}
-    for output in state.get('included', []):
+    for output in state.get('data', []):
         outputs[output['attributes']['name']] = output['attributes']['value']
     return outputs
 
 def build_inventory(outputs):
-    inventory = {'_meta': {'hostvars': {}}, 'all': {'children': []}}
+    inventory = {
+        '_meta': {'hostvars': {}},
+        'all': {'children': ['ungrouped']},
+        'ungrouped': {'hosts': []}
+    }
 
     for ip in outputs.get('web_ips', []):
         group = 'webservers'
@@ -100,6 +104,7 @@ export TFC_ORG="my-org"
 export TFC_WORKSPACE="production"
 
 # Run Ansible with the dynamic inventory
+chmod +x inventory/tfc_inventory.py
 ansible-playbook -i inventory/tfc_inventory.py playbook.yml
 ```
 
@@ -290,4 +295,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
