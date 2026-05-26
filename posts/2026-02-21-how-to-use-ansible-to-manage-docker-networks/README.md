@@ -27,8 +27,8 @@ Before we jump into Ansible playbooks, let us understand the available network d
 
 ansible-galaxy collection install community.docker
 
-# Install the Docker Python SDK
-pip install docker
+# Install Python requirements used by the collection
+pip install requests
 ```
 
 ## Creating a Basic Bridge Network
@@ -154,7 +154,7 @@ In production, you typically want different services on different networks. The 
         driver: bridge
         ipam_config:
           - subnet: "172.32.0.0/24"
-        # Disable inter-container communication except through links
+        # Restrict access from outside this Docker network
         internal: true
 
     # Deploy containers on appropriate networks
@@ -270,7 +270,8 @@ You can connect running containers to networks or disconnect them without stoppi
           # Add the monitoring network
           - name: monitoring
         # This keeps existing network connections
-        purge_networks: false
+        comparisons:
+          networks: allow_more_present
 
     # Or use the docker_network module to add a container
     - name: Connect the worker to the data network
