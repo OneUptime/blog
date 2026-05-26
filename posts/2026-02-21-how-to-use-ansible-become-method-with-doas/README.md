@@ -8,13 +8,13 @@ Description: Configure Ansible to use doas for privilege escalation on OpenBSD a
 
 ---
 
-If you manage OpenBSD systems with Ansible, you probably already know that OpenBSD dropped sudo from its base system back in 2015 and replaced it with `doas`. The doas utility is a simpler, more auditable alternative to sudo that aligns with OpenBSD's security philosophy. Ansible has native support for doas as a `become_method`, making it straightforward to manage OpenBSD boxes and any other system where doas is installed.
+If you manage OpenBSD systems with Ansible, you probably already know that OpenBSD dropped sudo from its base system back in 2015 and replaced it with `doas`. The doas utility is a simpler, more auditable alternative to sudo that aligns with OpenBSD's security philosophy. Ansible supports doas through the `community.general.doas` become plugin, making it straightforward to manage OpenBSD boxes and any other system where doas is installed.
 
 This guide covers configuring Ansible with doas, writing the doas.conf, and handling the differences between doas and sudo.
 
 ## What is doas?
 
-doas stands for "dedicated openbsd application subexecutor." It was written by Ted Unangst as a minimal replacement for sudo. The configuration file is much simpler than sudoers, and the codebase is tiny compared to sudo's. This smaller attack surface is the primary reason OpenBSD adopted it.
+doas is short for "do as." It was written by Ted Unangst as a minimal replacement for sudo. The configuration file is much simpler than sudoers, and the codebase is tiny compared to sudo's. This smaller attack surface is the primary reason OpenBSD adopted it.
 
 The doas configuration lives in `/etc/doas.conf` and uses a straightforward syntax:
 
@@ -29,13 +29,19 @@ Compare that to the equivalent sudoers entry, and you will appreciate the simpli
 
 ## Basic doas Configuration in Ansible
 
-To tell Ansible to use doas instead of sudo, set `become_method` to `doas`.
+To tell Ansible to use doas instead of sudo, install the `community.general` collection if you are using `ansible-core` directly:
+
+```bash
+ansible-galaxy collection install community.general
+```
+
+Then set `become_method` to `community.general.doas`.
 
 ```ini
 # ansible.cfg
 [privilege_escalation]
 become = true
-become_method = doas
+become_method = community.general.doas
 become_user = root
 become_ask_pass = false
 ```
@@ -50,7 +56,7 @@ obsd2 ansible_host=192.168.1.31 ansible_user=deploy
 
 [openbsd_servers:vars]
 ansible_become=true
-ansible_become_method=doas
+ansible_become_method=community.general.doas
 ansible_become_user=root
 ansible_python_interpreter=/usr/local/bin/python3
 ```
@@ -93,14 +99,14 @@ Here is a playbook that manages an OpenBSD system using doas.
 - name: Setup OpenBSD server
   hosts: openbsd_servers
   become: true
-  become_method: doas
+  become_method: community.general.doas
   gather_facts: true
 
   tasks:
-    - name: Update package list
+    - name: Update installed packages
       ansible.builtin.command: pkg_add -u
       register: pkg_update
-      changed_when: "'installed' in pkg_update.stdout"
+      changed_when: "'installed' in pkg_update.stdout or 'updated' in pkg_update.stdout"
 
     - name: Install essential packages
       ansible.builtin.command: "pkg_add {{ item }}"
@@ -169,21 +175,21 @@ doas supports switching to any user, not just root.
     - name: Run task as root
       ansible.builtin.command: whoami
       become: true
-      become_method: doas
+      become_method: community.general.doas
       become_user: root
       register: root_check
 
     - name: Run task as www user
       ansible.builtin.command: whoami
       become: true
-      become_method: doas
+      become_method: community.general.doas
       become_user: www
       register: www_check
 
     - name: Run task as _postgresql user
       ansible.builtin.command: whoami
       become: true
-      become_method: doas
+      become_method: community.general.doas
       become_user: _postgresql
       register: pg_check
 
@@ -217,7 +223,7 @@ sudo dnf install opendoas
 sudo apk add doas
 ```
 
-The configuration syntax is the same across all platforms.
+The basic configuration syntax is the same for common rules, though portable doas implementations may have platform-specific details.
 
 ```text
 # /etc/doas.conf on Linux
@@ -229,8 +235,8 @@ In your Ansible inventory, set doas as the become_method for hosts that use it:
 ```ini
 # inventory/hosts.ini
 [doas_hosts]
-alpine1 ansible_host=192.168.1.40 ansible_become_method=doas
-obsd1 ansible_host=192.168.1.30 ansible_become_method=doas
+alpine1 ansible_host=192.168.1.40 ansible_become_method=community.general.doas
+obsd1 ansible_host=192.168.1.30 ansible_become_method=community.general.doas
 
 [sudo_hosts]
 ubuntu1 ansible_host=192.168.1.10 ansible_become_method=sudo
@@ -290,7 +296,7 @@ ssh deploy@192.168.1.30 "doas whoami"
 ssh deploy@192.168.1.30 "doas -C /etc/doas.conf && echo 'valid' || echo 'invalid'"
 
 # Run Ansible with verbose output to see the doas command
-ansible openbsd_servers -m ping --become --become-method=doas -vvvv
+ansible openbsd_servers -m ping --become --become-method=community.general.doas -vvvv
 ```
 
 Common errors:
@@ -321,6 +327,6 @@ Common errors:
 | Environment handling | Minimal by default | Configurable |
 | Default on OpenBSD | Yes | No (since 5.8) |
 
-For Ansible specifically, doas and sudo are functionally interchangeable. The `become_method` setting is all you need to change. Playbooks, roles, and tasks work the same way regardless of which escalation method is used underneath.
+For typical Ansible tasks that become root, doas and sudo are functionally similar. The `become_method` setting is the main thing you need to change, though the `community.general.doas` plugin has its own collection and pipelining requirements.
 
-If you work with OpenBSD or prefer the simplicity of doas on your Linux servers, Ansible's doas support makes the transition painless. Just set `become_method: doas`, write a simple doas.conf, and your existing playbooks work without modification.
+If you work with OpenBSD or prefer the simplicity of doas on your Linux servers, Ansible's doas support makes the transition painless. Just set `become_method: community.general.doas`, write a simple doas.conf, and your existing playbooks work without modification.
