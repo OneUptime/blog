@@ -21,7 +21,7 @@ The `hash` filter computes a hash of a string using the specified algorithm:
 
 {# Generate a SHA-1 hash #}
 {{ "Hello, World!" | hash('sha1') }}
-{# Output: 943a702d06f34599aee1f8da8ef9f7296031d699 #}
+{# Output: 0a0a9f2a6772942557ab5355d76af442f8f65e01 #}
 
 {# Generate a SHA-256 hash #}
 {{ "Hello, World!" | hash('sha256') }}
@@ -38,7 +38,7 @@ The `checksum` filter is a shortcut that produces a SHA-1 hash:
 ```jinja2
 {# checksum is equivalent to hash('sha1') #}
 {{ "Hello, World!" | checksum }}
-{# Output: 943a702d06f34599aee1f8da8ef9f7296031d699 #}
+{# Output: 0a0a9f2a6772942557ab5355d76af442f8f65e01 #}
 ```
 
 ## Practical Example: Generating Unique Resource Names
@@ -192,14 +192,14 @@ location /config.json {
 
 ## Comparing Hashing Algorithms
 
-Here is a quick reference of available algorithms and when to use them:
+Here is a quick reference of common algorithms and when to use them:
 
 | Algorithm | Output Length | Speed | Use Case |
 |-----------|-------------|-------|----------|
 | md5 | 32 chars | Fast | Cache keys, non-security checksums |
 | sha1 | 40 chars | Fast | File identification, git-like hashing |
 | sha256 | 64 chars | Medium | File verification, security-sensitive hashing |
-| sha512 | 128 chars | Slower | High-security applications |
+| sha512 | 128 chars | Slower | Longer SHA-2 digest requirements |
 
 In Ansible templates:
 
@@ -303,4 +303,4 @@ internal_api_key = {{ (master_secret ~ '-api-' ~ environment) | hash('sha512') |
 
 ## Wrapping Up
 
-The `hash` and `checksum` filters give you straightforward access to cryptographic hashing in Ansible. Use them for file integrity verification, unique identifier generation, cache key computation, deterministic resource naming, and configuration change detection. The `hash` filter supports multiple algorithms (md5, sha1, sha256, sha512), while `checksum` is a convenient shortcut for sha1. Choose the algorithm based on your security requirements and the desired hash length.
+The `hash` and `checksum` filters give you straightforward access to cryptographic hashing in Ansible. Use them for file integrity verification, unique identifier generation, cache key computation, deterministic resource naming, and configuration change detection. The `hash` filter supports algorithms available from Python's `hashlib` on the control node, including common choices like md5, sha1, sha256, and sha512, while `checksum` is a convenient shortcut for sha1. Choose the algorithm based on your security requirements and the desired hash length.
