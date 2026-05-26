@@ -26,15 +26,15 @@ ansible-project/
 │   │   │   ├── webservers.yml
 │   │   │   └── dbservers.yml
 │   │   └── host_vars/
-│   │       ├── web01.yml
-│   │       └── db01.yml
+│   │       ├── web01.prod.example.com.yml
+│   │       └── db01.prod.example.com.yml
 │   └── staging/
 │       ├── hosts.yml
 │       ├── group_vars/
 │       │   ├── all.yml
 │       │   └── webservers.yml
 │       └── host_vars/
-│           └── web01.yml
+│           └── web01.staging.example.com.yml
 ├── roles/
 │   ├── common/
 │   │   ├── tasks/
@@ -190,7 +190,7 @@ dependencies: []
 
 ## Organizing Playbooks
 
-Keep your playbooks in a dedicated directory. The top-level `site.yml` should include all other playbooks so you can run everything with a single command or target specific groups.
+Keep your playbooks in a dedicated directory. The `site.yml` entry point should tie together all major plays so you can run everything with a single command or target specific groups.
 
 ```yaml
 # playbooks/site.yml
@@ -228,8 +228,9 @@ inventory = inventories/production/hosts.yml
 roles_path = roles
 retry_files_enabled = false
 host_key_checking = false
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [privilege_escalation]
 become = true
@@ -239,7 +240,7 @@ become_ask_pass = false
 
 [ssh_connection]
 pipelining = true
-control_path_dir = /tmp/ansible-ssh-%%h-%%p-%%r
+control_path_dir = /tmp/ansible-ssh
 ```
 
 ## Managing External Dependencies
@@ -267,7 +268,6 @@ Install them with:
 ```bash
 # Install all external dependencies
 ansible-galaxy install -r requirements.yml
-ansible-galaxy collection install -r requirements.yml
 ```
 
 ## Using a Makefile for Common Commands
@@ -278,7 +278,7 @@ A Makefile saves your team from memorizing long Ansible commands:
 # Makefile
 # Convenience targets for common Ansible operations
 
-.PHONY: ping deploy-prod deploy-staging lint
+.PHONY: ping deploy-prod deploy-staging lint check-prod
 
 ping:
 	ansible all -m ping -i inventories/production/hosts.yml
