@@ -1,10 +1,10 @@
-# How to Use Ansible with Lynis for Security Auditing
+# How to Use Ansible for Compliance Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Lynis, Security Audit, Hardening, Linux
+Tags: Ansible, Compliance, Security Audit, Hardening, Linux
 
-Description: Deploy and run Lynis security audits with Ansible for automated system hardening assessment and reporting.
+Description: Deploy and run compliance checks with Ansible for automated system hardening assessment and reporting.
 
 ---
 
@@ -139,8 +139,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Ansible
+        run: python -m pip install ansible
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -188,15 +190,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
+  register: cert_validity
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_validity.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -226,7 +228,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - "listening_ports.stdout_lines | select('search', '(:|\\\\.)' ~ item ~ '\\\\s') | list | length == 0"
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
