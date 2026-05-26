@@ -30,8 +30,10 @@ jobs:
   cost:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -169,13 +171,13 @@ Use Open Policy Agent to define cost policies as code:
 package terraform.cost
 
 # Deny if total monthly increase exceeds budget
-deny[msg] {
-    input.diffTotalMonthlyCost > 500
-    msg := sprintf("Monthly cost increase of $%.2f exceeds $500 budget", [input.diffTotalMonthlyCost])
+deny contains msg if {
+    to_number(input.diffTotalMonthlyCost) > 500
+    msg := sprintf("Monthly cost increase of $%v exceeds $500 budget", [to_number(input.diffTotalMonthlyCost)])
 }
 
 # Deny expensive instance types
-deny[msg] {
+deny contains msg if {
     resource := input.projects[_].breakdown.resources[_]
     resource.resourceType == "aws_instance"
 
@@ -185,7 +187,7 @@ deny[msg] {
 }
 
 # Warn about resources without cost tags
-warn[msg] {
+warn contains msg if {
     resource := input.projects[_].breakdown.resources[_]
     not resource.tags["cost-center"]
     msg := sprintf("Resource %s missing cost-center tag", [resource.name])
@@ -197,7 +199,7 @@ Run the policy check in your pipeline:
 ```yaml
 - name: Install OPA
   run: |
-    curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64
+    curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
     chmod +x opa
     sudo mv opa /usr/local/bin/
 
@@ -310,6 +312,7 @@ Connect your cost checks to AWS Budgets for organization-level controls:
 ```hcl
 # budget-alerts.tf
 # Create AWS Budget that tracks Terraform-managed resources
+# Requires the ManagedBy tag to be activated as an AWS cost allocation tag
 resource "aws_budgets_budget" "terraform_resources" {
   name         = "terraform-managed-resources"
   budget_type  = "COST"
