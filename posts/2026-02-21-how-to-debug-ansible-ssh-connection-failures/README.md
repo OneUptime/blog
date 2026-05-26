@@ -8,7 +8,7 @@ Description: Learn how to systematically diagnose and fix SSH connection failure
 
 ---
 
-SSH connection failures are the most fundamental problem you can hit with Ansible because if Ansible cannot connect to a host, nothing else works. The errors range from cryptic timeout messages to authentication failures, and the cause might be anywhere from a typo in the inventory to a firewall rule or an SSH key permission issue. This post walks through a systematic debugging process for every common SSH failure scenario.
+SSH connection failures are the most fundamental problem you can hit with Ansible because if Ansible cannot connect to a host, nothing else works. The errors range from cryptic timeout messages to authentication failures, and the cause might be anywhere from a typo in the inventory to a firewall rule or an SSH key permission issue. This post walks through a systematic debugging process for common SSH failure scenarios.
 
 ## The Error Messages
 
@@ -43,12 +43,12 @@ ssh -p 2222 user@web-01
 
 If manual SSH works but Ansible fails, the problem is in Ansible's SSH configuration. If manual SSH also fails, fix the SSH issue first.
 
-## Step 2: Run Ansible with Maximum Verbosity
+## Step 2: Run Ansible with Connection Debugging Verbosity
 
-Use `-vvvv` to see exactly what SSH command Ansible is running:
+Use `-vvvv` to see detailed connection debugging, including the SSH command Ansible is running:
 
 ```bash
-# Maximum verbosity shows the full SSH command
+# Connection debugging verbosity shows the full SSH command
 ansible web-01 -m ping -vvvv
 ```
 
@@ -334,7 +334,8 @@ Adjust timeouts for slow networks:
 ```ini
 # ansible.cfg
 [defaults]
-timeout = 30  # SSH connection timeout in seconds
+# SSH connection timeout in seconds
+timeout = 30
 
 [ssh_connection]
 ssh_args = -o ConnectTimeout=30 -o ConnectionAttempts=3
@@ -380,4 +381,4 @@ ls -la ~/.ssh/
 
 ## Summary
 
-SSH connection failures in Ansible are always one of these problems: the host is unreachable (network/firewall), the hostname cannot be resolved (DNS), the authentication fails (wrong key/user/permissions), or the host key has changed. Start by testing SSH manually with `-vvv`, then check Ansible's full SSH command with `-vvvv`. Fix the most basic layer first (network connectivity), then authentication, then Ansible-specific SSH settings. Keep a clean SSH config file and maintain your known_hosts file to prevent recurring issues.
+SSH connection failures in Ansible usually come down to one of these problems: the host is unreachable (network/firewall), the hostname cannot be resolved (DNS), the authentication fails (wrong key/user/permissions), or the host key has changed. Start by testing SSH manually with `-vvv`, then check Ansible's full SSH command with `-vvvv`. Fix the most basic layer first (network connectivity), then authentication, then Ansible-specific SSH settings. Keep a clean SSH config file and maintain your known_hosts file to prevent recurring issues.
