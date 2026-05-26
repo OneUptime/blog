@@ -42,6 +42,8 @@ project/
       molecule.yml
       converge.yml
       verify.yml
+      tests/
+        test_default.py
 ```
 
 ## Setting Up the Test Environment
@@ -51,7 +53,8 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest pytest-testinfra
+ansible-galaxy collection install community.general
 ```
 
 ## Writing Tests
@@ -82,7 +85,7 @@ platforms:
 provisioner:
   name: ansible
 verifier:
-  name: ansible
+  name: testinfra
 ```
 
 ### Converge Playbook
@@ -98,6 +101,8 @@ verifier:
 ```
 
 ### Verification Playbook
+
+If you prefer Ansible-based verification instead of Testinfra, use the Ansible verifier and a `verify.yml` playbook:
 
 ```yaml
 # molecule/default/verify.yml
@@ -156,12 +161,15 @@ molecule converge  # Run the playbook
 molecule verify    # Run verification tests
 molecule destroy   # Clean up
 
-# Run with specific platform
-molecule test -- --limit ubuntu2404
+# Pass an Ansible limit to the provisioner
+molecule converge -- --limit ubuntu2404
 
 # Run linting
 ansible-lint roles/my_role/
 yamllint roles/my_role/
+
+# Run Testinfra directly against local hosts
+pytest --hosts=localhost molecule/default/tests/test_default.py
 ```
 
 ## CI/CD Integration
@@ -176,18 +184,14 @@ on: [push, pull_request]
 jobs:
   molecule:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        distro: [ubuntu2404, rocky9, debian12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
+      - run: pip install ansible molecule molecule-docker pytest-testinfra
+      - run: ansible-galaxy collection install community.general
       - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -208,11 +212,15 @@ lint:
 
 molecule:
   stage: test
-  image: docker:latest
+  image: python:3.11
   services:
     - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - pip install ansible molecule molecule-docker
+    - pip install ansible molecule molecule-docker pytest-testinfra
+    - ansible-galaxy collection install community.general
     - molecule test
 ```
 
@@ -243,7 +251,7 @@ provisioner:
 ### Testinfra Tests (Python-Based)
 
 ```python
-# tests/test_default.py
+# molecule/default/tests/test_default.py
 def test_service_is_running(host):
     service = host.service("my_service")
     assert service.is_running
@@ -303,7 +311,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -447,4 +455,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
