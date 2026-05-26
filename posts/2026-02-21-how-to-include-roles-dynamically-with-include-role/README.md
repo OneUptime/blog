@@ -58,7 +58,7 @@ The biggest advantage of `include_role` is that it supports `when` conditions:
       when: env == "production"
 ```
 
-With static role application (the `roles:` keyword or `import_role`), conditions are evaluated differently. With `include_role`, the entire role is skipped if the condition is false, and none of its tasks, handlers, or variables are loaded.
+With static role application (the `roles:` keyword or `import_role`), conditions are evaluated differently. With `include_role`, the entire role is skipped if the condition is false, and none of its tasks run.
 
 ## Looping Over Roles
 
@@ -205,17 +205,17 @@ This would include `hardening_debian` on Ubuntu systems and `hardening_redhat` o
 
 ## Controlling Variable Scope
 
-By default, variables set inside an included role are available to tasks that run after it. You can use `public` to control this:
+By default, variables defined in an included role's `defaults/` and `vars/` directories are not exposed to tasks that run after it. You can use `public` to control this:
 
 ```yaml
-# Prevent role variables from leaking into the outer scope
-- name: Include role with private scope
+# Expose role defaults and vars to later tasks
+- name: Include role with public scope
   ansible.builtin.include_role:
     name: helper_role
-    public: false
+    public: true
 ```
 
-When `public: false`, variables defined in the role's `defaults/` and `vars/` directories are only available within the role itself. This prevents variable name collisions when including many roles.
+When `public: true`, variables defined in the role's `defaults/` and `vars/` directories are available to tasks that follow the `include_role` task. Keeping the default `public: false` helps prevent variable name collisions when including many roles.
 
 ## Combining include_role with Blocks
 
@@ -276,7 +276,7 @@ flowchart TD
     A[Playbook starts] --> B[Task 1: Debug message]
     B --> C{include_role condition met?}
     C -->|Yes| D[Load role at runtime]
-    D --> E[Execute role defaults]
+    D --> E[Load role defaults and vars]
     E --> F[Execute role tasks]
     F --> G[Queue role handlers]
     G --> H[Task 3: Next task]
