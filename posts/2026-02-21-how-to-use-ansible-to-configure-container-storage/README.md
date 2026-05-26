@@ -20,7 +20,7 @@ graph TD
     A --> C[Bind Mounts]
     A --> D[tmpfs Mounts]
     B --> B1[Managed by Docker]
-    B --> B2[Portable across hosts]
+    B --> B2[Reusable across containers]
     C --> C1[Direct filesystem access]
     C --> C2[Host-dependent]
     D --> D1[In-memory only]
@@ -79,6 +79,13 @@ For shared storage across multiple hosts:
     state: present
   when: ansible_os_family == 'Debian'
 
+- name: Install NFS client packages on Red Hat systems
+  ansible.builtin.package:
+    name:
+      - nfs-utils
+    state: present
+  when: ansible_os_family == 'RedHat'
+
 - name: Create NFS-backed volumes
   community.docker.docker_volume:
     name: "{{ item.name }}"
@@ -118,14 +125,21 @@ nfs_volumes:
     mode: "{{ item.mode | default('0755') }}"
   loop: "{{ bind_mount_dirs }}"
 
+- name: Initialize bind mount list
+  ansible.builtin.set_fact:
+    bind_mount_specs: []
+
+- name: Build bind mount list
+  ansible.builtin.set_fact:
+    bind_mount_specs: "{{ bind_mount_specs | default([]) + [item.host_path ~ ':' ~ item.container_path ~ ':' ~ (item.options | default('rw'))] }}"
+  loop: "{{ bind_mount_dirs }}"
+
 - name: Deploy container with bind mounts
   community.docker.docker_container:
     name: "{{ app_name }}"
     image: "{{ app_image }}"
-    volumes:
-      - "{{ item.host_path }}:{{ item.container_path }}:{{ item.options | default('rw') }}"
+    volumes: "{{ bind_mount_specs }}"
     state: started
-  loop: "{{ bind_mount_dirs }}"
 ```
 
 ## Docker Storage Driver Configuration
@@ -142,19 +156,16 @@ nfs_volumes:
 
 - name: Prepare storage directory
   ansible.builtin.file:
-    path: "{{ docker_data_root }}"
+    path: "{{ docker_data_root | default('/var/lib/docker') }}"
     state: directory
     mode: '0711'
-  when: docker_data_root != '/var/lib/docker'
+  when: docker_data_root | default('/var/lib/docker') != '/var/lib/docker'
 ```
 
 ```json
 {
   "storage-driver": "{{ docker_storage_driver | default('overlay2') }}",
-  "data-root": "{{ docker_data_root | default('/var/lib/docker') }}",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
+  "data-root": "{{ docker_data_root | default('/var/lib/docker') }}"
 }
 ```
 
