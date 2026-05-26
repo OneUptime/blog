@@ -147,12 +147,12 @@ You need the tag in both places. The outer `tags` ensures the include task itsel
 
 ## Special Tags: always and never
 
-Ansible has two built-in special tags:
+Ansible has several built-in special tags. The two most common task-level special tags are `always` and `never`:
 
 ```yaml
 # roles/common/tasks/main.yml
 ---
-# This task always runs, even if you filter by other tags
+# This task always runs, even if you filter by other tags, unless you skip "always"
 - name: Gather custom facts
   ansible.builtin.setup:
     gather_subset: min
@@ -160,7 +160,7 @@ Ansible has two built-in special tags:
     - always
 
 # This task never runs unless you explicitly request it
-- name: Wipe and reinstall packages (dangerous)
+- name: Upgrade all packages (dangerous)
   ansible.builtin.apt:
     name: "*"
     state: latest
@@ -170,10 +170,10 @@ Ansible has two built-in special tags:
     - full_upgrade
 ```
 
-The `always` tag means the task runs no matter what tag filter is active. The `never` tag means the task is skipped unless you explicitly pass its tag:
+The `always` tag means the task runs no matter what tag filter is active, unless you explicitly skip it. The `never` tag means the task is skipped unless you explicitly pass its tag:
 
 ```bash
-# The "Gather custom facts" task runs, but "Wipe and reinstall" does not
+# The "Gather custom facts" task runs, but "Upgrade all packages" does not
 ansible-playbook site.yml --tags deploy
 
 # Now the full_upgrade task runs because we explicitly requested it
@@ -312,10 +312,12 @@ ansible-playbook site.yml --skip-tags monitoring
 
 ## Tags in Handlers
 
-Handlers within roles also support tags, but there is a nuance. A handler only runs if:
+Handlers within roles can have tags, but handlers are a special case. A handler only runs if:
 
 1. It was notified by a task that actually ran and made a change
-2. The handler's own tags match the current tag filter (or the handler is not tagged)
+2. The play reaches the handler execution point
+
+Ansible does not use handler tags to select or skip handlers directly.
 
 ```yaml
 # roles/nginx/handlers/main.yml
@@ -329,18 +331,18 @@ Handlers within roles also support tags, but there is a nuance. A handler only r
     - nginx
 ```
 
-If you run with `--tags configure` and a configuration task notifies "Reload Nginx", the handler will only run if its tags also match the filter. For this reason, many teams leave handlers untagged or tag them with `always`:
+If you run with `--tags configure` and a configuration task notifies "Reload Nginx", the handler can still run even though its own tags are `webserver` and `nginx`. The tag filter controls whether the notifying task runs, not whether the notified handler is selected. For this reason, put selection tags on the tasks that notify handlers:
 
 ```yaml
-# roles/nginx/handlers/main.yml
-# Handlers tagged with "always" run whenever they are notified
+# roles/nginx/tasks/main.yml
 ---
-- name: Reload Nginx
-  ansible.builtin.systemd:
-    name: nginx
-    state: reloaded
+- name: Deploy Nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+  notify: Reload Nginx
   tags:
-    - always
+    - configure
 ```
 
 ## Common Mistakes
@@ -351,8 +353,8 @@ If you run with `--tags configure` and a configuration task notifies "Reload Ngi
 
 3. **Over-tagging.** Not every task needs a tag. Focus on tasks that you would reasonably want to run in isolation.
 
-4. **Tagging handlers incorrectly.** Either leave handlers untagged or tag them with `always` to ensure they fire when notified.
+4. **Relying on handler tags for selection.** Handler tags are ignored for direct selection or skipping, so control tagged runs through the tasks that notify handlers.
 
 ## Wrapping Up
 
-Tags give you surgical control over which parts of your playbook execute. At the role level, they let you skip or target entire roles. At the task level within roles, they let you run specific operations like "just update configs" or "just restart services." The key is to use a consistent tagging strategy across your roles, understand the difference between static and dynamic role inclusion for tag propagation, and remember that handlers need their own tag consideration. A well-tagged playbook turns a 30-minute full deployment into a 2-minute targeted operation.
+Tags give you surgical control over which parts of your playbook execute. At the role level, they let you skip or target entire roles. At the task level within roles, they let you run specific operations like "just update configs" or "just restart services." The key is to use a consistent tagging strategy across your roles, understand the difference between static and dynamic role inclusion for tag propagation, and remember that handler execution is driven by notifications rather than direct tag selection. A well-tagged playbook turns a 30-minute full deployment into a 2-minute targeted operation.
