@@ -16,49 +16,43 @@ This guide covers the full setup from SMTP configuration to workspace-level noti
 
 Before TFE can send any emails, you need to configure an SMTP server. This is a site-wide setting managed by administrators.
 
-### Via Environment Variables
+### Via the Admin API
 
 ```bash
 # SMTP configuration for TFE
-
-# Add these to your TFE environment variables or docker-compose.yml
-
-# SMTP server address
-TFE_SMTP_HOST=smtp.example.com
-
-# SMTP port (25, 465, or 587)
-TFE_SMTP_PORT=587
-
-# Authentication credentials
-TFE_SMTP_USERNAME=tfe-notifications@example.com
-TFE_SMTP_PASSWORD=your-smtp-password
-
-# Encryption method: starttls, ssl, or none
-TFE_SMTP_AUTH=login
-TFE_SMTP_STARTTLS=true
-
-# Sender address - this is what recipients see
-TFE_SMTP_SENDER=tfe@example.com
+curl -s \
+  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request PATCH \
+  "${TFE_URL}/api/v2/admin/smtp-settings" \
+  --data '{
+    "data": {
+      "type": "smtp-settings",
+      "attributes": {
+        "enabled": true,
+        "host": "smtp.example.com",
+        "port": 587,
+        "username": "tfe-notifications@example.com",
+        "password": "your-smtp-password",
+        "auth": "login",
+        "sender": "Terraform Enterprise <tfe@example.com>"
+      }
+    }
+  }'
 ```
 
 ### Docker Compose Configuration
 
+SMTP server settings are stored in the TFE application settings. In Docker Compose, keep SMTP-specific deployment configuration to settings such as requiring SMTP over TLS:
+
 ```yaml
 # docker-compose.yml - SMTP section
-version: "3.9"
 services:
   tfe:
     image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
     environment:
       TFE_HOSTNAME: tfe.example.com
-      # SMTP configuration
-      TFE_SMTP_HOST: smtp.example.com
-      TFE_SMTP_PORT: "587"
-      TFE_SMTP_USERNAME: tfe-notifications@example.com
-      TFE_SMTP_PASSWORD: "${SMTP_PASSWORD}"
-      TFE_SMTP_STARTTLS: "true"
-      TFE_SMTP_AUTH: login
-      TFE_SMTP_SENDER: "Terraform Enterprise <tfe@example.com>"
+      TFE_TLS_REQUIRE_SMTP: "true"
       # ... other TFE environment variables
 ```
 
@@ -68,13 +62,25 @@ services:
 
 ```bash
 # Amazon SES SMTP configuration
-TFE_SMTP_HOST=email-smtp.us-east-1.amazonaws.com
-TFE_SMTP_PORT=587
-TFE_SMTP_USERNAME=AKIA...your-ses-smtp-username
-TFE_SMTP_PASSWORD=your-ses-smtp-password
-TFE_SMTP_STARTTLS=true
-TFE_SMTP_AUTH=login
-TFE_SMTP_SENDER=tfe@example.com
+curl -s \
+  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request PATCH \
+  "${TFE_URL}/api/v2/admin/smtp-settings" \
+  --data '{
+    "data": {
+      "type": "smtp-settings",
+      "attributes": {
+        "enabled": true,
+        "host": "email-smtp.us-east-1.amazonaws.com",
+        "port": 587,
+        "username": "AKIA...your-ses-smtp-username",
+        "password": "your-ses-smtp-password",
+        "auth": "login",
+        "sender": "tfe@example.com"
+      }
+    }
+  }'
 ```
 
 Before using SES, verify the sender email or domain:
@@ -86,24 +92,33 @@ aws ses verify-domain-identity --domain example.com
 # Or verify a single email address
 aws ses verify-email-identity --email-address tfe@example.com
 
-# Create SMTP credentials
-aws iam create-user --user-name tfe-ses-smtp
-aws iam attach-user-policy \
-  --user-name tfe-ses-smtp \
-  --policy-arn arn:aws:iam::aws:policy/AmazonSESFullAccess
+# Create an identity with the current SES API
+aws sesv2 create-email-identity --email-identity example.com
 ```
 
 #### SendGrid
 
 ```bash
 # SendGrid SMTP configuration
-TFE_SMTP_HOST=smtp.sendgrid.net
-TFE_SMTP_PORT=587
-TFE_SMTP_USERNAME=apikey
-TFE_SMTP_PASSWORD=SG.your-sendgrid-api-key
-TFE_SMTP_STARTTLS=true
-TFE_SMTP_AUTH=login
-TFE_SMTP_SENDER=tfe@example.com
+curl -s \
+  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request PATCH \
+  "${TFE_URL}/api/v2/admin/smtp-settings" \
+  --data '{
+    "data": {
+      "type": "smtp-settings",
+      "attributes": {
+        "enabled": true,
+        "host": "smtp.sendgrid.net",
+        "port": 587,
+        "username": "apikey",
+        "password": "SG.your-sendgrid-api-key",
+        "auth": "login",
+        "sender": "tfe@example.com"
+      }
+    }
+  }'
 ```
 
 ## Testing SMTP Configuration
@@ -115,12 +130,19 @@ After configuring SMTP, verify it works:
 curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
-  --request POST \
-  "${TFE_URL}/api/v2/admin/smtp-settings/test" \
+  --request PATCH \
+  "${TFE_URL}/api/v2/admin/smtp-settings" \
   --data '{
     "data": {
-      "type": "smtp-tests",
+      "type": "smtp-settings",
       "attributes": {
+        "enabled": true,
+        "host": "smtp.example.com",
+        "port": 587,
+        "username": "tfe-notifications@example.com",
+        "password": "your-smtp-password",
+        "auth": "login",
+        "sender": "Terraform Enterprise <tfe@example.com>",
         "test-email-address": "admin@example.com"
       }
     }
@@ -130,7 +152,7 @@ curl -s \
 docker logs tfe 2>&1 | grep -i smtp
 ```
 
-If TFE does not have a test endpoint, send a test from the command line to verify SMTP connectivity:
+You can also send a test from the command line to verify SMTP connectivity:
 
 ```bash
 # Test SMTP from the TFE host directly
@@ -164,12 +186,13 @@ Once SMTP is working, set up notifications at the workspace level.
    - Needs attention (plan complete, waiting for approval)
    - Run completed (applied successfully)
    - Run errored
-5. Add recipient email addresses
+5. Add recipient users
 
 ### Via the API
 
 ```bash
-# Create an email notification for a workspace
+# Create an email notification for a workspace.
+# Email notifications are sent to TFE users, so use organization user IDs.
 curl -s \
   --header "Authorization: Bearer ${TFE_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
@@ -186,11 +209,15 @@ curl -s \
           "run:needs_attention",
           "run:completed",
           "run:errored"
-        ],
-        "email-addresses": [
-          "platform-team@example.com",
-          "oncall@example.com"
         ]
+      },
+      "relationships": {
+        "users": {
+          "data": [
+            { "id": "user-abc123", "type": "users" },
+            { "id": "user-def456", "type": "users" }
+          ]
+        }
       }
     }
   }'
@@ -243,7 +270,9 @@ For organizations with many workspaces, set up notifications programmatically:
 # setup-notifications.sh
 # Add email notifications to all production workspaces
 
-NOTIFICATION_EMAILS="platform-team@example.com,infra-oncall@example.com"
+NOTIFICATION_USER_IDS=("user-abc123" "user-def456")
+USER_RELATIONSHIPS=$(printf '%s\n' "${NOTIFICATION_USER_IDS[@]}" | \
+  jq -R '{id: ., type: "users"}' | jq -s .)
 
 # Get all production workspaces
 WORKSPACES=$(curl -s \
@@ -270,8 +299,12 @@ for WS_ID in ${WORKSPACES}; do
           "name": "Production Alerts",
           "destination-type": "email",
           "enabled": true,
-          "triggers": ["run:needs_attention", "run:errored"],
-          "email-addresses": ["'"${NOTIFICATION_EMAILS}"'"]
+          "triggers": ["run:needs_attention", "run:errored"]
+        },
+        "relationships": {
+          "users": {
+            "data": '"${USER_RELATIONSHIPS}"'
+          }
         }
       }
     }' > /dev/null
