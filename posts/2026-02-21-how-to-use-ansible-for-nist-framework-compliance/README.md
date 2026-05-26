@@ -71,6 +71,7 @@ Every compliance control follows the same pattern: check the current state, reme
       ansible.builtin.command: sshd -T
       register: sshd_config
       changed_when: false
+      check_mode: false
 
     - name: Assert SSH hardening
       ansible.builtin.assert:
@@ -185,12 +186,14 @@ The most effective approach is creating a dedicated compliance role with tasks o
   ansible.builtin.command: lsblk -f
   register: block_devices
   changed_when: false
+  check_mode: false
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
+  check_mode: false
   failed_when: false
 
 - name: Verify certificate is not expired
@@ -210,6 +213,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
   ansible.builtin.command: ufw status
   register: firewall_status
   changed_when: false
+  check_mode: false
   failed_when: false
 
 - name: Assert firewall is enabled
@@ -219,14 +223,15 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
+  ansible.builtin.command: ss -tlnH
   register: listening_ports
   changed_when: false
+  check_mode: false
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - listening_ports.stdout is not regex('(^|\\s)[^\\s]+:[*]?:?' ~ item ~ '\\s')
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
@@ -322,6 +327,7 @@ The real power of compliance automation is combining detection with remediation:
       ansible.builtin.command: sshd -T
       register: sshd_config
       changed_when: false
+      check_mode: false
 
     - name: Record SSH check
       ansible.builtin.set_fact:
@@ -337,12 +343,18 @@ The real power of compliance automation is combining detection with remediation:
       ansible.builtin.command: grep -E '^minlen' /etc/security/pwquality.conf
       register: pwquality
       changed_when: false
+      check_mode: false
       failed_when: false
 
     - name: Record password check
       ansible.builtin.set_fact:
         checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
       when: pwquality.rc == 0
+
+    - name: Record password failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['Password minimum length NOT configured'] }}"
+      when: pwquality.rc != 0
 
     - name: Print compliance summary
       ansible.builtin.debug:
