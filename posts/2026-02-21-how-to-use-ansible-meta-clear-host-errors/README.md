@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Meta, Error Recovery, Host Management
 
-Description: Learn how to use Ansible meta clear_host_errors to reset the failure state of hosts and allow them to continue executing tasks.
+Description: Learn how to use Ansible meta clear_host_errors to reset host failure state so later plays can target those hosts again.
 
 ---
 
-When an Ansible task fails on a host, that host is typically marked as failed and removed from the list of active hosts for the rest of the play. Even if you use `ignore_errors: true`, the host retains an internal failure counter. In some strategies (like `free`), hosts can end up in a failed state that prevents them from continuing. The `meta: clear_host_errors` directive resets this failure tracking, giving the host a clean slate to continue executing tasks.
+When an Ansible task fails on a host, that host is typically marked as failed and removed from the list of active hosts for the rest of the play. If a host is unreachable, Ansible marks it as `UNREACHABLE` and removes it from active execution as well. The `meta: clear_host_errors` directive clears the failed state for hosts in the play, making them available for targeting in subsequent plays. It does not make a failed host resume execution later in the same play.
 
 ## Understanding Host Error State
 
-To understand why `clear_host_errors` exists, you need to know how Ansible tracks host failures. When using features like `max_fail_percentage` or `any_errors_fatal`, Ansible keeps a counter of which hosts have failed. Even with `ignore_errors`, this internal tracking can cause problems.
+To understand why `clear_host_errors` exists, you need to know how Ansible tracks host failures. By default, a failed task stops execution for that host while the play continues on other hosts. Features like `max_fail_percentage` or `any_errors_fatal` can make those failures stop a batch or the entire play. A task that uses `ignore_errors: true` continues and is not counted as a failed host, so `clear_host_errors` is mainly useful after Ansible has actually marked a host failed or unreachable.
 
 ```yaml
 # Scenario where host error state matters
@@ -28,16 +28,18 @@ To understand why `clear_host_errors` exists, you need to know how Ansible track
       ansible.builtin.command:
         cmd: /opt/app/check.sh
       register: check_result
-      ignore_errors: true
 
-    # Even with ignore_errors, the host is tracked as having an error
-    # If too many hosts have errors, the play could stop
-
-    - name: Clear the error state
+    # Hosts where the task failed stop executing this play.
+    # This meta task clears their failed state for later plays.
+    - name: Clear failed hosts for a follow-up play
       ansible.builtin.meta: clear_host_errors
 
-    # Now the hosts start fresh from an error-tracking perspective
-    - name: Continue with deployment
+- name: Follow-up play can target hosts again
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Continue with follow-up deployment work
       ansible.builtin.debug:
         msg: "Proceeding on {{ inventory_hostname }}"
 ```
@@ -59,28 +61,31 @@ Here is a straightforward example showing when and how to use this directive.
         src: primary.conf.j2
         dest: /etc/app/config.conf
       register: primary_config
-      ignore_errors: true
 
-    - name: Apply fallback configuration where primary failed
+    - name: Clear host errors for the recovery play
+      ansible.builtin.meta: clear_host_errors
+
+- name: Recovery workflow follow-up
+  hosts: webservers
+  become: true
+
+  tasks:
+    - name: Apply fallback configuration if needed
       ansible.builtin.template:
         src: fallback.conf.j2
         dest: /etc/app/config.conf
-      when: primary_config is failed
 
-    - name: Clear host errors after handling failures
-      ansible.builtin.meta: clear_host_errors
-
-    - name: Continue with remaining setup (all hosts participate)
+    - name: Continue with remaining setup
       ansible.builtin.systemd:
         name: app
         state: restarted
 ```
 
-Without `clear_host_errors`, hosts where the primary config failed would still carry that failure state, even though you handled it with the fallback config. Clearing the errors ensures those hosts are treated as fully healthy going forward.
+Without `clear_host_errors`, hosts where the primary config failed would still carry that failed state and would not be targeted by later plays in the same run. Clearing the errors lets the follow-up recovery play target those hosts again.
 
 ## Use Case: Retry Patterns
 
-When implementing retry logic without the built-in `retries` parameter, `clear_host_errors` lets you reset between attempts.
+When implementing retry logic, the built-in `retries` and `until` parameters are usually the right tool within a single play. Use `clear_host_errors` only when a host has already been marked failed or unreachable and you want a later play to try it again.
 
 ```yaml
 # Manual retry pattern with clear_host_errors
@@ -95,15 +100,18 @@ When implementing retry logic without the built-in `retries` parameter, `clear_h
         name: myapp
         state: started
       register: start_attempt_1
-      ignore_errors: true
 
+    - name: Clear failed hosts for the retry play
+      ansible.builtin.meta: clear_host_errors
+
+- name: Service startup retry
+  hosts: all
+  become: true
+
+  tasks:
     - name: Wait before retry
       ansible.builtin.pause:
         seconds: 10
-      when: start_attempt_1 is failed
-
-    - name: Clear errors from first attempt
-      ansible.builtin.meta: clear_host_errors
 
     - name: Attempt 2 - Fix common issue and retry
       block:
@@ -115,18 +123,12 @@ When implementing retry logic without the built-in `retries` parameter, `clear_h
             group: myapp
             mode: '0755'
             recurse: true
-          when: start_attempt_1 is failed
 
         - name: Start service (second attempt)
           ansible.builtin.systemd:
             name: myapp
             state: started
-          when: start_attempt_1 is failed
           register: start_attempt_2
-          ignore_errors: true
-
-    - name: Clear errors from second attempt
-      ansible.builtin.meta: clear_host_errors
 
     - name: Final status check
       ansible.builtin.systemd:
@@ -140,7 +142,7 @@ When implementing retry logic without the built-in `retries` parameter, `clear_h
 
 ## Use Case: Multi-Stage Pipeline
 
-In a multi-stage deployment pipeline, a failure in an optional early stage should not prevent required later stages from running.
+In a multi-stage deployment pipeline, a failure in an optional early stage should not prevent required later stages from running. For optional tasks in the same play, use `ignore_errors`, `failed_when`, or a `block` with `rescue`; `clear_host_errors` is only needed if a previous play marked hosts failed and a later play should target them again.
 
 ```yaml
 # Multi-stage pipeline with error clearing
@@ -161,9 +163,6 @@ In a multi-stage deployment pipeline, a failure in an optional early stage shoul
       ansible.builtin.debug:
         msg: "Smoke tests {{ 'PASSED' if smoke_tests is success else 'FAILED (non-blocking)' }}"
 
-    - name: Clear any errors from optional stage
-      ansible.builtin.meta: clear_host_errors
-
     # Stage 2: Required deployment
     - name: Deploy application
       ansible.builtin.copy:
@@ -182,9 +181,6 @@ In a multi-stage deployment pipeline, a failure in an optional early stage shoul
       register: integration_tests
       ignore_errors: true
 
-    - name: Clear errors from optional post-deployment stage
-      ansible.builtin.meta: clear_host_errors
-
     # Stage 4: Required verification
     - name: Verify deployment
       ansible.builtin.uri:
@@ -196,7 +192,7 @@ In a multi-stage deployment pipeline, a failure in an optional early stage shoul
 
 ## Use Case: Working with any_errors_fatal
 
-When `any_errors_fatal: true` is set, any single host failure stops the entire play. But sometimes you want to handle certain expected failures without stopping everything.
+When `any_errors_fatal: true` is set, any single host failure stops the entire play after the fatal task completes for the current batch. Use a `block` with `rescue` for expected, recoverable failures; `clear_host_errors` is not a way to prevent `any_errors_fatal` from stopping the current play.
 
 ```yaml
 # Handle expected failures with any_errors_fatal
@@ -211,28 +207,25 @@ When `any_errors_fatal: true` is set, any single host failure stops the entire p
       ansible.builtin.set_fact:
         is_canary: "{{ 'canary' in group_names }}"
 
-    # This might fail on canary hosts testing new config
-    - name: Apply configuration
-      ansible.builtin.template:
-        src: config.j2
-        dest: /etc/app/config.yml
-      register: config_result
-      ignore_errors: "{{ is_canary | bool }}"
+    - name: Apply configuration with canary rescue
+      block:
+        - name: Apply configuration
+          ansible.builtin.template:
+            src: config.j2
+            dest: /etc/app/config.yml
+      rescue:
+        - name: Revert canary to safe config
+          ansible.builtin.template:
+            src: config-safe.j2
+            dest: /etc/app/config.yml
+          when: is_canary | bool
 
-    # For canary hosts, revert to safe config if new one failed
-    - name: Revert canary to safe config
-      ansible.builtin.template:
-        src: config-safe.j2
-        dest: /etc/app/config.yml
-      when:
-        - is_canary | bool
-        - config_result is failed
+        - name: Fail non-canary hosts
+          ansible.builtin.fail:
+            msg: "Configuration failed on a non-canary host"
+          when: not is_canary | bool
 
-    # Clear errors so canary failures do not trigger any_errors_fatal
-    - name: Clear host errors
-      ansible.builtin.meta: clear_host_errors
-
-    # Now this task runs on all hosts, including canary hosts that had errors
+    # This task runs if the failure was recovered in the rescue section
     - name: Restart application
       ansible.builtin.systemd:
         name: app
@@ -241,7 +234,7 @@ When `any_errors_fatal: true` is set, any single host failure stops the entire p
 
 ## Use Case: Dynamic Inventory Health Recovery
 
-When working with dynamic inventory where hosts might be temporarily unreachable, use `clear_host_errors` to give them another chance.
+When working with dynamic inventory where hosts might be temporarily unreachable, use `clear_host_errors` to give them another chance in a later play.
 
 ```yaml
 # Give unreachable hosts a second chance
@@ -254,21 +247,19 @@ When working with dynamic inventory where hosts might be temporarily unreachable
   tasks:
     - name: First connection attempt
       ansible.builtin.ping:
-      register: first_ping
-      ignore_unreachable: true
-
-    - name: Log unreachable hosts
-      ansible.builtin.debug:
-        msg: "{{ inventory_hostname }} was unreachable on first attempt"
-      when: first_ping is unreachable
-
-    - name: Wait for potentially booting hosts
-      ansible.builtin.pause:
-        seconds: 30
-      when: first_ping is unreachable
 
     - name: Clear errors from unreachable hosts
       ansible.builtin.meta: clear_host_errors
+
+- name: Resilient deployment retry
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait for potentially booting hosts
+      ansible.builtin.pause:
+        seconds: 30
 
     - name: Second connection attempt
       ansible.builtin.ping:
@@ -287,44 +278,48 @@ When working with dynamic inventory where hosts might be temporarily unreachable
 
 ## Combining with Strategy Plugins
 
-The `clear_host_errors` directive is especially important when using the `free` strategy, where hosts can get out of sync.
+The `clear_host_errors` directive has important strategy-plugin caveats. The `ansible.builtin.meta` documentation notes that some meta actions bypass the host loop and do not work normally outside lockstep strategies, so avoid relying on `clear_host_errors` as a synchronization mechanism with the `free` strategy.
 
 ```yaml
-# Using clear_host_errors with free strategy
+# Using clear_host_errors with the default lockstep strategy
 ---
-- name: Free strategy with error recovery
+- name: Lockstep strategy with error recovery
   hosts: all
   become: true
-  strategy: free
 
   tasks:
-    - name: Fast parallel task (might fail on slow hosts)
+    - name: Preflight task that might fail
       ansible.builtin.command:
         cmd: /opt/app/quick-check.sh
       register: quick_check
-      ignore_errors: true
 
-    - name: Clear errors to keep all hosts in the game
+    - name: Clear failed hosts for the next play
       ansible.builtin.meta: clear_host_errors
 
-    - name: Synchronization point - gather fresh data
+- name: Continue after error recovery
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Gather fresh data
       ansible.builtin.setup:
         gather_subset:
           - min
 
     - name: Continue with main tasks
       ansible.builtin.debug:
-        msg: "All hosts are synchronized and continuing"
+        msg: "Host is participating in the follow-up play"
 ```
 
 ## Important Caveats
 
 There are some limitations and behaviors to be aware of:
 
-1. `clear_host_errors` is a play-level action that affects all hosts in the current play
+1. `clear_host_errors` clears failed state for hosts specified in the play's host list
 2. It clears the internal failure counter but does not change registered variable states
 3. It does not make unreachable hosts reachable
 4. The registered `failed` state of individual tasks remains unchanged
+5. It makes failed hosts available for subsequent plays, but it does not make them continue later tasks in the current play
 
 ```yaml
 # Registered states persist after clear_host_errors
@@ -343,10 +338,11 @@ There are some limitations and behaviors to be aware of:
     - name: Clear host errors
       ansible.builtin.meta: clear_host_errors
 
-    # The host continues, but the registered variable still shows failure
+    # The host continues because ignore_errors was used, but the registered
+    # variable still shows the task result.
     - name: Check registered state (still shows failed)
       ansible.builtin.debug:
         msg: "failed_task.failed is still {{ failed_task.failed }}"
 ```
 
-The `meta: clear_host_errors` directive is a recovery tool for complex playbook scenarios. It is not something you use in every playbook, but when you need it, nothing else will do. It bridges the gap between Ansible's default "fail and stop" behavior and the reality that some failures are expected and recoverable. Use it when you have handled an error condition and want to give hosts a clean slate to continue with the rest of the play.
+The `meta: clear_host_errors` directive is a recovery tool for complex playbook scenarios. It is not something you use in every playbook, and it is not a replacement for `ignore_errors`, `failed_when`, retries, or `block`/`rescue` error handling. Use it when Ansible has marked hosts failed or unreachable and you want later plays in the same run to target those hosts again.
