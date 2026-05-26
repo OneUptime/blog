@@ -26,7 +26,7 @@ molecule login --host ubuntu2204
 molecule login --host rocky9 --scenario-name multi-os
 ```
 
-This opens an interactive shell in the test instance. For Docker-based instances, it is equivalent to `docker exec -it <container> /bin/bash`. For Vagrant, it is `vagrant ssh`.
+This opens an interactive shell in the test instance. For Docker-based instances, it is commonly equivalent to `docker exec -it <container> bash`, depending on the driver's `login_cmd_template`. For Vagrant, it is `vagrant ssh`.
 
 ## The Debugging Workflow
 
@@ -178,7 +178,7 @@ lsof -p $(pgrep myapp)
 
 ### Test Ansible Modules Manually
 
-You can even run Ansible commands manually inside the instance to test module behavior.
+If Ansible is installed in the instance, you can even run Ansible commands manually inside it to test module behavior.
 
 ```bash
 # Inside the instance
@@ -222,7 +222,7 @@ From inside the webserver, test connectivity to the database.
 ```bash
 # Inside the webserver instance
 ping database
-curl database:5432
+nc -vz database 5432
 telnet database 5432
 ```
 
@@ -265,23 +265,23 @@ If you do not need a full shell session, you can run single commands using Ansib
 
 ```bash
 # Run a command on all instances without logging in
-ansible all -i molecule/default/.molecule/ansible_inventory.yml -m command -a "systemctl status nginx"
+ansible all -i ~/.cache/molecule/YOUR_ROLE/default/inventory/ansible_inventory.yml -m command -a "systemctl status nginx"
 
 # Check a specific file
-ansible all -i molecule/default/.molecule/ansible_inventory.yml -m command -a "cat /etc/nginx/nginx.conf"
+ansible all -i ~/.cache/molecule/YOUR_ROLE/default/inventory/ansible_inventory.yml -m command -a "cat /etc/nginx/nginx.conf"
 ```
 
 Or use Docker/Podman exec directly.
 
 ```bash
 # Find the container name
-docker ps --filter "label=creator=molecule"
+docker ps
 
 # Run a command in the container
 docker exec molecule-instance systemctl status nginx
 
-# Get a shell in the container (same as molecule login)
-docker exec -it molecule-instance /bin/bash
+# Get a shell in the container
+docker exec -it molecule-instance bash
 ```
 
 ## Debugging Common Failures
