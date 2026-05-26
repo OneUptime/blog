@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, Output Formatting, DevOps
 
-Description: Learn how to use the Ansible dense callback plugin to get compact, one-line-per-task output that works well for large inventories and CI/CD pipelines.
+Description: Learn how to use the Ansible dense callback plugin to get compact playbook output that works well for large inventories and CI/CD pipelines.
 
 ---
 
-When you run an Ansible playbook against dozens or hundreds of hosts, the default output quickly becomes overwhelming. Each task produces multiple lines per host, and scrolling through thousands of lines to find the one failure is painful. The `dense` callback plugin condenses Ansible output to one line per task with a compact status summary, making it much easier to monitor large playbook runs.
+When you run an Ansible playbook against dozens or hundreds of hosts, the default output quickly becomes overwhelming. Each task produces multiple lines per host, and scrolling through thousands of lines to find the one failure is painful. The `community.general.dense` callback plugin condenses Ansible output by showing compact progress and keeping changed, failed, and unreachable results visible, making it much easier to monitor large playbook runs.
 
 ## What the dense Plugin Does
 
-The dense callback plugin replaces the default multi-line output with a single-line-per-task format. Instead of seeing every host result individually, you see a compact summary of how many hosts succeeded, changed, failed, or were skipped.
+The dense callback plugin replaces the default multi-line output with a compact stdout view. Instead of printing every successful host result permanently, it updates a progress line with hosts and statuses, and leaves changed, failed, or unreachable results on screen. In verbose mode, it behaves more like the default callback so you can still get detailed task output when debugging.
 
 ## Enabling the dense Callback
 
@@ -22,17 +22,23 @@ The dense callback plugin replaces the default multi-line output with a single-l
 # ansible.cfg
 
 [defaults]
-stdout_callback = dense
+stdout_callback = community.general.dense
+```
+
+The `dense` callback is part of the `community.general` collection. If you installed the full `ansible` package, you may already have it. If you installed only `ansible-core`, install the collection first:
+
+```bash
+ansible-galaxy collection install community.general
 ```
 
 ### Via Environment Variable
 
 ```bash
 # For a single run
-ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook deploy.yml
+ANSIBLE_STDOUT_CALLBACK=community.general.dense ansible-playbook deploy.yml
 
 # For the current shell session
-export ANSIBLE_STDOUT_CALLBACK=dense
+export ANSIBLE_STDOUT_CALLBACK=community.general.dense
 ansible-playbook deploy.yml
 ```
 
@@ -107,33 +113,35 @@ web-05  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
 
 That is 30+ lines for just 3 tasks on 5 hosts. Imagine 50 tasks on 100 hosts.
 
-### Dense Output (compact, one-line)
+### Dense Output (compact progress)
 
 ```text
-PLAY [Configure web servers] **************************************************
-TASK [Gathering Facts]       ok=5    changed=0    unreachable=0    failed=0
-TASK [Install nginx]         ok=3    changed=2    unreachable=0    failed=0
-TASK [Deploy configuration]  ok=0    changed=5    unreachable=0    failed=0
-TASK [Start nginx]           ok=3    changed=2    unreachable=0    failed=0
-
-PLAY RECAP ********************************************************************
-web-01  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
-web-02  : ok=4    changed=3    unreachable=0    failed=0    skipped=0
-web-03  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
-web-04  : ok=4    changed=3    unreachable=0    failed=0    skipped=0
-web-05  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
+PLAY 1: CONFIGURE WEB SERVERS
+task 1: web-01 web-02 web-03 web-04 web-05
+task 2: Install nginx
+changed: web-02: {"changed": true}
+changed: web-04: {"changed": true}
+task 3: Deploy configuration
+changed: web-01: {"changed": true}
+changed: web-02: {"changed": true}
+changed: web-03: {"changed": true}
+changed: web-04: {"changed": true}
+changed: web-05: {"changed": true}
+task 4: Start nginx
+changed: web-02: {"changed": true}
+changed: web-04: {"changed": true}
 ```
 
-The task section is now just 4 lines instead of 20. At scale, this difference is enormous.
+The successful unchanged host results no longer dominate the log. At scale, this difference is enormous, especially when most tasks are already in the desired state.
 
 ## How Dense Handles Failures
 
 When a task fails on some hosts, the dense output highlights it clearly:
 
 ```text
-TASK [Deploy configuration]  ok=3    changed=0    unreachable=0    failed=2
-  FAILED: web-03 - msg: "Could not find template 'nginx.conf.j2'"
-  FAILED: web-04 - msg: "Could not find template 'nginx.conf.j2'"
+task 2: Deploy configuration
+failed: web-03: {"msg": "Could not find or access 'nginx.conf.j2'"}
+failed: web-04: {"msg": "Could not find or access 'nginx.conf.j2'"}
 ```
 
 Failed hosts get their own lines with the error message, so you can immediately see which hosts failed and why, without scrolling through successful hosts.
@@ -154,7 +162,7 @@ The dense callback is ideal for:
 
 Dense is not the best choice when:
 
-- You are developing or debugging a playbook (use `yaml` or `debug` callback instead)
+- You are developing or debugging a playbook (use the default callback with YAML-formatted results, or use `ansible.posix.debug`)
 - You need to see per-host variable values or task results
 - You are troubleshooting a specific host issue
 - You need the full JSON/YAML output for programmatic processing
@@ -166,32 +174,19 @@ You can fine-tune the dense output with other Ansible settings:
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = dense
+stdout_callback = community.general.dense
 
 # Hide skipped hosts for even cleaner output
 display_skipped_hosts = false
 
 # Enable additional (non-stdout) callback plugins alongside dense
-callbacks_enabled = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
-With `timer` and `profile_tasks` enabled alongside dense, you get timing information at the end:
+The `timer` and `profile_tasks` callbacks are part of the `ansible.posix` collection. With them enabled alongside dense, you get timing information at the end:
 
 ```text
-PLAY [Configure web servers] **************************************************
-TASK [Gathering Facts]       ok=5    changed=0    unreachable=0    failed=0
-TASK [Install nginx]         ok=3    changed=2    unreachable=0    failed=0
-TASK [Deploy configuration]  ok=0    changed=5    unreachable=0    failed=0
-TASK [Start nginx]           ok=3    changed=2    unreachable=0    failed=0
-
-PLAY RECAP ********************************************************************
-web-01  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
-web-02  : ok=4    changed=3    unreachable=0    failed=0    skipped=0
-web-03  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
-web-04  : ok=4    changed=3    unreachable=0    failed=0    skipped=0
-web-05  : ok=4    changed=1    unreachable=0    failed=0    skipped=0
-
-Wednesday 21 February 2026  10:15:00 +0000 (0:00:01.234) 0:02:34.567 *********
+Saturday 21 February 2026  10:15:00 +0000 (0:00:01.234) 0:02:34.567 *********
 ===============================================================================
 Install nginx --------------------------------------------------------- 45.23s
 Deploy configuration -------------------------------------------------- 12.34s
@@ -203,14 +198,14 @@ Playbook run took 0 days, 0 hours, 1 minutes, 6 seconds
 
 ## Using dense for Specific Runs
 
-If you normally use the `yaml` callback but want dense for a specific large-scale run:
+If you normally use the default callback with YAML-formatted results but want dense for a specific large-scale run:
 
 ```bash
 # Override the default callback for this run only
-ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook patch-all-servers.yml
+ANSIBLE_STDOUT_CALLBACK=community.general.dense ansible-playbook patch-all-servers.yml
 ```
 
-This lets you keep the more detailed `yaml` output as your default while using dense when you need it.
+This lets you keep the more detailed default output as your default while using dense when you need it.
 
 ## Practical Example: Patching 100 Servers
 
@@ -253,29 +248,27 @@ Here is where dense really shines. Consider a patching playbook:
       failed_when: system_health.stdout not in ['running', 'degraded']
 ```
 
-With 100 servers and `serial: 20`, the default callback would produce thousands of lines. With dense, you get a clean summary for each batch:
+With 100 servers and `serial: 20`, the default callback would produce thousands of lines. With dense, you get compact progress for each serial batch and persistent lines for changes and failures:
 
 ```text
-PLAY [Patch all servers] ******************************************************
-
-Batch 1/5:
-TASK [Update apt cache]           ok=20   changed=0    unreachable=0    failed=0
-TASK [Upgrade all packages]       ok=3    changed=17   unreachable=0    failed=0
-TASK [Check if reboot is needed]  ok=20   changed=0    unreachable=0    failed=0
-TASK [Reboot if required]         ok=0    changed=8    unreachable=0    failed=0    skipped=12
-TASK [Verify system is healthy]   ok=20   changed=0    unreachable=0    failed=0
-
-Batch 2/5:
-TASK [Update apt cache]           ok=20   changed=0    unreachable=0    failed=0
-TASK [Upgrade all packages]       ok=5    changed=15   unreachable=0    failed=0
+PLAY 1: PATCH ALL SERVERS
+task 1: server-001 server-002 server-003 ... server-020
+task 2: Upgrade all packages
+changed: server-002: {"changed": true}
+changed: server-004: {"changed": true}
+changed: server-007: {"changed": true}
+...
+task 4: Reboot if required
+changed: server-002: {"changed": true, "rebooted": true}
+changed: server-004: {"changed": true, "rebooted": true}
 ...
 ```
 
-At a glance you can see that 17 out of 20 servers in the first batch had packages to upgrade, and 8 needed a reboot. All 20 came back healthy after.
+At a glance you can see which servers changed or failed without scrolling past every unchanged host result.
 
 ## Alternative: The minimal Callback
 
-If you want even less output than dense, the `minimal` callback shows only the host and status:
+If you want a different compact built-in stdout callback, the `minimal` callback shows host-oriented results and is the default stdout callback for ad hoc `ansible` commands:
 
 ```bash
 ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook deploy.yml
@@ -284,8 +277,8 @@ ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook deploy.yml
 Output:
 
 ```text
-web-01 | CHANGED
-web-02 | CHANGED
+web-01 | CHANGED => {"changed": true}
+web-02 | SUCCESS => {"changed": false}
 web-03 | FAILED! => {"msg": "..."}
 ```
 
@@ -297,16 +290,16 @@ A pattern I use is setting up shell aliases for different output modes:
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-alias ansible-playbook-dense='ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook'
-alias ansible-playbook-yaml='ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook'
-alias ansible-playbook-json='ANSIBLE_STDOUT_CALLBACK=json ansible-playbook'
+alias ansible-playbook-dense='ANSIBLE_STDOUT_CALLBACK=community.general.dense ansible-playbook'
+alias ansible-playbook-debug='ANSIBLE_STDOUT_CALLBACK=ansible.posix.debug ansible-playbook'
+alias ansible-playbook-json='ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook'
 ```
 
 Then use them based on the situation:
 
 ```bash
 # Development and debugging
-ansible-playbook-yaml deploy.yml
+ansible-playbook-debug deploy.yml
 
 # Large-scale operations
 ansible-playbook-dense patch-all.yml
@@ -317,4 +310,4 @@ ansible-playbook-json deploy.yml > results.json
 
 ## Summary
 
-The dense callback plugin is the right choice for large-scale Ansible operations where per-host output becomes unmanageable. It gives you one line per task with aggregate counts for ok, changed, unreachable, and failed, while still showing individual error details when something goes wrong. Pair it with `timer` and `profile_tasks` for a complete operational view. Keep your detailed callback (yaml or debug) as the default for development, and switch to dense when running against large inventories.
+The dense callback plugin is the right choice for large-scale Ansible operations where per-host output becomes unmanageable. It gives you compact progress output while keeping changed, failed, and unreachable results visible when something important happens. Pair it with `ansible.posix.timer` and `ansible.posix.profile_tasks` for a complete operational view. Keep your detailed callback as the default for development, and switch to dense when running against large inventories.
