@@ -16,12 +16,13 @@ Cloud Router serves several purposes depending on your architecture:
 
 - **Dynamic route learning**: Automatically learns and advertises routes via BGP instead of requiring static route configuration.
 - **Cloud NAT foundation**: Cloud NAT requires a Cloud Router to function, even though it does not use BGP in that case.
-- **VPN connectivity**: HA VPN and classic VPN with dynamic routing both depend on Cloud Router.
+- **VPN connectivity**: HA VPN depends on Cloud Router. Classic VPN can use Cloud Router only for specific dynamic routing scenarios.
 - **Cloud Interconnect**: Both Dedicated and Partner Interconnect use Cloud Router for route exchange.
 
 ## Prerequisites
 
 - Ansible 2.10+ with the `google.cloud` collection
+- Google Cloud CLI installed and authenticated for the Cloud NAT and HA VPN gateway examples
 - A GCP service account with Network Admin permissions
 - A VPC network already created
 
@@ -78,7 +79,7 @@ Let us start with a simple Cloud Router in a specific region.
 
 ## Cloud Router with Custom Route Advertisements
 
-By default, Cloud Router advertises all subnet routes in your VPC. You can customize this to advertise only specific subnets or add custom IP ranges.
+By default, Cloud Router advertises subnet routes according to your VPC network dynamic routing mode. You can customize this to advertise only specific subnets or add custom IP ranges.
 
 ```yaml
 # router-custom-advertisements.yml - Router with custom route ads
@@ -166,16 +167,16 @@ One of the most common uses for Cloud Router is with HA VPN for site-to-site con
       register: router
 
     - name: Create HA VPN gateway
-      google.cloud.gcp_compute_ha_vpn_gateway:
-        name: "ha-vpn-gateway"
-        region: "{{ region }}"
-        network:
-          selfLink: "projects/{{ gcp_project }}/global/networks/production-vpc"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command: >
+        gcloud compute vpn-gateways create ha-vpn-gateway
+        --project={{ gcp_project }}
+        --region={{ region }}
+        --network=production-vpc
       register: vpn_gateway
+      changed_when: "'Created' in vpn_gateway.stdout"
+      failed_when:
+        - vpn_gateway.rc != 0
+        - "'already exists' not in vpn_gateway.stderr"
 
     - name: Create an external VPN gateway (represents on-prem)
       google.cloud.gcp_compute_external_vpn_gateway:
@@ -194,7 +195,7 @@ One of the most common uses for Cloud Router is with HA VPN for site-to-site con
       ansible.builtin.debug:
         msg: |
           Cloud Router: {{ router.name }} (ASN {{ router.bgp.asn }})
-          HA VPN Gateway: {{ vpn_gateway.name }}
+          HA VPN Gateway: ha-vpn-gateway
           External Gateway: {{ external_gateway.name }}
           Next: Create VPN tunnels and BGP sessions.
 ```
@@ -257,7 +258,7 @@ For multi-region deployments, you need a Cloud Router in each region.
         network:
           selfLink: "projects/{{ gcp_project }}/global/networks/{{ network_name }}"
         bgp:
-          asn: "{{ item.asn }}"
+          asn: "{{ item.asn | int }}"
           advertise_mode: "DEFAULT"
         description: "Production router for {{ item.region }}"
         project: "{{ gcp_project }}"
@@ -308,27 +309,27 @@ The most common use case for Cloud Router is as the foundation for Cloud NAT. He
       register: router
 
     - name: Configure Cloud NAT on the router
-      google.cloud.gcp_compute_router_nat:
-        name: "production-nat"
-        router: "{{ router }}"
-        region: "{{ region }}"
-        nat_ip_allocate_option: "AUTO_ONLY"
-        source_subnetwork_ip_ranges_to_nat: "ALL_SUBNETWORKS_ALL_IP_RANGES"
-        min_ports_per_vm: 128
-        log_config:
-          enable: true
-          filter: "ERRORS_ONLY"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command: >
+        gcloud compute routers nats create production-nat
+        --project={{ gcp_project }}
+        --router=nat-router
+        --region={{ region }}
+        --auto-allocate-nat-external-ips
+        --nat-all-subnet-ip-ranges
+        --min-ports-per-vm=128
+        --enable-logging
+        --log-filter=ERRORS_ONLY
       register: nat_config
+      changed_when: "'Created' in nat_config.stdout"
+      failed_when:
+        - nat_config.rc != 0
+        - "'already exists' not in nat_config.stderr"
 
     - name: Show complete setup
       ansible.builtin.debug:
         msg: |
           Router: {{ router.name }} (ASN {{ router.bgp.asn }})
-          NAT: {{ nat_config.name }}
+          NAT: production-nat
           All VMs in {{ network_name }} / {{ region }} can now access the internet
           without public IP addresses.
 ```
@@ -366,7 +367,7 @@ Sometimes you need to check the status of existing routers.
           Router: {{ item.name }}
           Region: {{ item.region }}
           Network: {{ item.network }}
-          ASN: {{ item.bgp.asn }}
+          ASN: {{ item.get('bgp', {}).get('asn', 'not configured') }}
       loop: "{{ routers.resources }}"
 ```
 
@@ -389,29 +390,18 @@ Removing a Cloud Router requires that you first remove any dependent resources (
     region: "us-central1"
 
   tasks:
-    - name: Get the router reference
-      google.cloud.gcp_compute_router:
-        name: "nat-router"
-        region: "{{ region }}"
-        network:
-          selfLink: "projects/{{ gcp_project }}/global/networks/production-vpc"
-        bgp:
-          asn: 64530
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: router
-
     - name: Remove NAT configuration first
-      google.cloud.gcp_compute_router_nat:
-        name: "production-nat"
-        router: "{{ router }}"
-        region: "{{ region }}"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: absent
+      ansible.builtin.command: >
+        gcloud compute routers nats delete production-nat
+        --project={{ gcp_project }}
+        --router=nat-router
+        --region={{ region }}
+        --quiet
+      register: nat_delete
+      changed_when: nat_delete.rc == 0
+      failed_when:
+        - nat_delete.rc != 0
+        - "'was not found' not in nat_delete.stderr"
 
     - name: Delete the Cloud Router
       google.cloud.gcp_compute_router:
@@ -427,9 +417,9 @@ Removing a Cloud Router requires that you first remove any dependent resources (
 
 ## Best Practices
 
-1. **Use unique ASN numbers.** Each Cloud Router needs an ASN. Use the private ASN range (64512-65534) and keep track of which ASN you use where to avoid conflicts.
+1. **Use unique ASN numbers for BGP.** Each Cloud Router that manages BGP sessions needs an ASN. Use the private ASN range (64512-65534 or 4200000000-4294967294) and keep track of which ASN you use where to avoid conflicts.
 
-2. **Deploy routers per region.** Cloud Routers are regional resources. If you have subnets in multiple regions, you need a router in each.
+2. **Deploy routers per region.** Cloud Routers are regional resources. If you need Cloud NAT, HA VPN, or Interconnect in multiple regions, you need a router in each applicable region.
 
 3. **Plan your route advertisements.** The default mode advertises all subnets, which is usually fine. Switch to custom mode only when you need to advertise additional ranges or restrict what gets advertised.
 
