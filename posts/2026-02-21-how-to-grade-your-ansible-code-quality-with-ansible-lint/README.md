@@ -26,11 +26,11 @@ graph BT
 Here is what each profile enforces:
 
 - **min** - Bare minimum. Only catches syntax errors and rules that would cause playbook failures.
-- **basic** - Adds basic best practices like naming tasks and avoiding deprecated syntax.
-- **moderate** - Adds formatting rules, FQCN requirements, and idempotency checks.
-- **safety** - Adds security-focused rules like file permissions and no_log requirements.
+- **basic** - Adds basic best practices like naming tasks, avoiding deprecated syntax, and enforcing common YAML/style checks.
+- **moderate** - Adds stricter task-name rules, such as casing and template placement.
+- **safety** - Adds rules for nondeterministic or security-sensitive tasks, such as file permissions and risky shell pipelines.
 - **shared** - Designed for code that will be shared with others. Adds documentation and metadata requirements.
-- **production** - The strictest level. Everything from shared plus additional rules for reliability and maintainability.
+- **production** - The strictest level. Everything from shared plus requirements such as FQCN usage and content checks for validated or certified Ansible Automation Platform content.
 
 ## Running a Quality Grade Check
 
@@ -39,13 +39,13 @@ To grade your code, specify a profile when running ansible-lint.
 ```bash
 # Check your code against the production profile (strictest)
 
-ansible-lint -p production playbook.yml
+ansible-lint --profile production playbook.yml
 
 # Check against the basic profile (more lenient)
-ansible-lint -p basic playbook.yml
+ansible-lint --profile basic playbook.yml
 
 # Check against safety (security-focused)
-ansible-lint -p safety playbook.yml
+ansible-lint --profile safety playbook.yml
 ```
 
 ## Setting Your Target Profile
@@ -58,7 +58,7 @@ The best approach is to set your target profile in the configuration file.
 profile: moderate
 
 # Start here and work toward production
-# Current violations will be reported as errors
+# Warnings will also make the command return a non-zero exit code
 strict: true
 ```
 
@@ -103,7 +103,7 @@ Let me walk through grading an actual playbook and show what each profile catche
 
 ```bash
 # Running with the min profile
-ansible-lint -p min deploy-app.yml
+ansible-lint --profile min deploy-app.yml
 ```
 
 The min profile might not flag anything here because the playbook is syntactically valid. It focuses on things that would actually break execution.
@@ -112,30 +112,30 @@ The min profile might not flag anything here because the playbook is syntactical
 
 ```bash
 # Running with the basic profile
-ansible-lint -p basic deploy-app.yml
+ansible-lint --profile basic deploy-app.yml
 ```
 
 The basic profile catches:
 - Missing task names on several tasks
 - Using `yes` instead of `true` for boolean values
 - Missing play name
+- Free-form shell usage where the `command` module would be safer
 
 ### What the moderate Profile Catches
 
 The moderate profile adds:
-- Non-FQCN module names (`yum` instead of `ansible.builtin.yum`)
-- YAML formatting issues
-- Missing `changed_when` on the shell task
+- Task names that do not follow expected casing
+- Task names that include Jinja templates in the wrong location
 
 ### What the safety Profile Catches
 
 The safety profile adds:
 - Missing file permissions on the copy task
-- Using shell instead of the uri module for the health check
+- Risky shell pipelines and package tasks that install the latest available version
 
 ### What the production Profile Catches
 
-The production profile catches everything above plus any remaining best practice violations.
+The production profile catches everything above plus stricter production requirements, including non-FQCN module names (`yum` instead of `ansible.builtin.yum`). The shared profile, which production extends, also catches the missing `changed_when` on the shell task.
 
 ## Fixing to Production Grade
 
@@ -206,7 +206,7 @@ echo ""
 
 for profile in "${PROFILES[@]}"; do
     # Count violations at each level
-    count=$(ansible-lint -p "$profile" -f json "$PROJECT_DIR" 2>/dev/null | \
+    count=$(ansible-lint --profile "$profile" -f json "$PROJECT_DIR" 2>/dev/null | \
         python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "error")
 
     if [ "$count" = "0" ]; then
@@ -294,7 +294,7 @@ jobs:
       - name: Generate quality report
         run: |
           for profile in min basic moderate safety shared production; do
-            count=$(ansible-lint -p "$profile" -f json playbooks/ 2>/dev/null | \
+            count=$(ansible-lint --profile "$profile" -f json playbooks/ 2>/dev/null | \
               python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "-1")
             echo "${profile}=${count}" >> quality-metrics.txt
           done
@@ -317,11 +317,11 @@ If the built-in profiles do not match your needs, you can create a custom config
 
 profile: safety
 
-# Additional rules we want enforced beyond the safety profile
+# Additional opt-in rules we want enforced alongside the safety profile
 enable_list:
-  - fqcn
-  - name[casing]
-  - name[template]
+  - no-log-password
+  - name[prefix]
+  - galaxy-version-incorrect
 
 # Rules we have decided to skip for valid reasons
 skip_list:
@@ -347,7 +347,7 @@ ansible-quality-gate:
     - pip install ansible-lint
   script:
     # The project must pass the 'safety' profile to merge
-    - ansible-lint -p safety --strict playbooks/ roles/
+    - ansible-lint --profile safety --strict playbooks/ roles/
   rules:
     - if: $CI_MERGE_REQUEST_ID
   allow_failure: false
@@ -357,12 +357,12 @@ ansible-quality-gate:
 
 Based on grading dozens of Ansible projects, here are the most common blockers at each level:
 
-1. **basic to moderate** - FQCN is usually the biggest hurdle. Use `ansible-lint --fix` to handle it automatically.
+1. **basic to moderate** - Consistent task naming is usually the biggest hurdle. Review task names for casing and template placement.
 
-2. **moderate to safety** - File permissions and `no_log` on sensitive tasks. Audit every `copy`, `template`, and `file` task.
+2. **moderate to safety** - File permissions and risky shell usage. Audit every `copy`, `template`, and `file` task, and enable `no-log-password` if you want ansible-lint to enforce `no_log` on password loops.
 
-3. **safety to shared** - Documentation and metadata. Add descriptions to roles, write meaningful task names, and ensure `meta/main.yml` is complete in every role.
+3. **safety to shared** - Documentation, metadata, and idempotency checks. Add descriptions to roles, write meaningful task names, ensure `meta/main.yml` is complete in every role, and handle `changed_when` for command or shell tasks.
 
-4. **shared to production** - This is about consistency and polish. Proper handler naming, no unused variables, and clean YAML formatting throughout.
+4. **shared to production** - This is about consistency and polish. Use FQCNs, keep content ready for validation or certification checks, and clean up remaining production-profile violations.
 
 Grading your Ansible code is not about achieving a perfect score for its own sake. It is about having visibility into the quality of your infrastructure code and making informed decisions about where to invest improvement effort. Start where you are, set a realistic target, and improve steadily.
