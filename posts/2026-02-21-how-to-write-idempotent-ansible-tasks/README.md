@@ -70,14 +70,20 @@ Here is a non-idempotent task:
   ansible.builtin.command: mysql -e "CREATE DATABASE myapp"
 ```
 
-Fix it with `creates` or `removes` conditions:
+Fix it by checking state first and only running the command when needed:
 
 ```yaml
-# GOOD: Uses creates to skip if the result already exists
-- name: Initialize application database
-  ansible.builtin.command: mysql -e "CREATE DATABASE IF NOT EXISTS myapp"
-  register: db_result
-  changed_when: "'already exists' not in db_result.stderr"
+# GOOD: Checks whether the database exists before creating it
+- name: Check whether application database exists
+  ansible.builtin.command:
+    cmd: mysql --batch --skip-column-names -e "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'myapp'"
+  register: db_check
+  changed_when: false
+
+- name: Create application database
+  ansible.builtin.command:
+    cmd: mysql -e "CREATE DATABASE myapp"
+  when: db_check.stdout == ""
 ```
 
 Or better yet, use a purpose-built module:
@@ -85,7 +91,7 @@ Or better yet, use a purpose-built module:
 ```yaml
 # BEST: Use the mysql_db module which handles idempotency internally
 - name: Ensure application database exists
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: myapp
     state: present
     login_unix_socket: /var/run/mysqld/mysqld.sock
