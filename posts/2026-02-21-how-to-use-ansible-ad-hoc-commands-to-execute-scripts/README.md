@@ -26,7 +26,7 @@ ansible webservers -m script -a "./scripts/deploy.sh --env production --version 
 ansible all -m script -a "./scripts/gather_metrics.py"
 
 # Execute with a specific interpreter
-ansible all -m script -a "./scripts/config_check.rb" -e "ansible_python_interpreter=/usr/bin/ruby"
+ansible all -m script -a '{"cmd": "./scripts/config_check.rb", "executable": "/usr/bin/ruby"}'
 ```
 
 The `script` module automatically handles the transfer. You do not need to manually copy the script first. This is its main advantage over using `shell` to run scripts that already exist on the remote host.
@@ -113,7 +113,7 @@ Python scripts are common in infrastructure management:
 ansible all -m script -a "./scripts/audit_packages.py"
 
 # Specify the Python interpreter explicitly
-ansible all -m script -a "./scripts/check_config.py" -e "ansible_python_interpreter=/usr/bin/python3"
+ansible all -m script -a '{"cmd": "./scripts/check_config.py", "executable": "/usr/bin/python3"}'
 ```
 
 Example Python script for package auditing:
@@ -185,7 +185,7 @@ ansible all -m script -a "./scripts/security_audit.sh" --become -K
 ansible webservers -m script -a "./scripts/health_check.sh"
 
 # Use JSON output callback for machine-parseable results
-ANSIBLE_STDOUT_CALLBACK=json ansible all -m script -a "./scripts/health_check.sh" 2>/dev/null > health_report.json
+ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible all -m script -a "./scripts/health_check.sh" 2>/dev/null > health_report.json
 
 # Save output per host
 ansible all -m script -a "./scripts/health_check.sh" --tree /tmp/health_results/
@@ -214,8 +214,8 @@ Scripts may fail on some hosts but succeed on others. Here is how to handle that
 # Continue on failure (default behavior is to show errors but continue with other hosts)
 ansible all -m script -a "./scripts/optional_check.sh"
 
-# Ignore errors explicitly when using in automation
-ansible all -m script -a "./scripts/cleanup.sh" --ignore-errors
+# For ad hoc runs, make a non-critical remote script return success
+ansible all -m shell -a "/opt/scripts/cleanup.sh || true"
 
 # Check the return code of a script
 ansible all -m shell -a "/opt/scripts/validate.sh; echo \"EXIT_CODE: \$?\""
@@ -225,13 +225,13 @@ ansible all -m shell -a "/opt/scripts/validate.sh; echo \"EXIT_CODE: \$?\""
 
 ```bash
 # IMPORTANT: scripts transferred via the script module are temporarily
-# stored in the remote user's home directory, then deleted after execution.
+# stored in Ansible's remote temporary directory, then deleted after execution.
 # Ensure the script does not contain sensitive data that could leak via
 # process lists or temp files.
 
 # Verify the script before executing on production
-ansible webservers -m script -a "./scripts/deploy.sh" --check
-# Note: --check with script module just verifies the file exists locally
+ansible webservers -m script -a "./scripts/deploy.sh creates=/opt/myapp/.deployed" --check
+# Note: check mode for script is only predictive when creates or removes is used
 
 # Review what the script will do before running
 cat ./scripts/deploy.sh
@@ -291,7 +291,7 @@ ansible appservers -m script -a "./scripts/deploy.sh 2.5.0" --become -f 1
 # Collects relevant logs for incident investigation
 
 SINCE=${1:-"1 hour ago"}
-OUTPUT="/tmp/incident_logs_$(hostname)_$(date +%Y%m%d_%H%M%S).tar.gz"
+OUTPUT="/tmp/incident_logs.tar.gz"
 
 TMPDIR=$(mktemp -d)
 
@@ -319,7 +319,7 @@ echo "Logs collected: $OUTPUT"
 ```bash
 # Run the collection script, then fetch the results
 ansible webservers -m script -a "./scripts/collect_logs.sh '2 hours ago'" --become
-ansible webservers -m fetch -a "src=/tmp/incident_logs_*.tar.gz dest=./incident_logs/ flat=no"
+ansible webservers -m fetch -a "src=/tmp/incident_logs.tar.gz dest=./incident_logs/ flat=no"
 ```
 
 ## Summary
