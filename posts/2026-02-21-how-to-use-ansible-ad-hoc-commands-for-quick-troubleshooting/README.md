@@ -28,7 +28,7 @@ ansible webservers -m ping --one-line
 ansible all -m ping --one-line 2>&1 | grep -E "UNREACHABLE|FAILED"
 ```
 
-If hosts are unreachable via Ansible, they are likely unreachable by your users too. This immediately narrows the scope of the incident.
+If hosts are unreachable via Ansible, they may be down, unreachable over the management network, or failing the SSH/Python check that Ansible needs to run modules. This immediately narrows the scope of the incident.
 
 ## Service Status Checks
 
@@ -42,7 +42,7 @@ ansible webservers -m shell -a "systemctl is-active nginx" --one-line
 ansible appservers -m shell -a "for s in nginx myapp redis postgresql; do echo \"\$s: \$(systemctl is-active \$s 2>/dev/null || echo N/A)\"; done"
 
 # Find servers where a specific service has crashed
-ansible all -m shell -a "systemctl is-failed nginx 2>/dev/null && hostname || true" --one-line
+ansible all -m shell -a "systemctl is-failed --quiet nginx && hostname || true" --one-line
 
 # Check process count for a specific application
 ansible appservers -m shell -a "pgrep -c myapp || echo 0" --one-line
@@ -57,7 +57,7 @@ Logs tell you what went wrong. Pull relevant log entries from all affected serve
 ansible appservers -m shell -a "journalctl -u myapp --since '10 minutes ago' -p err --no-pager | tail -20"
 
 # Search for a specific error message across all servers
-ansible all -m shell -a "grep -l 'Connection refused' /var/log/app/*.log 2>/dev/null" --one-line
+ansible all -m shell -a "grep -l 'Connection refused' /var/log/app/*.log 2>/dev/null || true" --one-line
 
 # Check nginx error logs
 ansible webservers -m shell -a "tail -20 /var/log/nginx/error.log"
@@ -76,12 +76,12 @@ Many incidents are caused by running out of resources. Check all of them at once
 ```bash
 # Comprehensive resource check
 ansible all -m shell -a "
-echo '=== $(hostname) ==='
-echo 'CPU Load: $(cat /proc/loadavg | awk \"{print \\$1, \\$2, \\$3}\")'
-echo 'Memory: $(free -m | awk \"/^Mem:/ {printf \\\"%d/%d MB (%.0f%%)\\\", \\$3, \\$2, \\$3/\\$2*100}\")'
-echo 'Disk /: $(df -h / | awk \"NR==2 {print \\$5}\")'
-echo 'Open files: $(lsof 2>/dev/null | wc -l)'
-echo 'TCP connections: $(ss -s | awk \"/^TCP:/ {print}\")'
+echo \"=== \$(hostname) ===\"
+echo \"CPU Load: \$(awk '{print \$1, \$2, \$3}' /proc/loadavg)\"
+echo \"Memory: \$(free -m | awk '/^Mem:/ {printf \"%d/%d MB (%.0f%%)\", \$3, \$2, \$3/\$2*100}')\"
+echo \"Disk /: \$(df -h / | awk 'NR==2 {print \$5}')\"
+echo \"Open files: \$(lsof 2>/dev/null | wc -l)\"
+echo \"TCP connections: \$(ss -s | awk '/^TCP:/ {print}')\"
 "
 
 # Quick disk check
@@ -112,7 +112,7 @@ ansible all -m shell -a "ss -s" --one-line
 ansible webservers -m shell -a "ss -tan | awk '{print \$1}' | sort | uniq -c | sort -rn"
 
 # Check if specific ports are open
-ansible appservers -m shell -a "ss -tlnp | grep -E ':(80|443|3000|5432)'" --become
+ansible appservers -m shell -a "ss -tlnp | grep -E ':(80|443|3000|5432)' || true" --become
 
 # Trace network path to a specific host
 ansible webservers -m shell -a "traceroute -n -w 2 -m 15 db.internal 2>/dev/null | tail -5"
@@ -137,10 +137,10 @@ ansible webservers -m shell -a "curl -s http://localhost:3000/health | python3 -
 ansible webservers -m shell -a "curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s' http://localhost/ 2>&1"
 
 # Check application thread/process count
-ansible appservers -m shell -a "ps -eo pid,nlwp,comm | grep myapp"
+ansible appservers -m shell -a "ps -eo pid,nlwp,comm | grep '[m]yapp' || true"
 
 # Check file descriptor usage for a process
-ansible appservers -m shell -a "ls /proc/\$(pgrep -f myapp)/fd 2>/dev/null | wc -l"
+ansible appservers -m shell -a "pid=\$(pgrep -f myapp | head -1); [ -n \"\$pid\" ] && ls \"/proc/\$pid/fd\" 2>/dev/null | wc -l || echo 0"
 ```
 
 ## Comparing Server States
@@ -204,8 +204,8 @@ ansible appservers -m shell -a "ps aux --sort=-%mem | head -6"
 # 4. Check for I/O wait
 ansible appservers -m shell -a "iostat -x 1 2 | tail -10" --become
 
-# 5. Check network latency to dependencies
-ansible appservers -m shell -a "curl -s -o /dev/null -w '%{time_total}' http://db.internal:5432 || echo 'unreachable'"
+# 5. Check database reachability
+ansible appservers -m shell -a "pg_isready -h db.internal -p 5432 -t 2 2>&1 || echo 'unreachable'"
 
 # 6. Check if it is a recent change
 ansible appservers -m shell -a "ls -lt /opt/app/releases/ | head -5"
