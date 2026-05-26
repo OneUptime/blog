@@ -117,7 +117,7 @@ When you need to switch branches on an existing clone:
       when: branch_switch.changed
 ```
 
-The `force: true` parameter discards any local changes when switching branches. Without it, the switch will fail if there are uncommitted modifications.
+The `force: true` parameter discards modified files in the working repository when switching branches. Without it, the switch will fail if there are uncommitted modifications that would be overwritten.
 
 ## Feature Branch Deployment
 
@@ -286,4 +286,4 @@ Check if the remote branch has new commits before pulling:
 
 ## Summary
 
-The `version` parameter in the Ansible git module accepts branch names, making branch-based deployments straightforward. Use variables and maps to select branches based on environment. Use `force: true` when switching branches on existing clones with potential local changes. For feature branch testing, deploy to isolated directories or ports. Combine branch detection with conditional tasks to apply environment-specific configuration. Always register the git module result and use `.changed` to avoid running unnecessary post-deployment tasks when the code has not actually changed.
+The `version` parameter in the Ansible git module accepts branch names, making branch-based deployments straightforward. Use variables and maps to select branches based on environment. Use `force: true` when switching branches on existing clones with modified files that can be discarded. For feature branch testing, deploy to isolated directories or ports. Combine branch detection with conditional tasks to apply environment-specific configuration. Always register the git module result and use `.changed` to avoid running unnecessary post-deployment tasks when the code has not actually changed.
