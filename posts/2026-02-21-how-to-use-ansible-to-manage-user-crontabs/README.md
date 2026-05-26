@@ -171,7 +171,7 @@ Each user has their own crontab. Use the `user` parameter to manage crons for di
         job: "/opt/monitoring/collect.sh"
 ```
 
-Note the escaped percent signs (`\\%`) in the database backup job. In crontab, the `%` character has special meaning (it is used as a newline), so it must be escaped when used in commands like `date +%Y%m%d`.
+Note the escaped percent signs (`\\%`) in the database backup job. In crontab, the `%` character has special meaning (it is used as a newline), so it must be escaped as `\%` when used in commands like `date +%Y%m%d`. Because the example uses a double-quoted YAML string, the backslash is written as `\\%`.
 
 ## Removing Cron Jobs
 
@@ -402,11 +402,11 @@ Check that cron jobs are properly configured:
 
 ## Best Practices
 
-1. **Always set a `name`** for every cron entry. Without it, Ansible cannot manage the entry idempotently and will create duplicates.
+1. **Always use a stable `name`** for every cron entry. The `name` parameter is required in current Ansible, and changing it later makes Ansible treat the job as a different entry.
 
-2. **Redirect output** in your cron jobs. Use `>> /var/log/something.log 2>&1` to capture both stdout and stderr. Otherwise, cron sends email for every run.
+2. **Redirect output** in your cron jobs. Use `>> /var/log/something.log 2>&1` to capture both stdout and stderr. Otherwise, cron sends email when the job produces output.
 
-3. **Escape percent signs** with `\\%` in crontab commands. The `%` character has special meaning in cron.
+3. **Escape percent signs** with `\%` in crontab commands. In double-quoted YAML strings, write that as `\\%`. The `%` character has special meaning in cron.
 
 4. **Use `env: yes`** to set PATH and other variables at the top of the crontab. Cron's default PATH is very minimal.
 
