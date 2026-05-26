@@ -67,7 +67,6 @@ VyOS uses SSH for management and does not require an enable password. Once conne
           Hostname: {{ ansible_net_hostname }}
           Version: {{ ansible_net_version }}
           Model: {{ ansible_net_model | default('Virtual') }}
-          Interfaces: {{ ansible_net_interfaces | dict2items | map(attribute='key') | list }}
 ```
 
 ## Basic System Configuration
@@ -94,13 +93,13 @@ VyOS uses a set/delete command syntax similar to JunOS. The `vyos_config` module
     - name: Configure NTP
       vyos.vyos.vyos_config:
         lines:
-          - set system ntp server 10.0.0.50
-          - set system ntp server 10.0.0.51
+          - set service ntp server 10.0.0.50
+          - set service ntp server 10.0.0.51
 
     - name: Configure syslog
       vyos.vyos.vyos_config:
         lines:
-          - set system syslog host 10.0.100.50 facility all level info
+          - set system syslog remote 10.0.100.50 facility all level info
           - set system syslog global facility all level info
           - set system syslog global facility protocols level debug
 
@@ -186,62 +185,62 @@ VyOS firewall rules are one of its strongest features. The zone-based firewall m
     - name: Define firewall zones
       vyos.vyos.vyos_config:
         lines:
-          - set zone-policy zone WAN interface eth0
-          - set zone-policy zone WAN default-action drop
+          - set firewall zone WAN interface eth0
+          - set firewall zone WAN default-action drop
 
-          - set zone-policy zone LAN interface eth1
-          - set zone-policy zone LAN default-action drop
+          - set firewall zone LAN interface eth1
+          - set firewall zone LAN default-action drop
 
-          - set zone-policy zone DMZ interface eth2
-          - set zone-policy zone DMZ default-action drop
+          - set firewall zone DMZ interface eth2
+          - set firewall zone DMZ default-action drop
 
-          - set zone-policy zone LOCAL local-zone
+          - set firewall zone LOCAL local-zone
 
     - name: Create firewall ruleset - WAN to LAN
       vyos.vyos.vyos_config:
         lines:
-          - set firewall name WAN-TO-LAN default-action drop
+          - set firewall ipv4 name WAN-TO-LAN default-action drop
 
-          - set firewall name WAN-TO-LAN rule 10 action accept
-          - set firewall name WAN-TO-LAN rule 10 state established enable
-          - set firewall name WAN-TO-LAN rule 10 state related enable
-          - set firewall name WAN-TO-LAN rule 10 description "Allow established connections"
+          - set firewall ipv4 name WAN-TO-LAN rule 10 action accept
+          - set firewall ipv4 name WAN-TO-LAN rule 10 state established
+          - set firewall ipv4 name WAN-TO-LAN rule 10 state related
+          - set firewall ipv4 name WAN-TO-LAN rule 10 description "Allow established connections"
 
     - name: Create firewall ruleset - LAN to WAN
       vyos.vyos.vyos_config:
         lines:
-          - set firewall name LAN-TO-WAN default-action accept
+          - set firewall ipv4 name LAN-TO-WAN default-action accept
 
-          - set firewall name LAN-TO-WAN rule 10 action drop
-          - set firewall name LAN-TO-WAN rule 10 description "Block outbound SMTP from workstations"
-          - set firewall name LAN-TO-WAN rule 10 protocol tcp
-          - set firewall name LAN-TO-WAN rule 10 destination port 25
+          - set firewall ipv4 name LAN-TO-WAN rule 10 action drop
+          - set firewall ipv4 name LAN-TO-WAN rule 10 description "Block outbound SMTP from workstations"
+          - set firewall ipv4 name LAN-TO-WAN rule 10 protocol tcp
+          - set firewall ipv4 name LAN-TO-WAN rule 10 destination port 25
 
     - name: Create firewall ruleset - WAN to DMZ
       vyos.vyos.vyos_config:
         lines:
-          - set firewall name WAN-TO-DMZ default-action drop
+          - set firewall ipv4 name WAN-TO-DMZ default-action drop
 
-          - set firewall name WAN-TO-DMZ rule 10 action accept
-          - set firewall name WAN-TO-DMZ rule 10 description "Allow HTTP to DMZ"
-          - set firewall name WAN-TO-DMZ rule 10 protocol tcp
-          - set firewall name WAN-TO-DMZ rule 10 destination port 80
+          - set firewall ipv4 name WAN-TO-DMZ rule 10 action accept
+          - set firewall ipv4 name WAN-TO-DMZ rule 10 description "Allow HTTP to DMZ"
+          - set firewall ipv4 name WAN-TO-DMZ rule 10 protocol tcp
+          - set firewall ipv4 name WAN-TO-DMZ rule 10 destination port 80
 
-          - set firewall name WAN-TO-DMZ rule 20 action accept
-          - set firewall name WAN-TO-DMZ rule 20 description "Allow HTTPS to DMZ"
-          - set firewall name WAN-TO-DMZ rule 20 protocol tcp
-          - set firewall name WAN-TO-DMZ rule 20 destination port 443
+          - set firewall ipv4 name WAN-TO-DMZ rule 20 action accept
+          - set firewall ipv4 name WAN-TO-DMZ rule 20 description "Allow HTTPS to DMZ"
+          - set firewall ipv4 name WAN-TO-DMZ rule 20 protocol tcp
+          - set firewall ipv4 name WAN-TO-DMZ rule 20 destination port 443
 
-          - set firewall name WAN-TO-DMZ rule 30 action accept
-          - set firewall name WAN-TO-DMZ rule 30 state established enable
-          - set firewall name WAN-TO-DMZ rule 30 state related enable
+          - set firewall ipv4 name WAN-TO-DMZ rule 30 action accept
+          - set firewall ipv4 name WAN-TO-DMZ rule 30 state established
+          - set firewall ipv4 name WAN-TO-DMZ rule 30 state related
 
     - name: Apply firewall rulesets to zones
       vyos.vyos.vyos_config:
         lines:
-          - set zone-policy zone LAN from WAN firewall name WAN-TO-LAN
-          - set zone-policy zone WAN from LAN firewall name LAN-TO-WAN
-          - set zone-policy zone DMZ from WAN firewall name WAN-TO-DMZ
+          - set firewall zone LAN from WAN firewall name WAN-TO-LAN
+          - set firewall zone WAN from LAN firewall name LAN-TO-WAN
+          - set firewall zone DMZ from WAN firewall name WAN-TO-DMZ
 
     - name: Save configuration
       vyos.vyos.vyos_config:
@@ -261,12 +260,12 @@ VyOS firewall rules are one of its strongest features. The zone-based firewall m
     - name: Configure source NAT (masquerade) for outbound traffic
       vyos.vyos.vyos_config:
         lines:
-          - set nat source rule 100 outbound-interface eth0
+          - set nat source rule 100 outbound-interface name eth0
           - set nat source rule 100 source address 192.168.1.0/24
           - set nat source rule 100 translation address masquerade
           - set nat source rule 100 description "LAN to Internet"
 
-          - set nat source rule 110 outbound-interface eth0
+          - set nat source rule 110 outbound-interface name eth0
           - set nat source rule 110 source address 10.0.100.0/24
           - set nat source rule 110 translation address masquerade
           - set nat source rule 110 description "DMZ to Internet"
@@ -274,13 +273,13 @@ VyOS firewall rules are one of its strongest features. The zone-based firewall m
     - name: Configure destination NAT (port forwarding)
       vyos.vyos.vyos_config:
         lines:
-          - set nat destination rule 10 inbound-interface eth0
+          - set nat destination rule 10 inbound-interface name eth0
           - set nat destination rule 10 protocol tcp
           - set nat destination rule 10 destination port 80
           - set nat destination rule 10 translation address 10.0.100.10
           - set nat destination rule 10 description "HTTP to web server"
 
-          - set nat destination rule 20 inbound-interface eth0
+          - set nat destination rule 20 inbound-interface name eth0
           - set nat destination rule 20 protocol tcp
           - set nat destination rule 20 destination port 443
           - set nat destination rule 20 translation address 10.0.100.10
@@ -299,11 +298,13 @@ VyOS supports both IPsec site-to-site and OpenVPN:
 # playbook-vyos-vpn.yml
 # Configures IPsec site-to-site VPN on VyOS
 - name: Configure site-to-site VPN
-  hosts: vyos_edge-01
+  hosts: vyos-edge-01
   gather_facts: no
 
   vars:
+    peer_name: BRANCH
     remote_peer: 203.0.113.1
+    local_address: 198.51.100.2
     local_subnet: 192.168.1.0/24
     remote_subnet: 192.168.2.0/24
     psk: "{{ vault_vpn_psk }}"
@@ -312,6 +313,7 @@ VyOS supports both IPsec site-to-site and OpenVPN:
     - name: Configure IKE group
       vyos.vyos.vyos_config:
         lines:
+          - set vpn ipsec ike-group IKE-BRANCH key-exchange ikev2
           - set vpn ipsec ike-group IKE-BRANCH proposal 1 encryption aes256
           - set vpn ipsec ike-group IKE-BRANCH proposal 1 hash sha256
           - set vpn ipsec ike-group IKE-BRANCH proposal 1 dh-group 14
@@ -325,23 +327,33 @@ VyOS supports both IPsec site-to-site and OpenVPN:
           - set vpn ipsec esp-group ESP-BRANCH proposal 1 encryption aes256
           - set vpn ipsec esp-group ESP-BRANCH proposal 1 hash sha256
           - set vpn ipsec esp-group ESP-BRANCH lifetime 3600
-          - set vpn ipsec esp-group ESP-BRANCH pfs dh-group14
+          - set vpn ipsec esp-group ESP-BRANCH pfs enable
+
+    - name: Configure PSK authentication
+      vyos.vyos.vyos_config:
+        lines:
+          - set vpn ipsec authentication psk BRANCH-PSK id {{ local_address }}
+          - set vpn ipsec authentication psk BRANCH-PSK id {{ remote_peer }}
+          - set vpn ipsec authentication psk BRANCH-PSK secret {{ psk }}
 
     - name: Configure IPsec tunnel
       vyos.vyos.vyos_config:
         lines:
-          - set vpn ipsec site-to-site peer {{ remote_peer }} authentication mode pre-shared-secret
-          - set vpn ipsec site-to-site peer {{ remote_peer }} authentication pre-shared-secret {{ psk }}
-          - set vpn ipsec site-to-site peer {{ remote_peer }} ike-group IKE-BRANCH
-          - set vpn ipsec site-to-site peer {{ remote_peer }} local-address any
-          - set vpn ipsec site-to-site peer {{ remote_peer }} tunnel 0 esp-group ESP-BRANCH
-          - set vpn ipsec site-to-site peer {{ remote_peer }} tunnel 0 local prefix {{ local_subnet }}
-          - set vpn ipsec site-to-site peer {{ remote_peer }} tunnel 0 remote prefix {{ remote_subnet }}
+          - set vpn ipsec site-to-site peer {{ peer_name }} authentication local-id {{ local_address }}
+          - set vpn ipsec site-to-site peer {{ peer_name }} authentication mode pre-shared-secret
+          - set vpn ipsec site-to-site peer {{ peer_name }} authentication remote-id {{ remote_peer }}
+          - set vpn ipsec site-to-site peer {{ peer_name }} connection-type initiate
+          - set vpn ipsec site-to-site peer {{ peer_name }} default-esp-group ESP-BRANCH
+          - set vpn ipsec site-to-site peer {{ peer_name }} ike-group IKE-BRANCH
+          - set vpn ipsec site-to-site peer {{ peer_name }} local-address {{ local_address }}
+          - set vpn ipsec site-to-site peer {{ peer_name }} remote-address {{ remote_peer }}
+          - set vpn ipsec site-to-site peer {{ peer_name }} tunnel 0 local prefix {{ local_subnet }}
+          - set vpn ipsec site-to-site peer {{ peer_name }} tunnel 0 remote prefix {{ remote_subnet }}
 
     - name: Enable IPsec interface
       vyos.vyos.vyos_config:
         lines:
-          - set vpn ipsec ipsec-interfaces interface eth0
+          - set vpn ipsec interface eth0
 
     - name: Save configuration
       vyos.vyos.vyos_config:
@@ -418,7 +430,7 @@ VyOS supports both IPsec site-to-site and OpenVPN:
 
 **VyOS runs on Linux.** You can access the underlying Debian system with the `sudo su` command from the VyOS shell. This is useful for advanced troubleshooting but should not be used for configuration changes.
 
-**Version differences matter.** VyOS has several branches (legacy 1.2.x, current 1.3.x, rolling). Configuration syntax can differ between versions. Test your playbooks against the specific version you are running.
+**Version differences matter.** VyOS has several maintained documentation versions, including 1.4.x, 1.5.x, and rolling releases. Configuration syntax can differ between versions. Test your playbooks against the specific version you are running.
 
 **VyOS is great for labs.** Because it runs as a VM, VyOS is perfect for building network automation lab environments. You can spin up complex topologies with multiple VyOS instances for testing playbooks before applying them to production equipment.
 
