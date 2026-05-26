@@ -33,6 +33,20 @@ GitHub releases are one of the most common sources for downloading tools and app
 
 ```yaml
 # Install a specific version of Prometheus from GitHub releases
+- name: Create prometheus user
+  ansible.builtin.user:
+    name: prometheus
+    system: yes
+    shell: /sbin/nologin
+
+- name: Create prometheus directory
+  ansible.builtin.file:
+    path: /opt/prometheus
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: '0755'
+
 - name: Download and extract Prometheus
   ansible.builtin.unarchive:
     src: "https://github.com/prometheus/prometheus/releases/download/v2.50.0/prometheus-2.50.0.linux-amd64.tar.gz"
@@ -47,6 +61,20 @@ GitHub releases are one of the most common sources for downloading tools and app
 
 ```yaml
 # Install Node Exporter for Prometheus monitoring
+- name: Create node_exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    system: yes
+    shell: /sbin/nologin
+
+- name: Create node_exporter directory
+  ansible.builtin.file:
+    path: /opt/node_exporter
+    state: directory
+    owner: node_exporter
+    group: node_exporter
+    mode: '0755'
+
 - name: Download and install Node Exporter
   ansible.builtin.unarchive:
     src: "https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz"
@@ -126,6 +154,20 @@ Some download URLs require authentication. You can handle this by downloading wi
 
 ```yaml
 # Download from a private artifact repository with authentication
+- name: Create application user
+  ansible.builtin.user:
+    name: appuser
+    system: yes
+    shell: /sbin/nologin
+
+- name: Create myapp directory
+  ansible.builtin.file:
+    path: /opt/myapp
+    state: directory
+    owner: appuser
+    group: appuser
+    mode: '0755'
+
 - name: Download private artifact with credentials
   ansible.builtin.get_url:
     url: "https://artifacts.company.com/releases/myapp-{{ app_version }}.tar.gz"
@@ -228,6 +270,12 @@ Remote downloads can fail for many reasons: network issues, expired URLs, rate l
 
 ```yaml
 # Download with retry logic and error handling
+- name: Create application directory
+  ansible.builtin.file:
+    path: /opt/myapp
+    state: directory
+    mode: '0755'
+
 - name: Download application archive with retries
   block:
     - name: Download and extract application
@@ -256,12 +304,12 @@ Remote downloads can fail for many reasons: network issues, expired URLs, rate l
 ```mermaid
 graph TD
     A[Remote URL provided] --> B[unarchive module starts]
-    B --> C[Download archive to temp dir on remote host]
-    C --> D{Download successful?}
-    D -->|No| E[Task fails / Retry]
-    D -->|Yes| F{creates file exists?}
-    F -->|Yes| G[Skip extraction]
-    F -->|No| H[Detect archive type]
+    B --> C{creates file exists?}
+    C -->|Yes| D[Skip task]
+    C -->|No| E[Download archive to temp dir on remote host]
+    E --> F{Download successful?}
+    F -->|No| G[Task fails / Retry]
+    F -->|Yes| H[Detect archive type]
     H --> I{tar.gz / tar.bz2?}
     I -->|Yes| J[Extract with tar]
     I -->|No| K{zip?}
@@ -278,6 +326,12 @@ When deploying to many hosts, downloading from a remote URL means each host fetc
 
 ```yaml
 # Use a local mirror for faster downloads in your data center
+- name: Create application directory
+  ansible.builtin.file:
+    path: /opt/app
+    state: directory
+    mode: '0755'
+
 - name: Download from local mirror with fallback to public URL
   ansible.builtin.unarchive:
     src: "{{ local_mirror_url | default(public_url) }}"
