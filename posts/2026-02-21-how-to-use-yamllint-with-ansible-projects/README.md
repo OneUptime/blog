@@ -15,7 +15,7 @@ yamllint is a linter for YAML files that checks for syntax validity and enforces
 ```bash
 # Install yamllint
 
-pip install yamllint
+pip install --user yamllint
 
 # Lint a single file
 yamllint playbook.yml
@@ -47,7 +47,7 @@ rules:
 
   # Require consistent boolean values
   truthy:
-    allowed-values: ['true', 'false', 'yes', 'no']
+    allowed-values: ['true', 'false']
     check-keys: true
 
   # Comments formatting
@@ -107,7 +107,7 @@ Most editors support yamllint. For VS Code, install the YAML extension and confi
 ```yaml
 # .github/workflows/yamllint.yml
 name: yamllint
-on: [push, pull_request]
+'on': [push, pull_request]
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -148,12 +148,12 @@ long_line: >-
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this tool proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow with lint-friendly formatting
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -185,7 +185,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -267,7 +267,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with lint-friendly formatting
 - name: Robust task execution
   hosts: all
   tasks:
@@ -334,4 +334,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 yamllint is a small investment that pays dividends in YAML quality. Configure it once for your Ansible project, add it to your CI pipeline, and let it catch formatting issues automatically. The default configuration is a good starting point, but tuning it for Ansible patterns (longer lines, specific boolean preferences) makes it practical for daily use.
-
