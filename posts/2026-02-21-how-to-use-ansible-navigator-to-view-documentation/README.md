@@ -26,7 +26,7 @@ The basic command to view module documentation:
 ansible-navigator doc ansible.builtin.copy
 
 # View documentation for a community module
-ansible-navigator doc community.general.json_query
+ansible-navigator doc community.general.ini_file
 
 # View documentation for a collection module
 ansible-navigator doc ansible.posix.mount
@@ -68,10 +68,7 @@ ansible-navigator doc community.docker.docker_container \
 You can list all modules available in an EE:
 
 ```bash
-# List all modules (interactive mode)
-ansible-navigator doc --list
-
-# List all modules in stdout mode
+# List all modules
 ansible-navigator doc --list --mode stdout
 
 # List modules from a specific collection
@@ -81,7 +78,7 @@ ansible-navigator doc --list --mode stdout 2>/dev/null | grep "ansible.builtin"
 ansible-navigator doc --list --mode stdout 2>/dev/null | grep "community.general"
 ```
 
-In the interactive TUI, the module list is browsable. You can scroll through and select any module to view its full documentation.
+The module list is printed to stdout. Copy the fully qualified module name you want from the list and open its full documentation with `ansible-navigator doc`.
 
 ## Viewing Plugin Documentation
 
@@ -175,14 +172,13 @@ The examples section shows real playbook snippets:
 The interactive TUI for documentation has some nice navigation features:
 
 ```bash
-# Open the documentation browser
-ansible-navigator doc --list
+# Open the documentation browser for a specific module
+ansible-navigator doc ansible.builtin.copy
 ```
 
 Once in the TUI:
 
 ```text
-# Type a number to select a module from the list
 # Use arrow keys or j/k to scroll
 # Press / to search
 # Press :back or Esc to go back
@@ -206,7 +202,7 @@ For frequent lookups, create a helper script:
 #!/bin/bash
 # adoc - Quick module documentation lookup
 # Usage: adoc copy (looks up ansible.builtin.copy)
-# Usage: adoc community.general.json_query
+# Usage: adoc community.general.ini_file
 
 MODULE="$1"
 
@@ -226,7 +222,7 @@ chmod +x adoc
 # Quick lookups
 ./adoc copy
 ./adoc template
-./adoc community.general.json_query
+./adoc community.general.ini_file
 ```
 
 ## Comparing Documentation Across EE Versions
@@ -257,7 +253,7 @@ Beyond individual modules, you can get information about entire collections:
 ansible-navigator doc --list --mode stdout 2>/dev/null | grep "amazon.aws"
 
 # Check collection version
-ansible-navigator exec -- ansible-galaxy collection list amazon.aws --mode stdout
+ansible-navigator exec --mode stdout -- ansible-galaxy collection list amazon.aws
 ```
 
 ## Viewing Documentation Without EEs
