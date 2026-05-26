@@ -12,7 +12,7 @@ One of the most common patterns in server management is: change a configuration 
 
 ## How Handlers Work
 
-Handlers are special tasks that only execute when triggered by a `notify` directive. They run at the end of the play (after all regular tasks), and they run only once even if multiple tasks notify them.
+Handlers are special tasks that only execute when triggered by a `notify` directive. By default, they run after the tasks in a play section have completed, and they run only once per flush even if multiple tasks notify them.
 
 ```mermaid
 graph TD
@@ -21,7 +21,7 @@ graph TD
     D[Task 2: Update SSL cert] -->|Changed? Yes| B
     D -->|Changed? No| C
     E[Task 3: Install package] -->|No notify| F[Continue]
-    B --> G[End of play: Handler runs once]
+    B --> G[Handler flush: Handler runs once]
     C --> G
 ```
 
@@ -376,7 +376,7 @@ Here is a complete deployment playbook with proper handler usage:
 
 There are a few things to watch out for with handlers:
 
-**Handlers run at the end of the play, not after each task:**
+**Handlers do not run immediately after each task:**
 
 ```yaml
 # This can cause issues if you need the restart to happen before the next task
@@ -407,7 +407,7 @@ Or set it in ansible.cfg:
 force_handlers = True
 ```
 
-**Handlers only run once per play.** If you need a restart mid-play, use `meta: flush_handlers` (covered in the next section).
+**Handlers only run once per handler flush.** If you need a restart mid-play, use `meta: flush_handlers`. After handlers run, they can be notified again by later tasks.
 
 ## Conditional Handlers
 
