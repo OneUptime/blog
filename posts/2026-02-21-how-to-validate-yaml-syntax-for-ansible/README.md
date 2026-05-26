@@ -22,14 +22,17 @@ ansible-playbook site.yml --syntax-check
 
 This parses the YAML and checks for Ansible-specific issues like missing required parameters, but it does not catch all YAML formatting problems.
 
-## Using Python's YAML Parser
+## Using PyYAML
 
 ```bash
-# Quick YAML validation with Python
+# Install PyYAML if needed
+pip install pyyaml
+
+# Quick YAML validation with PyYAML
 python3 -c "import yaml; yaml.safe_load(open('playbook.yml'))"
 ```
 
-If the file has a syntax error, Python will print the line number and a description of the problem.
+If the file has a syntax error, PyYAML will print the line number and a description of the problem.
 
 ## Using yamllint
 
@@ -95,13 +98,13 @@ Add YAML validation to your git workflow:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.33.0
+    rev: v1.38.0
     hooks:
       - id: yamllint
         args: [-d, relaxed]
 
   - repo: https://github.com/ansible/ansible-lint
-    rev: v6.22.1
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
 ```
@@ -163,12 +166,12 @@ vars:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where validation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow to validate as part of your Ansible project
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -200,7 +203,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -282,7 +285,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in a playbook you can validate
 - name: Robust task execution
   hosts: all
   tasks:
@@ -349,4 +352,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 YAML validation should happen at three points: in your editor (with a YAML extension), before commit (with pre-commit hooks), and in CI (with yamllint and ansible-lint). This layered approach catches syntax errors before they waste time in runtime debugging. The few seconds spent on validation save minutes of troubleshooting.
-
