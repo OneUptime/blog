@@ -8,7 +8,7 @@ Description: Understand the difference between play_hosts and groups variables i
 
 ---
 
-When you need to reference a list of hosts inside your Ansible tasks, two variables come up constantly: `ansible_play_hosts` (often shortened to `play_hosts`) and `groups`. They both give you lists of hostnames, but they represent fundamentally different things. Confusing them leads to tasks that target the wrong hosts or break when hosts fail during execution.
+When you need to reference a list of hosts inside your Ansible tasks, two variables come up constantly: `ansible_play_hosts` and `groups`. The older `play_hosts` variable name is deprecated, so use `ansible_play_hosts` in current playbooks. They both give you lists of hostnames, but they represent fundamentally different things. Confusing them leads to tasks that target the wrong hosts or break when hosts fail during execution.
 
 ## What groups Contains
 
@@ -205,7 +205,7 @@ Use `ansible_play_hosts` when you need to coordinate actions only among hosts th
       become: true
 
     - name: Restart service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: restarted
       become: true
@@ -224,11 +224,8 @@ Sometimes you need both. For example, generating a configuration file that lists
   tasks:
     - name: Build member status list
       ansible.builtin.set_fact:
-        cluster_status: >-
-          {{ groups['app_cluster'] | map('regex_replace', '^(.*)$',
-             '{"host": "\1", "active": ' +
-             (('\1' in ansible_play_hosts) | string | lower) + '}')
-             | map('from_json') | list }}
+        cluster_status: "{{ cluster_status | default([]) + [{'host': item, 'active': item in ansible_play_hosts}] }}"
+      loop: "{{ groups['app_cluster'] }}"
       run_once: true
 
     - name: Display cluster status
