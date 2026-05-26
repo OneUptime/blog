@@ -24,12 +24,12 @@ Key characteristics:
 
 ## What Is Ansible Automation Hub?
 
-Ansible Automation Hub (https://cloud.redhat.com/ansible/automation-hub/) is Red Hat's curated, supported content repository. It is included with an Ansible Automation Platform subscription. Content on Automation Hub goes through Red Hat's certification and testing process.
+Ansible Automation Hub (https://console.redhat.com/ansible/automation-hub/) is Red Hat's curated, supported content repository. It is included with an Ansible Automation Platform subscription. Content on Automation Hub is distributed through Red Hat's certified and validated content programs.
 
 Key characteristics:
 - Requires an Ansible Automation Platform subscription
-- Content is certified and tested by Red Hat
-- Partners like AWS, Azure, Cisco, and VMware publish certified collections
+- Content is certified or validated by Red Hat
+- Partners like AWS, Microsoft, Cisco, and VMware publish certified collections
 - Includes long-term support commitments
 - Private Automation Hub can be deployed on-premises
 - Content is security-scanned and reviewed
@@ -41,15 +41,15 @@ Here is a side-by-side comparison of the two platforms:
 | Feature | Galaxy | Automation Hub |
 |---------|--------|---------------|
 | Cost | Free | Subscription required |
-| Content review | None (community trust) | Certified by Red Hat |
+| Content review | None (community trust) | Certified or validated by Red Hat |
 | Support | Community only | Red Hat support included |
-| Content types | Roles and collections | Collections (certified) |
+| Content types | Roles and collections | Collections (certified and validated) |
 | Access control | Public | Token-based, RBAC |
 | On-premises option | Galaxy NG (open source) | Private Automation Hub |
 | Signing | Optional | Collections are signed |
 | SLA | None | Per subscription terms |
-| Content volume | Thousands of roles/collections | Hundreds of certified collections |
-| Update frequency | Continuous | Scheduled releases |
+| Content volume | Thousands of roles/collections | Certified and validated collections |
+| Update frequency | Continuous | Controlled by Red Hat and partner release processes |
 
 ## When to Use Galaxy
 
@@ -82,7 +82,7 @@ Most organizations use both. Configure `ansible.cfg` to check Automation Hub fir
 server_list = automation_hub, galaxy
 
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your_automation_hub_token
 
@@ -94,15 +94,18 @@ With this configuration, `ansible-galaxy collection install` checks Automation H
 
 ## Getting Your Automation Hub Token
 
-1. Log into https://cloud.redhat.com
+1. Log into https://console.redhat.com
 2. Navigate to Ansible Automation Platform > Automation Hub
 3. Go to "Connect to Hub" or "API Token"
-4. Generate or copy your token
+4. Load and copy your offline token
 
 ```bash
-# Test the token works
-curl -H "Authorization: Bearer your_token" \
-    "https://cloud.redhat.com/api/automation-hub/v3/collections/"
+# Check that the offline token can be refreshed
+curl https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token \
+    -d grant_type=refresh_token \
+    -d client_id="cloud-services" \
+    -d refresh_token="your_automation_hub_token" \
+    --fail --silent --show-error --output /dev/null
 ```
 
 ## Private Automation Hub
@@ -124,11 +127,11 @@ Setting up Private Automation Hub:
 server_list = private_hub, automation_hub, galaxy
 
 [galaxy_server.private_hub]
-url = https://hub.internal.com/api/galaxy/content/published/
+url = https://hub.internal.com/api/galaxy/content/rh-certified/
 token = your_private_hub_token
 
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your_cloud_token
 
@@ -142,11 +145,11 @@ Private Automation Hub can sync certified content from the cloud-hosted Automati
 
 ```bash
 # Through the Private Automation Hub UI:
-# 1. Go to "Repo Management" > "Remote"
-# 2. Add Red Hat Certified remote (syncs from cloud Automation Hub)
-# 3. Add Community remote (syncs from Galaxy)
+# 1. Go to "Automation Content" > "Remotes"
+# 2. Configure the rh-certified remote (syncs from cloud Automation Hub)
+# 3. Configure the Community remote (syncs from Galaxy)
 # 4. Configure which collections to sync
-# 5. Set sync schedule
+# 5. Sync the target repository
 ```
 
 You can also configure which specific collections to sync via a requirements file:
@@ -189,7 +192,7 @@ collections:
   # Get certified AWS collection from Automation Hub
   - name: amazon.aws
     version: "7.2.0"
-    source: https://cloud.redhat.com/api/automation-hub/content/published/
+    source: https://console.redhat.com/api/automation-hub/content/published/
 
   # Get community collection from Galaxy
   - name: community.docker
@@ -199,7 +202,7 @@ collections:
   # Internal collection from Private Hub
   - name: myorg.infrastructure
     version: "1.0.0"
-    source: https://hub.internal.com/api/galaxy/content/published/
+    source: https://hub.internal.com/api/galaxy/content/rh-certified/
 ```
 
 ## Migration Path: Galaxy to Automation Hub
@@ -222,7 +225,6 @@ echo "Checking for certified versions on Automation Hub..."
 # Read collections from requirements.yml
 python3 -c "
 import yaml
-import requests
 
 with open('requirements.yml') as f:
     data = yaml.safe_load(f)
@@ -232,13 +234,13 @@ for coll in data.get('collections', []):
     namespace, collection = name.split('.')
     # Check if the collection exists on Automation Hub
     # This requires authentication
-    print(f'  {name}: check https://cloud.redhat.com/ansible/automation-hub/ manually')
+    print(f'  {name}: check https://console.redhat.com/ansible/automation-hub/ manually')
 "
 ```
 
 ## Cost Considerations
 
-Galaxy is free forever. Automation Hub requires an Ansible Automation Platform subscription, which is priced per managed node. For small teams or personal projects, Galaxy is the obvious choice. For enterprises managing hundreds or thousands of nodes, the Automation Platform subscription that includes Automation Hub also includes AWX/Tower (now Automation Controller), EDA (Event-Driven Ansible), and support.
+Galaxy is free forever. Automation Hub requires an Ansible Automation Platform subscription, which is priced per managed node. For small teams or personal projects, Galaxy is the obvious choice. For enterprises managing hundreds or thousands of nodes, the Automation Platform subscription that includes Automation Hub also includes Automation Controller (formerly Ansible Tower), EDA (Event-Driven Ansible), and support.
 
 Consider the total cost: if an uncertified collection breaks in production and costs 4 hours of engineering time to debug, the subscription might pay for itself quickly.
 
