@@ -71,7 +71,7 @@ When you have a dictionary of parameters, you can encode them all:
   tasks:
     - name: Build query string from dictionary
       ansible.builtin.set_fact:
-        query_string: "{% for key, value in api_params.items() %}{{ key }}={{ value | urlencode }}{% if not loop.last %}&{% endif %}{% endfor %}"
+        query_string: "{{ api_params | urlencode }}"
 
     - name: Make API call
       ansible.builtin.uri:
@@ -88,10 +88,7 @@ When sending webhook notifications, URLs often contain data that needs encoding:
 # webhook_notify.yml - Send encoded webhook notifications
 - name: Send deployment notification
   ansible.builtin.uri:
-    url: >-
-      https://hooks.slack.com/triggers/T0123/webhook?
-      text={{ notification_text | urlencode }}&
-      channel={{ slack_channel | urlencode }}
+    url: "https://hooks.slack.com/triggers/T0123/webhook?text={{ notification_text | urlencode }}&channel={{ slack_channel | urlencode }}"
     method: POST
   vars:
     notification_text: "Deployment complete: v2.1.0 deployed to production (3 servers)"
@@ -100,7 +97,7 @@ When sending webhook notifications, URLs often contain data that needs encoding:
 
 ## Encoding File Paths in URLs
 
-When constructing URLs that include file paths, special characters in path components need encoding:
+When constructing URLs that include file paths, special characters in path components need encoding. The `urlencode` filter leaves `/` characters unchanged, so path separators remain intact:
 
 ```yaml
 # file_api.yml - Access files via API with encoded paths
@@ -172,8 +169,8 @@ Some protocols accept credentials embedded in URLs. While this is not recommende
 - name: Build connection string with encoded special characters
   ansible.builtin.set_fact:
     # If password contains special characters like @, #, or /
-    encoded_password: "{{ db_password | urlencode }}"
-    connection_string: "postgresql://{{ db_user }}:{{ db_password | urlencode }}@{{ db_host }}:{{ db_port }}/{{ db_name }}"
+    encoded_password: "{{ db_password | urlencode | replace('/', '%2F') }}"
+    connection_string: "postgresql://{{ db_user }}:{{ db_password | urlencode | replace('/', '%2F') }}@{{ db_host }}:{{ db_port }}/{{ db_name }}"
   vars:
     db_user: "myapp"
     db_password: "p@ss/w0rd#123"  # Contains @, /, and #
@@ -246,9 +243,7 @@ PromQL contains curly braces, quotes, and other special characters that would br
 # awx_callback.yml - Callback to AWX with encoded data
 - name: Send callback to AWX
   ansible.builtin.uri:
-    url: >-
-      https://awx.internal/api/v2/job_templates/{{ template_id }}/callback/
-      ?host_config_key={{ callback_key | urlencode }}
+    url: "https://awx.internal/api/v2/job_templates/{{ template_id }}/callback/?host_config_key={{ callback_key | urlencode }}"
     method: POST
     body:
       extra_vars:
@@ -283,7 +278,7 @@ When you need to pass list data as query parameters:
 | = | %3D | Separates key from value |
 | ? | %3F | Starts query string |
 | # | %23 | Starts fragment |
-| / | %2F | Path separator |
+| / | Not encoded by default | Path separator |
 | @ | %40 | Separates user from host |
 | + | %2B | Sometimes interpreted as space |
 | % | %25 | Escape character itself |
