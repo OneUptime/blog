@@ -19,7 +19,7 @@ The `mount` module has several states that control its behavior.
 | mounted | Yes | Yes |
 | present | Yes | No |
 | unmounted | No | Unmounts |
-| absent | Removes entry | Unmounts |
+| absent | Removes entry and mount point | Unmounts |
 | remounted | No | Remounts |
 
 The distinction between `mounted` and `present` is important: `present` adds the entry to fstab without actually mounting the filesystem (useful for entries that will take effect at next boot), while `mounted` both adds the entry and mounts the filesystem immediately.
@@ -57,7 +57,7 @@ NFS mounts are one of the most common fstab entries managed by Ansible.
     path: /mnt/appdata
     src: "nfs-server.internal:/exports/appdata"
     fstype: nfs
-    opts: "rw,soft,intr,timeo=30,retrans=3"
+    opts: "rw,soft,timeo=30,retrans=3"
     state: mounted
 
 # Mount NFS share for read-only shared configs
@@ -66,7 +66,7 @@ NFS mounts are one of the most common fstab entries managed by Ansible.
     path: /mnt/configs
     src: "nfs-server.internal:/exports/configs"
     fstype: nfs
-    opts: "ro,soft,intr"
+    opts: "ro,soft"
     state: mounted
 ```
 
@@ -155,14 +155,13 @@ Temporary filesystems in RAM are useful for performance-sensitive directories.
     mode: '0600'
 
 - name: Format swap file
-  ansible.builtin.command:
-    cmd: mkswap /swapfile
-  register: mkswap_result
-  changed_when: "'Setting up swapspace' in mkswap_result.stdout"
+  community.general.filesystem:
+    dev: /swapfile
+    fstype: swap
 
 - name: Add swap file to fstab
   ansible.posix.mount:
-    path: swap
+    path: none
     src: /swapfile
     fstype: swap
     opts: sw
@@ -186,7 +185,7 @@ To change the mount options of an existing entry, just specify the new options. 
 
 ## Removing Mount Entries
 
-The `absent` state unmounts the filesystem and removes the fstab entry.
+The `absent` state unmounts the filesystem, removes the fstab entry, and removes the mount point.
 
 ```yaml
 # Remove a mount entry completely
@@ -220,7 +219,7 @@ Use a variable-driven approach for managing many mounts.
       - path: /mnt/nfs-share
         src: "nfs-server:/exports/data"
         fstype: nfs
-        opts: "rw,soft,intr"
+        opts: "rw,soft"
       - path: /opt/myapp/tmp
         src: tmpfs
         fstype: tmpfs
@@ -228,7 +227,7 @@ Use a variable-driven approach for managing many mounts.
       - path: /mnt/backup
         src: "backup-server:/exports/backups"
         fstype: nfs
-        opts: "rw,soft,intr,noexec"
+        opts: "rw,soft,noexec"
 
   tasks:
     - name: Create mount point directories
@@ -327,7 +326,7 @@ graph TD
     B -->|present| F[Add/update fstab entry only]
     B -->|unmounted| G[Unmount filesystem]
     B -->|absent| H[Unmount filesystem]
-    H --> I[Remove fstab entry]
+    H --> I[Remove fstab entry and mount point]
     B -->|remounted| J[Remount filesystem]
     E --> K{Mount successful?}
     K -->|Yes| L[Task reports changed]
