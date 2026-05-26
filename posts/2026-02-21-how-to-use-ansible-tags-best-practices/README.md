@@ -73,7 +73,7 @@ Before applying tags, agree on a consistent strategy across your team. Here is o
 #   - Select tasks by the type of change they make
 #
 # Special tags:
-#   - always: Runs regardless of tag selection
+#   - always: Runs unless explicitly skipped
 #   - never: Only runs when explicitly selected
 ```
 
@@ -158,7 +158,7 @@ Here is a role using this strategy:
 
 ## Use the always and never Special Tags
 
-The `always` tag ensures a task runs no matter what tags are selected. Use it for prerequisite checks:
+The `always` tag ensures a task runs no matter what tags are selected, unless you explicitly skip it. Use it for prerequisite checks:
 
 ```yaml
 # Validation tasks should always run
@@ -330,22 +330,19 @@ Mistake 1: Over-tagging every task with too many tags.
   tags: [nginx, web, packages, install, apt, server, infrastructure]
 ```
 
-Mistake 2: Not tagging handlers. If you run with tags and a task notifies a handler, the handler must also be tagged or it will not run.
+Mistake 2: Expecting handler tags to control handler execution. Handlers ignore tags and cannot be selected for or against; they run only when notified by a changed task.
 
 ```yaml
 # handlers/main.yml
-# Handlers need matching tags or 'always' tag
+# Handler execution is controlled by notifications, not tags
 - name: Reload nginx
   ansible.builtin.service:
     name: nginx
     state: reloaded
-  tags:
-    - nginx
-    - configure
 ```
 
-Mistake 3: Forgetting that `--tags` is exclusive. Only tagged tasks run, plus `always` tasks. Untagged tasks are skipped entirely.
+Mistake 3: Forgetting that `--tags` is exclusive. Only matching tagged tasks run, plus `always` tasks unless explicitly skipped. Untagged tasks are skipped entirely.
 
 ## Summary
 
-Tags are a power tool that requires a clear strategy. Agree on tag categories (component, phase, action) before you start tagging. Use `always` for prerequisite checks and fact gathering. Use `never` for destructive operations. Tag handlers so they run when their notifiers are selected. Keep tags to 2-3 per task. List available tags before running selectively. A good tagging strategy turns a 30-minute full playbook run into a 2-minute targeted operation.
+Tags are a power tool that requires a clear strategy. Agree on tag categories (component, phase, action) before you start tagging. Use `always` for prerequisite checks and fact gathering. Use `never` for destructive operations. Remember that handlers run from notifications, not tag selection. Keep tags to 2-3 per task. List available tags before running selectively. A good tagging strategy turns a 30-minute full playbook run into a 2-minute targeted operation.
