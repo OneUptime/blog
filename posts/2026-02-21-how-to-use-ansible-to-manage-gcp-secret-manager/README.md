@@ -17,7 +17,7 @@ Compared to storing secrets in files, environment variables, or even Ansible Vau
 - Centralized storage with fine-grained IAM access control
 - Automatic versioning of secret values
 - Audit logging of who accessed which secret and when
-- Automatic rotation support
+- Rotation schedules that notify your automation when secrets should be rotated
 - Integration with other GCP services (Cloud Run, GKE, Cloud Functions)
 
 ## Prerequisites
@@ -37,7 +37,7 @@ gcloud services enable secretmanager.googleapis.com --project=my-project-id
 
 ## Creating a Secret
 
-A "secret" in GCP Secret Manager is actually two things: the secret resource (a container) and one or more secret versions (the actual data). First you create the secret, then you add a version with the actual value.
+A "secret" in GCP Secret Manager is actually two things: the secret resource (a container) and one or more secret versions (the actual data). The Ansible `google.cloud.gcp_secret_manager` module can create the secret and set its first value in one task.
 
 ```yaml
 # create-secret.yml - Create a secret and add its first version
@@ -53,11 +53,10 @@ A "secret" in GCP Secret Manager is actually two things: the secret resource (a 
     gcp_service_account_file: "/path/to/service-account-key.json"
 
   tasks:
-    - name: Create the secret resource
-      google.cloud.gcp_secret_manager_secret:
+    - name: Create the secret and set its first value
+      google.cloud.gcp_secret_manager:
         name: "database-password"
-        replication:
-          automatic: {}
+        value: "super-secure-db-password-2026"
         labels:
           environment: "production"
           managed_by: "ansible"
@@ -67,24 +66,13 @@ A "secret" in GCP Secret Manager is actually two things: the secret resource (a 
         service_account_file: "{{ gcp_service_account_file }}"
         state: present
       register: secret
-
-    - name: Add the secret value as a new version
-      google.cloud.gcp_secret_manager_secret_version:
-        secret: "{{ secret }}"
-        payload:
-          data: "super-secure-db-password-2026"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: version
+      no_log: true
 
     - name: Confirm secret creation
       ansible.builtin.debug:
         msg: |
           Secret created: {{ secret.name }}
-          Version: {{ version.name }}
-          Replication: automatic
+          Version: {{ secret.version }}
 ```
 
 ## Creating Multiple Secrets at Once
@@ -124,11 +112,10 @@ Most applications need several secrets. Here is how to create a batch of them ef
           type: "smtp"
 
   tasks:
-    - name: Create secret resources
-      google.cloud.gcp_secret_manager_secret:
+    - name: Create secrets and set their values
+      google.cloud.gcp_secret_manager:
         name: "{{ item.name }}"
-        replication:
-          automatic: {}
+        value: "{{ item.value }}"
         labels: "{{ item.labels | combine({'managed_by': 'ansible', 'app': 'myapp'}) }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
@@ -136,17 +123,7 @@ Most applications need several secrets. Here is how to create a batch of them ef
         state: present
       loop: "{{ app_secrets }}"
       register: created_secrets
-
-    - name: Add values to each secret
-      google.cloud.gcp_secret_manager_secret_version:
-        secret: "{{ item.0 }}"
-        payload:
-          data: "{{ item.1.value }}"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      loop: "{{ created_secrets.results | zip(app_secrets) | list }}"
+      no_log: true
 
     - name: Summary
       ansible.builtin.debug:
@@ -172,8 +149,8 @@ Reading secrets back is useful when you need to inject them into application con
 
   tasks:
     - name: Access the latest version of the secret
-      google.cloud.gcp_secret_manager_secret_version_access:
-        secret: "projects/{{ gcp_project }}/secrets/myapp-db-password"
+      google.cloud.gcp_secret_manager:
+        name: "myapp-db-password"
         # Use "latest" to get the most recent version
         version: "latest"
         project: "{{ gcp_project }}"
@@ -188,7 +165,7 @@ Reading secrets back is useful when you need to inject them into application con
         dest: /etc/myapp/config.env
         mode: "0600"
       vars:
-        db_password: "{{ secret_data.payload.data | b64decode }}"
+        db_password: "{{ secret_data.value }}"
       no_log: true
 ```
 
@@ -233,22 +210,10 @@ Rotating a secret means adding a new version with a new value, then updating you
         new_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits,punctuation') }}"
       no_log: true
 
-    - name: Get the secret resource
-      google.cloud.gcp_secret_manager_secret:
-        name: "{{ secret_name }}"
-        replication:
-          automatic: {}
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: secret
-
     - name: Add new version with the rotated password
-      google.cloud.gcp_secret_manager_secret_version:
-        secret: "{{ secret }}"
-        payload:
-          data: "{{ new_password }}"
+      google.cloud.gcp_secret_manager:
+        name: "{{ secret_name }}"
+        value: "{{ new_password }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
@@ -260,7 +225,7 @@ Rotating a secret means adding a new version with a new value, then updating you
       ansible.builtin.debug:
         msg: |
           Secret {{ secret_name }} rotated.
-          New version: {{ new_version.name }}
+          New version: {{ new_version.version }}
           Remember to restart applications that use this secret.
 ```
 
@@ -287,8 +252,8 @@ A common pattern is to pull secrets from Secret Manager and write them to config
 
   tasks:
     - name: Fetch all required secrets from Secret Manager
-      google.cloud.gcp_secret_manager_secret_version_access:
-        secret: "projects/{{ gcp_project }}/secrets/{{ item }}"
+      google.cloud.gcp_secret_manager:
+        name: "{{ item }}"
         version: "latest"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
@@ -302,7 +267,7 @@ A common pattern is to pull secrets from Secret Manager and write them to config
       ansible.builtin.set_fact:
         app_secrets: >-
           {{ app_secrets | default({}) | combine({
-            item.item: item.payload.data | b64decode
+            item.item: item.value
           }) }}
       loop: "{{ fetched_secrets.results }}"
       no_log: true
@@ -330,10 +295,10 @@ A common pattern is to pull secrets from Secret Manager and write them to config
 
 ## Cleaning Up Old Secret Versions
 
-Over time, you accumulate many secret versions. You can disable or destroy old versions to clean up.
+Over time, you accumulate many secret versions. You can destroy old versions to clean up.
 
 ```yaml
-# cleanup-secret-versions.yml - Disable old secret versions
+# cleanup-secret-versions.yml - Delete old secret versions
 ---
 - name: Cleanup Old Secret Versions
   hosts: localhost
@@ -347,11 +312,11 @@ Over time, you accumulate many secret versions. You can disable or destroy old v
     secret_name: "myapp-db-password"
 
   tasks:
-    - name: Disable old secret versions (keep only latest active)
-      google.cloud.gcp_secret_manager_secret_version:
-        secret: "projects/{{ gcp_project }}/secrets/{{ secret_name }}"
+    - name: Delete old secret versions
+      google.cloud.gcp_secret_manager:
+        name: "{{ secret_name }}"
         version: "{{ item }}"
-        state: disabled
+        state: absent
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
@@ -365,7 +330,7 @@ Over time, you accumulate many secret versions. You can disable or destroy old v
 
 1. **Always use `no_log: true`** on tasks that handle secret values. Without it, Ansible will print your secrets in plain text in the console output.
 
-2. **Use automatic replication** unless you have specific compliance requirements. It replicates across all GCP regions automatically.
+2. **Use automatic replication** unless you have specific compliance requirements. Configure replication with Google Cloud tools or the Secret Manager API if you need settings that the Ansible module does not manage.
 
 3. **Label your secrets consistently.** Labels help you find and manage secrets, especially when you have hundreds of them.
 
