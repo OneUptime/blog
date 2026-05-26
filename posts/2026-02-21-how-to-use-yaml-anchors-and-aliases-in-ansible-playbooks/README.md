@@ -8,7 +8,7 @@ Description: Learn how to use YAML anchors and aliases to reduce duplication in 
 
 ---
 
-YAML anchors and aliases are a native YAML feature that lets you define a block of content once and reference it multiple times throughout the same file. In Ansible playbooks, this is useful for eliminating repetitive task parameters, variable definitions, and configuration blocks. If you find yourself copying the same `become`, `environment`, or `vars` settings across dozens of tasks, anchors can clean that up significantly.
+YAML anchors and aliases are a native YAML feature that lets you define a block of content once and reference it multiple times throughout the same YAML document. In Ansible playbooks, this is useful for eliminating repetitive task parameters, variable definitions, and configuration blocks. If you find yourself copying the same `become`, `environment`, or `vars` settings across dozens of tasks, anchors can clean that up significantly.
 
 ## YAML Anchor Basics
 
@@ -217,15 +217,15 @@ logging_settings: &logging_settings
   slow_query_threshold: 1000
   log_queries: false
 
-# Merge all three anchors into one configuration
+# Some parsers accept repeated merge keys, but this is not portable
 database_config:
   <<: *connection_defaults
-  <<: *ssl_settings       # Note: YAML spec only supports one merge key
+  <<: *ssl_settings       # Avoid repeating the same key in a mapping
   host: db.example.com
   port: 5432
 ```
 
-Important caveat: the YAML specification technically only supports one `<<` merge key per mapping. While some YAML parsers (including PyYAML, which Ansible uses) handle multiple merge keys, the correct way to merge multiple anchors is to use a list:
+Important caveat: YAML mappings require unique keys, so you should not repeat `<<` in the same mapping. While some YAML parsers (including PyYAML, which Ansible uses) handle repeated merge keys, the portable way to merge multiple anchors is to use a list:
 
 ```yaml
 # Correct way to merge multiple anchors
@@ -275,11 +275,11 @@ You can anchor entire task definitions for reuse (though this is less common):
 
 YAML anchors have some important limitations in Ansible:
 
-**Anchors are file-scoped.** You cannot reference an anchor defined in one file from another file. This means anchors work within a single playbook or variable file, but not across `include_vars` or `vars_files` boundaries.
+**Anchors are document-scoped.** You cannot reference an anchor defined in one YAML document from another document or file. This means anchors work within a single playbook or variable file document, but not across `include_vars` or `vars_files` boundaries.
 
 **Anchors are a YAML feature, not an Ansible feature.** Ansible does not know about anchors at all. By the time Ansible processes the YAML, the parser has already resolved all anchors and aliases into their final values. This means `ansible-lint` and other tools see the expanded version.
 
-**Anchors cannot reference Jinja2 expressions.** Since anchors are processed by the YAML parser before Ansible's Jinja2 engine runs, you cannot use Jinja2 to generate anchor names or dynamically select which anchor to reference.
+**Anchor and alias names cannot be generated with Jinja2.** Since anchors are processed by the YAML parser before Ansible's Jinja2 engine runs, you cannot use Jinja2 to generate anchor names or dynamically select which anchor to reference. Anchored values can still contain Jinja2 expressions that Ansible renders later.
 
 **Merge keys only work with dictionaries.** You cannot merge lists using the `<<` syntax. For list reuse, you would use Jinja2 concatenation instead.
 
@@ -295,4 +295,4 @@ YAML anchors have some important limitations in Ansible:
 
 ## Wrapping Up
 
-YAML anchors and aliases are a simple way to reduce repetition within a single playbook or variable file. They work best for shared task parameters (file ownership, environment variables, connection settings) and default configuration values that get overridden selectively. For cross-file reuse, lean on Ansible roles and includes instead. The key thing to remember is that anchors are resolved by the YAML parser before Ansible ever sees the data, so they are limited to the file they are defined in.
+YAML anchors and aliases are a simple way to reduce repetition within a single playbook or variable file. They work best for shared task parameters (file ownership, environment variables, connection settings) and default configuration values that get overridden selectively. For cross-file reuse, lean on Ansible roles and includes instead. The key thing to remember is that anchors are resolved by the YAML parser before Ansible ever sees the data, so they are limited to the YAML document they are defined in.
