@@ -17,16 +17,16 @@ There are several types of tokens depending on the server you are connecting to:
 - **Galaxy API Token**: Used for the public Galaxy server to publish content
 - **Automation Hub Offline Token**: A long-lived token that gets exchanged for short-lived access tokens via Red Hat SSO
 - **Private Galaxy NG Token**: Generated through the Galaxy NG admin interface
-- **Personal Access Tokens**: Used when Galaxy is backed by GitHub authentication
+- **GitHub Personal Access Tokens**: Used only with older role-oriented Galaxy login workflows; collection publishing uses Galaxy API tokens
 
 ## Getting Your Public Galaxy Token
 
 To interact with the public Galaxy server (publishing roles or collections):
 
 1. Go to https://galaxy.ansible.com
-2. Sign in with your GitHub account
-3. Navigate to your profile settings or "API Token" page
-4. Click "Load Token" or "Generate Token"
+2. Sign in to your Galaxy account
+3. Navigate to your profile preferences or API token page
+4. Click "Show API key" or "Load Token"
 5. Copy the token
 
 ```bash
@@ -40,7 +40,7 @@ curl -H "Authorization: Token your_galaxy_token" \
 
 For Red Hat's Automation Hub:
 
-1. Log into https://cloud.redhat.com
+1. Log into https://console.redhat.com
 2. Go to Ansible Automation Platform > Automation Hub
 3. Navigate to "Connect to Hub"
 4. Copy the "Offline Token"
@@ -71,7 +71,7 @@ url = https://galaxy.internal.com/api/galaxy/content/published/
 token = your_private_hub_token
 
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your_offline_token
 
@@ -113,7 +113,7 @@ url = https://galaxy.internal.com/api/galaxy/content/published/
 # Token: ANSIBLE_GALAXY_SERVER_PRIVATE_HUB_TOKEN
 
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 # Token: ANSIBLE_GALAXY_SERVER_AUTOMATION_HUB_TOKEN
 
@@ -137,16 +137,16 @@ ansible-galaxy collection install myorg.internal_tools \
     --token your_private_token
 ```
 
-## Token Storage with ansible-galaxy login
+## Legacy Token Storage with ansible-galaxy login
 
-The `ansible-galaxy login` command authenticates via GitHub and stores the token:
+Older Ansible releases included an `ansible-galaxy login` command for role workflows. It authenticated via GitHub and stored the token:
 
 ```bash
 # Authenticate with Galaxy via GitHub
 ansible-galaxy login --github-token your_github_personal_access_token
 ```
 
-This stores the token in `~/.ansible/galaxy_token`. The file is plain text:
+In those older releases, this stored the token in `~/.ansible/galaxy_token`. The file is plain text:
 
 ```text
 token: your_galaxy_token
@@ -241,7 +241,8 @@ Extract tokens before running Galaxy commands:
 ```bash
 #!/bin/bash
 # setup-galaxy-tokens.sh - Load tokens from Ansible Vault
-eval $(ansible-vault view galaxy-tokens.yml | python3 -c "
+eval "$(ansible-vault view galaxy-tokens.yml | python3 -c "
+import shlex
 import yaml, sys
 data = yaml.safe_load(sys.stdin)
 mapping = {
@@ -251,41 +252,29 @@ mapping = {
 }
 for key, env_var in mapping.items():
     if key in data:
-        print(f'export {env_var}=\"{data[key]}\"')
-")
+        print(f'export {env_var}={shlex.quote(str(data[key]))}')
+")"
 ```
 
 ## Token Rotation
 
-Tokens should be rotated periodically. Set up a rotation schedule:
+Tokens should be rotated periodically. For Red Hat Automation Hub offline tokens, refreshing the token periodically keeps it active:
 
 ```bash
 #!/bin/bash
-# rotate-galaxy-token.sh - Rotate Galaxy NG token
+# refresh-automation-hub-token.sh - Keep an Automation Hub offline token active
 set -e
 
-GALAXY_URL="https://galaxy.internal.com"
-OLD_TOKEN="${ANSIBLE_GALAXY_SERVER_PRIVATE_HUB_TOKEN}"
+curl https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token \
+    -d grant_type=refresh_token \
+    -d client_id="cloud-services" \
+    -d refresh_token="${ANSIBLE_GALAXY_SERVER_AUTOMATION_HUB_TOKEN}" \
+    --fail --silent --show-error --output /dev/null
 
-# Create a new token (Galaxy NG API)
-NEW_TOKEN=$(curl -s -X POST "${GALAXY_URL}/api/galaxy/v3/auth/token/" \
-    -H "Authorization: Token ${OLD_TOKEN}" \
-    -H "Content-Type: application/json" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-print(data['token'])
-")
-
-echo "New token generated"
-
-# Update in your secret store
-# vault kv put secret/ansible/galaxy private_hub_token="$NEW_TOKEN"
-
-# Or update the local file
-# echo "export ANSIBLE_GALAXY_SERVER_PRIVATE_HUB_TOKEN=\"$NEW_TOKEN\"" > ~/.galaxy-tokens
-
-echo "Token rotated successfully"
+echo "Offline token refreshed successfully"
 ```
+
+For private automation hub API tokens, use the product's API token management screen to load a new token and then update your secret store. Private automation hub API tokens do not expire automatically, but loading a new token revokes the previous token.
 
 ## CI/CD Token Configuration
 
@@ -337,12 +326,12 @@ ansible-galaxy collection install community.general -vvvv
 
 # Test the token directly with curl
 curl -v -H "Authorization: Token your_token" \
-    https://galaxy.internal.com/api/galaxy/v3/collections/
+    "https://galaxy.internal.com/api/galaxy/v3/plugin/ansible/content/published/collections/index/?limit=1"
 
 # Check if the token has expired
 curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: Token your_token" \
-    https://galaxy.internal.com/api/galaxy/v3/collections/
+    "https://galaxy.internal.com/api/galaxy/v3/plugin/ansible/content/published/collections/index/?limit=1"
 # 200 = token works, 401 = token expired/invalid, 403 = insufficient permissions
 ```
 
