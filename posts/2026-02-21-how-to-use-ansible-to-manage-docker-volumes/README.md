@@ -27,8 +27,8 @@ Volumes are preferred because Docker manages their lifecycle, they work on both 
 
 ansible-galaxy collection install community.docker
 
-# Install the Docker Python SDK
-pip install docker
+# Install the Python dependency used by the community.docker modules
+pip install requests
 ```
 
 ## Creating a Basic Volume
@@ -256,8 +256,8 @@ Volumes need to be backed up, especially for databases. Here is how to back up a
         volumes:
           - "{{ volume_name }}:/source:ro"
           - "{{ backup_dir }}:/backup"
-        auto_remove: true
         detach: false
+        cleanup: true
       register: backup_result
 
     # Restart the container
@@ -312,8 +312,8 @@ Volumes need to be backed up, especially for databases. Here is how to back up a
         volumes:
           - "{{ volume_name }}:/target"
           - "{{ backup_file | dirname }}:/backup:ro"
-        auto_remove: true
         detach: false
+        cleanup: true
 
     - name: Verify restoration
       community.docker.docker_container:
@@ -323,8 +323,8 @@ Volumes need to be backed up, especially for databases. Here is how to back up a
         command: "ls -la /data"
         volumes:
           - "{{ volume_name }}:/data:ro"
-        auto_remove: true
         detach: false
+        cleanup: true
       register: verify_result
 
     - name: Show restored contents
@@ -409,8 +409,8 @@ Unused volumes waste disk space. Here is how to clean them up safely.
         - "temp-cache"
       ignore_errors: true
 
-    # Prune all unused volumes (careful with this)
-    - name: Prune unused volumes
+    # Prune unused anonymous volumes with matching labels (careful with this)
+    - name: Prune unused anonymous volumes
       community.docker.docker_prune:
         volumes: true
         volumes_filters:
@@ -485,7 +485,7 @@ Here is a comprehensive playbook that manages volumes for an entire application.
 
 3. **Back up volumes regularly.** Database volumes should be backed up daily at minimum. Use the temporary container approach shown above.
 
-4. **Be careful with volume pruning.** `docker volume prune` removes ALL unused volumes. There is no undo. Always check what will be removed before pruning.
+4. **Be careful with volume pruning.** `docker volume prune` removes unused anonymous volumes by default; with `--all`, it removes all unused volumes. There is no undo. Always check what will be removed before pruning.
 
 5. **Use read-only mounts for config files.** If a container only needs to read a file, mount it with `:ro`. This prevents accidental writes.
 
