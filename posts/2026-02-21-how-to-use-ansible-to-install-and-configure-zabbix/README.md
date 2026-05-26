@@ -66,7 +66,7 @@ zabbix/
 ```yaml
 # roles/zabbix_server/defaults/main.yml
 
-zabbix_version: "6.4"
+zabbix_version: "7.0"
 zabbix_server_listen_port: 10051
 
 # Database settings
@@ -109,7 +109,7 @@ zabbix_max_housekeeper_delete: 5000
 
 - name: Download Zabbix repository package
   ansible.builtin.get_url:
-    url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-1+ubuntu{{ ansible_distribution_version }}_all.deb"
+    url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_{{ zabbix_version }}+ubuntu{{ ansible_distribution_version }}_all.deb"
     dest: /tmp/zabbix-release.deb
     mode: "0644"
 
@@ -154,6 +154,7 @@ zabbix_max_housekeeper_delete: 5000
 - name: Check if Zabbix schema is already imported
   community.postgresql.postgresql_query:
     db: "{{ zabbix_db_name }}"
+    login_host: "{{ zabbix_db_host }}"
     login_user: "{{ zabbix_db_user }}"
     login_password: "{{ zabbix_db_password }}"
     query: "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'"
@@ -234,6 +235,7 @@ ExternalScripts=/usr/lib/zabbix/externalscripts
 # roles/zabbix_frontend/defaults/main.yml
 zabbix_frontend_server_name: "zabbix.example.com"
 zabbix_frontend_port: 80
+zabbix_php_fpm_service: "{{ 'php8.3-fpm' if ansible_distribution_version == '24.04' else 'php8.1-fpm' }}"
 ```
 
 ```yaml
@@ -268,7 +270,7 @@ zabbix_frontend_port: 80
 
 - name: Enable and start PHP-FPM
   ansible.builtin.systemd:
-    name: php-fpm
+    name: "{{ zabbix_php_fpm_service }}"
     state: started
     enabled: true
   become: true
@@ -287,7 +289,7 @@ zabbix_frontend_port: 80
 
 ```yaml
 # roles/zabbix_agent/defaults/main.yml
-zabbix_agent_version: "6.4"
+zabbix_agent_version: "7.0"
 zabbix_agent_server: "zabbix-server.example.com"
 zabbix_agent_server_active: "zabbix-server.example.com"
 zabbix_agent_hostname: "{{ ansible_hostname }}"
@@ -303,7 +305,7 @@ zabbix_agent_user_parameters: []
 ---
 - name: Download Zabbix repository package
   ansible.builtin.get_url:
-    url: "https://repo.zabbix.com/zabbix/{{ zabbix_agent_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_agent_version }}-1+ubuntu{{ ansible_distribution_version }}_all.deb"
+    url: "https://repo.zabbix.com/zabbix/{{ zabbix_agent_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_{{ zabbix_agent_version }}+ubuntu{{ ansible_distribution_version }}_all.deb"
     dest: /tmp/zabbix-release.deb
     mode: "0644"
 
