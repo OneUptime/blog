@@ -169,12 +169,12 @@ By default, the `uri` module follows redirects. You can control this behavior:
   ansible.builtin.uri:
     url: http://example.com/resource
     method: GET
-    follow_redirects: all  # follows redirects even if method changes
+    follow_redirects: all  # follows all redirects
     return_content: true
   register: final_response
 ```
 
-The `follow_redirects` parameter accepts `none`, `safe` (default, follows redirects that do not change the method), and `all`.
+The `follow_redirects` parameter accepts `none`, `safe` (default, follows only GET or HEAD redirects), `all`, and `urllib2`.
 
 ## Timeout Configuration
 
@@ -242,7 +242,7 @@ Many APIs return paginated results. Here is how to handle pagination with a loop
     - name: Combine all results
       ansible.builtin.set_fact:
         all_items: "{{ all_items + item.json.items }}"
-      loop: "{{ page_results.results }}"
+      loop: "{{ page_results.results | default([]) }}"
       when: page_results.results is defined and item.json is defined
 
     - name: Show total items fetched
