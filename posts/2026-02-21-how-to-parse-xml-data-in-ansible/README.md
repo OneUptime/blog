@@ -32,7 +32,7 @@ The `community.general.xml` module can read, query, and modify XML files. Here i
 
     - name: Display extracted value
       ansible.builtin.debug:
-        msg: "Database host: {{ db_host.matches[0]['{configuration/database/host}'] | default(db_host.matches[0]) }}"
+        msg: "Database host: {{ db_host.matches[0].host }}"
 ```
 
 ## Parsing XML Strings
@@ -174,8 +174,8 @@ The xml module can also modify XML in place:
         add_children:
           - feature:
               _:
-                name: "caching"
-                enabled: "true"
+                - name: "caching"
+                - enabled: "true"
 
     - name: Remove an element
       community.general.xml:
@@ -268,12 +268,12 @@ For easier manipulation, you can convert XML to a Python dictionary using the `x
   tasks:
     - name: Parse XML and convert to dictionary structure
       ansible.builtin.shell: |
-        python3 -c "
+        python3 <<'PY'
         import xmltodict, json
         with open('/etc/myapp/config.xml') as f:
             d = xmltodict.parse(f.read())
         print(json.dumps(d))
-        "
+        PY
       register: xml_as_json
       changed_when: false
 
@@ -301,7 +301,7 @@ For easier manipulation, you can convert XML to a Python dictionary using the `x
     - name: Get current version from pom.xml
       community.general.xml:
         path: /opt/app/pom.xml
-        xpath: /project/version
+        xpath: /pom:project/pom:version
         content: text
         namespaces:
           pom: "http://maven.apache.org/POM/4.0.0"
@@ -314,7 +314,7 @@ For easier manipulation, you can convert XML to a Python dictionary using the `x
     - name: Update project version
       community.general.xml:
         path: /opt/app/pom.xml
-        xpath: /project/version
+        xpath: /pom:project/pom:version
         value: "{{ app_version }}"
         namespaces:
           pom: "http://maven.apache.org/POM/4.0.0"
@@ -322,7 +322,7 @@ For easier manipulation, you can convert XML to a Python dictionary using the `x
     - name: Update Java version property
       community.general.xml:
         path: /opt/app/pom.xml
-        xpath: /project/properties/java.version
+        xpath: /pom:project/pom:properties/pom:java.version
         value: "{{ java_version }}"
         namespaces:
           pom: "http://maven.apache.org/POM/4.0.0"
@@ -367,4 +367,4 @@ XML namespaces are a common pain point. The xml module supports them via the `na
 
 ## Summary
 
-The `community.general.xml` module is the primary tool for XML operations in Ansible. It supports reading with XPath queries, modifying values and attributes, adding and removing elements, and handling namespaces. For complex XML manipulation, converting to a dictionary via `xmltodict` and then working with standard Ansible filters can be more convenient. When dealing with network devices, the XML parsing capabilities integrate well with NETCONF and other XML-based management protocols. Always install the `lxml` Python library on your Ansible controller since the xml module depends on it.
+The `community.general.xml` module is the primary tool for XML operations in Ansible. It supports reading with XPath queries, modifying values and attributes, adding and removing elements, and handling namespaces. For complex XML manipulation, converting to a dictionary via `xmltodict` and then working with standard Ansible filters can be more convenient. When dealing with network devices, the XML parsing capabilities integrate well with NETCONF and other XML-based management protocols. Always install the `lxml` Python library on the host that executes the xml module since the module depends on it.
