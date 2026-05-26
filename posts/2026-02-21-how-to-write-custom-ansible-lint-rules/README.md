@@ -17,11 +17,10 @@ This post walks through the full process of writing custom rules, from understan
 Every ansible-lint rule is a Python class that extends `AnsibleLintRule`. The class provides several methods you can override to inspect different aspects of Ansible content.
 
 ```python
-# anatomy_of_a_rule.py - Shows all available hook methods
+# anatomy_of_a_rule.py - Shows common hook methods
 
 """Demonstrates the full rule API."""
 from ansiblelint.rules import AnsibleLintRule
-from ansiblelint.file_utils import Lintable
 
 
 class MyRule(AnsibleLintRule):
@@ -32,7 +31,7 @@ class MyRule(AnsibleLintRule):
     description = "Detailed description of what this rule checks."
     severity = "MEDIUM"            # LOW, MEDIUM, HIGH, VERY_HIGH
     tags = ["custom"]              # Tags for grouping/filtering
-    version_added = "1.0.0"        # When the rule was added
+    version_changed = "1.0.0"      # Current rule version metadata
 
     def matchtask(self, task, file=None):
         """Called for every task. Return a string message for violation."""
@@ -46,7 +45,7 @@ class MyRule(AnsibleLintRule):
         """Called for every directory. Return list of MatchError objects."""
         return []
 
-    def matchyaml(self, file, data):
+    def matchyaml(self, file):
         """Called for every YAML file. Return list of MatchError objects."""
         return []
 ```
@@ -91,6 +90,7 @@ from ansiblelint.rules import AnsibleLintRule
 
 if TYPE_CHECKING:
     from ansiblelint.file_utils import Lintable
+    from ansiblelint.utils import Task
 
 
 class RequireTaskTagsRule(AnsibleLintRule):
@@ -103,11 +103,12 @@ class RequireTaskTagsRule(AnsibleLintRule):
     )
     severity = "MEDIUM"
     tags = ["custom", "tags", "organizational"]
+    version_changed = "1.0.0"
 
     # Modules to skip (meta tasks, handlers called by name)
     SKIP_MODULES = {"meta", "ansible.builtin.meta"}
 
-    def matchtask(self, task, file=None):
+    def matchtask(self, task: Task, file: Lintable | None = None):
         """Check if the task has tags."""
         # Get the module being used
         module = task.get("action", {}).get("__ansible_module__", "")
@@ -182,6 +183,7 @@ class RequirePlayVarsRule(AnsibleLintRule):
     )
     severity = "HIGH"
     tags = ["custom", "organizational"]
+    version_changed = "1.0.0"
 
     def matchplay(self, file, data):
         """Check that required variables exist in the play."""
@@ -190,16 +192,18 @@ class RequirePlayVarsRule(AnsibleLintRule):
         if not isinstance(data, dict):
             return results
 
-        # Get all variables defined in the play
+        # Get variables defined directly in the play
         play_vars = set()
-        for var_source in ("vars", "vars_files", "vars_prompt"):
-            var_data = data.get(var_source, {})
-            if isinstance(var_data, dict):
-                play_vars.update(var_data.keys())
-            elif isinstance(var_data, list):
-                for item in var_data:
-                    if isinstance(item, dict):
-                        play_vars.update(item.keys())
+        var_data = data.get("vars", {})
+        if isinstance(var_data, dict):
+            play_vars.update(var_data.keys())
+
+        # vars_prompt entries store the variable name in the "name" key
+        prompts = data.get("vars_prompt", [])
+        if isinstance(prompts, list):
+            for item in prompts:
+                if isinstance(item, dict) and isinstance(item.get("name"), str):
+                    play_vars.add(item["name"])
 
         # Check for missing required variables
         for required_var in REQUIRED_VARS:
@@ -238,6 +242,7 @@ class NoSensitiveDataRule(AnsibleLintRule):
     )
     severity = "VERY_HIGH"
     tags = ["custom", "security"]
+    version_changed = "1.0.0"
 
     # Patterns that suggest hardcoded secrets
     PATTERNS = [
@@ -261,7 +266,7 @@ class NoSensitiveDataRule(AnsibleLintRule):
         re.compile(r'^\s*#'),           # Comment
     ]
 
-    def matchyaml(self, file, data):
+    def matchyaml(self, file):
         """Scan file content for sensitive data patterns."""
         results = []
 
@@ -280,7 +285,7 @@ class NoSensitiveDataRule(AnsibleLintRule):
                         self.create_matcherror(
                             message=message,
                             filename=file,
-                            linenumber=line_num,
+                            lineno=line_num,
                         )
                     )
                     break  # One match per line is enough
@@ -296,26 +301,53 @@ Recent versions of ansible-lint support auto-fixing. Here is a rule that can fix
 # custom_rules/fix_become_user.py - Add become_user when become is true
 """Rule to require explicit become_user with auto-fix."""
 from __future__ import annotations
-from ansiblelint.rules import AnsibleLintRule
+from typing import TYPE_CHECKING
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ansiblelint.rules import AnsibleLintRule, TransformMixin
+
+if TYPE_CHECKING:
+    from ansiblelint.errors import MatchError
+    from ansiblelint.file_utils import Lintable
+    from ansiblelint.utils import Task
 
 
-class FixBecomeUserRule(AnsibleLintRule):
+class FixBecomeUserRule(AnsibleLintRule, TransformMixin):
     """When become is true, become_user must be explicitly set."""
 
     id = "custom-fix-become-user"
     description = "Tasks with become: true should specify become_user."
     severity = "MEDIUM"
     tags = ["custom", "security"]
+    version_changed = "1.0.0"
 
-    def matchtask(self, task, file=None):
+    def matchtask(self, task: Task, file: Lintable | None = None):
         """Check for become without become_user."""
         become = task.get("become", False)
         become_user = task.get("become_user")
 
         if become and not become_user:
-            return "become is true but become_user is not specified"
+            return self.create_matcherror(
+                message="become is true but become_user is not specified",
+                filename=file,
+                lineno=task.line,
+            )
 
         return False
+
+    def transform(
+        self,
+        match: MatchError,
+        lintable: Lintable,
+        data: CommentedMap | CommentedSeq | str,
+    ) -> None:
+        """Add a default become_user when ansible-lint runs with --fix."""
+        if isinstance(data, str):
+            return
+
+        task = self.seek(match.yaml_path, data)
+        if isinstance(task, CommentedMap) and "become_user" not in task:
+            task["become_user"] = "root"
+            match.fixed = True
 ```
 
 ## Testing Your Rules
@@ -325,9 +357,23 @@ Write tests to verify your rules catch violations and pass clean code.
 ```python
 # tests/test_require_tags.py - Test the require tags rule
 """Tests for the require task tags rule."""
-import pytest
-from ansiblelint.runner import Runner
+from pathlib import Path
+from ansiblelint.app import get_app
 from ansiblelint.config import Options
+from ansiblelint.runner import Runner
+from ansiblelint.rules import RulesCollection
+
+
+def run_lint(playbook: Path):
+    """Run ansible-lint with the custom rules directory."""
+    app = get_app(offline=True)
+    options = Options(rulesdirs=[Path("custom_rules")], offline=True)
+    rules = RulesCollection(
+        app=app,
+        rulesdirs=options.rulesdirs,
+        options=options,
+    )
+    return Runner(playbook, rules=rules).run()
 
 
 def test_task_without_tags_fails(tmp_path):
@@ -343,8 +389,7 @@ def test_task_without_tags_fails(tmp_path):
         '        msg: "no tags"\n'
     )
 
-    runner = Runner(str(playbook), rules_dir=["custom_rules"])
-    results = runner.run()
+    results = run_lint(playbook)
 
     rule_ids = [r.rule.id for r in results]
     assert "custom-require-tags" in rule_ids
@@ -365,8 +410,7 @@ def test_task_with_tags_passes(tmp_path):
         "        - test\n"
     )
 
-    runner = Runner(str(playbook), rules_dir=["custom_rules"])
-    results = runner.run()
+    results = run_lint(playbook)
 
     rule_ids = [r.rule.id for r in results]
     assert "custom-require-tags" not in rule_ids
@@ -384,13 +428,14 @@ To share your custom rules across multiple projects, package them as a Python pa
 
 ```python
 # setup.py - Package your rules
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name="myorg-ansible-lint-rules",
     version="1.0.0",
     description="Custom ansible-lint rules for MyOrg",
-    packages=find_packages(),
+    packages=["myorg_lint_rules"],
+    package_dir={"myorg_lint_rules": "custom_rules"},
     install_requires=["ansible-lint>=6.0.0"],
     python_requires=">=3.9",
 )
