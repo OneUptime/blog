@@ -25,14 +25,14 @@ The most common way to set permissions in Ansible is with octal (numeric) mode:
     mode: "0644"
 ```
 
-Always quote the mode value as a string. This is important because without quotes, YAML treats `0644` as the integer `644` (dropping the leading zero), and Ansible would interpret that differently. Here is what goes wrong:
+Always quote the mode value as a string. This is important because Ansible expects enough information to treat file modes as octal values. A leading zero like `0644` can work in some cases, but Ansible's documentation recommends quoting mode values for consistent results, especially in loops and templated values. Here is what goes wrong when Ansible receives a bare decimal number:
 
 ```yaml
-# WRONG - YAML drops the leading zero, resulting in mode 644 (decimal)
+# WRONG - unquoted 644 is a decimal number, not octal 0644
 - name: This will set wrong permissions
   ansible.builtin.file:
     path: /etc/myapp/config.yml
-    mode: 0644  # Becomes integer 644, NOT octal 0644
+    mode: 644
 
 # CORRECT - quoted string preserves the octal notation
 - name: This sets the right permissions
@@ -119,7 +119,7 @@ Use a loop to set permissions on multiple files at once:
 
 ## Recursive Permission Changes
 
-The `file` module does not directly support recursive permission changes on existing directory trees. For that, you have two options:
+The `file` module can apply file attributes recursively on directory trees when `state: directory` and `recurse: true` are set. The important limitation is that the same mode is applied throughout the tree, so you have two options:
 
 ### Option 1: Use the file module with recurse
 
