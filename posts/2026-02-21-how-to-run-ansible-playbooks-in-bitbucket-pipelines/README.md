@@ -58,9 +58,9 @@ pipelines:
             - apt-get update && apt-get install -y openssh-client
             - pip install ansible==8.7.0
             - ansible-galaxy collection install -r requirements.yml
-            # Set up SSH from Bitbucket SSH key
+            # Set up SSH from a base64-encoded secured variable
             - mkdir -p ~/.ssh
-            - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - echo "$SSH_PRIVATE_KEY_B64" | base64 --decode > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
             - ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts 2>/dev/null
             # Write vault password
@@ -109,11 +109,13 @@ Store sensitive values as repository or deployment variables in Repository Setti
 
 Mark variables as "Secured" to prevent them from being printed in logs.
 
+If you store your own SSH private key in a secured variable, base64-encode it first because Pipelines variables do not support line breaks.
+
 ```yaml
 # Variables referenced in the pipeline
 # Set these in Bitbucket:
 # - ANSIBLE_VAULT_PASSWORD (secured)
-# - SSH_PRIVATE_KEY (secured)
+# - SSH_PRIVATE_KEY_B64 (secured, base64-encoded private key)
 # - STAGING_HOST
 # - PRODUCTION_HOST
 ```
@@ -178,7 +180,7 @@ pipelines:
             - pip install ansible==8.7.0
             - ansible-galaxy collection install -r requirements.yml
             - mkdir -p ~/.ssh
-            - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - echo "$SSH_PRIVATE_KEY_B64" | base64 --decode > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
             - ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts 2>/dev/null
             - echo "$ANSIBLE_VAULT_PASSWORD" > /tmp/vault_pass.txt
@@ -212,7 +214,7 @@ pipelines:
             - pip install ansible==8.7.0
             - ansible-galaxy collection install -r requirements.yml
             - mkdir -p ~/.ssh
-            - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            - echo "$SSH_PRIVATE_KEY_B64" | base64 --decode > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
             - ssh-keyscan -H $PRODUCTION_HOST >> ~/.ssh/known_hosts 2>/dev/null
             - echo "$ANSIBLE_VAULT_PASSWORD" > /tmp/vault_pass.txt
@@ -285,16 +287,17 @@ pipelines:
   branches:
     main:
       - parallel:
-          - step:
-              name: Lint
-              script:
-                - pip install ansible-lint
-                - ansible-lint playbooks/
-          - step:
-              name: Syntax Check
-              script:
-                - pip install ansible==8.7.0
-                - ansible-playbook --syntax-check playbooks/site.yml
+          steps:
+            - step:
+                name: Lint
+                script:
+                  - pip install ansible-lint
+                  - ansible-lint playbooks/
+            - step:
+                name: Syntax Check
+                script:
+                  - pip install ansible==8.7.0
+                  - ansible-playbook --syntax-check playbooks/site.yml
       - step:
           name: Deploy
           deployment: staging
