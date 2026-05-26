@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, JSON, Data Parsing, Automation
 
-Description: Learn how to parse JSON data in Ansible from APIs, files, and command outputs using from_json filter, uri module, and json_query for data extraction.
+Description: Learn how to parse JSON data in Ansible from APIs, files, and command outputs using from_json filter, uri module, and community.general.json_query for data extraction.
 
 ---
 
@@ -167,9 +167,9 @@ JSON from real APIs tends to be deeply nested. Here is how to navigate complex s
         var: high_cpu_nodes
 ```
 
-## Using json_query for Complex Extraction
+## Using community.general.json_query for Complex Extraction
 
-The `json_query` filter uses JMESPath syntax for powerful querying:
+The `community.general.json_query` filter uses JMESPath syntax for powerful querying. It requires the `community.general` collection and the `jmespath` Python library on the Ansible controller:
 
 ```yaml
 # playbook-json-query.yml
@@ -197,15 +197,15 @@ The `json_query` filter uses JMESPath syntax for powerful querying:
   tasks:
     - name: Get all instance IDs across all regions
       ansible.builtin.debug:
-        msg: "{{ infrastructure | json_query('regions[].instances[].id') }}"
+        msg: "{{ infrastructure | community.general.json_query('regions[].instances[].id') }}"
 
     - name: Get only running instance IDs
       ansible.builtin.debug:
-        msg: "{{ infrastructure | json_query(\"regions[].instances[?state=='running'].id[]\") }}"
+        msg: "{{ infrastructure | community.general.json_query(\"regions[].instances[?state=='running'].id[]\") }}"
 
     - name: Get instances of a specific type
       ansible.builtin.debug:
-        msg: "{{ infrastructure | json_query(\"regions[].instances[?type=='t3.medium'].id[]\") }}"
+        msg: "{{ infrastructure | community.general.json_query(\"regions[].instances[?type=='t3.medium'].id[]\") }}"
 ```
 
 ## JSON Parsing Flow
@@ -223,7 +223,7 @@ graph TD
     F --> G
     G --> H{Complex query needed?}
     H -->|Simple| I["dot notation access"]
-    H -->|Complex| J["json_query / JMESPath"]
+    H -->|Complex| J["community.general.json_query / JMESPath"]
     H -->|Filtering| K["selectattr / rejectattr"]
 ```
 
@@ -317,7 +317,7 @@ To go the other direction, converting Ansible variables to JSON, use the `to_jso
     - name: Extract EC2 instance details
       ansible.builtin.set_fact:
         ec2_instances: >-
-          {{ tf_state | json_query("values.root_module.resources[?type=='aws_instance'].values") }}
+          {{ tf_state | community.general.json_query("values.root_module.resources[?type=='aws_instance'].values") }}
 
     - name: Display instance info
       ansible.builtin.debug:
@@ -329,4 +329,4 @@ To go the other direction, converting Ansible variables to JSON, use the `to_jso
 
 ## Summary
 
-Ansible handles JSON naturally since its internal data structures map directly to JSON. Use `from_json` for parsing raw strings, the `uri` module for API calls (which parses automatically), and `include_vars` or `file` lookup for files. For querying complex JSON structures, `json_query` with JMESPath gives you the most power. For simpler access patterns, dot notation and standard Ansible filters like `selectattr` and `map` work well. Always wrap JSON parsing in error handling blocks when dealing with external data sources that might return unexpected formats.
+Ansible handles JSON naturally since its internal data structures map directly to JSON. Use `from_json` for parsing raw strings, the `uri` module for API calls (which parses automatically), and `include_vars` or `file` lookup for files. For querying complex JSON structures, `community.general.json_query` with JMESPath gives you the most power. For simpler access patterns, dot notation and standard Ansible filters like `selectattr` and `map` work well. Always wrap JSON parsing in error handling blocks when dealing with external data sources that might return unexpected formats.
