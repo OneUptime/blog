@@ -217,13 +217,13 @@ Instead of separate password files per vault ID, use one script that returns the
 
 ```python
 #!/usr/bin/env python3
-"""vault_pass_multi.py - Returns passwords for different vault IDs.
+"""vault-pass-client.py - Returns passwords for different vault IDs.
 
-Ansible passes the --vault-id label as an argument to this script.
+Ansible calls vault password client scripts with --vault-id <label>.
 """
-import sys
 import os
 import json
+import argparse
 
 def get_passwords():
     """Load vault passwords from a secure source."""
@@ -233,20 +233,16 @@ def get_passwords():
     return json.loads(passwords_json)
 
 def main():
-    # Ansible passes the vault ID as the last argument
-    vault_id = sys.argv[-1] if len(sys.argv) > 1 else 'default'
-
-    # Remove the --vault-id prefix if present
-    if vault_id.startswith('--vault-id'):
-        vault_id = sys.argv[-1]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--vault-id', default='default')
+    args = parser.parse_args()
 
     passwords = get_passwords()
 
-    if vault_id in passwords:
-        print(passwords[vault_id], end='')
+    if args.vault_id in passwords:
+        print(passwords[args.vault_id], end='')
     else:
-        print(f"ERROR: No password configured for vault ID '{vault_id}'", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit(f"ERROR: No password configured for vault ID '{args.vault_id}'")
 
 if __name__ == '__main__':
     main()
@@ -255,9 +251,10 @@ if __name__ == '__main__':
 ```bash
 # Set the passwords as a JSON environment variable
 export VAULT_PASSWORDS='{"dev":"dev-pass","staging":"staging-pass","prod":"prod-pass"}'
+chmod +x ./vault-pass-client.py
 
 # Configure in ansible.cfg
-# vault_identity_list = dev@./vault_pass_multi.py, staging@./vault_pass_multi.py, prod@./vault_pass_multi.py
+# vault_identity_list = dev@./vault-pass-client.py, staging@./vault-pass-client.py, prod@./vault-pass-client.py
 ```
 
 ## Migrating from Single Password to Multiple Vault IDs
