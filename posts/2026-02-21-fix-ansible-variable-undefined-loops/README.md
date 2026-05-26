@@ -32,15 +32,16 @@ vars:
     - name: worker
       # No port defined!
 
-- debug:
-    msg: "{{ item.name }} on port {{ item.port }}"
-  loop: "{{ services }}"
-  # Fails on 'worker' because it has no port
+tasks:
+  - debug:
+      msg: "{{ item.name }} on port {{ item.port }}"
+    loop: "{{ services }}"
+    # Fails on 'worker' because it has no port
 
-# Fix: use default filter
-- debug:
-    msg: "{{ item.name }} on port {{ item.port | default('N/A') }}"
-  loop: "{{ services }}"
+  # Fix: use default filter
+  - debug:
+      msg: "{{ item.name }} on port {{ item.port | default('N/A') }}"
+    loop: "{{ services }}"
 ```
 
 ### Fix 2: Nested Loop Variable Collision
@@ -50,8 +51,7 @@ vars:
 - include_tasks: inner.yml
   loop: "{{ outer_list }}"
 
-# In inner.yml, 'item' now refers to the inner loop's item
-# The outer loop's item is lost
+# In inner.yml, an inner loop also using 'item' collides with the outer loop item
 
 # Fix: use loop_control to rename the variable
 - include_tasks: inner.yml
@@ -63,10 +63,10 @@ vars:
 ### Fix 3: Variable Scope in include_tasks
 
 ```yaml
-# Variables set in one include are not available in the next
+# Variables defined with task-level vars in one include are not available in the next
 - include_tasks: setup.yml
 - include_tasks: deploy.yml
-# Variables registered in setup.yml might not be available in deploy.yml
+# Registered variables are available later in the same playbook run, but task-level vars are not
 
 # Fix: use set_fact which persists for the host
 - name: In setup.yml, use set_fact
@@ -84,6 +84,9 @@ vars:
   when: item.enabled  # Fails if item has no 'enabled' key
 
 # Fix: use default in the when condition
+- debug:
+    msg: "{{ item }}"
+  loop: "{{ my_list | default([]) }}"
   when: item.enabled | default(false)
 ```
 
@@ -95,10 +98,11 @@ vars:
     key1: value1
     key2: value2
 
-# When looping over dict2items, use .key and .value
-- debug:
-    msg: "{{ item.key }} = {{ item.value }}"
-  loop: "{{ config | dict2items }}"
+tasks:
+  # When looping over dict2items, use .key and .value
+  - debug:
+      msg: "{{ item.key }} = {{ item.value }}"
+    loop: "{{ config | dict2items }}"
 ```
 
 ## Summary
@@ -144,7 +148,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -288,4 +292,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
