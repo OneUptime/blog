@@ -148,12 +148,12 @@ project/
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -185,7 +185,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -267,7 +267,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -280,6 +280,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -334,4 +335,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 Split playbooks at natural boundaries: separate plays into sub-playbooks with `import_playbook`, separate task groups into include files, and separate reusable components into roles. The goal is files small enough to understand at a glance, focused enough to test independently, and organized well enough that anyone can find what they need quickly.
-
