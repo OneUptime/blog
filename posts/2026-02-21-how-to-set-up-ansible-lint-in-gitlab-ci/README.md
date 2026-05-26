@@ -197,7 +197,7 @@ ansible-lint:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-The trick here is running ansible-lint twice: once with `-f codeclimate` to generate the report (with `|| true` to not fail on violations), and once normally to actually fail the pipeline if there are errors. The `when: always` on artifacts ensures the report is uploaded even if the job fails.
+The trick here is running ansible-lint twice: once with `-f codeclimate` to generate the report (with `|| true` to not fail on violations), and once normally to actually fail the pipeline if there are errors. GitLab uploads `artifacts:reports` even if the job fails, and `when: always` is useful if you later add regular artifact paths for troubleshooting.
 
 ## JUnit Report for Test Tab
 
@@ -206,6 +206,9 @@ GitLab can also display results in the merge request's Test tab using JUnit form
 ```yaml
 # .gitlab-ci.yml - With JUnit report
 ---
+stages:
+  - lint
+
 ansible-lint:
   stage: lint
   image: python:3.12-slim
@@ -268,7 +271,7 @@ RUN ansible-galaxy collection install \
     community.general \
     community.docker
 
-ENTRYPOINT ["ansible-lint"]
+CMD ["ansible-lint"]
 ```
 
 Build and push the image to your GitLab container registry:
@@ -283,6 +286,9 @@ Use it in your pipeline:
 ```yaml
 # .gitlab-ci.yml - Using custom image
 ---
+stages:
+  - lint
+
 ansible-lint:
   stage: lint
   image: registry.gitlab.com/myorg/ansible-lint-image:latest
@@ -300,6 +306,9 @@ For large repositories, lint only the files that changed in the merge request:
 ```yaml
 # .gitlab-ci.yml - Lint only changed files
 ---
+stages:
+  - lint
+
 ansible-lint-changes:
   stage: lint
   image: python:3.12-slim
@@ -308,6 +317,8 @@ ansible-lint-changes:
     - apt-get update && apt-get install -y git
   script:
     - |
+      git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME:refs/remotes/origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
       CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR \
         origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD \
         -- '*.yml' '*.yaml' \
@@ -346,7 +357,7 @@ After setting up the pipeline, configure your GitLab project to require the lint
 
 1. Go to Settings > Merge Requests
 2. Under "Merge checks", enable "Pipelines must succeed"
-3. Optionally, go to Settings > CI/CD > General pipelines and set "Required pipeline configuration"
+3. Optionally, use compliance pipelines or pipeline execution policies if your GitLab tier supports them
 
 This prevents anyone from merging code that fails linting.
 
