@@ -10,7 +10,7 @@ Description: Configure SSH keepalive settings in Ansible to prevent dropped conn
 
 Long-running Ansible tasks have a habit of failing with cryptic SSH disconnection errors. You kick off a database migration or a large file transfer, walk away, and come back to find the playbook died halfway through because the SSH connection went stale. The fix is straightforward: configure SSH keepalive settings so that the connection stays alive during idle periods.
 
-This post covers every method for setting up SSH keepalives in Ansible, from ansible.cfg to per-host inventory settings.
+This post covers common methods for setting up SSH keepalives in Ansible, from ansible.cfg to per-host inventory settings.
 
 ## Why SSH Connections Drop
 
@@ -40,7 +40,7 @@ Here is what each option does:
 
 - **ServerAliveInterval=30**: The SSH client sends a keepalive packet every 30 seconds when no data is being transmitted
 - **ServerAliveCountMax=5**: If the server does not respond to 5 consecutive keepalive packets, the client disconnects (so the connection survives up to 150 seconds of unresponsiveness)
-- **TCPKeepAlive=yes**: Enables TCP-level keepalive in addition to the SSH application-level keepalive
+- **TCPKeepAlive=yes**: Keeps TCP-level keepalive enabled in addition to the SSH application-level keepalive. This is already the OpenSSH default, but setting it explicitly can make the behavior clear.
 
 ## Combining Keepalive with Other SSH Options
 
@@ -202,9 +202,8 @@ If connections still drop despite keepalive configuration, check these things.
 # Run this from the Ansible controller
 ssh -o ServerAliveInterval=5 -o ServerAliveCountMax=100 -v deploy@target_host 'sleep 1800'
 
-# Watch the verbose output for keepalive messages like:
-# debug1: client_alive_check: ...
-# debug1: Sending SSH2_MSG_KEEPALIVE...
+# Watch the verbose output for keepalive-related messages such as:
+# debug1: client_input_global_request: rtype keepalive@openssh.com want_reply 1
 ```
 
 Common culprits when keepalive does not help:
