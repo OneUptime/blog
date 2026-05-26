@@ -251,7 +251,7 @@ Then reference it in your project:
 # requirements.yml - Local collection tarballs
 ---
 collections:
-  - name: ./collections/myorg-myapp-1.0.0.tar.gz
+  - name: /tmp/collections/myorg-myapp-1.0.0.tar.gz
     type: file
 
   - name: community.general
@@ -312,8 +312,8 @@ podman run --rm my-ee:1.0 ansible-galaxy collection list
 # Check a specific collection version
 podman run --rm my-ee:1.0 ansible-galaxy collection list community.general
 
-# Verify a module from a collection works
-podman run --rm my-ee:1.0 ansible-doc community.general.json_query
+# Verify a lookup plugin from a collection works
+podman run --rm my-ee:1.0 ansible-doc -t lookup community.general.random_string
 ```
 
 Create a verification playbook:
@@ -335,20 +335,9 @@ Create a verification playbook:
       ansible.builtin.debug:
         msg: "{{ cg_check.stdout_lines }}"
 
-    - name: Use a module from community.general to prove it works
-      community.general.json_query:
-        data:
-          users:
-            - name: alice
-              role: admin
-            - name: bob
-              role: user
-        query: "users[?role=='admin'].name"
-      register: query_result
-
-    - name: Show query result
+    - name: Use a lookup plugin from community.general to prove it works
       ansible.builtin.debug:
-        msg: "Admin users: {{ query_result.result }}"
+        msg: "Generated token: {{ lookup('community.general.random_string', length=12) }}"
 ```
 
 Run the verification:
@@ -366,9 +355,9 @@ ansible-navigator run verify-collections.yml \
 When you need to update collections in your EE, follow this process:
 
 ```bash
-# Check for available updates
-ansible-galaxy collection list 2>/dev/null | while read ns name ver; do
-  echo "Checking $ns.$name (current: $ver)"
+# List currently installed collection versions
+ansible-galaxy collection list 2>/dev/null | awk '/^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+/ { print $1, $2 }' | while read collection ver; do
+  echo "$collection (current: $ver)"
 done
 
 # Update the version in requirements.yml, then rebuild
