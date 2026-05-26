@@ -144,13 +144,21 @@ startretries={{ program_startretries | default(3) }}
 stopwaitsecs={{ program_stopwaitsecs | default(10) }}
 stopsignal={{ program_stopsignal | default('TERM') }}
 redirect_stderr={{ program_redirect_stderr | default('true') }}
+{% if program_numprocs is defined and program_numprocs > 1 %}
+stdout_logfile=/var/log/supervisor/{{ program_name }}-%(process_num)02d.log
+{% else %}
 stdout_logfile=/var/log/supervisor/{{ program_name }}.log
+{% endif %}
 stdout_logfile_maxbytes={{ program_log_maxbytes | default('50MB') }}
 stdout_logfile_backups={{ program_log_backups | default(10) }}
+{% if program_numprocs is defined and program_numprocs > 1 %}
+stderr_logfile=/var/log/supervisor/{{ program_name }}-%(process_num)02d-error.log
+{% else %}
 stderr_logfile=/var/log/supervisor/{{ program_name }}-error.log
+{% endif %}
 stderr_logfile_maxbytes={{ program_log_maxbytes | default('50MB') }}
 {% if program_environment is defined %}
-environment={{ program_environment | dict2items | map('join', '=') | map('regex_replace', '(.+)', '"\1"') | join(',') }}
+environment={% for key, value in program_environment.items() %}{{ key }}="{{ value | string | replace('%', '%%') }}"{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}
 {% if program_numprocs is defined and program_numprocs > 1 %}
 numprocs={{ program_numprocs }}
@@ -208,9 +216,7 @@ Start, stop, and manage Supervisor programs:
 
   handlers:
     - name: Reread Supervisor config
-      community.general.supervisorctl:
-        name: all
-        state: present  # This triggers supervisorctl reread + update
+      ansible.builtin.command: supervisorctl update
 ```
 
 ## Module Parameters
@@ -301,7 +307,7 @@ Deploy a multi-process application:
 
   handlers:
     - name: Update Supervisor
-      ansible.builtin.command: supervisorctl reread && supervisorctl update
+      ansible.builtin.command: supervisorctl update
 ```
 
 ## Using Program Groups
@@ -379,9 +385,9 @@ When you need to remove a Supervisor-managed program:
     state: absent
 
 - name: Update Supervisor to remove the program
-  ansible.builtin.command: supervisorctl reread && supervisorctl update
+  ansible.builtin.command: supervisorctl update
 ```
 
 ## Summary
 
-Supervisor remains a solid choice for process management, especially in Python application stacks with Gunicorn, Celery, and similar tools. Ansible's `supervisorctl` module gives you declarative control over program state, while templates handle configuration deployment. The key patterns are: use program configuration templates for consistency, group related programs for batch management, use handlers to trigger config reread after changes, and check status to verify your programs are healthy. For new deployments on modern Linux, consider whether systemd unit files might be simpler, but for existing Supervisor setups, Ansible integrates well with the existing workflow.
+Supervisor remains a solid choice for process management, especially in Python application stacks with Gunicorn, Celery, and similar tools. Ansible's `supervisorctl` module gives you declarative control over program state, while templates handle configuration deployment. The key patterns are: use program configuration templates for consistency, group related programs for batch management, use handlers to apply config updates after changes, and check status to verify your programs are healthy. For new deployments on modern Linux, consider whether systemd unit files might be simpler, but for existing Supervisor setups, Ansible integrates well with the existing workflow.
