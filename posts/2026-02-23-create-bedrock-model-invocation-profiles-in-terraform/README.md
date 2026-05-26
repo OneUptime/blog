@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, AWS, Bedrock, AI, Machine Learning, Generative AI, Infrastructure as Code
 
-Description: Learn how to set up Amazon Bedrock model access, invocation logging, custom model imports, and guardrails using Terraform for production generative AI workloads.
+Description: Learn how to set up Amazon Bedrock model access, invocation logging, provisioned throughput, and guardrails using Terraform for production generative AI workloads.
 
 ---
 
-Amazon Bedrock gives you access to foundation models from Anthropic, Meta, Cohere, and others through a unified API. Instead of hosting models yourself, you call an API and AWS handles the inference infrastructure. But before you can invoke any model, you need to configure model access, set up logging, and - for production - define guardrails to keep your AI applications safe.
+Amazon Bedrock gives you access to foundation models from Anthropic, Meta, Cohere, and others through a unified API. Instead of hosting models yourself, you call an API and AWS handles the inference infrastructure. Before invoking models in production, you need the right AWS Marketplace and Bedrock permissions, logging, and guardrails to keep your AI applications safe.
 
-Terraform support for Bedrock has matured significantly. You can now manage model access, invocation logging, custom model imports, provisioned throughput, and guardrails entirely through code. This post covers the practical setup you need to get Bedrock running in a controlled, auditable way.
+Terraform support for Bedrock has matured significantly. You can now manage invocation logging, custom models, provisioned throughput, and guardrails through code, while model access is controlled through AWS Marketplace, IAM, and service control policies. This post covers the practical setup you need to get Bedrock running in a controlled, auditable way.
 
 ## Enabling Model Access
 
-Before invoking any model, you need to request access. This is done at the account level. While the initial model access request still requires the console for some models (due to EULA acceptance), you can manage the Terraform configuration around it:
+In commercial AWS Regions, access to Amazon Bedrock foundation models is enabled by default when the caller has the required AWS Marketplace permissions. Some providers still have prerequisites before first use; for example, Anthropic requires a first-time use form. You can manage the Terraform configuration around model discovery and IAM controls:
 
 ```hcl
 # Configure the AWS provider for Bedrock
@@ -33,7 +33,7 @@ output "available_models" {
 }
 ```
 
-Once you have model access enabled, the real infrastructure work begins with invocation logging, provisioned throughput, and guardrails.
+Once the required model access prerequisites are in place, the real infrastructure work begins with invocation logging, provisioned throughput, and guardrails.
 
 ## Invocation Logging
 
@@ -70,6 +70,37 @@ resource "aws_s3_bucket_public_access_block" "bedrock_logs" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# Allow Bedrock to write invocation logs to S3
+resource "aws_s3_bucket_policy" "bedrock_logs" {
+  bucket = aws_s3_bucket.bedrock_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AmazonBedrockLogsWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "bedrock.amazonaws.com"
+        }
+        Action = "s3:PutObject"
+        Resource = [
+          "${aws_s3_bucket.bedrock_logs.arn}/invocation-logs/AWSLogs/${data.aws_caller_identity.current.account_id}/BedrockModelInvocationLogs/*",
+          "${aws_s3_bucket.bedrock_logs.arn}/large-data/AWSLogs/${data.aws_caller_identity.current.account_id}/BedrockModelInvocationLogs/*"
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:bedrock:us-east-1:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      }
+    ]
+  })
 }
 
 # CloudWatch log group for Bedrock invocations
@@ -109,23 +140,37 @@ resource "aws_kms_key" "bedrock" {
           Service = "bedrock.amazonaws.com"
         }
         Action = [
-          "kms:GenerateDataKey",
-          "kms:Decrypt"
+          "kms:GenerateDataKey"
         ]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:bedrock:us-east-1:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
       },
       {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.amazonaws.com"
+          Service = "logs.us-east-1.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
           "kms:Decrypt",
-          "kms:GenerateDataKey"
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:Describe*"
         ]
         Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:us-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock/invocations"
+          }
+        }
       }
     ]
   })
@@ -148,6 +193,14 @@ resource "aws_iam_role" "bedrock_logging" {
           Service = "bedrock.amazonaws.com"
         }
         Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:bedrock:us-east-1:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
       }
     ]
   })
@@ -157,7 +210,7 @@ resource "aws_iam_role" "bedrock_logging" {
   }
 }
 
-# Policy allowing Bedrock to write to S3 and CloudWatch
+# Policy allowing Bedrock to write to CloudWatch
 resource "aws_iam_role_policy" "bedrock_logging" {
   name = "bedrock-logging-policy"
   role = aws_iam_role.bedrock_logging.id
@@ -168,17 +221,10 @@ resource "aws_iam_role_policy" "bedrock_logging" {
       {
         Effect = "Allow"
         Action = [
-          "s3:PutObject"
-        ]
-        Resource = "${aws_s3_bucket.bedrock_logs.arn}/*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "${aws_cloudwatch_log_group.bedrock.arn}:*"
+        Resource = "arn:aws:logs:us-east-1:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock/invocations:log-stream:aws/bedrock/modelinvocations"
       }
     ]
   })
@@ -186,6 +232,10 @@ resource "aws_iam_role_policy" "bedrock_logging" {
 
 # Enable Bedrock model invocation logging
 resource "aws_bedrock_model_invocation_logging_configuration" "main" {
+  depends_on = [
+    aws_s3_bucket_policy.bedrock_logs
+  ]
+
   logging_config {
     embedding_data_delivery_enabled = true
 
@@ -196,7 +246,7 @@ resource "aws_bedrock_model_invocation_logging_configuration" "main" {
     }
 
     # Log to CloudWatch
-    cloud_watch_config {
+    cloudwatch_config {
       log_group_name = aws_cloudwatch_log_group.bedrock.name
       role_arn       = aws_iam_role.bedrock_logging.arn
 
@@ -354,11 +404,11 @@ For production workloads with predictable traffic, provisioned throughput gives 
 # Provisioned throughput for a specific model
 resource "aws_bedrock_provisioned_model_throughput" "claude" {
   provisioned_model_name = "claude-production"
-  model_arn              = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
+  model_arn              = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0:200k"
   model_units            = 1
 
-  # Commitment - "NO_COMMITMENT" for on-demand or specify a term
-  commitment_duration = "NO_COMMITMENT"
+  # Valid commitment values are "OneMonth" and "SixMonths"
+  commitment_duration = "OneMonth"
 
   tags = {
     Environment = "production"
@@ -372,7 +422,7 @@ output "provisioned_model_arn" {
 }
 ```
 
-When you use provisioned throughput, you get guaranteed model capacity that is not shared with other customers. This eliminates throttling during peak traffic and gives you more predictable latency.
+When you use provisioned throughput, you get model capacity that is reserved for your workloads. This reduces throttling during peak traffic and gives you more predictable latency.
 
 ## IAM Policies for Bedrock Access
 
@@ -398,6 +448,11 @@ resource "aws_iam_policy" "bedrock_invoke" {
           "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-*",
           "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-*"
         ]
+        Condition = {
+          StringEquals = {
+            "bedrock:GuardrailIdentifier" = "${aws_bedrock_guardrail.production.guardrail_arn}:${aws_bedrock_guardrail_version.v1.version}"
+          }
+        }
       },
       {
         # Require guardrail usage - deny invocations without a guardrail
@@ -408,10 +463,8 @@ resource "aws_iam_policy" "bedrock_invoke" {
         ]
         Resource = "*"
         Condition = {
-          StringNotLike = {
-            "bedrock:GuardrailIdentifier" = [
-              aws_bedrock_guardrail.production.guardrail_arn
-            ]
+          StringNotEquals = {
+            "bedrock:GuardrailIdentifier" = "${aws_bedrock_guardrail.production.guardrail_arn}:${aws_bedrock_guardrail_version.v1.version}"
           }
         }
       },
@@ -430,7 +483,7 @@ resource "aws_iam_policy" "bedrock_invoke" {
 }
 ```
 
-This policy does two things: it limits which models can be invoked and it enforces that all invocations must go through the production guardrail. This gives you centralized control over AI safety for your entire organization.
+This policy does two things: it limits which models can be invoked and it enforces that all invocations must use the approved production guardrail version. This gives you centralized control over AI safety for your entire organization.
 
 ## Monitoring with CloudWatch
 
