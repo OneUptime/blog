@@ -103,7 +103,7 @@ haproxy_log_format: "%ci:%cp [%t] %ft %b/%s %Tq/%Tw/%Tc/%Tr/%Tt %ST %B %CC %CS %
 
 ```yaml
 # roles/haproxy/tasks/install.yml
-# Install HAProxy from the official PPA for the latest stable version
+# Install HAProxy from the Debian HAProxy packaging team PPA for the selected version
 - name: Install software-properties-common
   ansible.builtin.apt:
     name: software-properties-common
@@ -116,7 +116,7 @@ haproxy_log_format: "%ci:%cp [%t] %ft %b/%s %Tq/%Tw/%Tc/%Tr/%Tt %ST %B %CC %CS %
 
 - name: Install HAProxy
   ansible.builtin.apt:
-    name: "{{ haproxy_package }}"
+    name: "{{ haproxy_package }}={{ haproxy_version }}.*"
     state: present
     update_cache: yes
 
@@ -159,7 +159,11 @@ global
 defaults
     log     global
     mode    {{ haproxy_defaults_mode }}
+{% if haproxy_log_format is defined and haproxy_log_format %}
+    log-format "{{ haproxy_log_format }}"
+{% else %}
     option  httplog
+{% endif %}
     option  dontlognull
     option  forwardfor
     option  http-server-close
@@ -180,8 +184,7 @@ defaults
 
 {% if haproxy_rate_limiting_enabled %}
 # Rate limiting stick table
-frontend rate_limiter
-    bind *:0
+backend rate_limiter
     stick-table type ip size 100k expire {{ haproxy_rate_limit_period }} store http_req_rate({{ haproxy_rate_limit_period }})
 {% endif %}
 
@@ -286,12 +289,12 @@ backend {{ backend.name }}
 - name: Include installation tasks
   ansible.builtin.include_tasks: install.yml
 
-- name: Include configuration tasks
-  ansible.builtin.include_tasks: configure.yml
-
 - name: Include SSL tasks
   ansible.builtin.include_tasks: ssl.yml
   when: haproxy_frontends | selectattr('bind', 'search', 'ssl') | list | length > 0
+
+- name: Include configuration tasks
+  ansible.builtin.include_tasks: configure.yml
 ```
 
 ```yaml
@@ -335,6 +338,9 @@ backend {{ backend.name }}
         haproxy_stats_auth_password: "{{ vault_haproxy_stats_password }}"
         haproxy_rate_limiting_enabled: true
         haproxy_rate_limit_requests: 200
+        haproxy_ssl_certificates:
+          - ssl_cert_name: site.pem
+            ssl_cert_content: "{{ vault_haproxy_site_pem }}"
 
         haproxy_frontends:
           - name: http_front
@@ -343,7 +349,7 @@ backend {{ backend.name }}
               - "redirect scheme https unless { ssl_fc }"
 
           - name: https_front
-            bind: "*:443 ssl crt /etc/haproxy/certs/"
+            bind: "*:443 ssl crt /etc/haproxy/certs/site.pem"
             options:
               - forwardfor
             acls:
