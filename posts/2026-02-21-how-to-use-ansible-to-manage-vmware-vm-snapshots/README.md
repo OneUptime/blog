@@ -25,7 +25,7 @@ Each snapshot adds a layer. The more layers you have, the more I/O overhead the 
 
 ## Creating Snapshots
 
-The `community.vmware.vmware_guest_snapshot` module handles all snapshot operations.
+The `vmware.vmware.vm_snapshot` module handles snapshot creation, deletion, and updates. Reverts use the separate `vmware.vmware.vm_snapshot_revert` module.
 
 ```yaml
 # create-snapshot.yml
@@ -36,7 +36,7 @@ The `community.vmware.vmware_guest_snapshot` module handles all snapshot operati
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.vm_snapshot:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -49,7 +49,7 @@ The `community.vmware.vmware_guest_snapshot` module handles all snapshot operati
 
   tasks:
     - name: Create snapshot with memory state
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
         datacenter: "DC01"
         name: "prod-app-server-01"
         folder: "/DC01/vm/Production"
@@ -62,7 +62,7 @@ The `community.vmware.vmware_guest_snapshot` module handles all snapshot operati
 
     - name: Display snapshot details
       ansible.builtin.debug:
-        msg: "Snapshot '{{ snapshot_result.snapshot_results.current_snapshot.name }}' created successfully"
+        msg: "Snapshot '{{ snapshot_result.snapshot.name }}' created successfully"
 ```
 
 ### Understanding Snapshot Options
@@ -73,7 +73,7 @@ The `community.vmware.vmware_guest_snapshot` module handles all snapshot operati
 ```yaml
 # Snapshot for database servers - quiesce for consistency, skip memory to save space
 - name: Create quiesced snapshot for database server
-  community.vmware.vmware_guest_snapshot:
+  vmware.vmware.vm_snapshot:
     datacenter: "DC01"
     name: "prod-db-01"
     folder: "/DC01/vm/Production"
@@ -96,7 +96,7 @@ If something goes wrong during a maintenance window, revert to the snapshot to u
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.vm_snapshot_revert:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -109,11 +109,10 @@ If something goes wrong during a maintenance window, revert to the snapshot to u
 
   tasks:
     - name: Revert to the pre-patch snapshot
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot_revert:
         datacenter: "DC01"
         name: "prod-app-server-01"
         folder: "/DC01/vm/Production"
-        state: revert
         snapshot_name: "pre-patch-2026-02-21"
       register: revert_result
 
@@ -135,7 +134,7 @@ After confirming that a change was successful, delete the snapshot to reclaim st
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.vm_snapshot:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -149,7 +148,7 @@ After confirming that a change was successful, delete the snapshot to reclaim st
   tasks:
     # Delete a specific snapshot by name
     - name: Delete the pre-patch snapshot
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
         datacenter: "DC01"
         name: "prod-app-server-01"
         folder: "/DC01/vm/Production"
@@ -158,11 +157,12 @@ After confirming that a change was successful, delete the snapshot to reclaim st
 
     # Delete ALL snapshots on a VM (use with caution)
     - name: Remove all snapshots from the VM
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
         datacenter: "DC01"
         name: "prod-app-server-01"
         folder: "/DC01/vm/Production"
-        state: remove_all
+        state: absent
+        remove_all: true
 ```
 
 ## Complete Change Management Workflow
@@ -177,7 +177,12 @@ Here is a full playbook that implements a proper change management workflow with
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    vmware.vmware.vm_snapshot:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      validate_certs: false
+    vmware.vmware.vm_snapshot_revert:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -191,12 +196,12 @@ Here is a full playbook that implements a proper change management workflow with
       - "prod-web-01"
       - "prod-web-02"
       - "prod-app-01"
-    snapshot_name: "pre-maintenance-{{ ansible_date_time.date | default('2026-02-21') }}"
+    snapshot_name: "pre-maintenance-{{ lookup('pipe', 'date +%F') }}"
 
   tasks:
     # Step 1: Create snapshots on all target VMs
     - name: Create pre-maintenance snapshots
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
         datacenter: "DC01"
         name: "{{ item }}"
         folder: "/DC01/vm/Production"
@@ -211,7 +216,7 @@ Here is a full playbook that implements a proper change management workflow with
     - name: Verify all snapshots were created
       ansible.builtin.assert:
         that:
-          - item.changed or item.snapshot_results is defined
+          - item.snapshot is defined
         fail_msg: "Failed to create snapshot for {{ item.item }}"
       loop: "{{ snapshot_results.results }}"
 
@@ -239,18 +244,17 @@ Here is a full playbook that implements a proper change management workflow with
 
     # If maintenance failed, revert snapshots
     - name: Revert snapshots on failure
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot_revert:
         datacenter: "DC01"
         name: "{{ item }}"
         folder: "/DC01/vm/Production"
-        state: revert
         snapshot_name: "{{ snapshot_name }}"
       loop: "{{ target_vms }}"
       when: maintenance_failed | bool
 
     # If maintenance succeeded, clean up snapshots
     - name: Delete snapshots after successful maintenance
-      community.vmware.vmware_guest_snapshot:
+      vmware.vmware.vm_snapshot:
         datacenter: "DC01"
         name: "{{ item }}"
         folder: "/DC01/vm/Production"
@@ -262,17 +266,17 @@ Here is a full playbook that implements a proper change management workflow with
 
 ## Finding and Cleaning Old Snapshots
 
-Stale snapshots are a common problem. Use the snapshot info module to find them.
+Stale snapshots are a common problem. Use the snapshot info module to list snapshots and their creation times.
 
 ```yaml
 # find-old-snapshots.yml
 ---
-- name: Find and report old snapshots across all VMs
+- name: Find and report snapshots across all VMs
   hosts: localhost
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    community.vmware.vmware_guest_snapshot_info:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -282,8 +286,6 @@ Stale snapshots are a common problem. Use the snapshot info module to find them.
     vcenter_hostname: "vcenter.example.com"
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
-    # Snapshots older than this many days should be flagged
-    max_snapshot_age_days: 3
 
   tasks:
     - name: Get snapshot information for all VMs in the datacenter
@@ -302,7 +304,8 @@ Stale snapshots are a common problem. Use the snapshot info module to find them.
     - name: Report VMs with snapshots
       ansible.builtin.debug:
         msg: >
-          VM: {{ item.item }} has {{ item.guest_snapshots.snapshots | default([]) | length }} snapshot(s)
+          VM: {{ item.item }} has {{ item.guest_snapshots.snapshots | default([]) | length }} snapshot(s):
+          {{ item.guest_snapshots.snapshots | default([]) }}
       loop: "{{ all_snapshots.results }}"
       when: item.guest_snapshots.snapshots | default([]) | length > 0
 ```
@@ -313,17 +316,18 @@ Combine the above with a cron job or CI pipeline to automatically clean up old s
 
 ```yaml
 # cleanup-old-snapshots.yml
-- name: Remove all snapshots older than 3 days
-  community.vmware.vmware_guest_snapshot:
+- name: Remove snapshots older than 3 days
+  vmware.vmware.vm_snapshot:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
     datacenter: "DC01"
-    name: "{{ item }}"
+    name: "{{ item.vm_name }}"
     folder: "/DC01/vm/Production"
-    state: remove_all
-  loop: "{{ vms_with_old_snapshots }}"
+    state: absent
+    snapshot_name: "{{ item.snapshot_name }}"
+  loop: "{{ old_snapshots }}"
 ```
 
 Snapshot management is a critical part of running a VMware environment well. With Ansible handling the creation, verification, and cleanup, you eliminate the human error that leads to forgotten snapshots consuming your storage. Build snapshot management into every change workflow and set up automated cleanup as a safety net.
