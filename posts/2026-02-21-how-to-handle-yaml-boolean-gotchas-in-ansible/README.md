@@ -8,11 +8,11 @@ Description: Avoid common YAML boolean pitfalls in Ansible where values like yes
 
 ---
 
-YAML's boolean handling is one of the most common sources of bugs in Ansible playbooks. The YAML 1.1 specification (which Ansible uses) treats a surprisingly large number of strings as boolean values. If you have ever had a variable set to `yes` that became `True`, or a country code `NO` that became `False`, you have encountered this problem.
+YAML's boolean handling is one of the most common sources of bugs in Ansible playbooks. Ansible's YAML parser treats a surprisingly large number of strings as boolean values. If you have ever had a variable set to `yes` that became `True`, or a country code `NO` that became `False`, you have encountered this problem.
 
-## The Full List of YAML Booleans
+## Common YAML Booleans in Ansible
 
-In YAML 1.1, all of these are interpreted as boolean `true`:
+In Ansible YAML files, all of these are interpreted as boolean `true`:
 
 ```text
 true, True, TRUE
@@ -213,7 +213,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
