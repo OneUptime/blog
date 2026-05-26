@@ -8,7 +8,7 @@ Description: Deploy a complete LAMP stack (Linux, Apache, MySQL, PHP) using Ansi
 
 ---
 
-The LAMP stack (Linux, Apache, MySQL, PHP) remains one of the most popular web application platforms. Setting it up manually on one server takes 30 minutes. Setting it up consistently across 10 servers takes a day. With Ansible, it takes the time to run the playbook regardless of how many servers you target. Here is a production-ready LAMP stack deployment.
+The LAMP stack (Linux, Apache, MySQL, PHP) remains one of the most popular web application platforms. Setting it up manually on one server takes 30 minutes. Setting it up consistently across 10 servers takes a day. With Ansible, it takes the time to run the playbook regardless of how many servers you target. Here is a reusable LAMP stack deployment.
 
 ## Project Structure
 
@@ -83,9 +83,7 @@ php_modules:
 
 - name: Install Apache
   ansible.builtin.apt:
-    name:
-      - apache2
-      - libapache2-mod-php{{ php_version }}
+    name: apache2
     state: present
     update_cache: yes
 
@@ -97,16 +95,8 @@ php_modules:
     - rewrite
     - ssl
     - headers
+    - php{{ php_version }}
   notify: restart apache
-
-- name: Deploy Apache main configuration
-  ansible.builtin.template:
-    src: apache2.conf.j2
-    dest: /etc/apache2/apache2.conf
-    owner: root
-    group: root
-    mode: '0644'
-  notify: reload apache
 
 - name: Deploy virtual host configurations
   ansible.builtin.template:
@@ -152,7 +142,7 @@ php_modules:
       // Test MySQL connection
       try {
           $pdo = new PDO('mysql:host=localhost;dbname={{ mysql_databases[0].name }}',
-                         '{{ mysql_users[0].name }}', '{{ vault_mysql_app_password }}');
+                         '{{ mysql_users[0].name }}', '{{ mysql_users[0].password }}');
           echo "<p>MySQL: Connected successfully</p>";
       } catch (PDOException $e) {
           echo "<p>MySQL: Connection failed - " . $e->getMessage() . "</p>";
@@ -259,15 +249,6 @@ php_modules:
   loop: "{{ mysql_users }}"
   no_log: true
 
-- name: Deploy MySQL configuration
-  ansible.builtin.template:
-    src: mysqld.cnf.j2
-    dest: /etc/mysql/mysql.conf.d/mysqld.cnf
-    owner: root
-    group: root
-    mode: '0644'
-  notify: restart mysql
-
 - name: Remove anonymous MySQL users
   community.mysql.mysql_user:
     name: ''
@@ -295,7 +276,7 @@ php_modules:
 
 - name: Install PHP and modules
   ansible.builtin.apt:
-    name: "{{ ['php' + php_version, 'php' + php_version + '-fpm'] + php_modules }}"
+    name: "{{ ['php' + php_version, 'libapache2-mod-php' + php_version] + php_modules }}"
     state: present
     update_cache: yes
 
@@ -357,7 +338,7 @@ php_modules:
 ```mermaid
 graph TD
     A[Client Request] --> B[Apache Web Server]
-    B --> C[mod_php / PHP-FPM]
+    B --> C[mod_php]
     C --> D[PHP Application]
     D --> E[MySQL Database]
     B --> F[Static Files]
