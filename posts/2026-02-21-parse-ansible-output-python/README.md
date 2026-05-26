@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Python, Parsing, JSON, Automation
 
-Description: Parse Ansible playbook output in Python using the ansible.posix JSON callback plugin and regex patterns for reporting and monitoring integration.
+Description: Parse Ansible playbook output in Python using the `ansible.posix` JSON callback plugin and regex patterns for reporting and monitoring integration.
 
 ---
 
@@ -12,7 +12,7 @@ When you run Ansible from Python scripts or CI/CD pipelines, you often need to p
 
 ## Using the JSON Callback Plugin
 
-The cleanest approach is to tell Ansible to output JSON with the ansible.posix JSON callback:
+The cleanest approach is to tell Ansible to output JSON with the `ansible.posix` JSON callback. If you run `ansible-core` without the full `ansible` package, install the collection first with `ansible-galaxy collection install ansible.posix`:
 
 ```python
 # parse_json_output.py - Parse Ansible JSON callback output
@@ -211,7 +211,7 @@ def save_report(report, filepath):
 
 ## Summary
 
-Parsing Ansible output in Python is best done with the ansible.posix JSON callback plugin, which gives you structured data that maps directly to Python dictionaries. For standard text output, use regex patterns to extract the PLAY RECAP and task results. Build report generators on top of the parsed data for deployment tracking, compliance auditing, and monitoring integration. Always prefer the JSON callback when you have control over the execution environment.
+Parsing Ansible output in Python is best done with the `ansible.posix` JSON callback plugin, which gives you structured data that maps directly to Python dictionaries. For standard text output, use regex patterns to extract the PLAY RECAP and task results. Build report generators on top of the parsed data for deployment tracking, compliance auditing, and monitoring integration. Always prefer the JSON callback when you have control over the execution environment.
 
 ## Common Use Cases
 
