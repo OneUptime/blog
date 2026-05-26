@@ -100,27 +100,29 @@ Then place your custom template at `templates/custom-nginx.conf.j2` relative to 
 
 ## Override Strategy 3: Ansible's Template Search Path
 
-Ansible searches for templates in a specific order. When a role uses `template: src=myfile.j2`, Ansible looks in:
+Ansible searches for templates in a specific order. When a task inside a role uses `template: src=myfile.j2`, Ansible looks in:
 
-1. The playbook's `templates/` directory
-2. The role's `templates/` directory
+1. The current role's `templates/` directory
+2. Parent roles that included or depend on the current role
+3. The directory for the current task file
+4. The playbook's `templates/` directory
 
-This means you can override a role's template simply by placing a file with the same name in your playbook's `templates/` directory.
+This means a same-named file in the playbook's `templates/` directory does not automatically override a template used by a task inside a role. The role-local template is found first. To override a role template from outside the role, use an absolute path or a role variable like the previous example, if the role exposes one.
 
 ```text
 project/
   templates/
-    nginx.conf.j2          # This takes priority
+    nginx.conf.j2          # Used by playbook tasks, but not by the role task below
   roles/
     nginx/
       templates/
-        nginx.conf.j2      # This is the role's default
+        nginx.conf.j2      # This is found first for tasks inside the nginx role
   playbook.yml
 ```
 
 The same search path applies to files used with `copy: src=` and the `files/` directory.
 
-This is powerful but also a bit dangerous. It is an implicit override, so someone reading your project might not realize that a role's template has been replaced. Document this clearly when you use it.
+This is powerful but also easy to misunderstand. Document template overrides clearly when you use them, especially when you pass custom absolute paths or variables into a role.
 
 ## Override Strategy 4: Pre and Post Tasks
 
@@ -157,7 +159,7 @@ If a role performs an action and you want to modify the result, you can run task
 
 ## Override Strategy 5: Overriding Role Handlers
 
-Handlers follow the same search path as tasks. If a role notifies a handler called `reload nginx`, you can define a handler with the same name in your playbook, and your version takes precedence:
+Handlers live in one global play-level scope. When a role is listed under `roles:`, Ansible loads the role's handlers before handlers defined in the playbook. If a role notifies a handler called `reload nginx`, you can define a handler with the same name in your playbook, and your version takes precedence:
 
 ```yaml
 # playbook.yml
@@ -234,14 +236,22 @@ Understanding the variable precedence order matters when combining override stra
 
 ```yaml
 # Precedence (lowest to highest):
-# 1. Role defaults (defaults/main.yml)
-# 2. Group vars (group_vars/*)
-# 3. Host vars (host_vars/*)
-# 4. Play vars
-# 5. Role vars (vars/main.yml) - harder to override
-# 6. Block vars
-# 7. Task vars
-# 8. Extra vars (-e on command line) - always wins
+# 1. Command-line values such as -u (not variables)
+# 2. Role defaults (defaults/main.yml)
+# 3. Inventory group vars
+# 4. Inventory and playbook group_vars/all
+# 5. Inventory and playbook group_vars/*
+# 6. Inventory and playbook host vars
+# 7. Host facts and cached set_facts
+# 8. Play vars, vars_prompt, and vars_files
+# 9. Role vars (vars/main.yml) - harder to override
+# 10. Block vars
+# 11. Task vars
+# 12. include_vars
+# 13. Registered vars and set_facts
+# 14. Role and include_role parameters
+# 15. include parameters
+# 16. Extra vars (-e on command line) - always wins
 ```
 
 The practical takeaway: role defaults are easy to override from almost anywhere. Role vars (in `vars/main.yml`) are hard to override and should only contain values that genuinely should not change.
