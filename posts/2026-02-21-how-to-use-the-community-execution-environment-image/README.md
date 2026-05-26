@@ -8,17 +8,17 @@ Description: Get started with the community Ansible Execution Environment image,
 
 ---
 
-The community Execution Environment image is a pre-built container image maintained by the Ansible community. It includes ansible-core, ansible-runner, and a curated set of popular collections. If you want to try out Execution Environments without building your own image, this is the fastest way to get started. This post covers what the community EE includes, how to use it, and when you should move on to a custom image.
+The community Execution Environment images are pre-built container images maintained by the Ansible community. They include ansible-core, and some images also include a curated set of popular collections. If you want to try out Execution Environments without building your own image, this is the fastest way to get started. This post covers what the community EE includes, how to use it, and when you should move on to a custom image.
 
 ## What Is the Community EE?
 
-The community EE is published at `ghcr.io/ansible/community-ansible-dev-tools` and `quay.io/ansible/community-ee-minimal`. There are actually a few community images available:
+The community EE images are published at `ghcr.io/ansible-community/community-ee-minimal`, `ghcr.io/ansible-community/community-ee-base`, and `ghcr.io/ansible/community-ansible-dev-tools`. There are actually a few community images available:
 
-- **community-ee-minimal** - A lightweight image with ansible-core and minimal collections
-- **community-ee-base** - A mid-size image with more collections and Python packages
+- **community-ee-minimal** - A lightweight image with ansible-core
+- **community-ee-base** - A mid-size image with base collections
 - **ansible-dev-tools** - A development-focused image with linting tools and testing frameworks
 
-For most people getting started, the community-ee-minimal image is the right choice.
+For most people getting started with built-in Ansible modules, the community-ee-minimal image is the right choice. Use community-ee-base when you want the base community collections included.
 
 ## Pulling the Community EE
 
@@ -27,7 +27,10 @@ Pull the image with Podman or Docker:
 ```bash
 # Pull the minimal community EE
 
-podman pull quay.io/ansible/community-ee-minimal:latest
+podman pull ghcr.io/ansible-community/community-ee-minimal:latest
+
+# Or pull the base community EE
+podman pull ghcr.io/ansible-community/community-ee-base:latest
 
 # Or pull the development tools image
 podman pull ghcr.io/ansible/community-ansible-dev-tools:latest
@@ -42,24 +45,25 @@ Let us inspect what the community EE contains:
 
 ```bash
 # Check the Ansible version
-podman run --rm quay.io/ansible/community-ee-minimal:latest ansible --version
+podman run --rm ghcr.io/ansible-community/community-ee-minimal:latest ansible --version
 
 # List installed collections
-podman run --rm quay.io/ansible/community-ee-minimal:latest ansible-galaxy collection list
+podman run --rm ghcr.io/ansible-community/community-ee-base:latest ansible-galaxy collection list
 
 # List installed Python packages
-podman run --rm quay.io/ansible/community-ee-minimal:latest pip list
+podman run --rm ghcr.io/ansible-community/community-ee-base:latest pip list
 
 # Check the OS
-podman run --rm quay.io/ansible/community-ee-minimal:latest cat /etc/os-release
+podman run --rm ghcr.io/ansible-community/community-ee-minimal:latest cat /etc/os-release
 ```
 
-The minimal community EE typically includes:
-- ansible-core (latest stable)
-- ansible-runner
+The minimal community EE includes:
+- ansible-core
+
+The base community EE adds:
 - ansible.posix collection
 - ansible.utils collection
-- Basic Python utilities (jmespath, PyYAML, etc.)
+- ansible.windows collection
 
 The development tools image adds:
 - ansible-lint
@@ -75,7 +79,7 @@ Use ansible-navigator to run playbooks against the community EE:
 ```bash
 # Run a playbook using the community EE
 ansible-navigator run site.yml \
-  --execution-environment-image quay.io/ansible/community-ee-minimal:latest \
+  --execution-environment-image ghcr.io/ansible-community/community-ee-minimal:latest \
   --mode stdout
 ```
 
@@ -127,7 +131,7 @@ Run the test:
 
 ```bash
 ansible-navigator run test-community-ee.yml \
-  --execution-environment-image quay.io/ansible/community-ee-minimal:latest \
+  --execution-environment-image ghcr.io/ansible-community/community-ee-base:latest \
   --mode stdout \
   --pull-policy missing
 ```
@@ -141,7 +145,7 @@ Instead of specifying the image on every command, set it as the default in your 
 ---
 ansible-navigator:
   execution-environment:
-    image: quay.io/ansible/community-ee-minimal:latest
+    image: ghcr.io/ansible-community/community-ee-base:latest
     pull:
       policy: missing
   mode: stdout
@@ -193,7 +197,7 @@ The community EE is perfectly fine for:
 - Development and testing workflows
 - Training and workshop environments
 
-If your playbooks only use modules from `ansible.builtin`, `ansible.posix`, and `community.general`, you probably do not need a custom EE.
+If your playbooks only use modules from `ansible.builtin`, `ansible.posix`, `ansible.utils`, and `ansible.windows`, you probably do not need a custom EE.
 
 ## When to Build a Custom EE
 
@@ -218,7 +222,7 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/community-ee-minimal:latest
+    name: ghcr.io/ansible-community/community-ee-base:latest
 
 dependencies:
   galaxy:
@@ -248,10 +252,10 @@ Do not use `latest` in production. Community EE images are updated regularly, an
 
 ```bash
 # Check available tags
-skopeo list-tags docker://quay.io/ansible/community-ee-minimal
+skopeo list-tags docker://ghcr.io/ansible-community/community-ee-minimal
 
 # Use a specific version tag
-podman pull quay.io/ansible/community-ee-minimal:2.16-latest
+podman pull ghcr.io/ansible-community/community-ee-minimal:2.20.6-1
 ```
 
 Pin the version in your navigator config:
@@ -261,7 +265,7 @@ Pin the version in your navigator config:
 ---
 ansible-navigator:
   execution-environment:
-    image: quay.io/ansible/community-ee-minimal:2.16-latest
+    image: ghcr.io/ansible-community/community-ee-minimal:2.20.6-1
     pull:
       policy: missing
 ```
@@ -272,22 +276,22 @@ Check what differs between the available community images:
 
 ```bash
 # Compare collection lists
-podman run --rm quay.io/ansible/community-ee-minimal:latest \
+podman run --rm ghcr.io/ansible-community/community-ee-minimal:latest \
   ansible-galaxy collection list > /tmp/minimal-collections.txt
 
-podman run --rm ghcr.io/ansible/community-ansible-dev-tools:latest \
-  ansible-galaxy collection list > /tmp/dev-collections.txt
+podman run --rm ghcr.io/ansible-community/community-ee-base:latest \
+  ansible-galaxy collection list > /tmp/base-collections.txt
 
-diff /tmp/minimal-collections.txt /tmp/dev-collections.txt
+diff /tmp/minimal-collections.txt /tmp/base-collections.txt
 
 # Compare Python packages
-podman run --rm quay.io/ansible/community-ee-minimal:latest \
+podman run --rm ghcr.io/ansible-community/community-ee-minimal:latest \
   pip list --format=freeze > /tmp/minimal-pip.txt
 
-podman run --rm ghcr.io/ansible/community-ansible-dev-tools:latest \
-  pip list --format=freeze > /tmp/dev-pip.txt
+podman run --rm ghcr.io/ansible-community/community-ee-base:latest \
+  pip list --format=freeze > /tmp/base-pip.txt
 
-diff /tmp/minimal-pip.txt /tmp/dev-pip.txt
+diff /tmp/minimal-pip.txt /tmp/base-pip.txt
 ```
 
 ## Offline Usage
@@ -296,7 +300,7 @@ If your target environment does not have internet access, pre-pull the community
 
 ```bash
 # Save the image to a tar file
-podman save quay.io/ansible/community-ee-minimal:latest -o community-ee.tar
+podman save ghcr.io/ansible-community/community-ee-minimal:latest -o community-ee.tar
 
 # Transfer the tar file to the offline machine
 scp community-ee.tar offline-host:/tmp/
