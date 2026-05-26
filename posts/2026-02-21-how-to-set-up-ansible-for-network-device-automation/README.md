@@ -49,11 +49,12 @@ ansible-galaxy collection install arista.eos
 ansible-galaxy collection install junipernetworks.junos
 ansible-galaxy collection install vyos.vyos
 
-# Install additional Python libraries for NETCONF and REST
+# Install additional Python libraries for NETCONF and network_cli
 pip install ncclient
-pip install paramiko
-pip install xmltodict
+pip install ansible-pylibssh
 ```
+
+Note that the `junipernetworks.junos` collection is deprecated and scheduled for removal from Ansible 14, so check the current Junos collection guidance before starting new Junos automation projects.
 
 ## Inventory Configuration
 
@@ -159,13 +160,13 @@ ansible_user: admin
 ansible_port: 830
 ```
 
-### httpapi (REST API)
+### httpapi (HTTP API)
 
-Some modern network devices expose REST APIs for configuration:
+Some modern network devices expose HTTP-based APIs for configuration:
 
 ```yaml
 # group_vars/api_devices.yml
-# Configuration for REST API connection
+# Configuration for HTTP API connection
 ansible_connection: ansible.netcommon.httpapi
 ansible_network_os: arista.eos.eos
 ansible_httpapi_use_ssl: true
@@ -237,6 +238,14 @@ Before making any changes, always back up the current configuration:
           dir_path: /home/ansible/backups/eos
           filename: "{{ inventory_hostname }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}.cfg"
       when: ansible_network_os == 'arista.eos.eos'
+
+    - name: Backup Junos running config
+      junipernetworks.junos.junos_config:
+        backup: yes
+        backup_options:
+          dir_path: /home/ansible/backups/junos
+          filename: "{{ inventory_hostname }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}.cfg"
+      when: ansible_network_os == 'junipernetworks.junos.junos'
 ```
 
 ## Applying Basic Configuration
@@ -278,8 +287,6 @@ Here is a playbook that pushes a set of standard settings to IOS devices:
           - ip ssh version 2
           - ip ssh time-out 60
           - ip ssh authentication-retries 3
-          - crypto key generate rsa modulus 2048
-        parents: []
 
     - name: Save running config to startup
       cisco.ios.ios_config:
@@ -303,9 +310,7 @@ forks = 20
 connect_timeout = 30
 command_timeout = 30
 connect_retry_timeout = 15
-
-[paramiko_connection]
-host_key_auto_add = True
+ssh_type = auto
 ```
 
 The `persistent_connection` settings are important for network devices. They control how long Ansible waits for SSH connections and command responses. Network devices can be slower to respond than servers, so you may need to increase these timeouts.
@@ -340,17 +345,18 @@ network-automation/
         ios/
         nxos/
         eos/
+        junos/
 ```
 
 ## Testing Connectivity
 
-Before running any playbooks, test that Ansible can reach all your network devices:
+Before running any playbooks, test that Ansible can reach your network devices:
 
 ```bash
-# Test connectivity to all network devices
-ansible all_network -i inventory/network-hosts.ini -m ping
+# Verify Ansible can open a network connection to IOS routers
+ansible ios_routers -i inventory/network-hosts.ini -m cisco.ios.ios_facts -a "gather_subset=min"
 
-# For network devices, use the platform-specific ping
+# To test ICMP reachability from a network device, use the platform-specific ping
 ansible ios_routers -m cisco.ios.ios_ping -a "dest=10.0.0.1 count=3"
 ```
 
