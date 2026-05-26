@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible sysctl module to manage kernel paramet
 
 ---
 
-Linux kernel parameters control everything from network buffer sizes to virtual memory behavior. Tuning these parameters is essential for high-performance servers, database hosts, and load balancers. The Ansible `sysctl` module manages these settings in `/etc/sysctl.conf` or `/etc/sysctl.d/` drop-in files, making the changes persistent across reboots and applying them immediately.
+Linux kernel parameters control everything from network buffer sizes to virtual memory behavior. Tuning these parameters is essential for high-performance servers, database hosts, and load balancers. The Ansible `sysctl` module manages these settings in `/etc/sysctl.conf` or `/etc/sysctl.d/` drop-in files, making the changes persistent across reboots and optionally applying them immediately.
 
 ## Basic sysctl Management
 
@@ -26,7 +26,7 @@ The `sysctl` module sets a kernel parameter and applies it without requiring a r
     reload: yes
 ```
 
-The `sysctl_set: yes` parameter applies the setting immediately (equivalent to `sysctl -w`). The `reload: yes` ensures the sysctl daemon reloads the configuration.
+The `sysctl_set: yes` parameter verifies the runtime value with `sysctl` and applies the setting immediately with `sysctl -w` if needed. The `reload: yes` parameter runs `/sbin/sysctl -p` for the configured `sysctl_file` when that file is updated.
 
 ## Network Performance Tuning
 
@@ -222,7 +222,7 @@ Database servers have specific kernel tuning requirements.
   loop:
     # Reduce swap usage - databases manage their own cache
     - { name: 'vm.swappiness', value: '1' }
-    # Shared memory - required for large shared_buffers
+    # System V shared memory - usually only needed for sysv shared memory or low defaults
     - { name: 'kernel.shmmax', value: '{{ (ansible_memtotal_mb * 1024 * 1024 * 0.75) | int }}' }
     - { name: 'kernel.shmall', value: '{{ (ansible_memtotal_mb * 1024 * 1024 * 0.75 / 4096) | int }}' }
     # Dirty page settings for write-heavy workloads
@@ -230,7 +230,7 @@ Database servers have specific kernel tuning requirements.
     - { name: 'vm.dirty_background_ratio', value: '10' }
     - { name: 'vm.dirty_expire_centisecs', value: '500' }
     - { name: 'vm.dirty_writeback_centisecs', value: '100' }
-    # Huge pages if needed
+    # Huge pages if needed, assuming 2 MB huge pages
     - { name: 'vm.nr_hugepages', value: '{{ (pg_shared_buffers_mb / 2) | int }}' }
   vars:
     pg_shared_buffers_mb: 8192
@@ -283,7 +283,17 @@ Hosts that need to forward packets (routers, Docker hosts, Kubernetes nodes) nee
     state: present
     reload: yes
 
-# Bridge network filter for Kubernetes
+# Bridge network filter for Kubernetes, requires the br_netfilter module
+- name: Load br_netfilter on boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/br_netfilter.conf
+    content: "br_netfilter\n"
+    mode: '0644'
+
+- name: Load br_netfilter module
+  ansible.builtin.command: modprobe br_netfilter
+  changed_when: false
+
 - name: Enable bridge-nf-call-iptables
   ansible.posix.sysctl:
     name: "{{ item }}"
