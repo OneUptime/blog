@@ -51,16 +51,12 @@ ansible-galaxy collection install -r collections/requirements.yml -p ./collectio
 
 ### Configure Collection Paths
 
-Tell ansible-lint where to find your collections:
+Tell Ansible where to find your collections. ansible-lint uses Ansible's collection search path during syntax checks:
 
 ```yaml
-# .ansible-lint - Configure collection paths
+# .ansible-lint
 ---
 profile: moderate
-
-# If collections are installed in a custom path
-# collections_paths:
-#   - ./collections/
 ```
 
 Also set it in `ansible.cfg`:
@@ -76,12 +72,12 @@ collections_path = ./collections:~/.ansible/collections
 If a collection is not installed, ansible-lint will report errors about unknown modules. You can handle this in two ways:
 
 ```yaml
-# Option 1: Skip FQCN checks for missing collections (not recommended)
+# Option 1: Mock modules for syntax-check only (not recommended)
 # .ansible-lint
-skip_list:
-  - fqcn[action]
+mock_modules:
+  - community.postgresql.postgresql_db
 
-# Option 2: Use offline mode (prevents network access but requires local collections)
+# Option 2: Use offline mode after installing collections locally
 # .ansible-lint
 offline: true
 ```
@@ -145,10 +141,7 @@ exclude_paths:
   - tests/output/
   - .cache/
 
-# Enable collection-specific rules
-enable_list:
-  - galaxy[no-changelog]
-  - galaxy[version-incorrect]
+# The shared profile includes collection publishing checks such as galaxy and meta-runtime.
 ```
 
 ## Validating galaxy.yml
@@ -167,7 +160,6 @@ authors:
 description: A collection for managing custom infrastructure
 license:
   - GPL-3.0-or-later
-license_file: LICENSE
 tags:
   - infrastructure
   - automation
@@ -185,7 +177,7 @@ build_ignore:
 Rules ansible-lint checks for galaxy.yml:
 
 - **galaxy[no-changelog]**: Collection should have a changelog
-- **galaxy[version-incorrect]**: Version should follow semantic versioning
+- **galaxy[version-incorrect]**: Collection version should be `1.0.0` or greater
 - **galaxy[no-runtime]**: Collection should have `meta/runtime.yml`
 
 ## Validating meta/runtime.yml
@@ -252,6 +244,7 @@ Roles inside collections follow the same rules as standalone roles, plus collect
 # roles/webserver/meta/main.yml - Role metadata inside a collection
 ---
 galaxy_info:
+  standalone: false
   author: your_name
   description: Configures nginx web server
   min_ansible_version: "2.14"
@@ -334,13 +327,13 @@ Here is how ansible-lint resolves collection dependencies:
 ```mermaid
 flowchart TD
     A[ansible-lint starts] --> B[Read .ansible-lint config]
-    B --> C[Check collections_paths]
+    B --> C[Check Ansible COLLECTIONS_PATHS]
     C --> D[Scan playbook for module references]
     D --> E{Module FQCN found?}
     E -->|Yes| F{Collection installed?}
     E -->|No| G[Report fqcn warning]
     F -->|Yes| H[Validate module usage]
-    F -->|No| I[Report missing collection error]
+    F -->|No| I[Report syntax-check error]
     H --> J{Module params valid?}
     J -->|Yes| K[Pass]
     J -->|No| L[Report parameter warning]
