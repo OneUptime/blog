@@ -23,7 +23,10 @@ This guide documents every network requirement for TFE so you can hand it to you
 | VCS Servers | 443 | HTTPS | Webhook deliveries |
 | TFE Agents | 443 | HTTPS | Agent communication |
 | Load Balancer | 443 | HTTPS | Health checks and traffic forwarding |
-| Monitoring | 443 | HTTPS | Health check endpoint |
+| Administrators | 22 | SSH | Host administration and debugging |
+| Administrators | 8443 | HTTPS | TFE admin API |
+| Monitoring | 9090/9091 | HTTP/HTTPS | Metrics endpoints (optional) |
+| TFE Servers | 8201 | TCP | Vault HA request forwarding (active-active only) |
 
 ### Outbound Traffic from TFE
 
@@ -33,11 +36,13 @@ This guide documents every network requirement for TFE so you can hand it to you
 | Redis | 6379/6380 | TCP | Cache and session storage |
 | Object Storage (S3/Blob/GCS) | 443 | HTTPS | State and artifact storage |
 | VCS Servers | 443/22 | HTTPS/SSH | Clone repositories |
+| HashiCorp Container Registry | 443 | HTTPS | Pull TFE container images |
 | HashiCorp Releases | 443 | HTTPS | Download Terraform binaries |
 | Terraform Registry | 443 | HTTPS | Download providers and modules |
+| Terraform Registry Search API | 443 | HTTPS | Public registry search indexing |
 | Identity Provider | 443 | HTTPS | SAML/OIDC authentication |
 | SMTP Server | 25/465/587 | TCP | Email notifications |
-| HashiCorp License Server | 443 | HTTPS | License validation |
+| HashiCorp Reporting Service | 443 | HTTPS | License entitlement reporting unless opted out |
 | Vault | 8200 | HTTPS | Secrets management (if integrated) |
 | Cloud Provider APIs | 443 | HTTPS | AWS/Azure/GCP API calls during runs |
 
@@ -189,28 +194,27 @@ Many enterprise networks route outbound traffic through an HTTP proxy. TFE suppo
 
 ```bash
 # Proxy configuration environment variables
-HTTP_PROXY=http://proxy.internal.example.com:3128
-HTTPS_PROXY=http://proxy.internal.example.com:3128
+http_proxy=http://proxy.internal.example.com:3128
+https_proxy=http://proxy.internal.example.com:3128
 
-# NO_PROXY is critical - list all hosts that should NOT go through the proxy
+# no_proxy is critical - list all hosts that should NOT go through the proxy
 # Include: TFE hostname, database, Redis, object storage endpoints,
 # internal VCS, localhost, and internal networks
-NO_PROXY="tfe.example.com,tfe-postgres.example.com,tfe-redis.example.com,.s3.amazonaws.com,gitlab.internal.example.com,localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,169.254.169.254"
+no_proxy="tfe.example.com,tfe-postgres.example.com,tfe-redis.example.com,.s3.amazonaws.com,gitlab.internal.example.com,localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,169.254.169.254"
 ```
 
 ### Docker Compose with Proxy
 
 ```yaml
 # docker-compose.yml with proxy configuration
-version: "3.9"
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
     environment:
       TFE_HOSTNAME: tfe.example.com
-      HTTP_PROXY: http://proxy.internal.example.com:3128
-      HTTPS_PROXY: http://proxy.internal.example.com:3128
-      NO_PROXY: "tfe.example.com,localhost,127.0.0.1,10.0.0.0/8,169.254.169.254,.internal.example.com"
+      http_proxy: http://proxy.internal.example.com:3128
+      https_proxy: http://proxy.internal.example.com:3128
+      no_proxy: "tfe.example.com,localhost,127.0.0.1,10.0.0.0/8,169.254.169.254,.internal.example.com"
       # Note: Also configure Docker daemon proxy for image pulls
 ```
 
@@ -315,7 +319,9 @@ check "S3 endpoint reachable" "curl -s -o /dev/null -w '%{http_code}' --max-time
 # HashiCorp services (non-air-gapped only)
 check "HashiCorp releases reachable" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://releases.hashicorp.com"
 check "Terraform Registry reachable" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://registry.terraform.io"
+check "Terraform Registry search API reachable" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://yy0ffni7mf-dsn.algolia.net/"
 check "HashiCorp container registry reachable" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://images.releases.hashicorp.com/v2/"
+check "HashiCorp reporting service reachable" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://reporting.hashicorp.services"
 
 # VCS server
 check "VCS server reachable" "nc -z -w5 gitlab.internal.example.com 443"
@@ -337,4 +343,4 @@ fi
 
 ## Summary
 
-TFE network configuration comes down to making sure the right traffic can flow between the right components. Document every required connection, test them before installation, and provide your network team with the specific ports, protocols, and destinations they need to allow. Pay special attention to the NO_PROXY configuration if you use a proxy - missing entries there cause some of the hardest-to-debug connectivity issues. Use VPC endpoints where available to keep traffic private, and set up split-horizon DNS if users access TFE from both internal and external networks.
+TFE network configuration comes down to making sure the right traffic can flow between the right components. Document every required connection, test them before installation, and provide your network team with the specific ports, protocols, and destinations they need to allow. Pay special attention to the no_proxy configuration if you use a proxy - missing entries there cause some of the hardest-to-debug connectivity issues. Use VPC endpoints where available to keep traffic private, and set up split-horizon DNS if users access TFE from both internal and external networks.
