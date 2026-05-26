@@ -40,6 +40,8 @@ The `user` module exposes several password aging parameters:
         password: "{{ 'TempPass123' | password_hash('sha512', 'salt12345678') }}"
         password_expire_max: 90
         password_expire_min: 7
+        password_expire_warn: 14
+        password_expire_account_disable: 30
         state: present
       no_log: yes
 ```
@@ -48,6 +50,8 @@ Here is what each parameter does:
 
 - **password_expire_max**: Maximum number of days a password is valid. After this many days, the user must change their password. This maps to the `chage -M` value.
 - **password_expire_min**: Minimum number of days between password changes. This prevents users from rapidly cycling through passwords to get back to their favorite. Maps to `chage -m`.
+- **password_expire_warn**: Number of days of warning before the password expires. Maps to `chage -W`.
+- **password_expire_account_disable**: Number of days after a password expires until the account is disabled. Maps to `chage -I`.
 
 ## Setting Account Expiry Date
 
@@ -63,7 +67,7 @@ The `expires` parameter is different from password expiry. It sets a date when t
     - name: Create contractor account with expiry date
       ansible.builtin.user:
         name: contractor
-        expires: 1743465600
+        expires: 1743379200
         state: present
 
     # You can also calculate the epoch from a date string
@@ -105,7 +109,7 @@ flowchart LR
 
 ## Using chage for Full Control
 
-The `user` module covers the basics, but for full password aging control you will want to use `chage` through the `command` module:
+The `user` module covers these password aging settings in current Ansible versions. If you are on an older Ansible version, or if you prefer to call the underlying tool directly, you can use `chage` through the `command` module:
 
 ```yaml
 # full-chage-config.yml - Complete password aging with chage
@@ -220,14 +224,9 @@ To force a user to change their password at next login:
     - name: Expire password for user
       ansible.builtin.command: "chage -d 0 developer"
 
-    # Alternative: set last change date to epoch 0
-    - name: Force password change (alternative method)
-      ansible.builtin.user:
-        name: another_user
-        password: "{{ 'NewTempPass' | password_hash('sha512', 'mysalt123456') }}"
-        update_password: always
-        state: present
-      no_log: yes
+    # Same method for another user
+    - name: Expire password for another user
+      ansible.builtin.command: "chage -d 0 another_user"
 ```
 
 The `chage -d 0` command sets the last password change date to January 1, 1970, making the system think the password is way past its maximum age.
