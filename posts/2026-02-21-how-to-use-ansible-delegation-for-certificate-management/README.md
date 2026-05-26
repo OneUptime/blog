@@ -74,6 +74,20 @@ This playbook generates a Certificate Signing Request (CSR) on the target host, 
         dest: "/tmp/certs/{{ inventory_hostname }}.csr"
         flat: true
 
+    - name: Ensure CA staging directory exists
+      ansible.builtin.file:
+        path: /tmp/certs
+        state: directory
+        mode: '0750'
+      delegate_to: "{{ ca_server }}"
+
+    - name: Copy CSR from controller to CA server
+      ansible.builtin.copy:
+        src: "/tmp/certs/{{ inventory_hostname }}.csr"
+        dest: "/tmp/certs/{{ inventory_hostname }}.csr"
+        mode: '0644'
+      delegate_to: "{{ ca_server }}"
+
     - name: Sign CSR on the CA server
       ansible.builtin.shell: |
         openssl x509 -req \
@@ -87,6 +101,8 @@ This playbook generates a Certificate Signing Request (CSR) on the target host, 
           -extfile <(printf "subjectAltName=DNS:{{ inventory_hostname }},DNS:{{ inventory_hostname_short }},IP:{{ ansible_default_ipv4.address }}")
       delegate_to: "{{ ca_server }}"
       become: true
+      args:
+        executable: /bin/bash
 
     - name: Fetch signed certificate from CA to controller
       ansible.builtin.fetch:
@@ -175,6 +191,21 @@ For public-facing services, Let's Encrypt certificates are common. The ACME chal
       register: certbot_result
       notify: Reload nginx
 
+    - name: Fetch certificate for CDN update
+      ansible.builtin.fetch:
+        src: "{{ cert_dir }}/{{ inventory_hostname }}/fullchain.pem"
+        dest: "/tmp/letsencrypt/{{ inventory_hostname }}/fullchain.pem"
+        flat: true
+      when: certbot_result is changed
+
+    - name: Fetch private key for CDN update
+      ansible.builtin.fetch:
+        src: "{{ cert_dir }}/{{ inventory_hostname }}/privkey.pem"
+        dest: "/tmp/letsencrypt/{{ inventory_hostname }}/privkey.pem"
+        flat: true
+      when: certbot_result is changed
+      no_log: true
+
     - name: Update certificate in cloud CDN
       ansible.builtin.uri:
         url: "https://api.cloudflare.com/client/v4/zones/{{ cf_zone_id }}/custom_certificates"
@@ -183,8 +214,8 @@ For public-facing services, Let's Encrypt certificates are common. The ACME chal
           Authorization: "Bearer {{ cloudflare_api_token }}"
         body_format: json
         body:
-          certificate: "{{ lookup('file', cert_dir + '/' + inventory_hostname + '/fullchain.pem') }}"
-          private_key: "{{ lookup('file', cert_dir + '/' + inventory_hostname + '/privkey.pem') }}"
+          certificate: "{{ lookup('file', '/tmp/letsencrypt/' + inventory_hostname + '/fullchain.pem') }}"
+          private_key: "{{ lookup('file', '/tmp/letsencrypt/' + inventory_hostname + '/privkey.pem') }}"
       delegate_to: localhost
       when: certbot_result is changed
       no_log: true
@@ -228,9 +259,15 @@ For rotating certificates across a fleet without downtime:
 
     - name: Copy CSR to CA server and sign
       block:
+        - name: Fetch CSR to controller
+          ansible.builtin.fetch:
+            src: "{{ cert_dir }}/{{ inventory_hostname }}.csr.new"
+            dest: "/tmp/csr-rotation/{{ inventory_hostname }}.csr"
+            flat: true
+
         - name: Copy CSR to CA server
           ansible.builtin.copy:
-            src: "{{ cert_dir }}/{{ inventory_hostname }}.csr.new"
+            src: "/tmp/csr-rotation/{{ inventory_hostname }}.csr"
             dest: "/tmp/{{ inventory_hostname }}.csr"
           delegate_to: "{{ ca_server }}"
 
@@ -242,9 +279,12 @@ For rotating certificates across a fleet without downtime:
               -CAkey /opt/ca/ca.key \
               -CAcreateserial \
               -out /tmp/{{ inventory_hostname }}.crt \
-              -days 365 -sha256
+              -days 365 -sha256 \
+              -extfile <(printf "subjectAltName=DNS:{{ inventory_hostname }},IP:{{ ansible_default_ipv4.address }}")
           delegate_to: "{{ ca_server }}"
           become: true
+          args:
+            executable: /bin/bash
 
         - name: Fetch signed cert back
           ansible.builtin.fetch:
@@ -273,7 +313,7 @@ For rotating certificates across a fleet without downtime:
 
     - name: Verify new certificate is serving
       ansible.builtin.shell: |
-        echo | openssl s_client -connect {{ ansible_host }}:443 -servername {{ inventory_hostname }} 2>/dev/null | \
+        echo | openssl s_client -connect {{ ansible_host | default(inventory_hostname) }}:443 -servername {{ inventory_hostname }} 2>/dev/null | \
           openssl x509 -noout -dates -subject
       register: live_cert
       delegate_to: localhost
@@ -297,7 +337,7 @@ Use delegation to check certificate expiry across your fleet:
   tasks:
     - name: Check certificate expiry remotely
       ansible.builtin.shell: |
-        echo | openssl s_client -connect {{ ansible_host }}:443 -servername {{ inventory_hostname }} 2>/dev/null | \
+        echo | openssl s_client -connect {{ ansible_host | default(inventory_hostname) }}:443 -servername {{ inventory_hostname }} 2>/dev/null | \
           openssl x509 -noout -enddate | cut -d= -f2
       register: cert_expiry
       delegate_to: localhost
@@ -307,7 +347,7 @@ Use delegation to check certificate expiry across your fleet:
     - name: Calculate days until expiry
       ansible.builtin.set_fact:
         days_until_expiry: >-
-          {{ ((cert_expiry.stdout | to_datetime('%b %d %H:%M:%S %Y %Z')).timestamp() - now().timestamp()) / 86400 | int }}
+          {{ ((((cert_expiry.stdout | to_datetime('%b %d %H:%M:%S %Y %Z')).timestamp() - now().timestamp()) / 86400) | int) }}
       when: cert_expiry is succeeded
 
     - name: Report certificates expiring within 30 days
