@@ -15,20 +15,26 @@ Description: Learn how to systematically track down and fix undefined variable e
 Before debugging, you need to know the possible sources. Ansible loads variables from these locations (in rough order of precedence, low to high):
 
 1. Role defaults (`roles/myrole/defaults/main.yml`)
-2. Inventory file or script variables
-3. Inventory `group_vars/`
-4. Inventory `host_vars/`
-5. Playbook `group_vars/`
-6. Playbook `host_vars/`
-7. Gathered facts
-8. Play `vars` section
-9. Play `vars_files`
-10. Play `vars_prompt`
-11. Task `vars`
-12. `include_vars`
-13. `set_fact` / `register`
-14. Role parameters
-15. Extra vars (`-e` on command line)
+2. Inventory file or script group variables
+3. Inventory `group_vars/all`
+4. Playbook `group_vars/all`
+5. Inventory `group_vars/`
+6. Playbook `group_vars/`
+7. Inventory file or script host variables
+8. Inventory `host_vars/`
+9. Playbook `host_vars/`
+10. Gathered facts and cached `set_fact` values
+11. Play `vars` section
+12. Play `vars_prompt`
+13. Play `vars_files`
+14. Role vars (`roles/myrole/vars/main.yml`)
+15. Block `vars`
+16. Task `vars`
+17. `include_vars`
+18. `set_fact` / `register`
+19. Role parameters
+20. Include parameters
+21. Extra vars (`-e` on command line)
 
 When a variable is undefined, it means none of these sources provided it.
 
@@ -218,7 +224,7 @@ When you need a variable from a different host:
   tasks:
     - name: Connect to database
       ansible.builtin.debug:
-        msg: "DB IP: {{ hostvars[groups['dbservers'][0]]['ansible_default_ipv4']['address'] }}"
+        msg: "DB IP: {{ hostvars[groups['dbservers'][0]]['db_primary_ip'] }}"
 ```
 
 ### Cause 4: Conditional include_vars That Did Not Match
@@ -252,12 +258,12 @@ When you need a variable from a different host:
   ansible.builtin.uri:
     url: "http://localhost:8080/version"
   register: version_info
-  when: check_api  # If this is false, version_info is not registered
+  when: check_api  # If this is false, version_info is registered as skipped
 
 - name: Show version
   ansible.builtin.debug:
     msg: "{{ version_info.json.version }}"
-  # Fails when check_api was false because version_info is undefined
+  # Fails when check_api was false because the skipped result has no json.version
 ```
 
 **Fix:**
@@ -286,9 +292,9 @@ api_url: "{{ custom_api_url | default(omit) }}"
 
 # Default for nested access
 server_name: "{{ config.server.name | default('localhost') }}"
-# Warning: this fails if 'config' itself is undefined
+# In Ansible 2.8 and later, default can handle undefined intermediate attributes
 
-# Safe nested access
+# Alternative nested access using dictionary methods
 server_name: "{{ (config | default({})).get('server', {}).get('name', 'localhost') }}"
 ```
 
