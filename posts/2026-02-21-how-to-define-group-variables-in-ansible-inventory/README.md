@@ -298,13 +298,21 @@ all:
 Here, `server1.example.com` is in both groups. Because `beta_group` sorts after `alpha_group` alphabetically, `my_var` will be `from_beta`. If you need deterministic precedence, use `ansible_group_priority`:
 
 ```yaml
-# group_vars/alpha_group.yml
-ansible_group_priority: 10
-my_var: from_alpha
-
-# group_vars/beta_group.yml
-ansible_group_priority: 5
-my_var: from_beta
+# inventory.yml
+all:
+  children:
+    alpha_group:
+      vars:
+        ansible_group_priority: 10
+        my_var: from_alpha
+      hosts:
+        server1.example.com:
+    beta_group:
+      vars:
+        ansible_group_priority: 5
+        my_var: from_beta
+      hosts:
+        server1.example.com:
 ```
 
 Now `alpha_group` wins because it has higher priority, regardless of alphabetical order.
