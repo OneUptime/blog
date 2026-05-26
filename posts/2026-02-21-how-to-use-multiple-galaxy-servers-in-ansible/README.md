@@ -42,7 +42,7 @@ url = https://galaxy.internal.com/api/galaxy/content/published/
 token = your_private_token
 
 [galaxy_server.certified_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your_rh_offline_token
 
@@ -70,7 +70,7 @@ token = your_api_token
 ```ini
 # Red Hat SSO authentication
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your_offline_token
 ```
@@ -109,7 +109,7 @@ url = https://galaxy.internal.com/api/galaxy/content/published/
 # Token set via ANSIBLE_GALAXY_SERVER_PRIVATE_HUB_TOKEN
 
 [galaxy_server.certified_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 # Token set via ANSIBLE_GALAXY_SERVER_CERTIFIED_HUB_TOKEN
 
@@ -124,8 +124,8 @@ Store tokens in an encrypted vault file:
 ```yaml
 # group_vars/all/vault.yml (encrypted)
 ---
-galaxy_private_hub_token: "your_private_token"
-galaxy_certified_hub_token: "your_rh_token"
+ansible_galaxy_server_private_hub_token: "your_private_token"
+ansible_galaxy_server_certified_hub_token: "your_rh_token"
 ```
 
 Then export them before running Galaxy commands:
@@ -160,7 +160,7 @@ collections:
   # From Automation Hub (certified)
   - name: amazon.aws
     version: "7.2.0"
-    source: https://cloud.redhat.com/api/automation-hub/content/published/
+    source: https://console.redhat.com/api/automation-hub/content/published/
 
   # From public Galaxy
   - name: community.docker
@@ -195,7 +195,7 @@ set -e
 
 SERVERS=(
     "private_hub|https://galaxy.internal.com/api/galaxy/"
-    "certified_hub|https://cloud.redhat.com/api/automation-hub/"
+    "certified_hub|https://console.redhat.com/api/automation-hub/"
     "community_galaxy|https://galaxy.ansible.com/api/"
 )
 
@@ -217,7 +217,7 @@ done
 
 ## Handling Server Failover
 
-Galaxy servers are checked in order. If the first server is unreachable, Ansible moves to the next. But there is no built-in caching or smart failover. If your private hub is slow or flaky, it will slow down every Galaxy command.
+Galaxy servers are checked in order when Ansible searches for a collection. Connection problems can still delay or fail a command; the server list is not a smart failover or load-balancing mechanism. If your private hub is slow or flaky, it will slow down every Galaxy command.
 
 To handle this, add timeouts:
 
@@ -225,7 +225,7 @@ To handle this, add timeouts:
 # ansible.cfg - add timeout for Galaxy operations
 [galaxy]
 server_list = private_hub, certified_hub, community_galaxy
-timeout = 30
+server_timeout = 30
 ```
 
 For unreliable servers, consider using a reverse proxy with health checks in front of your private hub:
@@ -277,11 +277,9 @@ jobs:
           url = https://galaxy.ansible.com/
           CFG
 
-      - name: Set Galaxy tokens
-        run: |
-          export ANSIBLE_GALAXY_SERVER_PRIVATE_HUB_TOKEN="${{ secrets.GALAXY_PRIVATE_TOKEN }}"
-
       - name: Install dependencies
+        env:
+          ANSIBLE_GALAXY_SERVER_PRIVATE_HUB_TOKEN: ${{ secrets.GALAXY_PRIVATE_TOKEN }}
         run: ansible-galaxy collection install -r requirements.yml -p ./collections/
 ```
 
