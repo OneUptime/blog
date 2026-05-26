@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Kubernetes, Container Orchestration, Kubeadm
 
-Description: Build a production-ready Kubernetes cluster from scratch using Ansible and kubeadm with control plane setup, worker node joining, and CNI configuration.
+Description: Build a repeatable Kubernetes cluster from scratch using Ansible and kubeadm with control plane setup, worker node joining, and CNI configuration.
 
 ---
 
@@ -55,11 +55,11 @@ all:
 
 ```yaml
 # inventories/production/group_vars/k8s_cluster.yml
-kubernetes_version: "1.29"
+kubernetes_version: "1.36"
 pod_network_cidr: "10.244.0.0/16"
 service_cidr: "10.96.0.0/12"
 cni_plugin: calico
-containerd_version: "1.7"
+calico_version: "v3.32.0"
 cluster_name: prod-k8s
 control_plane_endpoint: "10.0.5.10:6443"
 ```
@@ -129,15 +129,21 @@ control_plane_endpoint: "10.0.5.10:6443"
     state: present
     update_cache: yes
 
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add Docker GPG key (for containerd packages)
   ansible.builtin.shell: |
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   args:
-    creates: /usr/share/keyrings/docker-archive-keyring.gpg
+    creates: /etc/apt/keyrings/docker.gpg
 
 - name: Add Docker repository
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
 
 - name: Install containerd
@@ -179,18 +185,32 @@ control_plane_endpoint: "10.0.5.10:6443"
 ```
 
 ```yaml
+# roles/k8s_prereqs/handlers/main.yml
+- name: restart containerd
+  ansible.builtin.service:
+    name: containerd
+    state: restarted
+```
+
+```yaml
 # roles/k8s_prereqs/tasks/install-k8s-packages.yml
 # Install Kubernetes packages
 
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add Kubernetes GPG key
   ansible.builtin.shell: |
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key | gpg --dearmor -o /usr/share/keyrings/kubernetes-apt-keyring.gpg
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   args:
-    creates: /usr/share/keyrings/kubernetes-apt-keyring.gpg
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
 - name: Add Kubernetes repository
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /"
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /"
     state: present
 
 - name: Install Kubernetes packages
@@ -235,6 +255,7 @@ control_plane_endpoint: "10.0.5.10:6443"
       --pod-network-cidr={{ pod_network_cidr }}
       --service-cidr={{ service_cidr }}
       --apiserver-advertise-address={{ ansible_host }}
+      --control-plane-endpoint={{ control_plane_endpoint }}
       --kubernetes-version=stable-{{ kubernetes_version }}
   when: not kubeadm_init.stat.exists
   register: init_result
@@ -256,7 +277,7 @@ control_plane_endpoint: "10.0.5.10:6443"
 
 - name: Install Calico CNI
   ansible.builtin.command:
-    cmd: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+    cmd: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
   when: cni_plugin == 'calico' and not kubeadm_init.stat.exists
   changed_when: true
 
@@ -299,7 +320,7 @@ control_plane_endpoint: "10.0.5.10:6443"
 
 - name: Wait for node to be ready
   ansible.builtin.command:
-    cmd: "kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"
+    cmd: "kubectl get node {{ ansible_hostname }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'"
   register: node_status
   until: node_status.stdout == 'True'
   retries: 30
@@ -352,10 +373,18 @@ control_plane_endpoint: "10.0.5.10:6443"
       register: nodes_json
       changed_when: false
 
+    - name: Get node readiness statuses
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+      register: node_ready_statuses
+      changed_when: false
+
     - name: Assert all nodes are ready
       ansible.builtin.assert:
         that:
-          - (nodes_json.stdout | from_json).items | length == groups['k8s_cluster'] | length
+          - ((nodes_json.stdout | from_json).items | length) == (groups['k8s_cluster'] | length)
+          - node_ready_statuses.stdout_lines | length == (groups['k8s_cluster'] | length)
+          - node_ready_statuses.stdout_lines | difference(['True']) | length == 0
         fail_msg: "Not all nodes have joined the cluster"
 
     - name: Get cluster component status
@@ -383,7 +412,7 @@ control_plane_endpoint: "10.0.5.10:6443"
       changed_when: true
 
     - name: Create namespaces
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: "kubectl create namespace {{ item }} --dry-run=client -o yaml | kubectl apply -f -"
       loop:
         - production
