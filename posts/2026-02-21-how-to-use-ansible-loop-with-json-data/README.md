@@ -24,7 +24,7 @@ Many CLI tools output JSON. You can capture that output and loop over it.
   hosts: dockerhosts
   tasks:
     - name: Get container information as JSON
-      ansible.builtin.command: docker inspect $(docker ps -q)
+      ansible.builtin.shell: docker inspect $(docker ps -q)
       register: docker_output
       changed_when: false
 
@@ -100,7 +100,7 @@ When the API returns JSON, the `uri` module automatically parses it into `api_re
 
 ## Using json_query for Complex Filtering
 
-The `json_query` filter uses JMESPath expressions to extract data from complex JSON structures. This is extremely powerful for nested JSON.
+The `community.general.json_query` filter uses JMESPath expressions to extract data from complex JSON structures. This is extremely powerful for nested JSON. It requires the `community.general` collection and the `jmespath` Python library on the control node.
 
 ```yaml
 # json-query-loop.yml
@@ -123,12 +123,12 @@ The `json_query` filter uses JMESPath expressions to extract data from complex J
     - name: Get all running instances across all regions
       ansible.builtin.debug:
         msg: "Instance {{ item.id }} ({{ item.type }})"
-      loop: "{{ cloud_data | json_query('regions[].instances[?state==`running`][]') }}"
+      loop: "{{ cloud_data | community.general.json_query('regions[].instances[?state==`running`][]') }}"
 
     - name: Get all instance IDs
       ansible.builtin.debug:
         msg: "{{ item }}"
-      loop: "{{ cloud_data | json_query('regions[].instances[].id') }}"
+      loop: "{{ cloud_data | community.general.json_query('regions[].instances[].id') }}"
 ```
 
 The JMESPath expression `regions[].instances[?state==\`running\`][]` navigates into each region, filters instances by state, and flattens the results into a single list.
@@ -278,8 +278,10 @@ Always validate JSON data before looping over it to avoid cryptic errors.
     json_input: "{{ lookup('file', 'data/input.json') }}"
   tasks:
     - name: Parse JSON
-      ansible.builtin.set_fact:
-        parsed_data: "{{ json_input | from_json }}"
+      block:
+        - name: Convert JSON string to structured data
+          ansible.builtin.set_fact:
+            parsed_data: "{{ json_input | from_json }}"
       rescue:
         - name: Handle invalid JSON
           ansible.builtin.fail:
@@ -289,16 +291,16 @@ Always validate JSON data before looping over it to avoid cryptic errors.
       ansible.builtin.assert:
         that:
           - parsed_data is mapping
-          - parsed_data.items is defined
-          - parsed_data.items | type_debug == 'list'
+          - parsed_data['items'] is defined
+          - parsed_data['items'] | type_debug == 'list'
         fail_msg: "JSON structure does not match expected format"
 
     - name: Process validated data
       ansible.builtin.debug:
         msg: "{{ item.name }}"
-      loop: "{{ parsed_data.items }}"
+      loop: "{{ parsed_data['items'] }}"
 ```
 
 ## Summary
 
-Working with JSON data in Ansible loops follows a consistent pattern: load the JSON (from a file, API, or command output), parse it with `from_json` if needed, transform it into a loop-friendly structure, and iterate. The `uri` module auto-parses JSON responses. The `json_query` filter with JMESPath expressions handles complex filtering of nested structures. For nested JSON, `subelements` flattens parent-child relationships into a flat loop. Always validate your JSON structure before looping to catch issues early.
+Working with JSON data in Ansible loops follows a consistent pattern: load the JSON (from a file, API, or command output), parse it with `from_json` if needed, transform it into a loop-friendly structure, and iterate. The `uri` module auto-parses JSON responses. The `community.general.json_query` filter with JMESPath expressions handles complex filtering of nested structures. For nested JSON, `subelements` flattens parent-child relationships into a flat loop. Always validate your JSON structure before looping to catch issues early.
