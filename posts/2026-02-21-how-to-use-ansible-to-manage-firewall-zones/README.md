@@ -8,7 +8,7 @@ Description: Manage firewalld zones across your Linux servers using Ansible to c
 
 ---
 
-Firewalld zones give you a way to categorize network interfaces and connections into trust levels. Instead of writing raw iptables rules, you work with named zones like "public", "internal", "dmz", and "trusted", each with its own set of allowed services and ports. Managing these zones across a fleet of servers by hand is tedious and error-prone. Ansible has excellent built-in support for firewalld that makes this manageable.
+Firewalld zones give you a way to categorize network interfaces and connections into trust levels. Instead of writing raw iptables rules, you work with named zones like "public", "internal", "dmz", and "trusted", each with its own set of allowed services and ports. Managing these zones across a fleet of servers by hand is tedious and error-prone. Ansible's ansible.posix collection has firewalld support that makes this manageable.
 
 In this post, I will walk through how to use Ansible to create custom zones, assign interfaces, manage services and ports, and enforce consistent firewall policies across your infrastructure.
 
@@ -20,7 +20,7 @@ Firewalld comes with several predefined zones, each with a different default beh
 flowchart LR
     subgraph Zones
         A[drop] --> A1[Drop all incoming]
-        B[block] --> B1[Reject with icmp-prohibited]
+        B[block] --> B1[Reject with prohibited ICMP replies]
         C[public] --> C1[Selective services]
         D[external] --> D1[NAT masquerading]
         E[internal] --> E1[Trusted internal]
@@ -31,7 +31,7 @@ flowchart LR
     end
 ```
 
-Each network interface is assigned to a zone, and the zone determines what traffic is allowed.
+Each network interface can be assigned to a zone. If no zone is explicitly assigned, firewalld uses the default zone, and that zone determines what traffic is allowed.
 
 ## Basic Firewalld Management
 
@@ -62,17 +62,14 @@ This playbook sets up firewalld with a secure default configuration:
         state: started
         enabled: true
 
-    - name: Set default zone
-      ansible.posix.firewalld:
-        zone: "{{ default_zone }}"
-        state: enabled
-        permanent: true
-        immediate: true
-      register: zone_set
+    - name: Check current default zone
+      ansible.builtin.command: firewall-cmd --get-default-zone
+      register: current_default_zone
+      changed_when: false
 
     - name: Make zone the default
       ansible.builtin.command: firewall-cmd --set-default-zone={{ default_zone }}
-      when: zone_set.changed
+      when: current_default_zone.stdout != default_zone
       changed_when: true
 
     - name: Verify default zone
@@ -188,19 +185,30 @@ This playbook creates custom zones for specific use cases:
 
   tasks:
     - name: Create custom zones
-      ansible.builtin.command: "firewall-cmd --permanent --new-zone={{ item.name }}"
+      ansible.posix.firewalld:
+        zone: "{{ item.name }}"
+        state: present
+        permanent: true
       loop: "{{ custom_zones }}"
       register: zone_create
-      failed_when: false
-      changed_when: "'ALREADY_ENABLED' not in zone_create.stderr"
 
-    - name: Reload firewalld to activate new zones
-      ansible.builtin.command: firewall-cmd --reload
+    - name: Set zone descriptions
+      ansible.builtin.command: "firewall-cmd --permanent --zone={{ item.name }} --set-description={{ item.description | quote }}"
+      loop: "{{ custom_zones }}"
       changed_when: true
 
     - name: Set zone targets
-      ansible.builtin.command: "firewall-cmd --permanent --zone={{ item.name }} --set-target={{ item.target }}"
+      ansible.posix.firewalld:
+        zone: "{{ item.name }}"
+        state: present
+        permanent: true
+        target: "{{ item.target }}"
       loop: "{{ custom_zones }}"
+      register: zone_target
+
+    - name: Reload firewalld to activate zone changes
+      ansible.builtin.command: firewall-cmd --reload
+      when: zone_create.changed or zone_target.changed
       changed_when: true
 
     - name: Add services to custom zones
@@ -374,6 +382,15 @@ firewall_role_configs:
     state: enabled
   loop: "{{ firewall_base_services }}"
 
+- name: Apply base rich rules
+  ansible.posix.firewalld:
+    zone: "{{ firewall_default_zone }}"
+    rich_rule: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewall_base_rich_rules }}"
+
 - name: Apply role-specific services
   ansible.posix.firewalld:
     zone: "{{ firewall_default_zone }}"
@@ -381,7 +398,7 @@ firewall_role_configs:
     permanent: true
     immediate: true
     state: enabled
-  loop: "{{ firewall_role_configs[firewall_role].services | default([]) }}"
+  loop: "{{ firewall_role_configs.get(firewall_role, {}).services | default([]) }}"
 
 - name: Apply role-specific ports
   ansible.posix.firewalld:
@@ -390,7 +407,7 @@ firewall_role_configs:
     permanent: true
     immediate: true
     state: enabled
-  loop: "{{ firewall_role_configs[firewall_role].ports | default([]) }}"
+  loop: "{{ firewall_role_configs.get(firewall_role, {}).ports | default([]) }}"
 ```
 
 ## Auditing Zone Configuration
@@ -431,7 +448,7 @@ Regularly verify your firewall zones are configured correctly:
 
 1. **Start with the public zone locked down.** Only add services as needed. It is easier to open ports than to close them after a breach.
 2. **Use service definitions over port numbers.** `service: http` is clearer than `port: 80/tcp` and updates automatically if the service definition changes.
-3. **Test with --runtime.** Before making permanent changes, test rules in runtime mode first. If something breaks, a firewall reload or reboot restores the previous state.
+3. **Test in runtime mode.** Before making permanent changes, omit `permanent: true` in Ansible or omit `--permanent` with `firewall-cmd`. If something breaks, a firewall reload or reboot restores the previous permanent state.
 4. **Log denied traffic.** Set `--set-log-denied=unicast` to log blocked packets for troubleshooting without flooding your logs with broadcast noise.
 5. **Back up zone configs.** Store your zone configurations in version control through Ansible, so you can always restore a known good state.
 
