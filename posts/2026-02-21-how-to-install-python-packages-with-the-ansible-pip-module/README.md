@@ -23,7 +23,7 @@ The simplest use case is installing a Python package system-wide:
     state: present
 ```
 
-This runs `pip install requests` under the hood. By default, it uses whatever `pip` is available on the PATH, which on most modern systems is `pip3`.
+This runs `pip install requests` under the hood. By default, it uses the pip version for the Ansible Python interpreter. Use `executable` when you need a different pip.
 
 ## Installing Multiple Packages
 
@@ -134,11 +134,11 @@ pip can install packages directly from Git:
 # Install a package from a Git repository
 - name: Install custom library from Git
   ansible.builtin.pip:
-    name: "git+https://github.com/example/mylib.git@v2.0.0#egg=mylib"
+    name: "mylib @ git+https://github.com/example/mylib.git@v2.0.0"
     state: present
 ```
 
-The `@v2.0.0` specifies a tag or branch, and `#egg=mylib` tells pip the package name.
+The `@v2.0.0` specifies a tag or branch, and `mylib @` tells pip the package name.
 
 ## Installing from a Local Directory
 
@@ -283,11 +283,11 @@ Here is a full playbook that deploys a Flask application with all its Python dep
 
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
 
     - name: restart myapp
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: restarted
         enabled: yes
@@ -317,7 +317,7 @@ graph TD
 
 ## Common Gotchas
 
-1. **PEP 668 externally managed environments.** On Ubuntu 23.04+ and other recent distributions, system Python is marked as externally managed, and pip refuses to install packages globally. Use virtualenvs or pass `--break-system-packages` via `extra_args` (not recommended for production).
+1. **PEP 668 externally managed environments.** On Ubuntu 23.04+ and other recent distributions, system Python is marked as externally managed, and pip refuses to install packages globally. Use virtualenvs or set `break_system_packages: true` on recent Ansible versions (not recommended for production).
 
 2. **Permission issues.** Installing packages globally requires root. Always use `become: yes` for system-wide installs, or run pip as the application user with a virtualenv.
 
