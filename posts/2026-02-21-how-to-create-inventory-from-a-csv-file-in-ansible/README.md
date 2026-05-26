@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, CSV, Inventory, Python, Automation
 
-Description: Learn how to generate Ansible inventory files from CSV data using Python scripts and custom inventory plugins.
+Description: Learn how to generate Ansible inventory files from CSV data using Python scripts and dynamic inventory scripts.
 
 ---
 
@@ -21,8 +21,8 @@ web02,10.0.1.11,webservers,22,ubuntu,production,deploy
 web03,10.0.1.12,webservers,2222,ubuntu,staging,deploy
 app01,10.0.2.20,appservers,22,centos,production,appuser
 app02,10.0.2.21,appservers,22,centos,production,appuser
-db01,10.0.3.30,databases,3306,ubuntu,production,dbadmin
-db02,10.0.3.31,databases,3306,ubuntu,staging,dbadmin
+db01,10.0.3.30,databases,22,ubuntu,production,dbadmin
+db02,10.0.3.31,databases,22,ubuntu,staging,dbadmin
 cache01,10.0.4.40,cacheservers,22,centos,production,redis
 ```
 
@@ -79,6 +79,8 @@ def csv_to_ini_inventory(csv_file, output_file):
                         'ansible_host': v['ansible_host'],
                         'ansible_port': v['ansible_port'],
                         'ansible_user': v['ansible_user'],
+                        'os_type': v['os_type'],
+                        'environment': v['environment'],
                     }.items()
                 )
                 f.write(f'{host} {var_str}\n')
@@ -110,20 +112,20 @@ The output looks like this:
 
 ```ini
 [appservers]
-app01 ansible_host=10.0.2.20 ansible_port=22 ansible_user=appuser
-app02 ansible_host=10.0.2.21 ansible_port=22 ansible_user=appuser
+app01 ansible_host=10.0.2.20 ansible_port=22 ansible_user=appuser os_type=centos environment=production
+app02 ansible_host=10.0.2.21 ansible_port=22 ansible_user=appuser os_type=centos environment=production
 
 [cacheservers]
-cache01 ansible_host=10.0.4.40 ansible_port=22 ansible_user=redis
+cache01 ansible_host=10.0.4.40 ansible_port=22 ansible_user=redis os_type=centos environment=production
 
 [databases]
-db01 ansible_host=10.0.3.30 ansible_port=3306 ansible_user=dbadmin
-db02 ansible_host=10.0.3.31 ansible_port=3306 ansible_user=dbadmin
+db01 ansible_host=10.0.3.30 ansible_port=22 ansible_user=dbadmin os_type=ubuntu environment=production
+db02 ansible_host=10.0.3.31 ansible_port=22 ansible_user=dbadmin os_type=ubuntu environment=staging
 
 [webservers]
-web01 ansible_host=10.0.1.10 ansible_port=22 ansible_user=deploy
-web02 ansible_host=10.0.1.11 ansible_port=22 ansible_user=deploy
-web03 ansible_host=10.0.1.12 ansible_port=2222 ansible_user=deploy
+web01 ansible_host=10.0.1.10 ansible_port=22 ansible_user=deploy os_type=ubuntu environment=production
+web02 ansible_host=10.0.1.11 ansible_port=22 ansible_user=deploy os_type=ubuntu environment=production
+web03 ansible_host=10.0.1.12 ansible_port=2222 ansible_user=deploy os_type=ubuntu environment=staging
 
 [production]
 web01
@@ -155,6 +157,7 @@ from collections import defaultdict
 def csv_to_yaml_inventory(csv_file, output_file):
     """Read CSV and produce an Ansible YAML inventory."""
     groups = defaultdict(dict)
+    env_groups = defaultdict(dict)
 
     with open(csv_file, 'r') as f:
         reader = csv.DictReader(f)
@@ -165,7 +168,10 @@ def csv_to_yaml_inventory(csv_file, output_file):
                 'ansible_host': row['ip_address'],
                 'ansible_port': int(row['ssh_port']),
                 'ansible_user': row['ansible_user'],
+                'os_type': row['os'],
+                'environment': row['environment'],
             }
+            env_groups[row['environment']][hostname] = {}
 
     # Build the inventory structure
     inventory = {
@@ -176,6 +182,11 @@ def csv_to_yaml_inventory(csv_file, output_file):
 
     for group_name, hosts in groups.items():
         inventory['all']['children'][group_name] = {
+            'hosts': hosts
+        }
+
+    for env_name, hosts in env_groups.items():
+        inventory['all']['children'][env_name] = {
             'hosts': hosts
         }
 
@@ -234,8 +245,10 @@ def get_inventory():
             if hostname not in groups[env_group]['hosts']:
                 groups[env_group]['hosts'].append(hostname)
 
-    # Build final inventory with _meta for efficiency
+    # Build final inventory with all/ungrouped groups and _meta for efficiency
     inventory = dict(groups)
+    inventory['all'] = {'children': sorted(groups.keys())}
+    inventory.setdefault('ungrouped', {'hosts': []})
     inventory['_meta'] = {'hostvars': hostvars}
 
     return inventory
@@ -311,7 +324,8 @@ def normalize_row(row):
     normalized = {}
     for csv_col, ansible_var in COLUMN_MAP.items():
         if csv_col in row:
-            normalized[ansible_var] = row[csv_col].strip()
+            value = row[csv_col].strip()
+            normalized[ansible_var] = int(value) if ansible_var == 'ansible_port' else value
     return normalized
 
 def get_inventory():
@@ -334,6 +348,8 @@ def get_inventory():
             hostvars[hostname] = data
 
     inventory = dict(groups)
+    inventory['all'] = {'children': sorted(groups.keys())}
+    inventory.setdefault('ungrouped', {'hosts': []})
     inventory['_meta'] = {'hostvars': hostvars}
     return inventory
 
