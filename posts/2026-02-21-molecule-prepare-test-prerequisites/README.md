@@ -16,12 +16,13 @@ When testing Ansible roles with Molecule, your role usually does not operate in 
 graph LR
     A[create] --> B[prepare]
     B --> C[converge]
-    C --> D[idempotence]
-    D --> E[verify]
+    C --> D[verify]
+    D --> E[idempotence]
+    E --> F[verify]
     style B fill:#ff9,stroke:#333
 ```
 
-Prepare runs exactly once, right after the test instance is created. Unlike converge, it does not run again during the idempotence check. This is an important distinction: prepare sets up the environment that your role expects to find, and your role should not need to modify those prerequisites.
+In the default test flow, prepare runs once after the test instance is created. Unlike converge, it does not run again during the idempotence check. This is an important distinction: prepare sets up the environment that your role expects to find, and your role should not need to modify those prerequisites.
 
 ## Basic Prepare Playbook
 
@@ -170,9 +171,9 @@ When your role needs to talk to an external API or service, mock it in prepare r
   hosts: all
   become: true
   tasks:
-    - name: Install Python HTTP server for mocking
-      ansible.builtin.pip:
-        name: flask
+    - name: Install Flask for mocking
+      ansible.builtin.package:
+        name: python3-flask
         state: present
 
     - name: Create mock API script
@@ -288,7 +289,7 @@ Instead of inline tasks, you can use existing roles to set up prerequisites. Thi
     - role: geerlingguy.docker
 ```
 
-Make sure to declare these role dependencies in your molecule requirements.
+Make sure to declare these role and collection dependencies in your molecule requirements.
 
 ```yaml
 # molecule/default/requirements.yml
@@ -298,6 +299,9 @@ roles:
     version: "6.1.0"
   - name: geerlingguy.docker
     version: "7.1.0"
+collections:
+  - name: community.postgresql
+  - name: community.crypto
 ```
 
 And configure Molecule to install them.
