@@ -59,7 +59,7 @@ Tag categories define the groups that tags belong to. Each category has a cardin
         category_cardinality: "single"
         # Which object types can be tagged
         associable_object_types:
-          - VirtualMachine
+          - Virtual Machine
           - Folder
         state: present
 
@@ -70,7 +70,7 @@ Tag categories define the groups that tags belong to. Each category has a cardin
         category_description: "Backup schedule and retention policy"
         category_cardinality: "single"
         associable_object_types:
-          - VirtualMachine
+          - Virtual Machine
         state: present
 
     # Multiple cardinality - VMs can have many tags from this category
@@ -80,7 +80,7 @@ Tag categories define the groups that tags belong to. Each category has a cardin
         category_description: "Application or service this VM supports"
         category_cardinality: "multiple"
         associable_object_types:
-          - VirtualMachine
+          - Virtual Machine
         state: present
 
     - name: Create CostCenter tag category
@@ -89,7 +89,7 @@ Tag categories define the groups that tags belong to. Each category has a cardin
         category_description: "Department or team responsible for this VM"
         category_cardinality: "single"
         associable_object_types:
-          - VirtualMachine
+          - Virtual Machine
           - Folder
           - Datastore
         state: present
@@ -100,7 +100,7 @@ Tag categories define the groups that tags belong to. Each category has a cardin
         category_description: "Guest operating system classification"
         category_cardinality: "single"
         associable_object_types:
-          - VirtualMachine
+          - Virtual Machine
         state: present
 ```
 
@@ -295,26 +295,27 @@ When you need to tag many VMs at once, use a variable-driven approach.
 One of the most powerful uses of tags is building Ansible dynamic inventory groups based on them.
 
 ```yaml
-# vmware_inventory.yml - Tag-based dynamic inventory
-plugin: community.vmware.vmware_vm_inventory
+# hosts.vmware_vms.yml - Tag-based dynamic inventory
+plugin: vmware.vmware.vms
 strict: false
 hostname: "vcenter.example.com"
 username: "administrator@vsphere.local"
 password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
 validate_certs: false
+gather_tags: true
 
 # Build groups from tags
 keyed_groups:
   # Create groups from Environment tags
-  - key: tags['Environment'] | default([])
+  - key: tags_by_category.Environment | map('dict2items') | flatten | map(attribute='value')
     prefix: env
     separator: "_"
   # Create groups from Application tags
-  - key: tags['Application'] | default([])
+  - key: tags_by_category.Application | map('dict2items') | flatten | map(attribute='value')
     prefix: app
     separator: "_"
   # Create groups from BackupPolicy tags
-  - key: tags['BackupPolicy'] | default([])
+  - key: tags_by_category.BackupPolicy | map('dict2items') | flatten | map(attribute='value')
     prefix: backup
     separator: "_"
 
@@ -352,15 +353,17 @@ Find all VMs with a specific tag for targeted operations.
 
   tasks:
     - name: Get all VMs with the NoBackup tag
-      community.vmware.vmware_tag_info:
-        tag_name: "NoBackup"
-        category_name: "BackupPolicy"
-      register: no_backup_info
+      community.vmware.vmware_vm_info:
+        show_tag: true
+        vm_type: vm
+      register: vm_info
 
     - name: Display VMs without backup
       ansible.builtin.debug:
-        msg: "VM without backup policy: {{ item }}"
-      loop: "{{ no_backup_info.tag_info.NoBackup.objects | default([]) }}"
+        msg: "VM without backup policy: {{ item.guest_name }}"
+      loop: "{{ vm_info.virtual_machines | community.general.json_query(no_backup_query) }}"
+      vars:
+        no_backup_query: "[?tags[?category_name=='BackupPolicy' && name=='NoBackup']]"
 ```
 
 ## Removing Tags from VMs
