@@ -156,7 +156,11 @@ Use redirection to create report files on remote hosts.
             echo "Host: $(hostname)"
             echo ""
             echo "=== Failed Login Attempts ==="
-            grep "Failed password" /var/log/auth.log 2>/dev/null | tail -20 || echo "No auth.log found"
+            if [ -r /var/log/auth.log ]; then
+              grep "Failed password" /var/log/auth.log | tail -20
+            else
+              echo "No auth.log found"
+            fi
             echo ""
             echo "=== Users with Sudo Access ==="
             getent group sudo 2>/dev/null || getent group wheel 2>/dev/null || echo "No sudo group found"
@@ -165,7 +169,11 @@ Use redirection to create report files on remote hosts.
             ss -tlnp | grep LISTEN
             echo ""
             echo "=== Recent Package Changes ==="
-            grep -E "install|upgrade|remove" /var/log/dpkg.log 2>/dev/null | tail -20 || echo "No dpkg.log found"
+            if [ -r /var/log/dpkg.log ]; then
+              grep -E "install|upgrade|remove" /var/log/dpkg.log | tail -20
+            else
+              echo "No dpkg.log found"
+            fi
           } > {{ report_dir }}/security_{{ report_date }}.txt
       changed_when: true
 
@@ -277,7 +285,7 @@ Suppress output you do not care about.
       # rc == 0 means pattern found, rc == 1 means not found
 ```
 
-## Redirecting to Named Pipes and Process Substitution
+## Redirecting with Process Substitution and Here Documents
 
 Advanced redirection patterns using bash features.
 
