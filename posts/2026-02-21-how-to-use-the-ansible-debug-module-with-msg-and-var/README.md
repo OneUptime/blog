@@ -91,7 +91,7 @@ Here is a practical guide for choosing between them:
 **Use `var` when:**
 - You want to see the raw value and structure of a variable
 - You are exploring an unfamiliar data structure
-- You need to see the exact type (string, int, list, dict)
+- You want to inspect the value's representation (use the `type_debug` filter if you need the exact type)
 - You want quick, no-frills output
 
 ```yaml
@@ -314,7 +314,7 @@ The first approach (var) is what you use when you do not know what fields are av
 
 ## Performance Note
 
-The debug module has essentially zero overhead since it runs on the controller, not on remote hosts. However, printing very large data structures (like all facts or extensive registered results) can slow down output rendering. Use the `verbosity` parameter (covered in a separate post) to hide debug output during normal runs.
+The debug module has low overhead because it has a corresponding action plugin and does not use the target host connection. However, printing very large data structures (like all facts or extensive registered results) can slow down output rendering. Use the `verbosity` parameter (covered in a separate post) to hide debug output during normal runs.
 
 ## Default Behavior
 
