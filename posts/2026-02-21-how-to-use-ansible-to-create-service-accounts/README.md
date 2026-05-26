@@ -19,7 +19,7 @@ A service account differs from a regular user account in several key ways:
 | Login shell | /bin/bash or /bin/zsh | /usr/sbin/nologin |
 | Home directory | /home/username | /opt/service or /var/lib/service |
 | Password | Set and rotated | Locked or not set |
-| UID range | 1000+ | 100-999 (system range) |
+| UID range | 1000+ | System range from `/etc/login.defs` |
 | Interactive login | Yes | No |
 | SSH keys | For remote access | For service-to-service auth |
 | Group membership | Team-based | Service-specific |
@@ -73,7 +73,7 @@ flowchart TD
 
 ## Complete Service Account Provisioning
 
-Here is a full playbook that handles the entire lifecycle:
+Here is a fuller playbook that handles the account setup, directory permissions, systemd unit, and log rotation:
 
 ```yaml
 # provision-service-account.yml - Complete service account setup
@@ -277,7 +277,7 @@ Different types of applications need slightly different service account configur
         - /var/backups/database
 ```
 
-Notice that the backup agent gets `/bin/bash` as its shell because it needs to run backup scripts. This is one of the few cases where a service account needs a real shell.
+Notice that the backup agent gets `/bin/bash` as its shell because it may need to run commands over SSH or through shell-based backup workflows. If the backup job is only launched by systemd or cron using explicit script paths, keep `/usr/sbin/nologin` instead.
 
 ### Monitoring Agent Service Account
 
@@ -439,7 +439,7 @@ Apply additional security controls:
         - redis
         - prometheus
 
-    # Restrict cron access for service accounts
+    # Restrict use of crontab for service accounts
     - name: Add service accounts to cron.deny
       ansible.builtin.lineinfile:
         path: /etc/cron.deny
