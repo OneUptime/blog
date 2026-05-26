@@ -8,9 +8,9 @@ Description: How to configure AWS Lambda functions to access resources inside a 
 
 ---
 
-By default, Lambda functions run outside your VPC. They can reach the internet and AWS services directly, but they cannot access resources inside your VPC like RDS databases, ElastiCache clusters, or EC2 instances. When your Lambda function needs to connect to these resources, you need to configure VPC access.
+By default, Lambda functions run outside your account VPC. They can reach the internet and AWS services directly, but they cannot access resources inside your VPC like RDS databases, ElastiCache clusters, or EC2 instances. When your Lambda function needs to connect to these resources, you need to configure VPC access.
 
-VPC-connected Lambda functions get an Elastic Network Interface (ENI) in each subnet you specify, allowing them to communicate with resources in those subnets. However, this introduces networking complexity - the function loses direct internet access and needs NAT gateways or VPC endpoints to reach AWS services.
+VPC-connected Lambda functions use Lambda-managed Hyperplane Elastic Network Interfaces (ENIs) for the subnet and security group combinations you specify, allowing them to communicate with resources in those subnets. However, this introduces networking complexity - the function loses direct internet access and needs NAT gateways or VPC endpoints to reach AWS services.
 
 This guide walks through configuring Lambda VPC access in Terraform, handling the networking requirements, and avoiding the performance pitfalls.
 
@@ -137,6 +137,7 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 The `AWSLambdaVPCAccessExecutionRole` policy includes:
 - `ec2:CreateNetworkInterface`
 - `ec2:DescribeNetworkInterfaces`
+- `ec2:DescribeSubnets`
 - `ec2:DeleteNetworkInterface`
 - `ec2:AssignPrivateIpAddresses`
 - `ec2:UnassignPrivateIpAddresses`
@@ -182,7 +183,7 @@ resource "aws_route_table_association" "private" {
 }
 ```
 
-NAT gateways cost money. If your Lambda only needs to reach AWS services (not the public internet), VPC endpoints are cheaper and faster.
+NAT gateways cost money. If your Lambda only needs to reach AWS services (not the public internet), VPC endpoints can be cheaper and faster.
 
 ## VPC Endpoints (Instead of NAT Gateway)
 
@@ -253,7 +254,7 @@ resource "aws_security_group" "vpc_endpoints" {
 }
 ```
 
-Gateway endpoints (S3, DynamoDB) are free. Interface endpoints cost about $0.01/hour per AZ plus data transfer charges. Still cheaper than a NAT gateway for most workloads.
+Gateway endpoints (S3, DynamoDB) have no additional charge. Interface endpoints have hourly per-AZ charges plus data processing charges. Still cheaper than a NAT gateway for many workloads.
 
 ## Choosing Subnets
 
@@ -275,11 +276,11 @@ resource "aws_lambda_function" "api" {
 }
 ```
 
-Lambda creates ENIs in the subnets you specify and can use any of them when executing. More subnets across more AZs means more IP addresses available and better resilience.
+Lambda creates Hyperplane ENIs for the subnet and security group combinations you specify and can use any of them when executing. More subnets across more AZs gives Lambda more placement options and better resilience.
 
 ## IP Address Capacity
 
-Each concurrent Lambda execution uses an IP address. If you have 100 concurrent invocations, you need at least 100 available IPs across your subnets. Plan your CIDR ranges accordingly:
+Lambda does not allocate one IP address per concurrent execution. Hyperplane ENIs are shared for the same subnet and security group combinations and each ENI supports many connections, but Lambda can create additional ENIs as network traffic and concurrency grow. Plan subnet CIDR ranges with enough spare IPs for Lambda-managed ENIs and any other resources in those subnets:
 
 ```hcl
 # Dedicated subnets for Lambda with plenty of IP space
@@ -288,7 +289,7 @@ resource "aws_subnet" "lambda" {
 
   vpc_id            = var.vpc_id
   cidr_block        = cidrsubnet("10.0.100.0/20", 2, count.index)
-  # /22 per subnet = 1022 usable IPs each
+  # /22 per subnet = 1019 usable IPv4 addresses each in AWS
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
@@ -314,4 +315,4 @@ output "lambda_subnet_ids" {
 
 ## Summary
 
-Lambda VPC access in Terraform is configured with the `vpc_config` block specifying subnets and security groups. The function needs `AWSLambdaVPCAccessExecutionRole` for ENI management. Once in a VPC, Lambda loses internet access, so you need either NAT gateways (for internet + AWS services) or VPC endpoints (for AWS services only). Use dedicated subnets with enough IP space for your concurrency levels, and reference Lambda's security group in the security groups of the resources it needs to access. The modern Lambda networking implementation creates ENIs quickly, so the cold start penalty for VPC-connected functions is minimal.
+Lambda VPC access in Terraform is configured with the `vpc_config` block specifying subnets and security groups. The function needs `AWSLambdaVPCAccessExecutionRole` for ENI management. Once in a VPC, Lambda loses internet access, so you need either NAT gateways (for internet + AWS services) or VPC endpoints (for AWS services only). Use dedicated subnets with enough IP space for Lambda-managed ENI growth and any other resources, and reference Lambda's security group in the security groups of the resources it needs to access. The modern Lambda networking implementation reuses Hyperplane ENIs, so the cold start penalty for VPC-connected functions is minimal after the required network resources are ready.
