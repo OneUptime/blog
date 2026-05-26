@@ -15,28 +15,31 @@ The distinction between `defaults/main.yml` and `vars/main.yml` in an Ansible ro
 The entire difference comes down to precedence:
 
 - **defaults/main.yml**: Precedence level 2 (near the bottom). Almost anything overrides these.
-- **vars/main.yml**: Precedence level 18 (near the top). Almost nothing overrides these.
+- **vars/main.yml**: Precedence level 15 (near the top). Inventory and play variables cannot override these, but task vars, `include_vars`, set facts, role/include parameters, and extra vars can.
 
 ```mermaid
 flowchart TB
     subgraph "High Precedence (Hard to Override)"
         A["Extra vars (-e)"]
-        B["Task vars / set_fact"]
-        C["Block vars"]
-        D["Role vars (vars/main.yml)"]
+        B["Role/include params"]
+        C["set_fact / registered vars"]
+        D["include_vars"]
+        E["Task vars"]
+        F["Block vars"]
+        G["Role vars (vars/main.yml)"]
     end
     subgraph "Medium Precedence"
-        E["Play vars / vars_files"]
-        F["Host vars"]
-        G["Group vars"]
+        H["Play vars / vars_files"]
+        I["Host vars"]
+        J["Group vars"]
     end
     subgraph "Low Precedence (Easy to Override)"
-        H["Role defaults (defaults/main.yml)"]
-        I["Command line values"]
+        K["Role defaults (defaults/main.yml)"]
+        L["Command line values"]
     end
-    A --> B --> C --> D --> E --> F --> G --> H --> I
-    style D fill:#f96,stroke:#333,stroke-width:2px
-    style H fill:#6f9,stroke:#333,stroke-width:2px
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L
+    style G fill:#f96,stroke:#333,stroke-width:2px
+    style K fill:#6f9,stroke:#333,stroke-width:2px
 ```
 
 ## The Rule of Thumb
@@ -249,7 +252,7 @@ postgresql_max_connections: 100          # BAD: this is a tuning parameter
 postgresql_shared_buffers: "256MB"       # BAD: DBA should tune this
 ```
 
-Now consumers cannot override these from their inventory or playbook vars because `vars/main.yml` has higher precedence. They would need to use extra vars (`-e`) for every override, which is cumbersome.
+Now consumers cannot override these from their inventory or playbook vars because `vars/main.yml` has higher precedence. They would need to pass variables directly to the role or use extra vars (`-e`) for every override, which is cumbersome.
 
 ## Documenting the Interface
 
