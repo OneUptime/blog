@@ -42,11 +42,11 @@ graph TD
     B --> E[At-least-once delivery]
     B --> F[Best-effort ordering]
     C --> G[300 msg/sec without batching]
-    C --> H[Exactly-once processing]
+    C --> H[Exactly-once processing within the deduplication interval]
     C --> I[Strict ordering within groups]
 ```
 
-Standard queues handle massive throughput but messages might be delivered more than once or out of order. FIFO queues guarantee ordering and exactly-once delivery but have lower throughput.
+Standard queues handle massive throughput but messages might be delivered more than once or out of order. FIFO queues guarantee ordering and help prevent duplicate messages within a 5-minute deduplication interval, but have lower throughput.
 
 ## Creating a Standard Queue
 
@@ -145,7 +145,7 @@ Dead-letter queues catch messages that fail processing repeatedly:
           - "DLQ: {{ dlq_result.queue_url }}"
 ```
 
-The `maxReceiveCount: 3` setting means a message that has been received (but not deleted) 3 times gets moved to the dead-letter queue. This prevents poison messages from blocking your consumers forever.
+The `maxReceiveCount: 3` setting means a message can be received up to 3 times before SQS moves it to the dead-letter queue after that count is exceeded. This prevents poison messages from blocking your consumers forever.
 
 ## Creating a FIFO Queue
 
@@ -166,7 +166,7 @@ FIFO queues maintain strict message ordering:
         name: myapp-order-processing.fifo
         region: us-east-1
         state: present
-        fifo_queue: true
+        queue_type: fifo
         content_based_deduplication: true
         default_visibility_timeout: 120
         receive_message_wait_time_seconds: 20
@@ -181,7 +181,7 @@ FIFO queues maintain strict message ordering:
         name: myapp-order-processing-dlq.fifo
         region: us-east-1
         state: present
-        fifo_queue: true
+        queue_type: fifo
         message_retention_period: 1209600
         tags:
           Type: fifo-dlq
@@ -206,39 +206,27 @@ Control which AWS services and accounts can interact with your queue:
     state: present
     default_visibility_timeout: 60
     receive_message_wait_time_seconds: 20
-    policy: |
-      {
-        "Version": "2012-10-17",
-        "Statement": [
-          {
-            "Sid": "AllowSNSPublish",
-            "Effect": "Allow",
-            "Principal": {
-              "Service": "sns.amazonaws.com"
-            },
-            "Action": "sqs:SendMessage",
-            "Resource": "arn:aws:sqs:us-east-1:123456789012:myapp-event-processor",
-            "Condition": {
-              "ArnEquals": {
-                "aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:myapp-events"
-              }
-            }
-          },
-          {
-            "Sid": "AllowAppConsume",
-            "Effect": "Allow",
-            "Principal": {
-              "AWS": "arn:aws:iam::123456789012:role/myapp-worker-role"
-            },
-            "Action": [
-              "sqs:ReceiveMessage",
-              "sqs:DeleteMessage",
-              "sqs:GetQueueAttributes"
-            ],
-            "Resource": "arn:aws:sqs:us-east-1:123456789012:myapp-event-processor"
-          }
-        ]
-      }
+    policy:
+      Version: "2012-10-17"
+      Statement:
+        - Sid: AllowSNSPublish
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Action: sqs:SendMessage
+          Resource: arn:aws:sqs:us-east-1:123456789012:myapp-event-processor
+          Condition:
+            ArnEquals:
+              aws:SourceArn: arn:aws:sns:us-east-1:123456789012:myapp-events
+        - Sid: AllowAppConsume
+          Effect: Allow
+          Principal:
+            AWS: arn:aws:iam::123456789012:role/myapp-worker-role
+          Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource: arn:aws:sqs:us-east-1:123456789012:myapp-event-processor
 ```
 
 ## Server-Side Encryption
@@ -312,10 +300,10 @@ Define all your service queues in one playbook:
         name: "{{ env }}-{{ item.0.name }}"
         region: "{{ aws_region }}"
         state: present
-        default_visibility_timeout: "{{ item.0.visibility_timeout }}"
+        default_visibility_timeout: "{{ item.0.visibility_timeout | int }}"
         receive_message_wait_time_seconds: 20
         redrive_policy:
-          maxReceiveCount: "{{ item.0.max_receive }}"
+          maxReceiveCount: "{{ item.0.max_receive | int }}"
           deadLetterTargetArn: "{{ item.1.queue_arn }}"
         tags:
           Environment: "{{ env }}"
