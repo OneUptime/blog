@@ -8,11 +8,11 @@ Description: Configure Ansible persistent connections for network devices to red
 
 ---
 
-Network device automation with Ansible is fundamentally different from server automation. Network devices typically use SSH with a CLI interface rather than a Python interpreter, and each connection establishment involves protocol negotiation that is slower than standard Linux SSH. Persistent connections solve this by keeping a single connection open and reusing it across multiple tasks. This post covers how to configure and optimize persistent connections for network devices.
+Network device automation with Ansible is fundamentally different from server automation. Network devices typically use SSH with a CLI interface or a management protocol such as NETCONF rather than a Python interpreter, and each connection establishment involves protocol negotiation that is slower than standard Linux SSH. Persistent connections solve this by keeping a single connection open and reusing it across multiple tasks. This post covers how to configure and optimize persistent connections for network devices.
 
 ## The Network Connection Problem
 
-When Ansible manages a Linux server, it opens SSH, runs a Python module, and closes the connection. For network devices using `network_cli` or `netconf`, the connection process involves additional steps: SSH handshake, CLI authentication, privilege escalation (enable mode), and terminal width/height negotiation.
+When Ansible manages a Linux server, it usually executes Python modules over the standard SSH connection plugin, which can use OpenSSH ControlPersist. For network devices using `ansible.netcommon.network_cli`, the connection process can involve additional steps: SSH handshake, CLI authentication, privilege escalation (enable mode), and terminal width/height negotiation. NETCONF also uses a persistent SSH-based management session, but it does not use the interactive CLI terminal setup.
 
 Without persistent connections, every single task goes through this entire process:
 
@@ -81,13 +81,13 @@ command_timeout = 30
 ```
 
 These settings control:
-- `connect_timeout`: How long to wait for the initial connection (default 30s)
-- `connect_retry_timeout`: How long to retry a failed connection (default 15s)
+- `connect_timeout`: How long the persistent connection is allowed to remain idle before it is destroyed; network connection plugin documentation also uses this value for the initial persistent connection timeout (default 30s)
+- `connect_retry_timeout`: How long to retry connecting to the local persistent connection socket (default 15s)
 - `command_timeout`: How long to wait for a command to complete (default 30s)
 
 ## Using network_cli Connection
 
-The `network_cli` connection plugin is the most common way to manage network devices. It establishes a persistent SSH connection and sends CLI commands:
+The `ansible.netcommon.network_cli` connection plugin is the most common way to manage network devices. It establishes a persistent SSH connection and sends CLI commands:
 
 ```yaml
 ---
@@ -99,7 +99,7 @@ all:
         router01:
           ansible_host: 10.0.1.1
           ansible_network_os: cisco.ios.ios
-          ansible_connection: network_cli
+          ansible_connection: ansible.netcommon.network_cli
           ansible_user: admin
           ansible_password: "{{ vault_cisco_password }}"
           ansible_become: true
@@ -108,7 +108,7 @@ all:
         router02:
           ansible_host: 10.0.1.2
           ansible_network_os: cisco.ios.ios
-          ansible_connection: network_cli
+          ansible_connection: ansible.netcommon.network_cli
           ansible_user: admin
           ansible_password: "{{ vault_cisco_password }}"
 ```
@@ -152,11 +152,11 @@ Now write a playbook that benefits from persistent connections:
       register: cdp
 ```
 
-All five tasks share a single SSH connection to each router. Without persistent connections, this playbook would establish and tear down 5 separate connections per device.
+All five tasks share a single persistent connection to each router. Without that connection reuse, this playbook would establish and tear down 5 separate connections per device.
 
 ## Using NETCONF Connection
 
-For devices that support NETCONF, the `netconf` connection plugin provides a similar persistent connection over the NETCONF protocol:
+For devices that support NETCONF, the `ansible.netcommon.netconf` connection plugin provides a similar persistent connection over the NETCONF protocol:
 
 ```yaml
 ---
@@ -168,10 +168,12 @@ all:
         switch01:
           ansible_host: 10.0.2.1
           ansible_network_os: junipernetworks.junos.junos
-          ansible_connection: netconf
+          ansible_connection: ansible.netcommon.netconf
           ansible_user: admin
           ansible_password: "{{ vault_juniper_password }}"
 ```
+
+The `junipernetworks.junos` collection is deprecated and scheduled for removal from a future Ansible release, but these modules remain documented for current versions. Check the collection documentation before starting new Junos automation.
 
 ```yaml
 ---
@@ -183,13 +185,14 @@ all:
       junipernetworks.junos.junos_facts:
         gather_subset: all
 
-    - name: Configure interface
+    - name: Configure interface with confirmed commit
       junipernetworks.junos.junos_config:
         lines:
           - set interfaces ge-0/0/1 description "Uplink to Core"
           - set interfaces ge-0/0/1 unit 0 family inet address 10.0.100.1/30
+        confirm: 5
 
-    - name: Save configuration
+    - name: Confirm configuration
       junipernetworks.junos.junos_config:
         confirm_commit: true
 ```
@@ -217,7 +220,7 @@ all:
         legacy-sw01:
           ansible_host: 10.0.3.1
           ansible_network_os: cisco.ios.ios
-          ansible_connection: network_cli
+          ansible_connection: ansible.netcommon.network_cli
           ansible_command_timeout: 120
           ansible_connect_timeout: 60
     fast_switches:
@@ -225,7 +228,7 @@ all:
         modern-sw01:
           ansible_host: 10.0.3.2
           ansible_network_os: cisco.ios.ios
-          ansible_connection: network_cli
+          ansible_connection: ansible.netcommon.network_cli
           ansible_command_timeout: 30
           ansible_connect_timeout: 15
 ```
@@ -290,25 +293,25 @@ rm -f ~/.ansible/pc/*
 Benchmarking a 10-task playbook across 20 network devices:
 
 ```bash
-# Test without persistent connections (using paramiko)
-time ansible-playbook network-config.yml -c paramiko
+# Use the documented network connection plugin for IOS modules
+time ansible-playbook network-config.yml -e ansible_connection=ansible.netcommon.network_cli
 
-# Test with persistent connections (using network_cli)
-time ansible-playbook network-config.yml -c network_cli
+# Compare against your previous non-persistent or legacy implementation
+time ansible-playbook legacy-network-config.yml
 ```
 
 Typical results:
 
 | Connection Type | 20 Devices, 10 Tasks | Per-Device Time |
 |---|---|---|
-| paramiko (no persistence) | 4m 32s | 13.6s |
-| network_cli (persistent) | 1m 48s | 5.4s |
+| legacy/non-persistent implementation | 4m 32s | 13.6s |
+| ansible.netcommon.network_cli (persistent) | 1m 48s | 5.4s |
 
 That is a 60% reduction in execution time. The improvement is even more dramatic with more tasks per device, since the connection setup cost is paid only once.
 
 ## Persistent Connections with httpapi
 
-For devices with REST APIs, the `httpapi` connection plugin provides persistent HTTP sessions:
+For devices with REST APIs, the `ansible.netcommon.httpapi` connection plugin provides persistent API connections:
 
 ```yaml
 # inventory for API-driven devices
@@ -319,7 +322,7 @@ all:
         arista01:
           ansible_host: 10.0.4.1
           ansible_network_os: arista.eos.eos
-          ansible_connection: httpapi
+          ansible_connection: ansible.netcommon.httpapi
           ansible_httpapi_use_ssl: true
           ansible_httpapi_validate_certs: false
           ansible_user: admin
@@ -344,11 +347,11 @@ all:
             state: active
 ```
 
-The HTTP session stays alive across tasks, avoiding repeated authentication and TLS handshake overhead.
+The persistent API connection stays available across tasks, avoiding repeated connection setup and authentication overhead.
 
 ## Best Practices for Network Persistent Connections
 
-1. Always set `gather_facts: false` for network devices (the default fact gathering does not work with network_cli)
+1. Always set `gather_facts: false` for network devices (the default setup fact gathering does not work with `ansible.netcommon.network_cli`)
 2. Group tasks by device type to maximize connection reuse
 3. Set appropriate timeouts based on your slowest devices
 4. Monitor the socket directory for stale connections
@@ -362,12 +365,11 @@ The HTTP session stays alive across tasks, avoiding repeated authentication and 
   tasks:
     - name: Apply all config changes in one play
       cisco.ios.ios_config:
-        lines: "{{ item }}"
-      loop:
-        - "interface GigabitEthernet0/1"
-        - " description Updated by Ansible"
-        - " ip address 10.0.1.1 255.255.255.0"
-        - " no shutdown"
+        parents: interface GigabitEthernet0/1
+        lines:
+          - description Updated by Ansible
+          - ip address 10.0.1.1 255.255.255.0
+          - no shutdown
 ```
 
 Persistent connections are essential for any serious network automation with Ansible. The connection overhead for network devices is much higher than for Linux servers, making the performance impact of persistent connections even more significant. Enable them, tune the timeouts for your environment, and structure your playbooks to maximize connection reuse.
