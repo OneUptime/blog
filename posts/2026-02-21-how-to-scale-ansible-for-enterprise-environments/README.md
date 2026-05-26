@@ -12,7 +12,7 @@ Running Ansible against 20 servers from your laptop is straightforward. Running 
 
 ## Use AWX or Ansible Automation Platform
 
-AWX (the open-source upstream of Red Hat Ansible Automation Platform) provides a web UI, REST API, role-based access control, and job scheduling. It is the foundation of enterprise Ansible.
+AWX (one of the open-source upstream projects for Red Hat Ansible Automation Platform) provides a web UI, REST API, role-based access control, and job scheduling. For supported enterprise deployments, use Red Hat Ansible Automation Platform.
 
 ```yaml
 # Deploy AWX using the AWX Operator on Kubernetes
@@ -26,7 +26,8 @@ metadata:
 spec:
   service_type: ClusterIP
   ingress_type: ingress
-  hostname: awx.example.com
+  ingress_hosts:
+    - hostname: awx.example.com
   postgres_storage_class: gp3
   postgres_storage_requirements:
     requests:
@@ -48,7 +49,7 @@ Execution environments package Ansible, Python dependencies, and collections int
 ```dockerfile
 # execution-environment/Dockerfile
 # Build a custom execution environment
-FROM quay.io/ansible/ansible-runner:latest
+FROM quay.io/ansible/awx-ee:latest
 
 # Install additional Python packages
 COPY requirements.txt /tmp/requirements.txt
@@ -70,7 +71,7 @@ dependencies:
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
+    name: quay.io/ansible/awx-ee:latest
 
 additional_build_steps:
   append_final:
@@ -81,13 +82,13 @@ additional_build_steps:
 # execution-environment/requirements.yml
 collections:
   - name: community.general
-    version: 8.2.0
+    version: 12.6.1
   - name: amazon.aws
-    version: 7.2.0
+    version: 10.1.2
   - name: community.mysql
-    version: 3.8.0
+    version: 4.2.1
   - name: ansible.posix
-    version: 1.5.4
+    version: 2.1.0
 ```
 
 Build and push:
@@ -114,13 +115,14 @@ forks = 100
 
 # Smart fact gathering with persistent cache
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = redis.example.com:6379:0
 fact_caching_timeout = 86400
 
-# Use YAML callback for readable output
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks, profile_roles
+# Use the default callback with YAML-formatted results
+stdout_callback = default
+result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 
 # Reduce output verbosity in production
 display_skipped_hosts = false
@@ -152,12 +154,12 @@ graph TD
     A --> C[Azure Dynamic Inventory]
     A --> D[VMware Dynamic Inventory]
     A --> E[Static Inventory Files]
-    B --> F[Smart Inventory: webservers]
+    B --> F[Constructed Inventory: webservers]
     C --> F
     D --> F
     E --> F
     F --> G[Job Template: Deploy Web]
-    B --> H[Smart Inventory: dbservers]
+    B --> H[Constructed Inventory: dbservers]
     D --> H
     H --> I[Job Template: Deploy DB]
 ```
