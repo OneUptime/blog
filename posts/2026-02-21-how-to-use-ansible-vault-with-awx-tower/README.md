@@ -8,17 +8,17 @@ Description: Learn how to integrate Ansible Vault encrypted files with AWX and A
 
 ---
 
-AWX (the open-source upstream of Red Hat Ansible Automation Platform, formerly Tower) provides a web-based interface and API for running Ansible playbooks. It has its own credential management system that works alongside Ansible Vault. Understanding how these two systems interact is important because AWX handles vault passwords differently than the command line. This guide covers how to configure AWX to decrypt vault-encrypted content in your playbooks and projects.
+AWX (the open-source upstream of the automation controller component of Red Hat Ansible Automation Platform, formerly Tower) provides a web-based interface and API for running Ansible playbooks. It has its own credential management system that works alongside Ansible Vault. Understanding how these two systems interact is important because AWX handles vault passwords differently than the command line. This guide covers how to configure AWX to decrypt vault-encrypted content in your playbooks and projects.
 
 ## How AWX Handles Vault Passwords
 
-When you run a playbook from the command line, you pass `--vault-password-file` or `--ask-vault-pass`. AWX replaces this mechanism with its credential system. You create a "Vault" credential in AWX, and it automatically provides the vault password to `ansible-playbook` when it runs your job template.
+When you run a playbook from the command line, you pass `--vault-password-file`, `--ask-vault-pass`, or `--vault-id`. AWX replaces this mechanism with its credential system. You create a "Vault" credential in AWX, and it automatically provides the vault password to `ansible-playbook` when it runs your job template.
 
 ```mermaid
 flowchart TD
     A[AWX Job Template] --> B[Associates Vault Credential]
     B --> C[AWX Creates Temp Password File]
-    C --> D[ansible-playbook --vault-password-file /tmp/awx_vault_xxx]
+    C --> D[ansible-playbook --vault-id prod@/runner/...]
     D --> E[Playbook Decrypts Vault Content]
     E --> F[AWX Cleans Up Temp File]
 ```
@@ -53,6 +53,8 @@ curl -X POST "https://awx.example.com/api/v2/credentials/" \
     }
   }'
 ```
+
+Use the credential type ID for the built-in Vault credential type in your AWX instance; the numeric ID can differ between installations.
 
 ### Using the awx CLI
 
@@ -89,7 +91,7 @@ Or through the API:
 curl -X POST "https://awx.example.com/api/v2/job_templates/42/credentials/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
-  -d '{"id": 15}'
+  -d '{"associate": true, "id": 15}'
 ```
 
 ### Multiple Vault Passwords
@@ -125,17 +127,17 @@ Associate all of them with the job template:
 curl -X POST "https://awx.example.com/api/v2/job_templates/42/credentials/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
-  -d '{"id": 10}'  # Dev Vault credential ID
+  -d '{"associate": true, "id": 10}'  # Dev Vault credential ID
 
 curl -X POST "https://awx.example.com/api/v2/job_templates/42/credentials/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
-  -d '{"id": 11}'  # Staging Vault credential ID
+  -d '{"associate": true, "id": 11}'  # Staging Vault credential ID
 
 curl -X POST "https://awx.example.com/api/v2/job_templates/42/credentials/" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
-  -d '{"id": 12}'  # Prod Vault credential ID
+  -d '{"associate": true, "id": 12}'  # Prod Vault credential ID
 ```
 
 ## Project Structure for AWX
@@ -288,4 +290,4 @@ Each node in the workflow can use different vault credentials:
 
 ## Summary
 
-AWX replaces the `--vault-password-file` flag with its credential system. Create vault credentials in AWX matching your vault IDs, associate them with job templates, and AWX handles the rest. You get RBAC for credential access, audit logging, and the ability to combine vault-encrypted files with AWX surveys and custom credentials. For teams already using AWX, this is the natural way to manage vault passwords rather than distributing password files.
+AWX replaces command-line vault password options such as `--vault-password-file` and `--vault-id` with its credential system. Create vault credentials in AWX matching your vault IDs, associate them with job templates, and AWX handles the rest. You get RBAC for credential access, audit logging, and the ability to combine vault-encrypted files with AWX surveys and custom credentials. For teams already using AWX, this is the natural way to manage vault passwords rather than distributing password files.
