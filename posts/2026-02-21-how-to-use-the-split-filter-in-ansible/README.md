@@ -104,6 +104,8 @@ Parse CSV-formatted strings into usable data:
   loop: "{{ (csv_raw.content | b64decode).split('\n') | reject('equalto', '') | list }}"
   vars:
     headers: ['hostname', 'ip', 'role', 'environment']
+  loop_control:
+    extended: true
   when: not ansible_loop.first  # Skip header row
 
 # Alternative: parse a simple CSV string
@@ -153,7 +155,7 @@ Parse CSV-formatted strings into usable data:
     msg: |
       FQDN: {{ item }}
       Hostname: {{ item | split('.') | first }}
-      Domain: {{ item | split('.')[1:] | join('.') }}
+      Domain: {{ (item | split('.'))[1:] | join('.') }}
       TLD: {{ item | split('.') | last }}
   loop:
     - web01.us-east-1.prod.example.com
@@ -172,8 +174,8 @@ Extract structured data from log entries:
     msg: |
       IP: {{ parts[0] }}
       Date: {{ item | split('[') | last | split(']') | first }}
-      Request: {{ item | split('"')[1] }}
-      Status: {{ item | split('"')[2] | trim | split(' ') | first }}
+      Request: {{ (item | split('"'))[1] }}
+      Status: {{ (item | split('"'))[2] | trim | split(' ') | first }}
   loop:
     - '10.0.1.50 - - [21/Feb/2026:14:30:00 +0000] "GET /api/health HTTP/1.1" 200 15'
     - '10.0.1.51 - - [21/Feb/2026:14:30:01 +0000] "POST /api/data HTTP/1.1" 201 89'
@@ -189,7 +191,7 @@ A common pattern is splitting a string, modifying parts, and joining them back:
 # Transform a domain name by replacing parts
 - name: Convert production URL to staging
   ansible.builtin.debug:
-    msg: "{{ parts[:1] + ['staging'] + parts[2:] | join('.') }}"
+    msg: "{{ (parts[:1] + ['staging'] + parts[2:]) | join('.') }}"
   vars:
     prod_url: "api.production.example.com"
     parts: "{{ prod_url | split('.') }}"
