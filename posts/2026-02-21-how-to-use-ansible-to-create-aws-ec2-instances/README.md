@@ -35,7 +35,7 @@ The `amazon.aws.ec2_instance` module is the primary way to manage EC2 instances.
   vars:
     aws_region: us-east-1
     instance_type: t3.micro
-    ami_id: ami-0c02fb55956c7d316  # Amazon Linux 2023
+    ami_id: ami-0123456789abcdef0  # Replace with a current AMI ID for your region
     key_name: my-ansible-key
     subnet_id: subnet-0123456789abcdef0
 
@@ -49,8 +49,8 @@ The `amazon.aws.ec2_instance` module is the primary way to manage EC2 instances.
         key_name: "{{ key_name }}"
         subnet_id: "{{ subnet_id }}"
         security_group: "web-sg"
-        network:
-          assign_public_ip: true
+        network_interfaces:
+          - assign_public_ip: true
         volumes:
           - device_name: /dev/xvda
             ebs:
@@ -211,8 +211,8 @@ Here is a full playbook that creates everything from scratch: key pair, security
         key_name: "{{ key_name }}"
         subnet_id: "{{ subnet_id }}"
         security_group: "{{ sg.group_id }}"
-        network:
-          assign_public_ip: true
+        network_interfaces:
+          - assign_public_ip: true
         volumes:
           - device_name: /dev/xvda
             ebs:
@@ -223,8 +223,8 @@ Here is a full playbook that creates everything from scratch: key pair, security
               delete_on_termination: true
         user_data: |
           #!/bin/bash
-          yum update -y
-          yum install -y nginx
+          dnf update -y
+          dnf install -y nginx
           systemctl start nginx
           systemctl enable nginx
         tags:
