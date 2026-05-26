@@ -25,7 +25,7 @@ The simplest reboot requires no parameters at all.
       ansible.windows.win_reboot:
 ```
 
-This sends the reboot command, waits for the machine to go down, waits for it to come back up, verifies WinRM connectivity, and then lets the playbook continue. The default timeouts are usually sufficient for most servers.
+This sends the reboot command, waits for the machine to go down, waits for it to come back up, verifies that it can respond to the module's test command, and then lets the playbook continue. The default timeouts are usually sufficient for most servers.
 
 ## Configuring Timeouts
 
@@ -49,9 +49,9 @@ Different servers take different amounts of time to reboot. A bare-metal SQL ser
 
 Here is what each timeout controls:
 
-- `reboot_timeout`: Maximum seconds to wait for the machine to come back online (default: 600)
+- `reboot_timeout`: Maximum seconds to wait for the machine to reappear and respond to the module's test command (default: 600). This timeout is evaluated separately for reboot verification and test command success, so the maximum wait can be up to twice this value.
 - `pre_reboot_delay`: Seconds to wait before sending the reboot command (default: 2)
-- `post_reboot_delay`: Seconds to wait after WinRM becomes available before continuing (default: 0)
+- `post_reboot_delay`: Seconds to wait after the reboot command succeeds before validating that the system rebooted successfully (default: 0)
 - `connect_timeout`: Seconds to wait for each WinRM connection attempt (default: 5)
 - `msg`: Message displayed to logged-in users before reboot
 
@@ -66,20 +66,18 @@ You often only need to reboot after a specific change, like installing updates o
   hosts: windows_servers
   tasks:
     # Install a Windows feature
-    - name: Install .NET Framework 4.8
-      ansible.windows.win_package:
-        path: C:\Installers\ndp48-x86-x64-allos-enu.exe
-        product_id: '{92FB6C44-E685-45AD-9B20-CADF4CABA132}'
-        arguments: /q /norestart
+    - name: Install IIS Web-Server
+      ansible.windows.win_feature:
+        name: Web-Server
         state: present
-      register: dotnet_install
+      register: iis_install
 
     # Only reboot if the installation requires it
     - name: Reboot if installation requires it
       ansible.windows.win_reboot:
-        msg: "Rebooting to complete .NET Framework installation"
+        msg: "Rebooting to complete IIS Web-Server installation"
         post_reboot_delay: 30
-      when: dotnet_install.reboot_required | default(false)
+      when: iis_install.reboot_required
 
     # Check for pending reboot from any source
     - name: Check if reboot is pending
@@ -201,6 +199,7 @@ When rebooting servers in a cluster, you should do it one at a time to maintain 
       register: service_checks
       retries: 5
       delay: 10
+      until: service_checks.state == 'running'
 
     # Add back to load balancer
     - name: Add back to load balancer pool
@@ -228,12 +227,10 @@ sequenceDiagram
     W->>W: Display shutdown message to users
     W->>W: Close applications
     W->>W: Shutdown and restart
-    A->>A: Wait for host to go offline
-    Note over A: Polls WinRM until connection fails
-    A->>A: Wait for host to come online
-    Note over A: Polls WinRM until connection succeeds
-    A->>W: WinRM connection established
     A->>A: Wait post_reboot_delay seconds
+    A->>A: Validate reboot completed
+    Note over A: Waits for the host to reappear and respond to the test command
+    A->>W: WinRM connection and test command succeed
     A->>W: Continue playbook execution
 ```
 
@@ -255,24 +252,28 @@ Sometimes a reboot takes too long or the server does not come back. Handle these
 
     - name: Handle reboot failure
       block:
-        - name: Try to reach server via alternative method
-          ansible.windows.win_ping:
-          register: ping_result
+        - name: Check whether the WinRM port is reachable from the controller
+          ansible.builtin.wait_for:
+            host: "{{ ansible_host | default(inventory_hostname) }}"
+            port: "{{ ansible_port | default(5986) }}"
+            timeout: 60
+          delegate_to: localhost
+          register: winrm_port
 
         - name: Server is up but reboot may have failed
           ansible.builtin.debug:
             msg: "WARNING: Reboot may not have completed successfully for {{ inventory_hostname }}"
       rescue:
-        - name: Server is unreachable
+        - name: WinRM port is unreachable
           ansible.builtin.debug:
-            msg: "CRITICAL: {{ inventory_hostname }} is not responding after reboot attempt"
+            msg: "CRITICAL: {{ inventory_hostname }} is not accepting WinRM connections after reboot attempt"
 
         - name: Send alert
           ansible.builtin.mail:
             host: smtp.corp.local
             to: ops-team@corp.local
             subject: "ALERT: {{ inventory_hostname }} failed to reboot"
-            body: "Server {{ inventory_hostname }} did not come back online after reboot."
+            body: "Server {{ inventory_hostname }} did not accept WinRM connections after reboot."
           delegate_to: localhost
       when: reboot_result is failed
 ```
@@ -284,7 +285,7 @@ A few things I have learned from managing reboots across large Windows fleets:
 1. **Always use post_reboot_delay**: Give services time to start before running tasks that depend on them. 30 to 60 seconds is usually a good starting point.
 2. **Set appropriate reboot_timeout**: Physical servers with BIOS checks and large RAM can take 5 to 10 minutes. Adjust accordingly.
 3. **Validate after reboot**: Never assume everything is fine just because WinRM connected. Check critical services and application health.
-4. **Use serial for clusters**: Reboot one server at a time in production clusters. The few extra minutes are worth the zero-downtime guarantee.
+4. **Use serial for clusters**: Reboot one server at a time in production clusters. The few extra minutes are worth the reduced downtime risk.
 5. **Check for pending reboots**: Before your playbook starts a long process, check if a reboot is pending from a previous change. It is better to reboot first than to discover issues midway through.
 
 ## Summary
