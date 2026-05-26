@@ -139,6 +139,7 @@ class RequireTaskTagsRule(AnsibleLintRule):
     description = "Tasks must have tags for selective execution."
     severity = "MEDIUM"
     tags = ["organizational"]
+    version_changed = "1.0.0"
 
     SKIP_MODULES = {"meta", "ansible.builtin.meta"}
 
@@ -163,6 +164,11 @@ from ansiblelint.rules import AnsibleLintRule
 
 
 FILE_MODULES = [
+    "copy",
+    "template",
+    "file",
+    "unarchive",
+    "get_url",
     "ansible.builtin.copy",
     "ansible.builtin.template",
     "ansible.builtin.file",
@@ -178,14 +184,15 @@ class RequireFilePermissionsRule(AnsibleLintRule):
     description = "All file operations must include mode, owner, and group."
     severity = "HIGH"
     tags = ["organizational", "security"]
+    version_changed = "1.0.0"
 
     def matchtask(self, task, file=None):
-        module = task.get("action", {}).get("__ansible_module__", "")
+        action = task.get("action", {})
+        module = action.get("__ansible_module_original__", action.get("__ansible_module__", ""))
 
         if module not in FILE_MODULES:
             return False
 
-        action = task.get("action", {})
         state = action.get("state", "file")
 
         # Skip directory removal and link operations
@@ -213,6 +220,9 @@ Reference the custom rules:
 profile: safety
 rulesdir:
   - ./custom_rules/
+enable_list:
+  - org-require-tags
+  - org-file-permissions
 ```
 
 ## Step 5: Set Up Pre-Commit Hooks
@@ -224,7 +234,7 @@ Catch violations before they reach the repository:
 ---
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
         files: \.(yml|yaml)$
@@ -235,7 +245,7 @@ repos:
         exclude: templates/
 
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         args: [-c, .yamllint.yml]
@@ -248,12 +258,11 @@ repos:
           )$
 
   - repo: https://github.com/ansible/ansible-lint
-    rev: v24.10.0
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
         additional_dependencies:
-          - ansible.posix
-          - community.general
+          - ansible
 ```
 
 ## Step 6: Enforce in CI
@@ -286,6 +295,9 @@ jobs:
     name: Ansible Standards
     runs-on: ubuntu-latest
     needs: yaml-lint
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -299,7 +311,7 @@ jobs:
           fi
       - run: ansible-lint --sarif-file results.sarif || true
       - run: ansible-lint
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
         if: always()
@@ -331,10 +343,9 @@ flowchart LR
 # .ansible-lint - Phase 1: catch only critical issues
 ---
 profile: min
-progressive: true
 ```
 
-Enable `progressive: true` so only new/changed files are checked. Existing violations are ignored.
+Generate an ignore baseline with `ansible-lint --generate-ignore`, then remove entries from `.ansible-lint-ignore` as existing violations are fixed.
 
 ### Phase 2: Basic Standards (Weeks 3-4)
 
@@ -342,7 +353,6 @@ Enable `progressive: true` so only new/changed files are checked. Existing viola
 # .ansible-lint - Phase 2: enforce basic rules
 ---
 profile: basic
-progressive: true
 
 warn_list:
   - fqcn[action-core]
@@ -369,6 +379,9 @@ profile: safety
 
 rulesdir:
   - ./custom_rules/
+enable_list:
+  - org-require-tags
+  - org-file-permissions
 ```
 
 ## Monitoring Compliance
