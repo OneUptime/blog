@@ -83,6 +83,7 @@ You might ask: why not just put `when` conditions on every subsequent task? Ther
         cmd: /opt/app/check-update.sh
       register: needs_update
       changed_when: false
+      failed_when: false
 
     # You have to repeat this condition on EVERY task
     - name: Task 1
@@ -114,6 +115,7 @@ You might ask: why not just put `when` conditions on every subsequent task? Ther
         cmd: /opt/app/check-update.sh
       register: needs_update
       changed_when: false
+      failed_when: false
 
     - name: Skip host if no update needed
       ansible.builtin.meta: end_host
@@ -354,6 +356,7 @@ A few important things to know about `end_host`:
         cmd: /opt/app/needs-more-work.sh
       register: more_work
       changed_when: false
+      failed_when: false
 
     - name: Exit if no more work needed
       ansible.builtin.meta: end_host
