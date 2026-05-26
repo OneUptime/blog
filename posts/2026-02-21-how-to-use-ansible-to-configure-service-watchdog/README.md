@@ -49,6 +49,17 @@ Service unit template with watchdog configuration:
 Description={{ svc_description }}
 After=network.target
 
+# How many starts before giving up
+{% if svc_start_limit_burst is defined %}
+StartLimitBurst={{ svc_start_limit_burst }}
+StartLimitIntervalSec={{ svc_start_limit_interval | default(600) }}
+{% endif %}
+
+# Action to take when the start limit is hit
+{% if svc_start_limit_action is defined %}
+StartLimitAction={{ svc_start_limit_action }}
+{% endif %}
+
 [Service]
 Type=notify
 User={{ svc_user | default('root') }}
@@ -65,19 +76,8 @@ WatchdogSignal={{ svc_watchdog_signal }}
 Restart={{ svc_restart | default('on-watchdog') }}
 RestartSec={{ svc_restart_sec | default(5) }}
 
-# How many restarts before giving up
-{% if svc_start_limit_burst is defined %}
-StartLimitBurst={{ svc_start_limit_burst }}
-StartLimitIntervalSec={{ svc_start_limit_interval | default(600) }}
-{% endif %}
-
-# Action to take when the service is repeatedly failing
-{% if svc_failure_action is defined %}
-FailureAction={{ svc_failure_action }}
-{% endif %}
-
 # Notify access for the watchdog
-NotifyAccess=main
+NotifyAccess={{ svc_notify_access | default('main') }}
 
 # Resource limits
 LimitNOFILE={{ svc_limit_nofile | default(65536) }}
@@ -146,6 +146,8 @@ def sd_notify(message):
     sock_path = os.environ.get('NOTIFY_SOCKET')
     if not sock_path:
         return
+    if sock_path.startswith('@'):
+        sock_path = '\0' + sock_path[1:]
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     try:
         sock.connect(sock_path)
@@ -200,6 +202,9 @@ func sdNotify(state string) error {
     if socketPath == "" {
         return nil
     }
+    if socketPath[0] == '@' {
+        socketPath = "\x00" + socketPath[1:]
+    }
     conn, err := net.Dial("unixgram", socketPath)
     if err != nil {
         return err
@@ -210,9 +215,18 @@ func sdNotify(state string) error {
 }
 
 func watchdog() {
+    usec := os.Getenv("WATCHDOG_USEC")
+    if usec == "" {
+        return
+    }
+    duration, err := time.ParseDuration(usec + "us")
+    if err != nil || duration == 0 {
+        return
+    }
     // Ping at half the configured interval
-    interval := 15 * time.Second
+    interval := duration / 2
     ticker := time.NewTicker(interval)
+    defer ticker.Stop()
     for range ticker.C {
         if isHealthy() {
             sdNotify("WATCHDOG=1")
@@ -267,12 +281,23 @@ Deploy a watchdog wrapper script:
 
       HEALTH_URL="http://localhost:8080/health"
 
-      # Notify systemd that we are ready
-      systemd-notify --ready
+      # Start the actual application
+      /opt/myapp/bin/server "$@" &
+      APP_PID=$!
+
+      cleanup() {
+        kill "$WATCHER_PID" 2>/dev/null || true
+      }
+      trap cleanup EXIT
 
       # Background health checker
-      while true; do
+      READY_SENT=0
+      while kill -0 "$APP_PID" 2>/dev/null; do
         if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+          if [ "$READY_SENT" -eq 0 ]; then
+            systemd-notify --ready
+            READY_SENT=1
+          fi
           systemd-notify WATCHDOG=1
         fi
         sleep "$INTERVAL"
@@ -280,8 +305,7 @@ Deploy a watchdog wrapper script:
 
       WATCHER_PID=$!
 
-      # Start the actual application
-      exec /opt/myapp/bin/server "$@"
+      wait "$APP_PID"
 
 - name: Deploy service with wrapper
   ansible.builtin.template:
@@ -292,27 +316,27 @@ Deploy a watchdog wrapper script:
     svc_exec_start: /opt/myapp/bin/watchdog-wrapper.sh
     svc_watchdog_sec: 60
     svc_restart: on-watchdog
+    svc_notify_access: all
 ```
 
 ## Configuring Watchdog for Existing Services
 
 For services installed by packages, use drop-in files to add watchdog configuration.
 
-Add watchdog to an existing service via drop-in:
+Add watchdog to an existing service that already supports `sd_notify` watchdog messages via drop-in:
 
 ```yaml
-- name: Create drop-in directory for nginx
+- name: Create drop-in directory for myapp
   ansible.builtin.file:
-    path: /etc/systemd/system/nginx.service.d
+    path: /etc/systemd/system/myapp.service.d
     state: directory
     mode: '0755'
 
-- name: Add watchdog configuration to nginx
+- name: Add watchdog configuration to myapp
   ansible.builtin.copy:
-    dest: /etc/systemd/system/nginx.service.d/watchdog.conf
+    dest: /etc/systemd/system/myapp.service.d/watchdog.conf
     content: |
       [Service]
-      # Nginx supports watchdog since 1.19.5+
       Type=notify
       WatchdogSec=30
       Restart=on-watchdog
@@ -320,7 +344,7 @@ Add watchdog to an existing service via drop-in:
     mode: '0644'
   notify:
     - Reload systemd
-    - Restart nginx
+    - Restart myapp
 ```
 
 ## Hardware Watchdog Integration
@@ -331,6 +355,12 @@ Configure the system-wide hardware watchdog:
 
 ```yaml
 - name: Configure system-wide watchdog
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    mode: '0755'
+
+- name: Deploy system-wide watchdog configuration
   ansible.builtin.template:
     src: system.conf.j2
     dest: /etc/systemd/system.conf.d/watchdog.conf
@@ -426,10 +456,10 @@ To prevent a broken service from restart-looping forever, set restart limits:
     svc_restart_sec: 5
     svc_start_limit_burst: 5
     svc_start_limit_interval: 300
-    svc_failure_action: none  # Use 'reboot' for critical services
+    svc_start_limit_action: none  # Use 'reboot' for critical services
 ```
 
-This allows 5 restarts within a 5-minute window. If the service keeps failing after 5 attempts, systemd stops trying. For truly critical services, you can set `FailureAction=reboot` to reboot the entire machine as a last resort.
+This allows 5 starts within a 5-minute window. If the service keeps failing after 5 attempts, systemd stops trying. For truly critical services, you can set `StartLimitAction=reboot` to reboot the entire machine as a last resort.
 
 ## Summary
 
