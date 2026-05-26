@@ -101,7 +101,7 @@ You can extract nested values by passing additional arguments:
 
 Output: `['10.0.1.10', '10.0.2.10', '10.0.3.10']`
 
-The second argument to extract specifies which attribute to pull from each extracted item.
+The additional argument to extract specifies which key to pull from each extracted item.
 
 ## Practical Example: Host-to-IP Mapping
 
@@ -245,7 +245,7 @@ When a key might not exist in the source data, combine extract with the default 
 # Safely extract with fallback values
 - name: Get configs with defaults
   ansible.builtin.debug:
-    msg: "{{ item }}: {{ item | extract(overrides, default='not set') }}"
+    msg: "{{ item }}: {{ item | extract(overrides) | default('not set') }}"
   loop: [timeout, retries, max_connections, buffer_size]
   vars:
     overrides:
@@ -294,4 +294,4 @@ Use `extract` when you have a list of keys and a dictionary to look them up in. 
 
 ## Summary
 
-The `extract` filter bridges the gap between having a list of keys or indices and getting the corresponding values from a data structure. It shines when combined with `map` for batch lookups, when cross-referencing between data structures, and when building dynamic configurations from subsets of larger datasets. Remember that it works with both dictionaries (by key) and lists (by index), supports nested attribute extraction, and pairs well with other filters like `flatten`, `unique`, and `sort` for post-processing the extracted results.
+The `extract` filter bridges the gap between having a list of keys or indices and getting the corresponding values from a data structure. It shines when combined with `map` for batch lookups, when cross-referencing between data structures, and when building dynamic configurations from subsets of larger datasets. Remember that it works with both dictionaries (by key) and lists (by index), supports nested key extraction, and pairs well with other filters like `flatten`, `unique`, and `sort` for post-processing the extracted results.
