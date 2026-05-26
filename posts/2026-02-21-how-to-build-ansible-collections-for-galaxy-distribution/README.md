@@ -57,7 +57,6 @@ authors:
 description: Infrastructure automation modules and roles for cloud-native deployments
 license:
   - Apache-2.0
-license_file: LICENSE
 tags:
   - infrastructure
   - cloud
@@ -209,7 +208,7 @@ This file tells Ansible which version you require and handles module routing:
 ```yaml
 # meta/runtime.yml
 ---
-requires_ansible: ">=2.14.0"
+requires_ansible: ">=2.19.0"
 plugin_routing:
   modules:
     # Handle module renames gracefully
@@ -235,7 +234,7 @@ ansible-test sanity --docker
 Create ignore files for known issues:
 
 ```text
-# tests/sanity/ignore-2.14.txt
+# tests/sanity/ignore-2.19.txt
 plugins/modules/app_deploy.py validate-modules:missing-gplv3-license
 ```
 
@@ -376,14 +375,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ansible: ["2.14", "2.15", "2.16"]
+        ansible: ["2.19", "2.20"]
     steps:
       - uses: actions/checkout@v4
         with:
           path: ansible_collections/devops_tooling/infrastructure
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - run: pip install ansible-core~=${{ matrix.ansible }}.0
       - name: Run sanity tests
         run: ansible-test sanity --docker
