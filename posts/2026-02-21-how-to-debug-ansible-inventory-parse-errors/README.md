@@ -66,13 +66,13 @@ web-02
 ```
 
 ```ini
-# WRONG: Variables with spaces not quoted
-[webservers:vars]
-app_path = /opt/my app
+# WRONG: Inline host variable with spaces not quoted
+[webservers]
+web-01 app_path=/opt/my app
 
 # CORRECT: Quote values with spaces
-[webservers:vars]
-app_path="/opt/my app"
+[webservers]
+web-01 app_path="/opt/my app"
 ```
 
 ```ini
@@ -252,7 +252,7 @@ Dynamic inventory scripts or plugins pull host data from external sources (AWS, 
 If using a script, it must:
 1. Be executable
 2. Return valid JSON when called with `--list`
-3. Return host variables when called with `--host <hostname>`
+3. Accept `--host <hostname>` and return a JSON object, even if it is empty
 
 ```bash
 # Test the script manually
@@ -351,12 +351,12 @@ inventory/
 **Common issue: Files that should not be parsed:**
 
 ```bash
-# Ansible tries to parse ALL files in the inventory directory
-# Backup files, swap files, and editor temp files cause errors
+# Ansible parses non-ignored files in the inventory directory
+# Swap files, editor temp files, and malformed static files can cause errors
 
 # Check for problematic files
 ls -la inventory/
-# Look for: .bak, .swp, .retry, ~, .pyc files
+# Look for: .swp files, editor temp files, or files without ignored extensions
 ```
 
 **Fix: Tell Ansible to ignore certain extensions:**
@@ -365,7 +365,7 @@ ls -la inventory/
 # ansible.cfg
 [defaults]
 # Ignore files matching these patterns
-inventory_ignore_extensions = .pyc, .retry, .bak, ~, .swp, .orig
+inventory_ignore_extensions = ~, .orig, .bak, .ini, .cfg, .retry, .pyc, .pyo, .swp
 ```
 
 ## Using YAML Linting
