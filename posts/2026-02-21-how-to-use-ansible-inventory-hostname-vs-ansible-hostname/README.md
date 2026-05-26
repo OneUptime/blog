@@ -187,11 +187,11 @@ Use `ansible_hostname` when you need to work with the machine's actual identity,
       become: true
       when: ansible_hostname != inventory_hostname
 
-    # Check if a process is bound to the correct hostname
-    - name: Verify application binds to correct hostname
-      ansible.builtin.command:
-        cmd: "ss -tlnp | grep {{ ansible_hostname }}"
-      register: binding_check
+    # Check whether logs contain the actual hostname
+    - name: Verify application logs include the real hostname
+      ansible.builtin.shell:
+        cmd: "journalctl -u myapp --no-pager -n 100 | grep -F {{ ansible_hostname | quote }}"
+      register: log_check
       changed_when: false
       failed_when: false
 
@@ -206,7 +206,7 @@ Use `ansible_hostname` when you need to work with the machine's actual identity,
 
 ## Common Pattern: Synchronize Hostnames
 
-A widespread pattern is to set the machine's hostname to match the inventory name. This eliminates the confusion between the two variables entirely.
+A widespread pattern is to set the machine's hostname to match the inventory name, as long as your inventory names are valid hostnames rather than raw IP addresses or arbitrary aliases. This eliminates the confusion between the two variables entirely.
 
 ```yaml
 # sync-hostname.yml - Make the machine hostname match the inventory
