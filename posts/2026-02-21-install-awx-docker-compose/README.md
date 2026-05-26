@@ -4,18 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Docker Compose, Installation, DevOps
 
-Description: Deploy AWX using Docker Compose for development and small-scale production environments with step-by-step configuration.
+Description: Deploy AWX using Docker Compose for development and testing environments with step-by-step configuration.
 
 ---
 
-While the AWX Operator on Kubernetes is the recommended production deployment method, Docker Compose is still a viable option for development environments, small teams, and situations where Kubernetes is overkill. The AWX project provides official tooling for Docker Compose based deployments. This guide covers the full installation process.
+While the AWX Operator on Kubernetes is the recommended deployment method, Docker Compose is still a viable option for development and testing environments where Kubernetes is overkill. The AWX project provides official Docker Compose tooling for its development environment. This guide covers the full installation process for that workflow.
 
 ## Prerequisites
 
-You need a Linux host (Ubuntu 22.04 recommended) with:
+You need a Linux host (Ubuntu LTS recommended) with:
 
 - Docker Engine 24+ installed
 - Docker Compose V2 (the plugin version, not the standalone binary)
+- Ansible installed
+- OpenSSL installed
 - At least 4GB of RAM and 2 CPU cores
 - 20GB of free disk space
 - Git installed
@@ -43,42 +45,30 @@ cd awx
 
 ## Step 2: Configure the Inventory
 
-The AWX Docker Compose deployment uses an inventory file for configuration. Create your custom settings.
+The AWX Docker Compose deployment uses an inventory file for configuration. Keep a backup of the default file before editing it.
 
 ```bash
-# Copy the example inventory
-cp tools/docker-compose/inventory tools/docker-compose/inventory.local
+# Back up the default inventory
+cp tools/docker-compose/inventory tools/docker-compose/inventory.bak
 ```
 
 Edit the inventory file with your settings.
 
 ```ini
-# tools/docker-compose/inventory.local
+# tools/docker-compose/inventory
+localhost ansible_connection=local ansible_python_interpreter="/usr/bin/env python3"
+
 [all:vars]
 
-# Docker Compose project name
-compose_project_name=awx
-
-# AWX admin credentials
-admin_user=admin
+# AWX admin password for the default admin user
 admin_password=changeme_strong_password
 
-# PostgreSQL settings
-pg_host=postgres
-pg_port=5432
-pg_database=awx
-pg_username=awx
+# AWX-managed PostgreSQL password
 pg_password=changeme_pg_password
 
-# Secret key for AWX
+# Secret values for AWX
+broadcast_websocket_secret=changeme_websocket_secret
 secret_key=a_very_long_random_secret_key_change_this
-
-# Project data directory (where AWX stores playbooks)
-project_data_dir=/var/lib/awx/projects
-
-# Host port for the web UI
-host_port=80
-host_port_ssl=443
 ```
 
 ## Step 3: Build and Start AWX
@@ -89,132 +79,28 @@ Use the provided Makefile to build and launch AWX.
 # Build the Docker images
 make docker-compose-build
 
-# Start AWX
-make docker-compose
+# Start AWX in detached mode
+make docker-compose COMPOSE_UP_OPTS=-d
 ```
 
 Alternatively, you can use docker compose directly.
 
 ```bash
-# Navigate to the docker-compose directory
-cd tools/docker-compose
-
 # Generate the docker-compose.yml from the template
-ansible-playbook -i inventory.local ../../tools/docker-compose/ansible/provision.yml
+ansible-galaxy install --ignore-certs -r tools/docker-compose/ansible/requirements.yml
+ansible-playbook -i tools/docker-compose/inventory tools/docker-compose/ansible/sources.yml
 
 # Start the services
-docker compose up -d
+docker compose -f tools/docker-compose/_sources/docker-compose.yml up -d --remove-orphans
 ```
 
 ## Manual Docker Compose Setup
 
-If you prefer a manual approach without the AWX build system, here is a standalone docker-compose.yml. This uses the pre-built AWX images.
-
-```yaml
-# docker-compose.yml - AWX deployment
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15
-    container_name: awx-postgres
-    environment:
-      POSTGRES_DB: awx
-      POSTGRES_USER: awx
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-awxpassword}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U awx"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: awx-redis
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  awx-web:
-    image: quay.io/ansible/awx:24.2.0
-    container_name: awx-web
-    hostname: awxweb
-    command: /usr/bin/launch_awx.sh
-    environment:
-      DATABASE_HOST: postgres
-      DATABASE_NAME: awx
-      DATABASE_USER: awx
-      DATABASE_PASSWORD: ${PG_PASSWORD:-awxpassword}
-      DATABASE_PORT: 5432
-      AWX_ADMIN_USER: ${AWX_ADMIN_USER:-admin}
-      AWX_ADMIN_PASSWORD: ${AWX_ADMIN_PASSWORD:-password}
-      SECRET_KEY: ${SECRET_KEY:-change_me_to_something_random}
-    ports:
-      - "8080:8052"
-    volumes:
-      - awx_projects:/var/lib/awx/projects
-      - awx_receptor:/var/run/receptor
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  awx-task:
-    image: quay.io/ansible/awx:24.2.0
-    container_name: awx-task
-    hostname: awxtask
-    command: /usr/bin/launch_awx_task.sh
-    environment:
-      DATABASE_HOST: postgres
-      DATABASE_NAME: awx
-      DATABASE_USER: awx
-      DATABASE_PASSWORD: ${PG_PASSWORD:-awxpassword}
-      DATABASE_PORT: 5432
-      SECRET_KEY: ${SECRET_KEY:-change_me_to_something_random}
-      SUPERVISOR_WEB_CONFIG_PATH: /etc/supervisord.conf
-    volumes:
-      - awx_projects:/var/lib/awx/projects
-      - awx_receptor:/var/run/receptor
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      awx-web:
-        condition: service_started
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-  redis_data:
-  awx_projects:
-  awx_receptor:
-```
-
-Create a `.env` file for sensitive values.
+AWX 24.2.0 does not provide a supported standalone Docker Compose file that runs the published `quay.io/ansible/awx` image by itself. Use the AWX repository tooling to render the compose file and start the development environment.
 
 ```bash
-# .env
-PG_PASSWORD=strong_postgres_password_here
-AWX_ADMIN_USER=admin
-AWX_ADMIN_PASSWORD=strong_admin_password_here
-SECRET_KEY=generate_a_random_64_char_string_here
-```
-
-Start it up.
-
-```bash
-docker compose up -d
+make docker-compose-build
+make docker-compose COMPOSE_UP_OPTS=-d
 ```
 
 ## Architecture
@@ -222,45 +108,45 @@ docker compose up -d
 ```mermaid
 graph LR
     subgraph Docker Host
-        WEB[AWX Web<br/>Port 8080]
-        TASK[AWX Task]
+        WEB[AWX Development Container<br/>Ports 8013/8043]
         PG[PostgreSQL]
         REDIS[Redis]
-        VOL[(Volumes)]
+        VOL[(Source Tree and Docker Volumes)]
     end
     USER[Browser] --> WEB
     WEB --> PG
     WEB --> REDIS
-    TASK --> PG
-    TASK --> REDIS
     PG --> VOL
 ```
 
 ## Step 4: Run Database Migrations
 
-After the containers start, run the initial database setup.
+The development startup process runs the initial database migrations when `RUN_MIGRATIONS` is set for the first AWX container. If you started the environment with the Makefile, wait for migrations to complete in the logs, then create or update the admin user if needed.
 
 ```bash
-# Run migrations
-docker exec -it awx-web awx-manage migrate
+# Watch startup logs
+docker compose -f tools/docker-compose/_sources/docker-compose.yml logs -f awx_1
+
+# Build the development UI after migrations complete
+docker exec tools_awx_1 make clean-ui ui-devel
 
 # Create the admin superuser
-docker exec -it awx-web awx-manage createsuperuser --username admin --email admin@example.com
+docker exec -it tools_awx_1 awx-manage createsuperuser --username admin --email admin@example.com
 
 # Or set the password for the default admin
-docker exec -it awx-web awx-manage update_password --username admin --password 'your_password'
+docker exec -it tools_awx_1 awx-manage update_password --username admin --password 'your_password'
 ```
 
 ## Step 5: Access the Web UI
 
-Open your browser and navigate to `http://your-server-ip:8080`. Log in with the admin credentials you configured.
+Open your browser and navigate to `https://localhost:8043/#/home`. Log in with the admin credentials you configured.
 
 ## Adding TLS with Nginx Reverse Proxy
 
-For production, put AWX behind an Nginx reverse proxy with TLS.
+If you need to expose the development environment through a hostname, put AWX behind an Nginx reverse proxy with TLS.
 
 ```yaml
-# Add to docker-compose.yml
+# Add to the generated Docker Compose file or an override file
   nginx:
     image: nginx:alpine
     container_name: awx-nginx
@@ -271,7 +157,9 @@ For production, put AWX behind an Nginx reverse proxy with TLS.
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
     depends_on:
-      - awx-web
+      - awx_1
+    networks:
+      - awx
     restart: unless-stopped
 ```
 
@@ -296,7 +184,7 @@ server {
     ssl_prefer_server_ciphers on;
 
     location / {
-        proxy_pass http://awx-web:8052;
+        proxy_pass http://tools_awx_1:8013;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -321,14 +209,14 @@ BACKUP_DIR="/backups/awx/$(date +%Y%m%d)"
 mkdir -p "$BACKUP_DIR"
 
 # Backup PostgreSQL
-docker exec awx-postgres pg_dump -U awx awx | gzip > "$BACKUP_DIR/awx-db.sql.gz"
+docker exec tools_postgres_1 pg_dump -U awx awx | gzip > "$BACKUP_DIR/awx-db.sql.gz"
 
 # Backup project files
-docker cp awx-web:/var/lib/awx/projects "$BACKUP_DIR/projects"
+cp -a awx/projects "$BACKUP_DIR/projects"
 
 # Backup the docker-compose configuration
-cp docker-compose.yml "$BACKUP_DIR/"
-cp .env "$BACKUP_DIR/"
+cp tools/docker-compose/inventory "$BACKUP_DIR/"
+cp -a tools/docker-compose/_sources "$BACKUP_DIR/"
 
 echo "Backup completed at $BACKUP_DIR"
 
@@ -344,31 +232,34 @@ Restore from backup.
 BACKUP_DIR="${1:?Usage: $0 /path/to/backup}"
 
 # Stop AWX services
-docker compose stop awx-web awx-task
+docker compose -f tools/docker-compose/_sources/docker-compose.yml stop awx_1
 
 # Restore database
-gunzip -c "$BACKUP_DIR/awx-db.sql.gz" | docker exec -i awx-postgres psql -U awx awx
+gunzip -c "$BACKUP_DIR/awx-db.sql.gz" | docker exec -i tools_postgres_1 psql -U awx awx
 
 # Restore project files
-docker cp "$BACKUP_DIR/projects" awx-web:/var/lib/awx/
+rm -rf awx/projects
+cp -a "$BACKUP_DIR/projects" awx/projects
 
 # Restart services
-docker compose start awx-web awx-task
+docker compose -f tools/docker-compose/_sources/docker-compose.yml start awx_1
 ```
 
 ## Upgrading AWX
 
-To upgrade, update the image tags and recreate containers.
+To upgrade, check out the newer AWX release, review your inventory values, rebuild the development image, and restart the environment.
 
 ```bash
-# Pull new images
-docker compose pull
+# Check out a newer AWX release
+git fetch --tags
+git checkout <new-awx-version>
 
-# Recreate containers with new images
-docker compose up -d
+# Rebuild and restart
+make docker-compose-build
+make docker-compose COMPOSE_UP_OPTS=-d
 
-# Run migrations for the new version
-docker exec -it awx-web awx-manage migrate
+# Check the AWX version
+docker exec tools_awx_1 awx-manage version
 ```
 
 ## Monitoring the Deployment
@@ -377,17 +268,16 @@ Check the health of your AWX deployment.
 
 ```bash
 # Check container status
-docker compose ps
+docker compose -f tools/docker-compose/_sources/docker-compose.yml ps
 
 # View logs
-docker compose logs -f awx-web
-docker compose logs -f awx-task
+docker compose -f tools/docker-compose/_sources/docker-compose.yml logs -f awx_1
 
 # Check resource usage
-docker stats awx-web awx-task awx-postgres awx-redis
+docker stats tools_awx_1 tools_postgres_1 tools_redis_1
 
 # Check AWX version
-docker exec awx-web awx-manage version
+docker exec tools_awx_1 awx-manage version
 ```
 
 ## Troubleshooting
@@ -396,20 +286,20 @@ Common issues you might encounter:
 
 ```bash
 # Database connection errors - check PostgreSQL is healthy
-docker compose logs postgres
-docker exec awx-postgres pg_isready -U awx
+docker compose -f tools/docker-compose/_sources/docker-compose.yml logs postgres
+docker exec tools_postgres_1 pg_isready -U awx
 
 # Web UI not responding - check web container logs
-docker compose logs awx-web --tail=50
+docker compose -f tools/docker-compose/_sources/docker-compose.yml logs awx_1 --tail=50
 
-# Jobs not running - check task container
-docker compose logs awx-task --tail=50
+# Jobs not running - check AWX container logs
+docker compose -f tools/docker-compose/_sources/docker-compose.yml logs awx_1 --tail=50
 
 # Reset admin password
-docker exec -it awx-web awx-manage update_password --username admin --password 'new_password'
+docker exec -it tools_awx_1 awx-manage update_password --username admin --password 'new_password'
 
 # Clear stuck jobs
-docker exec -it awx-web awx-manage cleanup_jobs --days 0
+docker exec -it tools_awx_1 awx-manage cleanup_jobs --days 0
 ```
 
-Docker Compose gives you a simpler deployment path for AWX when Kubernetes is not available or not warranted. It works well for development, testing, and small teams. For larger deployments or production environments with high availability requirements, consider migrating to the Kubernetes-based deployment with the AWX Operator.
+Docker Compose gives you a simpler development path for AWX when Kubernetes is not available or not warranted. It works well for development and testing. For production environments, consider migrating to the Kubernetes-based deployment with the AWX Operator.
