@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, POSIX, Linux, System Administration, DevOps
 
-Description: Practical guide to the ansible.posix collection covering SELinux, firewalld, mount, cron, sysctl, ACLs, and other POSIX system management modules.
+Description: Practical guide to the ansible.posix collection covering SELinux, firewalld, mount, at, sysctl, ACLs, and other POSIX system management modules.
 
 ---
 
-The `ansible.posix` collection contains modules for managing POSIX-compliant systems, primarily Linux. Before Ansible 2.10, these modules were part of ansible core. Now they live in their own collection, maintained by the Ansible community team. If you manage Linux servers, you will use this collection constantly for things like SELinux, firewall rules, filesystem mounts, cron jobs, and access control lists.
+The `ansible.posix` collection contains modules for managing POSIX-compliant systems, primarily Linux. Before Ansible 2.10, these modules were part of ansible core. Now they live in their own collection, maintained by the Ansible community team. If you manage Linux servers, you will use this collection constantly for things like SELinux, firewall rules, filesystem mounts, one-time scheduled jobs, and access control lists.
 
 ## Installation
 
@@ -18,7 +18,7 @@ The `ansible.posix` collection contains modules for managing POSIX-compliant sys
 ansible-galaxy collection install ansible.posix
 
 # Install a specific version
-ansible-galaxy collection install ansible.posix:1.5.4
+ansible-galaxy collection install ansible.posix:==1.5.4
 ```
 
 Add it to your `requirements.yml`:
@@ -304,17 +304,16 @@ The `at` module schedules commands to run at a specific future time using the `a
         count: 2
         units: hours
 
-    - name: Schedule service restart at midnight
+    - name: Schedule service restart in 1 day
       ansible.posix.at:
         command: "systemctl restart myapp"
         count: 1
         units: days
 
-    - name: Remove all scheduled at jobs
+    - name: Remove a matching scheduled service restart job
       ansible.posix.at:
-        command: "dummy"
+        command: "systemctl restart myapp"
         state: absent
-        unique: false
 ```
 
 ## The synchronize Module
