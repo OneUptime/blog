@@ -54,8 +54,8 @@ The age comparison uses the file's `mtime` (modification time) by default. You c
     age_stamp: atime
   register: stale_cache
 
-# Filter by creation time (ctime - actually inode change time on Linux)
-- name: Find files created more than 7 days ago
+# Filter by inode change time (ctime)
+- name: Find files changed more than 7 days ago
   ansible.builtin.find:
     paths: /tmp
     patterns: "myapp-*"
@@ -66,7 +66,7 @@ The age comparison uses the file's `mtime` (modification time) by default. You c
 
 ## Finding Files by Size
 
-The `size` parameter filters files based on their size on disk. Like age, positive values mean "larger than" and negative values mean "smaller than":
+The `size` parameter filters files based on their file size. Like age, positive values mean "equal to or larger than" and negative values mean "equal to or smaller than":
 
 - `b` = bytes
 - `k` = kilobytes
@@ -75,7 +75,7 @@ The `size` parameter filters files based on their size on disk. Like age, positi
 - `t` = terabytes
 
 ```yaml
-# Find files larger than 100 megabytes
+# Find files at least 100 megabytes
 - name: Find large files
   ansible.builtin.find:
     paths: /var/log
@@ -83,7 +83,7 @@ The `size` parameter filters files based on their size on disk. Like age, positi
     size: "100m"
   register: large_files
 
-# Find files smaller than 1 kilobyte (potentially empty or stub files)
+# Find files at most 1 kilobyte (potentially empty or stub files)
 - name: Find tiny files
   ansible.builtin.find:
     paths: /opt/myapp/data
@@ -108,11 +108,11 @@ You can use both filters together to narrow down results. Both conditions must b
 
 - name: Report findings
   ansible.builtin.debug:
-    msg: "Found {{ old_large_logs.matched }} files older than 7 days and larger than 50MB"
+    msg: "Found {{ old_large_logs.matched }} files at least 7 days old and at least 50MB"
 ```
 
 ```yaml
-# Find recently created files that are suspiciously large
+# Find recently modified files that are suspiciously large
 - name: Find new large files (potential issue indicator)
   ansible.builtin.find:
     paths: /var/log/myapp
@@ -210,8 +210,6 @@ Keep only the most recent backups and remove old ones:
       - /var/backups/mysql
     daily_retention_days: 7
     weekly_retention_days: 30
-    monthly_retention_days: 365
-
   tasks:
     # Clean up daily backups older than 7 days
     - name: Find old daily backups
@@ -287,8 +285,8 @@ Clean up temporary files across the system:
       loop_control:
         label: "{{ item.path }}"
 
-    # Remove empty directories in /tmp
-    - name: Find empty directories in /tmp
+    # Remove old empty directories in /tmp
+    - name: Find old directories in /tmp
       ansible.builtin.find:
         paths: /tmp
         file_type: directory
@@ -298,9 +296,10 @@ Clean up temporary files across the system:
 
     # Remove directories in reverse order (deepest first)
     - name: Remove empty /tmp directories
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
+      ansible.builtin.command:
+        argv:
+          - rmdir
+          - "{{ item.path }}"
       loop: "{{ old_tmp_dirs.files | sort(attribute='path', reverse=true) }}"
       loop_control:
         label: "{{ item.path }}"
@@ -318,7 +317,7 @@ Clean up temporary files across the system:
     - name: Report largest files
       ansible.builtin.debug:
         msg: "{{ item.path }}: {{ (item.size / 1048576) | round(1) }} MB"
-      loop: "{{ large_var_files.files | sort(attribute='size', reverse=true) | list }}"
+      loop: "{{ (large_var_files.files | sort(attribute='size', reverse=true) | list)[:10] }}"
       loop_control:
         label: "{{ item.path }}"
 ```
@@ -337,7 +336,7 @@ Use `find` to build a simple disk space monitoring task:
     alert_threshold_gb: 1
 
   tasks:
-    - name: Find files larger than threshold
+    - name: Find files at least threshold size
       ansible.builtin.find:
         paths: /
         size: "{{ alert_threshold_gb }}g"
@@ -360,20 +359,27 @@ Use `find` to build a simple disk space monitoring task:
 
 The `age` filter compares against the current time on the remote host, not the control node. If your servers have clock drift, the results might be unexpected. Make sure NTP is running on all hosts.
 
-When using `size: "0"`, Ansible finds files that are exactly 0 bytes. For finding empty files, this is useful:
+Because the size comparison is inclusive, `size: "0"` matches files that are 0 bytes or larger. To find empty files, filter the registered results for `item.size == 0`:
 
 ```yaml
 # Find empty files (zero bytes)
-- name: Find empty log files
+- name: Find log files
   ansible.builtin.find:
     paths: /var/log/myapp
     patterns: "*.log"
-    size: 0
-  register: empty_logs
+  register: log_files
+
+- name: Report empty log files
+  ansible.builtin.debug:
+    msg: "Empty log file: {{ item.path }}"
+  loop: "{{ log_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: item.size == 0
 ```
 
 The size comparison is inclusive. `size: "100m"` means files that are 100 megabytes or larger, not strictly larger.
 
 ## Summary
 
-The `age` and `size` parameters of the Ansible `find` module are your primary tools for automated disk space management. Use `age` with a positive value to find files older than a threshold, negative for newer. Use `size` with a positive value for files larger than a threshold, negative for smaller. Combine both parameters for precise targeting. Build reusable cleanup playbooks with configurable retention periods and size limits, and schedule them as cron-like recurring tasks to keep your servers healthy.
+The `age` and `size` parameters of the Ansible `find` module are your primary tools for automated disk space management. Use `age` with a positive value to find files at least as old as a threshold, negative for newer. Use `size` with a positive value for files at least as large as a threshold, negative for smaller. Combine both parameters for precise targeting. Build reusable cleanup playbooks with configurable retention periods and size limits, and schedule them as cron-like recurring tasks to keep your servers healthy.
