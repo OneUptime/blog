@@ -156,12 +156,12 @@ The most common use case is waiting for a service to start listening on a port:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where condition waiting often fits into real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -275,7 +275,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -342,4 +342,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `wait_for` module is essential for orchestrating service dependencies. Use it to wait for ports after starting services, for files after triggering asynchronous processes, and for patterns in log files during migrations. The combination of `delay`, `timeout`, and `state` parameters gives you precise control over how long to wait and what to wait for.
-
