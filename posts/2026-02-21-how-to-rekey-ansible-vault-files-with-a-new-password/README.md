@@ -12,7 +12,7 @@ Password rotation is a fundamental security practice, and Ansible Vault files ar
 
 ## What Does Rekeying Actually Do?
 
-When you rekey a vault file, Ansible decrypts the file contents with the old password and then immediately re-encrypts them with the new password. The plaintext is never written to disk during this process. The entire operation happens in memory, which makes it safe from a security standpoint.
+When you rekey a vault file, Ansible decrypts the file contents with the old password and then immediately re-encrypts them with the new password. The plaintext is not written to disk as a separate decrypted file during this process. Ansible Vault still only protects data at rest, so you should continue to handle vault passwords and decrypted data carefully.
 
 The rekey process changes the `$ANSIBLE_VAULT` header and the encrypted payload, but the underlying plaintext data stays exactly the same.
 
@@ -20,7 +20,7 @@ The rekey process changes the `$ANSIBLE_VAULT` header and the encrypted payload,
 
 The simplest way to rekey a vault file is the interactive method, where Ansible prompts you for both the old and new passwords.
 
-```yaml
+```bash
 # First, let's create a sample vault-encrypted file to work with
 
 # This creates a file called secrets.yml encrypted with your chosen password
@@ -81,11 +81,11 @@ rm -f /tmp/old_vault_pass.txt /tmp/new_vault_pass.txt
 
 ## Rekeying with Vault IDs
 
-If you use vault IDs (which let you tag encrypted content with a label), you need to specify the vault ID during rekey operations.
+If you use vault IDs (which let you tag encrypted content with a label), you can specify the vault ID during rekey operations.
 
 ```bash
-# Rekey a file that was encrypted with a specific vault ID
-# The vault ID 'prod' must match what was used during encryption
+# Rekey a file using the password source associated with a specific vault ID
+# The rekeyed file keeps the 'prod' vault ID label
 ansible-vault rekey \
   --vault-id prod@/path/to/old_password_file \
   --new-vault-id prod@/path/to/new_password_file \
@@ -127,14 +127,14 @@ ansible-vault rekey \
   secrets.yml
 ```
 
-## Bulk Rekeying All Vault Files in a Project
+## Bulk Rekeying YAML Vault Files in a Project
 
-When you need to rekey every vault file in your project, you need a way to find them all first. Here is a script that does exactly that.
+When you need to rekey every YAML vault file in your project, you need a way to find them all first. Here is a script that does exactly that.
 
 ```bash
 #!/bin/bash
 # rekey_all_vault_files.sh
-# Finds all vault-encrypted files in the project and rekeys them
+# Finds YAML vault-encrypted files in the project and rekeys them
 
 OLD_PASS_FILE="$1"
 NEW_PASS_FILE="$2"
@@ -145,7 +145,7 @@ if [ -z "$OLD_PASS_FILE" ] || [ -z "$NEW_PASS_FILE" ]; then
   exit 1
 fi
 
-# Find all files that start with the Ansible Vault header
+# Find YAML files that start with the Ansible Vault header
 VAULT_FILES=$(grep -rl '^\$ANSIBLE_VAULT' "$PROJECT_DIR" --include="*.yml" --include="*.yaml")
 
 if [ -z "$VAULT_FILES" ]; then
@@ -170,9 +170,9 @@ echo "Rekey complete."
 Sometimes a rekey fails partway through when processing multiple files. This can happen if one file uses a different password than the others.
 
 ```bash
-# If rekey fails, check which files have which vault IDs
+# If rekey fails, check which YAML files have which vault IDs
 # This shows the vault header of each encrypted file
-for f in $(grep -rl '^\$ANSIBLE_VAULT' . --include="*.yml"); do
+for f in $(grep -rl '^\$ANSIBLE_VAULT' . --include="*.yml" --include="*.yaml"); do
   echo "=== $f ==="
   head -1 "$f"
 done
@@ -185,7 +185,7 @@ $ANSIBLE_VAULT;1.1;AES256
 $ANSIBLE_VAULT;1.2;AES256;prod
 ```
 
-Files with different vault IDs or encrypted with different passwords need to be rekeyed separately.
+Files encrypted with different passwords need separate password sources during rekeying.
 
 ## Rekey Workflow for Teams
 
