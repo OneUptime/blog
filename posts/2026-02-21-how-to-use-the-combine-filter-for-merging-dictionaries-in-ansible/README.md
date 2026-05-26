@@ -258,8 +258,8 @@ A practical pattern for building environment variable dictionaries:
       DB_HOST: db.internal
       REDIS_URL: redis://cache.internal:6379
     secret_env:
-      DB_PASSWORD: "{{ vault_db_password }}"
-      API_KEY: "{{ vault_api_key }}"
+      DB_PASSWORD: "{{ vault_db_password | string }}"
+      API_KEY: "{{ vault_api_key | string }}"
 ```
 
 ## Combining Lists of Dictionaries
