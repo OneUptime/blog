@@ -215,6 +215,9 @@ Docker Secrets are immutable. You cannot update a secret in place. To rotate a s
   become: true
   vars:
     secret_name: db_password
+    services_using_secret:
+      - myapp_app
+      - myapp_db
     # The new value comes from the vault
     new_value: "{{ vault_db_password }}"
 
@@ -228,16 +231,17 @@ Docker Secrets are immutable. You cannot update a secret in place. To rotate a s
       no_log: true
       register: new_secret
 
-    # Update the service to use the new secret
-    - name: Update service to use new secret
+    # Update each service that uses the old secret
+    - name: Update services to use new secret
       ansible.builtin.shell: |
         docker service update \
           --secret-rm {{ secret_name }} \
           --secret-add source={{ secret_name }}_v{{ ansible_date_time.epoch }},target={{ secret_name }} \
-          myapp_app
+          {{ item }}
+      loop: "{{ services_using_secret }}"
       when: new_secret.changed
 
-    # Remove the old secret after services are updated
+    # Remove the old secret after all services are updated
     - name: Remove old secret
       community.docker.docker_secret:
         name: "{{ secret_name }}"
@@ -279,12 +283,13 @@ If you are bootstrapping a fresh Docker Swarm cluster, you need the secrets to e
   community.docker.docker_swarm:
     state: present
     advertise_addr: "{{ ansible_default_ipv4.address }}"
+  register: swarm_result
   when: inventory_hostname == groups['swarm_managers'][0]
 
 - name: Join worker nodes to swarm
   community.docker.docker_swarm:
     state: join
-    join_token: "{{ hostvars[groups['swarm_managers'][0]]['swarm_worker_token'] }}"
+    join_token: "{{ hostvars[groups['swarm_managers'][0]]['swarm_result']['swarm_facts']['JoinTokens']['Worker'] }}"
     remote_addrs:
       - "{{ hostvars[groups['swarm_managers'][0]]['ansible_default_ipv4']['address'] }}:2377"
   when: inventory_hostname in groups['swarm_workers']
