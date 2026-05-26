@@ -154,14 +154,13 @@ ansible 'staging:development:!databases' -i inventory.ini -m ping
 ansible 'webservers:cache:&production' -i inventory.ini -m ping
 ```
 
-The evaluation order matters. Ansible processes patterns left to right:
+The evaluation order matters. Ansible processes unions first (`:` or `,`), then intersections (`&`), then exclusions (`!`):
 
 ```mermaid
 graph LR
-    A["Start: webservers"] --> B["Union: :databases"]
-    B --> C["Intersect: :&production"]
-    C --> D["Exclude: :!db2.example.com"]
-    D --> E["Final host list"]
+    A["Union: webservers:databases"] --> B["Intersect: :&production"]
+    B --> C["Exclude: :!db2.example.com"]
+    C --> D["Final host list"]
 ```
 
 ## Using Patterns in Playbooks
@@ -216,7 +215,7 @@ ansible-playbook -i inventory.ini site.yml --limit 'webservers:!web3.example.com
 ansible-playbook -i inventory.ini site.yml --limit @retry_hosts.txt
 ```
 
-The `@` prefix reads hostnames from a file. Ansible automatically creates `.retry` files with failed hosts, so you can rerun against just the failures:
+The `@` prefix reads hostnames from a file. If `retry_files_enabled` is set to `True`, Ansible creates `.retry` files with failed hosts, so you can rerun against just the failures:
 
 ```bash
 # Rerun only on hosts that failed in the last run
@@ -237,8 +236,8 @@ ansible 'webservers[-1]' -i inventory.ini -m ping
 # First two hosts
 ansible 'webservers[0:1]' -i inventory.ini -m ping
 
-# Every other host (step of 2)
-ansible 'webservers[0::2]' -i inventory.ini -m ping
+# From the second host through the last host
+ansible 'webservers[1:]' -i inventory.ini -m ping
 ```
 
 This is useful for canary deployments:
