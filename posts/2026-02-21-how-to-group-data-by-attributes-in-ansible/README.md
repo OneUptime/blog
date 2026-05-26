@@ -306,14 +306,14 @@ graph TD
           {% endfor %}
 ```
 
-## Grouping with json_query
+## Filtering with json_query Before Grouping
 
-For more complex grouping scenarios, `json_query` (JMESPath) can be useful:
+For more complex data selection before grouping, `community.general.json_query` (JMESPath) can be useful. This filter is provided by the `community.general` collection and requires the `jmespath` Python package on the Ansible controller:
 
 ```yaml
 # playbook-jmespath-group.yml
-# Uses json_query to extract grouped data from a complex structure
-- name: Group with json_query
+# Uses json_query to extract data from a complex structure before grouping
+- name: Filter with json_query before grouping
   hosts: localhost
   gather_facts: false
   vars:
@@ -334,7 +334,7 @@ For more complex grouping scenarios, `json_query` (JMESPath) can be useful:
   tasks:
     - name: Get all production deployments
       ansible.builtin.set_fact:
-        prod_apps: "{{ deployments | json_query(\"[?env=='production']\") }}"
+        prod_apps: "{{ deployments | community.general.json_query(\"[?env=='production']\") }}"
 
     - name: Show production apps
       ansible.builtin.debug:
