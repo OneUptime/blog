@@ -59,7 +59,7 @@ prometheus-install/
 ```yaml
 # roles/prometheus/defaults/main.yml
 
-prometheus_version: "2.48.1"
+prometheus_version: "3.11.3"
 prometheus_platform: "linux-amd64"
 
 # System user
@@ -163,7 +163,7 @@ These tasks handle downloading and installing the Prometheus binary.
     dest: "{{ prometheus_install_dir }}/{{ item }}"
     owner: root
     group: root
-    mode: "0755"
+    mode: preserve
     remote_src: true
   loop:
     - prometheus
@@ -178,7 +178,7 @@ These tasks handle downloading and installing the Prometheus binary.
     dest: "{{ prometheus_config_dir }}/{{ item }}"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_group }}"
-    mode: "0644"
+    mode: preserve
     remote_src: true
   loop:
     - consoles
@@ -252,6 +252,14 @@ global:
   external_labels:
     monitor: 'ansible-managed'
 
+storage:
+  tsdb:
+    retention:
+      time: {{ prometheus_retention_time }}
+{% if prometheus_retention_size != "0" %}
+      size: {{ prometheus_retention_size }}
+{% endif %}
+
 {% if prometheus_rule_files | length > 0 %}
 rule_files:
 {% for rule_file in prometheus_rule_files %}
@@ -324,10 +332,6 @@ ExecReload=/bin/kill -HUP $MAINPID
 ExecStart={{ prometheus_install_dir }}/prometheus \
   --config.file={{ prometheus_config_dir }}/prometheus.yml \
   --storage.tsdb.path={{ prometheus_data_dir }} \
-  --storage.tsdb.retention.time={{ prometheus_retention_time }} \
-{% if prometheus_retention_size != "0" %}
-  --storage.tsdb.retention.size={{ prometheus_retention_size }} \
-{% endif %}
   --web.listen-address={{ prometheus_listen_address }}:{{ prometheus_listen_port }} \
   --web.console.templates={{ prometheus_config_dir }}/consoles \
   --web.console.libraries={{ prometheus_config_dir }}/console_libraries \
@@ -336,7 +340,7 @@ ExecStart={{ prometheus_install_dir }}/prometheus \
 SyslogIdentifier=prometheus
 Restart=always
 RestartSec=5
-MemoryLimit={{ prometheus_memory_limit }}
+MemoryMax={{ prometheus_memory_limit }}
 
 # Security hardening
 NoNewPrivileges=true
