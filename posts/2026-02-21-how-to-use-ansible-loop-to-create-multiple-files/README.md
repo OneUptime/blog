@@ -39,7 +39,7 @@ The most basic use case is creating several empty files. The `file` module with 
         - slow-query.log
 ```
 
-Each iteration creates one file under `/var/log/myapp/` with the specified ownership and permissions.
+Each iteration creates one file under `/var/log/myapp/` with the specified ownership and permissions. If the file already exists, `state: touch` updates its access and modification times.
 
 ## Creating Multiple Directories
 
