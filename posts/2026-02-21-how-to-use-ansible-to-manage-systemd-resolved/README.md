@@ -8,7 +8,7 @@ Description: Learn how to configure systemd-resolved with Ansible for DNS resolu
 
 ---
 
-systemd-resolved is the DNS resolver service that ships with systemd. It provides DNS name resolution, DNSSEC validation, DNS-over-TLS support, and a local caching stub resolver. On modern Ubuntu, Fedora, and Arch Linux systems, it is the default DNS resolver. Configuring it correctly across your fleet with Ansible ensures consistent DNS behavior, proper security settings, and correct resolution of internal domain names.
+systemd-resolved is the DNS resolver service that ships with systemd. It provides DNS name resolution, DNSSEC validation, DNS-over-TLS support, and a local caching stub resolver. On many modern Ubuntu and Fedora systems, it is the default DNS resolver, and it is commonly available on other systemd-based distributions. Configuring it correctly across your fleet with Ansible ensures consistent DNS behavior, proper security settings, and correct resolution of internal domain names.
 
 ## How systemd-resolved Works
 
@@ -78,7 +78,7 @@ DNS={{ resolved_dns | join(' ') }}
 {% endif %}
 
 {% if resolved_fallback_dns is defined %}
-# Fallback DNS servers (used when per-link servers are unavailable)
+# Fallback DNS servers (used only when no other DNS server information is known)
 FallbackDNS={{ resolved_fallback_dns | join(' ') }}
 {% endif %}
 
@@ -105,7 +105,7 @@ LLMNR={{ resolved_llmnr | default('yes') }}
 # Enable DNS caching
 Cache={{ resolved_cache | default('yes') }}
 
-# Cache for negative responses (NXDOMAIN)
+# Cache responses from host-local DNS servers such as 127.0.0.1 or ::1
 CacheFromLocalhost={{ resolved_cache_from_localhost | default('no') }}
 
 #-- Stub Listener --#
@@ -134,7 +134,7 @@ Playbook with environment-specific DNS settings:
     resolved_dns:
       - 10.0.1.53
       - 10.0.2.53
-    # Public fallback if internal DNS is down
+    # Public fallback if no other DNS server information is known
     resolved_fallback_dns:
       - 1.1.1.1
       - 8.8.8.8
@@ -174,7 +174,7 @@ Configure /etc/resolv.conf to use the resolved stub:
   ansible.builtin.file:
     path: /etc/resolv.conf
     state: absent
-  when: not resolv_stat.stat.islnk
+  when: resolv_stat.stat.exists and not resolv_stat.stat.islnk
 
 - name: Create symlink to resolved stub
   ansible.builtin.file:
@@ -285,14 +285,12 @@ For a more persistent approach, use networkd or NetworkManager configuration:
 
       [Network]
       DHCP=yes
-
-      [DHCPv4]
-      UseDNS=false
-
-      [Network]
       DNS=10.0.1.53
       DNS=10.0.2.53
       Domains=~internal.example.com ~corp.example.com
+
+      [DHCPv4]
+      UseDNS=false
     mode: '0644'
   notify: Restart networkd
 ```
