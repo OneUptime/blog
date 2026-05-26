@@ -25,11 +25,11 @@ sequenceDiagram
     A->>K: 3. Request service ticket for WinRM
     K->>A: 4. Issue service ticket
     A->>W: 5. Connect to WinRM with service ticket
-    W->>W: 6. Validate ticket with KDC
+    W->>W: 6. Validate service ticket locally
     W->>A: 7. Connection established
 ```
 
-The key concept is that Ansible never sends a password to the Windows host. Instead, it obtains a Kerberos ticket from the domain controller and presents that ticket to the Windows host. The Windows host validates the ticket with the KDC (Key Distribution Center, which is the domain controller).
+The key concept is that Ansible never sends a password to the Windows host. Instead, it obtains a Kerberos ticket from the domain controller and presents that ticket to the Windows host. The Windows host validates the service ticket using its local service key; in some environments it may also contact a domain controller for PAC validation.
 
 ## Prerequisites
 
@@ -38,23 +38,21 @@ You need the following before starting:
 - Linux control node with Ansible installed
 - Active Directory domain with Windows hosts joined to it
 - A domain account for Ansible to use
-- Network connectivity from the control node to domain controllers (TCP/UDP 88 for Kerberos, TCP 389/636 for LDAP)
+- Network connectivity from the control node to domain controllers (TCP/UDP 88 for Kerberos and DNS resolution for the AD domain; LDAP ports are only needed if your automation also queries AD)
 
 ## Step 1: Install Kerberos Packages on the Control Node
 
 On your Linux Ansible control node, install the Kerberos client libraries:
 
 ```bash
-# For RHEL/CentOS/Rocky Linux
-
-sudo yum install -y krb5-workstation krb5-libs krb5-devel gcc python3-devel
+# For RHEL/Rocky Linux/Fedora
+sudo dnf install -y krb5-workstation krb5-libs krb5-devel gcc python3-devel
 
 # For Ubuntu/Debian
 sudo apt-get install -y krb5-user libkrb5-dev gcc python3-dev
 
 # Install the Python Kerberos library for Ansible
-pip install pywinrm[kerberos]
-pip install pykerberos
+pip3 install "pywinrm[kerberos]>=0.4.0"
 ```
 
 The `pywinrm[kerberos]` package includes the necessary Python bindings for Kerberos authentication.
@@ -80,8 +78,9 @@ The Kerberos configuration file tells the control node about your AD domain and 
 
   tasks:
     - name: Write krb5.conf
-      ansible.builtin.template:
+      ansible.builtin.copy:
         dest: /etc/krb5.conf
+        mode: '0644'
         content: |
           [libdefaults]
               default_realm = {{ domain }}
@@ -191,11 +190,11 @@ If you prefer to pass the password through Ansible (so you do not need to run `k
 ansible_password={{ vault_windows_password }}
 ```
 
-Ansible will automatically run `kinit` for you when a password is provided.
+Ansible will automatically run `kinit` for you when a password is provided unless `ansible_winrm_kinit_mode` is set to `manual`.
 
 ## Step 5: Configure WinRM on Windows for Kerberos
 
-The Windows hosts need WinRM configured to accept Kerberos authentication:
+The Windows hosts need WinRM configured to accept Kerberos authentication. Kerberos is enabled by default on the WinRM service, but this playbook shows how to verify the setting and check the HTTP SPN used by WinRM:
 
 ```yaml
 # playbook-winrm-kerberos.yml
@@ -212,14 +211,15 @@ The Windows hosts need WinRM configured to accept Kerberos authentication:
       ansible.windows.win_shell: |
         # Check if the HTTP SPN is registered for this host
         $hostname = $env:COMPUTERNAME
+        $fqdn = ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME)).HostName
         $spns = setspn -L $hostname 2>&1
         $hasHttpSpn = $spns | Select-String "HTTP/"
         if ($hasHttpSpn) {
           Write-Output "SPN found: $($hasHttpSpn.Line.Trim())"
         } else {
-          # Register the SPN
+          # Register the SPN. This requires AD permissions to modify the computer account.
           setspn -S "HTTP/$hostname" $hostname
-          setspn -S "HTTP/$hostname.corp.local" $hostname
+          setspn -S "HTTP/$fqdn" $hostname
           Write-Output "SPNs registered"
         }
       register: spn_result
@@ -244,7 +244,11 @@ ansible_port=5986
 ansible_winrm_scheme=https
 ```
 
-CredSSP requires additional setup on the Windows side:
+CredSSP requires optional Python libraries on the control node and additional setup on the Windows side:
+
+```bash
+pip3 install "pywinrm[credssp]>=0.4.0"
+```
 
 ```yaml
 # playbook-credssp.yml
@@ -298,7 +302,7 @@ To create the keytab file on a domain controller:
 ktpass /out ansible-svc.keytab /princ ansible-svc@CORP.LOCAL /mapuser CORP\ansible-svc /pass * /crypto AES256-SHA1 /ptype KRB5_NT_PRINCIPAL
 ```
 
-Then set up a cron job to renew the ticket:
+Then set up a cron job to refresh the ticket:
 
 ```bash
 # Cron job to refresh the Kerberos TGT every 8 hours
