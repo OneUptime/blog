@@ -88,8 +88,8 @@ You can also update the cache as a separate task:
 - name: Install packages
   ansible.builtin.apt:
     name:
-      - docker-ce
-      - docker-compose-plugin
+      - curl
+      - wget
     state: present
 ```
 
@@ -103,7 +103,6 @@ If you want to ensure you have the newest version of a package (not just that it
   ansible.builtin.apt:
     name:
       - openssl
-      - libssl3
       - ca-certificates
     state: latest
     update_cache: yes
@@ -127,7 +126,7 @@ To find the exact version string, run `apt-cache policy <package>` on a target h
 
 ## Installing .deb Files
 
-The `apt` module can install local `.deb` files directly:
+The `apt` module can install `.deb` files that are already on the target host:
 
 ```yaml
 # Download and install a .deb file
@@ -142,6 +141,7 @@ The `apt` module can install local `.deb` files directly:
 ```
 
 When using the `deb` parameter, the module handles dependency resolution automatically, just like `apt install ./package.deb` does on the command line.
+The target host also needs `xz-utils` installed so Ansible can extract the package control file.
 
 ## Handling Dependencies
 
@@ -247,8 +247,6 @@ Here is a full playbook that installs a LAMP stack:
 - name: Set up LAMP stack
   hosts: web_servers
   become: yes
-  vars:
-    php_version: "8.2"
   tasks:
     - name: Update apt cache
       ansible.builtin.apt:
@@ -272,14 +270,14 @@ Here is a full playbook that installs a LAMP stack:
     - name: Install PHP and common extensions
       ansible.builtin.apt:
         name:
-          - "php{{ php_version }}"
-          - "php{{ php_version }}-mysql"
-          - "php{{ php_version }}-curl"
-          - "php{{ php_version }}-gd"
-          - "php{{ php_version }}-mbstring"
-          - "php{{ php_version }}-xml"
-          - "php{{ php_version }}-zip"
-          - "libapache2-mod-php{{ php_version }}"
+          - php
+          - php-mysql
+          - php-curl
+          - php-gd
+          - php-mbstring
+          - php-xml
+          - php-zip
+          - libapache2-mod-php
         state: present
       notify: restart apache
 
