@@ -53,10 +53,10 @@ This is the most common option for routine updates. It is what you would use for
 
 ### upgrade: yes (safe upgrade)
 
-This is equivalent to `apt-get upgrade`. It only upgrades packages where the new version does not require installing or removing other packages:
+This performs a safe upgrade. In Ansible, `yes` and `safe` map to `aptitude safe-upgrade`, with `apt-get` used as a fallback in current Ansible versions. It upgrades packages without removing existing packages:
 
 ```yaml
-# Safe upgrade (never adds or removes packages)
+# Safe upgrade (does not remove existing packages)
 - name: Upgrade all packages (safe)
   ansible.builtin.apt:
     upgrade: yes
@@ -64,11 +64,11 @@ This is equivalent to `apt-get upgrade`. It only upgrades packages where the new
     cache_valid_time: 3600
 ```
 
-Use this when you want the most conservative upgrade behavior. If a package update would require a new dependency, it gets held back.
+Use this when you want the most conservative upgrade behavior. If a package update would require removing another package, it gets held back.
 
 ### upgrade: full
 
-This is equivalent to `apt-get full-upgrade` (same as `dist-upgrade` in practice):
+This is equivalent to `aptitude full-upgrade`, with `apt-get` used as a fallback in current Ansible versions. It is the same dependency-solving behavior as `dist-upgrade` in practice:
 
 ```yaml
 # Full upgrade (same behavior as dist)
@@ -163,28 +163,10 @@ Key features of this playbook:
 
 ## Upgrading Only Security Packages
 
-You might want to apply security updates more frequently than full upgrades. Ubuntu makes this possible through `unattended-upgrades`, but you can also handle it with Ansible:
+You might want to apply security updates more frequently than full upgrades. Ubuntu makes this possible through `unattended-upgrades`. Do not rely on `upgrade: dist` with `default_release` for this, because `default_release` changes apt pinning but is not a security-only filter.
 
 ```yaml
-# Install only security updates
-- name: Upgrade security packages only
-  ansible.builtin.command:
-    cmd: apt-get -s dist-upgrade
-  register: apt_simulate
-  changed_when: false
-
-- name: Apply security updates
-  ansible.builtin.apt:
-    upgrade: dist
-    update_cache: yes
-    default_release: "{{ ansible_distribution_release }}-security"
-  when: "'-security' in apt_simulate.stdout"
-```
-
-A cleaner approach uses `unattended-upgrades`:
-
-```yaml
-# Configure automatic security updates
+# Configure and apply security updates
 - name: Install unattended-upgrades
   ansible.builtin.apt:
     name: unattended-upgrades
@@ -193,14 +175,21 @@ A cleaner approach uses `unattended-upgrades`:
 - name: Configure unattended-upgrades for security only
   ansible.builtin.copy:
     content: |
+      #clear Unattended-Upgrade::Allowed-Origins;
       Unattended-Upgrade::Allowed-Origins {
           "${distro_id}:${distro_codename}-security";
       };
       Unattended-Upgrade::AutoFixInterruptedDpkg "true";
       Unattended-Upgrade::Remove-Unused-Dependencies "true";
       Unattended-Upgrade::Automatic-Reboot "false";
-    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    dest: /etc/apt/apt.conf.d/90security-unattended-upgrades
     mode: '0644'
+
+- name: Apply configured unattended security updates
+  ansible.builtin.command:
+    cmd: unattended-upgrade -v
+  register: unattended_upgrade
+  changed_when: "'No packages found that can be upgraded unattended' not in unattended_upgrade.stdout"
 ```
 
 ## Excluding Packages from Upgrades
@@ -252,19 +241,12 @@ On busy servers or cloud instances that run automatic updates, you might hit the
 
 ```yaml
 # Wait for any existing apt processes to finish
-- name: Wait for dpkg lock to be released
-  ansible.builtin.shell: |
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-      sleep 5
-    done
-  changed_when: false
-  timeout: 300
-
-- name: Perform system upgrade
+- name: Perform system upgrade, waiting for the apt lock if needed
   ansible.builtin.apt:
     upgrade: dist
     update_cache: yes
     cache_valid_time: 3600
+    lock_timeout: 300
 ```
 
 ## Reporting What Changed
