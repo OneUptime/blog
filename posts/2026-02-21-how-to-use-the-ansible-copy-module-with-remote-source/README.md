@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible copy module with remote_src to copy fi
 
 ---
 
-By default, the Ansible `copy` module transfers files from the control node (where Ansible runs) to the remote host. But sometimes the file you need to copy is already on the remote host, and you just need to move or duplicate it within that same machine. That is where the `remote_src` parameter comes in.
+By default, the Ansible `copy` module transfers files from the control node (where Ansible runs) to the remote host. But sometimes the file you need to copy is already on the remote host, and you just need to duplicate it within that same machine. That is where the `remote_src` parameter comes in.
 
 Setting `remote_src: true` tells Ansible that the source file is on the remote host, not the control node. This is useful for creating backups, duplicating configurations, staging files for processing, and working with files that were downloaded or generated on the remote system.
 
@@ -241,7 +241,7 @@ For large files, `remote_src` is significantly faster than the default behavior 
 
 There are some important limitations to know about:
 
-The `copy` module with `remote_src` does not support the `content` parameter (that would not make sense since the content is already on the remote host). If you need to copy between different remote hosts, `copy` with `remote_src` will not work because it only operates within a single host. For cross-host copies, look at the `synchronize` module or `fetch` + `copy`.
+The `remote_src` parameter applies to the `src` path; if you want to create a file from inline text instead, use the `content` parameter instead of `src`. If you need to copy between different remote hosts, `copy` with `remote_src` will not work because it only operates within a single host. For cross-host copies, look at the `ansible.posix.synchronize` module or `fetch` + `copy`.
 
 ```yaml
 # This does NOT copy between two remote hosts - it only works within one host
@@ -251,15 +251,18 @@ The `copy` module with `remote_src` does not support the `content` parameter (th
 - name: Fetch file from web server
   ansible.builtin.fetch:
     src: /etc/myapp/config.yml
-    dest: /tmp/fetched/
+    dest: /tmp/fetched/config.yml
+    flat: true
   delegate_to: webserver1
+  run_once: true
 
 # Copy to remote host B
 - name: Copy fetched file to database server
   ansible.builtin.copy:
-    src: /tmp/fetched/webserver1/etc/myapp/config.yml
+    src: /tmp/fetched/config.yml
     dest: /etc/myapp/config.yml
   delegate_to: dbserver1
+  run_once: true
 ```
 
 ## Complete Example: Staging and Deploying Updates
