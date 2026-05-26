@@ -43,11 +43,11 @@ sed -i 's/\t/  /g' playbook.yml
 ### Fix 2: Correct List Indentation
 
 ```yaml
-# WRONG: list items at wrong level
+# WRONG: task item is not nested under tasks
 - hosts: all
   tasks:
-  - name: Task one      # Should be indented under tasks
-    command: echo hello
+- name: Task one      # Should be indented under tasks
+  command: echo hello
 
 # CORRECT
 - hosts: all
@@ -104,12 +104,12 @@ YAML indentation errors are purely formatting issues. Configure your editor to i
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where proper YAML indentation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using proper YAML indentation
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -141,7 +141,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -182,7 +182,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -223,7 +223,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with proper YAML indentation
 - name: Robust task execution
   hosts: all
   tasks:
@@ -236,6 +236,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -285,4 +286,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
