@@ -18,7 +18,7 @@ Terraform's `terraform_remote_state` data source lets Terraform read outputs fro
 
 cd /path/to/terraform/project
 terraform init
-terraform output -json db_endpoint | tr -d '"'
+terraform output -raw db_endpoint
 ```
 
 ## Ansible Lookup for Terraform State
@@ -99,7 +99,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -243,4 +243,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
