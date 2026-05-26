@@ -8,7 +8,7 @@ Description: A practical guide to building infrastructure with CDKTF and C#, cov
 
 ---
 
-If your team works in the .NET ecosystem, CDKTF's C# support lets you write infrastructure code in the same language as your applications. You get the full power of C# - strong typing, LINQ, async patterns, and the rich .NET standard library - applied to infrastructure provisioning. This guide walks through creating a CDKTF project with C# from scratch.
+If your team works in the .NET ecosystem, CDKTF's C# language bindings let you write infrastructure code in the same language as your applications. You get the full power of C# - strong typing, LINQ, async patterns, and the rich .NET standard library - applied to infrastructure provisioning. This guide walks through creating a CDKTF project with C# from scratch.
 
 ## Prerequisites
 
@@ -17,6 +17,8 @@ You need:
 - Node.js 18 or later (for the CDKTF CLI)
 - Terraform 1.2 or later
 - CDKTF CLI installed
+
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer maintains it. Existing projects can still use the last published CDKTF releases, but new projects should account for that maintenance status.
 
 ```bash
 dotnet --version
@@ -40,11 +42,11 @@ This generates a .NET project:
 
 ```text
 cdktf-csharp-demo/
-  Main.cs                 # Entry point
-  MyStack.cs              # Stack definition
-  cdktf.json              # CDKTF configuration
-  cdktf-csharp-demo.csproj  # .NET project file
-  .gen/                   # Generated provider bindings
+  Program.cs                # Entry point
+  MainStack.cs              # Stack definition
+  cdktf.json                # CDKTF configuration
+  MyTerraformStack.csproj   # .NET project file
+  .gen/                     # Generated provider bindings
 ```
 
 ## Adding Providers
@@ -231,6 +233,9 @@ namespace CdktfCsharpDemo.Constructs
             StackConfig config
         ) : base(scope, id)
         {
+            var cidrParts = config.VpcCidr.Split('.');
+            var subnetPrefix = $"{cidrParts[0]}.{cidrParts[1]}";
+
             // VPC
             Vpc = new Vpc(this, "vpc", new VpcConfig
             {
@@ -279,7 +284,7 @@ namespace CdktfCsharpDemo.Constructs
                 var publicSubnet = new Subnet(this, $"public-{i}", new SubnetConfig
                 {
                     VpcId = Vpc.Id,
-                    CidrBlock = $"10.0.{i}.0/24",
+                    CidrBlock = $"{subnetPrefix}.{i}.0/24",
                     AvailabilityZone = az,
                     MapPublicIpOnLaunch = true,
                     Tags = new Dictionary<string, string>
@@ -301,7 +306,7 @@ namespace CdktfCsharpDemo.Constructs
                 var privateSubnet = new Subnet(this, $"private-{i}", new SubnetConfig
                 {
                     VpcId = Vpc.Id,
-                    CidrBlock = $"10.0.{i + 100}.0/24",
+                    CidrBlock = $"{subnetPrefix}.{i + 100}.0/24",
                     AvailabilityZone = az,
                     Tags = new Dictionary<string, string>
                     {
@@ -392,6 +397,7 @@ namespace CdktfCsharpDemo.Constructs
                 DbSubnetGroupName = subnetGroup.Name,
                 VpcSecurityGroupIds = new[] { dbSg.Id },
                 SkipFinalSnapshot = config.Environment != "prod",
+                FinalSnapshotIdentifier = config.Environment == "prod" ? $"{config.Environment}-postgres-final-snapshot" : null,
                 MultiAz = config.MultiAz,
                 Tags = new Dictionary<string, string>
                 {
@@ -524,7 +530,7 @@ namespace CdktfCsharpDemo.Tests
         {
             var app = Testing.App();
             var stack = new InfrastructureStack(app, "test", TestConfig);
-            var synthesized = Testing.Synth(stack);
+            var synthesized = Testing.FullSynth(stack);
 
             Assert.True(Testing.ToBeValidTerraform(synthesized));
         }
@@ -571,9 +577,9 @@ Run tests:
 dotnet test
 ```
 
-## Using LINQ for Dynamic Resources
+## Using Collections for Dynamic Resources
 
-C#'s LINQ works naturally for creating resources from collections:
+C# collections work naturally for creating resources dynamically:
 
 ```csharp
 // Define services and create security groups dynamically
