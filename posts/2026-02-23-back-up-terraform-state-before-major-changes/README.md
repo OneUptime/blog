@@ -132,7 +132,7 @@ Provider upgrades can change resource schemas:
 
 ```bash
 # Record current provider versions
-terraform providers -json | jq . > provider-versions-pre-upgrade.json
+terraform version -json | jq .provider_selections > provider-versions-pre-upgrade.json
 
 # Backup state
 terraform state pull > terraform.tfstate.pre-provider-upgrade
@@ -222,6 +222,7 @@ Integrate state backups into your deployment pipeline:
 # GitHub Actions example
 jobs:
   terraform-apply:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
