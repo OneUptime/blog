@@ -38,7 +38,7 @@ The standard pattern delegates API calls to localhost while iterating over remot
         body_format: json
         body:
           hostname: "{{ inventory_hostname }}"
-          ip_address: "{{ ansible_host }}"
+          ip_address: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
           os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
           environment: "{{ env }}"
           tags:
@@ -205,7 +205,7 @@ API calls can fail for many reasons: network issues, rate limiting, server error
       delegate_to: localhost
       register: rate_limited_result
       retries: 5
-      delay: "{{ rate_limited_result.json.retry_after | default(30) }}"
+      delay: 30
       until: rate_limited_result.status == 200
 ```
 
@@ -263,7 +263,7 @@ Sending webhooks during deployments is a very common delegation pattern:
   hosts: appservers
   serial: "25%"
   tasks:
-    - name: Notify deployment start
+    - name: Notify deployment start for this batch
       ansible.builtin.uri:
         url: "{{ slack_webhook_url }}"
         method: POST
@@ -274,9 +274,9 @@ Sending webhooks during deployments is a very common delegation pattern:
               text:
                 type: mrkdwn
                 text: >
-                  *Deployment Started*
+                  *Batch Deployment Started*
                   Version: `{{ app_version }}`
-                  Target: {{ play_hosts | length }} hosts
+                  Target: {{ ansible_play_batch | length }} hosts
                   Batch: {{ ansible_play_batch | join(', ') }}
       delegate_to: localhost
       run_once: true
