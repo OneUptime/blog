@@ -238,10 +238,11 @@ The `fetch` module transfers files through the Ansible connection (usually SSH).
 ```yaml
 # Compress a large file before fetching it
 - name: Compress large log file
-  ansible.builtin.archive:
+  community.general.archive:
     path: /var/log/myapp/app.log
     dest: /tmp/app-log-archive.tar.gz
     format: gz
+    force_archive: true
 
 - name: Fetch compressed log
   ansible.builtin.fetch:
