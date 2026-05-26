@@ -107,7 +107,7 @@ Ansible automatically loads all YAML files from `group_vars/<group>/` directorie
 
 ## Performance Considerations
 
-Large YAML files impact Ansible performance at parse time. For fact caching:
+Large YAML files impact Ansible performance at parse time. Fact caching does not reduce YAML parse time, but it can reduce repeated fact-gathering overhead in large inventories:
 
 ```ini
 # ansible.cfg
@@ -121,12 +121,12 @@ fact_caching_timeout = 3600
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these practices prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these practices
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -158,7 +158,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -240,7 +240,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -307,4 +307,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 Large YAML files are a code smell in Ansible. Split variables into categorical files, break tasks into includes, and use roles for logical groupings. Ansible's auto-loading of directory-based group_vars and the include system make it easy to maintain a well-organized project structure that scales.
-
