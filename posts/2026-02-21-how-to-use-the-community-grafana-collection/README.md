@@ -8,7 +8,7 @@ Description: Automate Grafana dashboard provisioning, data source configuration,
 
 ---
 
-If you have ever spent an afternoon clicking through the Grafana UI to set up dashboards, data sources, and alert rules across multiple environments, you know how tedious it gets. The `community.grafana` collection lets you manage all of that through Ansible playbooks, making your monitoring setup as reproducible as the rest of your infrastructure.
+If you have ever spent an afternoon clicking through the Grafana UI to set up dashboards, data sources, and alert contact points across multiple environments, you know how tedious it gets. The `community.grafana` collection lets you manage those resources through Ansible playbooks, making your monitoring setup as reproducible as the rest of your infrastructure.
 
 ## Installing the Collection
 
@@ -18,18 +18,15 @@ Getting started is straightforward.
 # Install the collection
 
 ansible-galaxy collection install community.grafana
-
-# Install the Python dependency
-pip install requests
 ```
 
-Pin it in your requirements for consistency across team members.
+Record it in your requirements for consistency across team members.
 
 ```yaml
-# requirements.yml - version-locked collection dependency
+# requirements.yml - collection dependency
 collections:
   - name: community.grafana
-    version: ">=1.7.0"
+    version: ">=2.0.0"
 ```
 
 ## Collection Modules Overview
@@ -39,7 +36,7 @@ The collection gives you modules for the core Grafana objects:
 - **grafana_dashboard** - import, export, and manage dashboards
 - **grafana_datasource** - configure data sources (Prometheus, InfluxDB, Elasticsearch, etc.)
 - **grafana_folder** - organize dashboards into folders
-- **grafana_notification_channel** - set up alert notification channels
+- **grafana_contact_point** - set up alert contact points
 - **grafana_organization** - manage organizations
 - **grafana_user** - manage user accounts
 - **grafana_team** - manage teams and team members
@@ -85,10 +82,9 @@ Data sources are usually the first thing you set up. Here is how to configure th
         ds_url: "http://influxdb.monitoring.svc:8086"
         database: "telegraf"
         user: "grafana_reader"
+        password: "{{ vault_influxdb_password }}"
         additional_json_data:
           httpMode: "GET"
-        additional_secure_json_data:
-          password: "{{ vault_influxdb_password }}"
         state: present
 
     - name: Add Elasticsearch for application logs
@@ -100,10 +96,9 @@ Data sources are usually the first thing you set up. Here is how to configure th
         ds_url: "https://elasticsearch.example.com:9200"
         database: "app-logs-*"
         time_field: "@timestamp"
-        additional_json_data:
-          esVersion: "7.10.0"
-          maxConcurrentShardRequests: 5
-          interval: "Daily"
+        es_version: "7.10+"
+        max_concurrent_shard_requests: 5
+        interval: "Daily"
         state: present
 ```
 
@@ -122,14 +117,20 @@ Organize dashboards into folders before importing them.
       community.grafana.grafana_folder:
         grafana_url: "{{ grafana_url }}"
         grafana_api_key: "{{ grafana_api_key }}"
-        name: "{{ item }}"
+        name: "{{ item.name }}"
+        uid: "{{ item.uid }}"
         state: present
       loop:
-        - "Infrastructure"
-        - "Application Performance"
-        - "Business Metrics"
-        - "SLO Tracking"
-        - "On-Call Dashboards"
+        - name: "Infrastructure"
+          uid: "infrastructure"
+        - name: "Application Performance"
+          uid: "application-performance"
+        - name: "Business Metrics"
+          uid: "business-metrics"
+        - name: "SLO Tracking"
+          uid: "slo-tracking"
+        - name: "On-Call Dashboards"
+          uid: "on-call-dashboards"
       register: folder_results
 ```
 
@@ -151,7 +152,7 @@ You can import dashboards from JSON files, which is perfect for version-controll
         state: present
         overwrite: true
         commit_message: "Updated by Ansible"
-        folder: "Infrastructure"
+        folder: "infrastructure"
         path: "files/dashboards/node-exporter.json"
 
     - name: Import dashboard from Grafana.com by ID
@@ -160,7 +161,7 @@ You can import dashboards from JSON files, which is perfect for version-controll
         grafana_api_key: "{{ grafana_api_key }}"
         state: present
         overwrite: true
-        folder: "Infrastructure"
+        folder: "infrastructure"
         dashboard_id: "1860"
         dashboard_revision: "31"
 
@@ -209,16 +210,19 @@ For multi-tenant Grafana setups, user and team management through Ansible keeps 
         name: "{{ item.name }}"
         login: "{{ item.login }}"
         email: "{{ item.email }}"
+        password: "{{ item.password }}"
         is_admin: "{{ item.is_admin | default(false) }}"
         state: present
       loop:
         - name: "Jane Smith"
           login: "jsmith"
           email: "jsmith@example.com"
+          password: "{{ vault_jsmith_password }}"
           is_admin: false
         - name: "Bob Johnson"
           login: "bjohnson"
           email: "bjohnson@example.com"
+          password: "{{ vault_bjohnson_password }}"
           is_admin: true
       no_log: true
 ```
@@ -252,32 +256,34 @@ Grafana plugins extend functionality with new panels, data sources, and apps.
         state: restarted
 ```
 
-## Setting Up Notification Channels
+## Setting Up Contact Points
 
-Alert notification channels can be managed as code too.
+Alert contact points can be managed as code too.
 
 ```yaml
-# playbook-notifications.yml - configure alert notification channels
+# playbook-contact-points.yml - configure alert contact points
 - hosts: grafana_servers
   vars:
     grafana_url: "https://grafana.example.com"
     grafana_api_key: "{{ vault_grafana_api_key }}"
   tasks:
-    - name: Create Slack notification channel
-      community.grafana.grafana_notification_channel:
+    - name: Create Slack contact point
+      community.grafana.grafana_contact_point:
         grafana_url: "{{ grafana_url }}"
         grafana_api_key: "{{ grafana_api_key }}"
+        uid: "slack-sre-alerts"
         name: "Slack - SRE Alerts"
         type: slack
-        is_default: true
+        slack_token: "{{ vault_slack_bot_token }}"
         slack_url: "{{ vault_slack_webhook_url }}"
-        slack_channel: "#sre-alerts"
+        slack_recipient: "#sre-alerts"
         state: present
 
-    - name: Create PagerDuty notification channel
-      community.grafana.grafana_notification_channel:
+    - name: Create PagerDuty contact point
+      community.grafana.grafana_contact_point:
         grafana_url: "{{ grafana_url }}"
         grafana_api_key: "{{ grafana_api_key }}"
+        uid: "pagerduty-critical"
         name: "PagerDuty - Critical"
         type: pagerduty
         pagerduty_integration_key: "{{ vault_pagerduty_key }}"
@@ -310,8 +316,8 @@ Putting it all together into a role that bootstraps a complete Grafana environme
 - name: Import dashboards
   ansible.builtin.include_tasks: dashboards.yml
 
-- name: Configure notification channels
-  ansible.builtin.include_tasks: notifications.yml
+- name: Configure contact points
+  ansible.builtin.include_tasks: contact-points.yml
 
 - name: Set up users and teams
   ansible.builtin.include_tasks: users.yml
@@ -323,7 +329,7 @@ Here are some lessons from managing Grafana with this collection in production:
 
 1. **Export before you overwrite.** Always export existing dashboards before importing new versions. The module supports `state: export` for this purpose.
 
-2. **Use API keys, not admin credentials.** Create a dedicated API key with Admin permissions for Ansible, and store it in Ansible Vault. This avoids spreading the admin password around.
+2. **Use service account tokens, not admin credentials.** Create a dedicated service account token with the permissions Ansible needs, and store it in Ansible Vault. Pass that token to modules through the `grafana_api_key` parameter. This avoids spreading the admin password around.
 
 3. **Version-control your dashboard JSON.** Store dashboard JSON files alongside your playbooks in Git. This gives you a full audit trail of dashboard changes.
 
