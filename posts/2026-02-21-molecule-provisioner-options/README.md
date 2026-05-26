@@ -25,7 +25,7 @@ That is it. Molecule uses sensible defaults for everything else. But let us look
 
 ## Overriding ansible.cfg Settings
 
-The `config_options` key lets you override any ansible.cfg setting without creating an actual ansible.cfg file.
+The `config_options` key lets you override most ansible.cfg settings without creating an actual ansible.cfg file.
 
 ```yaml
 # molecule/default/molecule.yml
@@ -53,14 +53,9 @@ provisioner:
       # SSH configuration
       pipelining: true
       ssh_args: -o ControlMaster=auto -o ControlPersist=60s
-    privilege_escalation:
-      become: true
-      become_method: sudo
-      become_user: root
-      become_ask_pass: false
 ```
 
-These settings override anything in your global or local ansible.cfg. This is useful because it keeps your test configuration isolated from your production Ansible settings.
+These settings override the matching values in your global or local ansible.cfg. This is useful because it keeps your test configuration isolated from your production Ansible settings. Molecule blocks a few settings that would interfere with its generated test environment, such as `library`, `filter_plugins`, and the `privilege_escalation` section.
 
 ## Environment Variables
 
@@ -213,12 +208,12 @@ Control how Ansible connects to test instances.
 provisioner:
   name: ansible
   connection_options:
-    ansible_connection: docker  # or ssh, local, etc.
+    ansible_connection: community.docker.docker  # or ssh, local, etc.
     ansible_docker_extra_args: ""
     ansible_python_interpreter: /usr/bin/python3
 ```
 
-For the Docker driver, Molecule sets the connection to `docker` automatically. For the delegated driver, you typically use `ssh`.
+For the Docker driver, Molecule sets the container connection automatically. When you set it yourself with current Ansible collections, use the fully qualified `community.docker.docker` connection plugin. For the delegated driver, you typically use `ssh`.
 
 ```yaml
 # For delegated driver with SSH
@@ -254,25 +249,22 @@ The `log: true` option writes Ansible output to a log file in the ephemeral dire
 
 ## Lint Configuration
 
-Configure linting through the provisioner.
+Current Molecule versions do not configure ansible-lint through the provisioner. Run ansible-lint separately and keep its settings in an ansible-lint configuration file.
 
 ```yaml
-# molecule/default/molecule.yml
-provisioner:
-  name: ansible
-  lint:
-    name: ansible-lint
-    options:
-      # Exclude specific rules
-      x:
-        - "no-changed-when"
-        - "package-latest"
-      # Skip specific paths
-      exclude_paths:
-        - molecule/
+# .ansible-lint
+skip_list:
+  - no-changed-when
+  - package-latest
+exclude_paths:
+  - molecule/
 ```
 
-Note: In newer versions of Molecule, linting is configured differently. Check your Molecule version.
+Then run it directly in your local workflow or CI.
+
+```bash
+ansible-lint
+```
 
 ## Complete Provisioner Configuration Example
 
@@ -319,9 +311,6 @@ provisioner:
       vault_password_file: ${MOLECULE_PROJECT_DIRECTORY}/.vault-password
     ssh_connection:
       pipelining: true
-    privilege_escalation:
-      become: true
-      become_method: sudo
 
   # Environment variables
   env:
@@ -337,6 +326,8 @@ provisioner:
         app_environment: testing
         db_host: localhost
         db_port: 5432
+        ansible_become: true
+        ansible_become_method: sudo
     host_vars:
       instance:
         custom_hostname: molecule-test
@@ -382,11 +373,10 @@ provisioner:
 ```yaml
 provisioner:
   name: ansible
-  config_options:
-    defaults:
-      library: ${MOLECULE_PROJECT_DIRECTORY}/library
-      module_utils: ${MOLECULE_PROJECT_DIRECTORY}/module_utils
-      filter_plugins: ${MOLECULE_PROJECT_DIRECTORY}/plugins/filter
+  env:
+    ANSIBLE_LIBRARY: ${MOLECULE_PROJECT_DIRECTORY}/library
+    ANSIBLE_MODULE_UTILS: ${MOLECULE_PROJECT_DIRECTORY}/module_utils
+    ANSIBLE_FILTER_PLUGINS: ${MOLECULE_PROJECT_DIRECTORY}/plugins/filter
 ```
 
 ### Testing with Callback Plugins
