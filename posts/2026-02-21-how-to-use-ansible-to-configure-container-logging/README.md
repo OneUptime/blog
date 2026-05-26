@@ -38,22 +38,16 @@ graph LR
     backup: true
   notify: restart docker
 
-- name: Ensure log directory exists
-  ansible.builtin.file:
-    path: "{{ docker_log_dir }}"
-    state: directory
-    mode: '0755'
 ```
 
-```yaml
-# roles/container_logging/templates/daemon.json.j2
-# Docker daemon configuration with logging settings
+`roles/container_logging/templates/daemon.json.j2`
+
+```json
 {
   "log-driver": "{{ docker_log_driver }}",
   "log-opts": {
     "max-size": "{{ docker_log_max_size }}",
-    "max-file": "{{ docker_log_max_file }}",
-    "tag": "{{ docker_log_tag }}"
+    "max-file": "{{ docker_log_max_file }}"
   }
 }
 ```
@@ -63,8 +57,7 @@ graph LR
 docker_log_driver: "json-file"
 docker_log_max_size: "50m"
 docker_log_max_file: "5"
-docker_log_tag: "{{ '{{' }}.Name{{ '}}' }}/{{ '{{' }}.ID{{ '}}' }}"
-docker_log_dir: "/var/log/docker"
+fluentd_image: "local/fluentd-elasticsearch:1.16"
 ```
 
 ## Deploying Fluentd as a Log Collector
@@ -84,10 +77,34 @@ docker_log_dir: "/var/log/docker"
     dest: /etc/fluentd/fluent.conf
     mode: '0644'
 
+- name: Create Fluentd image build directory
+  ansible.builtin.file:
+    path: /etc/fluentd-image
+    state: directory
+    mode: '0755'
+
+- name: Deploy Fluentd Dockerfile
+  ansible.builtin.copy:
+    dest: /etc/fluentd-image/Dockerfile
+    mode: '0644'
+    content: |
+      FROM fluent/fluentd:v1.16-debian-1
+      USER root
+      RUN gem install elasticsearch --no-document \
+          && gem install fluent-plugin-elasticsearch --no-document
+      USER fluent
+
+- name: Build Fluentd image with Elasticsearch plugin
+  community.docker.docker_image:
+    name: "{{ fluentd_image }}"
+    source: build
+    build:
+      path: /etc/fluentd-image
+
 - name: Run Fluentd container
   community.docker.docker_container:
     name: fluentd
-    image: "fluent/fluentd:v1.16-1"
+    image: "{{ fluentd_image }}"
     state: started
     restart_policy: always
     ports:
@@ -96,7 +113,6 @@ docker_log_dir: "/var/log/docker"
     volumes:
       - "/etc/fluentd/fluent.conf:/fluentd/etc/fluent.conf:ro"
       - "fluentd-buffer:/fluentd/buffer"
-      - "/var/log/docker:/var/log/docker:ro"
     env:
       FLUENT_ELASTICSEARCH_HOST: "{{ elasticsearch_host }}"
       FLUENT_ELASTICSEARCH_PORT: "{{ elasticsearch_port | string }}"
@@ -113,11 +129,12 @@ docker_log_dir: "/var/log/docker"
   bind 0.0.0.0
 </source>
 
-# Parse Docker JSON logs
+# Parse JSON application log lines when containers emit JSON
 <filter docker.**>
   @type parser
   key_name log
   reserve_data true
+  emit_invalid_record_to_error false
   <parse>
     @type json
   </parse>
@@ -184,7 +201,7 @@ docker_log_dir: "/var/log/docker"
 - name: Deploy Elasticsearch
   community.docker.docker_container:
     name: elasticsearch
-    image: "elasticsearch:{{ elk_version }}"
+    image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elk_version }}"
     state: started
     restart_policy: always
     networks:
@@ -211,7 +228,7 @@ docker_log_dir: "/var/log/docker"
 - name: Deploy Kibana
   community.docker.docker_container:
     name: kibana
-    image: "kibana:{{ elk_version }}"
+    image: "docker.elastic.co/kibana/kibana:{{ elk_version }}"
     state: started
     restart_policy: always
     networks:
@@ -226,21 +243,13 @@ docker_log_dir: "/var/log/docker"
 
 ```yaml
 # roles/container_logging/tasks/rotation.yml
-# Configure log rotation for Docker container logs
-- name: Deploy Docker log rotation config
-  ansible.builtin.copy:
-    dest: /etc/logrotate.d/docker-containers
-    content: |
-      /var/lib/docker/containers/*/*.log {
-          daily
-          rotate 7
-          compress
-          delaycompress
-          missingok
-          notifempty
-          copytruncate
-      }
-    mode: '0644'
+# Verify Docker log rotation is handled by the logging driver
+- name: Verify Docker json-file rotation settings
+  ansible.builtin.assert:
+    that:
+      - docker_log_driver == "json-file"
+      - docker_log_max_size is defined
+      - docker_log_max_file is defined
 
 - name: Clean up old Elasticsearch indices
   ansible.builtin.uri:
