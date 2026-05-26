@@ -305,7 +305,7 @@ By default, a pipe returns the exit code of the last command. This means failure
   ansible.builtin.shell:
     cmd: |
       set -o pipefail
-      cat /var/log/app/important.log | grep "CRITICAL" | wc -l
+      grep "CRITICAL" /var/log/app/important.log | wc -l
     executable: /bin/bash
   register: critical_count
   changed_when: false
