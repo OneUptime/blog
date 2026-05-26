@@ -205,14 +205,14 @@ ansible_connection: ssh            # Could also be: local, docker, winrm
 
 ## Variable Precedence
 
-When the same variable is defined in multiple places, Ansible follows a strict precedence order. For host variables specifically, the precedence from lowest to highest is:
+When the same variable is defined in multiple places, Ansible follows a strict precedence order. For the sources covered in this post, the simplified precedence from lowest to highest is:
 
 ```mermaid
 graph TB
     A["all group_vars (lowest)"] --> B["parent group_vars"]
     B --> C["child group_vars"]
-    C --> D["host_vars files"]
-    D --> E["inventory inline host vars"]
+    C --> D["inventory inline host vars"]
+    D --> E["host_vars files"]
     E --> F["play vars"]
     F --> G["task vars"]
     G --> H["extra vars -e (highest)"]
