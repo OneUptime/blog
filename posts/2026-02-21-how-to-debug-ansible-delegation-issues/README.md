@@ -15,7 +15,7 @@ Delegation in Ansible is one of those features that works perfectly in simple ca
 The first step in debugging any Ansible issue is to increase the verbosity. For delegation problems, you want at least `-vvv` to see connection details.
 
 ```bash
-# Run with maximum verbosity to see connection details
+# Run with high verbosity to see connection details
 
 ansible-playbook site.yml -vvvv
 
@@ -23,7 +23,7 @@ ansible-playbook site.yml -vvvv
 ansible-playbook site.yml -vvvv --limit problematic_host
 ```
 
-At `-vvv`, you will see which host Ansible is actually connecting to for each task. This is critical for delegation debugging because you can verify that the task is being sent to the correct host.
+At `-vvv` and above, you will see which host Ansible is actually connecting to for each task. This is critical for delegation debugging because you can verify that the task is being sent to the correct host.
 
 Look for lines like:
 
@@ -40,7 +40,7 @@ If you see the wrong hostname in the `ESTABLISH SSH CONNECTION` line, your deleg
 
 ### Problem 1: Variable Scope Confusion
 
-When you delegate a task, Ansible uses the variables from the original target host by default, not from the delegated host. This is the single most confusing aspect of delegation.
+When you template ordinary task arguments in a delegated task, Ansible often uses variables from the original target host, not from the delegated host. Connection, become, and shell plugin options are evaluated in the delegated host context, but values such as `inventory_hostname` still refer to the original host. This is the single most confusing aspect of delegation.
 
 ```yaml
 # broken_example.yml - This will NOT work as expected
@@ -56,7 +56,7 @@ When you delegate a task, Ansible uses the variables from the original target ho
       delegate_to: db.example.com
 ```
 
-To use the delegated host's variables, you need to explicitly reference them through `hostvars`:
+To use the delegated host's variables in task arguments, explicitly reference them through `hostvars`:
 
 ```yaml
 # fixed_example.yml - Correctly reference delegated host variables
@@ -83,7 +83,7 @@ fatal: [web01 -> db01]: UNREACHABLE! => {
 }
 ```
 
-The `[web01 -> db01]` notation tells you the task was delegated from web01 to db01. The SSH failure is happening on db01, but Ansible might be using web01's SSH credentials to connect.
+The `[web01 -> db01]` notation tells you the task was delegated from web01 to db01. The SSH failure is happening on db01, so check the connection variables that apply to the delegated host, along with any shared defaults from group vars or the command line.
 
 Here is how to diagnose and fix it:
 
@@ -230,7 +230,8 @@ Create a custom callback plugin or use the `log_path` setting to capture delegat
 # ansible.cfg - Enable logging for debugging
 [defaults]
 log_path = /var/log/ansible/ansible.log
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 verbosity = 2
 
 [ssh_connection]
@@ -246,8 +247,8 @@ For more targeted debugging, add debug tasks that log delegation context:
   ansible.builtin.debug:
     msg:
       play_host: "{{ inventory_hostname }}"
-      delegated_to: "{{ ansible_delegated_vars.get('ansible_host', 'N/A') if ansible_delegated_vars is defined else 'no delegation' }}"
-      effective_user: "{{ ansible_user | default('default') }}"
+      delegated_to: "{{ ansible_delegated_vars[delegation_target]['ansible_host'] | default(delegation_target) if ansible_delegated_vars is defined and delegation_target in ansible_delegated_vars else 'no delegation' }}"
+      effective_user: "{{ ansible_delegated_vars[delegation_target]['ansible_user'] | default(ansible_user | default('default')) if ansible_delegated_vars is defined and delegation_target in ansible_delegated_vars else ansible_user | default('default') }}"
       become_active: "{{ ansible_become | default(false) }}"
       become_user: "{{ ansible_become_user | default('N/A') }}"
   delegate_to: "{{ delegation_target }}"
