@@ -8,7 +8,7 @@ Description: Managing MongoDB deployments with the community.mongodb Ansible col
 
 ---
 
-MongoDB is one of the most popular NoSQL databases, and managing it at scale requires automation. The `community.mongodb` collection provides Ansible modules for user management, replica set configuration, sharding, database operations, and server parameter tuning. Whether you run standalone instances or large sharded clusters, this collection helps you automate the operational tasks that would otherwise require manual mongo shell sessions.
+MongoDB is one of the most popular NoSQL databases, and managing it at scale requires automation. The `community.mongodb` collection provides Ansible modules for user management, replica set configuration, sharding, database operations, and server parameter tuning. Whether you run standalone instances or large sharded clusters, this collection helps you automate the operational tasks that would otherwise require manual `mongosh` sessions.
 
 ## Installation
 
@@ -19,9 +19,12 @@ ansible-galaxy collection install community.mongodb
 
 # Install the Python MongoDB driver on target hosts
 pip install pymongo
+
+# Install mongosh on hosts that run mongodb_shell tasks
+# See MongoDB's installation docs for your operating system
 ```
 
-The `pymongo` library must be installed on the host where the MongoDB modules execute. For most setups, that means installing it on the MongoDB servers themselves.
+The `pymongo` library must be installed on the host where most MongoDB modules execute. For `mongodb_shell` tasks, `mongosh` must also be installed on the host where the module runs. For most setups, that means installing these dependencies on the MongoDB servers themselves.
 
 ```yaml
 # requirements.yml
@@ -222,27 +225,27 @@ The `mongodb_parameter` module sets MongoDB server parameters at runtime:
         value: 1
         param_type: int
 
-    - name: Enable profiling for slow queries
+    - name: Set sync delay
       community.mongodb.mongodb_parameter:
         login_host: localhost
         login_port: 27017
         login_user: admin_user
         login_password: "{{ vault_mongo_admin_password }}"
         login_database: admin
-        param: slowOpThresholdMs
-        value: 100
+        param: syncdelay
+        value: 60
         param_type: int
 
-    - name: Set write concern
+    - name: Set maximum log attribute size
       community.mongodb.mongodb_parameter:
         login_host: localhost
         login_port: 27017
         login_user: admin_user
         login_password: "{{ vault_mongo_admin_password }}"
         login_database: admin
-        param: wiredTigerEngineRuntimeConfig
-        value: "cache_size=2G"
-        param_type: str
+        param: maxLogSizeKB
+        value: 20
+        param_type: int
 ```
 
 ## Sharding Configuration
@@ -263,12 +266,13 @@ For large-scale deployments that need horizontal scaling:
         login_user: admin_user
         login_password: "{{ vault_mongo_admin_password }}"
         shard: "{{ item }}"
+        sharded_databases: myapp
         state: present
       loop:
         - "shard1/shard1-node1:27018,shard1-node2:27018,shard1-node3:27018"
         - "shard2/shard2-node1:27018,shard2-node2:27018,shard2-node3:27018"
 
-    - name: Enable sharding on database
+    - name: Assign shard zone ranges
       community.mongodb.mongodb_shard_zone:
         login_host: localhost
         login_port: 27017
@@ -276,12 +280,14 @@ For large-scale deployments that need horizontal scaling:
         login_password: "{{ vault_mongo_admin_password }}"
         name: zone_us_east
         namespace: myapp.orders
+        ranges:
+          - [{ region: "US-EAST" }, { region: "US-WEST" }]
         state: present
 ```
 
 ## Database Operations with mongodb_shell
 
-The `mongodb_shell` module runs commands through the mongo shell:
+The `mongodb_shell` module runs commands through `mongosh` by default:
 
 ```yaml
 # database-operations.yml - Run MongoDB operations
@@ -364,7 +370,7 @@ The `mongodb_shell` module runs commands through the mongo shell:
         login_user: admin_user
         login_password: "{{ vault_mongo_admin_password }}"
         login_database: admin
-        state: present
+        maintenance: true
       when: maintenance_mode | default(false)
 
     - name: Compact a collection (reclaim space)
