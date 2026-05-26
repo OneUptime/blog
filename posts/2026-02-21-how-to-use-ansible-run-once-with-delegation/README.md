@@ -8,11 +8,11 @@ Description: Learn how to use run_once with delegate_to in Ansible to execute ta
 
 ---
 
-The `run_once` directive tells Ansible to execute a task only once, regardless of how many hosts are in the play. When combined with `delegate_to`, it gives you precise control over where that single execution happens. This combination is essential for operations like database migrations, one-time API calls, cluster initialization, and any task that must happen exactly once during a deployment.
+The `run_once` directive tells Ansible to execute a task only once for the current batch of hosts. When combined with `delegate_to`, it gives you precise control over where that single execution happens. This combination is useful for operations like database migrations, one-time API calls, cluster initialization, and any task that must happen once during a deployment.
 
 ## How run_once Works
 
-Without `run_once`, a task executes once per host in the play. With `run_once: true`, the task executes only for the first host in the batch, and the result is applied to all hosts.
+Without `run_once`, a task executes once per host in the play. With `run_once: true`, the task executes only for the first host in the batch, and the result is applied to all hosts in that batch.
 
 ```yaml
 # run-once-basic.yml - Demonstrating run_once behavior
@@ -42,7 +42,6 @@ The real power comes from combining both. You can run a task once, on a specific
 ---
 - name: Deploy with one-time database migration
   hosts: appservers
-  serial: 1
   tasks:
     - name: Run database migration (once, on the DB server)
       ansible.builtin.shell: |
@@ -52,7 +51,7 @@ The real power comes from combining both. You can run a task once, on a specific
       become: true
       become_user: myapp
       # This runs exactly once on db-primary, even though
-      # the play targets all appservers one at a time
+      # the play targets all appservers
 
     - name: Deploy application (runs on each app server)
       ansible.builtin.copy:
@@ -76,7 +75,6 @@ The most common pattern is running a task once on the controller for API calls, 
 ---
 - name: Deploy with one-time notifications and API calls
   hosts: webservers
-  serial: 2
   tasks:
     - name: Notify Slack about deployment start (once)
       ansible.builtin.uri:
@@ -262,7 +260,7 @@ Generating shared artifacts:
 
 ## Variable Sharing with run_once
 
-When `run_once` is used with `register`, the registered variable is available on all hosts in the play, not just the one that ran the task.
+When `run_once` is used with `register`, the registered variable is available on all hosts in the active batch, not just the one that ran the task. Without `serial`, that means all hosts in the play.
 
 ```yaml
 # variable-sharing.yml - Sharing registered variables across hosts
@@ -359,4 +357,4 @@ Mistake 3: Assuming `become` applies to the original host. With `delegate_to`, `
 
 ## Summary
 
-The `run_once` and `delegate_to` combination is essential for tasks that should happen exactly once during a multi-host play: database migrations, API registrations, cache clearing, cluster initialization, and notification sending. Remember that with `serial`, `run_once` executes once per batch. For truly one-time operations across the entire deployment, use a separate play targeting a single host. The registered variables from `run_once` tasks are shared across all hosts in the play, making it ideal for gathering shared configuration data.
+The `run_once` and `delegate_to` combination is useful for tasks that should happen once during a multi-host play: database migrations, API registrations, cache clearing, cluster initialization, and notification sending. Remember that with `serial`, `run_once` executes once per batch. For truly one-time operations across the entire deployment, use a separate play targeting a single host. The registered variables from `run_once` tasks are shared across all hosts in the active batch, making it ideal for gathering shared configuration data.
