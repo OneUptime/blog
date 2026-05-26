@@ -42,7 +42,7 @@ The `sefcontext` module adds a persistent rule to SELinux's file context databas
   changed_when: restorecon_result.stdout != ""
 ```
 
-The `sefcontext` module only updates the policy database. You still need to run `restorecon` to apply the context to existing files. New files created after the policy update will get the correct context automatically.
+The `sefcontext` module only updates the policy database. You still need to run `restorecon` to apply the context to existing files and directories. After the directory itself has the correct label, new files created inside it will typically inherit the directory's SELinux type.
 
 ## Understanding the Target Pattern
 
@@ -98,19 +98,26 @@ Here is a complete playbook that sets up a web application in a non-standard loc
 ---
 - name: Deploy web application with proper SELinux contexts
   hosts: webservers
-  become: yes
+  become: true
 
   vars:
     app_root: /opt/webapp
     app_user: webapp
 
   tasks:
-    - name: Install required SELinux packages
+    - name: Install required SELinux packages on RHEL/Fedora systems
       ansible.builtin.package:
         name:
           - policycoreutils-python-utils
-          - libselinux-python3
+          - python3-libselinux
+          - python3-libsemanage
         state: present
+
+    - name: Ensure application user exists
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        system: true
+        create_home: false
 
     - name: Create application directories
       ansible.builtin.file:
@@ -172,20 +179,20 @@ SELinux booleans control policy behavior. For example, to allow httpd to connect
 - name: Allow httpd to make network connections
   ansible.posix.seboolean:
     name: httpd_can_network_connect
-    state: yes
-    persistent: yes
+    state: true
+    persistent: true
 
 - name: Allow httpd to send mail
   ansible.posix.seboolean:
     name: httpd_can_sendmail
-    state: yes
-    persistent: yes
+    state: true
+    persistent: true
 
 - name: Allow httpd to read home directories
   ansible.posix.seboolean:
     name: httpd_enable_homedirs
-    state: yes
-    persistent: yes
+    state: true
+    persistent: true
 ```
 
 ## Removing File Context Rules
@@ -200,9 +207,14 @@ When you decommission an application, clean up its SELinux rules.
     setype: httpd_sys_content_t
     state: absent
 
+- name: Check whether old app directory still exists
+  ansible.builtin.stat:
+    path: /opt/oldapp
+  register: oldapp_path
+
 - name: Restore default contexts on old app directory
   ansible.builtin.command: restorecon -irv /opt/oldapp
-  when: false  # Only if directory still exists
+  when: oldapp_path.stat.exists
 ```
 
 ## Verifying SELinux Contexts
@@ -262,7 +274,7 @@ When SELinux blocks access, it logs denials to the audit log. Use `audit2why` to
   failed_when: false
 
 - name: Analyze SELinux denials
-  ansible.builtin.command: >
+  ansible.builtin.shell: >
     ausearch -m AVC -ts recent | audit2why
   register: denial_analysis
   changed_when: false
