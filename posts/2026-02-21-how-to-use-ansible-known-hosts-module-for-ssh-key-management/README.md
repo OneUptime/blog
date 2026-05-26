@@ -10,6 +10,8 @@ Description: Manage SSH known_hosts entries with Ansible to automate host key ve
 
 The `ansible.builtin.known_hosts` module manages SSH host key entries in the `known_hosts` file. This prevents the "host key verification failed" errors and the interactive "are you sure you want to continue connecting" prompts that break automated workflows.
 
+For security-sensitive workflows, verify scanned keys out of band or source them from a trusted inventory. Blindly trusting fresh `ssh-keyscan` output automates trust on first use, but it does not prove the server's identity by itself.
+
 ## Adding Host Keys
 
 ```yaml
@@ -18,7 +20,7 @@ The `ansible.builtin.known_hosts` module manages SSH host key entries in the `kn
 - name: Add server SSH key to known_hosts
   ansible.builtin.known_hosts:
     name: server1.example.com
-    key: "{{ lookup('pipe', 'ssh-keyscan server1.example.com 2>/dev/null') }}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 server1.example.com 2>/dev/null') }}"
     state: present
 ```
 
@@ -31,7 +33,7 @@ The `ansible.builtin.known_hosts` module manages SSH host key entries in the `kn
     - name: Scan and add SSH keys for all hosts
       ansible.builtin.known_hosts:
         name: "{{ hostvars[item].ansible_host | default(item) }}"
-        key: "{{ lookup('pipe', 'ssh-keyscan ' + (hostvars[item].ansible_host | default(item)) + ' 2>/dev/null') }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + (hostvars[item].ansible_host | default(item)) + ' 2>/dev/null') }}"
         path: ~/.ssh/known_hosts
         state: present
       loop: "{{ groups['all'] }}"
@@ -68,7 +70,7 @@ The `ansible.builtin.known_hosts` module manages SSH host key entries in the `kn
     - name: Add new server keys
       ansible.builtin.known_hosts:
         name: "{{ item }}"
-        key: "{{ lookup('pipe', 'ssh-keyscan ' + item) }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + item) }}"
       loop:
         - 10.0.1.10
         - 10.0.1.11
@@ -78,12 +80,12 @@ The `ansible.builtin.known_hosts` module manages SSH host key entries in the `kn
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several related Ansible automation scenarios that often appear in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -115,7 +117,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -197,7 +199,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in a playbook
 - name: Robust task execution
   hosts: all
   tasks:
@@ -210,6 +212,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -264,4 +267,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `known_hosts` module eliminates interactive SSH prompts in automated workflows. Add host keys before first connections, remove them when servers are rebuilt, and manage them across your team's workstations with a dedicated playbook. This is cleaner and more secure than disabling host key checking entirely.
-
