@@ -14,7 +14,7 @@ Collections are the primary distribution format for Ansible content. If you have
 
 You need:
 - An Ansible Galaxy account (https://galaxy.ansible.com, sign in with GitHub)
-- A Galaxy namespace (matches your GitHub username or organization)
+- A Galaxy namespace (usually your Galaxy username, or another namespace you create)
 - `ansible-core` installed locally
 - Your collection structured according to the Ansible collection format
 
@@ -58,7 +58,6 @@ authors:
 description: A collection of modules and roles for managing MyApp infrastructure
 license:
   - MIT
-license_file: LICENSE
 tags:
   - infrastructure
   - myapp
@@ -82,6 +81,7 @@ Important fields:
 
 - `namespace` must match your Galaxy namespace exactly
 - `version` follows semantic versioning (Galaxy rejects duplicate versions)
+- Use either `license` or `license_file`, not both
 - `dependencies` lists other collections your collection needs
 - `build_ignore` prevents unnecessary files from being included in the tarball
 
@@ -113,7 +113,7 @@ my_namespace/my_collection/
     playbooks/
         deploy.yml                # Example playbook
     docs/
-        myapp_config_module.rst   # Module documentation
+        myapp_config_module.md    # Module documentation
 ```
 
 ## Step 4: Write a meta/runtime.yml
@@ -177,8 +177,8 @@ ansible-galaxy collection publish my_namespace-my_collection-1.0.0.tar.gz \
 Or use the token from an environment variable:
 
 ```bash
-# Set token as environment variable
-export ANSIBLE_GALAXY_TOKEN="your_galaxy_api_token"
+# Set token as an environment variable for the "galaxy" server entry
+export ANSIBLE_GALAXY_SERVER_GALAXY_TOKEN="your_galaxy_api_token"
 
 # Publish without passing the token flag
 ansible-galaxy collection publish my_namespace-my_collection-1.0.0.tar.gz
@@ -201,10 +201,10 @@ token = your_galaxy_api_token
 After publishing, verify your collection appears on Galaxy:
 
 ```bash
-# Search for your collection
+# Install your collection from Galaxy
 ansible-galaxy collection install my_namespace.my_collection
 
-# Check the info
+# Check the installed collection
 ansible-galaxy collection list | grep my_namespace
 ```
 
@@ -268,7 +268,7 @@ Always test your collection before publishing. Run sanity tests:
 
 ```bash
 # Run Ansible sanity tests on your collection
-cd my_namespace/my_collection/
+cd ~/ansible_collections/my_namespace/my_collection/
 ansible-test sanity --docker
 
 # Run unit tests if you have them
