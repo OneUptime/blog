@@ -10,7 +10,7 @@ Description: Learn how to use the union filter in Ansible to merge two lists tog
 
 Merging lists is one of the most frequent operations in Ansible. You pull variables from group_vars, host_vars, defaults, and sometimes dynamic sources. When these lists need to be combined without duplicates, the `union` filter does exactly what you need. It takes two lists and returns a single list containing all unique elements from both.
 
-If you have been using `list_a + list_b | unique` as a workaround, the `union` filter is the cleaner, more readable alternative.
+If you have been using `(list_a + list_b) | unique` as a workaround, the `union` filter is the cleaner, more readable alternative.
 
 ## Basic Usage
 
@@ -25,16 +25,16 @@ If you have been using `list_a + list_b | unique` as a workaround, the `union` f
     list_b: [3, 4, 5, 6]
 ```
 
-Output: `[1, 2, 3, 4, 5, 6]`
+One possible output: `[1, 2, 3, 4, 5, 6]`
 
-The result contains every element from both lists, but each element appears only once. The order follows list_a first, then new elements from list_b.
+The result contains every element from both lists, but each element appears only once. Ansible treats this as a set operation, so the returned order is arbitrary. Add `| sort` when you need predictable ordering.
 
 ## union vs Concatenation + unique
 
 You might wonder why you would use `union` instead of just combining lists and deduplicating:
 
 ```yaml
-# These two approaches produce the same result
+# These two approaches produce the same deduplicated values in many simple cases
 - name: Using union
   ansible.builtin.debug:
     msg: "{{ list_a | union(list_b) }}"
@@ -44,7 +44,7 @@ You might wonder why you would use `union` instead of just combining lists and d
     msg: "{{ (list_a + list_b) | unique }}"
 ```
 
-Both work, but `union` is more concise and clearly communicates the intent. It is a set operation, and naming it as such makes your playbooks easier to understand.
+Both work for straightforward list merging, but `union` is more concise and clearly communicates the intent. It is a set operation, and naming it as such makes your playbooks easier to understand. Because `union` returns items in arbitrary order, use `sort` if the order matters.
 
 ## Practical Example: Combining Package Lists
 
@@ -268,13 +268,13 @@ graph TD
 
 A few things to keep in mind:
 
-1. Union with an empty list returns the other list unchanged.
+1. Union with an empty list returns the other list's unique values.
 
 2. Union with itself returns the deduplicated version of the list.
 
 3. For dictionaries, union compares entire objects. Two dicts must be completely identical to be considered the same.
 
-4. The order of the result follows the first list, then new items from the second list.
+4. The order of the result is arbitrary. Use `sort` when you need stable output.
 
 ```yaml
 # Edge case examples
@@ -283,7 +283,7 @@ A few things to keep in mind:
     msg: |
       With empty: {{ [1,2,3] | union([]) }}
       With self: {{ [1,1,2,2,3] | union([1,1,2,2,3]) }}
-      Order preserved: {{ [3,1,2] | union([5,4]) }}
+      Arbitrary order: {{ [3,1,2] | union([5,4]) }}
 ```
 
 ## Summary
