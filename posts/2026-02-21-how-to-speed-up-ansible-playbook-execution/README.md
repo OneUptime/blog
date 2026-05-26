@@ -12,7 +12,7 @@ If you have worked with Ansible long enough, you know the frustration of watchin
 
 ## Why Ansible Playbooks Get Slow
 
-Before jumping into fixes, it helps to understand where time goes. Ansible spends most of its execution time on three things: SSH connection setup, module transfer to remote hosts, and fact gathering. Each task in a playbook opens an SSH connection, copies a Python module to the remote host, executes it, and fetches the results. Multiply that by hundreds of hosts and dozens of tasks, and you have a performance problem.
+Before jumping into fixes, it helps to understand where time goes. Ansible spends most of its execution time on three things: SSH connection setup, module transfer to remote hosts, and fact gathering. Each task in a playbook sends a Python module to the remote host, executes it, and fetches the results; without SSH connection reuse, connection setup adds even more overhead. Multiply that by hundreds of hosts and dozens of tasks, and you have a performance problem.
 
 ## Enable SSH Pipelining
 
@@ -31,10 +31,10 @@ One caveat: pipelining does not work if the remote host has `requiretty` set in 
 
 ```bash
 # Check if requiretty is enabled on remote hosts
-ansible all -m shell -a "grep requiretty /etc/sudoers" --become
+ansible all -m shell -a "grep -R requiretty /etc/sudoers /etc/sudoers.d 2>/dev/null || true" --become
 ```
 
-If it is set, you can disable it with:
+If it is set in `/etc/sudoers`, you can disable it with:
 
 ```yaml
 # Remove requiretty restriction from sudoers
@@ -43,6 +43,7 @@ If it is set, you can disable it with:
     path: /etc/sudoers
     regexp: '^\s*Defaults\s+requiretty'
     state: absent
+    validate: 'visudo -cf %s'
   become: true
 ```
 
@@ -169,15 +170,15 @@ If you have tasks that take a long time (package installs, database migrations),
 
 ## Reduce Module Transfer Overhead
 
-Ansible transfers Python modules to each remote host for every task. You can speed this up by using `zip` transfer mode:
+Ansible transfers Python modules to each remote host for every task. Ansible already compresses those module transfers with ZIP_DEFLATED by default, so if you have changed this setting, keep it at the documented default unless you have measured a reason to do otherwise:
 
 ```ini
-# Compress module transfers
+# Use the default compressed module transfer format
 [defaults]
-module_compression = ZIP
+module_compression = ZIP_DEFLATED
 ```
 
-Also consider whether you actually need Python modules for simple tasks. The `raw` module and `command` module skip some of the overhead:
+Also consider whether you actually need Python modules for simple tasks. The `raw` module skips the normal module subsystem and does not require Python on the remote host:
 
 ```yaml
 # Use raw module for simple commands that don't need Python
@@ -188,18 +189,18 @@ Also consider whether you actually need Python modules for simple tasks. The `ra
 
 ## Profile Your Playbooks
 
-Before optimizing, measure. Enable the `profile_tasks` callback to see where time is spent:
+Before optimizing, measure. Enable the `ansible.posix.profile_tasks` callback to see where time is spent:
 
 ```ini
 # Show timing for each task
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 This gives you output like:
 
 ```text
-Wednesday 21 February 2026  10:15:00 +0000 (0:00:03.456)  0:01:23.456 ********
+Saturday 21 February 2026  10:15:00 +0000 (0:00:03.456)  0:01:23.456 ********
 Install packages ------------------------------------------ 45.23s
 Copy configuration files ---------------------------------- 12.11s
 Restart services ------------------------------------------- 3.45s
@@ -218,7 +219,7 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_fact_cache
 fact_caching_timeout = 86400
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 strategy = linear
 
 [ssh_connection]
