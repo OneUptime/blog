@@ -47,10 +47,10 @@ ansible-galaxy collection install community.docker
 
 - name: Tag as latest
   community.docker.docker_image:
-    name: "{{ dockerhub_username }}/{{ app_name }}"
-    tag: "{{ app_version }}"
-    repository: "{{ dockerhub_username }}/{{ app_name }}"
+    name: "{{ dockerhub_username }}/{{ app_name }}:{{ app_version }}"
+    repository: "{{ dockerhub_username }}/{{ app_name }}:latest"
     push: true
+    force_tag: true
     source: local
 
 - name: Log out of Docker Hub
@@ -94,7 +94,6 @@ AWS Elastic Container Registry requires an authentication token refresh:
       aws ecr create-repository
       --repository-name {{ app_name }}
       --region {{ aws_region }}
-      --image-scanning-configuration scanOnPush=true
   when: ecr_repo_check.rc != 0
   changed_when: true
 
@@ -133,10 +132,11 @@ For self-hosted registries like Harbor or Nexus:
 
 - name: Push additional tags
   community.docker.docker_image:
-    name: "{{ private_registry_url }}/{{ registry_project }}/{{ app_name }}"
-    tag: "{{ item }}"
+    name: "{{ private_registry_url }}/{{ registry_project }}/{{ app_name }}:{{ app_version }}"
+    repository: "{{ private_registry_url }}/{{ registry_project }}/{{ app_name }}:{{ item }}"
     source: local
     push: true
+    force_tag: true
   loop:
     - "latest"
     - "{{ git_branch }}"
@@ -196,13 +196,13 @@ For self-hosted registries like Harbor or Nexus:
 
 - name: Remove old local images
   community.docker.docker_image:
-    name: "{{ item.RepoTags[0].split(':')[0] }}"
-    tag: "{{ item.RepoTags[0].split(':')[1] }}"
+    name: "{{ item.RepoTags[0] | regex_replace(':[^:/]+$', '') }}"
+    tag: "{{ item.RepoTags[0] | regex_search('[^:]+$') }}"
     state: absent
   loop: "{{ local_images.images }}"
   when:
     - item.RepoTags | length > 0
-    - item.RepoTags[0].split(':')[1] not in keep_tags
+    - (item.RepoTags[0] | regex_search('[^:]+$')) not in keep_tags
   loop_control:
     label: "{{ item.RepoTags | default(['untagged']) }}"
 ```
@@ -210,12 +210,12 @@ For self-hosted registries like Harbor or Nexus:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where Ansible proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
