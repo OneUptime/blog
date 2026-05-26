@@ -19,7 +19,7 @@ Sure, you can take a snapshot from the GCP Console in about five clicks. But wha
 You need:
 
 - Ansible 2.10+ with the `google.cloud` collection installed
-- A GCP service account with `compute.disks.createSnapshot` and `compute.snapshots.*` permissions
+- A GCP service account with permissions to read disks and create, label, list, and delete snapshots, such as `compute.disks.get`, `compute.disks.createSnapshot`, `compute.snapshots.create`, `compute.snapshots.setLabels`, `compute.snapshots.list`, and `compute.snapshots.delete`
 - The Compute Engine API enabled in your project
 
 ```bash
@@ -49,20 +49,20 @@ The simplest case is snapshotting a single disk. The module is `google.cloud.gcp
 
   tasks:
     - name: Get reference to the source disk
-      google.cloud.gcp_compute_disk:
-        name: "db-data-disk"
+      google.cloud.gcp_compute_disk_info:
         zone: "{{ zone }}"
+        filters:
+          - "name = db-data-disk"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
-        state: present
       register: source_disk
 
     - name: Create a snapshot with timestamp in the name
       google.cloud.gcp_compute_snapshot:
         name: "db-data-disk-{{ timestamp }}"
-        source_disk:
-          selfLink: "{{ source_disk.selfLink }}"
+        source_disk: "{{ source_disk.resources[0] }}"
+        zone: "{{ zone }}"
         labels:
           source_disk: "db-data-disk"
           created_by: "ansible"
@@ -108,21 +108,21 @@ Most applications have several disks. A database server might have separate disk
 
   tasks:
     - name: Get disk references
-      google.cloud.gcp_compute_disk:
-        name: "{{ item }}"
+      google.cloud.gcp_compute_disk_info:
         zone: "{{ zone }}"
+        filters:
+          - "name = {{ item }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
-        state: present
       loop: "{{ disks_to_snapshot }}"
       register: disk_refs
 
     - name: Create snapshots for all disks
       google.cloud.gcp_compute_snapshot:
         name: "{{ item.item }}-{{ timestamp }}"
-        source_disk:
-          selfLink: "{{ item.selfLink }}"
+        source_disk: "{{ item.resources[0] }}"
+        zone: "{{ zone }}"
         labels:
           source_disk: "{{ item.item }}"
           snapshot_group: "postgres-{{ timestamp }}"
@@ -157,7 +157,7 @@ One of the most valuable uses of automated snapshots is taking them right before
     gcp_auth_kind: "serviceaccount"
     gcp_service_account_file: "/path/to/service-account-key.json"
     zone: "us-central1-a"
-    deploy_version: "v2.5.0"
+    deploy_version: "v2-5-0"
     timestamp: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
     critical_disks:
       - "app-db-data"
@@ -169,21 +169,21 @@ One of the most valuable uses of automated snapshots is taking them right before
         msg: "Starting pre-deployment snapshots for release {{ deploy_version }}"
 
     - name: Get disk references for critical disks
-      google.cloud.gcp_compute_disk:
-        name: "{{ item }}"
+      google.cloud.gcp_compute_disk_info:
         zone: "{{ zone }}"
+        filters:
+          - "name = {{ item }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
-        state: present
       loop: "{{ critical_disks }}"
       register: disk_info
 
     - name: Create pre-deployment snapshots
       google.cloud.gcp_compute_snapshot:
         name: "pre-deploy-{{ deploy_version }}-{{ item.item }}-{{ timestamp }}"
-        source_disk:
-          selfLink: "{{ item.selfLink }}"
+        source_disk: "{{ item.resources[0] }}"
+        zone: "{{ zone }}"
         labels:
           type: "pre-deployment"
           deploy_version: "{{ deploy_version }}"
@@ -221,7 +221,7 @@ Taking snapshots is only useful if you can restore from them. To restore, you cr
     gcp_auth_kind: "serviceaccount"
     gcp_service_account_file: "/path/to/service-account-key.json"
     zone: "us-central1-a"
-    snapshot_name: "pre-deploy-v2.5.0-app-db-data-20260220-143022"
+    snapshot_name: "pre-deploy-v2-5-0-app-db-data-20260220-143022"
 
   tasks:
     - name: Get the snapshot reference
@@ -237,7 +237,7 @@ Taking snapshots is only useful if you can restore from them. To restore, you cr
       google.cloud.gcp_compute_disk:
         name: "restored-app-db-data"
         zone: "{{ zone }}"
-        type: "pd-ssd"
+        type: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/zones/{{ zone }}/diskTypes/pd-ssd"
         source_snapshot:
           selfLink: "{{ snapshot_info.resources[0].selfLink }}"
         labels:
@@ -283,7 +283,7 @@ Snapshots cost money for storage, so you should have a retention policy. Here is
 - name: Cleanup Old Snapshots
   hosts: localhost
   connection: local
-  gather_facts: false
+  gather_facts: true
 
   vars:
     gcp_project: "my-project-id"
@@ -321,6 +321,7 @@ Snapshots cost money for storage, so you should have a retention policy. Here is
         name: "{{ item.name }}"
         source_disk:
           selfLink: "{{ item.sourceDisk }}"
+        zone: "{{ item.sourceDisk | regex_search('/zones/([^/]+)/', '\\1') | first }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
