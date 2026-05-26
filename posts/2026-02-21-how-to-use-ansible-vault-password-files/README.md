@@ -31,7 +31,7 @@ chmod 600 ~/.vault_pass.txt
 ls -la ~/.vault_pass.txt
 ```
 
-Important: the file must contain only the password on a single line, with no trailing whitespace or extra newlines. Some editors add trailing newlines, which can cause decryption failures.
+Important: the file must contain only the password on a single line, with no trailing spaces or extra blank lines. A normal final newline at the end of the line is fine.
 
 ## Using the Password File on the Command Line
 
@@ -209,11 +209,12 @@ New team members receive the `.vault_pass` file through a secure channel (passwo
 If decryption fails when using a password file, check these common causes:
 
 ```bash
-# Check for trailing newlines or whitespace
+# Check for trailing spaces or extra blank lines
 # The file should contain exactly one line with no trailing spaces
 cat -A ~/.vault_pass.txt
 # Expected output: your-password-here$
-# The $ marks the end of line. If you see extra spaces or ^M characters, that's the problem.
+# The $ marks the line ending. If you see spaces before it,
+# extra $ lines, or ^M characters, that's the problem.
 
 # Check file encoding (should be UTF-8 or ASCII)
 file ~/.vault_pass.txt
