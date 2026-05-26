@@ -169,18 +169,18 @@ With `with_together`, if lists had different lengths, shorter lists were padded 
 If you need the `with_together` behavior of padding with None, use `zip_longest`.
 
 ```yaml
-# zip_longest pads shorter lists (matches with_together behavior)
+# zip_longest pads shorter lists with None by default (matches with_together behavior)
 - name: Zip with padding for unequal lists
   ansible.builtin.debug:
-    msg: "{{ item.0 }} - {{ item.1 | default('N/A') }}"
-  loop: "{{ names | zip_longest(values, fillvalue='') | list }}"
+    msg: "{{ item.0 }} - {{ item.1 | default('N/A', true) }}"
+  loop: "{{ names | zip_longest(values) | list }}"
   vars:
     names: [a, b, c, d, e]
     values: [1, 2, 3]
-  # Processes: a-1, b-2, c-3, d-, e-
+  # Processes: a-1, b-2, c-3, d-N/A, e-N/A
 ```
 
-The `fillvalue` parameter specifies what to use for missing elements. Use `default()` in the template to handle potential None values.
+The optional `fillvalue` parameter specifies what to use for missing elements. Use `default()` with its second parameter set to `true` in the template to handle potential None values.
 
 ## Practical Example: Deploy and Configure Applications
 
@@ -311,7 +311,7 @@ The registered variable structure works the same way.
 flowchart LR
     A["with_together:<br/>- list_a<br/>- list_b"] --> B["loop: list_a | zip(list_b) | list"]
     C["with_together:<br/>- list_a<br/>- list_b<br/>- list_c"] --> D["loop: list_a | zip(list_b, list_c) | list"]
-    E["Unequal lengths<br/>(pad with None)"] --> F["zip_longest(list_b, fillvalue='') | list"]
+    E["Unequal lengths<br/>(pad with None)"] --> F["zip_longest(list_b) | list"]
 ```
 
 ## Summary
