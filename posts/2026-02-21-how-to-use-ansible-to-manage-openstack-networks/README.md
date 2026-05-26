@@ -18,7 +18,7 @@ You need:
 
 - Ansible 2.12+ with the `openstack.cloud` collection
 - Python `openstacksdk` installed
-- A `clouds.yaml` with admin credentials (network creation often requires admin)
+- A `clouds.yaml` with credentials that can create the resources you manage (admin credentials are usually required for external/provider networks)
 
 ```bash
 ansible-galaxy collection install openstack.cloud
@@ -314,7 +314,7 @@ Floating IPs are public addresses that can be associated with instances for exte
       openstack.cloud.floating_ip:
         cloud: "{{ cloud_name }}"
         server: web-01
-        network: "{{ floating_ip_network }}"
+        floating_ip_address: "{{ fip_result.floating_ip.floating_ip_address }}"
         state: absent
       when: detach_fip | default(false)
 ```
@@ -478,7 +478,7 @@ When tearing down environments, delete resources in the right order: instances f
 
 ## Networking Lessons Learned
 
-1. **Always specify DNS servers.** The default OpenStack DHCP does not include DNS unless you configure it. Your instances will have working network but no name resolution.
+1. **Specify DNS servers deliberately.** OpenStack can advertise DNS resolvers from subnet settings, DHCP agent configuration, or the DHCP agent host. Set subnet DNS servers when you want predictable resolver behavior for your instances.
 2. **Use allocation pools to reserve IPs.** Reserve the first 50 addresses in each subnet for static assignments (load balancers, database servers). Let DHCP hand out the rest.
 3. **Delete in the right order.** Trying to delete a network with active ports will fail. Remove instances, then ports, then router interfaces, then subnets, then networks.
 4. **Separate management and data traffic.** Use dedicated networks for management (SSH, monitoring) and keep application data traffic on separate networks. It makes security group rules much cleaner.
