@@ -31,7 +31,7 @@ flowchart TD
 ```
 
 Key CSP directives:
-- **default-src**: Fallback for all resource types
+- **default-src**: Fallback for fetch directives that are not set explicitly
 - **script-src**: Controls JavaScript sources
 - **style-src**: Controls CSS sources
 - **img-src**: Controls image sources
@@ -185,6 +185,16 @@ This playbook deploys a CSP report collection endpoint:
         group: www-data
         mode: '0755'
 
+    - name: Create CSP report log file
+      ansible.builtin.file:
+        path: /var/log/csp-reports.json
+        state: touch
+        owner: www-data
+        group: www-data
+        mode: '0640'
+        access_time: preserve
+        modification_time: preserve
+
     - name: Deploy report collector script
       ansible.builtin.copy:
         content: |
@@ -225,6 +235,7 @@ This playbook deploys a CSP report collection endpoint:
           });
         dest: /opt/csp-collector/server.js
         mode: '0644'
+      notify: restart csp collector
 
     - name: Create systemd service for collector
       ansible.builtin.copy:
@@ -244,13 +255,13 @@ This playbook deploys a CSP report collection endpoint:
           WantedBy=multi-user.target
         dest: /etc/systemd/system/csp-collector.service
         mode: '0644'
-      notify: start csp collector
+      notify: restart csp collector
 
   handlers:
-    - name: start csp collector
+    - name: restart csp collector
       ansible.builtin.systemd:
         name: csp-collector
-        state: started
+        state: restarted
         enabled: true
         daemon_reload: true
 ```
@@ -357,8 +368,9 @@ This playbook configures CSP for Apache:
   tasks:
     - name: Enable headers module
       ansible.builtin.command: a2enmod headers
-      changed_when: true
-      failed_when: false
+      register: a2enmod_headers
+      changed_when: "'already enabled' not in a2enmod_headers.stdout"
+      notify: reload apache
 
     - name: Deploy CSP configuration
       ansible.builtin.copy:
@@ -371,11 +383,12 @@ This playbook configures CSP for Apache:
         owner: root
         group: root
         mode: '0644'
+      notify: reload apache
 
     - name: Enable CSP configuration
       ansible.builtin.command: a2enconf csp
-      changed_when: true
-      failed_when: false
+      register: a2enconf_csp
+      changed_when: "'already enabled' not in a2enconf_csp.stdout"
       notify: reload apache
 
   handlers:
@@ -482,8 +495,8 @@ incomplete_csp: "script-src 'self'; style-src 'self'"
 # GOOD: Restrictive with specific exceptions
 good_csp: "default-src 'self'; script-src 'self' https://trusted-cdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.example.com; object-src 'none'; frame-ancestors 'self'; base-uri 'self'"
 
-# BEST: Using nonces or hashes instead of unsafe-inline
-best_csp: "default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; object-src 'none'"
+# BEST: Using per-response nonces or hashes instead of unsafe-inline
+best_csp: "default-src 'self'; script-src 'self' 'nonce-rAnd0mBase64Value'; style-src 'self' 'nonce-rAnd0mBase64Value'; object-src 'none'"
 ```
 
 ## Practical Advice
