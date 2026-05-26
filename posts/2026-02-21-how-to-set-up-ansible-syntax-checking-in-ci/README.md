@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, CI/CD, Syntax Checking, Code Quality
 
-Description: Configure Ansible syntax checking in CI/CD pipelines to catch YAML errors, undefined variables, and module issues before deployment.
+Description: Configure Ansible syntax checking in CI/CD pipelines to catch YAML errors, missing includes, unknown modules, and some variable issues before deployment.
 
 ---
 
-Syntax checking is the absolute minimum validation you should run on Ansible playbooks in CI. It catches YAML parsing errors, undefined variables, invalid module parameters, and other structural problems that would cause your playbook to fail at runtime. Unlike linting (which checks for best practices), syntax checking verifies that your playbook can actually be parsed and loaded by Ansible.
+Syntax checking is the absolute minimum validation you should run on Ansible playbooks in CI. It catches YAML parsing errors, missing includes, unknown modules, some undefined variables, and other structural problems that would cause your playbook to fail at runtime. Unlike linting (which checks for best practices), syntax checking verifies that your playbook can actually be parsed and loaded by Ansible.
 
 This guide covers the different levels of syntax checking available for Ansible and how to integrate them into your CI/CD pipeline.
 
@@ -32,6 +32,7 @@ What `--syntax-check` catches:
 - YAML parsing errors (bad indentation, missing colons, wrong types)
 - Invalid play structure (missing `hosts`, wrong keywords)
 - Include/import errors (missing files)
+- Unknown modules
 - Some variable issues
 
 What it does NOT catch:
@@ -177,11 +178,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install tools
         run: |
-          pip install ansible==8.7.0 yamllint
+          pip install ansible==13.7.0 yamllint
 
       - name: Install collections
         run: |
@@ -218,7 +219,7 @@ stages:
 
 yaml-lint:
   stage: validate
-  image: python:3.11-slim
+  image: python:3.12-slim
   script:
     - pip install yamllint
     - yamllint -c .yamllint playbooks/ roles/
@@ -229,9 +230,9 @@ yaml-lint:
 
 ansible-syntax:
   stage: validate
-  image: python:3.11-slim
+  image: python:3.12-slim
   script:
-    - pip install ansible==8.7.0
+    - pip install ansible==13.7.0
     - |
       for playbook in playbooks/*.yml; do
         echo "Checking $playbook"
@@ -244,9 +245,9 @@ ansible-syntax:
 
 inventory-check:
   stage: validate
-  image: python:3.11-slim
+  image: python:3.12-slim
   script:
-    - pip install ansible==8.7.0
+    - pip install ansible==13.7.0
     - |
       for inv in inventory/*.ini; do
         echo "Validating $inv"
@@ -277,7 +278,7 @@ pipeline {
         stage('Ansible Syntax Check') {
             steps {
                 sh '''
-                    pip install ansible==8.7.0
+                    pip install ansible==13.7.0
                     for playbook in playbooks/*.yml; do
                         echo "Checking $playbook"
                         ansible-playbook --syntax-check "$playbook"
@@ -329,14 +330,14 @@ Ansible templates (Jinja2) are a common source of runtime errors. You can valida
 """Validate Jinja2 templates for syntax errors."""
 import os
 import sys
-from jinja2 import Environment, FileSystemLoader, TemplateSyntaxError
+from jinja2 import Environment, FileSystemLoader, TemplateSyntaxError, Undefined
 
 def check_templates(template_dir):
     errors = []
     env = Environment(
         loader=FileSystemLoader(template_dir),
-        # Use Ansible-style undefined handling
-        undefined=lambda *args: ''
+        # Match Jinja's default behavior for unresolved values during parsing
+        undefined=Undefined
     )
 
     for root, dirs, files in os.walk(template_dir):
