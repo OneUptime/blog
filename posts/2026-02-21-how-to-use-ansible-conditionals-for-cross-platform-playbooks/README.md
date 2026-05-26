@@ -265,6 +265,9 @@ When downloading binaries, you need to account for CPU architecture:
     arch_map:
       x86_64: amd64
       aarch64: arm64
+
+- name: Set binary architecture
+  ansible.builtin.set_fact:
     binary_arch: "{{ arch_map[ansible_architecture] | default(ansible_architecture) }}"
 
 - name: Download monitoring agent
@@ -283,8 +286,13 @@ Here is a complete playbook that ties everything together:
 - name: Setup web application server
   hosts: app_servers
   become: yes
-  vars_files:
-    - "vars/{{ ansible_os_family }}.yml"
+
+  pre_tasks:
+    - name: Load OS-specific variables
+      ansible.builtin.include_vars: "{{ item }}"
+      with_first_found:
+        - "vars/{{ ansible_os_family }}.yml"
+        - "vars/default.yml"
 
   tasks:
     - name: Update package cache on Debian systems
