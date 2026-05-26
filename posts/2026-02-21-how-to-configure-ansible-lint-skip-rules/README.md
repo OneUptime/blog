@@ -32,14 +32,14 @@ skip_list:
   - yaml[truthy]
 
   # Skip by old-style numeric ID (still supported)
-  - "301"  # command-instead-of-module
+  - "303"  # command-instead-of-module
 ```
 
 When a rule is in `skip_list`, ansible-lint will not check for it at all. No output, no warnings, no errors. The rule is completely invisible.
 
 ## Method 2: warn_list in Configuration File
 
-If you want to see violations but not have them block your CI pipeline, use `warn_list` instead. Rules in `warn_list` produce warnings but do not cause a non-zero exit code.
+If you want to see violations but not have them block your CI pipeline, use `warn_list` instead. Rules in `warn_list` produce warnings but do not cause a non-zero exit code unless you run ansible-lint in strict mode.
 
 ```yaml
 # .ansible-lint - Warn but do not fail on certain rules
@@ -74,17 +74,19 @@ For skipping a rule on a specific task, use the `# noqa` comment. This is the mo
 
 You can skip multiple rules on one line by separating them with spaces after `noqa:`.
 
-### Skipping All Rules on a Task
+### Skipping Task-Based Rules on a Task
 
-To suppress all rules on a single task, use `# noqa` without specifying any rule IDs:
+To suppress all task-based rules on a single task, use the `skip_ansible_lint` tag:
 
 ```yaml
-- name: This task skips all linting  # noqa
+- name: This task skips task-based linting
   ansible.builtin.shell: |
     cd /opt && ./legacy-script.sh
+  tags:
+    - skip_ansible_lint
 ```
 
-Use this very sparingly. It defeats the purpose of linting entirely for that task.
+Use this very sparingly. It does not skip line-based rules, but it still hides most task-level linting feedback for that task.
 
 ## Method 4: Per-File Skipping with exclude_paths
 
@@ -148,20 +150,24 @@ ansible-lint -x fqcn[action-core] -x yaml[line-length] playbook.yml
 # Skip using the --skip-list option
 ansible-lint --skip-list fqcn[action-core],yaml[line-length] playbook.yml
 
-# Override the config file's warn_list from CLI
+# Add a CLI warning rule for this run
 ansible-lint -w no-changed-when playbook.yml
 ```
 
-Command-line arguments override the configuration file, so this is useful for testing or temporary exceptions.
+List-based command-line arguments such as `skip_list` and `warn_list` are appended to the configuration file values, so this is useful for testing or temporary exceptions.
 
-## Method 7: Environment Variable
+## Method 7: Ignore File
 
-You can also skip rules via environment variables:
+For file-specific ignores, use an `.ansible-lint-ignore` file next to your ansible-lint configuration:
 
-```bash
-# Skip rules via environment variable
-ANSIBLE_LINT_SKIP_LIST="yaml[line-length],fqcn[action-core]" ansible-lint playbook.yml
+```text
+# .ansible-lint-ignore - Ignore specific rules in specific files
+playbook.yml package-latest
+roles/legacy/tasks/main.yml no-changed-when
+playbook2.yml role-name skip
 ```
+
+By default, ignored rules from this file remain visible as non-fatal warnings. Add `skip` after the rule ID if you want ansible-lint to hide that ignored violation entirely.
 
 ## Choosing the Right Skip Strategy
 
@@ -208,7 +214,6 @@ For an existing project, start lenient and tighten over time:
 # .ansible-lint - Lenient config for legacy projects
 ---
 profile: basic
-progressive: true
 
 skip_list:
   - fqcn[action-core]     # Too many files to fix at once
@@ -242,8 +247,8 @@ warn_list:
 ```
 
 ```bash
-# In CI, override to be stricter (no warnings, everything is an error)
-ansible-lint --warn-list "" playbook.yml
+# In CI, be stricter by making warnings fail the run too
+ansible-lint --strict playbook.yml
 ```
 
 ## Documenting Your Skip Decisions
