@@ -8,7 +8,7 @@ Description: Learn how to reference and use Ansible collections inside your play
 
 ---
 
-Ansible collections changed the way we organize and consume automation content. Before collections existed, every module shipped with Ansible core, which made releases heavy and slow. Now, collections let you pull in exactly the modules and plugins you need, and your playbooks reference them with clear namespaces.
+Ansible collections changed the way we organize and consume automation content. Before collections existed, modules and plugins were bundled into the monolithic Ansible package, which made releases heavy and slow. Now, collections let you pull in exactly the modules and plugins you need, and your playbooks reference them with clear namespaces.
 
 This post walks through how to actually use collections inside your playbooks, from basic module references to advanced patterns like setting collection search paths and pinning versions.
 
@@ -85,7 +85,7 @@ One thing to keep in mind: the Ansible documentation recommends using FQCNs over
 
 Before your playbook can use a collection, that collection needs to be installed. The standard approach is to create a `requirements.yml` file that lists your collection dependencies.
 
-This requirements file pins specific versions of the collections your playbook needs:
+This requirements file sets version constraints for the collections your playbook needs:
 
 ```yaml
 # requirements.yml - Pin collection versions for reproducible builds
@@ -97,6 +97,8 @@ collections:
     version: "3.2.0"
   - name: ansible.posix
     version: ">=1.5.0"
+  - name: community.grafana
+    version: ">=2.3.0"
 ```
 
 Install everything with a single command:
@@ -106,7 +108,7 @@ Install everything with a single command:
 ansible-galaxy collection install -r requirements.yml
 ```
 
-This keeps your playbook portable. Anyone who clones your repository can install the exact same collection versions.
+This keeps your playbook portable. Anyone who clones your repository can install collections that satisfy the same version constraints.
 
 ## Using Collection Roles in Playbooks
 
@@ -115,16 +117,18 @@ Collections can include roles, and you reference them the same way you reference
 This playbook uses a role from a collection:
 
 ```yaml
-# setup-monitoring.yml - Import a role from a collection
+# configure-grafana.yml - Import a role from a collection
 ---
-- name: Set up monitoring stack
+- name: Configure Grafana resources
   hosts: monitoring
-  become: true
   roles:
     - role: community.grafana.grafana
       vars:
-        grafana_port: 3000
-        grafana_admin_password: "{{ vault_grafana_password }}"
+        grafana_url: "http://localhost:3000"
+        grafana_username: admin
+        grafana_password: "{{ vault_grafana_password }}"
+        grafana_folders:
+          - name: Operations
   tasks:
     - name: Verify Grafana is responding
       ansible.builtin.uri:
@@ -213,7 +217,7 @@ This example sets default connection parameters for all PostgreSQL modules:
   become: true
   become_user: postgres
   module_defaults:
-    group/community.postgresql.postgresql:
+    group/community.postgresql.all:
       login_host: localhost
       login_user: postgres
       port: 5432
@@ -233,7 +237,7 @@ This example sets default connection parameters for all PostgreSQL modules:
         role_attr_flags: NOSUPERUSER,NOCREATEDB
 ```
 
-The `group/community.postgresql.postgresql` syntax applies defaults to all modules in that collection's module group. Not every collection supports module_defaults groups, so check the collection documentation.
+The `group/community.postgresql.all` syntax applies defaults to all modules in that collection's `all` module group. Not every collection supports module_defaults groups, so check the collection documentation.
 
 ## Workflow: From requirements.yml to Running Playbooks
 
