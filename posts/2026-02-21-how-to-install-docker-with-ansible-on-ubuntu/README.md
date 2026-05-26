@@ -16,11 +16,12 @@ Installing Docker on a single Ubuntu server is straightforward. You follow the o
 - Docker CLI
 - containerd
 - Docker Compose plugin (the v2 version that runs as `docker compose`)
-- The Docker Python SDK (needed if you plan to use Ansible's Docker modules later)
+- Python dependencies for Ansible's Docker modules
 
 ## Prerequisites
 
 - Ansible 2.10+ installed on your control machine
+- The `community.docker` collection installed on your control machine (`ansible-galaxy collection install community.docker`)
 - SSH access to your Ubuntu target servers
 - Sudo privileges on the target servers
 
@@ -56,7 +57,6 @@ Here is the full playbook. We will break it down section by section after.
   vars:
     docker_users:
       - ubuntu
-    docker_compose_version: "2.24.5"
 
   tasks:
     # Step 1: Remove any old Docker packages
@@ -66,6 +66,10 @@ Here is the full playbook. We will break it down section by section after.
           - docker
           - docker-engine
           - docker.io
+          - docker-compose
+          - docker-compose-v2
+          - docker-doc
+          - podman-docker
           - containerd
           - runc
         state: absent
@@ -79,7 +83,6 @@ Here is the full playbook. We will break it down section by section after.
           - curl
           - gnupg
           - lsb-release
-          - python3-pip
         state: present
         update_cache: true
 
@@ -139,12 +142,12 @@ Here is the full playbook. We will break it down section by section after.
         append: true
       loop: "{{ docker_users }}"
 
-    # Step 8: Install Docker Python SDK for Ansible modules
-    - name: Install Docker Python SDK
-      ansible.builtin.pip:
+    # Step 8: Ensure Python dependencies for Ansible Docker modules are installed
+    - name: Install Python dependencies for Ansible Docker modules
+      ansible.builtin.apt:
         name:
-          - docker
-          - docker-compose
+          - python3-docker
+          - python3-requests
         state: present
 
     # Step 9: Configure Docker daemon
@@ -221,7 +224,7 @@ graph TD
     E --> F[Install Docker Engine]
     F --> G[Start Docker Service]
     G --> H[Add Users to Docker Group]
-    H --> I[Install Python SDK]
+    H --> I[Install Python Dependencies]
     I --> J[Configure Daemon]
     J --> K[Verify Installation]
     K --> L[Done]
@@ -319,6 +322,7 @@ If you ever need to remove Docker completely, here is the playbook for that.
           - containerd.io
           - docker-buildx-plugin
           - docker-compose-plugin
+          - docker-ce-rootless-extras
         state: absent
         purge: true
 
@@ -327,10 +331,20 @@ If you ever need to remove Docker completely, here is the playbook for that.
         path: /var/lib/docker
         state: absent
 
+    - name: Remove containerd data directory
+      ansible.builtin.file:
+        path: /var/lib/containerd
+        state: absent
+
+    - name: Get system architecture
+      ansible.builtin.command: dpkg --print-architecture
+      register: dpkg_arch
+      changed_when: false
+
     - name: Remove Docker repository
       ansible.builtin.apt_repository:
         repo: >-
-          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          deb [arch={{ dpkg_arch.stdout }} signed-by=/etc/apt/keyrings/docker.asc]
           https://download.docker.com/linux/ubuntu
           {{ ansible_distribution_release }} stable
         state: absent
