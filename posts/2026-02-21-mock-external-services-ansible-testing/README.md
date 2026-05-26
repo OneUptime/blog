@@ -51,7 +51,8 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+python3 -m pip install ansible molecule "molecule-plugins[docker]" ansible-lint yamllint pytest testinfra
+ansible-galaxy collection install community.general
 ```
 
 ## Writing Tests
@@ -156,7 +157,7 @@ molecule converge  # Run the playbook
 molecule verify    # Run verification tests
 molecule destroy   # Clean up
 
-# Run with specific platform
+# Run Ansible provisioner steps with a host limit
 molecule test -- --limit ubuntu2404
 
 # Run linting
@@ -178,16 +179,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        distro: [ubuntu2404, rocky9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: python3 -m pip install ansible molecule "molecule-plugins[docker]"
+      - run: molecule test -- --limit ${{ matrix.distro }}
 ```
 
 ### GitLab CI
@@ -202,17 +201,20 @@ lint:
   stage: lint
   image: python:3.11
   script:
-    - pip install ansible-lint yamllint
+    - python3 -m pip install ansible-lint yamllint
     - ansible-lint .
     - yamllint .
 
 molecule:
   stage: test
-  image: docker:latest
+  image: docker:stable-dind
   services:
     - docker:dind
+  before_script:
+    - apk add --no-cache python3 python3-dev py3-pip gcc git curl build-base autoconf automake py3-cryptography linux-headers musl-dev libffi-dev openssl-dev openssh
+    - docker info
   script:
-    - pip install ansible molecule molecule-docker
+    - python3 -m pip install ansible "molecule-plugins[docker]"
     - molecule test
 ```
 
@@ -303,7 +305,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -344,7 +346,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -447,4 +449,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
