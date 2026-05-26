@@ -30,15 +30,20 @@ fatal: [server1]: FAILED! => {
   register: nginx_status
   ignore_errors: yes
 
-# Problem: if the task was skipped, nginx_status is undefined
+# Problem: if the check task did not run, nginx_status may be undefined
+# If it was skipped, nginx_status may not have an rc attribute
 - name: Start nginx if stopped
   systemd:
     name: nginx
     state: started
-  when: nginx_status.rc != 0  # Fails if nginx_status is undefined
+  when: nginx_status.rc != 0  # Fails if nginx_status is undefined or has no rc
 
-# Fix: check if variable is defined
-  when: nginx_status is defined and nginx_status.rc != 0
+# Fix: check if variable and return code are defined
+- name: Start nginx if stopped
+  systemd:
+    name: nginx
+    state: started
+  when: nginx_status is defined and nginx_status.rc is defined and nginx_status.rc != 0
 ```
 
 ### Fix 2: Do Not Use Jinja2 Brackets in when
@@ -150,7 +155,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -245,6 +250,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -269,6 +275,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Ensure scripts directory exists
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -294,4 +306,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
