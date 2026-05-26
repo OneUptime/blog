@@ -37,7 +37,7 @@ ln -s /path/to/your/collection ~/ansible_collections/my_namespace/my_collection
 cd ~/ansible_collections/my_namespace/my_collection
 ```
 
-Alternatively, set the `ANSIBLE_COLLECTIONS_PATH` to the parent of `ansible_collections/`.
+If your collection depends on other collections, clone or install those dependencies into the same collection root. `ansible-test` does not use your configured collection roots or other Ansible configuration when resolving collection dependencies.
 
 ## Sanity Tests
 
@@ -74,7 +74,7 @@ Here are the sanity tests that catch the most issues:
 | pep8 | Python code style (PEP 8 compliance) |
 | pylint | Python static analysis |
 | yamllint | YAML file formatting |
-| no-unwanted-files | No unexpected file types in the collection |
+| no-illegal-filenames | No illegal filenames in the collection |
 | compile | Python code compiles without syntax errors |
 
 ### Handling Sanity Test Exceptions
@@ -83,9 +83,9 @@ Sometimes a sanity test flags something you cannot or should not fix. Create an 
 
 ```text
 # tests/sanity/ignore-2.16.txt
-# Format: path test-name message
-plugins/modules/legacy_module.py pep8 E501  # Long lines in documentation strings
-plugins/module_utils/vendor_lib.py pylint  # Vendored third-party code
+# Format: path test-name[:error-code] optional-comment
+plugins/modules/legacy_module.py pep8:E501  # Long lines in documentation strings
+plugins/module_utils/vendor_lib.py pylint!skip  # Vendored third-party code
 ```
 
 The ignore file name must match the ansible-core version you are testing against (e.g., `ignore-2.16.txt` for ansible-core 2.16.x).
@@ -112,7 +112,7 @@ tests/
 
 ### Writing a Unit Test
 
-Here is a unit test for a module that validates IP addresses:
+Here is a unit test for a module that checks TCP ports:
 
 ```python
 # tests/unit/plugins/modules/test_check_port.py
@@ -121,7 +121,6 @@ Here is a unit test for a module that validates IP addresses:
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from ansible_collections.my_namespace.my_collection.plugins.modules import check_port
@@ -281,45 +280,69 @@ tests/
 # tests/integration/targets/check_port/tasks/main.yml
 # Integration tests for the check_port module
 ---
-- name: Test checking an open port (SSH on localhost)
-  my_namespace.my_collection.check_port:
-    host: localhost
-    port: 22
-    timeout: 5
-  register: open_port_result
-  ignore_errors: true
+- name: Run check_port integration tests
+  block:
+    - name: Start a local test HTTP server
+      ansible.builtin.shell: |
+        {{ ansible_playbook_python }} -m http.server 18080 --bind 127.0.0.1 >/tmp/check_port_test.log 2>&1 &
+        echo $!
+      args:
+        executable: /bin/sh
+      register: test_server_pid
+      changed_when: false
 
-- name: Verify open port result structure
-  ansible.builtin.assert:
-    that:
-      - open_port_result.is_open is defined
-      - open_port_result.elapsed is defined
-      - open_port_result.changed == false
+    - name: Wait for the local test HTTP server
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 18080
+        timeout: 10
 
-- name: Test checking a closed port
-  my_namespace.my_collection.check_port:
-    host: localhost
-    port: 19999
-    timeout: 2
-  register: closed_port_result
+    - name: Test checking an open port
+      my_namespace.my_collection.check_port:
+        host: 127.0.0.1
+        port: 18080
+        timeout: 5
+      register: open_port_result
 
-- name: Verify closed port result
-  ansible.builtin.assert:
-    that:
-      - closed_port_result.is_open == false
-      - closed_port_result.changed == false
+    - name: Verify open port result
+      ansible.builtin.assert:
+        that:
+          - open_port_result.is_open == true
+          - open_port_result.elapsed is defined
+          - open_port_result.changed == false
 
-- name: Test check mode
-  my_namespace.my_collection.check_port:
-    host: localhost
-    port: 22
-  check_mode: true
-  register: check_mode_result
+    - name: Test checking a closed port
+      my_namespace.my_collection.check_port:
+        host: 127.0.0.1
+        port: 19999
+        timeout: 2
+      register: closed_port_result
 
-- name: Verify check mode works
-  ansible.builtin.assert:
-    that:
-      - check_mode_result is not changed
+    - name: Verify closed port result
+      ansible.builtin.assert:
+        that:
+          - closed_port_result.is_open == false
+          - closed_port_result.changed == false
+
+    - name: Test check mode
+      my_namespace.my_collection.check_port:
+        host: 127.0.0.1
+        port: 18080
+      check_mode: true
+      register: check_mode_result
+
+    - name: Verify check mode works
+      ansible.builtin.assert:
+        that:
+          - check_mode_result is not changed
+  always:
+    - name: Stop the local test HTTP server
+      ansible.builtin.command: "kill {{ test_server_pid.stdout }}"
+      when:
+        - test_server_pid is defined
+        - test_server_pid.stdout is defined
+      changed_when: false
+      failed_when: false
 ```
 
 Run integration tests:
@@ -344,10 +367,10 @@ The `--docker` flag is the recommended way to run integration tests. ansible-tes
 
 ```bash
 # Use a specific container image
-ansible-test integration --docker ubuntu2204
+ansible-test integration --docker ubuntu
 
-# Available built-in images include:
-# default, ubuntu2004, ubuntu2204, centos7, fedora38, etc.
+# List the container images supported by your ansible-test version
+ansible-test integration --help
 ```
 
 If your tests need specific services (like a database), create an `aliases` file:
@@ -355,7 +378,7 @@ If your tests need specific services (like a database), create an `aliases` file
 ```text
 # tests/integration/targets/database_module/aliases
 # Mark as requiring specific setup
-needs/target/setup_postgresql
+setup/once/setup_postgresql
 destructive
 ```
 
