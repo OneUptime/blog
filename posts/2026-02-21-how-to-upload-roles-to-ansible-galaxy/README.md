@@ -160,35 +160,12 @@ Galaxy recognizes tags in these formats: `v1.0.0`, `1.0.0`, `v1.0`, `1.0`. Stick
 
 ## Step 5: Import the Role on Galaxy
 
-There are two ways to trigger an import:
-
-### Method 1: Galaxy Web Interface
-
-1. Go to https://galaxy.ansible.com
-2. Log in with GitHub
-3. Go to "My Content" from the menu
-4. Click "Add Content" and then "Import Role from GitHub"
-5. Select your repository
-6. Click Import
-
-### Method 2: Command Line
-
-Get your Galaxy API token from https://galaxy.ansible.com/me/preferences and then:
+Trigger the import from the command line. Get your Galaxy API token from https://galaxy.ansible.com/me/preferences and then:
 
 ```bash
 # Import (or re-import) your role from the CLI
 ansible-galaxy role import your_github_username ansible-role-myapp \
     --token your_galaxy_api_token
-```
-
-You can also set the token as an environment variable:
-
-```bash
-# Set the token as an environment variable
-export ANSIBLE_GALAXY_TOKEN="your_galaxy_api_token"
-
-# Now import without passing the token flag
-ansible-galaxy role import your_github_username ansible-role-myapp
 ```
 
 ## Step 6: Verify the Import
@@ -205,7 +182,7 @@ You can also verify from the CLI:
 
 ```bash
 # Check your role info on Galaxy
-ansible-galaxy info your_namespace.myapp
+ansible-galaxy role info your_namespace.myapp
 ```
 
 ## Automating Imports with GitHub Actions
@@ -324,4 +301,4 @@ Your Galaxy namespace matches your GitHub username. If you want a cleaner namesp
 
 ## Summary
 
-Publishing roles to Ansible Galaxy is a GitHub-centric process: you maintain a properly structured role in a GitHub repo, tag releases with semantic versions, and import them through the Galaxy web UI or CLI. Automate the import with GitHub Actions so new tags trigger re-imports automatically. Focus on quality by running Molecule tests and ansible-lint in CI, and write a thorough README so users know how to configure your role. The community benefits from well-documented, well-tested roles, and Galaxy makes distributing them trivial.
+Publishing roles to Ansible Galaxy is a GitHub-centric process: you maintain a properly structured role in a GitHub repo, tag releases with semantic versions, and import them through the Galaxy CLI. Automate the import with GitHub Actions so new tags trigger re-imports automatically. Focus on quality by running Molecule tests and ansible-lint in CI, and write a thorough README so users know how to configure your role. The community benefits from well-documented, well-tested roles, and Galaxy makes distributing them trivial.
