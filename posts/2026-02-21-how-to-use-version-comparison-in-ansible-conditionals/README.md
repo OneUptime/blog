@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Version Comparison, Conditional, DevOps
 
-Description: Learn how to compare software versions in Ansible conditionals using the version test for accurate semantic version checking.
+Description: Learn how to compare software versions in Ansible conditionals using the version test for accurate version-aware checking.
 
 ---
 
-Comparing version strings is one of those things that looks simple until you try it. The string "2.10" is lexicographically less than "2.9" (because "1" comes before "9" in character comparison), but numerically 2.10 is greater than 2.9. Ansible solves this with the `version` test, which understands semantic versioning and compares version numbers correctly. This is essential for writing playbooks that adapt to different software versions on target systems.
+Comparing version strings is one of those things that looks simple until you try it. The string "2.10" is lexicographically less than "2.9" (because "1" comes before "9" in character comparison), but numerically 2.10 is greater than 2.9. Ansible solves this with the `version` test, which uses version-aware comparison rules instead of plain string comparison. This is essential for writing playbooks that adapt to different software versions on target systems.
 
 ## Basic Version Comparison
 
@@ -40,8 +40,8 @@ The supported comparison operators are:
 - `<=` or `le` (less than or equal)
 - `>` or `gt` (greater than)
 - `>=` or `ge` (greater than or equal)
-- `==` or `eq` (equal)
-- `!=` or `ne` (not equal)
+- `==`, `=`, or `eq` (equal)
+- `!=`, `<>`, or `ne` (not equal)
 
 ## Comparing Software Versions
 
@@ -86,7 +86,7 @@ A common use case is checking the version of installed software to decide whethe
 
 ## Strict vs Loose Version Comparison
 
-The `version` test supports a `strict` parameter that enforces strict semantic versioning (MAJOR.MINOR.PATCH format). By default, comparison is loose and handles various formats.
+The `version` test supports a `strict` parameter that uses Ansible's strict version parser. By default, comparison is loose and handles various formats. For Semantic Versioning rules, Ansible 2.11+ also supports `version_type='semver'` or `version_type='semantic'`.
 
 ```yaml
 # Strict vs loose version comparison
@@ -103,8 +103,8 @@ The `version` test supports a `strict` parameter that enforces strict semantic v
       when: "'2.10' is version('2.9', '>')"
       # This correctly evaluates 2.10 > 2.9
 
-    # Strict comparison requires proper semver format
-    - name: Strict semver comparison
+    # Strict comparison uses Ansible's strict version parser
+    - name: Strict version comparison
       ansible.builtin.debug:
         msg: "Strict version check passed"
       when: "'2.10.0' is version('2.9.0', '>', strict=true)"
@@ -138,7 +138,7 @@ Often you need to check if a version falls within a specific range. Combine mult
       ansible.builtin.set_fact:
         python_ver: "{{ python_out.stdout | regex_search('Python (\\S+)', '\\1') | first }}"
 
-    # Check if Python is in the 3.8.x to 3.11.x range
+    # Check if Python is in the 3.8.x to 3.12.x range
     - name: Verify Python is in supported range
       ansible.builtin.debug:
         msg: "Python {{ python_ver }} is in the supported range (3.8 - 3.12)"
