@@ -54,7 +54,7 @@ GitLab provides official packages. Here is the Ansible playbook to install it on
 
 ## Configuring GitLab
 
-GitLab's main configuration file is `/etc/gitlab/gitlab.rb`. Use a template to manage it:
+GitLab's main configuration file is `/etc/gitlab/gitlab.rb`. Use Ansible to manage it:
 
 ```yaml
 # playbook-gitlab-config.yml
@@ -71,13 +71,6 @@ GitLab's main configuration file is `/etc/gitlab/gitlab.rb`. Use a template to m
     smtp_password: "{{ lookup('env', 'SMTP_PASSWORD') }}"
 
   tasks:
-    - name: Configure gitlab.rb
-      ansible.builtin.template:
-        src: gitlab.rb.j2
-        dest: /etc/gitlab/gitlab.rb
-        mode: "0600"
-      notify: Reconfigure GitLab
-
     - name: Create gitlab.rb from inline content
       ansible.builtin.copy:
         content: |
@@ -112,7 +105,6 @@ GitLab's main configuration file is `/etc/gitlab/gitlab.rb`. Use a template to m
 
           # Monitoring
           prometheus_monitoring['enable'] = true
-          grafana['enable'] = true
         dest: /etc/gitlab/gitlab.rb
         mode: "0600"
       notify: Reconfigure GitLab
@@ -148,9 +140,21 @@ GitLab Runners execute CI/CD pipelines:
   become: true
   vars:
     gitlab_url: "https://gitlab.example.com"
-    runner_token: "{{ lookup('env', 'GITLAB_RUNNER_TOKEN') }}"
+    runner_authentication_token: "{{ lookup('env', 'GITLAB_RUNNER_AUTH_TOKEN') }}"
 
   tasks:
+    - name: Install Docker for the Docker executor
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
     - name: Add GitLab Runner repository
       ansible.builtin.shell: |
         curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | bash
@@ -168,7 +172,7 @@ GitLab Runners execute CI/CD pipelines:
         gitlab-runner register \
           --non-interactive \
           --url "{{ gitlab_url }}" \
-          --token "{{ runner_token }}" \
+          --token "{{ runner_authentication_token }}" \
           --executor "docker" \
           --docker-image "alpine:latest" \
           --description "ansible-managed-runner-{{ inventory_hostname }}"
@@ -256,9 +260,6 @@ GitLab Runners execute CI/CD pipelines:
     - name: Set password requirements
       ansible.builtin.shell: |
         gitlab-rails runner "ApplicationSetting.last.update(
-          password_number_required: true,
-          password_uppercase_required: true,
-          password_lowercase_required: true,
           minimum_password_length: 12
         )"
       changed_when: false
