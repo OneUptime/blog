@@ -14,7 +14,7 @@ Virtual environments are the standard way to isolate Python application dependen
 
 Without virtualenvs, every Python application on a server shares the same set of installed packages. Application A needs `requests==2.28.0` but Application B needs `requests==2.31.0`. Without isolation, one of them breaks. Virtualenvs solve this by giving each application its own Python environment with its own package directory.
 
-On modern Linux distributions (Ubuntu 23.04+, Fedora 38+), there is an additional reason: PEP 668 marks the system Python as externally managed, and pip refuses to install packages into it. Virtualenvs are now the only sanctioned way to install pip packages.
+On modern Linux distributions (Ubuntu 23.04+, Fedora 38+), there is an additional reason: PEP 668 marks the system Python as externally managed, and pip refuses to install packages into it by default. Virtualenvs are now the recommended way to install application dependencies with pip.
 
 ## Creating a virtualenv and Installing Packages
 
@@ -55,14 +55,14 @@ There are two main options for creating virtualenvs:
     virtualenv_command: virtualenv
 ```
 
-If you use `virtualenv`, install it first:
+If you use `virtualenv`, install it first. On Debian, Ubuntu, and Fedora, the package is usually named `python3-virtualenv`:
 
 ```yaml
 # Install virtualenv package on the target system
 - name: Install virtualenv
-  ansible.builtin.pip:
-    name: virtualenv
-    executable: pip3
+  ansible.builtin.package:
+    name: python3-virtualenv
+    state: present
 ```
 
 ## Specifying the Python Version
@@ -78,10 +78,9 @@ To create a virtualenv with a specific Python version:
       - celery==5.3.6
     virtualenv: /opt/webapp/venv
     virtualenv_command: python3.11 -m venv
-    virtualenv_python: python3.11
 ```
 
-The `virtualenv_python` parameter specifies which Python interpreter to use inside the virtualenv. This is mainly useful with the `virtualenv` command rather than `python3 -m venv`.
+When you use `python3.11 -m venv`, the Python version comes from the command itself. The `virtualenv_python` parameter is mainly useful with the standalone `virtualenv` command and should not be used with `python3 -m venv`.
 
 ## Installing from requirements.txt into a virtualenv
 
@@ -143,7 +142,7 @@ Here is a full playbook that deploys a Django application with a virtualenv:
         - "{{ app_dir }}/media"
 
     - name: Deploy application code
-      ansible.builtin.synchronize:
+      ansible.posix.synchronize:
         src: app/
         dest: "{{ app_dir }}/src/"
       become_user: "{{ app_user }}"
@@ -312,6 +311,6 @@ To upgrade packages without recreating the environment:
 
 4. **Include `--no-cache-dir` for Docker builds.** Not relevant for server deployments, but if you are building containers with Ansible, `extra_args: "--no-cache-dir"` saves significant image size.
 
-5. **Use `virtualenv_command: python3 -m venv`** on modern systems. The standalone `virtualenv` package is still useful for Python 2 compatibility, but `venv` is built into Python 3 and requires no extra installation.
+5. **Use `virtualenv_command: python3 -m venv`** on modern systems. The standalone `virtualenv` package is still useful for Python 2 compatibility, but `venv` is built into Python 3. On Debian-based systems, make sure the matching `python3-venv` or `pythonX.Y-venv` OS package is installed.
 
 Virtual environments are the foundation of reliable Python deployments. The Ansible `pip` module makes them easy to create and manage, and once you have the pattern down, every Python application deployment follows the same structure.
