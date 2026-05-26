@@ -12,7 +12,7 @@ Ansible's `register` keyword captures the output of a task into a variable. That
 
 ## What a Registered Variable Contains
 
-Every registered variable is a dictionary with a predictable structure. The exact keys depend on the module, but several are always present:
+Every registered variable is a dictionary with a predictable structure. The exact keys depend on the module, but several common keys appear frequently:
 
 ```yaml
 # show-registered-var.yml - Inspect a registered variable
@@ -84,7 +84,7 @@ The `rc` field (return code) is available for command and shell modules. Zero ty
 
 ## Checking stdout Content
 
-You can check what a command printed to stdout:
+You can check what a command printed to stdout or stderr:
 
 ```yaml
 # check-stdout.yml - Conditionals based on command output
@@ -125,7 +125,7 @@ You can check what a command printed to stdout:
       changed_when: false
 
     - name: Start service if not running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: started
       when: service_status.stdout != "active"
@@ -151,7 +151,7 @@ When a task changes something, `changed` is `true`. This is useful for triggerin
       register: config_update
 
     - name: Restart app if config changed
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: myapp
         state: restarted
       when: config_update.changed
@@ -251,7 +251,7 @@ Different modules return different data structures. The `stat` module is a good 
       ansible.builtin.apt:
         name: nginx
         state: present
-      when: "'apache2' not in ansible_facts.packages"
+      when: "'apache2' not in pkg_facts.ansible_facts.packages"
 ```
 
 ## Registered Variables with Loops
@@ -286,7 +286,7 @@ When you register a variable inside a loop, the registered variable contains a `
         label: "{{ item.item }}"
 
     - name: Start services that are not running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item.item }}"
         state: started
       loop: "{{ service_checks.results }}"
