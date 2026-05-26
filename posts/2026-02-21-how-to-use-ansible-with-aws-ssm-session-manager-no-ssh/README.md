@@ -18,7 +18,8 @@ Before you start, you need a few things in place:
 
 - AWS CLI v2 installed and configured on your Ansible controller
 - The Session Manager plugin for the AWS CLI installed
-- EC2 instances with the SSM Agent running (Amazon Linux 2 and Ubuntu 20.04+ have it pre-installed)
+- EC2 instances with the SSM Agent running (Amazon Linux 2 includes it, and AWS-provided Ubuntu AMIs usually include it)
+- `curl` installed on the target Linux instances
 - An IAM instance profile attached to your EC2 instances with the right permissions
 - The `amazon.aws` Ansible collection installed
 
@@ -139,7 +140,7 @@ Run it with:
 ansible-playbook -i inventory/ssm_hosts.ini playbooks/ssm-test.yml -v
 ```
 
-Note that SSM sessions typically connect as `ssm-user` or root depending on the OS and SSM Agent configuration. On Amazon Linux 2, you will likely connect as `ssm-user`.
+Note that the Ansible SSM connection plugin does not use `ansible_user` or `remote_user` to choose the remote user. Commands often run as the `ssm-agent` user, depending on how SSM is configured; use `become_user` if you need tasks to run as a specific user.
 
 ## Dynamic Inventory with SSM
 
@@ -195,14 +196,17 @@ The SSM connection plugin uses S3 as an intermediary for file transfers. When yo
         },
         {
             "Effect": "Allow",
-            "Action": "s3:ListBucket",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
             "Resource": "arn:aws:s3:::my-ansible-ssm-bucket"
         }
     ]
 }
 ```
 
-Both the Ansible controller (via your AWS credentials) and the EC2 instance (via its instance profile) need this S3 access.
+The Ansible controller credentials need this S3 access. The EC2 instance does not need S3 IAM permissions for the Ansible transfer bucket, but it does need network connectivity to S3 because the plugin passes presigned S3 URLs to the target for upload and download operations.
 
 ## Performance Tuning
 
@@ -245,7 +249,7 @@ ansible_aws_ssm_bucket_name=my-ansible-ssm-bucket
 Using SSM instead of SSH gives you several security advantages:
 
 1. No inbound ports need to be open on your instances. Zero. None.
-2. All session activity is logged in CloudTrail, giving you a full audit trail.
+2. Session API activity is logged in CloudTrail, and you can configure session content logging to Amazon S3 or CloudWatch Logs when you need command-level audit records.
 3. You can use IAM policies to control who can start sessions with which instances.
 4. Session data can be encrypted with a KMS key.
 5. No SSH keys to manage, rotate, or worry about being compromised.
