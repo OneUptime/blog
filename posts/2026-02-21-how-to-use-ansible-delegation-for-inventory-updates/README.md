@@ -53,7 +53,7 @@ The simplest form of inventory update during a play uses the `add_host` module. 
   become: true
   tasks:
     - name: Install nginx
-      ansible.builtin.apt:
+      ansible.builtin.package:
         name: nginx
         state: present
 ```
@@ -225,22 +225,26 @@ When you combine `delegate_to` with `delegate_facts: true`, the facts gathered b
 ```yaml
 # share_facts.yml - Use delegate_facts to share info across hosts
 ---
-- name: Discover load balancer IP and share with all web servers
+- name: Discover load balancer address and share with all web servers
   hosts: webservers
   gather_facts: false
+  vars:
+    lb_host: "{{ groups['loadbalancers'][0] }}"
   tasks:
-    - name: Get the load balancer's public IP
-      ansible.builtin.command: curl -s http://169.254.169.254/latest/meta-data/public-ipv4
-      delegate_to: "{{ groups['loadbalancers'][0] }}"
+    - name: Gather network facts from the load balancer
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - network
+      delegate_to: "{{ lb_host }}"
       delegate_facts: true
       run_once: true
-      register: lb_ip
 
-    - name: Write LB IP to each web server's host_vars
+    - name: Write LB address to each web server's host_vars
       ansible.builtin.lineinfile:
         path: "/etc/ansible/host_vars/{{ inventory_hostname }}.yml"
-        regexp: "^lb_public_ip:"
-        line: "lb_public_ip: {{ lb_ip.stdout }}"
+        regexp: "^lb_address:"
+        line: "lb_address: {{ hostvars[lb_host]['ansible_default_ipv4']['address'] }}"
         create: true
       delegate_to: localhost
 ```
