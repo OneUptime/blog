@@ -17,7 +17,7 @@ Before starting, make sure you have:
 - A running Kubernetes cluster (minikube, k3s, EKS, GKE, or AKS all work)
 - kubectl configured and connected to your cluster
 - At least 4GB of free memory and 2 CPU cores available
-- A StorageClass that supports dynamic provisioning (for PostgreSQL data)
+- A StorageClass that supports dynamic provisioning (and ReadWriteMany if you persist the projects directory)
 
 Check your cluster is ready.
 
@@ -26,7 +26,7 @@ Check your cluster is ready.
 
 kubectl cluster-info
 
-# Check available resources
+# Check available resources if Metrics Server is installed
 kubectl top nodes
 
 # Verify a StorageClass exists
@@ -51,7 +51,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - github.com/ansible/awx-operator/config/default?ref=2.12.2
+  - github.com/ansible/awx-operator/config/default?ref=2.19.1
 
 # Set the namespace for the operator
 namespace: awx
@@ -59,7 +59,7 @@ namespace: awx
 # Set the image tag for the operator
 images:
   - name: quay.io/ansible/awx-operator
-    newTag: 2.12.2
+    newTag: 2.19.1
 ```
 
 Apply it to your cluster.
@@ -121,7 +121,7 @@ spec:
   # Persistent storage for projects
   projects_persistence: true
   projects_storage_size: 10Gi
-  projects_storage_access_mode: ReadWriteOnce
+  projects_storage_access_mode: ReadWriteMany
 ```
 
 Create the PostgreSQL configuration secret.
@@ -135,12 +135,11 @@ metadata:
   namespace: awx
 type: Opaque
 stringData:
-  host: "awx-postgres-13"
+  host: "awx-postgres-15"
   port: "5432"
   database: "awx"
   username: "awx"
   password: "changeme-strong-password"
-  sslmode: "prefer"
   type: "managed"
 ```
 
@@ -152,7 +151,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - github.com/ansible/awx-operator/config/default?ref=2.12.2
+  - github.com/ansible/awx-operator/config/default?ref=2.19.1
   - awx-postgres-secret.yml
   - awx-instance.yml
 
@@ -160,7 +159,7 @@ namespace: awx
 
 images:
   - name: quay.io/ansible/awx-operator
-    newTag: 2.12.2
+    newTag: 2.19.1
 ```
 
 Apply the updated configuration.
@@ -190,7 +189,7 @@ The full deployment takes 5-10 minutes. You should eventually see these pods.
 kubectl -n awx get pods
 # NAME                                              READY   STATUS    RESTARTS
 # awx-operator-controller-manager-xxx               2/2     Running   0
-# awx-postgres-13-0                                 1/1     Running   0
+# awx-postgres-15-0                                 1/1     Running   0
 # awx-web-xxx                                       3/3     Running   0
 # awx-task-xxx                                      4/4     Running   0
 ```
@@ -260,7 +259,7 @@ spec:
       secretName: awx-tls
 ```
 
-Update the AWX instance to use ClusterIP when using Ingress.
+Alternatively, let the AWX Operator create the Ingress by updating the AWX instance to use ClusterIP and `ingress_type: ingress`.
 
 ```yaml
 # awx-instance.yml (updated for Ingress)
@@ -272,9 +271,14 @@ metadata:
 spec:
   service_type: ClusterIP
   ingress_type: ingress
+  ingress_class_name: nginx
   ingress_hosts:
     - hostname: awx.example.com
-  ingress_tls_secret: awx-tls
+      tls_secret: awx-tls
+  ingress_annotations: |
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 ```
 
 ## Architecture Overview
@@ -327,7 +331,7 @@ spec:
   projects_persistence: true
   projects_storage_size: 20Gi
   projects_storage_class: standard
-  projects_storage_access_mode: ReadWriteOnce
+  projects_storage_access_mode: ReadWriteMany
 
   # Extra settings for production
   extra_settings:
@@ -349,13 +353,13 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - github.com/ansible/awx-operator/config/default?ref=2.13.0
+  - github.com/ansible/awx-operator/config/default?ref=2.19.1
 
 namespace: awx
 
 images:
   - name: quay.io/ansible/awx-operator
-    newTag: 2.13.0
+    newTag: 2.19.1
 ```
 
 ```bash
@@ -374,7 +378,7 @@ Common issues and their solutions.
 
 ```bash
 # Pods stuck in Pending - check storage
-kubectl -n awx describe pod awx-postgres-13-0
+kubectl -n awx describe pod awx-postgres-15-0
 kubectl get pv,pvc -n awx
 
 # Operator errors - check operator logs
@@ -387,7 +391,7 @@ kubectl -n awx logs deployment/awx-web -c awx-web --tail=100
 kubectl -n awx logs deployment/awx-task -c awx-task --tail=100
 
 # Database connection issues
-kubectl -n awx exec -it awx-postgres-13-0 -- psql -U awx -d awx -c "SELECT 1"
+kubectl -n awx exec -it awx-postgres-15-0 -- psql -U awx -d awx -c "SELECT 1"
 ```
 
 ## Backup and Restore
@@ -403,12 +407,8 @@ metadata:
   namespace: awx
 spec:
   deployment_name: awx
-  backup_pvc: awx-backup-claim
-  backup_pvc_namespace: awx
   backup_storage_class: standard
-  backup_storage_requirements:
-    requests:
-      storage: 10Gi
+  backup_storage_requirements: 10Gi
 ```
 
 ```bash
