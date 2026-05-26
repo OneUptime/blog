@@ -96,14 +96,10 @@ The `google.cloud.gcp_dns_resource_record_set` module manages individual records
 
   tasks:
     - name: Get the managed zone reference
-      google.cloud.gcp_dns_managed_zone:
-        name: "{{ zone_name }}"
-        dns_name: "example.com."
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_cred_kind }}"
-        service_account_file: "{{ gcp_cred_file }}"
-        state: present
-      register: zone
+      ansible.builtin.set_fact:
+        zone:
+          name: "{{ zone_name }}"
+          dnsName: "example.com."
 
     - name: Add A record for the root domain
       google.cloud.gcp_dns_resource_record_set:
@@ -220,14 +216,10 @@ For a complete zone setup:
 
   tasks:
     - name: Get the managed zone
-      google.cloud.gcp_dns_managed_zone:
-        name: "{{ zone_name }}"
-        dns_name: "example.com."
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_cred_kind }}"
-        service_account_file: "{{ gcp_cred_file }}"
-        state: present
-      register: zone
+      ansible.builtin.set_fact:
+        zone:
+          name: "{{ zone_name }}"
+          dnsName: "example.com."
 
     - name: Create all DNS records
       google.cloud.gcp_dns_resource_record_set:
@@ -269,7 +261,7 @@ Private zones are great for internal service discovery:
         visibility: private
         private_visibility_config:
           networks:
-            - network_url: "projects/{{ gcp_project }}/global/networks/production-vpc"
+            - network_url: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/global/networks/production-vpc"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
@@ -315,14 +307,10 @@ VMs within the specified VPC network can resolve `postgres.internal.mycompany.co
 
   tasks:
     - name: Get the zone reference
-      google.cloud.gcp_dns_managed_zone:
-        name: "old-zone"
-        dns_name: "old-domain.com."
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_cred_kind }}"
-        service_account_file: "{{ gcp_cred_file }}"
-        state: present
-      register: zone
+      ansible.builtin.set_fact:
+        zone:
+          name: "old-zone"
+          dnsName: "old-domain.com."
 
     - name: Remove specific records
       google.cloud.gcp_dns_resource_record_set:
@@ -341,6 +329,7 @@ VMs within the specified VPC network can resolve `postgres.internal.mycompany.co
       google.cloud.gcp_dns_managed_zone:
         name: "old-zone"
         dns_name: "old-domain.com."
+        description: "Old DNS zone"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
