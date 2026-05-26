@@ -131,25 +131,25 @@ Sometimes your data has multiple levels of nesting. You can chain filters or use
     applications:
       - name: web-platform
         environments:
-          production:
+          - name: production
             replicas: 3
             ports: [80, 443]
-          staging:
+          - name: staging
             replicas: 1
             ports: [8080, 8443]
       - name: api-gateway
         environments:
-          production:
+          - name: production
             replicas: 5
             ports: [8080]
-          staging:
+          - name: staging
             replicas: 2
             ports: [9080]
   tasks:
-    - name: Display all application-environment-port combinations
+    - name: Display all application-environment port lists
       ansible.builtin.debug:
-        msg: "App: {{ item.0.name }}, Env: {{ item.1.key }}, Ports: {{ item.1.value.ports }}"
-      loop: "{{ applications | subelements('environments | dict2items') }}"
+        msg: "App: {{ item.0.name }}, Env: {{ item.1.name }}, Ports: {{ item.1.ports }}"
+      loop: "{{ applications | subelements('environments') }}"
 ```
 
 If the nesting gets too deep for inline filters, flatten the data first with `set_fact`.
@@ -160,9 +160,9 @@ If the nesting gets too deep for inline filters, flatten the data first with `se
         flat_configs: >-
           {{
             flat_configs | default([]) +
-            [{'app': app.name, 'env': env.key, 'replicas': env.value.replicas, 'ports': env.value.ports}]
+            [{'app': app.name, 'env': env.name, 'replicas': env.replicas, 'ports': env.ports}]
           }}
-      loop: "{{ applications | subelements('environments | dict2items') }}"
+      loop: "{{ applications | subelements('environments') }}"
       loop_control:
         loop_var: _pair
       vars:
