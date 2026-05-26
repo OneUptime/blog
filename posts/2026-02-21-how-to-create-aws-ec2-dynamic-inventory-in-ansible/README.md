@@ -151,7 +151,7 @@ With these settings, an EC2 instance tagged `role=web` and `environment=producti
 
 ## Setting Hostnames
 
-By default, Ansible uses the instance ID as the hostname (something like `i-0abc123def456`). That is hard to read. Use the `hostnames` option to pick something better.
+By default, the EC2 inventory plugin uses the public DNS name when it exists, otherwise the private DNS name. Use the `hostnames` option to pick something better.
 
 ```yaml
 # inventory/aws_ec2.yml
@@ -168,10 +168,6 @@ hostnames:
   - tag:Name
   - private-dns-name
   - instance-id
-
-# Only use hostnames that match this pattern (optional)
-# hostnames_filter:
-#   - "^web-.*"
 ```
 
 ## Composing Variables
@@ -204,10 +200,8 @@ compose:
   # Use private IP for SSH connections
   ansible_host: private_ip_address
 
-  # Set SSH user based on AMI (Amazon Linux vs Ubuntu)
-  ansible_user: >-
-    'ubuntu' if image_id.startswith('ami-ubuntu')
-    else 'ec2-user'
+  # Set SSH user from a tag, falling back to the Amazon Linux default
+  ansible_user: tags.ansible_user | default('ec2-user')
 
   # Map tags to variables
   environment: tags.environment | default('unknown')
@@ -368,6 +362,7 @@ The EC2 inventory plugin needs read-only access. Here is a minimal IAM policy:
             "Effect": "Allow",
             "Action": [
                 "ec2:DescribeInstances",
+                "ec2:DescribeAvailabilityZones",
                 "ec2:DescribeRegions",
                 "ec2:DescribeTags"
             ],
