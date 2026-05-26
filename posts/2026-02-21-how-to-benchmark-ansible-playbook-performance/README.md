@@ -17,7 +17,7 @@ A good benchmark needs to be:
 - Measurable: captures specific metrics
 - Comparable: easy to compare before/after results
 
-Start with a benchmark wrapper script:
+Start with a benchmark wrapper script. The profiling examples below use the `ansible.posix.profile_tasks` and `ansible.posix.timer` callbacks:
 
 ```bash
 #!/bin/bash
@@ -40,7 +40,7 @@ LOAD=$(cat /proc/loadavg | awk '{print $1}')
 
 # Run the playbook with profiling
 START_EPOCH=$(date +%s)
-OUTPUT=$(ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer \
+OUTPUT=$(ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.timer \
     ansible-playbook "$PLAYBOOK" 2>&1)
 EXIT_CODE=$?
 END_EPOCH=$(date +%s)
@@ -376,7 +376,7 @@ Create a comparison tool:
 FILE_A="${1:?Usage: $0 <result-a.json> <result-b.json>}"
 FILE_B="${2:?Usage: $0 <result-a.json> <result-b.json>}"
 
-python3 << 'PYTHON'
+python3 - "$FILE_A" "$FILE_B" << 'PYTHON'
 import json
 import sys
 
@@ -434,7 +434,7 @@ jobs:
 
       - name: Run benchmark
         run: |
-          ANSIBLE_CALLBACKS_ENABLED=profile_tasks,timer \
+          ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks,ansible.posix.timer \
           ansible-playbook benchmark-playbook.yml \
           2>&1 | tee benchmark-output.txt
 
@@ -445,7 +445,7 @@ jobs:
           echo "Duration: $DURATION"
 
       - name: Upload results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: benchmark-output.txt
@@ -479,9 +479,10 @@ for i in $(seq 1 $ITERATIONS); do
 done
 
 # Calculate statistics
+TIMES_CSV=$(IFS=,; echo "${TIMES[*]}")
 python3 << PYTHON
 import statistics
-times = [${TIMES[@]}]
+times = [$TIMES_CSV]
 print(f"\n=== Results over {len(times)} runs ===")
 print(f"Min:    {min(times)}s")
 print(f"Max:    {max(times)}s")
