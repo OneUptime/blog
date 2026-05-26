@@ -40,7 +40,7 @@ Each line in `bindep.txt` specifies a package name followed by optional selector
 # bindep.txt - Basic format
 # package-name [selector1 selector2]
 
-# Always install this package
+# Install during the compile/build stage in ansible-builder
 gcc [compile]
 
 # Install on RHEL-based systems
@@ -63,7 +63,7 @@ git
 
 Platform selectors target specific operating systems. Since most EE base images are RHEL-based (UBI 8 or UBI 9), the RHEL selectors are the most commonly used.
 
-Here are the available platform selectors:
+Here are common platform selectors:
 
 ```text
 # bindep.txt - Platform selector reference
@@ -72,7 +72,7 @@ Here are the available platform selectors:
 package-rhel8 [platform:rhel-8]
 package-rhel9 [platform:rhel-9]
 package-centos8 [platform:centos-8]
-package-centos9 [platform:centos-stream-9]
+package-centos9 [platform:centos-9]
 
 # Fedora
 package-fedora [platform:fedora]
@@ -89,10 +89,10 @@ package-ubuntu-jammy [platform:ubuntu-jammy]
 package-dpkg [platform:dpkg]
 ```
 
-You can combine selectors. A package is installed if any of its selectors match:
+You can combine selectors. With multiple platform selectors, a package is installed if any platform selector matches. When you combine a platform selector with another profile, such as `[compile]`, the platform selector acts as an additional filter:
 
 ```text
-# Install on any RHEL or CentOS 8+
+# Install on RHEL 8/9 or CentOS 8
 python3-devel [platform:rhel-8 platform:rhel-9 platform:centos-8]
 ```
 
