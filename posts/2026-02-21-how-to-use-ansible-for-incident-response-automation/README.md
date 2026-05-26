@@ -75,7 +75,7 @@ incident-response/
           changed_when: false
 
         - name: Capture recent authentication logs
-          ansible.builtin.command: journalctl -u sshd --since "24 hours ago" --no-pager
+          ansible.builtin.command: journalctl -u {{ ssh_service | default('sshd') }} --since "24 hours ago" --no-pager
           register: auth_logs
           changed_when: false
 
@@ -108,19 +108,20 @@ incident-response/
           when: suspicious_pids is defined
           failed_when: false
 
-        - name: Block all external SSH access except from jump host
-          community.general.ufw:
-            rule: deny
-            port: '22'
-            proto: tcp
-            from_ip: "0.0.0.0/0"
-
         - name: Allow SSH only from management network
           community.general.ufw:
             rule: allow
             port: '22'
             proto: tcp
             from_ip: "{{ management_network }}"
+            insert: 1
+
+        - name: Block all external SSH access
+          community.general.ufw:
+            rule: deny
+            port: '22'
+            proto: tcp
+            from_ip: "0.0.0.0/0"
 
         - name: Disable compromised user accounts
           ansible.builtin.user:
@@ -262,10 +263,11 @@ incident-response/
         autoclean: yes
       when: ansible_os_family == 'Debian'
 
-    - name: Remove old kernels
-      ansible.builtin.command: apt autoremove -y --purge
+    - name: Remove unused packages and old kernels
+      ansible.builtin.apt:
+        autoremove: yes
+        purge: yes
       when: ansible_os_family == 'Debian'
-      changed_when: true
 
     - name: Rotate and compress logs
       ansible.builtin.command: logrotate -f /etc/logrotate.conf
@@ -356,6 +358,7 @@ graph TD
     url: "https://events.pagerduty.com/v2/enqueue"
     method: POST
     body_format: json
+    status_code: 202
     body:
       routing_key: "{{ pagerduty_routing_key }}"
       event_action: trigger
