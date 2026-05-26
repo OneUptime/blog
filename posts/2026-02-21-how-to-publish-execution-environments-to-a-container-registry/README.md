@@ -8,7 +8,7 @@ Description: Push your Ansible Execution Environment images to container registr
 
 ---
 
-Once you have built an Ansible Execution Environment, the next step is to publish it so your team, CI/CD pipelines, and AWX/Tower can pull and use it. Publishing means pushing the container image to a registry, whether that is a public one like Docker Hub or Quay.io, or a private registry running in your infrastructure. This post covers the full process from tagging to pushing, including authentication, multi-architecture builds, and versioning strategies.
+Once you have built an Ansible Execution Environment, the next step is to publish it so your team, CI/CD pipelines, and AWX/Tower can pull and use it. Publishing means pushing the container image to a registry, whether that is a public one like Docker Hub or Quay.io, or a private registry running in your infrastructure. This post covers the full process from tagging to pushing, including authentication and versioning strategies.
 
 ## Choosing a Registry
 
@@ -109,8 +109,8 @@ podman push quay.io/myorg/ansible-ee:2
 Verify the push succeeded:
 
 ```bash
-# Check that the image is in the registry
-podman search quay.io/myorg/ansible-ee
+# Inspect the remote image metadata
+skopeo inspect docker://quay.io/myorg/ansible-ee:2.1.0
 
 # Pull it back to verify
 podman pull quay.io/myorg/ansible-ee:2.1.0
@@ -120,7 +120,7 @@ podman pull quay.io/myorg/ansible-ee:2.1.0
 
 A good versioning strategy makes it easy to update EEs without breaking existing workflows.
 
-I use semantic versioning combined with a build metadata tag:
+I use semantic versioning combined with a date-suffixed tag:
 
 ```bash
 # Version format: MAJOR.MINOR.PATCH
@@ -281,7 +281,7 @@ skopeo copy \
   docker://quay.io/myorg/ansible-ee:2.1.0 \
   docker://registry.internal.example.com/ansible/ee:2.1.0
 
-# Delete an image from a registry
+# Delete or mark an image for deletion, if the registry supports it
 skopeo delete docker://quay.io/myorg/ansible-ee:old-version
 ```
 
