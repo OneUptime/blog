@@ -89,7 +89,7 @@ Managing `/etc/hosts` is one of the most common uses of `lineinfile`:
 
 ## Adding Environment Variables
 
-Add or update environment variables in shell configuration files:
+Add environment variables in shell configuration files:
 
 ```yaml
 # Add environment variables to the system profile
