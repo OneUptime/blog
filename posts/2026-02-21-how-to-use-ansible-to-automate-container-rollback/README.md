@@ -37,7 +37,7 @@ graph TD
 
 - name: Parse current version
   ansible.builtin.set_fact:
-    previous_version: "{{ (current_version_data.content | b64decode | from_json) if current_version_data is not failed else {} }}"
+    previous_version: "{{ (current_version_data.content | b64decode | from_json) if current_version_data.content is defined else {} }}"
 
 - name: Save new version information
   ansible.builtin.copy:
@@ -232,7 +232,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
