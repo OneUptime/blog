@@ -92,8 +92,8 @@ For more granular control, APT preferences let you set priority levels that dete
 - name: Pin Redis to version 7.0.x
   ansible.builtin.copy:
     content: |
-      # Managed by Ansible - do not edit manually
-      # Reason: Application tested against Redis 7.0.x only
+      Explanation: Managed by Ansible - do not edit manually
+      Explanation: Reason: Application tested against Redis 7.0.x only
       Package: redis-server redis-tools
       Pin: version 5:7.0.*
       Pin-Priority: 1001
@@ -110,9 +110,9 @@ Priority levels determine behavior:
 - name: Prevent PostgreSQL 16 from being installed
   ansible.builtin.copy:
     content: |
-      # Block PostgreSQL 16 - we are committed to 15.x
+      Explanation: Block PostgreSQL 16 - we are committed to 15.x
       Package: postgresql-16 postgresql-client-16
-      Pin: release *
+      Pin: version *
       Pin-Priority: -1
     dest: /etc/apt/preferences.d/block-pg16
     mode: '0644'
@@ -134,7 +134,7 @@ On Red Hat-based systems, the `versionlock` plugin for dnf (or yum) provides equ
   ansible.builtin.command:
     cmd: dnf versionlock add nginx
   register: lock_result
-  changed_when: "'Added' in lock_result.stdout"
+  changed_when: "'Adding versionlock on:' in lock_result.stdout"
 
 # Lock multiple packages
 - name: Lock database packages
@@ -145,7 +145,7 @@ On Red Hat-based systems, the `versionlock` plugin for dnf (or yum) provides equ
     - postgresql15
     - postgresql15-libs
   register: lock_results
-  changed_when: "'Added' in item.stdout"
+  changed_when: "'Adding versionlock on:' in lock_results.stdout"
   loop_control:
     label: "{{ item }}"
 ```
@@ -169,7 +169,7 @@ On Red Hat-based systems, the `versionlock` plugin for dnf (or yum) provides equ
   ansible.builtin.command:
     cmd: dnf versionlock delete nginx
   register: unlock_result
-  changed_when: "'Deleted' in unlock_result.stdout"
+  changed_when: "'Deleting versionlock for:' in unlock_result.stdout"
 
 # Remove all version locks
 - name: Clear all version locks
@@ -218,7 +218,7 @@ RedHat-specific tasks:
     cmd: "dnf versionlock add {{ item }}"
   loop: "{{ pinned_packages }}"
   register: lock_results
-  changed_when: "'Added' in lock_results.stdout"
+  changed_when: "'Adding versionlock on:' in lock_results.stdout"
 ```
 
 Use the role:
@@ -275,7 +275,7 @@ Use the role:
       ansible.builtin.copy:
         content: |
           Package: postgresql-16*
-          Pin: release *
+          Pin: version *
           Pin-Priority: -1
         dest: /etc/apt/preferences.d/block-pg16
         mode: '0644'
