@@ -152,16 +152,18 @@ RHEL 8+ and Fedora use modularity to provide multiple versions of software. You 
     name: "@nodejs:20"
     state: present
 
-# Or more explicitly using the dnf module_hotfixes approach
+# Or explicitly with the dnf command
 - name: Reset nodejs module
   ansible.builtin.command:
     cmd: dnf module reset nodejs -y
-  changed_when: true
+  register: nodejs_module_reset
+  changed_when: "'Resetting modules' in nodejs_module_reset.stdout"
 
 - name: Enable nodejs 20 stream
   ansible.builtin.command:
     cmd: dnf module enable nodejs:20 -y
-  changed_when: true
+  register: nodejs_module_enable
+  changed_when: "'Enabling module streams' in nodejs_module_enable.stdout"
 
 - name: Install nodejs
   ansible.builtin.dnf:
@@ -286,33 +288,26 @@ graph TD
 
 ## Handling dnf Locks
 
-On systems with automatic updates enabled, you might hit the dnf lock:
+On systems with automatic updates enabled, you might hit the dnf lock. Use the module's `lock_timeout` option to wait for the lock:
 
 ```yaml
-# Wait for any existing dnf processes to finish
-- name: Wait for dnf lock to be released
-  ansible.builtin.shell: |
-    while pgrep -x dnf > /dev/null; do
-      sleep 5
-    done
-  changed_when: false
-  timeout: 300
-
+# Wait up to 5 minutes for the dnf lock
 - name: Install packages
   ansible.builtin.dnf:
     name:
       - nginx
       - redis
     state: present
+    lock_timeout: 300
 ```
 
 ## Key Differences from the yum Module
 
 If you are migrating from the `yum` module, here are the notable differences:
 
-1. **Module streams**: dnf supports module streams for multi-version software. The yum module does not.
+1. **Module streams**: dnf supports module streams for multi-version software, including `@module:stream/profile` syntax.
 2. **Performance**: dnf is generally faster than yum for dependency resolution.
-3. **Python dependency**: dnf requires Python 3, while yum uses Python 2.
+3. **Python dependency**: dnf requires the `python3-dnf` library. Older yum module backends used Python 2.
 4. **Group syntax**: Both use `@GroupName`, but dnf also supports `@module:stream/profile`.
 
 For RHEL 8+ and Fedora, always use the `dnf` module. The `yum` module still works (it redirects to dnf internally), but using `dnf` directly avoids the extra abstraction layer and makes your playbooks clearer about what is actually happening on the target system.
