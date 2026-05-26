@@ -40,19 +40,21 @@ The `default` scenario is special. It is what Molecule runs when you do not spec
 
 ## Creating Your First Scenario
 
-There are two ways to create a scenario: using the `molecule init` command or by hand.
+There are two ways to create a scenario: using `ansible-galaxy` with the `molecule init` command or by hand.
 
 ### Using molecule init
 
 For a new role with a Molecule scenario already set up:
 
 ```bash
-# Create a new role with the default scenario
+# Create a new role, then add the default scenario
 
-molecule init role my_webserver --driver-name docker
+ansible-galaxy role init my_webserver
+cd my_webserver
+molecule init scenario --driver-name docker
 
 # The generated structure looks like this
-tree my_webserver/molecule/
+tree molecule/
 # molecule/
 # └── default
 #     ├── converge.yml
@@ -115,10 +117,6 @@ provisioner:
 
 verifier:
   name: ansible
-
-lint: |
-  yamllint .
-  ansible-lint .
 ```
 
 Create the converge playbook that applies your role.
