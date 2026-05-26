@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix common Ansible Vault decryption failu
 
 ---
 
-Vault-related errors are some of the most frustrating to debug in Ansible because the encryption hides the actual values. You cannot just print the variable to see what is going on. The error messages are often vague ("Decryption failed"), and the root cause could be anything from a wrong password to a corrupted file to a YAML formatting issue. This guide covers systematic approaches to diagnosing and fixing the most common vault problems.
+Vault-related errors are some of the most frustrating to debug in Ansible because the encryption hides the actual values at rest. You usually should not print the variable to see what is going on, because that can expose the decrypted secret in logs. The error messages are often vague ("Decryption failed"), and the root cause could be anything from a wrong password to a corrupted file to a YAML formatting issue. This guide covers systematic approaches to diagnosing and fixing the most common vault problems.
 
 ## The Most Common Error Messages
 
@@ -25,7 +25,7 @@ ERROR! Decryption failed (no vault secrets were found that could decrypt)
 Possible causes:
 1. No vault password was provided at all
 2. The wrong vault password was provided
-3. The vault ID does not match
+3. The needed vault ID/password source was not provided
 4. The file is corrupted
 
 ### "input is not vault encrypted data"
@@ -77,7 +77,7 @@ If the first line is anything else (like `---` or plain YAML), the file is not e
 
 ### Step 3: Verify Vault IDs Match
 
-If you use vault IDs, confirm the encrypted file's vault ID matches your password:
+If you use vault IDs, confirm the encrypted file's vault ID matches the password source you intend to use. By default, vault ID labels are hints and Ansible will try the other provided vault secrets if the matching one fails. If `vault_id_match` is enabled, the vault ID must match:
 
 ```bash
 # Check the vault ID in the file header
@@ -98,7 +98,7 @@ ansible-playbook site.yml \
   -vvvv 2>&1 | grep -i vault
 ```
 
-This shows which vault secrets Ansible is trying, which files it is attempting to decrypt, and where it fails.
+This shows which vault IDs and password sources Ansible is trying, which files it is attempting to decrypt, and where it fails.
 
 ## Debugging Specific Problems
 
@@ -113,15 +113,15 @@ ansible-vault decrypt --vault-password-file vault_pass.txt \
 # If it fails with "Decryption failed", your password is wrong
 # Check for trailing whitespace in your password file
 cat -A vault_pass.txt
-# The output should show your password followed by $ (end of line)
-# If you see spaces before the $ or extra lines, that's the problem
+# The password should be stored as a single line
+# A normal final newline is fine, but accidental spaces before the $ or extra lines can be a problem
 ```
 
-Fix trailing whitespace:
+Fix accidental trailing whitespace and extra lines:
 
 ```bash
-# Remove trailing newlines and whitespace from password file
-printf '%s' "$(cat vault_pass.txt)" > vault_pass_clean.txt
+# Keep the first line only and remove accidental trailing whitespace
+awk 'NR == 1 { sub(/[[:space:]]+$/, ""); print }' vault_pass.txt > vault_pass_clean.txt
 chmod 600 vault_pass_clean.txt
 mv vault_pass_clean.txt vault_pass.txt
 ```
@@ -147,6 +147,7 @@ Common script problems:
 - Environment variable not set
 - Wrong shebang line
 - Script outputs error messages to stdout instead of stderr
+- Vault-ID-aware client script does not have a filename ending in `-client`
 
 ### Corrupted Vault File
 
@@ -280,7 +281,7 @@ ansible-playbook debug_vault.yml \
 
 ## Checking Multiple Files at Once
 
-Verify all vault files in your project can be decrypted:
+Verify all file-level vault files in your project can be decrypted:
 
 ```bash
 #!/bin/bash
@@ -294,8 +295,7 @@ FAIL=0
 echo "Testing vault decryption for all encrypted files..."
 echo ""
 
-grep -rl '^\$ANSIBLE_VAULT' . \
-  --include="*.yml" --include="*.yaml" | sort | while read -r file; do
+while read -r file; do
   if ansible-vault view --vault-password-file "${VAULT_PASS_FILE}" "${file}" > /dev/null 2>&1; then
     echo "  PASS: ${file}"
     PASS=$((PASS + 1))
@@ -303,7 +303,7 @@ grep -rl '^\$ANSIBLE_VAULT' . \
     echo "  FAIL: ${file}"
     FAIL=$((FAIL + 1))
   fi
-done
+done < <(grep -rl '^\$ANSIBLE_VAULT' . --include="*.yml" --include="*.yaml" | sort)
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
@@ -316,9 +316,9 @@ flowchart TD
     A[Vault Error] --> B{Is vault password provided?}
     B -->|No| C[Add --vault-password-file or configure ansible.cfg]
     B -->|Yes| D{Can you decrypt any vault file?}
-    D -->|No| E[Password is wrong - check password file for whitespace]
+    D -->|No| E[Password is wrong or missing - check password source]
     D -->|Yes| F{Does the failing file have a vault ID?}
-    F -->|Yes| G[Verify vault ID matches your credential]
+    F -->|Yes| G[Verify the matching vault ID/password source is available]
     F -->|No| H{Is the file corrupted?}
     H -->|Yes| I[Restore from Git history]
     H -->|No| J{Is it an inline encrypted string?}
@@ -336,4 +336,4 @@ flowchart TD
 
 ## Summary
 
-Vault debugging follows a systematic process: verify the password, check the file header, confirm vault IDs match, and run with maximum verbosity. Most issues come down to wrong passwords (often due to trailing whitespace), mismatched vault IDs, or corrupted encrypted content. The test playbook and bulk verification script help you quickly isolate whether the problem is with a specific file, a specific password, or the overall vault configuration. Build verification into your workflow (pre-commit hooks, CI checks) to catch problems before they reach production.
+Vault debugging follows a systematic process: verify the password, check the file header, confirm the right vault ID and password source are available, and run with maximum verbosity. Most issues come down to wrong passwords, missing password sources, vault ID configuration, or corrupted encrypted content. The test playbook and bulk verification script help you quickly isolate whether the problem is with a specific file, a specific password, or the overall vault configuration. Build verification into your workflow (pre-commit hooks, CI checks) to catch problems before they reach production.
