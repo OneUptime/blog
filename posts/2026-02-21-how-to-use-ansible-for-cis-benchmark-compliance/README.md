@@ -17,7 +17,7 @@ The community maintains CIS hardening roles on Ansible Galaxy:
 ```bash
 # Install a CIS hardening role
 
-ansible-galaxy install ansible-lockdown.rhel9_cis
+ansible-galaxy role install ansible-lockdown.rhel9_cis
 ```
 
 ```yaml
@@ -31,7 +31,7 @@ ansible-galaxy install ansible-lockdown.rhel9_cis
     rhel9cis_level_2: false
     rhel9cis_rule_1_1_1_1: true  # Disable cramfs
     rhel9cis_rule_1_1_1_2: true  # Disable squashfs
-    rhel9cis_rule_5_2_1: true    # Configure SSH
+    rhel9cis_rule_5_2_4: true    # Disable SSH root login
   roles:
     - ansible-lockdown.rhel9_cis
 ```
@@ -54,7 +54,7 @@ ansible-galaxy install ansible-lockdown.rhel9_cis
     line: "install squashfs /bin/true"
 
 - name: "1.1.2 - Ensure /tmp is a separate partition"
-  ansible.builtin.mount:
+  ansible.posix.mount:
     path: /tmp
     src: tmpfs
     fstype: tmpfs
@@ -64,14 +64,6 @@ ansible-galaxy install ansible-lockdown.rhel9_cis
 
 ```yaml
 # roles/cis_hardening/tasks/ssh.yml
-# CIS Section 5.2: SSH Server Configuration
-- name: "5.2.1 - Set SSH Protocol to 2"
-  ansible.builtin.lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^Protocol'
-    line: 'Protocol 2'
-  notify: restart sshd
-
 - name: "5.2.4 - Disable SSH root login"
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
@@ -191,7 +183,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -229,7 +221,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
+      - "(listening_ports.stdout | regex_search('(?m)(^|[\\\\s:])' ~ item ~ '\\\\s')) is none"
     fail_msg: "Unauthorized port {{ item }} is listening"
   loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 ```
