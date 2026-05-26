@@ -16,8 +16,8 @@ Before starting, you need:
 
 - A vCenter Server instance (6.7 or later recommended)
 - A vCenter user account with appropriate permissions
-- Python 3.9 or later
-- Ansible Core 2.14 or later
+- A Python version supported by your Ansible Core release. Ansible Core 2.19 supports Python 3.11 through 3.13 on the control node.
+- Ansible Core version supported by the VMware collections you install. The latest `community.vmware` collection requires Ansible Core 2.19 or later.
 
 The VMware modules communicate with vCenter through the vSphere API, so you do not need to install any agents on your ESXi hosts or VMs.
 
@@ -32,16 +32,16 @@ python3 -m venv ~/ansible-vmware-env
 source ~/ansible-vmware-env/bin/activate
 
 # Install Ansible and the required Python libraries
-pip install ansible-core pyVmomi requests pyvmomi
+pip install ansible-core pyVmomi requests
 
-# Install the VMware community collection
-ansible-galaxy collection install community.vmware
+# Install the VMware collections
+ansible-galaxy collection install community.vmware vmware.vmware
 
 # Verify the collection is installed
 ansible-galaxy collection list | grep vmware
 ```
 
-You should see `community.vmware` in the output with its version number.
+You should see `community.vmware` and `vmware.vmware` in the output with their version numbers.
 
 ## Configuring vCenter Authentication
 
@@ -105,6 +105,8 @@ vmware-automation/
 │   └── manage-snapshots.yml
 └── roles/
     └── vmware-base/
+        ├── defaults/
+        │   └── main.yml
         └── tasks/
             └── main.yml
 ```
@@ -121,9 +123,6 @@ vault_password_file = ~/.vault_pass.txt
 collections_paths = ./collections:~/.ansible/collections
 host_key_checking = false
 retry_files_enabled = false
-
-[inventory]
-enable_plugins = community.vmware.vmware_vm_inventory
 ```
 
 ## Inventory Setup
@@ -169,31 +168,47 @@ Start with a simple playbook that gathers information from your vCenter. This va
         msg: "Datacenter: {{ item.name }}"
       loop: "{{ datacenter_info.datacenter_info }}"
 
-    - name: Gather information about all clusters
-      community.vmware.vmware_cluster_info:
+    - name: Gather information about clusters in each datacenter
+      vmware.vmware.cluster_info:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
+        datacenter: "{{ item.name }}"
         validate_certs: false
+      loop: "{{ datacenter_info.datacenter_info }}"
       register: cluster_info
+
+    - name: Combine cluster information
+      ansible.builtin.set_fact:
+        clusters: "{{ clusters | default({}) | combine(item.clusters) }}"
+      loop: "{{ cluster_info.results }}"
 
     - name: Display cluster information
       ansible.builtin.debug:
         msg: "Cluster: {{ item.key }} - Hosts: {{ item.value.hosts | length }}"
-      loop: "{{ cluster_info.clusters | dict2items }}"
+      loop: "{{ clusters | dict2items }}"
 
-    - name: Gather information about all ESXi hosts
-      community.vmware.vmware_host_info:
+    - name: Build a list of ESXi hosts from cluster information
+      ansible.builtin.set_fact:
+        esxi_hosts: "{{ clusters | dict2items | map(attribute='value.hosts') | flatten }}"
+
+    - name: Gather information about ESXi hosts
+      community.vmware.vmware_host_facts:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
+        esxi_hostname: "{{ item.name }}"
+        schema: vsphere
+        properties:
+          - runtime.connectionState
         validate_certs: false
+      loop: "{{ esxi_hosts }}"
       register: host_info
 
     - name: Display ESXi host summary
       ansible.builtin.debug:
-        msg: "Host: {{ item.key }} - Connection State: {{ item.value.connection_state }}"
-      loop: "{{ host_info.hosts | dict2items }}"
+        msg: "Host: {{ item.item.name }} - Connection State: {{ item.ansible_facts.runtime.connectionState }}"
+      loop: "{{ host_info.results }}"
 ```
 
 Run it with:
@@ -325,7 +340,7 @@ Some features require specific pyVmomi versions. If you hit unexpected errors, t
 pip install pyVmomi --upgrade
 
 # Check installed version
-python3 -c "import pyVim; print(pyVim.__version__)"
+python3 -c "import importlib.metadata; print(importlib.metadata.version('pyvmomi'))"
 ```
 
 With this foundation in place, you can start automating your entire VMware infrastructure lifecycle. The community.vmware collection includes modules for managing VMs, networking, storage, clusters, and much more. The key is getting the authentication and project structure right from the start, which is exactly what this guide gives you.
