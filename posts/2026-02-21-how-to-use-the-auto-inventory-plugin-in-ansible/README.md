@@ -15,7 +15,7 @@ The `auto` inventory plugin in Ansible acts as a dispatcher. It examines your in
 When Ansible encounters an inventory source, it needs to know which plugin can parse it. The `auto` plugin inspects the file and delegates to the appropriate handler. For example:
 
 - A file containing `plugin: amazon.aws.aws_ec2` gets handed to the AWS EC2 plugin
-- A file with standard YAML inventory structure gets handled by the YAML plugin
+- A file with standard YAML inventory structure falls through and gets handled by the YAML plugin
 - A file with `plugin: azure.azcollection.azure_rm` goes to the Azure plugin
 
 The `auto` plugin reads the `plugin` key in YAML files and matches it against installed inventory plugins.
@@ -107,7 +107,7 @@ Each file in this directory uses a different plugin. With `auto` enabled, Ansibl
 
 ```yaml
 # inventory/static_hosts.yml
-# No 'plugin' key, so auto passes this to the YAML inventory plugin
+# No 'plugin' key, so Ansible falls through to the YAML inventory plugin
 all:
   children:
     on_premise:
@@ -175,7 +175,7 @@ This constructed file processes hosts from all other inventory sources and adds 
 
 ## Controlling Plugin Priority
 
-When the `auto` plugin tries to match an inventory file, it checks plugins in a specific order. If multiple plugins could handle a file, the first match wins. You can control this by ordering your `enable_plugins` list:
+When Ansible tries to match an inventory file, it checks the enabled inventory plugins in order. If multiple plugins could handle a file, the first successful parser wins. You can control this by ordering your `enable_plugins` list:
 
 ```ini
 # ansible.cfg
@@ -195,12 +195,11 @@ If the `auto` plugin is not routing to the expected plugin, increase verbosity t
 ansible-inventory -i inventory/ --list -vvv
 ```
 
-The verbose output shows lines like:
+The verbose output shows messages indicating which inventory plugins declined or parsed each source, such as:
 
 ```text
-[DEBUG] auto: examining inventory/aws_ec2.yml
-[DEBUG] auto: found plugin directive: amazon.aws.aws_ec2
-[DEBUG] auto: loading inventory plugin amazon.aws.aws_ec2
+auto declined parsing inventory/static_hosts.yml as it did not pass its verify_file() method
+Parsed inventory/aws_ec2.yml inventory source with auto plugin
 ```
 
 If a file is not being recognized, check these common issues:
@@ -256,7 +255,7 @@ all:
 ```
 
 ```yaml
-# inventory/02_aws.yml
+# inventory/02_aws_ec2.yml
 plugin: amazon.aws.aws_ec2
 regions:
   - us-east-1
