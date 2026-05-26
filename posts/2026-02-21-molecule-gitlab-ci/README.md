@@ -8,7 +8,7 @@ Description: Learn how to integrate Ansible Molecule testing into your GitLab CI
 
 ---
 
-If you have been writing Ansible roles and testing them locally with Molecule, the next logical step is to plug those tests into your CI pipeline. GitLab CI is a natural fit because it uses Docker runners by default, and Molecule's Docker driver works perfectly inside those runners. In this post, I will walk through setting up a complete Molecule testing pipeline in GitLab CI, from basic configuration to advanced patterns like matrix testing and caching.
+If you have been writing Ansible roles and testing them locally with Molecule, the next logical step is to plug those tests into your CI pipeline. GitLab CI is a natural fit when your runners use the Docker executor, and Molecule's Docker driver works well inside properly configured Docker-in-Docker runners. In this post, I will walk through setting up a complete Molecule testing pipeline in GitLab CI, from basic configuration to advanced patterns like matrix testing and caching.
 
 ## Why Run Molecule in GitLab CI?
 
@@ -23,7 +23,7 @@ The key benefits are:
 
 ## Basic GitLab CI Configuration
 
-Start with a `.gitlab-ci.yml` in the root of your Ansible role repository. The simplest setup uses the official Molecule Docker image.
+Start with a `.gitlab-ci.yml` in the root of your Ansible role repository. The simplest setup uses Docker's CLI image with a Docker-in-Docker service and installs Molecule at job startup.
 
 ```yaml
 # .gitlab-ci.yml - Basic Molecule testing pipeline
@@ -51,14 +51,14 @@ lint:
 
 molecule-test:
   stage: test
-  image: docker:24-dind
+  image: docker:24-cli
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_TLS_VERIFY: 1
-    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - apk add --no-cache python3 py3-pip gcc musl-dev python3-dev libffi-dev
     - pip3 install molecule molecule-plugins[docker] ansible-core --break-system-packages
@@ -102,10 +102,12 @@ molecule-test:
   stage: test
   image: $CI_REGISTRY_IMAGE/molecule-runner:latest
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - molecule test
 ```
@@ -122,10 +124,12 @@ molecule-test:
   stage: test
   image: $CI_REGISTRY_IMAGE/molecule-runner:latest
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - molecule test --scenario-name $SCENARIO
   parallel:
@@ -194,13 +198,16 @@ molecule-test:
   stage: test
   image: $CI_REGISTRY_IMAGE/molecule-runner:latest
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     # Write the vault password from CI variable to a file
-    - echo "$ANSIBLE_VAULT_PASSWORD" > .vault-pass
+    - printf '%s\n' "$ANSIBLE_VAULT_PASSWORD" > .vault-pass
+    - chmod 600 .vault-pass
     - export ANSIBLE_VAULT_PASSWORD_FILE=.vault-pass
   script:
     - molecule test
@@ -213,7 +220,7 @@ Store `ANSIBLE_VAULT_PASSWORD` as a masked variable in your GitLab project setti
 
 ## Collecting Test Reports
 
-GitLab CI can display test reports directly in merge requests. Configure Molecule to output JUnit-style reports and tell GitLab where to find them.
+GitLab CI can display test reports directly in merge requests. Molecule does not create a JUnit XML file by itself, so configure your verifier to write one and tell GitLab where to find it.
 
 ```yaml
 # .gitlab-ci.yml with JUnit report collection
@@ -221,10 +228,12 @@ molecule-test:
   stage: test
   image: $CI_REGISTRY_IMAGE/molecule-runner:latest
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - molecule test 2>&1 | tee molecule-output.log
   artifacts:
@@ -257,9 +266,12 @@ molecule-test:
   stage: test
   image: $CI_REGISTRY_IMAGE/molecule-runner:latest
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
     ANSIBLE_COLLECTIONS_PATH: "$CI_PROJECT_DIR/.cache/collections"
   cache:
@@ -278,7 +290,7 @@ molecule-test:
 A few gotchas I have run into when setting up Molecule in GitLab CI:
 
 1. **Docker socket not available**: Make sure you are using `docker:dind` as a service and the runner supports privileged mode.
-2. **Timeouts**: Molecule's default timeout might not be enough for CI environments. Set `MOLECULE_DESTROY_TIMEOUT` and `MOLECULE_CONVERGE_TIMEOUT` environment variables.
+2. **Timeouts**: CI jobs can take longer than local runs. Increase the GitLab job timeout or configure Ansible timeouts in `ansible.cfg` or `molecule.yml` where needed.
 3. **Image pull failures**: If your Molecule scenario uses images from private registries, configure Docker login in the `before_script`.
 4. **Flaky tests**: Add retry logic at the job level with `retry: 1` to handle transient failures.
 
@@ -317,11 +329,12 @@ molecule:
   services:
     - name: docker:24-dind
       alias: docker
+      command: ["--tls=false"]
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
   script:
-    - molecule test --scenario-name $SCENARIO
+    - molecule test --scenario-name $SCENARIO 2>&1 | tee molecule-output.log
   parallel:
     matrix:
       - SCENARIO: [default, ubuntu, centos]
