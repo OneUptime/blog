@@ -8,7 +8,7 @@ Description: Learn how to convert between dictionaries and lists in Ansible usin
 
 ---
 
-Ansible playbooks regularly need to convert between dictionaries and lists. You might have a dictionary of configuration values that you need to loop over, or a list of key-value pairs from an API that you need to turn into a dictionary for lookups. The `dict2items` and `items2dict` filters handle these conversions, and they work as perfect inverses of each other.
+Ansible playbooks regularly need to convert between dictionaries and lists. You might have a dictionary of configuration values that you need to loop over, or a list of key-value pairs from an API that you need to turn into a dictionary for lookups. The `dict2items` and `items2dict` filters handle these conversions, and they can round-trip data when the item list has unique keys and the expected field names.
 
 ## dict2items: Dictionary to List
 
@@ -145,7 +145,11 @@ Docker labels are naturally key-value pairs, and dict2items makes it easy to wor
 
 - name: Show labels for Docker run command
   ansible.builtin.debug:
-    msg: "docker run {{ container_labels | dict2items | map('regex_replace', '^(.*)$', '--label \\1') | join(' ') }}"
+    msg: >-
+      docker run
+      {%- for item in container_labels | dict2items %}
+      --label {{ item.key }}={{ item.value }}
+      {%- endfor %}
 
 # Better approach: use dict2items in a template
 - name: Generate Docker Compose labels
@@ -204,11 +208,10 @@ Convert to items, modify, and convert back:
 - name: Add prefix to dict keys
   ansible.builtin.set_fact:
     prefixed_env: >-
-      {{ env_vars
-         | dict2items
-         | map('combine', {'key': 'APP_' + item.key})
-         | list
-         | items2dict }}
+      {{ dict(
+           env_vars | dict2items | map(attribute='key') | map('regex_replace', '^(.*)$', 'APP_\1') |
+           zip(env_vars | dict2items | map(attribute='value'))
+         ) }}
 ```
 
 A simpler approach for key transformation:
@@ -308,12 +311,12 @@ If you have matching lists of keys and values:
 # Combine separate key and value lists into a dictionary
 - name: Build dict from parallel lists
   ansible.builtin.debug:
-    msg: "{{ keys | zip(values) | map('list') | map('items2dict_pair') }}"
+    msg: "{{ dict(keys | zip(values)) }}"
   vars:
     keys: [name, port, protocol]
     values: [myapp, 8080, tcp]
 
-# Simpler approach using dict()
+# Store the result with set_fact
 - name: Build dict using zip
   ansible.builtin.set_fact:
     result: "{{ dict(keys | zip(values)) }}"
