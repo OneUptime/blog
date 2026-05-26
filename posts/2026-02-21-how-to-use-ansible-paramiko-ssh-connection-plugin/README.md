@@ -8,11 +8,11 @@ Description: Learn when and how to use Ansible's paramiko SSH connection plugin 
 
 ---
 
-Ansible's default SSH connection plugin uses the system's OpenSSH client. But there is an alternative: the paramiko connection plugin, which is a pure Python SSH implementation. While most people never need to think about it, paramiko has specific use cases where it is the better choice. This post covers what paramiko is, when to use it, how to configure it, and the trade-offs compared to native SSH.
+Ansible's default SSH connection plugin uses the system's OpenSSH client. In ansible-core versions before 2.21, there was an alternative: the `paramiko_ssh` connection plugin, which used Paramiko as a pure Python SSH implementation. While most people never need to think about it, paramiko had specific use cases where it was the better choice. This post covers what paramiko is, when to use it on older Ansible versions, how to configure it, and the trade-offs compared to native SSH. For ansible-core 2.21 and later, the `paramiko_ssh` plugin has been removed; use the native `ssh` plugin instead.
 
 ## What Is Paramiko?
 
-Paramiko is a Python library that implements the SSH2 protocol. Instead of calling the `ssh` command-line tool, it handles the entire SSH connection natively in Python. Ansible bundled paramiko as its original SSH implementation before switching to native OpenSSH as the default.
+Paramiko is a Python library that implements the SSH2 protocol. Instead of calling the `ssh` command-line tool, it handles the entire SSH connection natively in Python. Ansible bundled paramiko as its original SSH implementation before switching to native OpenSSH as the default, and later deprecated and removed the `paramiko_ssh` connection plugin.
 
 ```mermaid
 graph TD
@@ -29,13 +29,13 @@ Paramiko is useful in a few specific scenarios:
 
 1. **No OpenSSH client installed** - On some minimal systems or containers, the `ssh` binary is not available
 2. **Old SSH versions** - When the system SSH is too old to support features Ansible needs
-3. **Windows control nodes** - If running Ansible on Windows (via WSL or Cygwin), paramiko can be more reliable
-4. **Network devices** - Some network equipment (routers, switches) responds better to paramiko than OpenSSH
-5. **SFTP requirements** - Paramiko has built-in SFTP support that some tasks rely on
+3. **WSL control environments** - If running Ansible from WSL, paramiko could sometimes avoid OpenSSH client differences in older setups
+4. **Network devices on older Ansible versions** - Some network equipment (routers, switches) responded better to paramiko than OpenSSH, though current network automation usually uses `network_cli` with `libssh`
+5. **Legacy compatibility requirements** - Paramiko has built-in SFTP support, but standard Ansible file transfers also work with the native SSH plugin
 
 ## Installing Paramiko
 
-Paramiko is usually installed alongside Ansible, but verify it:
+The `paramiko_ssh` connection plugin was included in ansible-core before 2.21, but the Paramiko Python package might need to be installed separately. Verify it:
 
 ```bash
 # Check if paramiko is installed
@@ -43,10 +43,10 @@ Paramiko is usually installed alongside Ansible, but verify it:
 python3 -c "import paramiko; print(paramiko.__version__)"
 
 # Install if missing
-pip install paramiko
+python3 -m pip install paramiko
 
-# Or install with Ansible
-pip install ansible[paramiko]
+# If you specifically need the removed connection plugin, use an older ansible-core
+python3 -m pip install "ansible-core<2.21" paramiko
 ```
 
 ## Enabling Paramiko
@@ -58,7 +58,7 @@ Set paramiko as the default connection:
 ```ini
 # ansible.cfg
 [defaults]
-transport = paramiko
+transport = paramiko_ssh
 ```
 
 Or set it specifically for SSH connections:
@@ -76,10 +76,10 @@ Override the connection plugin at runtime:
 
 ```bash
 # Use paramiko for a specific run
-ansible all -m ping -c paramiko
+ansible all -m ping -c paramiko_ssh
 
 # Or with a playbook
-ansible-playbook site.yml -c paramiko
+ansible-playbook site.yml -c paramiko_ssh
 ```
 
 ### Method 3: Inventory Variables
@@ -89,9 +89,9 @@ Set it per host or per group:
 ```ini
 # inventory/hosts
 [network_devices]
-switch01 ansible_host=10.0.0.1 ansible_connection=paramiko
-switch02 ansible_host=10.0.0.2 ansible_connection=paramiko
-router01 ansible_host=10.0.0.3 ansible_connection=paramiko
+switch01 ansible_host=10.0.0.1 ansible_connection=paramiko_ssh
+switch02 ansible_host=10.0.0.2 ansible_connection=paramiko_ssh
+router01 ansible_host=10.0.0.3 ansible_connection=paramiko_ssh
 
 [webservers]
 web01 ansible_host=10.0.1.10
@@ -106,7 +106,7 @@ web02 ansible_host=10.0.1.11
 ---
 - name: Configure network devices
   hosts: network_devices
-  connection: paramiko
+  connection: paramiko_ssh
   gather_facts: no
 
   tasks:
@@ -135,14 +135,11 @@ look_for_keys = True
 # Record new host keys to the known_hosts file
 record_host_keys = True
 
-# Path to the known_hosts file
+# Disable host key checking for this connection plugin
 host_key_checking = False
 
-# Use SSH agent for authentication
-use_agent = True
-
 # Connection timeout in seconds
-connect_timeout = 30
+timeout = 30
 ```
 
 ## Paramiko with Password Authentication
@@ -154,7 +151,7 @@ Paramiko handles password authentication more gracefully than OpenSSH in some ca
 ---
 - name: Connect with password
   hosts: legacy_servers
-  connection: paramiko
+  connection: paramiko_ssh
   vars:
     ansible_user: admin
     ansible_password: "{{ vault_admin_password }}"
@@ -176,25 +173,26 @@ ansible-playbook password_auth.yml --ask-vault-pass
 
 ## Paramiko for Network Devices
 
-Paramiko is commonly used with network devices that have non-standard SSH implementations:
+For network devices with non-standard SSH implementations, current Ansible network automation usually uses `network_cli`. If you specifically need Paramiko as the SSH backend for `network_cli`, set `ansible_network_cli_ssh_type: paramiko`:
 
 ```yaml
 # network_backup.yml
 ---
 - name: Backup network device configs
   hosts: switches
-  connection: paramiko
+  connection: ansible.netcommon.network_cli
   gather_facts: no
 
   vars:
     ansible_user: admin
     ansible_password: "{{ vault_switch_password }}"
     ansible_network_os: ios
+    ansible_network_cli_ssh_type: paramiko
 
   tasks:
-    # Use raw module for devices without Python
     - name: Get running configuration
-      raw: show running-config
+      ansible.netcommon.cli_command:
+        command: show running-config
       register: running_config
 
     - name: Save config to local file
@@ -207,11 +205,11 @@ Paramiko is commonly used with network devices that have non-standard SSH implem
 
 ## Handling Host Keys with Paramiko
 
-Paramiko manages host keys differently from OpenSSH:
+Paramiko manages host keys through Ansible's paramiko connection settings rather than through all of the native OpenSSH client options:
 
 ```python
-# Paramiko stores host keys in ~/.ssh/known_hosts by default
-# You can also use a separate file
+# The Ansible paramiko plugin can read and record host keys in known_hosts.
+# Control this with host_key_checking, host_key_auto_add, and record_host_keys.
 ```
 
 ```ini
@@ -256,14 +254,12 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=60s
 pipelining = True
 ```
 
-However, paramiko does have its own connection pooling:
+However, ansible-core versions that still include `paramiko_ssh` can use Ansible's persistent connection setting, and `forks` controls how many hosts Ansible works on in parallel:
 
 ```ini
 # ansible.cfg
-[paramiko_connection]
-# Paramiko maintains its own connection pool
-# This is controlled by forks
 [defaults]
+use_persistent_connections = True
 forks = 20
 ```
 
@@ -273,7 +269,7 @@ Enable verbose paramiko logging:
 
 ```bash
 # Run with maximum verbosity
-ansible all -m ping -c paramiko -vvvv
+ansible all -m ping -c paramiko_ssh -vvvv
 ```
 
 For even more detail, enable paramiko's own debug logging:
@@ -286,7 +282,7 @@ For even more detail, enable paramiko's own debug logging:
 ```yaml
 - name: Debug paramiko
   hosts: all
-  connection: paramiko
+  connection: paramiko_ssh
 
   tasks:
     - name: Test connection
@@ -306,11 +302,11 @@ pip install paramiko
 
 # "Authentication failed" error
 # Verify credentials and key paths
-ansible all -m ping -c paramiko --ask-pass -vvvv
+ansible all -m ping -c paramiko_ssh --ask-pass -vvvv
 
 # "No existing session" error
 # Usually a timeout issue
-# Increase the timeout in ansible.cfg
+# Increase the timeout setting in ansible.cfg
 ```
 
 ## Mixed Connection Types
@@ -320,8 +316,8 @@ You can use paramiko for some hosts and OpenSSH for others:
 ```ini
 # inventory/hosts
 [network_devices]
-switch01 ansible_host=10.0.0.1 ansible_connection=paramiko
-router01 ansible_host=10.0.0.2 ansible_connection=paramiko
+switch01 ansible_host=10.0.0.1 ansible_connection=paramiko_ssh
+router01 ansible_host=10.0.0.2 ansible_connection=paramiko_ssh
 
 [linux_servers]
 web01 ansible_host=10.0.1.10 ansible_connection=ssh
@@ -331,10 +327,10 @@ db01 ansible_host=10.0.2.10 ansible_connection=ssh
 ```yaml
 # mixed_playbook.yml
 ---
-# Play 1: Network devices via paramiko
+# Play 1: Legacy devices via paramiko_ssh
 - name: Backup network configs
   hosts: network_devices
-  connection: paramiko
+  connection: paramiko_ssh
   gather_facts: no
 
   tasks:
@@ -361,7 +357,7 @@ Paramiko looks for SSH keys in the standard locations:
 # Specify key file explicitly
 - name: Connect with specific key
   hosts: servers
-  connection: paramiko
+  connection: paramiko_ssh
   vars:
     ansible_ssh_private_key_file: ~/.ssh/custom_key
 
@@ -382,8 +378,7 @@ Paramiko supports these key types:
 # Look for keys in default locations (~/.ssh/id_rsa, etc.)
 look_for_keys = True
 
-# Also use the SSH agent
-use_agent = True
+# Use ansible_ssh_private_key_file or ansible_paramiko_private_key_file to specify a key explicitly
 ```
 
 ## Migration Path
@@ -392,7 +387,7 @@ If you are using paramiko and want to migrate to native SSH (or vice versa), tes
 
 ```bash
 # Test with paramiko
-ansible all -m ping -c paramiko -v
+ansible all -m ping -c paramiko_ssh -v
 
 # Test with native SSH
 ansible all -m ping -c ssh -v
@@ -403,9 +398,9 @@ ansible all -m ping -c ssh -v
 Key differences to watch for:
 - ControlMaster features only work with native SSH
 - Pipelining only works with native SSH
-- Some network devices only work well with paramiko
+- Some older network device setups only work well with paramiko
 - Password prompts may behave differently
 
 ## Wrapping Up
 
-The paramiko connection plugin is a specialized tool for specific situations. Use it when you are managing network devices, working on systems without OpenSSH, or dealing with SSH implementations that are not fully compatible with OpenSSH. For standard Linux server management, stick with the default native SSH plugin, which supports ControlMaster, pipelining, and all the other performance optimizations Ansible offers. If you find yourself needing paramiko, make sure it is installed and properly configured, and be aware that you lose some performance features in the trade-off.
+The paramiko connection plugin was a specialized tool for specific situations on older Ansible versions. Use it only when you are pinned to ansible-core before 2.21 and are working on systems without OpenSSH or dealing with SSH implementations that are not fully compatible with OpenSSH. For standard Linux server management, stick with the default native SSH plugin, which supports ControlMaster, pipelining, and all the other performance optimizations Ansible offers. If you find yourself needing paramiko, make sure you are on a compatible Ansible version, install the Paramiko Python package, and be aware that you lose some performance features in the trade-off.
