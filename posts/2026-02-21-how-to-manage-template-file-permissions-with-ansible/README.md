@@ -253,10 +253,10 @@ production:
 
 ## Sudoers Drop-in Files
 
-Sudoers files have very specific permission requirements. The wrong permissions cause sudo to refuse the file:
+Sudoers files have very specific permission requirements. The default sudoers mode is `0440`, and ownership or permission problems can cause sudo or visudo to reject the file:
 
 ```yaml
-# Sudoers files MUST be 0440 owned by root:root
+# Sudoers files should normally be 0440 owned by root:root
 - name: Deploy sudoers drop-in
   ansible.builtin.template:
     src: sudoers_appuser.j2
@@ -267,7 +267,7 @@ Sudoers files have very specific permission requirements. The wrong permissions 
     validate: 'visudo -cf %s'
 ```
 
-If the permissions are wrong, sudo will silently ignore the file. This is a security feature of sudo, but it can cause confusing debugging sessions.
+If the permissions are wrong, sudo may reject the file or report a permissions error. This is a security feature of sudo, but it can cause confusing debugging sessions.
 
 ## SSH Configuration Files
 
@@ -279,7 +279,7 @@ If the permissions are wrong, sudo will silently ignore the file. This is a secu
     dest: "/home/{{ item.name }}/.ssh/authorized_keys"
     owner: "{{ item.name }}"
     group: "{{ item.name }}"
-    mode: '0600'  # SSH requires this to be 0600
+    mode: '0600'  # Recommended: writable only by the user
   loop: "{{ ssh_users }}"
 
 - name: Deploy SSH config
@@ -292,7 +292,7 @@ If the permissions are wrong, sudo will silently ignore the file. This is a secu
   loop: "{{ ssh_users }}"
 ```
 
-SSH is particularly strict about permissions. If `~/.ssh/authorized_keys` is not owned by the user or has permissions more permissive than `0600`, SSH will refuse to use it.
+SSH is particularly strict about write permissions when `StrictModes` is enabled. If `~/.ssh/authorized_keys`, the `.ssh` directory, or the user's home directory is writable by other users, SSH will refuse to use it.
 
 ## Using Variables for Permission Consistency
 
