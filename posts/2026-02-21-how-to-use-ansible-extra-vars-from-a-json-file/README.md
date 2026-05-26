@@ -129,7 +129,6 @@ ansible-playbook deploy.yml \
 ```
 
 ```json
-// base-config.json
 {
   "app_version": "2.4.0",
   "worker_count": 4,
@@ -139,7 +138,6 @@ ansible-playbook deploy.yml \
 ```
 
 ```json
-// production-overrides.json
 {
   "worker_count": 16,
   "log_level": "warn",
