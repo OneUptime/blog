@@ -10,13 +10,14 @@ Description: Learn how to use the Ansible win_lineinfile module to manage lines 
 
 If you have ever needed to update a configuration file on a Windows server, say adding a DNS entry to the hosts file, toggling a setting in an INI file, or commenting out a line in a config, then you know how tedious it can be to do this manually across multiple machines. The Ansible `win_lineinfile` module solves this problem by letting you manage individual lines in text files on Windows hosts in a declarative, repeatable way.
 
-This module is the Windows counterpart to the Linux `lineinfile` module. It works with WinRM-connected Windows hosts and can insert, replace, or remove lines based on regex patterns or exact matches.
+This module is the Windows counterpart to the Linux `lineinfile` module. The current fully qualified collection name is `community.windows.win_lineinfile`. It works with Windows hosts managed through supported Windows connection plugins such as WinRM, PSRP, or SSH, and can insert, replace, or remove lines based on regex patterns or exact matches.
 
 ## Prerequisites
 
 Before diving in, make sure you have:
 
 - Ansible installed on your control node (Linux or macOS)
+- The `community.windows` collection installed for `community.windows.win_lineinfile` (it may already be installed if you use the full `ansible` package, but it is not included in `ansible-core`)
 - WinRM configured on your Windows target hosts
 - A working inventory with Windows hosts defined
 
@@ -48,7 +49,7 @@ The simplest use case is ensuring a specific line exists in a file. Let's start 
   hosts: windows
   tasks:
     - name: Add custom DNS entry to hosts file
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\Windows\System32\drivers\etc\hosts
         line: "192.168.1.50    app-server.internal.local"
         state: present
@@ -67,14 +68,14 @@ One of the most powerful features of `win_lineinfile` is regex-based line replac
   hosts: windows
   tasks:
     - name: Set max connections to 200
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\AppConfig\settings.conf
         regexp: '^max_connections\s*='
         line: "max_connections = 200"
         state: present
 ```
 
-In this example, Ansible searches for any line starting with `max_connections` followed by optional whitespace and an equals sign. If found, it replaces the entire line. If not found, the new line gets appended to the end of the file.
+In this example, Ansible searches for any line starting with `max_connections` followed by optional whitespace and an equals sign. If matches are found, it replaces the last matching line. If not found, the new line gets appended to the end of the file.
 
 ## Controlling Line Placement with insertafter and insertbefore
 
@@ -87,7 +88,7 @@ Sometimes you need a line to appear at a specific position in the file, not just
   hosts: windows
   tasks:
     - name: Add log directory under logging section
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\AppConfig\app.ini
         insertafter: '^\[logging\]'
         line: "log_directory = C:\\Logs\\MyApp"
@@ -103,7 +104,7 @@ You can also use `insertbefore` to place the line before a matching pattern:
   hosts: windows
   tasks:
     - name: Insert comment before connection string
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\AppConfig\database.conf
         insertbefore: '^connection_string\s*='
         line: "# Updated by Ansible on {{ ansible_date_time.date }}"
@@ -123,7 +124,7 @@ To remove a line, set `state: absent` and provide a regex pattern. Every line th
   hosts: windows
   tasks:
     - name: Remove deprecated DNS entry
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\Windows\System32\drivers\etc\hosts
         regexp: '.*deprecated-server\.old\.local'
         state: absent
@@ -142,14 +143,14 @@ Windows files sometimes use different encodings. The `encoding` parameter lets y
   hosts: windows
   tasks:
     - name: Ensure setting exists in UTF-8 file
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\AppConfig\unicode-settings.txt
         line: "locale = en_US.UTF-8"
         encoding: utf-8
         state: present
 ```
 
-Supported encoding values include `auto`, `utf-8`, `utf-8-bom`, `utf-16`, `utf-16-be`, and `utf-16-le`. The default is `auto`, which usually does the right thing, but I have hit edge cases with legacy applications that require an explicit encoding.
+Supported encoding values include `auto` or any valid value accepted by the .NET `System.Text.Encoding.GetEncoding()` method, such as `utf-8`, `utf-16`, `utf-16BE`, and `utf-16LE`. The default is `auto`, which usually does the right thing, but I have hit edge cases with legacy applications that require an explicit encoding.
 
 ## Backup Before Modifying
 
@@ -162,7 +163,7 @@ It is always a good practice to create a backup of the file before making change
   hosts: windows
   tasks:
     - name: Update binding configuration
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\inetpub\wwwroot\web.config
         regexp: '<add key="ApiEndpoint"'
         line: '    <add key="ApiEndpoint" value="https://api.production.local" />'
@@ -199,14 +200,14 @@ Here is a more complete playbook that ties several concepts together. This one m
         state: touch
 
     - name: Add header comment if missing
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\FirewallConfig\rules.conf
         insertbefore: BOF
         line: "# Firewall rules managed by Ansible - do not edit manually"
         state: present
 
     - name: Add allowed port entries
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\FirewallConfig\rules.conf
         regexp: "^allow_port\\s*=\\s*{{ item.port }}"
         line: "allow_port = {{ item.port }}  # {{ item.desc }}"
@@ -214,7 +215,7 @@ Here is a more complete playbook that ties several concepts together. This one m
       loop: "{{ allowed_ports }}"
 
     - name: Remove any blocked legacy ports
-      ansible.windows.win_lineinfile:
+      community.windows.win_lineinfile:
         path: C:\FirewallConfig\rules.conf
         regexp: '^allow_port\s*=\s*(23|21|25)\b'
         state: absent
@@ -243,4 +244,4 @@ The `--diff` flag shows you exactly what lines will change, which is extremely h
 
 ## Wrapping Up
 
-The `win_lineinfile` module is a workhorse for Windows configuration management. Whether you are updating hosts files, tweaking application configs, or managing INI files, it gives you fine-grained control over individual lines in text files. Combine it with `--check --diff` for safe deployments, use `backup: yes` for peace of mind, and keep your regex patterns tight to avoid surprises. For managing entire blocks of text rather than single lines, check out the `win_blockinfile` module instead.
+The `win_lineinfile` module is a workhorse for Windows configuration management. Whether you are updating hosts files, tweaking application configs, or managing INI files, it gives you fine-grained control over individual lines in text files. Combine it with `--check --diff` for safe deployments, use `backup: yes` for peace of mind, and keep your regex patterns tight to avoid surprises. For managing entire files rather than single lines, check out the `ansible.windows.win_template` module instead.
