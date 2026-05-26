@@ -114,17 +114,17 @@ You are not limited to built-in facts. You can group by anything you can compute
 This pattern is especially useful when you need to apply kernel-specific workarounds or configurations.
 
 ```yaml
-# kernel-grouping.yml - Group by major kernel version
+# kernel-grouping.yml - Group by major and minor kernel version
 ---
 - name: Create kernel version groups
   hosts: all
   gather_facts: true
   tasks:
-    - name: Group by kernel major version
+    - name: Group by kernel major and minor version
       ansible.builtin.group_by:
         key: "kernel_{{ ansible_kernel.split('.')[0] }}_{{ ansible_kernel.split('.')[1] }}"
 
-- name: Apply settings for kernel 5.x hosts
+- name: Apply settings for kernel 5.15 hosts
   hosts: kernel_5_15
   tasks:
     - name: Load specific kernel module
