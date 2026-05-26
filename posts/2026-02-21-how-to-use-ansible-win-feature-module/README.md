@@ -159,7 +159,7 @@ You can uninstall features that are not needed. This is useful for security hard
         - Telnet-Client
         - TFTP-Client
         - PowerShell-V2
-        - SMB1Protocol
+        - FS-SMB1
       register: removal_results
 
     - name: Reboot if any removals require it
@@ -228,7 +228,7 @@ Here is a complete playbook that provisions a Windows web server from scratch.
     security_features_to_remove:
       - Telnet-Client
       - PowerShell-V2
-      - SMB1Protocol
+      - FS-SMB1
 
     dotnet_features:
       - NET-Framework-45-Core
