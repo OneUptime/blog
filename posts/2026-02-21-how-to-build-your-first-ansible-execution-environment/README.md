@@ -20,7 +20,7 @@ EEs solve this by putting everything inside a container. Everyone on the team us
 
 You need three things installed on your machine:
 
-1. Python 3.8 or newer
+1. Python 3.9 or newer
 2. Either Podman or Docker
 3. ansible-builder (the tool that creates EE images)
 
@@ -118,7 +118,7 @@ With your files in place, run ansible-builder:
 ansible-builder build --tag my-first-ee:1.0 --verbosity 3
 ```
 
-The `--tag` flag names your image. The `--verbosity 3` flag shows detailed output so you can see what is happening during the build. This is especially useful for your first build.
+The `--tag` flag names your image. The `--verbosity 3` flag shows detailed output so you can see what is happening during the build. This is especially useful for your first build. If you are using Docker instead of Podman to build the image, add `--container-runtime docker`.
 
 The build process does several things:
 1. Creates a build context directory with a Containerfile
@@ -194,9 +194,9 @@ The `--mode stdout` flag makes ansible-navigator behave like ansible-playbook, p
 
 ## Customizing the Base Image
 
-The default base image from quay.io works fine, but you might want to use a different base for compliance or size reasons.
+The base image above works fine, but you might want to use a different base for compliance or size reasons.
 
-Here is a definition that uses a minimal base image:
+Here is a definition that adds a few build customizations:
 
 ```yaml
 # execution-environment.yml - Custom base image
