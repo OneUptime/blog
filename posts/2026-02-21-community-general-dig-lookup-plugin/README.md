@@ -8,7 +8,7 @@ Description: Learn how to use the community.general.dig lookup plugin to perform
 
 ---
 
-DNS is the backbone of network communication. When your Ansible playbooks need to resolve hostnames, look up MX records, verify TXT records, or discover service locations through SRV records, the `community.general.dig` lookup plugin lets you perform DNS queries right inside your playbook logic. It is essentially the `dig` command wrapped as an Ansible lookup, giving you programmatic access to DNS data.
+DNS is the backbone of network communication. When your Ansible playbooks need to resolve hostnames, look up MX records, verify TXT records, or discover service locations through SRV records, the `community.general.dig` lookup plugin lets you perform DNS queries right inside your playbook logic. It uses the `dnspython` library to give you programmatic access to DNS data.
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ Note the trailing dot (`.`) on the domain name. This tells the DNS resolver to t
 
 ## Querying Different Record Types
 
-The `dig` lookup supports all standard DNS record types.
+The `dig` lookup supports common DNS record types, including A, AAAA, MX, TXT, CNAME, NS, SRV, and SOA records.
 
 ```yaml
 # playbook.yml - Query different DNS record types
@@ -120,6 +120,12 @@ Use DNS lookups to discover backend servers dynamically.
         dest: /etc/haproxy/haproxy.cfg
         mode: '0644'
       notify: reload haproxy
+
+  handlers:
+    - name: reload haproxy
+      ansible.builtin.service:
+        name: haproxy
+        state: reloaded
 ```
 
 Template:
@@ -198,19 +204,19 @@ You can direct queries to a specific DNS server instead of using the system reso
     # Query Google's DNS
     - name: Resolve via Google DNS
       ansible.builtin.debug:
-        msg: "{{ lookup('community.general.dig', 'example.com.', qtype='A', dns_servers='8.8.8.8') }}"
+        msg: "{{ lookup('community.general.dig', 'example.com.', '@8.8.8.8', qtype='A') }}"
 
     # Query internal DNS
     - name: Resolve via internal DNS
       ansible.builtin.debug:
-        msg: "{{ lookup('community.general.dig', 'internal.example.com.', qtype='A', dns_servers='10.0.0.53') }}"
+        msg: "{{ lookup('community.general.dig', 'internal.example.com.', '@10.0.0.53', qtype='A') }}"
 
     # Compare results from different DNS servers
     - name: Check DNS consistency
       ansible.builtin.debug:
         msg: |
-          Public DNS: {{ lookup('community.general.dig', 'api.example.com.', qtype='A', dns_servers='8.8.8.8') }}
-          Internal DNS: {{ lookup('community.general.dig', 'api.example.com.', qtype='A', dns_servers='10.0.0.53') }}
+          Public DNS: {{ lookup('community.general.dig', 'api.example.com.', '@8.8.8.8', qtype='A') }}
+          Internal DNS: {{ lookup('community.general.dig', 'api.example.com.', '@10.0.0.53', qtype='A') }}
 ```
 
 ## DNS Validation and Health Checks
@@ -269,24 +275,24 @@ Verify that email-related DNS records are properly configured:
 
     - name: Check SPF record
       ansible.builtin.set_fact:
-        spf_record: "{{ lookup('community.general.dig', domain + '.', qtype='TXT', wantlist=True) | select('match', '.*v=spf1.*') | list }}"
+        spf_record: "{{ lookup('community.general.dig', domain + '.', qtype='TXT', wantlist=True, real_empty=True) | select('match', '.*v=spf1.*') | list }}"
 
     - name: Check DKIM record
       ansible.builtin.set_fact:
-        dkim_record: "{{ lookup('community.general.dig', 'default._domainkey.' + domain + '.', qtype='TXT') }}"
+        dkim_record: "{{ lookup('community.general.dig', 'default._domainkey.' + domain + '.', qtype='TXT', real_empty=True) }}"
 
     - name: Check DMARC record
       ansible.builtin.set_fact:
-        dmarc_record: "{{ lookup('community.general.dig', '_dmarc.' + domain + '.', qtype='TXT') }}"
+        dmarc_record: "{{ lookup('community.general.dig', '_dmarc.' + domain + '.', qtype='TXT', real_empty=True) }}"
 
     - name: Report email DNS status
       ansible.builtin.debug:
         msg: |
           Email DNS Configuration for {{ domain }}:
           MX Records: {{ mx_records | join(', ') }}
-          SPF: {{ spf_record | join(', ') | default('NOT FOUND') }}
-          DKIM: {{ dkim_record | default('NOT FOUND') }}
-          DMARC: {{ dmarc_record | default('NOT FOUND') }}
+          SPF: {{ spf_record | join(', ') | default('NOT FOUND', true) }}
+          DKIM: {{ dkim_record | default('NOT FOUND', true) }}
+          DMARC: {{ dmarc_record | default('NOT FOUND', true) }}
 ```
 
 ## Certificate Pre-Validation
@@ -308,7 +314,7 @@ Before requesting SSL certificates, verify that DNS records point correctly:
     - name: Verify DNS resolves correctly for all certificate domains
       ansible.builtin.assert:
         that:
-          - "lookup('community.general.dig', item + '.', qtype='A') == expected_ip or lookup('community.general.dig', item + '.', qtype='CNAME') != 'NXDOMAIN'"
+          - "lookup('community.general.dig', item + '.', qtype='A') == expected_ip or (lookup('community.general.dig', item + '.', qtype='CNAME', real_empty=True) | length > 0)"
         fail_msg: "{{ item }} does not resolve to {{ expected_ip }}. Fix DNS before requesting certificate."
         success_msg: "{{ item }} DNS verified"
       loop: "{{ cert_domains }}"
@@ -324,12 +330,12 @@ Before requesting SSL certificates, verify that DNS records point correctly:
 
 2. **Multiple results**: Many record types (A, MX, TXT, NS) can return multiple values. Use `wantlist=True` to get a proper list.
 
-3. **Caching**: DNS results are cached by the resolver for the TTL duration. The lookup returns whatever the resolver gives you, which might be a cached result.
+3. **Caching**: DNS servers and local resolver layers can cache DNS answers for the TTL duration. The lookup returns whatever the queried resolver gives you, which might be a cached result.
 
-4. **Error handling**: If a domain does not exist or has no records of the requested type, the lookup returns `NXDOMAIN` or an empty result. Check for this in your logic.
+4. **Error handling**: By default, lookup errors can return empty strings or the string `NXDOMAIN`. Use options such as `real_empty=True` or `fail_on_error=True` when you need stricter behavior.
 
 5. **Network dependency**: DNS lookups require network access. If your Ansible controller cannot reach DNS servers, the lookups will fail. Consider caching results for offline scenarios.
 
-6. **Performance**: Each lookup makes a DNS query. If you are looking up many records, the latency adds up. For large-scale DNS operations, consider using the `dig` command directly through the `command` module.
+6. **Performance**: Each lookup makes a DNS query. If you are looking up many records, the latency adds up. For multiple names, consider using `query('community.general.dig', ...)` so Ansible returns a list you can iterate over directly.
 
 The `community.general.dig` lookup plugin turns Ansible into a DNS-aware automation tool. Whether you are validating configurations, discovering services, or building dynamic infrastructure maps, having DNS data available inline makes your playbooks smarter and more resilient to infrastructure changes.
