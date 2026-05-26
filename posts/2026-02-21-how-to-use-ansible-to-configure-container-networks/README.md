@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Docker, Networking, Container, Infrastructure
 
-Description: Create and manage Docker container networks with Ansible for service isolation, cross-host communication, and DNS-based service discovery.
+Description: Create and manage Docker container networks with Ansible for service isolation, consistent network configuration, and DNS-based service discovery.
 
 ---
 
-Container networks control how containers communicate with each other and with external systems. By default, Docker creates a bridge network, but production deployments need custom networks for security isolation, service discovery, and cross-host communication. Ansible lets you define your network topology as code and apply it consistently.
+Container networks control how containers communicate with each other and with external systems. By default, Docker creates a bridge network, but production deployments often need custom networks for security isolation, service discovery, and predictable addressing. For cross-host communication, use a multi-host driver such as Docker's overlay driver. Ansible lets you define your network topology as code and apply it consistently.
 
 ## Creating Custom Bridge Networks
 
@@ -216,7 +216,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
