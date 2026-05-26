@@ -342,6 +342,7 @@ Always back up existing files before overwriting and validate the result.
             exit 1
         }
       register: validation
+      ignore_errors: true
 
     # Roll back if validation fails
     - name: Roll back on validation failure
