@@ -8,7 +8,7 @@ Description: Manage Docker container volume mounts and persistent storage with A
 
 ---
 
-Docker volumes provide persistent storage for containers. Without them, all data inside a container is lost when it stops. Ansible helps you create, configure, and manage volumes as part of your deployment workflow, ensuring data persists correctly and storage is allocated before containers start.
+Docker volumes provide persistent storage for containers. Without them, data written to a container's writable layer is tied to that container and is lost when the container is removed or recreated. Ansible helps you create, configure, and manage volumes as part of your deployment workflow, ensuring data persists correctly and storage is allocated before containers start.
 
 ## Volume Types and When to Use Them
 
@@ -224,7 +224,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
