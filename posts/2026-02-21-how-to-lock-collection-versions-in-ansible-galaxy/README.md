@@ -47,20 +47,29 @@ This is the minimum viable approach. Every version is a fixed target, and `ansib
 
 ## The Problem with Transitive Dependencies
 
-Pinning your direct dependencies is not enough. Collections can depend on other collections. If `amazon.aws` requires `ansible.utils >= 2.0.0`, Galaxy resolves that dependency at install time and might pull different versions on different days.
+Pinning your direct dependencies is not enough. Collections can depend on other collections. For example, `community.docker` 3.7.0 requires `community.library_inventory_filtering_v1 >= 1.0.0`. Galaxy resolves that dependency at install time and might pull different versions on different days.
 
 To see a collection's dependencies:
 
 ```bash
 # Check what dependencies a collection requires
-ansible-galaxy collection install amazon.aws:7.2.0 --dry-run 2>&1
+TEMP_DIR=$(mktemp -d)
+ansible-galaxy collection install community.docker:==3.7.0 -p "$TEMP_DIR"
+cat "$TEMP_DIR/ansible_collections/community/docker/MANIFEST.json" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+deps = data.get('collection_info', {}).get('dependencies', {})
+for name, version in deps.items():
+    print(f'{name}: {version}')
+"
+rm -rf "$TEMP_DIR"
 ```
 
 Or inspect the installed collection:
 
 ```bash
 # View the manifest of an installed collection
-cat ~/.ansible/collections/ansible_collections/amazon/aws/MANIFEST.json | python3 -c "
+cat ~/.ansible/collections/ansible_collections/community/docker/MANIFEST.json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 deps = data.get('collection_info', {}).get('dependencies', {})
@@ -122,12 +131,12 @@ collections:
     version: "7.2.0"
   - name: ansible.posix
     version: "1.5.4"
-  - name: ansible.utils
-    version: "3.1.0"
   - name: community.docker
     version: "3.7.0"
   - name: community.general
     version: "8.1.0"
+  - name: community.library_inventory_filtering_v1
+    version: "1.1.5"
   - name: community.postgresql
     version: "3.3.0"
 ```
@@ -198,35 +207,21 @@ if __name__ == "__main__":
 
 ## Using Checksums for Integrity
 
-For the highest level of assurance, record and verify checksums of installed collections:
+For the highest level of assurance, verify installed collections against the checksums published by the Galaxy server:
 
 ```bash
 #!/bin/bash
-# generate-checksums.sh - Record checksums of installed collections
+# verify-collection-integrity.sh - Verify installed collection contents
 set -e
 
-COLLECTIONS_PATH="./collections/ansible_collections"
-CHECKSUM_FILE="collection-checksums.sha256"
-
-> "$CHECKSUM_FILE"
-
-for namespace_dir in "$COLLECTIONS_PATH"/*/; do
-    for collection_dir in "$namespace_dir"*/; do
-        if [ -f "${collection_dir}MANIFEST.json" ]; then
-            # Checksum the manifest (changes with any content change)
-            sha256sum "${collection_dir}MANIFEST.json" >> "$CHECKSUM_FILE"
-        fi
-    done
-done
-
-echo "Checksums recorded to ${CHECKSUM_FILE}"
+ansible-galaxy collection verify -r requirements.lock.yml -p ./collections
 ```
 
 Verify later:
 
 ```bash
 # Verify collection integrity
-sha256sum -c collection-checksums.sha256
+ansible-galaxy collection verify -r requirements.lock.yml -p ./collections
 ```
 
 ## Integrating with CI/CD
@@ -313,8 +308,8 @@ collections:
     version: "8.1.0"
   - name: amazon.aws
     version: "7.2.0"
-  - name: ansible.utils
-    version: "3.1.0"
+  - name: community.library_inventory_filtering_v1
+    version: "1.1.5"
 ```
 
 ## Preventing Accidental Upgrades
