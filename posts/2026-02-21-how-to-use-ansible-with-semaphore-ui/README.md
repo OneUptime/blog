@@ -41,14 +41,16 @@ services:
     ports:
       - "3000:3000"
     environment:
-      SEMAPHORE_DB_DIALECT: bolt
+      SEMAPHORE_DB_DIALECT: sqlite
+      SEMAPHORE_DB: /etc/semaphore/semaphore.sqlite
       SEMAPHORE_ADMIN_PASSWORD: your-admin-password
       SEMAPHORE_ADMIN_NAME: admin
       SEMAPHORE_ADMIN_EMAIL: admin@example.com
       SEMAPHORE_ADMIN: admin
-      SEMAPHORE_ACCESS_KEY_ENCRYPTION: your-encryption-key-32chars
+      # Generate with: head -c32 /dev/urandom | base64
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: your-base64-encryption-key
     volumes:
-      - semaphore-data:/var/lib/semaphore
+      - semaphore-data:/etc/semaphore
       # Mount your SSH keys for access to target hosts
       - ~/.ssh:/home/semaphore/.ssh:ro
 
@@ -106,7 +108,8 @@ services:
       SEMAPHORE_ADMIN_NAME: admin
       SEMAPHORE_ADMIN_EMAIL: admin@example.com
       SEMAPHORE_ADMIN: admin
-      SEMAPHORE_ACCESS_KEY_ENCRYPTION: your-32-character-encryption-key!
+      # Generate with: head -c32 /dev/urandom | base64
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: your-base64-encryption-key
       SEMAPHORE_PLAYBOOK_PATH: /ansible
     volumes:
       - semaphore-data:/var/lib/semaphore
@@ -127,10 +130,10 @@ You can also install Semaphore as a standalone binary.
 
 ```bash
 # Download the latest release (check GitHub for current version)
-wget https://github.com/semaphoreui/semaphore/releases/download/v2.9.0/semaphore_2.9.0_linux_amd64.deb
+wget https://github.com/semaphoreui/semaphore/releases/download/v2.18.4/semaphore_2.18.4_linux_amd64.deb
 
 # Install the package
-sudo dpkg -i semaphore_2.9.0_linux_amd64.deb
+sudo dpkg -i semaphore_2.18.4_linux_amd64.deb
 
 # Run the setup wizard
 semaphore setup
@@ -145,7 +148,7 @@ After installation, log in to the web UI at `http://localhost:3000` and set up y
 
 ### Step 1: Create a Project
 
-A project in Semaphore maps to one Ansible repository.
+A project in Semaphore is a workspace for one or more automation repositories.
 
 1. Click "New Project"
 2. Give it a name (e.g., "Infrastructure")
@@ -200,11 +203,11 @@ db01 ansible_host=10.0.2.10
 ansible_user=deploy
 ```
 
-### Step 5: Add Environment
+### Step 5: Add Variable Group
 
-Environments let you define extra variables passed to the playbook.
+Variable Groups let you define extra variables passed to the playbook.
 
-1. Go to Environment > New Environment
+1. Go to Variable Groups > New Variable Group
 2. Add JSON variables:
 
 ```json
@@ -225,7 +228,7 @@ Templates are the main way to define runnable playbooks.
    - Playbook: `playbooks/web-deploy.yml`
    - Inventory: Select your inventory
    - Repository: Select your repo
-   - Environment: Select your environment
+   - Variable Group: Select your variable group
    - Vault Password: Select from Key Store
    - Extra CLI Arguments: `--diff` (optional)
 
@@ -236,7 +239,7 @@ graph TD
     A[Create Project] --> B[Add SSH Keys to Key Store]
     B --> C[Add Repository]
     C --> D[Add Inventory]
-    D --> E[Add Environment Variables]
+    D --> E[Add Variable Groups]
     E --> F[Create Task Templates]
     F --> G[Run Playbooks via UI]
 ```
@@ -254,9 +257,9 @@ Once templates are configured, running a playbook is simple:
 
 Semaphore supports cron-based scheduling for recurring tasks.
 
-1. Edit a Task Template
-2. Go to the Schedule tab
-3. Add a cron expression:
+1. Go to the Schedule tab
+2. Click "New Schedule"
+3. Select the task template to run and add a cron expression:
 
 ```text
 # Run every day at 2 AM
@@ -277,10 +280,10 @@ This is useful for:
 
 ## Webhook Triggers
 
-Semaphore supports webhook triggers for integration with other tools.
+Semaphore supports integrations for webhook-style triggers, and you can also trigger task templates directly through the API.
 
 ```bash
-# Trigger a task template via webhook
+# Trigger a task template via the API
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
@@ -310,10 +313,14 @@ Semaphore has a REST API for full programmatic control.
 
 ```bash
 # Authenticate and get a token
-TOKEN=$(curl -s -X POST \
+curl -s -c /tmp/semaphore-cookie -X POST \
   -H "Content-Type: application/json" \
   http://localhost:3000/api/auth/login \
-  -d '{"auth": "admin", "password": "your-password"}' | jq -r '.token')
+  -d '{"auth": "admin", "password": "your-password"}'
+
+TOKEN=$(curl -s -b /tmp/semaphore-cookie -X POST \
+  -H "Content-Type: application/json" \
+  http://localhost:3000/api/user/tokens | jq -r '.id')
 
 # List projects
 curl -H "Authorization: Bearer $TOKEN" \
@@ -358,10 +365,10 @@ server {
 
 ## Tips for Using Semaphore
 
-1. Use the PostgreSQL backend for production. The BoltDB backend is fine for testing but does not handle concurrent users well.
+1. Use the PostgreSQL backend for production. The SQLite backend is fine for testing and small deployments.
 2. Create separate projects for different teams or environments to keep things organized.
-3. Use environment variables in templates to pass deployment-specific settings without modifying playbooks.
-4. Set up webhook triggers from your Git hosting platform for automated deployments on push.
+3. Use Variable Groups and task parameters to pass deployment-specific settings without modifying playbooks.
+4. Set up integrations or API triggers from your Git hosting platform for automated deployments on push.
 5. Semaphore stores task output, so you get a built-in audit trail of what was run and when.
 6. Back up the PostgreSQL database and the Semaphore encryption key. Losing the encryption key means losing access to all stored credentials.
 
