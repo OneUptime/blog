@@ -26,6 +26,7 @@ Compliance as code means expressing regulatory and security requirements as exec
     line: 'PermitRootLogin no'
     state: present
   notify: restart sshd
+  when: '"5.2.8" not in cis_skip_rules'
   tags:
     - cis
     - ssh
@@ -38,6 +39,7 @@ Compliance as code means expressing regulatory and security requirements as exec
     line: 'PermitEmptyPasswords no'
     state: present
   notify: restart sshd
+  when: '"5.2.9" not in cis_skip_rules'
   tags:
     - cis
     - ssh
@@ -47,9 +49,10 @@ Compliance as code means expressing regulatory and security requirements as exec
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^#?MaxAuthTries'
-    line: 'MaxAuthTries 4'
+    line: 'MaxAuthTries {{ cis_ssh_max_auth_tries }}'
     state: present
   notify: restart sshd
+  when: '"5.2.11" not in cis_skip_rules'
   tags:
     - cis
     - ssh
@@ -80,7 +83,7 @@ roles/cis_benchmark/
 │   └── limits.conf.j2
 └── vars/
     ├── ubuntu22.yml
-    └── rhel9.yml
+    └── redhat9.yml
 ```
 
 ```yaml
@@ -143,7 +146,9 @@ roles/cis_benchmark/
     owner: root
     group: root
     mode: '0400'
-  when: ansible_os_family == 'Debian'
+  when:
+    - ansible_os_family == 'Debian'
+    - '"1.4.1" not in cis_skip_rules'
   tags: [cis, filesystem, level1]
 
 - name: "CIS 1.5.1 - Ensure core dumps are restricted"
