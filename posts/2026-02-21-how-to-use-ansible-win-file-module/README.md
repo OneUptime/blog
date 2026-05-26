@@ -8,7 +8,7 @@ Description: Use the Ansible win_file module to create, delete, and manage files
 
 ---
 
-Managing files and directories on Windows servers is one of the most common automation tasks. The `win_file` module lets you create directories, remove files, and manage file attributes on Windows hosts through Ansible. If you have worked with the Linux `file` module, the Windows version follows the same patterns with a few platform-specific differences.
+Managing files and directories on Windows servers is one of the most common automation tasks. The `win_file` module lets you create directories, remove files, touch files, and manage file timestamps on Windows hosts through Ansible. If you have worked with the Linux `file` module, the Windows version follows the same patterns with a few platform-specific differences.
 
 ## What win_file Does
 
@@ -17,7 +17,7 @@ The `win_file` module manages the state of files and directories on Windows. It 
 - Create directories (including nested paths)
 - Delete files and directories
 - Touch files (create empty files or update timestamps)
-- Manage file attributes (hidden, read-only, etc.)
+- Manage file access and modification timestamps
 
 It does not copy content to files. For that, use `win_copy` or `win_template`.
 
@@ -117,39 +117,41 @@ The `touch` state creates an empty file or updates the modification timestamp of
         state: touch
 ```
 
-## Managing File Attributes
+## Managing File Timestamps
 
-Windows files have attributes like hidden, read-only, system, and archive. You can manage these with `win_file`.
+Windows files and directories have access and modification timestamps. You can manage these with `win_file`.
 
 ```yaml
-# file-attributes.yml - Manage Windows file attributes
+# file-timestamps.yml - Manage Windows file timestamps
 ---
-- name: Manage file attributes
+- name: Manage file timestamps
   hosts: windows_servers
   tasks:
-    # Make a file hidden
-    - name: Hide the deployment marker file
+    # Update both timestamps to the current time
+    - name: Refresh the deployment marker timestamps
       ansible.windows.win_file:
         path: C:\Applications\MyApp\.deployed
-        state: file
-        attributes: hidden
+        state: touch
+        modification_time: now
+        access_time: now
 
-    # Make a file read-only
-    - name: Protect configuration from accidental edits
+    # Set a specific modification time
+    - name: Set configuration modification time
       ansible.windows.win_file:
         path: C:\Applications\MyApp\config\production.xml
         state: file
-        attributes: readonly
+        modification_time: "2026-02-21 10:00:00"
 
-    # Combine multiple attributes
-    - name: Set hidden and read-only attributes
+    # Set both timestamps on an existing file
+    - name: Set marker access and modification times
       ansible.windows.win_file:
         path: C:\Applications\MyApp\.internal
         state: file
-        attributes: hidden,readonly
+        modification_time: "2026-02-21 10:00:00"
+        access_time: "2026-02-21 10:00:00"
 ```
 
-Valid attributes include: `archive`, `hidden`, `normal`, `not_content_indexed`, `readonly`, `system`, and `temporary`.
+Timestamp values use the `yyyy-MM-dd HH:mm:ss` format by default. You can also use `now`, and you can change the parsing format with `modification_time_format` or `access_time_format`.
 
 ## Conditional File Operations
 
@@ -250,11 +252,12 @@ Here is a complete playbook that sets up the directory structure for a multi-tie
         path: "{{ base_path }}\\{{ app_name }}\\.ready"
         state: touch
 
-    - name: Hide internal files
+    - name: Set marker timestamps
       ansible.windows.win_file:
         path: "{{ base_path }}\\{{ app_name }}\\.ready"
         state: file
-        attributes: hidden
+        modification_time: now
+        access_time: now
 ```
 
 ## Directory Structure Visualization
@@ -270,7 +273,7 @@ graph TD
     A --> F[plugins]
     A --> G[temp]
     A --> H[deploy_temp]
-    A --> I[".ready (hidden)"]
+    A --> I[".ready"]
     C --> C1[staging]
     C --> C2[production]
     E --> E1[current]
@@ -326,4 +329,4 @@ A few things to watch out for when using `win_file`:
 
 ## Summary
 
-The `win_file` module is a straightforward but essential part of Windows automation with Ansible. It handles directory creation, file deletion, empty file creation, and attribute management. Combined with `win_stat` for conditional checks and `win_acl` for permissions, you have complete control over the filesystem on your Windows hosts. Use it to set up deployment structures, manage temporary files, and keep your Windows servers organized.
+The `win_file` module is a straightforward but essential part of Windows automation with Ansible. It handles directory creation, file deletion, empty file creation, and timestamp management. Combined with `win_stat` for conditional checks and `win_acl` for permissions, you have complete control over the filesystem on your Windows hosts. Use it to set up deployment structures, manage temporary files, and keep your Windows servers organized.
