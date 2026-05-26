@@ -145,7 +145,7 @@ When you gather information from multiple tasks, you often end up with nested re
 ```yaml
 # Gather package lists from multiple hosts and flatten for processing
 - name: Get installed packages on each host
-  ansible.builtin.command: dpkg --get-selections | grep -w install | awk '{print $1}'
+  ansible.builtin.shell: dpkg --get-selections | grep -w install | awk '{print $1}'
   register: installed_pkgs
   changed_when: false
   delegate_to: "{{ item }}"
@@ -182,6 +182,7 @@ When you have objects that each contain a list attribute:
   ansible.posix.firewalld:
     port: "{{ item }}/tcp"
     permanent: yes
+    immediate: yes
     state: enabled
   loop: "{{ services | map(attribute='ports') | flatten }}"
 ```
@@ -212,6 +213,7 @@ You can filter before or after flattening:
   ansible.posix.firewalld:
     port: "{{ item }}/tcp"
     permanent: yes
+    immediate: yes
     state: enabled
   loop: >-
     {{
