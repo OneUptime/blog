@@ -250,7 +250,7 @@ Here is a complete playbook that sets up all the user accounts needed when provi
         name: Guest
         account_disabled: yes
 
-    - name: Rename default Administrator account
+    - name: Set full name for default Administrator account
       ansible.windows.win_user:
         name: Administrator
         fullname: "Local Admin (renamed)"
@@ -310,7 +310,7 @@ Combine `win_shell` with user management for compliance auditing.
 
 A few things to keep in mind when managing Windows users with Ansible:
 
-1. **Domain vs Local**: The `win_user` module only manages local accounts. For Active Directory accounts, use `win_domain_user`.
+1. **Domain vs Local**: The `win_user` module only manages local accounts. For Active Directory accounts, use `microsoft.ad.user`.
 2. **Password complexity**: Windows enforces password complexity requirements by default. If your password does not meet the policy, the task will fail.
 3. **no_log**: Always use `no_log: true` on tasks that handle passwords to prevent them from appearing in Ansible output.
 4. **SID stability**: When you delete and recreate a user, they get a new SID. Any NTFS permissions or scheduled tasks tied to the old SID will break. Prefer disabling over deleting when possible.
