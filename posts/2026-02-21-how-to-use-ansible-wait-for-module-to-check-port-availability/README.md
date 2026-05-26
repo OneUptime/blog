@@ -51,7 +51,7 @@ Here are the key parameters for the `wait_for` module:
 | `timeout` | 300 | Maximum seconds to wait |
 | `delay` | 0 | Seconds to wait before starting to poll |
 | `sleep` | 1 | Seconds between polling attempts |
-| `state` | started | `started` (port open), `stopped` (port closed), `drained` (no active connections) |
+| `state` | started | `started` (port open or file present), `stopped` (port closed), `drained` (no active connections), `present` (file present), `absent` (file absent) |
 | `connect_timeout` | 5 | Timeout for each individual connection attempt |
 | `search_regex` | none | String to look for in the response |
 | `exclude_hosts` | none | Hosts to exclude when checking for drained state |
@@ -179,7 +179,7 @@ Wait for all active connections to finish before stopping:
 
 ```yaml
 - name: Signal application to stop accepting new connections
-  ansible.builtin.command: "kill -USR1 $(cat /var/run/myapp.pid)"
+  ansible.builtin.shell: "kill -USR1 $(cat /var/run/myapp.pid)"
 
 - name: Wait for existing connections to drain
   ansible.builtin.wait_for:
