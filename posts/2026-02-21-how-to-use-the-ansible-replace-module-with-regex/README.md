@@ -63,7 +63,7 @@ Here is another example that works with multiple capture groups.
 
 ## Multiline Pattern Matching
 
-By default, `^` and `$` match the start and end of each line. But sometimes you need to match patterns that span multiple lines. You can use the `(?s)` flag (DOTALL) or `(?m)` flag (MULTILINE) to control this behavior.
+For the `regexp` parameter, `^` and `$` match the start and end of each line because the module uses multiline mode. However, `.` does not match newline characters unless you enable DOTALL with `(?s)`.
 
 ```yaml
 # Remove a multiline comment block from a configuration file
@@ -71,7 +71,7 @@ By default, `^` and `$` match the start and end of each line. But sometimes you 
 - name: Remove block comments from config
   ansible.builtin.replace:
     path: /etc/myapp/settings.conf
-    regexp: '/\*.*?\*/'
+    regexp: '(?s)/\*.*?\*/'
     replace: ''
   vars:
     ansible_python_interpreter: /usr/bin/python3
@@ -231,8 +231,8 @@ Choosing between `replace` and `lineinfile` depends on your use case:
 | Scope | Any text pattern | Whole lines |
 | Multiple matches | Replaces all matches | Only last match (by default) |
 | Line insertion | No | Yes (can add lines) |
-| Capture groups | Yes | No |
-| Before/After scoping | Yes | Yes (insertafter/insertbefore) |
+| Capture groups | Yes | Yes, with backrefs |
+| Before/After scoping | Yes | Insertion position only |
 
 Use `replace` when you need to modify part of a line, handle multiple matches, or use capture groups. Use `lineinfile` when you need to ensure a whole line exists or insert new lines.
 
