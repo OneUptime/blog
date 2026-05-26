@@ -18,11 +18,11 @@ Here is a quick reference of the magic variables you will use most often:
 |---|---|
 | `inventory_hostname` | The name of the current host as defined in inventory |
 | `ansible_hostname` | The actual hostname from the remote system (a gathered fact) |
-| `hostvars` | Dictionary of all variables for all hosts |
+| `hostvars` | Dictionary of inventory hosts and their assigned variables |
 | `groups` | Dictionary of all groups and their host lists |
 | `group_names` | List of groups the current host belongs to |
-| `ansible_play_hosts` | List of hosts in the current play |
-| `play_hosts` | Same as ansible_play_hosts |
+| `ansible_play_hosts` | List of active hosts in the current play |
+| `play_hosts` | Deprecated; same as ansible_play_batch |
 | `ansible_play_batch` | List of hosts in the current batch (when using serial) |
 | `inventory_dir` | Directory path of the inventory source |
 | `playbook_dir` | Directory path of the playbook |
@@ -143,7 +143,7 @@ This variable contains the list of groups that the current host belongs to:
 
 ## hostvars
 
-The `hostvars` dictionary contains all variables for every host in the inventory. This is how you access variables from other hosts:
+The `hostvars` dictionary contains inventory hosts and their assigned variables. It can also include facts for hosts after those facts have been gathered or cached. This is how you access variables from other hosts:
 
 ```yaml
 ---
@@ -152,10 +152,10 @@ The `hostvars` dictionary contains all variables for every host in the inventory
 
 - hosts: webservers
   tasks:
-    # Access the current host's variables (same as using the variable directly)
+    # Access the current host's gathered facts (same as using the fact directly)
     - name: Access own variables via hostvars
       debug:
-        msg: "My IP: {{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+        msg: "My IP: {{ hostvars[inventory_hostname]['ansible_facts']['default_ipv4']['address'] }}"
 
     # Access another host's variables
     - name: Get the primary database server's IP
@@ -189,7 +189,7 @@ These variables tell you which hosts are in the current play:
 - hosts: webservers
   serial: 2
   tasks:
-    # All hosts targeted by this play (regardless of serial batching)
+    # All active hosts in this play (regardless of serial batching)
     - name: Show all hosts in this play
       debug:
         msg: "All play hosts: {{ ansible_play_hosts }}"
@@ -298,7 +298,7 @@ backend databases
             groups['app_cluster']
             | difference([inventory_hostname])
             | map('extract', hostvars, ['ansible_host'])
-            | map('regex_replace', '(.*)', '\1:' ~ cluster_port)
+            | map('regex_replace', '^(.*)$', '\1:' ~ cluster_port)
             | list
           }}
 
