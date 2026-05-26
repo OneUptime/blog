@@ -17,7 +17,7 @@ Two parameters control background execution:
 - `async: N` - Sets the maximum number of seconds the task can run before Ansible considers it timed out
 - `poll: N` - Controls how often (in seconds) Ansible checks if the task is done
 
-The key combination is `poll: 0`, which tells Ansible to start the task and immediately move on without waiting. You then use `async_status` to check on the task later.
+The key combination is `poll: 0`, which tells Ansible to start the task and immediately move on without waiting. You then use `async_status` to check on the task later. When using `poll: 0`, Ansible does not automatically clean up the async job cache file, so clean it up with `async_status` and `mode: cleanup` after you no longer need the job status.
 
 ```yaml
 # basic_async.yml - Basic background task execution
@@ -53,6 +53,11 @@ The key combination is `poll: 0`, which tells Ansible to start the task and imme
       until: backup_result.finished
       retries: 120     # Check up to 120 times
       delay: 30        # Every 30 seconds
+
+    - name: Clean up backup async job cache
+      ansible.builtin.async_status:
+        jid: "{{ backup_job.ansible_job_id }}"
+        mode: cleanup
 ```
 
 ## Fire and Forget
@@ -155,6 +160,15 @@ Start several long-running tasks simultaneously and wait for all of them.
           Database backup: {{ 'SUCCESS' if db_result.rc == 0 else 'FAILED' }}
           File backup: {{ 'SUCCESS' if file_result.rc == 0 else 'FAILED' }}
           Log archive: {{ 'SUCCESS' if log_result.rc == 0 else 'FAILED' }}
+
+    - name: Clean up async job cache files
+      ansible.builtin.async_status:
+        jid: "{{ item }}"
+        mode: cleanup
+      loop:
+        - "{{ db_backup.ansible_job_id }}"
+        - "{{ file_backup.ansible_job_id }}"
+        - "{{ log_archive.ansible_job_id }}"
 ```
 
 ## Background Jobs with Loops
@@ -202,6 +216,14 @@ Start background jobs in a loop and check them all later.
       loop: "{{ backup_results.results }}"
       loop_control:
         label: "{{ item.item.item }}"
+
+    - name: Clean up backup async job cache files
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+        mode: cleanup
+      loop: "{{ backup_jobs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 ```
 
 ## Background Service Startup
@@ -272,6 +294,12 @@ When background jobs fail, you need to handle errors gracefully.
       until: migration_result.finished
       retries: 240
       delay: 15
+      failed_when: false
+
+    - name: Clean up migration async job cache
+      ansible.builtin.async_status:
+        jid: "{{ migration_job.ansible_job_id }}"
+        mode: cleanup
       failed_when: false
 
     - name: Handle migration success
@@ -387,4 +415,4 @@ Use background tasks for zero-downtime rolling updates.
 
 ## Summary
 
-Background command execution in Ansible revolves around the `async` and `poll` parameters. Set `poll: 0` to fire and forget, or use `async_status` with `until`/`retries`/`delay` to check on the job later. For multiple parallel jobs, start them all with `poll: 0`, then wait for each with `async_status`. The `async` value sets the maximum runtime in seconds; if the job exceeds this limit, it is killed. Use `nohup` for tasks that must survive SSH disconnection. Always handle failures gracefully with `failed_when: false` on the status check and conditional error handling blocks.
+Background command execution in Ansible revolves around the `async` and `poll` parameters. Set `poll: 0` to fire and forget, or use `async_status` with `until`/`retries`/`delay` to check on the job later. For multiple parallel jobs, start them all with `poll: 0`, then wait for each with `async_status`. The `async` value sets the maximum runtime in seconds; if the job exceeds this limit, it is killed. Use `nohup` for tasks that must survive SSH disconnection. Clean up `poll: 0` async job cache files with `async_status` and `mode: cleanup` after checking status. Always handle failures gracefully with `failed_when: false` on the status check and conditional error handling blocks.
