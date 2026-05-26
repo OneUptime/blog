@@ -128,7 +128,7 @@ This is convenient for simple setups where all adapters should use the same DNS 
 
 ## Setting DNS to DHCP
 
-To revert to DHCP-assigned DNS servers, pass an empty list.
+To revert to DHCP-assigned DNS servers on DHCP-enabled connections, pass an empty list. On statically configured connections, an empty list disables DNS lookup for that adapter.
 
 ```yaml
 # dhcp-dns.yml - Revert to DHCP-assigned DNS
@@ -249,7 +249,7 @@ flowchart TD
 
 ## Combining with Other DNS Settings
 
-The `win_dns_client` module handles DNS server addresses. For other DNS settings like suffixes and search order, use `win_shell` with PowerShell cmdlets.
+The `win_dns_client` module handles DNS server addresses and the global DNS suffix search list. For interface-specific DNS settings and dynamic registration, use `win_shell` with PowerShell cmdlets.
 
 ```yaml
 # full-dns-config.yml - Complete DNS client configuration
@@ -272,11 +272,7 @@ The `win_dns_client` module handles DNS server addresses. For other DNS settings
       ansible.windows.win_dns_client:
         adapter_names: Ethernet
         dns_servers: "{{ dns_servers }}"
-
-    # Set DNS suffix search list
-    - name: Configure DNS suffix search list
-      ansible.windows.win_shell: |
-        Set-DnsClientGlobalSetting -SuffixSearchList @('{{ dns_search_list | join("','") }}')
+        suffix_search_list: "{{ dns_search_list }}"
 
     # Set connection-specific DNS suffix
     - name: Set connection DNS suffix
@@ -349,4 +345,4 @@ Here is a quick diagnostic playbook you can run when DNS is not working correctl
 
 ## Summary
 
-The `win_dns_client` module is a focused tool that does one thing well: it sets DNS server addresses on Windows network adapters. In a Windows Active Directory environment, correct DNS is absolutely critical for authentication, group policy, and service location. Use this module to ensure every server in your fleet points to the right DNS servers, and combine it with PowerShell commands for more advanced DNS client settings like suffix search lists and dynamic registration.
+The `win_dns_client` module is a focused tool that does one thing well: it sets DNS server addresses on Windows network adapters. In a Windows Active Directory environment, correct DNS is absolutely critical for authentication, group policy, and service location. Use this module to ensure every server in your fleet points to the right DNS servers, and combine it with PowerShell commands for more advanced DNS client settings like connection-specific suffixes and dynamic registration.
