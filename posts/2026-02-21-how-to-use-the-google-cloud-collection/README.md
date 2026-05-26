@@ -12,7 +12,7 @@ Google Cloud Platform has a solid Ansible integration through the `google.cloud`
 
 ## Installing the Collection
 
-The collection requires the `google-auth` Python library and optionally `requests`.
+The collection requires the `google-auth` and `requests` Python libraries.
 
 ```bash
 # Install the collection
@@ -25,12 +25,12 @@ pip install google-auth requests
 
 ## Authentication
 
-GCP authentication is handled through service account credentials. You have a few options.
+GCP authentication can use service account credentials or application default credentials. You have a few options.
 
 ```bash
 # Option 1: Set the environment variable to your service account key file
 export GCP_SERVICE_ACCOUNT_FILE="/path/to/service-account.json"
-export GCP_PROJECT="my-gcp-project"
+export GCP_AUTH_KIND="serviceaccount"
 
 # Option 2: Use application default credentials
 gcloud auth application-default login
@@ -172,7 +172,7 @@ With networking ready, create instances.
       google.cloud.gcp_compute_disk:
         name: "web-server-1-boot"
         size_gb: 50
-        type: "pd-ssd"
+        type: "projects/{{ gcp_project }}/zones/{{ gcp_zone }}/diskTypes/pd-ssd"
         source_image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts"
         zone: "{{ gcp_zone }}"
         project: "{{ gcp_project }}"
@@ -251,12 +251,12 @@ Cloud Storage buckets for object storage.
             - action:
                 type: "Delete"
               condition:
-                age: 90  # delete objects older than 90 days
+                age_days: 90  # delete objects older than 90 days
             - action:
                 type: "SetStorageClass"
                 storage_class: "NEARLINE"
               condition:
-                age: 30  # move to nearline after 30 days
+                age_days: 30  # move to nearline after 30 days
         labels:
           project: myapp
           managed_by: ansible
@@ -353,7 +353,7 @@ hostnames:
 compose:
   ansible_host: networkInterfaces[0].networkIP
 auth_kind: serviceaccount
-service_account_file: "{{ lookup('env', 'GCP_SERVICE_ACCOUNT_FILE') }}"
+service_account_file: /path/to/service-account.json
 ```
 
 ## Practical Tips
