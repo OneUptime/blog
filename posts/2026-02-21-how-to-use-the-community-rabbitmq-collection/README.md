@@ -8,7 +8,7 @@ Description: A practical guide to managing RabbitMQ servers with Ansible using t
 
 ---
 
-RabbitMQ is one of the most widely deployed message brokers out there, but configuring it by hand across multiple environments gets tedious fast. The `community.rabbitmq` collection for Ansible lets you manage every aspect of RabbitMQ programmatically: users, vhosts, exchanges, queues, bindings, policies, and cluster configuration. This post walks through the collection from installation to real-world usage patterns.
+RabbitMQ is one of the most widely deployed message brokers out there, but configuring it by hand across multiple environments gets tedious fast. The `community.rabbitmq` collection for Ansible lets you manage RabbitMQ resources programmatically: users, vhosts, exchanges, queues, bindings, policies, plugins, and parameters. This post walks through the collection from installation to real-world usage patterns.
 
 ## Installing the Collection
 
@@ -23,41 +23,41 @@ ansible-galaxy collection install community.rabbitmq
 pip install requests
 ```
 
-For version pinning, add it to your requirements file.
+For version constraints, add it to your requirements file.
 
 ```yaml
-# requirements.yml - lock the collection version
+# requirements.yml - require a recent collection version
 collections:
   - name: community.rabbitmq
-    version: ">=1.3.0"
+    version: ">=1.6.0"
 ```
 
 ## What the Collection Includes
 
-The collection provides modules that fall into two categories: those that use the RabbitMQ management HTTP API and those that use the `rabbitmqctl` CLI directly. The HTTP API modules are prefixed and generally preferred for remote management. Here is the breakdown:
+The collection provides modules that fall into two categories: those that use the RabbitMQ management HTTP API and those that use the `rabbitmqctl` CLI directly. Some modules, such as exchanges, queues, and bindings, use the REST API; others, such as users, vhosts, and policies, can use `rabbitmqctl` or the REST API when `login_*` parameters are supplied. Here is the breakdown:
 
 - **rabbitmq_user** - manage users and their permissions
 - **rabbitmq_vhost** - create and delete virtual hosts
 - **rabbitmq_exchange** - declare exchanges
 - **rabbitmq_queue** - declare queues
 - **rabbitmq_binding** - create bindings between exchanges and queues
-- **rabbitmq_policy** - set policies for HA, TTL, and other queue behaviors
+- **rabbitmq_policy** - set policies for TTL, max length, delivery limits, and other queue behaviors
 - **rabbitmq_plugin** - enable or disable RabbitMQ plugins
 - **rabbitmq_global_parameter** - set global parameters
 - **rabbitmq_parameter** - set per-vhost parameters
 
 ## Setting Up Connection Defaults
 
-Most modules need to connect to the RabbitMQ management API. Rather than repeating connection details on every task, set them as variables.
+REST API modules need to connect to the RabbitMQ management API. Rather than hard-coding connection details on every task, set them as variables and pass them to modules that use the API.
 
 ```yaml
-# group_vars/rabbitmq.yml - connection defaults for all RabbitMQ tasks
-rabbitmq_api_host: "rabbitmq.example.com"
-rabbitmq_api_port: 15672
-rabbitmq_api_user: "admin"
-rabbitmq_api_password: "{{ vault_rabbitmq_admin_password }}"
-rabbitmq_api_tls: true
-rabbitmq_api_ca_cert: "/etc/ssl/certs/ca-bundle.crt"
+# group_vars/rabbitmq.yml - connection details for API-based RabbitMQ tasks
+rabbitmq_login_host: "rabbitmq.example.com"
+rabbitmq_login_port: 15672
+rabbitmq_login_user: "admin"
+rabbitmq_login_password: "{{ vault_rabbitmq_admin_password }}"
+rabbitmq_login_protocol: https
+rabbitmq_ca_cert: "/etc/ssl/certs/ca-bundle.crt"
 ```
 
 ## Managing Virtual Hosts
@@ -143,9 +143,12 @@ The topology of your message broker, the exchanges, queues, and bindings, can be
         type: topic
         durable: true
         vhost: /orders
-        login_user: "admin"
-        login_password: "{{ vault_rabbitmq_admin_password }}"
-        login_host: "{{ rabbitmq_api_host }}"
+        login_user: "{{ rabbitmq_login_user }}"
+        login_password: "{{ rabbitmq_login_password }}"
+        login_host: "{{ rabbitmq_login_host }}"
+        login_port: "{{ rabbitmq_login_port }}"
+        login_protocol: "{{ rabbitmq_login_protocol }}"
+        ca_cert: "{{ rabbitmq_ca_cert }}"
 
     - name: Create dead letter exchange
       community.rabbitmq.rabbitmq_exchange:
@@ -153,9 +156,12 @@ The topology of your message broker, the exchanges, queues, and bindings, can be
         type: fanout
         durable: true
         vhost: /orders
-        login_user: "admin"
-        login_password: "{{ vault_rabbitmq_admin_password }}"
-        login_host: "{{ rabbitmq_api_host }}"
+        login_user: "{{ rabbitmq_login_user }}"
+        login_password: "{{ rabbitmq_login_password }}"
+        login_host: "{{ rabbitmq_login_host }}"
+        login_port: "{{ rabbitmq_login_port }}"
+        login_protocol: "{{ rabbitmq_login_protocol }}"
+        ca_cert: "{{ rabbitmq_ca_cert }}"
 
     - name: Create order processing queues
       community.rabbitmq.rabbitmq_queue:
@@ -163,19 +169,25 @@ The topology of your message broker, the exchanges, queues, and bindings, can be
         durable: true
         vhost: /orders
         arguments: "{{ item.args | default({}) }}"
-        login_user: "admin"
-        login_password: "{{ vault_rabbitmq_admin_password }}"
-        login_host: "{{ rabbitmq_api_host }}"
+        login_user: "{{ rabbitmq_login_user }}"
+        login_password: "{{ rabbitmq_login_password }}"
+        login_host: "{{ rabbitmq_login_host }}"
+        login_port: "{{ rabbitmq_login_port }}"
+        login_protocol: "{{ rabbitmq_login_protocol }}"
+        ca_cert: "{{ rabbitmq_ca_cert }}"
       loop:
         - name: order.created
           args:
             x-dead-letter-exchange: order.dlx
             x-message-ttl: 86400000  # 24 hours
+            x-queue-type: quorum
         - name: order.shipped
           args:
             x-dead-letter-exchange: order.dlx
+            x-queue-type: quorum
         - name: order.dlq  # dead letter queue
-          args: {}
+          args:
+            x-queue-type: quorum
 
     - name: Bind queues to exchanges
       community.rabbitmq.rabbitmq_binding:
@@ -184,9 +196,12 @@ The topology of your message broker, the exchanges, queues, and bindings, can be
         routing_key: "{{ item.routing_key }}"
         destination_type: queue
         vhost: /orders
-        login_user: "admin"
-        login_password: "{{ vault_rabbitmq_admin_password }}"
-        login_host: "{{ rabbitmq_api_host }}"
+        login_user: "{{ rabbitmq_login_user }}"
+        login_password: "{{ rabbitmq_login_password }}"
+        login_host: "{{ rabbitmq_login_host }}"
+        login_port: "{{ rabbitmq_login_port }}"
+        login_protocol: "{{ rabbitmq_login_protocol }}"
+        ca_cert: "{{ rabbitmq_ca_cert }}"
       loop:
         - queue: order.created
           routing_key: "order.created.#"
@@ -199,29 +214,30 @@ The topology of your message broker, the exchanges, queues, and bindings, can be
         destination: "order.dlq"
         destination_type: queue
         vhost: /orders
-        login_user: "admin"
-        login_password: "{{ vault_rabbitmq_admin_password }}"
-        login_host: "{{ rabbitmq_api_host }}"
+        login_user: "{{ rabbitmq_login_user }}"
+        login_password: "{{ rabbitmq_login_password }}"
+        login_host: "{{ rabbitmq_login_host }}"
+        login_port: "{{ rabbitmq_login_port }}"
+        login_protocol: "{{ rabbitmq_login_protocol }}"
+        ca_cert: "{{ rabbitmq_ca_cert }}"
 ```
 
 ## Setting Policies
 
-Policies control queue behavior like replication, TTL, and max length. They are applied using pattern matching on queue names.
+Policies control queue behavior like TTL, max length, and quorum queue settings that can be changed after declaration. They are applied using pattern matching on queue names.
 
 ```yaml
-# playbook-policies.yml - set HA and resource limit policies
+# playbook-policies.yml - set resource limit and quorum queue policies
 - hosts: rabbitmq_primary
   tasks:
-    - name: Set HA policy for all order queues
+    - name: Set a delivery limit for quorum order queues
       community.rabbitmq.rabbitmq_policy:
-        name: ha-orders
+        name: quorum-delivery-limit
         pattern: "^order\\."
         tags:
-          ha-mode: exactly
-          ha-params: 2
-          ha-sync-mode: automatic
+          delivery-limit: 10
         vhost: /orders
-        apply_to: queues
+        apply_to: quorum_queues
         state: present
 
     - name: Set max queue length policy to prevent unbounded growth
@@ -260,13 +276,7 @@ RabbitMQ plugins can be enabled and disabled through the collection as well.
   tasks:
     - name: Enable management and monitoring plugins
       community.rabbitmq.rabbitmq_plugin:
-        names:
-          - rabbitmq_management
-          - rabbitmq_prometheus
-          - rabbitmq_shovel
-          - rabbitmq_shovel_management
-          - rabbitmq_federation
-          - rabbitmq_federation_management
+        names: rabbitmq_management,rabbitmq_prometheus,rabbitmq_shovel,rabbitmq_shovel_management,rabbitmq_federation,rabbitmq_federation_management
         state: enabled
       notify: restart rabbitmq
 
@@ -313,11 +323,11 @@ The main task file ties it all together.
 
 A few things I have run into when using this collection:
 
-1. **Management plugin must be enabled.** Most modules use the HTTP API, which requires the `rabbitmq_management` plugin. If you get connection refused errors on port 15672, that is probably the issue.
+1. **Management plugin must be enabled for REST API modules.** Exchange, queue, binding, and other REST API tasks require the `rabbitmq_management` plugin. If you get connection refused errors on port 15672, that is probably the issue.
 
 2. **User permissions are per-vhost.** If a user needs access to multiple vhosts, you need to set permissions for each vhost separately. The module only sets permissions for the vhost specified in the task.
 
-3. **Idempotency with arguments.** Queue arguments like `x-message-ttl` are set at creation time. If you change them in your playbook, the module will not recreate the queue. You need to delete and recreate it, which means losing messages. Plan your queue arguments carefully before deploying to production.
+3. **Idempotency with arguments.** Queue arguments like `x-message-ttl` and `x-queue-type` are set at creation time. If you change them in your playbook, the module will not recreate the queue. You need to delete and recreate it, which means losing messages. Plan your queue arguments carefully before deploying to production.
 
 4. **Use `no_log` for password tasks.** The module output can include passwords in plain text. Always set `no_log: true` on tasks that handle credentials.
 
