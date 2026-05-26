@@ -12,7 +12,7 @@ When working with lists in Ansible, you frequently need to filter items based on
 
 ## Basic Syntax
 
-Both filters work with Jinja2 tests (not filters). A test is something you would use with `is` in a Jinja2 expression:
+Both filters work with tests (not filters), including Jinja2's built-in tests and Ansible's additional tests. A test is something you would use with `is` in a Jinja2 expression:
 
 ```jinja2
 {# select keeps items that pass the test #}
@@ -209,7 +209,7 @@ Remove empty or unwanted values from lists:
 ```
 
 ```jinja2
-{# iptables.rules.j2 - Firewall rules using select to categorize ports #}
+{# iptables.rules.j2 - Firewall rules using selectattr to categorize rules #}
 *filter
 :INPUT DROP [0:0]
 :FORWARD DROP [0:0]
@@ -238,7 +238,7 @@ COMMIT
 
 ## Using select with match and search Tests
 
-You can use Jinja2's `match` and `search` tests with `select` for pattern-based filtering:
+You can use Ansible's `match` and `search` tests with `select` for pattern-based filtering:
 
 ```jinja2
 {# Select strings that start with "web" #}
