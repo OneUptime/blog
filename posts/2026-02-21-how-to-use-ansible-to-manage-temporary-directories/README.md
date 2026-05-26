@@ -134,7 +134,7 @@ The most important part of working with temp directories is cleaning them up. Th
           when: build_dir.path is defined
 ```
 
-The `when: build_dir.path is defined` guard prevents errors if the tempfile task itself failed.
+The `when: build_dir.path is defined` guard prevents cleanup errors if the registered path is missing.
 
 ## Managing Temp Directories Across Roles
 
