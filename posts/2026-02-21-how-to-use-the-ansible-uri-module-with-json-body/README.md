@@ -313,7 +313,7 @@ For complex bodies that need conditional sections or loops, use Jinja2:
 
 ## Reading JSON Response Bodies
 
-When the API returns JSON, Ansible parses it automatically:
+When the API returns JSON with an `application/json` Content-Type, Ansible parses it automatically into the registered result's `json` key. Use `return_content: true` when you also want the raw response body in the `content` key:
 
 ```yaml
 # work with JSON response data from POST requests
@@ -449,4 +449,4 @@ Here is a complete example that demonstrates multiple JSON body patterns in a re
 
 ## Summary
 
-Sending JSON bodies with the Ansible `uri` module is straightforward once you understand the mapping between YAML and JSON. Use `body_format: json` with a YAML dictionary for most cases. Be mindful of data types, especially strings vs numbers and boolean edge cases. Build dynamic bodies from Ansible variables and facts. Use `return_content: true` to access JSON response data for subsequent requests. For complex conditional bodies, Jinja2 expressions combined with the `to_json` filter give you full control. Always set `no_log: true` when the JSON body contains secrets like credentials or tokens.
+Sending JSON bodies with the Ansible `uri` module is straightforward once you understand the mapping between YAML and JSON. Use `body_format: json` with a YAML dictionary for most cases. Be mindful of data types, especially strings vs numbers and boolean edge cases. Build dynamic bodies from Ansible variables and facts. Use the registered result's `json` key to access JSON response data for subsequent requests, and add `return_content: true` if you also need the raw response body. For complex conditional bodies, Jinja2 expressions combined with the `to_json` filter give you full control. Always set `no_log: true` when the JSON body contains secrets like credentials or tokens.
