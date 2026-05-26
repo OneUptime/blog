@@ -76,7 +76,7 @@ Defaults:ansible_user !requiretty
 
 ### Fix 5: Enable Pipelining
 
-Pipelining can help avoid tty-related issues:
+Pipelining reduces the number of SSH operations, but it requires `requiretty` to be disabled when using sudo:
 
 ```ini
 # ansible.cfg
@@ -100,12 +100,12 @@ sudo grep -r "pam_ldap\|pam_sss" /etc/pam.d/
 
 ### Fix 7: Custom Sudo Prompt
 
-Ansible expects a specific sudo prompt. Custom prompts can confuse it:
+Ansible's sudo become plugin supplies its own sudo flags. If you override them, keep the default `-H -S -n` flags so Ansible can pass the password through stdin and fail instead of hanging at an interactive prompt:
 
 ```ini
-# ansible.cfg - Configure the expected prompt pattern
+# ansible.cfg - Keep the default sudo become flags
 [privilege_escalation]
-become_flags = -H -S
+become_flags = -H -S -n
 ```
 
 ## Summary
@@ -114,7 +114,7 @@ Privilege escalation timeouts happen when sudo is waiting for input that Ansible
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where privilege escalation settings prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -151,7 +151,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -233,7 +233,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with privilege escalation settings
 - name: Robust task execution
   hosts: all
   tasks:
@@ -295,4 +295,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
