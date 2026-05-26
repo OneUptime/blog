@@ -16,10 +16,10 @@ Ansible lets you define IAM policies in code, version control them, and apply th
 
 You need:
 
-- Ansible 2.14+
+- ansible-core 2.17+
 - The `amazon.aws` collection
 - AWS credentials with IAM permissions
-- Python boto3
+- Python boto3 and botocore
 
 ```bash
 # Install dependencies
@@ -46,7 +46,7 @@ AWS managed policies cover common use cases. Customer managed policies are reusa
 
 ## Creating a Customer Managed Policy
 
-Use `community.aws.iam_managed_policy` to create reusable policies:
+Use `amazon.aws.iam_managed_policy` to create reusable policies:
 
 ```yaml
 # create-policy.yml - Create a custom managed policy
@@ -59,7 +59,7 @@ Use `community.aws.iam_managed_policy` to create reusable policies:
   tasks:
     # Create a policy that allows read access to specific S3 buckets
     - name: Create S3 read policy
-      community.aws.iam_managed_policy:
+      amazon.aws.iam_managed_policy:
         policy_name: AppS3ReadAccess
         state: present
         policy_description: "Allows read access to application S3 buckets"
@@ -198,7 +198,7 @@ Hardcoding account IDs and resource names in policies is fragile. Use Ansible va
   tasks:
     # Build the policy document dynamically
     - name: Create application access policy
-      community.aws.iam_managed_policy:
+      amazon.aws.iam_managed_policy:
         policy_name: "{{ app_name }}-{{ environment }}-access"
         state: present
         policy_description: "Access policy for {{ app_name }} {{ environment }}"
@@ -250,7 +250,7 @@ Here are policies you will use frequently:
 ```yaml
 # Allow reading logs but not deleting them
 - name: CloudWatch Logs read policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: CloudWatchLogsReadAccess
     state: present
     policy: |
@@ -259,13 +259,21 @@ Here are policies you will use frequently:
         "Statement": [
           {
             "Effect": "Allow",
+            "Action": "logs:DescribeLogGroups",
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
             "Action": [
-              "logs:DescribeLogGroups",
               "logs:DescribeLogStreams",
-              "logs:GetLogEvents",
               "logs:FilterLogEvents"
             ],
             "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/myapp-*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": "logs:GetLogEvents",
+            "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/myapp-*:log-stream:*"
           }
         ]
       }
@@ -276,7 +284,7 @@ Here are policies you will use frequently:
 ```yaml
 # Policy for a CI/CD pipeline to deploy applications
 - name: CI/CD deployment policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: CICDDeploymentPolicy
     state: present
     policy: |
@@ -326,7 +334,7 @@ Here are policies you will use frequently:
 ```yaml
 # Deny policy to prevent dangerous actions
 - name: Deny dangerous actions policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: DenyDangerousActions
     state: present
     policy: |
@@ -346,12 +354,11 @@ Here are policies you will use frequently:
             "Resource": "*"
           },
           {
-            "Sid": "DenyProductionDeletion",
+            "Sid": "DenyProductionRDSDeletion",
             "Effect": "Deny",
             "Action": [
               "rds:DeleteDBInstance",
-              "rds:DeleteDBCluster",
-              "s3:DeleteBucket"
+              "rds:DeleteDBCluster"
             ],
             "Resource": "*",
             "Condition": {
@@ -359,6 +366,12 @@ Here are policies you will use frequently:
                 "aws:ResourceTag/Environment": "production"
               }
             }
+          },
+          {
+            "Sid": "DenyProductionBucketDeletion",
+            "Effect": "Deny",
+            "Action": "s3:DeleteBucket",
+            "Resource": "arn:aws:s3:::myapp-production-*"
           }
         ]
       }
@@ -374,6 +387,7 @@ After creating custom policies, attach them to roles:
   amazon.aws.iam_role:
     name: myapp-ec2-role
     state: present
+    assume_role_policy_document: "{{ lookup('file', 'trust-policy.json') }}"
     managed_policies:
       - arn:aws:iam::123456789012:policy/AppS3ReadAccess
       - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
@@ -390,7 +404,7 @@ Delete a managed policy:
 ```yaml
 # Delete a customer managed policy
 - name: Delete old policy
-  community.aws.iam_managed_policy:
+  amazon.aws.iam_managed_policy:
     policy_name: OldUnusedPolicy
     state: absent
 ```
