@@ -12,13 +12,14 @@ Cloud Storage is GCP's object storage service, used for everything from static w
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- ansible-core 2.16+ with the `google.cloud` collection
 - GCP service account with Storage Admin role
 - Cloud Storage API enabled
+- Google Cloud CLI installed if you use the retention policy example
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests google-cloud-storage
 ```
 
 ## Storage Classes
@@ -73,7 +74,7 @@ graph LR
         msg: "Bucket '{{ bucket.name }}' created in {{ bucket.location }}"
 ```
 
-Bucket names are globally unique across all of GCP, which is why I include the project name in the bucket name. The `location` can be a multi-region (like `US` or `EU`), a dual-region (like `US-EAST1+US-WEST1`), or a single region (like `us-central1`). Multi-region gives you automatic redundancy across regions but costs more.
+Bucket names are globally unique across all of GCP, which is why I include the project name in the bucket name. The `location` can be a multi-region (like `US` or `EU`), a predefined dual-region (like `NAM4`), or a single region (like `us-central1`). Configurable dual-regions require specifying the placement regions separately, which the basic Ansible bucket module example here does not cover. Multi-region gives you automatic redundancy across regions but costs more.
 
 ## Creating a Bucket with Versioning
 
@@ -111,7 +112,7 @@ Versioning keeps a history of every object, protecting against accidental deleti
                 type: SetStorageClass
                 storage_class: NEARLINE
               condition:
-                age: 30
+                age_days: 30
                 matches_storage_class:
                   - STANDARD
         project: "{{ gcp_project }}"
@@ -159,7 +160,7 @@ Here is a playbook that creates several buckets for a typical application stack:
           - action:
               type: Delete
             condition:
-              age: 365
+              age_days: 365
       - name: "{{ project_prefix }}-{{ env }}-logs"
         location: "us-central1"
         storage_class: "STANDARD"
@@ -170,11 +171,11 @@ Here is a playbook that creates several buckets for a typical application stack:
               type: SetStorageClass
               storage_class: COLDLINE
             condition:
-              age: 90
+              age_days: 90
           - action:
               type: Delete
             condition:
-              age: 365
+              age_days: 365
       - name: "{{ project_prefix }}-{{ env }}-backups"
         location: "US"
         storage_class: "NEARLINE"
@@ -185,7 +186,7 @@ Here is a playbook that creates several buckets for a typical application stack:
               type: SetStorageClass
               storage_class: ARCHIVE
             condition:
-              age: 180
+              age_days: 180
       - name: "{{ project_prefix }}-{{ env }}-static-assets"
         location: "US"
         storage_class: "STANDARD"
@@ -217,7 +218,7 @@ Here is a playbook that creates several buckets for a typical application stack:
     - name: List created buckets
       ansible.builtin.debug:
         msg: "{{ item.name }} ({{ item.location }}, {{ item.storage_class }})"
-      loop: "{{ bucket_results.results }}"
+      loop: "{{ buckets }}"
 ```
 
 ## Configuring Uniform Bucket-Level Access
@@ -321,8 +322,6 @@ For compliance requirements where objects must not be deleted before a certain p
         name: "my-project-audit-logs"
         location: "us-central1"
         storage_class: "COLDLINE"
-        retention_policy:
-          retention_period: 220752000
         versioning:
           enabled: true
         project: "{{ gcp_project }}"
@@ -332,9 +331,17 @@ For compliance requirements where objects must not be deleted before a certain p
           compliance: sox
           retention: 7-years
         state: present
+
+    - name: Set 7-year retention policy
+      ansible.builtin.command:
+        cmd: >
+          gcloud storage buckets update gs://my-project-audit-logs
+          --retention-period=220752000s
+      register: retention_update
+      changed_when: retention_update.rc == 0
 ```
 
-The retention period is in seconds. 220,752,000 seconds equals roughly 7 years. Once a retention policy is set, objects in the bucket cannot be deleted or overwritten until the retention period expires.
+The retention period is passed to the Google Cloud CLI as a duration. 220,752,000 seconds equals roughly 7 years. Once a retention policy is set, objects in the bucket cannot be deleted or overwritten until the retention period expires.
 
 ## Deleting Buckets
 
