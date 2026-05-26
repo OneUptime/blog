@@ -12,7 +12,7 @@ When you run an Ansible playbook, the output you see in your terminal is generat
 
 ## Built-in Callback Plugins
 
-Ansible ships with several callback plugins you can switch to immediately:
+Ansible ships with several callback plugins you can switch to immediately. Some callback plugins live in collections such as `ansible.posix`, which is included with the `ansible` package but not with `ansible-core`:
 
 ```bash
 # List all available callback plugins
@@ -20,27 +20,28 @@ Ansible ships with several callback plugins you can switch to immediately:
 ansible-doc -t callback -l
 ```
 
-Some useful built-in callbacks:
+Some useful callback options:
 
 ```ini
 # ansible.cfg
 # Change the stdout callback to get different terminal output
 
 [defaults]
-# Shows only task changes and failures (much quieter)
-stdout_callback = actionable
+# Minimal terminal output
+stdout_callback = minimal
 
 # JSON output (great for piping to other tools)
-# stdout_callback = json
+# stdout_callback = ansible.posix.json
 
-# Shows task timing information
-# stdout_callback = timer
+# Condensed output on a single line
+# stdout_callback = oneline
 
-# Shows profile information per task
-# stdout_callback = profile_tasks
+# Formatted debug output
+# stdout_callback = ansible.posix.debug
 
-# YAML-formatted output (easier to read than default)
-# stdout_callback = yaml
+# YAML-formatted task results with the default callback
+# stdout_callback = default
+# callback_result_format = yaml
 ```
 
 To enable non-stdout callbacks (notifications, logging), use the `callbacks_enabled` setting:
@@ -49,7 +50,7 @@ To enable non-stdout callbacks (notifications, logging), use the `callbacks_enab
 # ansible.cfg
 [defaults]
 # Enable additional callback plugins alongside the stdout callback
-callbacks_enabled = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 ```
 
 ## The profile_tasks Callback
@@ -59,7 +60,7 @@ This is one of the most practical built-in callbacks. It shows how long each tas
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 Output looks like:
@@ -105,6 +106,8 @@ DOCUMENTATION = '''
     options:
         webhook_url:
             description: Slack incoming webhook URL
+            type: str
+            default: ''
             env:
                 - name: SLACK_WEBHOOK_URL
             ini:
@@ -131,7 +134,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'slack_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
@@ -156,9 +159,9 @@ class CallbackModule(CallbackBase):
         super(CallbackModule, self).set_options(
             task_keys=task_keys, var_options=var_options, direct=direct
         )
-        self.webhook_url = os.environ.get('SLACK_WEBHOOK_URL', '')
+        self.webhook_url = self.get_option('webhook_url')
         if not self.webhook_url:
-            self._display.warning('SLACK_WEBHOOK_URL not set, disabling slack_notify.')
+            self._display.warning('Slack webhook_url not configured, disabling slack_notify.')
             self.disabled = True
 
     def v2_playbook_on_start(self, playbook):
@@ -290,7 +293,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'json_log'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
