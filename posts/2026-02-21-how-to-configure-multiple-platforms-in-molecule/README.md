@@ -132,8 +132,8 @@ platforms:
       - /tmp
 
   # Fedora
-  - name: fedora39
-    image: "geerlingguy/docker-fedora39-ansible:latest"
+  - name: fedora43
+    image: "geerlingguy/docker-fedora43-ansible:latest"
     pre_build_image: true
     privileged: true
     volumes:
