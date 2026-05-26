@@ -91,10 +91,10 @@ Deploy sudoers rules that use AD group names:
         mode: '0440'
         validate: 'visudo -cf %s'
 
-    - name: Create sudoers rule for AD DevOps group
+    - name: Create sudoers rule for AD DevOps group for non-Ansible sudo use
       ansible.builtin.copy:
         content: |
-          # Allow members of the AD "DevOps Engineers" group limited sudo
+          # Allow members of the AD "DevOps Engineers" group limited interactive sudo
           %devops\ engineers ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/bin/docker, /usr/bin/journalctl
         dest: /etc/sudoers.d/ad-devops
         owner: root
@@ -117,6 +117,8 @@ Deploy sudoers rules that use AD group names:
 
 Note the backslash-escaped spaces in group names. AD group names often contain spaces, and sudoers requires you to escape them.
 
+Also note that Ansible's own become account needs general sudo access. Limited command lists are useful for interactive administration, but normal Ansible modules run from generated temporary paths and will not match a short allowlist like `/usr/bin/systemctl`.
+
 ## Using an LDAP/AD Service Account
 
 For automation, it is best practice to use a dedicated service account rather than personal accounts. This account should be in a specific AD group and should have a password that does not expire (or has a very long expiration with automated rotation).
@@ -137,25 +139,25 @@ all:
         web[01:10].prod.example.com:
 ```
 
-Store the SSH key or password for the service account in Ansible Vault:
+Store the SSH password and become password for the service account in Ansible Vault:
 
 ```yaml
 # group_vars/all/vault.yml (encrypted)
-vault_ansible_ssh_pass: "ServiceAccountP@ssw0rd"
-vault_ansible_become_pass: "ServiceAccountP@ssw0rd"
+vault_ansible_password: "ServiceAccountP@ssw0rd"
+vault_ansible_become_password: "ServiceAccountP@ssw0rd"
 ```
 
 Reference it in your main variables:
 
 ```yaml
 # group_vars/all/main.yml
-ansible_ssh_pass: "{{ vault_ansible_ssh_pass }}"
-ansible_become_pass: "{{ vault_ansible_become_pass }}"
+ansible_password: "{{ vault_ansible_password }}"
+ansible_become_password: "{{ vault_ansible_become_password }}"
 ```
 
 ## Handling SSSD Cache for Offline sudo
 
-SSSD can cache credentials, which means sudo can work even if the LDAP/AD server is temporarily unreachable. This is important for reliability. Configure SSSD caching on your managed hosts:
+SSSD can cache credentials and identity information, which means sudo can continue to resolve LDAP/AD users and groups if the directory server is temporarily unreachable. If you store sudo rules in LDAP/AD through SSSD, SSSD can cache those rules too. This is important for reliability. Configure SSSD caching on your managed hosts:
 
 ```yaml
 ---
@@ -186,7 +188,7 @@ SSSD can cache credentials, which means sudo can work even if the LDAP/AD server
         state: restarted
 ```
 
-The SSSD template with sudo caching enabled:
+The SSSD template with sudo caching enabled for directory-backed sudo rules:
 
 ```ini
 # templates/sssd.conf.j2
@@ -224,6 +226,8 @@ krb5_realm = {{ krb5_realm | default('CORP.EXAMPLE.COM') }}
 # Use POSIX attributes from AD
 ldap_id_mapping = False
 ```
+
+For directory-backed sudo rules, make sure `/etc/nsswitch.conf` includes SSSD on the sudoers line, such as `sudoers: files sss`. If you use AD as the sudo rule source, the AD schema must include the sudo rule attributes.
 
 ## Debugging LDAP/AD become Failures
 
