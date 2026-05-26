@@ -14,14 +14,14 @@ Amazon Machine Images (AMIs) are the foundation of every EC2 instance you launch
 
 You will need:
 
-- Ansible 2.9+ with the `amazon.aws` collection
-- AWS credentials with permissions for EC2 AMI operations (`ec2:CreateImage`, `ec2:DeregisterImage`, `ec2:DescribeImages`, `ec2:CopyImage`, `ec2:ModifyImageAttribute`)
+- A supported `ansible-core` version for the AWS collections, with the `amazon.aws` and `community.aws` collections installed
+- AWS credentials with permissions for EC2 AMI operations (`ec2:CreateImage`, `ec2:DeregisterImage`, `ec2:DescribeImages`, `ec2:CopyImage`, `ec2:ModifyImageAttribute`, `ec2:CreateTags`, `ec2:DeleteSnapshot`)
 - At least one running EC2 instance to create images from
 
 ```bash
 # Install the required collection
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install amazon.aws community.aws
 ```
 
 ## The AMI Lifecycle
@@ -163,7 +163,7 @@ For multi-region deployments or disaster recovery:
       register: source_ami_info
 
     - name: Copy AMI to each destination region
-      amazon.aws.ec2_ami_copy:
+      community.aws.ec2_ami_copy:
         region: "{{ item }}"
         source_region: "{{ source_region }}"
         source_image_id: "{{ source_ami_id }}"
@@ -227,17 +227,17 @@ In multi-account environments, you build AMIs in a central tooling account and s
           - "{{ ami_id }}"
       register: ami_info
 
-    - name: Share associated snapshots (required for encrypted AMIs)
+    - name: Share associated snapshots (needed if target accounts will copy the AMI)
       amazon.aws.ec2_snapshot:
         region: "{{ aws_region }}"
         snapshot_id: "{{ item.1.ebs.snapshot_id }}"
-        modify_attribute: createVolumePermission
+        modify_create_vol_permission: true
         user_ids: "{{ target_accounts }}"
       loop: "{{ ami_info.images | subelements('block_device_mappings') }}"
       when: item.1.ebs is defined and item.1.ebs.snapshot_id is defined
 ```
 
-A detail that trips people up: when you share an encrypted AMI, you also need to share the underlying EBS snapshots AND grant access to the KMS key used for encryption. The playbook above handles the snapshot sharing, but KMS key policies need to be managed separately.
+A detail that trips people up: when you share an encrypted AMI, you must grant access to the KMS key used for encryption. You do not need to share the underlying EBS snapshots just to let another account launch instances from the AMI, but snapshot permissions are needed if the target account will copy the shared AMI. The playbook above handles the snapshot sharing case, but KMS key policies need to be managed separately.
 
 ## Deregistering Old AMIs and Cleaning Up Snapshots
 
@@ -328,7 +328,7 @@ Combining all the above into a single workflow:
       register: new_ami
 
     - name: Copy to secondary regions
-      amazon.aws.ec2_ami_copy:
+      community.aws.ec2_ami_copy:
         region: "{{ item }}"
         source_region: "{{ aws_region }}"
         source_image_id: "{{ new_ami.image_id }}"
