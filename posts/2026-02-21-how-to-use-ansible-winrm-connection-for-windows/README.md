@@ -179,6 +179,12 @@ Supports double-hop authentication:
 pip install pywinrm[credssp]
 ```
 
+Enable CredSSP on the Windows host:
+
+```powershell
+Enable-WSManCredSSP -Role Server -Force
+```
+
 ```yaml
 # group_vars/windows_servers.yml
 ansible_winrm_transport: credssp
@@ -344,11 +350,14 @@ Note: Use `win_ping`, not `ping`. The regular `ping` module is for Linux.
         dest: C:\inetpub\myapp\
 
     - name: Configure IIS site
-      win_iis_website:
+      microsoft.iis.website:
         name: MyApp
         state: started
-        port: 80
         physical_path: C:\inetpub\myapp
+        bindings:
+          set:
+            - port: 80
+              protocol: http
 
     - name: Ensure Windows Firewall allows HTTP
       win_firewall_rule:
