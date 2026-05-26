@@ -166,7 +166,7 @@ You can apply `ignore_errors` to an entire block of tasks:
 
     - name: This task always runs regardless of monitoring setup
       debug:
-        msg: "Core setup complete, monitoring setup {{ 'succeeded' if ansible_failed_result is not defined else 'failed' }}"
+        msg: "Core setup complete; monitoring setup was optional, so review any ignored failures above"
 ```
 
 ## Better Alternative: block/rescue/always
@@ -294,7 +294,7 @@ Avoid `ignore_errors` in these situations:
 ```yaml
 # BAD - ignoring errors blindly
 - name: Create database backup
-  command: pg_dump mydb > /backups/mydb.sql
+  command: pg_dump mydb -f /backups/mydb.sql
   ignore_errors: yes  # DANGEROUS - you might lose your only backup window
 
 # GOOD - check the result and act accordingly
