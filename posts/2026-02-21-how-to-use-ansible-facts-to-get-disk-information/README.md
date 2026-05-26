@@ -243,30 +243,7 @@ You can use disk facts to trigger alerts when filesystems are nearly full.
   gather_facts: yes
   vars:
     warn_threshold: 80
-    critical_threshold: 90
   tasks:
-    - name: Check each mount point
-      ansible.builtin.set_fact:
-        disk_warnings: >-
-          {{
-            ansible_facts['mounts']
-            | selectattr('size_total', 'gt', 0)
-            | list
-            | map('combine', {'usage_pct': 0})
-            | list
-          }}
-
-    - name: Calculate usage percentages
-      ansible.builtin.set_fact:
-        high_usage_mounts: >-
-          {{
-            ansible_facts['mounts']
-            | selectattr('size_total', 'gt', 0)
-            | rejectattr('fstype', 'in', ['tmpfs', 'devtmpfs', 'squashfs'])
-            | list
-            | json_query('[?(`size_total` - `size_available`) / `size_total` * `100` > `' + warn_threshold | string + '`]')
-          }}
-
     - name: Report mounts over warning threshold
       ansible.builtin.debug:
         msg: >
@@ -336,15 +313,23 @@ The rotational flag in device facts helps you optimize configuration based on st
       ansible.builtin.set_fact:
         primary_disk_is_ssd: >-
           {{
-            ansible_facts['devices'][ansible_facts['mounts']
+            ansible_facts['devices'].get(primary_disk, {}).get('rotational', '1') == '0'
+          }}
+      vars:
+        root_device: >-
+          {{
+            ansible_facts['mounts']
             | selectattr('mount', 'equalto', '/')
             | map(attribute='device')
             | first
-            | regex_replace('/dev/', '')
-            | regex_replace('[0-9]+$', '')
-            | default('sda')]['rotational'] | default('1') == '0'
+            | default('/dev/sda')
           }}
-      ignore_errors: yes
+        primary_disk: >-
+          {{
+            root_device
+            | regex_replace('^/dev/', '')
+            | regex_replace('p?[0-9]+$', '')
+          }}
 
     - name: Show storage type
       ansible.builtin.debug:
