@@ -8,7 +8,7 @@ Description: A practical guide to configuring Terraform Enterprise with an exter
 
 ---
 
-Terraform Enterprise uses Redis for caching, session storage, and as a coordination layer for background job processing. While TFE can run with an embedded Redis instance, production deployments should use an external Redis service. This is especially true if you plan to run TFE in high availability mode, where a shared Redis instance is mandatory.
+Terraform Enterprise uses Redis to cache data and manage the background job scheduler queue across hosts. While TFE can run with an embedded Redis instance in disk or external services mode, deployments that run in active-active mode must use an external Redis service.
 
 This guide covers setting up external Redis for TFE with AWS ElastiCache, Azure Cache for Redis, and self-hosted Redis, along with security best practices.
 
@@ -21,7 +21,7 @@ The embedded Redis bundled with TFE works fine for small deployments and testing
 - **No clustering**: You cannot run multiple TFE nodes against an embedded Redis.
 - **No monitoring**: You lose visibility into Redis-specific metrics.
 
-External Redis solves all of these problems and is a requirement for any TFE deployment that needs to be reliable.
+External Redis solves all of these problems and is a requirement for TFE deployments that run in active-active mode.
 
 ## Prerequisites
 
@@ -84,8 +84,7 @@ az redis create \
   --resource-group tfe-rg \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
-  --enable-non-ssl-port false \
+  --vm-size p1 \
   --minimum-tls-version 1.2 \
   --redis-version 6
 
@@ -102,6 +101,8 @@ az redis list-keys \
   --query primaryKey \
   --output tsv
 ```
+
+For Azure managed Redis services, Terraform Enterprise also needs a separate Redis instance for Sidekiq because numbered Redis databases are not supported.
 
 ## Setting Up Self-Hosted Redis
 
@@ -170,15 +171,18 @@ With your Redis instance ready, configure TFE to use it. The configuration is do
 
 ```bash
 # Tell TFE to use an external Redis
-TFE_REDIS_HOST=tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com
-TFE_REDIS_PORT=6379
+TFE_REDIS_HOST=tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379
+TFE_REDIS_USE_AUTH=true
 TFE_REDIS_PASSWORD=your-strong-auth-token
 
 # Enable TLS for the Redis connection
 TFE_REDIS_USE_TLS=true
 
-# If using a Redis URL format instead
-# TFE_REDIS_URL=rediss://:your-strong-auth-token@tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379
+# If using Azure managed Redis services or Redis Enterprise, configure a separate Sidekiq Redis endpoint too
+TFE_REDIS_SIDEKIQ_HOST=tfe-redis-sidekiq.abc123.ng.0001.use1.cache.amazonaws.com:6379
+TFE_REDIS_SIDEKIQ_USE_AUTH=true
+TFE_REDIS_SIDEKIQ_PASSWORD=your-strong-auth-token
+TFE_REDIS_SIDEKIQ_USE_TLS=true
 ```
 
 ### Docker Compose Configuration
@@ -188,15 +192,15 @@ TFE_REDIS_USE_TLS=true
 version: "3.9"
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
     environment:
       TFE_HOSTNAME: tfe.example.com
-      TFE_REDIS_HOST: tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com
-      TFE_REDIS_PORT: "6379"
+      TFE_REDIS_HOST: tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379
+      TFE_REDIS_USE_AUTH: "true"
       TFE_REDIS_PASSWORD: "${TFE_REDIS_PASSWORD}"
       TFE_REDIS_USE_TLS: "true"
       # If your Redis uses a custom CA certificate
-      TFE_REDIS_CA_CERT_FILE: /etc/tfe/redis-ca.crt
+      TFE_TLS_CA_BUNDLE_FILE: /etc/tfe/redis-ca.crt
       # ... other TFE variables
     volumes:
       - ./certs/redis-ca.crt:/etc/tfe/redis-ca.crt:ro
@@ -210,13 +214,14 @@ If you deploy TFE on Kubernetes, the Helm values look like this:
 
 ```yaml
 # values.yaml for TFE Helm chart
-tfe:
-  redis:
-    host: tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com
-    port: 6379
-    password: your-strong-auth-token
-    useTLS: true
-    caCertFile: /etc/tfe/redis-ca.crt
+env:
+  variables:
+    TFE_REDIS_HOST: tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379
+    TFE_REDIS_USE_AUTH: "true"
+    TFE_REDIS_USE_TLS: "true"
+    TFE_TLS_CA_BUNDLE_FILE: /etc/tfe/redis-ca.crt
+  secrets:
+    TFE_REDIS_PASSWORD: your-strong-auth-token
 ```
 
 ## Verifying the Redis Connection
@@ -279,7 +284,7 @@ Tools like [OneUptime](https://oneuptime.com) can alert you when these metrics d
 
 **AUTH failed**: Verify the password matches exactly. Special characters in passwords sometimes need escaping depending on how you pass them (environment variable, Docker secret, etc.).
 
-**TLS handshake failures**: Make sure TFE trusts the CA that signed the Redis TLS certificate. If using a self-signed or private CA, provide the CA cert via `TFE_REDIS_CA_CERT_FILE`.
+**TLS handshake failures**: Make sure TFE trusts the CA that signed the Redis TLS certificate. If using a self-signed or private CA, provide the CA cert via `TFE_TLS_CA_BUNDLE_FILE`.
 
 **High latency**: Redis should be in the same network segment as TFE. Cross-region Redis connections add latency that degrades TFE performance noticeably.
 
