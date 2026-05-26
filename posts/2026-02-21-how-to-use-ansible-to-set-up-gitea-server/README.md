@@ -20,7 +20,7 @@ Gitea is a lightweight, self-hosted Git service that provides a web interface, r
   hosts: git_servers
   become: true
   vars:
-    gitea_version: "1.21.4"
+    gitea_version: "1.26.2"
     gitea_user: gitea
     gitea_home: /opt/gitea
     gitea_domain: "git.example.com"
@@ -58,7 +58,7 @@ Gitea is a lightweight, self-hosted Git service that provides a web interface, r
 
     - name: Download Gitea binary
       ansible.builtin.get_url:
-        url: "https://dl.gitea.io/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-amd64"
+        url: "https://dl.gitea.com/gitea/{{ gitea_version }}/gitea-{{ gitea_version }}-linux-amd64"
         dest: /usr/local/bin/gitea
         mode: "0755"
 
@@ -84,7 +84,8 @@ Gitea is a lightweight, self-hosted Git service that provides a web interface, r
     gitea_domain: "git.example.com"
     gitea_http_port: 3000
     gitea_ssh_port: 22
-    gitea_secret: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+    gitea_secret: "{{ lookup('password', 'credentials/gitea_secret_key length=32 chars=ascii_letters,digits') }}"
+    gitea_internal_token: "{{ lookup('password', 'credentials/gitea_internal_token length=64 chars=ascii_letters,digits') }}"
     gitea_db_type: sqlite3
 
   tasks:
@@ -114,6 +115,7 @@ Gitea is a lightweight, self-hosted Git service that provides a web interface, r
 
           [security]
           SECRET_KEY         = {{ gitea_secret }}
+          INTERNAL_TOKEN     = {{ gitea_internal_token }}
           INSTALL_LOCK       = true
           MIN_PASSWORD_LENGTH = 10
 
@@ -214,7 +216,7 @@ graph TD
                   # WebSocket support for live updates
                   proxy_http_version 1.1;
                   proxy_set_header Upgrade $http_upgrade;
-                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Connection $http_connection;
 
                   # Increase buffer for large Git operations
                   client_max_body_size 512M;
@@ -309,15 +311,29 @@ For production with multiple users, use PostgreSQL:
   become: true
 
   tasks:
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: /opt/gitea-backups
+        state: directory
+        owner: gitea
+        group: gitea
+        mode: "0750"
+
     - name: Create backup script
       ansible.builtin.copy:
         content: |
           #!/bin/bash
           # Gitea backup script - managed by Ansible
+          set -euo pipefail
+
           BACKUP_DIR="/opt/gitea-backups"
           DATE=$(date +%Y%m%d-%H%M%S)
 
           mkdir -p "$BACKUP_DIR"
+          chown gitea:gitea "$BACKUP_DIR"
+
+          systemctl stop gitea
+          trap 'systemctl start gitea' EXIT
 
           # Create Gitea dump
           su - gitea -c "cd /opt/gitea && /usr/local/bin/gitea dump --config /opt/gitea/custom/conf/app.ini --file $BACKUP_DIR/gitea-dump-$DATE.zip"
