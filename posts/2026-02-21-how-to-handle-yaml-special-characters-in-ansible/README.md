@@ -12,17 +12,17 @@ YAML uses certain characters for its own syntax: colons for key-value pairs, has
 
 ## Characters That Require Quoting
 
-These characters are problematic in YAML values:
+These characters can be problematic in unquoted YAML values:
 
 - `:` (colon followed by space) - key-value separator
 - `#` (hash preceded by space) - comment indicator
-- `{` and `}` - flow mapping
-- `[` and `]` - flow sequence
+- `{` and `}` - flow mapping, especially at the start of a value or inside flow-style YAML
+- `[` and `]` - flow sequence, especially at the start of a value or inside flow-style YAML
 - `*` and `&` - anchors and aliases
 - `!` - tag indicator
 - `|` and `>` - block scalars
 - `%` - directive indicator (at start of line)
-- `@` and backtick - reserved characters
+- `@` and backtick - reserved characters at the start of a value
 
 ## Quoting Strategies
 
@@ -43,7 +43,7 @@ paths:
 
 ### Double Quotes
 
-Double quotes allow escape sequences like `\n`, `\t`, and `\`:
+Double quotes allow escape sequences like `\n`, `\t`, and `\\`:
 
 ```yaml
 # Double quotes - supports escape sequences
@@ -60,14 +60,15 @@ messages:
 ### URLs with Ports
 
 ```yaml
-# Colons in URLs need quoting
+# Colons in URLs are safe because they are not followed by a space,
+# but quoting avoids ambiguity when values become more complex.
 - name: Configure upstream
   ansible.builtin.template:
     src: nginx.conf.j2
     dest: /etc/nginx/nginx.conf
   vars:
-    upstream_url: "http://backend:8080"  # Must be quoted
-    proxy_pass: "http://127.0.0.1:3000" # Must be quoted
+    upstream_url: "http://backend:8080"
+    proxy_pass: "http://127.0.0.1:3000"
 ```
 
 ### Passwords with Special Characters
@@ -92,7 +93,9 @@ messages:
 # Use literal block to avoid quoting issues entirely
 - name: Run complex command
   ansible.builtin.shell: |
-    grep '#include' /etc/config.conf |     awk -F: '{print $2}' |     sed 's/[{}]//g'
+    grep '#include' /etc/config.conf |
+    awk -F: '{print $2}' |
+    sed 's/[{}]//g'
 ```
 
 ### Jinja2 and YAML Brace Conflicts
@@ -100,10 +103,12 @@ messages:
 ```yaml
 # Problem: Jinja2 braces conflict with YAML flow mapping
 # This FAILS:
-bad_example: {{ variable }}
+# bad_example: {{ variable }}
 
 # This works: quote the Jinja2 expression
-good_example: "{{ variable }}"
+- name: Example with quoted Jinja2 expression
+  ansible.builtin.debug:
+    msg: "{{ variable }}"
 
 # In when clauses, Jinja2 is implicit so no quoting needed
 - name: Example
@@ -134,12 +139,12 @@ good_example: "{{ variable }}"
 ### Colon in Variable Values
 
 ```yaml
-# Colons at the start of a value
+# Values that contain multiple colons are often clearer when quoted
 - name: Set time value
   ansible.builtin.set_fact:
     cron_time: "0 2 * * *"        # Quoted to be safe
     time_zone: "America/New_York" # Slash is fine unquoted
-    ipv6_addr: "::1"              # Colons need quoting
+    ipv6_addr: "::1"              # Quoted for clarity
 ```
 
 ## Quick Reference
@@ -159,12 +164,12 @@ good_example: "{{ variable }}"
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where careful quoting proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using careful quoting
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -196,7 +201,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -278,7 +283,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling
 - name: Robust task execution
   hosts: all
   tasks:
