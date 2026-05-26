@@ -23,7 +23,7 @@ Grafana supports two ways to deploy dashboards:
 ```mermaid
 flowchart TD
     A[Dashboard JSON files] --> B{Provisioning Method}
-    B -->|File-based| C[Copy to /etc/grafana/provisioning/dashboards/]
+    B -->|File-based| C[Copy to dashboard directory on disk]
     B -->|API-based| D[POST to Grafana API]
     C --> E[Grafana auto-loads from disk]
     D --> F[Grafana stores in database]
@@ -74,10 +74,10 @@ grafana_provisioning_dir: "/etc/grafana/provisioning"
 grafana_community_dashboards:
   - id: 1860
     name: "Node Exporter Full"
-    datasource: "Prometheus"
-  - id: 3662
-    name: "Prometheus 2.0 Overview"
-    datasource: "Prometheus"
+    datasource_uid: "prometheus"
+  - id: 22403
+    name: "Node Information"
+    datasource_uid: "prometheus"
 
 # Custom template dashboards to deploy
 grafana_template_dashboards:
@@ -306,7 +306,7 @@ This is a Jinja2 template that generates a Grafana dashboard JSON file. I am sho
 
 - name: Save community dashboards to disk
   ansible.builtin.copy:
-    content: "{{ item.content }}"
+    content: "{{ item.content | regex_replace('\\$\\{DS_[A-Z0-9_]+\\}', item.item.datasource_uid) }}"
     dest: "{{ grafana_dashboard_dir }}/community_{{ item.item.id }}.json"
     owner: grafana
     group: grafana
@@ -397,13 +397,10 @@ This is a Jinja2 template that generates a Grafana dashboard JSON file. I am sho
     grafana_community_dashboards:
       - id: 1860
         name: "Node Exporter Full"
-        datasource: "Prometheus"
-      - id: 3662
-        name: "Prometheus 2.0 Overview"
-        datasource: "Prometheus"
-      - id: 11074
-        name: "Node Exporter for Prometheus"
-        datasource: "Prometheus"
+        datasource_uid: "prometheus"
+      - id: 22403
+        name: "Node Information"
+        datasource_uid: "prometheus"
   roles:
     - grafana_dashboards
 ```
@@ -415,7 +412,7 @@ This is a Jinja2 template that generates a Grafana dashboard JSON file. I am sho
 ansible-playbook -i inventory/hosts.yml playbook.yml
 
 # Verify dashboards are loaded
-curl -u admin:password http://grafana-server:3000/api/search?query=&type=dash-db
+curl -u admin:changeme 'http://grafana-server:3000/api/search?query=&type=dash-db'
 ```
 
 ## Exporting Existing Dashboards for Ansible
@@ -424,7 +421,7 @@ If you have dashboards already created in the Grafana UI and want to manage them
 
 ```bash
 # Export a dashboard by UID
-curl -u admin:password \
+curl -u admin:changeme \
   http://grafana-server:3000/api/dashboards/uid/my-dashboard-uid \
   | python3 -m json.tool > my_dashboard.json
 ```
