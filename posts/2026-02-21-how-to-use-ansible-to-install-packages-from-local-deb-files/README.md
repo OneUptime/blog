@@ -12,7 +12,7 @@ Not every package you need comes from an APT repository. Custom internal tools, 
 
 ## Basic Installation with the apt Module
 
-The `apt` module has a `deb` parameter that accepts a path to a local `.deb` file on the remote host:
+The `apt` module has a `deb` parameter that accepts a path to a local `.deb` file on the remote host. The target host needs `xz-utils` installed so Ansible can inspect the package control file:
 
 ```yaml
 # Install a .deb file that is already on the remote host
@@ -61,9 +61,9 @@ You can also point `deb` directly at a URL:
 
 ```yaml
 # Install .deb directly from a URL (apt downloads it)
-- name: Install Slack desktop
+- name: Install custom application
   ansible.builtin.apt:
-    deb: https://downloads.slack-edge.com/releases/linux/4.35.126/prod/x64/slack-desktop-4.35.126-amd64.deb
+    deb: https://releases.example.com/myapp/myapp_2.5.0_amd64.deb
 ```
 
 This is simpler but has downsides: no checksum verification, no caching, and the download happens every time Ansible checks whether the package needs installing.
@@ -209,7 +209,6 @@ Here is a reusable role for deploying `.deb` packages:
   when: >
     deb_name not in ansible_facts.packages or
     ansible_facts.packages[deb_name][0].version is version(deb_version, '<')
-  notify: "{{ deb_handler | default(omit) }}"
 
 - name: "Clean up {{ deb_name }} package file"
   ansible.builtin.file:
@@ -230,7 +229,6 @@ Use the role:
     deb_version: "7.50.0-1"
     deb_url: "https://s3.amazonaws.com/dd-agent/pool/d/da/datadog-agent_7.50.0-1_amd64.deb"
     deb_checksum: "sha256:abc123..."
-    deb_handler: restart datadog-agent
 ```
 
 ## .deb Installation Workflow
