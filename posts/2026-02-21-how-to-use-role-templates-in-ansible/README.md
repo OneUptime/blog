@@ -328,10 +328,10 @@ The `%s` is replaced with the path to the temporary rendered file. If the valida
 
 ## Whitespace Control
 
-Jinja2's whitespace handling can produce ugly output with extra blank lines. Use the `-` modifier to strip whitespace:
+Jinja2's whitespace handling can produce ugly output with extra blank lines. Ansible templates use `trim_blocks=True` by default, so block-only lines are usually cleaned up automatically. Use the `-` modifier when you need more control, but avoid stripping the newlines between generated lines:
 
 ```jinja2
-{# Without whitespace control - produces blank lines #}
+{# Block-only lines are cleaned up by Ansible's default trim_blocks=True #}
 {% if app_features %}
 {% for feature in app_features %}
 {{ feature }}=true
@@ -339,11 +339,11 @@ Jinja2's whitespace handling can produce ugly output with extra blank lines. Use
 {% endif %}
 
 {# With whitespace control - clean output #}
-{%- if app_features %}
-{%- for feature in app_features %}
+{% if app_features -%}
+{% for feature in app_features -%}
 {{ feature }}=true
-{%- endfor %}
-{%- endif %}
+{% endfor -%}
+{% endif %}
 ```
 
 ## Wrapping Up
