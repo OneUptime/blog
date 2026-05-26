@@ -91,11 +91,12 @@ with open('$file') as f:
     data = json.load(f)
 facts = data.get('ansible_facts', {})
 total = facts.get('ansible_memtotal_mb', 0)
-free = facts.get('ansible_memfree_mb', 0)
+memory = facts.get('ansible_memory_mb', {})
+available = memory.get('nocache', {}).get('free', facts.get('ansible_memfree_mb', 0))
 if total > 0:
-    pct_used = (total - free) / total * 100
+    pct_used = (total - available) / total * 100
     if pct_used > 80:
-        print(f'WARNING: $host - {pct_used:.0f}% memory used ({total}MB total, {free}MB free)')
+        print(f'WARNING: $host - {pct_used:.0f}% memory used ({total}MB total, {available}MB available without cache)')
 "
 done
 ```
@@ -108,7 +109,7 @@ Once you know which servers are low on memory, find out what is consuming it:
 # Top 10 memory-consuming processes
 ansible web2.example.com -m shell -a "ps aux --sort=-%mem | head -11"
 
-# More detailed view with RSS (actual memory usage)
+# More detailed view with RSS (resident memory usage)
 ansible web2.example.com -m shell -a "ps -eo pid,user,rss,vsz,comm --sort=-rss | head -15"
 
 # Sum memory usage by process name
@@ -123,7 +124,7 @@ ansible all -m shell -a "dmesg | grep -i 'out of memory' | tail -5" --become
 
 ## Checking Swap Usage
 
-Swap usage is a warning sign. If your servers are using swap, they are likely under memory pressure:
+Swap usage is a warning sign. If your servers are actively using swap, they may be under memory pressure:
 
 ```bash
 # Check swap usage across all hosts
@@ -160,7 +161,7 @@ Linux uses free memory for disk caching, which is normal and efficient. The "ava
 ansible all -m shell -a "free -m | head -2"
 
 # Check the page cache size
-ansible all -m shell -a "cat /proc/meminfo | grep -E 'Cached|Buffers|SReclaimable'"
+ansible all -m shell -a "grep -E '^(Cached|Buffers|SReclaimable):' /proc/meminfo"
 
 # Drop caches if needed (emergency measure, not routine)
 # This frees page cache, dentries, and inodes
@@ -176,7 +177,7 @@ For application-specific memory checks:
 ansible webservers -m shell -a "ps -C nginx -o pid,rss,%mem,args | awk '{sum+=\$2} END {printf \"Total RSS: %d MB across %d processes\n\", sum/1024, NR-1}'"
 
 # Check Java heap usage
-ansible appservers -m shell -a "jstat -gc \$(pgrep -f 'myapp.jar') 2>/dev/null | tail -1"
+ansible appservers -m shell -a "jstat -gc \$(pgrep -f 'myapp.jar' | head -n 1) 2>/dev/null | tail -1"
 
 # Check PostgreSQL shared buffers usage
 ansible databases -m shell -a "psql -c 'SHOW shared_buffers;'" --become --become-user=postgres
