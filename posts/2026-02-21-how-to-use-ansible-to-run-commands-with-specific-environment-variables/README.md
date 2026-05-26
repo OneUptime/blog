@@ -47,7 +47,7 @@ Ansible's `environment` keyword accepts a dictionary of key-value pairs. These v
 
 ## Play-Level Environment Variables
 
-Set environment variables for all tasks in a play by placing `environment` at the play level.
+Set environment variables for tasks in a play by placing `environment` at the play level. Play-level environment values apply to tasks in that play that run as the same user.
 
 ```yaml
 # play_level_env.yml - Environment variables for all tasks in a play
@@ -86,7 +86,7 @@ Set environment variables for all tasks in a play by placing `environment` at th
         cmd: npm start
         chdir: /opt/myapp
       become_user: deploy
-      async: 0
+      async: 300
       poll: 0
 ```
 
@@ -367,4 +367,4 @@ The `ansible_env.PATH` variable contains the current PATH from the remote system
 
 ## Summary
 
-Environment variables in Ansible are set using the `environment` keyword at the play, block, or task level. Play-level settings apply to all tasks, while task-level settings override or extend them. Use variables and vault-encrypted values for sensitive data like database passwords and API keys. Always use `no_log: true` when environment variables contain secrets. For build tools, proxy configuration, and application runtime settings, the `environment` keyword gives you precise control over what each command sees without permanently modifying the remote system's configuration.
+Environment variables in Ansible are set using the `environment` keyword at the play, block, or task level. Play-level settings apply to tasks that run as the same user, while task-level settings override or extend them. Use variables and vault-encrypted values for sensitive data like database passwords and API keys. Always use `no_log: true` when environment variables contain secrets. For build tools, proxy configuration, and application runtime settings, the `environment` keyword gives you precise control over what each command sees without permanently modifying the remote system's configuration.
