@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Terraform, Variable, Integration, DevOps
 
-Description: Share variables between Terraform and Ansible using output files, environment variables, and shared variable stores for consistent configuration.
+Description: Share variables between Terraform and Ansible using output files and shared configuration files for consistent configuration.
 
 ---
 
@@ -56,7 +56,7 @@ resource "local_file" "ansible_vars" {
 }
 ```
 
-## Method 3: Shared tfvars and Ansible Variables
+## Method 3: Shared YAML Configuration and Ansible Variables
 
 ```yaml
 # shared_config.yml - Shared configuration
@@ -96,12 +96,12 @@ Sharing variables between Terraform and Ansible eliminates hardcoding and keeps 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating shared variables
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -133,7 +133,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -215,7 +215,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with shared variables
 - name: Robust task execution
   hosts: all
   tasks:
@@ -277,4 +277,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
