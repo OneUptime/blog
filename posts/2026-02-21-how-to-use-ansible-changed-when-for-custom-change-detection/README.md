@@ -69,7 +69,7 @@ Many command-line tools use specific return codes to indicate whether changes we
   failed_when: config_diff.rc > 1
 ```
 
-Another example with `apt-get`:
+Another example with a custom package installer:
 
 ```yaml
 # Custom package installation script that reports via exit codes
@@ -232,7 +232,7 @@ Here is a practical example showing `changed_when` used throughout a database mi
       ansible.builtin.command:
         cmd: /opt/app/bin/fix-data --version={{ target_version }}
       register: data_fix
-      changed_when: data_fix.stdout | regex_search('Fixed (\d+) records', '\\1') | first | int > 0
+      changed_when: (data_fix.stdout | regex_search('Fixed (\d+) records', '\\1') | default(['0'], true) | first | int) > 0
       when: migration_result is changed
 ```
 
