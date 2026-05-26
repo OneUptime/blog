@@ -8,7 +8,7 @@ Description: Learn how to use the symmetric_difference filter in Ansible to find
 
 ---
 
-Among the set operation filters in Ansible, `symmetric_difference` is the one people reach for least often, yet it solves a very specific and useful problem. It returns items that are in either of the two lists, but not in both. In other words, it gives you everything that is different between two lists, from both sides.
+Among the set operation filters in Ansible, `symmetric_difference` is the one people reach for least often, yet it solves a very specific and useful problem. It returns unique items that are in either of the two lists, but not in both. In other words, it gives you everything that is different between two lists, from both sides. The built-in set filters return results in arbitrary order, so use `sort` when you need deterministic output.
 
 If list A has `[1, 2, 3, 4]` and list B has `[3, 4, 5, 6]`, the symmetric difference is `[1, 2, 5, 6]`. The shared elements (3 and 4) are excluded.
 
@@ -19,13 +19,13 @@ If list A has `[1, 2, 3, 4]` and list B has `[3, 4, 5, 6]`, the symmetric differ
 
 - name: Symmetric difference example
   ansible.builtin.debug:
-    msg: "{{ list_a | symmetric_difference(list_b) }}"
+    msg: "{{ list_a | symmetric_difference(list_b) | sort }}"
   vars:
     list_a: [1, 2, 3, 4]
     list_b: [3, 4, 5, 6]
 ```
 
-Output: `[1, 2, 5, 6]`
+Sorted output: `[1, 2, 5, 6]`
 
 This is the same as combining `A | difference(B)` and `B | difference(A)`:
 
@@ -33,13 +33,13 @@ This is the same as combining `A | difference(B)` and `B | difference(A)`:
 # symmetric_difference is equivalent to combining both directions of difference
 - name: Equivalent manual approach
   ansible.builtin.debug:
-    msg: "{{ (list_a | difference(list_b)) | union(list_b | difference(list_a)) }}"
+    msg: "{{ ((list_a | difference(list_b)) | union(list_b | difference(list_a))) | sort }}"
   vars:
     list_a: [1, 2, 3, 4]
     list_b: [3, 4, 5, 6]
 ```
 
-Same output: `[1, 2, 5, 6]`
+Same sorted output: `[1, 2, 5, 6]`
 
 But `symmetric_difference` does it in a single filter call, which is cleaner.
 
@@ -50,7 +50,7 @@ The most practical use case for symmetric_difference is detecting drift between 
 ```yaml
 # Detect configuration drift between desired and actual state
 - name: Get currently enabled Apache modules
-  ansible.builtin.shell: apache2ctl -M 2>/dev/null | awk '{print $1}' | sort
+  ansible.builtin.shell: apache2ctl -M 2>/dev/null | awk '/_module/ {print $1}' | sort
   register: current_modules_raw
   changed_when: false
 
