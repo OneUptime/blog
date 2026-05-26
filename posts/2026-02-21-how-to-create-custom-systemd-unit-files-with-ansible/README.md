@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Systemd, Linux, DevOps, Configuration Management
 
-Description: Learn how to create, deploy, and manage custom systemd unit files using Ansible templates and the systemd module for reliable service management.
+Description: Learn how to create, deploy, and manage custom systemd unit files using Ansible templates and the systemd_service module for reliable service management.
 
 ---
 
@@ -195,7 +195,7 @@ The main task file handles user creation, directory setup, template deployment, 
     - Restart service
 
 - name: Enable and start the service
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ service_name }}"
     enabled: yes
     state: started
@@ -212,11 +212,11 @@ Handlers for daemon reload and service restart:
 # roles/custom_service/handlers/main.yml
 ---
 - name: Reload systemd daemon
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     daemon_reload: yes
 
 - name: Restart service
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ service_name }}"
     state: restarted
 ```
@@ -339,7 +339,7 @@ Template for an instanced unit file using the @ syntax:
   notify: Reload systemd daemon
 
 - name: Enable and start multiple instances
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ service_name }}@{{ item }}"
     enabled: yes
     state: started
