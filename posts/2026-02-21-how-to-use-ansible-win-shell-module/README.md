@@ -68,6 +68,8 @@ This is where `win_shell` really shines. You get full access to PowerShell pipin
     - name: Run command with error logging
       ansible.windows.win_shell: >
         robocopy C:\Source C:\Backup /MIR 2> C:\Logs\robocopy_errors.log
+      register: robocopy_result
+      failed_when: robocopy_result.rc >= 8
 ```
 
 ## Multi-line PowerShell Scripts
@@ -125,7 +127,7 @@ You can switch between PowerShell and cmd.exe using the `executable` parameter.
         executable: cmd
       register: cmd_result
 
-    # Use a specific PowerShell version
+    # Use PowerShell 7 if pwsh.exe is available on the target PATH
     - name: Run with PowerShell 7
       ansible.windows.win_shell: $PSVersionTable.PSVersion.ToString()
       args:
