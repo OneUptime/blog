@@ -234,10 +234,10 @@ make deploy-production
 
 ## Shared Variables Across Environments
 
-Some variables are the same everywhere. Use the project-level `group_vars`:
+Some variables are the same everywhere. Use playbook-level `group_vars`:
 
 ```yaml
-# group_vars/all.yml (project root, applies to all inventories)
+# playbooks/group_vars/all.yml (applies when running playbooks/site.yml)
 # Shared across ALL environments
 ntp_servers:
   - 0.pool.ntp.org
