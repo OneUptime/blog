@@ -8,7 +8,7 @@ Description: Learn how to write complex Jinja2 expressions in Ansible when condi
 
 ---
 
-Ansible's `when` directive accepts Jinja2 expressions, which means you have the full power of Jinja2's templating language available in your conditionals. Beyond simple variable checks and boolean operators, you can use filters, tests, list comprehensions, math operations, and inline conditionals to build sophisticated decision logic. This guide covers the advanced patterns that let you handle real-world complexity in your playbooks.
+Ansible's `when` directive accepts raw Jinja2 expressions, which means you can use Jinja2 filters, tests, operators, math operations, and inline conditionals in your conditionals. This guide covers the advanced patterns that let you handle real-world complexity in your playbooks.
 
 ## Jinja2 Filters in when Conditions
 
@@ -41,13 +41,13 @@ Any Jinja2 filter can be used inside a `when` condition to transform values befo
         msg: "At least one DNS server must be configured"
       when: (dns_servers | default([])) | length == 0
 
-    # Use type_debug for type checking
+    # Use type tests for type checking
     - name: Validate that servers variable is a list
       ansible.builtin.fail:
         msg: "servers must be a list, got {{ servers | type_debug }}"
       when:
         - servers is defined
-        - servers | type_debug != 'list'
+        - servers is string or servers is mapping or servers is not iterable
 ```
 
 ## Select and Reject Filters
@@ -327,7 +327,7 @@ For very complex logic, use YAML multi-line strings or lists to keep things read
 
           # OS requirements
           - ansible_distribution in deploy_config.allowed_os
-          - ansible_distribution_version in deploy_config.allowed_versions[ansible_distribution]
+          - ansible_distribution_version in (deploy_config.allowed_versions[ansible_distribution] | default([]))
 
           # Load requirements
           - load_per_cpu | float <= deploy_config.max_load_per_cpu
