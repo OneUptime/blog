@@ -143,25 +143,25 @@ Bob and Diana both have priority 1, so they are further sorted alphabetically by
 
 ## Case-Insensitive Sorting
 
-By default, sorting is case-sensitive, which means uppercase letters come before lowercase letters. You can control this with the `case_sensitive` parameter:
+By default, sorting is case-insensitive. If you want uppercase and lowercase letters sorted separately, set `case_sensitive=true`:
 
 ```jinja2
 {# Case-insensitive sort for mixed-case hostnames #}
 {% set hosts = ['Zebra', 'alpha', 'Beta', 'gamma'] %}
 
-Case-sensitive (default):
+Case-insensitive (default):
 {% for h in hosts | sort %}
   {{ h }}
 {% endfor %}
 
-Case-insensitive:
-{% for h in hosts | sort(case_sensitive=false) %}
+Case-sensitive:
+{% for h in hosts | sort(case_sensitive=true) %}
   {{ h }}
 {% endfor %}
 ```
 
-Case-sensitive output: `Beta, Zebra, alpha, gamma`
 Case-insensitive output: `alpha, Beta, gamma, Zebra`
+Case-sensitive output: `Beta, Zebra, alpha, gamma`
 
 ## Practical Example: Generating Sorted Firewall Rules
 
@@ -307,4 +307,4 @@ Without sorting, if the variable data comes from multiple sources (group_vars, h
 
 ## Summary
 
-The sort filter is a small tool with outsized impact on your Ansible workflows. It keeps configuration files stable between runs, makes logs easier to read, and ensures that your generated configs are always predictable. Use `attribute` for sorting dictionaries, `reverse=true` for descending order, and `case_sensitive=false` when dealing with mixed-case strings. Most importantly, get into the habit of sorting any list before rendering it into a config file. Your future self will appreciate the clean diffs.
+The sort filter is a small tool with outsized impact on your Ansible workflows. It keeps configuration files stable between runs, makes logs easier to read, and ensures that your generated configs are always predictable. Use `attribute` for sorting dictionaries, `reverse=true` for descending order, and `case_sensitive=true` when you need uppercase and lowercase strings sorted separately. Most importantly, get into the habit of sorting any list before rendering it into a config file. Your future self will appreciate the clean diffs.
