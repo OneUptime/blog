@@ -88,7 +88,7 @@ resource "aws_appautoscaling_policy" "memory" {
 }
 ```
 
-You can use both CPU and memory scaling policies together. AWS will scale to satisfy whichever policy requires more capacity.
+You can use both CPU and memory scaling policies together. AWS scales out if any target tracking policy needs more capacity, and scales in only when all scale-in-enabled target tracking policies are ready to scale in.
 
 ## Scale Based on Request Count
 
