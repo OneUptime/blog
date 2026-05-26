@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Docker, Container, Inventory, DevOps
 
-Description: Learn how to create Ansible inventory for Docker containers using the docker connection plugin and dynamic inventory scripts.
+Description: Learn how to create Ansible inventory for Docker containers using the community.docker connection plugin and dynamic inventory scripts.
 
 ---
 
@@ -12,7 +12,13 @@ Ansible is not just for managing traditional servers. You can use it to configur
 
 ## The Docker Connection Plugin
 
-Unlike traditional SSH-based management, Ansible talks to Docker containers using the `docker` connection plugin. This plugin uses the Docker API (through the `docker exec` command under the hood) to run commands inside containers.
+Unlike traditional SSH-based management, Ansible talks to Docker containers using the `community.docker.docker` connection plugin. This plugin uses the Docker CLI (through the `docker exec` command under the hood) to run commands inside containers.
+
+If the `community.docker` collection is not already installed on your control node, install it first:
+
+```bash
+ansible-galaxy collection install community.docker
+```
 
 Here is the simplest static inventory for Docker containers:
 
@@ -21,12 +27,12 @@ Here is the simplest static inventory for Docker containers:
 
 # Static inventory for known Docker containers
 [containers]
-my_nginx ansible_connection=docker ansible_docker_extra_args=""
-my_postgres ansible_connection=docker
-my_redis ansible_connection=docker
+my_nginx ansible_connection=community.docker.docker
+my_postgres ansible_connection=community.docker.docker
+my_redis ansible_connection=community.docker.docker
 ```
 
-The `ansible_connection=docker` setting tells Ansible to use `docker exec` instead of SSH. The host name must match the container name or container ID.
+The `ansible_connection=community.docker.docker` setting tells Ansible to use `docker exec` instead of SSH. The host name must match the container name or container ID.
 
 ## Static Inventory in YAML
 
@@ -37,15 +43,15 @@ Here is the YAML equivalent with more configuration:
 all:
   vars:
     # Use the Docker connection plugin for all hosts
-    ansible_connection: docker
+    ansible_connection: community.docker.docker
   children:
     web_containers:
       hosts:
         nginx-web-01:
-          ansible_docker_extra_args: "--user root"
+          ansible_user: root
           container_role: webserver
         nginx-web-02:
-          ansible_docker_extra_args: "--user root"
+          ansible_user: root
           container_role: webserver
     db_containers:
       hosts:
@@ -83,15 +89,19 @@ import sys
 
 def get_running_containers():
     """Get list of running Docker containers with their details."""
-    cmd = [
-        'docker', 'ps', '--format',
-        '{"name":"{{.Names}}","id":"{{.ID}}","image":"{{.Image}}","ports":"{{.Ports}}","labels":"{{.Labels}}"}'
-    ]
+    cmd = ['docker', 'ps', '--format', 'json']
     result = subprocess.run(cmd, capture_output=True, text=True)
     containers = []
     for line in result.stdout.strip().split('\n'):
         if line:
-            containers.append(json.loads(line))
+            row = json.loads(line)
+            containers.append({
+                'name': row['Names'],
+                'id': row['ID'],
+                'image': row['Image'],
+                'ports': row['Ports'],
+                'labels': row['Labels'],
+            })
     return containers
 
 def build_inventory():
@@ -126,7 +136,7 @@ def build_inventory():
 
         # Set host variables
         hostvars[name] = {
-            'ansible_connection': 'docker',
+            'ansible_connection': 'community.docker.docker',
             'docker_container_id': container['id'],
             'docker_image': container['image'],
             'docker_labels': labels,
@@ -175,7 +185,6 @@ Or use Docker Compose with labels:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: nginx:latest
@@ -221,10 +230,13 @@ Configure the plugin:
 # community.docker inventory plugin configuration
 plugin: community.docker.docker_containers
 docker_host: unix:///var/run/docker.sock
+connection_type: docker-cli
+strict: false
 
 # Only include running containers
-status:
-  - running
+filters:
+  - include: docker_state.Status == "running"
+  - exclude: true
 
 # Add containers to groups based on labels
 keyed_groups:
@@ -235,8 +247,7 @@ keyed_groups:
 
 # Set connection variables
 compose:
-  ansible_connection: "'community.docker.docker'"
-  ansible_docker_extra_args: "'-u root'"
+  ansible_user: "'root'"
 ```
 
 Enable it:
@@ -258,11 +269,11 @@ all:
     remote_containers:
       hosts:
         app-container-01:
-          ansible_connection: docker
+          ansible_connection: community.docker.docker
           # Tell Docker CLI to connect to a remote Docker host
           ansible_docker_extra_args: "--host ssh://deploy@docker-host.example.com"
         app-container-02:
-          ansible_connection: docker
+          ansible_connection: community.docker.docker
           ansible_docker_extra_args: "--host ssh://deploy@docker-host.example.com"
 ```
 
@@ -309,10 +320,13 @@ Here is a practical playbook that configures Docker containers through the inven
       become_user: postgres
 ```
 
+The `community.postgresql.postgresql_db` task also requires the `community.postgresql` collection and a supported `psycopg` adapter inside the database container.
+
 Run it:
 
 ```bash
 # Configure all containers discovered by the dynamic inventory
+chmod +x docker_inventory.py
 ansible-playbook -i docker_inventory.py playbooks/configure-containers.yml
 ```
 
@@ -337,9 +351,9 @@ all:
     docker_containers:
       hosts:
         web-container:
-          ansible_connection: docker
+          ansible_connection: community.docker.docker
         api-container:
-          ansible_connection: docker
+          ansible_connection: community.docker.docker
     # Cross-cutting groups
     webservers:
       children:
@@ -347,7 +361,7 @@ all:
         docker_containers:
 ```
 
-The `ansible_connection` variable determines how Ansible reaches each host. SSH for traditional servers, Docker for containers.
+The `ansible_connection` variable determines how Ansible reaches each host. SSH for traditional servers, `community.docker.docker` for containers.
 
 ```mermaid
 graph TD
