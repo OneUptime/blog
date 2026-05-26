@@ -72,21 +72,20 @@ Consolidate identical operations into a single task with a loop:
     - /opt/app/lib
 ```
 
-While this still runs the module 6 times per host, Ansible optimizes loop execution by reusing the SSH connection and module setup for each iteration.
+While this still runs the module once per item on each host, it avoids repeating the playbook task definition and can reuse the existing SSH connection between iterations.
 
 ## Technique 2: Use a Single Command
 
 For simple filesystem operations, a single command is fastest:
 
 ```yaml
-# Best: one command creates all directories
+# Fastest when you do not need per-directory owner or mode management
 - name: Create all application directories
-  command: mkdir -p /opt/app/{logs,data,config,tmp,bin,lib}
-  args:
-    creates: /opt/app/logs
+  command:
+    cmd: mkdir -p /opt/app/logs /opt/app/data /opt/app/config /opt/app/tmp /opt/app/bin /opt/app/lib
 ```
 
-The `creates` argument makes this idempotent by skipping the command if the directory already exists. This is one module transfer, one execution, and you are done.
+The `mkdir -p` command is safe to run repeatedly, but unlike the `file` module it will report the task as changed unless you add custom change detection. This is one module execution, and you are done.
 
 ## Technique 3: Batch Package Installations
 
@@ -251,7 +250,7 @@ Or even better, use a single shell command:
   changed_when: true
 ```
 
-## Technique 7: Use with_items Over include_tasks
+## Technique 7: Use Direct Loops Over include_tasks
 
 When looping over `include_tasks`, each iteration loads and parses the included file. This is slower than a direct loop:
 
@@ -355,7 +354,7 @@ When you have multiple tasks with the same condition, wrap them in a block:
         enabled: true
 ```
 
-The block approach evaluates the condition once. If false, all tasks inside the block are skipped without individual evaluation.
+The block approach keeps the condition in one place. Ansible applies the `when` directive to each task inside the block, so each task is still evaluated in its own context.
 
 ## Measuring the Impact
 
