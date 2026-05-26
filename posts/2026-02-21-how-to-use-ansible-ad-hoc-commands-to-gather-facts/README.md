@@ -142,23 +142,23 @@ This returns detailed information for each mount point including device, mount p
 You can speed up fact gathering by collecting only specific categories of facts using the `gather_subset` parameter:
 
 ```bash
-# Gather only network facts (much faster than full gather)
+# Gather network facts plus the default minimum facts
 ansible all -m setup -a "gather_subset=network"
 
-# Gather only hardware facts
+# Gather hardware facts plus the default minimum facts
 ansible all -m setup -a "gather_subset=hardware"
 
-# Gather only virtual machine facts
+# Gather virtual machine facts plus the default minimum facts
 ansible all -m setup -a "gather_subset=virtual"
 
 # Gather minimal facts (just the basics)
-ansible all -m setup -a "gather_subset=min"
+ansible all -m setup -a "gather_subset=!all"
 
 # Exclude specific subsets (gather everything except hardware)
-ansible all -m setup -a "gather_subset=all,!hardware"
+ansible all -m setup -a "gather_subset=!hardware"
 ```
 
-Available subsets include: `all`, `min`, `hardware`, `network`, `virtual`, `ohai`, `facter`.
+Common subsets include: `all`, `hardware`, `network`, `virtual`, `ohai`, and `facter`. The default minimum subset can be requested with `!all` and excluded with `!min`.
 
 ## Saving Facts to Files
 
@@ -239,7 +239,10 @@ wc -l "$OUTPUT"
 Besides the built-in facts, Ansible can collect custom facts from files on the remote hosts. These files live in `/etc/ansible/facts.d/` and can be INI, JSON, or executable scripts.
 
 ```bash
-# First, create a custom fact file on the remote hosts
+# First, create the custom facts directory on the remote hosts
+ansible webservers -m file -a "path=/etc/ansible/facts.d state=directory" --become
+
+# Then create a custom fact file on the remote hosts
 ansible webservers -m copy -a "content='[app]\nversion=2.5.1\nenv=production\n' dest=/etc/ansible/facts.d/app.fact" --become
 
 # Now gather facts and filter for local facts
@@ -272,10 +275,10 @@ Fact gathering can be slow on large inventories. Here are ways to speed it up:
 ansible all -m setup -f 50
 
 # Gather only minimum facts
-ansible all -m setup -a "gather_subset=min" -f 50
+ansible all -m setup -a "gather_subset=!all" -f 50
 
-# Use the JSON callback for faster output processing
-ANSIBLE_STDOUT_CALLBACK=json ansible all -m setup -a "filter=ansible_hostname" -f 50
+# Use the JSON callback for machine-readable output processing
+ANSIBLE_LOAD_CALLBACK_PLUGINS=1 ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible all -m setup -a "filter=ansible_hostname" -f 50
 ```
 
 For very large inventories (1000+ hosts), consider using fact caching in your `ansible.cfg`:
