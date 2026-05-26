@@ -171,12 +171,12 @@ Exempt connections from specific IPs (like your Ansible control node):
 ```bash
 # /etc/pam.d/sshd
 # Skip MFA for connections from the Ansible control node
-auth [success=1 default=ignore] pam_access.so accessfile=/etc/security/access-local.conf
+auth [success=1 default=ignore] pam_access.so accessfile=/etc/security/access-mfa.conf
 auth required pam_google_authenticator.so
 ```
 
 ```bash
-# /etc/security/access-local.conf
+# /etc/security/access-mfa.conf
 # Allow without MFA from the Ansible control node
 + : ALL : 10.0.0.50
 # Require MFA from everywhere else
@@ -209,25 +209,27 @@ auth required pam_google_authenticator.so
 
 ## Approach 4: SSH Certificates with MFA Bypass
 
-SSH certificates can include extensions that bypass MFA for specific certificate holders:
+SSH certificates do not include a generic MFA-bypass extension, but you can use short-lived certificates with certificate constraints for the Ansible account and then configure that account to require only public key authentication:
 
 ```bash
-# Sign the Ansible key with a special extension
+# Sign the Ansible key with a source-address constraint
 ssh-keygen -s ~/ssh-ca/ca_key \
     -I "ansible-no-mfa" \
     -n ansible \
     -V +4w \
-    -O no-touch-required \
+    -O source-address=10.0.0.50/32 \
     ~/.ssh/ansible_key.pub
 ```
 
-Configure sshd to skip MFA for certificate-authenticated users:
+Configure sshd to trust your user CA and skip MFA for the Ansible account:
 
 ```bash
 # /etc/ssh/sshd_config
+TrustedUserCAKeys /etc/ssh/ca_user_key.pub
+
 Match User ansible
     AuthenticationMethods publickey
-    # This skips the keyboard-interactive (MFA) step
+    # This skips the keyboard-interactive (MFA) step for this account
 ```
 
 Versus human users who need both:
@@ -258,7 +260,7 @@ For resident keys (stored on the hardware key):
 # Generate a resident key
 ssh-keygen -t ed25519-sk -O resident -C "ansible-resident" -f ~/.ssh/ansible_resident_key
 
-# The private key material stays on the hardware device
+# The resident key handle is stored on the hardware device and can be loaded with ssh-add -K
 ```
 
 ## Approach 6: AuthenticationMethods Configuration
@@ -294,6 +296,7 @@ Match Address 10.0.0.0/8
         regexp: '^AuthenticationMethods'
         line: 'AuthenticationMethods publickey,keyboard-interactive'
         validate: 'sshd -t -f %s'
+      notify: restart sshd
 
     - name: Exempt ansible user from MFA
       blockinfile:
@@ -301,7 +304,7 @@ Match Address 10.0.0.0/8
         block: |
           Match User ansible
               AuthenticationMethods publickey
-        insertafter: '^AuthenticationMethods'
+        insertafter: EOF
         validate: 'sshd -t -f %s'
       notify: restart sshd
 
