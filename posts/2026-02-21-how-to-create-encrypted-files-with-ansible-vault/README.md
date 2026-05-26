@@ -298,6 +298,6 @@ project/
 
 ## Best Practices
 
-Use the `vault_` prefix for all encrypted variable names. This makes it immediately clear which variables come from vault files. Keep encrypted and non-encrypted variables in separate files within the same directory. Use password files or scripts rather than interactive prompts in CI/CD pipelines. Rotate your vault password periodically by re-encrypting all vault files with a new password. Use vault IDs to separate secrets by environment, so that a staging password compromise does not affect production.
+Use the `vault_` prefix for all encrypted variable names. This makes it immediately clear which variables come from vault files. Keep encrypted and non-encrypted variables in separate files within the same directory. Use password files or scripts rather than interactive prompts in CI/CD pipelines. Rotate your vault password periodically by re-encrypting all vault files with a new password. Use vault IDs with distinct passwords to separate secrets by environment, so that a staging password compromise does not affect production.
 
 Ansible Vault is not a replacement for a full secrets management solution like HashiCorp Vault or AWS Secrets Manager, but it is an excellent tool for keeping secrets safe within your Ansible codebase. It requires no additional infrastructure, works with Git, and integrates seamlessly into existing workflows.
