@@ -53,28 +53,22 @@ resource "helm_release" "cert_manager" {
   repository = "https://charts.jetstack.io"
   chart      = "cert-manager"
   namespace  = kubernetes_namespace.cert_manager.metadata[0].name
-  version    = "1.14.0"
-
-  # Install CRDs with the chart
-  set {
-    name  = "installCRDs"
-    value = "true"
-  }
-
-  # Enable DNS01 challenge for wildcard certificates
-  set {
-    name  = "extraArgs[0]"
-    value = "--dns01-recursive-nameservers-only"
-  }
-
-  set {
-    name  = "extraArgs[1]"
-    value = "--dns01-recursive-nameservers=8.8.8.8:53\\,1.1.1.1:53"
-  }
+  version    = "v1.20.2"
 
   # Resource limits for the controller
   values = [
     yamlencode({
+      # Install CRDs with the chart
+      crds = {
+        enabled = true
+      }
+
+      # Enable DNS01 challenge self-checks through specific recursive resolvers
+      extraArgs = [
+        "--dns01-recursive-nameservers-only",
+        "--dns01-recursive-nameservers=8.8.8.8:53,1.1.1.1:53",
+      ]
+
       resources = {
         requests = {
           cpu    = "50m"
@@ -125,7 +119,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 YAML
 
   depends_on = [helm_release.cert_manager]
@@ -147,7 +141,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 YAML
 
   depends_on = [helm_release.cert_manager]
@@ -210,7 +204,29 @@ module "cert_manager_irsa" {
     }
   }
 }
+```
 
+Add this to `helm_release.cert_manager` values when using IRSA:
+
+```hcl
+resource "helm_release" "cert_manager" {
+  # ... existing config ...
+
+  values = [
+    yamlencode({
+      # ... existing values ...
+
+      serviceAccount = {
+        annotations = {
+          "eks.amazonaws.com/role-arn" = module.cert_manager_irsa.iam_role_arn
+        }
+      }
+    })
+  ]
+}
+```
+
+```hcl
 # ClusterIssuer with DNS01 challenge using Route53
 resource "kubectl_manifest" "letsencrypt_dns" {
   yaml_body = <<YAML
@@ -288,7 +304,7 @@ resource "google_service_account_key" "cert_manager" {
 resource "kubernetes_secret" "cert_manager_gcp" {
   metadata {
     name      = "cert-manager-gcp-key"
-    namespace = "cert-manager"
+    namespace = kubernetes_namespace.cert_manager.metadata[0].name
   }
 
   data = {
@@ -386,11 +402,8 @@ resource "helm_release" "cert_manager" {
     yamlencode({
       prometheus = {
         enabled = true
-        servicemonitor = {
+        podmonitor = {
           enabled = true
-          labels = {
-            release = "kube-prometheus-stack"
-          }
         }
       }
     })
