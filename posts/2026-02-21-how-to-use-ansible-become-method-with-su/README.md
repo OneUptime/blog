@@ -21,7 +21,7 @@ There are several situations where `su` is the right choice:
 - Environments where security policy mandates `su` over sudo
 - Systems where only the root password is known, not a user-level sudo password
 
-The main difference between `su` and `sudo` is that `su` requires the target user's password (typically root's password), while `sudo` requires the current user's password.
+The main difference between `su` and `sudo` is that `su` requires the target user's password (typically root's password), while `sudo` usually requires the current user's password.
 
 ## Basic su Configuration
 
@@ -139,7 +139,7 @@ The behavior of `su` and `sudo` differs in several ways that affect your Ansible
   become_method: su
 
   tasks:
-    - name: Show the environment (su starts a login shell)
+    - name: Show the environment
       ansible.builtin.command: env
       register: env_output
 
@@ -156,7 +156,7 @@ The behavior of `su` and `sudo` differs in several ways that affect your Ansible
 
 Key differences:
 
-- `su` starts a new login shell by default, which means environment variables are reset
+- `su` does not start a login shell by default in Ansible; use `become_flags: '-'` if you need login-shell behavior
 - `su` requires the target user's password, not the calling user's password
 - `su` does not have fine-grained command restrictions like sudoers
 - `su` does not log commands by default (unlike sudo's audit trail)
@@ -174,7 +174,7 @@ You can use `su` to become any user, not just root. But remember: `su` to a non-
 
   tasks:
     - name: Run database backup as postgres
-      ansible.builtin.command: pg_dump mydb > /tmp/backup.sql
+      ansible.builtin.shell: pg_dump mydb > /tmp/backup.sql
       become: true
       become_method: su
       become_user: postgres
@@ -186,7 +186,7 @@ You can use `su` to become any user, not just root. But remember: `su` to a non-
       become_user: apache
 ```
 
-In practice, you usually `su` to root first and then to the target user. This is the default Ansible behavior with `su`: it escalates to root, then switches to the specified user.
+In practice, Ansible uses a single become method per host and runs the task as the specified `become_user`. If you set `become_user: postgres`, the login user must be able to `su` directly to `postgres` or provide that user's password.
 
 ## Mixing su and sudo in the Same Playbook
 
@@ -255,9 +255,9 @@ The `su` command has different password prompt strings depending on the OS and l
 
   vars:
     ansible_su_prompt_l10n:
-      - "Password:"
-      - "Mot de passe:"
-      - "Contraseña:"
+      - "Password"
+      - "Mot de passe"
+      - "Contraseña"
 
   tasks:
     - name: Test connectivity
