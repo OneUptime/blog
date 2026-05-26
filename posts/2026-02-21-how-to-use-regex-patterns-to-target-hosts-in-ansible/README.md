@@ -8,7 +8,7 @@ Description: Learn how to use regular expression patterns in Ansible to target h
 
 ---
 
-Wildcards in Ansible cover simple cases like "all hosts starting with web." But when you need more precise matching, like targeting hosts with a specific number range in their name, matching multiple prefixes, or selecting hosts based on complex naming patterns, you need regular expressions. Ansible supports full Python regex syntax for host targeting.
+Wildcards in Ansible cover simple cases like "all hosts starting with web." But when you need more precise matching, like targeting hosts with a specific number range in their name, matching multiple prefixes, or selecting hosts based on complex naming patterns, you need regular expressions. Ansible supports Python regex syntax for host targeting, evaluated from the start of the hostname, so use `.*` when you want to match text anywhere in the name.
 
 ## Basic Regex Syntax
 
@@ -20,10 +20,10 @@ Prefix your pattern with a tilde `~` to tell Ansible it is a regex:
 ansible '~^web' -i inventory.ini -m ping
 
 # Match hosts whose names end with ".example.com"
-ansible '~\.example\.com$' -i inventory.ini -m ping
+ansible '~.*\.example\.com$' -i inventory.ini -m ping
 
 # Match hosts with "prod" anywhere in the name
-ansible '~prod' -i inventory.ini -m ping
+ansible '~.*prod' -i inventory.ini -m ping
 ```
 
 Given this inventory:
@@ -53,16 +53,16 @@ Use character classes to match specific characters:
 
 ```bash
 # Match hosts with a digit in the name
-ansible '~[0-9]' -i inventory.ini -m ping
+ansible '~.*[0-9]' -i inventory.ini -m ping
 
 # Match hosts with numbers 01 through 05
-ansible '~-0[1-5]\.' -i inventory.ini -m ping
+ansible '~.*-0[1-5]\.' -i inventory.ini -m ping
 
 # Match hosts starting with web or db
 ansible '~^(web|db)' -i inventory.ini -m ping
 
 # Match hosts with exactly two digits before .example.com
-ansible '~[0-9]{2}\.example\.com$' -i inventory.ini -m ping
+ansible '~.*[0-9]{2}\.example\.com$' -i inventory.ini -m ping
 ```
 
 ## Alternation (OR)
@@ -74,7 +74,7 @@ The `|` operator in regex lets you match multiple patterns:
 ansible '~^(web|cache)' -i inventory.ini -m ping
 
 # Match production or staging
-ansible '~(prod|staging)' -i inventory.ini -m ping
+ansible '~.*(prod|staging)' -i inventory.ini -m ping
 
 # Match specific roles
 ansible '~^(web|db|cache)-prod' -i inventory.ini -m ping
@@ -104,7 +104,7 @@ The `hosts` field in a play accepts regex patterns with the `~` prefix:
 ```yaml
 # rolling-update.yml
 # Target only the first server of each role for canary deployment
-- hosts: "~-01\\."
+- hosts: "~.*-01\\."
   become: true
   tasks:
     - name: Deploy canary version
@@ -120,23 +120,23 @@ Here are patterns for common real-world scenarios:
 
 ```bash
 # Match replicas (replica-01, replica-02, etc.)
-ansible '~replica-[0-9]+' -i inventory.ini -m ping
+ansible '~.*replica-[0-9]+' -i inventory.ini -m ping
 
 # Match hosts in US East region (use1 or use-1 in the name)
-ansible '~use?-?1' -i inventory.ini -m ping
+ansible '~.*use-?1' -i inventory.ini -m ping
 
 # Match hosts NOT in production (negative lookahead)
 # Note: This requires Python regex support
 ansible '~^(?!.*prod)' -i inventory.ini -m ping
 
 # Match hosts with 3-digit numbers
-ansible '~[0-9]{3}' -i inventory.ini -m ping
+ansible '~.*[0-9]{3}' -i inventory.ini -m ping
 
 # Match web servers 01 through 10
 ansible '~^web.*-0[1-9]\.|^web.*-10\.' -i inventory.ini -m ping
 
 # Match hosts in either .example.com or .internal.local domains
-ansible '~\.(example\.com|internal\.local)$' -i inventory.ini -m ping
+ansible '~.*\.(example\.com|internal\.local)$' -i inventory.ini -m ping
 ```
 
 ## Combining Regex with Other Patterns
@@ -146,11 +146,11 @@ Regex patterns work with Ansible's union, intersection, and exclusion operators:
 ```bash
 # Regex match combined with group exclusion
 # All prod servers (by regex) except the databases group
-ansible '~prod:!databases' -i inventory.ini -m ping
+ansible '~.*prod:!databases' -i inventory.ini -m ping
 
 # Regex combined with group intersection
 # Hosts matching the regex AND in the webservers group
-ansible '~-01\.:&webservers' -i inventory.ini -m ping
+ansible '~.*-01\.:&webservers' -i inventory.ini -m ping
 
 # Union of regex and group
 ansible '~^web:databases' -i inventory.ini -m ping
@@ -162,13 +162,13 @@ The `--limit` flag also supports regex:
 
 ```bash
 # Playbook targets webservers, but limit to only prod hosts via regex
-ansible-playbook -i inventory.ini deploy.yml --limit '~prod'
+ansible-playbook -i inventory.ini deploy.yml --limit '~.*prod'
 
 # Limit to hosts with specific number patterns
-ansible-playbook -i inventory.ini deploy.yml --limit '~-0[1-3]\.'
+ansible-playbook -i inventory.ini deploy.yml --limit '~.*-0[1-3]\.'
 
 # Limit to a specific domain
-ansible-playbook -i inventory.ini site.yml --limit '~\.internal\.local$'
+ansible-playbook -i inventory.ini site.yml --limit '~.*\.internal\.local$'
 ```
 
 ## Practical Scenario: Blue-Green Deployment
@@ -223,16 +223,16 @@ One of the most useful regex applications is selecting hosts by their number:
 
 ```bash
 # Only hosts numbered 01-05
-ansible '~-0[1-5]\.' -i inventory.ini --list-hosts
+ansible '~.*-0[1-5]\.' -i inventory.ini --list-hosts
 
 # Only hosts numbered 06-10
-ansible '~-0[6-9]\.|~-10\.' -i inventory.ini --list-hosts
+ansible '~.*(-0[6-9]|-10)\.' -i inventory.ini --list-hosts
 
 # Only odd-numbered hosts (01, 03, 05, 07, 09)
-ansible '~-0[13579]\.' -i inventory.ini --list-hosts
+ansible '~.*-0[13579]\.' -i inventory.ini --list-hosts
 
 # Only even-numbered hosts (02, 04, 06, 08, 10)
-ansible '~-0[2468]\.|~-10\.' -i inventory.ini --list-hosts
+ansible '~.*(-0[2468]|-10)\.' -i inventory.ini --list-hosts
 ```
 
 This is useful for canary deployments where you want to update half your fleet first.
@@ -242,12 +242,12 @@ This is useful for canary deployments where you want to update half your fleet f
 | Pattern | Matches |
 |---------|---------|
 | `~^web` | Hostnames starting with "web" |
-| `~prod$` | Hostnames ending with "prod" |
-| `~(web\|db)` | Hostnames containing "web" or "db" |
-| `~[0-9]+` | Hostnames with one or more digits |
-| `~-0[1-3]\.` | Hostnames with -01. through -03. |
+| `~.*prod$` | Hostnames ending with "prod" |
+| `~.*(web\|db)` | Hostnames containing "web" or "db" |
+| `~.*[0-9]+` | Hostnames with one or more digits |
+| `~.*-0[1-3]\.` | Hostnames with -01. through -03. |
 | `~^(?!.*staging)` | Hostnames NOT containing "staging" |
-| `~\.example\.com$` | Hostnames ending in .example.com |
+| `~.*\.example\.com$` | Hostnames ending in .example.com |
 | `~^(web\|cache)-prod-0[1-5]` | Specific combination |
 
 ## Escaping in Different Contexts
@@ -320,4 +320,4 @@ Use **regex** (`~`) when:
 - You need negative matching (lookaheads)
 - Wildcards cannot express what you need
 
-Regex patterns give you the full power of Python's re module for targeting hosts. They are overkill for simple cases but indispensable when you need precise control over which hosts your automation touches.
+Regex patterns give you the power of Python's re module for targeting hosts, with Ansible matching the regex from the start of each host or group name. They are overkill for simple cases but indispensable when you need precise control over which hosts your automation touches.
