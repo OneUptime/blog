@@ -132,7 +132,7 @@ ansible-galaxy collection install awx.awx
 
 ### Git Projects (Most Common)
 
-Git is the default and most widely used source control type.
+Git is the most widely used source control type.
 
 ```yaml
 - name: Git project with SSH authentication
@@ -171,7 +171,7 @@ Manual projects use playbooks placed directly on the AWX server filesystem.
     controller_oauthtoken: "{{ awx_token }}"
     name: "Local Playbooks"
     organization: "Default"
-    scm_type: ""
+    scm_type: manual
     local_path: "my_playbooks"
     state: present
 ```
@@ -289,7 +289,7 @@ ansible-playbooks/
   host_vars/
 ```
 
-AWX will automatically install roles and collections from `roles/requirements.yml` and `collections/requirements.yml` during project sync.
+For SCM projects, AWX can automatically install roles and collections from `roles/requirements.yml` and `collections/requirements.yml` during project sync when role and collection downloads are enabled in job settings.
 
 ## Troubleshooting Project Syncs
 
