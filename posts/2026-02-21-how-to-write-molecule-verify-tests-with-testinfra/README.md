@@ -65,14 +65,14 @@ verifier:
     sudo: true   # run commands with sudo on the instance
 ```
 
-Testinfra test files go in the scenario directory, typically as `test_default.py` or any file matching `test_*.py`.
+Testinfra test files go in the scenario's `tests` directory, typically as `test_default.py` or any file matching `test_*.py`.
 
 ## Writing Your First Testinfra Test
 
-Create a test file in the scenario directory.
+Create a test file in the scenario's `tests` directory.
 
 ```python
-# molecule/default/test_default.py - basic Testinfra tests
+# molecule/default/tests/test_default.py - basic Testinfra tests
 
 def test_nginx_is_installed(host):
     """Verify that nginx package is installed."""
@@ -128,8 +128,7 @@ def test_nginx_version(host):
     assert nginx.is_installed
     # Version is a string like "1.24.0-1ubuntu1"
     major, minor = nginx.version.split(".")[:2]
-    assert int(major) >= 1
-    assert int(minor) >= 18
+    assert (int(major), int(minor)) >= (1, 18)
 ```
 
 ### Testing Services
@@ -300,6 +299,8 @@ When your Molecule scenario has multiple platforms, Testinfra runs against each 
 
 ```python
 # test_multihost.py - tests that differ per host
+import pytest
+
 
 def test_webserver_role(host):
     """Tests that only apply to web servers."""
@@ -323,7 +324,7 @@ def test_database_role(host):
 
 ## Running Tests
 
-Molecule runs Testinfra automatically during `molecule verify` or `molecule test`. You can also run Testinfra directly for faster iteration.
+Molecule runs Testinfra automatically during `molecule verify` or `molecule test`. You can also target a specific Molecule scenario for faster iteration.
 
 ```bash
 # Run the full Molecule test lifecycle
@@ -332,11 +333,11 @@ molecule test
 # Run only the verify step (faster during development)
 molecule verify
 
-# Run a specific test file
-molecule verify -- -k "test_nginx"
+# Run a specific scenario
+molecule verify -s default
 
-# Run with extra verbose output
-molecule verify -- -vvv
+# Run with Molecule debug output
+molecule --debug verify
 ```
 
 ## Tips
