@@ -58,7 +58,7 @@ The simplest deployment uses the `community.vmware.vmware_guest` module with the
 
 ## Deployment with Guest Customization
 
-Guest customization sets the hostname, IP address, DNS, and domain membership during deployment so the VM comes up with its own identity.
+Guest customization sets the hostname, IP address, DNS, and DNS domain settings during deployment so the VM comes up with its own identity.
 
 ```yaml
 # deploy-customized.yml
@@ -191,10 +191,12 @@ Real-world deployments usually involve multiple VMs with different roles. Define
   tasks:
     # Create folders for the environment first
     - name: Ensure VM folders exist
-      community.vmware.vmware_folder:
-        datacenter_name: "DC01"
-        folder_name: "{{ item }}"
-        folder_type: vm
+      vmware.vmware.folder:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false
+        absolute_path: "/DC01/vm/{{ item }}"
         state: present
       loop:
         - "{{ environment | capitalize }}"
@@ -202,7 +204,6 @@ Real-world deployments usually involve multiple VMs with different roles. Define
         - "{{ environment | capitalize }}/WebServers"
         - "{{ environment | capitalize }}/AppServers"
         - "{{ environment | capitalize }}/Databases"
-      ignore_errors: true
 
     # Deploy all VMs from their respective templates
     - name: Deploy all stack VMs
