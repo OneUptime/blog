@@ -55,7 +55,7 @@ When this runs across your entire fleet, every server ends up with GID 2000 for 
 
 ## GID Allocation Strategy
 
-Before you start creating groups, establish a GID allocation plan. Here is a commonly used scheme:
+Before you start creating groups, establish a GID allocation plan. Linux distributions use their own defaults from `/etc/login.defs`, so treat this as an example site policy rather than a universal standard:
 
 | GID Range | Purpose |
 |-----------|---------|
@@ -193,7 +193,7 @@ If the GID you want is already taken, you need to resolve the conflict. Here is 
 
 ## Changing a Group's GID
 
-Sometimes you need to change the GID of an existing group. The `group` module does not directly support changing GIDs, so you need to use `groupmod`:
+Sometimes you need to change the GID of an existing group. The `group` module can set the GID for an existing group, but it does not update files that still carry the old numeric GID:
 
 ```yaml
 # change-gid.yml - Change an existing group's GID
@@ -215,7 +215,10 @@ Sometimes you need to change the GID of an existing group. The `group` module do
       block:
         # Change the group GID
         - name: Modify group GID
-          ansible.builtin.command: "groupmod -g {{ new_gid }} {{ group_name }}"
+          ansible.builtin.group:
+            name: "{{ group_name }}"
+            gid: "{{ new_gid }}"
+            state: present
 
         # Update file ownership to reflect new GID
         - name: Update file ownership from old GID to new GID
