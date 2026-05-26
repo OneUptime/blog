@@ -75,7 +75,7 @@ The `amazon.aws.iam_user` module handles user creation:
 
     - name: Show user ARN
       ansible.builtin.debug:
-        msg: "User ARN: {{ user_result.iam_user.user.arn }}"
+        msg: "User ARN: {{ user_result.user.arn }}"
 ```
 
 This creates the user but does not give them any way to log in. You need to set up either console access or programmatic access separately.
@@ -110,8 +110,8 @@ To give a user AWS console login access:
 ```yaml
 # Set up console access with a login profile
 - name: Create login profile for console access
-  community.aws.iam_user_login_profile:
-    user_name: john.doe
+  amazon.aws.iam_user:
+    name: john.doe
     password: "{{ initial_password }}"
     password_reset_required: true
     state: present
@@ -145,6 +145,7 @@ Manage permissions through groups rather than attaching policies directly to use
           - john.doe
           - jane.smith
           - bob.wilson
+        purge_users: true
 
     # Create the admins group with broader access
     - name: Create admins group
@@ -155,6 +156,7 @@ Manage permissions through groups rather than attaching policies directly to use
           - arn:aws:iam::aws:policy/AdministratorAccess
         users:
           - alice.admin
+        purge_users: true
 ```
 
 When you update the `users` list and run the playbook again, Ansible will add new users and remove users no longer in the list.
@@ -218,15 +220,14 @@ iam_users:
 
     # Add each user to their assigned groups
     - name: Add users to groups
-      ansible.builtin.command:
-        cmd: >
-          aws iam add-user-to-group
-          --user-name {{ item.0.name }}
-          --group-name {{ item.1 }}
+      amazon.aws.iam_group:
+        name: "{{ item.1 }}"
+        state: present
+        users:
+          - "{{ item.0.name }}"
       loop: "{{ iam_users | subelements('groups') }}"
       loop_control:
         label: "{{ item.0.name }} -> {{ item.1 }}"
-      changed_when: true
 ```
 
 ## Enforcing MFA
@@ -324,10 +325,10 @@ Regularly rotating access keys is a security requirement in many organizations:
     - name: Deactivate old access keys
       amazon.aws.iam_access_key:
         user_name: "{{ target_user }}"
-        access_key_id: "{{ item.access_key_id }}"
+        id: "{{ item.access_key_id }}"
         state: present
         enabled: false
-      loop: "{{ current_keys.iam_access_keys }}"
+      loop: "{{ current_keys.access_key }}"
       when: item.access_key_id != new_key.access_key.access_key_id
       loop_control:
         label: "{{ item.access_key_id }}"
@@ -341,7 +342,7 @@ Regularly rotating access keys is a security requirement in many organizations:
 
 ## Deactivating and Removing Users
 
-When someone leaves the team, deactivate their access first, then remove them:
+When someone leaves the team, remove their active credentials first, then remove them:
 
 ```yaml
 # offboard-user.yml - Safely remove a departing user
@@ -355,18 +356,18 @@ When someone leaves the team, deactivate their access first, then remove them:
     departing_user: john.doe
 
   tasks:
-    # Deactivate all access keys first
+    # Delete all access keys first
     - name: Get access keys
       amazon.aws.iam_access_key_info:
         user_name: "{{ departing_user }}"
       register: keys
 
-    - name: Deactivate all access keys
+    - name: Delete all access keys
       amazon.aws.iam_access_key:
         user_name: "{{ departing_user }}"
-        access_key_id: "{{ item.access_key_id }}"
+        id: "{{ item.access_key_id }}"
         state: absent
-      loop: "{{ keys.iam_access_keys }}"
+      loop: "{{ keys.access_key }}"
       loop_control:
         label: "{{ item.access_key_id }}"
 
