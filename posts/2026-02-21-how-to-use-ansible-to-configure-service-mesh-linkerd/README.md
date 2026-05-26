@@ -32,7 +32,7 @@ graph TD
 # Install required Ansible collection and Python packages
 
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Installing Linkerd with Ansible
@@ -40,9 +40,11 @@ pip install kubernetes
 ```yaml
 # roles/linkerd/defaults/main.yml
 # Linkerd configuration defaults
-linkerd_version: "2.14.7"
+linkerd_install_url: "https://run.linkerd.io/install-edge"
+gateway_api_standard_install_url: "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
 linkerd_namespace: linkerd
 linkerd_viz_enabled: true
+linkerd_smi_enabled: false
 linkerd_ha_mode: false
 linkerd_proxy_cpu_request: "100m"
 linkerd_proxy_memory_request: "64Mi"
@@ -56,17 +58,30 @@ linkerd_inject_namespaces:
 # Install Linkerd CLI and control plane
 - name: Download linkerd CLI
   ansible.builtin.get_url:
-    url: "https://run.linkerd.io/install-edge"
+    url: "{{ linkerd_install_url }}"
     dest: /tmp/linkerd-install.sh
     mode: '0755'
 
 - name: Install linkerd CLI
   ansible.builtin.shell: |
-    curl -fsL https://run.linkerd.io/install | sh
+    /tmp/linkerd-install.sh
     cp ~/.linkerd2/bin/linkerd /usr/local/bin/
   args:
     creates: /usr/local/bin/linkerd
   changed_when: true
+
+- name: Download Gateway API CRDs when the cluster does not provide them
+  ansible.builtin.get_url:
+    url: "{{ gateway_api_standard_install_url }}"
+    dest: /tmp/gateway-api-standard-install.yaml
+    mode: '0644'
+  when: linkerd_install_gateway_api | default(false)
+
+- name: Apply Gateway API CRDs when the cluster does not provide them
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/gateway-api-standard-install.yaml
+  when: linkerd_install_gateway_api | default(false)
 
 - name: Run Linkerd pre-installation checks
   ansible.builtin.command: linkerd check --pre
@@ -86,21 +101,21 @@ linkerd_inject_namespaces:
 - name: Apply Linkerd CRDs
   kubernetes.core.k8s:
     state: present
-    definition: "{{ linkerd_crds.stdout }}"
+    definition: "{{ linkerd_crds.stdout | from_yaml_all }}"
 
 - name: Generate Linkerd control plane manifest
   ansible.builtin.command: >
     linkerd install
     {% if linkerd_ha_mode %}--ha{% endif %}
-    --set proxy.resources.cpu.request={{ linkerd_proxy_cpu_request }}
-    --set proxy.resources.memory.request={{ linkerd_proxy_memory_request }}
+    --proxy-cpu-request {{ linkerd_proxy_cpu_request }}
+    --proxy-memory-request {{ linkerd_proxy_memory_request }}
   register: linkerd_manifest
   changed_when: false
 
 - name: Apply Linkerd control plane
   kubernetes.core.k8s:
     state: present
-    definition: "{{ linkerd_manifest.stdout }}"
+    definition: "{{ linkerd_manifest.stdout | from_yaml_all }}"
 
 - name: Wait for Linkerd control plane to be ready
   ansible.builtin.command: linkerd check
@@ -125,7 +140,7 @@ linkerd_inject_namespaces:
 - name: Apply Linkerd viz extension
   kubernetes.core.k8s:
     state: present
-    definition: "{{ viz_manifest.stdout }}"
+    definition: "{{ viz_manifest.stdout | from_yaml_all }}"
   when: linkerd_viz_enabled
 
 - name: Wait for viz extension to be ready
@@ -164,11 +179,46 @@ linkerd_inject_namespaces:
 
 ## Configuring Traffic Splitting
 
-Linkerd uses the SMI (Service Mesh Interface) TrafficSplit resource for canary deployments:
+Linkerd can use the deprecated SMI (Service Mesh Interface) TrafficSplit resource for canary deployments when the `linkerd-smi` extension is installed. For new deployments, Linkerd recommends Gateway API-based dynamic request routing instead:
 
 ```yaml
 # roles/linkerd/tasks/traffic_split.yml
 # Configure traffic splitting for canary deployments
+- name: Download linkerd-smi CLI installer
+  ansible.builtin.get_url:
+    url: "https://linkerd.github.io/linkerd-smi/install"
+    dest: /tmp/linkerd-smi-install.sh
+    mode: '0755'
+  when: linkerd_smi_enabled
+
+- name: Install linkerd-smi CLI
+  ansible.builtin.shell: /tmp/linkerd-smi-install.sh
+  args:
+    creates: ~/.linkerd2/bin/linkerd-smi
+  changed_when: true
+  when: linkerd_smi_enabled
+
+- name: Generate Linkerd SMI extension manifest
+  ansible.builtin.command: linkerd smi install
+  register: smi_manifest
+  changed_when: false
+  when: linkerd_smi_enabled
+
+- name: Apply Linkerd SMI extension
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ smi_manifest.stdout | from_yaml_all }}"
+  when: linkerd_smi_enabled
+
+- name: Wait for SMI extension to be ready
+  ansible.builtin.command: linkerd smi check
+  register: smi_check
+  until: smi_check.rc == 0
+  retries: 20
+  delay: 10
+  changed_when: false
+  when: linkerd_smi_enabled
+
 - name: Deploy TrafficSplit resources
   kubernetes.core.k8s:
     state: present
@@ -186,6 +236,7 @@ Linkerd uses the SMI (Service Mesh Interface) TrafficSplit resource for canary d
           - service: "{{ item.service }}-canary"
             weight: "{{ item.canary_weight }}"
   loop: "{{ linkerd_traffic_splits }}"
+  when: linkerd_smi_enabled
 ```
 
 ```yaml
@@ -219,12 +270,7 @@ linkerd_traffic_splits:
         name: "{{ item.name }}.{{ item.namespace }}.svc.cluster.local"
         namespace: "{{ item.namespace }}"
       spec:
-        routes:
-          - name: "{{ route.name }}"
-            condition:
-              method: "{{ route.method }}"
-              pathRegex: "{{ route.path }}"
-            isRetryable: "{{ route.retryable | default(false) }}"
+        routes: "{{ item.routes }}"
   loop: "{{ linkerd_service_profiles }}"
   loop_control:
     label: "{{ item.name }}"
@@ -235,6 +281,19 @@ linkerd_traffic_splits:
 ```yaml
 # roles/linkerd/tasks/authorization.yml
 # Configure Linkerd authorization policies
+- name: Apply mesh TLS authentication resources
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: policy.linkerd.io/v1alpha1
+      kind: MeshTLSAuthentication
+      metadata:
+        name: "{{ item.name }}"
+        namespace: "{{ item.namespace }}"
+      spec:
+        identityRefs: "{{ item.identity_refs }}"
+  loop: "{{ linkerd_mesh_tls_authentications }}"
+
 - name: Apply server authorization policies
   kubernetes.core.k8s:
     state: present
@@ -255,7 +314,7 @@ linkerd_traffic_splits:
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: policy.linkerd.io/v1beta2
+      apiVersion: policy.linkerd.io/v1alpha1
       kind: AuthorizationPolicy
       metadata:
         name: "{{ item.name }}"
@@ -288,7 +347,7 @@ linkerd_traffic_splits:
 
 - name: Verify meshed pods
   ansible.builtin.command: >
-    linkerd stat deploy -n {{ item }} --from 0s
+    linkerd viz stat deploy -n {{ item }} --time-window 15s
   register: mesh_stats
   changed_when: false
   loop: "{{ linkerd_inject_namespaces }}"
@@ -303,4 +362,4 @@ linkerd_traffic_splits:
 
 ## Conclusion
 
-Linkerd's simplicity makes it an excellent match for Ansible automation. The installation is a series of CLI commands that generate Kubernetes manifests, which Ansible applies idempotently. Traffic splitting, service profiles, and authorization policies are all standard Kubernetes resources that the kubernetes.core collection handles natively. If you need a service mesh without the operational overhead of Istio, Linkerd managed by Ansible gives you mTLS, observability, and traffic management with minimal complexity.
+Linkerd's simplicity makes it an excellent match for Ansible automation. The installation is a series of CLI commands that generate Kubernetes manifests, which Ansible applies idempotently. Traffic splitting, service profiles, and authorization policies are all Kubernetes custom resources that the kubernetes.core collection handles natively once their CRDs are installed. If you need a service mesh without the operational overhead of Istio, Linkerd managed by Ansible gives you mTLS, observability, and traffic management with minimal complexity.
