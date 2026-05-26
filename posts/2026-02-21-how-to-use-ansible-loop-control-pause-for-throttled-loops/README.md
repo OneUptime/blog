@@ -38,7 +38,7 @@ Without pauses, Ansible fires through loop iterations as fast as possible. For m
 
 API rate limiting is the most common. Cloud providers like AWS, Azure, and GCP all enforce rate limits on their APIs. If your loop makes API calls faster than the limit allows, you get throttling errors or temporary bans.
 
-Service stability is another concern. When doing rolling restarts, each service needs time to come back online and pass health checks before you restart the next one. Without a pause, you might take down all instances simultaneously.
+Service stability is another concern. When doing rolling restarts, each service needs time to come back online and pass health checks before you restart the next one. Without a pause, you might restart all instances too quickly.
 
 Resource contention is the third scenario. If your loop triggers heavy operations (database migrations, large file transfers, CPU-intensive compilations), running them back to back can overwhelm the target system.
 
@@ -47,7 +47,7 @@ Resource contention is the third scenario. If your loop triggers heavy operation
 Here is a practical rolling restart pattern:
 
 ```yaml
-# Rolling restart with health check validation between each service
+# Rolling restart with stabilization pause between each service
 - name: Rolling restart with stabilization pause
   hosts: app_servers
   serial: 1
@@ -69,7 +69,7 @@ Here is a practical rolling restart pattern:
         label: "{{ svc.name }}"
         pause: 15
 
-    - name: Verify all services are healthy after restart
+    - name: Verify all services are healthy after the restarts
       ansible.builtin.uri:
         url: "http://localhost:{{ svc.port }}{{ svc.health_path }}"
         status_code: 200
@@ -116,7 +116,7 @@ When interacting with external APIs that enforce rate limits:
     pause: 2
 ```
 
-A 2-second pause between DNS record creations keeps you well within most providers' rate limits.
+A 2-second pause between DNS record creations helps keep the request rate low. Always check your provider's published limits for the exact safe interval.
 
 ## Cloud Resource Provisioning
 
@@ -129,7 +129,7 @@ Cloud APIs are particularly sensitive to rapid-fire requests:
     name: "{{ instance.name }}"
     instance_type: "{{ instance.type }}"
     image_id: "{{ base_ami }}"
-    subnet_id: "{{ instance.subnet }}"
+    vpc_subnet_id: "{{ instance.subnet }}"
     security_group: "{{ instance.sg }}"
     key_name: "{{ ssh_key_name }}"
     state: running
@@ -146,7 +146,7 @@ Cloud APIs are particularly sensitive to rapid-fire requests:
     pause: 5
 ```
 
-The 5-second pause prevents hitting AWS API rate limits when creating multiple instances.
+The 5-second pause helps avoid AWS API throttling when creating multiple instances.
 
 ## Database Migration Sequences
 
@@ -220,7 +220,7 @@ Production gets a longer pause for safety, while staging and development move fa
 
 Ansible offers several mechanisms for controlling execution speed. Understanding which to use:
 
-`loop_control.pause` adds a delay between iterations of a single loop on a single host. Use it when you need per-item pacing.
+`loop_control.pause` adds a delay between iterations of a single loop on each host running the task. Use it when you need per-item pacing.
 
 `throttle` on a task limits how many hosts run that task in parallel. Use it for tasks that compete for shared resources (like a database):
 
