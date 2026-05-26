@@ -101,7 +101,7 @@ Here are the shells you are most likely to use with Ansible:
 
 ## Setting the Default Shell Globally
 
-If most of your tasks need bash, you can set it as the default in your `ansible.cfg` instead of repeating `executable` on every task:
+If most of your tasks need bash, you can set Ansible's remote execution shell in your `ansible.cfg`. This affects Ansible's shell usage more broadly than a single task, so use it only when the target hosts consistently support that shell:
 
 ```ini
 # ansible.cfg - set bash as the default shell for the shell module
@@ -148,7 +148,7 @@ Sometimes you want bash with specific flags. For example, running in strict mode
 
 The `set -euo pipefail` combination is one of the most useful bash features for Ansible scripts:
 
-- `-e` exits immediately if any command fails
+- `-e` exits on many unhandled command failures, with exceptions for contexts such as tests, conditional lists, and parts of pipelines
 - `-u` treats unset variables as errors
 - `-o pipefail` ensures pipe failures are caught
 
@@ -170,7 +170,7 @@ Different shells load different configuration files. This matters when your comm
       changed_when: false
       register: basic_path
 
-    # This loads the full login environment
+    # This loads bash login startup files
     - name: Check PATH with login shell
       ansible.builtin.shell:
         cmd: bash -l -c 'echo $PATH'
@@ -200,7 +200,7 @@ If you need specific environment variables, it is often better to set them expli
 
 ## Running Commands in a Login Shell
 
-Some applications (like those installed via rbenv, nvm, or pyenv) only work in a login shell because they modify PATH in `.bashrc` or `.profile`:
+Some applications (like those installed via rbenv, nvm, or pyenv) only work after startup files are loaded because they modify PATH in files such as `.bashrc`, `.bash_profile`, or `.profile`:
 
 ```yaml
 # run Ruby commands through rbenv by sourcing the profile
