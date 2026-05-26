@@ -14,7 +14,7 @@ Manually tuning these parameters on each server is impractical. In this post, I 
 
 ## Why Kernel Parameters Matter for Security
 
-Default kernel settings are designed for general compatibility, not maximum security. For example, most distributions ship with ICMP redirect acceptance enabled, which can be used for man-in-the-middle attacks. They also leave core dumps unrestricted, which can leak sensitive data from memory.
+Default kernel settings are designed for general compatibility, not maximum security. For example, Linux host defaults accept ICMP redirects unless a distribution overrides them, which can be used for man-in-the-middle attacks. Some systems also allow ordinary process core dumps, which can leak sensitive data from memory.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     B --> B3[IP spoofing prevention]
     C --> C1[ASLR]
     C --> C2[Core dump restrictions]
-    C --> C3[SMAP/SMEP]
+    C --> C3[Kernel pointer restrictions]
     D --> D1[Symlink protection]
     D --> D2[Hardlink protection]
     E --> E1[ptrace restrictions]
@@ -129,7 +129,7 @@ This playbook configures memory protection and process isolation settings:
         # Restrict access to kernel pointers in /proc
         - { key: "kernel.kptr_restrict", value: "2" }
 
-        # Restrict ptrace to parent processes only
+        # Restrict ptrace to processes with CAP_SYS_PTRACE only
         # 0 = no restrictions, 1 = parent only, 2 = admin only, 3 = disabled
         - { key: "kernel.yama.ptrace_scope", value: "2" }
 
@@ -137,7 +137,7 @@ This playbook configures memory protection and process isolation settings:
         # Uncomment only after all needed modules are loaded
         # - { key: "kernel.modules_disabled", value: "1" }
 
-        # Disable magic SysRq key (prevents keyboard-based attacks)
+        # Disable magic SysRq emergency commands
         - { key: "kernel.sysrq", value: "0" }
 
         # Restrict perf_event access
@@ -221,8 +221,8 @@ If your servers use IPv6, you should harden those settings too:
         - { key: "net.ipv6.conf.default.accept_redirects", value: "0" }
 
         # Disable IPv6 source routing
-        - { key: "net.ipv6.conf.all.accept_source_route", value: "0" }
-        - { key: "net.ipv6.conf.default.accept_source_route", value: "0" }
+        - { key: "net.ipv6.conf.all.accept_source_route", value: "-1" }
+        - { key: "net.ipv6.conf.default.accept_source_route", value: "-1" }
 
         # Use privacy extensions for IPv6
         - { key: "net.ipv6.conf.all.use_tempaddr", value: "2" }
@@ -275,7 +275,6 @@ The role's tasks file applies settings based on variables:
     owner: root
     group: root
     mode: '0644'
-  notify: reload sysctl
 
 - name: Apply sysctl settings immediately
   ansible.builtin.command: sysctl --system
