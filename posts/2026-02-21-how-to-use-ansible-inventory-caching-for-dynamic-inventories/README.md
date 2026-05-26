@@ -63,7 +63,7 @@ cache_connection = /tmp/ansible_inventory_cache
 cache_timeout = 3600
 ```
 
-That is it for the global configuration. But each inventory plugin also needs to opt in to caching in its own config file.
+That is it for the global configuration. You can also put the same cache settings in an inventory plugin config file when you want that source to use different cache settings.
 
 ## Configuring Caching for AWS EC2
 
@@ -114,12 +114,12 @@ cache_connection = /tmp/ansible_inventory_cache
 cache_timeout = 3600
 ```
 
-**yaml** stores cached data as YAML files (human-readable but slightly slower):
+**yaml** stores cached data as YAML files (human-readable but slightly slower). In current Ansible releases, this cache plugin is provided by the `community.general` collection:
 
 ```ini
 [inventory]
 cache = true
-cache_plugin = ansible.builtin.yaml
+cache_plugin = community.general.yaml
 cache_connection = /tmp/ansible_inventory_cache
 cache_timeout = 3600
 ```
@@ -130,15 +130,18 @@ cache_timeout = 3600
 [inventory]
 cache = true
 cache_plugin = community.general.redis
-cache_connection = redis.example.com:6379:0
+cache_connection = redis.example.com:6379:0:
 cache_timeout = 3600
 ```
 
-Install the Redis cache plugin dependency:
+Install the collection and Python dependency for the shared cache plugins:
 
 ```bash
 # Install the redis Python package required by the cache plugin
 pip install redis
+
+# Install the memcache Python package required by the memcached cache plugin
+pip install python-memcached
 
 # Install the community.general collection
 ansible-galaxy collection install community.general
@@ -156,7 +159,7 @@ cache_timeout = 3600
 
 ## Setting Different TTLs per Source
 
-In a multi-cloud environment, you might want different cache durations for different sources. AWS instances might change rarely (long TTL), while a Kubernetes cluster changes frequently (short TTL):
+In a multi-cloud environment, you might want different cache durations for different sources. AWS instances might change rarely (long TTL), while Azure VMs in an auto-scaling resource group change frequently (short TTL):
 
 ```yaml
 # inventory/aws_ec2.yml
@@ -171,12 +174,12 @@ regions:
 ```
 
 ```yaml
-# inventory/k8s.yml
-plugin: kubernetes.core.k8s
+# inventory/azure_rm.yml
+plugin: azure.azcollection.azure_rm
 cache: true
 cache_plugin: ansible.builtin.jsonfile
 cache_connection: /tmp/ansible_cache
-# Kubernetes pods change frequently, cache for 5 minutes
+# Auto-scaling Azure VMs change frequently, cache for 5 minutes
 cache_timeout: 300
 ```
 
@@ -233,7 +236,7 @@ case "$1" in
         for f in "$CACHE_DIR"/*; do
             if [ -f "$f" ]; then
                 age=$(($(date +%s) - $(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null)))
-                echo "  $(basename $f): ${age}s old"
+                echo "  $(basename "$f"): ${age}s old"
             fi
         done
         ;;
@@ -251,7 +254,9 @@ In CI/CD pipelines, you typically want a fresh inventory for deployment but can 
 ```yaml
 # .gitlab-ci.yml
 variables:
-  ANSIBLE_INVENTORY_CACHE: /tmp/ansible_cache
+  ANSIBLE_INVENTORY_CACHE: "True"
+  ANSIBLE_INVENTORY_CACHE_PLUGIN: ansible.builtin.jsonfile
+  ANSIBLE_INVENTORY_CACHE_CONNECTION: /tmp/ansible_cache
 
 stages:
   - validate
@@ -289,20 +294,19 @@ In my experience, a cached run typically completes in under a second, while an u
 
 ## Cache File Structure
 
-When using the jsonfile backend, the cache directory contains one file per inventory source:
+When using the jsonfile backend, the cache directory contains plugin-managed JSON cache files:
 
 ```bash
 # Look at what is in the cache
 ls -la /tmp/ansible_inventory_cache/
-# -rw-r--r-- 1 user user 45K Feb 21 10:30 aws_ec2_us_east_1
-# -rw-r--r-- 1 user user 12K Feb 21 10:30 aws_ec2_us_west_2
+# -rw-r--r-- 1 user user 45K Feb 21 10:30 ansible_inventory_...
 ```
 
-Each file contains the serialized inventory data in JSON format. You can inspect it for debugging:
+The exact filenames and data layout are implementation details of the cache plugin, so do not build automation that depends on them. You can still inspect a file during troubleshooting:
 
 ```bash
-# Pretty-print a cache file to see what was cached
-python3 -m json.tool /tmp/ansible_inventory_cache/aws_ec2_us_east_1
+# Pretty-print a cache file while troubleshooting
+python3 -m json.tool /tmp/ansible_inventory_cache/ansible_inventory_...
 ```
 
 ## Best Practices
