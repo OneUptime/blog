@@ -22,8 +22,8 @@ flowchart TD
     B --> C[JSON File]
     B --> D[Dynamic Inventory]
     B --> E[Environment Variables]
-    B --> F[Terraform Provider for Ansible]
-    B --> G[Consul/Vault]
+    B --> F[Ansible Lookup Plugin]
+    B --> G[Consul]
     C --> H[Ansible]
     D --> H
     E --> H
@@ -184,10 +184,11 @@ def extract_instances(state):
     """Extract EC2 instances from Terraform state."""
     inventory = {
         "_meta": {"hostvars": {}},
-        "all": {"children": ["webservers", "databases", "appservers"]},
+        "all": {"children": ["webservers", "databases", "appservers", "ungrouped"]},
         "webservers": {"hosts": []},
         "databases": {"hosts": []},
         "appservers": {"hosts": []},
+        "ungrouped": {"hosts": []},
     }
 
     resources = state.get("values", {}).get("root_module", {}).get("resources", [])
@@ -316,7 +317,7 @@ Use the Ansible `pipe` lookup to call `terraform output` on the fly. This works 
 
 This approach is convenient but has a catch: it runs `terraform output` multiple times if you have many lookups, and it requires Terraform to be installed on your Ansible control node.
 
-## Method 5: Shared State Store (Consul or SSM)
+## Method 5: Shared State Store (Consul)
 
 For teams with more complex setups, push Terraform outputs to a shared key-value store that Ansible can query.
 
@@ -367,6 +368,6 @@ Then in Ansible, read from Consul.
 | Dynamic inventory | Ongoing management of long-lived infra | Requires Terraform CLI on control node |
 | Environment variables | Simple setups with few values | Does not scale to many outputs |
 | Lookup plugin | Quick prototyping | Slow with many lookups |
-| Consul/SSM | Multi-team orgs with shared infra | Extra infrastructure dependency |
+| Consul | Multi-team orgs with shared infra | Extra infrastructure dependency |
 
 For most teams, start with the JSON file approach. It is simple, reliable, and works well in CI/CD pipelines. Move to dynamic inventory or Consul when your infrastructure gets complex enough to justify it.
