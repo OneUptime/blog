@@ -24,7 +24,7 @@ cat > ansible-navigator.yml << 'EOF'
 ---
 ansible-navigator:
   execution-environment:
-    image: quay.io/ansible/community-ee-minimal:latest
+    image: ghcr.io/ansible-community/community-ee-minimal:latest
     pull:
       policy: missing
   mode: interactive
@@ -116,7 +116,7 @@ Once the playbook finishes, you see a list of plays. Here are the most useful na
 
 # Movement
 :back or Esc         # Go back one level
-:top                 # Go to the top level
+:welcome             # Go to the welcome page
 
 # View modes
 :stdout              # Show raw stdout output
@@ -124,7 +124,7 @@ Once the playbook finishes, you see a list of plays. Here are the most useful na
 :help                # Show all commands
 
 # Searching
-/pattern             # Search for text in the current view
+:filter pattern      # Filter page lines using a regex
 
 # Quitting
 :quit or q           # Exit navigator
@@ -329,9 +329,9 @@ When developing complex Jinja2 expressions, use a debug playbook to test them:
       ansible.builtin.debug:
         msg: "Active items: {{ items | selectattr('active') | map(attribute='name') | list }}"
 
-    - name: Test json_query
+    - name: Test score filtering
       ansible.builtin.debug:
-        msg: "High scorers: {{ items | json_query('[?score > `90`].name') }}"
+        msg: "High scorers: {{ items | selectattr('score', 'gt', 90) | map(attribute='name') | list }}"
 
     - name: Test combine and default
       ansible.builtin.set_fact:
