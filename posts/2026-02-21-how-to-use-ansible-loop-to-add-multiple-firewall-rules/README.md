@@ -14,7 +14,7 @@ This post covers adding multiple firewall rules using Ansible loops with UFW (Ub
 
 ## UFW Rules with loop
 
-UFW is the default firewall on Ubuntu. The `community.general.ufw` module makes it straightforward to manage rules in Ansible.
+UFW is the default firewall configuration tool on Ubuntu. The `community.general.ufw` module makes it straightforward to manage rules in Ansible.
 
 ```yaml
 # ufw-rules.yml
