@@ -69,7 +69,7 @@ Here is a simple example:
 
 ## Modules That Do Not Support Check Mode
 
-Not all modules support check mode. The `command`, `shell`, `raw`, and `script` modules cannot predict their outcome without actually running:
+Not all modules support check mode. The `raw` module cannot predict its outcome without actually running. The `command`, `shell`, and `script` modules have partial check mode support: without `creates` or `removes`, they cannot predict their outcome and are skipped in check mode:
 
 ```yaml
 # This task will be SKIPPED in check mode
@@ -101,9 +101,9 @@ Use `check_mode: false` (previously `always_run: true`) to force a task to execu
 
 This is essential for read-only tasks whose output is needed by subsequent tasks. Without `check_mode: false`, the command task would be skipped and `current_version` would be undefined.
 
-## Forcing Tasks to Only Run in Check Mode
+## Running Tasks Only in Check Mode
 
-The opposite is also possible. You can make a task only run during check mode:
+The opposite is also possible. You can make a task only run during check mode by checking the `ansible_check_mode` variable. Setting `check_mode: true` forces the task to use check-mode behavior if it runs, but the `when` condition is what limits it to dry runs:
 
 ```yaml
 # Only runs during check mode - useful for validation
@@ -117,7 +117,7 @@ The opposite is also possible. You can make a task only run during check mode:
   when: ansible_check_mode
 ```
 
-Wait, there is a simpler way. Ansible provides the `ansible_check_mode` variable that is true during check mode:
+For read-only validation, you can usually use just the `ansible_check_mode` condition:
 
 ```yaml
 # Run extra validations only during check mode
@@ -133,7 +133,7 @@ Wait, there is a simpler way. Ansible provides the `ansible_check_mode` variable
 
 ## Making Command Tasks Check-Mode Friendly
 
-Since command and shell modules skip in check mode, you need patterns to work around this:
+Since command and shell modules skip in check mode unless you force them to run or give them `creates` or `removes`, you need patterns to work around this:
 
 ```yaml
 # Pattern 1: Separate check and execute tasks
@@ -192,7 +192,7 @@ This runs a check mode dry run on every merge request and only allows actual dep
 
 ## Check Mode with Handlers
 
-Handlers behave differently in check mode. Even if a task reports "changed" in check mode, handlers are not actually triggered. This is correct behavior because the notifying task did not actually make changes.
+Handlers behave differently in check mode. If a task reports "changed" in check mode, it can still notify a handler. The handler task runs in check mode too, so modules that support check mode report what they would do without actually modifying the host.
 
 ```yaml
 ---
@@ -213,7 +213,7 @@ Handlers behave differently in check mode. Even if a task reports "changed" in c
         dest: /etc/nginx/nginx.conf
       notify: Restart nginx
     # In check mode: reports "changed" if config would change
-    # Handler notification is recorded but handler does not execute
+    # The handler is notified and runs in check mode, so it does not restart nginx
 ```
 
 ## Practical Example: Safe Deployment Testing
@@ -273,12 +273,12 @@ Here is a complete example showing check mode best practices in a deployment pla
     # Command task with creates for check mode support
     - name: Download application release
       ansible.builtin.get_url:
-        url: "https://releases.example.com/myapp/{{ app_version }}.tar.gz"
-        dest: "/tmp/myapp-{{ app_version }}.tar.gz"
+        url: "https://releases.example.com/myapp/{{ app_version }}.zip"
+        dest: "/tmp/myapp-{{ app_version }}.zip"
 
     - name: Extract application
       ansible.builtin.unarchive:
-        src: "/tmp/myapp-{{ app_version }}.tar.gz"
+        src: "/tmp/myapp-{{ app_version }}.zip"
         dest: "{{ app_dir }}"
         remote_src: true
         creates: "{{ app_dir }}/bin/myapp-{{ app_version }}"
@@ -313,7 +313,7 @@ ansible-playbook deploy.yml --check --skip-tags restart
 
 Check mode has some important limitations:
 
-1. **Dependency chains break**: If task B depends on a file created by task A, task A is skipped in check mode, and task B may fail because the file does not exist
+1. **Dependency chains break**: If task B depends on a file created by task A, task A may only be simulated or skipped in check mode, and task B may fail because the file does not exist
 2. **Dynamic data is missing**: Registered variables from skipped tasks are undefined
 3. **External side effects are not simulated**: API calls, database changes, and webhook triggers are not predicted
 4. **Some modules report inaccurately**: A module might report "ok" in check mode when it would actually change something
