@@ -8,7 +8,7 @@ Description: A hands-on guide to building infrastructure with CDKTF and Go, cove
 
 ---
 
-Go is a strong choice for CDKTF if your team already uses it for backend services or tooling. The static typing catches issues at compile time, the language is fast, and its explicit error handling aligns well with infrastructure operations where failures need to be handled deliberately. This guide covers building a CDKTF project in Go from initialization through deployment.
+Go can be a strong choice for CDKTF if your team already uses it for backend services or tooling, but keep in mind that HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. The static typing catches issues at compile time, the language is fast, and its explicit error handling aligns well with infrastructure operations where failures need to be handled deliberately. This guide covers building a CDKTF project in Go from initialization through deployment.
 
 ## Prerequisites
 
@@ -208,6 +208,7 @@ import (
 
 	jsii "github.com/aws/jsii-runtime-go"
 	"github.com/aws/constructs-go/constructs/v10"
+	"github.com/hashicorp/terraform-cdk-go/cdktf"
 
 	"cdktf-go-demo/generated/hashicorp/aws/vpc"
 	"cdktf-go-demo/generated/hashicorp/aws/subnet"
@@ -276,7 +277,7 @@ func NewNetworking(
 			jsii.String(fmt.Sprintf("public-%d", i)),
 			&subnet.SubnetConfig{
 				VpcId:               mainVpc.Id(),
-				CidrBlock:           jsii.String(fmt.Sprintf("10.0.%d.0/24", i)),
+				CidrBlock:           cdktf.Fn_Cidrsubnet(jsii.String(vpcCidr), jsii.Number(8), jsii.Number(float64(i))),
 				AvailabilityZone:    jsii.String(az),
 				MapPublicIpOnLaunch: jsii.Bool(true),
 				Tags: &map[string]*string{
@@ -298,7 +299,7 @@ func NewNetworking(
 			jsii.String(fmt.Sprintf("private-%d", i)),
 			&subnet.SubnetConfig{
 				VpcId:            mainVpc.Id(),
-				CidrBlock:        jsii.String(fmt.Sprintf("10.0.%d.0/24", i+100)),
+				CidrBlock:        cdktf.Fn_Cidrsubnet(jsii.String(vpcCidr), jsii.Number(8), jsii.Number(float64(i+100))),
 				AvailabilityZone: jsii.String(az),
 				Tags: &map[string]*string{
 					"Name": jsii.String(fmt.Sprintf("%s-private-%s", environment, az)),
@@ -380,6 +381,7 @@ package main
 import (
 	"testing"
 
+	jsii "github.com/aws/jsii-runtime-go"
 	"github.com/hashicorp/terraform-cdk-go/cdktf"
 )
 
@@ -437,17 +439,7 @@ services := []ServiceConfig{
 }
 
 for _, svc := range services {
-	var ingressRules []map[string]interface{}
-	if svc.Port > 0 {
-		ingressRules = append(ingressRules, map[string]interface{}{
-			"from_port":   svc.Port,
-			"to_port":     svc.Port,
-			"protocol":    "tcp",
-			"cidr_blocks": []string{vpcCidr},
-		})
-	}
-
-	securitygroup.NewSecurityGroup(stack,
+	sg := securitygroup.NewSecurityGroup(stack,
 		jsii.String(fmt.Sprintf("%s-sg", svc.Name)),
 		&securitygroup.SecurityGroupConfig{
 			VpcId:       mainVpc.Id(),
@@ -455,6 +447,20 @@ for _, svc := range services {
 			Description: jsii.String(fmt.Sprintf("Security group for %s service", svc.Name)),
 		},
 	)
+
+	if svc.Port > 0 {
+		securitygrouprule.NewSecurityGroupRule(stack,
+			jsii.String(fmt.Sprintf("%s-ingress", svc.Name)),
+			&securitygrouprule.SecurityGroupRuleConfig{
+				Type:            jsii.String("ingress"),
+				FromPort:        jsii.Number(float64(svc.Port)),
+				ToPort:          jsii.Number(float64(svc.Port)),
+				Protocol:        jsii.String("tcp"),
+				SecurityGroupId: sg.Id(),
+				CidrBlocks:      &[]*string{jsii.String(vpcCidr)},
+			},
+		)
+	}
 }
 ```
 
@@ -482,11 +488,10 @@ cdktf destroy dev
 ```go
 // Configure S3 backend
 cdktf.NewS3Backend(stack, &cdktf.S3BackendConfig{
-	Bucket:        jsii.String("my-terraform-state"),
-	Key:           jsii.String(fmt.Sprintf("cdktf/%s/terraform.tfstate", config.Environment)),
-	Region:        jsii.String(config.Region),
-	Encrypt:       jsii.Bool(true),
-	DynamodbTable: jsii.String("terraform-locks"),
+	Bucket:  jsii.String("my-terraform-state"),
+	Key:     jsii.String(fmt.Sprintf("cdktf/%s/terraform.tfstate", config.Environment)),
+	Region:  jsii.String(config.Region),
+	Encrypt: jsii.Bool(true),
 })
 ```
 
