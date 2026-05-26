@@ -333,13 +333,13 @@ You can also read configuration values:
 
   tasks:
     - name: Read global Git config
-      ansible.builtin.shell: git config --global --list 2>/dev/null || echo "No global config"
+      community.general.git_config_info:
+        scope: global
       register: git_config
-      changed_when: false
 
     - name: Display configuration
       ansible.builtin.debug:
-        msg: "{{ git_config.stdout_lines }}"
+        msg: "{{ git_config.config_values | default({}) }}"
 ```
 
 ## Security-Focused Configuration
@@ -364,7 +364,7 @@ You can also read configuration values:
         value: "cache --timeout=1800"
         scope: system
 
-    - name: Enable commit signing reminder
+    - name: Leave automatic commit signing disabled
       community.general.git_config:
         name: commit.gpgsign
         value: "false"
