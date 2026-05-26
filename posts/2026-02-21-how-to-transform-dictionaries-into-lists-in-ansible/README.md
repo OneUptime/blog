@@ -108,6 +108,7 @@ One of the primary reasons you would convert a dictionary to a list is so you ca
       ansible.posix.firewalld:
         port: "{{ item.value }}/tcp"
         permanent: true
+        immediate: true
         state: enabled
       loop: "{{ firewall_rules | dict2items }}"
       loop_control:
@@ -167,14 +168,16 @@ When dealing with nested dictionaries, you might need to flatten the structure i
   tasks:
     - name: Build flat list from nested dict
       ansible.builtin.set_fact:
-        all_servers: >-
-          {% set result = [] %}
+        all_servers: "{{ all_servers_yaml | from_yaml }}"
+      vars:
+        all_servers_yaml: |
           {% for env_name, servers in environments.items() %}
           {% for role, ip in servers.items() %}
-          {% set _ = result.append({'environment': env_name, 'role': role, 'ip': ip}) %}
+          - environment: {{ env_name }}
+            role: {{ role }}
+            ip: {{ ip }}
           {% endfor %}
           {% endfor %}
-          {{ result }}
 
     - name: Display flattened list
       ansible.builtin.debug:
@@ -275,7 +278,7 @@ Here is a practical playbook that transforms a dictionary of hosts into /etc/hos
 
 ## Converting to a Sorted List
 
-Dictionaries in Python (and therefore in Ansible) do not guarantee ordering in older versions. If you need a sorted list, chain `dict2items` with `sort`:
+Current Python dictionaries preserve insertion order, but that is not the same as sorting by key or value. If you need a sorted list, chain `dict2items` with `sort`:
 
 ```yaml
 # playbook-sorted.yml
