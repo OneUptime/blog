@@ -150,7 +150,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -299,4 +299,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `add_host` module bridges the gap between infrastructure provisioning and configuration management. It lets you provision servers and configure them in a single playbook run, which is essential for immutable infrastructure patterns and cloud-native workflows. Combined with `wait_for_connection`, it handles the full lifecycle from creation to configuration.
-
