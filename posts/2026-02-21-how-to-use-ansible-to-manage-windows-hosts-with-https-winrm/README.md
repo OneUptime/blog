@@ -8,7 +8,7 @@ Description: Set up secure HTTPS WinRM connections between Ansible and Windows h
 
 ---
 
-WinRM (Windows Remote Management) is the protocol Ansible uses to communicate with Windows hosts. By default, WinRM can run over HTTP on port 5985 or HTTPS on port 5986. For any environment beyond a test lab, you should always use HTTPS. HTTP transmits data (including credentials) in plain text, which is a serious security risk. Setting up HTTPS WinRM is not difficult, but it requires getting the certificate configuration right on both sides.
+WinRM (Windows Remote Management) is the protocol Ansible uses to communicate with Windows hosts. By default, WinRM can run over HTTP on port 5985 or HTTPS on port 5986. For any environment beyond a test lab, you should always use HTTPS. HTTP does not provide TLS encryption, and Basic or certificate authentication over HTTP does not encrypt the WinRM payload. NTLM, Kerberos, and CredSSP can provide message-level encryption over HTTP, but HTTPS is the recommended option because it protects the entire connection with TLS. Setting up HTTPS WinRM is not difficult, but it requires getting the certificate configuration right on both sides.
 
 This guide walks through the complete setup, from generating certificates on Windows to configuring Ansible to connect securely.
 
@@ -17,7 +17,7 @@ This guide walks through the complete setup, from generating certificates on Win
 ```mermaid
 graph LR
     subgraph "HTTP - Port 5985"
-        A1[Ansible] -- Plain Text --> B1[Windows Host]
+        A1[Ansible] -- No TLS --> B1[Windows Host]
         C1[Attacker] -. Sniffs Traffic .-> A1
     end
     subgraph "HTTPS - Port 5986"
@@ -26,7 +26,7 @@ graph LR
     end
 ```
 
-When Ansible connects to a Windows host, it sends credentials (username and password) with every request. Over HTTP, these credentials are visible to anyone on the network. HTTPS encrypts the entire connection with TLS, protecting both credentials and data in transit.
+When Ansible connects to a Windows host, it authenticates with the credentials or certificate configured for the selected WinRM transport. Over HTTP, Basic authentication and unencrypted WinRM payloads are visible to anyone on the network. HTTPS encrypts the entire connection with TLS, protecting both credentials and data in transit.
 
 ## Step 1: Configure WinRM on Windows
 
@@ -140,7 +140,7 @@ db-server-01  ansible_host=192.168.1.200
 
 [windows:vars]
 ansible_user=ansible-admin
-ansible_password={{ vault_windows_password }}
+ansible_password=REPLACE_WITH_VAULTED_PASSWORD
 ansible_connection=winrm
 ansible_port=5986
 ansible_winrm_transport=ntlm
@@ -200,7 +200,7 @@ To export the Windows certificate for trusting on the Ansible control node:
 
 ## Using Certificate-Based Authentication
 
-For the most secure setup, you can use client certificate authentication instead of username/password:
+For the most secure setup, you can use client certificate authentication instead of username/password. The client certificate must include a client authentication Extended Key Usage and a userPrincipalName Subject Alternative Name that can be mapped to a local Windows user:
 
 ```yaml
 # playbook-cert-auth-setup.yml
@@ -212,27 +212,36 @@ For the most secure setup, you can use client certificate authentication instead
       ansible.windows.win_shell: |
         Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
 
-    - name: Import client certificate to trusted people store
+    - name: Import client certificate to trusted stores
       ansible.windows.win_shell: |
-        # The client certificate needs to be in Trusted People
-        $certPath = "C:\Temp\ansible-client.cer"
-        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath)
-        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("TrustedPeople", "LocalMachine")
-        $store.Open("ReadWrite")
-        $store.Add($cert)
-        $store.Close()
+        # The client certificate needs to be in Trusted People.
+        # If it is self-signed, also trust it as a root certificate.
+        $certPath = "C:\Temp\ansible-client.pem"
+        $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certPath)
+        foreach ($storeName in @("TrustedPeople", "Root")) {
+          $store = [System.Security.Cryptography.X509Certificates.X509Store]::new($storeName, "LocalMachine")
+          $store.Open("ReadWrite")
+          $store.Add($cert)
+          $store.Close()
+        }
         Write-Output "Client certificate imported"
 
     - name: Create certificate mapping
       ansible.windows.win_shell: |
         $clientCert = Get-ChildItem Cert:\LocalMachine\TrustedPeople |
-          Where-Object { $_.Subject -like "*ansible-client*" }
-        $credential = New-Object PSCredential("ansible-admin", (ConvertTo-SecureString "{{ vault_password }}" -AsPlainText -Force))
+          Where-Object { $_.GetNameInfo("UpnName", $false) -eq "ansible-admin@localhost" } |
+          Select-Object -First 1
+        $subject = $clientCert.GetNameInfo("UpnName", $false)
+        $certChain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+        [void]$certChain.Build($clientCert)
+        $issuer = $certChain.ChainElements.Certificate[-1].Thumbprint
+        $password = ConvertTo-SecureString "{{ vault_password }}" -AsPlainText -Force
+        $credential = [System.Management.Automation.PSCredential]::new("ansible-admin", $password)
 
         New-Item -Path WSMan:\localhost\ClientCertificate `
-          -Subject "ansible-client" `
-          -URI * `
-          -Issuer $clientCert.Thumbprint `
+          -Subject $subject `
+          -URI "*" `
+          -Issuer $issuer `
           -Credential $credential `
           -Force
 ```
