@@ -225,7 +225,7 @@ gzip off;
 - name: Validate and reload nginx
   ansible.builtin.command: nginx -t
   become: true
-  changed_when: false
+  changed_when: true
   notify: Reload nginx
 
 - name: Reload nginx
