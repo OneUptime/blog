@@ -8,7 +8,7 @@ Description: Step-by-step instructions for installing Ansible on CentOS Stream 9
 
 ---
 
-CentOS Stream 9 and RHEL share the same package base, so the installation process is nearly identical on both distributions. Both ship with Python 3.9 by default, and Ansible is available through the EPEL (Extra Packages for Enterprise Linux) repository or directly via pip. This guide covers both approaches, walks you through initial configuration, and shows you how to verify everything is working.
+CentOS Stream 9 and RHEL 9 use closely related package ecosystems, so the installation process is similar on both distributions. Both ship with Python 3.9 by default, and Ansible is available through the EPEL (Extra Packages for Enterprise Linux) repository or directly via pip. This guide covers both approaches, walks you through initial configuration, and shows you how to verify everything is working.
 
 ## Prerequisites
 
@@ -30,20 +30,23 @@ sudo dnf update -y
 
 The EPEL repository is maintained by the Fedora project and provides high-quality packages for Enterprise Linux distributions. This is the most straightforward way to install Ansible on CentOS 9 or RHEL.
 
-First, enable the EPEL repository:
+On CentOS Stream 9, enable CRB and install the EPEL release packages:
 
 ```bash
-# Install the EPEL release package
-sudo dnf install epel-release -y
-```
-
-On RHEL, you also need to enable the CodeReady Builder (CRB) repository, which provides additional build dependencies:
-
-```bash
-# RHEL only: enable CRB repository
+# CentOS Stream 9 only: enable CRB
 sudo dnf config-manager --set-enabled crb
 
-# RHEL only: install EPEL from the Fedora project
+# CentOS Stream 9 only: install EPEL and EPEL Next
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm -y
+```
+
+On RHEL 9, enable the CodeReady Builder repository and install EPEL:
+
+```bash
+# RHEL 9 only: enable CodeReady Builder
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
+# RHEL 9 only: install EPEL from the Fedora project
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
 ```
 
@@ -78,9 +81,6 @@ sudo pip3 install ansible
 If you prefer to keep Ansible isolated from system Python packages (which is generally a good practice), use a virtual environment:
 
 ```bash
-# Install the venv module
-sudo dnf install python3-virtualenv -y
-
 # Create a dedicated virtual environment
 python3 -m venv ~/ansible-venv
 
@@ -194,7 +194,7 @@ Create a playbook that installs a package to verify the full pipeline works:
       ansible.builtin.dnf:
         name:
           - vim
-          - htop
+          - curl
           - tmux
         state: present
 
