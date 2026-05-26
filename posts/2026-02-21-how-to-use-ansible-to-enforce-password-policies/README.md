@@ -144,7 +144,6 @@ Password aging determines how long a password can be used before it must be chan
     pass_max_days: 90
     pass_min_days: 7
     pass_warn_age: 14
-    pass_min_len: 14
 
   tasks:
     - name: Set maximum password age
@@ -166,13 +165,6 @@ Password aging determines how long a password can be used before it must be chan
         path: /etc/login.defs
         regexp: '^PASS_WARN_AGE'
         line: "PASS_WARN_AGE\t{{ pass_warn_age }}"
-        state: present
-
-    - name: Set minimum password length in login.defs
-      ansible.builtin.lineinfile:
-        path: /etc/login.defs
-        regexp: '^PASS_MIN_LEN'
-        line: "PASS_MIN_LEN\t{{ pass_min_len }}"
         state: present
 ```
 
@@ -207,17 +199,17 @@ Password history prevents users from reusing recent passwords. This is configure
     - name: Configure PAM password history on Debian/Ubuntu
       ansible.builtin.lineinfile:
         path: /etc/pam.d/common-password
-        regexp: '^password.*pam_unix.so'
-        line: "password\t[success=1 default=ignore]\tpam_unix.so obscure use_authtok try_first_pass yescrypt remember={{ password_remember }}"
-        backrefs: yes
+        regexp: '^password\s+required\s+pam_pwhistory\.so'
+        line: "password\trequired\tpam_pwhistory.so remember={{ password_remember }} use_authtok"
+        insertbefore: '^password.*pam_unix\.so'
       when: ansible_os_family == "Debian"
 
     - name: Configure PAM password history on RHEL/CentOS
       ansible.builtin.lineinfile:
         path: /etc/pam.d/system-auth
-        regexp: '^password.*sufficient.*pam_unix.so'
-        line: "password    sufficient    pam_unix.so sha512 shadow try_first_pass use_authtok remember={{ password_remember }}"
-        backrefs: yes
+        regexp: '^password\s+required\s+pam_pwhistory\.so'
+        line: "password    required    pam_pwhistory.so remember={{ password_remember }} use_authtok"
+        insertbefore: '^password.*pam_unix\.so'
       when: ansible_os_family == "RedHat"
 
     - name: Ensure opasswd file exists for password history storage
@@ -247,6 +239,25 @@ Lock accounts after too many failed login attempts to prevent brute force attack
     unlock_time: 900
 
   tasks:
+    - name: Check current authselect configuration on RHEL 8+
+      ansible.builtin.command:
+        cmd: authselect current
+      register: authselect_current
+      changed_when: false
+      failed_when: false
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_distribution_major_version | int >= 8
+
+    - name: Enable authselect faillock feature on RHEL 8+
+      ansible.builtin.command:
+        cmd: authselect enable-feature with-faillock
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_distribution_major_version | int >= 8
+        - authselect_current.rc == 0
+        - "'with-faillock' not in authselect_current.stdout"
+
     - name: Configure faillock for account lockout on RHEL 8+
       ansible.builtin.template:
         src: faillock.conf.j2
