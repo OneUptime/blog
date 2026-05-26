@@ -51,7 +51,7 @@ The simplest report comes from collecting facts across all hosts:
         content: |
           ====================================
           Infrastructure Report
-          Generated: {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}
+          Generated: {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
           ====================================
 
           Total Hosts: {{ report_data | length }}
@@ -101,13 +101,14 @@ For a richer format, generate HTML:
           {% for host in groups['all'] %}
           {% if hostvars[host].ansible_facts is defined %}
           {% set f = hostvars[host].ansible_facts %}
+          {% set root_mount = (f.get('mounts', []) | selectattr('mount', 'equalto', '/') | list | first | default({})) %}
           {% set _ = result.append({
             'name': host,
             'ip': f.get('default_ipv4', {}).get('address', 'N/A'),
             'os': f.get('distribution', 'N/A'),
             'cpus': f.get('processor_vcpus', 0),
             'mem_gb': (f.get('memtotal_mb', 0) / 1024) | round(1),
-            'disk_gb': (f.get('mounts', [{}])[0].get('size_total', 0) / 1073741824) | round(1)
+            'disk_gb': (root_mount.get('size_total', 0) / 1073741824) | round(1)
           }) %}
           {% endif %}
           {% endfor %}
@@ -277,13 +278,13 @@ CSV is useful for importing into spreadsheets:
 
   tasks:
     - name: Check password policy
-      ansible.builtin.shell: "grep -c 'PASS_MAX_DAYS' /etc/login.defs"
+      ansible.builtin.shell: "grep -Eq '^\\s*PASS_MAX_DAYS\\s+[0-9]+' /etc/login.defs"
       register: password_policy
       changed_when: false
       failed_when: false
 
     - name: Check SSH root login
-      ansible.builtin.shell: "grep -c 'PermitRootLogin no' /etc/ssh/sshd_config"
+      ansible.builtin.shell: "grep -Eq '^\\s*PermitRootLogin\\s+no\\s*(#.*)?$' /etc/ssh/sshd_config"
       register: ssh_root
       changed_when: false
       failed_when: false
