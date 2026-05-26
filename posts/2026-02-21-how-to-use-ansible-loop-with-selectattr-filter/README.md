@@ -48,7 +48,7 @@ The `| list` at the end is important. `selectattr` returns a generator, and Ansi
 
 ## Available Tests
 
-The `selectattr` filter supports several Jinja2 tests.
+The `selectattr` filter supports Jinja2 tests, and Ansible adds several more tests that are useful in playbooks.
 
 | Test | Usage | Description |
 |------|-------|-------------|
@@ -349,7 +349,7 @@ When items in your list may or may not have certain attributes, `selectattr` wit
       loop: "{{ users | selectattr('sudo', 'defined') | selectattr('sudo', 'truthy') | list }}"
 ```
 
-First we filter for users where `sudo` is defined, then we filter for those where it is truthy. Without the `defined` check first, Ansible would throw an error on users without the `sudo` attribute.
+First we filter for users where `sudo` is defined, then we filter for those where it is truthy. This keeps the intent explicit when some items do not include the optional `sudo` attribute.
 
 ## Summary
 
