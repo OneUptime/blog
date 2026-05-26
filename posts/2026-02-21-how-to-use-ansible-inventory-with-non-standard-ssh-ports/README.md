@@ -8,7 +8,7 @@ Description: Learn how to configure Ansible inventory files to connect to hosts 
 
 ---
 
-Running SSH on port 22 is the default, but many teams change it to a non-standard port as a basic security hardening step. It does not replace proper security practices, but it cuts down on automated brute-force attacks significantly. When you manage hosts with different SSH ports using Ansible, you need to tell the inventory about those ports. This post covers every way to do that.
+Running SSH on port 22 is the default, but many teams change it to a non-standard port as a basic security hardening step. It does not replace proper security practices, but it cuts down on automated brute-force attacks significantly. When you manage hosts with different SSH ports using Ansible, you need to tell the inventory about those ports. This post covers common ways to do that.
 
 ## The Problem
 
@@ -260,7 +260,7 @@ ansible -i inventory/hosts.yml web01.example.com -m ping -vvvv
 
 ## Dynamic Inventory with Non-Standard Ports
 
-When using dynamic inventory scripts (for AWS, GCP, etc.), the port information usually comes from tags or metadata. You can set the port mapping in the dynamic inventory configuration:
+When using dynamic inventory plugins or scripts (for AWS, GCP, etc.), the port information usually comes from tags or metadata. You can set the port mapping in the dynamic inventory configuration:
 
 ```yaml
 # aws_ec2.yml - Dynamic inventory plugin config
