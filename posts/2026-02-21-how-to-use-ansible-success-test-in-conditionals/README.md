@@ -12,7 +12,7 @@ When building Ansible playbooks for production systems, you often need to verify
 
 ## What the success Test Actually Checks
 
-The `success` test evaluates the return code of a task result. For most modules, a task is considered successful when it completes without raising an error. For command-based modules like `command`, `shell`, and `raw`, success means the command returned exit code 0.
+The `success` test checks whether a task result is not marked as failed. For most modules, a task is considered successful when it completes without raising an error. For command-based modules like `command`, `shell`, and `raw`, a non-zero exit code normally marks the result as failed, while exit code 0 normally leaves it successful.
 
 Here is the most straightforward example.
 
@@ -46,7 +46,7 @@ The `ignore_errors: true` on the first task prevents Ansible from stopping if th
 
 ## success vs failed: When to Use Which
 
-You might wonder why not just use `is failed` instead of `is not success`. In most cases they are equivalent, but there is a subtle difference. The `success` test checks that the task completed with a successful status, while `failed` specifically checks for failure. A task that was *skipped* is neither successful nor failed. If you care about that distinction, use the specific test.
+You might wonder why not just use `is failed` instead of `is not success`. In most cases they are equivalent, because the `success` test is the opposite of `failed`. A skipped registered result is not failed, so it can still satisfy `is success`. If you need to distinguish a task that actually ran successfully from a task that was skipped, combine `success` with `is not skipped`.
 
 ```yaml
 # Show the difference between success, failed, and skipped
@@ -66,11 +66,13 @@ You might wonder why not just use `is failed` instead of `is not success`. In mo
       when: run_check | bool
       ignore_errors: true
 
-    # This will NOT run because a skipped task is not "success"
-    - name: Only on success
+    # This will NOT run because the task was skipped
+    - name: Only on executed success
       ansible.builtin.debug:
         msg: "Connectivity check passed"
-      when: connectivity is success
+      when:
+        - connectivity is success
+        - connectivity is not skipped
 
     # This will NOT run because a skipped task is not "failed"
     - name: Only on failure
@@ -107,8 +109,7 @@ One of my favorite patterns is running health checks before deploying and using 
       ignore_errors: true
 
     - name: Skip unhealthy hosts
-      ansible.builtin.fail:
-        msg: "Host {{ inventory_hostname }} is unhealthy before deployment, skipping"
+      ansible.builtin.meta: end_host
       when: pre_deploy_health is not success
 
     - name: Deploy new version
@@ -184,7 +185,7 @@ The `success` test pairs well with retry patterns where you want to try an opera
           ansible.builtin.command:
             cmd: make install
             chdir: /tmp/special-tool-src
-      register: source_build
+          register: source_build
       when:
         - primary_install is not success
         - secondary_install is defined
