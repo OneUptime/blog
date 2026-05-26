@@ -299,16 +299,13 @@ You can enforce naming conventions automatically:
 ```yaml
 # .ansible-lint
 # Enforce naming rules across the project
+# name[casing], name[missing], name[template], role-name, and var-naming are default rules.
 enable_list:
-  - name[casing]
-  - name[template]
-  - role-name
-  - var-naming
+  - name[prefix]
 
 var_naming_pattern: "^[a-z_][a-z0-9_]*$"
 
-warn_list:
-  - name[missing]
+warn_list: []
 
 skip_list: []
 ```
