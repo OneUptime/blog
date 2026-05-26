@@ -8,7 +8,7 @@ Description: Learn how to use the rekey_on_member filter in Ansible to transform
 
 ---
 
-The `community.general.lists_mergeby` and the concept of rekeying data are common needs in Ansible. The `rekey_on_member` filter (available in `community.general`) takes a list of dictionaries and transforms it into a dictionary where the keys are taken from a specified member field of each list item. This is incredibly handy when you have list-formatted data but need dictionary-based lookups.
+The `community.general.lists_mergeby` and the concept of rekeying data are common needs in Ansible. The `rekey_on_member` filter (available in `ansible.builtin` since ansible-core 2.13) takes a list of dictionaries and transforms it into a dictionary where the keys are taken from a specified member field of each list item. This is incredibly handy when you have list-formatted data but need dictionary-based lookups.
 
 ## Understanding rekey_on_member
 
@@ -36,7 +36,7 @@ Say you have a list of servers, and you want to look them up by hostname. Instea
   tasks:
     - name: Rekey list by hostname
       ansible.builtin.set_fact:
-        servers_dict: "{{ servers_list | community.general.rekey_on_member('hostname') }}"
+        servers_dict: "{{ servers_list | ansible.builtin.rekey_on_member('hostname') }}"
 
     - name: Access server by hostname
       ansible.builtin.debug:
@@ -102,7 +102,7 @@ The difference is that `items2dict` creates flat key-value pairs, while `rekey_o
 
 ## Manual rekey_on_member Implementation
 
-If you do not have the community.general collection installed, here is how to do it manually:
+If you are using ansible-core earlier than 2.13, here is how to do it manually:
 
 ```yaml
 # playbook-manual-rekey.yml
@@ -193,7 +193,7 @@ graph TD
   tasks:
     - name: Build registry keyed by service name
       ansible.builtin.set_fact:
-        registry: "{{ services_list | community.general.rekey_on_member('service_name') }}"
+        registry: "{{ services_list | ansible.builtin.rekey_on_member('service_name') }}"
 
     - name: Look up order-api details
       ansible.builtin.debug:
@@ -209,11 +209,11 @@ graph TD
 
 ## Handling Duplicate Keys
 
-When multiple items have the same value for the key field, the last one wins:
+When multiple items have the same value for the key field, `rekey_on_member` errors by default. If you want the last one to win, pass `duplicates='overwrite'`:
 
 ```yaml
 # playbook-duplicates.yml
-# Shows that duplicate keys result in the last value winning
+# Shows how duplicate keys can result in the last value winning
 - name: Handle duplicate keys during rekey
   hosts: localhost
   gather_facts: false
@@ -232,7 +232,7 @@ When multiple items have the same value for the key field, the last one wins:
   tasks:
     - name: Rekey with duplicates (last wins)
       ansible.builtin.set_fact:
-        config: "{{ entries | community.general.rekey_on_member('name') }}"
+        config: "{{ entries | ansible.builtin.rekey_on_member('name', duplicates='overwrite') }}"
 
     - name: Show result - config_a has the override value
       ansible.builtin.debug:
@@ -250,14 +250,17 @@ When multiple items have the same value for the key field, the last one wins:
     all_packages:
       - name: nginx
         version: "1.24.0"
+        package_spec: nginx-1.24.0
         config_template: nginx.conf.j2
         service_name: nginx
       - name: postgresql
         version: "15.4"
+        package_spec: postgresql-15.4
         config_template: postgresql.conf.j2
         service_name: postgresql
       - name: redis
         version: "7.2"
+        package_spec: redis-7.2
         config_template: redis.conf.j2
         service_name: redis
 
@@ -268,11 +271,11 @@ When multiple items have the same value for the key field, the last one wins:
   tasks:
     - name: Build package lookup dictionary
       ansible.builtin.set_fact:
-        pkg_info: "{{ all_packages | community.general.rekey_on_member('name') }}"
+        pkg_info: "{{ all_packages | ansible.builtin.rekey_on_member('name') }}"
 
-    - name: Install packages with specific versions
+    - name: Install packages with package-manager-specific version specifiers
       ansible.builtin.package:
-        name: "{{ item }}-{{ pkg_info[item].version }}"
+        name: "{{ pkg_info[item].package_spec }}"
         state: present
       loop: "{{ host_packages }}"
 
@@ -318,7 +321,7 @@ When multiple items have the same value for the key field, the last one wins:
 
     - name: Rekey by hostname for fast lookups
       ansible.builtin.set_fact:
-        cmdb: "{{ cmdb_data | community.general.rekey_on_member('hostname') }}"
+        cmdb: "{{ cmdb_data | ansible.builtin.rekey_on_member('hostname') }}"
 
     - name: Quick lookup
       ansible.builtin.debug:
@@ -327,4 +330,4 @@ When multiple items have the same value for the key field, the last one wins:
 
 ## Summary
 
-The `rekey_on_member` filter from community.general converts a list of dictionaries into a dictionary keyed by a specified field, preserving the full object as each value. This is much more useful than `items2dict` when you need to retain all the fields from the original objects. Use it for building lookup tables, service registries, and any scenario where you need O(1) access to items by a specific key instead of searching through a list. If you do not have the collection installed, the pattern of combining in a loop with `set_fact` achieves the same result.
+The `rekey_on_member` filter from ansible.builtin converts a list of dictionaries into a dictionary keyed by a specified field, preserving the full object as each value. This is much more useful than `items2dict` when you need to retain all the fields from the original objects. Use it for building lookup tables, service registries, and any scenario where you need O(1) access to items by a specific key instead of searching through a list. If you are using ansible-core earlier than 2.13, the pattern of combining in a loop with `set_fact` achieves the same result.
