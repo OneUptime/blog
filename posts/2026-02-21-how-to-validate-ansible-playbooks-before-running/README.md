@@ -77,7 +77,7 @@ Example output:
 
 ```text
 deploy.yml:15: command-instead-of-module: Use apt instead of command to install packages
-deploy.yml:23: no-changed-when: Commands should not change things without a when clause
+deploy.yml:23: no-changed-when: Commands should not change things without changed_when
 deploy.yml:31: name[missing]: All tasks should be named
 ```
 
@@ -145,25 +145,25 @@ Some tasks depend on previous tasks that modify the system. In check mode, those
 # because the first task does not actually create the directory
 
 - name: Create app directory
-  file:
+  ansible.builtin.file:
     path: /opt/myapp
     state: directory
 
 # In check mode, this file will not exist because the directory was not created
 - name: Deploy config
-  template:
+  ansible.builtin.template:
     src: app.conf.j2
     dest: /opt/myapp/app.conf
 ```
 
-You can handle this by using `check_mode: no` on prerequisite tasks:
+You can handle this by using `check_mode: false` on prerequisite tasks:
 
 ```yaml
 # Force this task to run even in check mode
 - name: Gather installed package list
-  package_facts:
+  ansible.builtin.package_facts:
     manager: auto
-  check_mode: no    # Always run this task, even in check mode
+  check_mode: false    # Always run this task, even in check mode
 ```
 
 ## Layer 4: Variable Validation with assert
@@ -176,11 +176,11 @@ Use the `assert` module at the beginning of your playbook to validate that requi
 # Validate all required variables before starting deployment
 
 - hosts: webservers
-  become: yes
+  become: true
 
   pre_tasks:
     - name: Validate required variables
-      assert:
+      ansible.builtin.assert:
         that:
           - deploy_version is defined
           - deploy_version | length > 0
@@ -197,7 +197,7 @@ Use the `assert` module at the beginning of your playbook to validate that requi
 
   tasks:
     - name: Deploy application version {{ deploy_version }}
-      debug:
+      ansible.builtin.debug:
         msg: "Deploying..."
 ```
 
@@ -206,8 +206,8 @@ Use the `assert` module at the beginning of your playbook to validate that requi
 Molecule creates actual test environments (Docker containers, Vagrant VMs, cloud instances) and runs your playbooks against them. This is the most thorough validation.
 
 ```bash
-# Install Molecule with the Docker driver
-pip install molecule molecule-docker
+# Install Molecule and Ansible development tools
+pip install ansible-dev-tools
 ```
 
 Initialize a Molecule scenario for a role:
@@ -258,7 +258,6 @@ provisioner:
   name: ansible
   playbooks:
     converge: converge.yml
-    verify: verify.yml
 
 verifier:
   name: ansible
@@ -271,7 +270,7 @@ The converge playbook applies your role:
 ---
 - name: Converge
   hosts: all
-  become: yes
+  become: true
   roles:
     - role: webserver
       vars:
@@ -286,28 +285,28 @@ The verify playbook checks the result:
 ---
 - name: Verify
   hosts: all
-  become: yes
+  become: true
   tasks:
     - name: Check nginx is installed
-      command: nginx -v
+      ansible.builtin.command: nginx -v
       register: nginx_version
       changed_when: false
 
     - name: Verify nginx is running
-      service:
+      ansible.builtin.service:
         name: nginx
         state: started
-      check_mode: yes
+      check_mode: true
       register: nginx_status
 
     - name: Assert nginx is running
-      assert:
+      ansible.builtin.assert:
         that:
           - not nginx_status.changed
         fail_msg: "Nginx is not running"
 
     - name: Check application port is listening
-      wait_for:
+      ansible.builtin.wait_for:
         port: 8080
         timeout: 5
 ```
@@ -344,7 +343,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ansible ansible-lint molecule molecule-docker
+          pip install ansible-dev-tools
 
       - name: YAML syntax check
         run: |
