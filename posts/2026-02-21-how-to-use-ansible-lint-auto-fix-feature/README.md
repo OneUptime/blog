@@ -16,8 +16,8 @@ The auto-fix feature does not cover every rule, but it handles the most common a
 
 - Converting short module names to fully qualified collection names (FQCN)
 - Fixing YAML formatting issues (indentation, trailing whitespace, line length)
-- Updating deprecated `include` to `include_tasks` or `import_tasks`
-- Adding missing `changed_when` to command/shell tasks
+- Rewriting `local_action` tasks to use `delegate_to: localhost`
+- Simplifying shell tasks that do not require shell features to command tasks
 - Fixing key ordering in tasks
 
 Not every rule supports auto-fix. Rules that require understanding intent, like choosing the right module to replace a shell command, still need manual intervention.
@@ -153,13 +153,13 @@ Sometimes you only want to fix specific categories of issues. You can combine `-
 
 ```bash
 # Only auto-fix FQCN issues
-ansible-lint --fix -t fqcn playbooks/
+ansible-lint --fix=fqcn playbooks/
 
 # Only auto-fix formatting issues
-ansible-lint --fix -t formatting playbooks/
+ansible-lint --fix=yaml playbooks/
 
-# Only auto-fix deprecation issues
-ansible-lint --fix -t deprecations playbooks/
+# Only auto-fix deprecated local_action issues
+ansible-lint --fix=deprecated-local-action playbooks/
 ```
 
 This is useful when you want to break up the migration into smaller, reviewable chunks.
@@ -171,12 +171,16 @@ You can control auto-fix behavior through the `.ansible-lint` configuration file
 ```yaml
 # .ansible-lint
 # Configure which rules can be auto-fixed
+write_list:
+  - fqcn
+  - yaml
+  - key-order
 
 # Skip these rules entirely (they will not be fixed or reported)
 skip_list:
   - yaml[line-length]  # We allow long lines in our project
 
-# These rules will be reported as warnings but not auto-fixed
+# These rules will be reported as warnings instead of failures
 warn_list:
   - name[casing]
 
@@ -199,10 +203,10 @@ flowchart TD
     A[Create feature branch] --> B[Run ansible-lint without fix]
     B --> C[Review total issue count]
     C --> D[Fix FQCN issues first]
-    D --> E[ansible-lint --fix -t fqcn]
+    D --> E[ansible-lint --fix=fqcn]
     E --> F[Commit FQCN changes]
     F --> G[Fix formatting issues]
-    G --> H[ansible-lint --fix -t formatting]
+    G --> H[ansible-lint --fix=yaml]
     H --> I[Commit formatting changes]
     I --> J[Fix remaining auto-fixable issues]
     J --> K[ansible-lint --fix]
@@ -259,8 +263,8 @@ PLAYBOOK_DIR="playbooks"
 BATCH_SIZE=10
 
 # Get list of files with issues
-files_with_issues=$(ansible-lint -f json "$PLAYBOOK_DIR" 2>/dev/null | \
-  python3 -c "import json,sys; data=json.load(sys.stdin); print('\n'.join(set(item['filename'] for item in data)))")
+files_with_issues=$(ansible-lint -f pep8 --show-relpath "$PLAYBOOK_DIR" 2>/dev/null | \
+  awk -F: '/^[^:]+:[0-9]+:/ {print $1}' | sort -u)
 
 # Process in batches
 echo "$files_with_issues" | while mapfile -n "$BATCH_SIZE" -t batch && ((${#batch[@]})); do
@@ -291,7 +295,7 @@ You can configure pre-commit to run ansible-lint with auto-fix so that issues ar
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/ansible/ansible-lint
-    rev: v6.22.0
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
         # The --fix flag will auto-correct files before commit
@@ -308,7 +312,7 @@ pre-commit install
 # Now every commit will automatically fix what it can
 git add playbook.yml
 git commit -m "Update playbook"
-# ansible-lint runs with --fix, modifies the file, and the fixed version gets committed
+# If ansible-lint modifies a file, review it, stage it again, and retry the commit
 ```
 
 ## Testing After Auto-Fix
