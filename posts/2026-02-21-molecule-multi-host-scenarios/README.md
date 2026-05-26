@@ -401,11 +401,11 @@ ping database
 curl http://web2:80/health
 ```
 
-You can also run ad-hoc commands against specific hosts.
+You can also rerun the converge playbook against specific hosts.
 
 ```bash
-# Run a command on all web servers
-molecule converge -- --limit webservers -m ping
+# Converge only the web servers
+molecule converge -- --limit webservers
 ```
 
 ## Testing Cluster Scenarios
