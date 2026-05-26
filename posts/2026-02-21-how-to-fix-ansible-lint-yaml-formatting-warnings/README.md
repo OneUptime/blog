@@ -73,7 +73,7 @@ rules:
 
 ## yaml[truthy]: Truthy Value Should Be true/false
 
-YAML allows `yes`, `no`, `on`, `off`, `True`, `False`, and several other truthy/falsy values. ansible-lint wants you to use only `true` and `false` (lowercase).
+Older YAML 1.1 parsers and some YAML tooling treat `yes`, `no`, `on`, `off`, `True`, `False`, and several other values as truthy/falsy. ansible-lint wants you to use only `true` and `false` (lowercase).
 
 **The problem:**
 
@@ -117,10 +117,12 @@ To fix this across your entire project quickly:
 
 ```bash
 # Find all yes/no/True/False patterns in YAML files
-grep -rn "become: yes\|become: no\|gather_facts: yes\|gather_facts: no" --include="*.yml"
+grep -RInE ':[[:space:]]+(yes|no|True|False)([[:space:]]*#.*)?$' \
+  --include="*.yml" --include="*.yaml" .
 
-# Use sed to replace (review changes carefully before committing)
-find . -name "*.yml" -exec sed -i 's/: yes$/: true/g; s/: no$/: false/g' {} +
+# Use GNU sed to replace common scalar values (review changes carefully before committing)
+find . \( -name "*.yml" -o -name "*.yaml" \) -exec sed -i -E \
+  's/: yes([[:space:]]*(#.*)?)$/: true\1/g; s/: no([[:space:]]*(#.*)?)$/: false\1/g; s/: True([[:space:]]*(#.*)?)$/: true\1/g; s/: False([[:space:]]*(#.*)?)$/: false\1/g' {} +
 ```
 
 ## yaml[indentation]: Indentation Issues
@@ -200,7 +202,7 @@ indent_size = 2
 
 ## yaml[document-start]: Missing Document Start Marker
 
-YAML documents should begin with `---`.
+When the `document-start` rule is enabled, YAML documents should begin with `---`.
 
 **The problem:**
 
@@ -236,10 +238,10 @@ To find and fix existing trailing spaces:
 
 ```bash
 # Find files with trailing whitespace
-grep -rn ' $' --include="*.yml" .
+grep -RIn '[[:blank:]]$' --include="*.yml" --include="*.yaml" .
 
-# Fix with sed
-find . -name "*.yml" -exec sed -i 's/[[:space:]]*$//' {} +
+# Fix with GNU sed
+find . \( -name "*.yml" -o -name "*.yaml" \) -exec sed -i 's/[[:blank:]]*$//' {} +
 ```
 
 ## yaml[empty-lines]: Too Many Blank Lines
@@ -313,19 +315,20 @@ go install github.com/google/yamlfmt/cmd/yamlfmt@latest
 # Format all YAML files
 yamlfmt .
 
-# Or use prettier with the YAML plugin
+# Or use prettier's YAML support
 npm install -g prettier
 prettier --write "**/*.yml"
 ```
 
-Configure yamlfmt to match ansible-lint's expectations:
+Configure yamlfmt to preserve common YAML style choices:
 
 ```yaml
-# .yamlfmt.yml - Format settings matching ansible-lint
+# .yamlfmt.yml - Format settings for consistent YAML
 ---
 formatter:
   type: basic
   indent: 2
+  include_document_start: true
   line_ending: lf
   retain_line_breaks: true
   trim_trailing_whitespace: true
@@ -334,7 +337,7 @@ formatter:
 
 ## Recommended yamllint Configuration
 
-Create a `.yamllint.yml` that matches ansible-lint's expectations:
+Create a `.yamllint.yml` that matches ansible-lint's compatible defaults:
 
 ```yaml
 # .yamllint.yml - Configuration for yamllint
@@ -342,24 +345,18 @@ Create a `.yamllint.yml` that matches ansible-lint's expectations:
 extends: default
 
 rules:
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  document-start: disable
   line-length:
     max: 160
-    level: warning
-  truthy:
-    allowed-values: ["true", "false"]
-    check-keys: false
-  comments:
-    require-starting-space: true
-    min-spaces-from-content: 2
-  indentation:
-    spaces: 2
-    indent-sequences: true
-  document-start:
-    present: true
-  empty-lines:
-    max: 2
-    max-start: 0
-    max-end: 0
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
 ```
 
 YAML formatting warnings might seem trivial, but consistent formatting across a codebase significantly reduces cognitive load when reading playbooks. Fix the easy ones first, configure your editor to prevent new violations, and use auto-formatters to handle bulk cleanup. Your future self and your teammates will appreciate it.
