@@ -8,7 +8,7 @@ Description: Understand the complete Molecule test lifecycle from dependency ins
 
 ---
 
-When you run `molecule test`, a lot happens behind the scenes. Molecule executes a sequence of phases that together form the complete test lifecycle: installing dependencies, linting, creating instances, preparing them, converging, checking idempotency, verifying, and destroying. Understanding each phase helps you debug failures, optimize your test runs, and build more effective CI/CD pipelines.
+When you run `molecule test`, a lot happens behind the scenes. Molecule executes a sequence of phases that together form the complete test lifecycle: installing dependencies, checking syntax, creating instances, preparing them, converging, checking idempotency, verifying, and destroying. Understanding each phase helps you debug failures, optimize your test runs, and build more effective CI/CD pipelines.
 
 ## The Full Test Sequence
 
@@ -111,6 +111,7 @@ This phase installs Ansible Galaxy collections and roles that your scenario depe
 dependency:
   name: galaxy
   options:
+    role-file: requirements.yml
     requirements-file: requirements.yml
     force: false  # set to true to always re-download
 ```
@@ -125,10 +126,18 @@ If you see failures here, check that your `requirements.yml` is valid and that G
 
 ## Phase 2: Cleanup (Pre-destroy)
 
-The cleanup phase runs before destroy. It is optional and used for tasks like deregistering hosts from external services.
+The cleanup phase runs before destroy. It is optional and used for tasks like deregistering hosts from external services. Configure it under `provisioner.playbooks` to enable it.
 
 ```yaml
-# molecule/default/cleanup.yml - cleanup external state
+# molecule/default/molecule.yml - enable cleanup
+provisioner:
+  name: ansible
+  playbooks:
+    cleanup: cleanup.yml
+```
+
+```yaml
+# molecule/default/cleanup.yml - clean up external state
 - name: Cleanup
   hosts: all
   tasks:
@@ -274,7 +283,15 @@ If idempotence fails, it means one or more tasks in your role are not idempotent
 
 ## Phase 9: Side Effect
 
-The side effect phase is for testing failure scenarios or external interactions. It is optional and rarely used, but powerful when needed.
+The side effect phase is for testing failure scenarios or external interactions. It is optional and rarely used, but powerful when needed. Configure it under `provisioner.playbooks` to enable it.
+
+```yaml
+# molecule/default/molecule.yml - enable side effect
+provisioner:
+  name: ansible
+  playbooks:
+    side_effect: side_effect.yml
+```
 
 ```yaml
 # molecule/default/side_effect.yml - simulate a failure
@@ -303,14 +320,15 @@ Verification checks that the role produced the expected state.
 molecule verify
 ```
 
-With extra options for the verifier.
+With extra options for a Testinfra verifier, configure the verifier in `molecule.yml`.
 
-```bash
-# Run specific Testinfra tests
-molecule verify -- -k "test_nginx"
-
-# Verbose verification output
-molecule verify -- -vvv
+```yaml
+# molecule/default/molecule.yml - Testinfra verifier options
+verifier:
+  name: testinfra
+  options:
+    k: test_nginx
+    v: true
 ```
 
 ## Customizing the Test Sequence
@@ -348,7 +366,7 @@ scenario:
 Remove phases you do not need.
 
 ```yaml
-# Minimal test sequence (skip lint and idempotence)
+# Minimal test sequence (skip dependency, syntax, prepare, cleanup, and idempotence)
 scenario:
   name: quick
   test_sequence:
