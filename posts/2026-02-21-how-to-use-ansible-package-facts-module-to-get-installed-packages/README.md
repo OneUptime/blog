@@ -37,7 +37,7 @@ Unlike standard fact gathering (which runs the setup module), package informatio
       when: "'nginx' in ansible_facts['packages']"
 ```
 
-The `manager: auto` parameter tells the module to detect the package manager automatically. It supports apt, rpm, pacman, and pip.
+The `manager: auto` parameter tells the module to detect the package manager automatically. It supports operating system package managers such as apt, rpm, pacman, apk, pkg, portage, and related aliases such as dnf, yum, and zypper.
 
 ## Package Facts Data Structure
 
@@ -68,9 +68,7 @@ For a Debian/Ubuntu system, a package entry looks like this:
   "openssl": [
     {
       "name": "openssl",
-      "version": "3.0.2",
-      "release": "0ubuntu1.12",
-      "epoch": null,
+      "version": "3.0.2-0ubuntu1.12",
       "arch": "amd64",
       "source": "apt"
     }
@@ -188,14 +186,14 @@ Check for packages with known vulnerabilities by comparing installed versions.
         vulnerable_versions: ["1.1.1", "1.1.1a", "1.1.1b"]
         cve: "CVE-2023-XXXX"
       - name: curl
-        max_safe_version: "7.88.0"
+        min_safe_version: "7.88.1"
         cve: "CVE-2023-YYYY"
   tasks:
     - name: Gather package facts
       ansible.builtin.package_facts:
         manager: auto
 
-    - name: Check for vulnerable openssl
+    - name: Check for known vulnerable package versions
       ansible.builtin.debug:
         msg: "WARNING: {{ item.name }} version {{ ansible_facts['packages'][item.name][0]['version'] }} may be vulnerable ({{ item.cve }})"
       loop: "{{ vulnerable_packages }}"
@@ -203,6 +201,17 @@ Check for packages with known vulnerabilities by comparing installed versions.
         - item.name in ansible_facts['packages']
         - item.vulnerable_versions is defined
         - ansible_facts['packages'][item.name][0]['version'] in item.vulnerable_versions
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Check for packages below the minimum safe version
+      ansible.builtin.debug:
+        msg: "WARNING: {{ item.name }} version {{ ansible_facts['packages'][item.name][0]['version'] }} is below safe version {{ item.min_safe_version }} ({{ item.cve }})"
+      loop: "{{ vulnerable_packages }}"
+      when:
+        - item.name in ansible_facts['packages']
+        - item.min_safe_version is defined
+        - ansible_facts['packages'][item.name][0]['version'] is version(item.min_safe_version, '<')
       loop_control:
         label: "{{ item.name }}"
 ```
@@ -284,13 +293,13 @@ You can use `hostvars` to compare package versions across multiple hosts.
         label: "{{ item.0 }}/{{ item.1 }}"
 ```
 
-## Using package_facts with pip Packages
+## Gathering pip Packages Separately
 
-The module also supports gathering Python pip packages.
+The `package_facts` module does not gather Python pip packages. To audit pip packages, run `pip list` separately and parse the JSON output.
 
 ```yaml
 # pip-packages.yml
-# Gathers both system and pip package facts
+# Gathers system package facts and pip package details
 ---
 - name: Gather all package types
   hosts: all
@@ -305,17 +314,18 @@ The module also supports gathering Python pip packages.
         msg: "System packages: {{ ansible_facts['packages'] | length }}"
 
     - name: Gather pip packages separately
-      ansible.builtin.package_facts:
-        manager: pip
-      ignore_errors: yes
+      ansible.builtin.command:
+        cmd: python3 -m pip list --format=json
+      register: pip_packages_result
+      changed_when: false
+      failed_when: false
 
     - name: Show pip package details
       ansible.builtin.debug:
-        msg: "{{ item.key }}: {{ item.value[0].version }}"
-      loop: "{{ ansible_facts['packages'] | dict2items }}"
-      when: item.value[0].source | default('') == 'pip'
+        msg: "{{ item.name }}: {{ item.version }}"
+      loop: "{{ (pip_packages_result.stdout | from_json) if pip_packages_result.rc == 0 else [] }}"
       loop_control:
-        label: "{{ item.key }}"
+        label: "{{ item.name }}"
 ```
 
 ## Conditional Tasks Based on Installed Packages
