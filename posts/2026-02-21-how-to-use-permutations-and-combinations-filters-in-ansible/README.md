@@ -285,7 +285,7 @@ Formula reference:
 
 ```yaml
 # playbook-security-audit.yml
-# Creates security audit pairs ensuring every system is audited by every other
+# Creates unique security audit pairs
 - name: Generate security audit schedule
   hosts: localhost
   gather_facts: false
@@ -298,7 +298,7 @@ Formula reference:
       - monitoring-tier
 
   tasks:
-    - name: Generate audit pairs (each system audits each other system)
+    - name: Generate audit pairs (each pair is scheduled once)
       ansible.builtin.set_fact:
         audit_schedule: "{{ systems | combinations(2) | list }}"
 
@@ -308,7 +308,7 @@ Formula reference:
           Security Cross-Audit Schedule:
           Total audits needed: {{ audit_schedule | length }}
           {% for pair in audit_schedule %}
-          Audit {{ loop.index }}: {{ pair.0 }} reviews {{ pair.1 }}
+          Audit {{ loop.index }}: {{ pair.0 }} and {{ pair.1 }} review each other
           {% endfor %}
 ```
 
