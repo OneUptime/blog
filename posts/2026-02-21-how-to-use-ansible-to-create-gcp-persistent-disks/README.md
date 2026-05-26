@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating and managing GCP Persistent Disks us
 
 ---
 
-Persistent Disks are the bread and butter of block storage in Google Cloud. Every Compute Engine VM needs at least one for its boot disk, and most applications need additional disks for data storage. Managing these disks manually through the console is slow and error-prone, especially when you have dozens or hundreds of VMs. Ansible lets you define your disk configurations as code and provision them consistently across environments.
+Persistent Disks are the bread and butter of block storage in Google Cloud. Every Compute Engine VM needs a boot disk, and Persistent Disk is a common option for that boot disk. Most applications also need additional disks for data storage. Managing these disks manually through the console is slow and error-prone, especially when you have dozens or hundreds of VMs. Ansible lets you define your disk configurations as code and provision them consistently across environments.
 
 ## Understanding GCP Persistent Disk Types
 
@@ -19,20 +19,22 @@ Before jumping into Ansible playbooks, it helps to understand what disk types ar
 - **pd-ssd**: Higher performance SSD. For databases and latency-sensitive applications.
 - **pd-extreme**: Highest performance. For the most demanding workloads like SAP HANA.
 
-The performance of persistent disks scales with size. A larger disk gets more IOPS and throughput, regardless of type.
+The performance of most persistent disks scales with size until the disk or VM limits are reached. Extreme Persistent Disk is different because you provision its target IOPS separately.
 
 ## Prerequisites
 
 Make sure you have:
 
-- Ansible 2.10+ installed
-- The `google.cloud` collection installed
+- Ansible with ansible-core 2.16+ for the current `google.cloud` collection
+- The `google.cloud` and `ansible.posix` collections installed
 - A GCP service account with Compute Engine permissions
+- The Google Cloud CLI installed and authenticated if you use the attach example
 
 ```bash
-# Install the Google Cloud Ansible collection
+# Install the required Ansible collections
 
 ansible-galaxy collection install google.cloud
+ansible-galaxy collection install ansible.posix
 ```
 
 ## Creating a Basic Persistent Disk
@@ -58,7 +60,7 @@ Let us start with the simplest case: creating a single persistent disk in a spec
       google.cloud.gcp_compute_disk:
         name: "data-disk-01"
         size_gb: 100
-        type: "pd-balanced"
+        type: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/zones/{{ zone }}/diskTypes/pd-balanced"
         zone: "{{ zone }}"
         labels:
           environment: "production"
@@ -120,7 +122,7 @@ Real-world setups often need several disks. Maybe you need separate disks for da
       google.cloud.gcp_compute_disk:
         name: "{{ item.name }}"
         size_gb: "{{ item.size_gb }}"
-        type: "{{ item.type }}"
+        type: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/zones/{{ zone }}/diskTypes/{{ item.type }}"
         zone: "{{ zone }}"
         labels: "{{ item.labels | combine({'managed_by': 'ansible'}) }}"
         project: "{{ gcp_project }}"
@@ -159,7 +161,7 @@ Sometimes you want to create a disk pre-loaded with an operating system image or
       google.cloud.gcp_compute_disk:
         name: "web-server-boot-disk"
         size_gb: 30
-        type: "pd-balanced"
+        type: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/zones/{{ zone }}/diskTypes/pd-balanced"
         zone: "{{ zone }}"
         # Use a public image family for the latest Ubuntu 22.04
         source_image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts"
@@ -182,7 +184,7 @@ Sometimes you want to create a disk pre-loaded with an operating system image or
 
 ## Attaching a Disk to a VM
 
-Creating a disk is only half the story. You need to attach it to a VM instance for it to be useful.
+Creating a disk is only half the story. You need to attach it to a VM instance for it to be useful. The `google.cloud` collection manages disks themselves, but it does not provide a separate `gcp_compute_attached_disk` module. For an existing VM, you can run the Google Cloud CLI from Ansible:
 
 ```yaml
 # attach-disk-to-vm.yml - Create a disk and attach it to an existing VM
@@ -205,7 +207,7 @@ Creating a disk is only half the story. You need to attach it to a VM instance f
       google.cloud.gcp_compute_disk:
         name: "{{ disk_name }}"
         size_gb: 200
-        type: "pd-balanced"
+        type: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/zones/{{ zone }}/diskTypes/pd-balanced"
         zone: "{{ zone }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
@@ -214,17 +216,21 @@ Creating a disk is only half the story. You need to attach it to a VM instance f
       register: data_disk
 
     - name: Attach the disk to the VM
-      google.cloud.gcp_compute_attached_disk:
-        instance:
-          name: "{{ vm_name }}"
-          zone: "{{ zone }}"
-        source:
-          selfLink: "{{ data_disk.selfLink }}"
-        mode: "READ_WRITE"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - instances
+          - attach-disk
+          - "{{ vm_name }}"
+          - "--disk={{ disk_name }}"
+          - "--device-name={{ disk_name }}"
+          - "--mode=rw"
+          - "--zone={{ zone }}"
+          - "--project={{ gcp_project }}"
+      register: attach_result
+      changed_when: attach_result.rc == 0
+      failed_when: attach_result.rc != 0 and 'already attached' not in attach_result.stderr
 ```
 
 After attaching the disk, you still need to format and mount it inside the VM. Here is a follow-up play that connects to the VM and does that:
@@ -237,15 +243,18 @@ After attaching the disk, you still need to format and mount it inside the VM. H
   become: true
   gather_facts: true
 
+  vars:
+    disk_device: "/dev/disk/by-id/google-app-data-disk"
+
   tasks:
     - name: Check if the disk is already formatted
-      ansible.builtin.command: blkid /dev/sdb
+      ansible.builtin.command: "blkid {{ disk_device }}"
       register: blkid_result
       failed_when: false
       changed_when: false
 
     - name: Format the disk with ext4 if unformatted
-      ansible.builtin.command: mkfs.ext4 -F /dev/sdb
+      ansible.builtin.command: "mkfs.ext4 -F {{ disk_device }}"
       when: blkid_result.rc != 0
 
     - name: Create the mount point directory
@@ -257,7 +266,7 @@ After attaching the disk, you still need to format and mount it inside the VM. H
     - name: Mount the disk
       ansible.posix.mount:
         path: /mnt/data
-        src: /dev/sdb
+        src: "{{ disk_device }}"
         fstype: ext4
         opts: defaults,nofail
         state: mounted
@@ -313,7 +322,7 @@ One of the nice things about GCP Persistent Disks is that you can grow them onli
       google.cloud.gcp_compute_disk:
         name: "app-data-disk"
         size_gb: 500
-        type: "pd-balanced"
+        type: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/zones/{{ zone }}/diskTypes/pd-balanced"
         zone: "{{ zone }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
@@ -330,9 +339,12 @@ After resizing the disk in GCP, expand the filesystem on the VM:
   hosts: my_app_server
   become: true
 
+  vars:
+    disk_device: "/dev/disk/by-id/google-app-data-disk"
+
   tasks:
     - name: Resize the ext4 filesystem to use all available space
-      ansible.builtin.command: resize2fs /dev/sdb
+      ansible.builtin.command: "resize2fs {{ disk_device }}"
       register: resize_result
 
     - name: Verify new size
