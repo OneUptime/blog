@@ -28,16 +28,14 @@ Cloud Run uses a revision model. Each deployment creates a new revision, and you
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
-- GCP service account with Cloud Run Admin role
-- Cloud Run API enabled
+- Ansible installed on the machine running the playbooks
+- Google Cloud CLI installed and authenticated
+- GCP service account with Cloud Run Admin role and Service Account User role on the service accounts attached to Cloud Run services
+- Cloud Run API and supporting APIs enabled
 - A container image in Artifact Registry or Container Registry
 
 ```bash
-ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
-
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com --project=my-project-123
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com vpcaccess.googleapis.com --project=my-project-123
 ```
 
 ## Building and Pushing a Container Image
@@ -205,7 +203,7 @@ For services that need to access private resources like Cloud SQL or Memorystore
       changed_when: true
 ```
 
-The `--vpc-egress=private-ranges-only` setting routes only RFC 1918 traffic through the VPC connector. Public internet traffic goes directly through Cloud Run's default route. This is more efficient than routing all traffic through the connector.
+The `--vpc-egress=private-ranges-only` setting routes traffic to internal IPv4 destinations through the VPC connector, including RFC 1918 ranges, RFC 6598 ranges, and the restricted and private Google API ranges. Public internet traffic goes directly through Cloud Run's default route. This is more efficient than routing all traffic through the connector.
 
 ## Traffic Splitting for Canary Deployments
 
@@ -254,8 +252,7 @@ Deploy a new version and gradually shift traffic to it:
 
     - name: Pause for monitoring (in real workflow, you would check metrics here)
       ansible.builtin.pause:
-        seconds: 30
-        prompt: "Check metrics and press enter to proceed, or Ctrl+C to abort"
+        prompt: "Check metrics and press enter to proceed, or Ctrl+C then A to abort"
 
     - name: Route all traffic to the new revision
       ansible.builtin.command: >
@@ -294,7 +291,7 @@ Map a custom domain to your Cloud Run service:
   tasks:
     - name: Map the custom domain to the service
       ansible.builtin.command: >
-        gcloud run domain-mappings create
+        gcloud beta run domain-mappings create
         --service={{ service_name }}
         --domain={{ custom_domain }}
         --project={{ gcp_project }}
@@ -305,7 +302,7 @@ Map a custom domain to your Cloud Run service:
 
     - name: Get DNS records to configure
       ansible.builtin.command: >
-        gcloud run domain-mappings describe
+        gcloud beta run domain-mappings describe
         --domain={{ custom_domain }}
         --project={{ gcp_project }}
         --region={{ region }}
@@ -315,7 +312,7 @@ Map a custom domain to your Cloud Run service:
 
     - name: Show DNS configuration instructions
       ansible.builtin.debug:
-        msg: "Configure your DNS to point {{ custom_domain }} to the provided IP. SSL is provisioned automatically."
+        msg: "Configure your DNS provider with the returned resourceRecords. SSL is provisioned automatically."
 ```
 
 ## Deploying Multiple Services
