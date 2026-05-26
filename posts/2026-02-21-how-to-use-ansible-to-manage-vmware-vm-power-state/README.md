@@ -33,7 +33,7 @@ The key distinction is between hard operations (immediate, like pulling the powe
 
 ## Basic Power Operations
 
-The `community.vmware.vmware_guest_powerstate` module handles all power state changes.
+The `vmware.vmware.vm_powerstate` module handles all power state changes.
 
 ```yaml
 # power-operations.yml
@@ -44,56 +44,58 @@ The `community.vmware.vmware_guest_powerstate` module handles all power state ch
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
+      datacenter: "{{ vcenter_datacenter }}"
       validate_certs: false
 
   vars:
     vcenter_hostname: "vcenter.example.com"
+    vcenter_datacenter: "DC01"
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
 
   tasks:
     # Power on a VM
     - name: Power on a virtual machine
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "dev-server-01"
         folder: "/DC01/vm/Development"
         state: powered-on
 
     # Graceful shutdown (requires VMware Tools)
     - name: Gracefully shut down a virtual machine
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "dev-server-01"
         folder: "/DC01/vm/Development"
         state: shutdown-guest
 
     # Hard power off (like pulling the power cord - use only when needed)
     - name: Force power off a virtual machine
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "dev-server-01"
         folder: "/DC01/vm/Development"
         state: powered-off
 
     # Graceful reboot (requires VMware Tools)
     - name: Gracefully reboot a virtual machine
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "dev-server-01"
         folder: "/DC01/vm/Development"
         state: reboot-guest
 
     # Hard reset (like pressing the reset button)
     - name: Hard reset a virtual machine
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "dev-server-01"
         folder: "/DC01/vm/Development"
         state: restarted
 
     # Suspend VM (saves memory state to disk)
     - name: Suspend a virtual machine
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "dev-server-01"
         folder: "/DC01/vm/Development"
         state: suspended
@@ -139,14 +141,16 @@ When managing groups of VMs, use loops with appropriate ordering.
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
+      datacenter: "{{ vcenter_datacenter }}"
       validate_certs: false
 
   vars:
     vcenter_hostname: "vcenter.example.com"
+    vcenter_datacenter: "DC01"
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
 
@@ -166,7 +170,7 @@ When managing groups of VMs, use loops with appropriate ordering.
 
   tasks:
     - name: Shut down VMs in order by group
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "{{ item.1 }}"
         folder: "/DC01/vm/Staging"
         state: shutdown-guest
@@ -174,7 +178,7 @@ When managing groups of VMs, use loops with appropriate ordering.
       loop_control:
         label: "{{ item.0.group }} - {{ item.1 }}"
 
-    # Wait between groups to allow graceful shutdown
+    # Wait after sending shutdown requests to allow graceful shutdown
     - name: Wait for shutdown to complete
       ansible.builtin.pause:
         seconds: 30
@@ -192,14 +196,16 @@ When starting an environment, the order is reversed. Databases start first, then
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
+      datacenter: "{{ vcenter_datacenter }}"
       validate_certs: false
 
   vars:
     vcenter_hostname: "vcenter.example.com"
+    vcenter_datacenter: "DC01"
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
 
@@ -229,7 +235,7 @@ Create the included task file for group startup logic.
 # start-group.yml
 ---
 - name: "Power on {{ vm_group.name }}"
-  community.vmware.vmware_guest_powerstate:
+  vmware.vmware.vm_powerstate:
     name: "{{ vm_name }}"
     folder: "/DC01/vm/Staging"
     state: powered-on
@@ -260,14 +266,16 @@ Implement a schedule to shut down dev environments at night and start them in th
   gather_facts: true
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
+      datacenter: "{{ vcenter_datacenter }}"
       validate_certs: false
 
   vars:
     vcenter_hostname: "vcenter.example.com"
+    vcenter_datacenter: "DC01"
     vcenter_username: "administrator@vsphere.local"
     vcenter_password: "{{ vault_vcenter_password }}"
     dev_vms:
@@ -284,7 +292,7 @@ Implement a schedule to shut down dev environments at night and start them in th
 
     # Shut down dev VMs after hours (after 7 PM)
     - name: Shut down development VMs for the night
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "{{ item }}"
         folder: "/DC01/vm/Development"
         state: shutdown-guest
@@ -294,7 +302,7 @@ Implement a schedule to shut down dev environments at night and start them in th
 
     # Start dev VMs in the morning (at 7 AM)
     - name: Start development VMs for the day
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         name: "{{ item }}"
         folder: "/DC01/vm/Development"
         state: powered-on
@@ -322,7 +330,8 @@ Guest operations (shutdown-guest, reboot-guest) require VMware Tools. For VMs wi
 - name: Attempt graceful shutdown, fall back to power off
   block:
     - name: Try graceful shutdown
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
+        datacenter: "DC01"
         name: "{{ vm_name }}"
         folder: "/DC01/vm/Production"
         state: shutdown-guest
@@ -338,7 +347,8 @@ Guest operations (shutdown-guest, reboot-guest) require VMware Tools. For VMs wi
 
   rescue:
     - name: Graceful shutdown failed, forcing power off
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
+        datacenter: "DC01"
         name: "{{ vm_name }}"
         folder: "/DC01/vm/Production"
         state: powered-off
