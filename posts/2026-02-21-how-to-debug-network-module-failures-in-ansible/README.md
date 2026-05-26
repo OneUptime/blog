@@ -37,11 +37,11 @@ ansible-playbook network_config.yml -vv
 # Even more - shows SSH/API connection details
 ansible-playbook network_config.yml -vvv
 
-# Maximum verbosity - shows everything including raw device output
+# Maximum verbosity - shows the most detailed execution and connection diagnostics
 ansible-playbook network_config.yml -vvvv
 ```
 
-At `-vvvv`, you get the raw data being sent to and received from the device. This is usually where you find the actual problem.
+At `-vvvv`, you get Ansible's most detailed execution and connection diagnostics. Combine it with persistent connection logging when you need the raw commands and responses exchanged with the device.
 
 ## Debugging Connection Issues
 
@@ -77,7 +77,7 @@ For httpapi-based connections (like FortiGate or Check Point), check that SSL se
 
 ```yaml
 # Common httpapi connection variables that cause failures
-ansible_connection: httpapi
+ansible_connection: ansible.netcommon.httpapi
 ansible_httpapi_use_ssl: true
 ansible_httpapi_validate_certs: false  # Set to false for self-signed certs
 ansible_httpapi_port: 443
@@ -92,7 +92,7 @@ Authentication errors often look like connection errors. Here is how to tell the
 # Test SSH authentication manually from the Ansible control node
 ssh -o StrictHostKeyChecking=no admin@192.168.1.1
 
-# For network_cli connections, test with the same settings Ansible uses
+# For ansible.netcommon.network_cli connections, test with the same settings Ansible uses
 ssh -o KexAlgorithms=diffie-hellman-group14-sha1 admin@192.168.1.1
 ```
 
@@ -134,7 +134,7 @@ Capture and inspect the full output of failed tasks.
   tasks:
     # Run a command and capture the full output
     - name: Run show version
-      ios_command:
+      cisco.ios.ios_command:
         commands:
           - show version
       register: version_output
@@ -197,7 +197,7 @@ You can also set timeouts per task.
 ```yaml
 # Set a longer timeout for a specific task
 - name: Apply large configuration change
-  ios_config:
+  cisco.ios.ios_config:
     src: large_config.j2
   vars:
     ansible_command_timeout: 120
@@ -215,18 +215,19 @@ Sometimes the module connects fine but cannot parse the device response. This of
   gather_facts: false
 
   tasks:
-    # Use raw command to see exactly what the device returns
-    - name: Run raw command (bypasses module parsing)
-      raw: "show running-config | section interface"
-      register: raw_output
+    # Use cli_command to see the device response with minimal platform-specific parsing
+    - name: Run CLI command
+      ansible.netcommon.cli_command:
+        command: "show running-config | section interface"
+      register: cli_output
 
-    - name: Show raw device output
+    - name: Show CLI output
       debug:
-        var: raw_output.stdout
+        var: cli_output.stdout
 
     # Compare with the module output
     - name: Run same command through module
-      ios_command:
+      cisco.ios.ios_command:
         commands:
           - "show running-config | section interface"
       register: module_output
@@ -252,33 +253,33 @@ graph TD
     F -->|Yes| J{Module returns error?}
     J -->|Yes| K[Check module parameters]
     K --> L[Run with -vvvv]
-    L --> M[Check raw device output]
+    L --> M[Check detailed logs]
     J -->|No| N{Timeout?}
     N -->|Yes| O[Increase timeouts]
     N -->|No| P[Check for parsing issues]
-    P --> Q[Use raw module to compare]
+    P --> Q[Use cli_command to compare]
 ```
 
 ## Using Ansible's Built-in Debug Strategy
 
-The debug strategy lets you interactively step through failures.
+The task debugger lets you interactively step through failures. Current Ansible versions prefer `enable_task_debugger`; the `debug` strategy is kept for backward compatibility.
 
 ```yaml
 # ansible.cfg
 [defaults]
-strategy = debug
+enable_task_debugger = True
 ```
 
 When a task fails, you get an interactive prompt where you can:
 
 ```text
-# Commands available in debug strategy
-p result    # Print the task result
-p task      # Print the task definition
-p vars      # Print available variables
-r           # Re-run the failed task
-c           # Continue to the next task
-q           # Quit the playbook
+# Commands available in the task debugger
+p result._result  # Print the task result data
+p task            # Print the task definition
+p task_vars       # Print available task variables
+r                 # Re-run the failed task
+c                 # Continue to the next task
+q                 # Quit the playbook
 ```
 
 ## Creating a Debug Playbook
@@ -301,7 +302,7 @@ I keep a standard debug playbook that I run against any new network device befor
       delegate_to: localhost
 
     - name: Gather device facts
-      ios_facts:
+      cisco.ios.ios_facts:
         gather_subset:
           - min
       register: device_facts
@@ -316,7 +317,7 @@ I keep a standard debug playbook that I run against any new network device befor
       when: device_facts is success
 
     - name: Run basic command test
-      ios_command:
+      cisco.ios.ios_command:
         commands:
           - show clock
       register: cmd_test
@@ -335,8 +336,8 @@ ansible-playbook network_preflight.yml -e "target_host=switch01" -vvv
 
 ## Key Debugging Tips
 
-1. Always start with `-vvvv` when debugging network module failures. The raw device output at maximum verbosity reveals what is actually happening.
-2. Use the `raw` module to bypass all Ansible parsing and see exactly what the device returns.
+1. Always start with `-vvvv` when debugging network module failures. Add persistent connection logging when you need the raw commands and responses exchanged with the device.
+2. Use `ansible.netcommon.cli_command` to run a direct CLI command and compare the device response with a platform-specific module result.
 3. Check that `ansible_network_os` matches your device. A mismatch between the expected and actual OS causes silent failures.
 4. Many network modules require `gather_facts: false` in the play definition. If you forget this, Ansible tries to run setup on the device and fails.
 5. Keep a simple "ping and show version" playbook handy for quick connectivity tests.
