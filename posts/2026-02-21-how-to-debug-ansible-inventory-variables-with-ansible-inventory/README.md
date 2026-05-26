@@ -12,7 +12,7 @@ When an Ansible playbook does not behave the way you expect, the problem is ofte
 
 ## The --host Flag: Your Best Friend
 
-The `--host` flag shows every variable that a specific host will receive, with all group_vars, host_vars, inline variables, and defaults merged together.
+The `--host` flag shows the inventory variables that a specific host will receive, with group_vars, host_vars, dynamic inventory variables, and inline inventory variables merged together.
 
 ```bash
 # Show all resolved variables for a host
@@ -39,7 +39,7 @@ Output:
 }
 ```
 
-This output shows the final, merged value of every variable. If `http_port` shows `8080` but you expected `80`, the `--host` flag confirms the actual value and tells you something is overriding the group default.
+This output shows the final, merged inventory value of each variable. If `http_port` shows `8080` but you expected `80`, the `--host` flag confirms the inventory value and tells you something is overriding the group default.
 
 ## Tracing Variable Sources
 
@@ -50,14 +50,14 @@ The `--host` output tells you the final value, but not where it came from. To tr
 ansible-inventory -i inventory.ini --host web1.example.com -vvv
 ```
 
-The verbose output shows which files were loaded, in what order, and which variables were set from each file. Look for lines like:
+The verbose output shows which inventory sources and variable files were loaded. Look for lines like:
 
 ```text
 Loading data from /path/to/group_vars/webservers.yml
 Loading data from /path/to/host_vars/web1.example.com.yml
 ```
 
-This tells you exactly which files contributed variables to this host.
+This tells you which files may have contributed variables to this host. It does not provide a per-variable source map, so use it together with the final `--host` output.
 
 ## Comparing Variables Between Hosts
 
@@ -75,9 +75,9 @@ This immediately shows which variables differ between the two hosts.
 A more targeted comparison:
 
 ```bash
-# Compare a specific variable between two hosts using jq
-echo "web1: $(ansible-inventory -i inventory.ini --host web1.example.com | python3 -c "import json,sys; print(json.load(sys.stdin).get('http_port', 'NOT SET'))")"
-echo "web2: $(ansible-inventory -i inventory.ini --host web2.example.com | python3 -c "import json,sys; print(json.load(sys.stdin).get('http_port', 'NOT SET'))")"
+# Compare a specific variable between two hosts using Python
+echo "web1: $(ansible-inventory -i inventory.ini --host web1.example.com | python3 -c 'import json,sys; print(json.load(sys.stdin).get("http_port", "NOT SET"))')"
+echo "web2: $(ansible-inventory -i inventory.ini --host web2.example.com | python3 -c 'import json,sys; print(json.load(sys.stdin).get("http_port", "NOT SET"))')"
 ```
 
 ## Checking Group Variables
@@ -136,22 +136,17 @@ for group_name, group_data in data.items():
 ansible-inventory -i inventory.ini --host web1.example.com
 ```
 
-The precedence from lowest to highest:
+For the inventory values shown by `ansible-inventory`, the most relevant precedence from lowest to highest is:
 
 ```mermaid
 graph TB
     A["1. group_vars/all"] --> B["2. group_vars/parent_group"]
     B --> C["3. group_vars/child_group"]
     C --> D["4. host_vars/hostname"]
-    D --> E["5. Inventory inline vars"]
-    E --> F["6. Play vars"]
-    F --> G["7. Role defaults"]
-    G --> H["8. Task vars"]
-    H --> I["9. Extra vars (-e)"]
-    style I fill:#c44,stroke:#333,color:#fff
+    style D fill:#c44,stroke:#333,color:#fff
 ```
 
-Extra vars (`-e`) always win. They cannot be overridden by anything.
+At playbook runtime, other variable sources also apply. Role defaults have very low precedence, while play vars, task vars, and extra vars (`-e`) are higher than inventory variables. Extra vars always win. They cannot be overridden by anything.
 
 ## Using the debug Module in Playbooks
 
@@ -278,7 +273,7 @@ else:
 
 **Problem: Two groups set the same variable**
 
-When a host is in multiple groups that define the same variable, the group that sorts last alphabetically wins (unless `ansible_group_priority` is set).
+When a host is in multiple groups at the same level that define the same variable, the group that sorts last alphabetically wins (unless `ansible_group_priority` is set).
 
 ```bash
 # Check group membership
@@ -288,21 +283,23 @@ import json, sys
 # Use the list output instead
 "
 
-# Check the graph to see all groups
-ansible-inventory -i inventory.ini --graph | grep -A 5 web1
+# Check the graph to see the host in its group hierarchy
+ansible-inventory -i inventory.ini --graph | grep -B 5 web1
 ```
 
 **Problem: host_vars file is not being loaded**
 
-Check that the filename matches exactly:
+Check that the host_vars entry matches the inventory hostname:
 
 ```bash
 # List host_vars files
 ls -la host_vars/
 
-# The filename must match the inventory hostname exactly
-# If inventory says "web1.example.com", the file must be:
+# The file or directory name must match the inventory hostname
+# If inventory says "web1.example.com", valid examples include:
 #   host_vars/web1.example.com.yml
+#   host_vars/web1.example.com.yaml
+#   host_vars/web1.example.com/
 # NOT:
 #   host_vars/web1.yml
 #   host_vars/Web1.example.com.yml
