@@ -49,7 +49,7 @@ The `ProxyJump` directive (introduced in OpenSSH 7.3) tells SSH to first connect
 
 ```ini
 [webservers:vars]
-# For older SSH versions, use ProxyCommand with netcat
+# For older SSH versions, use ProxyCommand with ssh -W
 ansible_ssh_common_args=-o ProxyCommand="ssh -W %h:%p admin@jump01.example.com"
 ```
 
