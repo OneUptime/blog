@@ -12,9 +12,9 @@ If you have ever run a playbook that sits there for ages waiting on a sudo passw
 
 ## What Is the become Timeout?
 
-When Ansible uses `become` to escalate privileges (typically via sudo), it waits for a certain amount of time for the privilege escalation command to complete. If the sudo prompt takes longer than the configured timeout, the task fails. The default timeout is 10 seconds in most Ansible versions.
+When Ansible uses `become` to escalate privileges (typically via sudo), the connection plugin still controls how long Ansible waits while establishing the connection and reading from it. If the sudo prompt or privilege escalation response takes longer than the configured connection timeout, the task can fail. For the default SSH connection plugin, the default timeout is 10 seconds.
 
-This timeout is separate from the SSH connection timeout. It specifically controls how long Ansible waits for the become method (sudo, su, pbrun, etc.) to respond.
+Ansible does not provide a separate, generic `become_timeout` setting. In most SSH-based playbooks, the setting you tune is the SSH connection timeout, which also affects the wait for become prompts and responses.
 
 ## Setting the Timeout in ansible.cfg
 
@@ -35,7 +35,7 @@ become_user = root
 become_ask_pass = false
 ```
 
-Note that the `timeout` setting under `[defaults]` controls the overall connection timeout, which also affects become operations. For more granular control, you can use environment variables.
+Note that the `timeout` setting under `[defaults]` controls the connection timeout. With the built-in SSH connection plugin, you can also put the same value under `[ssh_connection]` or override it with SSH-specific variables.
 
 ## Using Environment Variables
 
@@ -44,8 +44,8 @@ Ansible respects several environment variables that let you override configurati
 Set the general timeout via environment variable:
 
 ```bash
-# Set the connection timeout (affects become as well)
-export ANSIBLE_TIMEOUT=60
+# Set the SSH connection timeout (affects become prompt/response waits)
+export ANSIBLE_SSH_TIMEOUT=60
 
 # Run your playbook with the extended timeout
 ansible-playbook -i inventory.yml deploy.yml
@@ -58,7 +58,7 @@ You can also combine this with other become-related environment variables:
 export ANSIBLE_BECOME=true
 export ANSIBLE_BECOME_METHOD=sudo
 export ANSIBLE_BECOME_USER=root
-export ANSIBLE_TIMEOUT=45
+export ANSIBLE_SSH_TIMEOUT=45
 
 ansible-playbook -i inventory.yml site.yml
 ```
@@ -78,7 +78,7 @@ This playbook sets a longer timeout for a play that targets servers with slow LD
   become_method: sudo
   become_user: root
   vars:
-    ansible_timeout: 60
+    ansible_ssh_timeout: 60
   tasks:
     - name: Install required packages
       ansible.builtin.yum:
@@ -114,7 +114,7 @@ Here is how to apply a custom timeout on a single task:
       ansible.builtin.shell: |
         /usr/local/bin/heavy-migration-script.sh
       vars:
-        ansible_timeout: 120
+        ansible_ssh_timeout: 120
 
     - name: Another quick task
       ansible.builtin.file:
@@ -137,13 +137,13 @@ all:
         web01:
         web02:
       vars:
-        ansible_timeout: 10
+        ansible_ssh_timeout: 10
     slow_servers:
       hosts:
         legacy01:
         legacy02:
       vars:
-        ansible_timeout: 60
+        ansible_ssh_timeout: 60
         ansible_become_method: su
 ```
 
@@ -161,7 +161,7 @@ Here is a playbook that handles multiple become methods with appropriate timeout
   become: true
   become_method: sudo
   vars:
-    ansible_timeout: 15
+    ansible_ssh_timeout: 15
   tasks:
     - name: Ensure NTP is installed
       ansible.builtin.package:
@@ -173,7 +173,7 @@ Here is a playbook that handles multiple become methods with appropriate timeout
   become: true
   become_method: pbrun
   vars:
-    ansible_timeout: 90
+    ansible_ssh_timeout: 90
   tasks:
     - name: Ensure NTP is installed
       ansible.builtin.package:
@@ -189,10 +189,10 @@ Run your playbook with verbose output to diagnose timeout problems:
 
 ```bash
 # Run with maximum verbosity and an extended timeout
-ANSIBLE_TIMEOUT=120 ansible-playbook -i inventory.yml site.yml -vvvv
+ANSIBLE_SSH_TIMEOUT=120 ansible-playbook -i inventory.yml site.yml -vvvv
 ```
 
-The `-vvvv` output will show you exactly what Ansible is sending to the remote host, including the become command. Look for lines that mention "privilege escalation" or "timeout" in the output.
+The `-vvvv` output will show connection-level debugging, including more detail around the SSH session and become command. Look for lines that mention "privilege escalation" or "timeout" in the output.
 
 You can also create a small test playbook to isolate timeout behavior:
 
@@ -204,7 +204,7 @@ You can also create a small test playbook to isolate timeout behavior:
   become: true
   gather_facts: false
   vars:
-    ansible_timeout: 5
+    ansible_ssh_timeout: 5
   tasks:
     - name: Simple whoami to test become
       ansible.builtin.command: whoami
@@ -219,13 +219,13 @@ Run this test with a very short timeout first, then gradually increase it to fin
 
 ```bash
 # Test with 5 seconds
-ANSIBLE_TIMEOUT=5 ansible-playbook -i inventory.yml test-become-timeout.yml -v
+ANSIBLE_SSH_TIMEOUT=5 ansible-playbook -i inventory.yml test-become-timeout.yml -v
 
 # If that fails, try 15 seconds
-ANSIBLE_TIMEOUT=15 ansible-playbook -i inventory.yml test-become-timeout.yml -v
+ANSIBLE_SSH_TIMEOUT=15 ansible-playbook -i inventory.yml test-become-timeout.yml -v
 
 # If that also fails, try 30 seconds
-ANSIBLE_TIMEOUT=30 ansible-playbook -i inventory.yml test-become-timeout.yml -v
+ANSIBLE_SSH_TIMEOUT=30 ansible-playbook -i inventory.yml test-become-timeout.yml -v
 ```
 
 ## Practical Recommendations
@@ -247,10 +247,10 @@ The precedence from highest to lowest is:
 1. Task-level `vars` (highest priority)
 2. Play-level `vars`
 3. Host/group variables in inventory
-4. Environment variables (`ANSIBLE_TIMEOUT`)
+4. Environment variables (`ANSIBLE_TIMEOUT` or `ANSIBLE_SSH_TIMEOUT`)
 5. `ansible.cfg` settings (lowest priority)
 
-This means a task-level `ansible_timeout: 120` will always override a global `ANSIBLE_TIMEOUT=30` environment variable.
+This means a task-level `ansible_ssh_timeout: 120` will override a global `ANSIBLE_SSH_TIMEOUT=30` environment variable for the SSH connection plugin.
 
 ## Wrapping Up
 
