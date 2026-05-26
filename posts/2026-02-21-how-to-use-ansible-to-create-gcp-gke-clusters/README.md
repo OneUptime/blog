@@ -12,14 +12,15 @@ Google Kubernetes Engine (GKE) is one of the most mature managed Kubernetes offe
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- ansible-core 2.16+ with the `google.cloud` collection
+- Google Cloud CLI installed and authenticated
 - GCP service account with Kubernetes Engine Admin role
-- Container API enabled
+- Google Kubernetes Engine API enabled
 - A VPC network with subnets configured (including secondary ranges for pods and services)
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 
 gcloud services enable container.googleapis.com --project=my-project-123
 ```
@@ -67,6 +68,7 @@ Here is a VPC-native cluster with reasonable production defaults:
         network: "projects/{{ gcp_project }}/global/networks/production-vpc"
         subnetwork: "projects/{{ gcp_project }}/regions/{{ region }}/subnetworks/gke-subnet"
         ip_allocation_policy:
+          use_ip_aliases: true
           cluster_secondary_range_name: "gke-pods"
           services_secondary_range_name: "gke-services"
         master_auth:
@@ -82,8 +84,8 @@ Here is a VPC-native cluster with reasonable production defaults:
         network_policy:
           enabled: true
           provider: CALICO
-        logging_service: "logging.googleapis.com/kubernetes"
-        monitoring_service: "monitoring.googleapis.com/kubernetes"
+        logging_service: "logging.googleapis.com"
+        monitoring_service: "monitoring.googleapis.com"
         resource_labels:
           environment: production
           team: platform
@@ -108,7 +110,7 @@ Here is a VPC-native cluster with reasonable production defaults:
 
 Let me explain the key configuration choices:
 
-- `location` is set to a region (not a zone), which creates a regional cluster with the control plane replicated across three zones. This is required for production.
+- `location` is set to a region (not a zone), which creates a regional cluster with the control plane replicated across multiple zones. This is recommended for production availability.
 - `ip_allocation_policy` enables VPC-native networking, where pods get IPs from the subnet's secondary range. This is required for private clusters and recommended for all clusters.
 - `network_policy` with Calico enables Kubernetes NetworkPolicy resources, giving you fine-grained control over pod-to-pod traffic.
 - `issue_client_certificate: false` disables legacy certificate-based authentication. Use `gcloud` or OIDC instead.
@@ -140,6 +142,7 @@ For production, you typically want the cluster nodes and potentially the control
         network: "projects/{{ gcp_project }}/global/networks/production-vpc"
         subnetwork: "projects/{{ gcp_project }}/regions/{{ region }}/subnetworks/gke-subnet"
         ip_allocation_policy:
+          use_ip_aliases: true
           cluster_secondary_range_name: "gke-pods"
           services_secondary_range_name: "gke-services"
         private_cluster_config:
@@ -161,8 +164,8 @@ For production, you typically want the cluster nodes and potentially the control
             disabled: false
           horizontal_pod_autoscaling:
             disabled: false
-        logging_service: "logging.googleapis.com/kubernetes"
-        monitoring_service: "monitoring.googleapis.com/kubernetes"
+        logging_service: "logging.googleapis.com"
+        monitoring_service: "monitoring.googleapis.com"
         resource_labels:
           environment: production
           cluster_type: private
