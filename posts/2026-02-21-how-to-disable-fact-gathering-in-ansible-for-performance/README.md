@@ -138,7 +138,7 @@ If you need some facts but not all, use `gather_subset` to limit what gets colle
 
 ```yaml
 # subset-facts.yml
-# Gathers only network facts, skipping hardware detection
+# Gathers network facts plus the default minimum facts, skipping hardware detection
 ---
 - name: Configure networking (only need network facts)
   hosts: all
@@ -158,7 +158,7 @@ Available subsets include:
 # You can combine multiple subsets or exclude with '!'
 gather_subset:
   - all          # Everything (default)
-  - min          # Minimal facts (always collected unless 'all' is excluded)
+  - min          # Minimal facts (included unless '!all,!min' is specified)
   - hardware     # CPU, memory, devices
   - network      # Network interfaces, IPs, routes
   - virtual      # Virtualization type
@@ -182,7 +182,7 @@ You can also exclude specific subsets.
         msg: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
 ```
 
-Hardware fact gathering is typically the slowest subset because it probes disks, CPU, and memory. Excluding it can cut fact gathering time by 30-50%.
+Hardware fact gathering can be one of the slower subsets because it probes disks, CPU, and memory. Excluding it can noticeably reduce fact gathering time.
 
 ## Disabling Facts Globally in ansible.cfg
 
@@ -263,8 +263,8 @@ Here is a quick way to measure the impact of disabling fact gathering.
 # Time a playbook with fact gathering
 time ansible-playbook deploy.yml
 
-# Time the same playbook with fact gathering disabled
-time ansible-playbook deploy.yml -e "gather_facts_override=no"
+# Time the same playbook after setting gather_facts: no in the play
+time ansible-playbook deploy.yml
 ```
 
 Or build a benchmark playbook.
@@ -292,7 +292,7 @@ Run it with timing enabled.
 
 ```bash
 # Shows per-task timing to compare the two plays
-ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks ansible-playbook benchmark-facts.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks ansible-playbook benchmark-facts.yml
 ```
 
 ## Summary
