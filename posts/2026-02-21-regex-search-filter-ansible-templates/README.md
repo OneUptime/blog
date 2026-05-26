@@ -12,7 +12,7 @@ While `regex_replace` transforms strings by substituting matched patterns, `rege
 
 ## Basic Syntax
 
-The `regex_search` filter returns the first match of a regular expression pattern within a string. If nothing matches, it returns an empty string.
+The `regex_search` filter returns the first match of a regular expression pattern within a string. If nothing matches, it returns `None`.
 
 ```jinja2
 {# Extract the first sequence of digits from a string #}
@@ -23,7 +23,7 @@ The `regex_search` filter returns the first match of a regular expression patter
 ```jinja2
 {# Try to match something that doesn't exist #}
 {{ "no numbers here" | regex_search('[0-9]+') }}
-{# Output: (empty string) #}
+{# Output: None #}
 ```
 
 ## Extracting Version Numbers
@@ -59,11 +59,11 @@ In a playbook, you might use this to extract a version from command output:
 
 ## Using Capture Groups
 
-When you need to extract a specific part of a match, use capture groups with parentheses. When capture groups are present, `regex_search` returns a list of captured groups instead of the full match.
+When you need to extract a specific part of a match, use capture groups with parentheses and pass backreference arguments such as `\\1`. When you pass backreference arguments, `regex_search` returns a list of the requested captured groups instead of the full match.
 
 ```jinja2
 {# Extract just the major version using a capture group #}
-{{ "PostgreSQL 16.1.2" | regex_search('PostgreSQL ([0-9]+)\\.', '\\1') }}
+{{ "PostgreSQL 16.1.2" | regex_search('PostgreSQL ([0-9]+)\\.', '\\1') | first }}
 {# Output: 16 #}
 ```
 
@@ -104,7 +104,7 @@ Suppose you run `df` on a server and want to extract specific information:
     msg: "Device {{ disk_device }} is {{ disk_used_pct }}% full (total: {{ disk_total }})"
 ```
 
-Notice the `| first` at the end. When using capture groups, `regex_search` returns a list, so you need `| first` to get the actual string value.
+Notice the `| first` at the end. When requesting capture groups with backreference arguments, `regex_search` returns a list, so you need `| first` to get the actual string value.
 
 ## Using regex_search in Conditionals
 
@@ -205,7 +205,7 @@ You can use inline regex flags for different matching behavior:
 
 ## Handling No Match Gracefully
 
-Since `regex_search` returns an empty string when there is no match, you should handle that case in your templates:
+Since `regex_search` returns `None` when there is no match, you should handle that case in your templates:
 
 ```jinja2
 {# Safe extraction with a fallback value #}
@@ -224,7 +224,7 @@ Or more concisely with the `default` filter:
 app_version = {{ raw_string | regex_search('[0-9]+\\.[0-9]+') | default('unknown', true) }}
 ```
 
-The `true` parameter on `default` is important here because an empty string is falsy, and without it, the default filter would not trigger.
+The `true` parameter on `default` is important here because `None` is falsy, and without it, the default filter would not trigger.
 
 ## Extracting Data from Structured Output
 
@@ -302,4 +302,4 @@ use_modern_syscalls = false
 
 ## Wrapping Up
 
-The `regex_search` filter is your go-to tool for extracting data from strings in Ansible. Whether you are parsing command output, pulling version numbers from software banners, extracting fields from structured text, or making conditional decisions based on pattern matching, `regex_search` gives you precise control over what you extract. Remember to use `| first` when working with capture groups, handle the empty-string case for missing matches, and consider `regex_findall` when you need all matches instead of just the first one.
+The `regex_search` filter is your go-to tool for extracting data from strings in Ansible. Whether you are parsing command output, pulling version numbers from software banners, extracting fields from structured text, or making conditional decisions based on pattern matching, `regex_search` gives you precise control over what you extract. Remember to use `| first` when requesting capture groups with backreference arguments, handle the `None` case for missing matches, and consider `regex_findall` when you need all matches instead of just the first one.
