@@ -19,9 +19,9 @@ Ansible has separate modules for different package managers. The module you use 
 - `dnf` for RHEL 8+, CentOS Stream, Fedora
 - `package` for a generic, OS-agnostic approach
 - `pip` for Python packages
-- `snap` for snap packages
+- `community.general.snap` for snap packages
 
-The `package` module auto-detects the package manager, but it only supports basic install/remove operations. For advanced options like repository management, use the OS-specific module.
+The `package` module auto-detects the package manager and is best for portable basic install/remove operations. For advanced options like repository management, use the OS-specific module.
 
 ## Installing Packages
 
@@ -51,10 +51,10 @@ The `state=present` parameter means "install if not already installed." If the p
 # Update a specific package to the latest version
 ansible webservers -m apt -a "name=nginx state=latest" --become
 
-# Update all packages on the system (equivalent to apt upgrade)
+# Update all packages on the system with a safe upgrade
 ansible all -m apt -a "upgrade=yes" --become
 
-# Do a full distribution upgrade (equivalent to apt full-upgrade)
+# Do a full upgrade
 ansible all -m apt -a "upgrade=full" --become
 
 # Update the package cache before installing (equivalent to apt update)
@@ -108,11 +108,8 @@ Before installing packages from third-party repositories, you need to add the re
 # Add an APT repository on Ubuntu
 ansible webservers -m apt_repository -a "repo='ppa:nginx/stable' state=present" --become
 
-# Add a custom APT repository
-ansible webservers -m apt_repository -a "repo='deb https://packages.grafana.com/oss/deb stable main' state=present filename=grafana" --become
-
-# Add a GPG key for the repository
-ansible webservers -m apt_key -a "url=https://packages.grafana.com/gpg.key state=present" --become
+# Add a custom APT repository with its signing key
+ansible webservers -m deb822_repository -a "name=grafana types=deb uris=https://apt.grafana.com suites=stable components=main signed_by=https://apt.grafana.com/gpg.key" --become
 
 # Add a YUM repository
 ansible databases -m yum_repository -a "name=pgdg15 description='PostgreSQL 15' baseurl='https://download.postgresql.org/pub/repos/yum/15/redhat/rhel-9-x86_64' gpgcheck=yes gpgkey='https://download.postgresql.org/pub/repos/yum/keys/PGDG-RPM-GPG-KEY-RHEL'" --become
@@ -125,7 +122,7 @@ ansible databases -m yum_repository -a "name=pgdg15 description='PostgreSQL 15' 
 When a critical vulnerability drops and you need to patch everything immediately:
 
 ```bash
-# Update the cache and install security updates only (Ubuntu)
+# Update the cache and upgrade available packages (Ubuntu)
 ansible all -m apt -a "update_cache=yes upgrade=yes" --become -f 20
 
 # Or target a specific vulnerable package
@@ -216,8 +213,8 @@ Package installations can fail for various reasons. Here is how to deal with com
 # Force update the cache if package not found
 ansible webservers -m apt -a "name=nginx state=present update_cache=yes" --become
 
-# Install with ignoring errors (not recommended for production)
-ansible all -m apt -a "name=somepackage state=present" --become --ignore-errors
+# Use a playbook with ignore_errors if you need custom failure handling
+ansible-playbook package-install.yml
 
 # Check connectivity first, then install
 ansible all -m ping && ansible all -m apt -a "name=nginx state=present" --become
