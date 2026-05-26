@@ -12,7 +12,7 @@ Creating files on remote hosts with dynamically generated content is one of the 
 
 ## The copy Module with the content Parameter
 
-The fastest way to create a file from a variable is the `copy` module. Most people know `copy` for transferring files from the control node, but it also accepts a `content` parameter that writes a string directly to the target path.
+The fastest way to create a file from a short inline value is the `copy` module. Most people know `copy` for transferring files from the control node, but it also accepts a `content` parameter that writes a string directly to the target path.
 
 Here is a basic example that writes a simple string to a file:
 
@@ -28,7 +28,7 @@ Here is a basic example that writes a simple string to a file:
     mode: '0644'
 ```
 
-The `content` parameter accepts Jinja2 expressions, so you can inject any variable that is in scope. This includes facts, inventory variables, registered output, and anything you defined in `vars` or `group_vars`.
+Ansible templates task arguments, so short `content` values can include variables that are in scope. This includes facts, inventory variables, registered output, and anything you defined in `vars` or `group_vars`. For larger content or files that depend heavily on variable interpolation, the Ansible documentation recommends using the `template` module instead.
 
 ## Working with Multi-line Content
 
