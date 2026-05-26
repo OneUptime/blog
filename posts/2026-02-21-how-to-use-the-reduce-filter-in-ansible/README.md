@@ -1,14 +1,14 @@
-# How to Use the reduce Filter in Ansible
+# How to Use Reduce Patterns in Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, Jinja2, Data Aggregation
 
-Description: Learn how to use the reduce filter in Ansible to aggregate list data into single values, build dictionaries from lists, and perform cumulative computations.
+Description: Learn how to use reduce-style patterns in Ansible to aggregate list data into single values, build dictionaries from lists, and perform cumulative computations.
 
 ---
 
-The `reduce` filter takes a list and collapses it into a single value by applying an operation cumulatively. If you have used `reduce()` in Python or `Array.reduce()` in JavaScript, the concept is the same. In Ansible and Jinja2, the `reduce` filter was not available natively for a long time, so people used workarounds. But since Jinja2 2.11+ and Ansible 2.10+, you have access to this through custom approaches. Let me walk you through how to achieve reduce-style operations in Ansible.
+A reduce operation takes a list and collapses it into a single value by applying an operation cumulatively. If you have used `reduce()` in Python or `Array.reduce()` in JavaScript, the concept is the same. Ansible and Jinja2 do not provide a native `reduce` filter, but you can achieve reduce-style operations with built-in filters, `set_fact` loops, and Jinja2 namespace objects. Let me walk you through how to achieve reduce-style operations in Ansible.
 
 ## The Concept of Reduce
 
@@ -185,13 +185,13 @@ For more complex reductions within a single expression, use Jinja2's `namespace`
         var: order_summary
 ```
 
-## Concatenating Lists (Reduce with +)
+## Combining Lists (Reduce with union)
 
-Building a flat list from multiple sources:
+Building a unique list from multiple sources:
 
 ```yaml
 # playbook-reduce-concat.yml
-# Concatenates multiple lists into one using reduce pattern
+# Combines multiple lists into one unique list using reduce pattern
 - name: Concatenate lists with reduce
   hosts: localhost
   gather_facts: false
