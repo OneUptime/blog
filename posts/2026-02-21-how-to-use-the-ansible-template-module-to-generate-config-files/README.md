@@ -235,7 +235,7 @@ The template module supports several useful parameters.
     mode: '0644'                      # File permissions
     backup: true                      # Create backup before overwriting
     validate: "/usr/sbin/sshd -t -f %s"  # Validate before deploying
-    force: true                       # Overwrite even if content is same
+    force: true                       # Replace the destination when content differs
     newline_sequence: "\n"            # Line endings (default: \n)
 ```
 
@@ -255,7 +255,7 @@ name = {{ app_name }}
 port = {{ app_port }}
 ```
 
-The `ansible_managed` variable produces a string like: `Ansible managed: templates/config.j2 modified on 2026-02-21 by deploy`.
+By default, the `ansible_managed` variable produces `Ansible managed`. You can customize it in `ansible.cfg` or set the variable yourself if you want a more detailed banner.
 
 ## Environment-Specific Configuration
 
