@@ -27,7 +27,7 @@ When you create a user without specifying a home directory, the system follows i
         state: present
 ```
 
-This creates `/home/alice` and populates it with files from `/etc/skel` (the skeleton directory). The `create_home` parameter defaults to `yes` for regular users.
+On a typical Linux system, this creates `/home/alice` and populates it with files from `/etc/skel` (the skeleton directory). The `create_home` parameter defaults to `yes`.
 
 ## Setting a Custom Home Directory
 
@@ -47,7 +47,7 @@ Use the `home` parameter to specify a non-standard location:
         state: present
 ```
 
-Ansible creates the directory at the specified path and sets the user as the owner. The parent directory (`/opt` in this case) must already exist.
+Ansible creates the directory at the specified path and sets the user as the owner. If you need specific permissions on parent directories, create those separately before creating the user.
 
 ## The create_home Parameter
 
@@ -86,15 +86,15 @@ Here is how Ansible processes home directory configuration:
 flowchart TD
     A[user Module Task] --> B{home parameter set?}
     B -->|Yes| C[Use specified path]
-    B -->|No| D[Use /home/username]
+    B -->|No| D[Use system default home path]
     C --> E{create_home: yes?}
     D --> E
     E -->|Yes| F{Directory exists?}
     E -->|No| G[Only update /etc/passwd]
-    F -->|No| H[Create directory from /etc/skel]
+    F -->|No| H[Create directory from skeleton files]
     F -->|Yes| I[Leave existing directory alone]
-    H --> J[Set ownership to user:group]
-    I --> J
+    H --> J[Set ownership on newly created directory]
+    I --> K
     J --> K[Done]
     G --> K
 ```
@@ -149,7 +149,7 @@ When `move_home: yes` is set, Ansible does two things:
 1. Updates the home directory path in `/etc/passwd`
 2. Moves the contents of the old home directory to the new location
 
-Without `move_home: yes`, only the `/etc/passwd` entry changes. The files stay in the old location, and the new directory is created empty.
+Without `move_home: yes`, only the `/etc/passwd` entry changes. The files stay in the old location. If `create_home` remains enabled and the new home directory does not exist, Ansible may create the new directory, but it will not move the old files.
 
 **Important**: The parent directory of the new location must exist. If `/data` does not exist, the move will fail.
 
@@ -202,7 +202,7 @@ When `create_home: yes` is set, the home directory is populated from `/etc/skel`
 
 ## Specifying a Custom Skeleton Directory
 
-The `skeleton` parameter lets you use a different skeleton directory instead of `/etc/skel`:
+The `skeleton` parameter lets you use a different skeleton directory instead of `/etc/skel`. It only applies when `create_home: yes` is set:
 
 ```yaml
 # custom-skeleton.yml - Use a custom skeleton directory
@@ -291,7 +291,7 @@ When home directories are on NFS or other shared filesystems, you typically do n
         src: "nfs-server:/export/home"
         path: /home
         fstype: nfs
-        opts: "rw,hard,intr"
+        opts: "rw,hard"
         state: mounted
 
     # Create user without creating home (NFS handles it)
