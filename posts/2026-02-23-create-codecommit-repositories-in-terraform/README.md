@@ -130,7 +130,7 @@ resource "aws_sns_topic_subscription" "team_email" {
   endpoint  = "team@example.com"
 }
 
-# SNS topic policy allowing CodeCommit to publish
+# SNS topic policy allowing CodeCommit and CodeStar Notifications to publish
 resource "aws_sns_topic_policy" "codecommit_publish" {
   arn = aws_sns_topic.code_notifications.arn
 
@@ -142,6 +142,15 @@ resource "aws_sns_topic_policy" "codecommit_publish" {
         Effect = "Allow"
         Principal = {
           Service = "codecommit.amazonaws.com"
+        }
+        Action   = "SNS:Publish"
+        Resource = aws_sns_topic.code_notifications.arn
+      },
+      {
+        Sid    = "AllowCodeStarNotificationsPublish"
+        Effect = "Allow"
+        Principal = {
+          Service = "codestar-notifications.amazonaws.com"
         }
         Action   = "SNS:Publish"
         Resource = aws_sns_topic.code_notifications.arn
@@ -283,7 +292,6 @@ resource "aws_codecommit_approval_rule_template" "two_approvals" {
       {
         Type                    = "Approvers"
         NumberOfApprovalsNeeded = 2
-        ApprovalPoolMembers     = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
       }
     ]
   })
@@ -308,7 +316,7 @@ resource "aws_codecommit_approval_rule_template" "infra_approvals" {
         Type                    = "Approvers"
         NumberOfApprovalsNeeded = 1
         ApprovalPoolMembers = [
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/PlatformTeamRole"
+          "arn:aws:sts::${data.aws_caller_identity.current.account_id}:assumed-role/PlatformTeamRole/*"
         ]
       }
     ]
@@ -318,7 +326,7 @@ resource "aws_codecommit_approval_rule_template" "infra_approvals" {
 data "aws_caller_identity" "current" {}
 ```
 
-The `ApprovalPoolMembers` field accepts IAM user ARNs, IAM role ARNs, or the account root ARN. When using the root ARN, any IAM user in the account can approve. When specifying roles, only users who assumed that role can approve.
+The `ApprovalPoolMembers` field is optional. When you use it, it accepts IAM user ARNs, assumed-role ARNs, or CodeCommit approver patterns. When specifying assumed roles, only sessions for that role can approve.
 
 ## IAM Policies for Repository Access
 
