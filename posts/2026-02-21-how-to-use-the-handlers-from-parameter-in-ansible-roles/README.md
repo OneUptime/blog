@@ -25,12 +25,12 @@ Here is a role with the default handler file:
 
 # Default handlers - graceful reload and restart via systemd
 - name: reload nginx
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: nginx
     state: reloaded
 
 - name: restart nginx
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: nginx
     state: restarted
 
@@ -101,13 +101,13 @@ roles/nginx/
 # roles/nginx/handlers/upgrade.yml
 # Handlers for upgrade scenarios - always do full restart, never reload
 - name: reload nginx
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: nginx
     state: restarted
     daemon_reload: yes
 
 - name: restart nginx
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: nginx
     state: restarted
     daemon_reload: yes
@@ -246,13 +246,13 @@ Here is a complete example showing how a single role adapts to three different e
 # roles/app_server/handlers/main.yml
 # Production and staging - systemd based
 - name: restart application
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: myapp
     state: restarted
     daemon_reload: yes
 
 - name: reload application
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: myapp
     state: reloaded
 ```
@@ -314,7 +314,7 @@ The playbook picks the right handlers based on the target environment:
 
 ## Important Notes About Handler Behavior
 
-Handlers loaded via `handlers_from` follow the same rules as regular handlers: they run once at the end of the play, they run in the order they are defined (not the order they were notified), and they only run if at least one task notified them. If you use `include_role` instead of the `roles` directive, handlers are scoped to the include and might behave slightly differently regarding when they flush.
+Handlers loaded via `handlers_from` follow the same rules as regular handlers: they run once at each handler flush point, they run in the order they are defined (not the order they were notified), and they only run if at least one task notified them. If you use `include_role` instead of the `roles` directive, handlers are still inserted into the play's global handler scope, but handlers from dynamically included roles are only available after the `include_role` task has executed.
 
 If you need handlers to run immediately rather than at the end of the play, use `meta: flush_handlers`:
 
