@@ -174,7 +174,7 @@ Here is a template that uses `regex_findall` to parse and reformat monitoring da
     - name: Generate alerting rules
       ansible.builtin.template:
         src: alert_rules.yml.j2
-        dest: /etc/alertmanager/rules.yml
+        dest: /etc/prometheus/rules.yml
 ```
 
 ```jinja2
