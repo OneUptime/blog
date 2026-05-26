@@ -27,8 +27,8 @@ When Ansible connects to a host, it gathers system facts automatically. The key 
 You can check what facts are available on any host:
 
 ```bash
-# Gather and display all facts for a specific host
-ansible webserver1 -m setup -a 'filter=ansible_os*,ansible_distribution*,ansible_pkg_mgr'
+# Gather and display facts for a specific host
+ansible webserver1 -m setup -a 'filter=ansible_*'
 ```
 
 ## Pattern 1: Simple when Conditionals
@@ -170,7 +170,7 @@ When the tasks themselves are fundamentally different between operating systems 
     state: present
 
 - name: Set default UFW policies
-  ufw:
+  community.general.ufw:
     direction: "{{ item.direction }}"
     policy: "{{ item.policy }}"
   loop:
@@ -178,13 +178,13 @@ When the tasks themselves are fundamentally different between operating systems 
     - { direction: outgoing, policy: allow }
 
 - name: Allow SSH through UFW
-  ufw:
+  community.general.ufw:
     rule: allow
     port: '22'
     proto: tcp
 
 - name: Allow HTTP and HTTPS through UFW
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "{{ item }}"
     proto: tcp
@@ -193,7 +193,7 @@ When the tasks themselves are fundamentally different between operating systems 
     - '443'
 
 - name: Enable UFW
-  ufw:
+  community.general.ufw:
     state: enabled
 ```
 
@@ -213,14 +213,14 @@ When the tasks themselves are fundamentally different between operating systems 
     enabled: yes
 
 - name: Allow SSH through firewalld
-  firewalld:
+  ansible.posix.firewalld:
     service: ssh
     permanent: yes
     state: enabled
     immediate: yes
 
 - name: Allow HTTP and HTTPS through firewalld
-  firewalld:
+  ansible.posix.firewalld:
     service: "{{ item }}"
     permanent: yes
     state: enabled
@@ -232,7 +232,7 @@ When the tasks themselves are fundamentally different between operating systems 
 
 ## Pattern 4: Cascading Variable Loading with Fallback
 
-For more granular control, load variables from the most specific file available, falling back to the OS family:
+For more granular control, load OS-family variables first, then layer distribution-specific and version-specific overrides when they are available:
 
 ```yaml
 ---
@@ -243,7 +243,7 @@ For more granular control, load variables from the most specific file available,
   become: yes
 
   pre_tasks:
-    # Try to load the most specific variable file first, fall back to general
+    # Load general values first, then override them with more specific files
     - name: Load OS-family variables
       include_vars: "vars/{{ ansible_os_family }}.yml"
 
@@ -268,7 +268,7 @@ vars/
   Amazon.yml           # Amazon Linux overrides
 ```
 
-## Pattern 5: Using the block/rescue/when Structure
+## Pattern 5: Using the block/when Structure
 
 For complex conditional logic, use block to group OS-specific tasks:
 
@@ -279,6 +279,10 @@ For complex conditional logic, use block to group OS-specific tasks:
 
 - hosts: all
   become: yes
+  vars:
+    chrony_service: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
+    chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+    ntp_service: "{{ 'ntp' if ansible_os_family == 'Debian' else 'ntpd' }}"
   tasks:
     - name: Configure chrony on modern systems
       block:
@@ -290,12 +294,12 @@ For complex conditional logic, use block to group OS-specific tasks:
         - name: Deploy chrony configuration
           template:
             src: chrony.conf.j2
-            dest: /etc/chrony.conf
+            dest: "{{ chrony_config_path }}"
           notify: restart chrony
 
         - name: Enable chrony service
           service:
-            name: chronyd
+            name: "{{ chrony_service }}"
             state: started
             enabled: yes
       when: >
@@ -318,7 +322,7 @@ For complex conditional logic, use block to group OS-specific tasks:
 
         - name: Enable ntp service
           service:
-            name: ntpd
+            name: "{{ ntp_service }}"
             state: started
             enabled: yes
       when: >
@@ -329,12 +333,12 @@ For complex conditional logic, use block to group OS-specific tasks:
   handlers:
     - name: restart chrony
       service:
-        name: chronyd
+        name: "{{ chrony_service }}"
         state: restarted
 
     - name: restart ntp
       service:
-        name: ntpd
+        name: "{{ ntp_service }}"
         state: restarted
 ```
 
