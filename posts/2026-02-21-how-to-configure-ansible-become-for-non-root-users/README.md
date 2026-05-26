@@ -68,7 +68,7 @@ With sudo (default): The SSH user uses sudo to become the target user.
 sudo -H -S -n -u appuser /bin/bash -c 'command'
 ```
 
-With su: The SSH user uses su, typically through root first, then to the target user.
+With su: The SSH user uses su to switch directly to the target user, so the user needs permission to su to that account and usually needs the appropriate password.
 
 For sudo to work, the SSH user needs a sudoers entry that allows becoming the target user.
 
@@ -118,7 +118,7 @@ If an entire playbook operates as a specific service account, set become_user at
         chdir: /opt/myapp/current
 ```
 
-All four tasks run as `appuser`. Files created are owned by `appuser`. Environment variables reflect `appuser`'s environment.
+All four tasks run as `appuser`. Files created are owned by `appuser`. With the default sudo become flags, HOME is set for `appuser`, but a full login environment is not loaded unless you request it with become flags.
 
 ## Managing PostgreSQL as the postgres User
 
@@ -206,7 +206,7 @@ PostgreSQL is the most common use case for non-root become.
       become_user: www-data
 
     - name: Deploy website files
-      ansible.builtin.synchronize:
+      ansible.posix.synchronize:
         src: files/website/
         dest: /var/www/mysite/
         delete: true
