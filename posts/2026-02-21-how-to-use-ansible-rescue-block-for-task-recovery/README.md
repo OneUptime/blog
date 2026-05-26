@@ -8,11 +8,11 @@ Description: Learn how to use Ansible rescue blocks to recover from task failure
 
 ---
 
-The `rescue` section in an Ansible block is where you define what happens when things go wrong. Unlike `ignore_errors`, which just silently moves past failures, rescue gives you a structured place to respond to errors: roll back changes, try alternative approaches, send alerts, or clean up partial work. If you manage production systems, the rescue block is one of the most valuable tools in your Ansible toolkit.
+The `rescue` section in an Ansible block is where you define what happens when things go wrong. Unlike `ignore_errors`, which moves past task failures, rescue gives you a structured place to respond to errors: roll back changes, try alternative approaches, send alerts, or clean up partial work. If you manage production systems, the rescue block is one of the most valuable tools in your Ansible toolkit.
 
 ## When Does rescue Run?
 
-The rescue section executes when any task inside the associated `block` section fails. Once a block task fails, all remaining block tasks are skipped, and control passes to rescue. If rescue completes without errors, the play continues as if nothing went wrong. The failure is considered "handled."
+The rescue section executes when any task inside the associated `block` section returns a failed state. Errors from invalid task definitions and unreachable hosts do not trigger rescue. Once a block task fails, all remaining block tasks are skipped, and control passes to rescue. If rescue completes without errors, the play continues as if the failed task had succeeded, although Ansible still reports the original failure in the play recap statistics. The failure is considered "handled."
 
 ```yaml
 # Basic rescue behavior
@@ -83,12 +83,12 @@ The most common use of rescue is rolling back changes when a deployment or confi
             dest: "/tmp/{{ app_name }}-{{ new_version }}.tar.gz"
 
         - name: Create backup of current installation
-          ansible.builtin.archive:
+          community.general.archive:
             path: "/opt/{{ app_name }}/"
             dest: "/var/backups/{{ app_name }}-{{ previous_version }}-backup.tar.gz"
 
         - name: Stop application
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ app_name }}"
             state: stopped
 
@@ -104,7 +104,7 @@ The most common use of rescue is rolling back changes when a deployment or confi
             dest: "/opt/{{ app_name }}/VERSION"
 
         - name: Start application with new version
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ app_name }}"
             state: started
 
@@ -124,7 +124,7 @@ The most common use of rescue is rolling back changes when a deployment or confi
               Failed task: {{ ansible_failed_task.name }}
 
         - name: Stop failed application
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ app_name }}"
             state: stopped
           ignore_errors: true
@@ -137,7 +137,7 @@ The most common use of rescue is rolling back changes when a deployment or confi
           when: previous_version != 'unknown'
 
         - name: Restart with previous version
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ app_name }}"
             state: started
 
@@ -174,13 +174,13 @@ Instead of rolling back, sometimes you want to try an alternative approach when 
           block:
             - name: Download agent installer
               ansible.builtin.get_url:
-                url: "https://s3.amazonaws.com/dd-agent/scripts/install_script.sh"
+                url: "https://install.datadoghq.com/scripts/install_script_agent7.sh"
                 dest: /tmp/dd-install.sh
                 mode: '0755'
 
             - name: Run installer script
               ansible.builtin.command:
-                cmd: /tmp/dd-install.sh
+                cmd: bash /tmp/dd-install.sh
               environment:
                 DD_API_KEY: "{{ datadog_api_key }}"
 
@@ -221,7 +221,7 @@ Ansible provides two special variables inside rescue blocks that tell you exactl
           register: validation
 
         - name: Reload application
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: app
             state: reloaded
 
@@ -254,7 +254,7 @@ Ansible provides two special variables inside rescue blocks that tell you exactl
           ignore_errors: true
 
         - name: Ensure app is still running with old config
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: app
             state: started
 ```
@@ -343,7 +343,7 @@ In production, you want to know when rescue runs. Integrating notifications into
           register: deploy
 
         - name: Restart services
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: "{{ item }}"
             state: restarted
           loop:
@@ -357,7 +357,6 @@ In production, you want to know when rescue runs. Integrating notifications into
             method: POST
             body_format: json
             body:
-              channel: "#deployments"
               text: ":red_circle: Deployment FAILED on {{ inventory_hostname }}\nFailed task: {{ ansible_failed_task.name }}\nError: {{ ansible_failed_result.msg | default('Unknown') }}"
           ignore_errors: true
 
