@@ -8,18 +8,18 @@ Description: Manage AWS EC2 key pairs with Ansible including creation, importing
 
 ---
 
-Every EC2 instance needs a key pair for SSH access, and managing those key pairs across multiple regions and accounts gets messy fast. Keys get created ad hoc, nobody remembers which key goes with which environment, and old keys linger long after the people who created them have left the organization. Ansible provides a clean way to manage key pairs programmatically, making key rotation and distribution part of your infrastructure automation.
+Many Linux EC2 instances use a key pair for SSH access, and managing those key pairs across multiple regions and accounts gets messy fast. Keys get created ad hoc, nobody remembers which key goes with which environment, and old keys linger long after the people who created them have left the organization. Ansible provides a clean way to manage key pairs programmatically, making key rotation and distribution part of your infrastructure automation.
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `amazon.aws` collection
+- A current Ansible installation with the `amazon.aws`, `community.crypto`, and `ansible.posix` collections
 - AWS credentials with `ec2:CreateKeyPair`, `ec2:DeleteKeyPair`, `ec2:DescribeKeyPairs`, and `ec2:ImportKeyPair` permissions
 - OpenSSH installed on your control machine (for key generation)
 
 ```bash
-# Install the AWS collection
+# Install the required collections
 
-ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install amazon.aws community.crypto ansible.posix
 ```
 
 ## Two Approaches to Key Pairs
@@ -73,6 +73,7 @@ If you want AWS to generate the key pair:
           Environment: production
           ManagedBy: ansible
       register: key_result
+      no_log: true
 
     - name: Save private key to file (only on first creation)
       ansible.builtin.copy:
@@ -86,7 +87,7 @@ If you want AWS to generate the key pair:
         msg: "Key '{{ key_name }}' fingerprint: {{ key_result.key.fingerprint }}"
 ```
 
-The private key is only returned when the key pair is first created. On subsequent runs, the module returns the fingerprint but not the private key. If you lose the private key, you cannot retrieve it from AWS; you have to create a new key pair. The `key_type: ed25519` creates a modern Ed25519 key instead of the default RSA, which is shorter and generally considered more secure.
+The private key is only returned when the key pair is first created. On subsequent runs, the module returns the fingerprint but not the private key. If you lose the private key, you cannot retrieve it from AWS; you have to create a new key pair. The `key_type: ed25519` creates a modern Ed25519 key instead of the default RSA, which is shorter and generally considered more secure for Linux instances. AWS does not support Ed25519 key pairs for Windows instances.
 
 ## Importing an Existing Public Key
 
@@ -199,7 +200,7 @@ If you deploy instances in multiple regions, you need the same key pair in each:
 
 ## Key Pair Rotation
 
-Key rotation is a security best practice. Here is a playbook that creates a new key pair, updates the authorized_keys on running instances, and then removes the old key pair from AWS:
+Key rotation is a security best practice. Here is a playbook that creates a new key pair, updates the authorized_keys on running instances, and then removes the old public key from those instances:
 
 ```yaml
 # rotate-key-pair.yml - Rotate an SSH key pair with zero-downtime
@@ -250,13 +251,23 @@ Key rotation is a security best practice. Here is a playbook that creates a new 
       ansible.builtin.debug:
         msg: "Found {{ old_key_instances.instances | length }} instances using {{ old_key_name }}"
 
+    - name: Add matching instances to a temporary inventory group
+      ansible.builtin.add_host:
+        name: "{{ item.public_dns_name | default(item.private_ip_address, true) }}"
+        groups: old_key_instances
+        ansible_user: ec2-user
+        ansible_ssh_private_key_file: "{{ key_dir }}/{{ old_key_name }}"
+      loop: "{{ old_key_instances.instances }}"
+      when: (item.public_dns_name | default('')) | length > 0 or (item.private_ip_address | default('')) | length > 0
+
 ---
 # Second play: update authorized_keys on each instance
 - name: Deploy New SSH Key to Instances
-  hosts: "{{ target_hosts | default('tag_KeyPair_' + old_key_name) }}"
+  hosts: "{{ target_hosts | default('old_key_instances') }}"
   become: true
 
   vars:
+    old_key_name: "prod-web-2025"
     new_key_name: "prod-web-2026"
     key_dir: "/opt/ansible/keys"
 
@@ -274,11 +285,16 @@ Key rotation is a security best practice. Here is a playbook that creates a new 
         key: "{{ new_key.content | b64decode }}"
         state: present
 
+    - name: Switch Ansible to the new private key
+      ansible.builtin.set_fact:
+        ansible_ssh_private_key_file: "{{ key_dir }}/{{ new_key_name }}"
+
+    - name: Reset the SSH connection before verification
+      ansible.builtin.meta: reset_connection
+
     - name: Verify SSH works with new key
       ansible.builtin.wait_for_connection:
         timeout: 30
-      vars:
-        ansible_ssh_private_key_file: "{{ key_dir }}/{{ new_key_name }}"
 
     - name: Remove old key from authorized_keys
       ansible.posix.authorized_key:
