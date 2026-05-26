@@ -232,6 +232,12 @@ Ansible can help automate the SVN to Git migration:
         state: present
       become: true
 
+    - name: Create migration working directory
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: directory
+        mode: "0755"
+
     - name: Create authors mapping file
       ansible.builtin.copy:
         content: |
@@ -244,26 +250,36 @@ Ansible can help automate the SVN to Git migration:
       ansible.builtin.shell: |
         git svn clone \
           --stdlayout \
+          --prefix=svn/ \
           --authors-file={{ work_dir }}/authors.txt \
           {{ svn_repo_url }} \
           {{ work_dir }}/migrated-repo
       args:
         creates: "{{ work_dir }}/migrated-repo/.git"
 
+    - name: Convert SVN branches to local Git branches
+      ansible.builtin.shell: |
+        cd {{ work_dir }}/migrated-repo
+        for branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/svn | grep -v '^svn/tags/' | grep -v '^svn/trunk$'); do
+          local_branch="${branch#svn/}"
+          git show-ref --verify --quiet "refs/heads/$local_branch" || git branch "$local_branch" "$branch"
+        done
+      changed_when: true
+
     - name: Convert SVN tags to Git tags
       ansible.builtin.shell: |
         cd {{ work_dir }}/migrated-repo
-        for branch in $(git branch -r | grep 'tags/'); do
-          tag=$(echo "$branch" | sed 's|tags/||')
-          git tag "$tag" "$branch"
-          git branch -r -d "$branch"
+        for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/svn/tags); do
+          tag="${ref#svn/tags/}"
+          git rev-parse -q --verify "refs/tags/$tag" >/dev/null || git tag "$tag" "$ref"
+          git branch -r -d "$ref"
         done
       changed_when: true
 
     - name: Add Git remote and push
       ansible.builtin.shell: |
         cd {{ work_dir }}/migrated-repo
-        git remote add origin {{ git_repo_url }}
+        git remote get-url origin >/dev/null 2>&1 || git remote add origin {{ git_repo_url }}
         git push origin --all
         git push origin --tags
 ```
