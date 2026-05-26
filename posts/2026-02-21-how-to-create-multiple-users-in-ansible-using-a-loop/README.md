@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, User Management, Loop, Automation
 
-Description: Learn how to create multiple users efficiently in Ansible using loops, including simple lists, dictionaries, and nested loops with real examples.
+Description: Learn how to create multiple users efficiently in Ansible using loops, including simple lists, dictionaries, external variable files, and loop controls with real examples.
 
 ---
 
@@ -33,7 +33,7 @@ The most basic pattern loops over a list of usernames:
         - eve
 ```
 
-This creates five users with default settings. Ansible runs the `user` module once for each item in the list. If a user already exists, Ansible skips it.
+This creates five users with default settings. Ansible runs the `user` module once for each item in the list. If a user already exists and already matches the requested state, Ansible reports `ok` without changing it.
 
 ## Loop with Dictionaries
 
@@ -275,7 +275,7 @@ You might want to create users only on certain hosts or only if certain conditio
         append: yes
         state: present
       loop: "{{ users }}"
-      when: item.only_on == 'all' or item.only_on == group_names[0]
+      when: item.only_on == 'all' or item.only_on in group_names
 ```
 
 ## Creating Users with Passwords from Vault
