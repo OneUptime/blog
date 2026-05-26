@@ -15,10 +15,10 @@ Podman is gaining traction as a Docker alternative, particularly in enterprise e
 There are a few specific reasons to choose Podman over Docker for Molecule testing:
 
 - **No daemon required.** Podman runs containers directly, without a background service. This simplifies setup and reduces the attack surface.
-- **Rootless by default.** You do not need to add your user to a docker group or run with sudo.
+- **Rootless support.** You can run containers as a regular user, so you do not need to add your user to a docker group or run Molecule with sudo.
 - **SELinux-friendly.** Podman handles SELinux contexts natively, which matters on RHEL, CentOS, and Fedora.
 - **Kubernetes compatibility.** Podman supports pod concepts natively, making it a natural fit for testing Kubernetes-related roles.
-- **Available in RHEL by default.** On Red Hat systems, Podman is pre-installed while Docker requires extra repositories.
+- **Available in RHEL repositories.** On Red Hat systems, Podman is provided through the supported container tools packages, while Docker requires a different setup.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ sudo dnf install -y podman
 sudo apt-get install -y podman
 
 # Install Molecule with Podman driver
-pip install molecule molecule-plugins[podman]
+python3 -m pip install molecule "molecule-plugins[podman]"
 
 # Verify installations
 podman --version
@@ -93,13 +93,14 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: false  # Podman can do systemd without full privilege
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     tmpfs:
       - /run
       - /tmp
-    environment:
+    env:
       container: podman
 ```
 
@@ -112,6 +113,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
@@ -143,6 +145,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -154,6 +157,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-rockylinux9-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/usr/sbin/init"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -165,6 +169,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-fedora39-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/usr/sbin/init"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -198,6 +203,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -210,6 +216,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -219,7 +226,7 @@ platforms:
     network: molecule-testnet
 ```
 
-Create the network in a prepare step.
+The Podman driver can create a named scenario network automatically. If you use custom lifecycle playbooks, create the network in a prepare step.
 
 ```yaml
 # molecule/default/create.yml (or use prepare.yml)
@@ -246,6 +253,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: false  # not needed for rootless
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -253,23 +261,23 @@ platforms:
       - /run
       - /tmp
     security_opts:
-      - "label=disable"  # disable SELinux label for rootless
+      - "label=disable"  # disable SELinux label separation if labels cause mount issues
 
 provisioner:
   name: ansible
   connection_options:
-    ansible_connection: podman
+    ansible_connection: containers.podman.podman
   config_options:
     defaults:
       interpreter_python: auto_silent
 ```
 
-## Using Podman Pods
+## Publishing Ports with Podman
 
-Podman pods let you group containers that share a network namespace, just like Kubernetes pods. This is useful for testing sidecar patterns.
+The Podman driver supports publishing container ports to the host, which is useful for testing services that need to be reachable from the controller.
 
 ```yaml
-# molecule/pod-scenario/molecule.yml - using Podman pods
+# molecule/ports-scenario/molecule.yml - publishing ports with Podman
 driver:
   name: podman
 
@@ -278,6 +286,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -328,6 +337,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"
     pre_build_image: true  # always pre-build, never build from Dockerfile in test
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -375,6 +385,7 @@ platforms:
     image: "docker.io/geerlingguy/docker-ubuntu2204-ansible:latest"  # full registry path
     pre_build_image: true
     privileged: true
+    systemd: true
     command: "/lib/systemd/systemd"  # explicit init command
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
@@ -396,7 +407,7 @@ Key differences to note:
 
 2. **Systemd fails to start.** Check your cgroup version and adjust the configuration accordingly. Also verify that the container image actually has systemd installed.
 
-3. **Connection refused on Ansible connection.** Make sure `ansible_connection: podman` is set in the provisioner options.
+3. **Connection refused on Ansible connection.** If you use custom inventory or the default/delegated driver instead of the Podman driver, make sure `ansible_connection: containers.podman.podman` is set for the container hosts.
 
 4. **SELinux denials.** Add `security_opts: ["label=disable"]` to the platform configuration, or make sure the `:Z` suffix is on volume mounts.
 
