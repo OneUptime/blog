@@ -73,26 +73,31 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
+    name: registry.fedoraproject.org/fedora:42
 
 dependencies:
+  python_interpreter:
+    package_system: python3
+    python_path: /usr/bin/python3
   ansible_core:
-    package_pip: ansible-core>=2.15.0,<2.17.0
+    package_pip: ansible-core>=2.21.0,<2.22.0
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy:
     collections:
       - name: ansible.posix
-        version: ">=1.5.0"
+        version: ">=2.2.0"
       - name: community.general
-        version: ">=8.0.0"
+        version: ">=13.0.0,<14.0.0"
       - name: ansible.utils
-        version: ">=3.0.0"
+        version: ">=6.0.0,<7.0.0"
   python:
     - jmespath>=1.0.0
     - PyYAML>=6.0
   system:
-    - openssh-clients [platform:rhel-8 platform:rhel-9]
-    - sshpass [platform:rhel-8 platform:rhel-9]
-    - rsync [platform:rhel-8 platform:rhel-9]
+    - openssh-clients
+    - sshpass
+    - rsync
 
 additional_build_steps:
   append_final:
@@ -132,14 +137,21 @@ Build in order (base first, then specialized):
 
 ```bash
 # Build the base EE first
-cd ee-base && ansible-builder build --tag quay.io/myorg/ee-base:2.0.0
+cd ee-base && ansible-builder build \
+  --tag quay.io/myorg/ee-base:2.0.0 \
+  --tag quay.io/myorg/ee-base:latest
 
 # Push the base so specialized EEs can use it
 podman push quay.io/myorg/ee-base:2.0.0
+podman push quay.io/myorg/ee-base:latest
 
 # Then build specialized EEs
-cd ../ee-aws && ansible-builder build --tag quay.io/myorg/ee-aws:2.0.0
-cd ../ee-azure && ansible-builder build --tag quay.io/myorg/ee-azure:2.0.0
+cd ../ee-aws && ansible-builder build \
+  --build-arg EE_BASE_IMAGE=quay.io/myorg/ee-base:2.0.0 \
+  --tag quay.io/myorg/ee-aws:2.0.0
+cd ../ee-azure && ansible-builder build \
+  --build-arg EE_BASE_IMAGE=quay.io/myorg/ee-base:2.0.0 \
+  --tag quay.io/myorg/ee-azure:2.0.0
 ```
 
 ## Automating Builds with a Makefile
@@ -165,29 +177,34 @@ build-all: build-base build-aws build-azure build-network build-security
 build-base:
 	cd ee-base && ansible-builder build \
 		--tag $(REGISTRY)/ee-base:$(VERSION) \
+		--tag $(REGISTRY)/ee-base:latest \
 		--container-runtime $(RUNTIME) \
 		--verbosity 2
 
 build-aws: build-base
 	cd ee-aws && ansible-builder build \
+		--build-arg EE_BASE_IMAGE=$(REGISTRY)/ee-base:$(VERSION) \
 		--tag $(REGISTRY)/ee-aws:$(VERSION) \
 		--container-runtime $(RUNTIME) \
 		--verbosity 2
 
 build-azure: build-base
 	cd ee-azure && ansible-builder build \
+		--build-arg EE_BASE_IMAGE=$(REGISTRY)/ee-base:$(VERSION) \
 		--tag $(REGISTRY)/ee-azure:$(VERSION) \
 		--container-runtime $(RUNTIME) \
 		--verbosity 2
 
 build-network: build-base
 	cd ee-network && ansible-builder build \
+		--build-arg EE_BASE_IMAGE=$(REGISTRY)/ee-base:$(VERSION) \
 		--tag $(REGISTRY)/ee-network:$(VERSION) \
 		--container-runtime $(RUNTIME) \
 		--verbosity 2
 
 build-security: build-base
 	cd ee-security && ansible-builder build \
+		--build-arg EE_BASE_IMAGE=$(REGISTRY)/ee-base:$(VERSION) \
 		--tag $(REGISTRY)/ee-security:$(VERSION) \
 		--container-runtime $(RUNTIME) \
 		--verbosity 2
@@ -262,7 +279,7 @@ jobs:
       network: ${{ steps.changes.outputs.network }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -288,23 +305,39 @@ jobs:
       - run: |
           cd ee-base && ansible-builder build \
             --tag quay.io/myorg/ee-base:${{ github.sha }} \
+            --tag quay.io/myorg/ee-base:latest \
+            --container-runtime docker \
             --verbosity 2
       - run: |
           echo "${{ secrets.QUAY_TOKEN }}" | \
             docker login quay.io -u "${{ secrets.QUAY_USER }}" --password-stdin
           docker push quay.io/myorg/ee-base:${{ github.sha }}
+          docker push quay.io/myorg/ee-base:latest
         if: github.ref == 'refs/heads/main'
 
   build-aws:
     needs: [detect-changes, build-base]
-    if: always() && needs.detect-changes.outputs.aws == 'true'
+    if: always() && needs.detect-changes.outputs.aws == 'true' && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: pip install ansible-builder
       - run: |
+          cd ee-base && ansible-builder build \
+            --tag quay.io/myorg/ee-base:${{ github.sha }} \
+            --container-runtime docker \
+            --verbosity 2
+        if: needs.detect-changes.outputs.base == 'true'
+      - run: |
+          if [ "${{ needs.detect-changes.outputs.base }}" = "true" ]; then
+            BASE_IMAGE="quay.io/myorg/ee-base:${{ github.sha }}"
+          else
+            BASE_IMAGE="quay.io/myorg/ee-base:latest"
+          fi
           cd ee-aws && ansible-builder build \
+            --build-arg EE_BASE_IMAGE="${BASE_IMAGE}" \
             --tag quay.io/myorg/ee-aws:${{ github.sha }} \
+            --container-runtime docker \
             --verbosity 2
       - run: |
           echo "${{ secrets.QUAY_TOKEN }}" | \
@@ -320,8 +353,8 @@ Keep versions synchronized across your EE fleet. Use a central version file:
 ```bash
 # version.env - Central version configuration
 EE_VERSION=2.1.0
-ANSIBLE_CORE_VERSION=">=2.15.0,<2.17.0"
-COMMUNITY_GENERAL_VERSION=">=8.0.0,<9.0.0"
+ANSIBLE_CORE_VERSION=">=2.21.0,<2.22.0"
+COMMUNITY_GENERAL_VERSION=">=13.0.0,<14.0.0"
 ```
 
 Reference it in your build scripts:
@@ -334,7 +367,17 @@ source version.env
 for ee_dir in ee-base ee-aws ee-azure ee-network ee-security; do
   echo "Building ${ee_dir} version ${EE_VERSION}"
   cd "${ee_dir}"
-  ansible-builder build --tag "quay.io/myorg/${ee_dir}:${EE_VERSION}" --verbosity 2
+  if [ "${ee_dir}" = "ee-base" ]; then
+    ansible-builder build \
+      --tag "quay.io/myorg/${ee_dir}:${EE_VERSION}" \
+      --tag "quay.io/myorg/${ee_dir}:latest" \
+      --verbosity 2
+  else
+    ansible-builder build \
+      --build-arg "EE_BASE_IMAGE=quay.io/myorg/ee-base:${EE_VERSION}" \
+      --tag "quay.io/myorg/${ee_dir}:${EE_VERSION}" \
+      --verbosity 2
+  fi
   cd ..
 done
 ```
