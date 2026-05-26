@@ -59,7 +59,7 @@ db01 ansible_host=10.0.2.10
 ansible_ssh_common_args=-o ProxyCommand="ssh -W %h:%p admin@bastion-web.example.com"
 
 [dbservers:vars]
-ansible_ssh_common_args=-o ProxyCommand="ssh -W %h:%p admin@bastion-db.example.com -i ~/.ssh/db_bastion_key"
+ansible_ssh_common_args=-o ProxyCommand="ssh -i ~/.ssh/db_bastion_key -W %h:%p admin@bastion-db.example.com"
 ```
 
 ## Setting ProxyCommand Per Host
@@ -113,10 +113,10 @@ ansible_ssh_common_args=-o ProxyCommand="ssh admin@bastion.example.com ncat %h %
 
 ## ProxyCommand with SOCKS Proxy
 
-If you have a SOCKS proxy (common with VPNs or SSH tunnels), connect through it:
+If you have a SOCKS proxy (common with VPNs or SSH tunnels), connect through it with an `nc` implementation that supports proxy options:
 
 ```ini
-# Connect through a SOCKS5 proxy
+# Connect through a SOCKS5 proxy with OpenBSD netcat
 ansible_ssh_common_args=-o ProxyCommand="nc -X 5 -x socks-proxy.example.com:1080 %h %p"
 
 # Using ncat for SOCKS5
@@ -297,7 +297,7 @@ ProxyCommand and ProxyJump both achieve similar results, but they differ:
 
 | Feature | ProxyCommand | ProxyJump |
 |---------|-------------|-----------|
-| SSH Version | Any | 7.3+ |
+| SSH Version | Older OpenSSH versions | 7.3+ |
 | Flexibility | High (any command) | SSH-only |
 | Syntax | More verbose | Cleaner |
 | SOCKS/HTTP Proxy | Yes | No |
