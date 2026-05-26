@@ -46,6 +46,7 @@ datadog/
         integrations.yml
       templates/
         datadog.yaml.j2
+        system-probe.yaml.j2
         conf.d/
           nginx.yaml.j2
           postgres.yaml.j2
@@ -85,7 +86,6 @@ datadog_logs_config:
   container_collect_all: false
 
 # Process monitoring
-datadog_process_enabled: true
 datadog_process_collection_enabled: true
 
 # Network Performance Monitoring
@@ -118,30 +118,21 @@ datadog_agent_memory_limit: "512M"
       - apt-transport-https
       - curl
       - gnupg
+      - python3-debian
     state: present
     update_cache: yes
   become: true
 
-- name: Add Datadog GPG key
-  ansible.builtin.apt_key:
-    url: "https://keys.datadoghq.com/DATADOG_APT_KEY_CURRENT.public"
-    state: present
-  become: true
-
-- name: Add Datadog signing keys
-  ansible.builtin.apt_key:
-    url: "https://keys.datadoghq.com/DATADOG_APT_KEY_{{ item }}.public"
-    state: present
-  loop:
-    - "382E94DE"
-    - "F14F620E"
-  become: true
-
 - name: Add Datadog repository
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/datadog-archive-keyring.gpg] https://apt.datadoghq.com/ stable 7"
+  ansible.builtin.deb822_repository:
+    name: datadog
+    types: deb
+    uris: https://apt.datadoghq.com/
+    suites: stable
+    components:
+      - "7"
+    signed_by: https://keys.datadoghq.com/DATADOG_APT_KEY_CURRENT.public
     state: present
-    filename: datadog
   become: true
 
 - name: Install Datadog Agent
@@ -179,6 +170,17 @@ datadog_agent_memory_limit: "512M"
     mode: "0755"
   become: true
 
+- name: Create log source configuration directories
+  ansible.builtin.file:
+    path: "/etc/datadog-agent/conf.d/{{ item.name }}.d"
+    state: directory
+    owner: dd-agent
+    group: dd-agent
+    mode: "0755"
+  loop: "{{ datadog_log_sources }}"
+  become: true
+  when: datadog_logs_enabled and datadog_log_sources | length > 0
+
 - name: Add dd-agent to required groups
   ansible.builtin.user:
     name: dd-agent
@@ -214,6 +216,17 @@ datadog_agent_memory_limit: "512M"
   become: true
   notify: Restart datadog-agent
   when: datadog_logs_enabled and datadog_log_sources | length > 0
+
+- name: Deploy system-probe configuration for Network Performance Monitoring
+  ansible.builtin.template:
+    src: system-probe.yaml.j2
+    dest: /etc/datadog-agent/system-probe.yaml
+    owner: dd-agent
+    group: dd-agent
+    mode: "0640"
+  become: true
+  notify: Restart datadog-agent
+  when: datadog_npm_enabled
 ```
 
 ## Integration Configuration Tasks
@@ -221,6 +234,19 @@ datadog_agent_memory_limit: "512M"
 ```yaml
 # roles/datadog_agent/tasks/integrations.yml
 ---
+- name: Create integration configuration directories
+  ansible.builtin.file:
+    path: "/etc/datadog-agent/conf.d/{{ item }}.d"
+    state: directory
+    owner: dd-agent
+    group: dd-agent
+    mode: "0755"
+  loop:
+    - nginx
+    - postgres
+    - http_check
+  become: true
+
 - name: Configure Nginx integration
   ansible.builtin.template:
     src: conf.d/nginx.yaml.j2
@@ -262,14 +288,14 @@ datadog_agent_memory_limit: "512M"
 # Datadog Agent configuration - managed by Ansible
 
 # API key for authentication with Datadog
-api_key: {{ datadog_api_key }}
+api_key: {{ datadog_api_key | quote }}
 
 # Datadog site
-site: {{ datadog_site }}
+site: {{ datadog_site | quote }}
 
 {% if datadog_hostname %}
 # Override the detected hostname
-hostname: {{ datadog_hostname }}
+hostname: {{ datadog_hostname | quote }}
 {% endif %}
 
 # Tags applied to all metrics from this host
@@ -285,7 +311,6 @@ tags:
 # APM configuration
 apm_config:
   enabled: {{ datadog_apm_enabled | lower }}
-  apm_dd_url: https://trace.agent.{{ datadog_site }}
 {% if datadog_apm_enabled %}
   receiver_port: {{ datadog_apm_port }}
 {% endif %}
@@ -302,17 +327,21 @@ process_config:
   process_collection:
     enabled: {{ datadog_process_collection_enabled | lower }}
 
-{% if datadog_npm_enabled %}
-# Network Performance Monitoring
-network_config:
-  enabled: true
-{% endif %}
-
 # Disable sending hostname with metrics (use tags instead)
 enable_metadata_collection: true
 
 # Security
 cmd_port: 5001
+```
+
+## System Probe Configuration Template
+
+```yaml
+# roles/datadog_agent/templates/system-probe.yaml.j2
+# Datadog System Probe configuration - managed by Ansible
+
+network_config:
+  enabled: {{ datadog_npm_enabled | lower }}
 ```
 
 ## Nginx Integration Template
@@ -348,9 +377,9 @@ instances:
 {% if integration.name == 'postgres' %}
   - host: {{ integration.host | default('localhost') }}
     port: {{ integration.port | default(5432) }}
-    username: {{ integration.username }}
-    password: {{ integration.password }}
-    dbname: {{ integration.dbname | default('postgres') }}
+    username: {{ integration.username | quote }}
+    password: {{ integration.password | quote }}
+    dbname: {{ integration.dbname | default('postgres') | quote }}
     collect_activity_metrics: true
     collect_database_size_metrics: true
 {% if integration.tags is defined %}
@@ -492,7 +521,7 @@ ansible-playbook -i inventory/hosts.yml playbook.yml --ask-vault-pass
 ansible all -i inventory/hosts.yml -m command -a "datadog-agent status" --become
 
 # Check a specific integration
-ansible all -i inventory/hosts.yml -m command -a "datadog-agent check nginx" --become
+ansible all -i inventory/hosts.yml -m command -a "datadog-agent check nginx" --become --become-user dd-agent
 ```
 
 ## Summary
