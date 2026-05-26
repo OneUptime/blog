@@ -16,7 +16,7 @@ Managing secrets through the console works for small teams, but when you have do
 
 You need:
 
-- Ansible 2.14+
+- ansible-core 2.17+
 - The `amazon.aws` and `community.aws` collections
 - AWS credentials with Secrets Manager permissions
 - Python boto3
@@ -43,7 +43,7 @@ graph TD
     G --> H[Database]
 ```
 
-Applications retrieve secrets at runtime. Rotation happens automatically on a schedule.
+Applications retrieve secrets at runtime. Rotation happens automatically on a schedule when it is enabled for a secret.
 
 ## Creating a Simple Secret
 
@@ -279,11 +279,12 @@ Set up automatic rotation using a Lambda function:
       --secret-id myapp/production/database
       --rotation-lambda-arn arn:aws:lambda:us-east-1:123456789012:function:secret-rotator
       --rotation-rules '{"AutomaticallyAfterDays": 30}'
+      --no-rotate-immediately
       --region us-east-1
   changed_when: true
 ```
 
-The Lambda function handles the actual rotation logic: creating a new password, updating the database, and storing the new credentials in Secrets Manager.
+The `--no-rotate-immediately` flag keeps this command focused on configuring the schedule instead of starting a full rotation right away. The Lambda function handles the actual rotation logic: creating a new password, updating the database, and storing the new credentials in Secrets Manager.
 
 ## Multi-Environment Secret Management
 
@@ -327,7 +328,7 @@ ansible-playbook deploy-env-secrets.yml -e "env=production" --ask-vault-pass
 
 Resource Policy for Cross-Account Access
 
-Allow another AWS account to read your secrets:
+Attach a resource policy that allows another AWS account to read your secrets. The principal in the other account still needs an IAM policy that allows `secretsmanager:GetSecretValue`, and if the secret uses a customer managed KMS key, the key policy must allow the required decrypt access.
 
 ```yaml
 # Set a resource policy on the secret
