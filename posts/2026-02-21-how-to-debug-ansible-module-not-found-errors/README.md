@@ -243,11 +243,11 @@ interpreter_python = auto_silent
 Some modules require Python packages on the target host:
 
 ```yaml
-# The postgresql modules require psycopg2 on the target
+# The postgresql modules require psycopg on the target
 - name: Create database
   community.postgresql.postgresql_db:
     name: mydb
-  # Fails with: "psycopg2 is not installed"
+  # Fails if psycopg2 or psycopg3 is not installed
 ```
 
 **Fix: Install dependencies before using the module:**
