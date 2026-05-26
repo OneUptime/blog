@@ -29,7 +29,7 @@ The key advantage is that agents make outbound connections only. You do not need
 - Terraform Enterprise instance with admin access
 - Network environment where you want to run agents
 - Docker or a Kubernetes cluster for running agent containers
-- Outbound HTTPS (443) access from the agent network to TFE
+- Outbound HTTPS (443) access from the agent network to TFE and any services required by the Terraform runs, such as provider APIs and `releases.hashicorp.com` unless you use an internal mirror
 
 ## Step 1: Create an Agent Pool
 
@@ -120,7 +120,8 @@ services:
       TFC_AGENT_NAME: agent-prod-1
       TFC_AGENT_LOG_LEVEL: info
       # Custom CA certificate for TFE
-      TFC_AGENT_CUSTOM_CA_CERT_FILE: /etc/ssl/custom/ca.crt
+      SSL_CERT_FILE: /etc/ssl/custom/ca.crt
+      REQUESTS_CA_BUNDLE: /etc/ssl/custom/ca.crt
       # Proxy configuration if needed
       # HTTPS_PROXY: http://proxy.internal:3128
       # NO_PROXY: "internal.example.com,10.0.0.0/8"
@@ -137,7 +138,8 @@ services:
       TFC_AGENT_TOKEN: "${TFE_AGENT_TOKEN}"
       TFC_AGENT_NAME: agent-prod-2
       TFC_AGENT_LOG_LEVEL: info
-      TFC_AGENT_CUSTOM_CA_CERT_FILE: /etc/ssl/custom/ca.crt
+      SSL_CERT_FILE: /etc/ssl/custom/ca.crt
+      REQUESTS_CA_BUNDLE: /etc/ssl/custom/ca.crt
     volumes:
       - ./certs/ca.crt:/etc/ssl/custom/ca.crt:ro
       - ./tools:/opt/custom-tools:ro
@@ -160,6 +162,12 @@ metadata:
 type: Opaque
 stringData:
   token: "your-agent-token-here"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tfe-agent
+  namespace: tfe-agents
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -300,10 +308,30 @@ docker stats tfe-agent-1 tfe-agent-2 tfe-agent-3 --no-stream
 
 ## Auto-Scaling Agents
 
-For Kubernetes deployments, use the Horizontal Pod Autoscaler or KEDA:
+For Kubernetes deployments, use the Horizontal Pod Autoscaler or KEDA with a metric source that exposes your agent backlog:
 
 ```yaml
-# KEDA ScaledObject for scaling agents based on TFE queue
+# KEDA ScaledObject for scaling agents based on an authenticated internal metrics endpoint
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tfe-agent-metrics-token
+  namespace: tfe-agents
+type: Opaque
+stringData:
+  token: "your-metrics-api-token"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: tfe-agent-metrics-auth
+  namespace: tfe-agents
+spec:
+  secretTargetRef:
+    - parameter: token
+      name: tfe-agent-metrics-token
+      key: token
+---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -320,8 +348,11 @@ spec:
     - type: metrics-api
       metadata:
         targetValue: "1"
-        url: "https://tfe.example.com/api/v2/agent-pools/apool-abc123xyz"
-        valueLocation: "data.attributes.agent-count"
+        url: "https://metrics.internal.example.com/tfe/agent-pools/apool-abc123xyz"
+        valueLocation: "queued_runs"
+        authMode: "bearer"
+      authenticationRef:
+        name: tfe-agent-metrics-auth
 ```
 
 ## Troubleshooting Agent Issues
@@ -332,7 +363,7 @@ spec:
 
 **Agent runs fail with provider errors**: The agent needs network access to whatever APIs the Terraform providers communicate with. For AWS, the agent needs access to AWS API endpoints.
 
-**Custom CA certificate issues**: If TFE uses a private CA, pass the CA certificate to the agent via `TFC_AGENT_CUSTOM_CA_CERT_FILE`.
+**Custom CA certificate issues**: If TFE uses a private CA, mount the CA certificate into the agent container and set `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` to that path.
 
 ## Summary
 
