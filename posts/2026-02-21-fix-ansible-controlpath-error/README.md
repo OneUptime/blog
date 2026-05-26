@@ -8,7 +8,7 @@ Description: Fix Ansible ControlPath errors caused by long hostnames, socket pat
 
 ---
 
-The "Cannot write to ControlPath" error occurs when SSH cannot create the control socket file used for connection multiplexing. This usually happens because the socket path is too long (Unix socket paths have a ~108 character limit) or the directory is not writable.
+The "Cannot write to ControlPath" error occurs when SSH cannot create the control socket file used for connection multiplexing. This usually happens because the socket path is too long (Unix socket paths on Linux have a 108-byte pathname limit) or the directory is not writable.
 
 ## The Error
 
@@ -27,10 +27,10 @@ fatal: [very-long-hostname.subdomain.example.com]: UNREACHABLE! => {
 
 [ssh_connection]
 control_path = %(directory)s/%%C
-# %%C creates a short hash of host-port-user
+# %%C creates a short hash of the connection details
 ```
 
-The default pattern includes the full hostname, which can exceed Unix socket path limits.
+Older Ansible releases used a default pattern that included the full hostname, which can exceed Unix socket path limits. Current Ansible versions generate a unique hash by default, but setting `control_path` explicitly is still useful when an existing config uses a longer pattern.
 
 ### Fix 2: Use a Shorter Directory
 
@@ -73,12 +73,12 @@ ControlPath errors are caused by Unix socket path length limits or directory per
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where reliable Ansible SSH connectivity proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow that depends on reliable SSH connectivity
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -110,7 +110,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -192,7 +192,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in an Ansible playbook
 - name: Robust task execution
   hosts: all
   tasks:
@@ -254,4 +254,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
