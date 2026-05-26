@@ -38,11 +38,11 @@ The most common approach is setting `remote_tmp` in your ansible.cfg file:
 # ansible.cfg
 
 [defaults]
-# Change the remote temp directory to /tmp/ansible
+# Change the remote temp directory to a path under /tmp
 remote_tmp = /tmp/.ansible-${USER}/tmp
 ```
 
-The `${USER}` variable expands to the remote user's username, which prevents collisions when multiple users run Ansible against the same host.
+The `${USER}` value is expanded by the remote shell, so it normally resolves to the connected remote user's username. This helps prevent collisions when multiple remote users run Ansible against the same host.
 
 ### Method 2: Environment Variable
 
@@ -116,11 +116,9 @@ remote_tmp = /tmp/.ansible-${USER}/tmp
 
 If multiple people or CI/CD pipelines connect to remote hosts using the same system account, they might step on each other's temp directories. Avoid this by including a unique identifier:
 
-```ini
-# ansible.cfg
-[defaults]
-# Include the PID or a random element to avoid collisions
-remote_tmp = /tmp/.ansible-${USER}-${RANDOM}/tmp
+```bash
+# Set a unique temp path for one CI job
+ANSIBLE_REMOTE_TMP="/tmp/.ansible-${USER}-${CI_JOB_ID}/tmp" ansible-playbook deploy.yml
 ```
 
 Or, better yet, ensure each pipeline or user connects with a different remote user.
@@ -139,9 +137,9 @@ remote_tmp = /var/tmp/.ansible-${USER}/tmp
 
 ### Scenario 4: Running as a Different User with become
 
-When Ansible uses privilege escalation (become), the behavior of the temp directory changes. Ansible creates the temp directory as the connecting user, then escalates to the become user (typically root) to execute the module. If the become user cannot access the temp directory created by the connecting user, tasks fail.
+When Ansible uses privilege escalation (become), the behavior of temporary files can matter. Becoming `root` is normally handled securely, but problems can occur when both the connection user and the `become_user` are unprivileged users. In that case, Ansible has to make the transferred module readable by the second unprivileged user.
 
-The solution is to configure `become_allow_same_user` or adjust the temp directory permissions:
+The preferred fixes are to use pipelining when your modules support it, install POSIX ACL support so Ansible can use `setfacl`, or configure a shared group with `ansible_common_remote_group`. As a last resort on trusted systems, you can allow world-readable temporary module files and use an existing system temp directory:
 
 ```yaml
 # playbook.yml
@@ -149,24 +147,16 @@ The solution is to configure `become_allow_same_user` or adjust the temp directo
 - name: Handle become with custom temp
   hosts: all
   become: true
-  become_user: root
+  become_user: appuser
   vars:
-    # This directory must be accessible by both the connection user
-    # and the become user
-    ansible_remote_tmp: /tmp/.ansible-remote/tmp
+    # Only use this when both unprivileged users need access
+    # and the managed host is trusted
+    ansible_remote_tmp: /tmp
+    ansible_shell_allow_world_readable_temp: true
 
   tasks:
-    - name: Create the shared temp directory
-      ansible.builtin.file:
-        path: /tmp/.ansible-remote/tmp
-        state: directory
-        mode: '0777'
-      become: true
-
     - name: Proceed with other tasks
-      ansible.builtin.package:
-        name: vim
-        state: present
+      ansible.builtin.command: whoami
 ```
 
 ## The Local Temp Directory
@@ -183,7 +173,7 @@ local_tmp = ~/.ansible/tmp
 remote_tmp = /tmp/.ansible-${USER}/tmp
 ```
 
-The local temp directory is used when running tasks with `connection: local` or when Ansible needs to stage files locally before transferring them.
+The local temp directory is where Ansible stages temporary files on the control node before sending work to managed nodes.
 
 ## Cleaning Up Stale Temp Files
 
