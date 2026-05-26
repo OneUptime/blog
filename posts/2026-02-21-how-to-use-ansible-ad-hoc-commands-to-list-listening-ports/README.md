@@ -20,7 +20,7 @@ The classic tool for listing ports is `netstat`. Here is how to use it via an An
 ansible all -m shell -a "netstat -tlnp"
 ```
 
-We use the `shell` module here instead of `command` because some systems alias netstat or because we might want to pipe the output later. The flags mean:
+We use the `shell` module here so the examples can be extended with pipes and other shell syntax later. For a simple command with no shell features, the `command` module would also work. The flags mean:
 
 - `-t` - Show TCP connections
 - `-l` - Show only listening sockets
@@ -77,14 +77,14 @@ Note the space after the port number in the grep pattern. This prevents false ma
 
 ## Checking Specific Ports with the Wait_for Module
 
-Ansible has a built-in module specifically designed to check if a port is open:
+Ansible has a built-in module specifically designed to check if a TCP port is open:
 
 ```bash
-# Check if port 443 is open on web servers (fails if not listening)
+# Check if port 443 is open on each web server's localhost (fails if not listening)
 ansible webservers -m wait_for -a "port=443 timeout=3"
 ```
 
-This command will return SUCCESS if the port is listening and FAILED if it is not, making it perfect for automated checks:
+This command will return SUCCESS if the target can connect to the port on 127.0.0.1 and FAILED if it cannot, making it perfect for automated checks:
 
 ```bash
 # Check if PostgreSQL is accepting connections
@@ -105,7 +105,7 @@ Without `--become`, the process column might show up empty because non-root user
 For even more detail:
 
 ```bash
-# Show listening ports with full process tree
+# Show listening ports with the local address and process details
 ansible all -m shell -a "ss -tlnp | awk 'NR>1 {print \$4, \$6}'" --become
 ```
 
@@ -179,7 +179,7 @@ OUTPUT="port_audit_$(date +%Y%m%d_%H%M%S).csv"
 
 echo "hostname,protocol,address,port,process" > "$OUTPUT"
 
-ansible "$GROUP" -m shell -a "ss -tulnp | awk 'NR>1 {split(\$4,a,\":\"); print \$1\",\"a[1]\",\"a[length(a)]\",\"\$6}'" \
+ansible "$GROUP" -m shell -a "ss -H -tulnp | awk '{local=\$5; split(local,a,\":\"); port=a[length(a)]; host=local; sub(\":\" port \"\$\",\"\",host); process=\$7; for (i=8; i<=NF; i++) process=process \" \" \$i; gsub(/\"/,sprintf(\"%c%c\",34,34),process); print \$1 \",\" host \",\" port \",\\\"\" process \"\\\"\"}'" \
   --become -f 50 2>/dev/null | while read line; do
     if [[ "$line" == *"|"*"CHANGED"* ]]; then
         current_host=$(echo "$line" | cut -d'|' -f1 | tr -d ' ')
