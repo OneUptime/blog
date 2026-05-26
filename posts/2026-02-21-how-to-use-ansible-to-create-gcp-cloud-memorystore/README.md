@@ -8,7 +8,7 @@ Description: Learn how to provision and configure GCP Cloud Memorystore Redis in
 
 ---
 
-Cloud Memorystore is Google Cloud's managed in-memory data store service, supporting both Redis and Memcached. If your applications depend on low-latency caching or session storage, Memorystore is one of the simplest ways to get a production-ready Redis instance running in GCP. In this post, we will walk through how to automate Memorystore provisioning using Ansible.
+Cloud Memorystore is Google Cloud's managed in-memory data store service, with offerings for Redis, Redis Cluster, Memcached, and Valkey. If your applications depend on low-latency caching or session storage, Memorystore for Redis is one of the simplest ways to get a production-ready Redis instance running in GCP. In this post, we will walk through how to automate Memorystore provisioning using Ansible.
 
 ## Why Automate Memorystore with Ansible?
 
@@ -18,7 +18,7 @@ Manually clicking through the GCP Console to create Redis instances works for on
 
 Before you start, you need a few things in place:
 
-- Ansible 2.10 or newer installed on your control machine
+- ansible-core 2.16 or newer installed on your control machine for the current `google.cloud` collection
 - The `google.cloud` Ansible collection installed
 - A GCP service account with permissions to manage Memorystore instances
 - A GCP project with the Memorystore API enabled
@@ -163,12 +163,12 @@ For production workloads, you almost certainly want the standard tier. This give
 
 ## Connecting Your Application to Memorystore
 
-Memorystore instances are only accessible from within the same VPC network. You cannot connect to them from the public internet. This is actually a good security feature, but it means your application needs to be running inside GCP (on a VM, GKE, Cloud Run with VPC connector, etc.).
+Memorystore instances use internal IP addresses and are not reachable from the public internet. Your application needs network access to the instance's authorized VPC network, such as from a VM, GKE, Cloud Run with VPC access, or an on-premises network connected through supported private networking.
 
-Here is a playbook that creates the Redis instance and then configures a Compute Engine VM to connect to it:
+Here is a playbook that creates the Redis instance and then writes connection details to a config file your application deployment can consume:
 
 ```yaml
-# setup-app-with-redis.yml - Create Redis and configure app VM
+# setup-app-with-redis.yml - Create Redis and write app connection config
 ---
 - name: Setup Application with Memorystore Backend
   hosts: localhost
@@ -274,7 +274,7 @@ After running Memorystore in production for a while, here are a few things worth
 
 2. **Set `maxmemory-policy` explicitly.** The default is `volatile-lru`, which only evicts keys with TTLs set. If you forget to set TTLs on your keys, Redis will run out of memory and start rejecting writes. For most caching use cases, `allkeys-lru` is what you want.
 
-3. **Size your instance based on actual data, not traffic.** Memorystore pricing is based on memory provisioned, not on the number of operations. A 1GB instance can handle tens of thousands of operations per second.
+3. **Size your instance based on actual data and throughput needs.** Memorystore pricing is based on provisioned capacity, and the capacity tier also affects the performance you can achieve with the instance.
 
 4. **Use labels consistently.** They make it much easier to track costs and manage resources across environments.
 
