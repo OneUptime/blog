@@ -16,8 +16,7 @@ The full Molecule test sequence runs in this order:
 
 ```mermaid
 graph TD
-    A[dependency] --> B[lint]
-    B --> C[cleanup]
+    A[dependency] --> C[cleanup]
     C --> D[destroy]
     D --> E[syntax]
     E --> F[create]
@@ -35,7 +34,7 @@ The highlighted step is side_effect. Notice it runs after idempotence (which con
 
 ## Basic Side Effect Configuration
 
-To use side_effect, create a `side_effect.yml` playbook in your scenario directory.
+To use side_effect, create a `side_effect.yml` playbook in your scenario directory and configure Molecule to use it.
 
 ```yaml
 # molecule/default/side_effect.yml
@@ -55,8 +54,6 @@ To use side_effect, create a `side_effect.yml` playbook in your scenario directo
         path: /run/nginx.pid
         state: absent
 ```
-
-Your molecule.yml does not need any special configuration for this. Molecule automatically looks for `side_effect.yml` in the scenario directory. However, you can customize the path if needed.
 
 ```yaml
 # molecule/default/molecule.yml
