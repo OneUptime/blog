@@ -58,7 +58,7 @@ Here is the important difference: when you use `when` with the `roles:` keyword,
 
 ## Conditions Based on Ansible Facts
 
-Ansible gathers facts about every host at the start of a play. You can use these facts to apply roles conditionally:
+By default, Ansible gathers facts about every host at the start of a play. You can use these facts to apply roles conditionally:
 
 ```yaml
 # site.yml
@@ -292,14 +292,14 @@ flowchart TD
 
 ## Testing Conditions Before Running
 
-Use `--check` mode with conditionals to see what would happen:
+Use `--check` mode with conditionals to simulate what would happen:
 
 ```bash
 # Dry run to see which roles would be applied
 ansible-playbook site.yml --check --diff -v
 ```
 
-The verbose output shows which conditions evaluated to true and which roles were skipped.
+The verbose output can help show which role include tasks ran or were skipped. Keep in mind that check mode is a simulation, and conditions based on registered results from earlier tasks may be less useful in check mode.
 
 ## Best Practices
 
