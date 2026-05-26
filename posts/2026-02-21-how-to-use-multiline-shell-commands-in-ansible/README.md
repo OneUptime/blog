@@ -51,7 +51,7 @@ The literal block scalar is the go-to for multiline shell commands because it pr
         msg: "{{ deploy_result.stdout_lines }}"
 ```
 
-Each line is sent to the shell as a separate command. If any line fails (returns non-zero), the shell continues with the next line by default.
+The whole block is sent to the shell as one script, and the newlines act as command separators. If any line fails (returns non-zero), the shell continues with the next line by default.
 
 ## Method 2: Literal Block with set -e
 
@@ -108,7 +108,7 @@ You can also use the `cmd` parameter with the block scalar for a cleaner structu
           mkdir -p "$BACKUP_DIR"
           pg_dump -U postgres mydb > "$BACKUP_DIR/mydb.sql"
           gzip "$BACKUP_DIR/mydb.sql"
-          find /backup -type d -mtime +30 -exec rm -rf {} + 2>/dev/null || true
+          find /backup -mindepth 1 -type d -mtime +30 -exec rm -rf {} + 2>/dev/null || true
           echo "Backup saved to $BACKUP_DIR"
         chdir: /tmp
       register: backup_result
@@ -216,6 +216,7 @@ Multiline shell commands work well with Ansible loops and conditionals.
     - name: Backup each database
       ansible.builtin.shell: |
         set -e
+        set -o pipefail
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         BACKUP_FILE="/backup/{{ item.name }}_${TIMESTAMP}.sql.gz"
         echo "Backing up {{ item.name }} on port {{ item.port }}..."
@@ -226,6 +227,8 @@ Multiline shell commands work well with Ansible loops and conditionals.
       loop_control:
         label: "{{ item.name }}"
       register: backup_results
+      args:
+        executable: /bin/bash
 
     - name: Show backup results
       ansible.builtin.debug:
@@ -298,7 +301,8 @@ For more complex logic, define shell functions within your block.
         check_service nginx 6
         check_service postgresql 6
         check_service redis 6
-      executable: /bin/bash
+      args:
+        executable: /bin/bash
       register: health_check
       changed_when: false
 
@@ -348,4 +352,4 @@ Watch out for these common issues with multiline shell commands.
 
 ## Summary
 
-For multiline shell commands in Ansible, the literal block (`|`) is your best friend for multi-command scripts. Use `>` (folded block) only when you want to break a single long command across multiple lines for readability. Always add `set -e` at the top of multi-command scripts to fail fast on errors. Use `|-` when you need to strip the trailing newline, and combine with `executable: /bin/bash` when you need bash-specific features like arrays, process substitution, or extended globbing. These patterns cover the vast majority of multiline shell use cases in Ansible playbooks.
+For multiline shell commands in Ansible, the literal block (`|`) is your best friend for multi-command scripts. Use `>` (folded block) only when you want to break a single long command across multiple lines for readability. Always add `set -e` at the top of multi-command scripts to fail fast on errors; for pipelines, use Bash with `set -o pipefail` when an earlier command in the pipeline should fail the task. Use `|-` when you need to strip the trailing newline, and combine with `executable: /bin/bash` when you need bash-specific features like arrays, process substitution, or extended globbing. These patterns cover the vast majority of multiline shell use cases in Ansible playbooks.
