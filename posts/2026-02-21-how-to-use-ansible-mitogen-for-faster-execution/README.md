@@ -62,7 +62,7 @@ Find the Mitogen installation path (you will need this for configuration):
 
 ```bash
 # Find the Mitogen Ansible strategy plugin path
-python3 -c "import os, mitogen; print(os.path.join(os.path.dirname(mitogen.__file__), 'ansible_mitogen', 'plugins', 'strategy'))"
+python3 -c "import os, ansible_mitogen; print(os.path.join(os.path.dirname(ansible_mitogen.__file__), 'plugins', 'strategy'))"
 ```
 
 This will output something like `/usr/local/lib/python3.10/dist-packages/ansible_mitogen/plugins/strategy`.
@@ -116,7 +116,7 @@ Run it with verbose output to confirm Mitogen is active:
 
 ```bash
 # Run with verbosity to see Mitogen messages
-ansible-playbook test-mitogen.yml -v
+MITOGEN_LOG_LEVEL=debug ansible-playbook test-mitogen.yml -vvv
 ```
 
 You should see log lines mentioning `mitogen` in the connection setup phase.
@@ -204,18 +204,20 @@ Mitogen was 3x faster than stock Ansible in this test. The improvement is larges
 Mitogen has several tunable settings:
 
 ```ini
-# ansible.cfg - Mitogen-specific settings
+# ansible.cfg - Mitogen and SSH-related settings
 [defaults]
 strategy_plugins = /path/to/ansible_mitogen/plugins/strategy
 strategy = mitogen_linear
 
-[mitogen]
-# Number of worker threads for the connection multiplexer
-# Default is the number of CPU cores
-host_key_checking = true
+[ssh_connection]
+# Path to the SSH binary (uses the first ssh in PATH if not set)
+ssh_executable = /usr/bin/ssh
+```
 
-# Path to the SSH binary (uses system default if not set)
-# ssh_path = /usr/bin/ssh
+The connection setup thread pool is configured with the `MITOGEN_POOL_SIZE` environment variable:
+
+```bash
+MITOGEN_POOL_SIZE=32 ansible-playbook site.yml
 ```
 
 ## Compatibility Considerations
@@ -232,17 +234,17 @@ Mitogen does not support every Ansible feature perfectly. Here are the known lim
 **Not fully supported or with caveats:**
 - Some callback plugins may behave differently
 - Custom connection plugins
-- The `raw` module (bypasses Mitogen)
+- The `raw` module runs through the Mitogen connection and still requires Python on the target
 - Some edge cases with `async` tasks
 
 Test your playbooks thoroughly after enabling Mitogen. A good approach is to run the same playbook with and without Mitogen and compare the results:
 
 ```bash
 # Run with stock Ansible and save output
-ANSIBLE_STRATEGY=linear ansible-playbook site.yml --check 2>&1 > stock-output.txt
+ANSIBLE_STRATEGY=linear ansible-playbook site.yml --check > stock-output.txt 2>&1
 
 # Run with Mitogen and save output
-ANSIBLE_STRATEGY=mitogen_linear ansible-playbook site.yml --check 2>&1 > mitogen-output.txt
+ANSIBLE_STRATEGY=mitogen_linear ansible-playbook site.yml --check > mitogen-output.txt 2>&1
 
 # Compare results
 diff stock-output.txt mitogen-output.txt
@@ -277,22 +279,22 @@ With stock Ansible, become adds an extra wrapping layer around each module invoc
 
 ## Mitogen with Docker and Local Connections
 
-Mitogen also optimizes Docker and local connections:
+Mitogen also supports Docker and local connections:
 
 ```yaml
 ---
-# Mitogen optimizes local connections too
+# Mitogen supports local connections too
 - hosts: localhost
   connection: local
   tasks:
-    - name: Run local tasks faster
-      command: echo "Mitogen speeds up local too"
+    - name: Run local tasks
+      command: echo "Mitogen can run local tasks too"
       changed_when: false
 ```
 
 ```yaml
 ---
-# Docker connections benefit from Mitogen
+# Docker connections are supported by Mitogen
 - hosts: containers
   connection: docker
   tasks:
@@ -314,24 +316,28 @@ ls -la /path/to/ansible_mitogen/plugins/strategy/
 python3 -c "import ansible_mitogen" 2>&1
 
 # Run with debug verbosity
-ANSIBLE_STRATEGY=mitogen_linear ansible-playbook site.yml -vvvv 2>&1 | head -50
+MITOGEN_LOG_LEVEL=debug ANSIBLE_STRATEGY=mitogen_linear ansible-playbook site.yml -vvv 2>&1 | head -50
 ```
 
-If a specific module fails under Mitogen, you can fall back to stock execution for that task:
+If a specific step needs stock Ansible behavior, run it in a separate play with the stock strategy:
 
 ```yaml
 ---
-# Force a specific task to bypass Mitogen
+# Run bootstrap work with stock Ansible, then switch to Mitogen
 - hosts: all
+  strategy: linear
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Bootstrap Python if needed
+      raw: test -e /usr/bin/python3 || (apt-get update && apt-get install -y python3)
+
+- hosts: all
+  strategy: mitogen_linear
   tasks:
     - name: This task uses Mitogen
       command: hostname
       changed_when: false
-
-    - name: This task bypasses Mitogen
-      raw: hostname
-      changed_when: false
-      # raw module always bypasses Mitogen
 ```
 
 ## Production Recommendations
