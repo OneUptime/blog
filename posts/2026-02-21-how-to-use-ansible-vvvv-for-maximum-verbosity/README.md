@@ -1,16 +1,16 @@
-# How to Use Ansible -vvvv for Maximum Verbosity
+# How to Use Ansible -vvvv for Connection Debugging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Debugging, Verbosity, SSH
 
-Description: Learn how to use Ansible maximum verbosity with -vvvv to debug connection issues, module execution, and playbook problems at the deepest level.
+Description: Learn how to use Ansible -vvvv verbosity to debug connection issues, module execution, and playbook problems in detail.
 
 ---
 
-When things go wrong with Ansible and you have no idea why, the `-vvvv` flag is your last resort before reading source code. Maximum verbosity shows everything: SSH connection details, module transfer commands, Python execution on remote hosts, temporary file paths, and the raw JSON returned by every module. This post explains what each verbosity level shows, how to read the output, and when each level is appropriate.
+When things go wrong with Ansible and you have no idea why, the `-vvvv` flag is your last resort before reading source code. This verbosity level enables connection debugging and shows SSH connection details, module transfer commands, Python execution on remote hosts, temporary file paths, and the raw JSON returned by modules. This post explains what the common verbosity levels show, how to read the output, and when each level is appropriate.
 
-## The Four Verbosity Levels
+## Common Verbosity Levels
 
 Each `-v` flag adds a layer of detail:
 
@@ -25,7 +25,7 @@ ansible-playbook deploy.yml -vv
 # Level 3: Show connection and execution details
 ansible-playbook deploy.yml -vvv
 
-# Level 4: Show everything including full SSH commands and transferred scripts
+# Level 4: Enable connection debugging, including full SSH commands
 ansible-playbook deploy.yml -vvvv
 ```
 
@@ -78,7 +78,7 @@ You can see the file path and line number of each task, which helps locate the s
 
 ## Level 3 (-vvv): Connection Details
 
-This is where things get interesting. Level 3 shows SSH connection commands, module execution paths, and timing:
+This is where things get interesting. Level 3 shows SSH connection commands and module execution paths:
 
 ```bash
 ansible-playbook deploy.yml -vvv
@@ -101,9 +101,9 @@ task path: /home/deploy/playbooks/deploy.yml:15
 
 This level is invaluable for debugging SSH connection issues, privilege escalation problems, and module transfer failures.
 
-## Level 4 (-vvvv): Everything
+## Level 4 (-vvvv): Connection Debugging
 
-Maximum verbosity shows the complete picture, including the full content of transferred scripts and all SSH connection parameters:
+Connection-debug verbosity shows the complete picture for SSH-based execution, including the SSH connection parameters:
 
 ```bash
 ansible-playbook deploy.yml -vvvv
@@ -127,7 +127,7 @@ This is the SSH command that Ansible actually executes, complete with all option
 
 ## Reading -vvvv Output: A Practical Guide
 
-The output at maximum verbosity is overwhelming. Here is how to parse it for common debugging scenarios.
+The output at `-vvvv` is overwhelming. Here is how to parse it for common debugging scenarios.
 
 ### Debugging SSH Connection Failures
 
@@ -226,7 +226,7 @@ You can set a default verbosity level:
 ```ini
 # ansible.cfg
 [defaults]
-# Default verbosity (0-4)
+# Default verbosity, equivalent to the number of -v flags
 verbosity = 1
 ```
 
@@ -262,11 +262,11 @@ fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable:
 
 ### Scenario 3: Slow Playbook Runs
 
-Use the timing information visible at -vvv to find slow tasks:
+Use the `ansible.posix.profile_tasks` callback to find slow tasks:
 
 ```bash
-# Combine with the timer callback for task timing
-ANSIBLE_CALLBACKS_ENABLED=timer ansible-playbook deploy.yml -vvv
+# Show timing for individual tasks
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook deploy.yml -vvv
 ```
 
 ## When to Use Each Level
@@ -284,4 +284,4 @@ Start at `-v` and work your way up. Jumping straight to `-vvvv` gives you so muc
 
 ## Summary
 
-Ansible verbosity levels provide progressively deeper visibility into playbook execution. Use `-v` for task results, `-vv` for input parameters, `-vvv` for connection and execution flow, and `-vvvv` for full SSH protocol debugging. Always redirect verbose output to a file when using `-vvv` or higher, and limit your target to a single host when possible. The key is to start at the lowest useful level and only increase when you need more detail.
+Ansible verbosity levels provide progressively deeper visibility into playbook execution. Use `-v` for task results, `-vv` for input parameters, `-vvv` for connection and execution flow, and `-vvvv` when you need connection debugging. Always redirect verbose output to a file when using `-vvv` or higher, and limit your target to a single host when possible. The key is to start at the lowest useful level and only increase when you need more detail.
