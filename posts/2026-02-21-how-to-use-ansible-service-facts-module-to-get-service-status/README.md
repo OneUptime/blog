@@ -71,9 +71,9 @@ A typical systemd service entry looks like this:
 ```
 
 The key fields are:
-- `state` - current state: running, stopped, inactive, or unknown
-- `status` - boot configuration: enabled, disabled, static, or masked
-- `source` - init system: systemd, sysv, upstart
+- `state` - current state, commonly running, stopped, failed, or unknown
+- `status` - boot configuration, commonly enabled, disabled, static, indirect, or unknown
+- `source` - init system, such as systemd, sysv, upstart, rcctl, or src
 - `name` - full service name
 
 ## Checking Multiple Services
