@@ -25,8 +25,8 @@ Here is the basic syntax compared to `delegate_to`:
   tasks:
     # Using local_action (older syntax)
     - name: Send notification via local_action
-      local_action:
-        module: ansible.builtin.uri
+      local_action: ansible.builtin.uri
+      args:
         url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
         method: POST
         body_format: json
@@ -62,17 +62,17 @@ There is also a compact inline syntax that you will see in older playbooks:
       register: health_check
       ignore_errors: true
 
-    # Block syntax (more readable, preferred)
-    - name: Check if host is reachable via HTTP (block syntax)
-      local_action:
-        module: ansible.builtin.uri
+    # Args syntax (more readable, preferred)
+    - name: Check if host is reachable via HTTP (args syntax)
+      local_action: ansible.builtin.uri
+      args:
         url: "http://{{ ansible_host }}:8080/health"
         status_code: 200
       register: health_check_v2
       ignore_errors: true
 ```
 
-The inline syntax puts everything on one line, which becomes unreadable for anything beyond simple tasks. I always recommend the block syntax or `delegate_to` instead.
+The inline syntax puts everything on one line, which becomes unreadable for anything beyond simple tasks. I always recommend the `args` syntax or `delegate_to` instead.
 
 ## Common Use Cases for local_action
 
@@ -88,8 +88,8 @@ Making API calls from the controller:
   serial: 1
   tasks:
     - name: Deregister from load balancer via API
-      local_action:
-        module: ansible.builtin.uri
+      local_action: ansible.builtin.uri
+      args:
         url: "http://lb-api.example.com/v1/backends/web/members/{{ inventory_hostname }}"
         method: DELETE
         status_code: [200, 204, 404]
@@ -107,16 +107,16 @@ Making API calls from the controller:
       become: true
 
     - name: Wait for service to be healthy (check from controller)
-      local_action:
-        module: ansible.builtin.wait_for
+      local_action: ansible.builtin.wait_for
+      args:
         host: "{{ ansible_host }}"
         port: 8080
         delay: 5
         timeout: 120
 
     - name: Register back with load balancer
-      local_action:
-        module: ansible.builtin.uri
+      local_action: ansible.builtin.uri
+      args:
         url: "http://lb-api.example.com/v1/backends/web/members"
         method: POST
         body_format: json
@@ -136,22 +136,23 @@ Writing local files based on remote data:
   gather_facts: true
   tasks:
     - name: Create host report directory
-      local_action:
-        module: ansible.builtin.file
+      local_action: ansible.builtin.file
+      args:
         path: /tmp/ansible-reports
         state: directory
       run_once: true
 
     - name: Write host data to local CSV
-      local_action:
-        module: ansible.builtin.lineinfile
+      local_action: ansible.builtin.lineinfile
+      args:
         path: /tmp/ansible-reports/inventory.csv
         line: "{{ inventory_hostname }},{{ ansible_host }},{{ ansible_distribution }},{{ ansible_distribution_version }},{{ ansible_memtotal_mb }}"
         create: true
+      throttle: 1
 
     - name: Write CSV header
-      local_action:
-        module: ansible.builtin.lineinfile
+      local_action: ansible.builtin.lineinfile
+      args:
         path: /tmp/ansible-reports/inventory.csv
         line: "hostname,ip,distribution,version,memory_mb"
         insertbefore: BOF
@@ -177,8 +178,8 @@ You can use `local_action` with loops just like any other task:
         service: prometheus
   tasks:
     - name: Register host with all monitoring services
-      local_action:
-        module: ansible.builtin.uri
+      local_action: ansible.builtin.uri
+      args:
         url: "{{ item.url }}"
         method: POST
         body_format: json
@@ -205,8 +206,8 @@ Like `delegate_to: localhost`, if you use `become` with `local_action`, the priv
   tasks:
     # This runs as root on the CONTROLLER machine
     - name: Update controller's hosts file
-      local_action:
-        module: ansible.builtin.lineinfile
+      local_action: ansible.builtin.lineinfile
+      args:
         path: /etc/hosts
         line: "{{ ansible_host }} {{ inventory_hostname }}"
         state: present
@@ -236,8 +237,8 @@ If you are maintaining older playbooks, you might want to modernize the syntax. 
       local_action: wait_for host={{ ansible_host }} port=22 timeout=60
 
     - name: Send webhook
-      local_action:
-        module: uri
+      local_action: ansible.builtin.uri
+      args:
         url: "http://api.example.com/deploy"
         method: POST
         body_format: json
@@ -283,8 +284,8 @@ Error handling works the same as with any other task:
     - name: API interaction with error handling
       block:
         - name: Deregister from service
-          local_action:
-            module: ansible.builtin.uri
+          local_action: ansible.builtin.uri
+          args:
             url: "http://api.example.com/deregister/{{ inventory_hostname }}"
             method: DELETE
             timeout: 10
@@ -296,16 +297,16 @@ Error handling works the same as with any other task:
 
       rescue:
         - name: Re-register if maintenance failed
-          local_action:
-            module: ansible.builtin.uri
+          local_action: ansible.builtin.uri
+          args:
             url: "http://api.example.com/register/{{ inventory_hostname }}"
             method: POST
             timeout: 10
 
       always:
         - name: Log the attempt
-          local_action:
-            module: ansible.builtin.lineinfile
+          local_action: ansible.builtin.lineinfile
+          args:
             path: /tmp/maintenance.log
             line: "{{ inventory_hostname }} - {{ 'SUCCESS' if ansible_failed_task is not defined else 'FAILED' }} - {{ now() }}"
             create: true
