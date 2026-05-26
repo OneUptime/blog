@@ -16,7 +16,7 @@ The `ansible.builtin.async_status` module checks the status of asynchronous task
 # Launch a long-running task asynchronously
 
 - name: Start database backup
-  ansible.builtin.command: pg_dump mydb > /backup/mydb.sql
+  ansible.builtin.command: pg_dump -f /backup/mydb.sql mydb
   async: 3600    # Maximum runtime in seconds
   poll: 0        # Do not wait (fire and forget)
   register: backup_job
@@ -39,7 +39,7 @@ The `ansible.builtin.async_status` module checks the status of asynchronous task
 
 ```yaml
 - name: Start backups on all databases
-  ansible.builtin.command: "pg_dump {{ item }} > /backup/{{ item }}.sql"
+  ansible.builtin.command: "pg_dump -f /backup/{{ item }}.sql {{ item }}"
   async: 3600
   poll: 0
   register: backup_jobs
@@ -89,7 +89,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -121,7 +121,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -203,7 +203,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -270,4 +270,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 Async tasks with async_status let you run multiple long operations in parallel and monitor their progress. Launch tasks with `poll: 0` for fire-and-forget, then check status with `async_status` using `until` loops. This pattern is ideal for operations like backups, updates, and data migrations that would otherwise cause playbook timeouts.
-
