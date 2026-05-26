@@ -78,7 +78,7 @@ For detailed content comparison, read both files and compare them.
 # Read the local file
 - name: Read local expected configuration
   ansible.builtin.set_fact:
-    local_config: "{{ lookup('file', 'files/config.yml') }}"
+    local_config: "{{ lookup('ansible.builtin.file', 'files/config.yml', rstrip=False) }}"
 
 # Compare content
 - name: Check if files match
@@ -207,7 +207,7 @@ Here is a complete playbook that audits multiple configuration files across your
         label: "{{ item.0.item.name }}"
 ```
 
-## Using the copy Module's Backup Feature
+## Using the template Module's Backup Feature
 
 When you deploy files with Ansible, the `backup` parameter saves the old version, giving you a history of changes.
 
