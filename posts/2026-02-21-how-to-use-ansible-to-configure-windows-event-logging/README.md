@@ -111,7 +111,7 @@ You can also set Event Log properties through the registry, which is more idempo
         label: "{{ item.name }}"
 ```
 
-A retention value of `0` means "overwrite as needed" and a value of `-1` means "never overwrite."
+A retention value of `0` means "overwrite as needed" and a value of `0xFFFFFFFF` means "never overwrite."
 
 ## Enabling Advanced Audit Policies
 
@@ -243,6 +243,11 @@ Windows Event Forwarding lets you collect events from multiple machines into a c
         wecutil qc /q
         Write-Output "Event Collector configured"
 
+    - name: Create temporary directory for subscription XML
+      ansible.windows.win_file:
+        path: C:\Temp
+        state: directory
+
     - name: Create a subscription for security events
       ansible.windows.win_shell: |
         # Define the subscription XML
@@ -253,7 +258,7 @@ Windows Event Forwarding lets you collect events from multiple machines into a c
           <Description>Collects security events from all servers</Description>
           <Enabled>true</Enabled>
           <Uri>http://schemas.microsoft.com/wbem/wsman/1/windows/EventLog</Uri>
-          <ConfigurationMode>Normal</ConfigurationMode>
+          <ConfigurationMode>Custom</ConfigurationMode>
           <Query>
             <![CDATA[
               <QueryList>
@@ -268,8 +273,17 @@ Windows Event Forwarding lets you collect events from multiple machines into a c
           </Query>
           <ReadExistingEvents>false</ReadExistingEvents>
           <TransportName>HTTP</TransportName>
-          <DeliveryMode>Push</DeliveryMode>
-          <Heartbeat Interval="900000"/>
+          <Delivery Mode="Push">
+            <Batching>
+              <MaxItems>50</MaxItems>
+              <MaxLatencyTime>900000</MaxLatencyTime>
+            </Batching>
+            <PushSettings>
+              <Heartbeat Interval="900000"/>
+            </PushSettings>
+          </Delivery>
+          <ContentFormat>RenderedText</ContentFormat>
+          <LogFile>ForwardedEvents</LogFile>
         </Subscription>
         "@
 
@@ -300,6 +314,13 @@ And for the source machines that will forward events:
         name: WinRM
         state: started
         start_mode: auto
+
+    - name: Allow Windows Event Forwarding to read the Security log
+      ansible.windows.win_group_membership:
+        name: Event Log Readers
+        members:
+          - NT AUTHORITY\NETWORK SERVICE
+        state: present
 
     - name: Configure subscription manager via registry
       ansible.windows.win_regedit:
