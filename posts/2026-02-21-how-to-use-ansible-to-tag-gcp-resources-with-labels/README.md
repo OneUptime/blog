@@ -8,7 +8,7 @@ Description: Practical guide to applying and managing labels on GCP resources us
 
 ---
 
-Labels in GCP are key-value pairs that you attach to resources like VMs, disks, networks, and more. They are free to use and incredibly valuable for organizing resources, tracking costs, and automating operations. Despite this, labeling is often an afterthought. Teams create resources without labels, and months later nobody can figure out which team owns what or why a particular disk exists. Ansible can fix this by making labels a first-class part of your infrastructure definitions.
+Labels in GCP are key-value pairs that you attach to resources like VMs, disks, buckets, and more. They are free to use and incredibly valuable for organizing resources, tracking costs, and automating operations. Despite this, labeling is often an afterthought. Teams create resources without labels, and months later nobody can figure out which team owns what or why a particular disk exists. Ansible can fix this by making labels a first-class part of your infrastructure definitions.
 
 ## Why Labels Matter
 
@@ -24,11 +24,10 @@ Labels serve several important purposes:
 
 Before we start writing playbooks, there are some rules to know:
 
-- Keys and values must be lowercase
+- Keys and values must use lowercase letters, numbers, hyphens, underscores, or UTF-8 international characters
 - Keys can be up to 63 characters
-- Values can be up to 63 characters
-- Keys must start with a letter
-- Only letters, numbers, hyphens, and underscores are allowed
+- Values can be empty or up to 63 characters
+- Keys must start with a lowercase letter or international character
 - Maximum of 64 labels per resource
 
 ## Labeling VMs at Creation
@@ -222,7 +221,7 @@ graph TD
 A complete labeling playbook should cover all your resource types, not just VMs.
 
 ```yaml
-# comprehensive-labeling.yml - Label VMs, disks, networks, and more
+# comprehensive-labeling.yml - Label VMs, disks, buckets, and more
 ---
 - name: Comprehensive Resource Labeling
   hosts: localhost
@@ -273,6 +272,7 @@ A complete labeling playbook should cover all your resource types, not just VMs.
     - name: Label Cloud SQL instances
       google.cloud.gcp_sql_instance:
         name: "main-database"
+        region: "{{ region }}"
         settings:
           user_labels: "{{ labels | combine({'resource_type': 'cloudsql'}) }}"
         project: "{{ gcp_project }}"
@@ -321,13 +321,13 @@ Then you can run playbooks against label-based groups:
 
 ```bash
 # Deploy to all web servers in production
-ansible-playbook -i inventory.gcp.yml deploy.yml --limit "env_production:&role_web-server"
+ansible-playbook -i inventory.gcp.yml deploy.yml --limit "env_production:&role_web_server"
 
 # Patch all servers owned by the backend team
 ansible-playbook -i inventory.gcp.yml patch.yml --limit "team_backend"
 
 # Restart the order-service application
-ansible-playbook -i inventory.gcp.yml restart.yml --limit "app_order-service"
+ansible-playbook -i inventory.gcp.yml restart.yml --limit "app_order_service"
 ```
 
 ## Enforcing Label Compliance
