@@ -32,7 +32,7 @@ This is the most common and recommended approach. Each shared role lives in its 
 
 mkdir ansible-role-nginx
 cd ansible-role-nginx
-ansible-galaxy init . --force
+ansible-galaxy role init . --force
 git init
 git add .
 git commit -m "Initial role scaffolding"
@@ -78,7 +78,7 @@ Install the roles:
 
 ```bash
 # Install all roles listed in requirements.yml
-ansible-galaxy install -r requirements.yml -p roles/
+ansible-galaxy role install -r requirements.yml -p roles/
 ```
 
 The `-p roles/` flag installs them into your project's `roles/` directory.
@@ -107,7 +107,7 @@ Add `roles/` to your `.gitignore` for externally managed roles and create a Make
 # install-roles.sh
 #!/bin/bash
 # Install shared roles from requirements.yml
-ansible-galaxy install -r requirements.yml -p roles/ --force
+ansible-galaxy role install -r requirements.yml -p roles/ --force
 ```
 
 ```gitignore
@@ -166,7 +166,7 @@ Cons:
 
 ## Method 3: Private Galaxy Server (Automation Hub)
 
-If your organization runs Ansible Automation Platform (formerly Tower), you can host roles on a private Automation Hub:
+If your organization runs Ansible Automation Platform, you can host collections that contain roles on a private Automation Hub:
 
 ```yaml
 # ansible.cfg
@@ -184,9 +184,8 @@ url=https://galaxy.ansible.com/
 ```yaml
 # requirements.yml
 ---
-roles:
-  - name: myorg.nginx
-    src: https://hub.internal.company.com/
+collections:
+  - name: myorg.infrastructure
     version: 1.0.0
 ```
 
@@ -308,7 +307,7 @@ deploy:
   stage: deploy
   before_script:
     - pip install ansible
-    - ansible-galaxy install -r requirements.yml -p roles/
+    - ansible-galaxy role install -r requirements.yml -p roles/
   script:
     - ansible-playbook site.yml -i inventory/production
 ```
@@ -325,7 +324,7 @@ jobs:
         run: pip install ansible
 
       - name: Install shared roles
-        run: ansible-galaxy install -r requirements.yml -p roles/
+        run: ansible-galaxy role install -r requirements.yml -p roles/
 
       - name: Run playbook
         run: ansible-playbook site.yml -i inventory/production
