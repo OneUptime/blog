@@ -12,7 +12,7 @@ A `requirements.yml` file can manage both collections and roles in a single plac
 
 ## The Unified Format
 
-Since Ansible 2.10, the requirements file supports both `roles` and `collections` top-level keys:
+Modern Ansible requirements files support both `roles` and `collections` top-level keys:
 
 ```yaml
 # requirements.yml - both roles and collections
@@ -39,25 +39,32 @@ collections:
     version: "1.5.4"
 ```
 
-## The Two-Command Installation
+## Installation Options
 
-Here is the catch that trips people up: you need two separate commands to install both sections:
+You can install both sections with one command when you use Ansible's configured default install paths:
+
+```bash
+# Install both roles and collections
+ansible-galaxy install -r requirements.yml
+```
+
+Here is the catch that trips people up: if you want custom install paths for both roles and collections, use two separate commands:
 
 ```bash
 # Install roles (reads the "roles" section)
-ansible-galaxy install -r requirements.yml
+ansible-galaxy role install -r requirements.yml
 
 # Install collections (reads the "collections" section)
 ansible-galaxy collection install -r requirements.yml
 ```
 
-The `ansible-galaxy install` command only processes the `roles` section. The `ansible-galaxy collection install` command only processes the `collections` section. Neither command installs both.
+The `ansible-galaxy role install` command only processes the `roles` section. The `ansible-galaxy collection install` command only processes the `collections` section. Running `ansible-galaxy install -r requirements.yml` with a custom path processes the role entries and skips the collections, so use the explicit two-command form when you need separate target directories.
 
 Wrap them together:
 
 ```bash
 # Install both roles and collections
-ansible-galaxy install -r requirements.yml -p ./roles/
+ansible-galaxy role install -r requirements.yml -p ./roles/
 ansible-galaxy collection install -r requirements.yml -p ./collections/
 ```
 
@@ -73,7 +80,7 @@ COLLECTIONS_DIR="${2:-./collections}"
 REQUIREMENTS="${3:-requirements.yml}"
 
 echo "Installing roles from ${REQUIREMENTS}..."
-ansible-galaxy install -r "$REQUIREMENTS" -p "$ROLES_DIR"
+ansible-galaxy role install -r "$REQUIREMENTS" -p "$ROLES_DIR"
 
 echo ""
 echo "Installing collections from ${REQUIREMENTS}..."
@@ -82,7 +89,7 @@ ansible-galaxy collection install -r "$REQUIREMENTS" -p "$COLLECTIONS_DIR"
 echo ""
 echo "Installation complete."
 echo "Roles:"
-ansible-galaxy list -p "$ROLES_DIR"
+ansible-galaxy role list -p "$ROLES_DIR"
 echo ""
 echo "Collections:"
 ansible-galaxy collection list -p "$COLLECTIONS_DIR"
@@ -134,7 +141,7 @@ collections:
   # From Automation Hub
   - name: amazon.aws
     version: "7.2.0"
-    source: https://cloud.redhat.com/api/automation-hub/content/published/
+    source: https://console.redhat.com/api/automation-hub/content/published/
 
   # From a private Galaxy server
   - name: myorg.infrastructure
@@ -188,7 +195,7 @@ In your playbook, the role uses modules from the collection:
 
 ## The Legacy Format
 
-Before Ansible 2.10, the requirements file used a flat list without the `roles:` key:
+Older role-only requirements files often used a flat list without the `roles:` key:
 
 ```yaml
 # Old format (still works but not recommended)
@@ -262,12 +269,12 @@ Install selectively:
 
 ```bash
 # Always install core
-ansible-galaxy install -r requirements-core.yml -p ./roles/
+ansible-galaxy role install -r requirements-core.yml -p ./roles/
 ansible-galaxy collection install -r requirements-core.yml -p ./collections/
 
 # Install AWS deps when deploying to AWS
 if [ "$CLOUD_PROVIDER" = "aws" ]; then
-    ansible-galaxy install -r requirements-aws.yml -p ./roles/
+    ansible-galaxy role install -r requirements-aws.yml -p ./roles/
     ansible-galaxy collection install -r requirements-aws.yml -p ./collections/
 fi
 ```
@@ -355,13 +362,13 @@ jobs:
 
       - name: Install all dependencies
         run: |
-          ansible-galaxy install -r requirements.yml -p ./roles/
+          ansible-galaxy role install -r requirements.yml -p ./roles/
           ansible-galaxy collection install -r requirements.yml -p ./collections/
 
       - name: Verify installations
         run: |
           echo "=== Roles ==="
-          ansible-galaxy list -p ./roles/
+          ansible-galaxy role list -p ./roles/
           echo "=== Collections ==="
           ansible-galaxy collection list -p ./collections/
 
@@ -371,4 +378,4 @@ jobs:
 
 ## Summary
 
-Using a unified `requirements.yml` with both `roles` and `collections` sections keeps all your Galaxy dependencies in one place. Remember that you need two commands to install both sections: `ansible-galaxy install -r` for roles and `ansible-galaxy collection install -r` for collections. Pin versions for all entries, use the `source` field for collections from specific servers, and support multiple source types (Galaxy, Git, tarballs) for roles. For large projects, split requirements into purpose-specific files and install them selectively. Always validate the file structure before committing changes.
+Using a unified `requirements.yml` with both `roles` and `collections` sections keeps all your Galaxy dependencies in one place. Use `ansible-galaxy install -r` to install both sections to the configured default paths, or use two commands for custom paths: `ansible-galaxy role install -r` for roles and `ansible-galaxy collection install -r` for collections. Pin versions for all entries, use the `source` field for collections from specific servers, and support multiple source types (Galaxy, Git, tarballs) for roles. For large projects, split requirements into purpose-specific files and install them selectively. Always validate the file structure before committing changes.
