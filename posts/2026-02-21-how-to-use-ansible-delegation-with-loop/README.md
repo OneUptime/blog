@@ -61,9 +61,10 @@ Another common pattern is looping over a data structure and delegating all itera
         line: "    server {{ inventory_hostname }}-{{ item }} {{ ansible_default_ipv4.address }}:{{ item }} check"
       delegate_to: "{{ groups['loadbalancers'][0] }}"
       loop: "{{ app_ports }}"
+      throttle: 1
 ```
 
-Here, for each web server in the play, we loop over three ports and add a backend entry on the load balancer. The delegation target stays the same across all loop iterations, but the data changes with each iteration.
+Here, for each web server in the play, we loop over three ports and add a backend entry on the load balancer. The delegation target stays the same across all loop iterations, but the data changes with each iteration. The `throttle: 1` keeps multiple web servers from editing the same load balancer file at the same time.
 
 ## Nested Loops with Delegation
 
@@ -272,20 +273,19 @@ A few things to consider when using delegation with loops:
 
 **Serial execution.** Each iteration in a loop runs sequentially by default. If you are delegating to 50 different hosts in a loop, all 50 tasks run one after another. For better parallelism, consider restructuring your play to target those hosts directly rather than using delegation loops.
 
-**Forks setting.** The `forks` setting in ansible.cfg controls parallelism at the host level, not at the loop level. Delegation within a loop does not benefit from forks. If performance matters, target the hosts directly.
+**Forks setting.** The `forks` setting in ansible.cfg controls parallelism at the host level, not at the loop level. A loop running from one host does not become parallel just because it delegates each item elsewhere. If performance matters, target the hosts directly.
 
-**Throttle parameter.** Use `throttle` to limit how many loop iterations run in parallel when using `async` with delegation. This prevents overloading a single delegated target.
+**Throttle parameter.** Use `throttle` to limit how many hosts can run a task at the same time. This is useful when a delegated task runs from many play hosts and you need to avoid concurrent access to the same delegated target.
 
 ```yaml
-    - name: Run background task on multiple hosts
-      ansible.builtin.command: /opt/scripts/heavy-job.sh
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['workers'] }}"
+    - name: Start cache refreshes through the shared cache manager
+      ansible.builtin.command: /opt/scripts/refresh-cache.sh {{ inventory_hostname }}
+      delegate_to: "{{ groups['cache_managers'][0] }}"
       async: 300
       poll: 0
       throttle: 5
 ```
 
-The `throttle: 5` ensures no more than 5 async jobs run simultaneously, even if the loop has dozens of iterations.
+The `throttle: 5` ensures no more than five play hosts run this delegated task at the same time, up to the limit set by `forks` or `serial`.
 
 These patterns give you a comprehensive toolkit for combining delegation with loops. The key is choosing the right pattern for your use case and being mindful of performance implications when scaling to many hosts.
