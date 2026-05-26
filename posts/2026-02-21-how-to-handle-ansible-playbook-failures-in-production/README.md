@@ -48,6 +48,7 @@ This is your primary tool for production error handling:
             cmd: "{{ app_dir }}/venv/bin/python manage.py migrate --noinput"
             chdir: "{{ app_dir }}"
           run_once: true
+          when: inventory_hostname == ansible_play_hosts_all[0]
 
         - name: Start application
           ansible.builtin.service:
@@ -58,6 +59,8 @@ This is your primary tool for production error handling:
           ansible.builtin.uri:
             url: "http://localhost:{{ app_port }}/health"
             status_code: 200
+          register: health_check
+          until: health_check is succeeded
           retries: 10
           delay: 5
 
@@ -86,6 +89,8 @@ This is your primary tool for production error handling:
           ansible.builtin.uri:
             url: "http://localhost:{{ app_port }}/health"
             status_code: 200
+          register: rollback_health_check
+          until: rollback_health_check is succeeded
           retries: 10
           delay: 5
 
@@ -152,6 +157,8 @@ For critical deployments, use explicit batches:
       ansible.builtin.uri:
         url: "http://{{ inventory_hostname }}:{{ app_port }}/health"
         status_code: 200
+      register: canary_health_check
+      until: canary_health_check is succeeded
       retries: 15
       delay: 10
 
@@ -234,12 +241,13 @@ Catch problems before making changes:
       delegate_to: localhost
 
     - name: Verify application repository is accessible
-      ansible.builtin.git:
-        repo: "{{ app_repo }}"
-        dest: /tmp/repo-check
-        version: "{{ app_version }}"
-        clone: no
-        update: no
+      ansible.builtin.command:
+        argv:
+          - git
+          - ls-remote
+          - --exit-code
+          - "{{ app_repo }}"
+          - "{{ app_version }}"
       delegate_to: localhost
       run_once: true
       changed_when: false
@@ -286,7 +294,7 @@ Collect diagnostic information when things go wrong:
   failed_when: false
 
 - name: Collect system resources
-  ansible.builtin.command: "{{ item }}"
+  ansible.builtin.shell: "{{ item }}"
   loop:
     - "free -m"
     - "df -h"
@@ -306,7 +314,7 @@ Collect diagnostic information when things go wrong:
 
       === System Resources ===
       {% for result in system_info.results %}
-      --- {{ result.cmd | join(' ') }} ---
+      --- {{ result.item }} ---
       {{ result.stdout }}
       {% endfor %}
     dest: "/tmp/diagnostic-{{ inventory_hostname }}-{{ ansible_date_time.epoch }}.txt"
