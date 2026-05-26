@@ -20,7 +20,7 @@ Before investing time in migration, here is what you gain:
 - Built-in documentation browser
 - Future-proofing (the Ansible community is moving toward ansible-navigator)
 
-You lose nothing because ansible-navigator can run in `--mode stdout`, which behaves identically to ansible-playbook.
+You keep the same playbook workflow because ansible-navigator can run in `--mode stdout`, which gives ansible-playbook-style terminal output.
 
 ## Phase 1: Install and Run Side by Side
 
@@ -46,7 +46,7 @@ ansible-playbook -i inventory.yml site.yml -v
 ansible-navigator run site.yml -i inventory.yml --mode stdout --execution-environment false
 ```
 
-The `--execution-environment false` flag tells ansible-navigator to use your local Ansible installation instead of a container. This makes the output identical to ansible-playbook.
+The `--execution-environment false` flag tells ansible-navigator to use your local Ansible installation instead of a container. This gives you ansible-playbook-style output while keeping the run on your local Ansible installation.
 
 ## Phase 2: Command Translation Reference
 
@@ -75,7 +75,7 @@ ansible-navigator run site.yml -e "version=1.2.3" -e "env=prod" --mode stdout --
 # Old:
 ansible-playbook site.yml --ask-vault-pass
 # New:
-ansible-navigator run site.yml --ask-vault-pass --mode stdout --ee false
+ansible-navigator run site.yml --ask-vault-pass --enable-prompts --ee false
 
 # Old:
 ansible-playbook site.yml --vault-password-file ~/.vault_pass
@@ -110,7 +110,7 @@ ansible-navigator run site.yml --syntax-check --mode stdout --ee false
 # Old:
 ansible-playbook site.yml -vvv
 # New:
-ansible-navigator run site.yml -v --mode stdout --ee false
+ansible-navigator run site.yml -vvv --mode stdout --ee false
 
 # === Start at task ===
 # Old:
@@ -209,7 +209,7 @@ Build or choose an EE:
 
 ```bash
 # Option A: Use the community EE
-podman pull quay.io/ansible/community-ee-minimal:latest
+podman pull ghcr.io/ansible-community/community-ee-minimal:latest
 
 # Option B: Build your own EE
 # (See our post on building execution environments)
@@ -225,7 +225,7 @@ ansible-navigator:
   mode: stdout
   execution-environment:
     enabled: true
-    image: quay.io/ansible/community-ee-minimal:latest
+    image: ghcr.io/ansible-community/community-ee-minimal:latest
     pull:
       policy: missing
     volume-mounts:
@@ -290,11 +290,11 @@ Learn the TUI navigation:
 
 ### "Module not found" with EE
 
-If a module works with `--ee false` but fails with the EE, the module's collection is not in the EE image. Either add the collection to your EE or install a larger community EE.
+If a module works with `--ee false` but fails with the EE, the module's collection is not in the EE image. Either add the collection to your EE or try the community EE base image.
 
 ```bash
 # Check what collections are in the EE
-podman run --rm quay.io/ansible/community-ee-minimal:latest \
+podman run --rm ghcr.io/ansible-community/community-ee-minimal:latest \
   ansible-galaxy collection list
 ```
 
@@ -367,4 +367,4 @@ This lets team members migrate at their own pace.
 
 ## Wrapping Up
 
-Migrating from ansible-playbook to ansible-navigator is a gradual process. Start by running ansible-navigator with `--ee false --mode stdout` so the experience is identical to ansible-playbook. Then adopt a configuration file to reduce typing. Then enable Execution Environments for consistent runtimes. And finally, try the interactive TUI for development work. Each phase adds value, and you can stop at any point. The key insight is that ansible-navigator is a superset of ansible-playbook, so nothing you know becomes obsolete.
+Migrating from ansible-playbook to ansible-navigator is a gradual process. Start by running ansible-navigator with `--ee false --mode stdout` so the experience feels familiar to ansible-playbook users. Then adopt a configuration file to reduce typing. Then enable Execution Environments for consistent runtimes. And finally, try the interactive TUI for development work. Each phase adds value, and you can stop at any point. The key insight is that ansible-navigator can run the same playbooks while adding Execution Environments, artifacts, and the TUI, so what you already know still applies.
