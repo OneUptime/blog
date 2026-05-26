@@ -17,13 +17,13 @@ Install ansible-builder from PyPI:
 ```bash
 # Install ansible-builder
 
-pip install ansible-builder
+pip3 install ansible-builder
 
 # Verify the installation
 ansible-builder --version
 ```
 
-You also need a container runtime. ansible-builder supports both Podman and Docker. It defaults to Podman but will fall back to Docker if Podman is not available.
+You also need a container runtime. ansible-builder supports both Podman and Docker. It defaults to Podman; if you want to use Docker, set `--container-runtime docker`.
 
 ```bash
 # Check for a container runtime
@@ -53,8 +53,8 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
-    signature_original_name: quay.io/ansible/ansible-runner:latest
+    name: registry.access.redhat.com/ubi9/ubi:latest
+    signature_original_name: registry.access.redhat.com/ubi9/ubi:latest
 
 build_arg_defaults:
   ANSIBLE_GALAXY_CLI_COLLECTION_OPTS: "--timeout 120"
@@ -94,7 +94,7 @@ additional_build_steps:
 
 Let me walk through each section.
 
-The `images` section specifies the base image. For most use cases, the official `ansible-runner` image works well. You can also use `creator-ee` or your own custom base.
+The `images` section specifies the base image. ansible-builder requires an RPM-based image with `dnf` or `microdnf`, such as UBI, Fedora, CentOS Stream, Rocky Linux, or a RHEL-based Ansible Automation Platform execution environment image.
 
 The `build_arg_defaults` section sets defaults for build arguments. The Galaxy timeout is useful when pulling large collections over slow connections. The `PKGMGR_PRESERVE_CACHE` option keeps the package manager cache in the image, which speeds up rebuilds but increases image size.
 
@@ -116,11 +116,11 @@ Build with verbose output to see every step:
 ansible-builder build --tag my-ee:1.0 --verbosity 3
 ```
 
-Build without caching (useful for reproducible builds):
+Build without using the container engine layer cache:
 
 ```bash
 # Build without layer cache
-ansible-builder build --tag my-ee:1.0 --no-cache
+ansible-builder build --tag my-ee:1.0 --extra-build-cli-args "--no-cache"
 ```
 
 Build using Docker instead of Podman:
@@ -137,11 +137,11 @@ Specify a custom definition file:
 ansible-builder build --tag my-ee:1.0 --file path/to/my-ee-def.yml
 ```
 
-Build from a custom context directory:
+Build with a custom context directory:
 
 ```bash
 # Use a specific build context directory
-ansible-builder build --tag my-ee:1.0 --build-context-dir /tmp/ee-build
+ansible-builder build --tag my-ee:1.0 --context /tmp/ee-build
 ```
 
 ## Generating the Build Context Without Building
@@ -215,7 +215,7 @@ version: 3
 
 images:
   base_image:
-    name: quay.io/ansible/ansible-runner:latest
+    name: registry.access.redhat.com/ubi9/ubi:latest
 
 additional_build_files:
   - src: files/ansible.cfg
@@ -226,6 +226,10 @@ additional_build_steps:
     - COPY _build/configs/ansible.cfg /etc/ansible/ansible.cfg
 
 dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
   galaxy: requirements.yml
   python: requirements.txt
   system: bindep.txt
@@ -277,17 +281,17 @@ postgresql-devel [platform:centos-8 platform:rhel-8 platform:rhel-9]
 libpq-dev [platform:debian platform:ubuntu]
 ```
 
-The platform selectors ensure the right package names are used for each OS. Since the base images are typically RHEL-based, the centos/rhel selectors are most commonly needed.
+The platform selectors ensure the right package names are used for each OS. Since ansible-builder requires RPM-based base images, the centos/rhel selectors are most commonly needed.
 
 ## Multi-Stage Build Process
 
 ansible-builder uses a multi-stage build internally. Understanding the stages helps with troubleshooting.
 
 The stages are:
-1. **base** - The base image with system packages installed
-2. **galaxy** - Collections are installed here
-3. **builder** - Python packages are compiled here
-4. **final** - Everything is combined into the final image
+1. **base** - Pulls the base image and installs Python, pip, ansible-core, and ansible-runner when needed
+2. **galaxy** - Downloads the collections you defined and stages them as local files
+3. **builder** - Downloads Python and system packages and stages them as local files
+4. **final** - Installs the staged content and produces the final image
 
 The `additional_build_steps` section lets you inject commands at the beginning or end of each stage:
 
@@ -320,7 +324,7 @@ In CI/CD pipelines, you want deterministic builds. Here are the flags that help:
 ansible-builder build \
   --tag registry.example.com/ansible-ee/my-ee:${CI_COMMIT_SHA} \
   --tag registry.example.com/ansible-ee/my-ee:latest \
-  --no-cache \
+  --extra-build-cli-args "--no-cache" \
   --verbosity 2 \
   --container-runtime docker
 ```
