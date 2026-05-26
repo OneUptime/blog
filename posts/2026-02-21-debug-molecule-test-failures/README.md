@@ -17,8 +17,7 @@ Before diving into debugging, it helps to understand the full Molecule test sequ
 ```mermaid
 graph TD
     A[molecule test] --> B[dependency]
-    B --> C[lint]
-    C --> D[cleanup]
+    B --> D[cleanup]
     D --> E[destroy]
     E --> F[syntax]
     F --> G[create]
@@ -49,7 +48,7 @@ molecule create
 # Run the converge step and keep the instance running
 molecule converge
 
-# If converge fails, you can SSH into the instance
+# If converge fails, you can log into the instance
 molecule login
 
 # Run the verify step separately
@@ -200,7 +199,7 @@ molecule idempotence
 Common causes of idempotence failures:
 
 ```yaml
-# BAD: shell/command modules always report changed
+# BAD: shell/command modules report changed by default
 - name: Set timezone
   ansible.builtin.command: timedatectl set-timezone UTC
 
