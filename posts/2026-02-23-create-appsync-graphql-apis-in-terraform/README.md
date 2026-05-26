@@ -30,7 +30,7 @@ resource "aws_appsync_graphql_api" "main" {
     user_pool_id   = aws_cognito_user_pool.main.id
   }
 
-  # Add API key as an additional auth provider for public queries
+  # Add API key as an additional auth provider for schema fields annotated with @aws_api_key
   additional_authentication_provider {
     authentication_type = "API_KEY"
   }
@@ -71,7 +71,7 @@ The `schema` parameter accepts your GraphQL schema as a string. You can inline i
 # schema.graphql
 type Query {
   getPost(id: ID!): Post
-  listPosts(limit: Int, nextToken: String): PostConnection
+  listPosts(limit: Int, nextToken: String): PostConnection @aws_api_key
   getUser(id: ID!): User
 }
 
@@ -86,7 +86,7 @@ type Subscription {
   onUpdatePost: Post @aws_subscribe(mutations: ["updatePost"])
 }
 
-type Post {
+type Post @aws_api_key {
   id: ID!
   title: String!
   content: String!
@@ -103,7 +103,7 @@ type User {
   posts: [Post]
 }
 
-type PostConnection {
+type PostConnection @aws_api_key {
   items: [Post]
   nextToken: String
 }
