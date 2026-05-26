@@ -32,14 +32,21 @@ Most third-party software provides a repository URL in the deb-line format. Here
 
 ```yaml
 # Add the Docker CE repository for Ubuntu
-- name: Add Docker GPG key
-  ansible.builtin.apt_key:
+- name: Ensure APT keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Docker GPG key
+  ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
 
 - name: Add Docker repository
   ansible.builtin.apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
     filename: docker-ce
     update_cache: yes
@@ -85,6 +92,7 @@ When you need several repositories, use a loop:
     repo: "{{ item.repo }}"
     state: present
     filename: "{{ item.filename }}"
+    update_cache: no
   loop:
     - repo: "deb [arch=amd64] https://packages.grafana.com/oss/deb stable main"
       filename: grafana
@@ -101,7 +109,7 @@ When you need several repositories, use a loop:
 #     update_cache: yes
 ```
 
-Using a handler for the cache update is smarter here. Without it, each loop iteration would trigger a full `apt-get update`, which wastes time. The handler runs once at the end.
+Using a handler for the cache update is smarter here. Setting `update_cache: no` avoids a full `apt-get update` on each changed loop iteration, and the handler runs once at the end.
 
 ## Removing Repositories
 
@@ -117,7 +125,7 @@ To remove a repository, set `state: absent`:
     update_cache: yes
 ```
 
-If you specified a `filename` when adding the repository, you must use the same filename when removing it. Otherwise, Ansible will not find the right file to delete.
+When removing a repository, keep the `repo` string aligned with the entry that was added. Ansible matches the repository line and removes the matching source entry.
 
 ## Repository Management for Different Ubuntu Versions
 
@@ -225,7 +233,7 @@ graph TD
 
 1. **Always use `filename` parameter.** Auto-generated filenames based on URLs are hard to manage and audit.
 2. **Use `signed-by` instead of `apt-key`.** The `apt-key` command is deprecated and will be removed in future Debian/Ubuntu releases.
-3. **Store GPG keys in `/usr/share/keyrings/`.** This is the conventional location for repository signing keys on modern Debian systems.
+3. **Store GPG keys in a dedicated keyring path.** `/etc/apt/keyrings/` is commonly used for locally managed keys, while `/usr/share/keyrings/` is also valid for package-managed keys or local policy.
 4. **Use handlers for cache updates in loops.** Running `apt-get update` once after adding all repositories is more efficient than updating after each one.
 5. **Test repository additions in a container first.** A broken repository line can cause all `apt` operations to fail, which locks you out of installing anything until you fix it.
 
