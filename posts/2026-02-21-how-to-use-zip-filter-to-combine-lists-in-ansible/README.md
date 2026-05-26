@@ -188,7 +188,7 @@ Use `zip_longest` to pad the shorter list with a fill value:
       - 10.0.1.11
 
   tasks:
-    - name: Zip with default fill value
+    - name: Zip with a custom fill value
       ansible.builtin.debug:
         msg: "{{ servers | zip_longest(assigned_ips, fillvalue='unassigned') | list }}"
 ```
@@ -210,10 +210,10 @@ Output:
 graph TD
     A["List A: [a, b, c]"] --> D[zip]
     B["List B: [1, 2, 3]"] --> D
-    D --> E["[(a,1), (b,2), (c,3)]"]
+    D --> E["[[a,1], [b,2], [c,3]]"]
     E -->|dict| F["Dictionary: {a:1, b:2, c:3}"]
     E -->|loop| G["Iterate over pairs"]
-    E -->|list| H["List of tuples"]
+    E -->|list| H["List of lists"]
 ```
 
 ## Iterating Over Zipped Lists
@@ -263,9 +263,9 @@ Loop over paired elements to process related items together:
       - bob
       - carol
     ssh_keys:
-      - "ssh-rsa AAAA... alice@laptop"
-      - "ssh-rsa BBBB... bob@desktop"
-      - "ssh-rsa CCCC... carol@workstation"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGv2SGRgvjV+/dJPeS5bo+K39A6OnN+XknsnPBm3Nu1E alice@laptop"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDKQh273SPocne81qywYvRImmyhef8bI3izRWjjUjzq3 bob@desktop"
+      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPSFaa3PcA0h/xPqxaw7VAwgXqjlihEYc6JgRcAhFRHz carol@workstation"
 
   tasks:
     - name: Create user accounts
