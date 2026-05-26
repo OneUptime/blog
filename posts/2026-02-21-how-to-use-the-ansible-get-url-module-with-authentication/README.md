@@ -65,13 +65,13 @@ Many modern APIs and services use bearer tokens or API keys passed in HTTP heade
     url: "https://gitlab.company.com/api/v4/projects/42/packages/generic/myapp/1.0.0/myapp-linux-amd64"
     dest: /opt/myapp/bin/myapp
     headers:
-      PRIVATE-TOKEN: "{{ gitlab_api_token }}"
+      JOB-TOKEN: "{{ gitlab_job_token }}"
     mode: '0755'
 ```
 
 ## Downloading from AWS S3
 
-For S3 downloads, you can use pre-signed URLs or pass AWS credentials in headers.
+For S3 downloads with `get_url`, use pre-signed URLs so the request is already authenticated.
 
 ```yaml
 # Use a pre-signed S3 URL (no additional auth needed)
@@ -187,13 +187,13 @@ ansible-playbook deploy.yml --vault-password-file ~/.vault_pass
 Artifactory is widely used for artifact management. Here are patterns for different authentication approaches.
 
 ```yaml
-# Using API key
-- name: Download from Artifactory with API key
+# Using legacy API key (deprecated by JFrog; use access tokens for new automation)
+- name: Download from Artifactory with legacy API key
   ansible.builtin.get_url:
     url: "https://artifactory.company.com/artifactory/libs-release/com/company/mylib/1.0/mylib-1.0.jar"
     dest: /opt/app/lib/mylib.jar
     headers:
-      X-JFrog-Art-Api: "{{ artifactory_api_key }}"
+      X-JFrog-Art-API: "{{ artifactory_api_key }}"
     mode: '0644'
 
 # Using access token
@@ -239,10 +239,12 @@ Here is a realistic playbook that downloads components from different authentica
 
     - name: Download configuration template from private GitHub repo
       ansible.builtin.get_url:
-        url: "https://raw.githubusercontent.com/company/configs/main/myapp/{{ app_version }}/config.yml"
+        url: "https://api.github.com/repos/company/configs/contents/myapp/{{ app_version }}/config.yml?ref=main"
         dest: /opt/myapp/config.yml
         headers:
           Authorization: "Bearer {{ vault_github_token }}"
+          Accept: "application/vnd.github.raw+json"
+          X-GitHub-Api-Version: "2026-03-10"
         mode: '0640'
         owner: myapp
         group: myapp
