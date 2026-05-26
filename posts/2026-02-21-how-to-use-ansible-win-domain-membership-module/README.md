@@ -1,14 +1,14 @@
-# How to Use Ansible win_domain_membership Module
+# How to Use Ansible microsoft.ad.membership Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Window, Active Directory, Domain Join, Automation
+Tags: Ansible, Windows, Active Directory, Domain Join, Automation
 
-Description: Join Windows servers to Active Directory domains and manage domain membership with the Ansible win_domain_membership module.
+Description: Join Windows servers to Active Directory domains and manage domain membership with the Ansible microsoft.ad.membership module.
 
 ---
 
-Every Windows server in a corporate environment needs to join an Active Directory domain to participate in centralized authentication, group policy, and management. Doing this manually through System Properties works for one machine, but when you are provisioning 50 servers at once, you need automation. The `win_domain_membership` module handles joining servers to domains, moving them between OUs, and removing them from domains.
+Many Windows servers in a corporate environment need to join an Active Directory domain to participate in centralized authentication, group policy, and management. Doing this manually through System Properties works for one machine, but when you are provisioning 50 servers at once, you need automation. The `microsoft.ad.membership` module, which replaces the removed `ansible.windows.win_domain_membership` module, handles joining servers to domains, placing new computer accounts into OUs during the join, and removing servers from domains.
 
 ## Joining a Server to a Domain
 
@@ -211,7 +211,7 @@ Here is a complete playbook for provisioning multiple servers with different rol
 
     # Verify connectivity
     - name: Verify domain DNS resolution
-      ansible.windows.win_command: nslookup _ldap._tcp.{{ domain_name }}
+      ansible.windows.win_command: nslookup -type=SRV _ldap._tcp.dc._msdcs.{{ domain_name }}
       register: ldap_check
       failed_when: ldap_check.rc != 0
       retries: 3
@@ -276,7 +276,7 @@ sequenceDiagram
 
     A->>S: Set DNS to domain DCs
     A->>S: Initiate domain join
-    S->>DNS: Resolve _ldap._tcp.corp.example.com
+    S->>DNS: Resolve _ldap._tcp.dc._msdcs.corp.example.com SRV records
     DNS->>S: Return DC address
     S->>DC: LDAP bind with domain credentials
     DC->>DC: Create computer account in AD
@@ -339,4 +339,4 @@ Common domain join failures:
 
 ## Summary
 
-The `win_domain_membership` module automates one of the most common tasks in Windows server provisioning. Whether you are joining a single server or 100 servers at once, it handles the domain join, OU placement, and subsequent reboot. Always configure DNS first, verify connectivity to domain controllers, and handle the mandatory reboot in your playbooks. For bulk provisioning, use the `serial` keyword to avoid overwhelming your DCs with simultaneous join requests.
+The `microsoft.ad.membership` module automates one of the most common tasks in Windows server provisioning. Whether you are joining a single server or 100 servers at once, it handles the domain join, OU placement for new computer accounts, and subsequent reboot. Always configure DNS first, verify connectivity to domain controllers, and handle the mandatory reboot in your playbooks. For bulk provisioning, use the `serial` keyword to avoid overwhelming your DCs with simultaneous join requests.
