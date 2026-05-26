@@ -19,7 +19,7 @@ Scaffolding tools are great once you know what each piece does. But if you have 
 Ansible expects roles to live inside a `roles/` directory relative to your playbook (or in a path listed in `roles_path` in your `ansible.cfg`). Let's create a role called `webserver`.
 
 ```bash
-# Create the minimal directory structure for a role
+# Create a common directory structure for a role
 
 mkdir -p roles/webserver/tasks
 mkdir -p roles/webserver/handlers
@@ -48,7 +48,7 @@ Ansible automatically loads `tasks/main.yml` when the role is applied. Let's wri
   when: ansible_os_family == "Debian"
 
 - name: Install Nginx on RHEL-based systems
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: nginx
     state: present
   when: ansible_os_family == "RedHat"
@@ -185,12 +185,20 @@ Then reference it in your tasks:
 
 ```yaml
 # Add this to roles/webserver/tasks/main.yml
+- name: Ensure document root exists
+  ansible.builtin.file:
+    path: "{{ webserver_document_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Deploy default landing page
   ansible.builtin.copy:
     src: index.html
     dest: "{{ webserver_document_root }}/index.html"
-    owner: www-data
-    group: www-data
+    owner: root
+    group: root
     mode: '0644'
 ```
 
@@ -230,7 +238,6 @@ roles/
     files/
       index.html
     vars/
-      main.yml
     defaults/
       main.yml
     meta/
