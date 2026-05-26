@@ -39,16 +39,17 @@ Instead of collecting everything, gather only what you need:
 - hosts: all
   gather_facts: false
   tasks:
-    - name: Gather only network facts
+    - name: Gather only network and hardware facts
       setup:
         gather_subset:
-          - network
           - '!all'
           - '!min'
+          - network
+          - hardware
       when: ansible_facts is not defined or ansible_facts | length == 0
 ```
 
-The `gather_subset` parameter accepts these values:
+Common `gather_subset` values include:
 - `all` - everything (default)
 - `min` - minimal facts
 - `hardware` - CPU, memory, disk info
@@ -80,7 +81,7 @@ For Redis-based caching (better for teams):
 # ansible.cfg - Redis fact caching for shared environments
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = localhost:6379:0
 fact_caching_timeout = 86400
 ```
@@ -121,7 +122,7 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o PreferredAuthenticatio
 pipelining = True
 ```
 
-SSH pipelining reduces the number of SSH operations per task from 3 to 1 by sending the module directly through the existing SSH connection.
+SSH pipelining reduces the number of SSH operations required to execute a module by avoiding a separate file transfer step. If you use privilege escalation, make sure your sudo configuration does not require `tty`, because that can conflict with pipelining.
 
 ## Solution 7: Use gather_timeout
 
@@ -161,13 +162,17 @@ Here are several practical scenarios where this module proves essential in real-
 - name: Infrastructure provisioning
   hosts: all
   become: true
-  gather_facts: true
+  gather_facts: false
   tasks:
     - name: Gather system information
       ansible.builtin.setup:
         gather_subset:
+          - '!all'
+          - '!min'
           - hardware
           - network
+          - distribution
+          - os_family
 
     - name: Display system summary
       ansible.builtin.debug:
@@ -189,7 +194,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -230,7 +235,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -308,6 +313,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -333,4 +344,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
