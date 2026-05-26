@@ -22,12 +22,22 @@ The `to_yaml` filter serializes a dictionary, list, or any other data type into 
 Output:
 
 ```yaml
+{name: myapp, replicas: 3, version: 2.1.0}
+```
+
+Notice that `to_yaml` uses PyYAML's default formatting behavior, which may produce flow-style YAML for simple data structures, and sorts the keys alphabetically by default. If you want block-style YAML, pass `default_flow_style=false`:
+
+```jinja2
+{{ {"name": "myapp", "version": "2.1.0", "replicas": 3} | to_yaml(default_flow_style=false) }}
+```
+
+Output:
+
+```yaml
 name: myapp
 replicas: 3
 version: 2.1.0
 ```
-
-Notice that `to_yaml` produces block-style YAML by default and sorts the keys alphabetically. This is a reasonable default for configuration files.
 
 ## Lists Get Proper YAML Formatting
 
@@ -39,10 +49,10 @@ Notice that `to_yaml` produces block-style YAML by default and sorts the keys al
 Output:
 
 ```yaml
-- nginx
-- postgresql
-- redis
+[nginx, postgresql, redis]
 ```
+
+Use `default_flow_style=false` when you want a block-style list.
 
 ## Generating Kubernetes Manifests
 
@@ -105,9 +115,9 @@ spec:
 {% endfor %}
           resources:
             limits:
-{{ resource_limits | to_yaml | indent(14, first=true) }}
+{{ resource_limits | to_yaml(default_flow_style=false) | indent(14, first=true) }}
             requests:
-{{ resource_requests | to_yaml | indent(14, first=true) }}
+{{ resource_requests | to_yaml(default_flow_style=false) | indent(14, first=true) }}
 ```
 
 The key technique here is using `to_yaml` combined with `indent` to properly nest the YAML output within the larger document.
@@ -129,7 +139,7 @@ Here is the difference:
 ```jinja2
 {# Without first=true, first line is not indented #}
 config:
-{{ {"key1": "value1", "key2": "value2"} | to_yaml | indent(4) }}
+{{ {"key1": "value1", "key2": "value2"} | to_yaml(default_flow_style=false) | indent(4) }}
 ```
 
 Output:
@@ -144,7 +154,7 @@ That is broken. With `first=true`:
 
 ```jinja2
 config:
-{{ {"key1": "value1", "key2": "value2"} | to_yaml | indent(4, first=true) }}
+{{ {"key1": "value1", "key2": "value2"} | to_yaml(default_flow_style=false) | indent(4, first=true) }}
 ```
 
 Output:
@@ -194,19 +204,17 @@ Much better. Always use `indent(N, first=true)` when the `to_yaml` output needs 
 
 ```jinja2
 {# docker-compose.yml.j2 - Docker Compose from variables #}
-version: "3.8"
-
 services:
-{{ compose_services | to_yaml | indent(2, first=true) }}
+{{ compose_services | to_yaml(default_flow_style=false) | indent(2, first=true) }}
 ```
 
 ## Handling YAML Formatting Quirks
 
 The `to_yaml` filter uses PyYAML for serialization, which has some behaviors you should know about:
 
-**Long strings may get folded.** PyYAML sometimes wraps long strings with YAML folded or literal block scalars. If you need to control this behavior, use `to_nice_yaml` with the `width` parameter.
+**Long strings may get wrapped.** PyYAML has a preferred line width and may insert line breaks in long strings. If you need to control this behavior, use the `width` parameter with `to_yaml` or `to_nice_yaml`.
 
-**Booleans are serialized as Python booleans.** In PyYAML, `true`/`false` are the default:
+**Booleans are serialized as YAML booleans.** In PyYAML, `true`/`false` are the default:
 
 ```jinja2
 {{ {"enabled": true, "debug": false} | to_yaml }}
@@ -340,9 +348,9 @@ Here is an example that generates a GitLab CI configuration based on project set
 
 | Feature | to_yaml | to_nice_yaml |
 |---------|---------|--------------|
-| Indentation | Default (2 spaces) | Configurable |
-| Line width | Default | Configurable |
-| Readability | Functional | Optimized for reading |
+| Indentation | Configurable with `indent` | Configurable with `indent` |
+| Line width | Configurable with `width` | Configurable with `width` |
+| Readability | Uses PyYAML's default formatting | Optimized for reading |
 | Use case | Machine consumption | Human editing |
 
 For files that humans will read and potentially edit, prefer `to_nice_yaml`. For files that are purely machine-consumed or intermediate artifacts, `to_yaml` is fine.
