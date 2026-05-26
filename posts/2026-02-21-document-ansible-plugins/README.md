@@ -10,11 +10,11 @@ Description: Learn how to write proper documentation for Ansible plugins that in
 
 Good documentation is what separates a useful plugin from a frustrating one. Ansible has a built-in documentation system that reads structured docstrings from your plugin source code and presents them through `ansible-doc`. When you follow the correct format, your plugins get the same professional documentation treatment as built-in Ansible plugins.
 
-This guide covers the documentation format for every plugin type, how to write effective examples, and how to validate your docs before publishing.
+This guide covers the common documentation formats for plugin types, how to write effective examples, and how to validate your docs before publishing.
 
 ## The Three Documentation Blocks
 
-Every Ansible plugin should include three documentation blocks defined as module-level string variables:
+Most Ansible plugins that support embedded documentation should include documentation blocks defined as module-level string variables:
 
 1. `DOCUMENTATION` - Describes the plugin, its options, and how it works
 2. `EXAMPLES` - Shows how to use the plugin in playbooks
@@ -171,39 +171,82 @@ For filter plugins, document each filter function:
 
 ```python
 # plugins/filter/string_utils.py
-DOCUMENTATION = """
-    name: string_utils
-    short_description: String manipulation filters
-    version_added: "1.0.0"
-    description:
-        - A collection of string manipulation filters.
-    author: Your Name
-"""
-
-# Per-filter documentation using FilterModule docstrings
 class FilterModule:
     """String utility filters for Ansible."""
 
     def filters(self):
         return {
             'snake_case': self.snake_case,
-            'title_slug': self.title_slug,
         }
 
     @staticmethod
     def snake_case(value):
-        """Convert a string to snake_case.
+        import re
+        s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', value)
+        return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+```
 
-        Args:
-            value: Input string in any case format.
+```yaml
+# plugins/filter/snake_case.yml
+DOCUMENTATION:
+  name: snake_case
+  short_description: Convert a string to snake case
+  version_added: "1.0.0"
+  description:
+    - Converts a string from camel case or mixed case to snake case.
+  positional: _input
+  options:
+    _input:
+      description: Input string in any case format.
+      type: str
+      required: true
+EXAMPLES: |
+  snake_name: "{{ 'myVariableName' | myorg.myutils.snake_case }}"
+RETURN:
+  _value:
+    description: String converted to snake case.
+    type: str
+```
 
-        Returns:
-            String converted to snake_case.
+If a filter plugin file exposes only one filter, you can also put the same blocks inline in the Python file:
 
-        Example:
-            {{ "myVariableName" | myorg.myutils.snake_case }}
-            # Returns: my_variable_name
-        """
+```python
+# plugins/filter/snake_case.py
+DOCUMENTATION = """
+    name: snake_case
+    short_description: Convert a string to snake case
+    version_added: "1.0.0"
+    description:
+        - Converts a string from camel case or mixed case to snake case.
+    author: Your Name
+    positional: _input
+    options:
+      _input:
+        description: Input string in any case format.
+        type: str
+        required: true
+"""
+
+EXAMPLES = """
+snake_name: "{{ 'myVariableName' | myorg.myutils.snake_case }}"
+"""
+
+RETURN = """
+  _value:
+    description: String converted to snake case.
+    type: str
+"""
+
+class FilterModule:
+    """String utility filters for Ansible."""
+
+    def filters(self):
+        return {
+            'snake_case': self.snake_case,
+        }
+
+    @staticmethod
+    def snake_case(value):
         import re
         s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', value)
         return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
@@ -214,7 +257,8 @@ For callback plugins, include the callback type:
 ```python
 DOCUMENTATION = """
     name: my_callback
-    type: notification    # notification, stdout, or aggregate
+    callback_type: notification    # notification, stdout, or aggregate
+    version_added: "1.0.0"
     short_description: Send notifications on play events
     description:
         - This callback sends notifications when plays complete.
@@ -242,9 +286,12 @@ description:
   - Use U(https://example.com) for URLs.
   - Use L(link text, https://example.com) for named links.
   - Use M(module.name) for module references.
+  - Use P(plugin.name#plugin_type) for plugin references.
   - Use R(reference text, anchor) for internal references.
   - Use O(option_name) for option references.
   - Use RV(return_value) for return value references.
+  - Use E(ENV_VAR) for environment variables.
+  - Use V(value) for literal option values.
 ```
 
 ## Validating Documentation
@@ -267,10 +314,10 @@ For automated validation, use `ansible-test`:
 ```bash
 cd collections/ansible_collections/myorg/myutils
 
-# Validate all documentation
+# Validate module documentation
 ansible-test sanity --test validate-modules
 
-# Check documentation specifically
+# Check ansible-doc parsing
 ansible-test sanity --test ansible-doc
 ```
 
@@ -279,7 +326,7 @@ ansible-test sanity --test ansible-doc
 Here are things that will cause validation errors or confusing docs:
 
 1. **Missing required fields**: `name`, `short_description`, and `description` are required.
-2. **Wrong option type**: Using `type: string` instead of `type: str`.
+2. **Wrong option type**: Using a type that does not match what the plugin code accepts.
 3. **YAML formatting errors**: Bad indentation in the DOCUMENTATION string.
 4. **Mismatched option names**: The option name in docs not matching what the code uses.
 5. **Missing version_added**: Required for collections published to Galaxy.
@@ -300,4 +347,4 @@ This produces HTML files similar to the official Ansible documentation site.
 
 ## Summary
 
-Documenting Ansible plugins is about following a structured YAML format that integrates with `ansible-doc` and Galaxy. Include `DOCUMENTATION`, `EXAMPLES`, and `RETURN` blocks in every plugin. Use the proper type annotations for options, provide realistic examples, and validate with `ansible-test sanity`. Well-documented plugins get adopted; poorly documented ones get abandoned.
+Documenting Ansible plugins is about following a structured YAML format that integrates with `ansible-doc` and Galaxy. Include `DOCUMENTATION`, `EXAMPLES`, and `RETURN` blocks for plugins that support them. Use the proper type annotations for options, provide realistic examples, and validate with `ansible-test sanity`. Well-documented plugins get adopted; poorly documented ones get abandoned.
