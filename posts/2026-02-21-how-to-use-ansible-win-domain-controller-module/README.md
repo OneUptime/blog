@@ -1,22 +1,22 @@
-# How to Use Ansible win_domain_controller Module
+# How to Use Ansible microsoft.ad.domain_controller Module
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Window, Active Directory, Domain Controller, Automation
+Tags: Ansible, Windows, Active Directory, Domain Controller, Automation
 
-Description: Promote and demote Windows servers as domain controllers using the Ansible win_domain_controller module for AD infrastructure automation.
+Description: Promote and demote Windows servers as domain controllers using the Ansible microsoft.ad.domain_controller module for AD infrastructure automation.
 
 ---
 
-A single domain controller is a single point of failure for your entire Active Directory environment. You need at least two DCs per domain, and larger organizations run many more spread across data centers and sites. The `win_domain_controller` module handles promoting member servers to domain controllers and demoting DCs back to member servers, all through Ansible.
+A single domain controller is a single point of failure for your entire Active Directory environment. You need at least two DCs per domain, and larger organizations run many more spread across data centers and sites. The `microsoft.ad.domain_controller` module handles promoting member servers to domain controllers and demoting DCs back to member servers, all through Ansible.
 
-## What win_domain_controller Does
+## What microsoft.ad.domain_controller Does
 
 This module manages the domain controller role on a Windows server. It can:
 - Promote a member server to a domain controller (adding it to an existing domain)
 - Promote a server as a read-only domain controller (RODC)
 - Demote a domain controller back to a member server
-- Configure the DC's DNS and Global Catalog settings
+- Configure DNS installation and Active Directory site placement for the DC
 
 ## Prerequisites
 
@@ -99,7 +99,7 @@ Here is how to add a new domain controller to an existing domain.
         state: domain_controller
       register: dc_promo
 
-    # The server reboots after promotion
+    # Promotion requires a reboot when the module reports one
     - name: Reboot after DC promotion
       ansible.windows.win_reboot:
         reboot_timeout: 900
@@ -312,10 +312,10 @@ stateDiagram-v2
     [*] --> MemberServer: Windows installed
     MemberServer --> ADDSInstalled: win_feature AD-Domain-Services
     ADDSInstalled --> DCPromo: domain_controller state=domain_controller
-    DCPromo --> Rebooting: Automatic reboot
+    DCPromo --> Rebooting: Required reboot
     Rebooting --> DomainController: Post-reboot AD services start
     DomainController --> Demoting: domain_controller state=member_server
-    Demoting --> RebootAgain: Automatic reboot
+    Demoting --> RebootAgain: Required reboot
     RebootAgain --> MemberServer: DC role removed
     DomainController --> [*]: Decommission
 ```
@@ -332,4 +332,4 @@ A few things I have learned from deploying DCs with Ansible:
 
 ## Summary
 
-The `win_domain_controller` module automates the promotion and demotion of domain controllers. Whether you are adding redundancy to your AD infrastructure, deploying to branch offices with RODCs, or decommissioning old hardware, this module handles the heavy lifting. Combined with proper DNS configuration, FSMO role management, and health checks, you can manage your entire AD DC infrastructure through Ansible playbooks.
+The `microsoft.ad.domain_controller` module automates the promotion and demotion of domain controllers. Whether you are adding redundancy to your AD infrastructure, deploying to branch offices with RODCs, or decommissioning old hardware, this module handles the heavy lifting. Combined with proper DNS configuration, FSMO role management, and health checks, you can manage your entire AD DC infrastructure through Ansible playbooks.
