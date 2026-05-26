@@ -36,7 +36,7 @@ Without a version, you get the latest release. That is risky for production beca
 ansible-galaxy install geerlingguy.nginx,3.1.0
 ```
 
-The comma syntax is the version delimiter. You can also use version ranges, but pinning to an exact version is safer for reproducibility.
+The comma syntax is the version delimiter. For Galaxy roles, version ranges are not supported, so pin to an exact imported version for reproducibility.
 
 ## Installing to a Custom Path
 
@@ -47,7 +47,7 @@ If you want roles installed inside your project directory rather than your home 
 ansible-galaxy install geerlingguy.nginx -p ./roles/
 ```
 
-This is a common pattern for keeping roles alongside your playbooks in version control. Your `ansible.cfg` should reflect this path:
+This is a common pattern for keeping roles alongside your playbooks in your project directory. Your `ansible.cfg` should reflect this path:
 
 ```ini
 # ansible.cfg - tell Ansible where to find roles
@@ -217,7 +217,7 @@ ansible-galaxy install geerlingguy.php --no-deps
 
 ## Troubleshooting Common Issues
 
-**Role conflicts.** If two versions of the same role are needed by different dependencies, Galaxy will not handle this gracefully. The solution is to use `--force` to overwrite, or restructure your playbooks to use a single version.
+**Role conflicts.** If two versions of the same role are needed by different dependencies, Galaxy will not install both versions side by side under the same role name. The solution is to restructure your playbooks to use a single version; `--force` only overwrites the installed copy.
 
 **Timeout errors.** Galaxy downloads can fail on slow connections. Increase the timeout:
 
@@ -242,7 +242,7 @@ Here is the workflow I use for every project:
 1. Create a `requirements.yml` with pinned versions
 2. Add `roles/` to `.gitignore` so downloaded roles are not committed
 3. Run `ansible-galaxy install -r requirements.yml -p ./roles/` in CI/CD before each deployment
-4. Periodically check for updates with `ansible-galaxy search` and test upgrades in a staging environment
+4. Periodically check role details with `ansible-galaxy role info` or the Galaxy role page and test upgrades in a staging environment
 
 This keeps your repository lean, your dependencies explicit, and your deployments reproducible.
 
