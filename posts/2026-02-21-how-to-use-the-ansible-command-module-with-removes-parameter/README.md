@@ -68,11 +68,12 @@ When uninstalling software or tearing down services, `removes` ensures you only 
       ansible.builtin.command:
         cmd: rm /etc/systemd/system/myapp.service
         removes: /etc/systemd/system/myapp.service
+      register: unit_removed
 
     - name: Reload systemd after removing unit
       ansible.builtin.command:
         cmd: systemctl daemon-reload
-      when: true
+      when: unit_removed is changed
 
     - name: Run uninstall script if present
       ansible.builtin.command:
@@ -186,7 +187,7 @@ During deployments, clean up old versions and temporary files.
 
 ## Combining removes with creates
 
-You can use both `creates` and `removes` in the same playbook (though not in the same task) for a complete workflow.
+You can use both `creates` and `removes` in the same playbook, and the `command` module also allows both in the same task. When both are set, Ansible checks `creates` before `removes`.
 
 ```yaml
 # creates_and_removes.yml - Full lifecycle with both parameters
@@ -243,8 +244,8 @@ The `removes` parameter also works with the `shell` module.
             rm "$f"
           done
         removes: /tmp/upload_*.csv
-      # Note: removes with glob patterns checks literally for /tmp/upload_*.csv
-      # For actual glob matching, use find in the shell command instead
+      # Note: removes checks the glob before the shell command runs.
+      # The shell loop still needs to handle the matching files.
 
     - name: Process log files with pipes
       ansible.builtin.shell:
@@ -252,7 +253,7 @@ The `removes` parameter also works with the `shell` module.
         removes: /var/log/myapp/audit.log
 ```
 
-Important note: the `removes` parameter does not support glob patterns in the path. It checks for a literal file path. If you need glob-based checks, use a `find` command with `register` and a `when` conditional instead.
+Important note: the `command` module supports glob patterns for `removes`. The check happens before the command runs, so if you need more complex matching rules than a path or glob can express, use a `find` task with `register` and a `when` conditional instead.
 
 ## Handling Edge Cases
 
@@ -273,8 +274,8 @@ There are a few things to watch out for when using `removes`.
         cmd: "cat /tmp/data.txt"
         removes: /tmp/data.txt
 
-    # Symlinks - removes follows symlinks
-    - name: Run if symlink target exists
+    # Symlinks - removes works with symlink paths
+    - name: Run if symlink path exists
       ansible.builtin.command:
         cmd: "/opt/current/bin/cleanup"
         removes: /opt/current
