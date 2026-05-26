@@ -16,7 +16,7 @@ This guide covers creating ECS clusters, defining tasks, deploying services, and
 
 You need:
 
-- Ansible 2.14+
+- Ansible Core 2.17+ for current `community.aws` and `amazon.aws` collection releases
 - The `amazon.aws` and `community.aws` collections
 - AWS credentials with ECS permissions
 - A VPC with subnets configured
@@ -65,7 +65,7 @@ The simplest starting point is a Fargate cluster:
     cluster_name: myapp-production
 
   tasks:
-    # Create the ECS cluster with Container Insights enabled
+    # Create the ECS cluster with Fargate capacity providers
     - name: Create ECS cluster
       community.aws.ecs_cluster:
         name: "{{ cluster_name }}"
