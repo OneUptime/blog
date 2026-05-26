@@ -18,7 +18,7 @@ There are several ways to install ansible-lint depending on your environment.
 
 ### Install with pip
 
-The recommended approach is using pip in a virtual environment:
+A common direct approach is using pip in a virtual environment:
 
 ```bash
 # Create a virtual environment for your Ansible tools
@@ -39,7 +39,7 @@ If you want ansible-lint available globally without polluting your system Python
 
 ```bash
 # Install pipx if you do not have it
-pip install pipx
+python3 -m pip install --user pipx
 pipx ensurepath
 
 # Install ansible-lint in an isolated environment
@@ -72,7 +72,7 @@ Once installed, run ansible-lint against a playbook or an entire directory:
 # Lint a single playbook
 ansible-lint playbook.yml
 
-# Lint all YAML files in the current directory
+# Run auto-detection in the current project
 ansible-lint
 
 # Lint a specific role
@@ -113,12 +113,12 @@ skip_list:
 enable_list:
   - no-same-owner
 
-# Treat these warnings as errors
+# Treat these rules as warnings instead of fatal violations
 warn_list:
   - experimental
 
-# Use progressive mode to only report new violations
-# progressive: true
+# Use an ignore file to track known violations during gradual adoption
+# Generate it with: ansible-lint --generate-ignore
 
 # Set the working directory
 # cwd: /path/to/project
@@ -126,9 +126,7 @@ warn_list:
 # Offline mode prevents ansible-lint from downloading collections
 offline: false
 
-# Define additional collections paths
-# collections_paths:
-#   - ./collections
+# Define collection paths in ansible.cfg, not in this file
 
 # Specify which extra rules directories to include
 # rulesdir:
@@ -204,16 +202,15 @@ warn_list:
   - no-changed-when
 ```
 
-### Progressive Mode
+### Ignore File for Gradual Adoption
 
-Progressive mode is a lifesaver for existing projects. When enabled, ansible-lint only reports violations in files that have been modified compared to the default branch.
+For existing projects, use an ignore file to introduce ansible-lint without fixing every historical violation upfront. Generate it after your first run:
 
-```yaml
-# Only report violations in changed files
-progressive: true
+```bash
+ansible-lint --generate-ignore
 ```
 
-This lets you gradually improve code quality without fixing hundreds of existing issues upfront.
+This creates `.ansible-lint-ignore`, where each line lists a file and rule to ignore. Ignored violations remain visible as non-fatal warnings by default, which makes it easier to fix them gradually.
 
 ## Per-Task Rule Skipping
 
@@ -279,10 +276,9 @@ warn_list:
   - fqcn[action-core]
   - name[casing]
 
-# Show rule IDs in output for easy reference
-# parseable: true
+# Use -f pep8 on the command line for machine-parseable stdout
 
-# Match output format for IDE integration
+# Write SARIF output for tools that understand SARIF
 # sarif_file: ansible-lint-results.sarif
 ```
 
@@ -290,7 +286,7 @@ Start here, and over a few weeks, move rules from `warn_list` to enforced, and e
 
 ## Integration with ansible.cfg
 
-ansible-lint respects your `ansible.cfg` settings for things like roles_path and collections_paths. Make sure your ansible.cfg is in the project root alongside your `.ansible-lint` file.
+ansible-lint respects your `ansible.cfg` settings for things like roles_path and collections_path. Make sure your ansible.cfg is in the project root alongside your `.ansible-lint` file.
 
 ```ini
 # ansible.cfg - Settings that ansible-lint also uses
