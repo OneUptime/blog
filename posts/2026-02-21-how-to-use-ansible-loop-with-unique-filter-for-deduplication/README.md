@@ -114,11 +114,11 @@ For lists of dictionaries, `unique` compares the entire dictionary. Two dictiona
       loop: "{{ (team_a_users + team_b_users) | unique | list }}"
 ```
 
-Important caveat: if the bob entry in team_b_users had a slightly different value (say, a different shell), `unique` would NOT remove it because the dictionaries are not identical. For attribute-based deduplication, you need a different approach.
+Important caveat: if the bob entry in team_b_users had a slightly different value (say, a different shell), `unique` would NOT remove it because the dictionaries are not identical. For attribute-based deduplication, use the `attribute` parameter.
 
 ## Attribute-Based Deduplication
 
-When you want to deduplicate based on a specific attribute rather than the whole dictionary, combine `map`, `unique`, and a lookup.
+When you want to deduplicate based on a specific attribute rather than the whole dictionary, use the `attribute` parameter.
 
 ```yaml
 # attribute-dedup.yml
@@ -134,16 +134,9 @@ When you want to deduplicate based on a specific attribute rather than the whole
       - { name: "web-02", ip: "10.0.1.11", source: "discovery" }
       - { name: "db-01", ip: "10.0.2.10", source: "inventory" }
   tasks:
-    - name: Get unique server names
-      ansible.builtin.set_fact:
-        unique_names: "{{ servers | map(attribute='name') | unique | list }}"
-
     - name: Build deduplicated list (keep first occurrence)
       ansible.builtin.set_fact:
-        unique_servers: "{{ unique_servers | default([]) + [servers | selectattr('name', 'equalto', name) | first] }}"
-      loop: "{{ unique_names }}"
-      loop_control:
-        loop_var: name
+        unique_servers: "{{ servers | unique(attribute='name') | list }}"
 
     - name: Show deduplicated servers
       ansible.builtin.debug:
@@ -151,7 +144,7 @@ When you want to deduplicate based on a specific attribute rather than the whole
       loop: "{{ unique_servers }}"
 ```
 
-This approach first extracts unique names, then picks the first matching entry for each name.
+This approach keeps the first entry for each unique `name` value.
 
 ## Deduplicating with sort
 
@@ -264,7 +257,7 @@ Sometimes it is useful to know how many duplicates existed before you removed th
 
 ## Deduplication with Case Insensitivity
 
-The `unique` filter is case-sensitive by default. If you need case-insensitive deduplication, normalize the case first.
+The `unique` filter is case-insensitive by default. If you also need normalized lowercase output, normalize the case first.
 
 ```yaml
 # case-insensitive.yml
@@ -307,7 +300,7 @@ Here is a practical example where deduplication matters: managing DNS records fr
       - { name: "api.example.com", type: "A", value: "10.0.1.10" }
       - { name: "cache.example.com", type: "A", value: "10.0.3.10" }
   tasks:
-    - name: Get unique DNS record names
+    - name: Build unique DNS records
       ansible.builtin.set_fact:
         all_records: "{{ (primary_records + secondary_records) | unique | list }}"
 
@@ -319,16 +312,16 @@ Here is a practical example where deduplication matters: managing DNS records fr
 
 ## Performance Consideration
 
-Deduplication runs on the control node before tasks are sent to managed hosts. For very large lists (thousands of items), the `unique` filter is efficient since it uses hash-based comparison. There is no significant performance penalty for running `unique` on lists with hundreds or even thousands of items.
+Deduplication runs on the control node before tasks are sent to managed hosts. For typical lists with hundreds or thousands of items, this is usually much cheaper than running redundant module invocations against managed hosts.
 
 ```yaml
-# Large list deduplication is fast
+# Large list deduplication happens locally
 - name: Handle large lists
   ansible.builtin.set_fact:
     unique_items: "{{ large_combined_list | unique | list }}"
-  # This runs locally and is fast even for 10,000+ items
+  # This runs locally before the task is sent to managed hosts
 ```
 
 ## Summary
 
-The `unique` filter is a simple but essential tool for preventing duplicate task execution in Ansible loops. Apply it after merging lists from multiple sources (group_vars, role defaults, host_vars) to avoid redundant operations. For flat lists of strings or numbers, `unique` works directly. For lists of dictionaries, it compares the entire dictionary, so you need attribute-based deduplication if items differ in non-key fields. Always append `| list` after `unique` since Ansible's `loop` requires a list, not a generator. Combine it with `sort` for predictable ordering and with `map('lower')` for case-insensitive deduplication.
+The `unique` filter is a simple but essential tool for preventing duplicate task execution in Ansible loops. Apply it after merging lists from multiple sources (group_vars, role defaults, host_vars) to avoid redundant operations. For flat lists of strings or numbers, `unique` works directly. For lists of dictionaries, it compares the entire dictionary by default, and `unique(attribute='name')` handles attribute-based deduplication if items differ in non-key fields. Combine it with `sort` for predictable ordering and with `map('lower')` when you want normalized lowercase output.
