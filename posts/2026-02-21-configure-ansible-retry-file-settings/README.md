@@ -8,11 +8,11 @@ Description: Configure Ansible retry files to manage failed host tracking, contr
 
 ---
 
-When an Ansible playbook fails on one or more hosts, it creates a `.retry` file containing the hostnames that failed. This file lets you re-run the playbook against only the failed hosts instead of all hosts, saving time on large fleet operations. However, these retry files can also clutter your project directory and cause confusion if not managed properly. This guide covers how to configure retry file behavior to fit your workflow.
+When retry files are enabled and an Ansible playbook fails on one or more hosts, Ansible creates a `.retry` file containing the hostnames that failed. This file lets you re-run the playbook against only the failed hosts instead of all hosts, saving time on large fleet operations. However, these retry files can also clutter your project directory and cause confusion if not managed properly. This guide covers how to configure retry file behavior to fit your workflow.
 
 ## What Are Retry Files?
 
-When a playbook fails, Ansible creates a file named `<playbook-name>.retry` in the same directory as the playbook. It contains a simple list of hostnames that failed:
+When retry files are enabled and a playbook fails, Ansible creates a file named `<playbook-name>.retry`. It contains a simple list of hostnames that failed:
 
 ```text
 web03
@@ -32,7 +32,7 @@ The `@` prefix tells Ansible to read the host list from the file.
 
 ## Default Behavior
 
-By default, Ansible creates retry files in the same directory as the playbook. If your playbook is at `playbooks/deploy.yml`, the retry file will be `playbooks/deploy.retry`.
+In current Ansible versions, retry files are disabled by default. If you enable retry files without setting `retry_files_save_path`, Ansible creates them in the same directory as the playbook. If your playbook is at `playbooks/deploy.yml`, the retry file will be `playbooks/deploy.retry`.
 
 ## Disabling Retry Files
 
@@ -51,7 +51,7 @@ export ANSIBLE_RETRY_FILES_ENABLED=False
 ansible-playbook deploy.yml
 ```
 
-This is the most common configuration. Most projects in version control have retry files disabled to avoid committing them accidentally.
+This is already the current default in Ansible, but setting it explicitly can make the project behavior clear. Most projects in version control have retry files disabled to avoid committing them accidentally.
 
 ## Changing the Retry File Location
 
@@ -100,7 +100,7 @@ web02  : ok=5    changed=2    unreachable=0    failed=0    skipped=0
 web03  : ok=3    changed=1    unreachable=0    failed=1    skipped=0
 db01   : ok=2    changed=0    unreachable=1    failed=0    skipped=0
 
-Retry file created: /tmp/ansible-retries/deploy.retry
+	to retry, use: --limit @/tmp/ansible-retries/deploy.retry
 ```
 
 Fix the underlying issue on the failed hosts, then re-run:
@@ -117,7 +117,7 @@ You can combine the retry file with additional limit filters:
 ```bash
 # Retry failed hosts, but only those in the webservers group
 ansible-playbook -i inventory.ini playbooks/deploy.yml \
-  --limit @/tmp/ansible-retries/deploy.retry:&webservers
+  --limit '@/tmp/ansible-retries/deploy.retry:&webservers'
 ```
 
 The `&` operator means "intersection," so this runs against hosts that are both in the retry file and in the webservers group.
@@ -134,15 +134,29 @@ For CI/CD pipelines, you might want automatic retries. Here is a script that ret
 PLAYBOOK="${1}"
 MAX_RETRIES="${2:-3}"
 RETRY_DIR="/tmp/ansible-retries"
-RETRY_FILE="${RETRY_DIR}/$(basename ${PLAYBOOK} .yml).retry"
+RETRY_FILE="${RETRY_DIR}/$(basename "${PLAYBOOK}" .yml).retry"
 
 mkdir -p "${RETRY_DIR}"
 
+run_playbook() {
+    rm -f "${RETRY_FILE}"
+
+    ANSIBLE_RETRY_FILES_ENABLED=True \
+    ANSIBLE_RETRY_FILES_SAVE_PATH="${RETRY_DIR}" \
+    ansible-playbook -i inventory.ini "$@"
+
+    PLAYBOOK_STATUS=$?
+
+    if [ ${PLAYBOOK_STATUS} -ne 0 ] && [ ! -s "${RETRY_FILE}" ]; then
+        echo ""
+        echo "FAILED: Ansible exited with status ${PLAYBOOK_STATUS}, but no retry file was created"
+        exit ${PLAYBOOK_STATUS}
+    fi
+}
+
 # First run against all hosts
 echo "=== Initial run ==="
-ANSIBLE_RETRY_FILES_ENABLED=True \
-ANSIBLE_RETRY_FILES_SAVE_PATH="${RETRY_DIR}" \
-ansible-playbook -i inventory.ini "${PLAYBOOK}"
+run_playbook "${PLAYBOOK}"
 
 ATTEMPT=1
 
@@ -150,15 +164,17 @@ ATTEMPT=1
 while [ -f "${RETRY_FILE}" ] && [ ${ATTEMPT} -le ${MAX_RETRIES} ]; do
     echo ""
     echo "=== Retry attempt ${ATTEMPT}/${MAX_RETRIES} ==="
-    echo "Failed hosts: $(cat ${RETRY_FILE} | tr '\n' ' ')"
+    echo "Failed hosts: $(tr '\n' ' ' < "${RETRY_FILE}")"
     echo ""
 
     # Wait a bit before retrying (maybe the issue is transient)
     sleep 10
 
-    ANSIBLE_RETRY_FILES_ENABLED=True \
-    ANSIBLE_RETRY_FILES_SAVE_PATH="${RETRY_DIR}" \
-    ansible-playbook -i inventory.ini "${PLAYBOOK}" --limit "@${RETRY_FILE}"
+    LIMIT_FILE="${RETRY_FILE}.limit"
+    cp "${RETRY_FILE}" "${LIMIT_FILE}"
+
+    run_playbook "${PLAYBOOK}" --limit "@${LIMIT_FILE}"
+    rm -f "${LIMIT_FILE}"
 
     ATTEMPT=$((ATTEMPT + 1))
 done
