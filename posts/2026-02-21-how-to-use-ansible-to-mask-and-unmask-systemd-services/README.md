@@ -93,7 +93,7 @@ Fully shut down and mask a service:
     masked: yes
 ```
 
-Ansible handles the ordering correctly here. It will stop the service first, then disable it, then mask it.
+Ansible handles the ordering correctly here. When multiple properties are set, it applies enable or disable changes first, then mask or unmask changes, and then handles the service state.
 
 ## Security Hardening Playbook
 
