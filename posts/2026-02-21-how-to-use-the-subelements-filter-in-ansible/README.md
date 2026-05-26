@@ -152,7 +152,7 @@ db_users:
 
 - name: Grant privileges
   community.postgresql.postgresql_privs:
-    database: "{{ item.1.database }}"
+    login_db: "{{ item.1.database }}"
     roles: "{{ item.0.name }}"
     privs: "{{ item.1.priv }}"
     type: database
