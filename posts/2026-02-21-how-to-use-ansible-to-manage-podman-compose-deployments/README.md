@@ -8,11 +8,11 @@ Description: Deploy and manage Podman Compose applications with Ansible for root
 
 ---
 
-Podman is a daemonless container engine that runs containers without root privileges by default. It is fully compatible with Docker images and Dockerfiles, but has a fundamentally different architecture. Podman Compose provides Docker Compose compatibility, and Ansible can manage the entire lifecycle of Podman-based deployments. If your organization requires rootless containers or needs to avoid the Docker daemon, Podman with Ansible is a solid alternative.
+Podman is a daemonless container engine that can run containers without root privileges when used as a non-root user. It is compatible with Docker and OCI images and supports Dockerfiles, but has a fundamentally different architecture. Podman Compose provides Docker Compose compatibility, and Ansible can manage the entire lifecycle of Podman-based deployments. If your organization requires rootless containers or needs to avoid the Docker daemon, Podman with Ansible is a solid alternative.
 
 ## Why Podman Over Docker?
 
-Podman runs without a daemon, which eliminates a single point of failure. It supports rootless containers natively, which is a security requirement in many enterprise environments. It also generates systemd unit files from containers, which integrates with the standard Linux service management.
+Podman runs without a daemon, which eliminates a single point of failure. It supports rootless containers natively, which is a security requirement in many enterprise environments. It also integrates with systemd through Quadlet files, which integrate containers and pods with the standard Linux service manager.
 
 ## Installing Podman with Ansible
 
@@ -146,22 +146,68 @@ Podman's pod concept groups containers that share network namespace:
   become_user: "{{ deploy_user }}"
 ```
 
-## Generating Systemd Services
+## Managing Systemd Services with Quadlet
 
 ```yaml
 # roles/podman_deploy/tasks/systemd.yml
-# Generate systemd services from Podman containers
-- name: Generate systemd unit for pod
-  ansible.builtin.command:
-    cmd: podman generate systemd --new --name {{ pod_name }} --files
-    chdir: "/home/{{ deploy_user }}/.config/systemd/user/"
+# Install a Quadlet pod unit for systemd
+- name: Create Quadlet staging directory
+  ansible.builtin.file:
+    path: "/tmp/{{ pod_name }}-quadlet"
+    state: directory
+    mode: '0755'
+
+- name: Create Quadlet files
+  ansible.builtin.copy:
+    dest: "/tmp/{{ pod_name }}-quadlet/{{ item.name }}"
+    mode: '0644'
+    content: "{{ item.content }}"
+  loop:
+    - name: "{{ pod_name }}.pod"
+      content: |
+        [Pod]
+        PodName={{ pod_name }}
+        PublishPort={{ app_port }}:8080
+        PublishPort={{ db_port }}:5432
+
+        [Install]
+        WantedBy=default.target
+    - name: "{{ pod_name }}-db.container"
+      content: |
+        [Container]
+        ContainerName={{ pod_name }}-db
+        Image=postgres:16
+        Pod={{ pod_name }}.pod
+        Environment=POSTGRES_DB={{ db_name }}
+        Environment=POSTGRES_USER={{ db_user }}
+        Environment=POSTGRES_PASSWORD={{ db_password }}
+        Volume={{ pod_name }}-pgdata:/var/lib/postgresql/data
+        StartWithPod=true
+
+        [Install]
+        WantedBy=default.target
+    - name: "{{ pod_name }}-app.container"
+      content: |
+        [Container]
+        ContainerName={{ pod_name }}-app
+        Image={{ app_image }}:{{ app_version }}
+        Pod={{ pod_name }}.pod
+        Environment=DATABASE_URL=postgresql://{{ db_user }}:{{ db_password }}@127.0.0.1:5432/{{ db_name }}
+        StartWithPod=true
+
+        [Install]
+        WantedBy=default.target
+
+- name: Install Quadlets for deploy user
+  containers.podman.podman_quadlet:
+    state: present
+    src: "/tmp/{{ pod_name }}-quadlet/"
   become: true
   become_user: "{{ deploy_user }}"
-  changed_when: true
 
-- name: Enable and start pod service
-  ansible.builtin.systemd:
-    name: "pod-{{ pod_name }}"
+- name: Enable and start pod services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
     enabled: true
     state: started
     scope: user
@@ -169,6 +215,10 @@ Podman's pod concept groups containers that share network namespace:
   become_user: "{{ deploy_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ deploy_user_uid }}"
+  loop:
+    - "{{ pod_name }}-pod.service"
+    - "{{ pod_name }}-db.service"
+    - "{{ pod_name }}-app.service"
 ```
 
 ## Registry Authentication
