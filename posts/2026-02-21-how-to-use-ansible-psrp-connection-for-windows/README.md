@@ -8,7 +8,7 @@ Description: Configure the Ansible PSRP connection plugin for managing Windows h
 
 ---
 
-While WinRM is the traditional way Ansible connects to Windows hosts, there is a newer alternative: the PowerShell Remoting Protocol (PSRP) connection plugin. PSRP uses the same underlying WinRM transport but communicates using native PowerShell Remoting instead of the WinRM SOAP protocol. This results in better performance for PowerShell-heavy workloads and more efficient data serialization. If you manage Windows servers with Ansible, PSRP is worth evaluating.
+While WinRM is the traditional way Ansible connects to Windows hosts, there is a newer alternative: the PowerShell Remoting Protocol (PSRP) connection plugin. PSRP uses the same underlying WinRM/WS-Man transport but carries native PowerShell Remoting messages to a PowerShell runspace instead of using the WinRM command shell layer. This results in better performance for PowerShell-heavy workloads and more efficient data serialization. If you manage Windows servers with Ansible, PSRP is worth evaluating.
 
 ## PSRP vs WinRM: What Is the Difference?
 
@@ -22,7 +22,7 @@ graph TD
     end
 
     subgraph PSRP Connection
-        A2[Ansible] -->|PowerShell Remoting Protocol| B2[WinRM Service]
+        A2[Ansible] -->|PSRP over WS-Man| B2[WinRM Service]
         B2 --> C2[PowerShell Runspace]
     end
 ```
@@ -43,16 +43,16 @@ On the Ansible control node:
 ```bash
 # Install the pypsrp library
 
-pip install pypsrp
+pip install "pypsrp>=0.4.0,<1.0.0"
 
 # Verify installation
 python3 -c "import pypsrp; print('pypsrp installed successfully')"
 
 # For Kerberos support
-pip install pypsrp[kerberos]
+pip install "pypsrp[kerberos]>=0.4.0,<1.0.0"
 
 # For CredSSP support
-pip install pypsrp[credssp]
+pip install "pypsrp[credssp]>=0.4.0,<1.0.0"
 ```
 
 ## Basic PSRP Configuration
@@ -88,7 +88,7 @@ ansible_psrp_port: 5986
 
 ## Authentication Options
 
-PSRP supports the same authentication methods as WinRM:
+PSRP supports the same authentication methods as WinRM, plus the `negotiate` option:
 
 ### Basic Authentication
 
@@ -96,8 +96,9 @@ PSRP supports the same authentication methods as WinRM:
 # group_vars/windows_lab.yml
 ansible_connection: psrp
 ansible_psrp_auth: basic
-ansible_psrp_protocol: http
-ansible_psrp_port: 5985
+ansible_psrp_protocol: https
+ansible_psrp_port: 5986
+ansible_psrp_cert_validation: ignore
 ```
 
 ### NTLM Authentication
@@ -149,13 +150,13 @@ ansible_psrp_protocol: https
 ansible_psrp_port: 5986
 ```
 
-## All PSRP Configuration Options
+## Common PSRP Configuration Options
 
 ```yaml
-# Complete list of PSRP connection options
+# Common PSRP connection options
 ansible_connection: psrp
 
-# Authentication method: basic, ntlm, negotiate, kerberos, credssp
+# Authentication method: basic, certificate, ntlm, negotiate, kerberos, credssp
 ansible_psrp_auth: negotiate
 
 # Protocol: http or https
@@ -194,8 +195,8 @@ ansible_psrp_message_encryption: auto
 # Proxy URL
 ansible_psrp_proxy: ""
 
-# Ignore proxy for these hosts
-ansible_psrp_no_proxy: false
+# Ignore environment proxy settings
+ansible_psrp_ignore_proxy: false
 ```
 
 ## Testing PSRP Connectivity
@@ -367,7 +368,7 @@ time ansible-playbook benchmark.yml -e "ansible_connection=psrp ansible_psrp_aut
 
 ```bash
 # "pypsrp is not installed" error
-pip install pypsrp
+pip install "pypsrp>=0.4.0,<1.0.0"
 
 # "ConnectionError" - WinRM not listening
 # On the Windows host:
