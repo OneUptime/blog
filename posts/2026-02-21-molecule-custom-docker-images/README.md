@@ -68,7 +68,10 @@ Build it and tag it for use in Molecule.
 docker build -f Dockerfile.ubuntu2204 -t molecule-ubuntu2204:latest .
 
 # Verify systemd works
-docker run --privileged --cgroupns=host -d --name test molecule-ubuntu2204:latest
+docker run --privileged --cgroupns=host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  --tmpfs /run --tmpfs /tmp \
+  -d --name test molecule-ubuntu2204:latest
 docker exec test systemctl status
 docker rm -f test
 ```
@@ -131,7 +134,8 @@ platforms:
     cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    command: ""
+    # Use the image CMD so systemd runs as PID 1
+    override_command: false
     # Override the default tmpdir
     tmpfs:
       - /run
@@ -144,7 +148,7 @@ platforms:
     cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -187,7 +191,7 @@ RUN if [ -f /etc/debian_version ]; then \
       dnf clean all; \
     fi
 
-{% if item.command is not none %}
+{% if item.command is defined and item.command %}
 CMD {{ item.command }}
 {% else %}
 CMD ["/lib/systemd/systemd"]
@@ -207,7 +211,7 @@ platforms:
     cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    command: ""
+    override_command: false
 ```
 
 This approach is convenient because the Dockerfile lives with the test scenario, but it is slower because the image gets built on every `molecule create`.
@@ -302,7 +306,10 @@ Before using a new image in your Molecule tests, verify it works correctly.
 
 ```bash
 # Test that the image starts and systemd is functional
-docker run --privileged --cgroupns=host -d --name molecule-test molecule-ubuntu2204:latest
+docker run --privileged --cgroupns=host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  --tmpfs /run --tmpfs /tmp \
+  -d --name molecule-test molecule-ubuntu2204:latest
 
 # Check systemd
 docker exec molecule-test systemctl is-system-running --wait
@@ -329,7 +336,10 @@ docker images | grep molecule
 docker run --privileged --cgroupns=host -it molecule-ubuntu2204:latest /bin/bash
 
 # Check if systemd starts
-docker run --privileged --cgroupns=host -d molecule-ubuntu2204:latest
+docker run --privileged --cgroupns=host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  --tmpfs /run --tmpfs /tmp \
+  -d molecule-ubuntu2204:latest
 docker logs <container-id>
 
 # Check cgroup version (v1 vs v2)
@@ -338,6 +348,6 @@ stat -fc %T /sys/fs/cgroup/
 # "tmpfs" = cgroup v1
 ```
 
-Cgroup v2 is the default on newer Linux distributions and Docker Desktop. Your images need to handle both versions. The `cgroupns_mode: host` setting in molecule.yml helps with this.
+Cgroup v2 is the default on newer Linux distributions such as Ubuntu 22.04 and Debian 11 or later, and Docker supports it in current releases. Your images need to handle both versions. The `cgroupns_mode: host` setting in molecule.yml helps with this.
 
 Custom Docker images for Molecule are a bit of upfront work, but they pay off quickly. Your tests run faster, they are more reliable, and they better represent the actual environments where your roles will be deployed. Start with the systemd-enabled base images shown here, and add your specific requirements on top.
