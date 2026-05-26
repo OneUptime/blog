@@ -16,10 +16,11 @@ This guide covers creating SNS topics, managing subscriptions, configuring acces
 
 You need:
 
-- Ansible 2.14+
+- An ansible-core version supported by your installed `community.aws` collection
 - The `community.aws` collection
 - AWS credentials with SNS permissions
 - Python boto3
+- AWS CLI for the examples that set SNS topic or subscription attributes not exposed by `community.aws.sns_topic`
 
 ```bash
 # Install dependencies
@@ -121,7 +122,7 @@ You can add subscriptions directly when creating the topic:
       register: topic_result
 ```
 
-Email subscriptions require the recipient to click a confirmation link. SQS, Lambda, and HTTP/HTTPS subscriptions are confirmed automatically if the target resource has the right permissions.
+Email and HTTP/HTTPS subscriptions require the endpoint owner to confirm the subscription. Same-account SQS and Lambda subscriptions can be created without endpoint-owner confirmation, but the target resource still needs the right permissions.
 
 ## Topic Access Policy
 
@@ -176,14 +177,14 @@ For ordering guarantees and deduplication, use FIFO topics:
     state: present
     display_name: "Order Processing Events"
     topic_type: fifo
-    content_based_deduplication: true
+    content_based_deduplication: enabled
     subscriptions:
-      # FIFO topics can only deliver to FIFO SQS queues
+      # Use FIFO SQS queues when you need strict ordering and deduplication
       - endpoint: arn:aws:sqs:us-east-1:123456789012:order-processor.fifo
         protocol: sqs
 ```
 
-FIFO topics guarantee message ordering within a message group and prevent duplicate messages. They can only have SQS FIFO queues as subscribers.
+FIFO topics guarantee message ordering within a message group and deduplication when they deliver to SQS FIFO queues. They can also deliver to SQS standard queues for workloads that tolerate best-effort ordering and at-least-once delivery.
 
 ## Publishing Messages with Ansible
 
@@ -210,6 +211,7 @@ While you typically publish from application code, you can also publish from Ans
         "timestamp": "{{ ansible_date_time.iso8601 | default('now') }}"
       }
     subject: "Alert: Deployment in {{ environment }}"
+    message_structure: string
     message_attributes:
       alert_type:
         data_type: String
@@ -225,7 +227,7 @@ While you typically publish from application code, you can also publish from Ans
 Message attributes allow subscribers to filter which messages they receive:
 
 ```yaml
-# Create topic with filtered subscriptions
+# Create topic, then apply filters to confirmed subscriptions
 - name: Create topic with subscription filters
   community.aws.sns_topic:
     name: myapp-events
@@ -235,16 +237,40 @@ Message attributes allow subscribers to filter which messages they receive:
       # This queue only receives critical alerts
       - endpoint: arn:aws:sqs:us-east-1:123456789012:critical-alerts
         protocol: sqs
-        attributes:
-          FilterPolicy: '{"severity": ["critical"]}'
       # This queue receives all alerts
       - endpoint: arn:aws:sqs:us-east-1:123456789012:all-alerts
         protocol: sqs
       # This Lambda only processes order events
       - endpoint: arn:aws:lambda:us-east-1:123456789012:function:order-processor
         protocol: lambda
-        attributes:
-          FilterPolicy: '{"event_type": ["order_created", "order_updated"]}'
+
+- name: Apply filter policy to critical alerts subscription
+  ansible.builtin.command:
+    argv:
+      - aws
+      - sns
+      - set-subscription-attributes
+      - --subscription-arn
+      - arn:aws:sns:us-east-1:123456789012:myapp-events:f248de18-2cf6-578c-8592-b6f1eaa877dc
+      - --attribute-name
+      - FilterPolicy
+      - --attribute-value
+      - '{"severity": ["critical"]}'
+  changed_when: true
+
+- name: Apply filter policy to order processor subscription
+  ansible.builtin.command:
+    argv:
+      - aws
+      - sns
+      - set-subscription-attributes
+      - --subscription-arn
+      - arn:aws:sns:us-east-1:123456789012:myapp-events:6a09d0f1-65c3-4f2a-89c1-1a2b3c4d5e6f
+      - --attribute-name
+      - FilterPolicy
+      - --attribute-value
+      - '{"event_type": ["order_created", "order_updated"]}'
+  changed_when: true
 ```
 
 ## Multi-Environment Setup
@@ -297,10 +323,24 @@ Enable encryption for topics that carry sensitive data:
     name: myapp-sensitive-events
     region: us-east-1
     state: present
-    kms_master_key_id: "alias/myapp-sns-key"
     tags:
       Environment: production
       DataClassification: sensitive
+  register: sensitive_topic
+
+- name: Enable server-side encryption with a KMS key
+  ansible.builtin.command:
+    argv:
+      - aws
+      - sns
+      - set-topic-attributes
+      - --topic-arn
+      - "{{ sensitive_topic.sns_arn }}"
+      - --attribute-name
+      - KmsMasterKeyId
+      - --attribute-value
+      - alias/myapp-sns-key
+  changed_when: true
 ```
 
 ## Deleting Topics
