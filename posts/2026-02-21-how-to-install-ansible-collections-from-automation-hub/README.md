@@ -159,7 +159,7 @@ If your organization runs a private Automation Hub instance, the configuration i
 server_list = private_hub, automation_hub, galaxy
 
 [galaxy_server.private_hub]
-url = https://pah.internal.example.com/api/galaxy/content/published/
+url = https://pah.internal.example.com/api/galaxy/
 token = your-pah-token-here
 # Disable SSL verification only if using self-signed certs (not recommended for production)
 # validate_certs = false
@@ -187,16 +187,18 @@ Through the PAH web interface:
 4. Select which collections and versions to include or exclude
 5. Run the sync
 
-You can also use the `pulp` API for programmatic sync configuration:
+You can also use the `pulp` CLI for programmatic sync configuration:
 
 ```bash
-# Example: Sync a specific collection to your private hub using the API
-curl -X POST "https://pah.internal.example.com/api/galaxy/content/staging/v3/sync/" \
-  -H "Authorization: Token your-admin-token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "requirements": "collections:\n  - name: community.docker\n    version: \"3.8.0\""
-  }'
+# Example: Configure and sync a specific collection using the Pulp CLI
+pulp ansible remote -t collection create \
+  --name community_docker \
+  --url https://galaxy.ansible.com/ \
+  --requirements $'collections:\n  - name: community.docker\n    version: "3.8.0"'
+
+pulp ansible repository sync \
+  --name published \
+  --remote community_docker
 ```
 
 ## Publishing Internal Collections to Private Hub
