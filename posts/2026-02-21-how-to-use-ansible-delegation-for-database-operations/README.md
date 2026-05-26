@@ -36,6 +36,7 @@ Here is a deployment playbook that handles PostgreSQL database operations throug
     db_host: db-primary.example.com
     db_name: myapp_production
     db_user: myapp
+    db_password: "{{ vault_db_password }}"
   tasks:
     - name: Check for pending migrations
       ansible.builtin.shell: |
@@ -46,6 +47,7 @@ Here is a deployment playbook that handles PostgreSQL database operations throug
       run_once: true
       changed_when: false
       no_log: true
+      when: inventory_hostname == ansible_play_hosts_all[0]
 
     - name: Create database backup before migration
       ansible.builtin.shell: |
@@ -57,7 +59,9 @@ Here is a deployment playbook that handles PostgreSQL database operations throug
       run_once: true
       become: true
       become_user: postgres
-      when: pending_migrations.stdout | int > 0
+      when:
+        - inventory_hostname == ansible_play_hosts_all[0]
+        - pending_migrations.stdout | int > 0
 
     - name: Run database migrations
       ansible.builtin.shell: |
@@ -71,7 +75,9 @@ Here is a deployment playbook that handles PostgreSQL database operations throug
       run_once: true
       become: true
       become_user: "{{ db_user }}"
-      when: pending_migrations.stdout | int > 0
+      when:
+        - inventory_hostname == ansible_play_hosts_all[0]
+        - pending_migrations.stdout | int > 0
 
     - name: Verify migration was successful
       ansible.builtin.shell: |
@@ -82,11 +88,13 @@ Here is a deployment playbook that handles PostgreSQL database operations throug
       run_once: true
       changed_when: false
       no_log: true
+      when: inventory_hostname == ansible_play_hosts_all[0]
 
     - name: Fail if migration did not reach target version
       ansible.builtin.fail:
         msg: "Migration failed. Expected version {{ app_version }}, got {{ current_version.stdout }}"
       when:
+        - inventory_hostname == ansible_play_hosts_all[0]
         - pending_migrations.stdout | int > 0
         - current_version.stdout != app_version
       run_once: true
@@ -106,7 +114,7 @@ Here is a deployment playbook that handles PostgreSQL database operations throug
 
 ## MySQL Operations with the mysql_db Module
 
-Ansible has built-in modules for MySQL operations. You delegate these to the database server:
+The `community.mysql` collection provides modules for MySQL operations. You delegate these to the database server:
 
 ```yaml
 # mysql-operations.yml - MySQL database management with delegation
@@ -116,6 +124,7 @@ Ansible has built-in modules for MySQL operations. You delegate these to the dat
   vars:
     db_host: mysql-primary.example.com
     db_name: myapp
+    app_version: "3.2.0"
     mysql_login_user: ansible_admin
     mysql_login_password: "{{ vault_mysql_password }}"
   tasks:
@@ -176,7 +185,7 @@ Before running migrations, verify that the database is accessible and healthy:
   tasks:
     - name: Check database connectivity
       community.postgresql.postgresql_ping:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: localhost
       delegate_to: "{{ db_host }}"
       run_once: true
@@ -233,6 +242,7 @@ If a migration fails, you need to roll back. Here is a pattern that handles this
   vars:
     db_host: db-primary.example.com
     db_name: myapp_production
+    target_version: "3.2.0"
   tasks:
     - name: Database migration
       block:
@@ -330,4 +340,4 @@ Sometimes you need to coordinate operations across multiple databases:
 
 ## Summary
 
-Delegating database operations in Ansible keeps your deployment playbooks cohesive while ensuring database tasks run from the right host, with the right credentials, exactly once. The key patterns are: use `run_once: true` to prevent duplicate migrations, delegate to the database server for direct access, create backups before migrations, implement rollback in `rescue` blocks, and verify the migration result before proceeding with application deployment. Whether you use PostgreSQL, MySQL, or any other database, the delegation pattern remains the same.
+Delegating database operations in Ansible keeps your deployment playbooks cohesive while ensuring database tasks run from the right host, with the right credentials, exactly once. The key patterns are: use `run_once: true` to prevent duplicate migrations, add a first-host `when` condition when the play uses `serial`, delegate to the database server for direct access, create backups before migrations, implement rollback in `rescue` blocks, and verify the migration result before proceeding with application deployment. Whether you use PostgreSQL, MySQL, or any other database, the delegation pattern remains the same.
