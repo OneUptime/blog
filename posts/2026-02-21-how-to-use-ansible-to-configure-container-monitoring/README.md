@@ -34,7 +34,7 @@ cAdvisor runs on every Docker host and exposes container metrics:
 - name: Run cAdvisor container
   community.docker.docker_container:
     name: cadvisor
-    image: "gcr.io/cadvisor/cadvisor:{{ cadvisor_version }}"
+    image: "ghcr.io/google/cadvisor:{{ cadvisor_version }}"
     state: started
     restart_policy: always
     ports:
@@ -92,6 +92,7 @@ cAdvisor runs on every Docker host and exposes container metrics:
     volumes:
       - "/etc/prometheus:/etc/prometheus:ro"
       - "prometheus-data:/prometheus"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -134,7 +135,7 @@ scrape_configs:
           - '{{ hostvars[host].ansible_host }}:9100'
 {% endfor %}
 
-  - job_name: docker-containers
+  - job_name: local-docker-containers
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 30s
@@ -210,16 +211,16 @@ groups:
   - name: container_alerts
     rules:
       - alert: ContainerHighCPU
-        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        expr: sum by (instance, name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) > 0.8
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Container CPU usage high"
-          description: "Container {{ '{{' }} $labels.name {{ '}}' }} CPU above 80%"
+          description: "Container {{ '{{' }} $labels.name {{ '}}' }} is using more than 0.8 CPU cores"
 
       - alert: ContainerHighMemory
-        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+        expr: (container_memory_working_set_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) > 0.9 and container_spec_memory_limit_bytes{name!=""} > 0
         for: 5m
         labels:
           severity: critical
@@ -227,7 +228,7 @@ groups:
           summary: "Container memory near limit"
 
       - alert: ContainerRestarting
-        expr: increase(container_restart_count[1h]) > 3
+        expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
         labels:
           severity: warning
         annotations:
@@ -275,20 +276,30 @@ groups:
 - name: Deploy monitoring agents on all Docker hosts
   hosts: docker_hosts
   become: true
-  roles:
-    - role: container_monitoring
-      tasks_from: cadvisor
-    - role: container_monitoring
-      tasks_from: node_exporter
+  tasks:
+    - name: Deploy cAdvisor
+      ansible.builtin.include_role:
+        name: container_monitoring
+        tasks_from: cadvisor
+
+    - name: Deploy Node Exporter
+      ansible.builtin.include_role:
+        name: container_monitoring
+        tasks_from: node_exporter
 
 - name: Deploy monitoring server
   hosts: monitoring_server
   become: true
-  roles:
-    - role: container_monitoring
-      tasks_from: prometheus
-    - role: container_monitoring
-      tasks_from: grafana
+  tasks:
+    - name: Deploy Prometheus
+      ansible.builtin.include_role:
+        name: container_monitoring
+        tasks_from: prometheus
+
+    - name: Deploy Grafana
+      ansible.builtin.include_role:
+        name: container_monitoring
+        tasks_from: grafana
 ```
 
 
@@ -331,7 +342,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -350,8 +361,8 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
