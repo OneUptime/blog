@@ -99,14 +99,14 @@ The `file_type` parameter lets you search for files, directories, links, or any 
 
 ## Using Regex Patterns
 
-For more complex matching, use `use_regex: true` to switch from glob to Python regular expressions:
+For more complex matching, use `use_regex: true` to switch from glob to Python regular expressions. Regex patterns are matched against the entire basename, so include `.*` where you want to match variable prefixes or suffixes:
 
 ```yaml
 # Find files matching a regex pattern
 - name: Find rotated log files (e.g., app.log.1, app.log.2.gz)
   ansible.builtin.find:
     paths: /var/log/myapp
-    patterns: "^app\\.log\\.\\d+"
+    patterns: "^app\\.log\\.\\d+(?:\\.gz)?$"
     use_regex: true
   register: rotated_logs
 ```
@@ -160,14 +160,14 @@ The `excludes` parameter filters out files that match certain patterns:
 
 ## Finding Hidden Files
 
-By default, `find` includes hidden files (those starting with a dot). You can explicitly control this:
+By default, `find` ignores hidden files (those starting with a dot). Set `hidden: true` to include them:
 
 ```yaml
 # Find hidden files specifically
 - name: Find hidden files in home directory
   ansible.builtin.find:
     paths: /home/deploy
-    patterns: ".*"
+    patterns: "^\\..*"
     hidden: true
     use_regex: true
   register: hidden_files
