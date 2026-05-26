@@ -8,7 +8,7 @@ Description: Learn how to create and manage VMware resource pools with Ansible t
 
 ---
 
-Resource pools in VMware let you partition a cluster's CPU and memory resources among different groups of VMs. Without resource pools, all VMs compete equally for resources, which means a runaway process in a development VM could starve a production database of CPU cycles. By creating resource pools and assigning VMs to them, you guarantee that critical workloads always get the resources they need. Ansible makes it straightforward to create, configure, and manage resource pools programmatically.
+Resource pools in VMware let you partition a cluster's CPU and memory resources among different groups of VMs. Without resource pools, VMs compete according to their own resource settings, which means a runaway process in a development VM could contend with a production database for CPU cycles. By creating resource pools and assigning VMs to them, you reserve capacity for critical workloads and control how resources are shared during contention. Ansible makes it straightforward to create, configure, and manage resource pools programmatically.
 
 ## What Resource Pools Do
 
@@ -83,7 +83,8 @@ These three settings control how resources are allocated.
 # Resource allocation explained through examples
 
 # SHARES determine relative priority when resources are contended
-# High = 8000 shares, Normal = 4000, Low = 2000, or set Custom
+# For CPU resource pools, High = 8000 shares, Normal = 4000,
+# Low = 2000, or set Custom. Memory share values scale differently.
 # If two pools have High and Normal shares, the High pool gets
 # twice the resources during contention
 
@@ -124,47 +125,47 @@ Most environments need multiple resource pools organized by priority tier.
     resource_pools:
       - name: "RP-Production-Critical"
         cpu_shares: custom
-        cpu_shares_value: 16000
+        cpu_allocation_shares: 16000
         cpu_reservation: 40000
         cpu_limit: -1
         mem_shares: custom
-        mem_shares_value: 16000
+        mem_allocation_shares: 327680
         mem_reservation: 262144   # 256 GB
         mem_limit: -1
       - name: "RP-Production-Standard"
         cpu_shares: normal
-        cpu_shares_value: 4000
+        cpu_allocation_shares: 4000
         cpu_reservation: 20000
         cpu_limit: -1
         mem_shares: normal
-        mem_shares_value: 4000
+        mem_allocation_shares: 163840
         mem_reservation: 131072   # 128 GB
         mem_limit: -1
       - name: "RP-Staging"
         cpu_shares: normal
-        cpu_shares_value: 4000
+        cpu_allocation_shares: 4000
         cpu_reservation: 10000
         cpu_limit: 40000
         mem_shares: normal
-        mem_shares_value: 4000
+        mem_allocation_shares: 163840
         mem_reservation: 65536    # 64 GB
         mem_limit: 131072         # 128 GB max
       - name: "RP-Development"
         cpu_shares: low
-        cpu_shares_value: 2000
+        cpu_allocation_shares: 2000
         cpu_reservation: 0
         cpu_limit: 20000
         mem_shares: low
-        mem_shares_value: 2000
+        mem_allocation_shares: 81920
         mem_reservation: 0
         mem_limit: 65536          # 64 GB max
       - name: "RP-Testing"
         cpu_shares: low
-        cpu_shares_value: 2000
+        cpu_allocation_shares: 2000
         cpu_reservation: 0
         cpu_limit: 10000
         mem_shares: low
-        mem_shares_value: 2000
+        mem_allocation_shares: 81920
         mem_reservation: 0
         mem_limit: 32768          # 32 GB max
 
@@ -175,10 +176,12 @@ Most environments need multiple resource pools organized by priority tier.
         cluster: "Production"
         resource_pool: "{{ item.name }}"
         cpu_shares: "{{ item.cpu_shares }}"
+        cpu_allocation_shares: "{{ item.cpu_allocation_shares }}"
         cpu_reservation: "{{ item.cpu_reservation }}"
         cpu_limit: "{{ item.cpu_limit }}"
         cpu_expandable_reservations: true
         mem_shares: "{{ item.mem_shares }}"
+        mem_allocation_shares: "{{ item.mem_allocation_shares }}"
         mem_reservation: "{{ item.mem_reservation }}"
         mem_limit: "{{ item.mem_limit }}"
         mem_expandable_reservations: true
@@ -246,15 +249,17 @@ When a VM's priority changes, move it to the appropriate resource pool.
     vm_pool_assignments:
       - vm_name: "staging-app-01"
         target_pool: "RP-Production-Standard"
+        target_host: "esxi-01.example.com"
       - vm_name: "dev-test-vm"
         target_pool: "RP-Testing"
+        target_host: "esxi-02.example.com"
 
   tasks:
     - name: Move VMs to their assigned resource pools
-      community.vmware.vmware_guest_move:
-        datacenter: "DC01"
-        name: "{{ item.vm_name }}"
-        dest_resource_pool: "{{ item.target_pool }}"
+      community.vmware.vmware_vmotion:
+        vm_name: "{{ item.vm_name }}"
+        destination_host: "{{ item.target_host }}"
+        destination_resourcepool: "{{ item.target_pool }}"
       loop: "{{ vm_pool_assignments }}"
       register: move_results
 
@@ -297,10 +302,10 @@ Monitor resource pool usage to understand if your allocations are appropriate.
       ansible.builtin.debug:
         msg: >
           Pool: {{ item.name }}
-          CPU Reservation: {{ item.cpu_reservation }} MHz
-          CPU Limit: {{ item.cpu_limit }} MHz
-          Memory Reservation: {{ item.mem_reservation }} MB
-          Memory Limit: {{ item.mem_limit }} MB
+          CPU Reservation: {{ item.cpu_allocation_reservation }} MHz
+          CPU Limit: {{ item.cpu_allocation_limit }} MHz
+          Memory Reservation: {{ item.mem_allocation_reservation }} MB
+          Memory Limit: {{ item.mem_allocation_limit }} MB
       loop: "{{ rp_info.resource_pool_info }}"
 ```
 
