@@ -222,7 +222,7 @@ graph TD
 
 Wildcards are simple glob patterns, not regular expressions. They have a few limitations:
 
-1. **No character classes**: You cannot do `web-[0-9]*` with wildcards. Use regex patterns (`~web-[0-9].*`) for that.
+1. **No regex-only syntax**: Wildcards support shell-style glob features such as `*`, `?`, and character classes like `web-[0-9]*`, but not full regular expression syntax. Use regex patterns (`~web-[0-9].*`) when you need more complex matching.
 
 2. **No alternation**: You cannot do `web|db` with wildcards. Use union patterns instead: `web*:db*`.
 
