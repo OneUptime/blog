@@ -113,7 +113,7 @@ The `#?` means "zero or one hash character", so this matches both `PasswordAuthe
 - name: Configure sysctl parameters
   ansible.builtin.lineinfile:
     path: /etc/sysctl.conf
-    regexp: "^#?{{ item.key }}\\s*="
+    regexp: "^#?{{ item.key | regex_escape }}\\s*="
     line: "{{ item.key }} = {{ item.value }}"
   loop:
     - { key: "net.core.somaxconn", value: "65535" }
@@ -299,7 +299,6 @@ When your regex does not match what you expect, use the `ansible.builtin.shell` 
         - { regexp: "^#?MaxSessions", line: "MaxSessions 5" }
         - { regexp: "^#?ClientAliveInterval", line: "ClientAliveInterval 300" }
         - { regexp: "^#?ClientAliveCountMax", line: "ClientAliveCountMax 2" }
-        - { regexp: "^#?Protocol", line: "Protocol 2" }
       loop_control:
         label: "{{ item.line }}"
       notify: Restart SSHD
