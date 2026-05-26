@@ -102,7 +102,7 @@ Install everything:
 ansible-galaxy collection install -r requirements.yml
 ```
 
-Force upgrade all collections:
+Force reinstall all collections:
 
 ```bash
 # Force reinstall all collections
@@ -162,8 +162,9 @@ ansible-galaxy collection download -r requirements.yml -p ./collection-tarballs/
 Then transfer the tarballs to the target machine and install:
 
 ```bash
-# Install from the downloaded tarballs
-ansible-galaxy collection install -r requirements.yml -p ./collections/ --offline
+# Install from the downloaded tarballs and generated requirements file
+cd ./collection-tarballs/
+ansible-galaxy collection install -r requirements.yml -p ../collections/ --offline
 ```
 
 ## Understanding the Collection Directory Structure
@@ -233,13 +234,10 @@ However, using FQCNs is the recommended practice because it makes your playbooks
 
 ## Handling Collection Dependencies
 
-Collections can depend on other collections. These dependencies are declared in `galaxy.yml` and Galaxy handles resolution automatically. You can see a collection's dependencies with:
+Collections can depend on other collections. These dependencies are declared in `galaxy.yml` and Galaxy handles resolution automatically. You can see an installed collection's dependencies in its manifest:
 
 ```bash
-# Check collection metadata including dependencies
-ansible-galaxy collection verify community.general 2>&1 | head -20
-
-# Or look at the installed manifest
+# Look at the installed manifest
 cat ~/.ansible/collections/ansible_collections/community/general/MANIFEST.json | python3 -m json.tool | grep -A 20 dependencies
 ```
 
