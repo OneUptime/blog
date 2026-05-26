@@ -1,34 +1,34 @@
-# How to Use the community.mysql Collection
+# How to Use the ansible.mysql Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, MySQL, MariaDB, Database, DevOps
 
-Description: Manage MySQL and MariaDB databases, users, permissions, replication, and configuration using the community.mysql Ansible collection.
+Description: Manage MySQL and MariaDB databases, users, permissions, replication, and configuration using the ansible.mysql Ansible collection.
 
 ---
 
-MySQL and MariaDB remain among the most widely deployed databases, powering everything from WordPress sites to enterprise applications. The `community.mysql` collection brings full database management into Ansible, letting you automate database creation, user management, permission grants, replication setup, and query execution. The modules work with both MySQL and MariaDB.
+MySQL and MariaDB remain among the most widely deployed databases, powering everything from WordPress sites to enterprise applications. The `ansible.mysql` collection brings full database management into Ansible, letting you automate database creation, user management, permission grants, replication setup, and query execution. The modules work with both MySQL and MariaDB. The older `community.mysql` collection has been renamed to `ansible.mysql`, so new playbooks should use the `ansible.mysql` fully qualified collection names shown below.
 
 ## Installation
 
 ```bash
 # Install the collection
 
-ansible-galaxy collection install community.mysql
+ansible-galaxy collection install ansible.mysql
 
-# Install the Python MySQL connector on target hosts
+# Install the Python MySQL connector on hosts that execute the modules
 pip install PyMySQL
 ```
 
-The `PyMySQL` library is the recommended Python connector. Alternatively, you can use `mysqlclient` (the C extension), but PyMySQL is pure Python and easier to install.
+The `PyMySQL` library is the recommended Python connector. The `mysql_db` import and dump states also require the `mysql` and `mysqldump` command-line binaries on the host executing the module.
 
 ```yaml
 # requirements.yml
 ---
 collections:
-  - name: community.mysql
-    version: ">=3.8.0"
+  - name: ansible.mysql
+    version: ">=4.2.0"
 ```
 
 ## Database Management
@@ -43,7 +43,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
   become: true
   tasks:
     - name: Create application database
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp_production
         encoding: utf8mb4
         collation: utf8mb4_unicode_ci
@@ -51,7 +51,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create multiple databases
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: "{{ item }}"
         encoding: utf8mb4
         collation: utf8mb4_unicode_ci
@@ -63,21 +63,21 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         - myapp_sessions
 
     - name: Import database from SQL dump
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp_production
         state: import
         target: /tmp/backup/myapp_dump.sql
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Export database to file
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp_production
         state: dump
         target: "/tmp/backup/myapp_{{ ansible_date_time.date }}.sql"
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Export with specific tables only
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp_production
         state: dump
         target: /tmp/backup/users_table.sql
@@ -85,7 +85,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Drop deprecated database
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: myapp_test_old
         state: absent
         login_unix_socket: /var/run/mysqld/mysqld.sock
@@ -101,7 +101,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
   become: true
   tasks:
     - name: Create application user with password
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: app_user
         host: "10.0.1.%"
         password: "{{ vault_app_db_password }}"
@@ -110,7 +110,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create read-only user
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: readonly_user
         host: "10.0.%"
         password: "{{ vault_readonly_password }}"
@@ -119,7 +119,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create backup user with specific privileges
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: backup_user
         host: localhost
         password: "{{ vault_backup_password }}"
@@ -128,7 +128,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create user with access from multiple hosts
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: monitoring_user
         host: "{{ item }}"
         password: "{{ vault_monitoring_password }}"
@@ -141,7 +141,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         - localhost
 
     - name: Create admin user
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: admin_user
         host: "10.0.100.%"
         password: "{{ vault_admin_password }}"
@@ -150,7 +150,7 @@ The `mysql_db` module handles database creation, deletion, import, and export:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Remove deprecated user
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: old_user
         host_all: true
         state: absent
@@ -169,7 +169,7 @@ For more complex privilege setups, you can specify multiple database-level permi
   become: true
   tasks:
     - name: Create user with multi-database access
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: analytics_user
         host: "10.0.1.%"
         password: "{{ vault_analytics_password }}"
@@ -181,7 +181,7 @@ For more complex privilege setups, you can specify multiple database-level permi
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Grant column-level privileges
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         login_db: myapp_production
         query: >
           GRANT SELECT (id, username, email, created_at)
@@ -202,7 +202,7 @@ The `mysql_query` module executes SQL statements:
   become: true
   tasks:
     - name: Check database size
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         login_db: myapp_production
         query: |
           SELECT
@@ -219,7 +219,7 @@ The `mysql_query` module executes SQL statements:
         var: db_size.query_result
 
     - name: Get largest tables
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         login_db: myapp_production
         query: |
           SELECT
@@ -235,7 +235,7 @@ The `mysql_query` module executes SQL statements:
       register: large_tables
 
     - name: Run parameterized query
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         login_db: myapp_production
         query: "SELECT * FROM users WHERE status = %s AND created_at > %s LIMIT %s"
         positional_args:
@@ -245,7 +245,7 @@ The `mysql_query` module executes SQL statements:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Run multiple queries
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         login_db: myapp_production
         query:
           - "CREATE INDEX idx_users_email ON users(email)"
@@ -265,7 +265,7 @@ The `mysql_query` module executes SQL statements:
   become: true
   tasks:
     - name: Set global variables for performance
-      community.mysql.mysql_variables:
+      ansible.mysql.mysql_variables:
         variable: "{{ item.name }}"
         value: "{{ item.value }}"
         login_unix_socket: /var/run/mysqld/mysqld.sock
@@ -277,7 +277,7 @@ The `mysql_query` module executes SQL statements:
         - { name: innodb_flush_log_at_trx_commit, value: "2" }
 
     - name: Get current variable value
-      community.mysql.mysql_variables:
+      ansible.mysql.mysql_variables:
         variable: innodb_buffer_pool_size
         login_unix_socket: /var/run/mysqld/mysqld.sock
       register: pool_size
@@ -297,7 +297,7 @@ The `mysql_query` module executes SQL statements:
   become: true
   tasks:
     - name: Configure replica to follow primary
-      community.mysql.mysql_replication:
+      ansible.mysql.mysql_replication:
         mode: changeprimary
         primary_host: "{{ mysql_primary_host }}"
         primary_port: 3306
@@ -307,12 +307,12 @@ The `mysql_query` module executes SQL statements:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Start replication
-      community.mysql.mysql_replication:
+      ansible.mysql.mysql_replication:
         mode: startreplica
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Check replication status
-      community.mysql.mysql_replication:
+      ansible.mysql.mysql_replication:
         mode: getreplica
         login_unix_socket: /var/run/mysqld/mysqld.sock
       register: repl_status
@@ -320,9 +320,9 @@ The `mysql_query` module executes SQL statements:
     - name: Verify replication is running
       ansible.builtin.assert:
         that:
-          - repl_status.Slave_IO_Running == "Yes"
-          - repl_status.Slave_SQL_Running == "Yes"
-          - repl_status.Seconds_Behind_Master | int < 60
+          - (repl_status.Replica_IO_Running | default(repl_status.Slave_IO_Running | default("No"))) == "Yes"
+          - (repl_status.Replica_SQL_Running | default(repl_status.Slave_SQL_Running | default("No"))) == "Yes"
+          - (repl_status.Seconds_Behind_Source | default(repl_status.Seconds_Behind_Master | default(999999))) | int < 60
         fail_msg: "Replication is not healthy"
         success_msg: "Replication is running normally"
 ```
@@ -342,7 +342,7 @@ Here is a complete example that sets up a MySQL server for a new application:
     db_name: "{{ app_name }}_production"
   tasks:
     - name: Create application database
-      community.mysql.mysql_db:
+      ansible.mysql.mysql_db:
         name: "{{ db_name }}"
         encoding: utf8mb4
         collation: utf8mb4_unicode_ci
@@ -350,7 +350,7 @@ Here is a complete example that sets up a MySQL server for a new application:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create application user
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: "{{ app_name }}_user"
         host: "10.0.1.%"
         password: "{{ vault_app_password }}"
@@ -359,7 +359,7 @@ Here is a complete example that sets up a MySQL server for a new application:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create migration user (for schema changes)
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: "{{ app_name }}_migrate"
         host: "10.0.100.%"
         password: "{{ vault_migrate_password }}"
@@ -368,7 +368,7 @@ Here is a complete example that sets up a MySQL server for a new application:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Create read-only reporting user
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: "{{ app_name }}_readonly"
         host: "10.0.%"
         password: "{{ vault_readonly_password }}"
@@ -377,12 +377,12 @@ Here is a complete example that sets up a MySQL server for a new application:
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Flush privileges
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         query: FLUSH PRIVILEGES
         login_unix_socket: /var/run/mysqld/mysqld.sock
 
     - name: Verify setup
-      community.mysql.mysql_query:
+      ansible.mysql.mysql_query:
         login_db: "{{ db_name }}"
         query: "SELECT 1 AS connection_test"
         login_user: "{{ app_name }}_user"
@@ -401,7 +401,7 @@ Here is a complete example that sets up a MySQL server for a new application:
 
 ```mermaid
 graph TD
-    A[community.mysql] --> B[Databases]
+    A[ansible.mysql] --> B[Databases]
     A --> C[Users]
     A --> D[Queries]
     A --> E[Configuration]
@@ -424,4 +424,4 @@ graph TD
 
 ## Conclusion
 
-The `community.mysql` collection provides everything you need to manage MySQL and MariaDB through Ansible. Database and user creation, permission management, query execution, server configuration, and replication setup are all covered. The key to smooth operation is having `PyMySQL` installed on the target hosts and using `login_unix_socket` for local connections to avoid password-based authentication for the root user. Keep your database passwords in Ansible Vault, and your MySQL administration becomes as repeatable and auditable as your server configuration.
+The `ansible.mysql` collection provides everything you need to manage MySQL and MariaDB through Ansible. Database and user creation, permission management, query execution, server configuration, and replication setup are all covered. The key to smooth operation is having `PyMySQL` installed on the target hosts and using `login_unix_socket` for local connections to avoid password-based authentication for the root user. Keep your database passwords in Ansible Vault, and your MySQL administration becomes as repeatable and auditable as your server configuration.
