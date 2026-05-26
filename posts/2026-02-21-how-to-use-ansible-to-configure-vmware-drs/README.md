@@ -16,8 +16,8 @@ In this guide, I will show you how to configure DRS settings, affinity rules, an
 
 You need the following before starting:
 
-- Ansible 2.10+ on your control node
-- The `community.vmware` collection
+- Ansible 2.19+ on your control node
+- The `vmware.vmware` and `community.vmware` collections
 - vCenter Server access with administrator privileges
 - Python libraries `pyvmomi` and `requests`
 
@@ -26,7 +26,7 @@ Install dependencies if you have not already.
 ```bash
 # Install the VMware collection and Python packages
 
-ansible-galaxy collection install community.vmware
+ansible-galaxy collection install vmware.vmware community.vmware
 pip install pyvmomi requests
 ```
 
@@ -48,7 +48,7 @@ graph LR
 
 ## Basic DRS Configuration
 
-The `community.vmware.vmware_cluster_drs` module handles the core DRS settings. Here is a playbook that enables DRS with fully automated mode.
+The `vmware.vmware.cluster_drs` module handles the core DRS settings. Here is a playbook that enables DRS with fully automated mode.
 
 ```yaml
 # playbooks/configure-drs.yml
@@ -67,7 +67,7 @@ The `community.vmware.vmware_cluster_drs` module handles the core DRS settings. 
   tasks:
     # Enable DRS with fully automated mode
     - name: Enable and configure DRS
-      community.vmware.vmware_cluster_drs:
+      vmware.vmware.cluster_drs:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -102,7 +102,7 @@ DRS supports three automation levels, and picking the right one matters.
   tasks:
     # Manual mode - DRS only provides recommendations
     - name: Set DRS to manual mode for sensitive clusters
-      community.vmware.vmware_cluster_drs:
+      vmware.vmware.cluster_drs:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -166,7 +166,7 @@ Affinity and anti-affinity rules let you control which hosts a VM can run on. Th
 
     # Create a rule that keeps DB VMs on licensed hosts
     - name: Create VM-Host affinity rule
-      community.vmware.vmware_drs_rule:
+      community.vmware.vmware_vm_host_drs_rule:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
@@ -197,11 +197,11 @@ To keep redundant VMs on separate hosts (so a single host failure does not take 
   tasks:
     # Keep domain controllers on separate hosts
     - name: Create anti-affinity rule for domain controllers
-      community.vmware.vmware_drs_rule:
+      community.vmware.vmware_vm_vm_drs_rule:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
-        datacenter_name: "{{ vcenter_datacenter }}"
+        datacenter: "{{ vcenter_datacenter }}"
         cluster_name: "{{ vcenter_cluster }}"
         validate_certs: false
         drs_rule_name: "separate-domain-controllers"
@@ -239,15 +239,13 @@ Some VMs need different DRS behavior than the cluster default. For example, a la
   tasks:
     # Override DRS automation for specific VMs
     - name: Set DRS override for latency-sensitive VMs
-      community.vmware.vmware_vm_vm_drs_rule:
+      community.vmware.vmware_drs_override:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
-        cluster_name: "{{ vcenter_cluster }}"
-        vms: "{{ item.name }}"
+        vm_name: "{{ item.name }}"
         drs_behavior: "{{ item.behavior }}"
-        enabled: true
       loop: "{{ pinned_vms }}"
       loop_control:
         label: "{{ item.name }}"
@@ -272,7 +270,7 @@ drs_vm_overrides: []
 # roles/vmware_drs/tasks/main.yml
 ---
 - name: Configure DRS on cluster
-  community.vmware.vmware_cluster_drs:
+  vmware.vmware.cluster_drs:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
@@ -284,11 +282,11 @@ drs_vm_overrides: []
     drs_vmotion_rate: "{{ drs_migration_threshold }}"
 
 - name: Create anti-affinity rules
-  community.vmware.vmware_drs_rule:
+  community.vmware.vmware_vm_vm_drs_rule:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
-    datacenter_name: "{{ vcenter_datacenter }}"
+    datacenter: "{{ vcenter_datacenter }}"
     cluster_name: "{{ drs_cluster_name }}"
     validate_certs: "{{ validate_certs | default(false) }}"
     drs_rule_name: "{{ item.name }}"
@@ -315,7 +313,7 @@ Always verify after applying changes. This playbook checks that DRS is enabled a
 
   tasks:
     - name: Get cluster information
-      community.vmware.vmware_cluster_info:
+      vmware.vmware.cluster_info:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
