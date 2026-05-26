@@ -14,7 +14,7 @@ This is a pattern I use constantly in production playbooks. Think about restarti
 
 ## How the changed Test Works
 
-Every Ansible task returns a result object that includes a `changed` property. When you register a variable from a task, you can test that variable with the `is changed` filter (or its older equivalent `|changed`). If the task reported a change, the test evaluates to `true`.
+Ansible task results commonly include a `changed` property. When you register a variable from a task, you can test that variable with the `is changed` test. Older Ansible versions allowed test plugins to be written with filter syntax such as `|changed`, but current Ansible versions require test syntax. If the task reported a change, the test evaluates to `true`.
 
 Here is a simple example that restarts nginx only when the config file is updated.
 
@@ -134,7 +134,7 @@ In this example, we deploy a config, validate it if it changed, roll back if val
 
 ## Using is not changed
 
-The inverse test `is not changed` (or `is not changed`) is equally useful. You can use it to run tasks only when nothing was modified.
+The inverse test `is not changed` is equally useful. You can use it to run tasks only when nothing was modified.
 
 ```yaml
 # Log a message when the system is already in the desired state
@@ -244,7 +244,7 @@ One mistake I see often is checking `changed` on a task that has `check_mode: tr
 
 Another pitfall is forgetting to register the variable. If you forget `register:`, there is nothing to test against, and your conditional will fail with an undefined variable error.
 
-Finally, be careful with `command` and `shell` modules. These always report `changed: true` unless you set `changed_when` to override the default behavior.
+Finally, be careful with `command` and `shell` modules. These normally report `changed: true` when they run unless you use options such as `creates` or `removes`, or set `changed_when` to override the default behavior.
 
 ```yaml
 # Fix the always-changed problem with command module
@@ -257,7 +257,7 @@ Finally, be careful with `command` and `shell` modules. These always report `cha
 - name: Run migration if needed
   ansible.builtin.command:
     cmd: /usr/local/bin/app migrate
-  when: "'1.0'" not in app_version.stdout
+  when: "'1.0' not in app_version.stdout"
 ```
 
 The `changed` test is one of those Ansible features that seems simple but enables sophisticated deployment workflows. Once you start using it consistently, your playbooks become both safer and more efficient because they only perform actions when there is actually something to do.
