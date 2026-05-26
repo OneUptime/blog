@@ -77,7 +77,7 @@ ansible-vault decrypt \
   host_vars/db01/vault.yml
 ```
 
-All files must be encrypted with the same vault password. If they use different vault IDs, you need separate commands.
+If all files use the same vault password, one password source is enough. If they use different vault IDs or passwords, provide each password source with a separate `--vault-id` option.
 
 ## Decrypting Files with Different Vault IDs
 
@@ -90,6 +90,16 @@ ansible-vault decrypt --vault-id production@~/.vault_pass_prod.txt \
 
 # Decrypt a file encrypted with the "staging" vault ID
 ansible-vault decrypt --vault-id staging@~/.vault_pass_staging.txt \
+  group_vars/staging/vault.yml
+```
+
+You can also decrypt multiple files that use different vault IDs in one command by passing multiple `--vault-id` options:
+
+```bash
+ansible-vault decrypt \
+  --vault-id production@~/.vault_pass_prod.txt \
+  --vault-id staging@~/.vault_pass_staging.txt \
+  group_vars/production/vault.yml \
   group_vars/staging/vault.yml
 ```
 
@@ -169,7 +179,7 @@ Or decrypt the specific string:
 ```bash
 # Pipe the encrypted string to ansible-vault
 echo '$ANSIBLE_VAULT;1.1;AES256
-36303861363266343733383838333766...' | ansible-vault decrypt --vault-password-file ~/.vault_pass.txt /dev/stdin --output -
+36303861363266343733383838333766...' | ansible-vault decrypt --vault-password-file ~/.vault_pass.txt
 ```
 
 ## Decrypting for Migration
@@ -229,7 +239,7 @@ vim secrets.yml
 ansible-vault encrypt secrets.yml
 ```
 
-But this is risky. If your shell session crashes between decrypt and re-encrypt, the file is left in plain text. The safer approach is to use `ansible-vault edit`, which handles the decrypt-edit-encrypt cycle atomically.
+But this is risky. If your shell session crashes between decrypt and re-encrypt, the file is left in plain text. The safer approach is to use `ansible-vault edit`, which decrypts the file to a temporary file, opens it in your editor, then re-encrypts the content when you close the editor.
 
 ## Troubleshooting Decryption Errors
 
@@ -266,13 +276,13 @@ head -1 secrets.yml
 ansible-vault decrypt --vault-id production@~/.vault_pass_prod.txt secrets.yml
 ```
 
-### File Permission Issues
+### File Path or Permission Issues
 
 ```text
 ERROR! The file secrets.yml does not exist
 ```
 
-Check file permissions. The user running `ansible-vault` needs read and write permissions on the file:
+Check that the path is correct. If the file exists, the user running `ansible-vault` also needs read and write permissions on it:
 
 ```bash
 ls -la secrets.yml
