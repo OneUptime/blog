@@ -86,23 +86,35 @@ This playbook sets proper permissions on critical system files:
         group: root
         mode: '0600'
 
+    - name: Find SSH host private keys
+      ansible.builtin.find:
+        paths: /etc/ssh
+        patterns: "ssh_host_*_key"
+        file_type: file
+      register: ssh_host_private_keys
+
     - name: Set permissions on SSH host private keys
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ item.path }}"
         owner: root
         group: root
         mode: '0600'
-      with_fileglob:
-        - /etc/ssh/ssh_host_*_key
+      loop: "{{ ssh_host_private_keys.files }}"
+
+    - name: Find SSH host public keys
+      ansible.builtin.find:
+        paths: /etc/ssh
+        patterns: "ssh_host_*_key.pub"
+        file_type: file
+      register: ssh_host_public_keys
 
     - name: Set permissions on SSH host public keys
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ item.path }}"
         owner: root
         group: root
         mode: '0644'
-      with_fileglob:
-        - /etc/ssh/ssh_host_*_key.pub
+      loop: "{{ ssh_host_public_keys.files }}"
 
     - name: Set permissions on crontab files
       ansible.builtin.file:
@@ -149,8 +161,10 @@ This playbook enforces permissions on all SSL/TLS related files:
           - /etc/ssl/private
           - /etc/pki/tls/private
           - /etc/letsencrypt/live
-        patterns: "*.key,*.pem,privkey*.pem"
+        patterns: "*.key,privkey*.pem,*-key.pem"
         recurse: true
+        follow: true
+        file_type: file
       register: private_keys
 
     - name: Restrict private key permissions
@@ -262,6 +276,8 @@ This playbook audits SUID/SGID binaries against a known-good list:
       - /usr/bin/mount
       - /usr/bin/umount
       - /usr/bin/pkexec
+    # Add distro-specific expected SGID binaries here.
+    expected_sgid_binaries: []
 
   tasks:
     - name: Find all SUID binaries
@@ -278,10 +294,19 @@ This playbook audits SUID/SGID binaries against a known-good list:
       ansible.builtin.set_fact:
         unexpected_suid: "{{ suid_binaries.stdout_lines | difference(expected_suid_binaries) }}"
 
+    - name: Identify unexpected SGID binaries
+      ansible.builtin.set_fact:
+        unexpected_sgid: "{{ sgid_binaries.stdout_lines | difference(expected_sgid_binaries) }}"
+
     - name: Report unexpected SUID binaries
       ansible.builtin.debug:
         msg: "ALERT: Unexpected SUID binaries on {{ inventory_hostname }}: {{ unexpected_suid }}"
       when: unexpected_suid | length > 0
+
+    - name: Report unexpected SGID binaries
+      ansible.builtin.debug:
+        msg: "ALERT: Unexpected SGID binaries on {{ inventory_hostname }}: {{ unexpected_sgid }}"
+      when: unexpected_sgid | length > 0
 
     - name: Remove SUID from unauthorized binaries
       ansible.builtin.file:
@@ -291,6 +316,15 @@ This playbook audits SUID/SGID binaries against a known-good list:
       when:
         - unexpected_suid | length > 0
         - remove_unauthorized_suid | default(false) | bool
+
+    - name: Remove SGID from unauthorized binaries
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "g-s"
+      loop: "{{ unexpected_sgid }}"
+      when:
+        - unexpected_sgid | length > 0
+        - remove_unauthorized_sgid | default(false) | bool
 ```
 
 ## Directory Permission Enforcement
@@ -469,17 +503,20 @@ Generate a compliance report for audit purposes:
         - { path: "/etc/ssh/sshd_config", expected_mode: "0600" }
       register: file_stats
 
+    - name: Initialize compliance results
+      ansible.builtin.set_fact:
+        compliance_results: []
+
     - name: Evaluate compliance
       ansible.builtin.set_fact:
-        compliance_results: >-
-          {% set results = [] %}
-          {% for item in file_stats.results %}
-          {% set actual = item.stat.mode %}
-          {% set expected = item.item.expected_mode %}
-          {% set status = 'PASS' if actual == expected else 'FAIL' %}
-          {{ results.append({'file': item.item.path, 'expected': expected, 'actual': actual, 'status': status}) }}
-          {% endfor %}
-          {{ results }}
+        compliance_results: "{{ compliance_results + [compliance_result] }}"
+      vars:
+        compliance_result:
+          file: "{{ item.item.path }}"
+          expected: "{{ item.item.expected_mode }}"
+          actual: "{{ item.stat.mode | default('missing') }}"
+          status: "{{ 'PASS' if (item.stat.exists | default(false) and item.stat.mode == item.item.expected_mode) else 'FAIL' }}"
+      loop: "{{ file_stats.results }}"
 
     - name: Display compliance report
       ansible.builtin.debug:
