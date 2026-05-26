@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, PostgreSQL, Database Replication, High Availability
 
-Description: Configure PostgreSQL streaming replication with Ansible including primary server setup, replica configuration, and automated failover monitoring.
+Description: Configure PostgreSQL streaming replication with Ansible including primary server setup, replica configuration, and replication verification.
 
 ---
 
@@ -46,6 +46,7 @@ postgresql_replication_user: replicator
 postgresql_replication_password: "{{ vault_replication_password }}"
 postgresql_max_wal_senders: 5
 postgresql_wal_keep_size: "1GB"
+postgresql_archive_dir: "/var/lib/postgresql/wal_archive"
 ```
 
 ## Primary Server Configuration
@@ -87,6 +88,14 @@ postgresql_wal_keep_size: "1GB"
     state: started
     enabled: yes
 
+- name: Create WAL archive directory
+  ansible.builtin.file:
+    path: "{{ postgresql_archive_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'
+
 - name: Create replication user
   community.postgresql.postgresql_user:
     name: "{{ postgresql_replication_user }}"
@@ -118,7 +127,7 @@ max_wal_senders = {{ postgresql_max_wal_senders }}
 wal_keep_size = {{ postgresql_wal_keep_size }}
 synchronous_commit = on
 archive_mode = on
-archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f'
+archive_command = 'test ! -f {{ postgresql_archive_dir }}/%f && cp %p {{ postgresql_archive_dir }}/%f'
 
 # Performance
 shared_buffers = {{ (ansible_memtotal_mb * 0.25) | int }}MB
@@ -218,6 +227,32 @@ host    all         all         10.0.0.0/8            scram-sha-256
   delay: 2
   until: "'t' in recovery_status.stdout"
   changed_when: false
+```
+
+```jinja2
+{# roles/postgresql_replica/templates/postgresql-replica.conf.j2 #}
+# PostgreSQL replica configuration
+listen_addresses = '*'
+port = {{ postgresql_port }}
+max_connections = 200
+hot_standby = on
+
+# WAL configuration
+wal_level = replica
+max_wal_senders = {{ postgresql_max_wal_senders }}
+wal_keep_size = {{ postgresql_wal_keep_size }}
+
+# Performance
+shared_buffers = {{ (ansible_memtotal_mb * 0.25) | int }}MB
+effective_cache_size = {{ (ansible_memtotal_mb * 0.75) | int }}MB
+work_mem = 16MB
+maintenance_work_mem = 256MB
+
+# Logging
+log_destination = 'stderr'
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d.log'
 ```
 
 ## Replication Architecture
