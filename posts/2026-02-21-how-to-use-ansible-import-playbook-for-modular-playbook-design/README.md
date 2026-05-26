@@ -16,10 +16,15 @@ The `ansible.builtin.import_playbook` directive lets you build a master playbook
 # site.yml - master playbook
 
 - import_playbook: playbooks/common.yml
+  tags: common
 - import_playbook: playbooks/security.yml
+  tags: security
 - import_playbook: playbooks/databases.yml
+  tags: databases
 - import_playbook: playbooks/applications.yml
+  tags: applications
 - import_playbook: playbooks/monitoring.yml
+  tags: monitoring
 ```
 
 Each imported playbook is a complete, standalone playbook:
@@ -91,17 +96,21 @@ Each imported playbook is a complete, standalone playbook:
 - import_playbook: playbooks/validation/health_checks.yml
 ```
 
-## import_playbook vs include (Deprecated)
+## import_playbook vs Legacy include (Deprecated)
 
 ```yaml
 # import_playbook is static - processed at parse time
 # This means:
 # - Tags from imported playbooks are visible to --tags
-# - Variable files are loaded immediately
-# - Cannot use loops or runtime conditions effectively
+# - Imported content is pre-processed before tasks run
+# - Cannot use loops; conditions are inherited by imported tasks
+
+# The old bare include keyword is deprecated; use import_playbook
+# for static playbook reuse
 
 # For most use cases, import_playbook is what you want
 - import_playbook: playbooks/web.yml
+  tags: web
 ```
 
 ## Project Structure
@@ -184,7 +193,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -333,4 +342,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The `import_playbook` directive is the backbone of modular Ansible project design. It lets you compose a complete infrastructure deployment from focused, testable sub-playbooks. Each sub-playbook handles one concern (databases, applications, monitoring), can be run independently for testing, and combines into a master playbook for full deployments. This pattern scales from small projects to enterprise-wide automation.
-
