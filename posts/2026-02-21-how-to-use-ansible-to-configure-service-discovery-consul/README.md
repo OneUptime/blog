@@ -66,7 +66,7 @@ all:
 ```yaml
 # roles/consul_server/defaults/main.yml
 # Default configuration for Consul servers
-consul_version: "1.17.1"
+consul_version: "1.22.7"
 consul_user: consul
 consul_group: consul
 consul_data_dir: /opt/consul/data
@@ -196,11 +196,10 @@ ports {
   grpc  = 8502
 }
 
-# ACL configuration
+# ACLs require a bootstrap token and agent/service tokens. Leave them disabled
+# in the initial deployment playbook, then enable them in a separate rollout.
 acl {
-  enabled                  = true
-  default_policy           = "deny"
-  enable_token_persistence = true
+  enabled = false
 }
 ```
 
@@ -340,7 +339,7 @@ def build_inventory():
             hostname = node['Node']
             inventory[group_name]['hosts'].append(hostname)
             inventory['_meta']['hostvars'][hostname] = {
-                'ansible_host': node['Address'],
+                'ansible_host': node['ServiceAddress'] or node['Address'],
                 'consul_service_port': node['ServicePort'],
             }
 
@@ -366,7 +365,6 @@ if __name__ == '__main__':
 - name: Deploy Consul servers
   hosts: consul_servers
   become: true
-  serial: 1
   roles:
     - consul_server
   post_tasks:
