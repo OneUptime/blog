@@ -8,19 +8,19 @@ Description: Integrate ansible-lint with Molecule testing framework to automatic
 
 ---
 
-Molecule is the standard testing framework for Ansible roles. It creates test instances, runs your role against them, verifies the results, and tears everything down. What many people miss is that Molecule has built-in integration with ansible-lint. By default, Molecule runs ansible-lint as part of its testing sequence before it even creates the test instances. This means your role gets linted automatically every time you run `molecule test`.
+Molecule is the standard testing framework for Ansible roles. It creates test instances, runs your role against them, verifies the results, and tears everything down. ansible-lint is the companion tool that checks your role and playbooks before you spend time creating test instances. In current Molecule versions, linting is run as a separate command before `molecule test`, usually in the same local workflow or CI pipeline.
 
 In this post, we will cover how this integration works, how to configure it, and how to handle common issues.
 
-## How Molecule Runs ansible-lint
+## How ansible-lint Fits with Molecule
 
-Molecule's default test sequence includes a `lint` step. Here is the full default sequence:
+Molecule's current default test sequence does not include a `lint` step. Here is the default sequence:
 
 ```text
-dependency -> lint -> cleanup -> destroy -> syntax -> create -> prepare -> converge -> idempotence -> side_effect -> verify -> cleanup -> destroy
+dependency -> cleanup -> destroy -> syntax -> create -> prepare -> converge -> idempotence -> side_effect -> verify -> cleanup -> destroy
 ```
 
-The `lint` step runs ansible-lint against your role's Molecule converge playbook and the role itself. If linting fails, Molecule stops and does not proceed to creating instances, saving you time.
+Run ansible-lint before this sequence so it checks your role, playbooks, and Molecule scenario files. If linting fails, stop before running `molecule test`, saving you time.
 
 ## Setting Up Molecule with ansible-lint
 
@@ -29,11 +29,12 @@ If you are starting a new role with Molecule:
 ```bash
 # Install molecule and ansible-lint
 
-pip install molecule ansible-lint
+pip install molecule molecule-plugins[docker] ansible-lint
 
-# Initialize a new role with Molecule
-molecule init role my_namespace.webserver
+# Initialize an Ansible role, then add a Molecule scenario
+ansible-galaxy role init webserver
 cd webserver
+molecule init scenario
 ```
 
 This creates the standard Molecule directory structure:
@@ -59,40 +60,10 @@ webserver/
 
 ## Molecule Configuration
 
-The `molecule.yml` file controls how Molecule interacts with ansible-lint:
+The `molecule.yml` file controls Molecule's test scenario. ansible-lint is configured separately:
 
 ```yaml
-# molecule/default/molecule.yml - Basic Molecule config with lint
----
-dependency:
-  name: galaxy
-
-driver:
-  name: docker
-
-platforms:
-  - name: instance
-    image: ubuntu:22.04
-    pre_build_image: true
-    command: /sbin/init
-    privileged: true
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    cgroupns_mode: host
-
-provisioner:
-  name: ansible
-  lint:
-    name: ansible-lint
-
-verifier:
-  name: ansible
-```
-
-In recent versions of Molecule (v5+), the lint configuration has moved. The linter is configured separately:
-
-```yaml
-# molecule/default/molecule.yml - Molecule v5+ configuration
+# molecule/default/molecule.yml - Molecule configuration
 ---
 dependency:
   name: galaxy
@@ -112,11 +83,11 @@ verifier:
   name: ansible
 ```
 
-And ansible-lint is configured via your `.ansible-lint` file in the role root.
+Do not add the old `provisioner.lint` configuration you may see in older examples. Current Molecule does not use it. Configure ansible-lint via your `.ansible-lint` file in the role root and run `ansible-lint` directly.
 
 ## The Converge Playbook
 
-The converge playbook is what Molecule runs to test your role. ansible-lint checks this playbook too:
+The converge playbook is what Molecule runs to test your role. ansible-lint checks this playbook too when it is included in your ansible-lint run:
 
 ```yaml
 # molecule/default/converge.yml - Molecule converge playbook
@@ -149,23 +120,20 @@ exclude_paths:
   - .cache/
 ```
 
-However, when you run `molecule test` or `molecule lint`, Molecule runs ansible-lint against its own files independently. This means the converge playbook still gets linted during Molecule's test cycle.
+If you exclude `molecule/`, ansible-lint will not check those scenario files in that run. If you want Molecule playbooks to stay lint-compliant, keep them included in your normal ansible-lint run or use targeted ignore entries for specific files and rules instead of excluding the whole directory.
 
-## Running Just the Lint Step
+## Running Just Linting
 
-You do not have to run the full Molecule test cycle to check linting. Run just the lint step:
+You do not have to run the full Molecule test cycle to check linting. Run ansible-lint directly:
 
 ```bash
-# Run only the lint step
-molecule lint
-
-# Or run just ansible-lint directly against the role
+# Run ansible-lint directly against the role
 ansible-lint
 ```
 
 ## Configuring ansible-lint for Molecule
 
-Create a `.ansible-lint` file in your role root that works for both direct ansible-lint runs and Molecule:
+Create a `.ansible-lint` file in your role root that works for the role and the Molecule scenario files:
 
 ```yaml
 # .ansible-lint - Configuration for role with Molecule
@@ -207,26 +175,26 @@ molecule/
     prepare.yml
 ```
 
-Each scenario's converge playbook gets linted when you run that scenario:
+Each scenario's converge playbook can be linted by running ansible-lint against the project:
 
 ```bash
 # Lint the default scenario
-molecule lint
+ansible-lint molecule/default/converge.yml
 
 # Lint a specific scenario
-molecule lint -s debian
+ansible-lint molecule/debian/converge.yml
 
 # Lint all scenarios
 for scenario in molecule/*/; do
   scenario_name=$(basename "$scenario")
   echo "Linting scenario: $scenario_name"
-  molecule lint -s "$scenario_name"
+  ansible-lint "$scenario"
 done
 ```
 
 ## Handling Prepare and Verify Playbooks
 
-Molecule's prepare and verify playbooks also get linted. Keep them clean:
+Molecule's prepare and verify playbooks should also be included in your ansible-lint run. Keep them clean:
 
 ```yaml
 # molecule/default/prepare.yml - Prepare playbook (lint-compliant)
@@ -266,15 +234,14 @@ Molecule's prepare and verify playbooks also get linted. Keep them clean:
       register: nginx_check
       failed_when: nginx_check.changed
 
-    - name: Check if nginx is running
-      ansible.builtin.systemd:
-        name: nginx
-      register: nginx_service
+    - name: Gather service facts
+      ansible.builtin.service_facts:
 
     - name: Verify nginx is active
       ansible.builtin.assert:
         that:
-          - nginx_service.status.ActiveState == "active"
+          - "'nginx.service' in ansible_facts.services"
+          - ansible_facts.services['nginx.service'].state == "running"
         fail_msg: "nginx is not running"
         success_msg: "nginx is running"
 
@@ -294,7 +261,7 @@ Molecule's prepare and verify playbooks also get linted. Keep them clean:
 
 ## CI Pipeline with Molecule and ansible-lint
 
-Here is a GitHub Actions workflow that runs Molecule (which includes linting):
+Here is a GitHub Actions workflow that runs ansible-lint before Molecule:
 
 ```yaml
 # .github/workflows/molecule.yml - CI with Molecule and ansible-lint
@@ -357,11 +324,11 @@ jobs:
 
 ```mermaid
 flowchart TD
-    A[Developer runs molecule test] --> B[Dependency Resolution]
-    B --> C[Lint Step]
-    C --> D{ansible-lint passes?}
-    D -->|No| E[Stop - fix lint issues first]
-    D -->|Yes| F[Syntax Check]
+    A[Developer runs ansible-lint] --> B{ansible-lint passes?}
+    B -->|No| C[Stop - fix lint issues first]
+    B -->|Yes| D[Developer runs molecule test]
+    D --> E[Dependency Resolution]
+    E --> F[Syntax Check]
     F --> G[Create Test Instance]
     G --> H[Prepare Instance]
     H --> I[Converge - Run Role]
@@ -369,43 +336,40 @@ flowchart TD
     J --> K[Verify - Run Tests]
     K --> L[Destroy Instance]
 
-    style C fill:#FFD700
-    style D fill:#FFD700
+    style A fill:#FFD700
+    style B fill:#FFD700
 ```
 
-## Debugging Molecule Lint Failures
+## Debugging ansible-lint Failures
 
-When Molecule's lint step fails, the output can be less detailed than running ansible-lint directly. For better diagnostics:
+When ansible-lint fails, run it directly with verbose output for better diagnostics:
 
 ```bash
 # Run ansible-lint directly with verbose output
 ansible-lint -vv
 
-# Or run Molecule with debug logging
-molecule --debug lint
-
-# Check which files Molecule is linting
-molecule lint 2>&1 | head -50
+# Check specific Molecule scenario files
+ansible-lint molecule/default/converge.yml molecule/default/prepare.yml molecule/default/verify.yml
 ```
 
 ## Tips for Smooth Integration
 
-1. **Run ansible-lint before molecule test.** It is faster to catch lint issues with a direct ansible-lint run than to wait for Molecule to get to the lint step.
+1. **Run ansible-lint before molecule test.** It is faster to catch lint issues with a direct ansible-lint run than to start Molecule's instance lifecycle first.
 
-2. **Use the same `.ansible-lint` config for both.** Do not maintain separate configs for Molecule and direct linting. One config file at the role root serves both.
+2. **Use one `.ansible-lint` config.** Do not maintain separate lint configs for normal playbooks and Molecule playbooks unless you have a clear versioning reason. One config file at the role root is usually enough.
 
 3. **Keep converge playbooks simple.** They should just call your role with test variables. Do not put complex logic in them.
 
-4. **Treat Molecule lint failures the same as test failures.** If the lint step fails, fix it before writing more tests.
+4. **Treat lint failures the same as test failures.** If ansible-lint fails, fix it before writing more tests.
 
 5. **Pin your tool versions.** Use a `requirements.txt` to pin ansible-lint and Molecule versions so everyone gets consistent results.
 
 ```text
 # requirements.txt - Pin linting and testing tool versions
-ansible-lint==24.10.0
-molecule==24.9.0
-molecule-plugins[docker]==23.5.3
-yamllint==1.35.1
+ansible-lint==26.4.0
+molecule==26.4.0
+molecule-plugins[docker]==25.8.12
+yamllint==1.38.0
 ```
 
 Molecule and ansible-lint together give you a complete quality gate for your roles: lint catches code quality issues, and Molecule tests catch functional issues. Run both in CI and you will have high confidence in every change.
