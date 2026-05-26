@@ -63,7 +63,7 @@ The most common way to use the `files/` directory is with the `copy` module:
     mode: '0644'
 ```
 
-The `src` parameter points to a file name. Ansible resolves it by checking the role's `files/` directory first, then falls back to the playbook's `files/` directory.
+The `src` parameter points to a file name. Ansible resolves it by checking the role's `files/` directory first, then continues through Ansible's local file search path if it does not find a match there.
 
 ## The script Module
 
@@ -80,6 +80,7 @@ echo "Initializing database schema..."
 psql -U myapp -d myapp_production -f /opt/myapp/schema.sql
 echo "Running initial data migration..."
 psql -U myapp -d myapp_production -f /opt/myapp/seed.sql
+touch /opt/myapp/.db_initialized
 echo "Database initialization complete."
 ```
 
@@ -240,13 +241,14 @@ If the unit file needs host-specific values (like different memory limits per ho
 
 ## File Lookup Order
 
-When Ansible resolves a file reference inside a role, it searches in this order:
+When Ansible resolves a relative local file reference inside a role, it searches in this order:
 
-1. `roles/<role_name>/files/` (the role's own files directory)
-2. The playbook directory's `files/` directory
-3. The current working directory
+1. The current role, first in the appropriate subdirectory such as `files/`, then directly in the role directory
+2. Any parent role that included or depended on the current role, using the same appropriate subdirectory rules
+3. The current task file's directory
+4. The current play file's directory
 
-This means a file in the role's `files/` directory takes precedence. But it also means you can override role files by placing a file with the same name in your playbook's `files/` directory.
+Ansible uses the first matching file it finds. A file in the role's `files/` directory takes precedence for tasks in that role. Ansible does not search the current working directory where you ran `ansible-playbook`.
 
 ## Validating Deployed Files
 
