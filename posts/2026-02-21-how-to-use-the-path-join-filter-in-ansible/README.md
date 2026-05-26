@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Filter, File Paths, Automation, DevOps
 
-Description: Learn how to use the path_join filter in Ansible to safely construct file paths without worrying about trailing slashes or OS differences.
+Description: Learn how to use the path_join filter in Ansible to safely construct file paths without worrying about trailing slashes or missing separators.
 
 ---
 
-Building file paths by concatenating strings is error-prone. You end up with double slashes when both parts have trailing or leading slashes, missing slashes when neither does, and platform-specific bugs. The `path_join` filter in Ansible handles all of this by properly joining path components using the OS-appropriate separator.
+Building file paths by concatenating strings is error-prone. You end up with double slashes when both parts have trailing or leading slashes, missing slashes when neither does, and path formatting bugs. The `path_join` filter in Ansible handles all of this by properly joining path components using the controller's path separator.
 
 This filter was introduced in Ansible 2.10 as part of the `ansible.builtin` collection. Before it existed, people used string concatenation with the `+` operator or the `~` operator in Jinja2, which led to inconsistent results.
 
@@ -163,29 +163,7 @@ When deploying multiple applications, path_join keeps your path logic clean:
 
 ## Building Paths in Loops
 
-path_join is especially useful inside loops where you construct paths from dynamic data:
-
-```yaml
-# Create user home directories and config files
-- name: Set up user environments
-  ansible.builtin.file:
-    path: "{{ ['/home', item.name, dir] | path_join }}"
-    state: directory
-    owner: "{{ item.name }}"
-    mode: '0755'
-  loop: "{{ users | subelements('directories') }}"
-  loop_control:
-    label: "{{ item.0.name }}/{{ item.1 }}"
-  vars:
-    users:
-      - name: alice
-        directories: [.ssh, .config, projects]
-      - name: bob
-        directories: [.ssh, .config, workspace]
-    dir: "{{ item.1 }}"
-```
-
-Wait, that loop structure needs adjustment with subelements:
+path_join is especially useful inside loops where you construct paths from dynamic data. With `subelements`, use `item.0` for the user object and `item.1` for each directory:
 
 ```yaml
 # Set up user directories with subelements and path_join
