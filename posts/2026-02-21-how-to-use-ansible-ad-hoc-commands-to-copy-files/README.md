@@ -70,7 +70,7 @@ ansible webservers -m copy -a "content='server_name example.com;\nlisten 80;\n' 
 ansible databases -m copy -a "content='[mysqld]\nmax_connections=500\ninnodb_buffer_pool_size=4G\n' dest=/etc/mysql/conf.d/custom.cnf" --become
 
 # Write a JSON configuration
-ansible all -m copy -a 'content={\"log_level\": \"info\", \"port\": 8080} dest=/etc/app/config.json mode=0644'
+ansible all -m copy -a "content='{\"log_level\": \"info\", \"port\": 8080}' dest=/etc/app/config.json mode=0644"
 ```
 
 This is perfect for small configuration snippets where creating a separate source file would be overkill.
@@ -145,15 +145,17 @@ The `flat=no` (default) preserves the directory structure and separates files by
 
 For larger file transfers or directory synchronization, the `synchronize` module (which wraps rsync) is more efficient:
 
+The module is provided by the `ansible.posix` collection, so install that collection if you are using `ansible-core` without the full Ansible package.
+
 ```bash
 # Sync a directory to remote hosts (uses rsync under the hood)
-ansible webservers -m synchronize -a "src=./webroot/ dest=/var/www/html/"
+ansible webservers -m ansible.posix.synchronize -a "src=./webroot/ dest=/var/www/html/"
 
 # Sync with delete (remove files on dest that are not in src)
-ansible webservers -m synchronize -a "src=./webroot/ dest=/var/www/html/ delete=yes"
+ansible webservers -m ansible.posix.synchronize -a "src=./webroot/ dest=/var/www/html/ delete=yes"
 
 # Sync in pull mode (remote to local)
-ansible webservers -m synchronize -a "src=/var/log/app/ dest=./logs/{{ inventory_hostname }}/ mode=pull"
+ansible webservers -m ansible.posix.synchronize -a "src=/var/log/app/ dest=./logs/{{ inventory_hostname }}/ mode=pull"
 ```
 
 ## Practical Workflow: Deploying a Configuration Update
@@ -187,7 +189,7 @@ ansible all -m copy -a "src=./large_file.tar.gz dest=/tmp/large_file.tar.gz" -f 
 
 # For very large files, use synchronize instead of copy
 # synchronize uses rsync which is much more efficient for large transfers
-ansible all -m synchronize -a "src=./large_file.tar.gz dest=/tmp/large_file.tar.gz"
+ansible all -m ansible.posix.synchronize -a "src=./large_file.tar.gz dest=/tmp/large_file.tar.gz"
 
 # For files that already exist and may not have changed, copy module
 # checks the checksum and skips unchanged files automatically
