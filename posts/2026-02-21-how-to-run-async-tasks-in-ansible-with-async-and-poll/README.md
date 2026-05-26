@@ -12,7 +12,7 @@ Some tasks take a long time. Package installations, software compilations, datab
 
 ## How async and poll Work
 
-When you set `async` on a task, Ansible starts the task on the remote host and immediately disconnects (or polls periodically). The task runs as a background process on the remote system.
+When you set `async` on a task, Ansible starts the task on the remote host, then either polls it periodically or moves on immediately depending on the `poll` value. The task runs as a background process on the remote system.
 
 - `async: N` - Maximum runtime in seconds. If the task takes longer than N seconds, Ansible kills it.
 - `poll: N` - How often (in seconds) Ansible checks if the task is done. If set to 0, Ansible fires and forgets.
@@ -43,7 +43,7 @@ When `poll` is greater than 0, Ansible starts the task, then periodically checks
 
   tasks:
     - name: Compile application from source
-      command: make -j$(nproc) all
+      shell: make -j"$(nproc)" all
       args:
         chdir: /opt/source/myapp
       async: 3600   # Allow up to 1 hour
@@ -307,11 +307,11 @@ There are a few things to keep in mind:
 
 1. **Not all modules support async.** Modules that require a persistent connection (like some network modules) may not work with async.
 
-2. **Async tasks do not get privilege escalation by default.** If the task needs `become`, set it on the task.
+2. **Async tasks follow normal privilege escalation rules.** If the task needs `become`, set it at the play or task level.
 
 3. **The async temp directory must be writable.** Ansible creates a temp directory at `~/.ansible_async/` on the remote host to track async job status.
 
-4. **Handlers are not notified until the playbook finishes.** If an async task notifies a handler, the handler runs at the end of the play, not when the async task completes.
+4. **Handlers are not run until the play finishes.** If an async task notifies a handler, the handler runs at the end of the play, not when the async task completes.
 
 ```yaml
 # async-limitations.yml - Working within async constraints
@@ -328,7 +328,7 @@ There are a few things to keep in mind:
         state: directory
         mode: '0700'
 
-    # Async with become works at the task level
+    # Async can use become from the play or task level
     - name: Run privileged async task
       command: apt-get dist-upgrade -y
       become: yes
