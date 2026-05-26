@@ -26,13 +26,13 @@ Every VPC network has two implied rules that you cannot delete: a default deny-a
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- A supported Ansible version with the `google.cloud` collection
 - GCP service account with Compute Security Admin role
 - An existing VPC network
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 ```
 
 ## Creating Basic Firewall Rules
@@ -209,7 +209,7 @@ Allow instances to communicate with each other within the VPC:
         state: present
 ```
 
-Using `source_tags` instead of `source_ranges` is a powerful pattern. It means "allow traffic from any instance tagged `web-tier`" regardless of their IP address. This is more resilient than IP-based rules because you do not need to update firewall rules when instances change IP addresses.
+Using `source_tags` instead of `source_ranges` is a powerful pattern. It means "allow traffic from instances tagged `web-tier`" based on their matching network tag rather than a hard-coded source IP range. This is more resilient than IP-based rules because you do not need to update firewall rules when instances change primary internal IP addresses.
 
 ## Creating a Complete Security Policy
 
@@ -317,7 +317,7 @@ Let me show a playbook that sets up a full set of firewall rules for a typical t
         msg: "Created {{ rule_results.results | length }} firewall rules"
 ```
 
-The health check source ranges (`130.211.0.0/22` and `35.191.0.0/16`) are Google's documented IP ranges for load balancer health checks. If you use GCP load balancers, you must allow traffic from these ranges or your backends will be marked unhealthy.
+The health check source ranges (`130.211.0.0/22` and `35.191.0.0/16`) are Google's documented IPv4 ranges for many load balancer health checks. Some load balancer types and IPv6 backends require additional ranges, so check the current Google Cloud documentation for your load balancer type. If health check probers cannot reach your backends, your backends will be marked unhealthy.
 
 ## Creating Deny Rules
 
