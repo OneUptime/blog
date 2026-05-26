@@ -28,7 +28,7 @@ flowchart LR
 
 ## Vault IDs: The Foundation of Multiple Passwords
 
-Vault IDs are labels attached to encrypted content. When you encrypt something with a vault ID, Ansible stores that label in the encrypted file header, so it knows which password to use for decryption.
+Vault IDs are labels attached to encrypted content. When you encrypt something with a vault ID, Ansible stores that label in the encrypted file header, so it can try the matching password first during decryption.
 
 ```bash
 # Encrypt a file with the 'dev' vault ID
@@ -197,7 +197,7 @@ Each team only needs their own vault password. The operations team running the f
 
 ## Handling the Default Vault ID
 
-Files encrypted without a vault ID (the older way, before vault IDs existed) use the `default` vault ID internally. You can still work with them alongside labeled vault IDs:
+Files encrypted without a vault ID (the older way, before vault IDs existed) have no vault ID label in their header. Ansible's default vault identity is named `default`, so you can still work with unlabeled legacy files alongside labeled vault IDs:
 
 ```bash
 # This handles legacy vault files plus new vault-ID-labeled files
