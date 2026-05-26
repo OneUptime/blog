@@ -188,6 +188,7 @@ The server configuration template:
     <include>web_rules.xml</include>
     <include>apache_rules.xml</include>
     <include>nginx_rules.xml</include>
+    <include>local_rules.xml</include>
   </rules>
 
   <alerts>
@@ -197,7 +198,6 @@ The server configuration template:
 
   <remote>
     <connection>secure</connection>
-    <allowed-ips>10.0.0.0/8</allowed-ips>
   </remote>
 
   {% for ip in ossec_white_list %}
@@ -205,6 +205,13 @@ The server configuration template:
     <white_list>{{ ip }}</white_list>
   </global>
   {% endfor %}
+
+  <command>
+    <name>host-deny</name>
+    <executable>host-deny.sh</executable>
+    <expect>srcip</expect>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
 
   <active-response>
     <command>host-deny</command>
@@ -290,31 +297,38 @@ This playbook handles agent key registration:
   vars:
     ossec_agents:
       - name: web01
+        id: "001"
         ip: 10.0.1.20
       - name: web02
+        id: "002"
         ip: 10.0.1.21
       - name: db01
+        id: "003"
         ip: 10.0.2.10
 
   tasks:
     - name: Add agents to OSSEC server
       ansible.builtin.shell: |
-        /var/ossec/bin/manage_agents -a {{ item.ip }} {{ item.name }}
+        OSSEC_ACTION=a \
+        OSSEC_AGENT_NAME={{ item.name }} \
+        OSSEC_AGENT_IP={{ item.ip }} \
+        OSSEC_AGENT_ID={{ item.id }} \
+        OSSEC_ACTION_CONFIRMED=y \
+        /var/ossec/bin/manage_agents
       loop: "{{ ossec_agents }}"
       register: add_result
-      changed_when: "'Added' in add_result.stdout"
+      changed_when: "'Agent added' in add_result.stdout"
       failed_when: false
 
     - name: Extract agent keys
-      ansible.builtin.shell: |
-        /var/ossec/bin/manage_agents -e {{ item.name }}
+      ansible.builtin.command: /var/ossec/bin/manage_agents -e {{ item.id }} -j
       loop: "{{ ossec_agents }}"
       register: agent_keys
       changed_when: false
 
     - name: Save agent keys for distribution
       ansible.builtin.set_fact:
-        agent_key_map: "{{ agent_key_map | default({}) | combine({item.item.name: item.stdout}) }}"
+        agent_key_map: "{{ agent_key_map | default({}) | combine({item.item.name: (item.stdout | from_json).response}) }}"
       loop: "{{ agent_keys.results }}"
 
 - name: Distribute keys to agents
@@ -324,8 +338,8 @@ This playbook handles agent key registration:
   tasks:
     - name: Import agent key
       ansible.builtin.shell: |
-        echo "{{ hostvars[groups['ossec_server'][0]]['agent_key_map'][inventory_hostname] }}" | \
-        /var/ossec/bin/manage_agents -i
+        OSSEC_ACTION_CONFIRMED=y \
+        /var/ossec/bin/manage_agents -i "{{ hostvars[groups['ossec_server'][0]]['agent_key_map'][inventory_hostname] }}"
       when: inventory_hostname in hostvars[groups['ossec_server'][0]]['agent_key_map']
       notify: restart ossec agent
 
@@ -354,7 +368,7 @@ This playbook adds custom detection rules:
         content: |
           <group name="custom,">
             <!-- Detect multiple SSH failures from same IP -->
-            <rule id="100001" level="10">
+            <rule id="90001" level="10" frequency="4" timeframe="120">
               <if_matched_sid>5716</if_matched_sid>
               <same_source_ip />
               <description>Multiple SSH authentication failures</description>
@@ -362,7 +376,7 @@ This playbook adds custom detection rules:
             </rule>
 
             <!-- Detect sudo abuse -->
-            <rule id="100002" level="12">
+            <rule id="90002" level="12">
               <if_sid>5401</if_sid>
               <match>NOT in sudoers</match>
               <description>Unauthorized sudo attempt</description>
@@ -370,14 +384,14 @@ This playbook adds custom detection rules:
             </rule>
 
             <!-- Detect web shell access patterns -->
-            <rule id="100003" level="14">
+            <rule id="90003" level="14">
               <if_sid>31100</if_sid>
               <url>.php?cmd=|.php?exec=|.jsp?cmd=</url>
               <description>Possible web shell access detected</description>
               <group>web,attack,</group>
             </rule>
           </group>
-        dest: /var/ossec/rules/local_rules.xml
+        dest: /var/ossec/etc/rules/local_rules.xml
         owner: root
         group: ossec
         mode: '0640'
