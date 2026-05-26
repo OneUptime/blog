@@ -108,7 +108,7 @@ When Terraform modules and Ansible roles share the same boundaries (webserver, d
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -145,7 +145,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -164,8 +164,8 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
@@ -186,7 +186,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -264,6 +264,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create script directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -289,4 +295,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
