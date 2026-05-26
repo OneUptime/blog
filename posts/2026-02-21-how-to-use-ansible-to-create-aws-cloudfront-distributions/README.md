@@ -16,11 +16,11 @@ Ansible lets you define all of this in one place, version control it, and replic
 
 You need:
 
-- Ansible 2.14+
+- Ansible 2.17+ for the current `community.aws` collection
 - The `community.aws` collection
 - AWS credentials with CloudFront and S3 permissions
 - An SSL certificate in ACM (must be in us-east-1 for CloudFront)
-- Python boto3
+- Python 3.6+, boto3 1.34.0+, and botocore 1.34.0+
 
 ```bash
 # Install dependencies
@@ -72,7 +72,7 @@ The most common use case is serving static content from S3:
     - name: Create CloudFront distribution
       community.aws.cloudfront_distribution:
         state: present
-        caller_reference: "myapp-static-{{ ansible_date_time.epoch | default('1234567890') }}"
+        caller_reference: "myapp-static-dist"
         comment: "{{ distribution_comment }}"
         default_root_object: index.html
         aliases:
@@ -154,8 +154,7 @@ For dynamic content behind a load balancer:
               https_port: 443
               origin_protocol_policy: https-only
               origin_ssl_protocols:
-                items:
-                  - TLSv1.2
+                - TLSv1.2
         default_cache_behavior:
           target_origin_id: alb-origin
           viewer_protocol_policy: redirect-to-https
@@ -186,7 +185,7 @@ For dynamic content behind a load balancer:
       register: cf_result
 ```
 
-Notice the `default_ttl: 0` for the ALB origin. Dynamic content should not be cached at the edge unless you have specific cache headers set in your application.
+Notice the `default_ttl: 0` and `max_ttl: 0` for the ALB origin. This disables edge caching for dynamic content.
 
 ## Multiple Origins with Cache Behaviors
 
@@ -219,8 +218,7 @@ A single distribution can serve content from different origins based on the URL 
           https_port: 443
           origin_protocol_policy: https-only
           origin_ssl_protocols:
-            items:
-              - TLSv1.2
+            - TLSv1.2
     # Default behavior serves static content
     default_cache_behavior:
       target_origin_id: s3-static
@@ -263,7 +261,9 @@ A single distribution can serve content from different origins based on the URL 
             - Content-Type
           cookies:
             forward: all
+        min_ttl: 0
         default_ttl: 0
+        max_ttl: 0
     enabled: true
 ```
 
