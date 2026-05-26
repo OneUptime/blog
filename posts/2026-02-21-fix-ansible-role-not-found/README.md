@@ -25,7 +25,7 @@ The error appears to be in '/home/user/playbook/playbook.yml': line 5, column 7
 ```bash
 # Install a role from Galaxy
 
-ansible-galaxy install geerlingguy.docker
+ansible-galaxy role install geerlingguy.docker
 
 # Install roles from a requirements file
 ansible-galaxy install -r requirements.yml
@@ -61,7 +61,7 @@ roles/
     files/
 ```
 
-The minimum requirement is `roles/rolename/tasks/main.yml`.
+If the role is meant to run tasks through the `roles:` keyword, put those tasks in `roles/rolename/tasks/main.yml`.
 
 ### Fix 3: Configure roles_path
 
@@ -93,7 +93,7 @@ roles_path = ./roles:~/.ansible/roles:/etc/ansible/roles
 
 ```bash
 # Install roles to your project's roles directory
-ansible-galaxy install -r requirements.yml -p ./roles
+ansible-galaxy role install -r requirements.yml --roles-path ./roles
 ```
 
 ## Summary
@@ -102,12 +102,12 @@ Role not found errors are path resolution issues. The fix is ensuring the role e
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -139,7 +139,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -221,7 +221,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in a playbook
 - name: Robust task execution
   hosts: all
   tasks:
@@ -283,4 +283,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
