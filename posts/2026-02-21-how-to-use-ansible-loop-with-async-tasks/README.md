@@ -66,7 +66,7 @@ Setting `async` with `poll: 0` launches each loop iteration as a background job 
         jid: "{{ item.ansible_job_id }}"
       loop: "{{ download_jobs.results }}"
       register: job_results
-      until: job_results.finished
+      until: job_results is finished
       retries: 30
       delay: 10
 ```
@@ -104,7 +104,7 @@ Compiling software from source is a perfect use case for async loops.
       - { name: "haproxy", dir: "/usr/local/src/haproxy-2.8.0", cmd: "make TARGET=linux-glibc" }
   tasks:
     - name: Start compilation for all packages
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: "{{ item.cmd }}"
         chdir: "{{ item.dir }}"
       loop: "{{ source_packages }}"
@@ -119,7 +119,7 @@ Compiling software from source is a perfect use case for async loops.
       loop_control:
         label: "{{ item.item.name }}"
       register: compile_results
-      until: compile_results.finished
+      until: compile_results is finished
       retries: 60
       delay: 30
 
@@ -165,7 +165,7 @@ Running backups of multiple databases simultaneously can save significant time.
       loop_control:
         label: "{{ item.item }}"
       register: dump_results
-      until: dump_results.finished
+      until: dump_results is finished
       retries: 120
       delay: 30
 
@@ -233,7 +233,7 @@ When a background job fails, you need to handle it properly.
       loop_control:
         label: "{{ item.item }}"
       register: script_results
-      until: script_results.finished
+      until: script_results is finished
       retries: 30
       delay: 10
       ignore_errors: true
@@ -277,7 +277,7 @@ Sometimes you want parallelism but not unlimited. You can combine `batch` with `
     jid: "{{ item.ansible_job_id }}"
   loop: "{{ batch_jobs.results }}"
   register: batch_results
-  until: batch_results.finished
+  until: batch_results is finished
   retries: 30
   delay: 10
 ```
