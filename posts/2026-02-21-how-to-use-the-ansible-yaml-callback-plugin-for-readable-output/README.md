@@ -1,14 +1,14 @@
-# How to Use the Ansible yaml Callback Plugin for Readable Output
+# How to Use Ansible YAML Output Formatting for Readable Output
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Callback Plugins, YAML, Output Formatting
 
-Description: Learn how to use the Ansible yaml callback plugin to transform the default JSON output into human-readable YAML format for easier debugging.
+Description: Learn how to use Ansible's YAML result formatting to transform the default JSON-style output into human-readable YAML format for easier debugging.
 
 ---
 
-Ansible's default output format dumps task results as single-line JSON. When a task returns a complex data structure with nested dictionaries and long strings, reading that JSON blob is a chore. The `yaml` callback plugin reformats all output as YAML with proper indentation and line breaks, making it dramatically easier to read. This post covers how to set it up, what it looks like, and why it should probably be your default.
+Ansible's default output format dumps task results as single-line JSON-style data. When a task returns a complex data structure with nested dictionaries and long strings, reading that blob is a chore. In current Ansible, the default stdout callback can render task results in YAML with proper indentation and line breaks, making them dramatically easier to read. This post covers how to set it up, what it looks like, and why it should probably be your default.
 
 ## The Problem with Default Output
 
@@ -20,7 +20,7 @@ ok: [web-01] => {"ansible_facts": {"ansible_all_ipv4_addresses": ["10.0.1.50", "
 
 Everything is on one line. Good luck finding a specific value in there.
 
-## Enabling the yaml Callback
+## Enabling YAML Output
 
 ### Via ansible.cfg (recommended)
 
@@ -28,22 +28,23 @@ Everything is on one line. Good luck finding a specific value in there.
 # ansible.cfg
 
 [defaults]
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 ```
 
 ### Via Environment Variable
 
 ```bash
 # For a single run
-ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook deploy.yml
+ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible-playbook deploy.yml
 
 # For the session
-export ANSIBLE_STDOUT_CALLBACK=yaml
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
 ```
 
 ## What YAML Output Looks Like
 
-With the yaml callback enabled, the same fact-gathering output becomes:
+With YAML result formatting enabled, the same fact-gathering output becomes:
 
 ```yaml
 ok: [web-01] =>
@@ -73,7 +74,7 @@ Default:
 changed: [web-01] => {"changed": true, "checksum": "abc123def456", "dest": "/etc/nginx/nginx.conf", "gid": 0, "group": "root", "md5sum": "789xyz", "mode": "0644", "owner": "root", "size": 2048, "src": "/home/deploy/.ansible/tmp/source", "state": "file", "uid": 0}
 ```
 
-YAML callback:
+YAML output:
 
 ```yaml
 changed: [web-01] =>
@@ -99,7 +100,7 @@ Default:
 ok: [web-01] => {"changed": false, "cmd": ["df", "-h"], "delta": "0:00:00.003", "end": "2026-02-21 10:15:22", "rc": 0, "start": "2026-02-21 10:15:22", "stderr": "", "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   12G   35G  26% /\ntmpfs           3.9G     0  3.9G   0% /dev/shm\n/dev/sdb1       100G   45G   50G  48% /data", "stdout_lines": ["Filesystem      Size  Used Avail Use% Mounted on", "/dev/sda1        50G   12G   35G  26% /", "tmpfs           3.9G     0  3.9G   0% /dev/shm", "/dev/sdb1       100G   45G   50G  48% /data"]}
 ```
 
-YAML callback:
+YAML output:
 
 ```yaml
 ok: [web-01] =>
@@ -124,7 +125,7 @@ ok: [web-01] =>
     - /dev/sdb1       100G   45G   50G  48% /data
 ```
 
-The `stdout` field is rendered as a proper multi-line block with `|-` notation. This is where the yaml callback really stands out.
+The `stdout` field is rendered as a proper multi-line block with `|-` notation. This is where YAML formatting really stands out.
 
 ### Debug Module Output
 
@@ -134,7 +135,7 @@ Default:
 ok: [web-01] => {"msg": "Server web-01 is running Ubuntu 22.04 with 8192MB RAM and 4 CPUs"}
 ```
 
-YAML callback:
+YAML output:
 
 ```yaml
 ok: [web-01] =>
@@ -149,7 +150,7 @@ Default:
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "Unable to start service nginx: Job for nginx.service failed because the control process exited with error code.\nSee \"systemctl status nginx.service\" and \"journalctl -xe\" for details.\n", "name": "nginx", "state": "started"}
 ```
 
-YAML callback:
+YAML output:
 
 ```yaml
 fatal: [web-01]: FAILED! =>
@@ -163,15 +164,16 @@ fatal: [web-01]: FAILED! =>
 
 Multi-line error messages are formatted properly, making it much easier to read the actual error.
 
-## Combining yaml with Other Callback Plugins
+## Combining YAML Output with Other Callback Plugins
 
-The yaml callback handles stdout formatting. You can enable additional non-stdout plugins alongside it:
+The default callback handles stdout formatting. You can enable additional non-stdout plugins alongside it:
 
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = yaml
-callbacks_enabled = timer, profile_tasks
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 ```
 
 This gives you YAML-formatted output plus timing information at the end of the run:
@@ -188,9 +190,9 @@ Install packages ------------------------------------------------------ 45.23s
 Deploy configuration -------------------------------------------------- 12.34s
 ```
 
-## Combining yaml with --diff
+## Combining YAML Output with --diff
 
-The yaml callback works well with `--diff` mode:
+YAML result formatting works well with `--diff` mode:
 
 ```bash
 ansible-playbook configure.yml --diff
@@ -216,15 +218,15 @@ changed: [web-01] =>
 
 The diff appears above the task result, both formatted clearly.
 
-## Using yaml with Verbose Flags
+## Using YAML Output with Verbose Flags
 
-The yaml callback also improves the readability of verbose output:
+YAML result formatting also improves the readability of verbose output:
 
 ```bash
 ansible-playbook deploy.yml -v
 ```
 
-At verbosity level 1 with the yaml callback:
+At verbosity level 1 with YAML result formatting:
 
 ```yaml
 TASK [Install nginx] **********************************************************
@@ -241,11 +243,11 @@ changed: [web-01] =>
     0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
 ```
 
-Compare this to the default callback, which would cram all of that onto two or three lines of JSON.
+Compare this to the default JSON-format output, which would cram all of that onto two or three lines.
 
-## Practical Example: Debugging with yaml Callback
+## Practical Example: Debugging with YAML Output
 
-Here is a debugging playbook that produces significantly better output with the yaml callback:
+Here is a debugging playbook that produces significantly better output with YAML result formatting:
 
 ```yaml
 ---
@@ -286,7 +288,7 @@ Here is a debugging playbook that produces significantly better output with the 
         msg: "{{ services.stdout_lines | length }} services running on {{ inventory_hostname }}"
 ```
 
-With the yaml callback, the output is clean and scannable:
+With YAML result formatting, the output is clean and scannable:
 
 ```yaml
 TASK [Show system summary] ****************************************************
@@ -311,36 +313,37 @@ ok: [web-01] =>
 
 ## Performance Considerations
 
-The yaml callback adds minimal overhead. It reformats data on the controller side after each task completes, which takes negligible time compared to actual task execution. Even on large playbook runs with hundreds of hosts, the formatting overhead is not measurable.
+YAML result formatting adds minimal overhead. It reformats data on the controller side after each task completes, which takes negligible time compared to actual task execution. Even on large playbook runs with hundreds of hosts, the formatting overhead is typically not measurable.
 
 The only consideration is log file size. YAML output uses more lines than single-line JSON, so log files will be larger. If you are storing logs, this is worth keeping in mind, but for interactive use it is purely a benefit.
 
-## Making yaml Your Default
+## Making YAML Output Your Default
 
-I recommend making the yaml callback your default for interactive work. Add this to your global or project-level ansible.cfg:
+I recommend making YAML result formatting your default for interactive work. Add this to your global or project-level ansible.cfg:
 
 ```ini
 # ansible.cfg
 [defaults]
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 
 # Additional recommended settings
-callbacks_enabled = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 display_skipped_hosts = false
 ```
 
 When you need compact output (large-scale operations), override with:
 
 ```bash
-ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook large-scale-patch.yml
+ANSIBLE_STDOUT_CALLBACK=community.general.dense ansible-playbook large-scale-patch.yml
 ```
 
 When you need machine-readable output (CI/CD):
 
 ```bash
-ANSIBLE_STDOUT_CALLBACK=json ansible-playbook deploy.yml > results.json
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook deploy.yml > results.json
 ```
 
 ## Summary
 
-The yaml callback plugin is the single most impactful change you can make to your Ansible workflow. It transforms unreadable single-line JSON into properly indented, multi-line YAML that you can actually read. Multi-line strings (stdout, error messages) are rendered as block scalars instead of escaped newlines. Lists are formatted with dashes. Nested structures are indented. Enable it in ansible.cfg, pair it with `timer` and `profile_tasks`, and never squint at a JSON blob again.
+YAML result formatting is one of the most impactful changes you can make to your Ansible workflow. It transforms unreadable single-line JSON-style output into properly indented, multi-line YAML that you can actually read. Multi-line strings (stdout, error messages) are rendered as block scalars instead of escaped newlines. Lists are formatted with dashes. Nested structures are indented. Enable it in ansible.cfg, pair it with `ansible.posix.timer` and `ansible.posix.profile_tasks`, and never squint at a JSON blob again.
