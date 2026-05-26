@@ -22,7 +22,7 @@ When Ansible escalates privileges, it constructs a command like this:
 sudo -H -S -n -u root /bin/bash -c 'the_actual_command'
 ```
 
-The `become_flags` directive lets you add to or modify these flags. Whatever you put in `become_flags` gets inserted into the escalation command.
+The `become_flags` directive lets you set the flags passed to the escalation command. When you set it for sudo, include any default flags you still need, such as `-H -S -n`.
 
 ## Login Shell with become_flags
 
@@ -36,7 +36,7 @@ One of the most common uses of `become_flags` is to request a login shell. A log
   hosts: all
   become: true
   become_user: appuser
-  become_flags: '-i'
+  become_flags: '-i -H -S -n'
 
   tasks:
     - name: Show environment with login shell
@@ -44,7 +44,7 @@ One of the most common uses of `become_flags` is to request a login shell. A log
       register: env_output
 
     - name: Check PATH includes user-specific directories
-      ansible.builtin.command: echo $PATH
+      ansible.builtin.command: printenv PATH
       register: path_output
 
     - name: Display results
@@ -65,10 +65,10 @@ Sometimes you need the escalated process to keep certain environment variables f
 - name: Tasks that need calling user's environment
   hosts: all
   become: true
-  become_flags: '-E'
+  become_flags: '-E -H -S -n'
 
   tasks:
-    - name: Use HTTP proxy from calling user's environment
+    - name: Use HTTP proxy from the controller environment
       ansible.builtin.apt:
         name: nginx
         state: present
@@ -86,7 +86,7 @@ For preserving only specific variables:
 - name: Run with specific env vars preserved
   ansible.builtin.command: make install
   become: true
-  become_flags: '--preserve-env=PATH,HOME,LANG'
+  become_flags: '--preserve-env=PATH,HOME,LANG -H -S -n'
 ```
 
 ## Setting Groups with become_flags
@@ -108,7 +108,7 @@ You can use become_flags to set the group context for the escalated process.
         mode: '0664'
       become: true
       become_user: appuser
-      become_flags: '-g developers'
+      become_flags: '-g developers -H -S -n'
 ```
 
 ## become_flags with su
@@ -160,17 +160,17 @@ become_flags = -H -S -n
 - name: Play-level become_flags
   hosts: all
   become: true
-  become_flags: '-H'
+  become_flags: '-H -S -n'
 
   tasks:
-    - name: This inherits play-level flags (-H)
+    - name: This inherits play-level flags (-H -S -n)
       ansible.builtin.command: whoami
 
-    - name: This overrides with task-level flags (-i)
+    - name: This overrides with task-level flags (-i -H -S -n)
       ansible.builtin.command: env
-      become_flags: '-i'
+      become_flags: '-i -H -S -n'
 
-    - name: Back to play-level flags (-H)
+    - name: Back to play-level flags (-H -S -n)
       ansible.builtin.command: whoami
 ```
 
@@ -203,7 +203,7 @@ Java applications often need JAVA_HOME and other environment variables that are 
     - name: Run database migration as appuser with login shell
       ansible.builtin.command: /opt/myapp/bin/migrate.sh
       become_user: appuser
-      become_flags: '-i'
+      become_flags: '-i -H -S -n'
 
     - name: Start the application
       ansible.builtin.systemd:
@@ -220,7 +220,7 @@ Java applications often need JAVA_HOME and other environment variables that are 
       until: health_check.status == 200
 ```
 
-The `become_flags: '-i'` on the migration task ensures that JAVA_HOME, CLASSPATH, and other environment variables from appuser's profile are available.
+The `become_flags: '-i -H -S -n'` on the migration task ensures that JAVA_HOME, CLASSPATH, and other environment variables from appuser's profile are available while preserving Ansible's usual sudo behavior.
 
 ## Practical Example: Running Commands with Specific Security Context
 
@@ -237,7 +237,7 @@ On SELinux-enabled systems, you might need to run commands in a specific securit
   tasks:
     - name: Run command in specific SELinux context
       ansible.builtin.command: /opt/restricted/run.sh
-      become_flags: '-r system_r -t unconfined_t'
+      become_flags: '-r system_r -t unconfined_t -H -S -n'
 ```
 
 ## Combining Multiple Flags
@@ -256,12 +256,12 @@ You can pass multiple flags at once.
       ansible.builtin.command: /opt/app/setup.sh
       become: true
       become_user: appuser
-      become_flags: '-i -H -g appgroup'
+      become_flags: '-i -H -S -n -g appgroup'
 
     - name: Non-interactive sudo with specific PATH
       ansible.builtin.command: /opt/scripts/deploy.sh
       become: true
-      become_flags: '--preserve-env=PATH -H -S'
+      become_flags: '--preserve-env=PATH -H -S -n'
 ```
 
 ## Inventory-Level become_flags
@@ -276,7 +276,7 @@ java2 ansible_host=192.168.1.41
 
 [java_servers:vars]
 ansible_become=true
-ansible_become_flags=-i
+ansible_become_flags=-i -H -S -n
 ansible_become_user=appuser
 
 [standard_servers]
@@ -315,7 +315,7 @@ become_flags: '-n'                    # Non-interactive
 
 ```bash
 # See exactly what command Ansible generates with your flags
-ansible all -m command -a "whoami" --become --become-flags="-i" -vvvv
+ansible all -m command -a "whoami" --become --become-flags="-i -H -S -n" -vvvv
 
 # The verbose output will show something like:
 # EXEC sudo -i -H -S -n -u root /bin/bash -c 'whoami'
