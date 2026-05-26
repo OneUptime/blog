@@ -8,7 +8,7 @@ Description: Learn how to use union, intersect, difference, and symmetric_differ
 
 ---
 
-Set operations are incredibly useful when you need to compare lists, find common elements, or compute what has changed between two states. Ansible provides four set operation filters: `union`, `intersect`, `difference`, and `symmetric_difference`. These work just like their mathematical counterparts and come in handy for configuration management, drift detection, and reconciliation tasks.
+Set operations are incredibly useful when you need to compare lists, find common elements, or compute what has changed between two states. Ansible provides four set operation filters: `union`, `intersect`, `difference`, and `symmetric_difference`. These work just like their mathematical counterparts and come in handy for configuration management, drift detection, and reconciliation tasks. The built-in filters return unique results, but they do not preserve list order; add `sort` when you need predictable output.
 
 ## The Four Set Operations
 
@@ -56,14 +56,14 @@ The `union` filter merges two lists and removes duplicates:
   tasks:
     - name: Get combined unique package list
       ansible.builtin.set_fact:
-        all_packages: "{{ base_packages | union(extra_packages) }}"
+        all_packages: "{{ base_packages | union(extra_packages) | sort }}"
 
     - name: Show result
       ansible.builtin.debug:
         var: all_packages
 ```
 
-Output: `["vim", "curl", "wget", "git", "htop", "tmux"]`
+Output: `["curl", "git", "htop", "tmux", "vim", "wget"]`
 
 Notice that `git` and `curl` appear only once even though they were in both lists.
 
@@ -93,7 +93,7 @@ The `intersect` filter returns only elements that appear in both lists:
   tasks:
     - name: Find packages that are both required and installed
       ansible.builtin.set_fact:
-        already_installed: "{{ required_packages | intersect(installed_packages) }}"
+        already_installed: "{{ required_packages | intersect(installed_packages) | sort }}"
 
     - name: Show common packages
       ansible.builtin.debug:
@@ -127,11 +127,11 @@ The `difference` filter returns elements in the first list that are NOT in the s
   tasks:
     - name: Find packages that still need to be installed
       ansible.builtin.set_fact:
-        missing_packages: "{{ required_packages | difference(installed_packages) }}"
+        missing_packages: "{{ required_packages | difference(installed_packages) | sort }}"
 
     - name: Find extra packages not in required list
       ansible.builtin.set_fact:
-        extra_packages: "{{ installed_packages | difference(required_packages) }}"
+        extra_packages: "{{ installed_packages | difference(required_packages) | sort }}"
 
     - name: Show results
       ansible.builtin.debug:
@@ -143,8 +143,8 @@ The `difference` filter returns elements in the first list that are NOT in the s
 Output:
 
 ```text
-need_to_install: ["postgresql", "certbot"]
-could_remove: ["vim", "curl"]
+need_to_install: ["certbot", "postgresql"]
+could_remove: ["curl", "vim"]
 ```
 
 ## Symmetric Difference: Elements Unique to Each List
@@ -172,7 +172,7 @@ The `symmetric_difference` filter returns elements that are in either list but n
   tasks:
     - name: Find elements unique to either list
       ansible.builtin.set_fact:
-        unique_to_either: "{{ list_a | symmetric_difference(list_b) }}"
+        unique_to_either: "{{ list_a | symmetric_difference(list_b) | sort }}"
 
     - name: Show result
       ansible.builtin.debug:
@@ -214,7 +214,7 @@ This is a real-world scenario where set operations shine. You want to ensure tha
       ansible.builtin.set_fact:
         users_to_add: "{{ desired_users | difference(current_users) }}"
         users_to_remove: "{{ current_users | difference(desired_users) }}"
-        users_already_present: "{{ desired_users | intersect(current_users) }}"
+        users_already_present: "{{ desired_users | intersect(current_users) | sort }}"
 
     - name: Report planned changes
       ansible.builtin.debug:
