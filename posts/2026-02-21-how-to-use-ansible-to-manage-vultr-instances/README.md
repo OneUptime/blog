@@ -16,7 +16,7 @@ This guide covers creating instances, managing firewalls, working with block sto
 
 You need:
 
-- Ansible 2.12+ on your control node
+- ansible-core 2.11+ on your control node
 - The `vultr.cloud` collection
 - A Vultr API key (generated from the Vultr control panel under Account > API)
 
@@ -223,35 +223,32 @@ Vultr firewall groups let you define network-level access rules.
     # Add rules to the firewall group
     - name: Allow HTTP
       vultr.cloud.firewall_rule:
-        group: "{{ web_fw.vultr_firewall_group.id }}"
+        group: "Web server firewall"
         ip_type: v4
         protocol: tcp
         port: "80"
         subnet: 0.0.0.0
         subnet_size: 0
-        action: accept
         state: present
 
     - name: Allow HTTPS
       vultr.cloud.firewall_rule:
-        group: "{{ web_fw.vultr_firewall_group.id }}"
+        group: "Web server firewall"
         ip_type: v4
         protocol: tcp
         port: "443"
         subnet: 0.0.0.0
         subnet_size: 0
-        action: accept
         state: present
 
     - name: Allow SSH from management
       vultr.cloud.firewall_rule:
-        group: "{{ web_fw.vultr_firewall_group.id }}"
+        group: "Web server firewall"
         ip_type: v4
         protocol: tcp
         port: "22"
         subnet: 10.0.0.0
         subnet_size: 8
-        action: accept
         state: present
 
     # Create database firewall group
@@ -263,13 +260,12 @@ Vultr firewall groups let you define network-level access rules.
 
     - name: Allow PostgreSQL from app subnet
       vultr.cloud.firewall_rule:
-        group: "{{ db_fw.vultr_firewall_group.id }}"
+        group: "Database server firewall"
         ip_type: v4
         protocol: tcp
         port: "5432"
         subnet: 10.10.0.0
         subnet_size: 16
-        action: accept
         state: present
 ```
 
@@ -283,6 +279,9 @@ Attach persistent block storage volumes to your instances.
 - name: Manage Vultr block storage
   hosts: localhost
   gather_facts: false
+
+  vars:
+    db_instance_id: "your-db-instance-id"
 
   tasks:
     # Create a block storage volume
@@ -303,7 +302,10 @@ Attach persistent block storage volumes to your instances.
     - name: Attach volume to db-01
       vultr.cloud.block_storage:
         label: db-data
-        attached_to_instance: db-01
+        region: ewr
+        size_gb: 100
+        block_type: storage_opt
+        attached_to_instance: "{{ db_instance_id }}"
         live: true
         state: present
 ```
@@ -353,7 +355,7 @@ Vultr supports startup scripts that run when an instance first boots. Manage the
         os: "Ubuntu 22.04 LTS x64"
         ssh_keys:
           - deploy-key
-        script_id: "{{ startup_script.vultr_startup_script.id }}"
+        startup_script: "{{ startup_script.vultr_startup_script.id }}"
         state: present
 ```
 
@@ -426,8 +428,8 @@ Vultr VPC (Virtual Private Cloud) lets you create isolated networks.
         os: "Ubuntu 22.04 LTS x64"
         ssh_keys:
           - deploy-key
-        vpc:
-          - "{{ vpc.vultr_vpc2.id }}"
+        vpcs:
+          - "Production application VPC"
         state: present
 ```
 
@@ -453,6 +455,7 @@ Clean up resources when they are no longer needed.
     - name: Delete instances
       vultr.cloud.instance:
         label: "{{ item }}"
+        region: ewr
         state: absent
       loop: "{{ instances_to_remove }}"
 
@@ -473,6 +476,6 @@ Clean up resources when they are no longer needed.
 2. **Use high-frequency compute for latency-sensitive workloads.** Vultr's high-frequency plans use NVMe storage and high-clock CPUs, which make a noticeable difference for database servers.
 3. **Private networking uses VPC.** Vultr deprecated their old private network feature in favor of VPC 2.0. Make sure you are using the VPC modules.
 4. **Vultr has many regions.** With datacenters across North America, Europe, Asia, and Australia, you can place instances close to your users. Just keep your infrastructure definitions consistent across regions.
-5. **API rate limits are generous.** Vultr allows 3 requests per second for most endpoints. For large deployments, this is usually not a problem, but add a small throttle if you are creating many resources at once.
+5. **API rate limits are generous.** Vultr allows up to 30 requests per second from an originating IP address. For large deployments, this is usually not a problem, but add a small throttle or retry with backoff if you are creating many resources at once.
 
 Vultr plus Ansible is a lean combination that works well for teams that want cloud infrastructure without the complexity overhead of the major providers.
