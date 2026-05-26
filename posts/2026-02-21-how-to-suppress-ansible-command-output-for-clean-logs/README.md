@@ -57,7 +57,7 @@ You can toggle `no_log` based on a variable, so you get clean logs in production
 - name: Deploy with conditional logging
   hosts: app_servers
   vars:
-    suppress_output: "{{ lookup('env', 'ANSIBLE_SUPPRESS_OUTPUT') | default('true') }}"
+    suppress_output: "{{ lookup('env', 'ANSIBLE_SUPPRESS_OUTPUT') | default('true', true) }}"
   tasks:
     - name: Run database migration
       ansible.builtin.command:
@@ -138,7 +138,7 @@ Instead of suppressing output entirely, you can redirect it to a file on the rem
 
 ## Using Callback Plugins for Output Control
 
-Ansible callback plugins control how output is formatted. Several built-in plugins help with clean logs:
+Ansible callback plugins control how output is formatted. Several stdout callbacks and callback options help with clean logs:
 
 ### The minimal callback plugin:
 
@@ -147,18 +147,18 @@ Ansible callback plugins control how output is formatted. Several built-in plugi
 ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook deploy.yaml
 ```
 
-### The json callback plugin (great for parsing in CI/CD):
+### The ansible.posix json callback plugin (great for parsing in CI/CD):
 
 ```bash
 # json output for machine-readable logs
-ANSIBLE_STDOUT_CALLBACK=json ansible-playbook deploy.yaml
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook deploy.yaml
 ```
 
-### The yaml callback plugin (cleaner than default):
+### YAML-formatted task results with the default callback:
 
 ```bash
 # yaml-formatted output for better readability
-ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook deploy.yaml
+ANSIBLE_CALLBACK_RESULT_FORMAT=yaml ansible-playbook deploy.yaml
 ```
 
 Set this permanently in `ansible.cfg`:
@@ -166,9 +166,9 @@ Set this permanently in `ansible.cfg`:
 ```ini
 # ansible.cfg - configure output callback plugin
 [defaults]
-stdout_callback = yaml
+callback_result_format = yaml
 # or for CI/CD:
-# stdout_callback = json
+# stdout_callback = ansible.posix.json
 ```
 
 ## Suppressing Specific Output with changed_when and failed_when
@@ -263,7 +263,7 @@ Ansible shows deprecation warnings that clutter output. Suppress them in config:
 deprecation_warnings = false
 # Also suppress general warnings:
 system_warnings = false
-command_warnings = false
+action_warnings = false
 ```
 
 ## Using ANSIBLE_LOG_PATH for File Logging
@@ -283,7 +283,7 @@ Or in `ansible.cfg`:
 log_path = /var/log/ansible/playbook.log
 ```
 
-This gives you clean terminal output while preserving full logs for troubleshooting.
+This preserves full logs for troubleshooting. It does not reduce terminal output by itself, so combine it with a compact stdout callback if you also want cleaner console logs.
 
 ## A Complete Clean-Output Playbook Pattern
 
@@ -296,7 +296,7 @@ Here is a pattern that combines several techniques for production-clean output:
   hosts: app_servers
   become: true
   vars:
-    verbose_mode: "{{ lookup('env', 'VERBOSE') | default(false) | bool }}"
+    verbose_mode: "{{ lookup('env', 'VERBOSE') | default('false', true) | bool }}"
   tasks:
     - name: Pre-deployment checks
       ansible.builtin.command:
@@ -352,4 +352,4 @@ Here is a pattern that combines several techniques for production-clean output:
 
 ## Summary
 
-Controlling Ansible output is about finding the right balance between clean logs and debuggability. Use `no_log: true` for sensitive data and noisy tasks, `changed_when: false` for read-only commands, and the `verbosity` parameter on debug tasks for tiered output. Callback plugins like `minimal`, `yaml`, and `json` control the overall format. For production CI/CD pipelines, combine `ANSIBLE_LOG_PATH` for full file logging with a minimal callback plugin for clean console output. And always make your `no_log` conditional so you can flip to verbose mode when you need to troubleshoot.
+Controlling Ansible output is about finding the right balance between clean logs and debuggability. Use `no_log: true` for sensitive data and noisy tasks, `changed_when: false` for read-only commands, and the `verbosity` parameter on debug tasks for tiered output. Callback plugins like `minimal` and `ansible.posix.json`, plus callback options like `callback_result_format = yaml`, control the overall format. For production CI/CD pipelines, combine `ANSIBLE_LOG_PATH` for full file logging with a minimal callback plugin for clean console output. And always make your `no_log` conditional so you can flip to verbose mode when you need to troubleshoot.
