@@ -35,11 +35,11 @@ flowchart LR
 
 ## Creating GitLab Credentials in AWX
 
-AWX needs credentials to clone repositories from GitLab. You have two options: HTTPS with a personal access token or SSH with a deploy key.
+AWX needs a Source Control credential to clone repositories from GitLab. You have two options: HTTPS with a personal access token or SSH with a deploy key.
 
 ### Option 1: HTTPS with Personal Access Token
 
-Generate a GitLab PAT with `read_repository` scope (add `api` scope if you also want status updates).
+Generate a GitLab PAT with `read_repository` scope for cloning. If you also want AWX to post webhook job status back to GitLab, create a separate GitLab Personal Access Token credential with the `api` scope and attach it to the job template as the webhook credential.
 
 ```bash
 # Create an SCM credential using GitLab PAT
@@ -67,19 +67,20 @@ Generate an SSH key pair and add the public key as a deploy key in GitLab (Proje
 # Generate a dedicated SSH key for AWX
 ssh-keygen -t ed25519 -f awx-gitlab-key -N "" -C "awx@example.com"
 
-# Create the SSH credential in AWX
+# Create the SSH credential in AWX.
+# jq is used so the multi-line private key is JSON-escaped correctly.
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/credentials/ \
-  -d '{
-    "name": "GitLab SCM - SSH",
-    "organization": 1,
-    "credential_type": 2,
-    "inputs": {
-      "ssh_key_data": "'"$(cat awx-gitlab-key)"'"
+  -d "$(jq -n --arg key "$(cat awx-gitlab-key)" '{
+    name: "GitLab SCM - SSH",
+    organization: 1,
+    credential_type: 2,
+    inputs: {
+      ssh_key_data: $key
     }
-  }'
+  }')"
 ```
 
 For self-hosted GitLab instances, you might also need to add the GitLab server's SSH host key to AWX settings or disable host key checking.
@@ -119,12 +120,13 @@ Configure GitLab to notify AWX when code is pushed or a merge request is updated
 First, enable GitLab webhooks on the AWX job template.
 
 ```bash
-# Enable GitLab webhook service on the job template
+# Enable GitLab webhook service on the job template.
+# Set webhook_credential to a GitLab PAT credential ID if you want AWX to post status back.
 curl -s -X PATCH \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
   https://awx.example.com/api/v2/job_templates/10/ \
-  -d '{"webhook_service": "gitlab"}'
+  -d '{"webhook_service": "gitlab", "webhook_credential": 7}'
 
 # Retrieve the webhook key
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
@@ -240,11 +242,13 @@ stages:
 
 deploy-staging:
   stage: deploy
-  image: curlimages/curl:latest
+  image: python:3.12-alpine
   environment:
     name: staging
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - apk add --no-cache curl
   script:
     - |
       # Launch AWX deployment job
@@ -260,7 +264,7 @@ deploy-staging:
           }
         }")
 
-      JOB_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+      JOB_ID=$(printf '%s' "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
       echo "AWX Job ID: $JOB_ID"
 
       # Poll for completion
@@ -285,29 +289,18 @@ When using a self-hosted GitLab instance, you may need extra configuration.
 
 ```bash
 # If GitLab uses a self-signed certificate, tell AWX to trust it
-# Add the CA certificate to AWX settings
-kubectl create configmap awx-custom-ca \
-  --from-file=gitlab-ca.crt=/path/to/gitlab-ca.crt \
+# Create a Kubernetes secret with the bundle-ca.crt key expected by AWX Operator
+kubectl create secret generic awx-custom-certs \
+  --from-file=bundle-ca.crt=/path/to/gitlab-ca.crt \
   -n awx
 ```
 
-Update the AWX custom resource to mount the CA certificate.
+Update the AWX custom resource to use that CA bundle.
 
 ```yaml
 # In the AWX CR
 spec:
-  extra_volumes: |
-    - name: custom-ca
-      configMap:
-        name: awx-custom-ca
-  web_extra_volume_mounts: |
-    - name: custom-ca
-      mountPath: /etc/pki/ca-trust/source/anchors/gitlab-ca.crt
-      subPath: gitlab-ca.crt
-  task_extra_volume_mounts: |
-    - name: custom-ca
-      mountPath: /etc/pki/ca-trust/source/anchors/gitlab-ca.crt
-      subPath: gitlab-ca.crt
+  bundle_cacert_secret: awx-custom-certs
 ```
 
 ## GitLab Group-Level Integration
