@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible assert module to validate precondition
 
 ---
 
-The `assert` module is Ansible's built-in way to verify that certain conditions are true before continuing with a playbook. Think of it as putting guardrails around your automation. Before deploying to production, you can assert that the target host has enough disk space, the right OS version, and all required variables set. If any assertion fails, the playbook stops with a clear error message instead of failing halfway through a deployment with a cryptic error.
+The `assert` module is Ansible's built-in way to verify that certain conditions are true before continuing with a playbook. Think of it as putting guardrails around your automation. Before deploying to production, you can assert that the target host has enough disk space, the right OS version, and all required variables set. If any assertion fails, Ansible stops running later tasks on that host by default and shows a clear error message instead of failing halfway through a deployment with a cryptic error.
 
 ## Basic assert Usage
 
@@ -367,4 +367,4 @@ Use assert inside a block to make failures rescuable.
             cmd: timedatectl set-ntp true
 ```
 
-The assert module is your first line of defense against misconfigured deployments. By catching problems at the start of a playbook run, you avoid the scenario where a deployment fails halfway through, leaving your system in a partially updated state. Make it a habit to start every deployment playbook with an assertion section that validates all prerequisites. Your future self, debugging a failed deployment at 2 AM, will thank you.
+The assert module is your first line of defense against misconfigured deployments. By catching problems at the start of a playbook run, you avoid the scenario where a deployment fails halfway through on a host, leaving your system in a partially updated state. Make it a habit to start every deployment playbook with an assertion section that validates all prerequisites. Your future self, debugging a failed deployment at 2 AM, will thank you.
