@@ -20,18 +20,18 @@ systemd offers several restart policies. Choosing the right one depends on your 
 |--------|------------|----------|
 | `no` | Never | One-shot tasks, scripts that should not repeat |
 | `on-success` | Clean exit (code 0) | Services that need to run continuously but should not restart on error |
-| `on-failure` | Non-zero exit, signal, timeout, watchdog | Most application services |
-| `on-abnormal` | Signal, timeout, watchdog | Services where non-zero exit is expected |
+| `on-failure` | Non-zero exit, unclean signal, timeout, watchdog | Most application services |
+| `on-abnormal` | Unclean signal, timeout, watchdog | Services where non-zero exit is expected |
 | `on-watchdog` | Watchdog timeout only | Services with watchdog support |
-| `on-abort` | Unclean signal (SIGABRT, SIGSEGV, etc.) | Core dump situations |
-| `always` | Any exit, regardless of reason | Critical services that must always run |
+| `on-abort` | Unclean signal not treated as a successful exit | Core dump situations |
+| `always` | Any exit, signal, or timeout | Critical services that must always run |
 
 ```mermaid
 graph TD
     A[Service Exits] --> B{Exit Code?}
     B -->|0 - Clean| C{Restart Policy}
     B -->|Non-zero| D{Restart Policy}
-    B -->|Signal| E{Restart Policy}
+    B -->|Unclean signal| E{Restart Policy}
     B -->|Watchdog| F{Restart Policy}
     C -->|always, on-success| G[Restart]
     C -->|on-failure, no| H[Stay Dead]
@@ -128,6 +128,18 @@ After=network.target
 OnFailure={{ svc_on_failure_job }}
 {% endif %}
 
+# ---- Rate Limiting ----
+# Maximum number of starts within the interval
+StartLimitBurst={{ svc_start_limit_burst | default(5) }}
+
+# Time window for counting starts
+StartLimitIntervalSec={{ svc_start_limit_interval | default(300) }}
+
+# What to do when the rate limit is hit
+{% if svc_start_limit_action is defined %}
+StartLimitAction={{ svc_start_limit_action }}
+{% endif %}
+
 [Service]
 Type={{ svc_type | default('simple') }}
 User={{ svc_user | default('root') }}
@@ -136,6 +148,12 @@ ExecStart={{ svc_exec_start }}
 # ---- Restart Configuration ----
 Restart={{ svc_restart_policy | default('on-failure') }}
 RestartSec={{ svc_restart_sec | default(5) }}
+{% if svc_restart_steps is defined %}
+RestartSteps={{ svc_restart_steps }}
+{% endif %}
+{% if svc_restart_max_delay_sec is defined %}
+RestartMaxDelaySec={{ svc_restart_max_delay_sec }}
+{% endif %}
 
 # Exit codes that should prevent restart
 {% if svc_restart_prevent_exit_status is defined %}
@@ -145,18 +163,6 @@ RestartPreventExitStatus={{ svc_restart_prevent_exit_status }}
 # Exit codes that should force restart even with Restart=on-success
 {% if svc_restart_force_exit_status is defined %}
 RestartForceExitStatus={{ svc_restart_force_exit_status }}
-{% endif %}
-
-# ---- Rate Limiting ----
-# Maximum number of restarts within the interval
-StartLimitBurst={{ svc_start_limit_burst | default(5) }}
-
-# Time window for counting restarts
-StartLimitIntervalSec={{ svc_start_limit_interval | default(300) }}
-
-# What to do when the rate limit is hit
-{% if svc_start_limit_action is defined %}
-StartLimitAction={{ svc_start_limit_action }}
 {% endif %}
 
 # ---- Timeouts ----
@@ -178,7 +184,7 @@ WantedBy=multi-user.target
 
 ## Rate Limiting Restarts
 
-Without rate limiting, a service that crashes immediately after start would restart in a tight loop forever. `StartLimitBurst` and `StartLimitIntervalSec` prevent this.
+Without rate limiting, a service that crashes immediately after start would keep trying to restart. `StartLimitBurst` and `StartLimitIntervalSec` prevent this by limiting how many times the unit can be started in a time window.
 
 Deploy a service with restart rate limiting:
 
@@ -195,12 +201,12 @@ Deploy a service with restart rate limiting:
     # Allow 5 restarts in 5 minutes
     svc_start_limit_burst: 5
     svc_start_limit_interval: 300
-    # After hitting the limit, do not try again
+    # After hitting the limit, take no additional action
     svc_start_limit_action: none
 ```
 
-Options for `StartLimitAction`:
-- `none`: Stop trying to restart (default)
+Common options for `StartLimitAction`:
+- `none`: Take no additional action beyond refusing the start (default)
 - `reboot`: Reboot the machine
 - `reboot-force`: Forcefully reboot without clean shutdown
 - `reboot-immediate`: Immediate reboot (no service stops)
@@ -227,9 +233,26 @@ Configure exit codes that should prevent restart:
     svc_success_exit_status: "42"
 ```
 
-## Exponential Backoff
+## Stepped Backoff
 
-systemd does not natively support exponential backoff, but you can simulate it with a wrapper script.
+systemd 254 and newer support stepped restart delays with `RestartSteps` and `RestartMaxDelaySec`. This is not exponential backoff, but it lets systemd increase the delay from `RestartSec` up to a maximum delay without a wrapper script.
+
+Deploy stepped restart delays:
+
+```yaml
+- name: Deploy service with stepped restart delays
+  ansible.builtin.template:
+    src: service-advanced.j2
+    dest: /etc/systemd/system/myapp.service
+  vars:
+    svc_exec_start: /opt/myapp/bin/server
+    svc_restart_policy: on-failure
+    svc_restart_sec: 5
+    svc_restart_steps: 5
+    svc_restart_max_delay_sec: 300
+```
+
+On older systemd releases, you can simulate backoff with a wrapper script.
 
 Deploy a wrapper that implements backoff:
 
@@ -241,7 +264,7 @@ Deploy a wrapper that implements backoff:
     content: |
       #!/bin/bash
       # Exponential backoff wrapper for systemd services
-      BACKOFF_FILE="/tmp/myapp-backoff"
+      BACKOFF_FILE="/run/myapp-backoff"
       MAX_BACKOFF=300  # 5 minutes max
 
       # Get current backoff or start at 0
@@ -268,14 +291,6 @@ Deploy a wrapper that implements backoff:
 
       # Run the actual application
       exec /opt/myapp/bin/server "$@"
-
-- name: Deploy reset script for successful startup
-  ansible.builtin.copy:
-    dest: /opt/myapp/bin/reset-backoff.sh
-    mode: '0755'
-    content: |
-      #!/bin/bash
-      rm -f /tmp/myapp-backoff
 
 - name: Deploy service with backoff
   ansible.builtin.template:
