@@ -24,7 +24,8 @@ sudo apt-get install -y docker.io
 sudo usermod -aG docker $USER
 
 # Install Molecule and the Docker driver
-pip install molecule molecule-docker ansible-core docker
+pip install molecule ansible-core docker "molecule-plugins[docker]"
+ansible-galaxy collection install community.docker ansible.posix
 ```
 
 ## Basic Docker Images for Ansible Testing
@@ -93,9 +94,10 @@ docker build -t ansible-test/rockylinux9 -f docker/Dockerfile.rockylinux9 .
 The most common pattern is using Molecule with its Docker driver. Initialize a role with Molecule:
 
 ```bash
-# Create a new role with Molecule test scaffold
-molecule init role my_role --driver-name docker
+# Create a new role with a Molecule test scaffold
+ansible-galaxy role init my_role
 cd my_role
+molecule init scenario
 ```
 
 Configure the Molecule scenario to use your Docker images:
@@ -105,8 +107,6 @@ Configure the Molecule scenario to use your Docker images:
 # Molecule configuration using Docker for test instances
 dependency:
   name: galaxy
-  options:
-    requirements-file: requirements.yml
 driver:
   name: docker
 platforms:
@@ -202,11 +202,14 @@ For quick tests without Molecule, use Ansible's Docker connection plugin:
 ```bash
 # Start a test container
 docker run -d --name ansible-test --privileged \
+    --cgroupns=host \
+    --tmpfs /run \
+    --tmpfs /tmp \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     ansible-test/ubuntu2204
 
 # Run a playbook against the container using the docker connection
-ansible-playbook -i 'ansible-test,' -c docker site.yml
+ansible-playbook -i 'ansible-test,' -c community.docker.docker site.yml
 ```
 
 Create an inventory file for Docker containers:
@@ -217,10 +220,10 @@ Create an inventory file for Docker containers:
 all:
   hosts:
     web-test:
-      ansible_connection: docker
+      ansible_connection: community.docker.docker
       ansible_docker_extra_args: ""
     db-test:
-      ansible_connection: docker
+      ansible_connection: community.docker.docker
   vars:
     ansible_python_interpreter: /usr/bin/python3
 ```
@@ -324,10 +327,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [ubuntu2204, rockylinux9]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -335,13 +334,15 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install molecule molecule-docker ansible-core docker
-      - name: Build test image
-        run: docker build -t ansible-test/${{ matrix.distro }} -f docker/Dockerfile.${{ matrix.distro }} .
+        run: |
+          pip install molecule ansible-core docker "molecule-plugins[docker]"
+          ansible-galaxy collection install community.docker ansible.posix
+      - name: Build test images
+        run: |
+          docker build -t ansible-test/ubuntu2204 -f docker/Dockerfile.ubuntu2204 .
+          docker build -t ansible-test/rockylinux9 -f docker/Dockerfile.rockylinux9 .
       - name: Run Molecule
         run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
 ```
 
 ## Performance Tips
