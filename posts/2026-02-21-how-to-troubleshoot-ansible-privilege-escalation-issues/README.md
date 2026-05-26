@@ -137,7 +137,7 @@ This error usually means Ansible does not recognize the sudo password prompt.
 
 ```bash
 # Check what sudo prompt the remote host shows
-ssh deploy@192.168.1.10 "SUDO_PROMPT='[sudo] password: ' sudo -S whoami <<< 'yourpassword'"
+ssh -tt deploy@192.168.1.10 "sudo -k; sudo -v"
 ```
 
 Common causes:
@@ -234,10 +234,9 @@ pipelining = false
 Pipelining issues typically show up as:
 
 - Timeout waiting for privilege escalation
-- sudo prompt not being detected
 - Strange module failure errors
 
-After disabling pipelining, if become works, the problem is likely requiretty or a non-standard sudo prompt.
+After disabling pipelining, if become works, the problem is likely requiretty or another sudo configuration that conflicts with pipelined module execution.
 
 ## Debugging with Maximum Verbosity
 
@@ -256,7 +255,7 @@ In the output, look for:
 
 # The sudo command being generated
 <web1> ESTABLISH SSH CONNECTION FOR USER: deploy
-<web1> EXEC /bin/sh -c 'echo BECOME-SUCCESS-abc123; sudo -H -S -n -u root /bin/bash ...'
+<web1> EXEC /bin/sh -c 'sudo -H -S -n -u root /bin/sh -c '"'"'echo BECOME-SUCCESS-abc123; /usr/bin/python3 ...'"'"' && sleep 0'
 ```
 
 The `BECOME-SUCCESS-abc123` string is how Ansible detects successful privilege escalation. If you see this but the task still fails, the issue is in the module execution, not the escalation itself.
@@ -333,9 +332,9 @@ Here is a comprehensive diagnostic playbook that tests every aspect of privilege
 | Missing sudo password | NOPASSWD not configured | Add NOPASSWD to sudoers or use -K |
 | Incorrect sudo password | Wrong password provided | Check vault or prompt for correct password |
 | Not in sudoers file | User lacks sudo access | Add user to sudoers |
-| Timeout waiting for prompt | Prompt detection failure | Check locale, disable pipelining |
+| Timeout waiting for prompt | Prompt detection failure or blocked sudo execution | Check locale, sudo prompt, and pipelining |
 | Must have a tty | requiretty in sudoers | Remove requiretty or add exception |
-| Permission denied | sudo succeeded but command failed | Check file permissions on target |
+| Permission denied | sudo did not apply to the failing operation, or the become user still lacks access | Check become scope and file permissions on target |
 | Module failure | Python or module issue | Check Python interpreter path |
 
 ## Prevention: A Solid Base Configuration
