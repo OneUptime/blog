@@ -202,12 +202,12 @@ For symbolic links, `stat` provides the link target:
 - name: Display current deployment
   ansible.builtin.debug:
     msg: "Current deployment: {{ current_link.stat.lnk_target }}"
-  when: current_link.stat.islnk
+  when: current_link.stat.islnk is defined and current_link.stat.islnk
 
 - name: Verify symlink points to expected release
   ansible.builtin.assert:
     that:
-      - current_link.stat.islnk
+      - current_link.stat.islnk is defined and current_link.stat.islnk
       - current_link.stat.lnk_target == expected_release_path
     fail_msg: "Symlink points to {{ current_link.stat.lnk_target }}, expected {{ expected_release_path }}"
 ```
@@ -281,7 +281,7 @@ Use `stat` to audit file permissions across your infrastructure:
 
 ## Performance: Disabling Checksum Calculation
 
-By default, `stat` calculates the MD5 checksum of files, which can be slow for large files. If you do not need the checksum, disable it:
+By default, `stat` calculates the SHA1 checksum of files, which can be slow for large files. If you do not need the checksum, disable it:
 
 ```yaml
 # Skip checksum calculation for faster stat results
