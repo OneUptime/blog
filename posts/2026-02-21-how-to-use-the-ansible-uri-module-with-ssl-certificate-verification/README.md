@@ -83,7 +83,7 @@ Instead of disabling verification, tell Ansible to trust your internal CA:
         msg: "Internal API status: {{ internal_status.json.status }}"
 ```
 
-The `ca_path` parameter can point to a single CA certificate file or a directory of CA certificates. This lets Ansible trust your internal CA while still rejecting certificates from unknown CAs.
+The `ca_path` parameter points to a PEM-formatted CA certificate file. This lets Ansible trust your internal CA while still rejecting certificates from unknown CAs.
 
 ## Installing Custom CA Certificates on Managed Hosts
 
@@ -207,7 +207,7 @@ You can use Ansible to inspect SSL certificates on your infrastructure:
 
 ## SSL Verification with get_url
 
-The `get_url` module has the same SSL options:
+The `get_url` module also validates certificates by default and supports `validate_certs`, `client_cert`, and `client_key`:
 
 ```yaml
 # SSL verification options for get_url downloads
@@ -222,12 +222,11 @@ The `get_url` module has the same SSL options:
         dest: /tmp/myapp.tar.gz
         mode: '0644'
 
-    # Download from internal server with custom CA
+    # Download from internal server after its CA has been installed in the system trust store
     - name: Download from internal repository
       ansible.builtin.get_url:
         url: https://artifacts.internal/releases/myapp.tar.gz
         dest: /tmp/myapp.tar.gz
-        ca_path: /etc/ssl/certs/internal-ca.pem
         mode: '0644'
 
     # Download with client cert authentication
@@ -242,24 +241,23 @@ The `get_url` module has the same SSL options:
 
 ## Environment Variable for CA Bundle
 
-You can set the CA bundle path via environment variable, affecting all Python-based HTTP requests:
+You can set the CA bundle path via `SSL_CERT_FILE` for Python/OpenSSL-based HTTPS clients that honor OpenSSL's default verification paths:
 
 ```yaml
-# set CA bundle via environment variable for all HTTP tasks
+# set CA bundle via environment variable for HTTPS tasks
 ---
 - name: Use custom CA bundle globally
   hosts: all
   environment:
-    REQUESTS_CA_BUNDLE: /etc/ssl/certs/combined-ca-bundle.pem
     SSL_CERT_FILE: /etc/ssl/certs/combined-ca-bundle.pem
   tasks:
-    - name: All uri requests in this play use the custom CA bundle
+    - name: URI request can use the custom CA bundle
       ansible.builtin.uri:
         url: https://api.internal/health
         method: GET
       register: health
 
-    - name: Downloads also use the custom CA bundle
+    - name: Downloads can also use the custom CA bundle
       ansible.builtin.get_url:
         url: https://artifacts.internal/file.tar.gz
         dest: /tmp/file.tar.gz
@@ -350,4 +348,4 @@ Here is a playbook that manages certificate rotation while maintaining SSL verif
 
 ## Summary
 
-SSL certificate verification in Ansible is enabled by default and should stay enabled for production workloads. Use `ca_path` to trust internal CAs instead of disabling verification with `validate_certs: false`. For mutual TLS, provide client certificates with `client_cert` and `client_key`. Deploy internal CA certificates to managed hosts using `update-ca-certificates` (Debian) or `update-ca-trust` (RHEL) for system-wide trust. When you must disable verification for development environments, do it conditionally based on an environment variable so it cannot accidentally leak into production.
+SSL certificate verification in Ansible is enabled by default and should stay enabled for production workloads. Use `ca_path` to trust internal CAs instead of disabling verification with `validate_certs: false`. For mutual TLS, provide client certificates with `client_cert` and `client_key`. Deploy internal CA certificates to managed hosts using `update-ca-certificates` (Debian) or `update-ca-trust` (RHEL) for system-wide trust. When you must disable verification for development environments, do it conditionally based on the target environment so it cannot accidentally leak into production.
