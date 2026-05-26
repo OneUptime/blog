@@ -70,7 +70,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -88,6 +88,7 @@ Let me explain the key configuration options:
 - **`privileged: true`** gives the container full access to the host, which is needed for systemd to work
 - **`volumes`** mounts cgroups so systemd can manage services
 - **`cgroupns_mode: host`** shares the host's cgroup namespace (needed on Docker with cgroup v2)
+- **`override_command: false`** tells Molecule to use the image's default CMD, which is usually systemd for these images
 - **`tmpfs`** mounts `/run` and `/tmp` as tmpfs, which systemd expects
 
 ## Multi-Platform Testing
@@ -107,7 +108,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -119,7 +120,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -131,7 +132,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -143,7 +144,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -179,7 +180,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -208,12 +209,14 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
     networks:
       - name: molecule-test-net
+    groups:
+      - webservers
 
   - name: database
     image: "geerlingguy/docker-ubuntu2204-ansible:latest"
@@ -222,12 +225,14 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
     networks:
       - name: molecule-test-net
+    groups:
+      - databases
 
 provisioner:
   name: ansible
@@ -235,13 +240,6 @@ provisioner:
     group_vars:
       all:
         db_host: database
-    hosts:
-      webservers:
-        hosts:
-          webserver: {}
-      databases:
-        hosts:
-          database: {}
 ```
 
 The converge playbook can target different groups.
@@ -269,9 +267,17 @@ If the pre-built images do not meet your needs, you can build a custom image.
 # molecule/default/molecule.yml - build from Dockerfile
 platforms:
   - name: custom-instance
-    image: "molecule-custom:latest"
+    image: "ubuntu:22.04"
     pre_build_image: false  # build the image
     dockerfile: Dockerfile.j2
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    override_command: false
+    tmpfs:
+      - /run
+      - /tmp
 ```
 
 Create the Dockerfile template.
@@ -320,7 +326,7 @@ platforms:
       - "${MOLECULE_PROJECT_DIRECTORY}/test-data:/opt/test-data:ro"
       - "shared-vol:/shared:rw"
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -340,7 +346,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -362,7 +368,7 @@ driver:
 provisioner:
   name: ansible
   connection_options:
-    ansible_connection: docker
+    ansible_connection: community.docker.docker
   config_options:
     defaults:
       interpreter_python: auto_silent
@@ -385,7 +391,7 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     cgroupns_mode: host
-    command: ""
+    override_command: false
     tmpfs:
       - /run
       - /tmp
@@ -412,7 +418,7 @@ Common issues and their fixes:
 
 1. **Systemd not starting in container.** Make sure you have `privileged: true`, the cgroup volume mount, and `cgroupns_mode: host`. Also check that the image actually has systemd installed.
 
-2. **Container exits immediately.** The `command: ""` setting tells Molecule to use the image's default CMD (usually systemd). If you override it accidentally, the container may exit.
+2. **Container exits immediately.** The `override_command: false` setting tells Molecule to use the image's default CMD (usually systemd). If you override it accidentally, the container may exit.
 
 3. **Slow image pulls.** Set `pre_build_image: true` and make sure Docker's layer cache is working. Consider using a local registry mirror for CI environments.
 
