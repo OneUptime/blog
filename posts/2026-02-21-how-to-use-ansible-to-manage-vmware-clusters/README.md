@@ -31,7 +31,7 @@ flowchart TD
 
 ## Creating a Cluster
 
-Use the `community.vmware.vmware_cluster` module to create and configure clusters.
+Use the `vmware.vmware.cluster` module to create clusters, then configure cluster services with the HA and DRS modules.
 
 ```yaml
 # create-cluster.yml
@@ -42,7 +42,7 @@ Use the `community.vmware.vmware_cluster` module to create and configure cluster
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -55,17 +55,26 @@ Use the `community.vmware.vmware_cluster` module to create and configure cluster
 
   tasks:
     - name: Create production cluster
-      community.vmware.vmware_cluster:
-        datacenter_name: "DC01"
-        cluster_name: "Production"
-        enable_ha: true
-        enable_drs: true
-        enable_vsan: false
+      vmware.vmware.cluster:
+        datacenter: "DC01"
+        cluster: "Production"
       register: cluster_result
+
+    - name: Enable HA on the production cluster
+      vmware.vmware.cluster_ha:
+        datacenter: "DC01"
+        cluster: "Production"
+        enable: true
+
+    - name: Enable DRS on the production cluster
+      vmware.vmware.cluster_drs:
+        datacenter: "DC01"
+        cluster: "Production"
+        enable: true
 
     - name: Display cluster creation result
       ansible.builtin.debug:
-        msg: "Cluster '{{ cluster_result.result }}' configured"
+        msg: "Cluster '{{ cluster_result.cluster.name }}' configured"
 ```
 
 ## Configuring High Availability (HA)
@@ -80,7 +89,7 @@ HA restarts VMs on surviving hosts when a host fails. Proper HA configuration is
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -93,19 +102,20 @@ HA restarts VMs on surviving hosts when a host fails. Proper HA configuration is
 
   tasks:
     - name: Configure HA on the production cluster
-      community.vmware.vmware_cluster_ha:
+      vmware.vmware.cluster_ha:
         datacenter: "DC01"
-        cluster_name: "Production"
+        cluster: "Production"
         enable: true
-        # Host monitoring - detect host failures
-        ha_host_monitoring: enabled
+        # Host failure response - restart VMs after host failures
+        host_failure_response:
+          restart_vms: true
+          default_vm_restart_priority: medium
         # VM monitoring - restart VMs that crash
-        ha_vm_monitoring: vmMonitoringOnly
-        # VM restart priority
-        ha_restart_priority: medium
+        vm_monitoring:
+          mode: vmMonitoringOnly
         # Admission control - reserve capacity for failover
-        slot_based_admission_control:
-          failover_level: 1
+        admission_control_policy: vm_slots
+        admission_control_failover_level: 1
         # Host isolation response
         host_isolation_response: powerOff
         # Advanced HA settings
@@ -131,7 +141,7 @@ DRS automatically balances VM workloads across hosts in the cluster by migrating
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -144,9 +154,9 @@ DRS automatically balances VM workloads across hosts in the cluster by migrating
 
   tasks:
     - name: Configure DRS on the production cluster
-      community.vmware.vmware_cluster_drs:
+      vmware.vmware.cluster_drs:
         datacenter: "DC01"
-        cluster_name: "Production"
+        cluster: "Production"
         enable: true
         # Automation level: manual, partiallyAutomated, fullyAutomated
         drs_default_vm_behavior: fullyAutomated
@@ -176,7 +186,7 @@ When managing an entire datacenter, define all clusters in variables and apply c
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -214,31 +224,30 @@ When managing an entire datacenter, define all clusters in variables and apply c
   tasks:
     # Create/ensure all clusters exist
     - name: Ensure clusters exist
-      community.vmware.vmware_cluster:
-        datacenter_name: "DC01"
-        cluster_name: "{{ item.name }}"
-        enable_ha: "{{ item.ha_enabled }}"
-        enable_drs: "{{ item.drs_enabled }}"
+      vmware.vmware.cluster:
+        datacenter: "DC01"
+        cluster: "{{ item.name }}"
       loop: "{{ clusters }}"
 
     # Configure HA for clusters that have it enabled
     - name: Configure HA on applicable clusters
-      community.vmware.vmware_cluster_ha:
+      vmware.vmware.cluster_ha:
         datacenter: "DC01"
-        cluster_name: "{{ item.name }}"
+        cluster: "{{ item.name }}"
         enable: true
-        ha_host_monitoring: enabled
-        ha_restart_priority: "{{ item.ha_restart_priority }}"
-        slot_based_admission_control:
-          failover_level: "{{ item.ha_failover_level }}"
+        host_failure_response:
+          restart_vms: true
+          default_vm_restart_priority: "{{ item.ha_restart_priority }}"
+        admission_control_policy: vm_slots
+        admission_control_failover_level: "{{ item.ha_failover_level }}"
       loop: "{{ clusters }}"
       when: item.ha_enabled
 
     # Configure DRS for all clusters
     - name: Configure DRS on all clusters
-      community.vmware.vmware_cluster_drs:
+      vmware.vmware.cluster_drs:
         datacenter: "DC01"
-        cluster_name: "{{ item.name }}"
+        cluster: "{{ item.name }}"
         enable: "{{ item.drs_enabled }}"
         drs_default_vm_behavior: "{{ item.drs_behavior }}"
         drs_vmotion_rate: "{{ item.drs_threshold }}"
@@ -258,7 +267,7 @@ Get details about existing clusters for reporting or auditing.
   gather_facts: false
 
   module_defaults:
-    group/community.vmware.vmware:
+    group/vmware.vmware.vmware:
       hostname: "{{ vcenter_hostname }}"
       username: "{{ vcenter_username }}"
       password: "{{ vcenter_password }}"
@@ -271,7 +280,7 @@ Get details about existing clusters for reporting or auditing.
 
   tasks:
     - name: Get information about all clusters
-      community.vmware.vmware_cluster_info:
+      vmware.vmware.cluster_info:
         datacenter: "DC01"
       register: cluster_info
 
@@ -287,19 +296,19 @@ Get details about existing clusters for reporting or auditing.
 
 ## Adding Hosts to a Cluster
 
-Use the `vmware_host` module to add ESXi hosts to a cluster.
+Use the `esxi_host` module to add ESXi hosts to a cluster.
 
 ```yaml
 # add-host-to-cluster.yml
 - name: Add ESXi host to the production cluster
-  community.vmware.vmware_host:
+  vmware.vmware.esxi_host:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
     datacenter: "DC01"
     cluster: "Production"
-    esxi_hostname: "esxi-04.example.com"
+    esxi_host_name: "esxi-04.example.com"
     esxi_username: "root"
     esxi_password: "{{ vault_esxi_root_password }}"
     state: present
@@ -313,26 +322,26 @@ When performing maintenance on cluster hosts, put them in maintenance mode first
 ```yaml
 # host-maintenance.yml
 - name: Put ESXi host in maintenance mode
-  community.vmware.vmware_maintenancemode:
+  vmware.vmware.esxi_maintenance_mode:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    esxi_hostname: "esxi-01.example.com"
+    esxi_host_name: "esxi-01.example.com"
     timeout: 3600
-    # DRS will migrate VMs off this host
+    # Evacuate powered-off VMs; DRS can migrate running VMs when configured
     evacuate: true
-    state: present
+    enable_maintenance_mode: true
 
 # After maintenance is complete
 - name: Exit maintenance mode
-  community.vmware.vmware_maintenancemode:
+  vmware.vmware.esxi_maintenance_mode:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
     password: "{{ vcenter_password }}"
     validate_certs: false
-    esxi_hostname: "esxi-01.example.com"
-    state: absent
+    esxi_host_name: "esxi-01.example.com"
+    enable_maintenance_mode: false
 ```
 
 Cluster management with Ansible brings infrastructure-as-code to the core of your VMware environment. Instead of clicking through settings in the vSphere Client and hoping you remembered every option, you define your cluster configurations in YAML files that can be version controlled, reviewed, and applied consistently across every cluster in your organization.
