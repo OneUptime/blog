@@ -15,29 +15,31 @@ Ansible collections changed how roles and modules are packaged and distributed. 
 An Ansible collection has a specific directory layout that Molecule needs to understand.
 
 ```text
-my_namespace/
-  my_collection/
-    galaxy.yml
-    plugins/
-      modules/
-      filters/
-    roles/
-      web_server/
-        tasks/
-        defaults/
-        molecule/
-          default/
-            molecule.yml
-            converge.yml
-      db_server/
-        tasks/
-        defaults/
-        molecule/
-          default/
-            molecule.yml
-            converge.yml
-    playbooks/
-    tests/
+collections_root/
+  ansible_collections/
+    my_namespace/
+      my_collection/
+        galaxy.yml
+        plugins/
+          modules/
+          filters/
+        roles/
+          web_server/
+            tasks/
+            defaults/
+            molecule/
+              default/
+                molecule.yml
+                converge.yml
+          db_server/
+            tasks/
+            defaults/
+            molecule/
+              default/
+                molecule.yml
+                converge.yml
+        playbooks/
+        tests/
 ```
 
 Each role inside the collection can have its own Molecule scenarios, just like standalone roles.
@@ -68,13 +70,13 @@ provisioner:
   name: ansible
   env:
     # Tell Ansible where to find the collection
-    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../.."
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../../.."
 
 verifier:
   name: ansible
 ```
 
-The `ANSIBLE_COLLECTIONS_PATH` needs to point to the directory that contains the `my_namespace/my_collection/` structure. Since Molecule runs from the role directory, you need to go up several levels.
+The `ANSIBLE_COLLECTIONS_PATH` needs to point to the directory that contains the `ansible_collections/my_namespace/my_collection/` structure. Since Molecule runs from the role directory, you need to go up several levels.
 
 The converge playbook uses the fully qualified collection name (FQCN).
 
@@ -126,10 +128,10 @@ Collections often include custom modules, filters, and plugins. To test these, y
 provisioner:
   name: ansible
   env:
-    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../..:/tmp/collections"
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../../../..:/tmp/collections"
   config_options:
     defaults:
-      collections_path: "${MOLECULE_PROJECT_DIRECTORY}/../../../..:/tmp/collections"
+      collections_path: "${MOLECULE_PROJECT_DIRECTORY}/../../../../..:/tmp/collections"
 ```
 
 Create a converge playbook that exercises the custom modules.
@@ -171,16 +173,18 @@ Create a converge playbook that exercises the custom modules.
 Instead of testing roles individually, you can create Molecule scenarios at the collection level that test the entire collection as an integration test.
 
 ```text
-my_namespace/
-  my_collection/
-    molecule/
-      integration/
-        molecule.yml
-        converge.yml
-        verify.yml
-    roles/
-      web_server/
-      db_server/
+collections_root/
+  ansible_collections/
+    my_namespace/
+      my_collection/
+        molecule/
+          integration/
+            molecule.yml
+            converge.yml
+            verify.yml
+        roles/
+          web_server/
+          db_server/
 ```
 
 ```yaml
@@ -219,7 +223,7 @@ platforms:
 provisioner:
   name: ansible
   env:
-    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../.."
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/../../.."
 
 verifier:
   name: ansible
