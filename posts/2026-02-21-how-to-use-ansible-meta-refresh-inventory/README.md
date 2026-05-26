@@ -8,7 +8,7 @@ Description: Learn how to use Ansible meta refresh_inventory to reload inventory
 
 ---
 
-Dynamic inventories are powerful because they reflect the current state of your infrastructure. But what happens when your playbook itself changes that infrastructure? If you create new VMs, register hosts in a CMDB, or modify group membership during a play, the inventory data Ansible loaded at the start becomes stale. The `meta: refresh_inventory` directive tells Ansible to re-read the inventory sources and update its internal host and group data without restarting the playbook.
+Dynamic inventories are powerful because they reflect the current state of your infrastructure. But what happens when your playbook itself changes that infrastructure? If you create new VMs, register hosts in a CMDB, or modify group membership during a play, the inventory data Ansible loaded at the start becomes stale. The `meta: refresh_inventory` directive tells Ansible to reload the inventory sources and update its internal host and group data without restarting the playbook. If an inventory script or plugin is using its own cache, refresh the cache separately or disable it so Ansible can see the latest data.
 
 ## When You Need refresh_inventory
 
@@ -32,7 +32,7 @@ The most common scenario is a two-phase playbook: the first phase creates infras
     # At this point, the dynamic inventory plugin would return new hosts
     # but Ansible still has the old inventory in memory
 
-- name: Phase 2 - Configure new hosts (PROBLEM: they are not in inventory yet)
+- name: "Phase 2 - Configure new hosts (PROBLEM: they are not in inventory yet)"
   hosts: new_webservers
   become: true
 
@@ -180,7 +180,7 @@ When creating Docker containers or Kubernetes pods that should be managed by Ans
 
 - name: Configure application containers
   hosts: docker_containers
-  connection: docker
+  connection: community.docker.docker
   gather_facts: false
 
   tasks:
@@ -347,7 +347,7 @@ The `add_host` module adds hosts to the in-memory inventory without querying ext
 Refreshing inventory can be slow if your dynamic inventory sources are complex or query slow APIs. Keep these tips in mind:
 
 1. Only refresh when you have actually changed the infrastructure
-2. Place the refresh between plays, not in the middle of a task list
+2. Use the refresh before a later play targets the new hosts; it does not add hosts to the current play's host loop
 3. If using multiple inventory sources, all of them are re-read on refresh
 4. Add a pause before refreshing to give external systems time to update
 
@@ -364,7 +364,8 @@ There are some limitations to be aware of:
 
 - `refresh_inventory` re-reads ALL inventory sources, not just one
 - It cannot be targeted at a specific inventory plugin
-- Variables set with `set_fact` on hosts that are removed from inventory are lost
+- It does not add new hosts to the current play's host loop; target them in a later play or use `delegate_to` when appropriate
+- It does not automatically invalidate caches used inside inventory scripts or plugins
 - The refresh happens for the entire playbook context, affecting all subsequent plays
 
 The `meta: refresh_inventory` directive bridges the gap between static playbook execution and dynamic infrastructure. It lets you write playbooks that create infrastructure and then configure it in a single run, which is essential for bootstrapping new environments, auto-scaling, and any workflow where the inventory changes during execution.
