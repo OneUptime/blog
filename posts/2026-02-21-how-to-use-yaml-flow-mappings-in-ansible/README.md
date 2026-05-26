@@ -141,11 +141,11 @@ Flow style appears naturally when constructing data structures in Jinja2:
 
 1. Use flow style for structures with 3 or fewer simple key-value pairs
 2. Use flow sequences for lists with 5 or fewer simple items
-3. Never use flow style for structures containing Jinja2 expressions with braces (the braces conflict)
+3. Avoid flow style for structures containing Jinja2 expressions with braces because the nested braces can be confusing
 4. Switch to block style the moment readability suffers
 
 ```yaml
-# Avoid: flow style with Jinja2 - confusing braces
+# Avoid: flow style with Jinja2 can be harder to read
 bad: {name: "{{ app_name }}", port: "{{ app_port }}"}
 
 # Better: block style with Jinja2
@@ -157,12 +157,12 @@ good:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this syntax can appear in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this syntax
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -194,7 +194,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -276,7 +276,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this syntax
 - name: Robust task execution
   hosts: all
   tasks:
