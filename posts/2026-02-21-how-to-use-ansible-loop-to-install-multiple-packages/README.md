@@ -43,7 +43,7 @@ When Ansible runs this task, it iterates through the list and installs each pack
 
 ## A More Efficient Approach
 
-While the above works, the `apt` and `yum` modules actually accept a list directly in the `name` parameter. This is significantly faster because it runs a single package manager transaction instead of one per package.
+While the above works, the `apt` and `dnf` modules actually accept a list directly in the `name` parameter. This is significantly faster because it runs a single package manager transaction instead of one per package.
 
 ```yaml
 # efficient-install.yml
@@ -70,7 +70,7 @@ While the above works, the `apt` and `yum` modules actually accept a list direct
         update_cache: true
 ```
 
-This runs `apt-get install nginx curl git htop vim unzip python3-pip wget jq` as a single command. On a system with 20+ packages, the time savings are noticeable.
+This installs the list of packages in a single package manager operation instead of invoking the package module once per package. On a system with 20+ packages, the time savings are noticeable.
 
 However, there are cases where you genuinely need the loop, for example when you want to track each package individually in your output, or when you need to run additional logic per package.
 
@@ -126,13 +126,13 @@ Sometimes you manage both Debian and RHEL systems from the same playbook. You ca
     packages:
       - name: nginx
         apt_name: nginx
-        yum_name: nginx
+        dnf_name: nginx
       - name: git
         apt_name: git
-        yum_name: git
+        dnf_name: git
       - name: process viewer
         apt_name: htop
-        yum_name: htop
+        dnf_name: htop
   tasks:
     - name: Install on Debian/Ubuntu
       ansible.builtin.apt:
@@ -142,8 +142,8 @@ Sometimes you manage both Debian and RHEL systems from the same playbook. You ca
       when: ansible_os_family == "Debian"
 
     - name: Install on RHEL/CentOS
-      ansible.builtin.yum:
-        name: "{{ item.yum_name }}"
+      ansible.builtin.dnf:
+        name: "{{ item.dnf_name }}"
         state: present
       loop: "{{ packages }}"
       when: ansible_os_family == "RedHat"
@@ -151,7 +151,7 @@ Sometimes you manage both Debian and RHEL systems from the same playbook. You ca
 
 ## Installing Packages with Specific Versions
 
-When you need to pin package versions (which you should in production), the loop pattern works well with dictionaries.
+When you need to pin package versions available from your configured repositories, the loop pattern works well with dictionaries.
 
 ```yaml
 # pinned-versions.yml
