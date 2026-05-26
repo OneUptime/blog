@@ -36,7 +36,7 @@ fact_caching_timeout = 86400
 
 ### Cause 3: Too Many SSH Connections
 
-Enable SSH multiplexing and pipelining:
+Enable SSH multiplexing and pipelining. If you use sudo with older sudoers settings, make sure `requiretty` is disabled on managed hosts:
 
 ```ini
 # ansible.cfg - Optimize SSH connections
@@ -48,9 +48,9 @@ pipelining = True
 ### Cause 4: Slow Tasks That Could Be Async
 
 ```yaml
-# Move slow tasks to async execution
+# Use async for long-running tasks that may hit SSH timeouts
 - name: Update all packages
-  apt:
+  ansible.builtin.apt:
     upgrade: dist
   async: 600
   poll: 30
@@ -74,18 +74,18 @@ pipelining = True
 ```ini
 # ansible.cfg - Show task timing
 [defaults]
-callbacks_enabled = timer, profile_tasks, profile_roles
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles
 
 # Or via environment
-# ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks
+# ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks
 ```
 
-This shows execution time for every task, making it easy to identify bottlenecks.
+The `profile_tasks` callback shows execution time for every task, making it easy to identify bottlenecks. The `timer` callback adds total play duration, and `profile_roles` adds role timing.
 
 ### Use the Mitogen Strategy
 
 ```ini
-# ansible.cfg - Mitogen speeds up execution significantly
+# ansible.cfg - Mitogen can speed up execution, but verify compatibility with your Ansible version
 [defaults]
 strategy_plugins = /path/to/mitogen/ansible_mitogen/plugins/strategy
 strategy = mitogen_linear
@@ -114,7 +114,7 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts
 fact_caching_timeout = 86400
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 
 [ssh_connection]
 ssh_args = -o ControlMaster=auto -o ControlPersist=600s -o PreferredAuthentications=publickey
@@ -134,12 +134,12 @@ Playbook performance degradation is usually caused by inventory growth without a
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these techniques prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these techniques
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -171,7 +171,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -212,7 +212,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name | default('ssh') }}"
         state: restarted
 ```
 
@@ -253,7 +253,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in playbooks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -315,4 +315,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
