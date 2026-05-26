@@ -23,7 +23,7 @@ Ansible handles all of these cases from a single playbook.
 
 ## Installing from the Official Binary
 
-The most portable method downloads the official binary directly from Google:
+The most portable method downloads the official binary directly from the Kubernetes release site:
 
 ```yaml
 # install_kubectl_binary.yml - Install kubectl from official binary release
@@ -66,7 +66,7 @@ The most portable method downloads the official binary directly from Google:
 
     - name: Verify kubectl installation
       ansible.builtin.command:
-        cmd: kubectl version --client --short
+        cmd: kubectl version --client
       register: verify_result
       changed_when: false
 
@@ -100,11 +100,24 @@ For Linux systems, using the official package repository is often preferred beca
         state: present
       when: ansible_os_family == "Debian"
 
-    - name: Add Kubernetes apt signing key
-      ansible.builtin.apt_key:
+    - name: Create apt keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      when: ansible_os_family == "Debian"
+
+    - name: Download Kubernetes apt signing key
+      ansible.builtin.get_url:
         url: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key"
-        keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-        state: present
+        dest: /tmp/kubernetes-release.key
+        mode: '0644'
+      when: ansible_os_family == "Debian"
+
+    - name: Install Kubernetes apt signing key
+      ansible.builtin.command:
+        cmd: gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg /tmp/kubernetes-release.key
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
       when: ansible_os_family == "Debian"
 
     - name: Add Kubernetes apt repository
@@ -158,7 +171,7 @@ For macOS workstations, you can use Homebrew or the direct binary:
 
     - name: Verify installation
       ansible.builtin.command:
-        cmd: kubectl version --client --short
+        cmd: kubectl version --client
       register: kubectl_version
       changed_when: false
 
@@ -199,6 +212,13 @@ Installing kubectl is only half the job. You also need to configure it to connec
         src: templates/kubeconfig.yml.j2
         dest: "{{ kube_config_dir }}/config"
         mode: '0600'
+
+    - name: Deploy cluster CA certificates
+      ansible.builtin.copy:
+        src: "{{ item.ca_cert }}"
+        dest: "{{ kube_config_dir }}/{{ item.name }}-ca.crt"
+        mode: '0600'
+      loop: "{{ clusters }}"
 
     - name: Verify cluster connectivity
       ansible.builtin.command:
@@ -326,6 +346,12 @@ kubectl supports plugins via krew, the kubectl plugin manager:
       - images    # List container images in a cluster
 
   tasks:
+    - name: Determine OS, architecture, and shell
+      ansible.builtin.set_fact:
+        kubectl_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+        kubectl_os: "{{ 'darwin' if ansible_system == 'Darwin' else 'linux' }}"
+        user_shell: "{{ ansible_user_shell | basename }}"
+
     - name: Check if krew is installed
       ansible.builtin.command:
         cmd: kubectl krew version
@@ -383,6 +409,11 @@ When you upgrade your Kubernetes cluster, kubectl should be upgraded to match:
     target_version: "1.30.0"
 
   tasks:
+    - name: Determine architecture
+      ansible.builtin.set_fact:
+        kubectl_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+        kubectl_os: "{{ 'darwin' if ansible_system == 'Darwin' else 'linux' }}"
+
     - name: Check current kubectl version
       ansible.builtin.command:
         cmd: kubectl version --client --output=json
@@ -404,7 +435,7 @@ When you upgrade your Kubernetes cluster, kubectl should be upgraded to match:
 
     - name: Verify upgrade
       ansible.builtin.command:
-        cmd: kubectl version --client --short
+        cmd: kubectl version --client
       register: new_version
       changed_when: false
 
