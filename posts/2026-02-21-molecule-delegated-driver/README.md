@@ -35,11 +35,12 @@ dependency:
   name: galaxy
 
 driver:
-  name: default  # 'default' is the new name for 'delegated' in newer Molecule versions
+  name: default  # Molecule's built-in delegated driver
+  options:
+    managed: false  # Molecule will not try to create/destroy this
 
 platforms:
   - name: instance
-    managed: false  # Molecule will not try to create/destroy this
 
 provisioner:
   name: ansible
@@ -69,21 +70,14 @@ dependency:
 
 driver:
   name: default
+  options:
+    managed: true  # Molecule will use create.yml and destroy.yml
 
 platforms:
   - name: test-instance
-    managed: true  # Molecule will use create.yml and destroy.yml
 
 provisioner:
   name: ansible
-  inventory:
-    hosts:
-      all:
-        hosts:
-          test-instance:
-            ansible_host: "{{ lookup('file', molecule_ephemeral_directory + '/instance_ip') }}"
-            ansible_user: ubuntu
-            ansible_ssh_private_key_file: ~/.ssh/molecule_test
 
 verifier:
   name: ansible
@@ -130,14 +124,26 @@ scenario:
     - name: Save instance IP to ephemeral directory
       ansible.builtin.copy:
         content: "{{ ec2_result.instances[0].public_ip_address }}"
-        dest: "{{ molecule_ephemeral_directory }}/instance_ip"
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/instance_ip"
         mode: '0644'
 
     - name: Save instance ID for destroy step
       ansible.builtin.copy:
         content: "{{ ec2_result.instances[0].instance_id }}"
-        dest: "{{ molecule_ephemeral_directory }}/instance_id"
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/instance_id"
         mode: '0644'
+
+    - name: Configure Molecule inventory
+      ansible.builtin.copy:
+        content: |
+          - instance: test-instance
+            address: {{ ec2_result.instances[0].public_ip_address }}
+            user: ubuntu
+            port: "22"
+            identity_file: ~/.ssh/molecule_test
+            shell_type: sh
+        dest: "{{ lookup('env', 'MOLECULE_INSTANCE_CONFIG') }}"
+        mode: '0600'
 
     - name: Wait a bit more for the instance to fully initialize
       ansible.builtin.pause:
@@ -156,7 +162,7 @@ scenario:
   tasks:
     - name: Read instance ID
       ansible.builtin.slurp:
-        src: "{{ molecule_ephemeral_directory }}/instance_id"
+        src: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/instance_id"
       register: instance_id_file
       ignore_errors: true
 
@@ -167,6 +173,12 @@ scenario:
         state: terminated
         wait: true
       when: instance_id_file is not failed
+
+    - name: Reset Molecule inventory
+      ansible.builtin.copy:
+        content: "[]"
+        dest: "{{ lookup('env', 'MOLECULE_INSTANCE_CONFIG') }}"
+        mode: '0600'
 ```
 
 ## Delegated with Vagrant
@@ -177,23 +189,16 @@ Vagrant is another popular backend for the delegated driver. It gives you full V
 # molecule/vagrant/molecule.yml
 driver:
   name: default
+  options:
+    managed: true
 
 platforms:
   - name: vagrant-instance
-    managed: true
 
 provisioner:
   name: ansible
-  inventory:
-    hosts:
-      all:
-        hosts:
-          vagrant-instance:
-            ansible_host: 127.0.0.1
-            ansible_port: 2222
-            ansible_user: vagrant
-            ansible_ssh_private_key_file: .vagrant/machines/default/virtualbox/private_key
-            ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+  connection_options:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 ```
 
 ```yaml
@@ -206,7 +211,7 @@ provisioner:
   tasks:
     - name: Create Vagrantfile
       ansible.builtin.copy:
-        dest: "{{ molecule_ephemeral_directory }}/Vagrantfile"
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/Vagrantfile"
         content: |
           Vagrant.configure("2") do |config|
             config.vm.box = "ubuntu/jammy64"
@@ -221,7 +226,7 @@ provisioner:
     - name: Start Vagrant VM
       ansible.builtin.command: vagrant up
       args:
-        chdir: "{{ molecule_ephemeral_directory }}"
+        chdir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
 
     - name: Wait for SSH
       ansible.builtin.wait_for:
@@ -229,6 +234,18 @@ provisioner:
         port: 2222
         delay: 5
         timeout: 120
+
+    - name: Configure Molecule inventory
+      ansible.builtin.copy:
+        content: |
+          - instance: vagrant-instance
+            address: 127.0.0.1
+            user: vagrant
+            port: "2222"
+            identity_file: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/.vagrant/machines/default/virtualbox/private_key"
+            shell_type: sh
+        dest: "{{ lookup('env', 'MOLECULE_INSTANCE_CONFIG') }}"
+        mode: '0600'
 ```
 
 ```yaml
@@ -242,8 +259,14 @@ provisioner:
     - name: Destroy Vagrant VM
       ansible.builtin.command: vagrant destroy -f
       args:
-        chdir: "{{ molecule_ephemeral_directory }}"
+        chdir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
       ignore_errors: true
+
+    - name: Reset Molecule inventory
+      ansible.builtin.copy:
+        content: "[]"
+        dest: "{{ lookup('env', 'MOLECULE_INSTANCE_CONFIG') }}"
+        mode: '0600'
 ```
 
 ## Testing Against Pre-Existing Infrastructure
@@ -254,12 +277,12 @@ For roles that configure production-like environments, you might have a dedicate
 # molecule/staging/molecule.yml
 driver:
   name: default
+  options:
+    managed: false
 
 platforms:
   - name: staging-web
-    managed: false
   - name: staging-db
-    managed: false
 
 provisioner:
   name: ansible
@@ -370,7 +393,7 @@ If you are using the delegated driver with cloud instances, implement safeguards
     state: terminated
   loop: "{{ running_instances.instances }}"
   when: >
-    (ansible_date_time.epoch | int) -
+    (now(utc=true, fmt='%s') | int) -
     (item.launch_time | to_datetime('%Y-%m-%dT%H:%M:%S+00:00')).strftime('%s') | int
     > 7200
 ```
