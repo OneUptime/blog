@@ -102,7 +102,7 @@ ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=
 pipelining = true
 ```
 
-The `pipelining = true` setting is worth calling out. It reduces the number of SSH operations Ansible performs by executing multiple commands in a single SSH session, which speeds up playbook runs significantly.
+The `pipelining = true` setting is worth calling out. It reduces the number of connection operations Ansible performs by executing modules without an extra file transfer step, which can speed up playbook runs significantly.
 
 ## Handling sudo Passwords
 
@@ -210,7 +210,7 @@ ansible webservers -m command -a "whoami" --become -vvv
 Common issues include:
 
 - The SSH user does not have sudo permissions on the remote host
-- The sudo configuration requires a TTY (add `-o RequireTty` or set `pipelining = false`)
+- The sudo configuration requires a TTY (disable `requiretty` in sudoers or set `pipelining = false`)
 - SSH key authentication fails before become even gets a chance to run
 - The become password is incorrect or not provided when required
 
@@ -234,7 +234,7 @@ When combining SSH and become, keep these practices in mind:
 
 1. Never connect as root via SSH. Connect as a regular user and escalate with become.
 2. Use SSH keys instead of passwords for the initial connection.
-3. Limit sudo access on target hosts to only the commands Ansible needs.
+3. Use a dedicated automation account for sudo access, and remember that Ansible privilege escalation must be general enough to run temporary module files rather than fixed command paths.
 4. Store become passwords in Ansible Vault rather than in plaintext.
 5. Enable SSH agent forwarding only when necessary, as it exposes your keys to the remote host.
 
@@ -249,4 +249,4 @@ When combining SSH and become, keep these practices in mind:
 
 ## Wrapping Up
 
-The combination of SSH and become is the backbone of how Ansible manages remote servers. SSH handles getting you onto the box, and become handles what you can do once you are there. By keeping these concerns separate in your configuration and understanding how they interact, you can build playbooks that are both secure and efficient. The key takeaway is to always connect as a regular user over SSH and escalate only when a specific task demands it.
+The combination of SSH and become is the backbone of how Ansible manages remote servers. SSH handles getting you onto the box, and become handles what you can do once you are there. By keeping these concerns separate in your configuration and understanding how they interact, you can build playbooks that are both secure and efficient. The key takeaway is to prefer connecting as a regular user over SSH and escalate only when a specific task demands it.
