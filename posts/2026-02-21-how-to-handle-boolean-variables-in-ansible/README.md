@@ -45,7 +45,7 @@ This means if you have a variable called `install_nginx: yes`, YAML converts it 
 
 ## The String vs Boolean Trap
 
-One of the most common bugs occurs when you pass variables from the command line or from external sources. Extra vars passed with `-e` on the command line are treated as strings unless you explicitly cast them.
+One of the most common bugs occurs when you pass variables from the command line or from external sources. Extra vars passed with `-e` in `key=value` form are treated as strings unless you explicitly cast them. If you need to pass native booleans from the command line, use JSON or YAML extra vars.
 
 ```yaml
 # string-trap.yml - Demonstrating the string vs boolean issue
@@ -68,11 +68,11 @@ One of the most common bugs occurs when you pass variables from the command line
           - "string_bool is true: {{ string_bool == true }}"
 ```
 
-Running this playbook shows that `yaml_bool` is a `bool` type and equals `true`, while `string_bool` is an `AnsibleUnicode` type and does NOT equal `true` in a strict comparison.
+Running this playbook shows that `yaml_bool` is a `bool` type and equals `true`, while `string_bool` is a string type and does NOT equal `true` in a strict comparison.
 
 ## The bool Filter
 
-Ansible provides a `bool` filter that converts strings to proper boolean values. This is essential when working with variables that come from extra vars, surveys, or external data sources.
+Ansible provides a `bool` filter that converts well-known boolean-like values to proper boolean values. This is essential when working with variables that come from extra vars, surveys, or external data sources.
 
 ```yaml
 # bool-filter.yml - Using the bool filter for safe conversions
@@ -178,7 +178,7 @@ The `when` clause evaluates Jinja2 expressions. You do not need to explicitly co
 
 ## Dealing with Undefined or Non-Boolean Variables
 
-Things get messy when a variable might not be defined, or when it could be something other than a boolean. Defensive coding matters here.
+Things get messy when a variable might not be defined, or when it could be something other than a supported boolean-like value. Defensive coding matters here.
 
 ```yaml
 # defensive-booleans.yml - Handling edge cases
@@ -187,18 +187,17 @@ Things get messy when a variable might not be defined, or when it could be somet
   hosts: localhost
   gather_facts: false
   vars:
-    empty_string: ""
+    string_true: "true"
+    string_false: "false"
     zero_value: 0
-    null_value: null
-    nonempty_string: "hello"
   tasks:
-    - name: Test various values for truthiness
+    - name: Test supported values for bool conversion
       ansible.builtin.debug:
         msg: "{{ item.name }} is {{ item.value | bool | ternary('truthy', 'falsy') }}"
       loop:
-        - { name: "empty_string", value: "{{ empty_string }}" }
+        - { name: "string_true", value: "{{ string_true }}" }
+        - { name: "string_false", value: "{{ string_false }}" }
         - { name: "zero_value", value: "{{ zero_value }}" }
-        - { name: "nonempty_string", value: "{{ nonempty_string }}" }
 
     # Safe pattern: default + bool
     - name: Safely check an optional boolean variable
@@ -252,7 +251,7 @@ webserver_security_headers_enabled: true
 
 ## Truthiness Chart
 
-Here is a quick reference for how different values behave when filtered through `bool`:
+Here is a quick reference for how supported values behave when filtered through `bool`:
 
 | Value | `\| bool` result | Notes |
 |---|---|---|
@@ -266,11 +265,9 @@ Here is a quick reference for how different values behave when filtered through 
 | `"no"` | `false` | YAML-style string |
 | `"0"` | `false` | Numeric string |
 | `0` | `false` | Integer |
-| `""` | `false` | Empty string |
-| `null` | `false` | Null/None |
 
 ## Best Practices Summary
 
-Always use the `bool` filter when the source of a variable is uncertain. Use `default(false)` before `bool` for variables that might not be defined. Do not compare booleans with `== true` or `== false` in `when` clauses since the bare variable or `not variable` is cleaner. Quote values in YAML when you actually want the string "yes" or "no" rather than a boolean. And in roles, always provide boolean defaults so consumers do not have to guess what values are expected.
+Always use the `bool` filter when the source of a variable is uncertain but should contain a supported boolean-like value. Use `default(false)` before `bool` for variables that might not be defined. Do not compare booleans with `== true` or `== false` in `when` clauses since the bare variable or `not variable` is cleaner. Quote values in YAML when you actually want the string "yes" or "no" rather than a boolean. And in roles, always provide boolean defaults so consumers do not have to guess what values are expected.
 
 Boolean handling in Ansible is one of those things that seems simple until you hit an edge case at 2 AM during a deployment. Getting the patterns right from the start will save you from those debugging sessions.
