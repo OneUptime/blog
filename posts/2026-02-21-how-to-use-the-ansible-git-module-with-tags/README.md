@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible git module with Git tags for versioned
 
 ---
 
-Git tags are the standard way to mark release versions. When deploying with Ansible, using tags instead of branch names gives you precise, immutable version references. A tag always points to the same commit, which makes deployments reproducible and rollbacks predictable.
+Git tags are the standard way to mark release versions. When deploying with Ansible, using tags instead of branch names gives you precise version references that should remain stable once published. A release tag points to a specific commit, which makes deployments reproducible and rollbacks predictable.
 
 ## Deploying a Specific Tag
 
@@ -63,7 +63,7 @@ Before deploying, you might want to know what tags are available:
 
     - name: Show latest 5 tags
       ansible.builtin.debug:
-        msg: "Latest tags: {{ available_tags.stdout_lines | last(5) | default(available_tags.stdout_lines) }}"
+        msg: "Latest tags: {{ available_tags.stdout_lines[-5:] }}"
 ```
 
 ## Tag-Based Deployment Workflow
@@ -322,4 +322,4 @@ Deploy coordinated versions across services:
 
 ## Summary
 
-Git tags provide immutable version references that are ideal for production deployments. Use the `version` parameter in the Ansible git module to deploy specific tags. Always store the current version before deploying so you can roll back if something goes wrong. Validate that tags exist before attempting deployment to get clear error messages. For automated deployments, discover the latest tag with `git ls-remote` and `sort -V`. The combination of tag-based deployments with Ansible's block/rescue pattern gives you a reliable deploy-and-rollback workflow that works well for production environments.
+Git tags provide stable version references that are ideal for production deployments. Use the `version` parameter in the Ansible git module to deploy specific tags. Always store the current version before deploying so you can roll back if something goes wrong. Validate that tags exist before attempting deployment to get clear error messages. For automated deployments, discover the latest tag with `git ls-remote` and `sort -V`. The combination of tag-based deployments with Ansible's block/rescue pattern gives you a reliable deploy-and-rollback workflow that works well for production environments.
