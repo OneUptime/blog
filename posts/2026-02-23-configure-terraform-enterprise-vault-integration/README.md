@@ -60,11 +60,6 @@ path "aws/sts/tfe-role" {
 
 # Policy for reading KV secrets
 path "secret/data/tfe/*" {
-  capabilities = ["read", "list"]
-}
-
-# Policy for database credentials
-path "database/creds/tfe-readonly" {
   capabilities = ["read"]
 }
 ```
@@ -129,23 +124,6 @@ Configure a workspace to use Vault for cloud credentials:
 # Set the workspace to use dynamic credentials via Vault
 WS_ID="ws-abc123"
 
-# Enable workload identity for the workspace
-curl -s \
-  --header "Authorization: Bearer ${TFE_TOKEN}" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request PATCH \
-  "${TFE_URL}/api/v2/workspaces/${WS_ID}" \
-  --data '{
-    "data": {
-      "type": "workspaces",
-      "attributes": {
-        "setting-overwrites": {
-          "execution-mode": false
-        }
-      }
-    }
-  }'
-
 # Set Vault-related environment variables on the workspace
 # These tell TFE how to authenticate to Vault
 
@@ -176,8 +154,76 @@ curl -s \
     "data": {
       "type": "vars",
       "attributes": {
+        "key": "TFC_VAULT_AUTH_PATH",
+        "value": "tfe",
+        "category": "env",
+        "sensitive": false
+      }
+    }
+  }'
+
+curl -s \
+  --header "Authorization: Bearer ${TFE_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  "${TFE_URL}/api/v2/workspaces/${WS_ID}/vars" \
+  --data '{
+    "data": {
+      "type": "vars",
+      "attributes": {
         "key": "TFC_VAULT_ADDR",
         "value": "https://vault.example.com",
+        "category": "env",
+        "sensitive": false
+      }
+    }
+  }'
+
+curl -s \
+  --header "Authorization: Bearer ${TFE_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  "${TFE_URL}/api/v2/workspaces/${WS_ID}/vars" \
+  --data '{
+    "data": {
+      "type": "vars",
+      "attributes": {
+        "key": "TFC_VAULT_BACKED_AWS_MOUNT_PATH",
+        "value": "aws",
+        "category": "env",
+        "sensitive": false
+      }
+    }
+  }'
+
+curl -s \
+  --header "Authorization: Bearer ${TFE_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  "${TFE_URL}/api/v2/workspaces/${WS_ID}/vars" \
+  --data '{
+    "data": {
+      "type": "vars",
+      "attributes": {
+        "key": "TFC_VAULT_BACKED_AWS_AUTH_TYPE",
+        "value": "assumed_role",
+        "category": "env",
+        "sensitive": false
+      }
+    }
+  }'
+
+curl -s \
+  --header "Authorization: Bearer ${TFE_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  "${TFE_URL}/api/v2/workspaces/${WS_ID}/vars" \
+  --data '{
+    "data": {
+      "type": "vars",
+      "attributes": {
+        "key": "TFC_VAULT_BACKED_AWS_RUN_ROLE_ARN",
+        "value": "arn:aws:iam::123456789012:role/TerraformExecutionRole",
         "category": "env",
         "sensitive": false
       }
@@ -228,7 +274,7 @@ curl -s \
       "type": "vars",
       "attributes": {
         "key": "TFC_VAULT_BACKED_AWS_RUN_VAULT_ROLE",
-        "value": "aws/creds/tfe-role",
+        "value": "tfe-role",
         "category": "env",
         "sensitive": false
       }
@@ -241,10 +287,28 @@ curl -s \
 For reading application secrets from Vault in your Terraform code:
 
 ```hcl
+# Configure the AWS provider to use the credentials file that TFE generates
+variable "tfc_vault_backed_aws_dynamic_credentials" {
+  description = "Object containing Vault-backed AWS dynamic credentials configuration"
+  type = object({
+    default = object({
+      shared_credentials_file = string
+    })
+    aliases = map(object({
+      shared_credentials_file = string
+    }))
+  })
+}
+
+provider "aws" {
+  region                   = "us-east-1"
+  shared_credentials_files = [var.tfc_vault_backed_aws_dynamic_credentials.default.shared_credentials_file]
+}
+
 # Configure the Vault provider
 provider "vault" {
-  address = var.vault_address
-  # Authentication is handled through workspace environment variables
+  # TFE manages the token lifecycle for dynamic credentials
+  skip_child_token = true
 }
 
 # Read a secret from Vault KV
@@ -255,21 +319,16 @@ data "vault_kv_secret_v2" "database" {
 
 # Use the secret in your configuration
 resource "aws_db_instance" "app" {
-  identifier     = "app-database"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.large"
+  identifier        = "app-database"
+  allocated_storage = 20
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.r6g.large"
 
   username = data.vault_kv_secret_v2.database.data["username"]
   password = data.vault_kv_secret_v2.database.data["password"]
 
   # ... other configuration
-}
-
-# Generate dynamic database credentials
-data "vault_database_credentials" "app_db" {
-  backend = "database"
-  role    = "tfe-readonly"
 }
 ```
 
@@ -295,9 +354,18 @@ VARSET_ID=$(curl -s \
   }' | jq -r '.data.id')
 
 # Add variables to the variable set
-for VAR in "TFC_VAULT_PROVIDER_AUTH:true" "TFC_VAULT_ADDR:https://vault.example.com" "TFC_VAULT_BACKED_AWS_AUTH:true"; do
-  KEY="${VAR%%:*}"
-  VALUE="${VAR##*:}"
+for VAR in \
+  "TFC_VAULT_PROVIDER_AUTH=true" \
+  "TFC_VAULT_ADDR=https://vault.example.com" \
+  "TFC_VAULT_AUTH_PATH=tfe" \
+  "TFC_VAULT_RUN_ROLE=aws-production" \
+  "TFC_VAULT_BACKED_AWS_AUTH=true" \
+  "TFC_VAULT_BACKED_AWS_MOUNT_PATH=aws" \
+  "TFC_VAULT_BACKED_AWS_AUTH_TYPE=assumed_role" \
+  "TFC_VAULT_BACKED_AWS_RUN_ROLE_ARN=arn:aws:iam::123456789012:role/TerraformExecutionRole" \
+  "TFC_VAULT_BACKED_AWS_RUN_VAULT_ROLE=tfe-role"; do
+  KEY="${VAR%%=*}"
+  VALUE="${VAR#*=}"
 
   curl -s \
     --header "Authorization: Bearer ${TFE_TOKEN}" \
