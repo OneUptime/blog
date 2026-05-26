@@ -28,7 +28,7 @@ If you use `until` without specifying `retries` or `delay`, Ansible uses these d
   until: health.status == 200
 ```
 
-This gives a total window of about 15 seconds (3 attempts, 5 seconds apart). For many use cases, that is too short.
+This gives a total delay window of about 10 seconds plus task execution time (3 attempts with 2 delays between them). For many use cases, that is too short.
 
 ## Calculating Total Wait Time
 
@@ -41,19 +41,19 @@ total_wait = (retries - 1) * delay + task_execution_time * retries
 The first attempt runs immediately (no delay before it), and there are `retries - 1` delays between attempts. Here is a quick reference:
 
 ```yaml
-# 10 retries, 5 second delay = ~50 seconds max wait
+# 10 retries, 5 second delay = ~45 seconds max delay
 retries: 10
 delay: 5
 
-# 30 retries, 10 second delay = ~300 seconds (5 minutes) max wait
+# 30 retries, 10 second delay = ~290 seconds max delay
 retries: 30
 delay: 10
 
-# 60 retries, 5 second delay = ~300 seconds (5 minutes) max wait
+# 60 retries, 5 second delay = ~295 seconds max delay
 retries: 60
 delay: 5
 
-# 12 retries, 30 second delay = ~360 seconds (6 minutes) max wait
+# 12 retries, 30 second delay = ~330 seconds max delay
 retries: 12
 delay: 30
 ```
@@ -96,7 +96,7 @@ For database operations like replication sync, this can take minutes to hours:
 # Wait for database replication to catch up
 - name: Check replication lag
   community.postgresql.postgresql_query:
-    db: postgres
+    login_db: postgres
     query: "SELECT extract(epoch from replay_lag) as lag_seconds FROM pg_stat_replication WHERE application_name = 'replica1'"
   register: repl_lag
   until: >
@@ -183,33 +183,17 @@ When all retries are exhausted, the task fails. You can handle this in several w
 
 ## Progressive Delay Patterns
 
-Ansible does not natively support exponential backoff, but you can simulate it with a workaround using a custom loop:
+Ansible does not natively support exponential backoff with `until`. If you need true exponential backoff, implement the retry behavior in a script or custom module and call it from Ansible:
 
 ```yaml
-# Simulate exponential backoff using a task loop
-- name: Try API call with increasing delays
-  ansible.builtin.uri:
-    url: "https://api.example.com/resource"
-    method: POST
-    body_format: json
-    body: "{{ request_body }}"
-    status_code: [200, 201]
+# Delegate exponential backoff to a script or custom module
+- name: Try API call with exponential backoff
+  ansible.builtin.command:
+    argv:
+      - /opt/myapp/bin/call-api-with-backoff
+      - "https://api.example.com/resource"
   register: api_result
-  ignore_errors: yes
-
-- name: Retry with exponential backoff if needed
-  ansible.builtin.uri:
-    url: "https://api.example.com/resource"
-    method: POST
-    body_format: json
-    body: "{{ request_body }}"
-    status_code: [200, 201]
-  register: api_result
-  until: api_result is succeeded
-  retries: 5
-  delay: "{{ item }}"
-  loop: [2, 4, 8, 16, 32]
-  when: api_result is failed
+  changed_when: false
 ```
 
 For most scenarios though, a fixed delay is sufficient and simpler.
@@ -246,7 +230,7 @@ You can add visibility into what is happening during retries:
 You can fine-tune what counts as a "need to retry" versus "hard failure":
 
 ```yaml
-# Retry on connection errors but fail immediately on 4xx errors
+# Retry on connection errors and 5xx responses, but mark 4xx responses as failures
 - name: Call payment API
   ansible.builtin.uri:
     url: "https://payments.example.com/charge"
@@ -257,7 +241,7 @@ You can fine-tune what counts as a "need to retry" versus "hard failure":
       customer: "{{ customer_id }}"
     status_code: [200, 201]
   register: payment
-  until: payment is succeeded
+  until: payment.status | default(0) in [200, 201]
   retries: 3
   delay: 5
   failed_when: >
@@ -266,7 +250,7 @@ You can fine-tune what counts as a "need to retry" versus "hard failure":
     payment.status < 500
 ```
 
-This fails immediately on client errors (400-499) but retries on server errors (500+) and connection failures.
+This treats client errors (400-499) as failures while still allowing retries for server errors (500+) and connection failures until the retry budget is exhausted.
 
 ## Practical Example: Database Cluster Setup with Retries
 
@@ -301,7 +285,7 @@ This fails immediately on client errors (400-499) but retries on server errors (
 
     - name: Create application user
       community.postgresql.postgresql_user:
-        db: myapp
+        login_db: myapp
         name: appuser
         password: "{{ db_password }}"
         priv: "ALL"
@@ -322,7 +306,7 @@ This fails immediately on client errors (400-499) but retries on server errors (
 
     - name: Verify database is operational
       community.postgresql.postgresql_query:
-        db: myapp
+        login_db: myapp
         login_user: appuser
         login_password: "{{ db_password }}"
         query: "SELECT 1 as health"
