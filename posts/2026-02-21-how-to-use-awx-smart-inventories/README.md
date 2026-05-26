@@ -8,7 +8,7 @@ Description: Create AWX smart inventories that dynamically group hosts from mult
 
 ---
 
-Smart inventories in AWX are virtual inventories that pull hosts from other inventories based on filter criteria. Instead of manually maintaining separate inventory files for "all Linux servers" or "all hosts in us-east-1," you define a filter and AWX builds the inventory dynamically. When hosts are added or removed from your source inventories, the smart inventory updates automatically.
+Smart inventories in AWX are virtual inventories that pull hosts from other inventories in the same organization based on filter criteria. Instead of manually maintaining separate inventory files for "all Linux servers" or "all hosts in us-east-1," you define a filter and AWX builds the inventory dynamically. When hosts are added or removed from your source inventories, the smart inventory reflects those changes. Current AWX documentation marks smart inventories as deprecated and recommends constructed inventories for new designs.
 
 ## When to Use Smart Inventories
 
@@ -18,11 +18,11 @@ Regular inventories work well when you have a clear, static mapping of hosts to 
 - A need to target "all production web servers across all regions" without duplicating host entries
 - Compliance playbooks that need to run against every host matching a certain tag, regardless of which team owns it
 
-Smart inventories handle these cross-cutting concerns by querying across all your existing inventories.
+Smart inventories handle these cross-cutting concerns by querying across the existing inventories in the same AWX organization.
 
 ## Creating a Smart Inventory
 
-Smart inventories use the same filter syntax as the AWX host search. The `host_filter` field accepts a query string that filters across all hosts AWX knows about.
+Smart inventories use the same filter syntax as the AWX host search. The `host_filter` field accepts a query string that filters across hosts in the smart inventory's organization.
 
 ```bash
 # Create a smart inventory that finds all hosts with "web" in the name
@@ -43,26 +43,26 @@ The `kind` field set to `smart` is what makes this a smart inventory instead of 
 
 ## Filter Syntax
 
-Smart inventory filters use Django-style query syntax. You can filter on host name, group membership, variables, and more.
+Smart inventory filters use AWX host search syntax, including Django-style related-field queries. You can filter on host name, group membership, cached Ansible facts, and more.
 
 ```bash
 # Hosts whose name starts with "prod"
 "host_filter": "name__startswith=prod"
 
 # Hosts in the "database" group
-"host_filter": "group__name=database"
+"host_filter": "groups__name=database"
 
 # Hosts from a specific inventory (inventory ID 3)
 "host_filter": "inventory__id=3"
 
-# Hosts with a specific Ansible variable
+# Hosts with a specific cached Ansible fact
 "host_filter": "ansible_facts__os_family=RedHat"
 
-# Combine multiple filters with AND (use & separator)
-"host_filter": "name__contains=web&group__name=production"
+# Combine multiple filters with AND
+"host_filter": "name__contains=web and groups__name=production"
 
-# OR logic (use | separator)
-"host_filter": "group__name=webservers|group__name=loadbalancers"
+# OR logic
+"host_filter": "groups__name=webservers or groups__name=loadbalancers"
 ```
 
 ## Practical Examples
@@ -81,7 +81,7 @@ curl -s -X POST \
     "name": "Production - All Hosts",
     "organization": 1,
     "kind": "smart",
-    "host_filter": "group__name=production"
+    "host_filter": "groups__name=production"
   }'
 ```
 
@@ -97,7 +97,7 @@ curl -s -X POST \
     "name": "All Linux Servers",
     "organization": 1,
     "kind": "smart",
-    "host_filter": "ansible_facts__os_family=Debian|ansible_facts__os_family=RedHat|ansible_facts__os_family=Suse"
+    "host_filter": "ansible_facts__os_family=Debian or ansible_facts__os_family=RedHat or ansible_facts__os_family=Suse"
   }'
 ```
 
@@ -105,7 +105,7 @@ curl -s -X POST \
 
 ```bash
 # Hosts that have not been scanned in the last 7 days
-# Uses the last_job field to find potentially stale hosts
+# Uses the related last_job finished time to find potentially stale hosts
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -114,7 +114,7 @@ curl -s -X POST \
     "name": "Hosts Needing Scan",
     "organization": 1,
     "kind": "smart",
-    "host_filter": "last_job__lt=2026-02-14T00:00:00"
+    "host_filter": "last_job__finished__lt=2026-02-14T00:00:00Z"
   }'
 ```
 
@@ -153,13 +153,15 @@ When the job runs, AWX evaluates the filter, builds the host list, and passes it
 
 ## Refreshing Smart Inventories
 
-Smart inventories update their host list when:
+Smart inventory host membership is evaluated from the `host_filter` when AWX views or runs against the inventory. The related `smart_inventories` membership table is updated when a job runs against a smart inventory. If you need that relationship updated more frequently, AWX has the file-based `AWX_REBUILD_SMART_MEMBERSHIP` setting.
+
+The inputs to the filter change when:
 
 1. A source inventory is synced (for dynamic inventory sources)
-2. A host is manually added or removed from a source inventory
-3. Host facts change (if the filter uses `ansible_facts`)
+2. A host is manually added, modified, or removed from a source inventory
+3. Cached host facts change (if the filter uses `ansible_facts` and the job template has fact caching enabled)
 
-You do not need to manually refresh a smart inventory. But you can force a refresh by triggering a sync on the underlying inventory sources.
+You do not manually refresh a smart inventory itself. But you can refresh the underlying inventory data by triggering a sync on the source inventory sources.
 
 ```bash
 # Sync all inventory sources for inventory ID 3
@@ -191,7 +193,7 @@ There are a few things to keep in mind:
 
 **No host variables override** - You cannot set host-specific variables on a smart inventory. Variables come from the source inventory. If you need to add variables, add them to the source.
 
-**No group structure** - Smart inventories flatten everything into a single group. If your playbook relies on group hierarchy (`webservers:children`), a smart inventory will not preserve that structure. You can still use `group__name` in the filter to select hosts, but the group memberships themselves are not carried over.
+**No group structure** - Smart inventories flatten everything into a single group. If your playbook relies on group hierarchy (`webservers:children`), a smart inventory will not preserve that structure. You can still use `groups__name` in the filter to select hosts, but the group memberships themselves are not carried over.
 
 **Performance with large host counts** - If your smart inventory filter matches thousands of hosts, the evaluation can be slow. Keep your filters specific.
 
