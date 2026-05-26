@@ -122,8 +122,8 @@ The `hostname` module supports different backend strategies via the `use` parame
   hosts: all
   become: true
   tasks:
-    # Auto-detect strategy (default)
-    - name: Set hostname with auto-detection
+    # Explicit strategy
+    - name: Set hostname with systemd strategy
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
         use: systemd
@@ -136,6 +136,11 @@ Available strategies include:
 - `redhat` - For older RHEL/CentOS without systemd
 - `alpine` - For Alpine Linux
 - `freebsd` - For FreeBSD
+- `openbsd` - For OpenBSD
+- `openrc` - For OpenRC-based systems
+- `sles` - For SUSE Linux Enterprise Server
+- `solaris` - For Solaris
+- `macos`, `macosx`, or `darwin` - For macOS
 - `generic` - Falls back to basic `hostname` command
 
 Most of the time, the auto-detection works fine and you do not need to specify `use`.
@@ -156,7 +161,7 @@ Generate hostnames based on server characteristics:
   tasks:
     - name: Build hostname from role and index
       ansible.builtin.set_fact:
-        computed_hostname: "{{ group_names | first }}-{{ environment_prefix }}-{{ region }}-{{ play_hosts.index(inventory_hostname) + 1 | string | zfill(2) }}"
+        computed_hostname: "{{ group_names | first }}-{{ environment_prefix }}-{{ region }}-{{ '%02d' | format(ansible_play_hosts.index(inventory_hostname) + 1) }}"
 
     - name: Set computed hostname
       ansible.builtin.hostname:
@@ -165,7 +170,7 @@ Generate hostnames based on server characteristics:
     - name: Update /etc/hosts
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        regexp: '^{{ ansible_default_ipv4.address }}'
+        regexp: '^{{ ansible_default_ipv4.address | regex_escape }}'
         line: "{{ ansible_default_ipv4.address }} {{ computed_hostname }}.example.com {{ computed_hostname }}"
         state: present
 
@@ -244,7 +249,7 @@ Before setting a hostname, validate it:
         that:
           - desired_hostname | length > 0
           - desired_hostname | length <= 63
-          - desired_hostname is match('^[a-z0-9][a-z0-9-]*[a-z0-9]$')
+          - desired_hostname is match('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
         fail_msg: "Invalid hostname: {{ desired_hostname }}. Must be 1-63 chars, lowercase alphanumeric and hyphens."
         success_msg: "Hostname {{ desired_hostname }} is valid"
 
@@ -253,12 +258,12 @@ Before setting a hostname, validate it:
         name: "{{ desired_hostname }}"
 ```
 
-## Hostname with Machine ID
+## Hostname with Pretty Name
 
-On systemd systems, you might also want to set the machine ID for proper journal logging:
+On systemd systems, you might also want to set a pretty hostname for display in `hostnamectl`:
 
 ```yaml
-# configure hostname with machine-id for journal logging
+# configure hostname with a pretty hostname for display
 ---
 - name: Full system identity configuration
   hosts: all
