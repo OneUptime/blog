@@ -12,15 +12,15 @@ Azure environments change constantly. VMs get created through ARM templates, sca
 
 ## Prerequisites
 
-Install the Azure Ansible collection and the required Python SDK:
+Install the Azure Ansible collection and the collection's required Python dependencies:
 
 ```bash
 # Install the Azure collection
 
 ansible-galaxy collection install azure.azcollection
 
-# Install Azure Python dependencies
-pip install azure-identity azure-mgmt-compute azure-mgmt-network azure-mgmt-resource
+# Install Azure Python dependencies from the collection requirements file
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 ```
 
 Set up Azure authentication. The plugin supports multiple authentication methods:
@@ -82,9 +82,8 @@ include_vm_resource_groups:
   - rg-production-cache
 
 # Exclude resource groups (alternative approach)
-# exclude_vm_resource_groups:
-#   - rg-dev-*
-#   - rg-test-*
+# exclude_host_filters:
+#   - resource_group in ['rg-dev', 'rg-test']
 ```
 
 ## Grouping VMs
@@ -121,7 +120,7 @@ keyed_groups:
     separator: "_"
 
   # Group by VM size
-  - key: vm_size
+  - key: virtual_machine_size
     prefix: azure_size
     separator: "_"
 
@@ -137,18 +136,22 @@ Configure which property to use as the inventory hostname:
 
 ```yaml
 # inventory/azure_rm.yml
-# Use VM name as the hostname
+# Use VM name as the inventory hostname
 plugin: azure.azcollection.azure_rm
 
 include_vm_resource_groups:
-  - rg-production-*
+  - rg-production-web
 
 # Choose hostname format
-hostvar_expressions:
-  public_ip_address: (public_ipv4_addresses | first) if public_ipv4_addresses else None
-  private_ip_address: (private_ipv4_addresses | first) if private_ipv4_addresses else None
+hostnames:
+  - name
+  - default
 
 # Use the private IP for connections
+hostvar_expressions:
+  ansible_host: (private_ipv4_addresses | first) if private_ipv4_addresses else (public_ipv4_address | first)
+  private_ip_address: (private_ipv4_addresses | first) if private_ipv4_addresses else None
+
 plain_host_names: true
 ```
 
@@ -162,7 +165,7 @@ Map Azure VM properties to Ansible variables:
 plugin: azure.azcollection.azure_rm
 
 include_vm_resource_groups:
-  - rg-production-*
+  - rg-production-web
 
 keyed_groups:
   - key: tags.role
@@ -174,13 +177,13 @@ keyed_groups:
 
 compose:
   # Set connection address to private IP
-  ansible_host: private_ipv4_addresses[0] if private_ipv4_addresses else public_ipv4_addresses[0]
+  ansible_host: private_ipv4_addresses[0] if private_ipv4_addresses else public_ipv4_address[0]
 
   # Set SSH user
   ansible_user: "'azureuser'"
 
   # Map Azure properties to variables
-  azure_vm_size: vm_size
+  azure_vm_size: virtual_machine_size
   azure_location: location
   azure_resource_group: resource_group
   azure_vm_id: id
@@ -215,8 +218,8 @@ cache_timeout: 300
 cache_connection: /tmp/ansible_azure_cache
 
 # Only discover running VMs
-default_host_filters:
-  - powerstate == 'running'
+exclude_host_filters:
+  - powerstate != 'running'
 
 # Human-readable hostnames
 plain_host_names: true
@@ -236,7 +239,7 @@ keyed_groups:
   - key: resource_group
     prefix: rg
     separator: "_"
-  - key: vm_size
+  - key: virtual_machine_size
     prefix: size
     separator: "_"
 
@@ -247,22 +250,22 @@ conditional_groups:
   # Group all Windows VMs together
   windows_vms: os_profile.system == 'windows'
   # Group VMs with public IPs
-  public_facing: public_ipv4_addresses | length > 0
+  public_facing: public_ipv4_address | length > 0
 
 # Variable mapping
 compose:
   ansible_host: >-
     private_ipv4_addresses[0]
     if private_ipv4_addresses
-    else public_ipv4_addresses[0]
+    else public_ipv4_address[0]
   ansible_user: "'azureuser'"
   ansible_connection: "'winrm'" if os_profile.system == 'windows' else "'ssh'"
   azure_vm_name: name
   azure_resource_group: resource_group
   azure_location: location
-  azure_vm_size: vm_size
+  azure_vm_size: virtual_machine_size
   azure_private_ip: private_ipv4_addresses[0] if private_ipv4_addresses else ''
-  azure_public_ip: public_ipv4_addresses[0] if public_ipv4_addresses else ''
+  azure_public_ip: public_ipv4_address[0] if public_ipv4_address else ''
 ```
 
 ## Using the Inventory in Playbooks
@@ -305,11 +308,11 @@ Azure Scale Sets (VMSS) need additional configuration:
 plugin: azure.azcollection.azure_rm
 
 include_vm_resource_groups:
-  - rg-production-*
+  - rg-production-web
 
 # Also include VMSS instances
 include_vmss_resource_groups:
-  - rg-production-*
+  - rg-production-web
 
 keyed_groups:
   - key: tags.role
@@ -325,7 +328,7 @@ Scale Set instances will appear alongside regular VMs, and they can be grouped u
 
 ## Authentication Best Practices
 
-For production use, a managed identity or service principal is better than environment variables:
+For production use, a managed identity or credential file is better than putting secrets directly in shell environment variables:
 
 ```yaml
 # inventory/azure_rm.yml
@@ -333,10 +336,9 @@ For production use, a managed identity or service principal is better than envir
 plugin: azure.azcollection.azure_rm
 auth_source: msi
 
-# Using a service principal with certificate
+# Using a credential file
 # plugin: azure.azcollection.azure_rm
 # auth_source: credential_file
-# credential_file: ~/.azure/credentials
 ```
 
 The service principal needs the **Reader** role on the subscription or resource groups:
@@ -344,7 +346,8 @@ The service principal needs the **Reader** role on the subscription or resource 
 ```bash
 # Grant Reader role to the service principal
 az role assignment create \
-  --assignee "your-client-id" \
+  --assignee-object-id "your-service-principal-object-id" \
+  --assignee-principal-type ServicePrincipal \
   --role "Reader" \
   --scope "/subscriptions/your-subscription-id"
 ```
@@ -384,4 +387,4 @@ az vm update \
 
 The tags become the foundation of your dynamic grouping. Consistent tagging across all VMs ensures reliable inventory discovery.
 
-Azure dynamic inventory eliminates manual inventory maintenance and guarantees your playbooks always run against the actual set of VMs in your subscription. Combine it with proper tagging, caching, and the constructed plugin for a production-grade setup.
+Azure dynamic inventory eliminates manual inventory maintenance and guarantees your playbooks always run against the actual set of VMs in your subscription. Combine it with proper tagging, caching, and constructed inventory features for a production-grade setup.
