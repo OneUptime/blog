@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Validation, Data Structure, Quality Assurance
 
-Description: Learn how to validate data structures in Ansible using assert module, type checks, schema validation, and custom tests to ensure data integrity in playbooks.
+Description: Learn how to validate data structures in Ansible using assert module, type checks, schema validation, and reusable roles to ensure data integrity in playbooks.
 
 ---
 
@@ -141,6 +141,8 @@ Check that lists have the right structure and contents:
       ansible.builtin.assert:
         that:
           - users is iterable
+          - users is not string
+          - users is not mapping
           - users | length > 0
           - users | length <= 1000
         fail_msg: "Users list is invalid or empty"
@@ -354,4 +356,4 @@ Bundle your validations into a reusable role:
 
 ## Summary
 
-Data validation in Ansible prevents runtime errors and enforces consistency. The `assert` module handles most validation needs with its flexible `that` condition list. For each assertion, provide a clear `fail_msg` so operators know exactly what went wrong. Use `is defined`, `is string`, `is number`, `is mapping`, `is iterable`, and `is match()` for type checking. Use `in` for enumeration validation and comparison operators for range checks. For complex schemas, the `ansible.utils.validate` module with JSON Schema provides a formal validation framework. Bundle validations into roles for reuse, and always validate inputs at the start of your playbooks before making any changes.
+Data validation in Ansible prevents runtime errors and enforces consistency. The `assert` module handles most validation needs with its flexible `that` condition list. For each assertion, provide a clear `fail_msg` so operators know exactly what went wrong. Use `is defined`, `is string`, `is number`, `is mapping`, `is iterable`, and `is match()` for type checking, and combine `is iterable` with `is not string` and `is not mapping` when validating lists. Use `in` for enumeration validation and comparison operators for range checks. For complex schemas, the `ansible.utils.validate` module with JSON Schema provides a formal validation framework. Bundle validations into roles for reuse, and always validate inputs at the start of your playbooks before making any changes.
