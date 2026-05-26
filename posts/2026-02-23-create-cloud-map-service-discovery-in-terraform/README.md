@@ -155,7 +155,7 @@ resource "aws_service_discovery_service" "grpc_service" {
   }
 }
 
-# Service with both A and SRV records
+# Service with both A and AAAA records
 resource "aws_service_discovery_service" "web" {
   name = "web"
 
@@ -169,14 +169,14 @@ resource "aws_service_discovery_service" "web" {
 
     dns_records {
       ttl  = 10
-      type = "SRV"
+      type = "AAAA"
     }
 
     routing_policy = "MULTIVALUE"
   }
 
   health_check_custom_config {
-    failure_threshold = 2
+    failure_threshold = 1
   }
 
   tags = {
@@ -345,12 +345,12 @@ variable "services" {
     "notification" = {
       port             = 5000
       dns_type         = "A"
-      health_threshold = 2
+      health_threshold = 1
     }
     "analytics" = {
       port             = 6000
       dns_type         = "A"
-      health_threshold = 2
+      health_threshold = 1
     }
     "search" = {
       port             = 9200
@@ -445,7 +445,7 @@ dig api.internal.myapp.local
 
 1. **Use short TTLs for DNS records.** A TTL of 10 seconds ensures clients get updated IP addresses quickly when instances change. Longer TTLs risk sending traffic to terminated instances.
 
-2. **Use MULTIVALUE routing for internal services.** It returns multiple healthy IPs and lets the client decide which to connect to. WEIGHTED routing is better for public services where you want to control traffic distribution.
+2. **Use MULTIVALUE routing for internal services.** It returns multiple healthy IPs and lets the client decide which to connect to. WEIGHTED routing returns one randomly selected healthy value for a Cloud Map service instance.
 
 3. **Use health check custom config with ECS.** ECS manages the health status of instances automatically, so custom health checks (managed by the registering service) work better than Route 53 health checks.
 
