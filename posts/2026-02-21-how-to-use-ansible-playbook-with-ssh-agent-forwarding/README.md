@@ -90,6 +90,7 @@ Set it directly in the playbook for specific plays:
 - name: Deploy application from private repository
   hosts: webservers
   become: yes
+  become_flags: '-E'  # Preserve SSH_AUTH_SOCK when using sudo
   vars:
     ansible_ssh_extra_args: "-o ForwardAgent=yes"
 
@@ -113,6 +114,7 @@ This is the most common use case. You need to pull code from a private repo onto
 - name: Deploy from private Git repository
   hosts: app_servers
   become: yes
+  become_flags: '-E'  # Preserve SSH_AUTH_SOCK when using sudo
 
   vars:
     app_repo: "git@github.com:myorg/myapp.git"
@@ -136,6 +138,7 @@ This is the most common use case. You need to pull code from a private repo onto
 
     - name: Add GitHub to known hosts
       known_hosts:
+        path: /etc/ssh/ssh_known_hosts
         name: github.com
         key: "{{ lookup('pipe', 'ssh-keyscan github.com 2>/dev/null') }}"
         state: present
@@ -174,7 +177,7 @@ ansible-playbook -i inventory.ini git-deploy.yml
 
 ## Using Agent Forwarding with Bastion/Jump Hosts
 
-Agent forwarding through bastion hosts lets Ansible reach servers in private networks:
+ProxyJump lets Ansible reach servers in private networks through bastion hosts. You can still enable agent forwarding for the final hosts when tasks on those hosts need to access SSH-secured resources:
 
 ```ini
 # inventory.ini - Servers behind a bastion host
@@ -217,6 +220,7 @@ A playbook using this setup:
 - name: Deploy to private network servers
   hosts: private_servers
   become: yes
+  become_flags: '-E'  # Preserve SSH_AUTH_SOCK when using sudo
 
   tasks:
     - name: Update system packages
@@ -230,7 +234,7 @@ A playbook using this setup:
         dest: /opt/internal-app
         version: main
       become_user: deploy
-      # Agent forwarding works through the bastion automatically
+      # ProxyJump reaches the host; agent forwarding is available on the final host
 
     - name: Pull Docker images from private registry
       command: docker pull registry.internal.example.com/myapp:latest
@@ -338,7 +342,7 @@ ansible -m command -a "echo \$SSH_AUTH_SOCK" webservers
 
 # Problem: Agent forwarding works via SSH but not in Ansible
 # Fix: Check if become is breaking the agent socket
-# When using become, the SSH_AUTH_SOCK environment variable may not be preserved
+# When using sudo become, SSH_AUTH_SOCK may not be preserved unless sudo allows it
 ```
 
 Handle the `become` agent socket issue:
