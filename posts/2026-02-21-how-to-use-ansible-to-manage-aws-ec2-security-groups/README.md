@@ -286,7 +286,7 @@ security_groups:
 
 ## Purging Rules
 
-By default, the `ec2_security_group` module only adds rules. It does not remove rules that are not in your playbook. To enforce your rules as the only rules (removing any manually-added rules), set `purge_rules` and `purge_rules_egress` to `true`.
+The current `ec2_security_group` module purges rules by default: `purge_rules` and `purge_rules_egress` both default to `true`. To make your intent explicit and enforce your rules as the only rules (removing any manually-added rules), set both options to `true`. If you want additive behavior instead, set them to `false`.
 
 ```yaml
 # Enforce exact rules - remove anything not defined here
@@ -386,13 +386,13 @@ Security groups support both IPv4 and IPv6 rules.
     state: absent
 ```
 
-A security group cannot be deleted if it is still attached to any resource (EC2 instance, RDS instance, ENI). Ansible will return an error if you try. Detach the security group from all resources first.
+A security group cannot be deleted if it is still attached to an instance or network interface, or if another security group rule references it. Ansible will return an error if you try. Detach the security group from all resources and remove any referencing rules first.
 
 ## Security Group Limits
 
 AWS has default limits on security groups:
-- 2,500 security groups per VPC
-- 60 inbound and 60 outbound rules per security group
+- 2,500 VPC security groups per Region
+- 60 inbound and 60 outbound rules per security group, enforced separately for IPv4 and IPv6 rules
 - 5 security groups per network interface
 
 If you hit the rules-per-group limit, consider consolidating CIDR ranges. Instead of 10 rules for 10 individual IPs, use a single rule with a summarized CIDR block. For complex rule sets, AWS also supports prefix lists that can hold multiple CIDR ranges in a single reference.
