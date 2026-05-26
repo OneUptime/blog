@@ -32,7 +32,8 @@ There are a few constraints to be aware of. VPC CIDR blocks cannot overlap. Peer
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `amazon.aws` collection
+- A current Ansible release with the `amazon.aws` collection
+- Python 3.6+ with `boto3` and `botocore` versions supported by the collection
 - AWS credentials with VPC, EC2, and route table permissions
 - Two existing VPCs with non-overlapping CIDR blocks
 
@@ -44,7 +45,7 @@ ansible-galaxy collection install amazon.aws
 
 ## Creating a VPC Peering Connection
 
-The `amazon.aws.ec2_vpc_peer` module creates the peering connection:
+The `amazon.aws.ec2_vpc_peering` module creates the peering connection:
 
 ```yaml
 # create-peering.yml - Create a VPC peering connection between two VPCs
@@ -56,12 +57,12 @@ The `amazon.aws.ec2_vpc_peer` module creates the peering connection:
 
   vars:
     aws_region: us-east-1
-    requester_vpc_id: "vpc-0abc123requester"
-    accepter_vpc_id: "vpc-0def456accepter"
+    requester_vpc_id: "vpc-0abc123def4567890"
+    accepter_vpc_id: "vpc-0def456abc7890123"
 
   tasks:
     - name: Create the peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         vpc_id: "{{ requester_vpc_id }}"
         peer_vpc_id: "{{ accepter_vpc_id }}"
@@ -78,7 +79,7 @@ The `amazon.aws.ec2_vpc_peer` module creates the peering connection:
         msg: "Peering connection {{ peering_result.peering_id }} created (status: {{ peering_result.vpc_peering_connection.status.code }})"
 ```
 
-After creation, the peering connection is in a `pending-acceptance` state. If both VPCs are in the same account, you can auto-accept. For cross-account peering, the other account needs to explicitly accept.
+After creation, the peering connection is in a `pending-acceptance` state. If both VPCs are in the same account, you can accept it in a follow-up task. For cross-account peering, the other account needs to explicitly accept.
 
 ## Accepting the Peering Connection
 
@@ -96,10 +97,11 @@ After creation, the peering connection is in a `pending-acceptance` state. If bo
 
   tasks:
     - name: Accept the peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         peering_id: "{{ peering_id }}"
         state: accept
+        wait: true
         tags:
           Name: "app-to-shared-services"
           ManagedBy: ansible
@@ -125,20 +127,20 @@ The peering connection alone does not enable traffic flow. You also need route t
   vars:
     aws_region: us-east-1
     # VPC A (Application)
-    vpc_a_id: "vpc-0abc123requester"
+    vpc_a_id: "vpc-0abc123def4567890"
     vpc_a_cidr: "10.0.0.0/16"
     vpc_a_route_table_ids:
-      - "rtb-0aaa111222333"
-      - "rtb-0aaa444555666"
+      - "rtb-0aaa1112223334445"
+      - "rtb-0aaa4445556667778"
     # VPC B (Shared Services)
-    vpc_b_id: "vpc-0def456accepter"
+    vpc_b_id: "vpc-0def456abc7890123"
     vpc_b_cidr: "10.1.0.0/16"
     vpc_b_route_table_ids:
-      - "rtb-0bbb111222333"
+      - "rtb-0bbb1112223334445"
 
   tasks:
     - name: Create the VPC peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         vpc_id: "{{ vpc_a_id }}"
         peer_vpc_id: "{{ vpc_b_id }}"
@@ -149,10 +151,11 @@ The peering connection alone does not enable traffic flow. You also need route t
       register: peering
 
     - name: Accept the peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         peering_id: "{{ peering.peering_id }}"
         state: accept
+        wait: true
 
     - name: Add route in VPC A route tables pointing to VPC B
       amazon.aws.ec2_vpc_route_table:
@@ -210,7 +213,7 @@ Having routes in place is necessary but not sufficient. Security groups must als
         region: "{{ aws_region }}"
         name: "shared-services-sg"
         description: "Security group for shared services"
-        vpc_id: "vpc-0def456accepter"
+        vpc_id: "vpc-0def456abc7890123"
         purge_rules: false
         rules:
           - proto: tcp
@@ -227,7 +230,7 @@ Having routes in place is necessary but not sufficient. Security groups must als
         region: "{{ aws_region }}"
         name: "app-servers-sg"
         description: "Security group for application servers"
-        vpc_id: "vpc-0abc123requester"
+        vpc_id: "vpc-0abc123def4567890"
         purge_rules: false
         rules:
           - proto: tcp
@@ -254,13 +257,13 @@ When VPCs are in different AWS accounts, the workflow changes slightly:
 
   vars:
     aws_region: us-east-1
-    requester_vpc_id: "vpc-0abc123requester"
+    requester_vpc_id: "vpc-0abc123def4567890"
     peer_account_id: "987654321098"
-    peer_vpc_id: "vpc-0xyz789accepter"
+    peer_vpc_id: "vpc-0123abc456def7890"
 
   tasks:
     - name: Create cross-account peering request
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         vpc_id: "{{ requester_vpc_id }}"
         peer_vpc_id: "{{ peer_vpc_id }}"
@@ -294,10 +297,11 @@ The accepter account then runs a separate playbook with their own credentials:
 
   tasks:
     - name: Accept the cross-account peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         peering_id: "{{ peering_id }}"
         state: accept
+        wait: true
         tags:
           Name: "cross-account-peering-accepted"
           ManagedBy: ansible
@@ -321,7 +325,7 @@ When you decommission a peered VPC:
 
   tasks:
     - name: Delete the peering connection
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         peering_id: "{{ peering_id }}"
         state: absent
@@ -349,26 +353,26 @@ For organizations with many VPCs, a hub-and-spoke pattern is common:
   vars:
     aws_region: us-east-1
     hub_vpc:
-      id: "vpc-0hub000000000"
+      id: "vpc-0a0b0c0d0e0f11111"
       cidr: "10.0.0.0/16"
-      route_table: "rtb-0hub111222"
+      route_table: "rtb-0a0b1112223334445"
     spoke_vpcs:
-      - id: "vpc-0spoke1111111"
+      - id: "vpc-01111111111111111"
         cidr: "10.1.0.0/16"
-        route_table: "rtb-0spoke1111"
+        route_table: "rtb-01111222233334444"
         name: "app-team-a"
-      - id: "vpc-0spoke2222222"
+      - id: "vpc-02222222222222222"
         cidr: "10.2.0.0/16"
-        route_table: "rtb-0spoke2222"
+        route_table: "rtb-02222333344445555"
         name: "app-team-b"
-      - id: "vpc-0spoke3333333"
+      - id: "vpc-03333333333333333"
         cidr: "10.3.0.0/16"
-        route_table: "rtb-0spoke3333"
+        route_table: "rtb-03333444455556666"
         name: "app-team-c"
 
   tasks:
     - name: Create peering connections from each spoke to hub
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         vpc_id: "{{ item.id }}"
         peer_vpc_id: "{{ hub_vpc.id }}"
@@ -380,10 +384,11 @@ For organizations with many VPCs, a hub-and-spoke pattern is common:
       register: peerings
 
     - name: Accept all peering connections
-      amazon.aws.ec2_vpc_peer:
+      amazon.aws.ec2_vpc_peering:
         region: "{{ aws_region }}"
         peering_id: "{{ item.peering_id }}"
         state: accept
+        wait: true
       loop: "{{ peerings.results }}"
 ```
 
