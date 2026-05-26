@@ -16,7 +16,7 @@ In this guide, I will walk you through creating Internet Gateways with Ansible, 
 
 Before you start, make sure you have:
 
-- Ansible 2.14 or later installed
+- ansible-core 2.16 or later installed
 - The `amazon.aws` collection installed
 - AWS credentials configured (environment variables, AWS CLI profile, or IAM role)
 - A basic understanding of AWS VPC networking
@@ -32,8 +32,8 @@ ansible-galaxy collection install amazon.aws
 You also need the Python boto3 library:
 
 ```bash
-# boto3 is required by all AWS Ansible modules
-pip install boto3 botocore
+# These AWS modules require boto3 and botocore 1.34.0 or later
+pip install "boto3>=1.34.0" "botocore>=1.34.0"
 ```
 
 ## Understanding Internet Gateways
@@ -233,7 +233,7 @@ Deleting an IGW requires detaching it from the VPC first. The Ansible module han
         state: absent
 ```
 
-Keep in mind that you cannot delete an IGW if there are still public IP addresses or Elastic IPs associated with instances in the VPC. You need to release those first.
+Keep in mind that AWS will not let you detach an IGW if the VPC still has resources with associated public IPv4 addresses or Elastic IP addresses. You need to disassociate Elastic IPs and remove or update those public IPv4 resources first.
 
 ## Error Handling and Retries
 
