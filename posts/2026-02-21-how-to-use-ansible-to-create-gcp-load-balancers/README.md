@@ -28,13 +28,14 @@ Each component is a separate GCP resource that you create and link together.
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- ansible-core 2.16+ with the `google.cloud` collection
 - GCP service account with Compute Load Balancer Admin role
 - Compute Engine instances or instance groups to serve as backends
+- Google Cloud CLI, authenticated for your project, if you use the managed certificate example
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 ```
 
 ## Creating a Health Check
@@ -288,7 +289,7 @@ The target proxy terminates HTTP or HTTPS connections. The forwarding rule assig
         name: "web-http-forwarding"
         ip_address: "{{ lb_ip.address }}"
         ip_protocol: TCP
-        port_range: "80"
+        port_range: "80-80"
         target: "{{ http_proxy.selfLink }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
@@ -320,18 +321,37 @@ For production, add HTTPS support with a managed SSL certificate:
     domain: "example.com"
 
   tasks:
+    - name: Check for Google-managed SSL certificate
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - ssl-certificates
+          - describe
+          - web-ssl-cert
+          - "--project={{ gcp_project }}"
+          - --global
+      register: ssl_cert_check
+      changed_when: false
+      failed_when: false
+
     - name: Create Google-managed SSL certificate
-      google.cloud.gcp_compute_ssl_certificate:
-        name: "web-ssl-cert"
-        managed:
-          domains:
-            - "{{ domain }}"
-            - "www.{{ domain }}"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_cred_kind }}"
-        service_account_file: "{{ gcp_cred_file }}"
-        state: present
-      register: ssl_cert
+      ansible.builtin.command:
+        argv:
+          - gcloud
+          - compute
+          - ssl-certificates
+          - create
+          - web-ssl-cert
+          - "--domains={{ domain }},www.{{ domain }}"
+          - "--project={{ gcp_project }}"
+          - --global
+      when: ssl_cert_check.rc != 0
+
+    - name: Set SSL certificate reference
+      ansible.builtin.set_fact:
+        ssl_cert:
+          selfLink: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/global/sslCertificates/web-ssl-cert"
 
     - name: Get URL map reference
       google.cloud.gcp_compute_url_map:
@@ -342,12 +362,21 @@ For production, add HTTPS support with a managed SSL certificate:
         state: present
       register: url_map
 
+    - name: Get global static IP
+      google.cloud.gcp_compute_global_address:
+        name: "web-lb-ip"
+        project: "{{ gcp_project }}"
+        auth_kind: "{{ gcp_cred_kind }}"
+        service_account_file: "{{ gcp_cred_file }}"
+        state: present
+      register: lb_ip
+
     - name: Create HTTPS target proxy
       google.cloud.gcp_compute_target_https_proxy:
         name: "web-https-proxy"
         url_map: "{{ url_map }}"
         ssl_certificates:
-          - "{{ ssl_cert.selfLink }}"
+          - "{{ ssl_cert }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
@@ -357,9 +386,9 @@ For production, add HTTPS support with a managed SSL certificate:
     - name: Create HTTPS forwarding rule
       google.cloud.gcp_compute_global_forwarding_rule:
         name: "web-https-forwarding"
-        ip_address: "{{ lb_ip.address | default('') }}"
+        ip_address: "{{ lb_ip.address }}"
         ip_protocol: TCP
-        port_range: "443"
+        port_range: "443-443"
         target: "{{ https_proxy.selfLink }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
