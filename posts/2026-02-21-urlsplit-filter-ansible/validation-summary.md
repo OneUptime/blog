@@ -15,7 +15,7 @@ Tutorial
 - Redis and PostgreSQL connection URLs
 
 ## Sources Consulted
-- Ansible `ansible.builtin.urlsplit` filter documentation: https://docs.ansible.com/projects/ansible-core/2.15/collections/ansible/builtin/urlsplit_filter.html
+- Ansible `ansible.builtin.urlsplit` filter documentation: https://docs.ansible.com/projects/ansible-core/devel/collections/ansible/builtin/urlsplit_filter.html
 - Ansible `ansible.builtin.regex_search` filter documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/regex_search_filter.html
 - Ansible `ansible.builtin.default` filter documentation: https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/default_filter.html
 - Jinja `default` filter documentation: https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.default
@@ -29,6 +29,7 @@ Tutorial
 - The Nginx WebSocket example treated both `ws` and `wss` as `http` upstream proxy schemes. Updated the template to proxy `wss` through `https`.
 - The URL validation example measured the length of `hostname` without handling `None`, which can happen for malformed or relative URLs. Added a boolean-aware default to make the assertion safe.
 - The Consul example used `consul catalog services -format=json` and selected `ServiceAddress`, but the documented `catalog services` command lists service names and does not expose service instance addresses in that shape. Replaced it with a Catalog HTTP API query for a specific service and a `jq` expression that builds URLs from non-empty `ServiceAddress` or the node `Address` plus `ServicePort`.
+- The URL reconstruction example defined `original_url` and `parsed` in the same `set_fact` task, but a fact set in a task is not available to sibling keys until the task completes. Kept `original_url` as a persisted fact and derived `parsed` from the same URL literal.
 
 ## Review Notes
 The short `urlsplit` filter name is valid because it is part of `ansible-core`, though Ansible recommends the fully qualified `ansible.builtin.urlsplit` name in documentation links and examples to avoid collection name conflicts.

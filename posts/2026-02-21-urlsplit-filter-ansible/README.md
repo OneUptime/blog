@@ -248,7 +248,7 @@ While `urlsplit` breaks URLs apart, you can also use it to modify and reconstruc
 - name: Modify service URL for different environment
   ansible.builtin.set_fact:
     original_url: "https://api.production.example.com:8443/v1/data"
-    parsed: "{{ original_url | urlsplit }}"
+    parsed: "{{ 'https://api.production.example.com:8443/v1/data' | urlsplit }}"
 
 - name: Build new URL for staging
   ansible.builtin.set_fact:
