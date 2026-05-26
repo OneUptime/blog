@@ -29,7 +29,7 @@ Datasets are the primary organizational unit. They hold tables, views, and acces
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- ansible-core 2.16+ with the `google.cloud` collection
 - GCP service account with BigQuery Admin role
 - BigQuery API enabled
 
@@ -60,11 +60,11 @@ gcloud services enable bigquery.googleapis.com --project=my-project-123
     - name: Create the analytics dataset
       google.cloud.gcp_bigquery_dataset:
         name: "analytics"
+        dataset_reference:
+          dataset_id: "analytics"
         friendly_name: "Analytics Data"
         description: "Main analytics dataset containing user events and product metrics"
         location: "US"
-        default_table_expiration_ms: 0
-        default_partition_expiration_ms: 0
         labels:
           environment: production
           team: data-engineering
@@ -80,7 +80,7 @@ gcloud services enable bigquery.googleapis.com --project=my-project-123
         msg: "Dataset '{{ dataset.datasetReference.datasetId }}' created in {{ dataset.location }}"
 ```
 
-The `location` parameter is permanent. Choose `US` or `EU` for multi-region availability, or a specific region like `us-central1` if you need data residency. Setting `default_table_expiration_ms` to 0 means tables never expire automatically. For temporary or staging datasets, you might set this to something like 2592000000 (30 days in milliseconds).
+The `location` parameter is permanent. Choose `US` or `EU` for multi-region availability, or a specific region like `us-central1` if you need data residency. Omitting `default_table_expiration_ms` means tables never expire automatically. For temporary or staging datasets, you might set this to something like 2592000000 (30 days in milliseconds).
 
 ## Creating Multiple Datasets
 
@@ -108,12 +108,10 @@ A typical data platform has several datasets for different purposes:
         friendly_name: "Analytics"
         description: "Processed analytics data and aggregations"
         location: "US"
-        default_table_expiration_ms: 0
       - name: "ml_features"
         friendly_name: "ML Features"
         description: "Feature store for machine learning models"
         location: "US"
-        default_table_expiration_ms: 0
       - name: "staging"
         friendly_name: "Staging Area"
         description: "Temporary staging tables for ETL pipelines"
@@ -123,16 +121,17 @@ A typical data platform has several datasets for different purposes:
         friendly_name: "Reporting"
         description: "Views and tables for BI dashboards"
         location: "US"
-        default_table_expiration_ms: 0
 
   tasks:
     - name: Create each dataset
       google.cloud.gcp_bigquery_dataset:
         name: "{{ item.name }}"
+        dataset_reference:
+          dataset_id: "{{ item.name }}"
         friendly_name: "{{ item.friendly_name }}"
         description: "{{ item.description }}"
         location: "{{ item.location }}"
-        default_table_expiration_ms: "{{ item.default_table_expiration_ms }}"
+        default_table_expiration_ms: "{{ item.default_table_expiration_ms | default(omit) }}"
         labels:
           environment: production
           managed_by: ansible
@@ -169,6 +168,8 @@ Notice the expiration strategies: raw events expire after 90 days (they have bee
     - name: Get dataset reference
       google.cloud.gcp_bigquery_dataset:
         name: "analytics"
+        dataset_reference:
+          dataset_id: "analytics"
         location: "US"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
@@ -180,6 +181,10 @@ Notice the expiration strategies: raw events expire after 90 days (they have bee
       google.cloud.gcp_bigquery_table:
         name: "user_events"
         dataset: "analytics"
+        table_reference:
+          dataset_id: "analytics"
+          project_id: "{{ gcp_project }}"
+          table_id: "user_events"
         friendly_name: "User Events"
         description: "All user interaction events from the application"
         time_partitioning:
@@ -187,9 +192,8 @@ Notice the expiration strategies: raw events expire after 90 days (they have bee
           field: "event_timestamp"
           expiration_ms: 15552000000  # 180 days
         clustering:
-          fields:
-            - "user_id"
-            - "event_type"
+          - "user_id"
+          - "event_type"
         schema:
           fields:
             - name: "event_id"
@@ -255,25 +259,32 @@ Control who can query and modify data:
 
   vars:
     gcp_project: "my-project-123"
+    gcp_cred_kind: "serviceaccount"
+    gcp_cred_file: "/opt/ansible/gcp-credentials.json"
 
   tasks:
     - name: Grant data analysts read access to analytics dataset
-      ansible.builtin.command: >
-        bq update --project_id={{ gcp_project }}
-        --dataset_id=analytics
-        --source=/dev/stdin <<'EOF'
-        {
-          "access": [
-            {"role": "WRITER", "specialGroup": "projectWriters"},
-            {"role": "OWNER", "specialGroup": "projectOwners"},
-            {"role": "READER", "specialGroup": "projectReaders"},
-            {"role": "READER", "groupByEmail": "data-analysts@example.com"},
-            {"role": "WRITER", "groupByEmail": "data-engineers@example.com"},
-            {"role": "READER", "userByEmail": "dashboard-sa@my-project-123.iam.gserviceaccount.com"}
-          ]
-        }
-        EOF
-      changed_when: true
+      google.cloud.gcp_bigquery_dataset:
+        name: "analytics"
+        dataset_reference:
+          dataset_id: "analytics"
+        access:
+          - role: "WRITER"
+            special_group: "projectWriters"
+          - role: "OWNER"
+            special_group: "projectOwners"
+          - role: "READER"
+            special_group: "projectReaders"
+          - role: "READER"
+            group_by_email: "data-analysts@example.com"
+          - role: "WRITER"
+            group_by_email: "data-engineers@example.com"
+          - role: "READER"
+            user_by_email: "dashboard-sa@my-project-123.iam.gserviceaccount.com"
+        project: "{{ gcp_project }}"
+        auth_kind: "{{ gcp_cred_kind }}"
+        service_account_file: "{{ gcp_cred_file }}"
+        state: present
 
     - name: Grant limited access using gcloud IAM binding
       ansible.builtin.command: >
@@ -316,6 +327,10 @@ Views provide abstracted, query-friendly layers over raw tables:
       google.cloud.gcp_bigquery_table:
         name: "daily_active_users"
         dataset: "reporting"
+        table_reference:
+          dataset_id: "reporting"
+          project_id: "{{ gcp_project }}"
+          table_id: "daily_active_users"
         friendly_name: "Daily Active Users"
         description: "Aggregated daily active user counts"
         view:
@@ -341,6 +356,10 @@ Views provide abstracted, query-friendly layers over raw tables:
       google.cloud.gcp_bigquery_table:
         name: "event_type_summary"
         dataset: "reporting"
+        table_reference:
+          dataset_id: "reporting"
+          project_id: "{{ gcp_project }}"
+          table_id: "event_type_summary"
         friendly_name: "Event Type Summary"
         description: "Summary of events by type for the last 30 days"
         view:
@@ -388,6 +407,8 @@ Combining everything into a comprehensive setup:
     - name: Create raw data dataset
       google.cloud.gcp_bigquery_dataset:
         name: "raw"
+        dataset_reference:
+          dataset_id: "raw"
         friendly_name: "Raw Data"
         description: "Raw ingested data before transformation"
         location: "{{ location }}"
@@ -403,6 +424,8 @@ Combining everything into a comprehensive setup:
     - name: Create transformed data dataset
       google.cloud.gcp_bigquery_dataset:
         name: "transformed"
+        dataset_reference:
+          dataset_id: "transformed"
         friendly_name: "Transformed Data"
         description: "Cleaned and transformed data ready for analysis"
         location: "{{ location }}"
@@ -417,6 +440,8 @@ Combining everything into a comprehensive setup:
     - name: Create reporting dataset
       google.cloud.gcp_bigquery_dataset:
         name: "reporting"
+        dataset_reference:
+          dataset_id: "reporting"
         friendly_name: "Reporting"
         description: "Views and tables optimized for BI tools"
         location: "{{ location }}"
