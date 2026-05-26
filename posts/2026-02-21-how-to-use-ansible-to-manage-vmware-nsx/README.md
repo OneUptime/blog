@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, VMware, NSX, Networking, Software-Defined Networking
 
-Description: Automate VMware NSX network virtualization management with Ansible playbooks for segments, firewalls, and load balancers.
+Description: Automate VMware NSX network virtualization management with Ansible playbooks for segments and firewalls.
 
 ---
 
 VMware NSX is the backbone of software-defined networking in many enterprise environments. It handles microsegmentation, distributed firewalling, load balancing, and network overlays. Managing all of that through the NSX Manager GUI works fine for small environments, but once you have hundreds of segments and firewall rules, you need automation. Ansible fills that gap perfectly.
 
-This guide covers how to use Ansible to manage NSX-T (now called NSX) components including transport zones, segments, firewall rules, and load balancers.
+This guide covers how to use Ansible to manage NSX-T (now called NSX) components including transport zones, segments, and firewall rules.
 
 ## Prerequisites
 
 You need the following:
 
 - Ansible 2.12 or newer
-- The `vmware.ansible_for_nsxt` collection (VMware official) or the `community.vmware` collection
+- The `vmware.ansible_for_nsxt` collection from VMware
 - NSX Manager 3.x or 4.x with API access
 - An account with Enterprise Admin role on NSX
 
@@ -26,7 +26,7 @@ Install the NSX Ansible collection.
 ```bash
 # Install the official VMware NSX-T Ansible collection
 
-ansible-galaxy collection install vmware.ansible_for_nsxt
+ansible-galaxy collection install git+https://github.com/vmware/ansible-for-nsxt
 
 # Also install required Python libraries
 pip install requests pyvmomi
@@ -243,6 +243,23 @@ The distributed firewall is one of the most powerful NSX features. It lets you c
             value: "database|tier"
         state: present
 
+    - name: Create app servers security group
+      vmware.ansible_for_nsxt.nsxt_policy_group:
+        hostname: "{{ nsx_manager }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ nsx_validate_certs }}"
+        display_name: "grp-app-servers"
+        description: "Application server VMs"
+        domain_id: "default"
+        expression:
+          - member_type: VirtualMachine
+            resource_type: Condition
+            key: Tag
+            operator: EQUALS
+            value: "app|tier"
+        state: present
+
     # Create a firewall section with rules
     - name: Create application firewall policy
       vmware.ansible_for_nsxt.nsxt_policy_security_policy:
@@ -255,7 +272,8 @@ The distributed firewall is one of the most powerful NSX features. It lets you c
         domain_id: "default"
         category: "Application"
         rules:
-          - display_name: "allow-web-to-app"
+          - id: "allow-web-to-app"
+            display_name: "allow-web-to-app"
             description: "Allow web tier to talk to app tier"
             source_groups:
               - "/infra/domains/default/groups/grp-web-servers"
@@ -266,7 +284,8 @@ The distributed firewall is one of the most powerful NSX features. It lets you c
               - "/infra/services/HTTP"
             action: "ALLOW"
             sequence_number: 10
-          - display_name: "allow-app-to-db"
+          - id: "allow-app-to-db"
+            display_name: "allow-app-to-db"
             description: "Allow app tier to database tier"
             source_groups:
               - "/infra/domains/default/groups/grp-app-servers"
@@ -276,8 +295,15 @@ The distributed firewall is one of the most powerful NSX features. It lets you c
               - "/infra/services/MySQL"
             action: "ALLOW"
             sequence_number: 20
-          - display_name: "deny-all-other"
+          - id: "deny-all-other"
+            display_name: "deny-all-other"
             description: "Default deny for this policy"
+            source_groups:
+              - "ANY"
+            destination_groups:
+              - "ANY"
+            services:
+              - "ANY"
             action: "DROP"
             sequence_number: 100
         state: present
@@ -285,62 +311,11 @@ The distributed firewall is one of the most powerful NSX features. It lets you c
 
 ## NSX Load Balancer Configuration
 
-NSX includes a built-in load balancer. Here is how to set up a virtual server with a server pool.
-
-```yaml
-# playbooks/nsx-load-balancer.yml
----
-- name: Configure NSX Load Balancer
-  hosts: localhost
-  gather_facts: false
-  vars_files:
-    - ../vars/nsx_connection.yml
-
-  tasks:
-    # Create a server pool with health monitoring
-    - name: Create web server pool
-      vmware.ansible_for_nsxt.nsxt_policy_lb_pool:
-        hostname: "{{ nsx_manager }}"
-        username: "{{ nsx_username }}"
-        password: "{{ nsx_password }}"
-        validate_certs: "{{ nsx_validate_certs }}"
-        display_name: "pool-web-prod"
-        description: "Production web server pool"
-        algorithm: "ROUND_ROBIN"
-        members:
-          - display_name: "web-01"
-            ip_address: "192.168.10.11"
-            port: "443"
-          - display_name: "web-02"
-            ip_address: "192.168.10.12"
-            port: "443"
-          - display_name: "web-03"
-            ip_address: "192.168.10.13"
-            port: "443"
-        active_monitor_paths:
-          - "/infra/lb-monitor-profiles/default-https-lb-monitor"
-        state: present
-
-    # Create the virtual server
-    - name: Create virtual server
-      vmware.ansible_for_nsxt.nsxt_policy_lb_virtual_server:
-        hostname: "{{ nsx_manager }}"
-        username: "{{ nsx_username }}"
-        password: "{{ nsx_password }}"
-        validate_certs: "{{ nsx_validate_certs }}"
-        display_name: "vs-web-prod"
-        description: "Production web virtual server"
-        ip_address: "10.0.100.50"
-        ports:
-          - "443"
-        pool_path: "/infra/lb-pools/pool-web-prod"
-        application_profile_path: "/infra/lb-app-profiles/default-http-lb-app-profile"
-        state: present
-```
+The `vmware.ansible_for_nsxt` collection does not provide policy load-balancer pool or virtual-server modules. For production load balancing on NSX 3.x or 4.x, use VMware Avi Load Balancer automation, or call the NSX Policy API directly with `ansible.builtin.uri` when you need to manage the built-in NSX load balancer.
 
 ## Tagging VMs for Dynamic Group Membership
 
-NSX security groups work best with tags. Use Ansible to tag VMs so they automatically join the right security groups.
+NSX security groups work best with tags. Use Ansible to tag VMs in NSX so they automatically join the right security groups.
 
 ```yaml
 # playbooks/nsx-vm-tagging.yml
@@ -349,22 +324,21 @@ NSX security groups work best with tags. Use Ansible to tag VMs so they automati
   hosts: localhost
   gather_facts: false
   vars_files:
-    - ../vars/vcenter_creds.yml
+    - ../vars/nsx_connection.yml
 
   tasks:
     # Tag web servers so they join the web security group
     - name: Apply NSX tags to web VMs
-      community.vmware.vmware_tag_manager:
-        hostname: "{{ vcenter_hostname }}"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
-        validate_certs: false
-        tag_names:
-          - "nsx:web"
-          - "nsx:tier"
-        object_name: "{{ item }}"
-        object_type: VirtualMachine
-        state: add
+      vmware.ansible_for_nsxt.nsxt_vm_tags:
+        hostname: "{{ nsx_manager }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ nsx_validate_certs }}"
+        virtual_machine_display_name: "{{ item }}"
+        remove_other_tags: false
+        add_tags:
+          - scope: "tier"
+            tag: "web"
       loop:
         - web-prod-01
         - web-prod-02
