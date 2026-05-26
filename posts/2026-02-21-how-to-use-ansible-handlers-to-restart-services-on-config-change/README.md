@@ -67,7 +67,7 @@ The simplest and most common use of handlers:
         state: reloaded
 ```
 
-Notice I used `Reload` for the site config and `Restart` for the main config. Nginx can pick up new site configs with just a reload, which is graceful and does not drop connections. But changes to the main nginx.conf (like worker_processes or error_log path) need a full restart.
+Notice I used `Reload` for the site config and `Restart` for the main config. Nginx can usually pick up configuration changes, including changes in nginx.conf, with a reload, which starts new workers with the new configuration and gracefully shuts down old workers. Use restart only for changes your specific service cannot apply with a reload.
 
 ## Multiple Tasks Notifying the Same Handler
 
@@ -370,7 +370,6 @@ Rolling restart with health verification:
           retries: 10
           delay: 3
           until: health.status == 200
-      listen: "Restart and verify"
 ```
 
 ## Summary
