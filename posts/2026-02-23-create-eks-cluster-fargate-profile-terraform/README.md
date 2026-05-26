@@ -25,6 +25,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -159,7 +167,7 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
 # The EKS cluster
 resource "aws_eks_cluster" "main" {
   name     = "fargate-cluster"
-  version  = "1.29"
+  version  = "1.35"
   role_arn = aws_iam_role.cluster.arn
 
   vpc_config {
@@ -174,9 +182,24 @@ resource "aws_eks_cluster" "main" {
 }
 ```
 
+If you use the Kubernetes provider later in this guide, configure it to talk to the EKS cluster:
+
+```hcl
+provider "kubernetes" {
+  host                   = aws_eks_cluster.main.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.main.certificate_authority[0].data)
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.main.name]
+  }
+}
+```
+
 ## Fargate Pod Execution Role
 
-Every Fargate profile needs a pod execution role. This role allows the Fargate infrastructure to pull container images, send logs to CloudWatch, and perform other AWS API calls on behalf of your pods.
+Every Fargate profile needs a pod execution role. This role allows the Fargate infrastructure to pull container images, register the Fargate kubelet with the cluster, and route logs when logging permissions are added. It does not give your application containers AWS permissions; use IAM roles for service accounts for that.
 
 ```hcl
 # IAM role that Fargate uses to run pods
@@ -225,6 +248,9 @@ resource "aws_eks_fargate_profile" "kube_system" {
 
   selector {
     namespace = "kube-system"
+    labels = {
+      "k8s-app" = "kube-dns"
+    }
   }
 
   depends_on = [aws_eks_cluster.main]
@@ -263,20 +289,16 @@ resource "aws_eks_fargate_profile" "batch" {
 }
 ```
 
-## Patching CoreDNS for Fargate
+## Restarting CoreDNS for Fargate
 
-By default, CoreDNS has an annotation that prevents it from running on Fargate. After creating the cluster, you need to remove that annotation. You can do this with a null_resource that runs kubectl.
+By default, CoreDNS is configured to run on Amazon EC2 infrastructure. After creating the Fargate profile for CoreDNS, restart the deployment so the pods are rescheduled onto Fargate.
 
 ```hcl
-# Remove the ec2 compute type annotation from CoreDNS so it runs on Fargate
+# Restart CoreDNS so it runs on Fargate
 resource "null_resource" "patch_coredns" {
   provisioner "local-exec" {
     command = <<-EOF
       aws eks update-kubeconfig --region us-east-1 --name ${aws_eks_cluster.main.name}
-      kubectl patch deployment coredns \
-        -n kube-system \
-        --type json \
-        -p='[{"op": "remove", "path": "/spec/template/metadata/annotations/eks.amazonaws.com~1compute-type"}]'
       kubectl rollout restart deployment coredns -n kube-system
     EOF
   }
@@ -383,7 +405,7 @@ resource "kubernetes_config_map" "aws_logging" {
     "output.conf" = <<-EOF
       [OUTPUT]
           Name cloudwatch_logs
-          Match *
+          Match kube.*
           region us-east-1
           log_group_name /eks/fargate-cluster/pods
           log_stream_prefix fargate-
@@ -422,13 +444,15 @@ resource "aws_iam_role_policy" "fargate_logging" {
 
 Resource Sizing on Fargate
 
-One thing that trips people up: Fargate pods have specific CPU and memory combinations you can request. You cannot ask for 3 vCPUs and 1 GB of memory. The valid combinations are documented by AWS, but the common ones are:
+One thing that trips people up: Fargate pods have specific CPU and memory combinations you can request. You cannot ask for 3 vCPUs and 1 GB of memory. The valid combinations are documented by AWS and currently include:
 
 - 0.25 vCPU: 0.5, 1, or 2 GB memory
 - 0.5 vCPU: 1 through 4 GB memory (in 1 GB increments)
 - 1 vCPU: 2 through 8 GB memory
 - 2 vCPU: 4 through 16 GB memory
 - 4 vCPU: 8 through 30 GB memory
+- 8 vCPU: 16 through 60 GB memory (in 4 GB increments)
+- 16 vCPU: 32 through 120 GB memory (in 8 GB increments)
 
 If your pod requests resources that do not match a valid combination, Fargate rounds up to the nearest valid configuration. You pay for the rounded-up amount, so it is worth setting your resource requests carefully.
 
