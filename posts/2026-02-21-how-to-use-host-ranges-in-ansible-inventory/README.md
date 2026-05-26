@@ -46,11 +46,11 @@ ansible-inventory -i inventory.ini --list | python3 -m json.tool
 [cluster_a]
 server-[1:50].example.com
 
-# Two-digit zero-padding: node-001 through node-100
+# Three-digit zero-padding: node-001 through node-100
 [cluster_b]
 node-[001:100].example.com
 
-# Three-digit padding: worker-0001 through worker-0500
+# Four-digit padding: worker-0001 through worker-0500
 [cluster_c]
 worker-[0001:0500].example.com
 ```
@@ -89,27 +89,23 @@ This produces `rack-A-switch.datacenter.local` through `rack-H-switch.datacenter
 
 ## Combining Multiple Ranges
 
-You can use ranges in different parts of the hostname to create matrix-style expansions. However, each host line only supports one range. To create a matrix, you need multiple lines or a different approach.
+You can use ranges in different parts of the hostname to create matrix-style expansions. Ansible expands each range and creates the combined set of hostnames.
 
 ```ini
 # inventory.ini
 # Servers across three racks, five per rack
 [datacenter]
-rack1-srv-[01:05].dc.local
-rack2-srv-[01:05].dc.local
-rack3-srv-[01:05].dc.local
+rack[1:3]-srv-[01:05].dc.local
 ```
 
-This gives you 15 hosts total. If the rack numbering also follows a pattern, you would still need separate lines because Ansible does not support nested ranges in a single line.
+This gives you 15 hosts total: `rack1-srv-01.dc.local` through `rack3-srv-05.dc.local`.
 
 ## Ranges in YAML Inventory
 
-YAML inventory does not have the same range syntax built in. You need to list hosts explicitly or use a plugin. However, you can use the range pattern in the hostname key:
+YAML inventory supports the same range syntax when you use Ansible's built-in YAML inventory plugin:
 
 ```yaml
 # inventory.yml
-# YAML inventory does not natively expand ranges
-# But you can reference them in specific ways
 all:
   children:
     webservers:
@@ -117,7 +113,7 @@ all:
         web-[01:10].example.com:
 ```
 
-Note that YAML inventory support for range patterns depends on your Ansible version. In newer versions (2.10+), this works. In older versions, you may need to stick with INI format for ranges or list hosts individually.
+This expands to `web-01.example.com` through `web-10.example.com`, just like the INI example.
 
 ## Ranges with Host Variables
 
@@ -166,22 +162,18 @@ For a full subnet block:
 
 ## Ranges with Steps
 
-Ansible does not natively support step values in ranges (like "every other host"). If you need that, use a workaround with multiple ranges or a dynamic inventory script.
+Ansible supports step values, also called strides, in numeric ranges. Add a third value to the range: `[start:end:step]`.
 
 For example, to get only even-numbered hosts:
 
 ```ini
 # inventory.ini
-# Separate groups for even and odd numbered servers
+# Even-numbered servers from 2 through 10
 [even_servers]
-srv-[02:02].example.com
-srv-[04:04].example.com
-srv-[06:06].example.com
-srv-[08:08].example.com
-srv-[10:10].example.com
+srv-[02:10:2].example.com
 ```
 
-This is ugly but functional. For complex patterns, a dynamic inventory script or the `constructed` inventory plugin is a better approach.
+This expands to `srv-02.example.com`, `srv-04.example.com`, `srv-06.example.com`, `srv-08.example.com`, and `srv-10.example.com`. For complex inventory sources, a dynamic inventory script or inventory plugin is a better approach.
 
 ## Practical Example: Multi-Tier Application
 
@@ -257,7 +249,7 @@ Always verify your ranges expand as expected before running playbooks:
 ansible webservers -i inventory.ini --list-hosts
 
 # Count the hosts
-ansible webservers -i inventory.ini --list-hosts | wc -l
+ansible webservers -i inventory.ini --list-hosts | tail -n +2 | wc -l
 
 # Show the full inventory graph
 ansible-inventory -i inventory.ini --graph
@@ -265,11 +257,11 @@ ansible-inventory -i inventory.ini --graph
 
 ## Using Ranges with limit
 
-You can combine ranges with the `--limit` flag to target a subset of range-generated hosts:
+You can use the `--limit` flag to target a subset of range-generated hosts. The limit value is a host pattern that is matched against the expanded inventory, so use a group slice, a wildcard, or an explicit hostname instead of inventory range syntax:
 
 ```bash
 # Only run against the first 5 web servers
-ansible-playbook -i inventory.ini site.yml --limit 'web-[001:005].prod.example.com'
+ansible-playbook -i inventory.ini site.yml --limit 'webservers[0:4]'
 
 # Run against a single host from the range
 ansible-playbook -i inventory.ini site.yml --limit web-003.prod.example.com
