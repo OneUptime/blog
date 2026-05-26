@@ -25,10 +25,10 @@ fatal: [server1]: FAILED! => {
 ```yaml
 # Problem: variable is undefined or None
 
-ip: "{{ my_ip | ipaddr }}"  # Fails if my_ip is undefined
+ip: "{{ my_ip | ansible.utils.ipaddr }}"  # Fails if my_ip is undefined or None
 
-# Fix: provide a default
-ip: "{{ my_ip | default('0.0.0.0') | ipaddr }}"
+# Fix: provide a default; the second argument also replaces None/falsey values
+ip: "{{ my_ip | default('0.0.0.0', true) | ansible.utils.ipaddr }}"
 ```
 
 ### Fix 2: Missing Collection for the Filter
@@ -36,11 +36,13 @@ ip: "{{ my_ip | default('0.0.0.0') | ipaddr }}"
 Many filters come from collections that need to be installed:
 
 ```bash
-# The ipaddr filter requires the netcommon collection
-ansible-galaxy collection install ansible.netcommon
+# The ipaddr filter requires the ansible.utils collection and netaddr on the control node
+ansible-galaxy collection install ansible.utils
+python -m pip install netaddr
 
-# The json_query filter requires community.general
+# The json_query filter requires community.general and jmespath on the control node
 ansible-galaxy collection install community.general
+python -m pip install jmespath
 ```
 
 ### Fix 3: Wrong Data Type for the Filter
@@ -56,11 +58,11 @@ result: "{{ my_list | flatten }}"
 ### Fix 4: Chaining Filters with Incompatible Types
 
 ```yaml
-# Problem: filter chain produces unexpected type
-value: "{{ items | selectattr('active') | map(attribute='name') | join(', ') }}"
+# Problem: some filters cannot consume the generator returned by selectattr/map
+value: "{{ items | selectattr('active') | map(attribute='name') | last }}"
 
-# Fix: add 'list' filter before join
-value: "{{ items | selectattr('active') | map(attribute='name') | list | join(', ') }}"
+# Fix: add 'list' filter before filters that need a concrete sequence
+value: "{{ items | selectattr('active') | map(attribute='name') | list | last }}"
 ```
 
 ### Fix 5: Custom Filter Not Found
@@ -101,7 +103,7 @@ filter_plugins = ./plugins/filter
 
 ## Summary
 
-AnsibleFilterError always means a filter received data it cannot work with. The fix is to ensure the variable exists (using `default()`), has the correct type (using `type_debug` to verify), and that the required collection is installed. The `list` filter between `selectattr`/`map` and `join` is the most commonly needed fix for filter chain errors.
+AnsibleFilterError usually means a filter received data it cannot work with or that the filter plugin could not be found. The fix is to ensure the variable exists (using `default()`), has the correct type (using `type_debug` to verify), and that the required collection and Python dependencies are installed. The `list` filter after `selectattr`/`map` is commonly needed before filters such as `last` that require a concrete sequence.
 
 ## Common Use Cases
 
@@ -142,7 +144,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -286,4 +288,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
