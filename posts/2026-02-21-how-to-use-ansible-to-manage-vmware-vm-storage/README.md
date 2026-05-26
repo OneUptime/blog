@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, VMware, Storage, vSphere, Disk Management
 
-Description: Learn how to manage VMware virtual machine disks and storage with Ansible including adding disks, resizing, changing storage policies, and managing SCSI controllers.
+Description: Learn how to manage VMware virtual machine disks and storage with Ansible including adding disks, resizing, storage migrations, and managing SCSI controllers.
 
 ---
 
-Storage management in VMware is one of those tasks that comes up constantly. Applications need more disk space, new volumes need to be attached for data, or VMs need to be migrated between datastores. Handling this through the vSphere Client works for ad-hoc tasks, but when you are managing storage across a fleet of VMs, Ansible brings the consistency and repeatability that manual operations lack. This guide covers adding disks, resizing them, managing SCSI controllers, and working with storage policies.
+Storage management in VMware is one of those tasks that comes up constantly. Applications need more disk space, new volumes need to be attached for data, or VMs need to be migrated between datastores. Handling this through the vSphere Client works for ad-hoc tasks, but when you are managing storage across a fleet of VMs, Ansible brings the consistency and repeatability that manual operations lack. This guide covers adding disks, resizing them, managing SCSI controllers, and migrating storage between datastores.
 
 ## VMware Storage Architecture for VMs
 
@@ -217,7 +217,7 @@ After resizing the virtual disk, you also need to extend the filesystem inside t
   tasks:
     # Rescan for the new disk size
     - name: Rescan SCSI bus for disk changes
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: "echo 1 > /sys/class/block/sdc/device/rescan"
       changed_when: true
 
@@ -289,7 +289,7 @@ Use `community.vmware.vmware_vmotion` to move a VM's storage to a different data
 
     - name: Confirm storage migration
       ansible.builtin.debug:
-        msg: "Storage migration completed for {{ svmotion_result.vm_name }}"
+        msg: "Storage migration completed to {{ svmotion_result.datastore }}"
 ```
 
 ## Gathering Storage Information
