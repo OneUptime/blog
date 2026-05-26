@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Lookup Plugins, Error Handling, Playbook Development
 
-Description: Learn how to handle errors gracefully in Ansible lookup plugins using the errors parameter, default values, and try-rescue blocks.
+Description: Learn how to handle errors gracefully in Ansible lookup plugins using the errors parameter, default values, and block/rescue sections.
 
 ---
 
@@ -117,8 +117,8 @@ For more complex error handling scenarios, wrap your lookup tasks in a `block/re
         - name: Fetch database credentials from vault
           set_fact:
             db_credentials:
-              username: "{{ lookup('hashi_vault', 'secret/data/db:username') }}"
-              password: "{{ lookup('hashi_vault', 'secret/data/db:password') }}"
+              username: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/db:username') }}"
+              password: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/db:password') }}"
 
         - name: Configure database connection
           template:
@@ -238,7 +238,7 @@ This tries, in order:
 
 ## Handling Timeouts in Network Lookups
 
-Some lookups reach out to network services that may be slow or unreachable. While Ansible does not have a built-in timeout parameter for all lookups, you can use the `pipe` lookup with `timeout` for command-based lookups.
+Some lookups reach out to network services that may be slow or unreachable. While Ansible does not have a built-in timeout parameter for all lookups, the `url` lookup has a `timeout` parameter for HTTP-based lookups.
 
 ```yaml
 # Handling network lookup timeouts
