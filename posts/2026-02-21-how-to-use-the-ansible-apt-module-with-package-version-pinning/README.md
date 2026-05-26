@@ -97,8 +97,8 @@ Pin priorities determine behavior:
 
 - **1001+**: Forces installation of this version even if it requires downgrading
 - **990**: Normal priority for target releases
-- **500**: Default priority for installed packages
-- **100**: Priority for packages from non-default releases
+- **500**: Default priority for uninstalled package versions from normal repositories
+- **100**: Default priority for the installed version and for some automatic-upgrade repositories such as backports
 - **-1**: Prevents installation entirely
 
 A priority of 1001 is strong enough to override any other preference and even force downgrades.
@@ -143,7 +143,7 @@ A common requirement is allowing minor/patch updates but blocking major version 
       Pin-Priority: 900
 
       Package: postgresql-16 postgresql-client-16
-      Pin: release *
+      Pin: version *
       Pin-Priority: -1
     dest: /etc/apt/preferences.d/postgresql-pin
     mode: '0644'
@@ -253,7 +253,7 @@ graph TD
 
 ## Handling Version Pin Conflicts
 
-If you have conflicting pins, apt uses the highest priority. Watch out for these common issues:
+If you have conflicting pins, apt uses the first matching specific-form record for a package version. If no specific-form record matches, apt uses the highest matching generic-form priority. Watch out for these common issues:
 
 ```yaml
 # Check for pin conflicts before applying new pins
