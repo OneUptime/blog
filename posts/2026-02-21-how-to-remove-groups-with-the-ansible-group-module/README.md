@@ -36,7 +36,7 @@ When a group is removed:
 1. The group entry is deleted from `/etc/group` and `/etc/gshadow`
 2. Files previously owned by that group now show a numeric GID instead of the group name
 3. Users who had this as their supplementary group lose that membership
-4. Users whose primary group was this group are NOT removed (they keep the orphaned GID)
+4. If any existing user has this as their primary group, the default removal fails instead of leaving that user with an orphaned GID
 
 Here is the flow:
 
@@ -54,7 +54,7 @@ flowchart TD
 
 ## The Primary Group Restriction
 
-You cannot remove a group that is the primary group of any user. Linux enforces this rule, and the `group` module will fail if you try:
+By default, you cannot remove a group that is the primary group of any user. Linux enforces this rule, and the `group` module will fail if you try:
 
 ```yaml
 # remove-primary-group-fail.yml - This will fail
@@ -144,49 +144,50 @@ In a production environment, you should check for dependencies before removing a
       ansible.builtin.getent:
         database: group
         key: "{{ group_to_remove }}"
+        fail_key: false
       register: group_check
-      failed_when: false
 
     - name: Skip if group does not exist
       ansible.builtin.debug:
         msg: "Group {{ group_to_remove }} does not exist, skipping"
-      when: group_check is failed
+      when: ansible_facts.getent_group[group_to_remove] is none
 
     # Check for files owned by this group
     - name: Find files owned by group
       ansible.builtin.shell: >
-        find /home /opt /srv -group {{ group_to_remove }} -maxdepth 3 2>/dev/null | head -20
+        find /home /opt /srv -maxdepth 3 -group {{ group_to_remove }} 2>/dev/null | head -20
       register: owned_files
       changed_when: false
-      when: group_check is not failed
+      failed_when: false
+      when: ansible_facts.getent_group[group_to_remove] is not none
 
     - name: Warn about owned files
       ansible.builtin.debug:
-        msg: "WARNING: {{ owned_files.stdout_lines | length }} files found owned by {{ group_to_remove }}"
+        msg: "WARNING: {{ owned_files.stdout_lines | default([]) | length }} files found owned by {{ group_to_remove }}"
       when:
-        - group_check is not failed
-        - owned_files.stdout_lines | length > 0
+        - ansible_facts.getent_group[group_to_remove] is not none
+        - owned_files.stdout_lines | default([]) | length > 0
 
     # Check for group members
     - name: Get group members
       ansible.builtin.shell: "getent group {{ group_to_remove }} | cut -d: -f4"
       register: group_members
       changed_when: false
-      when: group_check is not failed
+      when: ansible_facts.getent_group[group_to_remove] is not none
 
     - name: Display group members
       ansible.builtin.debug:
         msg: "Members of {{ group_to_remove }}: {{ group_members.stdout }}"
       when:
-        - group_check is not failed
-        - group_members.stdout | length > 0
+        - ansible_facts.getent_group[group_to_remove] is not none
+        - group_members.stdout | default('') | length > 0
 
     # Remove the group if checks pass
     - name: Remove the group
       ansible.builtin.group:
         name: "{{ group_to_remove }}"
         state: absent
-      when: group_check is not failed
+      when: ansible_facts.getent_group[group_to_remove] is not none
 ```
 
 ## Cleaning Up Orphaned File Permissions
@@ -230,15 +231,15 @@ For compliance, log all group changes:
       ansible.builtin.getent:
         database: group
         key: "{{ group_to_remove }}"
+        fail_key: false
       register: group_info
-      failed_when: false
 
     - name: Remove the group
       ansible.builtin.group:
         name: "{{ group_to_remove }}"
         state: absent
       register: removal_result
-      when: group_info is not failed
+      when: ansible_facts.getent_group[group_to_remove] is not none
 
     - name: Log the removal
       ansible.builtin.lineinfile:
@@ -250,7 +251,7 @@ For compliance, log all group changes:
         create: yes
         mode: '0640'
       when:
-        - group_info is not failed
+        - ansible_facts.getent_group[group_to_remove] is not none
         - removal_result.changed | default(false)
 ```
 
@@ -285,7 +286,7 @@ Sometimes you only want to remove groups on certain server types:
       loop:
         - staging-deploy
         - staging-admin
-      when: env == 'production'
+      when: env | default('') == 'production'
 ```
 
 ## Using a Role for Group Lifecycle Management
