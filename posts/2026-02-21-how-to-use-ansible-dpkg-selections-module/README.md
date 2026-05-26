@@ -15,7 +15,7 @@ The `dpkg_selections` module in Ansible controls the dpkg package selection stat
 Every package known to dpkg has a selection state that tells the package manager what should happen to it. The main states are:
 
 - **install** - The normal state. The package should be installed (or upgraded during a system update).
-- **hold** - The package is locked at its current version. `apt upgrade` and `apt dist-upgrade` will skip it.
+- **hold** - The package is locked at its current version. `apt upgrade`, `apt full-upgrade`, `apt-get upgrade`, and `apt-get dist-upgrade` will skip it unless you explicitly override holds.
 - **deinstall** - The package is marked for removal but config files are kept.
 - **purge** - The package is marked for complete removal including config files.
 
@@ -97,7 +97,7 @@ Before changing selections, you might want to audit what is currently held:
 
 - name: Filter and display held packages
   ansible.builtin.set_fact:
-    held_packages: "{{ all_selections.stdout_lines | select('search', 'hold') | list }}"
+    held_packages: "{{ all_selections.stdout_lines | select('match', '^\\S+\\s+hold$') | list }}"
 
 - name: Show held packages
   ansible.builtin.debug:
@@ -245,7 +245,7 @@ Here is how to integrate holds into a system patching workflow:
 
 ## Using dpkg_selections with the deinstall State
 
-You can mark a package for removal on the next `apt autoremove`:
+You can mark a package for removal for frontends that apply dpkg selections, such as `apt-get dselect-upgrade`:
 
 ```yaml
 # Mark a package for removal
@@ -269,7 +269,7 @@ Similarly, you can mark a package for purging:
     selection: purge
 ```
 
-Again, most people just use the `apt` module with `state: absent` and `purge: yes` for immediate effect.
+Again, most people just use the `apt` module with `state: absent` and `purge: yes` for immediate effect. Setting the selection alone does not remove or purge the package immediately.
 
 ## Automating Hold Management with a Variable List
 
@@ -326,7 +326,7 @@ The `dpkg_selections` module and APT preferences both prevent upgrades, but they
 | Wildcard support | No | Yes |
 | Version control | Current version only | Any version or range |
 | Complexity | Simple | Flexible but complex |
-| Override | Cannot be overridden by apt | Priority-based |
+| Override | Respected by normal upgrades, but explicit APT options can change held packages | Priority-based |
 
 Use `dpkg_selections` for simple "keep this package where it is" scenarios. Use APT preferences when you need to control which version is preferred or block specific versions while allowing others.
 
