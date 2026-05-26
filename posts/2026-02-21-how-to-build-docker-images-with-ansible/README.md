@@ -17,8 +17,8 @@ Building Docker images is typically part of a CI/CD pipeline, but there are plen
 
 ansible-galaxy collection install community.docker
 
-# Install the Docker Python SDK
-pip install docker
+# Install the Python requests library required by community.docker modules
+pip install requests
 ```
 
 Docker must be installed on the host where you are building images.
@@ -233,25 +233,17 @@ Images often need multiple tags. For example, you might tag an image with the ve
     # Tag with git SHA
     - name: Tag image with git commit SHA
       community.docker.docker_image:
-        name: "{{ registry }}/{{ app_name }}"
-        tag: "{{ version }}"
-        repository: "{{ registry }}/{{ app_name }}"
+        name: "{{ registry }}/{{ app_name }}:{{ version }}"
+        repository: "{{ registry }}/{{ app_name }}:{{ git_sha }}"
         push: false
-        source: local
-      register: base_image
-
-    - name: Add git SHA tag
-      community.docker.docker_image:
-        name: "{{ registry }}/{{ app_name }}"
-        tag: "{{ git_sha }}"
         source: local
         force_tag: true
 
     # Tag as latest
     - name: Tag as latest
       community.docker.docker_image:
-        name: "{{ registry }}/{{ app_name }}"
-        tag: latest
+        name: "{{ registry }}/{{ app_name }}:{{ version }}"
+        repository: "{{ registry }}/{{ app_name }}:latest"
         source: local
         force_tag: true
 
@@ -309,11 +301,11 @@ After building, you usually want to push the image to a registry so other server
     # Also push with latest tag
     - name: Tag and push as latest
       community.docker.docker_image:
-        name: "{{ registry }}/{{ app_name }}"
-        tag: "{{ version }}"
-        repository: "{{ registry }}/{{ app_name }}"
+        name: "{{ registry }}/{{ app_name }}:{{ version }}"
+        repository: "{{ registry }}/{{ app_name }}:latest"
         push: true
         source: local
+        force_tag: true
 ```
 
 ## Using .dockerignore
@@ -454,7 +446,7 @@ Build processes leave behind intermediate images and build cache. Clean them up 
 
 6. **Clean up after builds.** Intermediate images and build cache can consume significant disk space on build servers.
 
-7. **Do not store secrets in images.** Use build arguments for secrets needed during build, and use multi-stage builds to ensure the secrets do not end up in the final image.
+7. **Do not store secrets in images.** Do not pass secrets through build arguments or environment variables. Use BuildKit secret mounts for build-time secrets, or inject secrets at runtime.
 
 ## Conclusion
 
