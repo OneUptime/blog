@@ -72,7 +72,7 @@ resource "aws_acmpca_certificate_authority" "root" {
     }
   }
 
-  # Use SHORT_LIVED for development/testing CAs
+  # Use SHORT_LIVED_CERTIFICATE instead only for compatible development/testing CAs
   usage_mode = "GENERAL_PURPOSE"
 
   # How long to wait before permanently deleting the CA
@@ -269,7 +269,7 @@ resource "aws_acm_certificate" "wildcard_internal" {
 
 ## Short-Lived CA for Development
 
-For development and testing, create a CA with short-lived certificates to avoid certificate management overhead.
+For development and testing scenarios that can use AWS Private CA directly, create a CA with short-lived certificates to avoid certificate management overhead. AWS Certificate Manager cannot issue certificates from a CA that uses short-lived certificate mode.
 
 ```hcl
 # Short-lived CA for development
@@ -313,8 +313,8 @@ resource "aws_acmpca_certificate" "dev" {
   template_arn = "arn:aws:acm-pca:::template/SubordinateCACertificate_PathLen0/V1"
 
   validity {
-    type  = "YEARS"
-    value = 2
+    type  = "DAYS"
+    value = 7
   }
 }
 
@@ -330,6 +330,11 @@ resource "aws_acmpca_certificate_authority_certificate" "dev" {
 Use AWS Resource Access Manager to share your private CA with other accounts in the organization.
 
 ```hcl
+variable "org_id" {
+  description = "AWS Organizations ID, for example o-a1b2c3d4e5"
+  type        = string
+}
+
 # Share the subordinate CA with other accounts via RAM
 resource "aws_ram_resource_share" "ca_share" {
   name                      = "private-ca-share"
@@ -361,10 +366,18 @@ resource "aws_ram_principal_association" "organization" {
 
 ## CA Policy
 
-Control who can issue certificates from your CA using a resource-based policy.
+Control who can issue certificates from your CA using permissions and resource-based policies.
 
 ```hcl
-# Policy that allows specific accounts to issue certificates
+# Permission that allows ACM in the same account to renew certificates
+resource "aws_acmpca_permission" "subordinate_acm_renewal" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.subordinate.arn
+  actions                   = ["IssueCertificate", "GetCertificate", "ListPermissions"]
+  principal                 = "acm.amazonaws.com"
+  source_account            = data.aws_caller_identity.current.account_id
+}
+
+# Resource-based policy that allows specific external accounts to issue certificates
 resource "aws_acmpca_policy" "subordinate" {
   resource_arn = aws_acmpca_certificate_authority.subordinate.arn
 
@@ -372,36 +385,36 @@ resource "aws_acmpca_policy" "subordinate" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowACMIssuance"
+        Sid    = "AllowCrossAccountRead"
         Effect = "Allow"
         Principal = {
-          Service = "acm.amazonaws.com"
+          AWS = [
+            "111111111111",
+            "222222222222",
+          ]
         }
         Action = [
-          "acm-pca:IssueCertificate",
+          "acm-pca:DescribeCertificateAuthority",
           "acm-pca:GetCertificate",
+          "acm-pca:GetCertificateAuthorityCertificate",
+          "acm-pca:ListPermissions",
+          "acm-pca:ListTags",
         ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = [
-              data.aws_caller_identity.current.account_id,
-              "111111111111",
-              "222222222222",
-            ]
-          }
-        }
+        Resource = aws_acmpca_certificate_authority.subordinate.arn
       },
       {
-        Sid    = "AllowACMRenewal"
+        Sid    = "AllowCrossAccountIssuance"
         Effect = "Allow"
         Principal = {
-          Service = "acm.amazonaws.com"
+          AWS = [
+            "111111111111",
+            "222222222222",
+          ]
         }
         Action   = "acm-pca:IssueCertificate"
-        Resource = "*"
+        Resource = aws_acmpca_certificate_authority.subordinate.arn
         Condition = {
-          StringLike = {
+          StringEquals = {
             "acm-pca:TemplateArn" = "arn:aws:acm-pca:::template/EndEntityCertificate/V1"
           }
         }
@@ -471,7 +484,7 @@ output "crl_bucket" {
 
 3. **Enable CRL distribution.** Certificate Revocation Lists are essential for revoking compromised certificates. Always configure an S3 bucket for CRL publishing.
 
-4. **Use SHORT_LIVED_CERTIFICATE mode for dev/test.** Short-lived certificates (7 days or less) do not need CRLs and reduce the risk of certificate misuse.
+4. **Use SHORT_LIVED_CERTIFICATE mode only for compatible dev/test workflows.** Short-lived certificates (7 days or less) do not need CRLs and reduce the risk of certificate misuse, but ACM cannot issue certificates from short-lived CAs.
 
 5. **Share CAs through RAM.** Rather than creating a CA in every account, share a centralized CA hierarchy using Resource Access Manager.
 
