@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Window, Group Policy, Active Directory
+Tags: Ansible, Windows, Group Policy, Active Directory
 
 Description: Learn how to manage Windows Group Policy settings with Ansible using registry-based policy management and GPO automation techniques.
 
@@ -25,11 +25,11 @@ graph TD
     style E fill:#4CAF50,color:#fff
 ```
 
-Domain-level GPOs override local policies. So if you set a local policy with Ansible but a domain GPO overrides it, the domain GPO wins. Keep this in mind when planning your automation strategy.
+Domain-linked GPOs are processed after local policies, so they can override conflicting local policy settings. If you set a local policy with Ansible but a domain GPO sets the same policy differently, the domain GPO usually wins. Keep this in mind when planning your automation strategy.
 
 ## Managing Local Policy via Registry
 
-Many Group Policy settings are just registry values under the hood. Ansible's `win_regedit` module can set these directly, which is the most straightforward approach for local policy management.
+Many Group Policy settings are just registry values under the hood. Ansible's `win_regedit` module can set these directly, which is the most straightforward approach for local policy management. For `HKCU` settings, remember that Ansible writes to the currently loaded user profile for the connection user; use domain GPOs or load specific user hives if you need to apply user policies broadly.
 
 ```yaml
 # playbook-registry-policy.yml
@@ -50,6 +50,14 @@ Many Group Policy settings are just registry values under the hood. Ansible's `w
       ansible.windows.win_regedit:
         path: HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop
         name: ScreenSaverIsSecure
+        data: "1"
+        type: string
+        state: present
+
+    - name: Enable screen saver
+      ansible.windows.win_regedit:
+        path: HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop
+        name: ScreenSaveActive
         data: "1"
         type: string
         state: present
@@ -123,7 +131,7 @@ The `section` and `key` values correspond to entries in the `secedit` security d
 ```yaml
 # Export current security policy to see available settings
     - name: Export current security policy for reference
-      ansible.windows.win_shell: secedit /export /cfg C:\Temp\secpol.cfg
+      ansible.windows.win_shell: secedit /export /cfg C:\Windows\Temp\secpol.cfg
 ```
 
 ## Managing Domain GPOs with PowerShell
@@ -153,14 +161,14 @@ For domain-level GPO management, you need the Group Policy PowerShell module (pa
         }
       register: gpo_result
 
-    - name: Configure GPO - disable guest account
+    - name: Configure GPO - enable UAC Admin Approval Mode
       ansible.windows.win_shell: |
         Set-GPRegistryValue `
           -Name "Workstation-Hardening" `
           -Key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
-          -ValueName "EnableGuestAccount" `
+          -ValueName "EnableLUA" `
           -Type DWord `
-          -Value 0
+          -Value 1
 
     - name: Configure GPO - set interactive logon message title
       ansible.windows.win_shell: |
@@ -182,12 +190,12 @@ For domain-level GPO management, you need the Group Policy PowerShell module (pa
 
     - name: Link GPO to workstation OU
       ansible.windows.win_shell: |
-        $link = Get-GPLink -Name "Workstation-Hardening" `
-          -Target "OU=Workstations,DC=corp,DC=local" `
-          -ErrorAction SilentlyContinue
+        $target = "OU=Workstations,DC=corp,DC=local"
+        $link = (Get-GPInheritance -Target $target).GpoLinks |
+          Where-Object { $_.DisplayName -eq "Workstation-Hardening" }
         if (-not $link) {
             New-GPLink -Name "Workstation-Hardening" `
-              -Target "OU=Workstations,DC=corp,DC=local" `
+              -Target $target `
               -LinkEnabled Yes
             Write-Output "LINKED"
         } else {
@@ -225,7 +233,7 @@ Many Group Policy settings map to specific registry keys. Here is a structured a
         data: 0
         type: dword
 
-      # Enable audit of process creation
+      # Include command line in process creation audit events
       - path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
         name: ProcessCreationIncludeCmdLine_Enabled
         data: 1
@@ -283,12 +291,12 @@ Before making changes, it is a good practice to capture the current state for co
   tasks:
     - name: Generate Group Policy result report
       ansible.windows.win_shell: |
-        gpresult /H C:\Temp\gpresult.html /F
+        gpresult /H C:\Windows\Temp\gpresult.html /F
       register: gpresult
 
     - name: Fetch the report to control node
       ansible.builtin.fetch:
-        src: C:\Temp\gpresult.html
+        src: C:\Windows\Temp\gpresult.html
         dest: "./reports/{{ inventory_hostname }}-gpresult.html"
         flat: yes
 
