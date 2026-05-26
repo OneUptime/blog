@@ -8,7 +8,7 @@ Description: Learn how to use the quote filter in Ansible to safely escape shell
 
 ---
 
-If you run shell commands in Ansible using the `shell` or `command` module with variable data, you are exposed to command injection attacks and breakage from special characters unless you properly escape the inputs. The `quote` filter wraps a string with appropriate shell quoting so it is treated as a single, safe argument. This is one of the most important security-related filters in Ansible, yet it is often overlooked.
+If you run shell commands in Ansible using the `shell` module with variable data, you are exposed to command injection attacks and breakage from special characters unless you properly escape the inputs. The `command` module is safer because it does not run through a shell, but its free-form string syntax can still split variable values with spaces unless you quote them or use `argv`. The `quote` filter wraps a string with appropriate shell quoting so it is treated as a single, safe argument. This is one of the most important security-related filters in Ansible, yet it is often overlooked.
 
 ## The Problem Without quote
 
@@ -21,10 +21,10 @@ Consider this seemingly innocent task:
   ansible.builtin.shell: "cp /etc/myapp/config.yml /backup/{{ backup_name }}.yml"
 ```
 
-If `backup_name` contains something like `foo; rm -rf /`, the resulting shell command becomes:
+If `backup_name` contains something like `foo.yml; rm -rf / #`, the resulting shell command becomes:
 
 ```bash
-cp /etc/myapp/config.yml /backup/foo; rm -rf /.yml
+cp /etc/myapp/config.yml /backup/foo.yml; rm -rf / #.yml
 ```
 
 That semicolon makes the shell execute `rm -rf /` as a separate command. This is a classic command injection vulnerability.
@@ -39,10 +39,10 @@ The `quote` filter escapes the variable so it is treated as a literal string:
   ansible.builtin.shell: "cp /etc/myapp/config.yml /backup/{{ backup_name | quote }}.yml"
 ```
 
-Now even if `backup_name` contains `foo; rm -rf /`, the resulting command is:
+Now even if `backup_name` contains `foo.yml; rm -rf / #`, the resulting command is:
 
 ```bash
-cp /etc/myapp/config.yml /backup/'foo; rm -rf /'.yml
+cp /etc/myapp/config.yml /backup/'foo.yml; rm -rf / #'.yml
 ```
 
 The shell treats the entire value as a literal string, and no injection occurs.
@@ -56,7 +56,7 @@ The shell treats the entire value as a literal string, and no injection occurs.
 
 {# Quote a string with special characters #}
 {{ "it's a test" | quote }}
-{# Output: "it's a test" #}
+{# Output: 'it'"'"'s a test' #}
 
 {# Quote a string with shell metacharacters #}
 {{ "file; rm -rf /" | quote }}
@@ -65,7 +65,7 @@ The shell treats the entire value as a literal string, and no injection occurs.
 
 ## When to Use quote
 
-Use the `quote` filter whenever you pass variable data into `shell` or `command` module commands. Here are the common scenarios.
+Use the `quote` filter whenever you pass variable data into `shell` module commands, shell scripts, or free-form `command` module commands. Here are the common scenarios.
 
 ### File Operations with Variable Names
 
@@ -167,22 +167,22 @@ echo "Starting backup at $(date)"
 mkdir -p "${BACKUP_BASE}/${DATE}"
 
 {% for target in backup_config.targets %}
-# Backup: {{ target.name }}
-echo "Backing up {{ target.name }}..."
+# Backup: {{ target.name | regex_replace('[^a-zA-Z0-9 _.-]', '_') }}
+printf 'Backing up %s...\n' {{ target.name | quote }}
 if [ -d {{ target.source | quote }} ]; then
     tar czf "${BACKUP_BASE}/${DATE}/{{ target.name | regex_replace('[^a-zA-Z0-9]', '_') | lower }}.tar.gz" \
         -C {{ (target.source | dirname) | quote }} \
         {{ (target.source | basename) | quote }}
     echo "  Done."
 else
-    echo "  WARNING: Source directory {{ target.source | quote }} does not exist!"
+    printf '  WARNING: Source directory %s does not exist!\n' {{ target.source | quote }}
 fi
 
 {% endfor %}
 
 # Clean up old backups
-echo "Cleaning up backups older than {{ backup_config.retention_days }} days..."
-find "${BACKUP_BASE}" -type d -mtime +{{ backup_config.retention_days }} -exec rm -rf {} + 2>/dev/null
+echo "Cleaning up backups older than {{ backup_config.retention_days | int }} days..."
+find "${BACKUP_BASE}" -type d -mtime +{{ backup_config.retention_days | int }} -exec rm -rf {} + 2>/dev/null
 
 echo "Backup completed at $(date)"
 ```
@@ -215,16 +215,24 @@ The `command` module does not use a shell, so it does not interpret shell metach
 ```yaml
 # command_vs_shell.yml - Understanding when quote is needed
 
-# The command module does NOT need quote - it doesn't use a shell
-- name: Safe without quote (command module)
-  ansible.builtin.command: "cp {{ src_file }} {{ dest_file }}"
+# The command module does not use a shell, but free-form commands still split on spaces
+- name: Safer with argv (command module)
+  ansible.builtin.command:
+    argv:
+      - cp
+      - "{{ src_file }}"
+      - "{{ dest_file }}"
+
+# If you use free-form command syntax, quote variable arguments
+- name: Safe with quote (command module)
+  ansible.builtin.command: "cp {{ src_file | quote }} {{ dest_file | quote }}"
 
 # The shell module DOES need quote - it uses a shell
 - name: Needs quote (shell module)
   ansible.builtin.shell: "cp {{ src_file | quote }} {{ dest_file | quote }}"
 ```
 
-However, even with the `command` module, `quote` does not hurt and can serve as documentation that you have considered the security implications.
+However, when you can use the `argv` form of the `command` module, you should prefer it because each list item is already passed as a separate argument and does not need shell-style quoting.
 
 ## Quoting in Template-Generated Scripts
 
@@ -276,7 +284,7 @@ This is especially important when the values contain characters like `$`, backti
 
 ## What quote Actually Does
 
-Under the hood, `quote` uses Python's `shlex.quote()` function. It wraps the string in single quotes and escapes any existing single quotes within the string:
+Under the hood, `quote` uses Python's `shlex.quote()` function. It returns a shell-escaped string, leaves simple strings unquoted, wraps strings in single quotes when needed, and represents existing single quotes with the standard POSIX shell sequence:
 
 ```jinja2
 {# How quote handles various inputs #}
@@ -287,7 +295,7 @@ Under the hood, `quote` uses Python's `shlex.quote()` function. It wraps the str
 {# Output: 'has spaces' #}
 
 {{ "has'quote" | quote }}
-{# Output: "has'quote" #}
+{# Output: 'has'"'"'quote' #}
 
 {{ "has$dollar" | quote }}
 {# Output: 'has$dollar' #}
@@ -322,14 +330,21 @@ Under the hood, `quote` uses Python's `shlex.quote()` function. It wraps the str
   ansible.builtin.shell: "/usr/bin/myapp --config {{ config_path | quote }}"
 ```
 
-**Using quote when not using shell:**
+**Forgetting that command module free-form strings still split arguments:**
 
 ```yaml
-# Unnecessary but harmless with command module
-- name: Redundant quoting
+# Use argv when you do not need a shell
+- name: Preferred command form
+  ansible.builtin.command:
+    argv:
+      - ls
+      - "{{ path }}"
+
+# Or quote variable arguments in free-form command syntax
+- name: Free-form command with quoting
   ansible.builtin.command: "ls {{ path | quote }}"
 ```
 
 ## Wrapping Up
 
-The `quote` filter is your primary defense against shell injection in Ansible. Use it every time you pass variable data to the `shell` module, in shell scripts generated by templates, and when building command lines with user-provided values. It costs nothing in performance and can save you from catastrophic security vulnerabilities. Make it a habit to quote every variable in every shell command, and your automation will be both safer and more robust.
+The `quote` filter is your primary defense against shell injection in Ansible. Use it every time you pass variable data to the `shell` module, in shell scripts generated by templates, and when building free-form command lines with user-provided values. It costs nothing in performance and can save you from catastrophic security vulnerabilities. Make it a habit to quote every variable in every shell command, and your automation will be both safer and more robust.
