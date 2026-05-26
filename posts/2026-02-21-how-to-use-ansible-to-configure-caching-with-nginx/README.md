@@ -98,7 +98,7 @@ nginx_cache_bypass_paths:
   - "/account"
   - "/api/auth"
 
-# Cache purge support
+# Cache purge support (requires NGINX Plus)
 nginx_cache_purge_enabled: false
 nginx_cache_purge_allowed_ips:
   - "127.0.0.1"
@@ -126,6 +126,21 @@ proxy_cache_key "$scheme$request_method$host$request_uri";
 
 # Add header to show cache status in responses (useful for debugging)
 add_header X-Cache-Status $upstream_cache_status always;
+
+{% if nginx_cache_purge_enabled %}
+# Allow cache purge requests only from trusted clients (requires NGINX Plus)
+geo $purge_allowed {
+    default 0;
+{% for ip in nginx_cache_purge_allowed_ips %}
+    {{ ip }} 1;
+{% endfor %}
+}
+
+map $request_method $purge_method {
+    PURGE $purge_allowed;
+    default 0;
+}
+{% endif %}
 ```
 
 ## Site Configuration Template
@@ -151,11 +166,14 @@ server {
         # Also cache at the proxy level
         proxy_cache {{ nginx_cache_zone_name }};
         proxy_cache_valid 200 {{ nginx_static_cache_expires }};
+{% if nginx_cache_purge_enabled %}
+        proxy_cache_purge $purge_method;
+{% endif %}
     }
 
 {% for bypass_path in nginx_cache_bypass_paths %}
     # No caching for {{ bypass_path }}
-    location {{ bypass_path }} {
+    location ^~ {{ bypass_path }} {
         proxy_pass http://{{ nginx_cache_backend }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -168,17 +186,6 @@ server {
     }
 
 {% endfor %}
-{% if nginx_cache_purge_enabled %}
-    # Cache purge endpoint
-    location ~ /purge(/.*) {
-{% for ip in nginx_cache_purge_allowed_ips %}
-        allow {{ ip }};
-{% endfor %}
-        deny all;
-        proxy_cache_purge {{ nginx_cache_zone_name }} "$scheme$request_method$host$1";
-    }
-
-{% endif %}
     # Default location with proxy caching
     location / {
         proxy_pass http://{{ nginx_cache_backend }};
@@ -191,6 +198,9 @@ server {
         proxy_cache {{ nginx_cache_zone_name }};
         proxy_cache_valid 200 {{ nginx_cache_valid_200 }};
         proxy_cache_valid 404 {{ nginx_cache_valid_404 }};
+{% if nginx_cache_purge_enabled %}
+        proxy_cache_purge $purge_method;
+{% endif %}
 
         # Serve stale content when backend is unavailable
         proxy_cache_use_stale {{ nginx_cache_use_stale | join(' ') }};
@@ -199,7 +209,7 @@ server {
         proxy_cache_lock on;
         proxy_cache_lock_timeout 5s;
 
-        # Skip cache for requests with cookies or auth headers
+        # Skip cache for requests with auth headers or the configured session cookie
         proxy_cache_bypass $http_authorization $cookie_session;
         proxy_no_cache $http_authorization $cookie_session;
     }
@@ -284,13 +294,14 @@ server {
 ```yaml
 # roles/nginx_cache/handlers/main.yml
 ---
-- name: Validate and reload nginx
+- name: Validate nginx configuration
+  listen: Validate and reload nginx
   ansible.builtin.command: nginx -t
   become: true
   changed_when: false
-  notify: Reload nginx
 
 - name: Reload nginx
+  listen: Validate and reload nginx
   ansible.builtin.systemd:
     name: nginx
     state: reloaded
@@ -309,7 +320,8 @@ server {
     nginx_cache_server_name: "myapp.com"
     nginx_cache_backend: "10.0.1.5:3000"
     nginx_cache_valid_200: "30m"
-    nginx_cache_purge_enabled: true
+    # Enable only when using NGINX Plus; the nginx package installed by apt does not include proxy_cache_purge.
+    nginx_cache_purge_enabled: false
   roles:
     - nginx_cache
 ```
@@ -322,8 +334,8 @@ ansible-playbook -i inventory/hosts.yml playbook.yml
 
 # Verify cache is working by checking the X-Cache-Status header
 curl -I http://myapp.com/
-# First request: X-Cache-Status: MISS
-# Second request: X-Cache-Status: HIT
+# First cacheable request: X-Cache-Status: MISS
+# Second cacheable request: X-Cache-Status: HIT
 
 # Check cache directory is populated
 ls -la /var/cache/nginx/
@@ -331,15 +343,15 @@ ls -la /var/cache/nginx/
 
 ## Monitoring Cache Performance
 
-You can check cache hit rates by analyzing the `X-Cache-Status` header in access logs:
+You can check cache hit rates by adding `$upstream_cache_status` to your Nginx access log format and then analyzing the logged cache status:
 
 ```bash
 # Count cache hits vs misses from the last 1000 requests
 awk '{print $NF}' /var/log/nginx/access.log | tail -1000 | sort | uniq -c | sort -rn
 ```
 
-The `X-Cache-Status` header returns these values: `HIT` (served from cache), `MISS` (fetched from backend and cached), `EXPIRED` (cache entry expired, refreshed from backend), `STALE` (served stale content because backend was unavailable), and `BYPASS` (caching was skipped).
+The `X-Cache-Status` header can return values such as `HIT` (served from cache), `MISS` (fetched from backend and cached), `EXPIRED` (cache entry expired, refreshed from backend), `STALE` (served stale content because backend was unavailable), and `BYPASS` (caching was skipped).
 
 ## Summary
 
-Automating Nginx caching with Ansible ensures consistent cache configuration across all your web servers. The combination of proxy caching for dynamic content and browser caching for static assets can dramatically reduce backend load and improve response times. The bypass paths and cookie-based cache skipping ensure that user-specific and admin content is never served from cache. With the `X-Cache-Status` header in place, you always have visibility into whether caching is working as expected.
+Automating Nginx caching with Ansible ensures consistent cache configuration across all your web servers. The combination of proxy caching for dynamic content and browser caching for static assets can dramatically reduce backend load and improve response times. The bypass paths and configured session-cookie cache skipping ensure that user-specific and admin content is not served from cache. With the `X-Cache-Status` header in place, you always have visibility into whether caching is working as expected.
