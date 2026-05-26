@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Molecule, Linting, Code Quality, DevOps
 
-Description: Configure and use linting in Molecule to catch Ansible syntax errors, style issues, and best practice violations before running tests.
+Description: Configure and use linting around Molecule to catch Ansible syntax errors, style issues, and best practice violations before running tests.
 
 ---
 
-Catching errors before your playbook even runs saves a lot of time. Linting in Molecule checks your Ansible code for syntax errors, style violations, deprecated features, and security issues. It runs before any instances are created, so you get fast feedback on problems you can fix immediately. This post covers how to configure linting in Molecule, what the linters check for, and how to customize the rules for your project.
+Catching errors before your playbook even runs saves a lot of time. Linting Ansible code with the same workflow you use for Molecule checks your code for syntax errors, style violations, deprecated features, and security issues. Run these checks before Molecule creates any instances, so you get fast feedback on problems you can fix immediately. This post covers how to configure linting around Molecule, what the linters check for, and how to customize the rules for your project.
 
-## How Linting Works in Molecule
+## How Linting Works with Molecule
 
-Molecule's lint configuration runs external linting tools against your role files. The two main linters used with Ansible are:
+Current Molecule versions do not run external linters from `molecule.yml`. Starting with Molecule 5, the built-in `molecule lint` command was removed. Run linting tools directly, through a wrapper script, pre-commit, or CI before you run `molecule test`. The two main linters used with Ansible are:
 
 - **ansible-lint** - Checks for Ansible-specific best practices, deprecated syntax, and common mistakes
 - **yamllint** - Checks YAML formatting, indentation, line length, and structure
@@ -25,31 +25,38 @@ Both need to be installed separately.
 pip install ansible-lint yamllint
 ```
 
-## Configuring Lint in molecule.yml
+## Configuring Lint Commands
 
-In recent versions of Molecule (6+), linting is configured as a shell command in the `lint` key of `molecule.yml`.
+In current Molecule versions (5+), linting is not configured in `molecule.yml`. Put the commands in a script, Makefile, pre-commit hook, or CI job.
+
+```bash
+# lint commands
+set -e
+yamllint .
+ansible-lint .
+```
+
+The `set -e` ensures the lint step fails if any linter reports an error. Each line is a shell command that runs sequentially.
+
+Molecule 3 and 4 supported a top-level `lint` shell command in `molecule.yml`.
 
 ```yaml
-# molecule/default/molecule.yml - lint configuration
+# Legacy Molecule 3/4 lint configuration
 lint: |
   set -e
   yamllint .
   ansible-lint .
 ```
 
-The `set -e` ensures the lint step fails if any linter reports an error. Each line is a shell command that runs sequentially.
-
-For older Molecule versions, lint was configured differently.
+Very old Molecule versions used linter-specific configuration.
 
 ```yaml
-# Old-style lint config (Molecule < 4)
+# Very old-style lint config
 lint:
   name: yamllint
   options:
     config-file: .yamllint
 ```
-
-The newer shell command approach is more flexible because you can run any combination of tools.
 
 ## Configuring yamllint
 
@@ -74,7 +81,7 @@ rules:
     spaces: 2
     indent-sequences: true
 
-  # Allow comments without a space after the #
+  # Require comments to start with a space after the #
   comments:
     require-starting-space: true
     min-spaces-from-content: 1
@@ -105,8 +112,8 @@ yamllint .
 # Lint specific files
 yamllint tasks/main.yml defaults/main.yml
 
-# Show only errors (not warnings)
-yamllint -s .
+# Show only errors, not warnings
+yamllint --no-warnings .
 ```
 
 ## Configuring ansible-lint
@@ -135,10 +142,10 @@ enable_list:
   - no-log-password      # warn about passwords in logs
   - no-same-owner        # warn about file ownership
 
-# Treat warnings as errors in CI
+# Do not treat warnings as errors by default
 strict: false
 
-# Use FQCN for all modules
+# Use the built-in default rules
 use_default_rules: true
 ```
 
@@ -154,11 +161,11 @@ ansible-lint tasks/main.yml
 # Show all rules
 ansible-lint -L
 
-# Show rules with descriptions
-ansible-lint -R
+# Show all tags and the rules they cover
+ansible-lint -T
 
-# Only check specific rules
-ansible-lint -R -r no-changed-when .
+# Only check rules with a specific rule id or tag
+ansible-lint -t no-changed-when .
 ```
 
 ## Common ansible-lint Rules
@@ -244,19 +251,23 @@ Here are the rules you will encounter most often, with examples of what triggers
     msg: "{{ myvar }}"
 ```
 
-## Running Lint in Molecule
+## Running Lint Before Molecule
 
-With both linters configured, run them through Molecule.
+With both linters configured, run them before Molecule. Then run Molecule's syntax check or the full test sequence.
 
 ```bash
-# Run only the lint step
-molecule lint
+# Run lint checks
+yamllint .
+ansible-lint .
+
+# Check Ansible syntax through Molecule
+molecule syntax
 
 # Or as part of the full test sequence
 molecule test
 ```
 
-The lint step runs before instances are created, so it is fast. If lint fails, Molecule stops and does not proceed to create instances.
+The lint commands run before instances are created, so they are fast. Molecule's `syntax` action also runs before `create` in the default `molecule test` sequence. If lint or syntax checks fail, fix those issues before running converge.
 
 ## Inline Rule Skipping
 
@@ -304,12 +315,11 @@ fi
 echo "=== All checks passed ==="
 ```
 
-Reference it in molecule.yml.
+Reference it from your CI job, Makefile, or another wrapper command.
 
-```yaml
-# molecule/default/molecule.yml - use custom lint script
-lint: |
-  bash lint.sh
+```bash
+# Run custom lint script
+bash lint.sh
 ```
 
 ## Pre-commit Integration
@@ -320,13 +330,13 @@ For catching issues even earlier, integrate linting with Git pre-commit hooks.
 # .pre-commit-config.yaml - lint on every commit
 repos:
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.33.0
+    rev: v1.38.0
     hooks:
       - id: yamllint
         args: [-c, .yamllint]
 
   - repo: https://github.com/ansible/ansible-lint
-    rev: v6.22.0
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
         additional_dependencies:
