@@ -35,6 +35,7 @@ roles/node_exporter/
   templates/
     node_exporter.service.j2
     node_exporter.env.j2
+    web-config.yml.j2
   meta/main.yml
 ```
 
@@ -44,7 +45,7 @@ roles/node_exporter/
 # roles/node_exporter/defaults/main.yml
 
 # Node Exporter version and download settings
-node_exporter_version: "1.7.0"
+node_exporter_version: "1.11.1"
 node_exporter_arch: "amd64"
 node_exporter_download_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
 node_exporter_install_dir: /usr/local/bin
@@ -185,6 +186,25 @@ node_exporter_firewall_source: "0.0.0.0/0"
     mode: '0755'
   when: "'textfile' not in node_exporter_disabled_collectors"
 
+- name: Create node_exporter config directory
+  ansible.builtin.file:
+    path: /etc/node_exporter
+    state: directory
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: '0750'
+  when: node_exporter_tls_enabled or node_exporter_basic_auth_enabled
+
+- name: Deploy node_exporter web config
+  ansible.builtin.template:
+    src: web-config.yml.j2
+    dest: /etc/node_exporter/web-config.yml
+    owner: root
+    group: "{{ node_exporter_group }}"
+    mode: '0640'
+  when: node_exporter_tls_enabled or node_exporter_basic_auth_enabled
+  notify: restart node_exporter
+
 - name: Ensure node_exporter is started and enabled
   ansible.builtin.systemd:
     name: node_exporter
@@ -238,10 +258,25 @@ NODE_EXPORTER_OPTS="--web.listen-address={{ node_exporter_listen_address }} \
 {% if 'textfile' not in node_exporter_disabled_collectors %}
 --collector.textfile.directory=/var/lib/node_exporter/textfile_collector \
 {% endif %}
-{% if node_exporter_tls_enabled %}
+{% if node_exporter_tls_enabled or node_exporter_basic_auth_enabled %}
 --web.config.file=/etc/node_exporter/web-config.yml \
 {% endif %}
 {{ node_exporter_extra_args }}"
+```
+
+```yaml
+# roles/node_exporter/templates/web-config.yml.j2
+{% if node_exporter_tls_enabled %}
+tls_server_config:
+  cert_file: {{ node_exporter_tls_cert }}
+  key_file: {{ node_exporter_tls_key }}
+{% endif %}
+{% if node_exporter_basic_auth_enabled %}
+basic_auth_users:
+{% for user, password_hash in node_exporter_basic_auth_users.items() %}
+  {{ user }}: {{ password_hash }}
+{% endfor %}
+{% endif %}
 ```
 
 ## Firewall Tasks
@@ -264,7 +299,19 @@ NODE_EXPORTER_OPTS="--web.listen-address={{ node_exporter_listen_address }} \
     permanent: yes
     immediate: yes
     state: enabled
-  when: ansible_facts['os_family'] == 'RedHat'
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - node_exporter_firewall_source == "0.0.0.0/0"
+
+- name: Allow node_exporter port through firewalld from source CIDR
+  ansible.posix.firewalld:
+    rich_rule: 'rule family="ipv4" source address="{{ node_exporter_firewall_source }}" port port="{{ node_exporter_listen_address.split(":")[1] }}" protocol="tcp" accept'
+    permanent: yes
+    immediate: yes
+    state: enabled
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - node_exporter_firewall_source != "0.0.0.0/0"
 ```
 
 ## Handlers
@@ -308,7 +355,7 @@ Here is a playbook that deploys Node Exporter to all servers:
   roles:
     - role: node_exporter
       vars:
-        node_exporter_version: "1.7.0"
+        node_exporter_version: "1.11.1"
         node_exporter_enabled_collectors:
           - systemd
           - processes
