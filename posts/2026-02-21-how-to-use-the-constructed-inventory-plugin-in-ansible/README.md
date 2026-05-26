@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible constructed inventory plugin to create
 
 ---
 
-The constructed inventory plugin is one of the most underused tools in Ansible. It does not discover hosts or talk to cloud APIs. Instead, it takes hosts from your existing inventory sources and creates new groups, composes new variables, and builds classifications based on conditions. Think of it as a post-processing layer that sits on top of your other inventories.
+The constructed inventory plugin is one of the most underused tools in Ansible. It does not discover hosts or talk to cloud APIs. Instead, it takes hosts from existing inventory sources that were loaded before it and creates new groups, composes new variables, and builds classifications based on conditions. Think of it as a post-processing layer that sits on top of your other inventories when you load it last.
 
 ## What the Constructed Plugin Does
 
-The constructed plugin runs after all other inventory sources are loaded. It has access to every host and all their variables, and it can:
+The constructed plugin runs when Ansible reaches its inventory source. If you load it after your other inventory sources, it has access to the hosts and variables that were already available from those sources or from the fact cache, and it can:
 
 - Create new groups based on Jinja2 expressions
 - Add hosts to groups conditionally
@@ -31,7 +31,7 @@ graph LR
 
 ## Basic Setup
 
-Create a file ending in `.yml` with `plugin: ansible.builtin.constructed`:
+Create a YAML inventory plugin configuration file with `plugin: ansible.builtin.constructed`:
 
 ```yaml
 # inventory/constructed.yml
@@ -52,7 +52,7 @@ inventory/
   99-constructed.yml    # Runs last (highest alphabetical number)
 ```
 
-The numeric prefix `99-` ensures the constructed plugin runs after all other sources, so it has access to all hosts and variables.
+The numeric prefix `99-` ensures the constructed plugin runs after all other sources in that directory, so it has access to the hosts and variables they loaded.
 
 ## Creating Groups from Variables
 
@@ -277,7 +277,13 @@ compose:
     else 'azure' if 'azure' in (group_names | join(','))
     else 'onprem'
 
-  backup_enabled: "'databases' in group_names or 'webservers' in group_names"
+  backup_enabled: >-
+    'onprem_db' in group_names or
+    'aws_role_db' in group_names or
+    'azure_role_db' in group_names or
+    'onprem_web' in group_names or
+    'aws_role_web' in group_names or
+    'azure_role_web' in group_names
 ```
 
 ## Debugging Constructed Groups
@@ -300,7 +306,7 @@ ansible web-dc-01.local -i inventory/ -m debug -a "var=hostvars[inventory_hostna
 
 ## Ordering Matters
 
-The constructed plugin needs all other inventory data loaded first. If your files are processed alphabetically:
+The constructed plugin needs any inventory data it uses to be loaded first. If your files are processed alphabetically:
 
 ```text
 inventory/
@@ -331,4 +337,4 @@ For production, stick with `strict: false` and use `default()` filters in your e
 
 ## Wrapping Up
 
-The constructed plugin is the glue that holds multi-source inventories together. It runs after everything else, has access to all hosts and variables, and lets you build unified groups and computed variables that work across your entire infrastructure. If you are combining static and dynamic inventories, the constructed plugin should be the last file in your inventory directory.
+The constructed plugin is the glue that holds multi-source inventories together. When you load it after your other inventory sources, it has access to the previously loaded hosts and variables, and lets you build unified groups and computed variables that work across your entire infrastructure. If you are combining static and dynamic inventories, the constructed plugin should be the last file in your inventory directory.
