@@ -16,7 +16,7 @@ AWX produces several categories of log data.
 
 **Job Output** - The stdout/stderr from every playbook run. This is what you see in the job detail page. Stored in the database and can be forwarded externally.
 
-**Activity Stream** - An audit log of every action taken in AWX: who created a template, who launched a job, who changed a credential, who logged in. This is your compliance trail.
+**Activity Stream** - An audit log of object changes in AWX: who created a template, who launched a job, who changed a credential, and who changed permissions. This is your compliance trail.
 
 **System Logs** - Application-level logs from the AWX web server, task dispatcher, and other internal services. These are the logs you grep when AWX itself is misbehaving.
 
@@ -24,7 +24,7 @@ AWX produces several categories of log data.
 
 ## The Activity Stream
 
-The activity stream is AWX's built-in audit log. Every create, update, and delete operation is recorded with the actor, timestamp, and details of what changed.
+The activity stream is AWX's built-in audit log. Create, update, delete, associate, and disassociate operations are recorded with the actor, timestamp, and details of what changed.
 
 ```bash
 # Query the activity stream for recent events
@@ -57,7 +57,7 @@ curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
 
 # Find changes to job templates in the last 24 hours
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
-  "https://awx.example.com/api/v2/activity_stream/?object1=job_template&timestamp__gt=$(date -u -v-1d +%Y-%m-%dT%H:%M:%SZ)"
+  "https://awx.example.com/api/v2/activity_stream/?job_template__isnull=false&timestamp__gt=$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) - timedelta(days=1)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')"
 ```
 
 ## Configuring External Logging
@@ -81,7 +81,7 @@ curl -s -X PATCH \
   https://awx.example.com/api/v2/settings/logging/ \
   -d '{
     "LOG_AGGREGATOR_HOST": "https://splunk.example.com:8088/services/collector/event",
-    "LOG_AGGREGATOR_PORT": 8088,
+    "LOG_AGGREGATOR_PORT": null,
     "LOG_AGGREGATOR_TYPE": "splunk",
     "LOG_AGGREGATOR_USERNAME": "",
     "LOG_AGGREGATOR_PASSWORD": "your-splunk-hec-token",
@@ -188,16 +188,16 @@ flowchart TD
     A --> D[job_events]
     A --> E[system_tracking]
     B --> B1[Application errors and warnings]
-    B --> B2[Authentication events]
+    B --> B2[Application log messages]
     B --> B3[API request logs]
     C --> C1[User actions: create/update/delete]
-    C --> C2[Login/logout events]
+    C --> C2[Object association/disassociation]
     C --> C3[Permission changes]
     D --> D1[Playbook task output]
     D --> D2[Job start/finish events]
     D --> D3[Handler notifications]
     E --> E1[Fact gathering data]
-    E --> E2[Host scan results]
+    E --> E2[Cached host facts]
 ```
 
 ## Kubernetes-Level Logging
@@ -259,7 +259,7 @@ For compliance requirements, you need to demonstrate who did what and when. Here
 
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 AWX_URL = "https://awx.example.com"
 TOKEN = "your-token"
@@ -267,19 +267,19 @@ HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
 # Report period
 days_back = 30
-since = (datetime.utcnow() - timedelta(days=days_back)).strftime(
+since = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime(
     "%Y-%m-%dT%H:%M:%SZ"
 )
 
 print(f"AWX Audit Report - Last {days_back} days")
-print(f"Generated: {datetime.utcnow().isoformat()}")
+print(f"Generated: {datetime.now(timezone.utc).isoformat()}")
 print("=" * 70)
 
 # Fetch credential changes
 print("\n## Credential Changes")
 resp = requests.get(
     f"{AWX_URL}/api/v2/activity_stream/"
-    f"?object1=credential&timestamp__gt={since}&page_size=200",
+    f"?credential__isnull=false&timestamp__gt={since}&page_size=200",
     headers=HEADERS,
 )
 for event in resp.json()["results"]:
@@ -295,7 +295,7 @@ for event in resp.json()["results"]:
 print("\n## Permission Changes")
 resp = requests.get(
     f"{AWX_URL}/api/v2/activity_stream/"
-    f"?object1=role&timestamp__gt={since}&page_size=200",
+    f"?role__isnull=false&timestamp__gt={since}&page_size=200",
     headers=HEADERS,
 )
 for event in resp.json()["results"]:
@@ -307,11 +307,11 @@ for event in resp.json()["results"]:
     changes = json.dumps(event.get("changes", {}))[:80]
     print(f"  {ts}  {actor:15s}  {op:8s}  {changes}")
 
-# Fetch login events
-print("\n## Login Events")
+# Fetch user changes
+print("\n## User Changes")
 resp = requests.get(
     f"{AWX_URL}/api/v2/activity_stream/"
-    f"?object1=o_auth2_access_token&timestamp__gt={since}&page_size=200",
+    f"?user__isnull=false&timestamp__gt={since}&page_size=200",
     headers=HEADERS,
 )
 for event in resp.json()["results"]:
@@ -325,21 +325,15 @@ for event in resp.json()["results"]:
 
 ## Log Retention
 
-AWX stores job output in the database, which can grow large. Configure job output retention to keep the database manageable.
+AWX stores job output in the database, which can grow large. Use the cleanup management commands or Management Jobs schedules to keep the database manageable.
 
 ```bash
-# Set job output retention to 120 days
-curl -s -X PATCH \
-  -H "Authorization: Bearer ${AWX_TOKEN}" \
-  -H "Content-Type: application/json" \
-  https://awx.example.com/api/v2/settings/jobs/ \
-  -d '{
-    "DEFAULT_JOB_TIMEOUT": 0,
-    "DEFAULT_INVENTORY_UPDATE_TIMEOUT": 0
-  }'
+# Preview cleanup of job details and job output older than 120 days
+kubectl exec deployment/awx-task -n awx -- \
+  awx-manage cleanup_jobs --days=120 --dry-run
 ```
 
-Also configure the AWX cleanup management command to prune old data.
+Then run the cleanup command without `--dry-run`, or schedule the equivalent Cleanup Job Details management job.
 
 ```bash
 # Run cleanup via the AWX management command
@@ -349,6 +343,10 @@ kubectl exec deployment/awx-task -n awx -- \
 # Remove the --dry-run flag to actually delete
 kubectl exec deployment/awx-task -n awx -- \
   awx-manage cleanup_jobs --days=90
+
+# Clean up activity stream records separately
+kubectl exec deployment/awx-task -n awx -- \
+  awx-manage cleanup_activitystream --days=90
 ```
 
 ## Wrapping Up
