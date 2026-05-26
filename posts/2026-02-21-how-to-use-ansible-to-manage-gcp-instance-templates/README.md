@@ -74,7 +74,7 @@ Let us start with a straightforward template for a web server.
             version: "v1"
             managed_by: "ansible"
           tags:
-            items:
+            tag_values:
               - "http-server"
               - "https-server"
         project: "{{ gcp_project }}"
@@ -123,6 +123,7 @@ Most production templates include a startup script that bootstraps the instance.
             # Additional data disk
             - auto_delete: true
               boot: false
+              device_name: "data-disk"
               initialize_params:
                 disk_size_gb: 100
                 disk_type: "pd-balanced"
@@ -142,22 +143,23 @@ Most production templates include a startup script that bootstraps the instance.
 
               # Install required packages
               apt-get update
-              apt-get install -y docker.io docker-compose nginx
+              apt-get install -y docker.io nginx
 
               # Format and mount the data disk if not already done
-              if ! blkid /dev/sdb > /dev/null 2>&1; then
-                mkfs.ext4 -F /dev/sdb
+              DATA_DISK="/dev/disk/by-id/google-data-disk"
+              if ! blkid "$DATA_DISK" > /dev/null 2>&1; then
+                mkfs.ext4 -F "$DATA_DISK"
               fi
               mkdir -p /mnt/data
-              mount -o defaults,nofail /dev/sdb /mnt/data
+              mount -o defaults,nofail "$DATA_DISK" /mnt/data
 
               # Start Docker
               systemctl enable docker
               systemctl start docker
 
               # Pull and run the application
-              docker pull myregistry/myapp:latest
-              docker run -d --restart=always -p 8080:8080 myregistry/myapp:latest
+              docker pull myregistry/myapp:v1.3.0
+              docker run -d --restart=always -p 8080:8080 myregistry/myapp:v1.3.0
 
               # Configure nginx as reverse proxy
               cat > /etc/nginx/sites-available/default <<'NGINX'
@@ -183,7 +185,7 @@ Most production templates include a startup script that bootstraps the instance.
             role: "app-server"
             version: "v1"
           tags:
-            items:
+            tag_values:
               - "http-server"
               - "app-server"
         project: "{{ gcp_project }}"
@@ -243,7 +245,7 @@ Since instance templates are immutable, you need a versioning strategy. Here is 
             version: "{{ app_version }}"
             managed_by: "ansible"
           tags:
-            items:
+            tag_values:
               - "{{ app_name }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
@@ -255,10 +257,10 @@ Since instance templates are immutable, you need a versioning strategy. Here is 
       ansible.builtin.debug:
         msg: |
           New template: {{ new_template.name }}
-          Use this in your MIG to perform a rolling update.
+          Set this as your MIG's template, then apply a proactive or manual rolling update for existing VMs.
 ```
 
-You can then update your MIG to use the new template:
+You can then update your MIG to use the new template for new instances. To replace existing VMs, use a proactive update policy or run a rolling update after changing the template:
 
 ```yaml
     - name: Update MIG to use the new template
@@ -281,7 +283,7 @@ You can then update your MIG to use the new template:
 graph LR
     A[Template v1] --> B[MIG uses v1]
     C[Template v2 created] --> D[MIG updated to v2]
-    D --> E[Rolling update replaces VMs]
+    D --> E[Proactive or manual rolling update replaces VMs]
     E --> F{Healthy?}
     F -->|Yes| G[Delete Template v1]
     F -->|No| H[Rollback MIG to v1]
@@ -334,9 +336,9 @@ If you use Packer or another tool to build custom images, you can reference thos
         state: present
 ```
 
-## Listing and Cleaning Up Old Templates
+## Cleaning Up Old Templates
 
-Over time, old templates accumulate. Here is how to list them and remove ones you no longer need.
+Over time, old templates accumulate. Here is how to remove ones you no longer need.
 
 ```yaml
 # cleanup-templates.yml - Remove old instance templates
