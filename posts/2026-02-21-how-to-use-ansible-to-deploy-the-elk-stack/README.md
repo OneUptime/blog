@@ -8,9 +8,9 @@ Description: Automate the deployment of the complete ELK stack using Ansible for
 
 ---
 
-The ELK stack (Elasticsearch, Logstash, Kibana) is the most widely used open-source log management platform. Elasticsearch stores and indexes logs, Logstash processes and transforms them, and Kibana provides visualization and search. Deploying all three components manually, especially in a clustered setup, is complex and error-prone. Ansible automates the entire process, from system tuning to service configuration.
+The ELK stack (Elasticsearch, Logstash, Kibana) is a widely used log management platform. Elasticsearch stores and indexes logs, Logstash processes and transforms them, and Kibana provides visualization and search. Deploying all three components manually, especially in a clustered setup, is complex and error-prone. Ansible automates the entire process, from system tuning to service configuration.
 
-This post walks through deploying a production-ready ELK stack using Ansible roles for each component.
+This post walks through deploying a repeatable ELK stack using Ansible roles for each component.
 
 ## Architecture
 
@@ -68,7 +68,7 @@ elk-stack/
 ```yaml
 # roles/elasticsearch/defaults/main.yml
 
-elasticsearch_version: "8.11"
+elasticsearch_version: "8.x"
 elasticsearch_cluster_name: "elk-cluster"
 elasticsearch_node_name: "{{ ansible_hostname }}"
 elasticsearch_network_host: "0.0.0.0"
@@ -86,7 +86,7 @@ elasticsearch_log_dir: "/var/log/elasticsearch"
 elasticsearch_discovery_seed_hosts: []
 elasticsearch_initial_master_nodes: []
 
-# Security (disable for simple setups)
+# Security (disabled in this simple example)
 elasticsearch_security_enabled: false
 
 # System tuning
@@ -103,22 +103,24 @@ elasticsearch_max_map_count: 262144
   ansible.builtin.apt:
     name:
       - apt-transport-https
-      - gnupg
+      - python3-debian
     state: present
     update_cache: yes
   become: true
 
-- name: Add Elasticsearch GPG key
-  ansible.builtin.apt_key:
-    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic
+    types:
+      - deb
+    uris: "https://artifacts.elastic.co/packages/{{ elasticsearch_version }}/apt"
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    enabled: true
     state: present
-  become: true
-
-- name: Add Elasticsearch repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://artifacts.elastic.co/packages/{{ elasticsearch_version }}/apt stable main"
-    state: present
-    filename: elastic
   become: true
 
 - name: Install Elasticsearch
@@ -185,6 +187,18 @@ elasticsearch_max_map_count: 262144
   delay: 5
 ```
 
+### Elasticsearch Handlers
+
+```yaml
+# roles/elasticsearch/handlers/main.yml
+---
+- name: Restart elasticsearch
+  ansible.builtin.systemd:
+    name: elasticsearch
+    state: restarted
+  become: true
+```
+
 ### Elasticsearch Configuration Template
 
 ```yaml
@@ -238,10 +252,10 @@ xpack.security.transport.ssl.enabled: false
 
 ```yaml
 # roles/logstash/defaults/main.yml
-logstash_version: "8.11"
+logstash_version: "8.x"
 logstash_heap_size: "1g"
 logstash_beats_port: 5044
-logstash_elasticsearch_host: "localhost:9200"
+logstash_elasticsearch_host: "http://localhost:9200"
 
 # Pipeline configuration
 logstash_pipeline_workers: 2
@@ -253,6 +267,30 @@ logstash_pipeline_batch_size: 125
 ```yaml
 # roles/logstash/tasks/main.yml
 ---
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - python3-debian
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic
+    types:
+      - deb
+    uris: "https://artifacts.elastic.co/packages/{{ logstash_version }}/apt"
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    enabled: true
+    state: present
+  become: true
+
 - name: Install Logstash
   ansible.builtin.apt:
     name: logstash
@@ -267,6 +305,22 @@ logstash_pipeline_batch_size: 125
     owner: root
     group: logstash
     mode: "0640"
+  become: true
+  notify: Restart logstash
+
+- name: Set Logstash minimum heap size
+  ansible.builtin.lineinfile:
+    path: /etc/logstash/jvm.options
+    regexp: "^-Xms"
+    line: "-Xms{{ logstash_heap_size }}"
+  become: true
+  notify: Restart logstash
+
+- name: Set Logstash maximum heap size
+  ansible.builtin.lineinfile:
+    path: /etc/logstash/jvm.options
+    regexp: "^-Xmx"
+    line: "-Xmx{{ logstash_heap_size }}"
   become: true
   notify: Restart logstash
 
@@ -287,6 +341,28 @@ logstash_pipeline_batch_size: 125
     enabled: true
     daemon_reload: true
   become: true
+```
+
+### Logstash Handlers
+
+```yaml
+# roles/logstash/handlers/main.yml
+---
+- name: Restart logstash
+  ansible.builtin.systemd:
+    name: logstash
+    state: restarted
+  become: true
+```
+
+### Logstash Configuration Template
+
+```yaml
+# roles/logstash/templates/logstash.yml.j2
+# Logstash configuration - managed by Ansible
+path.config: /etc/logstash/conf.d
+pipeline.workers: {{ logstash_pipeline_workers }}
+pipeline.batch.size: {{ logstash_pipeline_batch_size }}
 ```
 
 ### Pipeline Configuration Template
@@ -342,7 +418,7 @@ output {
 
 ```yaml
 # roles/kibana/defaults/main.yml
-kibana_version: "8.11"
+kibana_version: "8.x"
 kibana_server_host: "0.0.0.0"
 kibana_server_port: 5601
 kibana_elasticsearch_url: "http://localhost:9200"
@@ -354,6 +430,30 @@ kibana_server_name: "kibana"
 ```yaml
 # roles/kibana/tasks/main.yml
 ---
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - python3-debian
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Add Elastic APT repository
+  ansible.builtin.deb822_repository:
+    name: elastic
+    types:
+      - deb
+    uris: "https://artifacts.elastic.co/packages/{{ kibana_version }}/apt"
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    enabled: true
+    state: present
+  become: true
+
 - name: Install Kibana
   ansible.builtin.apt:
     name: kibana
@@ -387,6 +487,18 @@ kibana_server_name: "kibana"
   until: kibana_health.status == 200
   retries: 30
   delay: 10
+```
+
+### Kibana Handlers
+
+```yaml
+# roles/kibana/handlers/main.yml
+---
+- name: Restart kibana
+  ansible.builtin.systemd:
+    name: kibana
+    state: restarted
+  become: true
 ```
 
 ### Kibana Configuration Template
@@ -430,4 +542,4 @@ curl http://elk-server:5601/api/status
 
 ## Summary
 
-Deploying the ELK stack with Ansible gives you a repeatable, version-controlled setup that handles system tuning, configuration, and service management for all three components. The role-based approach means you can deploy Elasticsearch, Logstash, and Kibana on the same server for development or on separate servers for production. With the pipeline configuration templated, you can adjust log parsing rules per environment without touching the core Ansible code.
+Deploying the ELK stack with Ansible gives you a repeatable, version-controlled setup that handles system tuning, configuration, and service management for all three components. The role-based approach means you can deploy Elasticsearch, Logstash, and Kibana on the same server for development or on separate servers for larger environments. With the pipeline configuration templated, you can adjust log parsing rules per environment without touching the core Ansible code.
