@@ -49,14 +49,16 @@ ansible-gitops/
 │       ├── lint.yml           # Runs on every PR
 │       ├── test.yml           # Runs Molecule tests on PR
 │       ├── deploy-staging.yml # Runs on merge to main
-│       └── deploy-prod.yml    # Runs on release tag
+│       ├── deploy-prod.yml    # Runs on release tag
+│       └── drift-check.yml    # Runs scheduled drift checks
 ├── inventories/
 │   ├── staging/
 │   └── production/
 ├── playbooks/
 │   ├── site.yml
 │   ├── deploy.yml
-│   └── rollback.yml
+│   ├── rollback.yml
+│   └── verify.yml
 ├── roles/
 ├── requirements.yml
 ├── requirements.txt
@@ -254,6 +256,9 @@ on:
 jobs:
   check-drift:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -268,6 +273,9 @@ jobs:
           echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           echo "${{ secrets.PROD_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+
+      - name: Write vault password
+        run: echo "${{ secrets.VAULT_PASSWORD_PROD }}" > .vault_pass
 
       - name: Check for drift
         id: drift
@@ -295,6 +303,10 @@ jobs:
             --label "drift,automated"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up
+        if: always()
+        run: rm -f .vault_pass ~/.ssh/id_rsa
 ```
 
 ## Rollback Strategy
@@ -326,8 +338,16 @@ Include a rollback playbook that can restore the previous state:
       ansible.builtin.uri:
         url: "http://localhost:{{ app_port }}/health"
         status_code: 200
+      register: health_check
+      until: health_check.status == 200
       retries: 10
       delay: 5
+
+  handlers:
+    - name: restart application
+      ansible.builtin.service:
+        name: "{{ app_service }}"
+        state: restarted
 ```
 
 ```bash
