@@ -65,7 +65,7 @@ Checking when SSL certificates expire is a common automation task:
       Status: {{ 'CRITICAL' if days_remaining | int < 30 else 'WARNING' if days_remaining | int < 90 else 'OK' }}
   vars:
     expiry_dt: "{{ cert_expiry_raw.stdout | to_datetime('%b %d %H:%M:%S %Y %Z') }}"
-    now_dt: "{{ ansible_date_time.iso8601[:19] | to_datetime('%Y-%m-%dT%H:%M:%S') }}"
+    now_dt: "{{ ansible_facts.date_time.iso8601[:19] | to_datetime('%Y-%m-%dT%H:%M:%S') }}"
     days_remaining: "{{ (expiry_dt - now_dt).days }}"
 
 - name: Fail if certificate expires within 30 days
@@ -73,7 +73,7 @@ Checking when SSL certificates expire is a common automation task:
     msg: "Certificate expires in {{ days_remaining }} days! Renewal required."
   vars:
     expiry_dt: "{{ cert_expiry_raw.stdout | to_datetime('%b %d %H:%M:%S %Y %Z') }}"
-    now_dt: "{{ ansible_date_time.iso8601[:19] | to_datetime('%Y-%m-%dT%H:%M:%S') }}"
+    now_dt: "{{ ansible_facts.date_time.iso8601[:19] | to_datetime('%Y-%m-%dT%H:%M:%S') }}"
     days_remaining: "{{ (expiry_dt - now_dt).days }}"
   when: days_remaining | int < 30
 ```
@@ -114,7 +114,7 @@ APIs return timestamps in various formats. Use to_datetime to normalize them:
     msg: |
       Deployment: {{ item.name }}
       Deployed: {{ deploy_time }}
-      Age: {{ ((now | to_datetime('%Y-%m-%d %H:%M:%S')) - (deploy_time | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).days }} days ago
+      Age: {{ ((current_time | to_datetime('%Y-%m-%d %H:%M:%S')) - (deploy_time | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).days }} days ago
   loop:
     - name: v2.1.0
       deployed_at: "2026-01-15T10:30:00Z"
@@ -124,7 +124,7 @@ APIs return timestamps in various formats. Use to_datetime to normalize them:
       deployed_at: "2025-10-20T14:00:00Z"
   vars:
     deploy_time: "{{ item.deployed_at }}"
-    now: "{{ '%Y-%m-%d %H:%M:%S' | strftime }}"
+    current_time: "{{ '%Y-%m-%d %H:%M:%S' | strftime }}"
 ```
 
 ## Sorting by Date
@@ -194,8 +194,8 @@ You can use to_datetime for sorting tasks by date:
 </tr>
 {% for cert in certificates %}
 {% set expiry = cert.expiry_date | to_datetime('%Y-%m-%d') %}
-{% set now = ansible_date_time.date | to_datetime('%Y-%m-%d') %}
-{% set days_left = (expiry - now).days %}
+{% set today = ansible_facts.date_time.date | to_datetime('%Y-%m-%d') %}
+{% set days_left = (expiry - today).days %}
 <tr>
   <td>{{ cert.domain }}</td>
   <td>{{ cert.expiry_date }}</td>
@@ -217,7 +217,7 @@ Check when credentials expire:
 ```yaml
 # Check password expiration for service accounts
 - name: Get password expiry info
-  ansible.builtin.shell: chage -l {{ item }} | grep "Password expires" | cut -d: -f2 | xargs
+  ansible.builtin.shell: chage --iso8601 -l {{ item }} | grep "Password expires" | cut -d: -f2 | xargs
   register: password_expiry
   changed_when: false
   loop:
@@ -234,8 +234,8 @@ Check when credentials expire:
   loop_control:
     label: "{{ item.item }}"
   vars:
-    expiry_dt: "{{ item.stdout | to_datetime('%b %d, %Y') }}"
-    now_dt: "{{ ansible_date_time.date | to_datetime('%Y-%m-%d') }}"
+    expiry_dt: "{{ item.stdout | to_datetime('%Y-%m-%d') }}"
+    now_dt: "{{ ansible_facts.date_time.date | to_datetime('%Y-%m-%d') }}"
     days_left: "{{ (expiry_dt - now_dt).days }}"
   when:
     - item.stdout != "never"
