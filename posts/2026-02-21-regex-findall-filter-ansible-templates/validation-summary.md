@@ -28,10 +28,12 @@ Tutorial
 - Prometheus alerting rules documentation: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
 - Prometheus rule file documentation: https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/
 - Alertmanager configuration documentation: https://prometheus.io/docs/alerting/latest/configuration/
+- POSIX.1-2024 environment variable definition: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap08.html
 - Local command help for `ss --help` and `tail --help`
 
 ## Issues Found
 - The monitoring example generated Prometheus alerting rule syntax but wrote it to `/etc/alertmanager/rules.yml`. Alertmanager configuration is for routing, grouping, silencing, inhibition, and receivers; Prometheus evaluates alerting rule files loaded through Prometheus rule configuration. Changed the destination to `/etc/prometheus/rules.yml`.
+- The environment variable parsing example used `([A-Z_]+)=(.+)`, which missed conventional environment variable names containing digits and skipped variables with empty values. Changed it to `([A-Z_][A-Z0-9_]*)=(.*)` so it matches POSIX-style uppercase names with digits after the first character and allows empty values.
 
 ## Review Notes
 - The post's explanation of `regex_findall` returning all non-overlapping matches is accurate for Ansible because the filter uses Python `re.findall`.

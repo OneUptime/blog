@@ -142,7 +142,7 @@ A powerful pattern is extracting key-value pairs from semi-structured text:
 
 - name: Parse all environment variables
   ansible.builtin.set_fact:
-    app_env_vars: "{{ proc_env.stdout | regex_findall('([A-Z_]+)=(.+)') }}"
+    app_env_vars: "{{ proc_env.stdout | regex_findall('([A-Z_][A-Z0-9_]*)=(.*)') }}"
 
 - name: Display specific variables
   ansible.builtin.debug:
