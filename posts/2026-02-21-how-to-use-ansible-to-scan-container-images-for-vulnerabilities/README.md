@@ -60,11 +60,11 @@ Container images can contain vulnerable software packages that attackers exploit
 
 - name: Check for critical vulnerabilities
   ansible.builtin.fail:
-    msg: "Image {{ item.item.image }} has {{ (item.content | b64decode | from_json).Results | map(attribute='Vulnerabilities') | flatten | selectattr('Severity', 'equalto', 'CRITICAL') | list | length }} CRITICAL vulnerabilities"
+    msg: "Image {{ item.item.image }} has {{ (item.content | b64decode | from_json).Results | selectattr('Vulnerabilities', 'defined') | map(attribute='Vulnerabilities') | flatten | selectattr('Severity', 'equalto', 'CRITICAL') | list | length }} CRITICAL vulnerabilities"
   loop: "{{ scan_data.results }}"
   when:
     - (item.content | b64decode | from_json).Results is defined
-    - (item.content | b64decode | from_json).Results | map(attribute='Vulnerabilities') | flatten | selectattr('Severity', 'equalto', 'CRITICAL') | list | length > 0
+    - (item.content | b64decode | from_json).Results | selectattr('Vulnerabilities', 'defined') | map(attribute='Vulnerabilities') | flatten | selectattr('Severity', 'equalto', 'CRITICAL') | list | length > 0
     - block_on_critical | default(true)
   loop_control:
     label: "{{ item.item.name }}"
@@ -98,7 +98,7 @@ Container images can contain vulnerable software packages that attackers exploit
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these automation patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -135,7 +135,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
