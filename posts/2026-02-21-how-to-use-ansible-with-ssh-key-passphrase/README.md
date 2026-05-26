@@ -103,14 +103,14 @@ Host *.production.example.com
 
 With `AddKeysToAgent yes`, the first time you connect to a host, SSH will prompt for the passphrase and then add the key to the agent. Subsequent connections reuse the loaded key without prompting.
 
-## Method 4: ANSIBLE_SSH_ARGS with Agent Forwarding
+## Method 4: SSH Arguments with Bastion Hosts and Agent Forwarding
 
-If you need to hop through a bastion host and use the same passphrase-protected key on the far side, enable agent forwarding.
+If you need to hop through a bastion host, use `ProxyJump`. With `ProxyJump`, your local SSH client still authenticates to the target host through the bastion, so it can use your local ssh-agent without forwarding the agent to the bastion.
 
 ```ini
 # ansible.cfg
 [ssh_connection]
-ssh_args = -o ForwardAgent=yes -o ControlMaster=auto -o ControlPersist=60s
+ssh_args = -o ControlMaster=auto -o ControlPersist=60s
 ```
 
 ```ini
@@ -123,7 +123,15 @@ web2 ansible_host=10.0.1.11 ansible_ssh_common_args='-o ProxyJump=bastion.exampl
 ansible_user=deploy
 ```
 
-Agent forwarding sends your ssh-agent socket to the bastion host, allowing the jump from the bastion to the target server to use your passphrase-protected key without it being present on the bastion.
+Only enable agent forwarding if a command running on the bastion or target host must initiate another SSH connection with your local key.
+
+```ini
+# ansible.cfg
+[ssh_connection]
+ssh_args = -o ForwardAgent=yes -o ControlMaster=auto -o ControlPersist=60s
+```
+
+Agent forwarding sends your ssh-agent socket to the remote host, allowing SSH commands started there to use your passphrase-protected key without the private key file being present on that host.
 
 **Security note**: Only enable agent forwarding to hosts you trust. A compromised bastion host could use your forwarded agent to access other servers.
 
@@ -135,21 +143,37 @@ In CI/CD, there is no one to type the passphrase interactively. You have several
 # Option 1: Use a key without a passphrase (dedicated CI key with limited access)
 # This is acceptable if the CI environment is secure and the key has minimal permissions
 
-# Option 2: Use SSHPASS-like approach with expect
-# Create a wrapper script that feeds the passphrase from a CI secret
+# Option 2: Use an SSH_ASKPASS helper
+# Create a wrapper script that supplies the passphrase from a CI secret
 
 #!/bin/bash
 # scripts/setup-ssh-agent.sh
 # Load a passphrase-protected key using a CI secret
+set -euo pipefail
+
 eval "$(ssh-agent -s)"
-echo "$SSH_KEY_PASSPHRASE" | ssh-add - <<< "$(echo "$SSH_PRIVATE_KEY")"
+key_file="$(mktemp)"
+askpass_file="$(mktemp)"
+trap 'rm -f "$key_file" "$askpass_file"' EXIT
+
+printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_file"
+chmod 600 "$key_file"
+
+cat > "$askpass_file" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$SSH_KEY_PASSPHRASE"
+SCRIPT
+chmod 700 "$askpass_file"
+
+export SSH_KEY_PASSPHRASE
+SSH_ASKPASS="$askpass_file" SSH_ASKPASS_REQUIRE=force ssh-add "$key_file" </dev/null
 ```
 
 A more robust approach for CI.
 
 ```yaml
 # .github/workflows/deploy.yml (GitHub Actions example)
-# Configure ssh-agent with passphrase-protected key
+# Configure ssh-agent with a dedicated CI key
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -160,7 +184,7 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_KEY }}
-          # The action handles passphrase-protected keys if provided
+          # This action expects keys without passphrases
 
       - name: Run Ansible playbook
         run: ansible-playbook -i inventory/hosts.ini playbooks/deploy.yml
