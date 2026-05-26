@@ -115,7 +115,7 @@ echo "---" >> requirements.lock.yml
 
 # Record installed roles
 echo "roles:" >> requirements.lock.yml
-ansible-galaxy list 2>/dev/null | while IFS= read -r line; do
+ansible-galaxy role list -p ./galaxy-roles 2>/dev/null | while IFS= read -r line; do
     # Parse "- role_name, version" format
     role_name=$(echo "$line" | sed 's/^- //' | cut -d',' -f1 | tr -d ' ')
     role_version=$(echo "$line" | cut -d',' -f2 | tr -d ' ')
@@ -127,7 +127,7 @@ done
 
 # Record installed collections
 echo "collections:" >> requirements.lock.yml
-ansible-galaxy collection list --format yaml 2>/dev/null | python3 -c "
+ansible-galaxy collection list -p ./collections --format yaml 2>/dev/null | python3 -c "
 import sys, yaml
 data = yaml.safe_load(sys.stdin)
 if data:
@@ -209,7 +209,7 @@ jobs:
 
       - name: Test installation
         run: |
-          ansible-galaxy install -r requirements.yml -p ./galaxy-roles/
+          ansible-galaxy role install -r requirements.yml -p ./galaxy-roles/
           ansible-galaxy collection install -r requirements.yml -p ./collections/
 ```
 
@@ -305,7 +305,7 @@ Some teams prefer Git submodules over Galaxy for role management. Each role live
 # Add a role as a Git submodule
 git submodule add https://github.com/geerlingguy/ansible-role-nginx.git roles/geerlingguy.nginx
 
-# Pin to a specific commit
+# Pin to a specific tag
 cd roles/geerlingguy.nginx
 git checkout v3.1.0
 cd ../..
@@ -315,15 +315,13 @@ git commit -m "Add nginx role as submodule at v3.1.0"
 
 This approach gives you maximum control but adds complexity. Submodules require extra steps during cloning (`--recurse-submodules`) and can confuse team members who are not familiar with them.
 
-## Storing Requirements in ansible.cfg
+## Installing Requirements Explicitly
 
-For simple projects, you can reference the requirements file in `ansible.cfg`:
+For simple projects, keep the requirements file in a predictable location and pass it explicitly to `ansible-galaxy`:
 
-```ini
-# ansible.cfg - reference requirements file
-[galaxy]
-role_file = requirements.yml
-collection_file = requirements.yml
+```bash
+ansible-galaxy role install -r requirements.yml -p ./galaxy-roles/
+ansible-galaxy collection install -r requirements.yml -p ./collections/
 ```
 
 ## Summary
