@@ -8,14 +8,14 @@ Description: Set up Ansible Molecule testing in Jenkins pipelines using both dec
 
 ---
 
-Jenkins remains one of the most widely used CI/CD platforms, and if your organization runs Jenkins, you probably want to plug Molecule testing into it. The setup is a bit different from other CI systems because Jenkins has its own agent model and pipeline syntax. In this guide, I will cover how to run Molecule tests in Jenkins using both declarative pipelines and freestyle jobs, along with practical tips for handling Docker-in-Docker and parallel test execution.
+Jenkins remains one of the most widely used CI/CD platforms, and if your organization runs Jenkins, you probably want to plug Molecule testing into it. The setup is a bit different from other CI systems because Jenkins has its own agent model and pipeline syntax. In this guide, I will cover how to run Molecule tests in Jenkins using both declarative and scripted pipelines, along with practical tips for handling Docker-in-Docker and parallel test execution.
 
 ## Prerequisites
 
 Before you start, make sure your Jenkins setup meets these requirements:
 
 - Jenkins 2.x with Pipeline plugin installed
-- Docker plugin for Jenkins (if using Docker agents)
+- Docker Pipeline plugin for Jenkins (if using Docker agents)
 - A Jenkins agent with Docker installed
 - Python 3.8+ available on the agent (or use a Docker agent)
 
@@ -29,7 +29,7 @@ pipeline {
     agent {
         docker {
             image 'python:3.11-slim'
-            args '-v /var/run/docker.sock:/var/run/docker.sock --group-add docker'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
         }
     }
 
@@ -42,7 +42,7 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                    pip install molecule molecule-plugins[docker] ansible-core ansible-lint
+                    pip install molecule molecule-plugins[docker] ansible-core ansible-lint yamllint
                 '''
             }
         }
@@ -73,7 +73,7 @@ pipeline {
 }
 ```
 
-The critical piece here is the Docker socket mount: `-v /var/run/docker.sock:/var/run/docker.sock`. Molecule needs access to the Docker daemon to create test containers, and mounting the socket from the host is the simplest way to provide that access.
+The critical piece here is the Docker socket mount: `-v /var/run/docker.sock:/var/run/docker.sock`. Molecule needs access to the Docker daemon to create test containers, and mounting the socket from the host is the simplest way to provide that access. The `python:3.11-slim` image runs as root by default, so it can access the mounted socket without adding a `docker` group that does not exist in the image.
 
 ## Docker-in-Docker vs Socket Mounting
 
@@ -121,16 +121,18 @@ RUN pip install --no-cache-dir \
     pytest-testinfra \
     jmespath
 
-# Set up a non-root user that matches Jenkins UID
+# Set up a non-root user that matches Jenkins UID and the host Docker socket GID
 ARG JENKINS_UID=1000
-RUN useradd -m -u ${JENKINS_UID} jenkins && \
+ARG DOCKER_GID=999
+RUN if getent group docker >/dev/null; then groupmod -o -g ${DOCKER_GID} docker; else groupadd -o -g ${DOCKER_GID} docker; fi && \
+    useradd -m -u ${JENKINS_UID} jenkins && \
     usermod -aG docker jenkins
 
 USER jenkins
 WORKDIR /home/jenkins
 ```
 
-Build and push this image, then reference it in your Jenkinsfile.
+Build this image with a `DOCKER_GID` value that matches the group ID of `/var/run/docker.sock` on the Jenkins agent, then push it and reference it in your Jenkinsfile.
 
 ```groovy
 // Jenkinsfile using pre-built Molecule image
@@ -217,7 +219,7 @@ pipeline {
 }
 ```
 
-Each parallel stage gets its own Docker agent, so they run completely independently.
+Each parallel stage gets its own Jenkins Docker agent and workspace, so the stages are isolated from each other at the Jenkins level. They still share the same host Docker daemon when you mount `/var/run/docker.sock`.
 
 ## Handling Ansible Vault in Jenkins
 
@@ -238,10 +240,10 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'ansible-vault-pass', variable: 'VAULT_PASS')]) {
                     sh '''
+                        trap 'rm -f .vault-password' EXIT
                         echo "$VAULT_PASS" > .vault-password
                         export ANSIBLE_VAULT_PASSWORD_FILE=.vault-password
                         molecule test
-                        rm -f .vault-password
                     '''
                 }
             }
@@ -256,6 +258,8 @@ When you need more control over the pipeline logic, a scripted pipeline works be
 
 ```groovy
 // Jenkinsfile - Scripted pipeline with dynamic scenario discovery
+def scenarios = []
+
 node {
     docker.image('your-registry.com/molecule-jenkins:latest').inside(
         '-v /var/run/docker.sock:/var/run/docker.sock'
