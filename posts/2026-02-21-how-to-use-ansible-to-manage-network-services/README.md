@@ -25,10 +25,8 @@ Install and configure NetworkManager:
   become: yes
   tasks:
     - name: Install NetworkManager
-      ansible.builtin.apt:
-        name:
-          - network-manager
-          - network-manager-config-connectivity-ubuntu
+      ansible.builtin.package:
+        name: NetworkManager
         state: present
 
     - name: Ensure NetworkManager is running
@@ -69,7 +67,7 @@ managed={{ nm_manage_ifupdown | default('true') }}
 # Disable WiFi power saving for servers
 wifi.powersave={{ nm_wifi_powersave | default(2) }}
 
-{% if nm_dns_plugin == 'none' %}
+{% if nm_dns_plugin | default('default') == 'none' %}
 [global-dns-domain-*]
 servers={{ nm_dns_servers | join(',') }}
 {% endif %}
@@ -280,7 +278,7 @@ For systems using iptables directly:
     policy: DROP
 
 - name: Save iptables rules
-  ansible.builtin.command: iptables-save > /etc/iptables/rules.v4
+  ansible.builtin.shell: iptables-save > /etc/iptables/rules.v4
   changed_when: true
 ```
 
@@ -296,14 +294,14 @@ Accurate time is critical for log correlation, TLS certificate validation, and d
   become: yes
   tasks:
     - name: Install chrony
-      ansible.builtin.apt:
+      ansible.builtin.package:
         name: chrony
         state: present
 
     - name: Deploy chrony configuration
       ansible.builtin.template:
         src: chrony.conf.j2
-        dest: /etc/chrony/chrony.conf
+        dest: /etc/chrony.conf
       notify: Restart chronyd
 
     - name: Ensure chronyd is running
@@ -322,7 +320,7 @@ Accurate time is critical for log correlation, TLS certificate validation, and d
 Chrony configuration template:
 
 ```ini
-# /etc/chrony/chrony.conf
+# /etc/chrony.conf
 {% for server in ntp_servers | default(['0.pool.ntp.org', '1.pool.ntp.org', '2.pool.ntp.org', '3.pool.ntp.org']) %}
 server {{ server }} iburst
 {% endfor %}
@@ -440,7 +438,7 @@ Full network services configuration:
     - name: Configure NTP
       ansible.builtin.template:
         src: chrony.conf.j2
-        dest: /etc/chrony/chrony.conf
+        dest: /etc/chrony.conf
       notify: Restart chronyd
 
     - name: Configure firewall rules
