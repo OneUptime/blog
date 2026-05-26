@@ -46,7 +46,7 @@ The debug module accepts a `verbosity` parameter that sets the minimum verbosity
     verbosity: 2
 ```
 
-When you run the playbook without any `-v` flags, this task is silently skipped. Add `-vv` and the output appears. This lets you leave debug tasks in your playbook permanently without cluttering normal output.
+When you run the playbook without any `-v` flags, this debug message is not printed. Add `-vv` and the output appears. This lets you leave debug tasks in your playbook permanently without cluttering normal output.
 
 ## Verbosity Levels Explained
 
@@ -178,8 +178,8 @@ When you have debug tasks inside loops, the verbosity parameter prevents them fr
       Host: {{ item }}
       IP: {{ hostvars[item]['ansible_default_ipv4']['address'] | default('unknown') }}
       Groups: {{ hostvars[item]['group_names'] | join(', ') }}
+    verbosity: 2
   loop: "{{ groups['all'] }}"
-  verbosity: 2
 ```
 
 Without the verbosity setting, this would print a block for every host on every run. With `verbosity: 2`, it only appears when you are actively debugging.
@@ -257,7 +257,7 @@ You can set a default verbosity level in your configuration file, which affects 
 verbosity = 1
 ```
 
-This means debug tasks with `verbosity: 1` will always appear, and you need `-vv` on the command line to reach level 2 (which is actually level 1 + 1). I generally do not recommend this because it changes the baseline expectation, but it can be useful in CI/CD pipelines where you always want some extra output.
+This means debug tasks with `verbosity: 1` will always appear, and one `-v` on the command line reaches level 2 because command-line verbosity counts up from the configured default. I generally do not recommend this because it changes the baseline expectation, but it can be useful in CI/CD pipelines where you always want some extra output.
 
 ## Environment-Specific Verbosity
 
@@ -279,7 +279,7 @@ In non-production environments, this always prints. In production, it only appea
 
 ## What Happens at Each Ansible Verbosity Level
 
-For reference, here is what Ansible itself shows at each verbosity level (in addition to your debug tasks):
+For reference, here is the kind of information Ansible typically shows as verbosity increases. The exact output depends on your Ansible version, callback plugins, modules, and configuration:
 
 ```text
 Level 0 (no -v):     Task names and status (ok/changed/failed)
