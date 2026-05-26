@@ -136,7 +136,6 @@ If the slow connection is bandwidth-constrained (like a satellite link), running
 # ansible.cfg - fewer parallel connections for slow links
 [defaults]
 forks = 3
-serial = 1
 ```
 
 In your playbook, use `serial` to process hosts one at a time or in small batches.
@@ -192,7 +191,7 @@ The `async: 1800` gives the task up to 30 minutes to complete, and `poll: 60` ch
 
 ## SSH Compression
 
-Enabling SSH compression can help on slow links with decent bandwidth but high latency.
+Enabling SSH compression can help on slow or bandwidth-constrained links when the data being transferred is compressible.
 
 ```ini
 # ansible.cfg - enable compression for slow links
@@ -240,7 +239,8 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts_cache
 fact_caching_timeout = 86400
-stdout_callback = yaml
+stdout_callback = ansible.builtin.default
+callback_result_format = yaml
 any_errors_fatal = false
 
 [ssh_connection]
@@ -271,7 +271,7 @@ time ansible-playbook playbooks/deploy.yml
 time ansible-playbook playbooks/deploy.yml
 
 # Profile individual tasks with the callback plugin
-ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks ansible-playbook playbooks/deploy.yml
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks ansible-playbook playbooks/deploy.yml
 ```
 
-The `profile_tasks` callback shows you exactly how long each task takes, which helps identify remaining bottlenecks. In my experience, connection multiplexing alone cuts playbook run time by 40-60% on connections with latency above 100ms.
+The `ansible.posix.profile_tasks` callback shows you exactly how long each task takes, which helps identify remaining bottlenecks. In my experience, connection multiplexing alone cuts playbook run time by 40-60% on connections with latency above 100ms.
