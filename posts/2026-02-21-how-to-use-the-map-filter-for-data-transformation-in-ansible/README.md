@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible map filter to transform lists by extra
 
 ---
 
-The `map` filter is one of the most versatile tools in Ansible's data manipulation toolkit. It applies a function or extracts an attribute across every element in a list, producing a new list of transformed values. If you are familiar with `map()` in Python or JavaScript, the concept is the same.
+The `map` filter is one of the most versatile tools in Ansible's data manipulation toolkit. It applies a function or extracts an attribute across every element in a list, producing a transformed sequence of values. If you are familiar with `map()` in Python or JavaScript, the concept is the same.
 
 ## Extracting Attributes from a List of Dictionaries
 
@@ -49,7 +49,7 @@ The most common use of `map` is extracting a single field from a list of objects
 
 Output for hostnames: `["web-01", "db-01", "cache-01"]`
 
-Always add `| list` at the end. The `map` filter returns a generator, not a list.
+Add `| list` at the end when you need a list. The `map` filter returns a generator, not a list.
 
 ## Applying Filters to Every Element
 
@@ -135,7 +135,7 @@ The real power comes from chaining `map` with other filters:
           {{ services
              | selectattr('status', 'equalto', 'running')
              | map(attribute='name')
-             | map('regex_replace', '(.*)', 'connect to \1')
+             | map('regex_replace', '^(.*)$', 'connect to \1')
              | list }}
 ```
 
@@ -236,14 +236,10 @@ Map numeric values through mathematical operations:
       - 67
 
   tasks:
-    - name: Convert percentages to decimals (using Jinja2)
+    - name: Convert percentages to decimals
       ansible.builtin.set_fact:
-        decimals: >-
-          {% set result = [] %}
-          {% for p in cpu_percentages %}
-          {% set _ = result.append(p / 100.0) %}
-          {% endfor %}
-          {{ result }}
+        decimals: "{{ decimals | default([]) + [item / 100.0] }}"
+      loop: "{{ cpu_percentages }}"
 
     - name: Show results
       ansible.builtin.debug:
@@ -317,11 +313,12 @@ Transform dictionary entries:
       LOG_LEVEL: info
 
   tasks:
-    - name: Build export statements
+    - name: Get environment variable names
       ansible.builtin.debug:
         msg: >-
           {{ environment_vars | dict2items |
-             map('regex_replace', '(.*)$', 'export \\1') |
+             map(attribute='key') |
+             map('regex_replace', '^(.*)$', 'export \\1') |
              list }}
 
     - name: Alternative approach with Jinja2
@@ -334,4 +331,4 @@ Transform dictionary entries:
 
 ## Summary
 
-The `map` filter is essential for batch operations on lists. Use `map(attribute='field')` to extract a single field from each item, and `map('filter_name')` to apply a transformation filter to each element. Chain it with `selectattr` for filtering before transformation, `sort` for ordering, `join` for combining into strings, and `unique` for deduplication. Always end your map chain with `| list` to materialize the result. For operations that cannot be expressed as a simple filter application, fall back to Jinja2 loops with namespace variables.
+The `map` filter is essential for batch operations on lists. Use `map(attribute='field')` to extract a single field from each item, and `map('filter_name')` to apply a transformation filter to each element. Chain it with `selectattr` for filtering before transformation, `sort` for ordering, `join` for combining into strings, and `unique` for deduplication. End your map chain with `| list` when you need to materialize the result as a list. For operations that cannot be expressed as a simple filter application, fall back to Jinja2 loops or Ansible loops.
