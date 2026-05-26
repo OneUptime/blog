@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Conditional, String Matching, Jinja2
 
-Description: Learn how to perform string matching in Ansible conditionals using filters like match, search, contains, startswith, and endswith.
+Description: Learn how to perform string matching in Ansible conditionals using operators, filters, tests, and methods like in, regex, startswith, and endswith.
 
 ---
 
-String matching in Ansible conditionals goes far beyond simple equality checks. Whether you need to verify that a hostname follows a naming convention, parse command output for specific patterns, or validate configuration values, Ansible provides several approaches for matching strings within `when` conditions. These capabilities come from a combination of Jinja2 filters, Python string methods, and Ansible-specific test plugins.
+String matching in Ansible conditionals goes far beyond simple equality checks. Whether you need to verify that a hostname follows a naming convention, parse command output for specific patterns, or validate configuration values, Ansible provides several approaches for matching strings within `when` conditions. These capabilities come from a combination of Jinja2 operators and filters, Python string methods, and Ansible-specific test plugins.
 
 ## Basic String Comparison
 
@@ -60,7 +60,7 @@ The `in` operator checks if a string contains a substring. This is the most comm
     - name: Warn if disk usage output contains high percentage
       ansible.builtin.debug:
         msg: "Check disk usage on {{ inventory_hostname }}"
-      when: "'9' in disk_usage.stdout.split()[-2]"
+      when: disk_usage.stdout.split()[-2] is regex('^(9[0-9]|100)%$')
 ```
 
 ## Using startswith and endswith
@@ -117,7 +117,7 @@ String comparisons in Ansible are case-sensitive by default. Use the `lower` or 
     - name: Accept environment variable in any case
       ansible.builtin.debug:
         msg: "Running in production mode"
-      when: (lookup('env', 'APP_ENV') | default('dev')) | lower == 'production'
+      when: (lookup('env', 'APP_ENV') | default('dev', true)) | lower == 'production'
 
     - name: Check if hostname contains pattern (case insensitive)
       ansible.builtin.debug:
@@ -222,14 +222,14 @@ When a command returns multiple lines, you often need to check for specific cont
   tasks:
     - name: Get list of enabled services
       ansible.builtin.command:
-        cmd: systemctl list-unit-files --state=enabled --no-legend
+        cmd: systemctl list-unit-files --type=service --state=enabled --no-legend
       register: enabled_services
       changed_when: false
 
     - name: Check if firewalld is enabled
       ansible.builtin.debug:
         msg: "firewalld is enabled on this system"
-      when: "'firewalld' in enabled_services.stdout"
+      when: "'firewalld.service' in enabled_services.stdout"
 
     - name: Check specific service in stdout_lines
       ansible.builtin.debug:
@@ -282,7 +282,7 @@ Sometimes you need to verify that a string meets length requirements, such as va
 
 ## String Type Checks
 
-You can verify the type or format of string content using built-in Python string methods.
+You can verify the type or format of string content using built-in Python string methods and Ansible regex tests or filters.
 
 ```yaml
 # String content type validation
