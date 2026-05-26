@@ -216,6 +216,7 @@ POST requests are not naturally idempotent (running them twice creates two resou
         headers:
           Authorization: "Bearer {{ api_token }}"
         status_code: 201
+      changed_when: true
       when: existing_check.json.data | length == 0
       register: create_result
 
@@ -246,9 +247,7 @@ Sending notifications to Slack, Microsoft Teams, or custom webhooks:
         method: POST
         body_format: json
         body:
-          channel: "#deployments"
-          username: "Ansible Deploy Bot"
-          icon_emoji: ":rocket:"
+          text: "Deployment {{ deployment_status | upper }} for myapp {{ app_version }} to {{ environment }}"
           attachments:
             - color: "{{ '#36a64f' if deployment_status == 'success' else '#ff0000' }}"
               title: "Deployment {{ deployment_status | upper }}"
@@ -272,6 +271,7 @@ Sending notifications to Slack, Microsoft Teams, or custom webhooks:
         body_format: json
         body:
           "@type": "MessageCard"
+          "@context": "https://schema.org/extensions"
           summary: "Deployment {{ deployment_status }}"
           themeColor: "{{ '00FF00' if deployment_status == 'success' else 'FF0000' }}"
           sections:
