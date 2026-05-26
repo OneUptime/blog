@@ -97,6 +97,12 @@ In a real production environment, you should not just blindly delete users. You 
       ansible.builtin.shell: "pkill -9 -u {{ user_to_remove }} || true"
       when: user_processes.stdout | length > 0
 
+    - name: Ensure user backup directory exists
+      ansible.builtin.file:
+        path: /var/backups/users
+        state: directory
+        mode: "0700"
+
     # Archive the home directory before deletion
     - name: Archive user home directory
       community.general.archive:
@@ -131,6 +137,13 @@ When offboarding a batch of users (like after a project ends or a team reorganiz
       - name: charlie
         archive: yes
   tasks:
+    - name: Ensure user backup directory exists
+      ansible.builtin.file:
+        path: /var/backups/users
+        state: directory
+        mode: "0700"
+      when: users_to_remove | selectattr('archive', 'equalto', true) | list | length > 0
+
     - name: Archive home directories where requested
       community.general.archive:
         path: "/home/{{ item.name }}"
@@ -179,8 +192,8 @@ Before removing a user, it is a good practice to revoke their SSH access first. 
   vars:
     departing_user: jsmith
   tasks:
-    # Lock the account immediately to prevent new logins
-    - name: Lock the user account
+    # Lock the password immediately to prevent password logins
+    - name: Lock the user password
       ansible.builtin.user:
         name: "{{ departing_user }}"
         password_lock: yes
@@ -207,7 +220,7 @@ Before removing a user, it is a good practice to revoke their SSH access first. 
 
 ## Using force Parameter
 
-The `force` parameter works together with `remove` and controls what happens when files outside the home directory are owned by the user:
+The `force` parameter works together with `remove` and forces removal of the user and associated directories on supported platforms:
 
 ```yaml
 # force-remove.yml - Force remove a user
