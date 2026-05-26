@@ -29,13 +29,13 @@ pip install ansible-lint --upgrade
 ansible-lint --version
 ```
 
-You want version 6.0 or later since that is when many security-related rules were added or refined.
+Use a current supported version of ansible-lint so you have the latest rule set and CLI behavior.
 
 ## Built-in Security Rules
 
-ansible-lint ships with several rules that directly address security concerns. Here are the most important ones to know about.
+ansible-lint ships with several rules that can help address security concerns. Here are the most important ones to know about.
 
-### no-changed-when (command-instead-of-module)
+### command-instead-of-module and no-changed-when
 
 When you use raw shell commands instead of Ansible modules, you lose idempotency and often bypass security controls that modules enforce.
 
@@ -52,23 +52,28 @@ When you use raw shell commands instead of Ansible modules, you lose idempotency
     create_home: true
 ```
 
-### no-log-password (risky-file-permissions)
+### no-log-password
 
-This rule catches tasks that handle sensitive data without setting `no_log: true`, which would otherwise dump passwords and tokens into Ansible output logs.
+This opt-in rule catches looped tasks that handle password values without setting `no_log: true`, which could otherwise dump passwords and tokens into Ansible output logs.
 
 ```yaml
-# BAD: Password will appear in plain text in ansible output and logs
-- name: Set database password
-  ansible.builtin.shell: |
-    mysql -u root -p{{ db_root_password }} -e "ALTER USER 'app'@'localhost' IDENTIFIED BY '{{ db_app_password }}';"
+# BAD: Password values can appear in ansible output and logs
+- name: Create application users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+  loop:
+    - name: app
+      password: "{{ app_password_hash }}"
 
 # GOOD: Sensitive task output is suppressed from logs
-- name: Set database password
-  ansible.builtin.mysql_user:
-    name: app
-    password: "{{ db_app_password }}"
-    login_user: root
-    login_password: "{{ db_root_password }}"
+- name: Create application users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+  loop:
+    - name: app
+      password: "{{ app_password_hash }}"
   no_log: true
 ```
 
@@ -113,14 +118,14 @@ Shell pipes can silently fail. If the first command in a pipeline fails but the 
 
 ## Running Security-Focused Scans
 
-You can run ansible-lint with only security-related tags to get a focused report.
+You can run ansible-lint with selected tags to get a focused report. The built-in `security` tag currently covers the opt-in `no-log-password` rule, while related checks such as `risky-shell-pipe` and `risky-file-permissions` use other tags.
 
 ```bash
-# Run only security-related rules against your playbook
-ansible-lint -t security playbook.yml
+# Run the security-tagged opt-in rule against your playbook
+ansible-lint --enable-list no-log-password -t security playbook.yml
 
-# List all available rules and filter for security-related ones
-ansible-lint -L | grep -i security
+# List all available tags and the rules they include
+ansible-lint -T
 ```
 
 To run a broader scan but ensure security rules are always enforced, create a configuration file.
@@ -129,18 +134,11 @@ To run a broader scan but ensure security rules are always enforced, create a co
 # .ansible-lint configuration file
 # Place this in your project root
 
-# Treat security warnings as errors (these must be fixed)
-warn_list:
-  - experimental
-
-# Never skip these security-critical rules
+# Enable opt-in checks you want in every run
 enable_list:
   - no-log-password
-  - risky-file-permissions
-  - risky-shell-pipe
-  - no-changed-when
 
-# Fail on any security rule violation
+# Fail on warnings as well as errors
 strict: true
 ```
 
@@ -168,6 +166,7 @@ class NoHardcodedIPs(AnsibleLintRule):
     )
     severity = "MEDIUM"
     tags = ["security", "custom"]
+    version_changed = "1.0.0"
 
     # Matches IPv4 addresses but excludes common safe ones like 127.0.0.1 and 0.0.0.0
     _ip_regex = re.compile(
@@ -224,8 +223,8 @@ ansible-security-lint:
   before_script:
     - pip install ansible-lint
   script:
-    # Run with strict mode so any security violation fails the pipeline
-    - ansible-lint --strict -t security playbooks/
+    # Run with strict mode so any security warning or error fails the pipeline
+    - ansible-lint --strict --enable-list no-log-password -t security playbooks/
   rules:
     - changes:
         - "playbooks/**/*.yml"
@@ -252,7 +251,7 @@ jobs:
       - name: Install ansible-lint
         run: pip install ansible-lint
       - name: Run security scan
-        run: ansible-lint --strict -t security playbooks/
+        run: ansible-lint --strict --enable-list no-log-password -t security playbooks/
 ```
 
 ## Generating Security Reports
@@ -260,8 +259,8 @@ jobs:
 For compliance purposes, you might need to generate reports from your security scans.
 
 ```bash
-# Output results in JSON format for processing by other tools
-ansible-lint -f json playbook.yml > security-report.json
+# Output results in SARIF JSON format for processing by other tools
+ansible-lint -f sarif playbook.yml > security-report.sarif
 
 # Use codeclimate format for integration with code quality platforms
 ansible-lint -f codeclimate playbook.yml > codeclimate-report.json
