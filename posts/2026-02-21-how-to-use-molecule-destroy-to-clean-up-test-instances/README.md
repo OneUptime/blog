@@ -29,9 +29,9 @@ molecule destroy --all
 When you run destroy, Molecule:
 
 1. Reads the scenario configuration from `molecule.yml`
-2. Looks up the running instance state from `.molecule/` directory
-3. Runs the destroy playbook appropriate for the driver
-4. Removes the state files from `.molecule/`
+2. Looks up the running instance state from the Molecule ephemeral directory, usually `~/.cache/molecule/<project>/<scenario>/`
+3. Runs the cleanup and destroy playbooks appropriate for the scenario or driver
+4. Resets the scenario state in the ephemeral directory
 
 ## What Gets Destroyed
 
@@ -68,14 +68,14 @@ This ensures a clean start and clean finish. But you can control this behavior.
 # Normal behavior: destroy before and after
 molecule test
 
-# Keep instances after the test (useful for debugging failures)
+# Skip destroy actions, so instances stay up for debugging
 molecule test --destroy=never
 
-# Destroy only at the end (trust that no stale instances exist)
+# Explicit default: destroy on failure and at the end
 molecule test --destroy=always
 ```
 
-The `--destroy=never` option is extremely useful for debugging. When a test fails, you can log into the instance and investigate.
+The `--destroy=never` option is extremely useful for debugging. It skips the destroy actions in the test sequence, including the initial stale-instance cleanup, so use it when you intentionally want instances to stay around. When a test fails, you can log into the instance and investigate.
 
 ```bash
 # Test fails, but instances stay up
@@ -136,11 +136,11 @@ Sometimes Molecule crashes or gets interrupted, leaving orphaned instances behin
 ### Docker Stale Containers
 
 ```bash
-# Find Molecule-created containers (they have a "molecule" label)
-docker ps -a --filter "label=creator=molecule"
+# Find containers from the Molecule Docker plugin
+docker ps -a --filter "label=owner=molecule"
 
 # Remove all Molecule containers
-docker ps -a --filter "label=creator=molecule" -q | xargs -r docker rm -f
+docker ps -a --filter "label=owner=molecule" -q | xargs -r docker rm -f
 
 # If containers do not have labels, find them by name pattern
 docker ps -a | grep molecule
@@ -155,7 +155,7 @@ docker container prune -f
 # List all Vagrant VMs globally
 vagrant global-status
 
-# Remove stale entries and VMs
+# Remove stale entries from Vagrant's global status cache
 vagrant global-status --prune
 
 # Destroy a specific VM
@@ -239,7 +239,7 @@ jobs:
         if: failure()
         run: |
           molecule destroy || true
-          docker ps -a --filter "label=creator=molecule" -q | xargs -r docker rm -f || true
+          docker ps -a --filter "label=owner=molecule" -q | xargs -r docker rm -f || true
 ```
 
 ### GitLab CI
@@ -256,7 +256,7 @@ molecule-test:
   after_script:
     # This runs even if the test fails
     - molecule destroy || true
-    - docker ps -a -q | xargs -r docker rm -f || true
+    - docker ps -a --filter "label=owner=molecule" -q | xargs -r docker rm -f || true
 ```
 
 ## Handling Destroy Failures
@@ -312,10 +312,10 @@ For environments where multiple developers or CI jobs share a machine, a cleanup
 # cleanup-molecule.sh - clean up stale Molecule resources
 
 echo "Cleaning up stale Molecule Docker containers..."
-docker ps -a --filter "label=creator=molecule" -q | xargs -r docker rm -f
+docker ps -a --filter "label=owner=molecule" -q | xargs -r docker rm -f
 
 echo "Cleaning up stale Docker networks..."
-docker network ls --filter "name=molecule" -q | xargs -r docker network rm
+docker network ls --filter "label=owner=molecule" -q | xargs -r docker network rm
 
 echo "Pruning unused Docker images..."
 docker image prune -f --filter "until=24h"
@@ -342,7 +342,7 @@ Keep an eye on resource usage, especially in shared environments.
 docker system df
 
 # Check for Molecule containers specifically
-docker stats --no-stream $(docker ps -a --filter "label=creator=molecule" -q)
+docker ps -a --filter "label=owner=molecule" -q | xargs -r docker stats --no-stream
 
 # Check disk space used by Docker
 du -sh /var/lib/docker/
