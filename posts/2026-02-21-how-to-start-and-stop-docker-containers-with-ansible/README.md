@@ -14,13 +14,13 @@ Managing the running state of Docker containers is one of the most common tasks 
 
 - Ansible 2.10+ with the `community.docker` collection
 - Docker Engine running on target hosts
-- Docker Python SDK installed
+- Python `requests` library installed on the host that executes the module
 
 ```bash
 # Install required components
 
 ansible-galaxy collection install community.docker
-pip install docker
+pip install requests
 ```
 
 ## Starting Containers
@@ -305,6 +305,11 @@ Here is a playbook that manages a complete application stack with different cont
         ports: ["9229:9229"]
 
   tasks:
+    - name: Ensure application network exists
+      community.docker.docker_network:
+        name: app-network
+        state: present
+
     - name: Manage all service containers
       community.docker.docker_container:
         name: "{{ item.key }}"
