@@ -16,11 +16,12 @@ Before diving into playbooks, let us clarify the difference.
 
 **Self-managed certificates** are ones you obtain yourself, maybe from Let's Encrypt, your corporate CA, or a commercial provider. You upload the certificate and private key to GCP and attach them to your load balancer. You are responsible for renewal.
 
-**Google-managed certificates** are provisioned automatically by Google. You specify the domain names, attach the certificate resource to a load balancer, and Google handles the rest, including renewal. The catch is that your DNS must already point to the load balancer's IP for domain validation to work.
+**Google-managed certificates** are provisioned automatically by Google. You specify the domain names, attach the certificate resource to a load balancer, and Google handles the rest, including renewal. The catch is that your DNS must point to the load balancer's IP, and the load balancer's forwarding rule must use TCP port 443, for domain validation and renewal to work.
 
 ## Prerequisites
 
-- Ansible 2.10+ with the `google.cloud` collection
+- Ansible Core 2.16+ with the `google.cloud` collection
+- Google Cloud CLI if you want to create Google-managed certificates from the Ansible examples
 - A GCP service account with Load Balancer Admin permissions
 - For Google-managed certs, your domain must resolve to the load balancer IP
 
@@ -96,28 +97,41 @@ Google-managed certificates are the easier option when you are using GCP load ba
     gcp_service_account_file: "/path/to/service-account-key.json"
 
   tasks:
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command: >-
+        gcloud auth activate-service-account
+        --key-file={{ gcp_service_account_file }}
+        --project={{ gcp_project }}
+      changed_when: false
+
+    - name: Check whether the Google-managed SSL certificate exists
+      ansible.builtin.command: >-
+        gcloud compute ssl-certificates describe example-com-managed-cert
+        --global
+        --project={{ gcp_project }}
+        --format=value(name)
+      register: existing_managed_cert
+      changed_when: false
+      failed_when: false
+
     - name: Create a Google-managed SSL certificate
-      google.cloud.gcp_compute_managed_ssl_certificate:
-        name: "example-com-managed-cert"
-        managed:
-          domains:
-            - "example.com"
-            - "www.example.com"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+      ansible.builtin.command: >-
+        gcloud compute ssl-certificates create example-com-managed-cert
+        --global
+        --domains=example.com,www.example.com
+        --project={{ gcp_project }}
       register: managed_cert
+      when: existing_managed_cert.rc != 0
 
     - name: Show managed certificate details
       ansible.builtin.debug:
         msg: |
-          Certificate: {{ managed_cert.name }}
+          Certificate: example-com-managed-cert
           Domains: example.com, www.example.com
           Status: Provisioning will complete once DNS points to the load balancer.
 ```
 
-Note that Google-managed certificates can take up to 60 minutes to provision after you point your DNS to the load balancer. During that time, the certificate status will show as "PROVISIONING".
+Note that Google-managed certificates can take up to 60 minutes to provision after your DNS and load balancer configuration changes have propagated. During that time, the certificate status will show as "PROVISIONING".
 
 ## Attaching SSL Certificate to a Load Balancer
 
@@ -135,19 +149,33 @@ Creating the certificate is only the first step. You need to attach it to an HTT
     gcp_project: "my-project-id"
     gcp_auth_kind: "serviceaccount"
     gcp_service_account_file: "/path/to/service-account-key.json"
+    managed_cert_name: "myapp-managed-cert"
 
   tasks:
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command: >-
+        gcloud auth activate-service-account
+        --key-file={{ gcp_service_account_file }}
+        --project={{ gcp_project }}
+      changed_when: false
+
+    - name: Check whether the Google-managed SSL certificate exists
+      ansible.builtin.command: >-
+        gcloud compute ssl-certificates describe {{ managed_cert_name }}
+        --global
+        --project={{ gcp_project }}
+        --format=value(name)
+      register: existing_ssl_cert
+      changed_when: false
+      failed_when: false
+
     - name: Create the Google-managed SSL certificate
-      google.cloud.gcp_compute_managed_ssl_certificate:
-        name: "myapp-managed-cert"
-        managed:
-          domains:
-            - "app.example.com"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
-      register: ssl_cert
+      ansible.builtin.command: >-
+        gcloud compute ssl-certificates create {{ managed_cert_name }}
+        --global
+        --domains=app.example.com
+        --project={{ gcp_project }}
+      when: existing_ssl_cert.rc != 0
 
     - name: Reserve a static external IP address
       google.cloud.gcp_compute_global_address:
@@ -162,7 +190,7 @@ Creating the certificate is only the first step. You need to attach it to an HTT
       google.cloud.gcp_compute_url_map:
         name: "myapp-url-map"
         default_service:
-          selfLink: "projects/{{ gcp_project }}/global/backendServices/myapp-backend"
+          selfLink: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/global/backendServices/myapp-backend"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
@@ -175,7 +203,7 @@ Creating the certificate is only the first step. You need to attach it to an HTT
         url_map:
           selfLink: "{{ url_map.selfLink }}"
         ssl_certificates:
-          - selfLink: "{{ ssl_cert.selfLink }}"
+          - selfLink: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/global/sslCertificates/{{ managed_cert_name }}"
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
@@ -248,22 +276,39 @@ If you run multiple services behind different load balancers, you might manage s
           - "dashboard.example.com"
 
   tasks:
-    - name: Create Google-managed certificates for all domains
-      google.cloud.gcp_compute_managed_ssl_certificate:
-        name: "{{ item.name }}"
-        managed:
-          domains: "{{ item.domains }}"
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_auth_kind }}"
-        service_account_file: "{{ gcp_service_account_file }}"
-        state: present
+    - name: Authenticate gcloud with the service account
+      ansible.builtin.command: >-
+        gcloud auth activate-service-account
+        --key-file={{ gcp_service_account_file }}
+        --project={{ gcp_project }}
+      changed_when: false
+
+    - name: Check existing Google-managed certificates
+      ansible.builtin.command: >-
+        gcloud compute ssl-certificates describe {{ item.name }}
+        --global
+        --project={{ gcp_project }}
+        --format=value(name)
       loop: "{{ certificates }}"
-      register: cert_results
+      register: existing_cert_results
+      changed_when: false
+      failed_when: false
+
+    - name: Create Google-managed certificates for all domains
+      ansible.builtin.command: >-
+        gcloud compute ssl-certificates create {{ item.item.name }}
+        --global
+        --domains={{ item.item.domains | join(',') }}
+        --project={{ gcp_project }}
+      loop: "{{ existing_cert_results.results }}"
+      when: item.rc != 0
+      loop_control:
+        label: "{{ item.item.name }}"
 
     - name: Show all certificate statuses
       ansible.builtin.debug:
-        msg: "Certificate '{{ item.item.name }}' for domains: {{ item.item.domains | join(', ') }}"
-      loop: "{{ cert_results.results }}"
+        msg: "Certificate '{{ item.name }}' for domains: {{ item.domains | join(', ') }}"
+      loop: "{{ certificates }}"
 ```
 
 ## Rotating Self-Managed Certificates
@@ -311,7 +356,7 @@ Self-managed certificates expire, so you need a rotation strategy. The approach 
       google.cloud.gcp_compute_target_https_proxy:
         name: "myapp-https-proxy"
         url_map:
-          selfLink: "projects/{{ gcp_project }}/global/urlMaps/myapp-url-map"
+          selfLink: "https://www.googleapis.com/compute/v1/projects/{{ gcp_project }}/global/urlMaps/myapp-url-map"
         ssl_certificates:
           - selfLink: "{{ new_cert.selfLink }}"
         project: "{{ gcp_project }}"
