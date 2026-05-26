@@ -8,7 +8,7 @@ Description: Understand the differences between Ansible lookup plugins and filte
 
 ---
 
-One of the most common sources of confusion for Ansible users is understanding the difference between lookup plugins and filters. Both are used inside Jinja2 expressions. Both transform data. But they serve fundamentally different purposes, and picking the wrong one can lead to unexpected behavior or overly complicated playbooks.
+One of the most common sources of confusion for Ansible users is understanding the difference between lookup plugins and filters. Both are used inside Jinja2 expressions. Both participate in data processing. But they serve fundamentally different purposes, and picking the wrong one can lead to unexpected behavior or overly complicated playbooks.
 
 Let me break this down with real examples so you know exactly when to reach for a lookup and when to reach for a filter.
 
@@ -42,14 +42,14 @@ The key characteristic of a lookup plugin is that it generates or retrieves data
     # Query HashiCorp Vault
     - name: Fetch a secret
       debug:
-        msg: "{{ lookup('hashi_vault', 'secret=secret/data/myapp token=s.xyz url=http://vault:8200') }}"
+        msg: "{{ lookup('community.hashi_vault.hashi_vault', 'secret=secret/data/myapp token=s.xyz url=http://vault:8200') }}"
 ```
 
 ## What Filters Do
 
 Filters transform data that already exists. They take an input value, apply a transformation, and return a modified value. Filters run inside the Jinja2 template engine and do not reach out to external systems.
 
-Think of filters as pure functions: same input always produces the same output, with no side effects.
+Think of most data-shaping filters as pure functions: they take input from the template expression and return a transformed value.
 
 ```yaml
 # Examples of filters transforming existing data
@@ -148,7 +148,7 @@ The real power comes from chaining lookups and filters together. Fetch data with
         server_list: >-
           {{ raw_csv.split('\n')[1:] |
              reject('equalto', '') |
-             map('regex_replace', '^(.+),(.+),(.+)$', '{"name": "\1", "ip": "\2", "role": "\3"}') |
+             map('regex_replace', '^(.+),(.+),(.+)$', '{"name": "\\1", "ip": "\\2", "role": "\\3"}') |
              map('from_json') |
              list }}
 
