@@ -110,9 +110,14 @@ Ansible's `package` module automatically selects the right package manager. For 
 
     # For packages with different names per OS family
     - name: Install Apache
+      vars:
+        apache_package:
+          Debian: apache2
+          RedHat: httpd
       ansible.builtin.package:
-        name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+        name: "{{ apache_package[ansible_os_family] }}"
         state: present
+      when: ansible_os_family in apache_package
 ```
 
 ## Service Management Differences
@@ -130,9 +135,9 @@ Service names and configuration paths often differ between OS families:
     apache_service:
       Debian: apache2
       RedHat: httpd
-    apache_config_dir:
-      Debian: /etc/apache2
-      RedHat: /etc/httpd
+    apache_config_file:
+      Debian: /etc/apache2/apache2.conf
+      RedHat: /etc/httpd/conf/httpd.conf
     apache_user:
       Debian: www-data
       RedHat: apache
@@ -145,26 +150,26 @@ Service names and configuration paths often differ between OS families:
     - name: Deploy Apache configuration
       ansible.builtin.template:
         src: apache.conf.j2
-        dest: "{{ apache_config_dir[ansible_os_family] }}/conf/httpd.conf"
+        dest: "{{ apache_config_file[ansible_os_family] }}"
         owner: root
         group: root
         mode: '0644'
       notify: "restart {{ apache_service[ansible_os_family] }}"
 
     - name: Start and enable Apache
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ apache_service[ansible_os_family] }}"
         state: started
         enabled: true
 
   handlers:
     - name: restart apache2
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: apache2
         state: restarted
 
     - name: restart httpd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: httpd
         state: restarted
 ```
@@ -184,14 +189,15 @@ When you have several related tasks for each OS family, blocks keep things organ
     - name: Debian family setup
       when: ansible_os_family == "Debian"
       block:
-        - name: Add APT repository key
-          ansible.builtin.apt_key:
-            url: https://packages.example.com/gpg-key
-            state: present
-
         - name: Add APT repository
-          ansible.builtin.apt_repository:
-            repo: "deb https://packages.example.com/apt stable main"
+          ansible.builtin.deb822_repository:
+            name: myapp
+            types: deb
+            uris: https://packages.example.com/apt
+            suites: stable
+            components:
+              - main
+            signed_by: https://packages.example.com/gpg-key
             state: present
 
         - name: Install from custom repo
@@ -397,7 +403,7 @@ Firewalls are completely different between Debian (ufw) and RedHat (firewalld):
             state: present
 
         - name: Start firewalld
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: firewalld
             state: started
             enabled: true
@@ -406,6 +412,7 @@ Firewalls are completely different between Debian (ufw) and RedHat (firewalld):
           ansible.posix.firewalld:
             port: "{{ item }}/tcp"
             permanent: true
+            immediate: true
             state: enabled
           loop: "{{ open_ports }}"
           notify: reload firewalld
