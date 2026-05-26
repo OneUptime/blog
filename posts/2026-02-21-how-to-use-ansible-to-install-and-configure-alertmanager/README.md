@@ -53,7 +53,7 @@ alertmanager/
 ```yaml
 # roles/alertmanager/defaults/main.yml
 
-alertmanager_version: "0.26.0"
+alertmanager_version: "0.32.1"
 alertmanager_platform: "linux-amd64"
 
 # System user
@@ -81,10 +81,10 @@ alertmanager_smtp_auth_password: ""
 alertmanager_smtp_require_tls: true
 
 # Slack settings
-alertmanager_slack_api_url: ""
+alertmanager_slack_api_url: "https://hooks.slack.com/services/REPLACE/ME"
 
 # PagerDuty settings
-alertmanager_pagerduty_service_key: ""
+alertmanager_pagerduty_routing_key: "REPLACE_ME"
 
 # Route configuration
 alertmanager_route:
@@ -94,12 +94,12 @@ alertmanager_route:
   repeat_interval: "4h"
   receiver: "default"
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - 'severity="critical"'
       receiver: "pagerduty"
       repeat_interval: "1h"
-    - match:
-        severity: warning
+    - matchers:
+        - 'severity="warning"'
       receiver: "slack"
       repeat_interval: "4h"
 
@@ -117,15 +117,15 @@ alertmanager_receivers:
         text: '{{ "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}" }}'
   - name: "pagerduty"
     pagerduty_configs:
-      - service_key: "{{ alertmanager_pagerduty_service_key }}"
+      - routing_key: "{{ alertmanager_pagerduty_routing_key }}"
         send_resolved: true
 
 # Inhibition rules
 alertmanager_inhibit_rules:
-  - source_match:
-      severity: "critical"
-    target_match:
-      severity: "warning"
+  - source_matchers:
+      - 'severity="critical"'
+    target_matchers:
+      - 'severity="warning"'
     equal: ['alertname', 'instance']
 ```
 
@@ -281,9 +281,9 @@ route:
 {% if alertmanager_route.routes is defined %}
   routes:
 {% for route in alertmanager_route.routes %}
-    - match:
-{% for key, value in route.match.items() %}
-        {{ key }}: {{ value }}
+    - matchers:
+{% for matcher in route.matchers %}
+        - '{{ matcher }}'
 {% endfor %}
       receiver: {{ route.receiver }}
 {% if route.repeat_interval is defined %}
@@ -321,7 +321,7 @@ receivers:
 {% if receiver.pagerduty_configs is defined %}
     pagerduty_configs:
 {% for pd in receiver.pagerduty_configs %}
-      - service_key: '{{ pd.service_key }}'
+      - routing_key: '{{ pd.routing_key }}'
         send_resolved: {{ pd.send_resolved | default(true) | lower }}
 {% endfor %}
 {% endif %}
@@ -337,13 +337,13 @@ receivers:
 {% if alertmanager_inhibit_rules | length > 0 %}
 inhibit_rules:
 {% for rule in alertmanager_inhibit_rules %}
-  - source_match:
-{% for key, value in rule.source_match.items() %}
-      {{ key }}: '{{ value }}'
+  - source_matchers:
+{% for matcher in rule.source_matchers %}
+      - '{{ matcher }}'
 {% endfor %}
-    target_match:
-{% for key, value in rule.target_match.items() %}
-      {{ key }}: '{{ value }}'
+    target_matchers:
+{% for matcher in rule.target_matchers %}
+      - '{{ matcher }}'
 {% endfor %}
     equal: {{ rule.equal | to_json }}
 {% endfor %}
