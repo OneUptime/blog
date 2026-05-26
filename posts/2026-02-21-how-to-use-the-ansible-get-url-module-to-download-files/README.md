@@ -15,7 +15,7 @@ Downloading files to remote servers is one of the most common automation tasks. 
 The simplest use of `get_url` downloads a file from a URL to a specified path on the remote host.
 
 ```yaml
-# Download the latest Docker Compose binary
+# Download a specific Docker Compose binary
 
 - name: Download Docker Compose
   ansible.builtin.get_url:
@@ -26,7 +26,7 @@ The simplest use of `get_url` downloads a file from a URL to a specified path on
     group: root
 ```
 
-The module checks whether the file already exists at the destination. If the remote server supports it, the module uses HTTP `If-Modified-Since` headers or ETag comparison to skip downloads when the file has not changed. This makes the task idempotent out of the box.
+The module checks whether the file already exists at the destination. By default, if `dest` is a file path and the file already exists, `get_url` does not download it again unless you set `force: yes` or use a checksum that does not match the existing file. This makes the task idempotent out of the box.
 
 ## Setting Permissions and Ownership
 
@@ -108,7 +108,7 @@ The default timeout is 10 seconds, which is often too short for large files.
 
 ## Using force Parameter
 
-By default, `get_url` uses conditional requests to avoid re-downloading unchanged files. Setting `force: yes` always downloads the file, regardless of whether it has changed.
+By default, if `dest` is a file path and the file already exists, `get_url` does not download it again. Setting `force: yes` downloads the file every time and replaces the destination if the contents changed.
 
 ```yaml
 # Always download the latest version of a frequently updated file
@@ -167,15 +167,14 @@ In corporate environments, you often need to go through a proxy.
 
 ## SSL/TLS Certificate Handling
 
-For servers with self-signed certificates or custom CAs, you have options to handle certificate verification.
+For servers with self-signed certificates or custom CAs, certificate verification is enabled by default. Add your internal CA certificate to the managed host's trusted certificate store so `get_url` can validate the server normally.
 
 ```yaml
-# Download from a server with a custom CA certificate
+# Download from an internal HTTPS server trusted by the managed host
 - name: Download from internal HTTPS server
   ansible.builtin.get_url:
     url: "https://internal-repo.company.com/packages/myapp.rpm"
     dest: /tmp/myapp.rpm
-    ca_path: /etc/pki/tls/certs/company-ca.pem
     mode: '0644'
 
 # For development/testing environments only - skip certificate validation
@@ -295,10 +294,7 @@ graph TD
     B -->|No| C[Download file]
     B -->|Yes| D{force: yes?}
     D -->|Yes| C
-    D -->|No| E[Send conditional request]
-    E --> F{Server says modified?}
-    F -->|Yes| C
-    F -->|No| G[Skip download - unchanged]
+    D -->|No| G[Skip download]
     C --> H{Download successful?}
     H -->|No| I{Retries remaining?}
     I -->|Yes| J[Wait and retry]
@@ -310,4 +306,4 @@ graph TD
 
 ## Summary
 
-The `get_url` module is the standard way to download files in Ansible playbooks. It handles HTTP redirects, supports conditional downloads for idempotency, and provides checksum verification for security. With retry logic, proxy support, and custom headers, it covers the full range of download scenarios you will encounter in production environments. Combine it with `unarchive` for downloading and extracting archives, or use it standalone for binary downloads and configuration file fetching.
+The `get_url` module is the standard way to download files in Ansible playbooks. It handles HTTP redirects, avoids re-downloading existing file destinations by default, and provides checksum verification for security. With retry logic, proxy support, and custom headers, it covers the full range of download scenarios you will encounter in production environments. Combine it with `unarchive` for downloading and extracting archives, or use it standalone for binary downloads and configuration file fetching.
