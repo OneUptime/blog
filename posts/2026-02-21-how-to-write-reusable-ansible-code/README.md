@@ -37,6 +37,11 @@ app_deploy_post_deploy_commands: []
 ```yaml
 # roles/app_deploy/tasks/main.yml
 # Tasks use variables instead of hardcoded values
+- name: Ensure application group exists
+  ansible.builtin.group:
+    name: "{{ app_deploy_group }}"
+    system: yes
+
 - name: Ensure application user exists
   ansible.builtin.user:
     name: "{{ app_deploy_user }}"
@@ -49,12 +54,14 @@ app_deploy_post_deploy_commands: []
     repo: "{{ app_deploy_repo }}"
     dest: "{{ app_deploy_dir }}"
     version: "{{ app_deploy_version }}"
+  become: yes
   become_user: "{{ app_deploy_user }}"
 
 - name: Install Python dependencies
   ansible.builtin.pip:
     requirements: "{{ app_deploy_requirements }}"
     virtualenv: "{{ app_deploy_venv_path }}"
+  become: yes
   become_user: "{{ app_deploy_user }}"
 ```
 
@@ -107,17 +114,19 @@ Break roles into smaller task files and include them conditionally:
 ```yaml
 # roles/webserver/tasks/debian.yml
 # Debian/Ubuntu specific tasks
-- name: Install nginx on Debian
-  ansible.builtin.apt:
-    name: nginx
-    state: present
-    update_cache: yes
-
-- name: Enable nginx repository for latest version
+- name: Enable nginx repository for latest version on Ubuntu
   ansible.builtin.apt_repository:
     repo: "ppa:nginx/stable"
     state: present
-  when: webserver_use_latest
+  when:
+    - webserver_use_latest
+    - ansible_distribution == "Ubuntu"
+
+- name: Install nginx on Debian
+  ansible.builtin.apt:
+    name: nginx
+    state: "{{ 'latest' if webserver_use_latest else 'present' }}"
+    update_cache: yes
 ```
 
 ```yaml
@@ -125,13 +134,8 @@ Break roles into smaller task files and include them conditionally:
 # RHEL/CentOS specific tasks
 - name: Install nginx on RHEL
   ansible.builtin.dnf:
-    name: nginx
+    name: "{{ '@nginx:1.24' if webserver_use_latest else 'nginx' }}"
     state: present
-
-- name: Enable nginx module stream
-  ansible.builtin.command:
-    cmd: dnf module enable nginx:1.24 -y
-  when: webserver_use_latest
 ```
 
 ## Create Reusable Task Libraries
