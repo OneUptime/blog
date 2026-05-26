@@ -26,6 +26,8 @@ pip install jxmlease
 pip install xmltodict
 ```
 
+Note: The `junipernetworks.junos` collection is currently deprecated in the Ansible community documentation and is scheduled for removal from Ansible 14. Pin supported Ansible and collection versions, or evaluate Juniper's `juniper.device` collection for new projects.
+
 ## Connection Options
 
 JunOS supports multiple connection methods with Ansible:
@@ -104,10 +106,7 @@ Or with Ansible using the CLI connection first:
 
   tasks:
     - name: Enable NETCONF over SSH
-      junipernetworks.junos.junos_config:
-        lines:
-          - set system services netconf ssh
-          - set system services netconf rfc-compliant
+      junipernetworks.junos.junos_netconf:
 ```
 
 ## Gathering Device Facts
@@ -356,7 +355,7 @@ JunOS uses "firewall filters" instead of access control lists:
 
 ## Configuration Rollback
 
-JunOS maintains up to 50 previous configurations by default. Ansible can leverage this for safe automation:
+JunOS maintains the most recently committed configuration and up to 49 previous configurations, depending on the platform. Ansible can leverage this for safe automation:
 
 ```yaml
 # playbook-junos-rollback.yml
@@ -450,8 +449,8 @@ The `confirm: 5` parameter means the commit will automatically roll back after 5
     - name: Get structured output via RPC
       junipernetworks.junos.junos_command:
         commands:
-          - command: show route summary
-            output: json
+          - show route summary
+        display: json
       register: route_summary
 
     - name: Display route summary
