@@ -8,7 +8,7 @@ Description: A complete guide to using the loop keyword in Ansible to iterate ov
 
 ---
 
-The `loop` keyword is the modern way to iterate in Ansible playbooks. It replaced the older `with_*` syntax (like `with_items`, `with_dict`, `with_nested`) starting in Ansible 2.5, and it is now the recommended approach for all new playbooks. If you are writing Ansible today, `loop` should be your go-to tool for any kind of iteration.
+The `loop` keyword is the modern way to iterate in Ansible playbooks. It was introduced in Ansible 2.5 as a simpler alternative to the older `with_*` syntax (like `with_items`, `with_dict`, `with_nested`), and it is now the recommended approach for most new playbooks. If you are writing Ansible today, `loop` should be your go-to tool for most kinds of iteration.
 
 ## Basic Loop Syntax
 
@@ -88,6 +88,7 @@ You do not have to hardcode the list in the task. You can reference variables:
       ansible.posix.firewalld:
         port: "{{ item }}/tcp"
         permanent: yes
+        immediate: yes
         state: enabled
       loop: "{{ firewall_ports }}"
 ```
@@ -129,7 +130,7 @@ You can generate numeric sequences using the `range` function:
   # Creates /data/volume1 through /data/volume5
 ```
 
-The `range(1, 6)` function generates numbers 1 through 5. You pipe it to `list` because `range` returns a generator.
+The `range(1, 6)` function generates numbers 1 through 5. You pipe it to `list` because `range` returns an iterable range object.
 
 ## Registering Loop Results
 
@@ -324,4 +325,4 @@ This shows `loop` with a simple list for virtual hosts, `loop` with `dict2items`
 
 ## Summary
 
-The `loop` keyword is Ansible's Swiss Army knife for iteration. It handles simple lists, lists of dictionaries, dictionary iteration via `dict2items`, numeric ranges, and filtered/transformed lists through Jinja2 filters. Combined with `when` for conditional processing, `register` for capturing results, and `loop_control` for output customization, it covers every iteration scenario you will encounter in real-world automation.
+The `loop` keyword is Ansible's Swiss Army knife for iteration. It handles simple lists, lists of dictionaries, dictionary iteration via `dict2items`, numeric ranges, and filtered/transformed lists through Jinja2 filters. Combined with `when` for conditional processing, `register` for capturing results, and `loop_control` for output customization, it covers most iteration scenarios you will encounter in real-world automation.
