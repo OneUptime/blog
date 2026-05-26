@@ -125,16 +125,14 @@ While `query` is better for loops, `lookup` is useful when you need to generate 
     state: present
   loop: >-
     {{
-      query('fileglob', 'files/packages/*.list')
-      | map('lookup', 'file')
-      | map('split', '\n')
-      | flatten
+      lookup('pipe', 'cat files/packages/*.list')
+      | split('\n')
       | select
       | list
     }}
 ```
 
-This finds all `.list` files, reads their contents, splits by newlines, flattens into a single list, filters out empty strings, and loops over the result.
+This reads the matching `.list` files, splits the combined output by newlines, filters out empty strings, and loops over the result.
 
 ## The pipe Lookup
 
@@ -144,7 +142,7 @@ The `pipe` lookup executes a command and returns its output:
 # Get container IDs from Docker and iterate over them
 - name: Inspect running containers
   ansible.builtin.command: "docker inspect {{ item }}"
-  loop: "{{ query('pipe', 'docker ps -q') | split('\n') | select | list }}"
+  loop: "{{ lookup('pipe', 'docker ps -q') | split('\n') | select | list }}"
   register: container_info
   changed_when: false
 ```
@@ -204,6 +202,8 @@ If no files match the glob, `query` returns an empty list and the task is cleanl
     src: "{{ item.name }}-secrets.j2"
     dest: "/etc/{{ item.name }}/secrets.conf"
     mode: '0600'
+  vars:
+    service_secrets: "{{ lookup('vars', item.vault_key) }}"
   loop:
     - { name: "api", vault_key: "api_secrets" }
     - { name: "worker", vault_key: "worker_secrets" }
@@ -220,8 +220,7 @@ The `first_found` lookup is great for finding the first matching file from a lis
 # Load the most specific variable file available
 - name: Load variables with fallback
   ansible.builtin.include_vars: "{{ item }}"
-  loop:
-    - "{{ query('first_found', params) }}"
+  loop: "{{ query('first_found', params) }}"
   vars:
     params:
       files:
@@ -322,7 +321,7 @@ For large result sets, lookups can be slow. Cache results in `set_fact` if you n
 # Cache lookup results to avoid repeated execution
 - name: Cache file list
   ansible.builtin.set_fact:
-    config_files: "{{ query('fileglob', 'files/configs/**/*.conf') }}"
+    config_files: "{{ query('fileglob', 'files/configs/*.conf') }}"
 
 - name: Use cached list in multiple tasks
   ansible.builtin.copy:
