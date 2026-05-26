@@ -16,8 +16,8 @@ This guide covers creating, updating, and managing CloudFormation stacks with An
 
 You need:
 
-- Ansible 2.12+ with the `amazon.aws` collection
-- Python `boto3` and `botocore` libraries
+- Ansible Core 2.16+ with the current `amazon.aws` collection
+- Python `boto3` and `botocore` libraries 1.34.0+
 - AWS credentials configured (environment variables, AWS CLI profile, or IAM role)
 
 ```bash
@@ -280,7 +280,7 @@ For large templates, upload them to S3 first.
         stack_name: myapp-production-app
         state: present
         region: "{{ aws_region }}"
-        template_url: "https://{{ template_bucket }}.s3.amazonaws.com/{{ template_key }}"
+        template_url: "https://{{ template_bucket }}.s3.{{ aws_region }}.amazonaws.com/{{ template_key }}"
         template_parameters:
           Environment: production
         capabilities:
@@ -408,7 +408,7 @@ Check stack status and events for troubleshooting.
 ## Practical Tips
 
 1. **Always add `CAPABILITY_IAM`** when your templates create IAM resources. Without it, the stack creation will fail with a vague error.
-2. **Use change sets for production updates.** Blindly updating a production stack can cause resource replacement you did not expect. Change sets show you exactly what will happen.
+2. **Use change sets for production updates.** Blindly updating a production stack can cause resource replacement you did not expect. Change sets show proposed changes before execution, but they do not guarantee the update will succeed.
 3. **Delete stacks in reverse dependency order.** CloudFormation will refuse to delete a stack if another stack's export references it.
 4. **Template size limits exist.** Templates sent in the request body cannot exceed 51,200 bytes. For larger templates, upload to S3 first and use `template_url`.
 5. **Stack outputs are your API.** Think of CloudFormation outputs as the public interface of your stack. Other stacks and Ansible playbooks should only reference outputs, never hardcode resource IDs.
