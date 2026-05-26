@@ -77,7 +77,7 @@ The `uri` module is Ansible's HTTP client. It handles request methods, headers, 
 
 ## Extracting Data from Responses
 
-API responses are often deeply nested. Here is how to extract what you need:
+API responses are often deeply nested. Here is how to extract what you need. The `community.general.json_query` filter also requires the `community.general` collection and the `jmespath` Python library on the controller:
 
 ```yaml
 # playbook-extract-api.yml
@@ -135,7 +135,7 @@ API responses are often deeply nested. Here is how to extract what you need:
 
     - name: Get production servers using json_query
       ansible.builtin.debug:
-        msg: "{{ simulated_response | json_query(\"data.servers[?tags.environment=='production'].name\") }}"
+        msg: "{{ simulated_response | community.general.json_query(\"data.servers[?tags.environment=='production'].name\") }}"
 ```
 
 ## API Processing Flow
@@ -148,7 +148,7 @@ graph TD
     C -->|4xx/5xx| E[Error handling]
     D --> F{Data extraction}
     F -->|Simple| G[Dot notation]
-    F -->|Complex| H[json_query]
+    F -->|Complex| H[community.general.json_query]
     F -->|Filtered| I[selectattr + map]
     G --> J[Use in tasks]
     H --> J
@@ -157,11 +157,11 @@ graph TD
 
 ## Handling Paginated APIs
 
-Many APIs return data in pages. You need to loop through all pages:
+Many APIs return data in pages. When the API response includes total page metadata, fetch the first page, then loop through the remaining pages:
 
 ```yaml
 # playbook-pagination.yml
-# Handles a paginated API by fetching all pages until no more data remains
+# Handles a paginated API by fetching all pages using response pagination metadata
 - name: Handle paginated API
   hosts: localhost
   gather_facts: false
@@ -170,20 +170,30 @@ Many APIs return data in pages. You need to loop through all pages:
     all_servers: []
 
   tasks:
-    - name: Fetch all pages of server data
+    - name: Fetch the first page of server data
+      ansible.builtin.uri:
+        url: "{{ api_base_url }}?page=1&per_page=50"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'API_TOKEN') }}"
+      register: first_page_response
+
+    - name: Fetch remaining pages of server data
       ansible.builtin.uri:
         url: "{{ api_base_url }}?page={{ item }}&per_page=50"
         method: GET
         headers:
           Authorization: "Bearer {{ lookup('env', 'API_TOKEN') }}"
       register: page_responses
-      loop: "{{ range(1, 6) | list }}"
-      until: page_responses.json.data | length == 0
-      retries: 5
+      loop: "{{ range(2, (first_page_response.json.pagination.total_pages | int) + 1) | list }}"
+      when: (first_page_response.json.pagination.total_pages | int) > 1
 
     - name: Combine all page results
       ansible.builtin.set_fact:
-        all_servers: "{{ page_responses.results | map(attribute='json') | map(attribute='data') | flatten | list }}"
+        all_servers: >-
+          {{ ([first_page_response.json.data] +
+              (page_responses.results | default([]) | map(attribute='json') | map(attribute='data') | list)) |
+             flatten }}
 
     - name: Show total servers collected
       ansible.builtin.debug:
@@ -364,4 +374,4 @@ Transform API data into a format suitable for Ansible tasks:
 
 ## Summary
 
-Ansible's `uri` module combined with its data manipulation filters makes it a capable tool for API data processing. Use `uri` with appropriate authentication headers for API calls, access the automatic JSON parsing via `.json`, and extract data with `map`, `selectattr`, `json_query`, or Jinja2 expressions. Handle pagination by looping through pages and flattening results. Always implement retry logic and error handling for external API calls, since network issues and rate limiting are facts of life. Transform API data into clean structures before using it in downstream tasks to keep your playbooks readable.
+Ansible's `uri` module combined with its data manipulation filters makes it a capable tool for API data processing. Use `uri` with appropriate authentication headers for API calls, access the automatic JSON parsing via `.json`, and extract data with `map`, `selectattr`, `community.general.json_query`, or Jinja2 expressions. Handle pagination by looping through pages and flattening results. Always implement retry logic and error handling for external API calls, since network issues and rate limiting are facts of life. Transform API data into clean structures before using it in downstream tasks to keep your playbooks readable.
