@@ -222,7 +222,7 @@ echo "$VAULT_FILES"
 for file in $VAULT_FILES; do
     echo "Rekeying: $file"
     ansible-vault rekey "$file" \
-        --old-vault-password-file ~/.ansible/vault_password_old \
+        --vault-password-file ~/.ansible/vault_password_old \
         --new-vault-password-file ~/.ansible/vault_password_new
 done
 
@@ -270,7 +270,7 @@ Prevent accidental commits of unencrypted secret files:
 #!/bin/bash
 # .git/hooks/pre-commit - check that vault files are encrypted
 
-VAULT_FILES=$(git diff --cached --name-only | grep -E 'vault.*\.(yml|yaml)$')
+VAULT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E 'vault.*\.(yml|yaml)$')
 
 for file in $VAULT_FILES; do
     # Check if the file starts with the vault header
