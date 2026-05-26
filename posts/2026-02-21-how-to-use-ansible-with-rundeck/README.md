@@ -38,7 +38,7 @@ version: '3.8'
 
 services:
   rundeck:
-    image: rundeck/rundeck:5.0.0
+    image: rundeck/rundeck:5.20.1
     ports:
       - "4440:4440"
     environment:
@@ -88,7 +88,7 @@ The official Rundeck Docker image does not include Ansible. You need to add it.
 
 ```dockerfile
 # Dockerfile.rundeck-ansible
-FROM rundeck/rundeck:5.0.0
+FROM rundeck/rundeck:5.20.1
 
 USER root
 
@@ -122,7 +122,7 @@ Rundeck has an official Ansible plugin for better integration.
 ```bash
 # Download the Ansible plugin
 # Place it in the Rundeck plugins directory
-wget https://github.com/Batix/rundeck-ansible-plugin/releases/download/3.2.4/ansible-plugin-3.2.4.jar \
+wget https://github.com/rundeck-plugins/ansible-plugin/releases/download/5.0.1/ansible-plugin-5.0.1.jar \
   -O /home/rundeck/libext/ansible-plugin.jar
 ```
 
@@ -149,13 +149,14 @@ Or configure via the project properties file.
 
 ```properties
 # /home/rundeck/projects/infrastructure/etc/project.properties
-project.ansible.executable=/usr/local/bin/ansible
-project.ansible-playbook.executable=/usr/local/bin/ansible-playbook
-project.ansible.config-file-path=/home/rundeck/ansible/ansible.cfg
+project.ansible-binaries-dir-path=/usr/local/bin
+project.ansible-config-file-path=/home/rundeck/ansible/ansible.cfg
+project.ansible-inventory=/home/rundeck/ansible/inventory/production.ini
 
 # Node source from Ansible inventory
 resources.source.1.type=com.batix.rundeck.plugins.AnsibleResourceModelSourceFactory
 resources.source.1.config.ansible-inventory=/home/rundeck/ansible/inventory/production.ini
+resources.source.1.config.ansible-config-file-path=/home/rundeck/ansible/ansible.cfg
 resources.source.1.config.ansible-gather-facts=true
 
 # Default node executor
@@ -209,7 +210,7 @@ Export and version control your jobs as YAML.
           ansible-playbook: /home/rundeck/ansible/playbooks/deploy.yml
           ansible-extra-vars: "deploy_version=${option.version}"
           ansible-inventory: /home/rundeck/ansible/inventory/production.ini
-          ansible-vault-password-path: /home/rundeck/secrets/vault_pass.txt
+          ansible-vault-path: /home/rundeck/secrets/vault_pass.txt
         nodeStep: false
         type: com.batix.rundeck.plugins.AnsiblePlaybookWorkflowStep
     keepgoing: false
@@ -365,8 +366,9 @@ Rundeck's API lets you trigger Ansible jobs programmatically.
 # Run a job via the Rundeck API
 curl -X POST \
   -H "X-Rundeck-Auth-Token: your-api-token" \
+  -H "Accept: application/json" \
   -H "Content-Type: application/json" \
-  http://rundeck.example.com:4440/api/41/job/JOB-UUID/executions \
+  http://rundeck.example.com:4440/api/41/job/JOB-UUID/run \
   -d '{
     "options": {
       "version": "1.2.3",
