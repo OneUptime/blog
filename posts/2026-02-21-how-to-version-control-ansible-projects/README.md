@@ -139,7 +139,7 @@ git commit -m "changes"
 
 Vault-encrypted files are safe to commit. The encrypted content looks like this:
 
-```yaml
+```text
 # group_vars/production/vault.yml
 # This file is encrypted with ansible-vault and safe to commit
 $ANSIBLE_VAULT;1.1;AES256
@@ -172,8 +172,8 @@ api_key: "{{ vault_api_key }}"
 ```
 
 ```yaml
-# inventories/production/group_vars/vault.yml (encrypted)
-# Actual secret values stored encrypted
+# inventories/production/group_vars/vault.yml (decrypted while editing)
+# Actual secret values stored in the encrypted file
 vault_db_user: produser
 vault_db_password: supersecretpassword123
 vault_api_key: sk-abcdef1234567890
@@ -248,7 +248,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          ansible-galaxy collection install -r requirements.yml
+          ansible-galaxy install -r requirements.yml
 
       - name: Run ansible-lint
         run: ansible-lint playbooks/ roles/
@@ -345,7 +345,7 @@ roles:
 
 ```bash
 # After updating dependencies, commit the changes
-ansible-galaxy collection install -r requirements.yml --force
+ansible-galaxy install -r requirements.yml --force
 git add requirements.yml
 git commit -m "Bump community.general to 8.2.0 for UFW fix"
 ```
