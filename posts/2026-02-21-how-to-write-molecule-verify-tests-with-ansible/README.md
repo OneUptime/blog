@@ -64,9 +64,7 @@ The logic here is: if the package module says it would change something (install
       ansible.builtin.stat:
         path: /etc/nginx/nginx.conf
       register: nginx_conf
-      failed_when:
-        - not nginx_conf.stat.exists
-        - nginx_conf.stat.pw_name != 'root'
+      failed_when: not nginx_conf.stat.exists or nginx_conf.stat.pw_name != 'root'
 
     - name: Verify config file permissions
       ansible.builtin.stat:
@@ -133,9 +131,7 @@ Here is a full verify playbook for a web server role.
       ansible.builtin.stat:
         path: /etc/nginx/nginx.conf
       register: conf_owner
-      failed_when:
-        - conf_owner.stat.pw_name != 'root'
-        - conf_owner.stat.gr_name != 'root'
+      failed_when: conf_owner.stat.pw_name != 'root' or conf_owner.stat.gr_name != 'root'
 
     # Configuration content verification
     - name: Read nginx config content
@@ -155,9 +151,7 @@ Here is a full verify playbook for a web server role.
       ansible.builtin.stat:
         path: /var/www/html
       register: docroot
-      failed_when:
-        - not docroot.stat.exists
-        - not docroot.stat.isdir
+      failed_when: not docroot.stat.exists or not docroot.stat.isdir
 
     # Port verification
     - name: Verify nginx is listening on port 80
@@ -268,22 +262,16 @@ Use `slurp` to read file content and then assert on it.
         fail_msg: "User 'appuser' is not in the 'www-data' group"
 ```
 
-## Verifying Idempotency in Verify
+## Verifying Idempotency with Molecule
 
-You can re-run the converge playbook in check mode to verify idempotency.
+Use Molecule's idempotence action to verify that a second converge run does not report changes.
 
 ```yaml
-    - name: Re-run the role in check mode to verify idempotency
-      ansible.builtin.include_role:
-        name: my_webserver
-      check_mode: true
-      register: idempotency_check
-
-    - name: Assert the role is idempotent
-      ansible.builtin.assert:
-        that:
-          - not idempotency_check.changed
-        fail_msg: "Role is not idempotent - it would make changes on a second run"
+# molecule/default/molecule.yml - include idempotence in the scenario
+test_sequence:
+  - converge
+  - idempotence
+  - verify
 ```
 
 ## Organizing Large Verify Playbooks
