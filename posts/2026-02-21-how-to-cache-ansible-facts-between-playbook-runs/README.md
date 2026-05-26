@@ -41,7 +41,7 @@ mkdir -p /tmp/ansible_facts_cache
 chmod 700 /tmp/ansible_facts_cache
 ```
 
-After running a playbook, you can see the cached facts.
+After running a playbook, you can confirm the cache directory has been populated.
 
 ```bash
 # List cached fact files (one per host)
@@ -49,18 +49,18 @@ ls -la /tmp/ansible_facts_cache/
 # -rw-r--r-- 1 user user 45232 Feb 21 10:30 web-01
 # -rw-r--r-- 1 user user 44891 Feb 21 10:30 web-02
 # -rw-r--r-- 1 user user 43567 Feb 21 10:30 db-01
-
-# View cached facts for a specific host (pretty-printed)
-python3 -m json.tool /tmp/ansible_facts_cache/web-01 | head -20
 ```
 
 ## Setting Up Redis Cache
 
 For multi-user environments or when you have multiple Ansible control nodes, Redis is a better choice. All control nodes share the same cache, and Redis handles concurrency properly.
 
-First, install the Redis Python library on the control node.
+First, install the `community.general` collection and the Redis Python library on the control node.
 
 ```bash
+# Install the cache plugin collection
+ansible-galaxy collection install community.general
+
 # Install the Redis client library for Python
 pip install redis
 ```
@@ -72,33 +72,35 @@ Then configure Ansible to use Redis.
 # Configures Redis-based fact caching
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = localhost:6379:0
 fact_caching_timeout = 86400
 fact_caching_prefix = ansible_facts_
 ```
 
-The connection string format is `host:port:database_number`. The prefix helps identify Ansible's keys in Redis if you use the same Redis instance for other things.
+The connection string format is `host:port:database_number:password`, with the password omitted when Redis does not require one. The prefix helps separate Ansible's cache entries if you use the same Redis instance for other things.
 
-You can verify the cache is working with the Redis CLI.
+You can verify the cache is working from Ansible by reading a fact from `hostvars` after a warm cache run.
 
-```bash
-# Check that Ansible stored facts in Redis
-redis-cli KEYS "ansible_facts_*"
-# 1) "ansible_facts_web-01"
-# 2) "ansible_facts_web-02"
-# 3) "ansible_facts_db-01"
-
-# Check the TTL on a cached fact
-redis-cli TTL "ansible_facts_web-01"
-# (integer) 85432
+```yaml
+---
+- name: Verify cached facts are available
+  hosts: web-01
+  gather_facts: no
+  tasks:
+    - name: Show cached default IPv4 address
+      ansible.builtin.debug:
+        msg: "{{ hostvars[inventory_hostname]['ansible_facts']['default_ipv4']['address'] }}"
 ```
 
 ## Setting Up Memcached Cache
 
-Memcached is another option for distributed caching.
+Memcached is another option for distributed caching. It also comes from the `community.general` collection.
 
 ```bash
+# Install the cache plugin collection
+ansible-galaxy collection install community.general
+
 # Install the memcached client library
 pip install python-memcached
 ```
@@ -108,8 +110,8 @@ pip install python-memcached
 # Configures memcached-based fact caching
 [defaults]
 gathering = smart
-fact_caching = memcached
-fact_caching_connection = ['localhost:11211']
+fact_caching = community.general.memcached
+fact_caching_connection = localhost:11211
 fact_caching_timeout = 86400
 fact_caching_prefix = ansible_facts_
 ```
@@ -125,7 +127,7 @@ The `gathering = smart` setting is what ties caching together. Here is how the t
 
 # gathering = explicit
 # Never gathers facts unless gather_facts: yes is set.
-# Cache is irrelevant because facts are never gathered automatically.
+# Uses the cache plugin when fact gathering is directly requested.
 
 # gathering = smart
 # Checks cache first. Only gathers if cache is empty or expired.
@@ -139,7 +141,7 @@ A complete `ansible.cfg` for a production setup looks like this.
 # Production configuration with Redis fact caching
 [defaults]
 gathering = smart
-fact_caching = redis
+fact_caching = community.general.redis
 fact_caching_connection = redis.internal:6379:0
 fact_caching_timeout = 3600
 fact_caching_prefix = ansible_
@@ -184,8 +186,8 @@ rm -rf /tmp/ansible_facts_cache/*
 rm /tmp/ansible_facts_cache/web-01
 rm /tmp/ansible_facts_cache/web-02
 
-# Option 3: Clear Redis cache
-redis-cli KEYS "ansible_facts_*" | xargs redis-cli DEL
+# Option 3: Clear the configured fact cache for every host in inventory
+ansible-playbook site.yml --flush-cache
 ```
 
 You can also force fact gathering in a playbook by explicitly calling the setup module.
@@ -208,14 +210,19 @@ You can also force fact gathering in a playbook by explicitly calling the setup 
 
 ## YAML File Cache
 
-If you prefer YAML over JSON for the file cache, Ansible supports that too.
+If you prefer YAML over JSON for the file cache, Ansible supports that too through the `community.general` collection.
+
+```bash
+# Install the cache plugin collection
+ansible-galaxy collection install community.general
+```
 
 ```ini
 # ansible.cfg
 # Uses YAML format for the file cache
 [defaults]
 gathering = smart
-fact_caching = yaml
+fact_caching = community.general.yaml
 fact_caching_connection = /tmp/ansible_facts_cache
 fact_caching_timeout = 86400
 ```
@@ -238,10 +245,15 @@ time ansible-playbook site.yml
 
 For a more detailed breakdown, enable the profile_tasks callback.
 
+```bash
+# Install the callback plugin collection
+ansible-galaxy collection install ansible.posix
+```
+
 ```ini
 # ansible.cfg
 [defaults]
-callbacks_enabled = profile_tasks
+callbacks_enabled = ansible.posix.profile_tasks
 ```
 
 ```bash
@@ -262,11 +274,8 @@ When you make infrastructure changes outside of Ansible (like changing an IP add
   hosts: "{{ target_hosts }}"
   gather_facts: no
   tasks:
-    - name: Clear cached facts for target hosts
-      ansible.builtin.file:
-        path: "/tmp/ansible_facts_cache/{{ inventory_hostname }}"
-        state: absent
-      delegate_to: localhost
+    - name: Clear the configured fact cache for this play
+      ansible.builtin.meta: clear_facts
 
     - name: Gather fresh facts
       ansible.builtin.setup:
