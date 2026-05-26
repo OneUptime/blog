@@ -195,8 +195,8 @@ Here is a side-by-side comparison:
 | Tag inheritance | Automatic | Requires apply keyword |
 | when behavior | Applied per task | Applied to whole role |
 | Looping support | No | Yes |
-| Variable role name | No | Yes |
-| Handler visibility | Immediate | Deferred |
+| Variable role name | Only with variables available during parsing | Yes, including inventory/runtime variables |
+| Handler visibility | Available to the whole play after parsing | Available to the whole play after the include is processed |
 
 ## Practical Pattern: Mixed Approach
 
@@ -261,10 +261,10 @@ roles/app_deploy/handlers/
 
 ## Error Handling Considerations
 
-Since `import_role` is processed at parse time, it cannot be used inside `block/rescue` constructs for error handling based on the role's behavior. The tasks are already expanded:
+Since `import_role` is processed at parse time, using it inside `block/rescue` means the block handles failures from the individual expanded role tasks. The import itself is not treated as a single runtime task:
 
 ```yaml
-# This works but the rescue applies to individual tasks, not the role as a unit
+# The rescue runs if one of the expanded role tasks fails
 - block:
     - name: Deploy application
       ansible.builtin.import_role:
@@ -275,7 +275,7 @@ Since `import_role` is processed at parse time, it cannot be used inside `block/
         msg: "A task in app_deploy failed"
 ```
 
-If you need to treat the role as a single unit for error handling, use `include_role` instead.
+If you need runtime flexibility around the role execution, use `include_role` instead.
 
 ## Execution Flow
 
@@ -303,8 +303,8 @@ Use `import_role` when:
 - You want handlers to be available immediately at parse time
 - Predictability is more important than flexibility
 
-The general recommendation is: default to `import_role` for core infrastructure roles that always run, and switch to `include_role` when you need runtime flexibility like conditionals, loops, or dynamic role names.
+The general recommendation is: default to `import_role` for core infrastructure roles that always run, and switch to `include_role` when you need runtime flexibility like conditionals, loops, or role names from inventory or facts.
 
 ## Wrapping Up
 
-The `import_role` module gives you static, predictable role application with full tag support and task visibility. Its behavior is straightforward: the role's tasks are inlined into the play at parse time, making them indistinguishable from tasks written directly in the playbook. The main limitation is the lack of runtime flexibility, as you cannot loop over imported roles or use variable role names. For most infrastructure roles that always need to run, `import_role` is the right choice. Reserve `include_role` for the cases where you genuinely need dynamic, runtime decision-making.
+The `import_role` module gives you static, predictable role application with full tag support and task visibility. Its behavior is straightforward: the role's tasks are inlined into the play at parse time, making them indistinguishable from tasks written directly in the playbook. The main limitation is the lack of runtime flexibility, as you cannot loop over imported roles or use variables that are only available at runtime for the role name. For most infrastructure roles that always need to run, `import_role` is the right choice. Reserve `include_role` for the cases where you genuinely need dynamic, runtime decision-making.
