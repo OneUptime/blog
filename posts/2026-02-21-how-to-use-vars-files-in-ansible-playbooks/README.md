@@ -8,7 +8,7 @@ Description: A practical guide to using vars_files in Ansible playbooks to organ
 
 ---
 
-The `vars_files` directive in Ansible lets you load variables from external files at the play level. Unlike `include_vars` which runs as a task, `vars_files` loads variables before any tasks execute, making them available to all tasks, handlers, templates, and roles in the play. This is the standard way to separate your variable definitions from your playbook logic.
+The `vars_files` directive in Ansible lets you load variables from external files at the play level. Unlike `include_vars` which runs as a task, `vars_files` loads variables before the play's explicit tasks and roles execute, making them available to all tasks, handlers, templates, and roles in the play. This is the standard way to separate your variable definitions from your playbook logic.
 
 ## Basic vars_files Usage
 
@@ -62,11 +62,11 @@ These three approaches to defining variables have different behaviors. Understan
 - name: Variable loading comparison
   hosts: all
 
-  # vars - inline variables, evaluated at play parse time
+  # vars - inline variables defined for the play
   vars:
     inline_var: "defined inline"
 
-  # vars_files - loaded before tasks, evaluated at play parse time
+  # vars_files - loaded before explicit tasks and roles
   vars_files:
     - vars/from-file.yml
 
@@ -88,11 +88,11 @@ The key differences:
 
 | Feature | vars | vars_files | include_vars |
 |---------|------|------------|--------------|
-| Loaded when | Play parse | Play parse | Task execution |
+| Loaded when | Play definition | Before explicit tasks and roles | Task execution |
 | Available to | Entire play | Entire play | After the task |
 | Dynamic paths | No | Limited | Yes |
 | Conditional | No | No | Yes (with when) |
-| Precedence | Lower | Higher than vars | Highest |
+| Precedence | Lower | Higher than vars | Highest of these three |
 
 ## Loading Multiple Files
 
@@ -140,7 +140,7 @@ The final values are: `log_level: debug`, `worker_count: 4`, `debug_mode: true`,
 
 ## Using Variables in File Paths
 
-You can use variables in `vars_files` paths, but they must be defined before `vars_files` is evaluated. This means they need to come from the inventory, command line, or the `vars` section.
+You can use variables in `vars_files` paths, but they must be defined before `vars_files` is evaluated. This means they need to come from sources such as the inventory, command line, gathered facts, or the `vars` section.
 
 ```yaml
 # dynamic-vars-files.yml
@@ -376,4 +376,4 @@ monitoring:
 
 ## Summary
 
-The `vars_files` directive is the standard way to load variables from external files at the play level. Variables are available before any tasks run, making them accessible to everything in the play. Use multiple files for layered configuration, variables in paths for environment-specific loading, and nested lists for fallback behavior. Combined with Ansible Vault for secrets, `vars_files` provides a clean separation between your playbook logic and configuration data. For cases where you need to load variables dynamically based on conditions or facts, use `include_vars` as a task instead.
+The `vars_files` directive is the standard way to load variables from external files at the play level. Variables are available before the play's explicit tasks and roles run, making them accessible to everything in the play. Use multiple files for layered configuration, variables in paths for environment-specific loading, and nested lists for fallback behavior. Combined with Ansible Vault for secrets, `vars_files` provides a clean separation between your playbook logic and configuration data. For cases where you need to load variables dynamically based on task results or `when` conditions, use `include_vars` as a task instead.
