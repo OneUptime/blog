@@ -104,7 +104,7 @@ Here is a realistic example where `delegate_facts` is essential. You are setting
       vars:
         lb_ip: "{{ hostvars[groups['loadbalancers'][0]]['ansible_default_ipv4']['address'] }}"
         db_primary_ip: "{{ hostvars[groups['databases'][0]]['ansible_default_ipv4']['address'] }}"
-        db_replica_ip: "{{ hostvars[groups['databases'][1]]['ansible_default_ipv4']['address'] | default('none') }}"
+        db_replica_ip: "{{ hostvars[groups['databases'][1]]['ansible_default_ipv4']['address'] if (groups['databases'] | length > 1) else 'none' }}"
 ```
 
 The template can then use these variables:
@@ -152,6 +152,7 @@ You can also use `delegate_facts: true` with `set_fact` to store custom facts on
              combine({inventory_hostname: app_version.stdout}) }}
       delegate_to: monitor.example.com
       delegate_facts: true
+      throttle: 1
 
     - name: Show collected versions (from monitor's perspective)
       ansible.builtin.debug:
@@ -246,7 +247,7 @@ When working with dynamic cloud inventories, `delegate_facts` is particularly us
       run_once: true
 
     - name: Discover ElastiCache endpoint
-      amazon.aws.elasticache_info:
+      community.aws.elasticache_info:
         name: myapp-cache
         region: us-east-1
       register: cache_info
@@ -288,7 +289,7 @@ There are situations where you should not use `delegate_facts`:
       register: api_status
       delegate_to: localhost
       # register stores the result under the CURRENT host's variables
-      # delegate_facts only affects ansible_* facts from setup module
+      # delegate_facts affects assigned facts, not registered variables
 
     # You do NOT need delegate_facts when you just want to run
     # a command on another host and do not care about its facts
