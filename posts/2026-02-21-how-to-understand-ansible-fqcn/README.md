@@ -72,7 +72,7 @@ Here are some modules you probably use all the time, shown with their FQCNs:
 | copy | ansible.builtin.copy |
 | template | ansible.builtin.template |
 | file | ansible.builtin.file |
-| yum | ansible.builtin.yum |
+| dnf | ansible.builtin.dnf |
 | apt | ansible.builtin.apt |
 | service | ansible.builtin.service |
 | command | ansible.builtin.command |
@@ -86,11 +86,11 @@ This also applies to plugins, not just modules. For example, the `file` lookup p
 
 When you write `copy` instead of `ansible.builtin.copy` in a task, Ansible still needs to figure out which module to run. It does this through a resolution process:
 
-1. If a `collections` keyword is defined on the play, Ansible searches those collections in order
-2. If no match is found (or no `collections` keyword exists), Ansible falls back to `ansible.builtin`
+1. Ansible can resolve standard modules and plugins from `ansible.builtin` and support older plugin paths through `ansible.legacy`
+2. If a `collections` keyword is defined on the play, Ansible also searches those collections in order for unqualified module and action names
 3. If the module still is not found, Ansible raises an error
 
-This fallback behavior is why your old playbooks still work. But relying on implicit resolution is fragile. If you install a collection that happens to have a module with the same short name, you might get unexpected behavior.
+This default resolution behavior is why your old playbooks still work. But relying on implicit resolution is fragile. If you install a collection that happens to have a module with the same short name, you might get unexpected behavior.
 
 Here is a concrete example of the problem:
 
@@ -101,11 +101,10 @@ Here is a concrete example of the problem:
 - name: Deploy application
   hosts: servers
   collections:
-    - community.general
-    - ansible.builtin
+    - cisco.ios
   tasks:
     # Which "ping" module runs here?
-    # community.general has a ping module for network devices
+    # cisco.ios has a ping redirect for IOS network devices
     # ansible.builtin has the standard ping module
     - name: Check connectivity
       ping:
@@ -140,8 +139,8 @@ ansible-lint playbooks/
 The `fqcn` rule will flag every task that uses a short module name and tell you the correct FQCN to use. The output looks something like this:
 
 ```text
-playbooks/webserver.yml:12: fqcn[action-core]: Use FQCN for builtin module actions (yum).
-Use `ansible.builtin.yum` or `ansible.legacy.yum` instead.
+playbooks/webserver.yml:12: fqcn[action-core]: Use FQCN for builtin module actions (copy).
+Use `ansible.builtin.copy` or `ansible.legacy.copy` instead.
 ```
 
 For bulk updates, you can use a script to do find-and-replace. But be careful with modules that have the same short name in different collections. Always review changes before committing.
@@ -156,7 +155,7 @@ Here is a before-and-after comparison of a typical playbook migration:
   become: true
   tasks:
     - name: Install packages
-      yum:
+      dnf:
         name:
           - httpd
           - mod_ssl
@@ -195,7 +194,7 @@ Here is a before-and-after comparison of a typical playbook migration:
   become: true
   tasks:
     - name: Install packages
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name:
           - httpd
           - mod_ssl
@@ -285,7 +284,7 @@ Here is a cheat sheet of the most commonly used collections:
 
 | Collection | Content Examples |
 |-----------|-----------------|
-| ansible.builtin | copy, template, file, yum, apt, service, debug |
+| ansible.builtin | copy, template, file, dnf, apt, service, debug |
 | ansible.posix | seboolean, firewalld, mount, at, acl |
 | ansible.windows | win_copy, win_service, win_feature |
 | ansible.netcommon | cli_command, netconf_config, network_cli |
