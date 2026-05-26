@@ -97,6 +97,8 @@ yum install -y docker jq awscli
 systemctl start docker
 systemctl enable docker
 
+mkdir -p /opt/app
+
 # Pull application configuration from S3
 aws s3 cp s3://${s3_config_bucket}/${environment}/config.json /opt/app/config.json
 
@@ -261,7 +263,7 @@ resource "aws_instance" "app" {
 
 ## Handling User Data Changes
 
-By default, changing user data forces Terraform to destroy and recreate the EC2 instance. If you want to update user data without replacement, you can use `user_data_replace_on_change`.
+By default, changing user data updates the instance user data and triggers a stop/start of the EC2 instance. If you want user data changes to destroy and recreate the EC2 instance instead, you can use `user_data_replace_on_change`.
 
 ```hcl
 # Control whether user data changes trigger instance replacement
@@ -276,9 +278,8 @@ resource "aws_instance" "app" {
     version = var.app_version
   })
 
-  # Set to false to update user data without destroying the instance
-  # Note: the new script won't run until the instance is rebooted
-  user_data_replace_on_change = false
+  # Set to true to replace the instance when user data changes
+  user_data_replace_on_change = true
 
   tags = {
     Name = "app-server"
@@ -286,7 +287,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-Keep in mind that even with `user_data_replace_on_change = false`, the updated script won't run until the instance is stopped and started (or you configure cloud-init to run on every boot).
+Keep in mind that if you leave `user_data_replace_on_change = false`, Terraform can update the user data without replacement, but AWS requires the instance to be stopped first. After the instance is started again, the new user data is visible, but cloud-init won't run it again by default unless you configure cloud-init to run on every boot.
 
 ## Debugging User Data Scripts
 
@@ -299,8 +300,11 @@ cat /var/log/cloud-init-output.log
 # Check cloud-init status
 cloud-init status
 
-# View the actual user data that was passed to the instance
-curl http://169.254.169.254/latest/user-data
+# View the actual user data that was passed to the instance using IMDSv2
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/user-data
 
 # Re-run cloud-init manually (useful during development)
 cloud-init clean
