@@ -123,12 +123,14 @@ The most practical use case is generating CI/CD test matrices:
   tasks:
     - name: Build test matrix
       ansible.builtin.set_fact:
-        test_matrix: >-
-          {% set result = [] %}
+        test_matrix: "{{ test_matrix_yaml | from_yaml }}"
+      vars:
+        test_matrix_yaml: |
           {% for browser, size, env in browsers | product(screen_sizes, environments) %}
-          {% set _ = result.append({'browser': browser, 'resolution': size, 'environment': env}) %}
+          - browser: {{ browser | to_json }}
+            resolution: {{ size | to_json }}
+            environment: {{ env | to_json }}
           {% endfor %}
-          {{ result }}
 
     - name: Show matrix size
       ansible.builtin.debug:
@@ -196,17 +198,15 @@ The most practical use case is generating CI/CD test matrices:
   tasks:
     - name: Generate all firewall rules
       ansible.builtin.set_fact:
-        firewall_rules: >-
-          {% set result = [] %}
+        firewall_rules: "{{ firewall_rules_yaml | from_yaml }}"
+      vars:
+        firewall_rules_yaml: |
           {% for cidr, port, proto in source_cidrs | product(destination_ports, protocols) %}
-          {% set _ = result.append({
-            'source': cidr,
-            'port': port,
-            'protocol': proto,
-            'action': 'allow'
-          }) %}
+          - source: {{ cidr | to_json }}
+            port: {{ port | to_json }}
+            protocol: {{ proto | to_json }}
+            action: allow
           {% endfor %}
-          {{ result }}
 
     - name: Show generated rules
       ansible.builtin.debug:
@@ -247,16 +247,18 @@ You often do not want every combination. Filter after generating:
   tasks:
     - name: Generate all DB version + app version combos
       ansible.builtin.set_fact:
-        all_combos: >-
-          {% set result = [] %}
+        all_combos: "{{ all_combos_yaml | from_yaml }}"
+      vars:
+        all_combos_yaml: |
           {% for db in databases %}
           {% for db_ver in db.versions %}
           {% for app_ver in app_versions %}
-          {% set _ = result.append({'db': db.name, 'db_version': db_ver, 'app_version': app_ver}) %}
+          - db: {{ db.name | to_json }}
+            db_version: {{ db_ver | to_json }}
+            app_version: {{ app_ver | to_json }}
           {% endfor %}
           {% endfor %}
           {% endfor %}
-          {{ result }}
 
     - name: Filter out incompatible combinations
       ansible.builtin.set_fact:
