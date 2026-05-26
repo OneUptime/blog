@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, AWX, Webhook, CI/CD, GitOps
 
-Description: Configure AWX webhook triggers to automatically launch job templates in response to events from GitHub, GitLab, and other systems.
+Description: Configure AWX webhook triggers to automatically launch job templates in response to events from GitHub and GitLab.
 
 ---
 
-AWX webhook triggers let external systems launch job templates by sending HTTP POST requests to a webhook URL. When a developer pushes code to GitHub, when a GitLab pipeline finishes, or when a monitoring tool detects a threshold breach, a webhook can kick off the corresponding AWX automation. This removes the human from the loop and makes your automation truly event-driven.
+AWX webhook triggers let supported source control systems launch job templates by sending HTTP POST requests to a webhook URL. When a developer pushes code to GitHub or when a GitLab merge request changes, a webhook can kick off the corresponding AWX automation. This removes the human from the loop and makes your automation event-driven.
 
 ## How AWX Webhooks Work
 
-AWX can receive webhooks from GitHub and GitLab natively. When you enable a webhook on a job template, AWX generates a unique webhook URL and a webhook key. You configure your Git provider to send events to that URL. When an event arrives, AWX verifies the signature using the webhook key, extracts relevant data from the payload, and launches the job template.
+AWX can receive webhooks from GitHub and GitLab natively. Recent AWX versions also expose a Bitbucket Data Center webhook receiver, but this guide focuses on GitHub and GitLab. When you enable a webhook on a job template, AWX generates a unique webhook URL and a webhook key. You configure your Git provider to send events to that URL. When an event arrives, AWX verifies the request using the webhook key, extracts relevant data from the payload, and launches the job template.
 
 The webhook payload data is available to your playbook as the `awx_webhook_payload` extra variable.
 
@@ -33,37 +33,45 @@ curl -s -X PATCH \
   }'
 ```
 
-After enabling the webhook, retrieve the generated webhook URL and key.
+After enabling the webhook, retrieve the generated webhook URL and key. The job template response includes the receiver URL under `related.webhook_receiver`; the key is returned from the related `webhook_key` endpoint.
 
 ```bash
-# Get the webhook details
-curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
+# Get the webhook receiver URL
+WEBHOOK_RECEIVER=$(curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   https://awx.example.com/api/v2/job_templates/10/ \
-  | python3 -c "
+  | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
-print(f'Webhook URL: {data.get(\"related\", {}).get(\"webhook_receiver\", \"N/A\")}')
-print(f'Webhook Key: {data.get(\"webhook_key\", \"N/A\")}')
-print(f'Webhook Service: {data.get(\"webhook_service\", \"N/A\")}')
-"
+print(data.get("related", {}).get("webhook_receiver", ""))
+')
+
+WEBHOOK_KEY=$(curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
+  https://awx.example.com/api/v2/job_templates/10/webhook_key/ \
+  | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+print(data.get("webhook_key", ""))
+')
+
+echo "Webhook URL: https://awx.example.com${WEBHOOK_RECEIVER}"
+echo "Webhook Key: ${WEBHOOK_KEY}"
 ```
 
 The webhook URL will look like: `https://awx.example.com/api/v2/job_templates/10/github/`
 
-## Configuring the Webhook Key
+## Rotating the Webhook Key
 
-AWX auto-generates a webhook key, but you can set your own.
+AWX auto-generates a webhook key. If you need a new one, rotate it through the related `webhook_key` endpoint and then update the secret in GitHub or GitLab.
 
 ```bash
-# Set a custom webhook key
-curl -s -X PATCH \
+# Rotate the webhook key
+curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
   -H "Content-Type: application/json" \
-  https://awx.example.com/api/v2/job_templates/10/ \
-  -d '{"webhook_key": "my-secure-webhook-secret-12345"}'
+  https://awx.example.com/api/v2/job_templates/10/webhook_key/
 ```
 
-This key is used by the sender (GitHub/GitLab) to sign the payload so AWX can verify it came from a trusted source.
+For GitHub, this key is used as the webhook secret for signing the payload. For GitLab, it is configured as the Secret token and AWX compares it with the `X-Gitlab-Token` header.
 
 ## Setting Up the GitHub Webhook
 
@@ -89,7 +97,7 @@ curl -s -X POST \
     "config": {
       "url": "https://awx.example.com/api/v2/job_templates/10/github/",
       "content_type": "json",
-      "secret": "my-secure-webhook-secret-12345",
+      "secret": "'"${WEBHOOK_KEY}"'",
       "insecure_ssl": "0"
     }
   }'
@@ -178,7 +186,7 @@ The webhook payload is available as `awx_webhook_payload`. For a GitHub push eve
 
 ## Filtering by Branch or Event Type
 
-Since the webhook fires for all events you selected in GitHub/GitLab, you might want the playbook to only act on specific branches or event types.
+Since the webhook fires for all events you selected, you might want the playbook to only act on specific branches or event types. For GitHub, AWX sets `awx_webhook_event_type` to values such as `push` or `pull_request`.
 
 ```yaml
 # Conditional execution based on webhook event
@@ -209,9 +217,18 @@ Since the webhook fires for all events you selected in GitHub/GitLab, you might 
 
 ## Using Webhook Credentials
 
-If your AWX instance is behind authentication or your webhook endpoint needs additional verification, you can create a webhook credential.
+If you want AWX to send commit status updates back to GitHub or GitLab, you can create a webhook credential. This credential is a personal access token for the Git service; it is not used to authenticate incoming webhook requests.
 
 ```bash
+# Find the GitHub personal access token credential type
+GITHUB_CREDENTIAL_TYPE=$(curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
+  "https://awx.example.com/api/v2/credential_types/?namespace=github_token" \
+  | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+print(data["results"][0]["id"])
+')
+
 # Create a GitHub personal access token credential
 curl -s -X POST \
   -H "Authorization: Bearer ${AWX_TOKEN}" \
@@ -220,7 +237,7 @@ curl -s -X POST \
   -d '{
     "name": "GitHub Webhook Token",
     "organization": 1,
-    "credential_type": 12,
+    "credential_type": '"${GITHUB_CREDENTIAL_TYPE}"',
     "inputs": {
       "token": "ghp_your_github_token_here"
     }
@@ -238,7 +255,7 @@ curl -s -X PATCH \
   -d '{"webhook_credential": 8}'
 ```
 
-With a webhook credential configured, AWX can also update the commit status in GitHub/GitLab to show whether the triggered job passed or failed.
+With a webhook credential configured, AWX can update the commit status in GitHub for pull request events and in GitLab for merge request events.
 
 ## Testing Webhooks
 
@@ -248,13 +265,14 @@ You can test webhooks without pushing actual code by using curl to simulate a Gi
 # Simulate a GitHub push event
 PAYLOAD='{"ref":"refs/heads/main","after":"abc123","repository":{"clone_url":"https://github.com/myorg/myrepo.git"},"head_commit":{"message":"test commit"},"pusher":{"name":"testuser"}}'
 
-# Calculate the HMAC signature
-SIGNATURE=$(echo -n "${PAYLOAD}" | openssl dgst -sha256 -hmac "my-secure-webhook-secret-12345" | awk '{print "sha256="$2}')
+# Calculate the HMAC signature AWX expects for GitHub webhooks
+SIGNATURE=$(echo -n "${PAYLOAD}" | openssl dgst -sha1 -hmac "${WEBHOOK_KEY}" | awk '{print "sha1="$2}')
 
 curl -s -X POST \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: push" \
-  -H "X-Hub-Signature-256: ${SIGNATURE}" \
+  -H "X-GitHub-Delivery: test-delivery-001" \
+  -H "X-Hub-Signature: ${SIGNATURE}" \
   https://awx.example.com/api/v2/job_templates/10/github/ \
   -d "${PAYLOAD}"
 ```
@@ -267,7 +285,7 @@ curl -s -X POST \
 
 **Job launches but fails** - The playbook is running but the payload variables might not be what you expect. Add a debug task that prints `awx_webhook_payload` to inspect the full payload.
 
-**Webhook accepted but no job launches** - Check the AWX activity stream for any error messages. The AWX user associated with the webhook needs Execute permission on the template.
+**Webhook accepted but no job launches** - Check the AWX service logs and activity stream for any error messages. AWX also ignores duplicate webhook deliveries that use the same event GUID.
 
 ## Wrapping Up
 
