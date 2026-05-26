@@ -97,7 +97,7 @@ The `guest_id` parameter tells vSphere what operating system the VM will run. Th
 
 ## Creating a VM with Full Configuration
 
-Here is a more complete example that includes networking, multiple disks, and advanced hardware settings.
+Here is a more complete example that clones from a template and includes networking, multiple disks, and advanced hardware settings. Static guest networking and `wait_for_ip_address` require an installed guest OS with VMware Tools available.
 
 ```yaml
 # create-full-vm.yml
@@ -126,6 +126,7 @@ Here is a more complete example that includes networking, multiple disks, and ad
         datacenter: "DC01"
         cluster: "Production"
         folder: "/DC01/vm/Production/WebServers"
+        template: "rhel9-template"
         guest_id: "rhel9_64Guest"
         # Hardware configuration
         hardware:
@@ -133,9 +134,9 @@ Here is a more complete example that includes networking, multiple disks, and ad
           memory_reservation_lock: false
           num_cpus: 4
           num_cpu_cores_per_socket: 2
-          cpu_hot_add_enabled: true
-          cpu_hot_remove_enabled: true
-          mem_hot_add_enabled: true
+          hotadd_cpu: true
+          hotremove_cpu: true
+          hotadd_memory: true
           scsi: paravirtual
           boot_firmware: efi
           secure_boot: true
@@ -194,7 +195,7 @@ Here is a more complete example that includes networking, multiple disks, and ad
 
 ## Bulk VM Creation
 
-When you need to create multiple VMs, use a variable list and a loop.
+When you need to create multiple VMs, use a variable list and a loop. This example uses a Linux template with VMware Tools installed so guest customization can set the IP addresses.
 
 ```yaml
 # create-multiple-vms.yml
@@ -223,6 +224,7 @@ When you need to create multiple VMs, use a variable list and a loop.
         disk_gb: 100
         network: "VLAN-100-Production"
         ip: "10.100.1.51"
+        domain: "prod.example.com"
         folder: "/DC01/vm/Production/AppServers"
       - name: "app-server-02"
         cpus: 4
@@ -230,6 +232,7 @@ When you need to create multiple VMs, use a variable list and a loop.
         disk_gb: 100
         network: "VLAN-100-Production"
         ip: "10.100.1.52"
+        domain: "prod.example.com"
         folder: "/DC01/vm/Production/AppServers"
       - name: "db-server-01"
         cpus: 8
@@ -237,6 +240,7 @@ When you need to create multiple VMs, use a variable list and a loop.
         disk_gb: 500
         network: "VLAN-150-Database"
         ip: "10.150.1.51"
+        domain: "db.example.com"
         folder: "/DC01/vm/Production/Databases"
 
   tasks:
@@ -247,6 +251,7 @@ When you need to create multiple VMs, use a variable list and a loop.
         datacenter: "DC01"
         cluster: "Production"
         folder: "{{ item.folder }}"
+        template: "rhel9-template"
         guest_id: "rhel9_64Guest"
         hardware:
           memory_mb: "{{ item.memory_mb }}"
@@ -261,6 +266,9 @@ When you need to create multiple VMs, use a variable list and a loop.
             device_type: vmxnet3
             ip: "{{ item.ip }}"
             netmask: "255.255.255.0"
+        customization:
+          hostname: "{{ item.name }}"
+          domain: "{{ item.domain }}"
       loop: "{{ vm_list }}"
       register: created_vms
 
@@ -355,6 +363,7 @@ Wrap VM creation with error handling so failures in one VM do not block the rest
         name: "{{ vm_name }}"
         state: absent
         datacenter: "DC01"
+        folder: "/DC01/vm/Production"
         force: true
       ignore_errors: true
 ```
