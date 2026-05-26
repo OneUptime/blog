@@ -126,27 +126,29 @@ sudo logrotate -d /etc/logrotate.d/ansible
 
 ## JSON Logging with a Callback Plugin
 
-The default log format is plain text, which is hard to parse programmatically. For structured logging, use the `json` callback plugin:
+The default log format is plain text, which is hard to parse programmatically. For structured logging, use the `ansible.posix.json` callback plugin:
 
 ```ini
 # ansible.cfg
 [defaults]
 log_path = /var/log/ansible/ansible.log
-stdout_callback = json
+stdout_callback = ansible.posix.json
 ```
 
-Or use the `log_plays` callback plugin, which is specifically designed for file logging:
+The JSON callback is part of the `ansible.posix` collection. You can check whether it is installed with `ansible-galaxy collection list` or install it with `ansible-galaxy collection install ansible.posix`.
+
+Or use the `community.general.log_plays` callback plugin, which is specifically designed for file logging:
 
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = log_plays
+callbacks_enabled = community.general.log_plays
 
-# The log_plays callback writes to /var/log/ansible/hosts/ by default
+# The community.general.log_plays callback writes to /var/log/ansible/hosts/ by default
 # Each host gets its own log file
 ```
 
-The `log_plays` callback creates per-host log files in `/var/log/ansible/hosts/`, which makes it easy to track what happened on a specific host.
+The `community.general.log_plays` callback creates per-host log files in `/var/log/ansible/hosts/`, which makes it easy to track what happened on a specific host. It is part of the `community.general` collection, so install it with `ansible-galaxy collection install community.general` if it is not already available.
 
 ## Logging to Syslog
 
@@ -171,7 +173,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'syslog_logger'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -201,7 +203,7 @@ Enable it in ansible.cfg:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = syslog_logger
+callbacks_enabled = syslog_logger
 callback_plugins = ./callback_plugins
 ```
 
@@ -274,7 +276,8 @@ LOG_FILE="/var/log/ansible/ansible.log"
 HOURS=24
 
 # Count failures in the last N hours
-FAILURES=$(find "${LOG_FILE}" -mmin -$((HOURS * 60)) -exec grep -c "FAILED" {} \;)
+FAILURES=$(find "${LOG_FILE}" -mmin -$((HOURS * 60)) -exec grep -ciE 'FAILED!|failed=[1-9]' {} \; 2>/dev/null || true)
+FAILURES=${FAILURES:-0}
 
 if [ "${FAILURES}" -gt 0 ]; then
     echo "WARNING: ${FAILURES} failed tasks in the last ${HOURS} hours"
