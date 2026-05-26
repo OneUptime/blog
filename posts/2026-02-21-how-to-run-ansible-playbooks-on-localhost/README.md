@@ -161,6 +161,7 @@ Here is a real-world playbook that sets up a Python development environment on y
           - "python{{ python_version }}"
           - "python{{ python_version }}-venv"
           - "python{{ python_version }}-dev"
+          - pipx
           - build-essential
           - libssl-dev
           - libffi-dev
@@ -175,22 +176,16 @@ Here is a real-world playbook that sets up a Python development environment on y
         group: "{{ dev_user }}"
         mode: '0755'
 
-    - name: Install pipx for CLI tools
-      pip:
-        name: pipx
-        executable: "pip{{ python_version }}"
-
     - name: Install development CLI tools via pipx
-      command: "pipx install {{ item }}"
-      loop:
-        - black
-        - flake8
-        - mypy
-        - poetry
+      command: "pipx install {{ item.name }}"
       become: no
-      register: pipx_result
-      changed_when: "'installed package' in pipx_result.stdout"
-      failed_when: false
+      args:
+        creates: "/home/{{ dev_user }}/.local/bin/{{ item.executable }}"
+      loop:
+        - { name: black, executable: black }
+        - { name: flake8, executable: flake8 }
+        - { name: mypy, executable: mypy }
+        - { name: poetry, executable: poetry }
 ```
 
 ## Handling the Python Interpreter
@@ -270,9 +265,9 @@ When running on localhost, fact gathering still happens. If you do not need fact
 
 **Privilege escalation**: When using `become: yes` on localhost, Ansible will try to use `sudo`. Make sure your user has sudo privileges or configure the sudo password.
 
-**File paths**: Remember that all paths in the playbook are relative to the local machine. There is no remote vs local distinction.
+**File paths**: Remember that destination paths in locally connected tasks refer to the local machine. For modules that distinguish between controller and target paths, like `copy` and `template`, localhost means both sides are the same host, but the module's normal path rules still apply.
 
-**Inventory warnings**: If you do not have an inventory file and just use `localhost,` on the command line, Ansible may show a warning about no inventory being parsed. This is safe to ignore, but you can suppress it by adding `localhost` to `/etc/ansible/hosts`.
+**Inventory warnings**: If you do not specify an inventory and rely on Ansible's implicit localhost, Ansible may show a warning about no inventory being parsed. This is safe to ignore, but you can avoid it by using `-i "localhost,"` or by adding `localhost` to an inventory file such as `/etc/ansible/hosts`.
 
 ## Summary
 
