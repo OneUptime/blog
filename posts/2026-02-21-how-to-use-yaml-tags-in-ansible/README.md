@@ -61,9 +61,9 @@ file_mode: !!str 0644
 file_mode: '0644'
 ```
 
-## Custom Tags in Jinja2
+## Custom Tags in Ansible Templating
 
-Ansible's Jinja2 integration uses `!unsafe` for marking strings that should not be templated:
+Ansible uses `!unsafe` for marking strings that should not be templated:
 
 ```yaml
 # The !unsafe tag prevents Jinja2 templating
@@ -75,7 +75,7 @@ unsafe_string: !unsafe "{{ this_is_literal_not_a_variable }}"
 
 ## Handling Tags in yamllint
 
-yamllint may warn about custom tags. Configure it to allow Ansible tags:
+yamllint checks YAML syntax and style rules, but it does not provide a custom-tag allowlist option. When linting Ansible YAML, a common related adjustment is the `truthy` rule for boolean-like values:
 
 ```yaml
 # .yamllint
@@ -88,12 +88,12 @@ rules:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where correct YAML value handling matters in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow with YAML values that should be quoted carefully
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -125,7 +125,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -274,4 +274,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 YAML tags in Ansible are primarily used for vault encryption and edge cases where type coercion is needed. For everyday use, quoting strings is simpler and more readable than using explicit type tags. The `!vault` and `!unsafe` tags are Ansible-specific and serve important security purposes. Understanding tags helps you troubleshoot unexpected type conversions in your playbooks.
-
