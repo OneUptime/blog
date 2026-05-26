@@ -8,13 +8,13 @@ Description: How to configure server priorities in Ansible Galaxy to control the
 
 ---
 
-When you have multiple Galaxy-compatible servers (public Galaxy, Automation Hub, a private Galaxy instance), you need to control which server gets checked first. Server priority determines the resolution order: if a collection exists on multiple servers, the one with higher priority wins. Getting this right is important for security, performance, and ensuring you get the right version of every collection.
+When you have multiple Galaxy-compatible servers (public Galaxy, Automation Hub, a private Galaxy instance), you need to control which server gets checked first. Server priority determines the resolution order and is used to choose between matching collection candidates, especially when the same version is available on more than one server. Getting this right is important for security, performance, and ensuring you get the right version of every collection.
 
 ## How Server Priority Works
 
-Ansible Galaxy resolves content by checking servers in the order they appear in the `server_list` configuration. The first server in the list has the highest priority. When you run `ansible-galaxy collection install community.general`, Ansible checks the first server, then the second, and so on until it finds the collection.
+Ansible Galaxy resolves content by checking servers in the order they appear in the `server_list` configuration. The first server in the list has the highest priority. When you run `ansible-galaxy collection install community.general`, Ansible uses that prioritized list while finding candidate versions for the collection.
 
-This is a first-match-wins system. Once the collection is found on a server, Ansible stops looking.
+This is not a substitute for version pinning. Ansible prefers the newest compatible collection version, and server priority is used when otherwise equivalent candidates, such as the same version, are available from multiple configured servers.
 
 ## Basic Priority Configuration
 
@@ -31,7 +31,7 @@ url = https://hub.internal.com/api/galaxy/content/published/
 token = your_private_hub_token
 
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = your_automation_hub_token
 
@@ -47,9 +47,9 @@ In this configuration:
 
 ## Why Priority Order Matters
 
-Consider what happens with the wrong priority order. If Galaxy is listed first and you have an internal collection named `myorg.utils` version 1.0.0, but someone coincidentally publishes a `myorg.utils` to public Galaxy, you would suddenly pull untrusted external content instead of your internal collection.
+Consider what happens with the wrong priority order. If Galaxy is listed first and you have an internal collection named `myorg.utils` version 1.0.0, but someone coincidentally publishes `myorg.utils` version 1.0.0 to public Galaxy, you could pull untrusted external content instead of your internal collection.
 
-By putting your private server first, internal content always takes precedence.
+By putting your private server first, internal content takes precedence when the same compatible version is available from multiple servers. Pin versions or use a `source` entry in `requirements.yml` when a collection must come from a specific server.
 
 The recommended priority order for most organizations:
 
@@ -88,7 +88,7 @@ url = https://hub.internal.com/api/galaxy/content/published/
 token = prod_token
 
 [galaxy_server.automation_hub]
-url = https://cloud.redhat.com/api/automation-hub/content/published/
+url = https://console.redhat.com/api/automation-hub/content/published/
 auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token = prod_hub_token
 ```
@@ -121,7 +121,7 @@ collections:
   # Always get certified AWS from Automation Hub
   - name: amazon.aws
     version: "7.2.0"
-    source: https://cloud.redhat.com/api/automation-hub/content/published/
+    source: https://console.redhat.com/api/automation-hub/content/published/
 
   # Get community content from Galaxy
   - name: community.docker
@@ -140,14 +140,14 @@ To see which server a collection is being resolved from, use verbose output:
 ansible-galaxy collection install community.general -vvv
 ```
 
-The output will show each server being tried:
+The output can include the configured servers involved in resolution:
 
 ```text
 ...
 Searching for 'community.general' in configured galaxy servers
 Checking private_hub (https://hub.internal.com/...)
   - collection not found
-Checking automation_hub (https://cloud.redhat.com/...)
+Checking automation_hub (https://console.redhat.com/...)
   - found version 8.1.0
 Installing 'community.general:8.1.0' from automation_hub
 ```
@@ -174,22 +174,15 @@ for server in server_list:
     server = server.strip()
     if server:
         url = config.get(f'galaxy_server.{server}', 'url', fallback='')
-        token = config.get(f'galaxy_server.{server}', 'token', fallback='none')
-        print(f'{server}|{url}|{token}')
+        print(f'{server}|{url}')
 ")
 
-echo "$SERVERS" | while IFS='|' read -r name url token; do
+echo "$SERVERS" | while IFS='|' read -r name url; do
     echo -n "  ${name} (${url}): "
-    if [ "$token" != "none" ] && [ -n "$token" ]; then
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Token ${token}" \
-            "${url}" 2>/dev/null || echo "000")
-    else
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${url}" 2>/dev/null || echo "000")
-    fi
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${url}" 2>/dev/null || echo "000")
 
-    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
         echo "OK (HTTP ${HTTP_CODE})"
     else
         echo "FAILED (HTTP ${HTTP_CODE})"
@@ -199,7 +192,7 @@ done
 
 ## Handling Server Failures
 
-If a higher-priority server is down, Galaxy falls through to the next server. But this can cause unexpected behavior if the lower-priority server has a different version of the collection.
+If a higher-priority server is down, Ansible may skip that server while searching for available versions and continue with other configured servers, or fail if it cannot retrieve the required metadata. This can cause unexpected behavior if the lower-priority server has a different compatible version of the collection.
 
 Add monitoring for your Galaxy servers:
 
@@ -248,4 +241,4 @@ ansible-galaxy collection install community.general
 
 ## Summary
 
-Server priority in Ansible Galaxy is controlled by the `server_list` order in `ansible.cfg`, where the first entry has the highest priority. For most organizations, the recommended order is private hub first, Automation Hub second, and public Galaxy last. This ensures internal content takes precedence, certified content is preferred over community content, and community content serves as a fallback. Use per-collection `source` overrides in `requirements.yml` for fine-grained control, and test server connectivity before deploying to catch configuration issues early.
+Server priority in Ansible Galaxy is controlled by the `server_list` order in `ansible.cfg`, where the first entry has the highest priority. For most organizations, the recommended order is private hub first, Automation Hub second, and public Galaxy last. This makes internal content the preferred source when matching versions exist on multiple servers, certified content is preferred over community content in the same situation, and community content serves as a fallback. Use per-collection `source` overrides in `requirements.yml` for fine-grained control, and test server connectivity before deploying to catch configuration issues early.
