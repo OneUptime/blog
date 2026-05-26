@@ -14,7 +14,7 @@ This post covers the practical side of testing Ansible Vault integration, from l
 
 ## The Testing Challenge with Vault
 
-When you encrypt a variable file with Ansible Vault, it becomes a binary blob that Ansible decrypts at runtime. Your tests need access to the vault password, but you do not want to commit that password to your repository. You also want to verify that the encrypted values are correct without manually decrypting them every time.
+When you encrypt a variable file with Ansible Vault, it becomes an encrypted text payload that Ansible decrypts at runtime. Your tests need access to the vault password, but you do not want to commit that password to your repository. You also want to verify that the encrypted values are correct without manually decrypting them every time.
 
 Here is a typical encrypted variables file:
 
@@ -94,7 +94,7 @@ import yaml
 import pytest
 import os
 
-VAULT_PASSWORD_FILE = "tests/.vault_pass_test"
+VAULT_PASSWORD_FILE = os.environ.get("ANSIBLE_VAULT_PASSWORD_FILE", "tests/.vault_pass_test")
 VAULT_FILES = [
     "tests/group_vars/all/vault.yml",
 ]
@@ -146,7 +146,7 @@ def test_vault_values_are_not_empty(vault_file):
 
 Many projects use multiple vault IDs for different environments. Testing this requires validating each vault independently.
 
-```yaml
+```ini
 # ansible.cfg
 # Configuration for multiple vault IDs
 [defaults]
@@ -271,6 +271,8 @@ jobs:
 
       - name: Run vault decryption tests
         run: pytest tests/test_vault_files.py -v
+        env:
+          ANSIBLE_VAULT_PASSWORD_FILE: .vault_pass
 
       - name: Run playbook with vault
         run: |
@@ -316,7 +318,7 @@ echo "Inline vault string test passed"
 
 ## Common Pitfalls
 
-One mistake I see often is encrypting the entire variable file instead of just the sensitive values. This makes it impossible to do code review on variable changes because the entire file shows up as a binary diff. A better practice is to keep a separate `vault.yml` for encrypted values and reference them from your main variables file using the `vault_` prefix convention.
+One mistake I see often is encrypting the entire variable file instead of just the sensitive values. This makes it impossible to do code review on variable changes because the entire file shows up as an opaque encrypted diff. A better practice is to keep a separate `vault.yml` for encrypted values and reference them from your main variables file using the `vault_` prefix convention.
 
 Another common issue is forgetting to test that vault-encrypted files actually contain valid YAML after decryption. Corruption during git merges can produce vault files that decrypt to invalid YAML.
 
