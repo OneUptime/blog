@@ -35,6 +35,7 @@ The simplest chain is two tasks where the second depends on the first.
         cmd: /opt/app/apply-config.sh
       when: config_validation.rc == 0
       register: config_apply
+      changed_when: "'changed' in (config_apply.stdout | lower)"
 
     - name: Restart service if configuration was applied
       ansible.builtin.systemd:
@@ -46,7 +47,7 @@ The simplest chain is two tasks where the second depends on the first.
         - config_apply is changed
 ```
 
-Each task builds on the information from the previous one. The restart only happens if the config was valid AND the apply actually changed something.
+Each task builds on the information from the previous one. The restart only happens if the config was valid AND the apply task reported that it changed something.
 
 ## Multi-Step Decision Pipeline
 
@@ -71,8 +72,8 @@ Here is a more realistic pipeline where multiple decisions chain together.
     # Step 2: Decide if update is needed (depends on step 1)
     - name: Determine if update is needed
       ansible.builtin.set_fact:
-        needs_update: "{{ current_version is failed or current_version.stdout | trim != target_version }}"
-        is_fresh_install: "{{ current_version is failed }}"
+        needs_update: "{{ current_version.rc != 0 or current_version.stdout | trim != target_version }}"
+        is_fresh_install: "{{ current_version.rc != 0 }}"
 
     # Step 3: Download if update needed (depends on step 2)
     - name: Download new version
@@ -91,7 +92,7 @@ Here is a more realistic pipeline where multiple decisions chain together.
       when:
         - needs_update | bool
         - not (is_fresh_install | bool)
-        - download_result is success
+        - download_result is succeeded
 
     # Step 5: Install (depends on steps 3 and 4)
     - name: Stop application before update
@@ -101,7 +102,7 @@ Here is a more realistic pipeline where multiple decisions chain together.
       when:
         - needs_update | bool
         - not (is_fresh_install | bool)
-        - download_result is success
+        - download_result is succeeded
 
     - name: Extract new version
       ansible.builtin.unarchive:
@@ -112,7 +113,7 @@ Here is a more realistic pipeline where multiple decisions chain together.
       when:
         - needs_update | bool
         - download_result is defined
-        - download_result is success
+        - download_result is succeeded
 
     # Step 6: Post-install (depends on step 5)
     - name: Run migrations for upgrades
@@ -123,7 +124,7 @@ Here is a more realistic pipeline where multiple decisions chain together.
         - needs_update | bool
         - not (is_fresh_install | bool)
         - install_result is defined
-        - install_result is success
+        - install_result is succeeded
 
     - name: Run initial setup for fresh installs
       ansible.builtin.command:
@@ -132,7 +133,7 @@ Here is a more realistic pipeline where multiple decisions chain together.
       when:
         - is_fresh_install | bool
         - install_result is defined
-        - install_result is success
+        - install_result is succeeded
 
     # Step 7: Start and verify (depends on steps 5 and 6)
     - name: Start application
@@ -142,12 +143,14 @@ Here is a more realistic pipeline where multiple decisions chain together.
       when:
         - needs_update | bool
         - install_result is defined
-        - install_result is success
+        - install_result is succeeded
 
     - name: Verify application health
       ansible.builtin.uri:
         url: "http://localhost:8080/health"
         status_code: 200
+      register: health_check
+      until: health_check is succeeded
       retries: 5
       delay: 3
       when: needs_update | bool
@@ -234,15 +237,18 @@ When tasks in a chain involve loops, you need to handle the registered results l
 
   vars:
     services:
-      - name: nginx
+      - name: webapp
         port: 80
-        config: /etc/nginx/nginx.conf
-      - name: postgresql
-        port: 5432
-        config: /etc/postgresql/14/main/postgresql.conf
-      - name: redis
-        port: 6379
-        config: /etc/redis/redis.conf
+        config: /etc/webapp/config.yml
+        validate_cmd: /usr/local/bin/webapp --check-config /etc/webapp/config.yml
+      - name: worker
+        port: 9000
+        config: /etc/worker/config.yml
+        validate_cmd: /usr/local/bin/worker --check-config /etc/worker/config.yml
+      - name: scheduler
+        port: 9100
+        config: /etc/scheduler/config.yml
+        validate_cmd: /usr/local/bin/scheduler --check-config /etc/scheduler/config.yml
 
   tasks:
     # Step 1: Check config files exist
@@ -257,7 +263,7 @@ When tasks in a chain involve loops, you need to handle the registered results l
     # Step 2: Validate configs that exist (chained from step 1)
     - name: Validate service configurations
       ansible.builtin.command:
-        cmd: "{{ item.item.name }} -t"
+        cmd: "{{ item.item.validate_cmd }}"
       loop: "{{ config_checks.results }}"
       when: item.stat.exists
       register: config_validations
@@ -305,7 +311,7 @@ Building chains that account for failures at any step requires careful use of `f
       ansible.builtin.command:
         cmd: pip install -r /opt/app/requirements.txt
       register: deps_install
-      when: git_pull is success
+      when: git_pull is succeeded
       ignore_errors: true
 
     - name: Run tests (only if dependencies installed)
@@ -313,9 +319,9 @@ Building chains that account for failures at any step requires careful use of `f
         cmd: python -m pytest /opt/app/tests/
       register: test_run
       when:
-        - git_pull is success
+        - git_pull is succeeded
         - deps_install is defined
-        - deps_install is success
+        - deps_install is succeeded
       ignore_errors: true
 
     - name: Deploy (only if tests passed)
@@ -323,19 +329,19 @@ Building chains that account for failures at any step requires careful use of `f
         cmd: /opt/app/deploy.sh
       register: deployment
       when:
-        - git_pull is success
-        - deps_install is defined and deps_install is success
-        - test_run is defined and test_run is success
+        - git_pull is succeeded
+        - deps_install is defined and deps_install is succeeded
+        - test_run is defined and test_run is succeeded
 
     # Build a summary of what happened
     - name: Generate chain status report
       ansible.builtin.debug:
         msg: |
           Deployment Chain Report for {{ inventory_hostname }}:
-          1. Git Pull:    {{ 'SUCCESS' if git_pull is success else 'FAILED: ' + (git_pull.msg | default('unknown error')) }}
-          2. Dependencies: {{ 'SUCCESS' if (deps_install is defined and deps_install is success) else ('SKIPPED' if deps_install is not defined or deps_install is skipped else 'FAILED') }}
-          3. Tests:       {{ 'SUCCESS' if (test_run is defined and test_run is success) else ('SKIPPED' if test_run is not defined or test_run is skipped else 'FAILED') }}
-          4. Deployment:  {{ 'SUCCESS' if (deployment is defined and deployment is success) else ('SKIPPED' if deployment is not defined or deployment is skipped else 'FAILED') }}
+          1. Git Pull:    {{ 'SUCCESS' if git_pull is succeeded else 'FAILED: ' + (git_pull.msg | default('unknown error')) }}
+          2. Dependencies: {{ 'SUCCESS' if (deps_install is defined and deps_install is succeeded) else ('SKIPPED' if deps_install is not defined or deps_install is skipped else 'FAILED') }}
+          3. Tests:       {{ 'SUCCESS' if (test_run is defined and test_run is succeeded) else ('SKIPPED' if test_run is not defined or test_run is skipped else 'FAILED') }}
+          4. Deployment:  {{ 'SUCCESS' if (deployment is defined and deployment is succeeded) else ('SKIPPED' if deployment is not defined or deployment is skipped else 'FAILED') }}
 ```
 
 ## Cross-Host Chaining
