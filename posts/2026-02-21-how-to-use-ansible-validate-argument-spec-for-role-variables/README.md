@@ -8,7 +8,7 @@ Description: Learn how to use Ansible validate_argument_spec to enforce variable
 
 ---
 
-Before Ansible 2.11, validating role input variables meant writing a bunch of `assert` tasks at the top of your role. It worked, but it was tedious and inconsistent across roles. The `argument_spec` feature changed this by giving roles a declarative way to define what variables they expect, their types, default values, and constraints. Ansible validates these specs automatically before the role executes, producing clear error messages when something is wrong.
+Before Ansible 2.11, validating role input variables meant writing a bunch of `assert` tasks at the top of your role. It worked, but it was tedious and inconsistent across roles. The `argument_spec` feature changed this by giving roles a declarative way to define what variables they expect, their types, documented default values, and constraints. Ansible validates these specs automatically before the role executes, producing clear error messages when something is wrong. For role variables, keep the actual default values in `defaults/main.yml`; the `default` field in `meta/argument_specs.yml` should document the same value.
 
 ## Defining an Argument Spec
 
@@ -53,13 +53,13 @@ argument_specs:
 
       webserver_worker_processes:
         description: Number of nginx worker processes
-        type: int
+        type: str
         default: auto
         choices:
-          - 1
-          - 2
-          - 4
-          - 8
+          - "1"
+          - "2"
+          - "4"
+          - "8"
           - auto
 ```
 
@@ -86,7 +86,7 @@ If you forget a required variable or provide the wrong type, Ansible stops befor
 ```bash
 # This would fail validation because webserver_server_name is required
 ansible-playbook deploy.yml
-# ERROR: missing required arguments: webserver_server_name
+# Error includes: missing required arguments: webserver_server_name
 ```
 
 ## Supported Type Options
@@ -94,7 +94,7 @@ ansible-playbook deploy.yml
 The argument spec supports several data types that map to Python types:
 
 ```yaml
-# roles/example/meta/argument_specs.yml - All supported types
+# roles/example/meta/argument_specs.yml - Common supported types
 ---
 argument_specs:
   main:
@@ -379,7 +379,7 @@ flowchart TD
     G -->|Yes| I[Check Choices]
     I --> J{Values in Choices?}
     J -->|No| K[Fail with Choices Error]
-    J -->|Yes| L[Apply Defaults]
+    J -->|Yes| L[Use Role Defaults]
     L --> M[Execute Role Tasks]
 ```
 
@@ -421,6 +421,6 @@ The argument spec approach is cleaner, generates better error messages, and serv
 
 ## Best Practices
 
-Always define argument specs for roles that will be shared with other teams. Use `no_log: true` for sensitive variables like passwords. Provide sensible defaults where possible to reduce the number of required variables. Use `short_description` and `description` fields since they feed into `ansible-doc` output. Test your argument specs by intentionally providing wrong types or missing required fields to verify the error messages are helpful. Keep your argument specs in sync with your role's actual variable usage.
+Always define argument specs for roles that will be shared with other teams. Use `no_log: true` for sensitive variables like passwords. Provide sensible defaults in role defaults where possible to reduce the number of required variables. Use `short_description` and `description` fields since they feed into `ansible-doc` output. Test your argument specs by intentionally providing wrong types or missing required fields to verify the error messages are helpful. Keep your argument specs in sync with your role's actual variable usage.
 
 The `validate_argument_spec` feature brings the kind of input validation to Ansible roles that you would expect from a strongly typed API. It makes roles more self-documenting and catches configuration errors before they can cause damage.
