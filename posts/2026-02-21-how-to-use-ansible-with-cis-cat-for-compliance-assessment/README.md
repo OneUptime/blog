@@ -1,10 +1,10 @@
-# How to Use Ansible with CIS-CAT for Compliance Assessment
+# How to Use Ansible for Compliance Assessment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, CIS-CAT, Compliance, Benchmark, Security
+Tags: Ansible, Compliance, Benchmark, Security
 
-Description: Automate CIS-CAT compliance assessments with Ansible for CIS benchmark scoring and remediation.
+Description: Automate compliance assessments with Ansible for benchmark validation and remediation.
 
 ---
 
@@ -85,7 +85,7 @@ Every compliance control follows the same pattern: check the current state, reme
     - name: Assert audit logging is active
       ansible.builtin.assert:
         that:
-          - ansible_facts.services['auditd.service'].state == 'running'
+          - (ansible_facts.services['auditd.service'] | default({})).state | default('stopped') == 'running'
 ```
 
 ## Reporting
@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -188,7 +188,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -219,16 +219,17 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
+  ansible.builtin.command: "ss -tlnH 'sport = :{{ item }}'"
   register: listening_ports
   changed_when: false
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
 
 - name: Verify only approved ports are open
   ansible.builtin.assert:
     that:
-      - "item not in listening_ports.stdout"
-    fail_msg: "Unauthorized port {{ item }} is listening"
-  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
+      - item.stdout | length == 0
+    fail_msg: "Unauthorized port {{ item.item }} is listening"
+  loop: "{{ listening_ports.results }}"
 ```
 
 ## Automated Remediation Workflow
