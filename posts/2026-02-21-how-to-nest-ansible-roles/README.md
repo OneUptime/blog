@@ -106,7 +106,7 @@ dependencies:
       certbot_domain: "{{ webapp_domain }}"
 ```
 
-Dependencies run before any tasks in the parent role. This means you cannot add conditions or interleave tasks between dependencies (though you can pass variables).
+Dependencies run before any tasks in the parent role. This means you cannot interleave tasks between dependencies. You can still attach conditions to dependency entries and pass variables, but dependency tasks always run before parent tasks.
 
 ## Choosing Between the Three Methods
 
@@ -123,7 +123,7 @@ flowchart TD
 
 | Feature | include_role | import_role | meta dependency |
 |---------|-------------|-------------|----------------|
-| Conditional | Yes (when) | Per-task when | No |
+| Conditional | Yes (when) | Per-task when | Yes (when) |
 | Interleave tasks | Yes | Yes | No |
 | Timing | Runtime | Parse time | Before parent tasks |
 | Looping | Yes | No | No |
@@ -318,7 +318,7 @@ Or use the `listen` directive with namespaced topics:
 
 Ansible does not impose a hard limit on nesting depth, but deeply nested roles (more than 3-4 levels) create problems:
 
-- Variable precedence becomes unpredictable
+- Variable precedence becomes harder to reason about
 - Debugging failures requires tracing through multiple layers
 - Performance degrades due to repeated variable resolution
 
@@ -351,7 +351,7 @@ roles:
 dependency:
   name: galaxy
   options:
-    requirements-file: requirements.yml
+    role-file: requirements.yml
 ```
 
 ## Wrapping Up
