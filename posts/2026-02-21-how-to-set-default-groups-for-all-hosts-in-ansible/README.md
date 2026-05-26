@@ -202,11 +202,12 @@ You can dynamically add hosts to groups at playbook runtime using the `add_host`
   tasks:
     - name: Add all hosts to the monitored group
       ansible.builtin.add_host:
-        name: "{{ inventory_hostname }}"
+        name: "{{ item }}"
         groups:
           - monitored
           - managed
           - auto_backup
+      loop: "{{ ansible_play_hosts }}"
       changed_when: false
 
 # Second play: use the dynamically created group
