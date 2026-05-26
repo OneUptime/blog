@@ -8,11 +8,11 @@ Description: Use Ansible async and poll to run long-running tasks in the backgro
 
 ---
 
-Some tasks take a long time. Database backups, large package upgrades, application builds, and data migrations can run for minutes or even hours. Ansible's default behavior is to hold an SSH connection open while waiting for a task to complete, which ties up a fork slot and can trigger SSH timeouts. The `async` feature lets you launch tasks in the background, freeing up Ansible to do other work while the long task runs.
+Some tasks take a long time. Database backups, large package upgrades, application builds, and data migrations can run for minutes or even hours. Ansible's default behavior is to hold an SSH connection open while waiting for a task to complete, which ties up a fork slot and can trigger SSH timeouts. The `async` feature lets you set a longer runtime limit for a task, and with `poll: 0` it can launch the task in the background so Ansible can do other work while the long task runs.
 
 ## How async Works
 
-When you set `async` on a task, Ansible starts the task on the remote host and immediately returns. The task continues running in the background. Ansible can then either poll for completion or move on to other tasks and check back later.
+When you set `async` on a task, Ansible starts the task on the remote host with a maximum runtime. With `poll` set to a positive value, Ansible waits for the task and checks status at the poll interval. With `poll: 0`, Ansible starts the task, returns a job ID, moves on to other tasks, and can check back later.
 
 ```mermaid
 sequenceDiagram
@@ -21,7 +21,7 @@ sequenceDiagram
 
     A->>H: Start async task
     H->>A: Job ID returned
-    Note over A: Free to do other work
+    Note over A: poll: 0 can continue to other work
 
     loop Polling (if poll > 0)
         A->>H: Check job status
@@ -53,7 +53,7 @@ The simplest async pattern launches a task and polls for completion:
         msg: "Backup completed: {{ backup_result.stdout }}"
 ```
 
-The `async: 3600` parameter tells Ansible the task is allowed to run for up to 3600 seconds (1 hour). The `poll: 30` parameter tells Ansible to check the task status every 30 seconds. If the task finishes before the timeout, Ansible picks up the result and moves on. If it exceeds the timeout, Ansible marks it as failed.
+The `async: 3600` parameter tells Ansible the task is allowed to run for up to 3600 seconds (1 hour). The `poll: 30` parameter tells Ansible to check the task status every 30 seconds. If the task finishes before the timeout, Ansible picks up the result and moves on. If it exceeds the timeout, Ansible terminates the remote process and marks the task as failed.
 
 ## Fire-and-Forget Pattern
 
@@ -85,7 +85,7 @@ Setting `poll: 0` launches the task and moves on immediately without waiting:
       async_status:
         jid: "{{ data_job.ansible_job_id }}"
       register: job_result
-      until: job_result.finished
+      until: job_result is finished
       retries: 120
       delay: 60
 ```
@@ -111,13 +111,13 @@ One of the best uses of async is launching long tasks on multiple hosts simultan
       async_status:
         jid: "{{ backup_jobs.ansible_job_id }}"
       register: backup_result
-      until: backup_result.finished
+      until: backup_result is finished
       retries: 240
       delay: 30
       # Each host polls its own backup job
 ```
 
-Without async, Ansible would process each database backup sequentially (within each fork batch). With async, all backups start at roughly the same time.
+Without async, Ansible still runs the task across hosts up to the configured fork limit, but each fork waits for its backup to finish before it can continue. With `poll: 0`, Ansible starts the backup jobs quickly and then polls them later. Use a high enough `forks` value if you need every host to start at roughly the same time.
 
 ## async with Package Updates
 
@@ -148,7 +148,7 @@ Large package updates are a common use case for async:
       when: reboot_flag.stat.exists
 ```
 
-Without async, a dist-upgrade on a slow server could trigger an SSH timeout. The async parameter keeps the task running independently of the SSH connection.
+Without async, a dist-upgrade on a slow server could trigger an SSH timeout. The async parameter gives the task a longer runtime limit and checks status through Ansible's async wrapper.
 
 ## Multiple Independent async Tasks
 
@@ -183,7 +183,7 @@ Launch several independent tasks in parallel:
       async_status:
         jid: "{{ frontend_build.ansible_job_id }}"
       register: fe_result
-      until: fe_result.finished
+      until: fe_result is finished
       retries: 60
       delay: 10
 
@@ -191,7 +191,7 @@ Launch several independent tasks in parallel:
       async_status:
         jid: "{{ backend_build.ansible_job_id }}"
       register: be_result
-      until: be_result.finished
+      until: be_result is finished
       retries: 60
       delay: 10
 
@@ -199,7 +199,7 @@ Launch several independent tasks in parallel:
       async_status:
         jid: "{{ migration.ansible_job_id }}"
       register: mig_result
-      until: mig_result.finished
+      until: mig_result is finished
       retries: 60
       delay: 10
       run_once: true
@@ -230,7 +230,7 @@ Async tasks need explicit error handling since failures may not be detected unti
       async_status:
         jid: "{{ risky_job.ansible_job_id }}"
       register: risky_result
-      until: risky_result.finished
+      until: risky_result is finished
       retries: 90
       delay: 20
       failed_when: false
@@ -272,7 +272,7 @@ You can use async with loops to launch many parallel tasks:
       async_status:
         jid: "{{ item.ansible_job_id }}"
       register: check_result
-      until: check_result.finished
+      until: check_result is finished
       retries: 12
       delay: 10
       loop: "{{ health_checks.results }}"
@@ -283,24 +283,19 @@ You can use async with loops to launch many parallel tasks:
 There are important limitations to know:
 
 ```yaml
-# async does NOT work with these module types:
+# async is not appropriate for every task:
 
-# 1. Modules that require the connection to stay open
+# 1. Modules that do not support async
 - name: This will NOT work with async
   raw: sleep 60
   async: 120  # raw module does not support async
 
-# 2. Tasks with become that use passwords interactively
-# (passwordless sudo works fine)
+# 2. File transfers such as copy
+# Running copy asynchronously does not make the transfer happen in the background.
 
-# 3. Inside blocks with rescue/always
-- block:
-    - name: This async will be unreliable
-      command: long-task.sh
-      async: 600  # Async in blocks can have issues with error handling
-  rescue:
-    - debug:
-        msg: "Error handling with async in blocks is unreliable"
+# 3. Tasks that need exclusive locks
+# Do not use poll: 0 for package manager transactions if later tasks need
+# the same package manager lock before the async job finishes.
 ```
 
 ## Choosing async vs poll Values
@@ -331,19 +326,19 @@ The `poll` interval should balance between responsiveness and overhead. Polling 
 
 ## Cleaning Up Stale async Jobs
 
-Async jobs create status files on the remote host. If Ansible crashes or loses connectivity, these files remain:
+Async jobs create status files on the remote host. When polling is enabled, Ansible automatically removes the temporary status file after the async task completes. With `poll: 0`, Ansible does not automatically clean it up, so clean up the job cache after you no longer need the result:
 
 ```yaml
 ---
 # Clean up stale async job files
-- hosts: all
+- hosts: app_servers
   tasks:
-    - name: Remove old async job status files
-      shell: find ~/.ansible_async/ -type f -mtime +1 -delete
-      changed_when: false
-      ignore_errors: true
+    - name: Clean up data processing async status file
+      async_status:
+        jid: "{{ data_job.ansible_job_id }}"
+        mode: cleanup
 ```
 
-Ansible stores async status files in `~/.ansible_async/` on the remote host. Each file is a JSON document containing the job status, stdout, stderr, and return code.
+Ansible stores async status files in `~/.ansible_async/` on the remote host by default. Each file is a JSON document containing the job status, stdout, stderr, and return code.
 
 The async feature is essential for any playbook that includes tasks with unpredictable or long execution times. It prevents SSH timeouts, enables parallel execution of independent operations, and keeps your playbooks responsive. Use it for backups, package upgrades, builds, and any task that takes more than a couple of minutes.
