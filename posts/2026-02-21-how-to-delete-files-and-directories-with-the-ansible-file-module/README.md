@@ -204,7 +204,7 @@ Sometimes you want to empty a directory without removing it. The `file` module c
     label: "{{ item.path }}"
 ```
 
-If you also need to remove subdirectories within the target, add a step for directories:
+If you prefer to handle subdirectories explicitly, add a separate step for directories:
 
 ```yaml
 # Find and remove subdirectories too
@@ -213,6 +213,7 @@ If you also need to remove subdirectories within the target, add a step for dire
     paths: /var/cache/myapp
     file_type: directory
     recurse: false
+    hidden: true
   register: cache_dirs
 
 - name: Remove subdirectories
@@ -265,7 +266,7 @@ Here is a practical role that handles application cleanup during uninstallation:
 # roles/myapp-uninstall/tasks/main.yml - complete uninstall cleanup
 ---
 - name: Stop application service
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: myapp
     state: stopped
     enabled: false
