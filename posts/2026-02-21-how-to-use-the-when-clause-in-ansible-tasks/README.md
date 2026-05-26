@@ -176,9 +176,9 @@ Check if a value exists in a list:
       when: "'webservers' in group_names"
 ```
 
-## when with Jinja2 Tests
+## when with Jinja2-Style Tests
 
-Jinja2 tests provide readable type checking and pattern matching:
+Jinja2-style tests, including Ansible-provided tests, provide readable type checking and pattern matching:
 
 ```yaml
 # jinja2-tests.yml - Using Jinja2 tests in when
@@ -346,6 +346,6 @@ when: enable_feature | bool
 
 ## Best Practices
 
-Keep `when` expressions simple and readable. If a condition is complex, compute it as a `set_fact` first and then reference the fact in `when`. Use blocks to apply a single condition to multiple tasks instead of repeating the same `when` on each task. Always test both the true and false paths of your conditionals. Use `ansible_os_family` or `ansible_distribution` for OS-specific tasks rather than checking package manager availability. Prefer Jinja2 tests (`is defined`, `is match`, `is version`) over manual string manipulation for readability.
+Keep `when` expressions simple and readable. If a condition is complex, compute it as a `set_fact` first and then reference the fact in `when`. Use blocks to apply a single condition to multiple tasks instead of repeating the same `when` on each task. Always test both the true and false paths of your conditionals. Use `ansible_os_family` or `ansible_distribution` for OS-specific tasks rather than checking package manager availability. Prefer Jinja2-style tests (`is defined`, `is match`, `is version`) over manual string manipulation for readability.
 
 The `when` clause is fundamental to writing Ansible playbooks that adapt to different environments and conditions. Master it, and your playbooks become flexible enough to handle any infrastructure variation you throw at them.
