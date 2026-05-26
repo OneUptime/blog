@@ -10,16 +10,16 @@ Description: Comprehensive guide to creating and managing AWS CloudWatch alarms 
 
 CloudWatch alarms are the first line of defense in AWS monitoring. They watch your metrics and fire when something goes wrong, sending notifications, triggering auto-scaling actions, or running Lambda functions. Setting up alarms manually through the console is slow, and it is nearly impossible to maintain consistency across environments.
 
-Ansible lets you define your entire alarm set in code. This guide covers creating alarms for common AWS services, configuring composite alarms, and building a monitoring framework you can deploy to any environment.
+Ansible lets you define your entire alarm set in code. This guide covers creating alarms for common AWS services and building a monitoring framework you can deploy to any environment.
 
 ## Prerequisites
 
 You need:
 
-- Ansible 2.14+
+- ansible-core 2.17+
 - The `amazon.aws` collection
 - AWS credentials with CloudWatch permissions
-- Python boto3
+- Python boto3 1.34.0+ and botocore 1.34.0+
 
 ```bash
 # Install dependencies
@@ -37,11 +37,12 @@ graph TD
     A[CloudWatch Metrics] --> B[CloudWatch Alarm]
     B --> C{Alarm State}
     C -->|ALARM| D[SNS Topic]
-    C -->|OK| E[Recovery Action]
+    C -->|OK| E[OK Notification]
     C -->|INSUFFICIENT_DATA| F[Check Configuration]
     D --> G[Email Notification]
     D --> H[PagerDuty/Slack Integration]
     D --> I[Lambda - Auto Remediation]
+    C -->|ALARM| K[Recovery Action]
     B --> J[Auto Scaling Action]
 ```
 
@@ -66,7 +67,7 @@ The `amazon.aws.cloudwatch_metric_alarm` module creates alarms:
     # Alert when CPU stays above 80% for 15 minutes
     - name: Create high CPU alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "ec2-{{ instance_id }}-high-cpu"
+        name: "ec2-{{ instance_id }}-high-cpu"
         metric_name: CPUUtilization
         namespace: AWS/EC2
         statistic: Average
@@ -80,19 +81,19 @@ The `amazon.aws.cloudwatch_metric_alarm` module creates alarms:
           - "{{ alarm_topic }}"
         ok_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "CPU utilization above 80% for 15 minutes"
+        description: "CPU utilization above 80% for 15 minutes"
         region: "{{ aws_region }}"
         state: present
 
-    # Alert when the instance status check fails
-    - name: Create status check alarm
+    # Alert when the system status check fails
+    - name: Create system status check alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "ec2-{{ instance_id }}-status-check"
-        metric_name: StatusCheckFailed
+        name: "ec2-{{ instance_id }}-status-check"
+        metric_name: StatusCheckFailed_System
         namespace: AWS/EC2
-        statistic: Maximum
-        comparison: GreaterThanThreshold
-        threshold: 0
+        statistic: Minimum
+        comparison: GreaterThanOrEqualToThreshold
+        threshold: 1.0
         period: 60
         evaluation_periods: 2
         dimensions:
@@ -100,12 +101,12 @@ The `amazon.aws.cloudwatch_metric_alarm` module creates alarms:
         alarm_actions:
           - "{{ alarm_topic }}"
           - "arn:aws:automate:{{ aws_region }}:ec2:recover"
-        alarm_description: "Instance status check failed"
+        description: "System status check failed"
         region: "{{ aws_region }}"
         state: present
 ```
 
-The status check alarm includes an auto-recovery action. When the alarm triggers, AWS will attempt to recover the instance by migrating it to healthy hardware.
+The system status check alarm includes an auto-recovery action. When the alarm triggers, AWS will attempt to recover the instance by migrating it to healthy hardware.
 
 ## RDS Database Alarms
 
@@ -128,7 +129,7 @@ Database monitoring is critical. Here are the key metrics to watch:
     # CPU above 80% for 10 minutes
     - name: RDS high CPU alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "rds-{{ db_instance }}-high-cpu"
+        name: "rds-{{ db_instance }}-high-cpu"
         metric_name: CPUUtilization
         namespace: AWS/RDS
         statistic: Average
@@ -142,14 +143,14 @@ Database monitoring is critical. Here are the key metrics to watch:
           - "{{ alarm_topic }}"
         ok_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "RDS CPU above 80%"
+        description: "RDS CPU above 80%"
         region: "{{ aws_region }}"
         state: present
 
     # Free storage below 10 GB
     - name: RDS low storage alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "rds-{{ db_instance }}-low-storage"
+        name: "rds-{{ db_instance }}-low-storage"
         metric_name: FreeStorageSpace
         namespace: AWS/RDS
         statistic: Average
@@ -161,14 +162,14 @@ Database monitoring is critical. Here are the key metrics to watch:
           DBInstanceIdentifier: "{{ db_instance }}"
         alarm_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "RDS free storage below 10GB"
+        description: "RDS free storage below 10GB"
         region: "{{ aws_region }}"
         state: present
 
     # Database connections above 80% of max
     - name: RDS high connections alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "rds-{{ db_instance }}-high-connections"
+        name: "rds-{{ db_instance }}-high-connections"
         metric_name: DatabaseConnections
         namespace: AWS/RDS
         statistic: Average
@@ -180,14 +181,14 @@ Database monitoring is critical. Here are the key metrics to watch:
           DBInstanceIdentifier: "{{ db_instance }}"
         alarm_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "RDS connections above 160 (80% of max 200)"
+        description: "RDS connections above 160 (80% of max 200)"
         region: "{{ aws_region }}"
         state: present
 
     # Read latency above 20ms
     - name: RDS read latency alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "rds-{{ db_instance }}-read-latency"
+        name: "rds-{{ db_instance }}-read-latency"
         metric_name: ReadLatency
         namespace: AWS/RDS
         statistic: Average
@@ -199,7 +200,7 @@ Database monitoring is critical. Here are the key metrics to watch:
           DBInstanceIdentifier: "{{ db_instance }}"
         alarm_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "RDS read latency above 20ms"
+        description: "RDS read latency above 20ms"
         region: "{{ aws_region }}"
         state: present
 ```
@@ -226,7 +227,7 @@ Monitor your load balancers for errors and latency:
     # 5xx errors from the ALB itself
     - name: ALB 5xx errors alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "alb-myapp-5xx-errors"
+        name: "alb-myapp-5xx-errors"
         metric_name: HTTPCode_ELB_5XX_Count
         namespace: AWS/ApplicationELB
         statistic: Sum
@@ -239,14 +240,14 @@ Monitor your load balancers for errors and latency:
         alarm_actions:
           - "{{ alarm_topic }}"
         treat_missing_data: notBreaching
-        alarm_description: "ALB returning more than 10 5xx errors in 5 minutes"
+        description: "ALB returning more than 10 5xx errors in 5 minutes"
         region: "{{ aws_region }}"
         state: present
 
     # Target response time above 2 seconds
     - name: ALB high latency alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "alb-myapp-high-latency"
+        name: "alb-myapp-high-latency"
         metric_name: TargetResponseTime
         namespace: AWS/ApplicationELB
         statistic: Average
@@ -258,14 +259,14 @@ Monitor your load balancers for errors and latency:
           LoadBalancer: "{{ alb_arn_suffix }}"
         alarm_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "Average response time above 2 seconds"
+        description: "Average response time above 2 seconds"
         region: "{{ aws_region }}"
         state: present
 
     # Unhealthy target count
     - name: ALB unhealthy targets alarm
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "alb-myapp-unhealthy-targets"
+        name: "alb-myapp-unhealthy-targets"
         metric_name: UnHealthyHostCount
         namespace: AWS/ApplicationELB
         statistic: Average
@@ -278,7 +279,7 @@ Monitor your load balancers for errors and latency:
           TargetGroup: "{{ target_group_suffix }}"
         alarm_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "One or more targets are unhealthy"
+        description: "One or more targets are unhealthy"
         region: "{{ aws_region }}"
         state: present
 ```
@@ -293,7 +294,7 @@ Monitor queue depth to detect processing backlogs:
 # Alert when messages pile up in the queue
 - name: SQS queue depth alarm
   amazon.aws.cloudwatch_metric_alarm:
-    alarm_name: "sqs-myapp-queue-depth"
+    name: "sqs-myapp-queue-depth"
     metric_name: ApproximateNumberOfMessagesVisible
     namespace: AWS/SQS
     statistic: Average
@@ -305,7 +306,7 @@ Monitor queue depth to detect processing backlogs:
       QueueName: myapp-work-queue
     alarm_actions:
       - "{{ alarm_topic }}"
-    alarm_description: "SQS queue has more than 1000 pending messages"
+    description: "SQS queue has more than 1000 pending messages"
     region: us-east-1
     state: present
 ```
@@ -368,7 +369,7 @@ Define all alarms for an application in one playbook:
     # Create all alarms from the variable list
     - name: Create monitoring alarms
       amazon.aws.cloudwatch_metric_alarm:
-        alarm_name: "{{ item.name }}"
+        name: "{{ item.name }}"
         metric_name: "{{ item.metric }}"
         namespace: "{{ item.namespace }}"
         statistic: "{{ item.statistic }}"
@@ -381,7 +382,7 @@ Define all alarms for an application in one playbook:
           - "{{ alarm_topic }}"
         ok_actions:
           - "{{ alarm_topic }}"
-        alarm_description: "{{ item.description }}"
+        description: "{{ item.description }}"
         region: "{{ aws_region }}"
         state: present
       loop: "{{ alarms }}"
@@ -395,7 +396,7 @@ Define all alarms for an application in one playbook:
 # Remove an alarm
 - name: Delete CloudWatch alarm
   amazon.aws.cloudwatch_metric_alarm:
-    alarm_name: "old-unused-alarm"
+    name: "old-unused-alarm"
     region: us-east-1
     state: absent
 ```
