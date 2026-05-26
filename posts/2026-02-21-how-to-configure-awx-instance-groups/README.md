@@ -12,7 +12,7 @@ Instance groups in AWX control where jobs actually run. When you have a single A
 
 ## What Instance Groups Do
 
-An instance group is a named collection of AWX instances (nodes) that can execute jobs. When a job template is assigned to an instance group, AWX will only run that template on nodes within that group. If no instance group is specified, AWX uses the default group.
+An instance group is a named collection of AWX instances (nodes) that can execute jobs. When a job template is assigned to an instance group, AWX prefers that group before checking inventory or organization instance groups. If no instance group is specified on the job template, inventory, or organization, AWX uses the default group.
 
 The two main use cases are:
 
@@ -21,10 +21,10 @@ The two main use cases are:
 
 ## Default Instance Groups
 
-Every AWX installation starts with two built-in groups:
+AWX creates built-in API instance groups for the default execution queue and the control plane:
 
-- **default** - Contains all instances. Jobs without a specific group assignment run here.
-- **controlplane** - Reserved for AWX internal tasks like project updates and inventory syncs.
+- **default** - Contains all nodes capable of running jobs. Jobs without a specific group assignment run here.
+- **controlplane** - Represents control-plane nodes from the `awx` inventory group. Control-plane nodes run AWX services and dispatch work; nodes with execution capacity run user automation jobs.
 
 You cannot delete these, but you can create additional groups and move instances around.
 
@@ -109,11 +109,11 @@ curl -s -X POST \
   -d '{"id": 3}'
 ```
 
-You can assign multiple instance groups to a single job template. AWX will pick the group with the most available capacity.
+You can assign multiple instance groups to a single job template. AWX checks the configured groups in order and starts the job in the first group that has enough capacity.
 
 ## Assigning Instance Groups to Organizations
 
-Instead of assigning groups to individual templates, you can set them at the organization level. All templates in that organization inherit the group assignment unless they override it.
+Instead of assigning groups to individual templates, you can set them at the organization level. AWX checks instance group assignments in this order: job template, inventory, then organization. Templates can therefore override inventory or organization-level placement.
 
 ```bash
 # Set organization ID 1 to use instance group ID 3
@@ -132,18 +132,21 @@ Here is how instance groups fit into the AWX job routing system.
 flowchart TD
     A[Job Launched] --> B{Instance Group Specified?}
     B -->|Yes - Template Level| C[Route to Template Group]
-    B -->|No| D{Org Has Instance Group?}
-    D -->|Yes| E[Route to Org Group]
-    D -->|No| F[Route to Default Group]
-    C --> G[Pick Node with Capacity]
-    E --> G
-    F --> G
-    G --> H[Execute Job on Selected Node]
+    B -->|No| D{Inventory Has Instance Group?}
+    D -->|Yes| E[Route to Inventory Group]
+    D -->|No| F{Org Has Instance Group?}
+    F -->|Yes| G[Route to Org Group]
+    F -->|No| H[Route to Default Group]
+    C --> I[Pick Node with Capacity]
+    E --> I
+    G --> I
+    H --> I
+    I --> J[Execute Job on Selected Node]
 ```
 
 ## Capacity and Job Routing
 
-AWX calculates each instance's capacity based on its CPU and memory. When a job needs to run, AWX picks the instance in the target group that has the most available capacity. If all instances in the group are at capacity, the job queues until a slot opens up.
+AWX calculates each instance's capacity based on its CPU and memory. When a job needs to run, AWX looks for a node in the selected instance group with enough remaining capacity for the job. If all eligible groups are at capacity, the job queues until capacity opens up.
 
 You can check the capacity of each instance.
 
@@ -164,7 +167,7 @@ for inst in data['results']:
 
 ## Container Groups
 
-AWX also supports container groups, which are a special type of instance group that runs jobs in Kubernetes pods instead of on AWX instances. This gives you near-infinite scaling since Kubernetes creates and destroys pods as needed.
+AWX also supports container groups, which are a special type of instance group that runs jobs in Kubernetes pods instead of on AWX instances. This gives you on-demand job execution capacity within the limits of the Kubernetes cluster, namespace quotas, and pod scheduling constraints.
 
 ```bash
 # Create a container group
@@ -176,32 +179,7 @@ curl -s -X POST \
     "name": "k8s-jobs",
     "is_container_group": true,
     "credential": 5,
-    "pod_spec_override": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {
-        "namespace": "awx-jobs"
-      },
-      "spec": {
-        "serviceAccountName": "awx-job-runner",
-        "containers": [
-          {
-            "name": "worker",
-            "image": "quay.io/ansible/awx-ee:latest",
-            "resources": {
-              "requests": {
-                "cpu": "500m",
-                "memory": "1Gi"
-              },
-              "limits": {
-                "cpu": "2",
-                "memory": "4Gi"
-              }
-            }
-          }
-        ]
-      }
-    }
+    "pod_spec_override": "metadata:\n  namespace: awx-jobs\nspec:\n  serviceAccountName: awx-job-runner\n"
   }'
 ```
 
@@ -245,7 +223,7 @@ instance_groups:
 Keep an eye on group utilization to know when you need to add more nodes.
 
 ```bash
-# Check job queue length and running jobs per group
+# Check running jobs and capacity per group
 curl -s -H "Authorization: Bearer ${AWX_TOKEN}" \
   https://awx.example.com/api/v2/instance_groups/ \
   | python3 -c "
