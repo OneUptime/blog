@@ -287,6 +287,7 @@ The `k8s_info` module lets you query the cluster for existing resources.
 
     - name: Check deployment rollout status
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         name: myapp
         namespace: myapp-prod
@@ -326,34 +327,12 @@ Handle rollbacks when deployments go wrong.
 # playbook-rollback.yml - rollback a bad deployment
 - hosts: localhost
   tasks:
-    - name: Scale down the broken deployment
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: myapp
-            namespace: myapp-prod
-          spec:
-            replicas: 0
-
-    - name: Redeploy with the previous known-good image
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: myapp
-            namespace: myapp-prod
-          spec:
-            replicas: 3
-            template:
-              spec:
-                containers:
-                  - name: myapp
-                    image: "registry.example.com/myapp:v1.2.2"
+    - name: Roll back the failed deployment
+      kubernetes.core.k8s_rollback:
+        api_version: apps/v1
+        kind: Deployment
+        name: myapp
+        namespace: myapp-prod
 ```
 
 ## Practical Tips
