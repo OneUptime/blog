@@ -76,9 +76,13 @@ One of the most common uses for timestamps is naming backup files:
   gather_facts: false
   vars:
     backup_dir: /var/backups/postgres
-    backup_timestamp: "{{ now(utc=true, fmt='%Y%m%d_%H%M%S') }}"
     db_name: myapp_production
   tasks:
+    - name: Store backup timestamp once
+      ansible.builtin.set_fact:
+        backup_timestamp: "{{ now(utc=true, fmt='%Y%m%d_%H%M%S') }}"
+      run_once: true
+
     - name: Ensure backup directory exists
       ansible.builtin.file:
         path: "{{ backup_dir }}"
@@ -111,7 +115,7 @@ One of the most common uses for timestamps is naming backup files:
 
 ## Important: Timestamp Consistency Within a Play
 
-A subtle but critical point: if you use `now()` in multiple places without storing it in a variable first, each call returns a slightly different time. Store the timestamp in a variable at the start to keep it consistent.
+A subtle but critical point: if you use `now()` in multiple places without storing it with `set_fact` first, each call returns a slightly different time. Store the timestamp with a task at the start to keep it consistent.
 
 ```yaml
 # consistent-timestamps.yml - Store timestamp once for consistency
@@ -119,11 +123,12 @@ A subtle but critical point: if you use `now()` in multiple places without stori
 - name: Deployment with consistent timestamp
   hosts: app_servers
   gather_facts: false
-  vars:
-    # Store the timestamp once for the entire play
-    deploy_timestamp: "{{ now(utc=true, fmt='%Y%m%d%H%M%S') }}"
-    deploy_date_human: "{{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S UTC') }}"
   tasks:
+    - name: Store the timestamp once for the entire play
+      ansible.builtin.set_fact:
+        deploy_timestamp: "{{ now(utc=true, fmt='%Y%m%d%H%M%S') }}"
+      run_once: true
+
     - name: Create versioned deployment directory
       ansible.builtin.file:
         path: "/opt/app/releases/{{ deploy_timestamp }}"
@@ -154,9 +159,9 @@ A subtle but critical point: if you use `now()` in multiple places without stori
     - name: Record deployment metadata
       ansible.builtin.copy:
         content: |
-          deployed_at: {{ deploy_date_human }}
+          deployed_at_utc: {{ deploy_timestamp }}
           release_dir: /opt/app/releases/{{ deploy_timestamp }}
-          deployed_by: {{ ansible_user_id }}
+          deployed_by: {{ ansible_user | default('unknown') }}
           hosts: {{ ansible_play_hosts | join(', ') }}
         dest: "/opt/app/releases/{{ deploy_timestamp }}/DEPLOY_INFO"
         mode: '0644'
@@ -177,9 +182,9 @@ You can combine `now()` with Jinja2 filters to calculate relative dates:
     - name: Calculate cleanup cutoff date
       ansible.builtin.set_fact:
         # Current timestamp as epoch seconds
-        current_epoch: "{{ now(utc=true, fmt='%s') }}"
+        current_epoch: "{{ now(utc=true).timestamp() | int }}"
         # 7 days ago in epoch seconds
-        seven_days_ago_epoch: "{{ now(utc=true, fmt='%s') | int - (7 * 86400) }}"
+        seven_days_ago_epoch: "{{ (now(utc=true).timestamp() | int) - (7 * 86400) }}"
 
     - name: Show dates
       ansible.builtin.debug:
@@ -258,7 +263,7 @@ Here is a quick reference for common format codes:
           - "%S = Second: {{ now(fmt='%S') }}"
           - "%p = AM/PM: {{ now(fmt='%p') }}"
           - "%Z = Timezone name: {{ now(fmt='%Z') }}"
-          - "%s = Unix epoch: {{ now(fmt='%s') }}"
+          - "Unix epoch: {{ now(utc=true).timestamp() | int }}"
           - "%A = Weekday name: {{ now(fmt='%A') }}"
           - "%B = Month name: {{ now(fmt='%B') }}"
           - "%j = Day of year: {{ now(fmt='%j') }}"
@@ -276,8 +281,12 @@ Here is a quick reference for common format codes:
   vars:
     log_dir: /var/log/myapp
     archive_dir: /var/log/myapp/archive
-    rotation_timestamp: "{{ now(utc=true, fmt='%Y%m%d_%H%M%S') }}"
   tasks:
+    - name: Store rotation timestamp once
+      ansible.builtin.set_fact:
+        rotation_timestamp: "{{ now(utc=true, fmt='%Y%m%d_%H%M%S') }}"
+      run_once: true
+
     - name: Ensure archive directory exists
       ansible.builtin.file:
         path: "{{ archive_dir }}"
@@ -303,7 +312,8 @@ Here is a quick reference for common format codes:
 
     - name: Compress archived logs
       ansible.builtin.command:
-        cmd: "gzip {{ archive_dir }}/*_{{ rotation_timestamp }}.log"
+        cmd: "gzip {{ archive_dir }}/{{ item.path | basename | splitext | first }}_{{ rotation_timestamp }}.log"
+      loop: "{{ log_files.files }}"
       become: true
       changed_when: true
 
@@ -316,6 +326,6 @@ Here is a quick reference for common format codes:
 
 ## Best Practices
 
-Always use UTC (`utc=true`) for timestamps that will be compared across machines or stored in databases. Store the timestamp in a variable at the top of the play to ensure consistency across tasks. Use compact formats (like `%Y%m%d%H%M%S`) for file names and ISO formats for log entries and metadata. Do not rely on `now()` for precise timing between tasks since each call is independent. If you need the timestamp to be the same across all hosts in a play, set it with `run_once: true` and use `set_fact` with `cacheable: true`.
+Always use UTC (`utc=true`) for timestamps that will be compared across machines or stored in databases. Store the timestamp with `set_fact` at the start of the play to ensure consistency across tasks. Use compact formats (like `%Y%m%d%H%M%S`) for file names and ISO formats for log entries and metadata. Do not rely on `now()` for precise timing between tasks since each call is independent. If you need the timestamp to be the same across all hosts in a play, set it with `run_once: true` and `set_fact`.
 
 The `now()` function is a small utility, but it eliminates the need for `command: date` tasks and keeps your playbooks cleaner and more portable across operating systems.
