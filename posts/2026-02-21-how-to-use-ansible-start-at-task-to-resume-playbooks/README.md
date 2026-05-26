@@ -34,6 +34,7 @@ Suppose you have this playbook:
         name:
           - python3
           - python3-pip
+          - python3-venv
           - nginx
         state: present
 
@@ -54,6 +55,7 @@ Suppose you have this playbook:
       ansible.builtin.pip:
         requirements: /opt/myapp/requirements.txt
         virtualenv: /opt/myapp/venv
+        virtualenv_command: python3 -m venv
 
     - name: Configure nginx virtual host
       ansible.builtin.template:
@@ -95,10 +97,11 @@ ansible-playbook deploy-app.yml --start-at-task="Install Python dependencies"
 
 ## Combining with --limit
 
-You can combine `--start-at-task` with `--limit` (and retry files) to resume from a specific task on only the failed hosts.
+You can combine `--start-at-task` with `--limit` (and retry files, if retry files are enabled) to resume from a specific task on only the failed hosts.
 
 ```bash
 # Resume from a task, but only on hosts that failed last run
+# This assumes retry_files_enabled = True and deploy-app.retry exists
 ansible-playbook deploy-app.yml \
   --start-at-task="Copy application files" \
   --limit @deploy-app.retry
@@ -245,6 +248,7 @@ ansible-playbook deploy-app.yml -e version=2.0.1
 # ... fails at "Install Python dependencies"
 
 # Step 2: Check what happened on the failed hosts
+# This assumes retry_files_enabled = True and deploy-app.retry exists
 ansible webservers -m shell -a "pip3 --version" --limit @deploy-app.retry
 
 # Step 3: Fix the issue (maybe install pip first)
@@ -294,6 +298,8 @@ ansible-playbook caveat-variables.yml \
   -e deploy_dir=/opt/myapp/releases/20260221120000
 ```
 
+Also, `--start-at-task` cannot jump into tasks that are loaded through dynamic includes such as `include_tasks` or `include_role`. If you need this behavior for reused task files or roles, use static imports instead.
+
 ## Summary
 
-The `--start-at-task` flag is a significant time saver during development and failure recovery. Pair it with `--limit` for targeting specific hosts, `--list-tasks` for finding exact task names, and `--step` for interactive debugging. Just be aware that skipped tasks will not set their variables, so structure your playbooks accordingly. For production use, combine this with retry files for a complete failure recovery workflow.
+The `--start-at-task` flag is a significant time saver during development and failure recovery. Pair it with `--limit` for targeting specific hosts, `--list-tasks` for finding exact task names, and `--step` for interactive debugging. Just be aware that skipped tasks will not set their variables, so structure your playbooks accordingly. For production use, combine this with retry files, if you enable them, for a complete failure recovery workflow.
