@@ -27,7 +27,7 @@ The `fileglob` lookup returns absolute paths to matching files on the control no
 
 ## Alternatively: Using query Instead of lookup
 
-The `query` function is the modern replacement for `lookup` when you need a list:
+The `query` function is the modern option for invoking lookups when you need a list:
 
 ```yaml
 # Using query (preferred syntax for loops)
@@ -200,14 +200,20 @@ This deploys common configs plus environment-specific ones. If `environment` is 
     msg: "Found {{ migration_files | length }} migration files to apply"
 
 - name: Apply migrations in order
-  ansible.builtin.command: "psql -f {{ item }} mydb"
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -f
+      - "{{ item }}"
+      - mydb
   loop: "{{ migration_files }}"
   loop_control:
     label: "{{ item | basename }}"
+  delegate_to: localhost
   changed_when: true
 ```
 
-The `sort` filter ensures migrations are applied in alphabetical order, which is important when migration files are named with sequential numbers like `001_create_tables.sql`, `002_add_indexes.sql`.
+The `sort` filter ensures migrations are applied in alphabetical order, which is important when migration files are named with sequential numbers like `001_create_tables.sql`, `002_add_indexes.sql`. Because `fileglob` returns paths on the control node, the command is delegated to localhost so `psql` can read those files.
 
 ## Handling Empty Results
 
