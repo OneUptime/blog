@@ -19,13 +19,16 @@ Ansible evaluates variables from many sources, and order matters. Here are the m
 2.  Inventory group_vars/all
 3.  Inventory group_vars/<group>
 4.  Inventory host_vars/<host>
-5.  Play vars
-6.  Play vars_files
-7.  Role vars (roles/x/vars/main.yml)
-8.  Block vars
-9.  Task vars
-10. set_fact / registered vars
-11. Extra vars (-e on command line)                  <- Highest
+5.  Host facts / cached set_facts
+6.  Play vars
+7.  Play vars_files
+8.  Role vars (roles/x/vars/main.yml)
+9.  Block vars
+10. Task vars
+11. include_vars
+12. set_fact / registered vars
+13. Role and include params
+14. Extra vars (-e on command line)                  <- Highest
 ```
 
 Use this to your advantage by defining variables at the appropriate level:
@@ -42,7 +45,7 @@ nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
 
 ```yaml
 # roles/nginx/vars/main.yml
-# HIGH priority - values that should NOT be overridden
+# HIGH priority - values that should rarely be overridden
 # Use for internal role constants
 nginx_config_dir: /etc/nginx
 nginx_log_dir: /var/log/nginx
@@ -58,17 +61,20 @@ nginx_client_max_body_size: 50m
 
 ## Prefix Variables with Role Names
 
-This is the single most important variable practice. Without prefixes, two roles can define the same variable name and one silently overwrites the other.
+This is the single most important variable practice. Without prefixes, two roles can accidentally consume the same inventory, play, or extra variable and behave differently than you expected.
 
 ```yaml
-# BAD: Generic variable names cause collisions
+# BAD: Generic variable names cause collisions when overridden outside a role
 # roles/nginx/defaults/main.yml
 port: 80
 config_dir: /etc/nginx
 
 # roles/haproxy/defaults/main.yml
-port: 443              # This overrides nginx's port!
-config_dir: /etc/haproxy  # This overrides nginx's config_dir!
+port: 443
+config_dir: /etc/haproxy
+
+# inventories/production/group_vars/all.yml
+port: 8080  # Both roles now see the same overridden value
 ```
 
 ```yaml
@@ -87,7 +93,7 @@ haproxy_config_dir: /etc/haproxy
 Keep secrets in vault-encrypted files separate from regular variables. Reference vault values with a `vault_` prefix:
 
 ```yaml
-# inventories/production/group_vars/all.yml
+# inventories/production/group_vars/all/vars.yml
 # Regular variables - plain text, easy to read and review
 db_host: db01.prod.example.com
 db_port: 5432
@@ -102,7 +108,7 @@ smtp_password: "{{ vault_smtp_password }}"
 ```
 
 ```yaml
-# inventories/production/group_vars/vault.yml (ansible-vault encrypted)
+# inventories/production/group_vars/all/vault.yml (ansible-vault encrypted)
 # Secret values only - encrypted at rest
 vault_db_user: prod_app_user
 vault_db_password: correct-horse-battery-staple
