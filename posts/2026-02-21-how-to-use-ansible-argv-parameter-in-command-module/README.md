@@ -35,7 +35,7 @@ With `argv`, each argument is passed directly to the process without any shell p
       - "/tmp/my file with spaces.txt"
 ```
 
-Both achieve the same result, but `argv` is less error-prone because you do not have to think about how the shell will split your arguments.
+Both achieve the same result, but `argv` is less error-prone because you do not have to think about how the command string will be split into arguments.
 
 ## Basic argv Syntax
 
@@ -99,7 +99,7 @@ The real power of `argv` shows up when your arguments contain characters that wo
       changed_when: false
 ```
 
-Without `argv`, the dollar sign in `$A` would be interpreted as a variable, and the regex brackets would need careful escaping.
+With the `command` module, shell metacharacters are not interpreted by a shell. However, recent Ansible versions expand environment-variable references such as `$HOME` by default before running the command. If you need a dollar sign to remain literal, set `expand_argument_vars: false` or write the value so it cannot be interpreted as an environment variable.
 
 ## Using argv with Variables
 
@@ -157,7 +157,7 @@ Sometimes you need to construct the argument list based on conditions. You can d
             base_command +
             (['--verbose'] if verbose else []) +
             ['--compress', compression] +
-            exclude_patterns | map('regex_replace', '^', '--exclude=') | list
+            (exclude_patterns | map('regex_replace', '^', '--exclude=') | list)
           }}
       register: backup_result
 
@@ -289,7 +289,7 @@ When you need to run similar commands with different arguments, you can loop ove
 
 ## Security Benefits of argv
 
-From a security perspective, `argv` is safer than `cmd` because it prevents shell injection. If a variable contains malicious content, `cmd` might execute it, while `argv` passes it as a literal argument:
+From a security perspective, `argv` is safer than building shell commands because it avoids shell parsing. If a variable contains malicious content, the `shell` module might execute it when variables are not quoted correctly, while `argv` passes it as a literal argument:
 
 ```yaml
 # argv prevents shell injection attacks
@@ -349,4 +349,4 @@ The `argv` parameter is part of the `command` module, which does not support she
 
 ## Summary
 
-The `argv` parameter in Ansible's `command` module provides a safer and more predictable way to pass arguments to commands. It eliminates quoting headaches, prevents shell injection, and handles special characters naturally. Use `argv` whenever you are working with filenames that might contain spaces, arguments with shell metacharacters, or data from untrusted sources. Stick with `cmd` or the `shell` module when you need shell features like pipes and redirects. For most automated tasks, `argv` is the better default choice.
+The `argv` parameter in Ansible's `command` module provides a safer and more predictable way to pass arguments to commands. It eliminates many quoting headaches, avoids shell injection issues, and handles special characters naturally. Use `argv` whenever you are working with filenames that might contain spaces, arguments with shell metacharacters, or data from untrusted sources. Stick with `cmd` when a string form is clearer, or use the `shell` module when you need shell features like pipes and redirects. For most automated tasks, `argv` is a good default choice.
