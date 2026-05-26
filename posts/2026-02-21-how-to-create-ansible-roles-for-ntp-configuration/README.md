@@ -35,8 +35,10 @@ roles/ntp/
 
 # Chrony package and service
 ntp_package: chrony
-ntp_service: chronyd
-ntp_config_file: /etc/chrony/chrony.conf
+ntp_service: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
+ntp_config_file: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+ntp_user: "{{ '_chrony' if ansible_os_family == 'Debian' else 'chrony' }}"
+ntp_group: "{{ '_chrony' if ansible_os_family == 'Debian' else 'chrony' }}"
 
 # NTP servers to sync from
 ntp_servers:
@@ -71,16 +73,17 @@ ntp_log_measurements: true
 ntp_log_statistics: true
 ntp_log_tracking: true
 ntp_log_dir: /var/log/chrony
+ntp_local_stratum: ""
 
 # Hardware timestamping (for high-precision environments)
 ntp_hwclock_enabled: false
 ntp_hwclock_interface: ""
 
 # Drift file
-ntp_driftfile: /var/lib/chrony/drift
+ntp_driftfile: "{{ '/var/lib/chrony/chrony.drift' if ansible_os_family == 'Debian' else '/var/lib/chrony/drift' }}"
 
 # Key file for authenticated NTP
-ntp_keyfile: /etc/chrony/chrony.keys
+ntp_keyfile: "{{ '/etc/chrony/chrony.keys' if ansible_os_family == 'Debian' else '/etc/chrony.keys' }}"
 
 # Max allowed offset before alerting (in seconds)
 ntp_max_offset_warning: 0.5
@@ -108,7 +111,7 @@ ntp_verify_sync: true
   when: ansible_os_family == "Debian"
 
 - name: Install Chrony on RedHat
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "{{ ntp_package }}"
     state: present
   when: ansible_os_family == "RedHat"
@@ -134,8 +137,8 @@ ntp_verify_sync: true
   ansible.builtin.file:
     path: "{{ ntp_log_dir }}"
     state: directory
-    owner: _chrony
-    group: _chrony
+    owner: "{{ ntp_user }}"
+    group: "{{ ntp_group }}"
     mode: '0755'
   when: ntp_log_measurements or ntp_log_statistics or ntp_log_tracking
 
@@ -206,9 +209,11 @@ log{% if ntp_log_measurements %} measurements{% endif %}{% if ntp_log_statistics
 hwtimestamp {{ ntp_hwclock_interface }}
 {% endif %}
 
+{% if ntp_local_stratum | string | length > 0 %}
 # Serve time even if not synchronized to a time source
 # (useful for isolated networks)
-local stratum 10
+local stratum {{ ntp_local_stratum }}
+{% endif %}
 ```
 
 ## Verification Tasks
@@ -218,7 +223,7 @@ local stratum 10
 # Verify NTP synchronization is working
 - name: Wait for Chrony to synchronize
   ansible.builtin.command:
-    cmd: chronyc waitsync 10 {{ ntp_max_offset_warning }} 0 0
+    cmd: chronyc waitsync 10 {{ ntp_max_offset_warning }}
   changed_when: false
   failed_when: false
   register: sync_result
