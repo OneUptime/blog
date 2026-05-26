@@ -87,6 +87,8 @@ A complete playbook for managing PostgreSQL with vault-encrypted passwords:
     name: postgres
     password: "{{ postgres_admin_password }}"
     encrypted: true
+  environment:
+    PGOPTIONS: "-c password_encryption=scram-sha-256"
   no_log: true
 
 - name: Create application database
@@ -104,9 +106,19 @@ A complete playbook for managing PostgreSQL with vault-encrypted passwords:
   community.postgresql.postgresql_user:
     name: "{{ app_db_user }}"
     password: "{{ postgres_app_password }}"
-    db: "{{ app_db_name }}"
-    priv: "ALL"
     encrypted: true
+  environment:
+    PGOPTIONS: "-c password_encryption=scram-sha-256"
+  no_log: true
+
+- name: Grant application user privileges on the database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    login_db: "{{ app_db_name }}"
+    type: database
+    privs: ALL
+    roles: "{{ app_db_user }}"
   no_log: true
 
 - name: Create replication user
@@ -117,6 +129,8 @@ A complete playbook for managing PostgreSQL with vault-encrypted passwords:
     password: "{{ postgres_replication_password }}"
     role_attr_flags: REPLICATION,LOGIN
     encrypted: true
+  environment:
+    PGOPTIONS: "-c password_encryption=scram-sha-256"
   no_log: true
 
 - name: Deploy pg_hba.conf
@@ -184,6 +198,7 @@ host    replication     replicator      {{ replica_network }}    scram-sha-256
     state: present
     encoding: utf8mb4
     collation: utf8mb4_unicode_ci
+    login_unix_socket: /var/run/mysqld/mysqld.sock
 
 - name: Create application database user
   community.mysql.mysql_user:
@@ -192,6 +207,7 @@ host    replication     replicator      {{ replica_network }}    scram-sha-256
     password: "{{ mysql_app_password }}"
     priv: "{{ app_db_name }}.*:ALL"
     state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
   no_log: true
 ```
 
@@ -263,7 +279,7 @@ production:
   port: {{ db_port | default(5432) }}
   database: {{ app_db_name }}
   username: {{ app_db_user }}
-  password: {{ postgres_app_password }}
+  password: {{ postgres_app_password | to_json }}
   pool: {{ db_pool_size | default(25) }}
   timeout: 5000
   encoding: unicode
@@ -288,8 +304,8 @@ Many modern applications read database credentials from environment files:
 
 ```jinja2
 {# dotenv.j2 #}
-DATABASE_URL=postgresql://{{ app_db_user }}:{{ postgres_app_password }}@{{ db_host }}:{{ db_port }}/{{ app_db_name }}?sslmode=require
-REDIS_URL=redis://:{{ vault_redis_password }}@{{ redis_host }}:6379/0
+DATABASE_URL=postgresql://{{ app_db_user | urlencode | replace('/', '%2F') }}:{{ postgres_app_password | urlencode | replace('/', '%2F') }}@{{ db_host }}:{{ db_port }}/{{ app_db_name | urlencode | replace('/', '%2F') }}?sslmode=require
+REDIS_URL=redis://:{{ vault_redis_password | urlencode | replace('/', '%2F') }}@{{ redis_host }}:6379/0
 ```
 
 ## Per-Environment Database Credentials
@@ -326,20 +342,21 @@ Generate strong random passwords and store them encrypted:
     - name: Generate random passwords
       ansible.builtin.set_fact:
         new_passwords:
-          vault_postgres_admin_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits,punctuation') }}"
-          vault_postgres_app_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
-          vault_mysql_root_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits,punctuation') }}"
+          vault_postgres_admin_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits', 'punctuation']) }}"
+          vault_postgres_app_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}"
+          vault_mysql_root_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits', 'punctuation']) }}"
 
-    - name: Write encrypted vault file
+    - name: Write vault file before encryption
       ansible.builtin.copy:
         content: "{{ new_passwords | to_nice_yaml }}"
         dest: "{{ playbook_dir }}/group_vars/production/vault.yml"
-        mode: '0644'
+        mode: '0600'
       no_log: true
 
     - name: Encrypt the vault file
       ansible.builtin.command:
         cmd: ansible-vault encrypt --vault-password-file ~/.vault_pass.txt group_vars/production/vault.yml
+        chdir: "{{ playbook_dir }}"
 ```
 
 ## The no_log Directive
