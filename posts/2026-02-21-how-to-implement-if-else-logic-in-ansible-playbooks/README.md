@@ -15,7 +15,7 @@ Ansible is declarative by design, which means there is no native `if/else` state
 The most common way to implement if/else in Ansible is by using two tasks with opposite `when` conditions:
 
 ```yaml
-# If the OS is Debian, install with apt; otherwise, install with yum
+# If the OS is Debian, install with apt; if it is RedHat, install with dnf
 
 - name: Install package on Debian
   ansible.builtin.apt:
@@ -24,7 +24,7 @@ The most common way to implement if/else in Ansible is by using two tasks with o
   when: ansible_os_family == "Debian"
 
 - name: Install package on RedHat
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: nginx
     state: present
   when: ansible_os_family == "RedHat"
@@ -118,7 +118,7 @@ The `block` and `rescue` structure in Ansible works like try/catch in other lang
       when: image_info.images | length == 0
 ```
 
-The `block` section runs first. If any task in it fails, execution jumps to `rescue`. The `always` section runs regardless of success or failure. This pattern is incredibly useful for handling degraded states gracefully.
+The `block` section runs first. If any task in it returns a failed state, execution jumps to `rescue`. The `always` section runs after the block and rescue handling. Invalid task definitions and unreachable hosts are not handled by `rescue` or `always`. This pattern is incredibly useful for handling degraded states gracefully.
 
 ## Using Jinja2 If/Else in Templates
 
@@ -170,9 +170,9 @@ For complex decision trees, you can use `set_fact` with a series of conditions t
 
 The last matching condition wins because `set_fact` overwrites the variable. This gives you a cascading if/elif/else pattern where more specific conditions override general ones.
 
-## Using select with If/Else Logic
+## Using List Expressions with If/Else Logic
 
-You can combine Jinja2 filters to build conditional lists:
+You can combine Jinja2 expressions to build conditional lists:
 
 ```yaml
 # Build a list of features to enable based on the environment
