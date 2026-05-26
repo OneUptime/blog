@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, WinRM, Window, Troubleshooting, DevOps
+Tags: Ansible, WinRM, Windows, Troubleshooting, DevOps
 
 Description: Resolve Ansible WinRM connection failures to Windows hosts with proper listener configuration, certificate setup, and authentication settings.
 
 ---
 
-When managing Windows hosts, Ansible uses WinRM (Windows Remote Management) instead of SSH. WinRM connection failures are common because the Windows side requires specific configuration that does not come enabled by default.
+When managing Windows hosts, Ansible can use WinRM (Windows Remote Management) instead of SSH. WinRM connection failures are common because the Windows side often needs extra listener, certificate, firewall, and authentication configuration before Ansible can connect.
 
 ## The Error
 
@@ -25,15 +25,15 @@ fatal: [windows-server]: UNREACHABLE! => {
 Run this PowerShell script on the Windows target:
 
 ```powershell
-# Enable WinRM with HTTPS listener
+# Enable PowerShell remoting and the default HTTP WinRM listener
 
-winrm quickconfig -force
+Enable-PSRemoting -Force
 
-# Or use the Ansible-provided setup script
-$url = "https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
+# Or use the Ansible-provided setup script for a lab/development HTTPS listener
+$url = "https://raw.githubusercontent.com/ansible/ansible-documentation/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
 $file = "$env:temp\ConfigureRemotingForAnsible.ps1"
 (New-Object -TypeName System.Net.WebClient).DownloadFile($url, $file)
-powershell.exe -ExecutionPolicy ByPass -File $file
+powershell.exe -ExecutionPolicy ByPass -File $file -Verbose
 ```
 
 ### Fix 2: Configure Ansible Inventory for Windows
@@ -56,10 +56,10 @@ ansible_port=5986
 
 ```bash
 # Install the WinRM Python library
-pip install pywinrm
+pip3 install "pywinrm>=0.4.0"
 
 # For Kerberos authentication
-pip install pywinrm[kerberos]
+pip3 install "pywinrm[kerberos]>=0.4.0"
 ```
 
 ### Fix 4: Check WinRM Listeners
@@ -70,7 +70,7 @@ On the Windows host:
 # List WinRM listeners
 winrm enumerate winrm/config/listener
 
-# Verify HTTPS listener exists
+# Check service authentication and encryption settings
 winrm get winrm/config/service
 ```
 
@@ -78,19 +78,20 @@ winrm get winrm/config/service
 
 ```powershell
 # Ensure WinRM ports are open
-New-NetFirewallRule -Name "WinRM-HTTPS" -DisplayName "WinRM HTTPS" -Protocol TCP -LocalPort 5986 -Action Allow
+New-NetFirewallRule -Name "WinRM-HTTPS" -DisplayName "WinRM HTTPS" -Direction Inbound -Profile Any -Protocol TCP -LocalPort 5986 -Action Allow
 ```
 
 ### Fix 6: Use HTTP Instead of HTTPS (Testing Only)
 
 ```ini
-# For testing environments only - not secure
+# For testing environments only
 ansible_port=5985
 ansible_winrm_scheme=http
-ansible_winrm_transport=basic
+ansible_winrm_transport=ntlm
+ansible_winrm_message_encryption=always
 ```
 
-Also enable basic auth on the Windows host:
+Only use Basic over HTTP as a last resort in an isolated development environment. In that case, enable Basic auth and allow unencrypted traffic on the Windows host:
 
 ```powershell
 winrm set winrm/config/service/auth '@{Basic="true"}'
@@ -99,21 +100,23 @@ winrm set winrm/config/service '@{AllowUnencrypted="true"}'
 
 ## Summary
 
-WinRM connection failures require configuration on both sides: the Windows host needs WinRM enabled with an HTTPS listener, and the Ansible control node needs pywinrm installed and proper inventory variables set. The official ConfigureRemotingForAnsible.ps1 script handles the Windows side, and the inventory variables handle the Ansible side.
+WinRM connection failures require configuration on both sides: the Windows host needs WinRM enabled with an appropriate listener, and the Ansible control node needs pywinrm installed and proper inventory variables set. The ConfigureRemotingForAnsible.ps1 script can handle the Windows side for lab and development environments, and the inventory variables handle the Ansible side.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where a working WinRM connection proves essential in real-world Windows playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
-- name: Infrastructure provisioning
-  hosts: all
-  become: true
+# Complete workflow incorporating Windows hosts over WinRM
+- name: Windows infrastructure provisioning
+  hosts: windows
   gather_facts: true
   tasks:
+    - name: Verify WinRM connectivity
+      ansible.windows.win_ping:
+
     - name: Gather system information
       ansible.builtin.setup:
         gather_subset:
@@ -128,75 +131,49 @@ Here are several practical scenarios where this module proves essential in real-
           {{ ansible_processor_vcpus }} vCPUs,
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
-    - name: Install required packages
-      ansible.builtin.package:
-        name:
-          - curl
-          - wget
-          - git
-          - vim
-          - htop
-          - jq
+    - name: Install IIS web server
+      ansible.windows.win_feature:
+        name: Web-Server
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
-        name: "{{ system_timezone | default('UTC') }}"
+      ansible.windows.win_timezone:
+        timezone: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
-      ansible.builtin.hostname:
+      ansible.windows.win_hostname:
         name: "{{ inventory_hostname }}"
+      register: hostname_result
 
-    - name: Update /etc/hosts
-      ansible.builtin.lineinfile:
-        path: /etc/hosts
-        regexp: '^127\.0\.1\.1'
-        line: "127.0.1.1 {{ inventory_hostname }}"
-
-    - name: Configure SSH hardening
-      ansible.builtin.lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-      loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+    - name: Reboot if hostname changed
+      ansible.windows.win_reboot:
+      when: hostname_result.reboot_required
 
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
+      community.windows.win_firewall_rule:
+        name: "Allow TCP {{ item }}"
+        localport: "{{ item }}"
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: true
       loop:
-        - "22"
-        - "80"
-        - "443"
-
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
-
-  handlers:
-    - name: restart sshd
-      ansible.builtin.service:
-        name: sshd
-        state: restarted
+        - 80
+        - 443
 ```
 
 ### Integration with Monitoring
 
 ```yaml
 # Using gathered facts to configure monitoring thresholds
-- name: Configure monitoring based on system specs
-  hosts: all
-  become: true
+- name: Configure monitoring based on Windows system specs
+  hosts: windows
   tasks:
     - name: Set monitoring thresholds based on hardware
-      ansible.builtin.template:
-        src: monitoring_config.yml.j2
-        dest: /etc/monitoring/config.yml
+      ansible.windows.win_template:
+        src: monitoring_config.json.j2
+        dest: C:\ProgramData\Monitoring\config.json
       vars:
         memory_warning_threshold: "{{ (ansible_memtotal_mb * 0.8) | int }}"
         memory_critical_threshold: "{{ (ansible_memtotal_mb * 0.95) | int }}"
@@ -222,17 +199,17 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling over WinRM
 - name: Robust task execution
-  hosts: all
+  hosts: windows
   tasks:
     - name: Attempt primary operation
-      ansible.builtin.command: /opt/app/primary-task.sh
+      ansible.windows.win_command: C:\Scripts\primary-task.cmd
       register: primary_result
       failed_when: false
 
     - name: Handle primary failure with fallback
-      ansible.builtin.command: /opt/app/fallback-task.sh
+      ansible.windows.win_command: C:\Scripts\fallback-task.cmd
       when: primary_result.rc != 0
       register: fallback_result
 
@@ -254,34 +231,31 @@ Here are several practical scenarios where this module proves essential in real-
 ### Scheduling and Automation
 
 ```yaml
-# Set up scheduled compliance scans using cron
+# Set up scheduled compliance scans using Windows Task Scheduler
 - name: Configure automated scans
-  hosts: all
-  become: true
+  hosts: windows
   tasks:
     - name: Create scan script
-      ansible.builtin.copy:
-        dest: /opt/scripts/compliance_scan.sh
-        mode: '0755'
+      ansible.windows.win_copy:
+        dest: C:\Scripts\compliance_scan.ps1
         content: |
-          #!/bin/bash
-          cd /opt/ansible
-          ansible-playbook playbooks/validate.yml -i inventory/ > /var/log/compliance_scan.log 2>&1
-          EXIT_CODE=$?
-          if [ $EXIT_CODE -ne 0 ]; then
-            curl -X POST https://hooks.example.com/alert \
-              -H "Content-Type: application/json" \
-              -d "{\"text\":\"Compliance scan failed on $(hostname)\"}"
-          fi
-          exit $EXIT_CODE
+          $result = Test-Path C:\ProgramData\Monitoring\config.json
+          if (-not $result) {
+            Invoke-RestMethod -Uri https://hooks.example.com/alert -Method Post -ContentType 'application/json' -Body '{"text":"Compliance scan failed"}'
+            exit 1
+          }
+          exit 0
 
     - name: Schedule weekly compliance scan
-      ansible.builtin.cron:
+      community.windows.win_scheduled_task:
         name: "Weekly compliance scan"
-        minute: "0"
-        hour: "3"
-        weekday: "1"
-        job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        actions:
+          - path: powershell.exe
+            arguments: -NoProfile -ExecutionPolicy Bypass -File C:\Scripts\compliance_scan.ps1
+        triggers:
+          - type: weekly
+            days_of_week: monday
+            start_boundary: '2026-02-23T03:00:00'
+        username: SYSTEM
+        state: present
 ```
-
