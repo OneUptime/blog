@@ -15,12 +15,12 @@ When you manage dozens of Ansible roles, creating Molecule scenarios by hand for
 Molecule ships with a built-in init command that creates the basic scenario structure.
 
 ```bash
-# Initialize a new role with Molecule scenario
-
-molecule init role my_role --driver-name docker
+# Initialize a new role, then add a Molecule scenario
+ansible-galaxy role init my_role
+cd my_role
+molecule init scenario default --driver-name docker
 
 # Add a new scenario to an existing role
-cd my_role
 molecule init scenario multi-node --driver-name docker
 ```
 
@@ -70,7 +70,8 @@ cat > "${MOLECULE_DIR}/molecule.yml" << YAML
 dependency:
   name: galaxy
   options:
-    requirements-file: requirements.yml
+    role-file: requirements.yml
+    requirements-file: collections.yml
     force: false
 
 driver:
@@ -92,7 +93,7 @@ provisioner:
   name: ansible
   config_options:
     defaults:
-      callbacks_enabled: timer, profile_tasks
+      callbacks_enabled: ansible.posix.timer, ansible.posix.profile_tasks
       gathering: smart
       interpreter_python: auto_silent
   env:
@@ -220,7 +221,7 @@ def generate_molecule_yml(distro_name, distro_config, scenario_name):
             "name": "ansible",
             "config_options": {
                 "defaults": {
-                    "callbacks_enabled": "timer, profile_tasks",
+                    "callbacks_enabled": "ansible.posix.timer, ansible.posix.profile_tasks",
                     "interpreter_python": "auto_silent",
                 }
             },
@@ -283,6 +284,7 @@ if __name__ == "__main__":
 ```
 
 ```bash
+python3 -m pip install PyYAML
 python3 generate_scenarios.py
 ```
 
@@ -323,8 +325,8 @@ driver:
   name: docker
 
 platforms:
-  - name: "{{ '{{' }} cookiecutter.scenario_name {{ '}}' }}-instance"
-    image: "{{ '{{' }} cookiecutter.distro_image {{ '}}' }}"
+  - name: "{{ cookiecutter.scenario_name }}-instance"
+    image: "{{ cookiecutter.distro_image }}"
     pre_build_image: true
 {% if cookiecutter.privileged %}
     privileged: true
@@ -337,7 +339,7 @@ provisioner:
   name: ansible
 
 verifier:
-  name: "{{ '{{' }} cookiecutter.verifier {{ '}}' }}"
+  name: "{{ cookiecutter.verifier }}"
 ```
 
 ```bash
@@ -392,7 +394,7 @@ You can use Ansible to generate Molecule scenarios. This is fitting since you ar
   connection: local
   gather_facts: false
   vars:
-    roles_directory: ./roles
+    roles_directory: "{{ playbook_dir }}/roles"
     distros:
       - name: ubuntu2204
         image: geerlingguy/docker-ubuntu2204-ansible:latest
