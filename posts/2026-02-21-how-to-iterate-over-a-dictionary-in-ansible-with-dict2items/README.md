@@ -260,7 +260,7 @@ Here is a complete playbook that manages multiple services using dictionary iter
         config_dest: /etc/postgresql/14/main/postgresql.conf
         port: 5432
         enabled: true
-      redis:
+      redis-server:
         package: redis-server
         config_src: redis.conf.j2
         config_dest: /etc/redis/redis.conf
@@ -309,6 +309,7 @@ Here is a complete playbook that manages multiple services using dictionary iter
       ansible.posix.firewalld:
         port: "{{ item.value.port }}/tcp"
         permanent: yes
+        immediate: yes
         state: "{{ 'enabled' if item.value.enabled else 'disabled' }}"
       loop: "{{ services | dict2items }}"
       loop_control:
@@ -325,7 +326,7 @@ Here is a complete playbook that manages multiple services using dictionary iter
         name: postgresql
         state: restarted
 
-    - name: restart redis
+    - name: restart redis-server
       ansible.builtin.service:
         name: redis-server
         state: restarted
