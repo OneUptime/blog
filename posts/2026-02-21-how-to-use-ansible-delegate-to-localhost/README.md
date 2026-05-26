@@ -42,7 +42,7 @@ Consider a deployment scenario. You are deploying to 50 web servers. For each se
 
     - name: Wait for health check to pass
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:8080/health"
+        url: "http://{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:8080/health"
         status_code: 200
       register: health
       retries: 20
@@ -58,17 +58,17 @@ Consider a deployment scenario. You are deploying to 50 web servers. For each se
         body:
           ID: "{{ inventory_hostname }}-web"
           Name: web
-          Address: "{{ ansible_host }}"
+          Address: "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}"
           Port: 8080
           Check:
-            HTTP: "http://{{ ansible_host }}:8080/health"
+            HTTP: "http://{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:8080/health"
             Interval: "10s"
       delegate_to: localhost
 ```
 
 ## Variable Context When Delegating to localhost
 
-When you delegate to localhost, all variables still refer to the original target host. This is the most important thing to understand.
+When you delegate to localhost, `inventory_hostname` still refers to the original target host. Most host facts you use in module arguments are still the facts collected for that host, but connection-related variables such as `ansible_host`, `ansible_connection`, and `ansible_python_interpreter` are evaluated for the delegated host. When you specifically need the original target host's connection variable, use `hostvars[inventory_hostname]`.
 
 ```yaml
 # variable-context-localhost.yml - Variables in localhost delegation
@@ -77,22 +77,24 @@ When you delegate to localhost, all variables still refer to the original target
   hosts: webservers
   gather_facts: true
   tasks:
-    - name: Show what variables are available on delegated task
-      ansible.builtin.debug:
-        msg: |
+    - name: Write delegated variable context to a local file
+      ansible.builtin.copy:
+        dest: "/tmp/delegation-context-{{ inventory_hostname }}.txt"
+        content: |
           inventory_hostname: {{ inventory_hostname }}
-          ansible_host: {{ ansible_host }}
+          target ansible_host: {{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}
           ansible_os_family: {{ ansible_os_family }}
           group_names: {{ group_names | join(', ') }}
-          NOTE: All of these refer to the REMOTE host, not localhost
+          NOTE: inventory_hostname and gathered facts refer to the REMOTE host
       delegate_to: localhost
 
     - name: Write host info to a local file
       ansible.builtin.lineinfile:
         path: /tmp/host-inventory.txt
-        line: "{{ inventory_hostname }} {{ ansible_host }} {{ ansible_os_family }}"
+        line: "{{ inventory_hostname }} {{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }} {{ ansible_os_family }}"
         create: true
       delegate_to: localhost
+      throttle: 1
 ```
 
 ## Writing Local Files Based on Remote Host Data
@@ -119,9 +121,10 @@ A common use case is generating reports or configuration files on the controller
     - name: Write host report to local file
       ansible.builtin.lineinfile:
         path: /tmp/fleet-report-{{ ansible_date_time.date }}.csv
-        line: "{{ inventory_hostname }},{{ ansible_host }},{{ ansible_os_family }},{{ disk_usage.stdout }},{{ memory_info.stdout }}"
+        line: "{{ inventory_hostname }},{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }},{{ ansible_os_family }},{{ disk_usage.stdout }},{{ memory_info.stdout }}"
         create: true
       delegate_to: localhost
+      throttle: 1
 
     - name: Add CSV header (only once)
       ansible.builtin.lineinfile:
@@ -264,7 +267,7 @@ The template file can reference remote host variables:
 # Auto-generated monitoring configuration for {{ inventory_hostname }}
 host:
   name: {{ inventory_hostname }}
-  address: {{ ansible_host }}
+  address: {{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}
   os: {{ ansible_distribution }} {{ ansible_distribution_version }}
   cpus: {{ ansible_processor_vcpus }}
   memory_mb: {{ ansible_memtotal_mb }}
@@ -272,7 +275,7 @@ host:
     - type: ping
       interval: 30s
     - type: http
-      url: http://{{ ansible_host }}:8080/health
+      url: http://{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:8080/health
       interval: 10s
 ```
 
@@ -302,4 +305,4 @@ The `throttle` parameter limits how many hosts can execute this task concurrentl
 
 ## Summary
 
-Delegating to localhost is a fundamental Ansible pattern for any task that should execute on the controller: API calls, notifications, local file generation, template rendering, and CMDB updates. The key points to remember are that variables always reference the original remote host, `become` applies on the controller when delegated, and you should use `throttle` to limit concurrent local operations. Combined with `run_once` for tasks that only need to happen once regardless of host count, localhost delegation gives you flexible control over where each piece of your automation runs.
+Delegating to localhost is a fundamental Ansible pattern for any task that should execute on the controller: API calls, notifications, local file generation, template rendering, and CMDB updates. The key points to remember are that `inventory_hostname` keeps the original remote host context, connection variables can come from the delegated host, `become` applies on the controller when delegated, and you should use `throttle` to limit concurrent local operations. Combined with `run_once` for tasks that only need to happen once regardless of host count, localhost delegation gives you flexible control over where each piece of your automation runs.
