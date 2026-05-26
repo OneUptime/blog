@@ -29,7 +29,7 @@ Architectures: amd64
 Signed-By: /usr/share/keyrings/docker.gpg
 ```
 
-The DEB822 format is easier to read, supports comments naturally, and can include the GPG key directly in the file. Starting with Ubuntu 24.04 and Debian 12, the default system sources are already in DEB822 format at `/etc/apt/sources.list.d/ubuntu.sources`.
+The DEB822 format is easier to read, supports comments naturally, and can include the GPG key directly in the file. Starting with Ubuntu 24.04, Ubuntu's default system sources are already in DEB822 format at `/etc/apt/sources.list.d/ubuntu.sources`. Debian 12 supports DEB822 sources, and current Debian release notes recommend the DEB822-style `/etc/apt/sources.list.d/debian.sources` format.
 
 ## Basic Usage of the deb822_repository Module
 
@@ -50,15 +50,15 @@ Here is how to add a simple repository:
     state: present
 ```
 
-The `name` parameter determines the filename. This creates `/etc/apt/sources.list.d/docker-ce.sources`. The `signed_by` parameter is particularly convenient because it can accept a URL directly. The module downloads the key, dearmors it if needed, and embeds it in the `.sources` file.
+The `name` parameter determines the filename. This creates `/etc/apt/sources.list.d/docker-ce.sources`. The `signed_by` parameter is particularly convenient because it can accept a URL directly. The module downloads the key to `/etc/apt/keyrings/` and writes a `Signed-By` reference to that key file in the `.sources` file.
 
-## Embedding the GPG Key
+## Managing the GPG Key
 
-One of the best features of DEB822 is inline key embedding. The `deb822_repository` module handles this automatically when you provide a URL for `signed_by`:
+One of the best features of the `deb822_repository` module is built-in key management. When you provide a URL for `signed_by`, the module downloads the key and references the managed key file automatically:
 
 ```yaml
-# Add Grafana repository with embedded GPG key
-- name: Add Grafana repository with inline key
+# Add Grafana repository with a managed GPG key
+- name: Add Grafana repository with managed key
   ansible.builtin.deb822_repository:
     name: grafana
     types: deb
@@ -70,7 +70,7 @@ One of the best features of DEB822 is inline key embedding. The `deb822_reposito
     enabled: yes
 ```
 
-This creates a single `.sources` file that contains both the repository definition and the GPG key. No separate keyring file management is needed. This is a significant improvement over the old workflow of separately managing keys and repository files.
+This creates a `.sources` file for the repository and a managed key file under `/etc/apt/keyrings/`. You do not need a separate task to download the key or manage the key file. If you want the key embedded directly in the `.sources` file instead, pass an ASCII-armored public key block as the `signed_by` value.
 
 ## Adding Source Repositories
 
@@ -260,7 +260,7 @@ graph LR
 
 ## What the Generated File Looks Like
 
-When you use the `deb822_repository` module, the generated `.sources` file looks something like this:
+When you use the `deb822_repository` module with a URL for `signed_by`, the generated `.sources` file looks something like this:
 
 ```text
 X-Repolib-Name: docker-ce
@@ -269,21 +269,17 @@ URIs: https://download.docker.com/linux/ubuntu
 Suites: jammy
 Components: stable
 Architectures: amd64
-Signed-By:
- -----BEGIN PGP PUBLIC KEY BLOCK-----
- .
- mQINBFi... (key data) ...
- -----END PGP PUBLIC KEY BLOCK-----
+Signed-By: /etc/apt/keyrings/docker-ce.asc
 ```
 
-The key is embedded directly in the file, making the repository fully self-contained.
+The repository definition is in the `.sources` file, while the downloaded key is managed separately in `/etc/apt/keyrings/`. Inline key embedding is still possible when `signed_by` is an ASCII-armored public key block instead of a URL.
 
 ## When to Use deb822_repository
 
 Use the `deb822_repository` module when:
 
 - You are targeting Ubuntu 22.04+ or Debian 12+
-- You want the simplest possible key management (inline keys)
+- You want the simplest possible key management with URL-based keys or inline keys
 - You are starting a new project and want to use modern practices
 - You want to disable/enable repositories without removing them
 
@@ -292,4 +288,4 @@ Stick with `apt_repository` when:
 - You need to support older distributions that do not understand DEB822
 - Your existing infrastructure is already set up with the traditional format and migration is not worth the effort
 
-The `deb822_repository` module simplifies what used to be a multi-step process (download key, dearmor key, store key, add repo with signed-by reference) into a single task. For new Ansible projects targeting modern Debian or Ubuntu systems, it is the right choice.
+The `deb822_repository` module simplifies what used to be a multi-step process (download key, store key, add repo with signed-by reference) into a single task. For new Ansible projects targeting modern Debian or Ubuntu systems, it is the right choice.
