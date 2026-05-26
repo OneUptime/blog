@@ -85,15 +85,16 @@ terraform plan  # Should show no changes if in sync
 # Check Ansible sees the same infrastructure
 ansible -i inventory all -m ping
 
-# Force Terraform state refresh
-terraform refresh
+# Review state refresh before applying it
+terraform plan -refresh-only
+terraform apply -refresh-only
 ```
 
 ## Problem 5: Provisioner Timing
 
 ```hcl
 # Debug: Add timestamps to provisioner output
-resource "null_resource" "debug" {
+resource "terraform_data" "debug" {
   provisioner "local-exec" {
     command = <<-EOT
       echo "Terraform finished at: $(date)"
@@ -121,12 +122,12 @@ Terraform-Ansible integration issues fall into five categories: inventory genera
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -158,7 +159,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -240,7 +241,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in this workflow
 - name: Robust task execution
   hosts: all
   tasks:
@@ -302,4 +303,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
