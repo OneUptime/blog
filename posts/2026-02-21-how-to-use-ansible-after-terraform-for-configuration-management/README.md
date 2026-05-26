@@ -83,7 +83,7 @@ Export these to a JSON file after `terraform apply`.
 ```bash
 # Export Terraform outputs as JSON for Ansible
 
-terraform output -json > ../ansible/group_vars/all/terraform.json
+terraform output -json > outputs.json
 ```
 
 ## Step 2: Generate Ansible Inventory
@@ -124,11 +124,15 @@ def main():
     inv_data = raw.get("inventory", {}).get("value", {})
     shared = raw.get("shared_resources", {}).get("value", {})
 
-    inventory = {"_meta": {"hostvars": {}}, "all": {"vars": shared}}
+    inventory = {
+        "_meta": {"hostvars": {}},
+        "all": {"children": [], "vars": {"shared_resources": shared}},
+    }
 
     for group_name, group_data in inv_data.items():
         hosts = list(group_data.get("hosts", {}).keys())
         inventory[group_name] = {"hosts": hosts}
+        inventory["all"]["children"].append(group_name)
 
         for hostname, hostvars in group_data.get("hosts", {}).items():
             hostvars["ansible_user"] = "ubuntu"
@@ -283,11 +287,9 @@ Apply role-specific configuration using the groups defined in your inventory.
 ```yaml
 # playbooks/site.yml
 ---
-- name: Wait for hosts
-  ansible.builtin.import_playbook: wait-for-hosts.yml
+- ansible.builtin.import_playbook: wait-for-hosts.yml
 
-- name: Base configuration
-  ansible.builtin.import_playbook: base-config.yml
+- ansible.builtin.import_playbook: base-config.yml
 
 - name: Configure web servers
   hosts: webservers
@@ -309,7 +311,7 @@ Apply role-specific configuration using the groups defined in your inventory.
         java_version: "17"
     - role: application_deploy
       vars:
-        app_version: "{{ lookup('env', 'APP_VERSION') | default('latest') }}"
+        app_version: "{{ lookup('env', 'APP_VERSION') | default('latest', true) }}"
         db_host: "{{ shared_resources.rds_endpoint }}"
         redis_host: "{{ shared_resources.redis_endpoint }}"
     - role: monitoring_agent
@@ -370,7 +372,7 @@ After configuration, verify everything is working.
 
 When Terraform destroys and recreates infrastructure, Ansible needs to handle SSH host key changes gracefully.
 
-```yaml
+```ini
 # ansible.cfg
 [defaults]
 host_key_checking = False
