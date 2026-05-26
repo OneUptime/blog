@@ -150,7 +150,7 @@ You can use `select` and `reject` results directly in `when` clauses:
       - { message: "High CPU usage", severity: "warning" }
 
 - name: Send emergency notification
-  ansible.builtin.mail:
+  community.general.mail:
     to: oncall@example.com
     subject: "Critical alerts detected"
     body: "{{ alerts | selectattr('severity', 'equalto', 'critical') | map(attribute='message') | join(', ') }}"
