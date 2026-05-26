@@ -53,7 +53,7 @@ graph TD
     group: docker
     mode: '0660'
 
-- name: Configure Docker to use TLS
+- name: Install Docker TLS certificate files
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "/etc/docker/{{ item.dest }}"
@@ -135,7 +135,7 @@ graph TD
     image: "{{ item.image }}"
     security_opts:
       - "seccomp=/etc/docker/seccomp/default.json"
-      - "no-new-privileges:true"
+      - "no-new-privileges=true"
     state: started
   loop: "{{ secured_containers }}"
 ```
@@ -159,12 +159,12 @@ graph TD
       - "/tmp:size=100M"
       - "/var/run:size=10M"
     # Drop all capabilities, add only what is needed
-    capabilities:
-      - drop:ALL
-    cap_add: "{{ item.capabilities | default([]) }}"
+    cap_drop:
+      - ALL
+    capabilities: "{{ item.capabilities | default([]) }}"
     # Security options
     security_opts:
-      - "no-new-privileges:true"
+      - "no-new-privileges=true"
     # Resource limits
     memory: "{{ item.memory_limit | default('256m') }}"
     cpus: "{{ item.cpu_limit | default(0.5) }}"
