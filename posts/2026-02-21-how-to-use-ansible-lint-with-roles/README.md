@@ -66,6 +66,7 @@ ansible-lint checks `meta/main.yml` for completeness. The rules vary by profile.
 # roles/webserver/meta/main.yml - Minimum viable metadata
 ---
 galaxy_info:
+  standalone: true
   author: your_name
   description: Installs and configures nginx web server
   license: MIT
@@ -89,25 +90,33 @@ dependencies: []
 
 ### Common Metadata Warnings
 
-**meta-no-info**: Missing or empty `galaxy_info`.
+**schema[meta]**: Missing required metadata fields or missing the `standalone` flag.
 
 ```yaml
-# Bad: empty galaxy_info
-galaxy_info: {}
-
-# Good: complete galaxy_info (see above)
-```
-
-**meta-no-tags**: No tags defined in galaxy_info.
-
-```yaml
-# Bad: no tags
+# Bad: missing standalone flag
 galaxy_info:
   author: your_name
   description: My role
-  # Missing galaxy_tags
 
-# Good: includes tags
+# Good: declares whether this is a standalone role
+galaxy_info:
+  standalone: true
+  author: your_name
+  description: My role
+```
+
+**meta-no-tags**: Tags in `galaxy_info` contain uppercase letters or special characters.
+
+```yaml
+# Bad: invalid tag characters
+galaxy_info:
+  author: your_name
+  description: My role
+  galaxy_tags:
+    - Nginx
+    - web-server
+
+# Good: lowercase alphanumeric tags
 galaxy_info:
   author: your_name
   description: My role
@@ -116,19 +125,22 @@ galaxy_info:
     - web
 ```
 
-**meta-incorrect**: Incorrect data types in meta.
+**meta-incorrect**: Metadata fields contain placeholder or default values.
 
 ```yaml
-# Bad: platforms should be a list
+# Bad: placeholder metadata
 galaxy_info:
-  platforms: Ubuntu
+  author: your name
+  description: your role description
+  company: your company (optional)
+  license: license (GPL-2.0-or-later, MIT, etc)
 
-# Good: platforms as a list of dicts
+# Good: real metadata values
 galaxy_info:
-  platforms:
-    - name: Ubuntu
-      versions:
-        - jammy
+  author: Jane Developer
+  description: Installs and configures nginx web server
+  company: Example Corp
+  license: MIT
 ```
 
 ## Role-Specific Configuration
@@ -146,13 +158,13 @@ exclude_paths:
   - tests/
   - .cache/
 
-# Enable role-specific rules
+# Enable optional rules useful for shared content
 enable_list:
   - no-same-owner
 
 # Role-specific skips
 skip_list:
-  - yaml[line-length]  # Templates can have long lines
+  - yaml[line-length]  # Some task files can have long lines
 ```
 
 ## Linting Role Tasks
@@ -234,7 +246,8 @@ Handlers need names and should follow the same conventions as tasks:
     state: reloaded
 
 - name: Validate nginx configuration
-  ansible.builtin.command: nginx -t
+  ansible.builtin.command:
+    cmd: nginx -t
   changed_when: false
 ```
 
@@ -248,6 +261,7 @@ If your role depends on other roles, declare them in `meta/main.yml`:
 # roles/app_server/meta/main.yml - Role with dependencies
 ---
 galaxy_info:
+  standalone: true
   author: your_name
   description: Application server setup
   min_ansible_version: "2.14"
@@ -368,7 +382,7 @@ roles/setup_nginx/
 
 ### Issue: argument-spec validation
 
-If your role provides an argument spec, ansible-lint validates that tasks use the declared parameters:
+If your role provides an argument spec, ansible-lint validates the argument specification schema:
 
 ```yaml
 # roles/webserver/meta/argument_specs.yml - Role argument specification
