@@ -28,10 +28,10 @@ Add `backup: true` to any template task:
 When this runs and `/etc/nginx/nginx.conf` already exists, Ansible creates a timestamped copy before writing the new version. The backup file looks something like:
 
 ```text
-/etc/nginx/nginx.conf.2026-02-21@14:30:45~
+/etc/nginx/nginx.conf.12345.2026-02-21@14:30:45~
 ```
 
-The timestamp format is `YYYY-MM-DD@HH:MM:SS~`.
+The backup name includes an Ansible process ID and a timestamp. The timestamp portion uses the format `YYYY-MM-DD@HH:MM:SS~`.
 
 ## When Backups Are Created
 
@@ -151,10 +151,12 @@ You can use the backup file path to implement automatic rollback:
       ansible.builtin.service:
         name: nginx
         state: reloaded
+      when: nginx_deploy.backup_file is defined
 
     - name: Report rollback
       ansible.builtin.debug:
         msg: "ROLLED BACK nginx config on {{ inventory_hostname }}. Restored from {{ nginx_deploy.backup_file }}"
+      when: nginx_deploy.backup_file is defined
 ```
 
 This pattern deploys the new config, tests it, and if anything fails in the block, the rescue section restores the backup.
@@ -205,7 +207,7 @@ A more sophisticated approach keeps the last N backups for each file:
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: absent
-  loop: "{{ nginx_backups.files | sort(attribute='mtime') | list }}"
+  loop: "{{ (nginx_backups.files | sort(attribute='mtime'))[:-5] }}"
   loop_control:
     label: "{{ item.path | basename }}"
   when: nginx_backups.files | length > 5
@@ -241,7 +243,7 @@ Using both parameters together gives you maximum safety:
     group: postgres
     mode: '0644'
     backup: true
-    validate: 'su - postgres -c "pg_isready && echo valid"'
+    validate: 'sudo -u postgres /usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/14/main -C config_file -c config_file=%s'
   notify: reload postgresql
 ```
 
