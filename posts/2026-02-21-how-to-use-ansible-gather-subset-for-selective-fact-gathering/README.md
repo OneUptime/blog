@@ -16,7 +16,7 @@ Ansible organizes facts into logical groups. Each subset corresponds to a catego
 
 ```mermaid
 graph TD
-    A[all facts] --> B[min/minimum]
+    A[all facts] --> B[min]
     A --> C[network]
     A --> D[hardware]
     A --> E[virtual]
@@ -37,7 +37,7 @@ graph TD
     E --> E2[ansible_virtualization_role]
 ```
 
-The `min` (or `minimum`) subset is always collected regardless of what you specify, because it contains baseline information Ansible needs to function.
+The `min` subset is collected by default, because it contains baseline information Ansible needs to function. You can exclude it explicitly with `!min` when you also exclude the default `all` set.
 
 ## Basic Usage
 
@@ -117,18 +117,15 @@ Use the `!` prefix to exclude specific subsets. This is useful when you want mos
         msg: "{{ ansible_fqdn }}"
 ```
 
-You can exclude multiple subsets:
+You can also start with the minimum facts and add only the subset you need:
 
 ```yaml
 ---
-# Only get minimum and network facts by excluding others
+# Only get minimum and network facts
 - hosts: all
   gather_subset:
-    - all
-    - "!hardware"
-    - "!virtual"
-    - "!ohai"
-    - "!facter"
+    - "!all"
+    - network
   tasks:
     - name: Show network info
       debug:
@@ -139,9 +136,9 @@ You can exclude multiple subsets:
 
 Here is a detailed reference of what each subset provides:
 
-### min (minimum)
+### min
 
-Always collected. Contains:
+Collected by default unless you exclude it explicitly. Contains:
 
 ```yaml
 # Facts included in the min subset
@@ -243,29 +240,28 @@ Virtualization detection:
 - ansible_virtualization_role: "guest"
 ```
 
-## Setting gather_subset Globally
+## Setting Default gather_subset Values
 
-You can set a default subset in `ansible.cfg`:
-
-```ini
-# Default to minimum facts for all playbooks
-[defaults]
-gather_subset = min
-```
-
-Or use an environment variable:
-
-```bash
-# Set default subset via environment
-export ANSIBLE_GATHER_SUBSET="min,network"
-ansible-playbook site.yml
-```
-
-Individual plays can still override the global setting:
+Use `module_defaults` to set a default subset for a play or block:
 
 ```yaml
 ---
-# This overrides the ansible.cfg setting
+# Default to minimum facts for this play
+- hosts: all
+  module_defaults:
+    ansible.builtin.setup:
+      gather_subset:
+        - "!all"
+  tasks:
+    - name: Show hostname
+      debug:
+        msg: "{{ ansible_hostname }}"
+```
+
+Individual plays can still specify the subset they need:
+
+```yaml
+---
 - hosts: databases
   gather_subset:
     - hardware
@@ -376,7 +372,7 @@ Testing across 50 hosts, here are the timing differences:
 # Benchmark script
 for subset in "all" "min,network" "min,hardware" "min" "!all"; do
     echo "Subset: $subset"
-    ANSIBLE_GATHER_SUBSET="$subset" time ansible-playbook -i inventory test.yml 2>&1 | grep real
+    time ansible all -i inventory -m ansible.builtin.setup -a "gather_subset=$subset" >/dev/null
 done
 ```
 
