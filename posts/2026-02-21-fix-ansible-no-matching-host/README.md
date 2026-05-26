@@ -99,7 +99,7 @@ all:
 ansible-playbook playbook.yml --limit "nonexistent_group"
 
 # Check what the limit resolves to
-ansible-inventory --list --limit "web*"
+ansible-inventory -i inventory/hosts.ini --list --limit "web_servers"
 ```
 
 ## Debugging Steps
@@ -108,8 +108,8 @@ ansible-inventory --list --limit "web*"
 # List all hosts Ansible knows about
 ansible-inventory -i inventory/hosts.ini --list
 
-# List hosts in a specific group
-ansible-inventory -i inventory/hosts.ini --graph
+# Show a specific group in the inventory graph
+ansible-inventory -i inventory/hosts.ini --graph web_servers
 
 # Test a host pattern
 ansible -i inventory/hosts.ini web_servers --list-hosts
@@ -121,12 +121,12 @@ ansible -i inventory/hosts.ini web_servers --list-hosts
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these inventory checks prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using a checked inventory
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -158,7 +158,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -240,7 +240,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with a checked inventory
 - name: Robust task execution
   hosts: all
   tasks:
@@ -302,4 +302,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
