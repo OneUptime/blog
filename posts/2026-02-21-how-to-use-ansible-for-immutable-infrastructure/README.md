@@ -8,7 +8,7 @@ Description: Learn how to use Ansible with immutable infrastructure patterns to 
 
 ---
 
-Immutable infrastructure flips the traditional server management model. Instead of updating servers in place, you build a new image with all changes baked in and replace the old instances. No SSH, no configuration drift, no "works on my server" problems. Ansible fits surprisingly well into this model, not as a runtime configuration tool but as an image builder.
+Immutable infrastructure flips the traditional server management model. Instead of updating servers in place, you build a new image with all changes baked in and replace the old instances. No SSH into production instances, no configuration drift, no "works on my server" problems. Ansible fits surprisingly well into this model, not as a runtime configuration tool but as an image builder.
 
 ## The Immutable Model
 
@@ -22,7 +22,7 @@ graph LR
         A1 -->|SSH| D1[Running Server]
     end
     subgraph Immutable
-        A2[Ansible] -->|Local| B2[Packer Build]
+        A2[Ansible] -->|SSH during build| B2[Packer Build]
         B2 --> C2[Golden Image]
         C2 --> D2[Instance 1]
         C2 --> E2[Instance 2]
@@ -127,17 +127,25 @@ This playbook runs during image build, not on live servers:
     # Clean up build artifacts to reduce image size
     - name: Clean apt cache
       ansible.builtin.apt:
-        autoclean: yes
+        clean: yes
         autoremove: yes
 
-    - name: Remove temporary files
+    - name: Remove temporary directories
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
-        - /tmp/*
-        - /var/tmp/*
-        - /var/cache/apt/archives/*.deb
+        - /tmp
+        - /var/tmp
+
+    - name: Recreate temporary directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '1777'
+      loop:
+        - /tmp
+        - /var/tmp
 
     - name: Clear shell history
       ansible.builtin.file:
@@ -148,7 +156,7 @@ This playbook runs during image build, not on live servers:
         - /home/ubuntu/.bash_history
 
     - name: Zero free space for smaller image
-      ansible.builtin.command: dd if=/dev/zero of=/zero bs=1M || true
+      ansible.builtin.shell: dd if=/dev/zero of=/zero bs=1M || true
       changed_when: false
 
     - name: Remove zero file
@@ -172,6 +180,12 @@ Roles need to work differently for image builds vs live servers:
       - python3-pip
       - python3-venv
     state: present
+
+- name: Create application user
+  ansible.builtin.user:
+    name: myapp
+    system: yes
+    create_home: no
 
 - name: Create application directory
   ansible.builtin.file:
@@ -214,16 +228,17 @@ Roles need to work differently for image builds vs live servers:
 Some configuration cannot be baked into the image because it depends on the runtime environment (IP addresses, instance IDs, etc.). Handle this with cloud-init:
 
 ```yaml
+## template: jinja
+#cloud-config
 # roles/app_runtime/templates/cloud-init.yml.j2
 # Runtime configuration applied at instance boot
-#cloud-config
 
 write_files:
   - path: /etc/myapp/runtime.conf
     content: |
       # This file is populated at boot time
-      INSTANCE_ID=${instance_id}
-      PRIVATE_IP=${private_ip}
+      INSTANCE_ID={{ v1.instance_id }}
+      PRIVATE_IP={{ ds.meta_data.local_ipv4 }}
       ENVIRONMENT=${environment}
     owner: myapp:myapp
     permissions: '0640'
@@ -282,7 +297,7 @@ resource "aws_autoscaling_group" "web_server" {
 
   launch_template {
     id      = aws_launch_template.web_server.id
-    version = "$Latest"
+    version = aws_launch_template.web_server.latest_version
   }
 
   instance_refresh {
