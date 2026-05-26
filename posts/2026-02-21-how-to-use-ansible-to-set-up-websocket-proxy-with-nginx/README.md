@@ -206,7 +206,9 @@ The task file installs Nginx, deploys the templates, and ensures the service is 
     group: root
     mode: "0644"
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx configuration
+    - Reload nginx
 
 - name: Deploy WebSocket proxy configuration
   ansible.builtin.template:
@@ -216,7 +218,9 @@ The task file installs Nginx, deploys the templates, and ensures the service is 
     group: root
     mode: "0644"
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx configuration
+    - Reload nginx
 
 - name: Enable WebSocket proxy site
   ansible.builtin.file:
@@ -224,14 +228,18 @@ The task file installs Nginx, deploys the templates, and ensures the service is 
     dest: /etc/nginx/sites-enabled/websocket_proxy.conf
     state: link
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx configuration
+    - Reload nginx
 
 - name: Remove default Nginx site
   ansible.builtin.file:
     path: /etc/nginx/sites-enabled/default
     state: absent
   become: true
-  notify: Validate and reload nginx
+  notify:
+    - Validate nginx configuration
+    - Reload nginx
 
 - name: Ensure Nginx is started and enabled
   ansible.builtin.systemd:
@@ -248,11 +256,10 @@ Always validate the config before reloading to avoid breaking a running server.
 ```yaml
 # roles/nginx_websocket/handlers/main.yml
 ---
-- name: Validate and reload nginx
+- name: Validate nginx configuration
   ansible.builtin.command: nginx -t
   become: true
   changed_when: false
-  notify: Reload nginx
 
 - name: Reload nginx
   ansible.builtin.systemd:
@@ -336,7 +343,7 @@ Then loop over them in your template just like we did with the rate limit zones 
 
 The most common issue with WebSocket proxying through Nginx is the connection dropping after 60 seconds. This happens because the default `proxy_read_timeout` is 60 seconds, and WebSocket connections are often idle between messages. The timeout values in our playbook default to 3600 seconds (one hour), but you should adjust these based on your application.
 
-Another issue is forgetting to set `proxy_http_version 1.1`. WebSocket requires HTTP/1.1 for the upgrade mechanism, and Nginx defaults to HTTP/1.0 for upstream connections.
+Another issue is forgetting to set `proxy_http_version 1.1`. WebSocket uses the HTTP/1.1 upgrade mechanism, and older Nginx versions defaulted to HTTP/1.0 for upstream proxy connections. Setting this explicitly keeps the configuration compatible across Nginx versions.
 
 ## Summary
 
