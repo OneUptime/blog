@@ -33,21 +33,17 @@ The most straightforward way to get file content is using the `command` module w
     - name: Upgrade if version is old
       ansible.builtin.debug:
         msg: "Current version {{ version_file.stdout | trim }} needs upgrade"
-      when:
-        - version_file is success
-        - version_file.stdout | trim is version('2.0.0', '<')
+      when: version_file.rc == 0 and (version_file.stdout | trim) is version('2.0.0', '<')
 
     - name: Skip if already on latest
       ansible.builtin.debug:
         msg: "Already on version {{ version_file.stdout | trim }}, no upgrade needed"
-      when:
-        - version_file is success
-        - version_file.stdout | trim is version('2.0.0', '>=')
+      when: version_file.rc == 0 and (version_file.stdout | trim) is version('2.0.0', '>=')
 
     - name: Handle missing version file (fresh install)
       ansible.builtin.debug:
         msg: "No version file found, performing fresh installation"
-      when: version_file is failed
+      when: version_file.rc != 0
 ```
 
 ## Using the slurp Module
@@ -113,7 +109,7 @@ Before reading file content, you often need to check if the file exists. The `st
           Deployment lock file exists. Another deployment may be in progress.
           Lock file: /var/lock/deployment.lock
           {% if lock_file.stat.exists %}
-          Created: {{ '%Y-%m-%d %H:%M:%S' | strftime(lock_file.stat.ctime) }}
+          Metadata changed: {{ '%Y-%m-%d %H:%M:%S' | strftime(lock_file.stat.ctime) }}
           {% endif %}
       when: lock_file.stat.exists
 
@@ -251,31 +247,34 @@ You can use `lineinfile` in check mode to test if a line exists in a file withou
 
   tasks:
     - name: Check if swap is disabled in fstab
-      ansible.builtin.command:
-        cmd: grep -c "^\s*[^#].*swap" /etc/fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^\s*[^#].*\sswap\s'
+        state: absent
+      check_mode: true
       register: swap_in_fstab
-      changed_when: false
-      failed_when: false
 
     - name: Disable swap if still in fstab
       ansible.builtin.replace:
         path: /etc/fstab
         regexp: '^([^#].*\sswap\s)'
         replace: '# \1'
-      when: swap_in_fstab.rc == 0
+      when: swap_in_fstab is changed
 
     - name: Check if our repo is in sources list
-      ansible.builtin.command:
-        cmd: grep -r "repo.example.com" /etc/apt/sources.list.d/
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list
+        regexp: 'repo\.example\.com'
+        line: "deb https://repo.example.com/apt stable main"
+        state: present
+      check_mode: true
       register: repo_check
-      changed_when: false
-      failed_when: false
 
     - name: Add our repository if missing
       ansible.builtin.apt_repository:
         repo: "deb https://repo.example.com/apt stable main"
         state: present
-      when: repo_check.rc != 0
+      when: repo_check is changed
 ```
 
 ## Reading JSON and YAML Files
