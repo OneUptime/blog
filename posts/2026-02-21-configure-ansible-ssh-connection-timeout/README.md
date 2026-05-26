@@ -74,11 +74,11 @@ srv01 ansible_host=192.168.1.10
 srv02 ansible_host=192.168.1.11
 
 [cloud_servers]
-cloud01 ansible_host=52.14.100.200 ansible_timeout=30
-cloud02 ansible_host=52.14.100.201 ansible_timeout=30
+cloud01 ansible_host=52.14.100.200 ansible_ssh_timeout=30
+cloud02 ansible_host=52.14.100.201 ansible_ssh_timeout=30
 
 [vpn_servers]
-vpn01 ansible_host=10.200.0.50 ansible_timeout=45
+vpn01 ansible_host=10.200.0.50 ansible_ssh_timeout=45
 ```
 
 ## SSH-Specific Timeout Settings
@@ -88,7 +88,7 @@ Beyond Ansible's own timeout, you can configure SSH-level timeouts through `ssh_
 ```ini
 # ansible.cfg
 [ssh_connection]
-# ConnectTimeout: how long SSH waits to establish the TCP connection
+# ConnectTimeout: how long SSH waits to establish the connection and initial SSH handshake
 # ServerAliveInterval: send a keepalive packet every N seconds
 # ServerAliveCountMax: disconnect after N missed keepalive responses
 ssh_args = -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ControlMaster=auto -o ControlPersist=300s
@@ -96,7 +96,7 @@ ssh_args = -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax
 
 Here is what each SSH option does:
 
-- **ConnectTimeout=30**: Wait up to 30 seconds for the initial TCP connection. This is separate from Ansible's `timeout` setting.
+- **ConnectTimeout=30**: Wait up to 30 seconds for the initial connection, including the SSH protocol handshake and key exchange. This is separate from Ansible's `timeout` setting.
 - **ServerAliveInterval=15**: After the connection is established, send a keepalive packet every 15 seconds. This prevents firewalls from dropping idle connections.
 - **ServerAliveCountMax=3**: If 3 consecutive keepalive packets go unanswered, SSH drops the connection. Combined with ServerAliveInterval=15, this means a dead connection is detected within 45 seconds.
 
@@ -107,13 +107,13 @@ This is a source of confusion. Here is how they relate:
 ```mermaid
 flowchart LR
     A[ansible-playbook] -->|Ansible timeout| B[SSH client starts]
-    B -->|SSH ConnectTimeout| C[TCP connection established]
-    C -->|SSH handshake| D[SSH session ready]
+    B -->|SSH ConnectTimeout| C[TCP connection and SSH handshake]
+    C --> D[SSH session ready]
     D -->|ServerAliveInterval| E[Connection maintained]
 ```
 
-- **Ansible timeout** (`timeout` in ansible.cfg): Controls how long Ansible itself waits for the entire SSH connection process.
-- **SSH ConnectTimeout**: Controls how long the SSH client waits for the TCP connection phase specifically.
+- **Ansible timeout** (`timeout` in ansible.cfg): Controls how long the Ansible SSH connection plugin waits while establishing an SSH connection, and while waiting to read from an established connection.
+- **SSH ConnectTimeout**: Controls how long the SSH client waits for the connection, including the initial SSH protocol handshake and key exchange.
 - **ServerAliveInterval**: Not a connection timeout at all; it keeps established connections alive.
 
 In practice, set both `timeout` and `ConnectTimeout` to similar values. If Ansible's timeout is shorter than SSH's ConnectTimeout, Ansible will kill the SSH process before SSH has a chance to connect.
@@ -202,7 +202,7 @@ retries = 3
 pipelining = True
 ```
 
-The `retries = 3` setting tells Ansible to retry SSH connections up to 3 times before marking a host as unreachable.
+The `retries = 3` setting tells Ansible to retry SSH connections up to 3 times before marking a host as unreachable when the SSH client exits with a connection error.
 
 ## Debugging Timeout Issues
 
