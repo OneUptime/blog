@@ -8,7 +8,7 @@ Description: Learn how to use the changed_when directive in Ansible to control w
 
 ---
 
-Ansible tracks whether each task made changes to the system. Tasks that change something show as "changed" (yellow) in the output, while tasks that left things as-is show as "ok" (green). But some modules, especially `command` and `shell`, always report "changed" even when they did not actually modify anything. The `changed_when` directive lets you override this behavior and tell Ansible exactly when a task should be considered changed.
+Ansible tracks whether each task made changes to the system. Tasks that change something show as "changed" (yellow) in the output, while tasks that left things as-is show as "ok" (green). But some modules, especially `command` and `shell`, report "changed" by default when they run, even when they did not actually modify anything. The `changed_when` directive lets you override this behavior and tell Ansible exactly when a task should be considered changed.
 
 ## Why changed_when Matters
 
@@ -81,15 +81,14 @@ The `register` variable gives you access to return codes, stdout, stderr, and mo
   become: yes
 
   tasks:
-    - name: Set timezone to UTC
-      command: timedatectl set-timezone UTC
-      register: tz_result
-      changed_when: false  # We will check separately
-
-    - name: Check if timezone was already UTC
+    - name: Check current timezone
       command: timedatectl show --property=Timezone --value
       register: current_tz
       changed_when: false
+
+    - name: Set timezone to UTC
+      command: timedatectl set-timezone UTC
+      when: current_tz.stdout != "UTC"
 
     # This task demonstrates a pattern for git pull operations
     - name: Pull latest application code
@@ -145,12 +144,11 @@ You can combine multiple conditions using Jinja2 logic:
 
   tasks:
     - name: Sync configuration files
-      command: rsync -av --checksum /opt/configs/ /etc/myapp/
+      command: rsync -ai --checksum /opt/configs/ /etc/myapp/
       register: rsync_result
       changed_when:
         - rsync_result.rc == 0
-        - "'sending incremental file list' in rsync_result.stdout"
-        - rsync_result.stdout_lines | length > 2  # More than just the summary lines
+        - rsync_result.stdout_lines | select('match', '^[<>ch.*]') | list | length > 0
 
     - name: Reload configuration if files changed
       systemd:
@@ -177,8 +175,8 @@ Here are the most frequently used `changed_when` patterns I use in production:
       register: disk_info
       changed_when: false
 
-    # Pattern 2: Git operations
-    - name: Clone or update repository
+    # Pattern 2: Git clone operations
+    - name: Clone repository if missing
       command: git clone https://github.com/example/repo.git /opt/repo
       register: git_clone
       changed_when: git_clone.rc == 0
