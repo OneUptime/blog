@@ -8,7 +8,7 @@ Description: Configure TCP Wrappers (hosts.allow and hosts.deny) across your Lin
 
 ---
 
-TCP Wrappers have been around since the early 1990s, and while they are considered a legacy technology, they are still used in many environments as an additional layer of access control. Services that are compiled with libwrap support (like SSH, NFS, and various other daemons) check `/etc/hosts.allow` and `/etc/hosts.deny` before accepting connections. This gives you a simple way to restrict which hosts can connect to specific services.
+TCP Wrappers have been around since the early 1990s, and while they are considered a legacy technology, they are still used in many environments as an additional layer of access control. Services that are compiled with libwrap support (such as some vendor builds of SSH, NFS-related services, FTP daemons, and various other daemons) check `/etc/hosts.allow` and `/etc/hosts.deny` before accepting connections. This gives you a simple way to restrict which hosts can connect to specific services.
 
 While modern firewalls (iptables, nftables, firewalld) are more capable, TCP Wrappers provide defense in depth. Even if a firewall rule is misconfigured, TCP Wrappers can block unauthorized access. In this post, I will show you how to manage TCP Wrappers consistently across your fleet using Ansible.
 
@@ -34,6 +34,8 @@ flowchart TD
 ## Checking TCP Wrapper Support
 
 Before configuring TCP Wrappers, verify that your services support them. Not all services are compiled with libwrap.
+
+For example, upstream OpenSSH removed libwrap support in OpenSSH 6.7, although some distributions maintained TCP Wrapper support in their own packages for longer.
 
 This playbook checks which installed services support TCP Wrappers:
 
@@ -124,7 +126,7 @@ The hosts.allow template:
 # Managed by Ansible - do not edit manually
 # Last updated: {{ ansible_date_time.iso8601 }}
 
-{% for rule in hosts_allow_rules %}
+{% for rule in hosts_allow_rules | default(tcp_wrappers_all_rules) %}
 # {{ rule.comment }}
 {{ rule.daemon }}: {{ rule.clients | join(', ') }}
 
@@ -138,7 +140,7 @@ The hosts.deny template:
 # Managed by Ansible - do not edit manually
 # Last updated: {{ ansible_date_time.iso8601 }}
 
-{% if hosts_deny_all %}
+{% if hosts_deny_all | default(tcp_wrappers_deny_all) %}
 # Deny all connections not explicitly allowed in hosts.allow
 ALL: ALL
 {% endif %}
@@ -162,9 +164,9 @@ This playbook applies role-specific TCP Wrapper configurations:
       - daemon: sshd
         clients: ["10.4.0.0/24"]
         comment: "SSH from management network"
-      - daemon: httpd
+      - daemon: vsftpd
         clients: ["ALL"]
-        comment: "HTTP from anywhere"
+        comment: "FTP from anywhere"
       - daemon: ALL
         clients: ["127.0.0.1"]
         comment: "Localhost"
@@ -206,7 +208,7 @@ This playbook applies role-specific TCP Wrapper configurations:
 
 ## Advanced TCP Wrapper Features
 
-TCP Wrappers support more than just IP-based filtering. You can use hostnames, spawn commands, and set options.
+TCP Wrappers support more than just IP-based filtering. You can use hostnames, spawn commands, and set options when your TCP Wrappers build supports the hosts_options extensions.
 
 This playbook configures advanced TCP Wrapper rules with logging and actions:
 
@@ -262,7 +264,6 @@ Here is a reusable role structure:
 # roles/tcp_wrappers/defaults/main.yml
 ---
 tcp_wrappers_deny_all: true
-tcp_wrappers_log_denied: true
 tcp_wrappers_base_allow:
   - daemon: ALL
     clients: ["127.0.0.1", "[::1]"]
@@ -288,7 +289,7 @@ tcp_wrappers_extra_allow: []
     owner: root
     group: root
     mode: '0644'
-    validate: /bin/true  # TCP Wrappers has no built-in validator
+    validate: /bin/true %s  # TCP Wrappers has no built-in template validator
 
 - name: Deploy hosts.deny
   ansible.builtin.template:
@@ -311,17 +312,17 @@ Use the role with per-host overrides:
     - role: tcp_wrappers
       vars:
         tcp_wrappers_extra_allow:
-          - daemon: httpd
+          - daemon: vsftpd
             clients: ["ALL"]
-            comment: "Web traffic"
+            comment: "FTP traffic"
       when: "'webservers' in group_names"
 
     - role: tcp_wrappers
       vars:
         tcp_wrappers_extra_allow:
-          - daemon: mysqld
+          - daemon: ALL
             clients: ["10.2.0.0/24"]
-            comment: "MySQL from app tier"
+            comment: "Wrapped services from app tier"
       when: "'databases' in group_names"
 ```
 
@@ -339,15 +340,11 @@ This playbook validates TCP Wrapper configuration:
   become: true
 
   tasks:
-    - name: Verify hosts.allow syntax
-      ansible.builtin.command: cat /etc/hosts.allow
-      register: hosts_allow_content
+    - name: Check TCP Wrapper configuration
+      ansible.builtin.command: tcpdchk
+      register: tcpdchk_result
       changed_when: false
-
-    - name: Verify hosts.deny syntax
-      ansible.builtin.command: cat /etc/hosts.deny
-      register: hosts_deny_content
-      changed_when: false
+      failed_when: false
 
     - name: Test SSH access with tcpdmatch
       ansible.builtin.command: tcpdmatch sshd 10.4.0.5
@@ -376,7 +373,7 @@ This playbook validates TCP Wrapper configuration:
 
 1. **TCP Wrappers are not a firewall replacement.** They only protect services compiled with libwrap support. Always use TCP Wrappers alongside a proper firewall.
 2. **Many modern services do not support TCP Wrappers.** Nginx, for example, does not use libwrap. Check each service before relying on TCP Wrappers for access control.
-3. **Order matters in hosts.allow.** The first matching rule wins. Put more specific rules before general ones.
+3. **Order matters.** TCP Wrappers scans `hosts.allow` before `hosts.deny`, and within each file the first matching rule wins. Put more specific rules before general ones.
 4. **Test before deploying.** A mistake in hosts.deny can lock you out of SSH. Use `tcpdmatch` to test rules before applying.
 5. **Some distributions are removing TCP Wrapper support.** Fedora and newer RHEL versions have deprecated libwrap. Check if your OS still supports it.
 6. **Always have console access.** If you accidentally deny SSH access, you need another way to reach the server.
