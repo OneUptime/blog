@@ -174,6 +174,7 @@ The playbook:
   become: yes
   vars_files:
     - vars/common.yml
+    - vars/vault.yml
 
   tasks:
     - name: Install application packages
@@ -250,6 +251,16 @@ api_key: "{{ vault_api_key }}"
 api_endpoint: https://api.example.com/v2
 log_level: info
 ssl_private_key: "{{ vault_ssl_private_key }}"
+```
+
+```yaml
+# vars/vault.yml (encrypted with ansible-vault)
+vault_db_password: SuperSecretPassword123
+vault_api_key: ak_live_abc123def456
+vault_ssl_private_key: |
+  -----BEGIN RSA PRIVATE KEY-----
+  MIIEowIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF...
+  -----END RSA PRIVATE KEY-----
 ```
 
 ## Rekeying Vault Secrets
