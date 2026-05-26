@@ -19,17 +19,17 @@ The audit daemon can monitor several types of events:
 - File access and modifications (who read or changed a file)
 - System calls (what programs are doing at the kernel level)
 - User authentication events (logins, su, sudo usage)
-- Network connections
+- Network-related configuration and hostname changes
 - Changes to system configuration files
 
 ```mermaid
 flowchart LR
     A[Kernel] -->|System calls| B[Audit Framework]
-    C[File Access] -->|Watches| B
+    C[File Access] -->|Path and directory rules| B
     D[User Actions] -->|Events| B
     B --> E[auditd Daemon]
     E --> F[/var/log/audit/audit.log]
-    E --> G[Remote Syslog]
+    E --> G[Remote Audit Server / SIEM]
     F --> H[aureport / ausearch]
 ```
 
@@ -58,7 +58,7 @@ This playbook installs auditd and its utilities, then starts the service:
       when: ansible_os_family == "Debian"
 
     - name: Install auditd on RHEL/CentOS
-      ansible.builtin.yum:
+      ansible.builtin.package:
         name:
           - audit
           - audit-libs
@@ -71,8 +71,8 @@ This playbook installs auditd and its utilities, then starts the service:
         state: started
         enabled: true
 
-    - name: Set auditd to start early in boot
-      ansible.builtin.command: systemctl enable auditd
+    - name: Verify auditd starts at boot
+      ansible.builtin.command: systemctl is-enabled auditd
       changed_when: false
 ```
 
@@ -102,7 +102,8 @@ This template deploys a production-ready auditd configuration:
     audit_admin_space_left_action: halt
     audit_disk_full_action: halt
     audit_disk_error_action: halt
-    audit_buffer_size: 8192
+    audit_q_depth: 2000
+    audit_overflow_action: syslog
     audit_flush: incremental_async
     audit_freq: 50
 
@@ -135,8 +136,8 @@ priority_boost = 4
 flush = {{ audit_flush }}
 freq = {{ audit_freq }}
 num_logs = {{ audit_num_logs }}
-disp_qos = lossy
-dispatcher = /sbin/audispd
+q_depth = {{ audit_q_depth }}
+overflow_action = {{ audit_overflow_action }}
 name_format = hostname
 max_log_file = {{ audit_max_log_file }}
 max_log_file_action = {{ audit_max_log_file_action }}
@@ -150,7 +151,7 @@ disk_error_action = {{ audit_disk_error_action }}
 tcp_listen_queue = 5
 tcp_max_per_addr = 1
 tcp_client_max_idle = 0
-enable_krb5 = no
+transport = TCP
 krb5_principal = auditd
 ```
 
@@ -159,6 +160,8 @@ krb5_principal = auditd
 Audit rules define what gets monitored. This is where you get the most value from auditd. Rules can watch files, monitor system calls, and track specific user actions.
 
 This playbook deploys a comprehensive set of audit rules based on CIS benchmarks:
+
+Before applying these rules, remove or template out paths that do not exist on a target distribution. Audit path and directory rules are tied to existing filesystem objects, so mixing Debian-specific and Red Hat-specific paths without checks can cause rule loading to fail.
 
 ```yaml
 # audit_rules.yml - Deploy audit rules
@@ -182,67 +185,102 @@ This playbook deploys a comprehensive set of audit rules based on CIS benchmarks
           -f 1
 
           # Monitor changes to user/group files
-          -w /etc/passwd -p wa -k identity
-          -w /etc/group -p wa -k identity
-          -w /etc/shadow -p wa -k identity
-          -w /etc/gshadow -p wa -k identity
-          -w /etc/security/opasswd -p wa -k identity
+          -a always,exit -F arch=b64 -F path=/etc/passwd -F perm=wa -k identity
+          -a always,exit -F arch=b32 -F path=/etc/passwd -F perm=wa -k identity
+          -a always,exit -F arch=b64 -F path=/etc/group -F perm=wa -k identity
+          -a always,exit -F arch=b32 -F path=/etc/group -F perm=wa -k identity
+          -a always,exit -F arch=b64 -F path=/etc/shadow -F perm=wa -k identity
+          -a always,exit -F arch=b32 -F path=/etc/shadow -F perm=wa -k identity
+          -a always,exit -F arch=b64 -F path=/etc/gshadow -F perm=wa -k identity
+          -a always,exit -F arch=b32 -F path=/etc/gshadow -F perm=wa -k identity
+          -a always,exit -F arch=b64 -F path=/etc/security/opasswd -F perm=wa -k identity
+          -a always,exit -F arch=b32 -F path=/etc/security/opasswd -F perm=wa -k identity
 
           # Monitor changes to network configuration
-          -w /etc/hosts -p wa -k network_config
-          -w /etc/sysconfig/network -p wa -k network_config
-          -w /etc/network/ -p wa -k network_config
+          -a always,exit -F arch=b64 -F path=/etc/hosts -F perm=wa -k network_config
+          -a always,exit -F arch=b32 -F path=/etc/hosts -F perm=wa -k network_config
+          -a always,exit -F arch=b64 -F path=/etc/sysconfig/network -F perm=wa -k network_config
+          -a always,exit -F arch=b32 -F path=/etc/sysconfig/network -F perm=wa -k network_config
+          -a always,exit -F arch=b64 -F dir=/etc/network/ -F perm=wa -k network_config
+          -a always,exit -F arch=b32 -F dir=/etc/network/ -F perm=wa -k network_config
           -a always,exit -F arch=b64 -S sethostname -S setdomainname -k network_config
+          -a always,exit -F arch=b32 -S sethostname -S setdomainname -k network_config
 
           # Monitor changes to system configuration
-          -w /etc/sysctl.conf -p wa -k sysctl
-          -w /etc/sysctl.d/ -p wa -k sysctl
+          -a always,exit -F arch=b64 -F path=/etc/sysctl.conf -F perm=wa -k sysctl
+          -a always,exit -F arch=b32 -F path=/etc/sysctl.conf -F perm=wa -k sysctl
+          -a always,exit -F arch=b64 -F dir=/etc/sysctl.d/ -F perm=wa -k sysctl
+          -a always,exit -F arch=b32 -F dir=/etc/sysctl.d/ -F perm=wa -k sysctl
 
           # Monitor cron configuration
-          -w /etc/crontab -p wa -k cron
-          -w /etc/cron.d/ -p wa -k cron
-          -w /etc/cron.daily/ -p wa -k cron
-          -w /etc/cron.hourly/ -p wa -k cron
-          -w /etc/cron.weekly/ -p wa -k cron
-          -w /etc/cron.monthly/ -p wa -k cron
+          -a always,exit -F arch=b64 -F path=/etc/crontab -F perm=wa -k cron
+          -a always,exit -F arch=b32 -F path=/etc/crontab -F perm=wa -k cron
+          -a always,exit -F arch=b64 -F dir=/etc/cron.d/ -F perm=wa -k cron
+          -a always,exit -F arch=b32 -F dir=/etc/cron.d/ -F perm=wa -k cron
+          -a always,exit -F arch=b64 -F dir=/etc/cron.daily/ -F perm=wa -k cron
+          -a always,exit -F arch=b32 -F dir=/etc/cron.daily/ -F perm=wa -k cron
+          -a always,exit -F arch=b64 -F dir=/etc/cron.hourly/ -F perm=wa -k cron
+          -a always,exit -F arch=b32 -F dir=/etc/cron.hourly/ -F perm=wa -k cron
+          -a always,exit -F arch=b64 -F dir=/etc/cron.weekly/ -F perm=wa -k cron
+          -a always,exit -F arch=b32 -F dir=/etc/cron.weekly/ -F perm=wa -k cron
+          -a always,exit -F arch=b64 -F dir=/etc/cron.monthly/ -F perm=wa -k cron
+          -a always,exit -F arch=b32 -F dir=/etc/cron.monthly/ -F perm=wa -k cron
 
           # Monitor SSH configuration
-          -w /etc/ssh/sshd_config -p wa -k sshd_config
-          -w /etc/ssh/sshd_config.d/ -p wa -k sshd_config
+          -a always,exit -F arch=b64 -F path=/etc/ssh/sshd_config -F perm=wa -k sshd_config
+          -a always,exit -F arch=b32 -F path=/etc/ssh/sshd_config -F perm=wa -k sshd_config
+          -a always,exit -F arch=b64 -F dir=/etc/ssh/sshd_config.d/ -F perm=wa -k sshd_config
+          -a always,exit -F arch=b32 -F dir=/etc/ssh/sshd_config.d/ -F perm=wa -k sshd_config
 
           # Monitor sudo configuration
-          -w /etc/sudoers -p wa -k sudoers
-          -w /etc/sudoers.d/ -p wa -k sudoers
+          -a always,exit -F arch=b64 -F path=/etc/sudoers -F perm=wa -k sudoers
+          -a always,exit -F arch=b32 -F path=/etc/sudoers -F perm=wa -k sudoers
+          -a always,exit -F arch=b64 -F dir=/etc/sudoers.d/ -F perm=wa -k sudoers
+          -a always,exit -F arch=b32 -F dir=/etc/sudoers.d/ -F perm=wa -k sudoers
 
           # Monitor PAM configuration
-          -w /etc/pam.d/ -p wa -k pam
+          -a always,exit -F arch=b64 -F dir=/etc/pam.d/ -F perm=wa -k pam
+          -a always,exit -F arch=b32 -F dir=/etc/pam.d/ -F perm=wa -k pam
 
           # Monitor login files
-          -w /var/log/faillog -p wa -k logins
-          -w /var/log/lastlog -p wa -k logins
-          -w /var/log/tallylog -p wa -k logins
+          -a always,exit -F arch=b64 -F path=/var/log/faillog -F perm=wa -k logins
+          -a always,exit -F arch=b32 -F path=/var/log/faillog -F perm=wa -k logins
+          -a always,exit -F arch=b64 -F path=/var/log/lastlog -F perm=wa -k logins
+          -a always,exit -F arch=b32 -F path=/var/log/lastlog -F perm=wa -k logins
+          -a always,exit -F arch=b64 -F path=/var/log/tallylog -F perm=wa -k logins
+          -a always,exit -F arch=b32 -F path=/var/log/tallylog -F perm=wa -k logins
 
           # Monitor session initiation
-          -w /var/run/utmp -p wa -k session
-          -w /var/log/wtmp -p wa -k session
-          -w /var/log/btmp -p wa -k session
+          -a always,exit -F arch=b64 -F path=/var/run/utmp -F perm=wa -k session
+          -a always,exit -F arch=b32 -F path=/var/run/utmp -F perm=wa -k session
+          -a always,exit -F arch=b64 -F path=/var/log/wtmp -F perm=wa -k session
+          -a always,exit -F arch=b32 -F path=/var/log/wtmp -F perm=wa -k session
+          -a always,exit -F arch=b64 -F path=/var/log/btmp -F perm=wa -k session
+          -a always,exit -F arch=b32 -F path=/var/log/btmp -F perm=wa -k session
 
           # Monitor privilege escalation
           -a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k privilege_escalation
           -a always,exit -F arch=b32 -S execve -C uid!=euid -F euid=0 -k privilege_escalation
 
           # Monitor kernel module operations
-          -w /sbin/insmod -p x -k kernel_modules
-          -w /sbin/rmmod -p x -k kernel_modules
-          -w /sbin/modprobe -p x -k kernel_modules
-          -a always,exit -F arch=b64 -S init_module -S delete_module -k kernel_modules
+          -a always,exit -F arch=b64 -F path=/sbin/insmod -F perm=x -k kernel_modules
+          -a always,exit -F arch=b32 -F path=/sbin/insmod -F perm=x -k kernel_modules
+          -a always,exit -F arch=b64 -F path=/sbin/rmmod -F perm=x -k kernel_modules
+          -a always,exit -F arch=b32 -F path=/sbin/rmmod -F perm=x -k kernel_modules
+          -a always,exit -F arch=b64 -F path=/sbin/modprobe -F perm=x -k kernel_modules
+          -a always,exit -F arch=b32 -F path=/sbin/modprobe -F perm=x -k kernel_modules
+          -a always,exit -F arch=b64 -S init_module -S finit_module -S delete_module -k kernel_modules
+          -a always,exit -F arch=b32 -S init_module -S finit_module -S delete_module -k kernel_modules
 
           # Monitor file deletion by users
-          -a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -F auid!=4294967295 -k file_deletion
+          -a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -S renameat2 -S rmdir -F auid>=1000 -F auid!=4294967295 -k file_deletion
+          -a always,exit -F arch=b32 -S unlink -S unlinkat -S rename -S renameat -S renameat2 -S rmdir -F auid>=1000 -F auid!=4294967295 -k file_deletion
 
           # Monitor changes to audit configuration
-          -w /etc/audit/ -p wa -k audit_config
-          -w /etc/audisp/ -p wa -k audit_config
+          -a always,exit -F arch=b64 -F dir=/etc/audit/ -F perm=wa -k audit_config
+          -a always,exit -F arch=b32 -F dir=/etc/audit/ -F perm=wa -k audit_config
+          -a always,exit -F arch=b64 -F dir=/etc/audisp/ -F perm=wa -k audit_config
+          -a always,exit -F arch=b32 -F dir=/etc/audisp/ -F perm=wa -k audit_config
 
           # Make the audit configuration immutable (must be last rule)
           -e 2
@@ -276,24 +314,32 @@ Different compliance frameworks have different requirements. Here is how to add 
           # PCI DSS Audit Rules - Managed by Ansible
 
           # 10.2.1 - All individual user access to cardholder data
-          -w /srv/cardholder_data/ -p rwxa -k pci_data_access
+          -a always,exit -F arch=b64 -F dir=/srv/cardholder_data/ -F perm=rwxa -k pci_data_access
+          -a always,exit -F arch=b32 -F dir=/srv/cardholder_data/ -F perm=rwxa -k pci_data_access
 
           # 10.2.2 - Actions taken by any individual with root/admin privileges
           -a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=4294967295 -k pci_root_actions
+          -a always,exit -F arch=b32 -S execve -F euid=0 -F auid>=1000 -F auid!=4294967295 -k pci_root_actions
 
           # 10.2.3 - Access to all audit trails
-          -w /var/log/audit/ -p wa -k pci_audit_access
+          -a always,exit -F arch=b64 -F dir=/var/log/audit/ -F perm=wa -k pci_audit_access
+          -a always,exit -F arch=b32 -F dir=/var/log/audit/ -F perm=wa -k pci_audit_access
 
           # 10.2.5 - Use of authentication mechanisms
-          -w /var/log/auth.log -p wa -k pci_authentication
-          -w /var/log/secure -p wa -k pci_authentication
+          -a always,exit -F arch=b64 -F path=/var/log/auth.log -F perm=wa -k pci_authentication
+          -a always,exit -F arch=b32 -F path=/var/log/auth.log -F perm=wa -k pci_authentication
+          -a always,exit -F arch=b64 -F path=/var/log/secure -F perm=wa -k pci_authentication
+          -a always,exit -F arch=b32 -F path=/var/log/secure -F perm=wa -k pci_authentication
 
           # 10.2.6 - Initialization of audit logs
-          -w /var/log/audit/audit.log -p wa -k pci_audit_init
+          -a always,exit -F arch=b64 -F path=/var/log/audit/audit.log -F perm=wa -k pci_audit_init
+          -a always,exit -F arch=b32 -F path=/var/log/audit/audit.log -F perm=wa -k pci_audit_init
 
           # 10.2.7 - Creation and deletion of system-level objects
-          -a always,exit -F arch=b64 -S mknod -k pci_system_objects
+          -a always,exit -F arch=b64 -S mknod -S mknodat -k pci_system_objects
+          -a always,exit -F arch=b32 -S mknod -S mknodat -k pci_system_objects
           -a always,exit -F arch=b64 -S mount -k pci_mounts
+          -a always,exit -F arch=b32 -S mount -k pci_mounts
         dest: /etc/audit/rules.d/98-pci.rules
         owner: root
         group: root
@@ -339,6 +385,10 @@ Ansible can also help you query and report on audit data across your fleet:
     - name: Show summary
       ansible.builtin.debug:
         msg: "{{ audit_summary.stdout_lines }}"
+
+    - name: Show matching events
+      ansible.builtin.debug:
+        msg: "{{ audit_results.stdout_lines }}"
 ```
 
 ## Practical Advice
