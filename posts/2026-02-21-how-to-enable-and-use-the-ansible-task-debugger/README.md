@@ -8,7 +8,7 @@ Description: Learn how to enable and configure the Ansible task debugger at diff
 
 ---
 
-The Ansible task debugger is a strategy plugin that pauses playbook execution when a task fails and drops you into an interactive shell. While I covered the basics of the interactive debugger in a previous post, this one focuses specifically on the different ways to enable the task debugger, configure its behavior, and integrate it into your development workflow.
+The Ansible task debugger pauses playbook execution when a matching task condition occurs and drops you into an interactive shell. While I covered the basics of the interactive debugger in a previous post, this one focuses specifically on the different ways to enable the task debugger, configure its behavior, and integrate it into your development workflow.
 
 ## Enabling the Task Debugger: All the Options
 
@@ -60,7 +60,7 @@ Add this to your `ansible.cfg`:
 enable_task_debugger = True
 ```
 
-This is equivalent to setting `debugger: on_failed` on every play. It is useful during development when you want the debugger available without modifying playbooks.
+This enables the debugger globally for failed tasks by default. It is useful during development when you want the debugger available without modifying playbooks.
 
 ### Method 3: Environment Variable
 
@@ -79,7 +79,7 @@ ANSIBLE_ENABLE_TASK_DEBUGGER=True ansible-playbook site.yml --limit web-01
 
 ### Method 4: Debug Strategy Plugin
 
-The debug strategy replaces the default `linear` strategy and provides the same interactive debugging:
+The debug strategy is the older, backwards-compatible way to enable the same interactive debugging:
 
 ```yaml
 ---
@@ -136,14 +136,16 @@ When multiple methods are in play, the most specific setting wins. Here is the p
 Once inside the debugger, you have access to these commands:
 
 ```text
-p <expression>     Print/evaluate a Python expression
-task.args          Show task module arguments
-task_vars          Access all task variables
-result._result     Show the task result
-u <key>=<value>    Update a module argument or variable
-r                  Re-run the task
-c                  Continue to the next task (skip this failure)
-q                  Quit the playbook
+p <expression>              Print/evaluate a Python expression
+task.args                   Show task module arguments
+task_vars                   Access all task variables
+result._result              Show the task result
+task.args['key'] = value    Update a module argument
+task_vars['key'] = value    Update a task variable
+u                           Recreate the task after changing task variables
+r                           Re-run the task
+c                           Continue to the next task (skip this failure)
+q                           Quit the playbook
 ```
 
 ## Practical Workflow: Debugging a Role
@@ -172,8 +174,10 @@ The main task file with debugger annotations:
   ansible.builtin.include_tasks: install.yml
 
 - name: Include configuration tasks
-  ansible.builtin.include_tasks: configure.yml
-  debugger: on_failed
+  ansible.builtin.include_tasks:
+    file: configure.yml
+    apply:
+      debugger: on_failed
   # Only debug configuration issues, not installation
 ```
 
@@ -218,6 +222,7 @@ fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable:
 
 # The variable is missing from defaults. Set it and retry.
 [web-01] TASK: webapp : Deploy nginx configuration (debug)> task_vars['webapp_server_name'] = 'myapp.example.com'
+[web-01] TASK: webapp : Deploy nginx configuration (debug)> u
 [web-01] TASK: webapp : Deploy nginx configuration (debug)> r
 
 ok: [web-01]
@@ -265,11 +270,14 @@ For regular development work, I keep a separate ansible.cfg for debugging:
 # ansible-debug.cfg
 [defaults]
 enable_task_debugger = True
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 # Limit forks to 1 so debugger sessions don't overlap
 forks = 1
+
+[diff]
 # Show full diffs for file changes
-diff = True
+always = True
 ```
 
 Then use it when needed:
@@ -290,7 +298,7 @@ You can combine the debugger with check mode for safe exploration:
 ANSIBLE_ENABLE_TASK_DEBUGGER=True ansible-playbook deploy.yml --check
 ```
 
-This lets you examine variables and task arguments without any risk of changing the target systems. When a task "fails" in check mode (which often happens with command/shell tasks), you can inspect the state and continue.
+This lets you examine variables and task arguments while Ansible simulates changes for modules that support check mode. When a task "fails" or is skipped in check mode (which often happens with command/shell tasks), you can inspect the state and continue.
 
 ## Automating Debugger Enablement per Environment
 
