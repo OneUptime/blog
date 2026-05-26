@@ -19,10 +19,9 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Look up the current region's ELB service account
-
-# This is needed for the bucket policy
-data "aws_elb_service_account" "current" {}
+# Look up the current account and region for the bucket policy
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # S3 bucket for ALB access logs
 resource "aws_s3_bucket" "alb_logs" {
@@ -44,31 +43,15 @@ resource "aws_s3_bucket_policy" "alb_logs" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = data.aws_elb_service_account.current.arn
+          Service = "logdelivery.elasticloadbalancing.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.alb_logs.arn}/alb-logs/AWSLogs/*"
-      },
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.alb_logs.arn}/alb-logs/AWSLogs/*"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/alb-logs/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
         Condition = {
-          StringEquals = {
-            "s3:x-amz-acl" = "bucket-owner-full-control"
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:elasticloadbalancing:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"
           }
         }
-      },
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action   = "s3:GetBucketAcl"
-        Resource = aws_s3_bucket.alb_logs.arn
       }
     ]
   })
@@ -199,7 +182,7 @@ ssl_cipher ssl_protocol target_group_arn "trace_id" "domain_name"
 "chosen_cert_arn" matched_rule_priority request_creation_time
 "actions_executed" "redirect_url" "error_reason"
 "target:port_list" "target_status_code_list" "classification"
-"classification_reason"
+"classification_reason" conn_trace_id
 ```
 
 ## Querying Logs with Athena
@@ -208,6 +191,9 @@ The real power of ALB logs comes from querying them with Athena.
 
 ```hcl
 # Athena database for ALB logs
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 resource "aws_athena_database" "alb_logs" {
   name   = "alb_logs"
   bucket = aws_s3_bucket.athena_results.id
@@ -226,7 +212,7 @@ resource "aws_glue_catalog_table" "alb_logs" {
   table_type = "EXTERNAL_TABLE"
 
   parameters = {
-    "input.regex"            = "([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[0-9]*) (-|[0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^\\s]+?)\" \"([^\\s]+)\" \"([^ ]*)\" \"([^ ]*)\""
+    "input.regex"           = "([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^\\s]+?)\" \"([^\\s]+)\" \"([^ ]*)\" \"([^ ]*)\" ?([^ ]*)? ?( .*)?"
     "serialization.format"  = "1"
   }
 
@@ -319,6 +305,62 @@ resource "aws_glue_catalog_table" "alb_logs" {
       name = "ssl_protocol"
       type = "string"
     }
+    columns {
+      name = "target_group_arn"
+      type = "string"
+    }
+    columns {
+      name = "trace_id"
+      type = "string"
+    }
+    columns {
+      name = "domain_name"
+      type = "string"
+    }
+    columns {
+      name = "chosen_cert_arn"
+      type = "string"
+    }
+    columns {
+      name = "matched_rule_priority"
+      type = "string"
+    }
+    columns {
+      name = "request_creation_time"
+      type = "string"
+    }
+    columns {
+      name = "actions_executed"
+      type = "string"
+    }
+    columns {
+      name = "redirect_url"
+      type = "string"
+    }
+    columns {
+      name = "lambda_error_reason"
+      type = "string"
+    }
+    columns {
+      name = "target_port_list"
+      type = "string"
+    }
+    columns {
+      name = "target_status_code_list"
+      type = "string"
+    }
+    columns {
+      name = "classification"
+      type = "string"
+    }
+    columns {
+      name = "classification_reason"
+      type = "string"
+    }
+    columns {
+      name = "conn_trace_id"
+      type = "string"
+    }
   }
 }
 ```
@@ -329,7 +371,8 @@ Useful Athena queries once the table is set up:
 -- Top 10 slowest requests in the last 24 hours
 SELECT time, request_url, target_processing_time, elb_status_code
 FROM alb_access_logs
-WHERE target_processing_time > 1.0
+WHERE from_iso8601_timestamp(time) >= current_timestamp - INTERVAL '24' HOUR
+  AND target_processing_time > 1.0
 ORDER BY target_processing_time DESC
 LIMIT 10;
 
@@ -394,31 +437,18 @@ resource "aws_s3_bucket_policy" "alb_logs" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = data.aws_elb_service_account.current.arn
+          Service = "logdelivery.elasticloadbalancing.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.alb_logs.arn}/*/AWSLogs/*"
-      },
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.alb_logs.arn}/*/AWSLogs/*"
+        Resource = [
+          "${aws_s3_bucket.alb_logs.arn}/public/AWSLogs/${data.aws_caller_identity.current.account_id}/*",
+          "${aws_s3_bucket.alb_logs.arn}/private/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        ]
         Condition = {
-          StringEquals = {
-            "s3:x-amz-acl" = "bucket-owner-full-control"
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:elasticloadbalancing:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"
           }
         }
-      },
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action   = "s3:GetBucketAcl"
-        Resource = aws_s3_bucket.alb_logs.arn
       }
     ]
   })
@@ -429,13 +459,13 @@ resource "aws_s3_bucket_policy" "alb_logs" {
 
 If logs aren't appearing:
 
-1. **Check the bucket policy** - The ELB service account ID varies by region. Use `data.aws_elb_service_account` to get the correct one.
+1. **Check the bucket policy** - Use the log delivery service principal and include the load balancer account ID in the `AWSLogs` path.
 2. **Check the S3 prefix** - The resource ARN in the bucket policy must match the prefix configured on the ALB.
 3. **Wait a few minutes** - ALB logs are delivered every 5 minutes, not in real-time.
 4. **Check the bucket region** - The S3 bucket must be in the same region as the ALB.
 
 ## Summary
 
-ALB access logs provide critical visibility into your application's traffic. Set them up with proper encryption, lifecycle rules for cost management, and Athena tables for analysis. The initial setup requires careful attention to the bucket policy and regional service account, but once configured, you get a continuous stream of detailed request data that's invaluable for troubleshooting and security analysis.
+ALB access logs provide critical visibility into your application's traffic. Set them up with proper encryption, lifecycle rules for cost management, and Athena tables for analysis. The initial setup requires careful attention to the bucket policy and log delivery permissions, but once configured, you get a continuous stream of detailed request data that's invaluable for troubleshooting and security analysis.
 
 For more ALB topics, see our guides on [creating ALB listener rules](https://oneuptime.com/blog/post/2026-02-23-create-alb-listener-rules-with-terraform/view) and [configuring ALB health checks](https://oneuptime.com/blog/post/2026-02-23-configure-alb-health-checks-in-terraform/view).
