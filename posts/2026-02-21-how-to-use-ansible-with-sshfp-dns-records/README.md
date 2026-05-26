@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SSH, SSHFP, DNS, Security
 
-Description: Configure SSHFP DNS records to automatically verify SSH host keys with Ansible, eliminating manual host key verification prompts.
+Description: Configure SSHFP DNS records with DNSSEC to automatically verify SSH host keys with Ansible, eliminating manual host key verification prompts.
 
 ---
 
-Every time you connect to a new SSH server, you see the dreaded "authenticity of host can't be established" warning. Most people type "yes" without verifying the fingerprint, which defeats the entire purpose of host key checking. SSHFP (SSH Fingerprint) DNS records solve this by publishing SSH host key fingerprints in DNS. When configured correctly, SSH clients (and by extension Ansible) can verify host keys automatically through DNS lookups, eliminating both the manual verification step and the security risk of blindly accepting keys.
+Every time you connect to a new SSH server, you see the dreaded "authenticity of host can't be established" warning. Most people type "yes" without verifying the fingerprint, which defeats the entire purpose of host key checking. SSHFP (SSH Fingerprint) DNS records solve this by publishing SSH host key fingerprints in DNS. When configured correctly with DNSSEC validation, SSH clients (and by extension Ansible) can verify host keys automatically through DNS lookups, eliminating both the manual verification step and the security risk of blindly accepting keys.
 
 ## What Are SSHFP Records?
 
-SSHFP is a DNS record type (RFC 4255) that stores SSH public key fingerprints. When an SSH client connects to a server, it can look up the server's SSHFP record and compare it to the key the server presents. If they match, the connection proceeds without prompting.
+SSHFP is a DNS record type (RFC 4255) that stores SSH public key fingerprints. When an SSH client connects to a server, it can look up the server's SSHFP record and compare it to the key the server presents. If they match and the DNS response is secure, the connection proceeds without prompting.
 
 ```mermaid
 sequenceDiagram
@@ -25,7 +25,7 @@ sequenceDiagram
     A->>S: SSH connection request
     S->>A: Present host key
     A->>A: Compare host key fingerprint with DNS record
-    Note over A: Match? Connect. No match? Reject.
+    Note over A: Secure match? Connect. Otherwise follow host-key policy.
 ```
 
 ## SSHFP Record Format
@@ -81,7 +81,7 @@ web01.example.com IN SSHFP 4 2 pqr678...
 
 ```bash
 # Scan a remote host and generate SSHFP records
-ssh-keyscan web01.example.com 2>/dev/null | ssh-keygen -r web01.example.com -f /dev/stdin
+ssh-keyscan -D web01.example.com 2>/dev/null
 ```
 
 ### Using Ansible to Generate SSHFP Records
@@ -173,7 +173,7 @@ db01    IN  SSHFP   4 2 c3d4e5f6a1b2...
 
   tasks:
     - name: Create SSHFP records in Route53
-      amazon.aws.route53:
+      amazon.aws.route53:  # SSHFP requires amazon.aws 9.2.0 or newer
         state: present
         zone: example.com
         record: "{{ item }}.example.com"
@@ -205,7 +205,7 @@ db01    IN  SSHFP   4 2 c3d4e5f6a1b2...
           server dns.example.com
           zone example.com
           {% for line in sshfp_data.stdout_lines %}
-          update add {{ line }} 3600
+          update add {{ line | regex_replace('^(\\S+)\\s+IN\\s+SSHFP\\s+(.+)$', '\\1 3600 IN SSHFP \\2') }}
           {% endfor %}
           send
         dest: /tmp/nsupdate_{{ inventory_hostname }}.txt
@@ -235,7 +235,7 @@ Host *.example.com
 ```
 
 The `VerifyHostKeyDNS` option has three values:
-- `yes` - Verify and trust SSHFP records
+- `yes` - Verify SSHFP records and trust secure matches
 - `no` - Ignore SSHFP records (default)
 - `ask` - Show SSHFP verification result but still prompt
 
@@ -253,10 +253,10 @@ dig +dnssec web01.example.com SSHFP
 
 If DNSSEC is not available, SSH will still use SSHFP records but will downgrade to "ask" mode, showing you the result but still prompting for confirmation.
 
-Configure the resolver to validate DNSSEC:
+Use a DNSSEC-validating resolver:
 
 ```bash
-# /etc/resolv.conf - Use a DNSSEC-validating resolver
+# /etc/resolv.conf
 nameserver 1.1.1.1
 nameserver 8.8.8.8
 options edns0
@@ -282,25 +282,25 @@ Here is a complete playbook that generates and publishes SSHFP records whenever 
 
     # Check existing DNS records
     - name: Query existing SSHFP records
-      command: "dig +short {{ inventory_hostname }}.example.com SSHFP"
+      shell: "dig +short {{ inventory_hostname }}.example.com SSHFP | sort"
       register: existing_sshfp
       delegate_to: localhost
       changed_when: false
 
     # Compare and update if different
     - name: Update SSHFP records if changed
-      command: >
+      shell: |
         nsupdate -k /etc/dns/update.key -v <<EOF
         server dns.example.com
         zone example.com
         update delete {{ inventory_hostname }}.example.com SSHFP
         {% for line in new_sshfp.stdout_lines %}
-        update add {{ line }} 3600
+        update add {{ line | regex_replace('^(\\S+)\\s+IN\\s+SSHFP\\s+(.+)$', '\\1 3600 IN SSHFP \\2') }}
         {% endfor %}
         send
         EOF
       delegate_to: localhost
-      when: existing_sshfp.stdout != new_sshfp.stdout
+      when: existing_sshfp.stdout != (new_sshfp.stdout_lines | map('regex_replace', '^\\S+\\s+IN\\s+SSHFP\\s+', '') | sort | join('\n'))
 ```
 
 ## Verifying SSHFP Setup
@@ -336,17 +336,37 @@ When you rotate host keys, update the SSHFP records:
 
   tasks:
     - name: Generate new host keys
-      command: "ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N '' -q"
+      command: "ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key.new -N '' -q"
       args:
         creates: /etc/ssh/ssh_host_ed25519_key.new
 
     - name: Generate new SSHFP records
-      command: "ssh-keygen -r {{ inventory_hostname }}.example.com -f /etc/ssh/ssh_host_ed25519_key.pub"
+      command: "ssh-keygen -r {{ inventory_hostname }}.example.com -f /etc/ssh/ssh_host_ed25519_key.new.pub"
       register: new_sshfp
 
-    - name: Update DNS with new SSHFP records
-      command: "nsupdate -k /etc/dns/update.key /tmp/sshfp_update.txt"
+    - name: Create nsupdate script
+      copy:
+        content: |
+          server dns.example.com
+          zone example.com
+          update delete {{ inventory_hostname }}.example.com SSHFP
+          {% for line in new_sshfp.stdout_lines %}
+          update add {{ line | regex_replace('^(\\S+)\\s+IN\\s+SSHFP\\s+(.+)$', '\\1 3600 IN SSHFP \\2') }}
+          {% endfor %}
+          send
+        dest: /tmp/sshfp_update_{{ inventory_hostname }}.txt
       delegate_to: localhost
+
+    - name: Update DNS with new SSHFP records
+      command: "nsupdate -k /etc/dns/update.key /tmp/sshfp_update_{{ inventory_hostname }}.txt"
+      delegate_to: localhost
+
+    - name: Install new host keys
+      shell: |
+        mv /etc/ssh/ssh_host_ed25519_key.new /etc/ssh/ssh_host_ed25519_key
+        mv /etc/ssh/ssh_host_ed25519_key.new.pub /etc/ssh/ssh_host_ed25519_key.pub
+        chmod 600 /etc/ssh/ssh_host_ed25519_key
+        chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
 
     - name: Restart SSH daemon
       service:
