@@ -118,7 +118,7 @@ Usage in a playbook:
     - name: Mask the API key for safe logging
       ansible.builtin.debug:
         msg: "API Key: {{ api_key | my_namespace.my_collection.mask_sensitive(4) }}"
-      # Output: API Key: ***************h789
+      # Output: API Key: *****************i789
 
     - name: Convert tag list to dictionary
       ansible.builtin.debug:
@@ -226,17 +226,19 @@ __metaclass__ = type
 DOCUMENTATION = r"""
 ---
 name: deploy_notify
-type: notification
+callback_type: notification
 short_description: Send webhook notifications on playbook completion
 version_added: "1.0.0"
 description:
   - Sends a POST request to a webhook URL when a playbook finishes.
   - Includes summary information about task results.
 requirements:
-  - Webhook URL set via DEPLOY_NOTIFY_WEBHOOK_URL environment variable
+  - Webhook URL configured through the webhook_url option
 options:
   webhook_url:
     description: The webhook URL to send notifications to.
+    type: str
+    default: ""
     env:
       - name: DEPLOY_NOTIFY_WEBHOOK_URL
     ini:
@@ -248,7 +250,7 @@ author:
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ansible.plugins.callback import CallbackBase
 
@@ -263,16 +265,15 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = "notification"
     CALLBACK_NAME = "my_namespace.my_collection.deploy_notify"
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
-        self.webhook_url = os.environ.get("DEPLOY_NOTIFY_WEBHOOK_URL", "")
         self.start_time = None
         self.task_results = {"ok": 0, "changed": 0, "failed": 0, "skipped": 0}
 
     def v2_playbook_on_start(self, playbook):
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
         self.playbook_name = os.path.basename(playbook._file_name)
 
     def v2_runner_on_ok(self, result, **kwargs):
@@ -288,10 +289,12 @@ class CallbackModule(CallbackBase):
         self.task_results["skipped"] += 1
 
     def v2_playbook_on_stats(self, stats):
-        if not self.webhook_url or not HAS_OPEN_URL:
+        webhook_url = self.get_option("webhook_url")
+
+        if not webhook_url or not HAS_OPEN_URL:
             return
 
-        duration = (datetime.utcnow() - self.start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         status = "success" if self.task_results["failed"] == 0 else "failure"
 
         payload = json.dumps({
@@ -299,12 +302,12 @@ class CallbackModule(CallbackBase):
             "status": status,
             "duration_seconds": duration,
             "results": self.task_results,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
         try:
             open_url(
-                self.webhook_url,
+                webhook_url,
                 data=payload,
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -341,6 +344,11 @@ description:
   - Queries an internal API for host information.
   - Groups hosts by their reported environment and role.
 options:
+  plugin:
+    description: Token that ensures this is a source file for this plugin.
+    required: true
+    choices:
+      - my_namespace.my_collection.api_inventory
   api_url:
     description: URL of the host inventory API.
     required: true
