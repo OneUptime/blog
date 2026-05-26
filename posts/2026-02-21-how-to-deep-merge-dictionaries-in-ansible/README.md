@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Dictionary, Deep Merge, Configuration Management
 
-Description: Learn how to deep merge dictionaries in Ansible using combine with recursive option, list_merge parameter, and custom merge strategies for nested configurations.
+Description: Learn how to deep merge dictionaries in Ansible using combine with recursive option and list_merge strategies for nested configurations.
 
 ---
 
@@ -175,7 +175,7 @@ When deep merging, you also need to decide how to handle lists within the nested
       ansible.builtin.debug:
         msg: "{{ base | combine(additions, recursive=true, list_merge='prepend') }}"
 
-    - name: "list_merge='append_rp' - append and remove duplicates"
+    - name: "list_merge='append_rp' - append newer items, replacing older matches"
       ansible.builtin.debug:
         msg: "{{ base | combine(additions, recursive=true, list_merge='append_rp') }}"
 ```
@@ -185,8 +185,8 @@ Available `list_merge` options:
 - `keep`: Keep the original list
 - `append`: Add new items to end
 - `prepend`: Add new items to beginning
-- `append_rp`: Append and remove duplicates (keep last occurrence)
-- `prepend_rp`: Prepend and remove duplicates (keep first occurrence)
+- `append_rp`: Append newer entries, removing matching entries from the original list
+- `prepend_rp`: Prepend newer entries, removing matching entries from the original list
 
 ## Multi-Layer Deep Merge
 
@@ -346,6 +346,9 @@ Deep merge handles arbitrary nesting depth:
           matchLabels:
             app: myapp
         template:
+          metadata:
+            labels:
+              app: myapp
           spec:
             containers:
               - name: myapp
