@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DevOps, Linux, Automation
 
-Description: Learn how to use the Ansible unarchive module to extract tar, zip, and gz archives to managed hosts with full control over permissions and destinations.
+Description: Learn how to use the Ansible unarchive module to extract tar and zip archives to managed hosts with full control over permissions and destinations.
 
 ---
 
-Deploying applications often means extracting compressed archives on target servers. Whether you are installing a Java application from a tarball, deploying a pre-built frontend bundle, or extracting configuration packages, the Ansible `unarchive` module handles the job. It supports tar, tar.gz, tar.bz2, tar.xz, and zip formats out of the box, and it works with archives stored on both the controller and the managed hosts.
+Deploying applications often means extracting compressed archives on target servers. Whether you are installing a Java application from a tarball, deploying a pre-built frontend bundle, or extracting configuration packages, the Ansible `unarchive` module handles the job. It supports tar, tar.gz, tar.bz2, tar.xz, and zip formats, and it works with archives stored on both the controller and the managed hosts. It does not handle plain .gz, .bz2, or .xz files that do not contain a tar archive.
 
 ## Basic Usage
 
@@ -85,7 +85,7 @@ Many archives contain a top-level directory (like `myapp-2.5.0/`). The `extra_op
 
 ### Extracting Specific Files
 
-You can extract only specific files from an archive using `include` (for tar) or `extra_opts`.
+You can extract only specific files from an archive using `include` (for tar) or `extra_opts`. For tar archives, `include` entries are passed to `tar`, so use exact archive paths or add the appropriate tar wildcard options.
 
 ```yaml
 # Extract only the configuration files from the archive
@@ -94,7 +94,7 @@ You can extract only specific files from an archive using `include` (for tar) or
     src: files/myapp-2.5.0.tar.gz
     dest: /opt/myapp/
     include:
-      - 'myapp-2.5.0/conf/*'
+      - 'myapp-2.5.0/conf/'
     extra_opts:
       - '--strip-components=1'
 ```
@@ -151,7 +151,7 @@ The uppercase `X` sets the execute bit only on directories, which is a common pa
 
 ## Idempotency and the creates Parameter
 
-The `unarchive` module is not perfectly idempotent by default because it will re-extract the archive on every run. Use the `creates` parameter to skip extraction if a specific file or directory already exists.
+The `unarchive` module can detect whether the archive contents already match the destination, but `creates` is useful when you want an explicit guard that skips extraction if a specific file or directory already exists.
 
 ```yaml
 # Only extract if the application binary does not already exist
@@ -164,7 +164,7 @@ The `unarchive` module is not perfectly idempotent by default because it will re
       - '--strip-components=1'
 ```
 
-This makes your playbook truly idempotent because the task is skipped if `/opt/myapp/bin/myapp` already exists.
+This makes the task skip extraction when `/opt/myapp/bin/myapp` already exists. The `creates` path must be an absolute path below the `dest` directory.
 
 ## A Complete Deployment Playbook
 
@@ -258,7 +258,7 @@ graph TD
 
 ## Common Issues and Troubleshooting
 
-**Missing extraction tools**: The remote host needs `tar`, `gzip`, `bzip2`, or `unzip` depending on the archive format. Install these first if they are not present.
+**Missing extraction tools**: The remote host needs GNU tar (`gtar` or `tar`) for tar archives and `unzip` plus `zipinfo` for zip files. Some compressed tar formats may also need their compression tools, such as `zstd` for `.tar.zst` files. Install these first if they are not present.
 
 ```yaml
 # Ensure unzip is available for zip file extraction
@@ -270,19 +270,18 @@ graph TD
 
 **Permission denied errors**: Make sure the destination directory exists and is writable by the user running the task (or use `become: yes`).
 
-**Archive contains absolute paths**: Some archives store files with absolute paths. Use `extra_opts` to handle this.
+**Archive contains absolute paths**: Some archives store files with absolute paths. By default, tar strips leading slashes so files still extract under `dest`. Avoid `--absolute-names` unless you intentionally want to restore files to their original absolute paths.
 
 ```yaml
-# Handle archives with absolute paths
-- name: Extract archive with absolute paths safely
+# Handle archives with absolute paths under the destination
+- name: Extract archive with absolute paths under restore directory
   ansible.builtin.unarchive:
     src: files/backup.tar.gz
     dest: /restore/
     extra_opts:
-      - '--absolute-names'
       - '--strip-components=1'
 ```
 
 ## Summary
 
-The `unarchive` module is the go-to tool for extracting archives in Ansible playbooks. The `creates` parameter handles idempotency, `extra_opts` gives you access to the full power of tar and unzip command-line options, and the `include` parameter lets you selectively extract files. Combined with proper ownership and permission settings, you can build reliable deployment workflows that handle everything from simple file extraction to complex application rollouts.
+The `unarchive` module is the go-to tool for extracting archives in Ansible playbooks. The `creates` parameter provides an explicit skip condition, `extra_opts` gives you access to the full power of tar and unzip command-line options, and the `include` parameter lets you selectively extract files. Combined with proper ownership and permission settings, you can build reliable deployment workflows that handle everything from simple file extraction to complex application rollouts.
