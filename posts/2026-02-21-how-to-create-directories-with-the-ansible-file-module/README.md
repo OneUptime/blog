@@ -25,7 +25,7 @@ The simplest case is creating a single directory:
     state: directory
 ```
 
-This creates `/opt/myapp` with default permissions (usually 0755) and owned by the user running the playbook. If the directory already exists, Ansible does nothing and reports "ok" instead of "changed". That is the idempotency you get for free.
+This creates `/opt/myapp` using the target system's default `umask` when no mode is specified. If the directory already exists, Ansible does nothing and reports "ok" instead of "changed". That is the idempotency you get for free.
 
 ## Setting Permissions and Ownership
 
@@ -75,9 +75,9 @@ The `file` module automatically creates parent directories when you specify a de
     mode: "0755"
 ```
 
-This creates `/var/log/myapp`, `/var/log/myapp/archives`, and `/var/log/myapp/archives/2024` if any of them do not exist. However, only the final directory (`2024`) will have the specified owner, group, and mode. The intermediate directories will be created with the default umask of the user running the task.
+This creates `/var/log/myapp`, `/var/log/myapp/archives`, and `/var/log/myapp/archives/2024` if any of them do not exist. For newly created intermediate directories, Ansible applies the supplied filesystem attributes, including owner, group, and mode.
 
-If you need specific permissions on every level of the hierarchy, create each directory explicitly:
+If you need different permissions on different levels of the hierarchy, create each directory explicitly:
 
 ```yaml
 # Create each level of the directory tree with explicit permissions
@@ -281,7 +281,13 @@ Here is a practical example that sets up a full deployment directory structure f
     app_group: deploy
 
   tasks:
-    # Create the application user first
+    # Create the application group first
+    - name: Create application group
+      ansible.builtin.group:
+        name: "{{ app_group }}"
+        state: present
+
+    # Create the application user
     - name: Create application user
       ansible.builtin.user:
         name: "{{ app_user }}"
