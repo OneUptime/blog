@@ -49,7 +49,7 @@ The `when` clause can reference both the loop variable and host facts:
     - { package: "epel-release", os_family: "RedHat" }
     - { package: "software-properties-common", os_family: "Debian" }
   when: >
-    item.os_family == ansible_os_family or
+    item.os_family == ansible_facts['os_family'] or
     item.os_family == "all"
 ```
 
@@ -140,7 +140,7 @@ Items without a `critical` attribute default to `false` and are skipped. Without
 
 ## Conditional Loops Based on External Variables
 
-You can control whether to loop at all using a variable:
+You can skip every loop iteration using a variable:
 
 ```yaml
 # Only run the loop if a feature flag is enabled
@@ -155,7 +155,7 @@ You can control whether to loop at all using a variable:
   when: enable_monitoring | default(false)
 ```
 
-If `enable_monitoring` is false or undefined, every iteration is skipped. This effectively disables the entire loop based on a single variable.
+If `enable_monitoring` is false or undefined, every iteration is skipped. This effectively disables the task based on a single variable, while still reporting skipped loop items.
 
 ## Using when to Filter Before and After
 
@@ -180,7 +180,7 @@ Sometimes you want to pre-filter the loop list for cleaner output:
     label: "{{ item.name }}"
 ```
 
-Approach 2 is cleaner when the filter is simple. Approach 1 is necessary when the condition involves external variables or facts that are not part of the item data.
+Approach 2 is cleaner when the filter is simple. Approach 1 is often clearer when the condition involves external variables or facts that are not part of the item data, especially if you want skipped items to remain visible in the output.
 
 ## Practical Example: Server Hardening with Selective Rules
 
@@ -269,7 +269,7 @@ Use `when` inside the loop when:
 - The condition combines item properties with runtime information
 
 Pre-filter the loop list when:
-- The condition depends only on item properties
+- The condition can be expressed cleanly as a list filter
 - You want cleaner output without skipping messages
 - You want to reduce the number of iterations for performance
 
