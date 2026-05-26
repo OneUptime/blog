@@ -8,7 +8,7 @@ Description: Fix Ansible host pattern matching errors by understanding pattern s
 
 ---
 
-The "Could not match supplied host pattern" warning appears when Ansible cannot find hosts matching the pattern you specified. Unlike a simple "No hosts matched" message, this specifically means the pattern syntax might be valid but resolves to zero hosts.
+The "Could not match supplied host pattern" warning appears when Ansible cannot find hosts matching the pattern you specified. Unlike a simple "No hosts matched" message, this specifically means a host or group pattern does not match the inventory Ansible loaded.
 
 ## The Error
 
@@ -111,12 +111,12 @@ Host pattern errors are always about the disconnect between what you asked for a
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where host patterns and inventory checks prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using inventory host patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -148,7 +148,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -230,7 +230,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in playbooks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -292,4 +292,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
