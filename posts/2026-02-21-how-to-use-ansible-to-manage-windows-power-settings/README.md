@@ -253,15 +253,17 @@ Here is a comprehensive playbook that configures all power-related settings for 
         powercfg /setactive scheme_current
 
     - name: Configure wake timers to important only
-      ansible.windows.win_regedit:
-        path: HKLM:\SOFTWARE\Policies\Microsoft\Power\PowerSettings\BD3B718A-0680-4D9D-8AB2-E1D2B4AC806D
-        name: ACSettingIndex
-        data: 1
-        type: dword
-        state: present
+      ansible.windows.win_shell: |
+        $sleep = "238c9fa8-0aad-41ed-83f4-97be242c8f20"
+        $wakeTimers = "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d"
+        # Wake timers: 0 = disabled, 1 = enabled, 2 = important only
+        powercfg /setacvalueindex scheme_current $sleep $wakeTimers 2
+        powercfg /setdcvalueindex scheme_current $sleep $wakeTimers 2
+        powercfg /setactive scheme_current
 
     - name: Generate power configuration report
       ansible.windows.win_shell: |
+        New-Item -ItemType Directory -Path C:\Temp -Force | Out-Null
         powercfg /query > C:\Temp\power-config.txt
         $active = powercfg /getactivescheme
         $hibernate = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name "HibernateEnabled" -ErrorAction SilentlyContinue).HibernateEnabled
@@ -311,6 +313,6 @@ Before making changes, it can be helpful to audit the current power configuratio
 
 **Windows Update can reset power plans.** Some Windows updates have been known to reset the active power plan to Balanced. Running your Ansible playbook periodically or through a scheduled job protects against this drift.
 
-**Battery-backed servers.** Some rack-mounted servers have battery backup units. The "DC" (battery) settings in powercfg apply when the server is running on battery. Configure these too to prevent unexpected sleep during power events.
+**Battery-backed servers.** Some rack-mounted servers or UPS-managed systems expose battery power to Windows. The "DC" (battery) settings in powercfg apply when Windows sees the system as running on battery. Configure these too to prevent unexpected sleep during power events.
 
 Getting power settings right is a small configuration change that can have a measurable impact on server performance. With Ansible, you can enforce the correct power plan across your entire infrastructure and verify that drift has not occurred.
