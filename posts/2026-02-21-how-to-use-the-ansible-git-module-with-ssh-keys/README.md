@@ -91,6 +91,14 @@ Before cloning, you need the SSH key on the remote host:
         group: deploy
         mode: "0600"
 
+    - name: Create application directory
+      ansible.builtin.file:
+        path: /opt/app
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: "0755"
+
     - name: Clone repository
       ansible.builtin.git:
         repo: "git@github.com:myorg/private-app.git"
@@ -128,7 +136,7 @@ ansible-vault encrypt files/deploy_key
   hosts: webservers
   become: true
   vars:
-    encrypted_deploy_key: "{{ lookup('file', 'files/deploy_key') }}"
+    encrypted_deploy_key: "{{ lookup('ansible.builtin.unvault', 'files/deploy_key') | string }}"
 
   tasks:
     - name: Deploy encrypted key (decrypted at runtime)
@@ -161,7 +169,6 @@ Instead of copying keys to remote hosts, you can forward your local SSH agent:
 # Uses SSH agent forwarding to clone without placing keys on remote hosts
 - name: Clone using SSH agent forwarding
   hosts: webservers
-  become: true
   vars:
     ansible_ssh_common_args: "-o ForwardAgent=yes"
 
@@ -169,10 +176,9 @@ Instead of copying keys to remote hosts, you can forward your local SSH agent:
     - name: Clone using forwarded SSH agent
       ansible.builtin.git:
         repo: "git@github.com:myorg/private-app.git"
-        dest: /opt/app
+        dest: "{{ ansible_env.HOME }}/app"
         version: main
         accept_hostkey: true
-      become: false
 ```
 
 To use agent forwarding, you need to:
@@ -249,6 +255,21 @@ The included task file:
   become: true
 
   tasks:
+    - name: Create deploy user
+      ansible.builtin.user:
+        name: deploy
+        system: true
+        create_home: true
+        shell: /bin/bash
+
+    - name: Create .ssh directory
+      ansible.builtin.file:
+        path: /home/deploy/.ssh
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: "0700"
+
     - name: Generate ed25519 SSH key pair
       community.crypto.openssh_keypair:
         path: /home/deploy/.ssh/deploy_key
