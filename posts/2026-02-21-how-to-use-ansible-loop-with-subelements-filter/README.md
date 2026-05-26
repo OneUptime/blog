@@ -49,7 +49,8 @@ The `subelements` filter takes a list of dictionaries and the name of a list att
     state: present
   loop: "{{ users | subelements('ssh_keys') }}"
   loop_control:
-    label: "{{ item.0.name }} - key {{ ansible_loop.index | default('') }}"
+    label: "{{ item.0.name }} - key {{ ansible_loop.index }}"
+    extended: true
 ```
 
 For the data above, this produces six iterations:
@@ -239,7 +240,8 @@ Managing database permissions is a natural fit for subelements:
 # Grant database permissions using subelements
 - name: Configure database grants
   community.postgresql.postgresql_privs:
-    db: "{{ item.1 }}"
+    login_db: postgres
+    objs: "{{ item.1 }}"
     role: "{{ item.0.name }}"
     privs: "{{ item.0.privileges }}"
     type: database
@@ -290,17 +292,14 @@ The modern syntax is preferred for new playbooks because it is consistent with t
 
 ## Nested subelements
 
-If you need to go deeper than one level, you can chain operations:
+If you need to go deeper than one level, you can use a dotted nested key:
 
 ```yaml
-# Process deeply nested structures with intermediate set_fact
-- name: Flatten two levels of nesting
-  ansible.builtin.set_fact:
-    flattened_configs: >-
-      {{
-        departments | subelements('teams') |
-        map('combine_subelement') | list
-      }}
+# Process a nested subkey directly
+- name: Show hosts for each user's MySQL configuration
+  ansible.builtin.debug:
+    msg: "{{ item.0.name }} -> {{ item.1 }}"
+  loop: "{{ users | subelements('mysql.hosts') }}"
 ```
 
 In practice, deeply nested structures are better handled by restructuring your data or using intermediate `set_fact` tasks to flatten the structure step by step.
