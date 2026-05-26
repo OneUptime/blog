@@ -59,7 +59,7 @@ Reload a service configuration:
         state: reloaded
 ```
 
-When you set `state: reloaded`, Ansible runs `systemctl reload nginx`, which sends a signal (usually SIGHUP) to the master process. Nginx then reads the new config and applies it to new connections while keeping existing ones alive.
+When you set `state: reloaded`, Ansible asks systemd to reload the unit, which runs the unit's `ExecReload` action. For Nginx, this typically sends `SIGHUP` to the master process. Nginx then reads the new config and applies it to new connections while keeping existing ones alive.
 
 ## Understanding ExecReload
 
@@ -86,7 +86,7 @@ Check what reload does for a specific service:
     label: "{{ item.item }}"
 ```
 
-For Nginx, `ExecReload` typically sends `SIGHUP` to the master process. For PostgreSQL, it runs `pg_ctl reload`. For Apache, it sends `SIGWINCH` or `SIGUSR1` depending on the configuration.
+For Nginx, `ExecReload` typically sends `SIGHUP` to the master process. For PostgreSQL, it runs `pg_ctl reload` or sends `SIGHUP`. For Apache, graceful reload is commonly implemented with `apachectl graceful`, which sends `SIGUSR1`.
 
 ## Validating Config Before Reload
 
@@ -210,12 +210,12 @@ Send a specific signal to reload a service:
 ```yaml
 # Send SIGHUP to reload configuration
 - name: Reload via SIGHUP
-  ansible.builtin.command: "kill -HUP $(systemctl show {{ service_name }} --property=MainPID --value)"
+  ansible.builtin.shell: "kill -HUP $(systemctl show {{ service_name }} --property=MainPID --value)"
   when: config_changed
 
 # Send SIGUSR1 to reopen log files (useful after log rotation)
 - name: Reopen log files
-  ansible.builtin.command: "kill -USR1 $(systemctl show nginx --property=MainPID --value)"
+  ansible.builtin.shell: "kill -USR1 $(systemctl show nginx --property=MainPID --value)"
 ```
 
 ## The reload-or-restart Pattern
@@ -262,12 +262,17 @@ tasks:
       dest: /etc/nginx/sites-available/mysite.conf
     notify: Reload Nginx
 
-  # This change requires a full restart
-  - name: Update worker_processes setting
-    ansible.builtin.lineinfile:
-      path: /etc/nginx/nginx.conf
-      regexp: "^worker_processes"
-      line: "worker_processes {{ nginx_workers }};"
+  - name: Ensure Nginx systemd override directory exists
+    ansible.builtin.file:
+      path: /etc/systemd/system/nginx.service.d
+      state: directory
+      mode: "0755"
+
+  # This change is outside the Nginx config reload path
+  - name: Update Nginx service environment
+    ansible.builtin.template:
+      src: nginx-override.conf.j2
+      dest: /etc/systemd/system/nginx.service.d/override.conf
     notify: Restart Nginx
 
 handlers:
@@ -282,6 +287,7 @@ handlers:
   - name: Restart Nginx
     ansible.builtin.systemd:
       name: nginx
+      daemon_reload: true
       state: restarted
 ```
 
@@ -325,12 +331,12 @@ Common services and their reload support:
 | Service | Reload Support | Notes |
 |---------|---------------|-------|
 | Nginx | Yes | Graceful, no connection drops |
-| Apache | Yes | Graceful restart via SIGWINCH |
+| Apache | Yes | Graceful restart via SIGUSR1 |
 | PostgreSQL | Partial | Some settings need restart |
 | MySQL | Partial | Some settings need restart |
 | Redis | Limited | Only some settings reloadable |
 | SSH | Yes | Does not affect existing connections |
-| Docker | No | Must restart for daemon config |
+| Docker | Partial | Some daemon settings can be reloaded with SIGHUP; others require restart |
 | systemd-journald | Yes | Picks up journald.conf changes |
 
 ## Summary
