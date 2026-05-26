@@ -16,7 +16,7 @@ This guide covers provisioning servers, managing networks, configuring firewalls
 
 You need:
 
-- Ansible 2.12+ on your control node
+- Ansible 2.18+ on your control node
 - The `hetzner.hcloud` collection
 - Python `hcloud` library
 - A Hetzner Cloud API token (generated from a project in the Hetzner Cloud Console)
@@ -53,7 +53,7 @@ The `hetzner.hcloud.server` module handles server lifecycle.
       hetzner.hcloud.server:
         api_token: "{{ hcloud_api_token }}"
         name: web-01
-        server_type: cx21
+        server_type: cx23
         image: ubuntu-22.04
         location: nbg1
         ssh_keys:
@@ -107,19 +107,19 @@ Provision a complete environment with web, application, and database servers.
   vars:
     servers:
       - name: web-01
-        server_type: cx21
+        server_type: cx23
         location: nbg1
         labels: { role: web, env: prod }
       - name: web-02
-        server_type: cx21
+        server_type: cx23
         location: nbg1
         labels: { role: web, env: prod }
       - name: app-01
-        server_type: cx31
+        server_type: cx33
         location: nbg1
         labels: { role: app, env: prod }
       - name: db-01
-        server_type: cx41
+        server_type: cx43
         location: nbg1
         labels: { role: database, env: prod }
 
