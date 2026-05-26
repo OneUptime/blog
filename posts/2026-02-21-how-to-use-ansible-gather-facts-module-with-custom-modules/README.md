@@ -77,7 +77,6 @@ Place custom fact scripts in `/etc/ansible/facts.d/` on the remote host:
 # library/custom_facts.py
 # Custom Ansible module that returns application facts
 from ansible.module_utils.basic import AnsibleModule
-import json
 import os
 
 def get_app_facts():
@@ -96,7 +95,7 @@ def get_app_facts():
     return facts
 
 def main():
-    module = AnsibleModule(argument_spec={})
+    module = AnsibleModule(argument_spec={}, supports_check_mode=True)
     facts = get_app_facts()
     module.exit_json(changed=False, ansible_facts={'app': facts})
 
@@ -126,12 +125,14 @@ if __name__ == '__main__':
       ansible.builtin.setup:
         gather_subset:
           - '!all'
+          - '!min'
           - network
           - hardware
 
     - name: Gather custom facts
       ansible.builtin.setup:
-        filter: ansible_local*
+        filter:
+          - ansible_local*
 ```
 
 
@@ -174,7 +175,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -322,5 +323,4 @@ Here are several practical scenarios where this module proves essential in real-
 
 ## Conclusion
 
-Custom facts extend Ansible's built-in fact gathering with application-specific information. Use fact scripts in `/etc/ansible/facts.d/` for simple cases and custom modules for complex fact gathering logic. This keeps your playbooks clean by centralizing information gathering and making it available through the standard `ansible_facts` namespace.
-
+Custom facts extend Ansible's built-in fact gathering with application-specific information. Use fact scripts in `/etc/ansible/facts.d/` for simple cases and custom modules for complex fact gathering logic. This keeps your playbooks clean by centralizing information gathering and making it available through the standard fact namespaces such as `ansible_local` and `ansible_facts`.
