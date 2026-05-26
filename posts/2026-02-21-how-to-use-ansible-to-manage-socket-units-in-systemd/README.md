@@ -105,6 +105,9 @@ Jinja2 template for the paired service:
 [Unit]
 Description={{ socket_description | default(socket_name) }}
 After=network.target
+{% if not (socket_also_standalone | default(false)) %}
+RefuseManualStart=yes
+{% endif %}
 {% if socket_service_requires is defined %}
 {% for req in socket_service_requires %}
 Requires={{ req }}
@@ -115,6 +118,7 @@ Requires={{ req }}
 {% if socket_accept | default(false) %}
 # For Accept=yes, each connection gets its own process
 Type=simple
+StandardInput=socket
 {% else %}
 Type={{ socket_service_type | default('simple') }}
 {% endif %}
@@ -133,7 +137,7 @@ Environment="{{ key }}={{ value }}"
 
 # Do not start independently, only through socket activation
 {% if not (socket_also_standalone | default(false)) %}
-# Refuse manual start without socket
+# RefuseManualStart=yes is set in [Unit]
 {% endif %}
 
 StandardOutput=journal
@@ -151,11 +155,11 @@ Deploy both unit files and manage the socket lifecycle:
 - name: Deploy the service unit
   ansible.builtin.template:
     src: service.j2
-    dest: "/etc/systemd/system/{{ socket_name }}.service"
+    dest: "/etc/systemd/system/{{ socket_name }}{{ '@' if socket_accept | default(false) else '' }}.service"
     owner: root
     group: root
     mode: '0644'
-  notify: Reload systemd for socket
+  notify: Restart socket
 
 - name: Deploy the socket unit
   ansible.builtin.template:
@@ -164,7 +168,7 @@ Deploy both unit files and manage the socket lifecycle:
     owner: root
     group: root
     mode: '0644'
-  notify: Reload systemd for socket
+  notify: Restart socket
 
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
@@ -190,6 +194,7 @@ Handlers for the role:
   ansible.builtin.systemd:
     name: "{{ socket_name }}.socket"
     state: restarted
+    daemon_reload: yes
 ```
 
 ## Example: Socket-Activated Web Service
@@ -210,6 +215,14 @@ Playbook for deploying a socket-activated HTTP service:
         name: python3
         state: present
 
+    - name: Create application directory
+      ansible.builtin.file:
+        path: /opt/mywebapp
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
     - name: Deploy the application script
       ansible.builtin.copy:
         dest: /opt/mywebapp/server.py
@@ -219,12 +232,11 @@ Playbook for deploying a socket-activated HTTP service:
           """Simple HTTP server that works with systemd socket activation."""
           import socket
           import os
-          import sys
           from http.server import HTTPServer, SimpleHTTPRequestHandler
 
           # Get the socket from systemd
           LISTEN_FDS_START = 3
-          if os.environ.get('LISTEN_FDS'):
+          if os.environ.get('LISTEN_PID') == str(os.getpid()) and os.environ.get('LISTEN_FDS') == '1':
               # Socket was passed by systemd
               sock = socket.fromfd(LISTEN_FDS_START, socket.AF_INET, socket.SOCK_STREAM)
               server = HTTPServer(('', 8080), SimpleHTTPRequestHandler, bind_and_activate=False)
@@ -241,7 +253,7 @@ Playbook for deploying a socket-activated HTTP service:
       vars:
         socket_name: mywebapp
         socket_description: "On-demand web application"
-        socket_listen_stream: "8080"
+        socket_listen_stream: "0.0.0.0:8080"
         socket_exec_start: "/usr/bin/python3 /opt/mywebapp/server.py"
         socket_user: www-data
         socket_group: www-data
@@ -318,7 +330,7 @@ Deploy an inetd-style per-connection service:
     socket_service_type: simple
 ```
 
-Note that when `Accept=yes`, the service file is named `echo-server@.service` (with the `@`). You need to adjust the template deployment:
+Note that when `Accept=yes`, the service file is named `echo-server@.service` (with the `@`). The role task above handles that with the conditional destination. If you keep separate tasks, use a template deployment like this:
 
 ```yaml
 - name: Deploy service unit for accept mode
