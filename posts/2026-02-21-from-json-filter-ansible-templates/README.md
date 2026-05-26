@@ -76,7 +76,7 @@ When you call APIs with the `uri` module and the response is not automatically p
   when: item.status != "healthy"
 ```
 
-Note: The `uri` module often parses JSON automatically into `response.json`, but when you use `return_content: true` or work with non-standard responses, `from_json` is needed.
+Note: The `uri` module loads JSON into `response.json` when the response reports `Content-Type: application/json`, independently of `return_content`. Use `from_json` when you specifically need to parse `response.content` or when the response is not reported as JSON.
 
 ## Parsing AWS CLI Output
 
@@ -173,7 +173,7 @@ Once you have parsed JSON into a data structure, you can chain it with other fil
 # chain_operations.yml - Parse and process JSON data
 - name: Get service discovery data
   ansible.builtin.shell: >
-    consul catalog services -format json
+    curl -s http://127.0.0.1:8500/v1/catalog/service/web
   register: consul_services_raw
   changed_when: false
 
@@ -183,8 +183,7 @@ Once you have parsed JSON into a data structure, you can chain it with other fil
     web_services: >-
       {{ consul_services_raw.stdout
          | from_json
-         | selectattr('ServiceName', 'match', '^web-')
-         | map(attribute='ServiceAddress')
+         | map(attribute='Address')
          | unique
          | sort
          | list }}
