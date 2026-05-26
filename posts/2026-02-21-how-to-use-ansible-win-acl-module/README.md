@@ -237,6 +237,11 @@ Here is a real-world playbook that sets up a full permission structure for a web
         path: "{{ app_root }}"
         state: directory
 
+    - name: Create logs directory
+      ansible.windows.win_file:
+        path: "{{ app_root }}\\logs"
+        state: directory
+
     - name: Break inheritance from parent
       ansible.windows.win_acl_inheritance:
         path: "{{ app_root }}"
@@ -306,9 +311,9 @@ Here is a real-world playbook that sets up a full permission structure for a web
 
 ## Troubleshooting Tips
 
-**Permission denied errors**: Your Ansible user needs to be a local administrator or have the "Manage auditing and security log" privilege to modify ACLs.
+**Permission denied errors**: Your Ansible user needs to be a local administrator or otherwise have permission to change the object's DACL.
 
-**User not found**: Use the full format `DOMAIN\Username` for domain accounts. For local accounts, use `SERVERNAME\Username` or `BUILTIN\GroupName` for built-in groups.
+**User not found**: Use the full format `DOMAIN\Username` for domain accounts. For local accounts, use `SERVERNAME\Username` or `BUILTIN\GroupName` for built-in groups. If you use an IIS AppPool identity such as `IIS APPPOOL\MyWebApp`, the Windows `Web-Scripting-Tools` feature must be enabled.
 
 **Inheritance conflicts**: If you set permissions but they seem to not take effect, check whether inheritance from a parent directory is overriding your changes. Use `win_acl_inheritance` to break inheritance if needed.
 
