@@ -8,7 +8,7 @@ Description: Master the ansible.netcommon collection for vendor-agnostic network
 
 ---
 
-When you are automating a network with devices from multiple vendors, you quickly realize that each vendor has its own Ansible collection with platform-specific modules. But there is a layer beneath those collections that provides the foundation for all of them: the `ansible.netcommon` collection. This collection contains the connection plugins, base modules, and utilities that every network platform relies on.
+When you are automating a network with devices from multiple vendors, you quickly realize that each vendor has its own Ansible collection with platform-specific modules. But there is a layer beneath those collections that provides the foundation for many of them: the `ansible.netcommon` collection. This collection contains connection plugins, common modules, and utilities used across Ansible network automation.
 
 Understanding `ansible.netcommon` is essential because it gives you vendor-agnostic tools that work across Cisco, Juniper, Arista, VyOS, and any other platform that Ansible supports. This post covers the key components of the collection and shows you how to use them for multi-vendor network automation.
 
@@ -73,7 +73,7 @@ Key settings for network_cli:
 | `ansible_connection` | Must be `ansible.netcommon.network_cli` |
 | `ansible_become` | Whether to enter privileged mode |
 | `ansible_become_method` | How to enter privileged mode (enable, sudo) |
-| `ansible_persistent_connect_timeout` | SSH connection timeout |
+| `ansible_connect_timeout` | Persistent connection timeout |
 | `ansible_command_timeout` | Command execution timeout |
 
 ### netconf
@@ -156,11 +156,11 @@ Some commands trigger interactive prompts. The `cli_command` module can handle t
           - "y"
 ```
 
-### Sending Commands with Check Mode
+### Sending Show Commands with Check Mode
 
 ```yaml
-# Using check mode for safe command execution
-    - name: Verify a command without executing
+# cli_command supports check mode for show commands
+    - name: Run a show command in check mode
       ansible.netcommon.cli_command:
         command: show running-config
       check_mode: yes
@@ -203,9 +203,10 @@ The `cli_config` module sends configuration commands to a device. Unlike `cli_co
 
 ### Configuration with Diff
 
-The `cli_config` module supports showing the diff of changes:
+The `cli_config` module supports showing the diff of changes when diff output is enabled:
 
 ```yaml
+# Run the playbook with --diff to return diff data
     - name: Apply config and show diff
       ansible.netcommon.cli_config:
         config: |
@@ -396,8 +397,8 @@ connect_timeout = 30
 # How long to wait for a command to complete
 command_timeout = 60
 
-# How long to keep trying to establish a connection
-connect_retry_timeout = 15
+# Number of network_cli connection attempts
+network_cli_retries = 3
 
 # Buffer size for reading from the SSH channel
 buffer_read_timeout = 0.1
