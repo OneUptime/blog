@@ -32,21 +32,25 @@ The most common use of meta is forcing handlers to run immediately instead of wa
 
 ## Clear Host Errors
 
+`clear_host_errors` clears failed host state so those hosts can be targeted in subsequent plays. It does not resume execution for failed hosts in the current play.
+
 ```yaml
-# Reset failed status for a host
-
+# Reset failed status so hosts can be used in the next play
 - name: Attempt risky operation
-  ansible.builtin.command: /opt/risky-script.sh
-  failed_when: false
-  register: risky_result
+  hosts: all
+  tasks:
+    - name: Run risky operation
+      ansible.builtin.command: /opt/risky-script.sh
 
-- name: Clear error state if recoverable
-  ansible.builtin.meta: clear_host_errors
-  when: risky_result.rc == 1  # Specific recoverable error code
+    - name: Clear failed hosts for later plays
+      ansible.builtin.meta: clear_host_errors
 
-- name: Continue with remaining tasks
-  ansible.builtin.debug:
-    msg: "Continuing after cleared error"
+- name: Continue in a subsequent play
+  hosts: all
+  tasks:
+    - name: Continue after cleared error state
+      ansible.builtin.debug:
+        msg: "Continuing after cleared error"
 ```
 
 ## Clear Facts
@@ -69,11 +73,17 @@ The most common use of meta is forcing handlers to run immediately instead of wa
     path: /opt/app/CURRENT_VERSION
   register: version_file
 
+- name: Read current version
+  ansible.builtin.slurp:
+    src: /opt/app/CURRENT_VERSION
+  register: current_version
+  when: version_file.stat.exists
+
 - name: Skip deployment if already current
   ansible.builtin.meta: end_play
   when:
     - version_file.stat.exists
-    - lookup('file', '/opt/app/CURRENT_VERSION') == app_version
+    - current_version.content | b64decode | trim == app_version
 ```
 
 ## End Host
@@ -123,11 +133,12 @@ The most common use of meta is forcing handlers to run immediately instead of wa
 | Action | Description |
 |--------|------------|
 | `flush_handlers` | Run pending handlers immediately |
-| `clear_host_errors` | Reset failed state for current host |
+| `clear_host_errors` | Reset failed state for hosts in later plays |
 | `clear_facts` | Remove cached facts |
 | `end_play` | End current play for all hosts |
 | `end_host` | End play for current host only |
 | `end_batch` | End current batch in serial |
+| `end_role` | End the currently executing role |
 | `refresh_inventory` | Reload inventory sources |
 | `reset_connection` | Close and reopen connection |
 | `noop` | Do nothing (placeholder) |
@@ -172,7 +183,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -194,6 +205,12 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
+
+    - name: Apply SSH changes before continuing
+      ansible.builtin.meta: flush_handlers
+
+    - name: Reset SSH connection after hardening
+      ansible.builtin.meta: reset_connection
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -321,4 +338,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The meta module gives you fine-grained control over Ansible's execution flow. The most commonly used actions are `flush_handlers` for immediate handler execution and `end_play`/`end_host` for conditional early termination. Use `clear_facts` when system state changes during a play and facts need refreshing, and `reset_connection` after modifying SSH configuration.
-
