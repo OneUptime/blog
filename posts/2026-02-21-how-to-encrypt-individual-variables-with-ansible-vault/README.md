@@ -24,7 +24,7 @@ The simplest form encrypts a string you type interactively:
 # Encrypt a string interactively
 
 # You'll be prompted for the vault password, then the string to encrypt
-ansible-vault encrypt_string --name 'db_password'
+ansible-vault encrypt_string --prompt --name 'db_password'
 ```
 
 You can also provide the string directly (useful for scripting):
@@ -54,12 +54,14 @@ For values that should never appear in your shell history, pipe them through std
 ```bash
 # Pipe a password from a file or command, avoiding shell history exposure
 # The --stdin-name flag names the variable when reading from stdin
-echo -n 'MySecretPassword' | ansible-vault encrypt_string \
+read -rs APP_SECRET
+printf '%s' "$APP_SECRET" | ansible-vault encrypt_string \
   --vault-password-file vault_pass.txt \
   --stdin-name 'app_secret'
+unset APP_SECRET
 ```
 
-The `-n` flag on echo is important. Without it, a newline character gets appended to your secret, which can cause authentication failures at runtime.
+Using `printf` without a trailing newline is important. If a newline character gets appended to your secret, it can cause authentication failures at runtime.
 
 ## Embedding Encrypted Variables in YAML Files
 
