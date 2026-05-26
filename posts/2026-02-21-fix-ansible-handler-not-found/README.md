@@ -87,9 +87,9 @@ Handlers must be defined at the play level or in the role's handlers/main.yml:
         state: restarted
 ```
 
-### Fix 3: Handler in a Different Role
+### Fix 3: Handler in a Role That Has Not Been Loaded
 
-Handlers defined in one role are not visible to other roles:
+Handlers from roles are added to the play's handler scope, but they are only available after Ansible has loaded that role:
 
 ```yaml
 # roles/nginx/handlers/main.yml
@@ -98,8 +98,8 @@ Handlers defined in one role are not visible to other roles:
     name: nginx
     state: restarted
 
-# This handler is only available within the nginx role
-# Other roles cannot notify it directly
+# This handler is available to the play after the nginx role has been loaded.
+# If you use include_role dynamically, tasks before that include cannot notify it yet.
 ```
 
 ### Fix 4: Using listen for Flexible Handler Names
@@ -124,7 +124,7 @@ tasks:
 
 ## Summary
 
-Handler not found errors are always name matching issues. The notify string must exactly match either the handler's `name` or its `listen` value. Copy and paste the handler name to avoid typos, and remember that handlers are scoped to their play or role.
+Handler not found errors usually come from name matching issues or from notifying a handler before Ansible has loaded it. The notify string must exactly match either the handler's `name` or its `listen` value. Copy and paste the handler name to avoid typos, and remember that handlers are available in the play after they are loaded from the playbook or role.
 
 ## Common Use Cases
 
@@ -165,7 +165,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -309,4 +309,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
