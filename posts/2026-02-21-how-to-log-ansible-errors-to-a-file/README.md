@@ -45,7 +45,7 @@ PLAYBOOK=$1
 shift
 
 LOG_DIR=/var/log/ansible
-LOG_FILE="${LOG_DIR}/$(basename ${PLAYBOOK%.yml})-$(date +%Y%m%d-%H%M%S).log"
+LOG_FILE="${LOG_DIR}/$(basename "${PLAYBOOK%.yml}")-$(date +%Y%m%d-%H%M%S).log"
 
 mkdir -p "$LOG_DIR"
 
@@ -63,7 +63,7 @@ fi
 exit $EXIT_CODE
 ```
 
-## Using the no_log and register Pattern for Error Capture
+## Using the register Pattern for Error Capture
 
 For targeted error logging, you can register task results and write errors to a file using the `copy` or `lineinfile` module.
 
@@ -193,7 +193,7 @@ Create the callback plugin:
 
 ```python
 # callback_plugins/error_logger.py - Custom callback that logs errors to a file
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from ansible.plugins.callback import CallbackBase
@@ -225,7 +225,7 @@ class CallbackModule(CallbackBase):
             '/var/log/ansible/errors.jsonl'
         )
         # Ensure directory exists
-        os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.abspath(self.log_path)), exist_ok=True)
 
     def _log_error(self, result, status):
         """Write a structured error entry to the log file."""
@@ -233,7 +233,7 @@ class CallbackModule(CallbackBase):
         task = result._task.get_name()
 
         entry = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             'host': host,
             'task': task,
             'status': status,
@@ -267,7 +267,11 @@ The plugin writes JSONL (one JSON object per line), which is easy to parse and q
 
 ```bash
 # View recent errors
-tail -5 /var/log/ansible/errors.jsonl | python3 -m json.tool
+tail -5 /var/log/ansible/errors.jsonl | python3 -c "
+import sys, json
+for line in sys.stdin:
+    print(json.dumps(json.loads(line), indent=2))
+"
 
 # Count errors by host
 cat /var/log/ansible/errors.jsonl | python3 -c "
@@ -282,7 +286,11 @@ for host, count in hosts.most_common():
 "
 
 # Find all errors from today
-grep "$(date +%Y-%m-%d)" /var/log/ansible/errors.jsonl | python3 -m json.tool
+grep "$(date +%Y-%m-%d)" /var/log/ansible/errors.jsonl | python3 -c "
+import sys, json
+for line in sys.stdin:
+    print(json.dumps(json.loads(line), indent=2))
+"
 ```
 
 ## Redirecting Output with tee
