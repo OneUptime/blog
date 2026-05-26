@@ -12,7 +12,7 @@ Managing sudo access across a fleet of servers is one of those tasks that gets c
 
 ## Understanding Sudo Configuration
 
-Sudo is configured through `/etc/sudoers` and drop-in files in `/etc/sudoers.d/`. The golden rule: never edit `/etc/sudoers` directly. Always use drop-in files in `/etc/sudoers.d/`, which makes management cleaner and less risky.
+Sudo is configured through `/etc/sudoers` and drop-in files in `/etc/sudoers.d/`. The golden rule: do not hand-edit `/etc/sudoers` directly. Use drop-in files in `/etc/sudoers.d/` for managed rules, and use validation whenever you need to ensure the include directive exists.
 
 Ansible's approach to sudo management involves:
 
@@ -53,9 +53,12 @@ The simplest form of sudo access is adding a user to the appropriate group.
     - name: Remove unauthorized users from sudo group
       ansible.builtin.command:
         cmd: "gpasswd -d {{ item }} {{ sudo_group_name }}"
+      register: remove_sudo_group
       loop: "{{ removed_sudo_users | default([]) }}"
-      failed_when: false
-      changed_when: true
+      failed_when:
+        - remove_sudo_group.rc != 0
+        - "'is not a member' not in remove_sudo_group.stderr"
+      changed_when: remove_sudo_group.rc == 0
 ```
 
 The `append: yes` parameter is critical. Without it, the user module would replace all group memberships, potentially breaking things.
@@ -72,10 +75,10 @@ For fine-grained control, create files in `/etc/sudoers.d/`. Always use the `val
   become: yes
 
   tasks:
-    - name: Ensure sudoers.d directory exists and is included
+    - name: Ensure sudoers.d is included
       ansible.builtin.lineinfile:
         path: /etc/sudoers
-        line: "#includedir /etc/sudoers.d"
+        line: "@includedir /etc/sudoers.d"
         state: present
         validate: /usr/sbin/visudo -cf %s
 
