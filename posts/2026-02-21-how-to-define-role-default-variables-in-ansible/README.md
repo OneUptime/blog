@@ -50,11 +50,16 @@ These values are what get used if the role consumer does not set them explicitly
 # roles/myapp/tasks/main.yml
 # Tasks that use the default variables (or overridden values)
 ---
+- name: Create application group
+  ansible.builtin.group:
+    name: "{{ myapp_group }}"
+    system: true
+
 - name: Create application user
   ansible.builtin.user:
     name: "{{ myapp_user }}"
     group: "{{ myapp_group }}"
-    system: yes
+    system: true
     shell: /usr/sbin/nologin
 
 - name: Create install directory
@@ -163,7 +168,7 @@ pool_size = {{ myapp_database.pool_size }}
 
 ## Overriding Defaults
 
-The whole point of defaults is that they are easy to override. Here are the various ways a consumer can override them, listed from lowest to highest precedence:
+The whole point of defaults is that they are easy to override. Here are common ways a consumer can override them:
 
 ### In the playbook roles section:
 
@@ -220,7 +225,7 @@ myapp_user: "myapp"
 # or keep everything in main.yml
 ```
 
-Actually, Ansible only auto-loads `defaults/main.yml` (or `defaults/main/` as a directory of YAML files since Ansible 2.11+). If you want to split defaults, the cleanest approach since Ansible 2.11 is to use a directory:
+Actually, Ansible only auto-loads `defaults/main.yml` (or `defaults/main/` as a directory of YAML files on current Ansible versions). If you want to split defaults, the cleanest approach is to use a directory:
 
 ```text
 roles/myapp/defaults/main/
@@ -255,7 +260,7 @@ myapp_log_format: "json"
 myapp_log_file: "/var/log/myapp/app.log"
 ```
 
-Ansible merges all YAML files from the `defaults/main/` directory automatically.
+Ansible processes all YAML files from the `defaults/main/` directory automatically, in alphabetical order.
 
 ## Boolean Defaults and Feature Flags
 
