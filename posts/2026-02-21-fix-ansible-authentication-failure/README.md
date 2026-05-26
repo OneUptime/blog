@@ -74,7 +74,7 @@ ansible-playbook playbook.yml --ask-become-pass
 
 ```yaml
 # group_vars/all/vault.yml (encrypt with ansible-vault)
-ansible_become_password: "{{ vault_become_password }}"
+ansible_become_password: "your_sudo_password_here"
 ```
 
 ### Fix 5: Passwordless Sudo
@@ -83,7 +83,8 @@ Configure passwordless sudo on the target:
 
 ```bash
 # On the target, add to sudoers
-echo "ansible_user ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/ansible
+echo "ubuntu ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/ansible
+sudo chmod 0440 /etc/sudoers.d/ansible
 ```
 
 ### Fix 6: Wrong become_user
@@ -111,12 +112,12 @@ Authentication failures are credential issues. For SSH, verify the key file path
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these troubleshooting steps apply in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these troubleshooting steps
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -148,7 +149,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -167,8 +168,8 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?PermitRootLogin\s+', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication\s+', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
     - name: Configure firewall rules
@@ -189,7 +190,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -230,7 +231,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these troubleshooting steps
 - name: Robust task execution
   hosts: all
   tasks:
@@ -292,4 +293,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
