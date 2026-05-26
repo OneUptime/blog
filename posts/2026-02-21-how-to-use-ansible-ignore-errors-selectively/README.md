@@ -119,7 +119,7 @@ This pattern lets you tolerate replica failures (maybe one is in maintenance) wh
 
 ## Scoping ignore_errors to Specific Error Codes
 
-Sometimes you want to ignore only certain types of failures. The `ignore_errors` directive is binary, so you need to combine it with `failed_when` to get finer control.
+Sometimes you want to ignore only certain types of failures. The `ignore_errors` directive is binary, so use `failed_when` instead when you need finer control over which outcomes should fail the task.
 
 ```yaml
 # Ignore only "already exists" errors from a command
@@ -204,7 +204,7 @@ Here is a quick summary of when to use and when to avoid `ignore_errors`:
 **Always pair ignore_errors with:**
 - `register` to capture the result
 - Follow-up tasks that check the registered variable
-- `failed_when` when you want to ignore only specific failure types
+- `failed_when` instead when you want to ignore only specific failure types
 - Clear task names that explain why the error is being ignored
 
 ## A Complete Example
