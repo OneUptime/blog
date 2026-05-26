@@ -17,9 +17,10 @@ Before using this plugin, you need a few things in place.
 Install the required collection and Python library:
 
 ```bash
-# Install the community.general Ansible collection
+# Install the community.general redirect and the community.hashi_vault collection
 
 ansible-galaxy collection install community.general
+ansible-galaxy collection install community.hashi_vault
 
 # Install the hvac Python library (HashiCorp Vault API client)
 pip install hvac
@@ -41,7 +42,7 @@ This playbook fetches a database password from Vault:
   tasks:
     - name: Get database password from Vault
       ansible.builtin.debug:
-        msg: "DB password: {{ lookup('community.general.hashi_vault', 'secret/data/myapp/database', token='s.myVaultToken', url='https://vault.example.com:8200') }}"
+        msg: "DB password: {{ lookup('community.general.hashi_vault', 'secret/data/myapp/database:password', token='s.myVaultToken', url='https://vault.example.com:8200') }}"
       no_log: true
 ```
 
@@ -125,13 +126,13 @@ Most Vault deployments use the KV v2 secrets engine, which supports versioning. 
         full_secret: "{{ lookup('community.general.hashi_vault', 'secret/data/myapp/database', token=vault_token, url=vault_url) }}"
       no_log: true
 
-    # The returned data is nested under 'data' for KV v2
+    # The lookup returns the secret fields directly for KV v2
     - name: Use specific fields from the secret
       ansible.builtin.debug:
         msg: |
-          Host: {{ full_secret.data.host }}
-          Port: {{ full_secret.data.port }}
-          Username: {{ full_secret.data.username }}
+          Host: {{ full_secret.host }}
+          Port: {{ full_secret.port }}
+          Username: {{ full_secret.username }}
       # Note: not showing password in debug
 
     # Read a specific key from the secret
@@ -185,20 +186,20 @@ Template:
 ```yaml
 # templates/app_config.yml.j2
 database:
-  host: {{ db_config.data.host }}
-  port: {{ db_config.data.port }}
-  name: {{ db_config.data.name }}
-  username: {{ db_config.data.username }}
-  password: {{ db_config.data.password }}
+  host: {{ db_config.host }}
+  port: {{ db_config.port }}
+  name: {{ db_config.name }}
+  username: {{ db_config.username }}
+  password: {{ db_config.password }}
 
 redis:
-  host: {{ redis_config.data.host }}
-  port: {{ redis_config.data.port }}
-  password: {{ redis_config.data.password }}
+  host: {{ redis_config.host }}
+  port: {{ redis_config.port }}
+  password: {{ redis_config.password }}
 
 api_keys:
-  stripe: {{ api_keys.data.stripe_key }}
-  sendgrid: {{ api_keys.data.sendgrid_key }}
+  stripe: {{ api_keys.stripe_key }}
+  sendgrid: {{ api_keys.sendgrid_key }}
 ```
 
 ## Dynamic Database Credentials
@@ -216,7 +217,7 @@ Vault's database secrets engine can generate temporary credentials. The lookup c
   tasks:
     - name: Request temporary database credentials
       ansible.builtin.set_fact:
-        temp_creds: "{{ lookup('community.general.hashi_vault', 'database/creds/myapp-role', token=vault_token, url=vault_url) }}"
+        temp_creds: "{{ lookup('community.general.hashi_vault', 'database/creds/myapp-role', token=vault_token, url=vault_url, return_format='raw') }}"
       no_log: true
 
     - name: Deploy application with temporary credentials
@@ -225,8 +226,8 @@ Vault's database secrets engine can generate temporary credentials. The lookup c
         dest: /etc/myapp/db.conf
         mode: '0600'
       vars:
-        db_user: "{{ temp_creds.username }}"
-        db_pass: "{{ temp_creds.password }}"
+        db_user: "{{ temp_creds.data.username }}"
+        db_pass: "{{ temp_creds.data.password }}"
       no_log: true
 
     - name: Show credential lease info (not the actual credentials)
@@ -236,7 +237,7 @@ Vault's database secrets engine can generate temporary credentials. The lookup c
 
 ## PKI Certificates from Vault
 
-Vault's PKI engine can issue certificates. Fetch them with the lookup:
+Vault's PKI engine can issue certificates. Issue them with the `community.hashi_vault.vault_write` lookup:
 
 ```yaml
 # playbook.yml - Issue TLS certificates from Vault PKI
@@ -249,18 +250,18 @@ Vault's PKI engine can issue certificates. Fetch them with the lookup:
   tasks:
     - name: Issue certificate from Vault PKI
       ansible.builtin.set_fact:
-        cert_data: "{{ lookup('community.general.hashi_vault', 'pki/issue/webserver', token=vault_token, url=vault_url, method='POST', data={'common_name': inventory_hostname, 'ttl': '720h'}) }}"
+        cert_data: "{{ lookup('community.hashi_vault.vault_write', 'pki/issue/webserver', token=vault_token, url=vault_url, data={'common_name': inventory_hostname, 'ttl': '720h'}) }}"
       no_log: true
 
     - name: Deploy certificate
       ansible.builtin.copy:
-        content: "{{ cert_data.certificate }}"
+        content: "{{ cert_data.data.certificate }}"
         dest: /etc/ssl/certs/server.crt
         mode: '0644'
 
     - name: Deploy private key
       ansible.builtin.copy:
-        content: "{{ cert_data.private_key }}"
+        content: "{{ cert_data.data.private_key }}"
         dest: /etc/ssl/private/server.key
         mode: '0600'
       no_log: true
