@@ -55,7 +55,6 @@ authors:
 description: Infrastructure automation modules and roles for internal use
 license:
   - GPL-3.0-or-later
-license_file: LICENSE
 tags:
   - infrastructure
   - networking
@@ -209,8 +208,13 @@ Create the role's main task file:
 # System hardening tasks for Linux servers
 ---
 - name: Set password quality requirements
-  ansible.builtin.template:
-    src: pwquality.conf.j2
+  ansible.builtin.copy:
+    content: |
+      minlen = 14
+      dcredit = -1
+      ucredit = -1
+      ocredit = -1
+      lcredit = -1
     dest: /etc/security/pwquality.conf
     owner: root
     group: root
