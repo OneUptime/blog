@@ -21,7 +21,7 @@ Ansible callback plugins intercept events during playbook execution. Build one t
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from ansible.plugins.callback import CallbackBase
 
 DOCUMENTATION = '''
@@ -32,14 +32,14 @@ description:
   - Logs every playbook execution with details about
     who, what, where, and when changes occurred.
 requirements:
-  - whitelist in ansible.cfg
+  - enable in ansible.cfg
 '''
 
 class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'aggregate'
     CALLBACK_NAME = 'audit_log'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self):
         super().__init__()
@@ -48,7 +48,7 @@ class CallbackModule(CallbackBase):
             '/var/log/ansible/audit.jsonl'
         )
         self.session = {
-            'start_time': datetime.utcnow().isoformat(),
+            'start_time': self._utc_now(),
             'user': os.environ.get('USER', 'unknown'),
             'awx_user': os.environ.get('AWX_USER', ''),
             'awx_job_id': os.environ.get('AWX_JOB_ID', ''),
@@ -58,9 +58,12 @@ class CallbackModule(CallbackBase):
             'hosts_targeted': [],
         }
 
+    def _utc_now(self):
+        return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
     def _write_log(self, entry):
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
-        with open(self.log_path, 'a') as f:
+        with open(self.log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry) + '\n')
 
     def v2_playbook_on_start(self, playbook):
@@ -77,7 +80,7 @@ class CallbackModule(CallbackBase):
                 'task': result._task.get_name(),
                 'module': result._task.action,
                 'diff': result._result.get('diff', {}),
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': self._utc_now(),
             })
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
@@ -85,11 +88,11 @@ class CallbackModule(CallbackBase):
             'host': result._host.get_name(),
             'task': result._task.get_name(),
             'message': result._result.get('msg', 'unknown error'),
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': self._utc_now(),
         })
 
     def v2_playbook_on_stats(self, stats):
-        self.session['end_time'] = datetime.utcnow().isoformat()
+        self.session['end_time'] = self._utc_now()
         self.session['summary'] = {}
         for host in sorted(stats.processed.keys()):
             s = stats.summarize(host)
@@ -156,12 +159,15 @@ Forward audit logs to your SIEM or logging platform:
 ```yaml
 # templates/filebeat-ansible.yml.j2
 # Filebeat configuration to ship audit logs
-- type: log
+- type: filestream
+  id: ansible-audit
   enabled: true
   paths:
     - /var/log/ansible/audit.jsonl
-  json.keys_under_root: true
-  json.add_error_key: true
+  parsers:
+    - ndjson:
+        target: ""
+        add_error_key: true
   fields:
     source: ansible-audit
     environment: "{{ env_name }}"
@@ -268,7 +274,7 @@ Implement via a post-task:
       text: |
         :clipboard: *Ansible Production Change*
         *User:* {{ lookup('env', 'USER') }}
-        *Playbook:* {{ ansible_play_name }}
+        *Play:* {{ ansible_play_name }}
         *Hosts:* {{ ansible_play_hosts | join(', ') }}
         *Time:* {{ ansible_date_time.iso8601 }}
         *Change Ticket:* {{ change_ticket | default('N/A') }}
