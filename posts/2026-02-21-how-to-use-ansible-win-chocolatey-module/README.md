@@ -23,15 +23,10 @@ Before you can use `win_chocolatey`, the Chocolatey client needs to be installed
   tasks:
     # The win_chocolatey module installs Chocolatey automatically
     # if it is not present, but you can also do it explicitly
-    - name: Install Chocolatey via PowerShell
-      ansible.windows.win_shell: |
-        if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-        } else {
-            Write-Output "Chocolatey already installed"
-        }
+    - name: Ensure Chocolatey is installed
+      chocolatey.chocolatey.win_chocolatey:
+        name: chocolatey
+        state: present
       register: choco_install
 
     - name: Verify Chocolatey installation
@@ -99,14 +94,14 @@ Many Chocolatey packages support custom installation parameters.
         state: present
         package_params: /GitAndUnixToolsOnPath /NoAutoCrlf /WindowsTerminal
 
-    # Install Visual Studio Code with extensions support
+    # Install Visual Studio Code without desktop or QuickLaunch icons
     - name: Install VS Code with context menu entries
       chocolatey.chocolatey.win_chocolatey:
         name: vscode
         state: present
         package_params: /NoDesktopIcon /NoQuicklaunchIcon
 
-    # Install .NET SDK to a specific directory
+    # Install the .NET 8 SDK
     - name: Install .NET 8 SDK
       chocolatey.chocolatey.win_chocolatey:
         name: dotnet-8.0-sdk
@@ -156,16 +151,16 @@ In production, you might want to lock a specific version to prevent automatic up
     - name: Install and pin Java 17
       chocolatey.chocolatey.win_chocolatey:
         name: openjdk17
-        version: '17.0.9'
+        version: '17.0.0'
         state: present
-        pinned: yes
+        pinned: true
 
     # Pin an already-installed package
     - name: Pin current Node.js version
       chocolatey.chocolatey.win_chocolatey:
         name: nodejs-lts
         state: present
-        pinned: yes
+        pinned: true
 ```
 
 ## Removing Packages
@@ -351,7 +346,7 @@ Here is a comprehensive playbook that sets up a development workstation with all
 
     # Generate setup report
     - name: List all installed Chocolatey packages
-      ansible.windows.win_command: choco list --local-only
+      ansible.windows.win_command: choco list
       register: installed_packages
 
     - name: Show installed packages
@@ -399,7 +394,7 @@ Keep track of what is installed across your fleet.
   tasks:
     - name: Get installed packages with versions
       ansible.windows.win_shell: |
-        choco list --local-only --exact -r |
+        choco list -r |
           ForEach-Object {
               $parts = $_ -split '\|'
               [PSCustomObject]@{
