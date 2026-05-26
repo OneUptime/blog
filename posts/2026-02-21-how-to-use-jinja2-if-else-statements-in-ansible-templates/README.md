@@ -124,7 +124,7 @@ password = {{ db_password }}
 
 {% if db_ssl_mode is defined %}
 ssl_mode = {{ db_ssl_mode }}
-{% if db_ssl_cert is defined %}
+{% if db_ssl_cert is defined and db_ssl_key is defined and db_ssl_ca is defined %}
 ssl_cert = {{ db_ssl_cert }}
 ssl_key = {{ db_ssl_key }}
 ssl_ca = {{ db_ssl_ca }}
@@ -279,7 +279,8 @@ Here is a realistic Nginx template with multiple conditional sections.
 {# Full Nginx server block with conditional features #}
 server {
 {% if ssl_enabled %}
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     ssl_certificate {{ ssl_cert_path }};
     ssl_certificate_key {{ ssl_key_path }};
     ssl_protocols TLSv1.2 TLSv1.3;
