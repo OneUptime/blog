@@ -38,7 +38,7 @@ if [ -z "${ANSIBLE_VAULT_PASSWORD}" ]; then
   echo "ERROR: ANSIBLE_VAULT_PASSWORD is not set" >&2
   exit 1
 fi
-echo "${ANSIBLE_VAULT_PASSWORD}"
+printf '%s\n' "${ANSIBLE_VAULT_PASSWORD}"
 ```
 
 Commit this script to your repository (it contains no secrets). The actual password comes from the CI/CD platform at runtime.
@@ -49,7 +49,7 @@ Some teams prefer creating a temporary file during the pipeline run:
 
 ```bash
 # Write the vault password to a temporary file
-echo "${ANSIBLE_VAULT_PASSWORD}" > /tmp/vault_pass.txt
+printf '%s\n' "${ANSIBLE_VAULT_PASSWORD}" > /tmp/vault_pass.txt
 chmod 600 /tmp/vault_pass.txt
 
 # Run the playbook
@@ -96,7 +96,7 @@ jobs:
         run: |
           # Set up SSH key
           mkdir -p ~/.ssh
-          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
           # Make vault password script executable
@@ -146,12 +146,12 @@ jobs:
           # Create vault password scripts for each environment
           cat > /tmp/vault_pass_staging.sh << 'SCRIPT'
           #!/bin/bash
-          echo "${VAULT_PASS_STAGING}"
+          printf '%s\n' "${VAULT_PASS_STAGING}"
           SCRIPT
 
           cat > /tmp/vault_pass_prod.sh << 'SCRIPT'
           #!/bin/bash
-          echo "${VAULT_PASS_PROD}"
+          printf '%s\n' "${VAULT_PASS_PROD}"
           SCRIPT
 
           chmod 700 /tmp/vault_pass_staging.sh /tmp/vault_pass_prod.sh
@@ -182,10 +182,12 @@ deploy_staging:
   before_script:
     - pip install ansible
     - chmod +x vault_pass.sh
-    # Set up SSH for target host access
+    # Set up SSH for target host access. SSH_PRIVATE_KEY is a file-type CI/CD variable.
     - eval $(ssh-agent -s)
-    - echo "${SSH_PRIVATE_KEY}" | ssh-add -
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
     - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
     - echo "${SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
   script:
     # ANSIBLE_VAULT_PASSWORD is set as a masked CI/CD variable in GitLab
