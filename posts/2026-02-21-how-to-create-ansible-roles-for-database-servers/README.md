@@ -122,13 +122,13 @@ pg_backup_retention_days: 14
 - name: Include configuration tasks
   ansible.builtin.include_tasks: configure.yml
 
-- name: Include database creation tasks
-  ansible.builtin.include_tasks: databases.yml
-  when: pg_databases | length > 0
-
 - name: Include user management tasks
   ansible.builtin.include_tasks: users.yml
   when: pg_users | length > 0
+
+- name: Include database creation tasks
+  ansible.builtin.include_tasks: databases.yml
+  when: pg_databases | length > 0
 
 - name: Include backup tasks
   ansible.builtin.include_tasks: backup.yml
@@ -143,19 +143,26 @@ pg_backup_retention_days: 14
     name:
       - gnupg2
       - lsb-release
-      - apt-transport-https
       - ca-certificates
+      - curl
     state: present
     update_cache: yes
 
-- name: Add PostgreSQL GPG key
-  ansible.builtin.apt_key:
+- name: Create PostgreSQL keyring directory
+  ansible.builtin.file:
+    path: /usr/share/postgresql-common/pgdg
+    state: directory
+    mode: '0755'
+
+- name: Add PostgreSQL repository key
+  ansible.builtin.get_url:
     url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    state: present
+    dest: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+    mode: '0644'
 
 - name: Add PostgreSQL repository
   ansible.builtin.apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    repo: "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
     state: present
     filename: pgdg
 
@@ -270,6 +277,7 @@ data_directory = '{{ pg_data_dir }}'
     encoding: "{{ item.encoding | default('UTF8') }}"
     lc_collate: "{{ item.lc_collate | default('en_US.UTF-8') }}"
     lc_ctype: "{{ item.lc_ctype | default('en_US.UTF-8') }}"
+    template: "{{ item.template | default('template0') }}"
     owner: "{{ item.owner | default('postgres') }}"
     state: present
   become_user: postgres
