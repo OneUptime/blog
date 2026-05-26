@@ -16,7 +16,7 @@ This guide covers setting up X-Ray sampling rules, groups, encryption configurat
 
 - Terraform 1.0 or later
 - AWS CLI configured with appropriate permissions
-- Applications instrumented with the X-Ray SDK or OpenTelemetry
+- Applications instrumented with OpenTelemetry, or existing applications using the X-Ray SDK
 - Basic understanding of distributed tracing concepts
 
 ## Provider Configuration
@@ -286,7 +286,7 @@ resource "aws_xray_group" "checkout_flow" {
 # Group for external service calls
 resource "aws_xray_group" "external_calls" {
   group_name        = "external-dependencies"
-  filter_expression = "edge(\"*\", \"*.amazonaws.com\") OR edge(\"*\", \"*.external-api.com\")"
+  filter_expression = "edge(\"payment-service\", \"dynamodb\") OR edge(\"payment-service\", \"api.external-api.com\")"
 
   insights_configuration {
     insights_enabled      = true
@@ -359,7 +359,7 @@ resource "aws_iam_policy" "xray_read" {
 
 ## API Gateway Integration
 
-Enable X-Ray tracing on API Gateway stages.
+Enable X-Ray tracing on API Gateway REST API stages.
 
 ```hcl
 # Enable X-Ray tracing on an API Gateway stage
@@ -373,6 +373,13 @@ resource "aws_api_gateway_stage" "production" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format = jsonencode({
+      requestId = "$context.requestId"
+      ip        = "$context.identity.sourceIp"
+      method    = "$context.httpMethod"
+      route     = "$context.resourcePath"
+      status    = "$context.status"
+    })
   }
 
   tags = {
@@ -380,7 +387,8 @@ resource "aws_api_gateway_stage" "production" {
   }
 }
 
-# For HTTP API (API Gateway V2)
+# HTTP APIs (API Gateway V2) do not support X-Ray tracing.
+# This enables detailed CloudWatch route metrics, not X-Ray traces.
 resource "aws_apigatewayv2_stage" "production" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "production"
@@ -388,9 +396,15 @@ resource "aws_apigatewayv2_stage" "production" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gw_v2.arn
+    format = jsonencode({
+      requestId = "$context.requestId"
+      ip        = "$context.identity.sourceIp"
+      method    = "$context.httpMethod"
+      route     = "$context.routeKey"
+      status    = "$context.status"
+    })
   }
 
-  # Note: HTTP API tracing is configured differently
   default_route_settings {
     detailed_metrics_enabled = true
   }
@@ -435,7 +449,7 @@ resource "aws_iam_role_policy_attachment" "lambda_xray" {
 
 ## ECS Task Definition with X-Ray Daemon
 
-For ECS services, you typically run the X-Ray daemon as a sidecar container.
+For ECS services that still use X-Ray SDK instrumentation, you can run the X-Ray daemon as a sidecar container. As of February 25, 2026, AWS has placed the X-Ray SDKs and daemon in maintenance mode and recommends OpenTelemetry for new instrumentation.
 
 ```hcl
 # ECS task definition with X-Ray daemon sidecar
@@ -494,6 +508,12 @@ resource "aws_ecs_task_definition" "app_with_xray" {
       }
     }
   ])
+}
+
+# Attach the X-Ray write policy to the ECS task role
+resource "aws_iam_role_policy_attachment" "ecs_xray" {
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.xray_write.arn
 }
 ```
 
@@ -561,7 +581,7 @@ resource "aws_xray_sampling_rule" "rules" {
 
 4. **Enable insights for production groups.** X-Ray Insights automatically detects anomalies in your traced services and can alert you before users notice problems.
 
-5. **Use the X-Ray daemon sidecar in ECS.** The daemon batches and buffers trace data, reducing the overhead on your application containers.
+5. **Use the X-Ray daemon sidecar in ECS for existing X-Ray SDK apps.** The daemon batches and buffers trace data, reducing the overhead on your application containers. For new instrumentation, prefer OpenTelemetry because the X-Ray SDKs and daemon are in maintenance mode.
 
 6. **Encrypt with customer-managed keys.** Trace data can contain sensitive information like request paths and headers. Use your own KMS key for better control.
 

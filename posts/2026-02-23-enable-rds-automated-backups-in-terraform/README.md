@@ -8,7 +8,7 @@ Description: Learn how to configure RDS automated backups in Terraform including
 
 ---
 
-Backups are insurance. You hope you never need them, but when you do, nothing else matters. Amazon RDS provides automated backups that include daily snapshots and continuous transaction log archiving, enabling point-in-time recovery to any second within your retention period. Configuring all of this in Terraform means your backup strategy is documented, version-controlled, and consistently applied.
+Backups are insurance. You hope you never need them, but when you do, nothing else matters. Amazon RDS provides automated backups that include daily snapshots and transaction log archiving, enabling point-in-time recovery to any second within your retention period. Configuring all of this in Terraform means your backup strategy is documented, version-controlled, and consistently applied.
 
 This guide covers automated backups, manual snapshots, cross-region backup replication, and the practical considerations that determine whether your backups will actually save you when something goes wrong.
 
@@ -17,7 +17,7 @@ This guide covers automated backups, manual snapshots, cross-region backup repli
 RDS automated backups consist of two components:
 
 1. **Daily snapshots** - storage volume snapshots taken during your configured backup window. The first snapshot contains the full DB instance data, and subsequent snapshots are incremental.
-2. **Transaction logs** - continuously archived to S3, enabling point-in-time recovery
+2. **Transaction logs** - uploaded to S3 every five minutes for DB instances, enabling point-in-time recovery
 
 Together, these allow you to restore to any point within your retention period with up to one-second granularity. The retention period can be 1 to 35 days.
 
@@ -309,7 +309,7 @@ Automated backup storage up to 100% of your provisioned database storage in a Re
 
 Cross-region backup replication adds data transfer costs and storage costs in the destination region.
 
-For a production database with 100GB of allocated storage and 14-day retention, expect the automated backup storage to be roughly 100-200GB depending on your change rate. That is usually well within the free allocation.
+For a production database with 100GB of allocated storage and 14-day retention, expect the automated backup storage to vary with your change rate. The first 100GB of regional backup storage is included for that database, and usage above that is billable.
 
 ## Testing Your Backups
 
@@ -335,4 +335,4 @@ aws rds delete-db-instance \
 
 ## Summary
 
-RDS automated backups in Terraform boil down to setting `backup_retention_period` and `backup_window` on your instance. But a complete backup strategy includes cross-region replication for disaster recovery, monitoring for backup failures, periodic manual snapshots before risky operations, and - most importantly - regular testing of your restore process. All of these can be managed through Terraform, giving you a documented and repeatable backup strategy.
+RDS automated backups in Terraform boil down to setting `backup_retention_period` and `backup_window` on your instance. But a complete backup strategy includes cross-region replication for disaster recovery, monitoring for backup failures, periodic manual snapshots before risky operations, and - most importantly - regular testing of your restore process. Most of the standing backup configuration can be managed through Terraform, giving you a documented and repeatable backup strategy.

@@ -34,7 +34,9 @@ resource "aws_iam_policy" "external_dns" {
       {
         Effect = "Allow"
         Action = [
-          "route53:ChangeResourceRecordSets"
+          "route53:ChangeResourceRecordSets",
+          "route53:ListResourceRecordSets",
+          "route53:ListTagsForResources"
         ]
         Resource = [
           "arn:aws:route53:::hostedzone/${var.route53_zone_id}"
@@ -43,9 +45,7 @@ resource "aws_iam_policy" "external_dns" {
       {
         Effect = "Allow"
         Action = [
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets",
-          "route53:ListTagsForResource"
+          "route53:ListHostedZones"
         ]
         Resource = ["*"]
       }
@@ -83,7 +83,9 @@ resource "helm_release" "external_dns" {
 
   values = [
     yamlencode({
-      provider = "aws"
+      provider = {
+        name = "aws"
+      }
 
       # Only manage records in specific hosted zones
       domainFilters = [var.domain]
@@ -97,10 +99,16 @@ resource "helm_release" "external_dns" {
       policy = "sync"
 
       # AWS-specific settings
-      aws = {
-        region = var.aws_region
-        zoneType = "public"  # or "private"
-      }
+      extraArgs = [
+        "--aws-zone-type=public", # or "private"
+      ]
+
+      env = [
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
+        }
+      ]
 
       # Service account with IRSA annotation
       serviceAccount = {
@@ -166,16 +174,18 @@ resource "helm_release" "external_dns" {
 
   values = [
     yamlencode({
-      provider = "google"
+      provider = {
+        name = "google"
+      }
 
       domainFilters = [var.domain]
       registry      = "txt"
       txtOwnerId    = var.cluster_name
       policy        = "sync"
 
-      google = {
-        project = var.gcp_project
-      }
+      extraArgs = [
+        "--google-project=${var.gcp_project}",
+      ]
 
       serviceAccount = {
         create = true
@@ -197,35 +207,71 @@ resource "helm_release" "external_dns" {
 ## ExternalDNS on Azure
 
 ```hcl
+# Store the Azure provider configuration
+resource "kubernetes_namespace" "external_dns" {
+  metadata {
+    name = "external-dns"
+  }
+}
+
+resource "kubernetes_secret" "external_dns_azure" {
+  metadata {
+    name      = "external-dns-azure"
+    namespace = kubernetes_namespace.external_dns.metadata[0].name
+  }
+
+  data = {
+    "azure.json" = jsonencode({
+      tenantId                    = var.tenant_id
+      subscriptionId              = var.subscription_id
+      resourceGroup               = var.dns_resource_group
+      useManagedIdentityExtension = true
+      userAssignedIdentityID      = var.identity_client_id
+    })
+  }
+}
+
 # Deploy ExternalDNS for Azure DNS
 resource "helm_release" "external_dns" {
   name             = "external-dns"
   repository       = "https://kubernetes-sigs.github.io/external-dns/"
   chart            = "external-dns"
-  namespace        = "external-dns"
-  create_namespace = true
+  namespace        = kubernetes_namespace.external_dns.metadata[0].name
+  create_namespace = false
   version          = "1.14.0"
 
   values = [
     yamlencode({
-      provider = "azure"
+      provider = {
+        name = "azure"
+      }
 
       domainFilters = [var.domain]
       registry      = "txt"
       txtOwnerId    = var.cluster_name
       policy        = "sync"
 
-      azure = {
-        resourceGroup  = var.dns_resource_group
-        tenantId       = var.tenant_id
-        subscriptionId = var.subscription_id
-        useManagedIdentityExtension = true
-      }
-
       # Pod identity label for AAD Pod Identity
       podLabels = {
         "aadpodidbinding" = "external-dns"
       }
+
+      extraVolumes = [
+        {
+          name = "azure-config-file"
+          secret = {
+            secretName = kubernetes_secret.external_dns_azure.metadata[0].name
+          }
+        }
+      ]
+
+      extraVolumeMounts = [
+        {
+          name      = "azure-config-file"
+          mountPath = "/etc/kubernetes"
+          readOnly  = true
+        }
+      ]
 
       sources = [
         "service",
@@ -343,7 +389,9 @@ resource "helm_release" "external_dns" {
 
   values = [
     yamlencode({
-      provider = "aws"
+      provider = {
+        name = "aws"
+      }
 
       # Filter to only manage specific domains
       domainFilters = [
@@ -352,9 +400,9 @@ resource "helm_release" "external_dns" {
       ]
 
       # Or filter by zone ID for more precision
-      zoneIdFilters = [
-        var.public_zone_id,
-        var.private_zone_id
+      extraArgs = [
+        "--zone-id-filter=${var.public_zone_id}",
+        "--zone-id-filter=${var.private_zone_id}",
       ]
 
       # Exclude specific subdomains
@@ -381,15 +429,23 @@ resource "helm_release" "external_dns_private" {
 
   values = [
     yamlencode({
-      provider = "aws"
+      provider = {
+        name = "aws"
+      }
 
       # Only manage the private zone
       domainFilters = ["internal.example.com"]
 
-      aws = {
-        region   = var.aws_region
-        zoneType = "private"
-      }
+      extraArgs = [
+        "--aws-zone-type=private",
+      ]
+
+      env = [
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
+        }
+      ]
 
       # Use a different TXT owner to avoid conflicts
       txtOwnerId = "${var.cluster_name}-private"
@@ -419,7 +475,9 @@ resource "helm_release" "external_dns" {
   values = [
     yamlencode({
       # Dry run mode - logs what it would do without making changes
-      dryRun = true
+      extraArgs = [
+        "--dry-run",
+      ]
 
       # Or use upsert-only to prevent accidental deletions
       policy = "upsert-only"

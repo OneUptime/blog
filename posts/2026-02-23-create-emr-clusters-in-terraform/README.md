@@ -42,10 +42,10 @@ resource "aws_iam_role" "emr_service" {
   }
 }
 
-# Attach the default EMR service policy
+# Attach the current default EMR service policy
 resource "aws_iam_role_policy_attachment" "emr_service" {
   role       = aws_iam_role.emr_service.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEMRServicePolicy_v2"
 }
 
 # IAM role for EC2 instances in the EMR cluster
@@ -70,10 +70,51 @@ resource "aws_iam_role" "emr_ec2" {
   }
 }
 
-# Attach the default EMR EC2 policy
+# Attach a customer-managed policy scoped to the data and services your jobs need.
+# The old AmazonElasticMapReduceforEC2Role managed policy is on the path to deprecation.
+resource "aws_iam_policy" "emr_ec2" {
+  name = "emr-ec2-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket",
+          "s3:PutObject"
+        ]
+        Resource = [
+          aws_s3_bucket.emr_logs.arn,
+          "${aws_s3_bucket.emr_logs.arn}/*",
+          aws_s3_bucket.emr_scripts.arn,
+          "${aws_s3_bucket.emr_scripts.arn}/*",
+          "arn:aws:s3:::my-data-lake",
+          "arn:aws:s3:::my-data-lake/*",
+          "arn:aws:s3:::my-spark-jars",
+          "arn:aws:s3:::my-spark-jars/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetDatabases",
+          "glue:GetTable",
+          "glue:GetTables",
+          "glue:GetPartition",
+          "glue:GetPartitions"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "emr_ec2" {
   role       = aws_iam_role.emr_ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role"
+  policy_arn = aws_iam_policy.emr_ec2.arn
 }
 
 # Instance profile to attach the EC2 role to instances
@@ -94,16 +135,17 @@ resource "aws_emr_cluster" "spark" {
   applications  = ["Spark", "Hadoop", "Hive"]
   service_role  = aws_iam_role.emr_service.arn
 
-  # Terminate the cluster after the last step completes
-  # Set to false if you want a long-running cluster
+  # Keep the cluster running after the last step completes.
+  # Set to false for a transient cluster that shuts down after its steps finish.
   keep_job_flow_alive_when_no_steps = true
 
-  # Use the latest supported EC2 instance type
+  # Use supported EC2 instance types
   ec2_attributes {
     instance_profile                  = aws_iam_instance_profile.emr_ec2.arn
     subnet_id                         = var.private_subnet_id
     emr_managed_master_security_group = aws_security_group.emr_master.id
     emr_managed_slave_security_group  = aws_security_group.emr_core.id
+    service_access_security_group     = aws_security_group.emr_service_access.id
     key_name                          = var.key_pair_name
   }
 
@@ -156,6 +198,7 @@ resource "aws_emr_cluster" "spark" {
   tags = {
     Environment = "production"
     ManagedBy   = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
   }
 }
 
@@ -173,7 +216,7 @@ The `configurations_json` block is where you tune your framework settings. In th
 
 ## Security Groups
 
-EMR requires specific security group rules for the master and core nodes to communicate:
+EMR requires specific security group rules for the primary and core/task nodes to communicate. When you launch EMR in a private subnet, you also need a service access security group so the EMR cluster manager can reach the nodes:
 
 ```hcl
 # Security group for the master node
@@ -208,6 +251,7 @@ resource "aws_security_group" "emr_master" {
   tags = {
     Name      = "emr-master-sg"
     ManagedBy = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
   }
 }
 
@@ -235,6 +279,37 @@ resource "aws_security_group" "emr_core" {
   tags = {
     Name      = "emr-core-sg"
     ManagedBy = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
+  }
+}
+
+# Service access security group required for EMR clusters in private subnets
+resource "aws_security_group" "emr_service_access" {
+  name        = "emr-service-access-sg"
+  description = "Service access security group for EMR in private subnets"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 9443
+    to_port         = 9443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.emr_master.id]
+  }
+
+  egress {
+    from_port       = 8443
+    to_port         = 8443
+    protocol        = "tcp"
+    security_groups = [
+      aws_security_group.emr_master.id,
+      aws_security_group.emr_core.id
+    ]
+  }
+
+  tags = {
+    Name      = "emr-service-access-sg"
+    ManagedBy = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
   }
 }
 ```
@@ -257,6 +332,7 @@ resource "aws_emr_cluster" "spark_with_bootstrap" {
     subnet_id                         = var.private_subnet_id
     emr_managed_master_security_group = aws_security_group.emr_master.id
     emr_managed_slave_security_group  = aws_security_group.emr_core.id
+    service_access_security_group     = aws_security_group.emr_service_access.id
   }
 
   master_instance_group {
@@ -286,6 +362,7 @@ resource "aws_emr_cluster" "spark_with_bootstrap" {
 
   tags = {
     ManagedBy = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
   }
 }
 ```
@@ -320,6 +397,7 @@ resource "aws_emr_cluster" "batch_processing" {
     subnet_id                         = var.private_subnet_id
     emr_managed_master_security_group = aws_security_group.emr_master.id
     emr_managed_slave_security_group  = aws_security_group.emr_core.id
+    service_access_security_group     = aws_security_group.emr_service_access.id
   }
 
   master_instance_group {
@@ -354,6 +432,7 @@ resource "aws_emr_cluster" "batch_processing" {
 
   tags = {
     ManagedBy = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
   }
 }
 ```
@@ -378,6 +457,7 @@ resource "aws_emr_cluster" "fleet_cluster" {
     subnet_id                         = var.private_subnet_id
     emr_managed_master_security_group = aws_security_group.emr_master.id
     emr_managed_slave_security_group  = aws_security_group.emr_core.id
+    service_access_security_group     = aws_security_group.emr_service_access.id
   }
 
   # Master fleet - always on-demand for stability
@@ -421,6 +501,7 @@ resource "aws_emr_cluster" "fleet_cluster" {
 
   tags = {
     ManagedBy = "terraform"
+    for-use-with-amazon-emr-managed-policies = "true"
   }
 }
 ```

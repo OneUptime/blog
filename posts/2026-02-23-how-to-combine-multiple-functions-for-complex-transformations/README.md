@@ -56,12 +56,12 @@ locals {
   ])
   # Result: "my-web-application-production"
 
-  # Build an S3 bucket name (must be globally unique, no uppercase)
-  # Chain: lower -> replace spaces -> replace underscores -> substr to limit length
+  # Build the normalized part of an S3 bucket name
+  # Chain: lower -> replace spaces -> replace underscores -> substr to leave room for a unique suffix
   bucket_name = substr(
     replace(replace(lower("${var.project}_${var.environment}_assets"), " ", "-"), "_", "-"),
     0,
-    63  # S3 bucket name max length
+    50  # S3 bucket names must be 3-63 characters; add a unique suffix in real use
   )
   # Result: "my-web-application-production-assets"
 }
@@ -169,7 +169,7 @@ resource "aws_subnet" "all" {
 
 ## Merging and Overriding Maps
 
-When you have default values that should be overridable per resource, `merge` combined with conditional expressions does the trick:
+When you have default values that should be overridable per resource, `merge` does the trick:
 
 ```hcl
 variable "default_tags" {
@@ -293,15 +293,24 @@ When dealing with optional or potentially missing data, chain `try`, `coalesce`,
 
 ```hcl
 variable "overrides" {
-  type    = map(string)
+  type = object({
+    instance_type         = optional(string)
+    extra_security_groups = optional(list(string), [])
+  })
   default = {}
 }
 
+variable "environment" {
+  default = "dev"
+}
+
 locals {
+  computed_config = {}
+
   # Try to get a value from overrides, fall back to a computed default,
   # then fall back to a static default
   instance_type = coalesce(
-    lookup(var.overrides, "instance_type", null),
+    var.overrides.instance_type,
     try(local.computed_config.instance_type, null),
     "t3.medium"
   )
@@ -341,7 +350,7 @@ locals {
       memory    = container.memory
       essential = true
 
-      # Only include portMappings if a port is specified
+      # Use an empty portMappings list if no port is specified
       portMappings = container.port != null ? [
         { containerPort = container.port, protocol = "tcp" }
       ] : []
@@ -358,7 +367,7 @@ locals {
       secrets = [
         for secret_name in container.secrets : {
           name      = upper(replace(secret_name, "-", "_"))
-          valueFrom = "arn:aws:secretsmanager:us-east-1:123456789:secret:${secret_name}"
+          valueFrom = "arn:aws:secretsmanager:us-east-1:123456789012:secret:${secret_name}"
         }
       ]
 

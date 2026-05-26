@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Debugging, Troubleshooting, Infrastructure as Code, DevOps
 
-Description: A practical guide to debugging common Terragrunt configuration issues, covering log levels, render-json, dependency errors, and the most frequent mistakes teams encounter.
+Description: A practical guide to debugging common Terragrunt configuration issues, covering log levels, render, dependency errors, and the most frequent mistakes teams encounter.
 
 ---
 
@@ -17,11 +17,11 @@ The first thing to do when something goes wrong is increase the log level:
 ```bash
 # Show debug-level output from Terragrunt
 
-export TERRAGRUNT_LOG_LEVEL=debug
+export TG_LOG_LEVEL=debug
 terragrunt plan
 
 # Or pass it as a flag
-terragrunt plan --terragrunt-log-level debug
+terragrunt --log-level debug plan
 ```
 
 Debug logging shows you exactly what Terragrunt is doing: which configuration files it's reading, how it resolves `find_in_parent_folders()`, what commands it's running, and how dependencies are resolved.
@@ -29,20 +29,20 @@ Debug logging shows you exactly what Terragrunt is doing: which configuration fi
 For even more detail:
 
 ```bash
-# Trace level shows everything, including file contents
-terragrunt plan --terragrunt-log-level trace
+# Trace level shows the most verbose Terragrunt details
+terragrunt --log-level trace plan
 ```
 
-## Use render-json to Inspect Resolved Config
+## Use render to Inspect Resolved Config
 
-One of the most useful debugging commands is `render-json`, which shows the fully resolved Terragrunt configuration:
+One of the most useful debugging commands is `render`, which shows the fully resolved Terragrunt configuration:
 
 ```bash
 # Output the resolved config as JSON
-terragrunt render-json
+terragrunt render --format json
 
 # Save to a file for easier reading
-terragrunt render-json --terragrunt-json-out resolved-config.json
+terragrunt render --format json > resolved-config.json
 ```
 
 This shows you exactly what Terragrunt sees after processing all `include` blocks, `locals`, and function calls. It's the fastest way to check if your variables are being resolved correctly.
@@ -73,7 +73,7 @@ This shows you exactly what Terragrunt sees after processing all `include` block
 ERRO[0000] Could not find a terragrunt.hcl file
 ```
 
-This means `find_in_parent_folders()` walked up the directory tree and didn't find a parent `terragrunt.hcl`. Common causes:
+This usually means Terragrunt couldn't find the expected configuration file, or `find_in_parent_folders()` walked up the directory tree and didn't find a parent `terragrunt.hcl`. Common causes:
 
 ```hcl
 # The include path might be wrong
@@ -107,10 +107,10 @@ This happens when module A depends on module B, and module B depends on module A
 
 ```bash
 # Print the dependency graph
-terragrunt graph-dependencies
+terragrunt dag graph
 
 # Output as DOT format for visualization
-terragrunt graph-dependencies | dot -Tpng -o deps.png
+terragrunt dag graph | dot -Tpng -o deps.png
 ```
 
 To fix cycles, you usually need to restructure your modules. A common pattern is extracting shared data into a separate module that both A and B depend on, instead of depending on each other.
@@ -134,7 +134,7 @@ Debug by checking what path is being resolved:
 
 ```bash
 # Check from the module directory
-terragrunt render-json 2>&1 | grep "env.hcl"
+terragrunt render --format json 2>&1 | grep "env.hcl"
 
 # Or manually trace the path
 pwd
@@ -146,20 +146,20 @@ To make this more resilient, provide a fallback:
 ```hcl
 locals {
   # Use a default if the file doesn't exist
-  env_vars = try(
-    read_terragrunt_config(find_in_parent_folders("env.hcl")),
+  env_vars = read_terragrunt_config(
+    find_in_parent_folders("env.hcl", "env.hcl"),
     { locals = { environment = "default" } }
   )
 }
 ```
 
-## Common Error: "Locals Block Not Allowed"
+## Common Error: "Variable Block Not Allowed"
 
 ```text
-ERRO[0000] Error: Unsupported block type "locals"
+ERRO[0000] Error: Unsupported block type "variable"
 ```
 
-This happens when you use Terraform syntax in a Terragrunt file or vice versa. Terragrunt uses `locals` (with an 's'), while Terraform uses `locals` too, but the syntax inside differs:
+This happens when you use Terraform syntax in a Terragrunt file. Terragrunt and Terraform both support top-level `locals` blocks, but Terragrunt does not support Terraform `variable` blocks:
 
 ```hcl
 # Terragrunt locals - this is correct
@@ -186,9 +186,8 @@ When using `generate` blocks, the generated files might not contain what you exp
 terragrunt plan
 
 # Look at what was generated
-ls -la .terragrunt-cache/*/
-cat .terragrunt-cache/*/backend.tf
-cat .terragrunt-cache/*/provider.tf
+find .terragrunt-cache -name backend.tf -print -exec sed -n '1,120p' {} \;
+find .terragrunt-cache -name provider.tf -print -exec sed -n '1,120p' {} \;
 ```
 
 A common issue is string interpolation not working as expected:
@@ -201,10 +200,10 @@ generate "backend" {
   contents  = <<EOF
 terraform {
   backend "s3" {
-    # This won't work - var.region is a Terraform concept
-    region = "${var.region}"
+    # This won't work here - var.region is a Terraform concept
+    # region = "$${var.region}"
 
-    # This works - local.region is a Terragrunt local
+    # This works - local.aws_region is a Terragrunt local
     region = "${local.aws_region}"
   }
 }
@@ -222,7 +221,7 @@ cd ../vpc
 terragrunt output
 
 # Check the dependency configuration
-terragrunt render-json | jq '.dependencies'
+terragrunt render --format json | jq '.dependency'
 ```
 
 If you're getting `null` outputs from dependencies, the dependency module might not have been applied yet. Use `mock_outputs` for plan-time safety:
@@ -242,22 +241,22 @@ dependency "vpc" {
 }
 ```
 
-## Debugging run-all Issues
+## Debugging run --all Issues
 
-When `run-all` behaves unexpectedly, add these flags:
+When `run --all` behaves unexpectedly, add these flags:
 
 ```bash
 # Show which modules will be included
-terragrunt run-all plan --terragrunt-log-level debug 2>&1 | grep "Module"
+terragrunt --log-level debug run --all plan 2>&1 | grep "Module"
 
 # See the execution order
-terragrunt graph-dependencies
+terragrunt dag graph
 
 # Run one module at a time to isolate the problem
-terragrunt run-all plan --terragrunt-parallelism 1
+terragrunt run --all --parallelism 1 -- plan
 ```
 
-If a specific module fails in `run-all` but works on its own, it's likely a dependency issue. Check that dependent modules have been applied and their outputs match what the failing module expects.
+If a specific module fails in `run --all` but works on its own, it's likely a dependency issue. Check that dependent modules have been applied and their outputs match what the failing module expects.
 
 ## Debugging Include Blocks
 
@@ -279,11 +278,11 @@ include "env" {
 To check how includes are resolved:
 
 ```bash
-# render-json shows the merged result
-terragrunt render-json | jq '.include'
+# render shows the merged result
+terragrunt render --format json | jq '.include'
 
 # Debug log shows the resolution order
-terragrunt plan --terragrunt-log-level debug 2>&1 | grep -i "include"
+terragrunt --log-level debug plan 2>&1 | grep -i "include"
 ```
 
 Common include issues:
@@ -316,11 +315,10 @@ When nothing else works, start fresh:
 # Remove all Terragrunt caches
 find . -type d -name ".terragrunt-cache" -exec rm -rf {} + 2>/dev/null
 
-# Remove Terraform caches too
+# Remove Terraform working directories too
 find . -type d -name ".terraform" -exec rm -rf {} + 2>/dev/null
-find . -name ".terraform.lock.hcl" -delete 2>/dev/null
 
-# Clear the plugin cache
+# Clear this plugin cache if you configured Terraform to use it
 rm -rf ~/.terraform.d/plugin-cache/*
 
 # Now try again
@@ -330,4 +328,4 @@ terragrunt plan
 
 ## Summary
 
-Most Terragrunt debugging comes down to three things: checking the resolved configuration with `render-json`, enabling debug logging to see what's happening, and verifying that dependency outputs are what you expect. Start with the highest-level tool (render-json) and work your way down to trace logging only when needed. For performance-related issues, see our [caching and performance guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-caching-and-performance/view).
+Most Terragrunt debugging comes down to three things: checking the resolved configuration with `render`, enabling debug logging to see what's happening, and verifying that dependency outputs are what you expect. Start with the highest-level tool (`render --format json`) and work your way down to trace logging only when needed. For performance-related issues, see our [caching and performance guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-caching-and-performance/view).

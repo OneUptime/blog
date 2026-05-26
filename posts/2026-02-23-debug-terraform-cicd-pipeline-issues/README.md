@@ -42,8 +42,7 @@ For provider-specific issues:
 env:
   TF_LOG: DEBUG
   TF_LOG_PROVIDER: DEBUG     # Extra logging for provider operations
-  # Or target specific provider
-  TF_LOG_PROVIDER_AWS: DEBUG
+  TF_LOG_CORE: WARN          # Optional: reduce Terraform core logging noise
 ```
 
 ## Authentication Failures

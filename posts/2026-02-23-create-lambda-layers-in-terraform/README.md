@@ -17,9 +17,9 @@ This guide covers creating Lambda layers in Terraform, the directory structure l
 A Lambda layer is a ZIP archive that gets extracted into the `/opt` directory of the Lambda execution environment. The runtime automatically adds certain `/opt` subdirectories to the search path:
 
 - **Python**: `/opt/python` and `/opt/python/lib/python3.x/site-packages`
-- **Node.js**: `/opt/nodejs/node_modules`
+- **Node.js**: `/opt/nodejs/node_modules`, `/opt/nodejs/node20/node_modules`, and `/opt/nodejs/node22/node_modules`
 - **Java**: `/opt/java/lib`
-- **Ruby**: `/opt/ruby/gems/3.x.x`
+- **Ruby**: `/opt/ruby/gems/3.4.0` and `/opt/ruby/lib`
 
 This means you need to structure your layer ZIP with the right directory layout for your runtime.
 
@@ -30,8 +30,8 @@ Let's start with the most common case - a Python layer with pip dependencies:
 ```hcl
 # Install dependencies and create the layer ZIP
 
-resource "null_resource" "python_layer_deps" {
-  triggers = {
+resource "terraform_data" "python_layer_deps" {
+  triggers_replace = {
     requirements = filesha256("${path.module}/layers/python/requirements.txt")
   }
 
@@ -40,7 +40,7 @@ resource "null_resource" "python_layer_deps" {
       cd ${path.module}/layers/python
       rm -rf package
       mkdir -p package/python
-      pip install -r requirements.txt -t package/python --platform manylinux2014_x86_64 --only-binary=:all:
+      python3.12 -m pip install -r requirements.txt -t package/python --platform manylinux2014_x86_64 --implementation cp --python-version 3.12 --only-binary=:all:
     EOT
   }
 }
@@ -51,7 +51,7 @@ data "archive_file" "python_layer" {
   source_dir  = "${path.module}/layers/python/package"
   output_path = "${path.module}/layers/python/layer.zip"
 
-  depends_on = [null_resource.python_layer_deps]
+  depends_on = [terraform_data.python_layer_deps]
 }
 
 # Create the Lambda layer
@@ -60,7 +60,7 @@ resource "aws_lambda_layer_version" "python_deps" {
   description         = "Common Python dependencies (requests, boto3, etc.)"
   filename            = data.archive_file.python_layer.output_path
   source_code_hash    = data.archive_file.python_layer.output_base64sha256
-  compatible_runtimes = ["python3.11", "python3.12"]
+  compatible_runtimes = ["python3.12"]
 
   # Optional: compatible architectures
   compatible_architectures = ["x86_64"]
@@ -79,8 +79,8 @@ urllib3==2.1.0
 
 ```hcl
 # Install Node.js dependencies
-resource "null_resource" "node_layer_deps" {
-  triggers = {
+resource "terraform_data" "node_layer_deps" {
+  triggers_replace = {
     package_json = filesha256("${path.module}/layers/nodejs/package.json")
   }
 
@@ -91,7 +91,7 @@ resource "null_resource" "node_layer_deps" {
       mkdir -p package/nodejs
       cp package.json package/nodejs/
       cd package/nodejs
-      npm install --production
+      npm install --omit=dev
     EOT
   }
 }
@@ -101,7 +101,7 @@ data "archive_file" "node_layer" {
   source_dir  = "${path.module}/layers/nodejs/package"
   output_path = "${path.module}/layers/nodejs/layer.zip"
 
-  depends_on = [null_resource.node_layer_deps]
+  depends_on = [terraform_data.node_layer_deps]
 }
 
 resource "aws_lambda_layer_version" "node_deps" {
@@ -109,7 +109,7 @@ resource "aws_lambda_layer_version" "node_deps" {
   description         = "Common Node.js dependencies"
   filename            = data.archive_file.node_layer.output_path
   source_code_hash    = data.archive_file.node_layer.output_base64sha256
-  compatible_runtimes = ["nodejs18.x", "nodejs20.x"]
+  compatible_runtimes = ["nodejs20.x", "nodejs22.x"]
 }
 ```
 
@@ -204,10 +204,10 @@ resource "aws_lambda_function" "worker" {
 
 ## Layer Version Management
 
-Every time you update a layer, Terraform creates a new version. Old versions are not automatically deleted. To manage this:
+Every time you update a layer, AWS creates a new immutable layer version. By default, replacing the Terraform resource also deletes the old version. To keep old versions available:
 
 ```hcl
-# The layer version resource always creates new versions
+# The layer version resource creates a new version when its package changes
 resource "aws_lambda_layer_version" "python_deps" {
   layer_name       = "python-common-deps"
   filename         = data.archive_file.python_layer.output_path
@@ -219,7 +219,7 @@ resource "aws_lambda_layer_version" "python_deps" {
 }
 ```
 
-Setting `skip_destroy = true` keeps old versions around so functions that have not been updated yet can still reference them.
+Setting `skip_destroy = true` keeps old versions around so functions that have not been updated yet can still reference them. Terraform will stop managing those retained old versions, so plan a cleanup process for versions you no longer need.
 
 ## Sharing Layers Across Accounts
 
@@ -261,11 +261,15 @@ resource "aws_lambda_function" "with_aws_layers" {
   filename = data.archive_file.api.output_path
 
   layers = [
-    # AWS Parameters and Secrets Extension
-    "arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:11",
+    # AWS Parameters and Secrets Extension (latest x86_64 ARN in us-east-1)
+    data.aws_ssm_parameter.parameters_secrets_extension.value,
     # Your custom layers
     aws_lambda_layer_version.python_deps.arn,
   ]
+}
+
+data "aws_ssm_parameter" "parameters_secrets_extension" {
+  name = "/aws/service/aws-parameters-and-secrets-lambda-extension/x86/latest"
 }
 ```
 
@@ -300,4 +304,4 @@ output "utils_layer_arn" {
 
 ## Summary
 
-Lambda layers in Terraform are created with `aws_lambda_layer_version` and attached to functions via the `layers` attribute. The key is getting the directory structure right for your runtime - Python code goes in `python/`, Node.js in `nodejs/node_modules/`. Use `null_resource` with `local-exec` to automate dependency installation, set `skip_destroy = true` to preserve old versions during updates, and share layers across accounts with `aws_lambda_layer_version_permission`. Layers reduce deployment size and make dependency management cleaner, but watch the 250MB total limit and the 5-layer-per-function cap.
+Lambda layers in Terraform are created with `aws_lambda_layer_version` and attached to functions via the `layers` attribute. The key is getting the directory structure right for your runtime - Python code goes in `python/`, Node.js in `nodejs/node_modules/`. Use `terraform_data` with `local-exec` to automate dependency installation, set `skip_destroy = true` to preserve old versions during updates, and share layers across accounts with `aws_lambda_layer_version_permission`. Layers reduce deployment size and make dependency management cleaner, but watch the 250MB total limit and the 5-layer-per-function cap.

@@ -8,7 +8,7 @@ Description: A practical guide to connecting AWS Lambda functions to API Gateway
 
 ---
 
-Lambda functions do not expose HTTP endpoints on their own. To make them accessible over the web, you need API Gateway in front of them. API Gateway handles the HTTP routing, request validation, throttling, and authentication, while Lambda handles the business logic. Together they form the backbone of serverless APIs on AWS.
+Lambda functions do not expose HTTP endpoints on their own. To make them accessible over the web, you need API Gateway in front of them. API Gateway handles the HTTP routing, throttling, and authentication, and REST APIs can also handle request validation, while Lambda handles the business logic. Together they form the backbone of serverless APIs on AWS.
 
 Terraform lets you define the entire stack - the Lambda function, the API Gateway, and the wiring between them - in one configuration. This guide covers both the REST API (v1) and HTTP API (v2) flavors of API Gateway, because they have different trade-offs.
 
@@ -22,7 +22,7 @@ If you are starting fresh, the HTTP API is usually the right choice. It is cheap
 resource "aws_lambda_function" "api" {
   function_name = "myapp-api"
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   role          = aws_iam_role.lambda_exec.arn
 
   filename         = data.archive_file.lambda.output_path
@@ -240,11 +240,36 @@ resource "aws_api_gateway_deployment" "main" {
   }
 }
 
+# API Gateway needs an account-level CloudWatch role for REST API logging
+resource "aws_iam_role" "api_gateway_cloudwatch" {
+  name = "myapp-api-gateway-cloudwatch-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "apigateway.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
+  role       = aws_iam_role.api_gateway_cloudwatch.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+resource "aws_api_gateway_account" "main" {
+  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch.arn
+}
+
 # Stage
 resource "aws_api_gateway_stage" "prod" {
   deployment_id = aws_api_gateway_deployment.main.id
   rest_api_id   = aws_api_gateway_rest_api.main.id
   stage_name    = "prod"
+
+  depends_on = [aws_api_gateway_account.main]
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api.arn

@@ -67,7 +67,7 @@ Both the security group and EC2 module depend on the VPC, and the EC2 module als
 
 ## When Implicit Dependencies Are Not Enough
 
-Sometimes there is a dependency that is not captured by resource references. For example, an S3 bucket policy needs to be applied before a CloudFront distribution can access the bucket, but there is no direct reference:
+Sometimes there is a dependency that is not captured by the specific value being referenced. For example, a CloudFront distribution may reference an S3 bucket domain name, but still need an S3 bucket policy in the bucket module to be applied before CloudFront can access the bucket:
 
 ```hcl
 module "s3" {
@@ -81,13 +81,13 @@ module "cdn" {
     bucket_domain_name = module.s3.bucket_domain_name
   }
 
-  # The bucket policy is created inside the CDN module,
-  # but we need the bucket to be fully ready first
+  # The bucket policy is created inside the S3 module,
+  # so wait for the whole module, not just the bucket domain output.
   depends_on = [module.s3]
 }
 ```
 
-Use `depends_on` sparingly. It forces Terraform to wait for the entire module to complete before starting the dependent module, which can slow down applies significantly.
+Use `depends_on` sparingly. When the dependency object is an entire module, Terraform waits for all actions in that module before performing actions in the dependent module, which can make plans more conservative and reduce parallelism.
 
 ## Dependency Injection Pattern
 
@@ -153,22 +153,20 @@ module "backend_sg" {
 }
 
 # Add cross-references after both exist
-resource "aws_security_group_rule" "frontend_to_backend" {
-  type                     = "ingress"
-  security_group_id        = module.backend_sg.id
-  source_security_group_id = module.frontend_sg.id
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
+resource "aws_vpc_security_group_ingress_rule" "frontend_to_backend" {
+  security_group_id            = module.backend_sg.id
+  referenced_security_group_id = module.frontend_sg.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "backend_to_frontend" {
-  type                     = "ingress"
-  security_group_id        = module.frontend_sg.id
-  source_security_group_id = module.backend_sg.id
-  from_port                = 8081
-  to_port                  = 8081
-  protocol                 = "tcp"
+resource "aws_vpc_security_group_ingress_rule" "backend_to_frontend" {
+  security_group_id            = module.frontend_sg.id
+  referenced_security_group_id = module.backend_sg.id
+  from_port                    = 8081
+  to_port                      = 8081
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -223,7 +221,7 @@ data "aws_ssm_parameter" "vpc_id" {
 
 ## Ordering Module Operations
 
-Sometimes you need fine-grained control over ordering. For example, you need to create a KMS key before the RDS instance that uses it, but also need the RDS instance ARN to create a key policy:
+Sometimes you need fine-grained control over ordering. For example, you need to create a KMS key before the RDS instance that uses it, but also need values from both modules to grant an application role access to the key:
 
 ```hcl
 # Step 1: Create KMS key with a permissive initial policy
@@ -239,17 +237,18 @@ module "rds" {
   kms_key_id = module.kms.key_id
 }
 
-# Step 3: Tighten the KMS key policy to only allow RDS
-resource "aws_kms_key_policy" "rds" {
-  key_id = module.kms.key_id
+# Step 3: Grant the application role access after both modules exist
+resource "aws_iam_role_policy" "rds_kms_access" {
+  name = "rds-kms-access"
+  role = module.rds.application_role_name
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect    = "Allow"
-        Principal = { AWS = module.rds.execution_role_arn }
         Action    = ["kms:Decrypt", "kms:GenerateDataKey"]
-        Resource  = "*"
+        Resource  = module.kms.key_arn
       }
     ]
   })

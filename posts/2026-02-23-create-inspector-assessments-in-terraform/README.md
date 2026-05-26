@@ -55,16 +55,30 @@ data "aws_caller_identity" "current" {}
 
 ## Organization-Wide Enablement
 
-For multi-account setups, enable Inspector across the entire organization from the delegated administrator account.
+For multi-account setups, designate the delegated administrator from the AWS Organizations management account, then manage organization configuration and member associations from the delegated administrator account.
 
 ```hcl
+provider "aws" {
+  alias  = "management"
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "security"
+  region = "us-east-1"
+}
+
 # Designate a delegated administrator for Inspector
 resource "aws_inspector2_delegated_admin_account" "security" {
+  provider = aws.management
+
   account_id = var.security_account_id
 }
 
 # Auto-enable Inspector for new accounts in the organization
 resource "aws_inspector2_organization_configuration" "main" {
+  provider = aws.security
+
   auto_enable {
     ec2         = true
     ecr         = true
@@ -77,6 +91,8 @@ resource "aws_inspector2_organization_configuration" "main" {
 
 # Associate member accounts
 resource "aws_inspector2_member_association" "accounts" {
+  provider = aws.security
+
   for_each = toset(var.member_account_ids)
 
   account_id = each.value
@@ -156,10 +172,10 @@ resource "aws_inspector2_filter" "accepted_cve" {
   }
 }
 
-# Suppress network reachability findings for public-facing ALBs
-resource "aws_inspector2_filter" "public_alb" {
-  name        = "suppress-public-alb-network-findings"
-  description = "Suppress network exposure findings for intentionally public ALBs"
+# Suppress network reachability findings for intentionally public EC2 instances
+resource "aws_inspector2_filter" "public_ec2_instances" {
+  name        = "suppress-public-ec2-network-findings"
+  description = "Suppress network exposure findings for intentionally public EC2 instances"
   action      = "SUPPRESS"
 
   filter_criteria {
@@ -194,7 +210,7 @@ resource "aws_cloudwatch_event_rule" "inspector_critical" {
 
   event_pattern = jsonencode({
     source      = ["aws.inspector2"]
-    detail-type = ["Inspector2 Finding"]
+    "detail-type" = ["Inspector2 Finding"]
     detail = {
       severity = ["CRITICAL", "HIGH"]
       status   = ["ACTIVE"]
@@ -257,15 +273,10 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 Configure how Inspector scans container images in ECR.
 
 ```hcl
-# ECR repository with enhanced scanning
+# ECR repository; enhanced scanning is configured at the registry level
 resource "aws_ecr_repository" "app" {
   name                 = "my-application"
   image_tag_mutability = "IMMUTABLE"
-
-  image_scanning_configuration {
-    # Enhanced scanning is managed by Inspector
-    scan_on_push = true
-  }
 
   encryption_configuration {
     encryption_type = "KMS"
@@ -292,12 +303,48 @@ resource "aws_ecr_registry_scanning_configuration" "main" {
 }
 ```
 
-## CloudWatch Dashboard for Inspector Metrics
+## CloudWatch Dashboard for Inspector Alerts
 
-Create a dashboard to monitor vulnerability trends.
+Create custom CloudWatch metrics from the Inspector EventBridge feed, then build a dashboard from those metrics.
 
 ```hcl
-# CloudWatch dashboard for Inspector findings
+# Log group for Inspector finding events
+resource "aws_cloudwatch_log_group" "inspector_findings" {
+  name              = "/aws/events/inspector-findings"
+  retention_in_days = 90
+}
+
+resource "aws_cloudwatch_event_target" "inspector_to_logs" {
+  rule      = aws_cloudwatch_event_rule.inspector_critical.name
+  target_id = "send-to-cloudwatch-logs"
+  arn       = aws_cloudwatch_log_group.inspector_findings.arn
+}
+
+resource "aws_cloudwatch_log_metric_filter" "inspector_critical" {
+  name           = "inspector-critical-findings"
+  log_group_name = aws_cloudwatch_log_group.inspector_findings.name
+  pattern        = "{ $.detail.severity = \"CRITICAL\" }"
+
+  metric_transformation {
+    name      = "CriticalFindings"
+    namespace = "InspectorFindings"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "inspector_high" {
+  name           = "inspector-high-findings"
+  log_group_name = aws_cloudwatch_log_group.inspector_findings.name
+  pattern        = "{ $.detail.severity = \"HIGH\" }"
+
+  metric_transformation {
+    name      = "HighFindings"
+    namespace = "InspectorFindings"
+    value     = "1"
+  }
+}
+
+# CloudWatch dashboard for Inspector alert events
 resource "aws_cloudwatch_dashboard" "inspector" {
   dashboard_name = "inspector-findings-overview"
 
@@ -311,33 +358,13 @@ resource "aws_cloudwatch_dashboard" "inspector" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/Inspector2", "FindingsCount", "Severity", "CRITICAL"],
-            [".", ".", ".", "HIGH"],
-            [".", ".", ".", "MEDIUM"],
+            ["InspectorFindings", "CriticalFindings"],
+            [".", "HighFindings"],
           ]
           period = 86400
-          stat   = "Maximum"
+          stat   = "Sum"
           region = "us-east-1"
-          title  = "Inspector Findings by Severity"
-          view   = "timeSeries"
-        }
-      },
-      {
-        type   = "metric"
-        x      = 12
-        y      = 0
-        width  = 12
-        height = 6
-        properties = {
-          metrics = [
-            ["AWS/Inspector2", "FindingsCount", "ResourceType", "AWS_EC2_INSTANCE"],
-            [".", ".", ".", "AWS_ECR_CONTAINER_IMAGE"],
-            [".", ".", ".", "AWS_LAMBDA_FUNCTION"],
-          ]
-          period = 86400
-          stat   = "Maximum"
-          region = "us-east-1"
-          title  = "Inspector Findings by Resource Type"
+          title  = "Inspector Critical and High Finding Events"
           view   = "timeSeries"
         }
       }
@@ -354,6 +381,47 @@ Export Inspector findings to S3 for long-term retention and analysis.
 # S3 bucket for Inspector findings export
 resource "aws_s3_bucket" "inspector_findings" {
   bucket = "my-org-inspector-findings-export"
+}
+
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+data "aws_iam_policy_document" "inspector_findings_bucket" {
+  statement {
+    sid    = "AllowInspectorExport"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["inspector2.amazonaws.com"]
+    }
+
+    actions = [
+      "s3:PutObject",
+      "s3:PutObjectAcl",
+      "s3:AbortMultipartUpload",
+    ]
+
+    resources = ["${aws_s3_bucket.inspector_findings.arn}/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:inspector2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:report/*"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "inspector_findings" {
+  bucket = aws_s3_bucket.inspector_findings.id
+  policy = data.aws_iam_policy_document.inspector_findings_bucket.json
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "inspector_findings" {
@@ -390,6 +458,55 @@ resource "aws_kms_key" "inspector" {
   description             = "KMS key for Inspector findings export"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+}
+
+data "aws_iam_policy_document" "inspector_kms" {
+  statement {
+    sid    = "EnableIAMUserPermissions"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowInspectorExport"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["inspector2.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey*",
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:inspector2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:report/*"]
+    }
+  }
+}
+
+resource "aws_kms_key_policy" "inspector" {
+  key_id = aws_kms_key.inspector.id
+  policy = data.aws_iam_policy_document.inspector_kms.json
 }
 ```
 
@@ -430,7 +547,7 @@ resource "aws_iam_policy" "inspector_viewer" {
 
 3. **Route critical findings to alerts.** Use EventBridge to send critical and high findings to your alerting system immediately.
 
-4. **Scan container images on push.** Configure ECR with enhanced scanning and continuous scan frequency so vulnerabilities are caught before deployment.
+4. **Continuously scan container images.** Configure ECR with enhanced scanning and continuous scan frequency so new vulnerabilities are detected after images are pushed.
 
 5. **Enable organization-wide.** Use the delegated administrator and auto-enable features to ensure new accounts get Inspector coverage automatically.
 
