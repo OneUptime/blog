@@ -87,11 +87,11 @@ The permission parameters are:
 - **read**: Read-only access
 - **deny**: Explicitly denied access
 
-Each parameter accepts a single user/group or a comma-separated list of users/groups.
+Each parameter accepts a single user/group or a comma-separated string of users/groups.
 
 ## Multiple Permission Entries
 
-When you need to grant the same permission level to multiple groups, pass them as a list:
+When you need to grant the same permission level to multiple groups, pass them as a comma-separated string:
 
 ```yaml
 # playbook-multi-perms.yml
@@ -111,12 +111,8 @@ When you need to grant the same permission level to multiple groups, pass them a
         path: C:\ProjectData
         state: present
         full: DOMAIN\ITAdmins
-        change:
-          - DOMAIN\TeamAlpha
-          - DOMAIN\TeamBeta
-          - DOMAIN\TeamGamma
-        read:
-          - DOMAIN\AllEmployees
+        change: DOMAIN\TeamAlpha,DOMAIN\TeamBeta,DOMAIN\TeamGamma
+        read: DOMAIN\AllEmployees
 ```
 
 ## Configuring Caching Options
@@ -186,33 +182,42 @@ Here is a complete playbook that sets up a Windows file server with multiple dep
       - name: Finance
         path: C:\Shares\Finance
         description: Finance department files
-        full: DOMAIN\FinanceManagers
-        change: DOMAIN\FinanceStaff
-        read: DOMAIN\Auditors
+        full:
+          - DOMAIN\FinanceManagers
+        change:
+          - DOMAIN\FinanceStaff
+        read:
+          - DOMAIN\Auditors
         caching: None
 
       - name: Engineering
         path: C:\Shares\Engineering
         description: Engineering team files
-        full: DOMAIN\EngineeringLeads
-        change: DOMAIN\Engineers
+        full:
+          - DOMAIN\EngineeringLeads
+        change:
+          - DOMAIN\Engineers
         read: []
         caching: Manual
 
       - name: HR
         path: C:\Shares\HR
         description: Human Resources files
-        full: DOMAIN\HRManagers
-        change: DOMAIN\HRStaff
+        full:
+          - DOMAIN\HRManagers
+        change:
+          - DOMAIN\HRStaff
         read: []
         caching: None
 
       - name: Software
         path: C:\Shares\Software
         description: Software distribution point
-        full: DOMAIN\ITAdmins
+        full:
+          - DOMAIN\ITAdmins
         change: []
-        read: DOMAIN\AllEmployees
+        read:
+          - DOMAIN\AllEmployees
         caching: Programs
 
   tasks:
@@ -235,9 +240,9 @@ Here is a complete playbook that sets up a Windows file server with multiple dep
         description: "{{ item.description }}"
         path: "{{ item.path }}"
         state: present
-        full: "{{ item.full if item.full else omit }}"
-        change: "{{ item.change if item.change else omit }}"
-        read: "{{ item.read if item.read else omit }}"
+        full: "{{ item.full | join(',') if item.full else omit }}"
+        change: "{{ item.change | join(',') if item.change else omit }}"
+        read: "{{ item.read | join(',') if item.read else omit }}"
         caching_mode: "{{ item.caching }}"
       loop: "{{ shares }}"
       loop_control:
@@ -264,6 +269,45 @@ Here is a complete playbook that sets up a Windows file server with multiple dep
       loop: "{{ shares }}"
       loop_control:
         label: "{{ item.name }}"
+
+    - name: Set NTFS permissions - full control groups
+      ansible.windows.win_acl:
+        path: "{{ item.0.path }}"
+        user: "{{ item.1 }}"
+        rights: FullControl
+        type: allow
+        state: present
+        inherit: ContainerInherit, ObjectInherit
+        propagation: None
+      loop: "{{ shares | subelements('full') }}"
+      loop_control:
+        label: "{{ item.0.name }} - {{ item.1 }}"
+
+    - name: Set NTFS permissions - change groups
+      ansible.windows.win_acl:
+        path: "{{ item.0.path }}"
+        user: "{{ item.1 }}"
+        rights: Modify
+        type: allow
+        state: present
+        inherit: ContainerInherit, ObjectInherit
+        propagation: None
+      loop: "{{ shares | subelements('change') }}"
+      loop_control:
+        label: "{{ item.0.name }} - {{ item.1 }}"
+
+    - name: Set NTFS permissions - read groups
+      ansible.windows.win_acl:
+        path: "{{ item.0.path }}"
+        user: "{{ item.1 }}"
+        rights: ReadAndExecute
+        type: allow
+        state: present
+        inherit: ContainerInherit, ObjectInherit
+        propagation: None
+      loop: "{{ shares | subelements('read') }}"
+      loop_control:
+        label: "{{ item.0.name }} - {{ item.1 }}"
 ```
 
 ## Share Permissions vs NTFS Permissions
