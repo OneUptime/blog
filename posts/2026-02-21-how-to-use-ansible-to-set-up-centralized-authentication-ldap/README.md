@@ -63,6 +63,7 @@ This playbook installs SSSD and LDAP client packages:
           - ldap-utils
           - libpam-sss
           - libnss-sss
+          - libsss-sudo
         state: present
         update_cache: true
       when: ansible_os_family == "Debian"
@@ -74,6 +75,7 @@ This playbook installs SSSD and LDAP client packages:
           - sssd-ldap
           - sssd-tools
           - openldap-clients
+          - oddjob-mkhomedir
         state: present
       when: ansible_os_family == "RedHat"
 
@@ -244,6 +246,18 @@ This playbook configures NSS and PAM to use SSSD:
         line: "session required pam_mkhomedir.so skel=/etc/skel/ umask=0077"
         insertafter: "session.*pam_unix.so"
       when: ansible_os_family == "Debian"
+
+    - name: Configure PAM and NSS for SSSD (RHEL/CentOS)
+      ansible.builtin.command: authselect select sssd with-mkhomedir with-sudo --force
+      when: ansible_os_family == "RedHat"
+      changed_when: true
+
+    - name: Enable and start oddjobd for home directory creation (RHEL/CentOS)
+      ansible.builtin.service:
+        name: oddjobd
+        state: started
+        enabled: true
+      when: ansible_os_family == "RedHat"
 ```
 
 ## Deploying LDAP CA Certificate
@@ -367,17 +381,17 @@ This playbook restricts login to members of specific LDAP groups:
     - name: Build access filter based on server groups
       ansible.builtin.set_fact:
         ldap_access_groups: >-
-          {% set groups = allowed_groups.all | default([]) %}
+          {% set ns = namespace(groups=allowed_groups.all | default([])) %}
           {% for grp in group_names %}
-          {% set groups = groups + (allowed_groups[grp] | default([])) %}
+          {% set ns.groups = ns.groups + (allowed_groups[grp] | default([])) %}
           {% endfor %}
-          {{ groups | unique }}
+          {{ ns.groups | unique | list }}
 
     - name: Update SSSD access filter
       ansible.builtin.lineinfile:
         path: /etc/sssd/sssd.conf
         regexp: "^ldap_access_filter"
-        line: "ldap_access_filter = (&(objectClass=posixAccount)(|({% for g in ldap_access_groups %}memberOf=cn={{ g }},ou=Groups,dc=example,dc=com{% if not loop.last %})( {% endif %}{% endfor %})))"
+        line: "ldap_access_filter = (&(objectClass=posixAccount)(|{% for g in ldap_access_groups %}(memberOf=cn={{ g }},ou=Groups,dc=example,dc=com){% endfor %}))"
         insertafter: "access_provider"
       notify: restart sssd
 
