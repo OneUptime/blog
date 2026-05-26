@@ -37,11 +37,11 @@ graph LR
     end
 ```
 
-The first connection goes through the full SSH handshake. Every subsequent connection detects the Unix socket and tunnels through the existing connection instantly.
+The first connection goes through the full SSH handshake. Every subsequent connection detects the Unix socket and opens a new SSH session over the existing connection.
 
 ## Enabling SSH Multiplexing in Ansible
 
-Ansible uses three SSH options to control multiplexing:
+Ansible uses these SSH connection settings to control multiplexing:
 
 ```ini
 # ansible.cfg
@@ -57,8 +57,9 @@ control_path = %(directory)s/%%C
 Controls whether to create or use a multiplexed connection:
 
 - `auto` - Create a master if one does not exist, reuse if it does (recommended)
-- `yes` - Always create a new master (not useful for Ansible)
+- `yes` - Create a master that listens on the configured control socket (more useful for manually starting a master than for Ansible)
 - `no` - Never multiplex
+- `ask` - Like yes but ask before accepting multiplexed connections (not useful for automation)
 - `autoask` - Like auto but ask before creating (not useful for automation)
 
 ### ControlPersist
@@ -221,7 +222,7 @@ ssh -O stop -S ~/.ansible/cp/abcdef1234567890 user@host
 # Exit a connection immediately
 ssh -O exit -S ~/.ansible/cp/abcdef1234567890 user@host
 
-# Remove all sockets (force cleanup)
+# Remove stale socket files (does not stop already-running masters)
 rm -f ~/.ansible/cp/*
 ```
 
@@ -290,11 +291,11 @@ chmod 700 ~/.ansible/cp
 
 ### Multiplexing with Sudo
 
-When using `become: yes`, the multiplexed connection still works because privilege escalation happens after the SSH connection is established. No special configuration is needed.
+When using `become: yes`, the multiplexed connection still works because privilege escalation happens after the SSH connection is established. No special configuration is needed for multiplexing itself. If you also enable Ansible pipelining with sudo, make sure `requiretty` is disabled in sudoers on the managed hosts.
 
 ## Multiplexing with Parallel Forks
 
-Multiplexing works alongside Ansible's fork-based parallelism. Each fork creates its own master connection to its assigned host:
+Multiplexing works alongside Ansible's fork-based parallelism. Each host connection can have its own master socket while Ansible runs hosts in parallel:
 
 ```ini
 # ansible.cfg
@@ -302,11 +303,11 @@ Multiplexing works alongside Ansible's fork-based parallelism. Each fork creates
 forks = 20  # 20 hosts in parallel
 
 [ssh_connection]
-# Each of the 20 forks gets its own multiplexed connection
+# Each host can reuse its own multiplexed connection
 ssh_args = -o ControlMaster=auto -o ControlPersist=120s
 ```
 
-With 20 forks and 20 hosts, you get 20 multiplexed connections. Each host has one master connection that all tasks for that host share.
+With 20 forks and 20 hosts, you can have up to 20 multiplexed master connections. Each host has one master connection that tasks for that host can reuse.
 
 ## Multiplexing and Connection Limits
 
@@ -318,7 +319,7 @@ Be aware of server-side connection limits:
 grep MaxSessions /etc/ssh/sshd_config
 ```
 
-If `MaxSessions` is set too low, you might see errors when Ansible tries to multiplex too many sessions. Increase it:
+If `MaxSessions` is set too low, multiplexed connections can fail when multiple shell, login, or subsystem sessions are opened over the same SSH connection. Increase it if your workload actually hits that limit:
 
 ```ini
 # On the remote server's /etc/ssh/sshd_config
