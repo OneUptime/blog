@@ -21,7 +21,7 @@ Here is the simplest case, adding a repository with its URL and GPG key:
   ansible.builtin.yum_repository:
     name: epel
     description: Extra Packages for Enterprise Linux
-    baseurl: https://dl.fedoraproject.org/pub/epel/$releasever/$basearch/
+    metalink: "https://mirrors.fedoraproject.org/metalink?repo=epel-$releasever&arch=$basearch"
     gpgcheck: yes
     gpgkey: https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-$releasever
     enabled: yes
@@ -181,7 +181,7 @@ This deletes the corresponding `.repo` file from `/etc/yum.repos.d/`.
 Here is a full workflow that adds the Docker repository and installs Docker:
 
 ```yaml
-# Set up Docker on RHEL/CentOS
+# Set up Docker on CentOS
 - name: Set up Docker repository and install
   hosts: docker_hosts
   become: yes
@@ -189,9 +189,7 @@ Here is a full workflow that adds the Docker repository and installs Docker:
     - name: Install prerequisite packages
       ansible.builtin.dnf:
         name:
-          - yum-utils
-          - device-mapper-persistent-data
-          - lvm2
+          - dnf-plugins-core
         state: present
 
     - name: Add Docker CE repository
@@ -266,7 +264,7 @@ The `yum_repository` module supports the full range of yum/dnf repo options. Her
 | `baseurl` | URL to the repository | - |
 | `metalink` | Metalink URL | - |
 | `mirrorlist` | Mirror list URL | - |
-| `gpgcheck` | Enable GPG signature checking | yes |
+| `gpgcheck` | Enable GPG signature checking | System setting |
 | `gpgkey` | URL to the GPG key | - |
 | `enabled` | Enable the repository | yes |
 | `priority` | Repository priority (lower = higher) | 99 |
