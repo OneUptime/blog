@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Variable, Playbook, DevOps
 
-Description: Learn every way to define variables in Ansible playbooks including inline vars, var files, extra vars, inventory vars, and registered variables.
+Description: Learn common ways to define variables in Ansible playbooks including inline vars, var files, extra vars, and registered variables.
 
 ---
 
-Variables are the foundation of reusable Ansible playbooks. Without them, you would be hardcoding values everywhere and maintaining separate playbooks for each environment. Ansible gives you many places to define variables, each with its own scope and precedence. In this post, I will cover every method for defining variables in playbooks, explain when to use each one, and show practical examples.
+Variables are the foundation of reusable Ansible playbooks. Without them, you would be hardcoding values everywhere and maintaining separate playbooks for each environment. Ansible gives you many places to define variables, each with its own scope and precedence. In this post, I will cover common methods for defining variables in playbooks, explain when to use each one, and show practical examples.
 
 ## Method 1: Inline vars in a Play
 
@@ -117,7 +117,7 @@ ansible-playbook deploy.yml -e '{"deploy_version": "2.5.0", "rollback": false}'
 ansible-playbook deploy.yml -e "@vars/release-2.5.0.yml"
 ```
 
-Extra variables have the highest precedence in Ansible, which means they override variables defined anywhere else. This makes them ideal for one-off overrides during deployment.
+Extra variables have the highest precedence among Ansible variables, which means they override other variable definitions. This makes them ideal for one-off overrides during deployment.
 
 ## Method 4: Task-Level vars
 
@@ -291,7 +291,7 @@ Ansible supports several data types for variables:
 
 ```yaml
 # vars/datatypes.yml
-# Examples of all supported variable data types
+# Examples of common supported variable data types
 
 # Strings
 app_name: "mywebapp"
