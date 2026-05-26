@@ -72,7 +72,8 @@ graph TD
   community.docker.docker_image:
     name: "{{ registry }}/{{ image_name }}"
     tag: "staging-{{ promote_version }}"
-    repository: "{{ registry }}/{{ image_name }}"
+    repository: "{{ registry }}/{{ image_name }}:{{ item }}"
+    force_tag: true
     push: true
     source: local
   loop:
@@ -85,23 +86,22 @@ graph TD
 
 ```yaml
 # roles/image_tags/tasks/cleanup.yml
-# Remove old image tags from registry and local storage
+# Remove old image tags from local storage
 - name: List local images
   community.docker.docker_image_info:
-    name: "{{ registry }}/{{ image_name }}"
   register: local_images
 
 - name: Remove old local images
   community.docker.docker_image:
-    name: "{{ item.RepoTags[0].split(':')[0] }}"
-    tag: "{{ item.RepoTags[0].split(':')[1] }}"
+    name: "{{ item.1 | regex_replace(':[^/:]+$', '') }}"
+    tag: "{{ item.1 | regex_replace('^.+:', '') }}"
     state: absent
-  loop: "{{ local_images.images }}"
+  loop: "{{ local_images.images | subelements('RepoTags', skip_missing=True) }}"
   when:
-    - item.RepoTags | length > 0
-    - item.RepoTags[0].split(':')[1] not in protected_tags
+    - item.1.startswith(registry ~ '/' ~ image_name ~ ':')
+    - (item.1 | regex_replace('^.+:', '')) not in protected_tags
   loop_control:
-    label: "{{ item.RepoTags | default(['untagged']) }}"
+    label: "{{ item.1 }}"
 ```
 
 
@@ -144,7 +144,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
