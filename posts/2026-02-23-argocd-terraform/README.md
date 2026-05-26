@@ -35,7 +35,7 @@ resource "helm_release" "argocd" {
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-cd"
   namespace  = kubernetes_namespace.argocd.metadata[0].name
-  version    = "5.55.0"
+  version    = "9.5.15"
 
   values = [
     yamlencode({
@@ -66,9 +66,8 @@ resource "helm_release" "argocd" {
             hosts      = ["argocd.${var.domain}"]
           }]
           annotations = {
-            "cert-manager.io/cluster-issuer"                    = "letsencrypt-prod"
-            "nginx.ingress.kubernetes.io/ssl-passthrough"       = "true"
-            "nginx.ingress.kubernetes.io/backend-protocol"      = "HTTPS"
+            "cert-manager.io/cluster-issuer"               = "letsencrypt-prod"
+            "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
           }
         }
 
@@ -118,32 +117,20 @@ resource "bcrypt_hash" "argocd_password" {
   cleartext = var.argocd_admin_password
 }
 
-# Set the admin password via a Kubernetes secret
-resource "kubernetes_secret" "argocd_admin" {
-  metadata {
-    name      = "argocd-secret"
-    namespace = "argocd"
+# Set the admin password through the ArgoCD Helm chart
+resource "helm_release" "argocd" {
+  # ... base config from above ...
 
-    labels = {
-      "app.kubernetes.io/name"    = "argocd-secret"
-      "app.kubernetes.io/part-of" = "argocd"
-    }
-  }
-
-  data = {
-    "admin.password"      = bcrypt_hash.argocd_password.id
-    "admin.passwordMtime" = timestamp()
-  }
-
-  type = "Opaque"
-
-  depends_on = [helm_release.argocd]
-
-  lifecycle {
-    ignore_changes = [
-      data["admin.passwordMtime"]
-    ]
-  }
+  values = [
+    yamlencode({
+      configs = {
+        secret = {
+          argocdServerAdminPassword      = bcrypt_hash.argocd_password.id
+          argocdServerAdminPasswordMtime = timestamp()
+        }
+      }
+    })
+  ]
 }
 ```
 
@@ -307,7 +294,7 @@ spec:
   # Sync windows - only allow syncs during business hours
   syncWindows:
     - kind: allow
-      schedule: "0 8-18 * * 1-5"
+      schedule: "0 8 * * 1-5"
       duration: 10h
       applications:
         - "*"
@@ -417,7 +404,22 @@ YAML
 Configure ArgoCD notifications to alert on sync status changes.
 
 ```hcl
-# Install ArgoCD Notifications (included in modern ArgoCD)
+# Configure ArgoCD Notifications (included in modern ArgoCD)
+resource "kubectl_manifest" "notification_secret" {
+  yaml_body = <<YAML
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+type: Opaque
+stringData:
+  slack-token: ${var.slack_token}
+YAML
+
+  depends_on = [helm_release.argocd]
+}
+
 resource "kubectl_manifest" "notification_config" {
   yaml_body = <<YAML
 apiVersion: v1
@@ -455,7 +457,10 @@ data:
         }]
 YAML
 
-  depends_on = [helm_release.argocd]
+  depends_on = [
+    helm_release.argocd,
+    kubectl_manifest.notification_secret,
+  ]
 }
 ```
 
