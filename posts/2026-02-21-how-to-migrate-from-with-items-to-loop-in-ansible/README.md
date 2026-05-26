@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Migration, Best Practice, Automation
 
-Description: Learn how to migrate your Ansible playbooks from the deprecated with_items syntax to the modern loop keyword with practical before-and-after examples.
+Description: Learn how to migrate your Ansible playbooks from the older with_items syntax to the modern loop keyword with practical before-and-after examples.
 
 ---
 
-If you have been working with Ansible for a while, your playbooks probably contain plenty of `with_items` statements. The `with_items` keyword was the original way to iterate over lists in Ansible, but starting with Ansible 2.5, the `loop` keyword became the recommended replacement. While `with_items` still works today, it is considered legacy syntax, and all new playbooks should use `loop`.
+If you have been working with Ansible for a while, your playbooks probably contain plenty of `with_items` statements. The `with_items` keyword was the original way to iterate over lists in Ansible, but starting with Ansible 2.5, the `loop` keyword became the recommended replacement for most use cases. While `with_items` still works today and has not been deprecated, it is older syntax, and new playbooks generally should use `loop`.
 
 This post walks through the migration process with clear before-and-after comparisons, covers the edge cases, and explains the subtle behavioral differences you need to watch out for.
 
@@ -16,9 +16,9 @@ This post walks through the migration process with clear before-and-after compar
 
 There are several reasons to move from `with_items` to `loop`:
 
-1. **Consistency**: `loop` is a single keyword that replaces over a dozen `with_*` variants (with_items, with_dict, with_nested, with_fileglob, etc.)
+1. **Consistency**: `loop` is a single keyword that can replace many `with_*` variants when combined with filters (with_items, with_dict, with_nested, and others)
 2. **Clarity**: `loop` makes it explicit what you are iterating over, especially when combined with filters
-3. **Future-proofing**: Ansible documentation promotes `loop` as the standard, and future features will be built around it
+3. **Future-proofing**: Ansible documentation recommends `loop` for most use cases, so it is the best default for new tasks
 4. **Filter compatibility**: `loop` works naturally with Jinja2 filters for transforming data before iteration
 
 ## The Simple Case
@@ -112,17 +112,17 @@ After (loop needs explicit flattening):
   ansible.builtin.apt:
     name: "{{ item }}"
     state: present
-  loop: "{{ (web_packages + db_packages + monitoring_packages) | flatten }}"
+  loop: "{{ [web_packages, db_packages, monitoring_packages] | flatten(levels=1) }}"
   # Without flatten, loop would iterate over the lists themselves, not their contents
 ```
 
 The `flatten` filter is the key. Without it, `loop` would treat each variable as a single item (a list), not iterate over the contents of each list.
 
-You can also use `flatten(1)` for one level of flattening (matching with_items behavior) or `flatten` for recursive flattening.
+You can also use `flatten(levels=1)` for one level of flattening (matching with_items behavior) or `flatten` for recursive flattening.
 
 ```yaml
 # One level of flattening (same as with_items)
-loop: "{{ my_nested_list | flatten(1) }}"
+loop: "{{ my_nested_list | flatten(levels=1) }}"
 
 # Deep recursive flattening
 loop: "{{ my_deeply_nested_list | flatten }}"
@@ -164,7 +164,7 @@ After:
 
 ## Registered Variables
 
-The structure of registered variables is slightly different between `with_items` and `loop`, but in practice the difference rarely matters. Both store results in `.results`.
+Registering loop output works the same way for this migration. Both `with_items` and `loop` store per-item results in `.results`.
 
 Before:
 
@@ -249,8 +249,8 @@ loop:
   - "{{ list_a }}"
   - "{{ list_b }}"
 
-# RIGHT: Flatten the merged lists
-loop: "{{ (list_a + list_b) | flatten }}"
+# RIGHT: Flatten the merged lists by one level
+loop: "{{ [list_a, list_b] | flatten(levels=1) }}"
 ```
 
 ### Mistake 2: Using loop where a module accepts a list
@@ -293,4 +293,4 @@ Compare the output between the old and new versions. The task names, items proce
 
 ## Summary
 
-Migrating from `with_items` to `loop` is usually a direct keyword replacement. The only real gotcha is the flattening behavior: `with_items` automatically flattens nested lists one level deep, while `loop` does not. When you are merging multiple list variables, add the `| flatten` filter. For everything else, it is a simple find-and-replace from `with_items` to `loop`. Take the time to migrate your existing playbooks so you have a consistent, modern codebase that aligns with Ansible's recommended practices.
+Migrating from `with_items` to `loop` is often a direct keyword replacement. The main gotcha is the flattening behavior: `with_items` automatically flattens nested lists one level deep, while `loop` does not. When you are merging multiple list variables this way, add the `| flatten(levels=1)` filter. For simple lists, it is a find-and-replace from `with_items` to `loop`. Take the time to migrate your existing playbooks so you have a consistent, modern codebase that aligns with Ansible's recommended practices.
