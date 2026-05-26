@@ -239,7 +239,7 @@ Here is a playbook that helps diagnose SSH issues across your fleet.
 
 ## Automating SSH Key Deployment
 
-If the root cause is missing authorized keys, here is a playbook to fix it. You will need at least one working authentication method (like password auth) to run this.
+If the root cause is missing authorized keys, here is a playbook to fix it. You will need at least one working authentication method (like password auth) and the `ansible.posix` collection to run this.
 
 ```yaml
 # playbooks/fix-ssh-keys.yml
@@ -250,7 +250,8 @@ If the root cause is missing authorized keys, here is a playbook to fix it. You 
   become: true
   vars:
     target_user: deploy
-    public_key_file: ~/.ssh/deploy_key.pub
+    private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/deploy_key"
+    public_key_file: "{{ private_key_file }}.pub"
 
   tasks:
     - name: Ensure target user exists
@@ -268,17 +269,19 @@ If the root cause is missing authorized keys, here is a playbook to fix it. You 
         mode: '0700'
 
     - name: Deploy authorized key
-      ansible.builtin.authorized_key:
+      ansible.posix.authorized_key:
         user: "{{ target_user }}"
-        key: "{{ lookup('file', public_key_file) }}"
+        key: "{{ lookup('ansible.builtin.file', public_key_file) }}"
         state: present
         exclusive: false
 
     - name: Verify key authentication works
-      ansible.builtin.command: "ssh -o BatchMode=yes -o StrictHostKeyChecking=no {{ target_user }}@localhost echo success"
+      ansible.builtin.command: "ssh -i {{ private_key_file }} -o BatchMode=yes -o StrictHostKeyChecking=no {{ target_user }}@{{ ansible_host | default(inventory_hostname) }} echo success"
       register: key_test
       changed_when: false
       ignore_errors: true
+      become: false
+      delegate_to: localhost
 
     - name: Report result
       ansible.builtin.debug:
