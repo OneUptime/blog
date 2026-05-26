@@ -10,7 +10,7 @@ Description: A comprehensive guide to configuring AWS Auto Scaling policies with
 
 An Auto Scaling Group without scaling policies is just a fixed-size group of instances. The real power comes from policies that automatically adjust capacity based on metrics, schedules, or predictions. Terraform supports all the scaling policy types AWS offers, and getting the right combination can make the difference between a responsive application and one that crumbles under load.
 
-This guide covers every type of scaling policy you can configure with Terraform.
+This guide covers the main scaling policy types you can configure with Terraform.
 
 ## Simple Scaling Policies
 
@@ -89,7 +89,7 @@ The `adjustment_type` has three options:
 
 ## Step Scaling Policies
 
-Step scaling improves on simple scaling by letting you define different actions for different severity levels of the same metric. No cooldown period is needed - it continuously evaluates and adjusts.
+Step scaling improves on simple scaling by letting you define different actions for different severity levels of the same metric. Instead of a simple scaling cooldown, it uses instance warmup and can continue adjusting on additional alarm breaches while the alarm remains in ALARM.
 
 ```hcl
 # Step scaling policy for scale out
@@ -251,7 +251,6 @@ resource "aws_autoscaling_schedule" "product_launch" {
 
   # Specific date and time (ISO 8601 format)
   start_time = "2026-03-15T08:00:00Z"
-  end_time   = "2026-03-16T08:00:00Z"
 
   min_size         = 10
   max_size         = 50
@@ -278,7 +277,7 @@ resource "aws_autoscaling_policy" "predictive" {
     # How far ahead to schedule scaling actions
     scheduling_buffer_time = 300  # 5 minutes before predicted need
 
-    # Maximum capacity forecast can set (overrides max_size is not supported)
+    # Respect the Auto Scaling group's max_size
     max_capacity_breach_behavior = "HonorMaxCapacity"
 
     metric_specification {
@@ -287,13 +286,11 @@ resource "aws_autoscaling_policy" "predictive" {
       # Use predefined scaling metric
       predefined_scaling_metric_specification {
         predefined_metric_type = "ASGAverageCPUUtilization"
-        resource_label         = ""
       }
 
       # Use predefined load metric for forecasting
       predefined_load_metric_specification {
         predefined_metric_type = "ASGTotalCPUUtilization"
-        resource_label         = ""
       }
     }
   }
@@ -348,19 +345,17 @@ resource "aws_autoscaling_policy" "predictive" {
 
       predefined_scaling_metric_specification {
         predefined_metric_type = "ASGAverageCPUUtilization"
-        resource_label         = ""
       }
 
       predefined_load_metric_specification {
         predefined_metric_type = "ASGTotalCPUUtilization"
-        resource_label         = ""
       }
     }
   }
 }
 ```
 
-When multiple policies are active, AWS uses the one that results in the highest capacity for scale-out and the one that results in the lowest capacity for scale-in.
+When multiple dynamic policies are active, Amazon EC2 Auto Scaling gives precedence to the policy that provides the largest capacity for both scale-out and scale-in. Predictive scaling also sets desired capacity to the maximum capacity calculated across active policies.
 
 ## Summary
 
