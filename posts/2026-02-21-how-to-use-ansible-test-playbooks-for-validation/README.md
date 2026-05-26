@@ -347,7 +347,7 @@ Create a callback plugin or post-processing script that formats test results:
         port: 80
         timeout: 3
       register: port_check
-      failed_when: false
+      ignore_errors: true
 
     - name: Record port test result
       ansible.builtin.set_fact:
