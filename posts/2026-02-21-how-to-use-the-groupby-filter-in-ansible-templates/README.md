@@ -201,9 +201,9 @@ You can also do nested grouping if you need to categorize by multiple attributes
 
 This first groups by environment, then within each environment group, it groups again by role. The result is a nicely nested report.
 
-## Using groupby with the default Filter
+## Using groupby with a default Value
 
-Sometimes the attribute you are grouping by might not exist on every item. You can handle this by using the `default` filter in combination:
+Sometimes the attribute you are grouping by might not exist on every item. You can handle this by using the `default` parameter on `groupby`:
 
 ```jinja2
 {# templates/safe_grouping.j2 - Handle missing attributes with default values #}
@@ -231,7 +231,7 @@ You are not limited to using groupby inside templates. You can also use it in ta
     label: "{{ item.0 }}"
 ```
 
-Note that in task-level expressions, each item in the loop is a list with two elements: `item.0` is the group key and `item.1` is the list of grouped items.
+Note that in task-level expressions, each item in the loop is a tuple-like group with two elements: `item.0` is the group key and `item.1` is the list of grouped items.
 
 ## Combining groupby with Other Filters
 
@@ -264,7 +264,7 @@ There are a few things that trip people up when working with groupby:
 
 3. When using groupby in `loop` at the task level, remember to use `item.0` and `item.1` rather than unpacking syntax.
 
-4. The groupby filter returns a list of namedtuples in Jinja2, but in Ansible's task context, they behave like regular lists.
+4. The groupby filter returns a list of namedtuples in Jinja2, but in Ansible's task context, you can access each group by position with `item.0` and `item.1`.
 
 ## Wrapping Up
 
