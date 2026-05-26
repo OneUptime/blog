@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Git, Deployment, Force Pull
 
-Description: Learn how to use the Ansible git module with force pull to handle dirty working directories, discarding local changes for clean deployments every time.
+Description: Learn how to use the Ansible git module with force pull to handle dirty working directories, discarding tracked local changes for clean deployments every time.
 
 ---
 
-Sometimes the working directory on a remote host gets modified outside of your deployment process. Configuration files get edited manually, log files get written into the repo directory, or a previous deployment left uncommitted changes. In these situations, the normal git pull will fail. The `force` parameter in the Ansible git module solves this by discarding local changes.
+Sometimes the working directory on a remote host gets modified outside of your deployment process. Tracked configuration files get edited manually, generated files overwrite tracked paths, or a previous deployment left local commits behind. In these situations, the normal git pull will fail. The `force` parameter in the Ansible git module solves this by discarding tracked local changes and local commits.
 
 ## The Problem: Dirty Working Directory
 
@@ -26,18 +26,18 @@ Local modifications exist in repository (force=no)
 
 ## Using force: true
 
-The `force` parameter tells Ansible to discard any local changes and force the checkout:
+The `force` parameter tells Ansible to discard tracked local changes and local commits, then force the checkout:
 
 ```yaml
 # playbook-force-pull.yml
 
-# Force pulls the latest code, discarding any local modifications
+# Force pulls the latest code, discarding tracked local modifications
 - name: Force pull latest code
   hosts: webservers
   become: true
 
   tasks:
-    - name: Deploy with force (discard local changes)
+    - name: Deploy with force (discard tracked local changes)
       ansible.builtin.git:
         repo: "https://github.com/example/myapp.git"
         dest: /opt/myapp
@@ -51,9 +51,9 @@ The `force` parameter tells Ansible to discard any local changes and force the c
 ```
 
 What `force: true` does behind the scenes:
-1. Resets the working directory (`git checkout -- .`)
-2. Cleans untracked files
-3. Updates to the specified version
+1. Resets modified tracked files (`git reset --hard HEAD`) when local modifications are detected
+2. Fetches updates from the remote, using `git fetch --force`
+3. Checks out or resets to the specified version, discarding local commits when needed
 
 ## Force Pull Decision Flow
 
@@ -63,8 +63,8 @@ graph TD
     B -->|"force: false (default)"| C{Local changes?}
     C -->|Yes| D[FAIL - refuse to overwrite]
     C -->|No| E[Pull normally]
-    B -->|"force: true"| F[Discard local changes]
-    F --> G[Reset working directory]
+    B -->|"force: true"| F[Discard tracked local changes]
+    F --> G[Reset tracked files]
     G --> H[Checkout target version]
     H --> I[Success]
     E --> I
@@ -98,7 +98,7 @@ Do NOT use force when:
     - name: Backup local changes if any
       ansible.builtin.shell: |
         cd /opt/myapp
-        git stash save "ansible-backup-$(date +%Y%m%d-%H%M%S)"
+        git stash push --include-untracked -m "ansible-backup-$(date +%Y%m%d-%H%M%S)"
       when: git_status.stdout | length > 0
 
     - name: Force pull the latest code
@@ -121,7 +121,7 @@ Do NOT use force when:
   tasks:
     - name: Check current state
       ansible.builtin.shell: |
-        cd /opt/myapp 2>/dev/null && echo "exists" || echo "new"
+        test -d /opt/myapp/.git && echo "exists" || echo "new"
       register: repo_state
       changed_when: false
 
@@ -177,7 +177,8 @@ When you need to force pull but preserve certain local files:
         mkdir -p /tmp/deploy_backup
         {% for f in preserve_files %}
         if [ -e "{{ f }}" ]; then
-          cp -a "{{ f }}" "/tmp/deploy_backup/{{ f | basename }}"
+          mkdir -p "/tmp/deploy_backup/$(dirname "{{ f }}")"
+          cp -a "{{ f }}" "/tmp/deploy_backup/{{ f }}"
         fi
         {% endfor %}
       changed_when: false
@@ -194,8 +195,9 @@ When you need to force pull but preserve certain local files:
       ansible.builtin.shell: |
         cd /opt/myapp
         {% for f in preserve_files %}
-        if [ -e "/tmp/deploy_backup/{{ f | basename }}" ]; then
-          cp -a "/tmp/deploy_backup/{{ f | basename }}" "{{ f }}"
+        if [ -e "/tmp/deploy_backup/{{ f }}" ]; then
+          mkdir -p "$(dirname "{{ f }}")"
+          cp -a "/tmp/deploy_backup/{{ f }}" "{{ f }}"
         fi
         {% endfor %}
       changed_when: false
@@ -267,13 +269,13 @@ When you need to force pull but preserve certain local files:
       delegate_to: localhost
 ```
 
-## Handling .gitignore Files During Force Pull
+## Handling Untracked Files During Force Pull
 
-Force pull respects `.gitignore` for untracked files. Files listed in `.gitignore` that are not tracked by Git will not be removed:
+The Ansible git module's force behavior does not run a general `git clean`, so untracked files are usually left alone. Files listed in `.gitignore` that are not tracked by Git will not be removed just because `force: true` is set:
 
 ```yaml
 # playbook-gitignore-safe.yml
-# Demonstrates that force pull preserves untracked gitignored files
+# Demonstrates that force pull preserves untracked files
 - name: Force pull with gitignore safety
   hosts: webservers
   become: true
@@ -285,14 +287,14 @@ Force pull respects `.gitignore` for untracked files. Files listed in `.gitignor
         dest: /opt/myapp/.env
       when: false  # Only needed once
 
-    - name: Force pull (gitignored files like .env are preserved)
+    - name: Force pull (untracked files like .env are preserved)
       ansible.builtin.git:
         repo: "https://github.com/example/myapp.git"
         dest: /opt/myapp
         version: main
         force: true
 
-    - name: Verify .env still exists (if it was gitignored)
+    - name: Verify .env still exists (if it was untracked)
       ansible.builtin.stat:
         path: /opt/myapp/.env
       register: env_file
@@ -304,4 +306,4 @@ Force pull respects `.gitignore` for untracked files. Files listed in `.gitignor
 
 ## Summary
 
-The `force: true` parameter in the Ansible git module is your tool for handling dirty working directories during deployment. It discards local modifications and forces the checkout to the specified version. Use it when the remote repository is the single source of truth and local edits should never block a deployment. For cases where certain local files need to be preserved, back them up before the force pull and restore them afterward. Combine force pull with rolling deployments and health checks for zero-downtime production updates. Just remember that force is destructive by nature, so always understand what local changes might be lost before enabling it.
+The `force: true` parameter in the Ansible git module is your tool for handling dirty working directories during deployment. It discards tracked local modifications and local commits, then forces the checkout to the specified version. Use it when the remote repository is the single source of truth and local edits should never block a deployment. For cases where certain local files need to be preserved, back them up before the force pull and restore them afterward. Combine force pull with rolling deployments and health checks for zero-downtime production updates. Just remember that force is destructive by nature, so always understand what local changes might be lost before enabling it.
