@@ -10,9 +10,9 @@ Description: Learn how to skip or run Ansible tasks based on the deployment envi
 
 Running the same playbook across development, staging, and production environments is a fundamental practice in infrastructure automation. But not every task should run in every environment. You might want to skip SSL certificate installation in development, skip database seeding in production, or skip performance testing in staging. Ansible gives you several patterns for environment-based task selection, and choosing the right one depends on how your environments are organized.
 
-## Pattern 1: Environment Variable
+## Pattern 1: Extra Variable
 
-The simplest approach is passing an environment variable and checking it in `when` conditions.
+The simplest approach is passing an extra variable and checking it in `when` conditions.
 
 ```yaml
 # Environment-based task skipping with a variable
@@ -382,9 +382,9 @@ env_settings:
   when: current_settings.ssl | bool
 ```
 
-## Pattern 6: Environment from Ansible Facts
+## Pattern 6: Environment from Inventory Hostnames
 
-Detect the environment automatically from system facts or hostname conventions.
+Detect the environment automatically from inventory hostname conventions.
 
 ```yaml
 # Auto-detect environment
@@ -392,7 +392,7 @@ Detect the environment automatically from system facts or hostname conventions.
 - name: Auto-detect and configure
   hosts: all
   become: true
-  gather_facts: true
+  gather_facts: false
 
   tasks:
     - name: Detect environment from hostname
