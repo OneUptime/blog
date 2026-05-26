@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run compliance validation
-        run: ansible-playbook playbooks/validate_compliance.yml --check
+        run: ansible-playbook playbooks/validate_compliance.yml
 ```
 
 
@@ -186,17 +186,23 @@ The most effective approach is creating a dedicated compliance role with tasks o
   register: block_devices
   changed_when: false
 
+- name: Verify LUKS encryption is enabled
+  ansible.builtin.assert:
+    that:
+      - "'crypto_LUKS' in block_devices.stdout"
+    fail_msg: "No LUKS-encrypted data volumes were found"
+
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
-  register: cert_dates
+    openssl x509 -checkend 0 -noout -in /etc/ssl/certs/app.pem
+  register: cert_check
   changed_when: false
   failed_when: false
 
 - name: Verify certificate is not expired
   ansible.builtin.assert:
     that:
-      - cert_dates.rc == 0
+      - cert_check.rc == 0
     fail_msg: "TLS certificate check failed"
     success_msg: "TLS certificate is valid"
 ```
@@ -219,7 +225,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
     fail_msg: "Firewall is not active"
 
 - name: Check for unauthorized listening ports
-  ansible.builtin.command: ss -tlnp
+  ansible.builtin.command: ss -tulnp
   register: listening_ports
   changed_when: false
 
@@ -343,6 +349,11 @@ The real power of compliance automation is combining detection with remediation:
       ansible.builtin.set_fact:
         checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
       when: pwquality.rc == 0
+
+    - name: Record password failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['Password minimum length NOT configured'] }}"
+      when: pwquality.rc != 0
 
     - name: Print compliance summary
       ansible.builtin.debug:
