@@ -14,15 +14,12 @@ This guide covers setting up the Ansible FortiOS collection, writing playbooks f
 
 ## Installing the FortiOS Collection
 
-The official Fortinet collection is available from Ansible Galaxy. Install it along with the required Python library.
+The official Fortinet collection is available from Ansible Galaxy. Install it on your Ansible control node.
 
 ```bash
 # Install the Fortinet Ansible collection
 
 ansible-galaxy collection install fortinet.fortios
-
-# Install the Python library for FortiOS API communication
-pip install fortiosapi
 ```
 
 ## Authentication Setup
@@ -34,8 +31,9 @@ Generate an API token in FortiOS under System > Administrators > Create New > RE
 ```yaml
 # group_vars/fortigate/vault.yml (encrypt with ansible-vault)
 fortigate_host: "192.168.1.1"
-fortigate_token: "your-api-token-here"
+ansible_httpapi_session_key: '{"access_token":"your-api-token-here"}'
 fortigate_vdom: "root"
+vault_vpn_psk: "your-vpn-pre-shared-key"
 ```
 
 Create your inventory file.
@@ -177,10 +175,12 @@ Site-to-site VPN setup is one of those tasks that benefits hugely from automatio
           interface: "port1"
           ike_version: "2"
           peertype: "any"
-          proposal: "aes256-sha256"
+          proposal:
+            - "aes256-sha256"
           remote_gw: "203.0.113.1"
           psksecret: "{{ vault_vpn_psk }}"
-          dhgrp: "14"
+          dhgrp:
+            - "14"
           dpd: "on-demand"
           comments: "VPN to branch office"
 
@@ -192,8 +192,10 @@ Site-to-site VPN setup is one of those tasks that benefits hugely from automatio
         vpn_ipsec_phase2_interface:
           name: "vpn-to-branch-p2"
           phase1name: "vpn-to-branch"
-          proposal: "aes256-sha256"
-          dhgrp: "14"
+          proposal:
+            - "aes256-sha256"
+          dhgrp:
+            - "14"
           src_subnet: "10.0.0.0 255.255.0.0"
           dst_subnet: "10.1.0.0 255.255.0.0"
           comments: "Phase 2 for branch VPN"
@@ -201,7 +203,7 @@ Site-to-site VPN setup is one of those tasks that benefits hugely from automatio
 
 ## Backing Up Configuration
 
-Always back up before making changes. FortiOS lets you pull the full configuration through the API.
+Always back up before making changes. FortiOS lets you pull the full configuration through the API. For FortiOS 7.0.2 and later, use `fortios_monitor` with the `backup.system.config` selector. For FortiOS 7.0.1 and earlier, use `fortios_monitor_fact` with the `system_config_backup` selector.
 
 ```yaml
 # playbooks/backup_config.yml
@@ -216,9 +218,9 @@ Always back up before making changes. FortiOS lets you pull the full configurati
   tasks:
     # Pull the full system configuration
     - name: Get full configuration backup
-      fortios_monitor_fact:
+      fortios_monitor:
         vdom: "root"
-        selector: "system_config_backup"
+        selector: "backup.system.config"
         params:
           scope: "global"
       register: config_backup
