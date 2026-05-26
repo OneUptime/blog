@@ -141,7 +141,7 @@ With this setup, your inventory stays clean:
 ```ini
 # inventory/hosts - No SSH configuration needed here
 [webservers]
-web01 ansible_host=10.0.1.10
+web01
 web02 ansible_host=10.0.1.11
 
 [dbservers]
