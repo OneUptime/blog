@@ -16,15 +16,17 @@ This guide covers uploading single files, directories, setting permissions, and 
 
 You need:
 
-- Ansible 2.14+
-- The `amazon.aws` collection
+- Ansible 2.17+
+- The `amazon.aws` and `community.aws` collections
 - AWS credentials with S3 write permissions
 - Python boto3
+- AWS CLI, if you use the CloudFront invalidation example
 
 ```bash
 # Install the required collection and library
 
 ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install community.aws
 pip install boto3 botocore
 ```
 
@@ -152,7 +154,7 @@ For deploying static websites or uploading build artifacts, you often need to up
 
 The `loop_control` with `label` keeps the output clean by only showing the filename instead of the full file details.
 
-## Using aws_s3_sync for Bulk Uploads
+## Using s3_sync for Bulk Uploads
 
 For large directories, the `community.aws.s3_sync` module is more efficient because it only uploads changed files:
 
@@ -176,7 +178,7 @@ The `delete: true` option removes S3 objects that no longer exist locally. This 
 For sensitive files, enable encryption during upload:
 
 ```yaml
-# Upload a file with SSE-S3 encryption
+# Upload a file with SSE-KMS encryption
 - name: Upload encrypted file
   amazon.aws.s3_object:
     bucket: myapp-secure-bucket
