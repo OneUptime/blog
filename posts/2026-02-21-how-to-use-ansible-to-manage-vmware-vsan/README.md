@@ -16,11 +16,11 @@ In this post, I will walk through managing vSAN with Ansible, covering cluster e
 
 Make sure you have:
 
-- Ansible 2.12+ on your control node
+- Ansible version supported by your installed `community.vmware` collection
 - The `community.vmware` collection installed
 - vCenter Server 7.0+ with vSAN license
 - ESXi hosts with local SSDs and HDDs (or all-flash)
-- Python libraries `pyvmomi` and `requests`
+- Python libraries `pyvmomi`, `requests`, and the VMware vSAN Management SDK
 
 ```bash
 # Install required collection and Python packages
@@ -29,9 +29,11 @@ ansible-galaxy collection install community.vmware
 pip install pyvmomi requests
 ```
 
+The `vmware_cluster_vsan` and `vmware_vsan_health_info` modules also require VMware's vSAN Management SDK, which Broadcom/VMware distributes separately from PyPI.
+
 ## vSAN Architecture Refresher
 
-vSAN pools local disks from each host into a distributed datastore. Each host contributes a disk group consisting of a cache tier (SSD) and a capacity tier (SSD or HDD).
+vSAN pools local disks from each host into a distributed datastore. In vSAN Original Storage Architecture (OSA), each storage-contributing host has one or more disk groups consisting of one cache device and one or more capacity devices. vSAN Express Storage Architecture (ESA), introduced with vSAN 8, uses storage pools instead of cache/capacity disk groups.
 
 ```mermaid
 graph TD
@@ -65,7 +67,7 @@ The `community.vmware.vmware_cluster_vsan` module handles vSAN cluster configura
     vcenter_cluster: "Cluster-vSAN-01"
 
   tasks:
-    # Enable vSAN with deduplication and compression
+    # Enable vSAN without automatically claiming disks
     - name: Enable vSAN on the cluster
       community.vmware.vmware_cluster_vsan:
         hostname: "{{ vcenter_hostname }}"
@@ -133,18 +135,16 @@ Disk groups are the fundamental storage unit in vSAN. Each disk group has one ca
         label: "{{ item.hostname }}"
       register: disk_info
 
-    # Create disk groups on each host
-    - name: Create vSAN disk groups
-      community.vmware.vmware_vsan_cluster:
-        hostname: "{{ vcenter_hostname }}"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
-        validate_certs: false
-        datacenter_name: "{{ vcenter_datacenter }}"
-        cluster_name: "{{ vcenter_cluster }}"
-        esxi_hostname: "{{ item.hostname }}"
-        cache_disk: "{{ item.cache_disk }}"
-        capacity_disk: "{{ item.capacity_disks }}"
+    # Create OSA disk groups on each host.
+    # community.vmware does not currently expose an idempotent disk-group module,
+    # so this example shells out to the official ESXCLI command.
+    - name: Create vSAN OSA disk groups
+      ansible.builtin.command:
+        cmd: >
+          ssh root@{{ item.hostname }}
+          esxcli vsan storage add
+          -s {{ item.cache_disk }}
+          {{ item.capacity_disks | map('regex_replace', '^(.*)$', '-d \\1') | join(' ') }}
       loop: "{{ esxi_hosts }}"
       loop_control:
         label: "{{ item.hostname }}"
@@ -152,60 +152,43 @@ Disk groups are the fundamental storage unit in vSAN. Each disk group has one ca
 
 ## Managing vSAN Storage Policies
 
-Storage policies define how data is stored: number of failures to tolerate, stripe width, and more. This is where vSAN shines compared to traditional storage.
+Storage policies define how data is stored: number of failures to tolerate, stripe width, and more. This is where vSAN shines compared to traditional storage. The `community.vmware.vmware_vm_storage_policy` module creates tag-based vSphere storage policies only, so vSAN rule-based policies such as FTT and RAID-5/6 should already exist in vCenter before you assign them with Ansible.
 
 ```yaml
 # playbooks/vsan-storage-policies.yml
 ---
-- name: Manage vSAN storage policies
+- name: Verify vSAN storage policies
   hosts: localhost
   gather_facts: false
   vars_files:
     - ../vars/vcenter_creds.yml
 
-  tasks:
-    # Create a storage policy for mission-critical workloads
-    - name: Create FTT=2 storage policy
-      community.vmware.vmware_vm_storage_policy:
-        hostname: "{{ vcenter_hostname }}"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
-        validate_certs: false
-        name: "vSAN-Critical-FTT2"
-        description: "High availability policy with FTT=2"
-        subprofiles:
-          - name: "vSAN"
-            rules:
-              - capability_id: "VSAN.hostFailuresToTolerate"
-                value: 2
-              - capability_id: "VSAN.stripeWidth"
-                value: 2
-              - capability_id: "VSAN.forceProvisioning"
-                value: false
-        state: present
+  vars:
+    required_vsan_policies:
+      - "vSAN-Critical-FTT2"
+      - "vSAN-Dev-RAID5"
 
-    # Create a policy for dev workloads with lower redundancy
-    - name: Create FTT=1 RAID-5 storage policy
-      community.vmware.vmware_vm_storage_policy:
+  tasks:
+    # Gather existing storage policies from vCenter
+    - name: Get storage policies
+      community.vmware.vmware_vm_storage_policy_info:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
-        name: "vSAN-Dev-RAID5"
-        description: "Space-efficient policy for dev workloads"
-        subprofiles:
-          - name: "vSAN"
-            rules:
-              - capability_id: "VSAN.hostFailuresToTolerate"
-                value: 1
-              - capability_id: "VSAN.replicaPreference"
-                value: "RAID-5/6 (Erasure Coding) - Capacity"
-        state: present
+      register: storage_policies
+
+    # Confirm the vSAN rule-based policies exist before assignment
+    - name: Fail if a required vSAN policy is missing
+      ansible.builtin.fail:
+        msg: "Required storage policy {{ item }} does not exist in vCenter."
+      when: item not in (storage_policies.spbm_profiles | map(attribute='name') | list)
+      loop: "{{ required_vsan_policies }}"
 ```
 
 ## Applying Storage Policies to VMs
 
-After creating policies, assign them to VMs to control their data placement.
+After verifying the policies exist, assign them to VMs to control their data placement.
 
 ```yaml
 # playbooks/assign-vsan-policies.yml
@@ -233,9 +216,9 @@ After creating policies, assign them to VMs to control their data placement.
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
-        vm_name: "{{ item }}"
-        vm_home_policy: "vSAN-Critical-FTT2"
-        disk_policy:
+        name: "{{ item }}"
+        vm_home: "vSAN-Critical-FTT2"
+        disk:
           - unit_number: 0
             policy: "vSAN-Critical-FTT2"
       loop: "{{ critical_vms }}"
@@ -247,9 +230,9 @@ After creating policies, assign them to VMs to control their data placement.
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
-        vm_name: "{{ item }}"
-        vm_home_policy: "vSAN-Dev-RAID5"
-        disk_policy:
+        name: "{{ item }}"
+        vm_home: "vSAN-Dev-RAID5"
+        disk:
           - unit_number: 0
             policy: "vSAN-Dev-RAID5"
       loop: "{{ dev_vms }}"
@@ -283,57 +266,41 @@ vSAN health checks are critical. A playbook that regularly verifies cluster heal
       ansible.builtin.debug:
         msg: "vSAN Health: {{ vsan_health }}"
 
-    # Check for any degraded objects
-    - name: Get vSAN object health
-      community.vmware.vmware_object_role_permission:
-        hostname: "{{ vcenter_hostname }}"
-        username: "{{ vcenter_username }}"
-        password: "{{ vcenter_password }}"
-        validate_certs: false
-      register: object_health
-
     # Alert if health is not green
     - name: Fail if vSAN health is degraded
       ansible.builtin.fail:
         msg: "vSAN health check failed! Review the cluster immediately."
-      when: vsan_health.vsan_health_info.overall_health != "green"
+      when: vsan_health.vsan_health_info.clusterStatus.status != "green"
 ```
 
 ## Managing vSAN Stretched Clusters
 
-For sites that need cross-datacenter redundancy, vSAN stretched clusters replicate data between two sites with a witness host at a third site.
+For sites that need cross-datacenter redundancy, vSAN stretched clusters replicate data between two sites with a witness host at a third site. The `community.vmware` collection does not provide a `vmware_vsan_stretch_cluster` module, so treat stretched-cluster creation as a vCenter/API or PowerCLI workflow and use Ansible for validation and follow-up configuration.
 
 ```yaml
 # playbooks/vsan-stretched-cluster.yml
 ---
-- name: Configure vSAN stretched cluster
+- name: Validate vSAN stretched cluster health
   hosts: localhost
   gather_facts: false
   vars_files:
     - ../vars/vcenter_creds.yml
 
   tasks:
-    # Configure fault domains for stretched cluster
-    - name: Create preferred site fault domain
-      community.vmware.vmware_vsan_stretch_cluster:
+    # Confirm the stretched cluster is healthy after it is configured in vCenter
+    - name: Get stretched cluster health
+      community.vmware.vmware_vsan_health_info:
         hostname: "{{ vcenter_hostname }}"
         username: "{{ vcenter_username }}"
         password: "{{ vcenter_password }}"
         validate_certs: false
         cluster_name: "{{ vcenter_cluster }}"
-        preferred_fault_domain:
-          name: "site-a"
-          hosts:
-            - esxi-01.site-a.local
-            - esxi-02.site-a.local
-            - esxi-03.site-a.local
-        secondary_fault_domain:
-          name: "site-b"
-          hosts:
-            - esxi-01.site-b.local
-            - esxi-02.site-b.local
-            - esxi-03.site-b.local
-        witness_host: witness.site-c.local
+      register: stretched_vsan_health
+
+    - name: Fail if stretched cluster health is degraded
+      ansible.builtin.fail:
+        msg: "vSAN stretched cluster health is not green."
+      when: stretched_vsan_health.vsan_health_info.clusterStatus.status != "green"
 ```
 
 ## Building a vSAN Management Role
@@ -355,16 +322,12 @@ Wrap it all into a reusable role.
     vsan_auto_claim_storage: false
 
 - name: Configure disk groups
-  community.vmware.vmware_vsan_cluster:
-    hostname: "{{ vcenter_hostname }}"
-    username: "{{ vcenter_username }}"
-    password: "{{ vcenter_password }}"
-    validate_certs: false
-    datacenter_name: "{{ vsan_datacenter }}"
-    cluster_name: "{{ vsan_cluster }}"
-    esxi_hostname: "{{ item.hostname }}"
-    cache_disk: "{{ item.cache_disk }}"
-    capacity_disk: "{{ item.capacity_disks }}"
+  ansible.builtin.command:
+    cmd: >
+      ssh root@{{ item.hostname }}
+      esxcli vsan storage add
+      -s {{ item.cache_disk }}
+      {{ item.capacity_disks | map('regex_replace', '^(.*)$', '-d \\1') | join(' ') }}
   loop: "{{ vsan_disk_groups }}"
   loop_control:
     label: "{{ item.hostname }}"
@@ -375,8 +338,8 @@ Wrap it all into a reusable role.
 
 1. **Never use auto-claim in production.** It will grab disks you did not intend to use, including boot device partitions in some edge cases.
 2. **FTT=1 is the minimum for production.** If you lose a host with FTT=0, you lose data. Period.
-3. **Monitor disk health proactively.** A failing SSD cache disk takes out the entire disk group. Use Ansible scheduled jobs to check health regularly.
+3. **Monitor disk health proactively.** In vSAN OSA, a failing cache disk takes out the entire disk group. Use Ansible scheduled jobs to check health regularly.
 4. **RAID-5/6 erasure coding saves space** but requires more hosts (minimum 4 for RAID-5, 6 for RAID-6). Plan your cluster size accordingly.
-5. **Network bandwidth matters.** vSAN traffic needs at least 10 GbE. Anything less and resync operations during host failures will take forever.
+5. **Network bandwidth matters.** vSAN all-flash and ESA designs should use at least 10 GbE, and even hybrid designs benefit from 10 GbE because resync operations during host failures can be slow on 1 GbE networks.
 
 With Ansible managing your vSAN configuration, you get consistent storage policies across all clusters and can spin up new vSAN clusters from a template in minutes instead of hours.
