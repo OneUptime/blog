@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, LEMP Stack, Nginx, MySQL, PHP-FPM
 
-Description: Deploy a production-ready LEMP stack (Linux, Nginx, MySQL, PHP-FPM) with Ansible including reverse proxy configuration and performance tuning.
+Description: Deploy a production-ready LEMP stack (Linux, Nginx, MySQL, PHP-FPM) with Ansible including FastCGI configuration and performance tuning.
 
 ---
 
@@ -41,7 +41,7 @@ app_root: /var/www/app
 
 ```yaml
 # roles/nginx/tasks/main.yml
-# Install and configure Nginx as a reverse proxy for PHP-FPM
+# Install and configure Nginx for PHP-FPM over FastCGI
 
 - name: Install Nginx
   ansible.builtin.apt:
@@ -129,7 +129,6 @@ server {
     # Security headers
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
 
     # Static file handling
     location ~* \.(jpg|jpeg|gif|png|css|js|ico|svg|woff2)$ {
@@ -270,12 +269,12 @@ The LEMP stack with Ansible combines Nginx for efficient HTTP handling, PHP-FPM 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this stack proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this stack
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -307,7 +306,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -328,7 +327,7 @@ Here are several practical scenarios where this module proves essential in real-
       loop:
         - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -346,9 +345,9 @@ Here are several practical scenarios where this module proves essential in real-
         policy: deny
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -451,4 +450,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
