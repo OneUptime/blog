@@ -12,11 +12,13 @@ Amazon EMR (Elastic MapReduce) is the go-to service for running big data framewo
 
 The challenge with EMR is that clusters have many moving parts: instance groups, security configurations, bootstrap scripts, step definitions, and application configurations. Setting this up through the console is tedious and nearly impossible to replicate consistently. Terraform makes it manageable by codifying every aspect of the cluster into version-controlled configuration.
 
-This post walks through building production-ready EMR clusters with Terraform, from basic setups to clusters with auto-scaling, custom bootstrap actions, and step execution.
+This post walks through building production-ready EMR clusters with Terraform, from basic setups to clusters with cost-optimized instance fleets, custom bootstrap actions, and step execution.
 
 ## IAM Roles for EMR
 
 EMR needs two IAM roles: one for the service itself and one for the EC2 instances in the cluster. These are non-negotiable prerequisites.
+
+When you use the scoped `AmazonEMRServicePolicy_v2` service policy, make sure the VPC resources that EMR uses are tagged with `for-use-with-amazon-emr-managed-policies = "true"`. The examples below tag the cluster and custom security groups; tag existing subnets and VPCs separately if they are managed outside this Terraform configuration.
 
 ```hcl
 # IAM role for the EMR service
@@ -225,29 +227,6 @@ resource "aws_security_group" "emr_master" {
   description = "Security group for EMR master node"
   vpc_id      = var.vpc_id
 
-  # Allow all traffic between master and core nodes
-  ingress {
-    from_port       = 0
-    to_port         = 0
-    protocol        = "-1"
-    security_groups = [aws_security_group.emr_core.id]
-  }
-
-  # Allow SSH access for debugging
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.admin_cidr_block]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = {
     Name      = "emr-master-sg"
     ManagedBy = "terraform"
@@ -260,21 +239,6 @@ resource "aws_security_group" "emr_core" {
   name        = "emr-core-sg"
   description = "Security group for EMR core and task nodes"
   vpc_id      = var.vpc_id
-
-  # Allow all traffic from master
-  ingress {
-    from_port       = 0
-    to_port         = 0
-    protocol        = "-1"
-    security_groups = [aws_security_group.emr_master.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   tags = {
     Name      = "emr-core-sg"
@@ -289,28 +253,97 @@ resource "aws_security_group" "emr_service_access" {
   description = "Service access security group for EMR in private subnets"
   vpc_id      = var.vpc_id
 
-  ingress {
-    from_port       = 9443
-    to_port         = 9443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.emr_master.id]
-  }
-
-  egress {
-    from_port       = 8443
-    to_port         = 8443
-    protocol        = "tcp"
-    security_groups = [
-      aws_security_group.emr_master.id,
-      aws_security_group.emr_core.id
-    ]
-  }
-
   tags = {
     Name      = "emr-service-access-sg"
     ManagedBy = "terraform"
     for-use-with-amazon-emr-managed-policies = "true"
   }
+}
+
+# Use standalone security group rule resources to avoid dependency cycles
+# between groups that reference each other.
+resource "aws_vpc_security_group_ingress_rule" "emr_master_self" {
+  security_group_id            = aws_security_group.emr_master.id
+  referenced_security_group_id = aws_security_group.emr_master.id
+  ip_protocol                  = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_master_from_core" {
+  security_group_id            = aws_security_group.emr_master.id
+  referenced_security_group_id = aws_security_group.emr_core.id
+  ip_protocol                  = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_master_from_service_access" {
+  security_group_id            = aws_security_group.emr_master.id
+  referenced_security_group_id = aws_security_group.emr_service_access.id
+  from_port                    = 8443
+  to_port                      = 8443
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_master_ssh" {
+  security_group_id = aws_security_group.emr_master.id
+  cidr_ipv4         = var.admin_cidr_block
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_core_self" {
+  security_group_id            = aws_security_group.emr_core.id
+  referenced_security_group_id = aws_security_group.emr_core.id
+  ip_protocol                  = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_core_from_master" {
+  security_group_id            = aws_security_group.emr_core.id
+  referenced_security_group_id = aws_security_group.emr_master.id
+  ip_protocol                  = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_core_from_service_access" {
+  security_group_id            = aws_security_group.emr_core.id
+  referenced_security_group_id = aws_security_group.emr_service_access.id
+  from_port                    = 8443
+  to_port                      = 8443
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "emr_service_access_from_master" {
+  security_group_id            = aws_security_group.emr_service_access.id
+  referenced_security_group_id = aws_security_group.emr_master.id
+  from_port                    = 9443
+  to_port                      = 9443
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "emr_master_all" {
+  security_group_id = aws_security_group.emr_master.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_vpc_security_group_egress_rule" "emr_core_all" {
+  security_group_id = aws_security_group.emr_core.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_vpc_security_group_egress_rule" "emr_service_access_to_master" {
+  security_group_id            = aws_security_group.emr_service_access.id
+  referenced_security_group_id = aws_security_group.emr_master.id
+  from_port                    = 8443
+  to_port                      = 8443
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "emr_service_access_to_core" {
+  security_group_id            = aws_security_group.emr_service_access.id
+  referenced_security_group_id = aws_security_group.emr_core.id
+  from_port                    = 8443
+  to_port                      = 8443
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -439,7 +472,7 @@ resource "aws_emr_cluster" "batch_processing" {
 
 Setting `keep_job_flow_alive_when_no_steps = false` combined with `action_on_failure = "TERMINATE_CLUSTER"` creates a transient cluster that spins up, runs the job, and shuts down. This pattern is cost-effective for batch workloads.
 
-## Auto-scaling with Instance Fleets
+## Cost Optimization with Instance Fleets
 
 For better cost optimization, you can use instance fleets with a mix of on-demand and spot instances:
 
@@ -490,7 +523,7 @@ resource "aws_emr_cluster" "fleet_cluster" {
     # Spot allocation strategy
     launch_specifications {
       spot_specification {
-        allocation_strategy      = "capacity-optimized"
+        allocation_strategy      = "price-capacity-optimized"
         timeout_action           = "SWITCH_TO_ON_DEMAND"
         timeout_duration_minutes = 10
       }
@@ -506,7 +539,7 @@ resource "aws_emr_cluster" "fleet_cluster" {
 }
 ```
 
-The capacity-optimized allocation strategy selects spot instances from the deepest pools, reducing interruptions. The `SWITCH_TO_ON_DEMAND` timeout action ensures your cluster still gets capacity if spot instances are unavailable.
+The price-capacity-optimized allocation strategy considers both available Spot capacity and price, which helps reduce interruptions while keeping costs down. The `SWITCH_TO_ON_DEMAND` timeout action ensures your cluster still gets capacity if spot instances are unavailable.
 
 ## Wrapping Up
 
