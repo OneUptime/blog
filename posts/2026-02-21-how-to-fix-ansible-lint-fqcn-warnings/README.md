@@ -10,7 +10,7 @@ Description: Learn how to fix FQCN warnings in ansible-lint by converting short 
 
 If you have run ansible-lint recently, you have probably seen warnings like `fqcn[action-core]` or `fqcn[action]`. These warnings tell you to use Fully Qualified Collection Names (FQCNs) for your module calls instead of short names. This change was introduced as Ansible transitioned from a monolithic package to a collection-based architecture, and ansible-lint now enforces it.
 
-In this post, we will cover what FQCN is, why it matters, and how to fix every type of FQCN warning efficiently.
+In this post, we will cover what FQCN is, why it matters, and how to fix the common module-related FQCN warnings efficiently.
 
 ## What Is FQCN?
 
@@ -35,13 +35,13 @@ The FQCN format is `namespace.collection.module_name`. For built-in modules, the
 
 ## Why FQCN Matters
 
-Without FQCN, Ansible resolves module names by searching through all installed collections. This can lead to ambiguity if two collections provide a module with the same name. For example, if you have both `community.general` and a custom collection that both define a `slack` module, using the short name `slack` is ambiguous.
+Without FQCN, Ansible resolves module names through its configured collection search order. This can lead to ambiguity if two collections provide a module with the same name. For example, if you have both `community.general` and a custom collection that both define a `slack` module in the search path, using the short name `slack` is ambiguous.
 
 FQCN eliminates this ambiguity and makes your playbooks explicit about which module they use.
 
 ## Types of FQCN Warnings
 
-ansible-lint has several FQCN-related rules:
+ansible-lint has several module-related FQCN checks:
 
 - **fqcn[action-core]**: A builtin module is used without FQCN
 - **fqcn[action]**: A non-builtin module is used without FQCN
@@ -170,7 +170,7 @@ expect       -> ansible.builtin.expect
 
 # Services and system
 service      -> ansible.builtin.service
-systemd      -> ansible.builtin.systemd
+systemd      -> ansible.builtin.systemd_service
 cron         -> ansible.builtin.cron
 hostname     -> ansible.builtin.hostname
 user         -> ansible.builtin.user
@@ -250,44 +250,38 @@ Some modules have aliases or old names. ansible-lint wants you to use the canoni
 ```yaml
 # Before: non-canonical names
 - name: Manage systemd service
-  ansible.builtin.systemd:    # This is fine
+  ansible.builtin.systemd:    # Alias kept for backward compatibility
     name: nginx
     state: restarted
 
-- name: Manage SELinux
-  ansible.posix.seboolean:     # Old name
-    name: httpd_can_network_connect
-    state: true
-
 # After: canonical names
-- name: Manage SELinux
-  ansible.posix.seboolean:
-    name: httpd_can_network_connect
-    state: true
-    persistent: true
+- name: Manage systemd service
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: restarted
 ```
 
 ## Automated FQCN Conversion
 
-For large codebases, manually converting every module name is tedious. There is a tool called `ansible-fqcn-converter` that can help:
+For large codebases, manually converting every module name is tedious. ansible-lint can help with supported automatic fixes:
 
 ```bash
-# Install the converter (if available from your package manager)
-pip install ansible-fqcn-converter
+# Run ansible-lint's FQCN fixer
+ansible-lint --fix=fqcn
 
 # Or use a sed-based approach for common modules
 # Create a conversion script
 cat > convert_fqcn.sh << 'SCRIPT'
 #!/bin/bash
 # Convert common short names to FQCN in all YAML files
-find . -name "*.yml" -o -name "*.yaml" | while read -r file; do
+find . -type f \( -name "*.yml" -o -name "*.yaml" \) | while read -r file; do
   sed -i \
     -e 's/^\(\s*\)apt:/\1ansible.builtin.apt:/g' \
     -e 's/^\(\s*\)copy:/\1ansible.builtin.copy:/g' \
     -e 's/^\(\s*\)file:/\1ansible.builtin.file:/g' \
     -e 's/^\(\s*\)template:/\1ansible.builtin.template:/g' \
     -e 's/^\(\s*\)service:/\1ansible.builtin.service:/g' \
-    -e 's/^\(\s*\)systemd:/\1ansible.builtin.systemd:/g' \
+    -e 's/^\(\s*\)systemd:/\1ansible.builtin.systemd_service:/g' \
     -e 's/^\(\s*\)command:/\1ansible.builtin.command:/g' \
     -e 's/^\(\s*\)shell:/\1ansible.builtin.shell:/g' \
     -e 's/^\(\s*\)debug:/\1ansible.builtin.debug:/g' \
