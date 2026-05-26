@@ -64,7 +64,7 @@ webserver_modules_dir: /etc/nginx/modules-enabled
 
 ## Method 1: Passing Variables in the roles Block
 
-The most common method. Variables passed here override `defaults/main.yml` but not `vars/main.yml`:
+The most common method. Role parameters passed here override `defaults/main.yml` and `vars/main.yml`:
 
 ```yaml
 ---
@@ -81,7 +81,7 @@ The most common method. Variables passed here override `defaults/main.yml` but n
       webserver_log_level: info
 ```
 
-You can also use the `vars` keyword for clarity:
+You can also use the `vars` keyword for clarity. These values override `defaults/main.yml`, but role variables from `vars/main.yml` still take precedence:
 
 ```yaml
 - hosts: webservers
@@ -210,7 +210,7 @@ When you apply the `webapp` role, it automatically applies the `webserver` role 
 
 ## Method 6: Extra Variables
 
-Command-line extra variables override everything except `vars/main.yml` in the role:
+Command-line extra variables override everything, including `vars/main.yml` in the role:
 
 ```bash
 # Override the role's default port at runtime
@@ -221,7 +221,7 @@ Extra vars have the highest precedence, making them useful for emergency overrid
 
 ## Calling the Same Role Multiple Times
 
-By default, Ansible only executes a role once per play, even if you list it multiple times. To run it multiple times with different variables, use `include_role` or set `allow_duplicates: true`:
+By default, Ansible only executes a role once per play if you list it multiple times with the same role parameters. To run it multiple times with different task-level variables, use `include_role`; to run identical role entries multiple times, set `allow_duplicates: true`:
 
 ```yaml
 ---
