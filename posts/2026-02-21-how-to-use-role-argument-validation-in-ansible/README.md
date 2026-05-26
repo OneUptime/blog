@@ -8,7 +8,7 @@ Description: Learn how to validate role arguments in Ansible using argument spec
 
 ---
 
-One of the more frustrating experiences with Ansible roles is passing the wrong variable type or forgetting a required variable, only to discover the problem halfway through a playbook run. Ansible 2.11 introduced role argument validation through argument specs, which lets you define a schema for your role's inputs. If someone passes an invalid value, Ansible fails immediately with a clear error message before any tasks run. This post shows you how to set it up and use it effectively.
+One of the more frustrating experiences with Ansible roles is passing the wrong variable type or forgetting a required variable, only to discover the problem halfway through a playbook run. Ansible Core 2.11 introduced role argument validation through argument specs, which lets you define a schema for your role's inputs. If someone passes an invalid value, Ansible fails at the start of the role with a clear error message before any role tasks run. This post shows you how to set it up and use it effectively.
 
 ## What Are Argument Specs?
 
@@ -75,7 +75,8 @@ argument_specs:
 Now if someone uses the role without specifying `webserver_server_name`, Ansible fails immediately:
 
 ```text
-ERROR! the role 'webserver' requires the following variables to be set: webserver_server_name
+Validation of arguments failed:
+missing required arguments: webserver_server_name
 ```
 
 ## Supported Types
@@ -84,7 +85,7 @@ Argument specs support these types:
 
 ```yaml
 # roles/example/meta/argument_specs.yml
-# Demonstration of all supported types
+# Demonstration of supported types
 ---
 argument_specs:
   main:
@@ -121,6 +122,22 @@ argument_specs:
       raw_var:
         type: raw
         description: Any type (no validation)
+
+      jsonarg_var:
+        type: jsonarg
+        description: A JSON argument value
+
+      json_var:
+        type: json
+        description: A JSON value
+
+      bytes_var:
+        type: bytes
+        description: A byte size value
+
+      bits_var:
+        type: bits
+        description: A bit size value
 ```
 
 ## Choices Validation
@@ -161,7 +178,8 @@ argument_specs:
 If someone passes `webserver_log_level: verbose`, Ansible rejects it immediately:
 
 ```text
-ERROR! value of webserver_log_level must be one of: debug, info, notice, warn, error, crit, got: verbose
+Validation of arguments failed:
+value of webserver_log_level must be one of: debug, info, notice, warn, error, crit, got: verbose
 ```
 
 ## Nested Dictionary Validation
