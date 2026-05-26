@@ -25,11 +25,11 @@ The `checksum` parameter accepts a hash algorithm prefix followed by the expecte
   ansible.builtin.get_url:
     url: "https://dl.k8s.io/release/v1.29.1/bin/linux/amd64/kubectl"
     dest: /usr/local/bin/kubectl
-    checksum: "sha256:69ab3a931e826bf7ac14d38ba7ca637d2b75b4629990c4850801a6a8c94d4b0a"
+    checksum: "sha256:69ab3a931e826bf7ac14d38ba7ca637d66a6fcb1ca0e3333a2cafdf15482af9f"
     mode: '0755'
 ```
 
-Supported hash algorithms include `md5`, `sha1`, `sha224`, `sha256`, `sha384`, and `sha512`. Always prefer SHA256 or stronger.
+Commonly available hash algorithms include `md5`, `sha1`, `sha224`, `sha256`, `sha384`, and `sha512`, but the exact set depends on the target host's Python and OpenSSL versions. Always prefer SHA256 or stronger.
 
 ## Using a Checksum File URL
 
@@ -50,8 +50,8 @@ When you pass a URL as the checksum value, Ansible downloads the checksum file, 
 Here is what a typical SHA256SUMS file looks like:
 
 ```text
-b84b0baf5cc32476c2632d09a5c59c37e6cb00e5a6f4fbe8038a3b22315d1e9e  terraform_1.7.3_darwin_amd64.zip
-a1b2c3d4e5f6...  terraform_1.7.3_linux_amd64.zip
+4787f5a422439d3b277a889b159981e88049f48bcf9e41e70481620567a7fd9c  terraform_1.7.3_darwin_amd64.zip
+617042989ce46b5dd07772237b49b57b8f8e97b1604c9dbbd85ead87effb51fe  terraform_1.7.3_linux_amd64.zip
 ```
 
 ## Checksum Verification with Variables
@@ -65,7 +65,7 @@ For version-managed deployments, store checksums in variables alongside version 
   become: yes
   vars:
     prometheus_version: "2.50.0"
-    prometheus_checksum: "sha256:610e71b6a8610cc52ddb5c1389e3d4b1f3fa8e9f41e8ed7816e4ce63feda1e98"
+    prometheus_checksum: "sha256:f3fb61f970d5c606320a3ca819d621f005f5276bdee0138cdc42f7def08cb00e"
     node_exporter_version: "1.7.0"
     node_exporter_checksum: "sha256:a550cd5c05f760b7934a2d0afad66d2e92e681482f5f57a917465b1fba3b02a6"
 
@@ -95,17 +95,17 @@ tools:
   terraform:
     version: "1.7.3"
     url: "https://releases.hashicorp.com/terraform/1.7.3/terraform_1.7.3_linux_amd64.zip"
-    checksum: "sha256:b84b0baf5cc32476c2632d09a5c59c37e6cb00e5a6f4fbe8038a3b22315d1e9e"
+    checksum: "sha256:617042989ce46b5dd07772237b49b57b8f8e97b1604c9dbbd85ead87effb51fe"
     dest: /tmp/terraform.zip
   vault:
     version: "1.15.4"
     url: "https://releases.hashicorp.com/vault/1.15.4/vault_1.15.4_linux_amd64.zip"
-    checksum: "sha256:a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890"
+    checksum: "sha256:f42f550713e87cceef2f29a4e2b754491697475e3d26c0c5616314e40edd8e1b"
     dest: /tmp/vault.zip
   consul:
     version: "1.17.2"
     url: "https://releases.hashicorp.com/consul/1.17.2/consul_1.17.2_linux_amd64.zip"
-    checksum: "sha256:deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678"
+    checksum: "sha256:e16489849b3b203251d93fef94d60600b59cb776c11b66959786e3484d336381"
     dest: /tmp/consul.zip
 ```
 
@@ -141,9 +141,15 @@ Some projects provide GPG signatures alongside checksums for an additional layer
     dest: "/tmp/terraform_{{ tf_version }}_SHA256SUMS.sig"
     mode: '0644'
 
+- name: Download HashiCorp PGP key
+  ansible.builtin.get_url:
+    url: "https://www.hashicorp.com/.well-known/pgp-key.txt"
+    dest: /tmp/hashicorp-pgp-key.txt
+    mode: '0644'
+
 - name: Import HashiCorp GPG key
   ansible.builtin.command: >
-    gpg --import /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    gpg --import /tmp/hashicorp-pgp-key.txt
   changed_when: false
 
 - name: Verify signature on checksum file
@@ -204,7 +210,7 @@ Sometimes you need to compute the checksum of a file you already have, perhaps t
 ```bash
 # Generate SHA256 checksum on your workstation
 sha256sum terraform_1.7.3_linux_amd64.zip
-# Output: b84b0baf5cc32476c2632d09a5c59c37e6cb00e5a6f4fbe8038a3b22315d1e9e  terraform_1.7.3_linux_amd64.zip
+# Output: 617042989ce46b5dd07772237b49b57b8f8e97b1604c9dbbd85ead87effb51fe  terraform_1.7.3_linux_amd64.zip
 
 # You can also use openssl
 openssl dgst -sha256 terraform_1.7.3_linux_amd64.zip
