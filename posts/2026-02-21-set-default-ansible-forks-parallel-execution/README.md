@@ -100,7 +100,7 @@ If your tasks involve transferring large files to remote hosts, high forks can s
 
 ### SSH Connection Limits
 
-Some SSH servers limit the number of concurrent connections. The default for OpenSSH is 10 unauthenticated connections (`MaxStartups 10:30:60`). If your forks value exceeds this, some connections will be dropped.
+Some SSH servers limit the number of concurrent connections. The default for OpenSSH is 10 unauthenticated connections before random early drop starts (`MaxStartups 10:30:100`). If your forks value exceeds this, some connections may be dropped.
 
 Check the remote host's SSH config:
 
@@ -201,7 +201,7 @@ fact_caching_connection = /tmp/ansible_facts_cache
 fact_caching_timeout = 3600
 
 # Show task timing to identify bottlenecks
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [ssh_connection]
 # Pipelining reduces SSH round trips
