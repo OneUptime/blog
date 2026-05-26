@@ -71,10 +71,10 @@ ansible all -m apt -a "name=htop state=present" --become -K
 For non-interactive use, you can set the password in other ways:
 
 ```bash
-# Pass the sudo password via an environment variable (use with caution)
-ANSIBLE_BECOME_PASSWORD=mysudopassword ansible all -m apt -a "name=htop state=present" --become
+# Pass the sudo password as an extra variable (use with caution)
+ansible all -m apt -a "name=htop state=present" --become -e "ansible_become_password=mysudopassword"
 
-# Use a vault-encrypted password file
+# Use a vault-encrypted variables file that defines ansible_become_password
 ansible all -m apt -a "name=htop state=present" --become -e "@vault_password.yml" --ask-vault-pass
 ```
 
@@ -120,8 +120,8 @@ Most Linux environments use sudo, so `--become-method=sudo` is the default and y
 # Update package cache and upgrade all packages
 ansible all -m apt -a "update_cache=yes upgrade=yes" --become
 
-# Install security updates only
-ansible all -m apt -a "upgrade=yes" --become -e "ansible_apt_upgrade_type=safe"
+# Perform a safe upgrade
+ansible all -m apt -a "upgrade=safe" --become
 
 # Install a specific package
 ansible webservers -m apt -a "name=certbot state=present" --become
@@ -187,7 +187,7 @@ ansible all -a "whoami"
 # Output: root
 
 # Override to run without privilege escalation
-ansible all -a "whoami" --become=false
+ansible all -a "whoami" -e "ansible_become=false"
 # Output: deploy
 ```
 
@@ -223,14 +223,14 @@ ansible databases -m shell -a "psql -c 'SELECT 1;'"
 
 ### Limit Sudo Permissions
 
-Instead of giving your Ansible user full sudo access, restrict it to specific commands:
+Instead of giving your Ansible user broad access everywhere, scope where that account can connect and which hosts or groups use `ansible_become=true`. Do not restrict Ansible's sudoers entry to individual command paths such as `/usr/bin/systemctl` for normal module execution, because Ansible usually runs module code from temporary file paths that change on each run:
 
 ```bash
-# Create a restricted sudoers rule
+# Create a sudoers rule for hosts managed by Ansible
 # /etc/sudoers.d/ansible-deploy
-# deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx, /usr/bin/apt-get update, /usr/bin/apt-get install *
+# deploy ALL=(ALL) NOPASSWD: ALL
 
-ansible all -m copy -a "content='deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx, /usr/bin/apt-get update\n' dest=/etc/sudoers.d/ansible-deploy validate='visudo -cf %s'" --become -K
+ansible all -m copy -a "content='deploy ALL=(ALL) NOPASSWD: ALL\n' dest=/etc/sudoers.d/ansible-deploy validate='visudo -cf %s'" --become -K
 ```
 
 ### Audit Privilege Escalation
@@ -289,4 +289,4 @@ Common errors and their fixes:
 
 ## Summary
 
-Privilege escalation in Ansible ad hoc commands is controlled through the `--become` flag and its related options. Use `--become` for root access, `--become-user` to switch to a specific user, `--become-method` for non-sudo environments, and `-K` when a sudo password is required. For production environments, configure passwordless sudo for your Ansible user with restricted command access, and set sensible defaults in ansible.cfg to reduce command-line verbosity. Proper privilege escalation setup is the foundation of secure, effective Ansible automation.
+Privilege escalation in Ansible ad hoc commands is controlled through the `--become` flag and its related options. Use `--become` for root access, `--become-user` to switch to a specific user, `--become-method` for non-sudo environments, and `-K` when a sudo password is required. For production environments, configure passwordless sudo for your Ansible user only where it is needed, and set sensible defaults in ansible.cfg to reduce command-line verbosity. Proper privilege escalation setup is the foundation of secure, effective Ansible automation.
