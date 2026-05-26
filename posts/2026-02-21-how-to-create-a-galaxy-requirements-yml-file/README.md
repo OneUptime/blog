@@ -35,22 +35,29 @@ collections:
     version: "7.2.0"
 ```
 
-Install everything with a single command:
+Install everything with a single command when you are using the default install paths:
 
 ```bash
-# Install both roles and collections from one file
+# Install both roles and collections from one file with default paths
 ansible-galaxy install -r requirements.yml
-ansible-galaxy collection install -r requirements.yml
 ```
 
-Note that you need two separate commands: `ansible-galaxy install` processes the `roles` section, and `ansible-galaxy collection install` processes the `collections` section.
+If you want to use separate role and collection install paths, run the role and collection installers separately:
+
+```bash
+# Install roles and collections to custom paths
+ansible-galaxy role install -r requirements.yml -p ./roles
+ansible-galaxy collection install -r requirements.yml -p ./collections
+```
+
+Note that `ansible-galaxy role install -r` processes only the `roles` section, and `ansible-galaxy collection install -r` processes only the `collections` section.
 
 ## Role Entries in Detail
 
-Each role entry supports several fields:
+Each role entry supports several common fields:
 
 ```yaml
-# requirements.yml - all available fields for roles
+# requirements.yml - common fields for roles
 ---
 roles:
   # Simple Galaxy role with version pin
@@ -77,14 +84,14 @@ roles:
     src: file:///opt/ansible/roles/local_role-1.0.0.tar.gz
 ```
 
-The `name` field is what you reference in your playbooks. The `src` field tells Galaxy where to get the role. If `src` is omitted, Galaxy assumes the name is a Galaxy role name.
+The `name` field sets the installed role name, which is what you reference in your playbooks. The `src` field tells Galaxy where to get the role. If `src` is omitted, Galaxy assumes the name is a Galaxy role name.
 
 ## Collection Entries in Detail
 
-Collections support a similar set of fields:
+Collections support a similar set of common fields:
 
 ```yaml
-# requirements.yml - all available fields for collections
+# requirements.yml - common fields for collections
 ---
 collections:
   # Standard Galaxy collection with version pin
@@ -134,9 +141,9 @@ collections:
   - name: community.docker
     version: ">=3.5.0,<4.0.0"
 
-  # Compatible release (same as >=3.7.0,<4.0.0)
+  # Explicit range
   - name: community.postgresql
-    version: "~=3.7"
+    version: ">=3.7.0,<4.0.0"
 
   # Any version (not recommended for production)
   - name: community.crypto
@@ -203,11 +210,11 @@ Then install the set you need:
 
 ```bash
 # Install base dependencies
-ansible-galaxy install -r requirements-base.yml
+ansible-galaxy role install -r requirements-base.yml
 ansible-galaxy collection install -r requirements-base.yml
 
 # Install AWS-specific dependencies when deploying to AWS
-ansible-galaxy install -r requirements-aws.yml
+ansible-galaxy role install -r requirements-aws.yml
 ansible-galaxy collection install -r requirements-aws.yml
 ```
 
@@ -225,17 +232,17 @@ REQUIREMENTS := requirements.yml
 
 # Install all dependencies
 deps:
-	ansible-galaxy install -r $(REQUIREMENTS) -p $(ROLES_PATH)
+	ansible-galaxy role install -r $(REQUIREMENTS) -p $(ROLES_PATH)
 	ansible-galaxy collection install -r $(REQUIREMENTS) -p $(COLLECTIONS_PATH)
 
 # Force reinstall all dependencies
 deps-force:
-	ansible-galaxy install -r $(REQUIREMENTS) -p $(ROLES_PATH) --force
+	ansible-galaxy role install -r $(REQUIREMENTS) -p $(ROLES_PATH) --force
 	ansible-galaxy collection install -r $(REQUIREMENTS) -p $(COLLECTIONS_PATH) --force
 
 # Upgrade to latest within version constraints
 deps-update:
-	ansible-galaxy install -r $(REQUIREMENTS) -p $(ROLES_PATH) --force
+	ansible-galaxy role install -r $(REQUIREMENTS) -p $(ROLES_PATH) --force
 	ansible-galaxy collection install -r $(REQUIREMENTS) -p $(COLLECTIONS_PATH) --upgrade
 
 # Remove all downloaded dependencies
@@ -258,7 +265,7 @@ with open('requirements.yml') as f:
     collections = data.get('collections', [])
     print(f'Found {len(roles)} roles and {len(collections)} collections')
     for r in roles:
-        assert 'name' in r, f'Role entry missing name: {r}'
+        assert 'name' in r or 'src' in r, f'Role entry missing name or src: {r}'
     for c in collections:
         assert 'name' in c, f'Collection entry missing name: {c}'
     print('All entries valid')
@@ -281,7 +288,7 @@ lint:
   image: python:3.11
   script:
     - pip install ansible-core ansible-lint
-    - ansible-galaxy install -r requirements.yml -p ./roles/
+    - ansible-galaxy role install -r requirements.yml -p ./roles/
     - ansible-galaxy collection install -r requirements.yml -p ./collections/
     - ansible-lint playbook.yml
 
@@ -290,7 +297,7 @@ deploy:
   image: python:3.11
   script:
     - pip install ansible-core
-    - ansible-galaxy install -r requirements.yml -p ./roles/
+    - ansible-galaxy role install -r requirements.yml -p ./roles/
     - ansible-galaxy collection install -r requirements.yml -p ./collections/
     - ansible-playbook -i inventory playbook.yml
 ```
