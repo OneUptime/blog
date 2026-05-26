@@ -12,7 +12,7 @@ LMDB (Lightning Memory-Mapped Database) is a compact, fast, and embeddable key-v
 
 ## What Is LMDB?
 
-LMDB is a B+ tree-based, memory-mapped key-value store. Unlike Redis or Memcached, it is not a network service. It is an embedded database stored as a file on disk. Programs open the LMDB file directly and read or write data through a C library (or Python bindings). LMDB databases are commonly found at paths like `/var/lib/myapp/data.mdb`.
+LMDB is a B+ tree-based, memory-mapped key-value store. Unlike Redis or Memcached, it is not a network service. It is an embedded database environment stored on disk. Programs open the LMDB environment directly and read or write data through a C library (or Python bindings). LMDB databases are commonly found in directories containing files like `/var/lib/myapp/data.mdb`.
 
 Key characteristics of LMDB:
 - Single-writer, multiple-reader concurrency model
@@ -47,7 +47,7 @@ This playbook reads a configuration value from an LMDB store:
   tasks:
     - name: Read a key from LMDB
       ansible.builtin.debug:
-        msg: "Value: {{ lookup('community.general.lmdb_kv', 'my_config_key', db='/var/lib/myapp/data.mdb') }}"
+        msg: "Value: {{ lookup('community.general.lmdb_kv', 'my_config_key', db='/var/lib/myapp') }}"
 ```
 
 ## How LMDB Databases Work
@@ -60,7 +60,7 @@ Before diving into examples, it helps to understand LMDB's file structure. An LM
   lock.mdb    # The lock file for concurrency
 ```
 
-When specifying the database path in the lookup, you point to the directory containing these files, or directly to the `.mdb` file depending on the plugin version.
+When specifying the database path in the lookup, point `db` to the LMDB environment directory containing these files.
 
 ## Creating Test Data
 
@@ -122,29 +122,29 @@ Once you have data in LMDB, reading it from Ansible is straightforward:
 
 ## Practical Example: PowerDNS Configuration
 
-PowerDNS can use LMDB as its backend storage. You might need to read DNS zone data or configuration from its LMDB database.
+PowerDNS can use LMDB as its backend storage. Its LMDB backend stores data in an internal schema, and the PowerDNS documentation recommends using the API or `pdnsutil` rather than directly querying the LMDB database. Use the lookup plugin only for LMDB databases whose keys and values your automation owns or explicitly understands.
 
 ```yaml
-# playbook.yml - Read PowerDNS data from LMDB
+# playbook.yml - Check PowerDNS LMDB storage
 ---
 - name: Audit PowerDNS LMDB configuration
   hosts: dns_servers
   vars:
     pdns_lmdb: "/var/lib/powerdns/pdns.lmdb"
   tasks:
-    - name: Read PowerDNS configuration from LMDB
-      ansible.builtin.set_fact:
-        pdns_config: "{{ lookup('community.general.lmdb_kv', 'config_key', db=pdns_lmdb) }}"
-      ignore_errors: true
+    - name: Check whether the PowerDNS LMDB path exists
+      ansible.builtin.stat:
+        path: "{{ pdns_lmdb }}"
+      register: pdns_lmdb_file
 
-    - name: Display configuration
+    - name: Display LMDB status
       ansible.builtin.debug:
-        msg: "PowerDNS config: {{ pdns_config | default('not available') }}"
+        msg: "PowerDNS LMDB path exists: {{ pdns_lmdb_file.stat.exists }}"
 ```
 
 ## OpenLDAP Integration
 
-OpenLDAP uses LMDB (via the `mdb` backend) to store its directory data. You can read LDAP configuration from its LMDB store:
+OpenLDAP uses LMDB (via the `mdb` backend) to store its directory data. The on-disk data is OpenLDAP's internal database format, so use LDAP tools such as `ldapsearch` for directory queries. You can still use Ansible to check that the LMDB files exist before running LDAP-level checks:
 
 ```yaml
 # playbook.yml - Check OpenLDAP LMDB state
@@ -164,11 +164,10 @@ OpenLDAP uses LMDB (via the `mdb` backend) to store its directory data. You can 
         msg: "LMDB database size: {{ lmdb_file.stat.size | human_readable }}"
       when: lmdb_file.stat.exists
 
-    - name: Read LMDB data if available
+    - name: Report how to query OpenLDAP data
       ansible.builtin.debug:
-        msg: "{{ lookup('community.general.lmdb_kv', 'some_key', db=slapd_db_path) }}"
+        msg: "Use ldapsearch or OpenLDAP tools for directory data; do not query the mdb files as simple keys."
       when: lmdb_file.stat.exists
-      ignore_errors: true
 ```
 
 ## Building a Configuration Cache
@@ -308,7 +307,7 @@ LMDB is extremely fast for reads because it uses memory-mapped files. The operat
 
 ## Tips
 
-1. **Database path**: The `db` parameter should point to the directory containing `data.mdb`, not to the `data.mdb` file itself (depending on the plugin version). Test both if one does not work.
+1. **Database path**: The `db` parameter should point to the LMDB environment directory containing `data.mdb`, not to the `data.mdb` file itself.
 
 2. **Binary data**: LMDB stores binary data. The lookup returns values as strings. If your data is not UTF-8 text (for example, serialized binary data), you may need additional processing.
 
