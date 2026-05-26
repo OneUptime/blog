@@ -20,12 +20,13 @@ Install collections for each storage provider.
 # Install cloud collections
 
 ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install community.aws
 ansible-galaxy collection install azure.azcollection
 ansible-galaxy collection install google.cloud
 
 # Install Python SDKs
 pip install boto3 botocore
-pip install azure-storage-blob azure-mgmt-storage azure-identity
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 pip install google-cloud-storage
 ```
 
@@ -106,24 +107,24 @@ Lifecycle rules automatically transition or delete objects based on age.
   tasks:
     # Set lifecycle rules for the backup bucket
     - name: Configure backup retention lifecycle
-      amazon.aws.s3_lifecycle:
+      community.aws.s3_lifecycle:
         name: myapp-backups-prod
         rule_id: backup-retention
         status: enabled
         prefix: ""
         transitions:
-          - days: 30
-            storage_class: STANDARD_IA
-          - days: 90
-            storage_class: GLACIER
-          - days: 365
-            storage_class: DEEP_ARCHIVE
+          - transition_days: 30
+            storage_class: standard_ia
+          - transition_days: 90
+            storage_class: glacier
+          - transition_days: 365
+            storage_class: deep_archive
         expiration_days: 730
         state: present
 
     # Lifecycle for upload bucket to clean temp files
     - name: Configure upload cleanup
-      amazon.aws.s3_lifecycle:
+      community.aws.s3_lifecycle:
         name: myapp-uploads-prod
         rule_id: cleanup-temp-uploads
         status: enabled
@@ -133,7 +134,7 @@ Lifecycle rules automatically transition or delete objects based on age.
 
     # Clean up incomplete multipart uploads
     - name: Clean up incomplete multipart uploads
-      amazon.aws.s3_lifecycle:
+      community.aws.s3_lifecycle:
         name: myapp-uploads-prod
         rule_id: abort-multipart
         status: enabled
@@ -173,7 +174,7 @@ Lifecycle rules automatically transition or delete objects based on age.
 
     # Enable static website hosting
     - name: Enable static website hosting
-      amazon.aws.s3_website:
+      community.aws.s3_website:
         name: myapp-static-prod
         suffix: index.html
         error_key: error.html
@@ -209,7 +210,8 @@ Lifecycle rules automatically transition or delete objects based on age.
             "Rules": [{
               "Status": "Enabled",
               "Priority": 1,
-              "Filter": {},
+              "DeleteMarkerReplication": { "Status": "Disabled" },
+              "Filter": { "Prefix": "" },
               "Destination": {
                 "Bucket": "arn:aws:s3:::myapp-backups-prod-dr",
                 "StorageClass": "STANDARD_IA"
@@ -244,10 +246,12 @@ Lifecycle rules automatically transition or delete objects based on age.
         access_tier: Hot
         https_only: true
         minimum_tls_version: TLS1_2
+        allow_blob_public_access: true
         blob_cors:
           - allowed_origins: ["https://myapp.com"]
             allowed_methods: ["GET", "PUT"]
             allowed_headers: ["*"]
+            exposed_headers: ["*"]
             max_age_in_seconds: 3600
         tags:
           Environment: production
@@ -259,7 +263,6 @@ Lifecycle rules automatically transition or delete objects based on age.
         resource_group: "{{ resource_group }}"
         storage_account_name: myappstorageprod
         container: uploads
-        public_access: off
         state: present
 
     - name: Create backups container
@@ -267,7 +270,6 @@ Lifecycle rules automatically transition or delete objects based on age.
         resource_group: "{{ resource_group }}"
         storage_account_name: myappstorageprod
         container: backups
-        public_access: off
         state: present
 
     - name: Create public assets container
@@ -309,16 +311,16 @@ Lifecycle rules automatically transition or delete objects based on age.
                 type: SetStorageClass
                 storage_class: NEARLINE
               condition:
-                age: 30
+                age_days: 30
             - action:
                 type: SetStorageClass
                 storage_class: COLDLINE
               condition:
-                age: 90
+                age_days: 90
             - action:
                 type: Delete
               condition:
-                age: 365
+                age_days: 365
         labels:
           environment: production
           managed-by: ansible
@@ -333,7 +335,9 @@ Lifecycle rules automatically transition or delete objects based on age.
         project: "{{ gcp_project }}"
         location: US-CENTRAL1
         storage_class: STANDARD
-        uniform_bucket_level_access: true
+        iam_configuration:
+          uniform_bucket_level_access:
+            enabled: true
         labels:
           environment: production
           team: data-science
@@ -361,7 +365,8 @@ Ansible can upload files to any cloud storage provider.
         object: app/config.yml
         src: /tmp/config.yml
         mode: put
-        encryption: AES256
+        encrypt: true
+        encryption_mode: AES256
         tags:
           Version: "2.5.0"
 
@@ -379,13 +384,13 @@ Ansible can upload files to any cloud storage provider.
     # Upload to GCP
     - name: Upload to GCP Cloud Storage
       google.cloud.gcp_storage_object:
+        action: upload
         bucket: myapp-config-prod
-        name: app/config.yml
         src: /tmp/config.yml
+        dest: app/config.yml
         project: my-project-id
         auth_kind: serviceaccount
         service_account_file: /path/to/sa-key.json
-        state: present
 ```
 
 ## Database Backup to Cloud Storage
@@ -417,7 +422,8 @@ A practical example of automated database backups to cloud storage.
         object: "database/{{ backup_file }}"
         src: "/tmp/{{ backup_file }}"
         mode: put
-        encryption: AES256
+        encrypt: true
+        encryption_mode: AES256
       delegate_to: localhost
 
     # Clean up local backup
@@ -461,7 +467,7 @@ Periodically check your storage configurations for compliance.
       loop: "{{ bucket_details.results }}"
       loop_control:
         label: "{{ item.item.name }}"
-      when: item.bucket_encryption is not defined or item.bucket_encryption | length == 0
+      when: item.buckets[0].bucket_encryption is not defined or item.buckets[0].bucket_encryption | length == 0
 ```
 
 ## Tips for Cloud Storage Management
