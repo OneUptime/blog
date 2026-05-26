@@ -12,41 +12,50 @@ Zabbix has been a staple of infrastructure monitoring for over two decades, and 
 
 ## Installing the Collection
 
-The collection needs the `zabbix-api` Python library to communicate with the Zabbix server.
+The collection uses Ansible's `httpapi` connection plugin to communicate with the Zabbix server. Install the `ansible.netcommon` collection as well, because it provides the shared HTTP API connection support.
 
 ```bash
 # Install the collection
 
 ansible-galaxy collection install community.zabbix
 
-# Install the Python library for Zabbix API access
-pip install zabbix-api
+# Install the HTTP API connection dependency
+ansible-galaxy collection install ansible.netcommon
 ```
 
-For newer Zabbix versions (6.0+), you might want to use the `zabbix_utils` library instead.
+The agent role also uses modules from `ansible.posix` and `community.general`.
 
 ```bash
-pip install zabbix_utils
+ansible-galaxy collection install ansible.posix community.general
 ```
 
 ## What the Collection Provides
 
 The collection is one of the larger community collections, with modules and roles covering most Zabbix operations:
 
-- **Modules**: `zabbix_host`, `zabbix_group`, `zabbix_template`, `zabbix_user`, `zabbix_user_role`, `zabbix_mediatype`, `zabbix_action`, `zabbix_maintenance`, `zabbix_proxy`, `zabbix_screen`, `zabbix_discovery_rule`, and more
+- **Modules**: `zabbix_host`, `zabbix_group`, `zabbix_template`, `zabbix_user`, `zabbix_user_role`, `zabbix_mediatype`, `zabbix_action`, `zabbix_maintenance`, `zabbix_proxy`, `zabbix_map`, `zabbix_discovery_rule`, and more
 - **Roles**: `zabbix_server`, `zabbix_agent`, `zabbix_proxy`, `zabbix_web`, `zabbix_javagateway` for deploying Zabbix components
 
 ## Setting Up Connection Defaults
 
-Every API module needs to know how to reach your Zabbix server. Set these once in your group variables.
+Every API module needs to know how to reach your Zabbix server. Create an inventory host for the Zabbix API endpoint and set the connection variables there.
 
 ```yaml
-# group_vars/all.yml - Zabbix API connection settings
-zabbix_api_server_url: "https://zabbix.example.com"
-zabbix_api_login_user: "Admin"
-zabbix_api_login_pass: "{{ vault_zabbix_admin_password }}"
-zabbix_api_validate_certs: true
-zabbix_api_timeout: 30
+# inventory.yml
+zabbix_api:
+  hosts:
+    zabbix_api_endpoint:
+      ansible_host: "zabbix.example.com"
+
+# host_vars/zabbix_api_endpoint.yml - Zabbix API connection settings
+ansible_network_os: community.zabbix.zabbix
+ansible_connection: httpapi
+ansible_httpapi_port: 443
+ansible_httpapi_use_ssl: true
+ansible_httpapi_validate_certs: true
+ansible_user: "Admin"
+ansible_httpapi_pass: "{{ vault_zabbix_admin_password }}"
+ansible_zabbix_url_path: ""
 ```
 
 ## Deploying the Zabbix Agent with the Built-in Role
@@ -68,12 +77,13 @@ The collection includes a role for deploying the Zabbix agent to monitored hosts
         zabbix_agent_tlsconnect: psk
         zabbix_agent_tlsaccept: psk
         zabbix_agent_tlspskidentity: "PSK_{{ inventory_hostname }}"
-        zabbix_agent_tlspskvalue: "{{ vault_zabbix_psk_key }}"
+        zabbix_agent_tlspsk_secret: "{{ vault_zabbix_psk_key }}"
+        zabbix_agent_tlspskfile: /etc/zabbix/zabbix_agent_pskfile.psk
         zabbix_agent_userparameters:
-          - name: custom.disk.discovery
-            command: /usr/local/bin/disk_discovery.sh
-          - name: custom.app.health
-            command: /usr/local/bin/check_app_health.sh
+          - name: custom_disk
+            scripts_dir: custom_disk
+          - name: custom_app
+            scripts_dir: custom_app
 ```
 
 ## Managing Host Groups
@@ -82,13 +92,10 @@ Host groups organize your monitored hosts. Create them before adding hosts.
 
 ```yaml
 # playbook-hostgroups.yml - create host groups matching your org structure
-- hosts: localhost
+- hosts: zabbix_api
   tasks:
     - name: Create host groups
       community.zabbix.zabbix_group:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         host_groups:
           - "Linux Servers"
           - "Web Servers"
@@ -111,9 +118,6 @@ After deploying the agent, register the host with the Zabbix server so it starts
   tasks:
     - name: Register host in Zabbix
       community.zabbix.zabbix_host:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         host_name: "{{ inventory_hostname }}"
         visible_name: "{{ inventory_hostname_short }} ({{ env }})"
         description: "Managed by Ansible"
@@ -141,7 +145,7 @@ After deploying the agent, register the host with the Zabbix server so it starts
         inventory_mode: automatic
         status: enabled
         state: present
-      delegate_to: localhost
+      delegate_to: zabbix_api_endpoint
 ```
 
 ## Importing Templates
@@ -150,21 +154,15 @@ You can import Zabbix templates from XML or YAML files, which is great for custo
 
 ```yaml
 # playbook-templates.yml - import custom monitoring templates
-- hosts: localhost
+- hosts: zabbix_api
   tasks:
     - name: Import custom application template
       community.zabbix.zabbix_template:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         template_xml: "{{ lookup('file', 'templates/custom_app_template.xml') }}"
         state: present
 
     - name: Create a simple template from scratch
       community.zabbix.zabbix_template:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         template_name: "Custom - App Health Check"
         template_groups:
           - "Templates/Applications"
@@ -179,22 +177,21 @@ Automate maintenance windows to suppress alerts during planned deployments.
 
 ```yaml
 # playbook-maintenance.yml - create maintenance window during deployment
-- hosts: localhost
-  vars:
-    maintenance_duration: 3600  # 1 hour in seconds
+- hosts: zabbix_api
   tasks:
     - name: Create maintenance window for deployment
       community.zabbix.zabbix_maintenance:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         name: "Deployment - {{ ansible_date_time.date }}"
         description: "Scheduled deployment maintenance window"
         host_groups:
           - "Web Servers"
           - "Production"
         collect_data: true  # still collect data, just suppress alerts
-        minutes: 60
+        time_periods:
+          - frequency: once
+            duration: 60
+            start_date: "{{ ansible_date_time.date }}"
+            start_time: "{{ ansible_date_time.time[:5] }}"
         state: present
       register: maintenance_result
 
@@ -202,9 +199,6 @@ Automate maintenance windows to suppress alerts during planned deployments.
 
     - name: Remove maintenance window after deployment
       community.zabbix.zabbix_maintenance:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         name: "Deployment - {{ ansible_date_time.date }}"
         state: absent
 ```
@@ -215,16 +209,13 @@ User management through Ansible ensures consistent access controls across Zabbix
 
 ```yaml
 # playbook-users.yml - configure Zabbix users and roles
-- hosts: localhost
+- hosts: zabbix_api
   tasks:
     - name: Create user groups with appropriate permissions
       community.zabbix.zabbix_usergroup:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         name: "{{ item.name }}"
         gui_access: "default"
-        rights:
+        hostgroup_rights:
           - host_group: "{{ item.group }}"
             permission: "{{ item.permission }}"
         state: present
@@ -238,9 +229,6 @@ User management through Ansible ensures consistent access controls across Zabbix
 
     - name: Create media type for custom notifications
       community.zabbix.zabbix_mediatype:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         name: "Custom Webhook"
         type: webhook
         webhook_script: |
@@ -270,13 +258,10 @@ Auto-discover new hosts on your network and register them automatically.
 
 ```yaml
 # playbook-discovery.yml - set up network discovery
-- hosts: localhost
+- hosts: zabbix_api
   tasks:
     - name: Create network discovery rule
       community.zabbix.zabbix_discovery_rule:
-        server_url: "{{ zabbix_api_server_url }}"
-        login_user: "{{ zabbix_api_login_user }}"
-        login_password: "{{ zabbix_api_login_pass }}"
         name: "Discover LAN hosts"
         iprange: "10.0.1.1-254"
         dchecks:
@@ -293,7 +278,7 @@ Auto-discover new hosts on your network and register them automatically.
 
 Here is what I have learned running this collection in production:
 
-1. **Use delegate_to for API calls.** The Zabbix API modules run on the control node, not on the target hosts. Always use `delegate_to: localhost` when running host registration tasks on remote hosts.
+1. **Use the HTTP API connection for API calls.** The Zabbix API modules connect to the Zabbix frontend through Ansible's `httpapi` connection plugin. When running host registration tasks from remote-host plays, delegate the task to an inventory host that represents the Zabbix API endpoint.
 
 2. **Batch your host registrations.** If you are registering hundreds of hosts, the API can get slow. Use `throttle: 5` to limit concurrent API calls.
 
