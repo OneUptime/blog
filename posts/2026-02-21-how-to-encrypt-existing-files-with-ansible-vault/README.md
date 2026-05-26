@@ -94,7 +94,7 @@ $ANSIBLE_VAULT;1.2;AES256;production
 39643365323563666533333732303666...
 ```
 
-This tells Ansible which password to use when decrypting.
+This tells Ansible which matching password to try first when decrypting.
 
 ## Step-by-Step: Encrypting an Existing Project
 
@@ -184,7 +184,7 @@ Encrypting files in the working directory does not remove the plain-text version
 # (change all passwords, API keys, etc. to new values)
 
 # Option 2: If you need to purge history (destructive)
-# Use git filter-branch or BFG Repo Cleaner
+# Use git filter-repo or BFG Repo Cleaner
 # bfg --delete-files secrets.yml
 # git reflog expire --expire=now --all
 # git gc --prune=now --aggressive
@@ -268,7 +268,7 @@ For larger projects, use a script:
 # encrypt-vault-files.sh
 # Encrypt all vault.yml files in the project
 
-VAULT_PASS_FILE="${1:-~/.vault_pass.txt}"
+VAULT_PASS_FILE="${1:-$HOME/.vault_pass.txt}"
 
 if [ ! -f "$VAULT_PASS_FILE" ]; then
     echo "Vault password file not found: $VAULT_PASS_FILE"
