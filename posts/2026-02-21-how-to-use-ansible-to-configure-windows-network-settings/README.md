@@ -36,9 +36,9 @@ The `ansible.windows.win_shell` module with PowerShell networking cmdlets is the
       ansible.windows.win_shell: |
         $adapter = Get-NetAdapter -Name "{{ interface_name }}"
         # Remove existing IP addresses
-        Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
         # Remove existing gateway
-        Remove-NetRoute -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.ifIndex -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
 
     - name: Set static IP address
       ansible.windows.win_shell: |
@@ -171,7 +171,7 @@ The `community.windows.win_firewall_rule` module provides a clean interface for 
   hosts: web_servers
   tasks:
     - name: Enable Windows Firewall on all profiles
-      community.windows.win_firewall:
+      ansible.windows.win_firewall:
         state: enabled
         profiles:
           - Domain
@@ -339,8 +339,8 @@ Here is a comprehensive playbook that handles the full network setup for a new s
     - name: Set static IP address
       ansible.windows.win_shell: |
         $adapter = Get-NetAdapter -Name "{{ primary_nic }}"
-        Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-        Remove-NetRoute -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.ifIndex -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
         New-NetIPAddress -InterfaceIndex $adapter.ifIndex `
           -IPAddress "{{ ip_address }}" `
           -PrefixLength {{ subnet_prefix }} `
@@ -387,7 +387,7 @@ Here is a comprehensive playbook that handles the full network setup for a new s
 
 **Be careful with remote IP changes.** If you change the IP address of a server you are connecting to via WinRM, you will lose the connection mid-playbook. Either use a management network that stays the same, or use a two-phase approach where you update DNS/inventory between phases.
 
-**Test in check mode first.** Network changes can be disruptive. Use `--check` to verify what would change before applying.
+**Test with a dry-run strategy first.** Network changes can be disruptive. Use `--check` for module-backed tasks that support check mode, and use read-only validation tasks or PowerShell `-WhatIf` logic for custom `win_shell` scripts before applying changes.
 
 **Keep DNS settings consistent.** Inconsistent DNS across servers is a common source of Active Directory issues. Define DNS servers in group variables and apply them uniformly.
 
