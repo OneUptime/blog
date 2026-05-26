@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, GCP, Authentication, Service Account, Cloud Automation
 
-Description: Configure Google Cloud Platform credentials for Ansible including service accounts, environment variables, and workload identity federation.
+Description: Configure Google Cloud Platform credentials for Ansible including service accounts, environment variables, and Application Default Credentials.
 
 ---
 
-Before you can manage any GCP resource with Ansible, you need authentication sorted out. Unlike AWS where you just export two environment variables and go, GCP has a few different credential mechanisms, and picking the right one depends on where your Ansible control machine runs. This guide walks through every authentication method, from the simplest local development setup to production-grade service account configuration.
+Before you can manage any GCP resource with Ansible, you need authentication sorted out. Unlike AWS where you just export two environment variables and go, GCP has a few different credential mechanisms, and picking the right one depends on where your Ansible control machine runs. This guide walks through common authentication methods, from the simplest local development setup to production-grade service account configuration.
 
 ## GCP Authentication Methods
 
@@ -19,18 +19,16 @@ graph TD
     A[GCP Authentication] --> B[Service Account JSON Key]
     A --> C[Application Default Credentials]
     A --> D[Environment Variables]
-    A --> E[Workload Identity Federation]
     B --> F[Best for CI/CD and automation servers]
     C --> G[Best for local development]
     D --> H[Flexible for both scenarios]
-    E --> I[Best for non-GCP environments without keys]
 ```
 
 ## Prerequisites
 
 You need the following before getting started:
 
-- Ansible 2.9+ with the `google.cloud` collection
+- Ansible Core 2.16+ with the `google.cloud` collection
 - A GCP project with billing enabled
 - The `gcloud` CLI installed (optional but helpful for setup)
 - Python libraries: `google-auth` and `requests`
@@ -41,12 +39,12 @@ You need the following before getting started:
 ansible-galaxy collection install google.cloud
 
 # Install required Python libraries
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 ```
 
 ## Method 1: Service Account with JSON Key File
 
-This is the most common method for automated workflows. You create a service account in GCP, download a JSON key file, and tell Ansible where to find it.
+This is a straightforward method for automated workflows. You create a service account in GCP, download a JSON key file, and tell Ansible where to find it. Service account keys are sensitive long-lived credentials, so prefer keyless options such as attached service accounts when they fit your environment.
 
 ### Step 1: Create the service account
 
@@ -101,16 +99,16 @@ chmod 600 /opt/ansible/gcp-credentials.json
     gcp_cred_file: "/opt/ansible/gcp-credentials.json"
 
   tasks:
-    - name: List compute zones to verify authentication
-      google.cloud.gcp_compute_zone_info:
+    - name: List VPC networks to verify authentication
+      google.cloud.gcp_compute_network_info:
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
-      register: zones
+      register: networks
 
-    - name: Show available zones
+    - name: Show available networks
       ansible.builtin.debug:
-        msg: "Authentication successful. Found {{ zones.resources | length }} zones."
+        msg: "Authentication successful. Found {{ networks.resources | length }} VPC networks."
 ```
 
 ## Method 2: Environment Variables
@@ -139,8 +137,6 @@ With these variables set, your playbooks become cleaner because you do not need 
       google.cloud.gcp_compute_instance_info:
         zone: us-central1-a
         project: "{{ lookup('env', 'GCP_PROJECT') }}"
-        auth_kind: "{{ lookup('env', 'GCP_AUTH_KIND') }}"
-        service_account_file: "{{ lookup('env', 'GCP_SERVICE_ACCOUNT_FILE') }}"
       register: instances
 
     - name: Show instance count
@@ -175,15 +171,15 @@ Then reference ADC in your playbook:
     gcp_project: "my-project-123"
 
   tasks:
-    - name: List storage buckets using ADC
-      google.cloud.gcp_storage_bucket_info:
+    - name: List VPC networks using ADC
+      google.cloud.gcp_compute_network_info:
         project: "{{ gcp_project }}"
         auth_kind: application
-      register: buckets
+      register: networks
 
-    - name: Show bucket count
+    - name: Show network count
       ansible.builtin.debug:
-        msg: "Found {{ buckets.resources | length }} buckets"
+        msg: "Found {{ networks.resources | length }} VPC networks"
 ```
 
 The `auth_kind: application` tells Ansible to use ADC. This is convenient for development but not recommended for production because it uses your personal Google account credentials.
@@ -326,12 +322,13 @@ A quick verification playbook that tests authentication and shows your project d
   gather_facts: false
 
   tasks:
-    - name: List available zones
-      google.cloud.gcp_compute_zone_info:
+    - name: List compute instances
+      google.cloud.gcp_compute_instance_info:
+        zone: us-central1-a
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
-      register: zones
+      register: instances
 
     - name: List VPC networks
       google.cloud.gcp_compute_network_info:
@@ -340,23 +337,15 @@ A quick verification playbook that tests authentication and shows your project d
         service_account_file: "{{ gcp_cred_file }}"
       register: networks
 
-    - name: List storage buckets
-      google.cloud.gcp_storage_bucket_info:
-        project: "{{ gcp_project }}"
-        auth_kind: "{{ gcp_cred_kind }}"
-        service_account_file: "{{ gcp_cred_file }}"
-      register: buckets
-
     - name: Authentication summary
       ansible.builtin.debug:
         msg:
           - "GCP Authentication: SUCCESS"
           - "Project: {{ gcp_project }}"
-          - "Available zones: {{ zones.resources | length }}"
+          - "Instances in us-central1-a: {{ instances.resources | length }}"
           - "VPC networks: {{ networks.resources | length }}"
-          - "Storage buckets: {{ buckets.resources | length }}"
 ```
 
 ## Summary
 
-Getting GCP credentials right is the foundation for everything else you will do with Ansible on Google Cloud. For production environments, use service account JSON keys stored in Ansible Vault or, better yet, use machine-attached service accounts if your control node runs on GCE. For local development, Application Default Credentials are the quickest option. Whichever method you choose, centralize your credential configuration in group variables so you are not repeating the same auth parameters across every task in every playbook.
+Getting GCP credentials right is the foundation for everything else you will do with Ansible on Google Cloud. For production environments, prefer machine-attached service accounts if your control node runs on GCE; if you must use service account JSON keys, store them with Ansible Vault and rotate them carefully. For local development, Application Default Credentials are the quickest option. Whichever method you choose, centralize your credential configuration in group variables so you are not repeating the same auth parameters across every task in every playbook.
