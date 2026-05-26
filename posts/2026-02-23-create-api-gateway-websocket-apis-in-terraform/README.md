@@ -131,7 +131,7 @@ resource "aws_iam_role_policy" "websocket_lambda" {
 # Lambda function for $connect route
 resource "aws_lambda_function" "connect" {
   function_name = "websocket-connect"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   handler       = "connect.handler"
   role          = aws_iam_role.websocket_lambda.arn
   filename      = data.archive_file.connect_lambda.output_path
@@ -150,7 +150,7 @@ resource "aws_lambda_function" "connect" {
 # Lambda function for $disconnect route
 resource "aws_lambda_function" "disconnect" {
   function_name = "websocket-disconnect"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   handler       = "disconnect.handler"
   role          = aws_iam_role.websocket_lambda.arn
   filename      = data.archive_file.disconnect_lambda.output_path
@@ -169,7 +169,7 @@ resource "aws_lambda_function" "disconnect" {
 # Lambda function for sendMessage route
 resource "aws_lambda_function" "send_message" {
   function_name = "websocket-send-message"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   handler       = "sendMessage.handler"
   role          = aws_iam_role.websocket_lambda.arn
   filename      = data.archive_file.send_message_lambda.output_path
@@ -189,7 +189,7 @@ resource "aws_lambda_function" "send_message" {
 # Lambda function for $default route (unmatched messages)
 resource "aws_lambda_function" "default_handler" {
   function_name = "websocket-default"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   handler       = "default.handler"
   role          = aws_iam_role.websocket_lambda.arn
   filename      = data.archive_file.default_lambda.output_path
