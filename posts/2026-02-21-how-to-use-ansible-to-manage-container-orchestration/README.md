@@ -170,6 +170,7 @@ For Kubernetes, the kubernetes.core collection provides comprehensive support:
 
 - name: Wait for deployment to be ready
   kubernetes.core.k8s_info:
+    api_version: apps/v1
     kind: Deployment
     name: "{{ app_name }}"
     namespace: "{{ k8s_namespace }}"
@@ -191,6 +192,7 @@ For Kubernetes, the kubernetes.core collection provides comprehensive support:
   tasks:
     - name: Scale Kubernetes deployment
       kubernetes.core.k8s_scale:
+        api_version: apps/v1
         kind: Deployment
         name: "{{ service_name }}"
         namespace: "{{ namespace }}"
@@ -246,7 +248,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -287,7 +289,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
