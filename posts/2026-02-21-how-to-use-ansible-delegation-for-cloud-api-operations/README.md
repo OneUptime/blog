@@ -8,7 +8,7 @@ Description: Learn how to use Ansible delegation to manage cloud resources throu
 
 ---
 
-Cloud resource management through Ansible almost always involves delegation to localhost. Cloud APIs (AWS, Azure, GCP) are called from the controller, not from the managed hosts. Whether you are provisioning new instances, updating security groups, managing DNS, or configuring load balancers, the cloud modules run locally and communicate with the cloud provider's API endpoints. Understanding how delegation works with cloud modules helps you build playbooks that mix cloud operations with server configuration in a single workflow.
+Cloud resource management through Ansible often involves delegation to localhost. Cloud APIs (AWS, Azure, GCP) are commonly called from the controller, not from the managed hosts. Whether you are provisioning new instances, updating security groups, managing DNS, or configuring load balancers, delegating the cloud modules to localhost runs them locally so they can communicate with the cloud provider's API endpoints. Understanding how delegation works with cloud modules helps you build playbooks that mix cloud operations with server configuration in a single workflow.
 
 ## Why Cloud Operations Need Delegation
 
@@ -63,6 +63,7 @@ Here is a playbook that provisions and configures AWS infrastructure alongside s
       community.aws.elb_target:
         target_group_arn: "{{ target_group_arn }}"
         target_id: "{{ ec2_instance_id }}"
+        target_port: 8080
         state: absent
         region: "{{ aws_region }}"
       delegate_to: localhost
@@ -149,7 +150,7 @@ Azure cloud operations follow the same delegation pattern:
       delegate_to: localhost
       run_once: true
 
-    # Cloud: Remove from Azure Load Balancer backend pool
+    # Cloud: Inspect the VM network interface
     - name: Get current VM NIC info
       azure.azcollection.azure_rm_networkinterface_info:
         resource_group: "{{ resource_group }}"
@@ -170,7 +171,7 @@ Azure cloud operations follow the same delegation pattern:
         state: restarted
       become: true
 
-    # Cloud: Update VMSS health if using scale sets
+    # Cloud: Check application health from the controller
     - name: Wait and verify health
       ansible.builtin.uri:
         url: "http://{{ ansible_host }}:8080/health"
@@ -257,6 +258,8 @@ A common workflow provisions cloud resources and then configures them, all in on
         region: us-east-1
         vpc_subnet_id: subnet-12345
         security_group: myapp-sg
+        network_interfaces:
+          - assign_public_ip: true
         key_name: deploy-key
         state: running
         wait: true
