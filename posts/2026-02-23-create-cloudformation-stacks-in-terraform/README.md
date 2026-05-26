@@ -31,7 +31,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -128,7 +128,7 @@ resource "aws_cloudformation_stack" "app_stack" {
   # Timeout for stack creation
   timeout_in_minutes = 30
 
-  # Prevent accidental deletion
+  # Roll back the stack if creation fails
   on_failure = "ROLLBACK"
 
   tags = {
@@ -170,41 +170,9 @@ resource "aws_cloudformation_stack" "network_stack" {
 
 Stack sets let you deploy the same CloudFormation template across multiple AWS accounts and regions. This is especially useful in AWS Organizations setups.
 
+Make sure trusted access is activated for CloudFormation StackSets in AWS Organizations before using service-managed permissions.
+
 ```hcl
-# IAM role for StackSets administration
-resource "aws_iam_role" "stackset_admin" {
-  name = "AWSCloudFormationStackSetAdministrationRole"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudformation.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "stackset_admin_policy" {
-  name = "stackset-admin-policy"
-  role = aws_iam_role.stackset_admin.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = "sts:AssumeRole"
-        Resource = "arn:aws:iam::*:role/AWSCloudFormationStackSetExecutionRole"
-      }
-    ]
-  })
-}
-
 # Create the StackSet
 resource "aws_cloudformation_stack_set" "security_baseline" {
   name             = "security-baseline"
@@ -217,28 +185,33 @@ resource "aws_cloudformation_stack_set" "security_baseline" {
     Description              = "Security baseline configuration"
 
     Resources = {
-      SecurityTrail = {
-        Type = "AWS::CloudTrail::Trail"
+      AuditBucket = {
+        Type = "AWS::S3::Bucket"
         Properties = {
-          TrailName         = "organization-trail"
-          S3BucketName      = "org-cloudtrail-logs"
-          IsLogging         = true
-          IsMultiRegionTrail = true
+          BucketEncryption = {
+            ServerSideEncryptionConfiguration = [
+              {
+                ServerSideEncryptionByDefault = {
+                  SSEAlgorithm = "AES256"
+                }
+              }
+            ]
+          }
+          PublicAccessBlockConfiguration = {
+            BlockPublicAcls       = true
+            BlockPublicPolicy     = true
+            IgnorePublicAcls      = true
+            RestrictPublicBuckets = true
+          }
         }
       }
     }
   })
 
-  capabilities = ["CAPABILITY_IAM"]
-
   # Auto-deploy to new accounts in the organization
   auto_deployment {
     enabled                          = true
     retain_stacks_on_account_removal = false
-  }
-
-  lifecycle {
-    ignore_changes = [administration_role_arn]
   }
 }
 
@@ -250,7 +223,7 @@ resource "aws_cloudformation_stack_set_instance" "security_baseline" {
     organizational_unit_ids = ["ou-abc123def456"]
   }
 
-  region = "us-east-1"
+  stack_set_instance_region = "us-east-1"
 }
 ```
 
