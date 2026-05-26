@@ -282,8 +282,9 @@ INVENTORY="${2:-inventories/production/hosts.ini}"
 
 # Extract just the hostnames (one per line)
 HOSTS=$(ansible-playbook --list-hosts -i "$INVENTORY" "$PLAYBOOK" 2>/dev/null | \
-    grep -E "^\s+\S+\.\S+" | \
-    sed 's/^[[:space:]]*//')
+    awk '/hosts \([0-9]+\):/ { in_hosts=1; next }
+         in_hosts && /^[[:space:]]{6,}[^[:space:]]/ { sub(/^[[:space:]]+/, ""); if (!seen[$0]++) print; next }
+         in_hosts { in_hosts=0 }')
 
 echo "$HOSTS"
 ```
@@ -313,18 +314,23 @@ Build a safety wrapper that always checks hosts before running:
 # safe-ansible.sh - Always verify hosts before execution
 
 PLAYBOOK="$1"
-shift
 
 if [ -z "$PLAYBOOK" ]; then
     echo "Usage: $0 <playbook> [ansible-playbook args...]"
     exit 1
 fi
 
+shift
+
 echo "=== Target Host Verification ==="
-ansible-playbook --list-hosts "$PLAYBOOK" "$@"
+ansible-playbook --list-hosts "$@" "$PLAYBOOK"
 echo ""
 
-HOST_COUNT=$(ansible-playbook --list-hosts "$PLAYBOOK" "$@" 2>/dev/null | grep -cE "^\s+\S")
+HOST_COUNT=$(ansible-playbook --list-hosts "$@" "$PLAYBOOK" 2>/dev/null | \
+    awk '/hosts \([0-9]+\):/ { in_hosts=1; next }
+         in_hosts && /^[[:space:]]{6,}[^[:space:]]/ { sub(/^[[:space:]]+/, ""); if (!seen[$0]++) count++; next }
+         in_hosts { in_hosts=0 }
+         END { print count + 0 }')
 
 echo "Total hosts: $HOST_COUNT"
 echo ""
@@ -335,7 +341,7 @@ fi
 
 read -p "Proceed with execution? (yes/no): " confirm
 if [ "$confirm" = "yes" ]; then
-    ansible-playbook "$PLAYBOOK" "$@"
+    ansible-playbook "$@" "$PLAYBOOK"
 else
     echo "Execution cancelled."
 fi
@@ -358,8 +364,8 @@ ansible-playbook --list-hosts -i aws_ec2.yml deploy.yml
 
 # Output might show instances you didn't expect:
 # hosts (8):
-#   i-0a1b2c3d4e5f (10.0.1.10)
-#   i-1b2c3d4e5f6g (10.0.1.11)
+#   i-0a1b2c3d4e5f
+#   i-1b2c3d4e5f6g
 #   ...
 ```
 
