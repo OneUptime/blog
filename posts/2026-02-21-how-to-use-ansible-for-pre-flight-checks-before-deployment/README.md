@@ -65,8 +65,8 @@ Run this before every deployment:
     - name: Verify critical services
       ansible.builtin.assert:
         that:
-          - "'{{ item }}.service' in services"
-          - "services['{{ item }}.service'].state == 'running'"
+          - "'{{ item }}.service' in ansible_facts.services"
+          - "ansible_facts.services['{{ item }}.service'].state == 'running'"
         fail_msg: "Required service {{ item }} is not running"
       loop: "{{ required_services | default(['sshd']) }}"
 
@@ -74,10 +74,11 @@ Run this before every deployment:
       ansible.builtin.command: "host {{ item }}"
       loop:
         - "{{ app_repo_host | default('github.com') }}"
-        - "{{ db_host | default('localhost') }}"
-        - "{{ artifact_host | default('registry.example.com') }}"
+        - "{{ db_host | default('') }}"
+        - "{{ artifact_host | default('') }}"
       register: dns_checks
       changed_when: false
+      when: item | length > 0
       failed_when: dns_checks.rc != 0
 
     - name: Verify database connectivity
@@ -103,6 +104,7 @@ Run this before every deployment:
         status_code: 200
       when:
         - artifact_repo_url is defined
+        - app_name is defined
         - app_version is defined
       delegate_to: localhost
       run_once: true
@@ -130,7 +132,7 @@ Run this before every deployment:
 
     - name: Verify SSL certificate is not expiring soon
       ansible.builtin.command: >
-        openssl x509 -enddate -noout -in {{ ssl_cert_path }}
+        openssl x509 -checkend {{ ssl_min_validity_seconds | default(2592000) }} -noout -in {{ ssl_cert_path }}
       register: cert_expiry
       changed_when: false
       when: ssl_cert_path is defined
@@ -206,7 +208,7 @@ Extend pre-flight checks for specific deployment types:
 
 - name: Check database replication lag
   ansible.builtin.command:
-    cmd: psql -c "SELECT EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp()) AS lag_seconds"
+    cmd: psql -t -A -c "SELECT EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp()) AS lag_seconds"
   register: replication_lag
   become_user: postgres
   changed_when: false
@@ -215,14 +217,14 @@ Extend pre-flight checks for specific deployment types:
 - name: Verify replication is caught up
   ansible.builtin.assert:
     that:
-      - replication_lag.stdout | regex_search('[0-9.]+') | float < 30
+      - replication_lag.stdout | trim | float < 30
     fail_msg: "Replication lag is {{ replication_lag.stdout }}s. Must be under 30s before migration."
   when: db_role == 'replica'
 
 - name: Verify no active long-running queries
   ansible.builtin.command:
     cmd: >
-      psql -c "SELECT count(*) FROM pg_stat_activity
+      psql -t -A -c "SELECT count(*) FROM pg_stat_activity
       WHERE state = 'active' AND query_start < now() - interval '5 minutes'"
   register: long_queries
   become_user: postgres
