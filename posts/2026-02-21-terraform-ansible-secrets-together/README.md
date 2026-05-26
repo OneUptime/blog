@@ -60,7 +60,7 @@ ansible-vault encrypt shared_secrets.yml
 ```
 
 ```yaml
-# shared_secrets.yml (encrypted)
+# shared_secrets.yml (before encryption)
 db_password: supersecret
 api_key: abc123
 ssl_cert_password: certpass
@@ -74,9 +74,9 @@ ssl_cert_password: certpass
 ```
 
 ```bash
-# Terraform reads it via external data source or script
+# Terraform reads it via an external data source script that prints JSON
 # data "external" "secrets" {
-#   program = ["ansible-vault", "view", "shared_secrets.yml", "--vault-password-file", "~/.vault_pass"]
+#   program = ["./read-ansible-vault-json.sh", "shared_secrets.yml"]
 # }
 ```
 
@@ -87,6 +87,7 @@ ssl_cert_password: certpass
 3. Rotate secrets regularly
 4. Audit secret access
 5. Use least-privilege access for both tools
+6. Protect Terraform state and plan files, because secrets read by data sources can be stored there
 
 ## Summary
 
@@ -94,12 +95,12 @@ The best approach is using a centralized secrets manager like HashiCorp Vault th
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -131,7 +132,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -213,7 +214,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -275,4 +276,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
