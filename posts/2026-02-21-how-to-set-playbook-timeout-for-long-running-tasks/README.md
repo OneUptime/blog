@@ -30,7 +30,7 @@ Set it in `ansible.cfg`:
 # ansible.cfg - Configure SSH connection timeout
 
 [defaults]
-timeout = 30  # Wait 30 seconds for SSH connection (default is 10)
+timeout = 30  ; Wait 30 seconds for connection plugins (default is 10)
 
 [ssh_connection]
 ssh_args = -o ConnectTimeout=30 -o ConnectionAttempts=3
@@ -130,7 +130,7 @@ For very long-running tasks, the `async` keyword is the preferred approach. It l
 
   tasks:
     - name: Compile application (may take 20+ minutes)
-      command: make -j$(nproc) all
+      shell: make -j"$(nproc)" all
       args:
         chdir: /opt/source/myapp
       async: 3600    # Maximum runtime: 1 hour
@@ -163,19 +163,19 @@ graph TD
     H --> I[Fails if async time exceeded]
 ```
 
-## Configuring Default Command Timeout
+## Configuring Default Task and Command Timeouts
 
-The `DEFAULT_TIMEOUT` in ansible.cfg sets the default for command and shell module execution:
+The `task_timeout` setting in ansible.cfg sets the default timeout for task actions. The `[persistent_connection]` settings control timeouts for persistent connections, which are commonly used with network devices:
 
 ```ini
 # ansible.cfg - Set default timeouts for the project
 [defaults]
-timeout = 30              # SSH connection timeout
-command_warnings = False
+timeout = 30              ; Connection plugin timeout
+task_timeout = 60         ; Default timeout for task actions
 
 [persistent_connection]
-command_timeout = 60      # Timeout for individual commands on persistent connections
-connect_timeout = 30      # Timeout for persistent connection establishment
+command_timeout = 60      ; Timeout for commands on persistent connections
+connect_timeout = 30      ; Idle timeout for persistent connections
 connect_retry_timeout = 15
 ```
 
@@ -201,7 +201,7 @@ Here is a real-world playbook for updating servers with appropriate timeouts at 
         update_cache: yes
       timeout: 120  # Cache update should finish in 2 minutes
 
-    - name: Apply all security updates
+    - name: Apply available package updates
       apt:
         upgrade: safe
         autoremove: yes
@@ -225,10 +225,10 @@ Here is a real-world playbook for updating servers with appropriate timeouts at 
       command: systemctl is-system-running
       register: system_status
       until: system_status.stdout == "running"
-      retries: 30
+      retries: 60
       delay: 10
       changed_when: false
-      timeout: 600  # 10 minutes total to stabilize
+      timeout: 10  # Per-attempt command timeout; retries and delay control total wait time
 ```
 
 ## Using wait_for with Timeouts
@@ -267,6 +267,9 @@ export ANSIBLE_TIMEOUT=60
 
 # For persistent connection command timeout
 export ANSIBLE_PERSISTENT_COMMAND_TIMEOUT=120
+
+# For the default task action timeout
+export ANSIBLE_TASK_TIMEOUT=300
 
 ansible-playbook deploy.yml
 ```
