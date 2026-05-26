@@ -8,7 +8,7 @@ Description: How to use ansible-galaxy list to view installed roles and collecti
 
 ---
 
-When you have been working with Ansible for a while, you accumulate roles and collections across multiple directories. Some were installed from Galaxy, some from Git, and some are custom roles you wrote yourself. The `ansible-galaxy list` command shows you exactly what is installed and where, which is essential for debugging "role not found" errors and auditing your environment.
+When you have been working with Ansible for a while, you accumulate roles and collections across multiple directories. Some were installed from Galaxy, some from Git, and some are custom roles you wrote yourself. The `ansible-galaxy role list` command, also available as the shorthand `ansible-galaxy list`, shows you exactly what is installed and where, which is essential for debugging "role not found" errors and auditing your environment.
 
 ## Basic Usage
 
@@ -17,7 +17,7 @@ The simplest form lists all installed roles:
 ```bash
 # List all installed roles
 
-ansible-galaxy list
+ansible-galaxy role list
 ```
 
 Output looks like this:
@@ -39,7 +39,7 @@ If you have multiple role paths configured, you can check a specific one:
 
 ```bash
 # List roles in a specific directory
-ansible-galaxy list -p ./roles/
+ansible-galaxy role list -p ./roles/
 ```
 
 This is useful when your `ansible.cfg` has multiple paths and you want to inspect just one.
@@ -80,11 +80,11 @@ To check if a specific collection is installed:
 ansible-galaxy collection list community.general
 ```
 
-This returns the collection if found, or an error if it is not installed. You can use this in scripts:
+This returns the collection if found. If it is not installed, current versions exit successfully with no matching output, so check the output rather than only the exit status:
 
 ```bash
 # Check if a collection is installed before using it
-if ansible-galaxy collection list community.general > /dev/null 2>&1; then
+if ansible-galaxy collection list community.general 2>/dev/null | grep -q '^community\.general[[:space:]]'; then
     echo "community.general is installed"
 else
     echo "community.general is NOT installed"
@@ -94,7 +94,7 @@ fi
 
 ## Understanding Role Search Paths
 
-When you run `ansible-galaxy list` and wonder why a role is not showing up, check where Ansible looks for roles:
+When you run `ansible-galaxy role list` and wonder why a role is not showing up, check where Ansible looks for roles:
 
 ```bash
 # Show the configured roles path
@@ -153,7 +153,7 @@ ansible-config dump | grep ROLES_PATH
 
 echo ""
 echo "=== Installed Roles ==="
-ansible-galaxy list
+ansible-galaxy role list
 
 echo ""
 echo "=== Configured Collection Paths ==="
@@ -177,9 +177,9 @@ import re
 import sys
 
 def get_installed_roles():
-    """Parse ansible-galaxy list output."""
+    """Parse ansible-galaxy role list output."""
     result = subprocess.run(
-        ["ansible-galaxy", "list"],
+        ["ansible-galaxy", "role", "list"],
         capture_output=True, text=True
     )
     roles = {}
@@ -292,7 +292,7 @@ jobs:
       - name: Log installed dependencies
         run: |
           echo "=== Installed Roles ===" | tee dependency-manifest.txt
-          ansible-galaxy list -p ./roles/ | tee -a dependency-manifest.txt
+          ansible-galaxy role list -p ./roles/ | tee -a dependency-manifest.txt
           echo "=== Installed Collections ===" | tee -a dependency-manifest.txt
           ansible-galaxy collection list -p ./collections/ | tee -a dependency-manifest.txt
 
@@ -310,7 +310,7 @@ jobs:
 
 When a playbook fails with "role not found" or "collection not found", here is the debugging process:
 
-1. Run `ansible-galaxy list` to see what is installed and where
+1. Run `ansible-galaxy role list` to see what is installed and where
 2. Run `ansible-config dump | grep PATH` to see where Ansible is looking
 3. Compare the two to find the mismatch
 4. If the role is installed but not in the search path, either move it or update `ansible.cfg`
@@ -318,7 +318,7 @@ When a playbook fails with "role not found" or "collection not found", here is t
 ```bash
 # Full debugging sequence
 echo "--- Installed Roles ---"
-ansible-galaxy list
+ansible-galaxy role list
 
 echo "--- Installed Collections ---"
 ansible-galaxy collection list
@@ -335,4 +335,4 @@ ansible-config dump | grep CONFIG_FILE
 
 ## Summary
 
-The `ansible-galaxy list` command is your primary tool for understanding what Ansible content is installed in your environment. Use it for auditing, debugging path issues, and verifying that your environment matches your requirements file. Combined with `ansible-galaxy collection list`, you get a complete picture of both roles and collections. In CI/CD, logging the output creates a record of exactly what was deployed, which is invaluable for troubleshooting production issues after the fact.
+The `ansible-galaxy role list` command is your primary tool for understanding what Ansible roles are installed in your environment. Use it for auditing, debugging path issues, and verifying that your environment matches your requirements file. Combined with `ansible-galaxy collection list`, you get a complete picture of both roles and collections. In CI/CD, logging the output creates a record of exactly what was deployed, which is invaluable for troubleshooting production issues after the fact.
