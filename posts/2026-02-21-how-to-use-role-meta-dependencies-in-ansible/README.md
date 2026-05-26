@@ -8,7 +8,7 @@ Description: Learn how to declare and manage role dependencies in Ansible using 
 
 ---
 
-When you build Ansible roles that depend on other roles, you need a way to express those dependencies so they are resolved automatically. The `meta/main.yml` file in a role lets you declare dependencies that Ansible will install and execute before running the role itself. This post covers how to define dependencies, pass variables to them, control duplicate execution, and avoid common pitfalls.
+When you build Ansible roles that depend on other roles, you need a way to express those dependencies so they are resolved automatically. The `meta/main.yml` file in a role lets you declare dependencies that Ansible will execute before running the role itself. This post covers how to define dependencies, pass variables to them, control duplicate execution, and avoid common pitfalls.
 
 ## Where Dependencies Are Declared
 
@@ -92,26 +92,24 @@ flowchart TD
     F --> G[Run webapp handlers if notified]
 ```
 
-If a dependency itself has dependencies, those are resolved recursively. For example, if the `nginx` role depends on a `common` role, the order would be: common, java, common (again for nginx), nginx, firewall, webapp. But wait, that brings up an important topic.
+If a dependency itself has dependencies, those are resolved recursively. For example, if the `nginx` role depends on a `common` role, the order would be: java, common, nginx, firewall, webapp. But wait, that brings up an important topic.
 
 ## Duplicate Dependency Execution
 
 By default, Ansible deduplicates role execution. If two roles both depend on the `common` role with the same parameters, `common` only runs once. This is usually what you want.
 
-However, if the parameters differ, Ansible treats them as separate invocations and runs the role multiple times:
+However, if the role parameters differ, Ansible treats them as separate invocations and runs the role multiple times:
 
 ```yaml
 # roles/app1/meta/main.yml
 dependencies:
   - role: firewall
-    vars:
-      firewall_allowed_ports: [8080]
+    firewall_allowed_ports: [8080]
 
 # roles/app2/meta/main.yml
 dependencies:
   - role: firewall
-    vars:
-      firewall_allowed_ports: [9090]
+    firewall_allowed_ports: [9090]
 ```
 
 If both `app1` and `app2` are applied to the same host, the `firewall` role runs twice: once with port 8080 and once with port 9090.
@@ -136,7 +134,7 @@ Use this carefully. Most roles should not allow duplicates because running them 
 
 ## Using Galaxy Roles as Dependencies
 
-Dependencies can reference roles from Ansible Galaxy or from Git repositories:
+Dependencies can reference roles from Ansible Galaxy or from Git repositories when those roles are installed with `ansible-galaxy`:
 
 ```yaml
 # roles/webapp/meta/main.yml
@@ -160,27 +158,15 @@ For this to work, the Galaxy roles must be installed first (via `ansible-galaxy 
 
 ## Conditional Dependencies
 
-As of Ansible 2.14, you cannot use `when` conditions directly on meta dependencies. Dependencies are always executed. If you need conditional dependency behavior, you have two options.
+Role dependencies are subject to conditionals and tag filtering, so you can put a `when` condition on a dependency. If you need conditional dependency behavior, you have two options.
 
-Option 1: Use a feature flag variable in the dependent role:
+Option 1: Add a condition to the dependency:
 
 ```yaml
 # roles/webapp/meta/main.yml
 dependencies:
   - role: monitoring
-    vars:
-      monitoring_enabled: "{{ webapp_enable_monitoring | default(true) }}"
-```
-
-```yaml
-# roles/monitoring/tasks/main.yml
-# Skip all tasks if monitoring is disabled
----
-- name: Install monitoring agent
-  ansible.builtin.apt:
-    name: monitoring-agent
-    state: present
-  when: monitoring_enabled | bool
+    when: webapp_enable_monitoring | default(true) | bool
 ```
 
 Option 2: Use `include_role` in tasks instead of meta dependencies (which supports `when`):
