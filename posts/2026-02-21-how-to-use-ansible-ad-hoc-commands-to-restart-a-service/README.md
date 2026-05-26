@@ -82,7 +82,7 @@ ansible webservers -m service -a "name=nginx state=restarted" --become -f 2
 ansible webservers -m service -a "name=nginx state=restarted" --become -f 3
 ```
 
-Using `-f 1` means Ansible waits for each server to finish before moving to the next. This is the safest approach when you have a load balancer distributing traffic.
+Using `-f 1` means Ansible waits for each server to finish before moving to the next. This is the safest approach when you have a load balancer distributing traffic and you verify each host before continuing.
 
 ## Pre-Restart Checks
 
@@ -177,19 +177,19 @@ echo ""
 echo "Rolling restart complete. All hosts restarted successfully."
 ```
 
-## Restarting with Systemd Module
+## Restarting with Systemd Service Module
 
-The `systemd` module gives you additional control over systemd-specific features:
+The `systemd_service` module gives you additional control over systemd-specific features:
 
 ```bash
 # Restart with daemon reload (needed after modifying unit files)
-ansible appservers -m systemd -a "name=myapp state=restarted daemon_reload=yes" --become
+ansible appservers -m ansible.builtin.systemd_service -a "name=myapp state=restarted daemon_reload=yes" --become
 
 # Restart and ensure enabled on boot
-ansible appservers -m systemd -a "name=myapp state=restarted enabled=yes" --become
+ansible appservers -m ansible.builtin.systemd_service -a "name=myapp state=restarted enabled=yes" --become
 
-# Force a restart even if the service is in a failed state
-ansible appservers -m systemd -a "name=myapp state=restarted" --become
+# Restart even if the service is currently in a failed state
+ansible appservers -m ansible.builtin.systemd_service -a "name=myapp state=restarted" --become
 ```
 
 ## Restarting Dependent Services
@@ -232,8 +232,8 @@ ansible web2.example.com -m shell -a "nginx -t" --become
 # Check for port conflicts
 ansible web2.example.com -m shell -a "ss -tlnp | grep ':80'" --become
 
-# Try to start the service in foreground for debugging
-ansible web2.example.com -m shell -a "nginx -t && nginx -g 'daemon off;' &" --become
+# Try to start the service in foreground briefly for debugging
+ansible web2.example.com -m shell -a "nginx -t && timeout 10s nginx -g 'daemon off;'" --become
 ```
 
 ## Restart with Timeout
@@ -244,8 +244,8 @@ For services that are slow to start, you may need to adjust timeouts:
 # Set a longer timeout for service restart
 ansible databases -m shell -a "systemctl restart postgresql && sleep 10 && systemctl is-active postgresql" --become
 
-# Or use systemd's TimeoutStartSec
-ansible appservers -m shell -a "systemctl restart myapp" --become -e "ansible_command_timeout=120"
+# Or run the restart asynchronously and poll for completion
+ansible appservers -m shell -a "systemctl restart myapp" --become -B 120 -P 5
 ```
 
 ## Scheduling Restarts
@@ -283,4 +283,4 @@ ansible webservers -m shell -a "nginx -v 2>&1"
 
 ## Summary
 
-Restarting services with Ansible ad hoc commands is more than just running `state=restarted`. Use reload when possible to avoid downtime. Use rolling restarts with `-f 1` for zero-downtime deployments. Always validate configuration before restarting, verify health after restarting, and have a plan for when restarts fail. The combination of pre-checks, controlled parallelism, and post-restart verification makes the difference between a smooth operation and an extended outage.
+Restarting services with Ansible ad hoc commands is more than just running `state=restarted`. Use reload when possible to avoid downtime. Use rolling restarts with `-f 1`, load balancing, and health checks for zero-downtime deployments. Always validate configuration before restarting, verify health after restarting, and have a plan for when restarts fail. The combination of pre-checks, controlled parallelism, and post-restart verification makes the difference between a smooth operation and an extended outage.
