@@ -19,13 +19,12 @@ sequenceDiagram
     participant User as User (Client)
     participant SSH as SSH Server
     User->>SSH: Connection request
-    SSH->>User: Send server public key
-    User->>SSH: Present client public key
+    SSH->>User: Complete key exchange and host-key verification
+    User->>SSH: Offer client public key
     SSH->>SSH: Check authorized_keys
-    SSH->>User: Send encrypted challenge
-    User->>User: Decrypt with private key
-    User->>SSH: Send response
-    SSH->>SSH: Verify response
+    User->>User: Sign authentication data with private key
+    User->>SSH: Send signature
+    SSH->>SSH: Verify signature with public key
     SSH->>User: Access granted
 ```
 
@@ -49,7 +48,7 @@ The `ansible.posix.authorized_key` module is purpose-built for managing SSH auth
     - name: Deploy SSH public key for deploy user
       ansible.posix.authorized_key:
         user: deploy
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBxampleKeyGoesHere deploy@workstation"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPJu7ZRyAqzOidJiOp4MTo/KgPeWZevHrWAZ19ugIGAE deploy@workstation"
         state: present
 ```
 
@@ -101,13 +100,13 @@ Use a loop to deploy keys for an entire team:
   vars:
     team:
       - name: alice
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlice alice@laptop"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqrY1+PPrm5tfJHYjW2ula+/lUpsApQyi8E45hP4VUE alice@laptop"
       - name: bob
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBob bob@workstation"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINQKbhVfYkGjCMTM+3EjG4swFnR/wmHeFSgXwDbjpBow bob@workstation"
       - name: carol
         keys:
-          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICarolLaptop carol@laptop"
-          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICarolDesktop carol@desktop"
+          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIhy2PQGmymvUgPakDlAk5Qh1JOsJzggrmVhH2dIUKf7 carol@laptop"
+          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGfURwZxos34w8h8q/RIctqPlFLL4m/YmjnxTEwTgAe1 carol@desktop"
   tasks:
     - name: Ensure users exist
       ansible.builtin.user:
@@ -148,8 +147,8 @@ The `exclusive` parameter ensures that ONLY the keys you specify are in the auth
   become: yes
   vars:
     alice_authorized_keys: |
-      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAliceLaptop alice@laptop
-      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAliceDesktop alice@desktop
+      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqrY1+PPrm5tfJHYjW2ula+/lUpsApQyi8E45hP4VUE alice@laptop
+      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEhz26cX7Yp75T5AW0Ix53Sl7mv2TztV8fqdZt5Ogwpz alice@desktop
   tasks:
     - name: Set authorized keys exclusively for alice
       ansible.posix.authorized_key:
@@ -207,8 +206,8 @@ After deploying keys, harden SSH to only allow key-based authentication:
       loop:
         - regexp: '^#?PasswordAuthentication'
           line: 'PasswordAuthentication no'
-        - regexp: '^#?ChallengeResponseAuthentication'
-          line: 'ChallengeResponseAuthentication no'
+        - regexp: '^#?KbdInteractiveAuthentication'
+          line: 'KbdInteractiveAuthentication no'
         - regexp: '^#?PubkeyAuthentication'
           line: 'PubkeyAuthentication yes'
         - regexp: '^#?PermitRootLogin'
@@ -242,7 +241,7 @@ You can add SSH options to restrict what a key can do:
     - name: Deploy backup key with command restriction
       ansible.posix.authorized_key:
         user: backup
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBackup backup@master"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHFV5pDA31NNvNQylq3GF0QfjMu6PB+ItkWZzHcAsu6W backup@master"
         key_options: 'command="/usr/local/bin/backup-script",no-port-forwarding,no-X11-forwarding,no-agent-forwarding'
         state: present
 
@@ -250,7 +249,7 @@ You can add SSH options to restrict what a key can do:
     - name: Deploy key with IP restriction
       ansible.posix.authorized_key:
         user: deploy
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDeploy deploy@ci"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEyL8pieRpbSBV3D74UmKNXTkIXHn/ffUxnmSwDp5S6 deploy@ci"
         key_options: 'from="10.0.1.100"'
         state: present
 ```
@@ -324,7 +323,7 @@ To remove a specific key from a user:
     - name: Remove old SSH key for alice
       ansible.posix.authorized_key:
         user: alice
-        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOldKey alice@old-laptop"
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGRHuLSMtZorsRFf1gXagtb5CIFSZgScvj7HFeKcKmyX alice@old-laptop"
         state: absent
 ```
 
