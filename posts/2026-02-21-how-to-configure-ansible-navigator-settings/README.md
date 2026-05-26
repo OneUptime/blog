@@ -8,17 +8,17 @@ Description: Master the ansible-navigator configuration file to set defaults for
 
 ---
 
-ansible-navigator has a lot of command-line flags, and typing them every time gets old fast. The solution is the `ansible-navigator.yml` (or `.ansible-navigator.yml`) configuration file, which lets you set defaults for everything from the EE image to the display mode to artifact storage. This post covers every configuration option and how to set up configs for different scenarios.
+ansible-navigator has a lot of command-line flags, and typing them every time gets old fast. The solution is the `ansible-navigator.yml` or `ansible-navigator.yaml` project configuration file, or the `.ansible-navigator.yml` or `.ansible-navigator.yaml` home configuration file, which lets you set defaults for everything from the EE image to the display mode to artifact storage. This post covers common configuration options and how to set up configs for different scenarios.
 
 ## Configuration File Locations
 
 ansible-navigator looks for configuration files in several places, in this order of precedence:
 
 1. `ANSIBLE_NAVIGATOR_CONFIG` environment variable (highest priority)
-2. `./ansible-navigator.yml` (current directory)
-3. `~/.ansible-navigator.yml` (home directory)
+2. `./ansible-navigator.yml` or `./ansible-navigator.yaml` (current directory)
+3. `~/.ansible-navigator.yml` or `~/.ansible-navigator.yaml` (home directory)
 
-The current directory file takes precedence over the home directory file. This means you can have a global default config in your home directory and project-specific overrides in each project.
+The current directory file takes precedence over the home directory file. This means you can have a global default config in your home directory and project-specific config files in each project.
 
 ## Basic Configuration File
 
@@ -52,7 +52,7 @@ ansible-navigator:
 
 ## Complete Configuration Reference
 
-Here is a comprehensive configuration file with every option documented:
+Here is a comprehensive configuration file with common options documented:
 
 ```yaml
 # ansible-navigator.yml - Complete configuration reference
@@ -82,6 +82,10 @@ ansible-navigator:
       path: ./ansible.cfg
     # Command-line arguments passed to ansible-playbook
     cmdline: "--forks 10"
+    inventory:
+      entries:
+        - inventory/production.yml
+        - inventory/staging.yml
 
   # ========================
   # Execution Environment
@@ -131,10 +135,7 @@ ansible-navigator:
   # Inventory
   # ========================
 
-  # Default inventory paths
-  inventories:
-    - inventory/production.yml
-    - inventory/staging.yml
+  # Default inventory paths are set under ansible.inventory.entries
 
   # ========================
   # Playbook Artifacts
@@ -145,8 +146,8 @@ ansible-navigator:
     enable: true
     # Save location with template variables
     save-as: "{playbook_dir}/artifacts/{playbook_name}-{time_stamp}.json"
-    # Replay artifact on completion (true/false)
-    replay: false
+    # Artifact path when using the replay subcommand
+    replay: ./artifacts/site-artifact.json
 
   # ========================
   # Logging
@@ -287,8 +288,10 @@ ansible-navigator:
       - src: "${HOME}/.aws"
         dest: /home/runner/.aws
         options: ro
-  inventories:
-    - inventory/aws_ec2.yml
+  ansible:
+    inventory:
+      entries:
+        - inventory/aws_ec2.yml
 ```
 
 ## Volume Mount Configuration
@@ -297,37 +300,38 @@ Volume mounts control which host directories are accessible inside the EE contai
 
 ```yaml
 # Detailed volume mount examples
-execution-environment:
-  volume-mounts:
-    # SSH keys (read-only for security)
-    - src: "${HOME}/.ssh"
-      dest: /home/runner/.ssh
-      options: ro
+ansible-navigator:
+  execution-environment:
+    volume-mounts:
+      # SSH keys (read-only for security)
+      - src: "${HOME}/.ssh"
+        dest: /home/runner/.ssh
+        options: ro
 
-    # AWS credentials
-    - src: "${HOME}/.aws"
-      dest: /home/runner/.aws
-      options: ro
+      # AWS credentials
+      - src: "${HOME}/.aws"
+        dest: /home/runner/.aws
+        options: ro
 
-    # Kubernetes config
-    - src: "${HOME}/.kube"
-      dest: /home/runner/.kube
-      options: ro
+      # Kubernetes config
+      - src: "${HOME}/.kube"
+        dest: /home/runner/.kube
+        options: ro
 
-    # Custom CA certificates
-    - src: /etc/pki/ca-trust/source/anchors
-      dest: /etc/pki/ca-trust/source/anchors
-      options: ro
+      # Custom CA certificates
+      - src: /etc/pki/ca-trust/source/anchors
+        dest: /etc/pki/ca-trust/source/anchors
+        options: ro
 
-    # Shared data directory (read-write)
-    - src: /opt/ansible/data
-      dest: /opt/ansible/data
-      options: rw
+      # Shared data directory (read-write)
+      - src: /opt/ansible/data
+        dest: /opt/ansible/data
+        options: rw
 
-    # DNS configuration
-    - src: /etc/resolv.conf
-      dest: /etc/resolv.conf
-      options: ro
+      # DNS configuration
+      - src: /etc/resolv.conf
+        dest: /etc/resolv.conf
+        options: ro
 ```
 
 ## Environment Variable Configuration
@@ -335,23 +339,24 @@ execution-environment:
 Pass environment variables into the EE container:
 
 ```yaml
-execution-environment:
-  environment-variables:
-    # Pass existing environment variables from the host
-    pass:
-      - ANSIBLE_VAULT_PASSWORD
-      - SSH_AUTH_SOCK
-      - AWS_ACCESS_KEY_ID
-      - AWS_SECRET_ACCESS_KEY
-      - HTTPS_PROXY
-      - NO_PROXY
+ansible-navigator:
+  execution-environment:
+    environment-variables:
+      # Pass existing environment variables from the host
+      pass:
+        - ANSIBLE_VAULT_PASSWORD
+        - SSH_AUTH_SOCK
+        - AWS_ACCESS_KEY_ID
+        - AWS_SECRET_ACCESS_KEY
+        - HTTPS_PROXY
+        - NO_PROXY
 
-    # Set specific values
-    set:
-      ANSIBLE_FORCE_COLOR: "true"
-      ANSIBLE_CALLBACK_WHITELIST: "timer,profile_tasks"
-      ANSIBLE_STDOUT_CALLBACK: "yaml"
-      TZ: "UTC"
+      # Set specific values
+      set:
+        ANSIBLE_FORCE_COLOR: "true"
+        ANSIBLE_CALLBACKS_ENABLED: "timer,profile_tasks"
+        ANSIBLE_STDOUT_CALLBACK: "yaml"
+        TZ: "UTC"
 ```
 
 ## Using Multiple Config Files
@@ -387,13 +392,13 @@ Check that ansible-navigator is reading your configuration correctly:
 
 ```bash
 # Show current settings
-ansible-navigator settings --mode stdout
+ansible-navigator settings --mode stdout --effective --sources
 
 # Show settings in interactive mode for detailed browsing
 ansible-navigator settings
 ```
 
-The settings view shows every configuration option and its current value, including where the value came from (default, config file, or command line).
+The settings view can show every configuration option and its current value, including where the value came from (default, config file, environment variable, or command line).
 
 ## Command-Line Overrides
 
