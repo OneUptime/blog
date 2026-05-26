@@ -39,16 +39,45 @@ resource "aws_instance" "web" {
   tags  = { Name = "web-aws-${count.index}", Cloud = "aws" }
 }
 
+output "web_ips" {
+  value = aws_instance.web[*].public_ip
+}
+
 # terraform/azure/main.tf
 provider "azurerm" {
   features {}
 }
 
 resource "azurerm_linux_virtual_machine" "web" {
-  count    = 2
-  name     = "web-azure-${count.index}"
-  size     = "Standard_B2s"
-  tags     = { Cloud = "azure" }
+  count                 = 2
+  name                  = "web-azure-${count.index}"
+  resource_group_name   = azurerm_resource_group.main.name
+  location              = azurerm_resource_group.main.location
+  size                  = "Standard_B2s"
+  admin_username        = "ubuntu"
+  network_interface_ids = [azurerm_network_interface.web[count.index].id]
+  tags                  = { Cloud = "azure" }
+
+  admin_ssh_key {
+    username   = "ubuntu"
+    public_key = file("~/.ssh/id_rsa.pub")
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+}
+
+output "web_ips" {
+  value = azurerm_linux_virtual_machine.web[*].public_ip_address
 }
 ```
 
@@ -75,25 +104,26 @@ echo "ansible_user=ubuntu" >> ../../inventory/multi-cloud.ini
 ## Cloud-Agnostic Ansible Configuration
 
 ```yaml
-# playbook.yml - Same configuration regardless of cloud
+# playbook.yml - Same configuration for Ubuntu/Debian hosts regardless of cloud
 ---
 - hosts: webservers
   become: yes
   tasks:
-    - name: Install packages (works on any cloud)
-      apt:
+    - name: Install packages
+      ansible.builtin.apt:
         name:
           - nginx
           - python3
-          - monitoring-agent
+          - curl
         state: present
+        update_cache: true
 
     - name: Deploy application
-      include_role:
+      ansible.builtin.include_role:
         name: app_deploy
 
     - name: Configure cloud-specific monitoring
-      template:
+      ansible.builtin.template:
         src: "monitoring-{{ cloud }}.conf.j2"
         dest: /etc/monitoring/config.conf
 ```
@@ -141,7 +171,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -182,7 +212,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -283,6 +313,5 @@ Here are several practical scenarios where this module proves essential in real-
         hour: "3"
         weekday: "1"
         job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        user: root
 ```
-
