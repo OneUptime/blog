@@ -214,7 +214,7 @@ Here is a practical pattern for pushing the same logical configuration to device
         config: |
           set system syslog host {{ syslog_server }} any info
           set system syslog host {{ syslog_server }} authorization any
-          set system syslog time-override
+          set system syslog time-format year
       when: ansible_network_os == 'junipernetworks.junos.junos'
 
     - name: Configure syslog on VyOS devices
@@ -226,11 +226,11 @@ Here is a practical pattern for pushing the same logical configuration to device
 
 ## Commit-Based Platform Support
 
-For platforms that use a commit model (JunOS, IOS-XR, VyOS), the `cli_config` module handles commits automatically. You can also control the commit behavior:
+For platforms that use a commit model (JunOS, IOS-XR, VyOS), the `cli_config` module handles commits automatically. On platforms that support commit comments, you can add a comment to the commit:
 
 ```yaml
 # playbook-commit-control.yml
-# Demonstrates commit control on commit-based platforms
+# Demonstrates commit comments on commit-based platforms
 - name: Configuration with commit control
   hosts: junos_routers
   gather_facts: no
@@ -241,13 +241,6 @@ For platforms that use a commit model (JunOS, IOS-XR, VyOS), the `cli_config` mo
         config: |
           set interfaces lo0 unit 0 description "Updated by Ansible"
         commit_comment: "Ansible automated change - {{ lookup('pipe', 'date') }}"
-
-    - name: Apply configuration with commit confirmed
-      ansible.netcommon.cli_config:
-        config: |
-          set protocols ospf area 0 interface xe-0/0/2
-        commit_comment: "Adding OSPF interface - auto-rollback in 5 min"
-      register: ospf_change
 ```
 
 ## Replacing Configuration
@@ -429,6 +422,6 @@ Here is a practical example that applies security hardening configuration across
 
 **Test with check mode first.** Always run `ansible-playbook playbook.yml --check --diff` before applying changes to production devices. This shows you what would change without actually making any modifications.
 
-**Do not mix cli_config and cli_command.** Use `cli_config` for configuration mode commands and `cli_command` for exec/operational commands. They operate in different contexts and mixing them can lead to unexpected behavior.
+**Use the right module for the command context.** Use `cli_config` for configuration mode commands and `cli_command` for exec/operational commands. They operate in different contexts, so using `cli_command` for configuration changes or `cli_config` for show commands can lead to unexpected behavior.
 
 The `cli_config` module bridges the gap between vendor-specific configuration modules and raw CLI access. It gives you the flexibility to work across multiple platforms while maintaining the safety features (backups, diffs, check mode) that production network management requires. When combined with Jinja2 templates and proper version control, it forms the foundation of a robust network-as-code practice.
