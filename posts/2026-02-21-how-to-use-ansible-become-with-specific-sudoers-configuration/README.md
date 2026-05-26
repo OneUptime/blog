@@ -12,7 +12,7 @@ Getting Ansible's become to work smoothly with sudo depends entirely on how your
 
 ## Understanding How Ansible Uses sudo
 
-When Ansible executes a task with `become: true`, it wraps the actual command in a sudo call. The exact command it sends looks something like this:
+When Ansible executes a task with `become: true`, it wraps the actual command in a sudo call. The command it sends often looks something like this:
 
 ```bash
 # What Ansible actually runs on the remote host
@@ -26,7 +26,7 @@ The flags matter:
 - `-n` is non-interactive (no prompt if password is needed and not provided)
 - `-u root` specifies the target user
 
-Your sudoers configuration needs to allow this exact pattern, or parts of it will be blocked.
+Your sudoers configuration needs to allow this general pattern, including the shell and temporary module wrapper that Ansible runs.
 
 ## Basic NOPASSWD Configuration
 
@@ -65,21 +65,22 @@ The `validate` parameter is critical. It runs `visudo -cf` on the file before pu
 
 ## Restricting Commands in sudoers
 
-Giving full `NOPASSWD: ALL` access might not be acceptable in your environment. You can restrict which commands the Ansible user is allowed to run. However, this requires careful thought because Ansible uses Python and shell wrappers for most operations.
+Giving full `NOPASSWD: ALL` access might not be acceptable in your environment. You can restrict which commands the Ansible user is allowed to run, but normal Ansible modules do not map cleanly to commands like `/usr/bin/dnf` or `/usr/bin/systemctl`. Ansible usually runs a temporary Python module through a shell wrapper, so sudoers sees the wrapper command, not just the underlying tool.
 
-Here is a more restrictive sudoers file that still allows Ansible to function:
+Here is a more restrictive sudoers file for environments where you run explicit commands through sudo rather than normal Ansible modules:
 
 ```bash
 # /etc/sudoers.d/ansible-restricted - Limited command access
-# Command aliases for Ansible operations
+# Command aliases for explicit sudo commands
 Cmnd_Alias ANSIBLE_PACKAGE = /usr/bin/yum, /usr/bin/dnf, /usr/bin/apt-get, /usr/bin/apt
 Cmnd_Alias ANSIBLE_SERVICE = /usr/bin/systemctl, /sbin/service
 Cmnd_Alias ANSIBLE_FILE = /usr/bin/cp, /usr/bin/mv, /usr/bin/chmod, /usr/bin/chown, /usr/bin/mkdir
-Cmnd_Alias ANSIBLE_PYTHON = /usr/bin/python3, /usr/bin/python
 
 # Allow the deploy user to run only specific commands
-deploy ALL=(ALL) NOPASSWD: ANSIBLE_PACKAGE, ANSIBLE_SERVICE, ANSIBLE_FILE, ANSIBLE_PYTHON
+deploy ALL=(ALL) NOPASSWD: ANSIBLE_PACKAGE, ANSIBLE_SERVICE, ANSIBLE_FILE
 ```
+
+This kind of command restriction is not enough for most Ansible modules. If you need to use modules such as `ansible.builtin.dnf`, `ansible.builtin.copy`, or `ansible.builtin.git` with `become`, the privilege escalation rule generally needs to allow the automation account to run Ansible's module wrapper, which is why many deployments use a dedicated automation account with broader sudo access and control access to that account instead.
 
 Deploy this restricted configuration:
 
@@ -107,13 +108,12 @@ The Jinja2 template allows you to customize per environment:
 # Ansible automation sudoers - managed by Ansible
 # Environment: {{ ansible_environment | default('production') }}
 
-# Command aliases
+# Command aliases for explicit sudo commands
 Cmnd_Alias ANSIBLE_PKG = {{ sudoers_package_commands | default('/usr/bin/dnf, /usr/bin/yum') }}
 Cmnd_Alias ANSIBLE_SVC = /usr/bin/systemctl
-Cmnd_Alias ANSIBLE_PYTHON = /usr/bin/python3
 
 # User rule
-{{ ansible_user | default('deploy') }} ALL=(ALL) NOPASSWD: ANSIBLE_PKG, ANSIBLE_SVC, ANSIBLE_PYTHON
+{{ ansible_user | default('deploy') }} ALL=(ALL) NOPASSWD: ANSIBLE_PKG, ANSIBLE_SVC
 ```
 
 ## Handling the requiretty Setting
@@ -208,7 +208,7 @@ deploy ALL=(webapp) NOPASSWD: ALL
 deploy ALL=(root) NOPASSWD: ALL
 
 # Allow deploy to become the database backup user
-deploy ALL=(dbbackup) NOPASSWD: /usr/bin/pg_dump, /usr/bin/pg_restore
+deploy ALL=(dbbackup) NOPASSWD: ALL
 ```
 
 Use this in your playbook:
