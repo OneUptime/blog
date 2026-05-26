@@ -126,7 +126,7 @@ The `ansible.builtin.pause` module stops playbook execution and waits for a spec
 ## Echo Mode for Sensitive Input
 
 ```yaml
-# Hide input for sensitive data (echo is off by default for prompts)
+# Hide input for sensitive data
 - name: Enter database password
   ansible.builtin.pause:
     prompt: "Enter the database password"
@@ -199,7 +199,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -348,4 +348,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 The pause module serves three purposes: adding timed delays between tasks, getting user confirmation for critical operations, and capturing runtime input. Use it sparingly in production playbooks since interactive prompts break automation. Always provide a way to skip pauses in CI environments using conditional variables.
-
