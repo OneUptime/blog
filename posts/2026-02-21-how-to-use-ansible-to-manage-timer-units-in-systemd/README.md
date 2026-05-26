@@ -8,7 +8,7 @@ Description: Learn how to create and manage systemd timer units with Ansible as 
 
 ---
 
-systemd timers are the modern replacement for cron jobs on Linux. They offer better logging through journald, dependency management, and the ability to trigger on events besides just time. Managing these timers with Ansible gives you version-controlled, repeatable scheduling across your entire fleet. In this guide, I will show you how to create, deploy, and manage systemd timer units using Ansible.
+systemd timers are the modern replacement for cron jobs on Linux. They offer better logging through journald, dependency management, and the ability to trigger from calendar schedules or monotonic intervals relative to events such as boot or unit activation. Managing these timers with Ansible gives you version-controlled, repeatable scheduling across your entire fleet. In this guide, I will show you how to create, deploy, and manage systemd timer units using Ansible.
 
 ## Why systemd Timers Over Cron?
 
@@ -17,7 +17,7 @@ Before diving into the Ansible side, here is why you might prefer timers over cr
 - Each timer gets its own journal log stream, so you can inspect output with `journalctl -u mytask.service`
 - Timers can depend on other units (wait for network, database, etc.)
 - You get calendar event syntax that is more expressive than cron notation
-- Missed timers can be caught up with `Persistent=true`
+- Missed calendar-based timers can be caught up with `Persistent=true`
 - You can set resource limits, sandboxing, and other systemd features on the triggered service
 
 ```mermaid
@@ -30,7 +30,7 @@ graph LR
 
 ## How Timers Work
 
-A systemd timer unit is always paired with a service unit. The timer defines when to run, and the service defines what to run. By convention, if you have `backup.timer`, it triggers `backup.service` (same name, different suffix).
+A systemd timer unit activates another systemd unit, usually a service unit. The timer defines when to run, and the service defines what to run. By convention, if you have `backup.timer`, it triggers `backup.service` (same name, different suffix).
 
 ## Creating the Service Unit
 
@@ -99,7 +99,7 @@ OnUnitActiveSec={{ timer_on_unit_active_sec }}
 OnUnitInactiveSec={{ timer_on_unit_inactive_sec }}
 {% endif %}
 
-# Catch up on missed runs after downtime
+# Catch up on missed calendar runs after downtime
 Persistent={{ timer_persistent | default('true') }}
 
 # Randomize delay to avoid thundering herd
@@ -214,6 +214,30 @@ Playbook that deploys a daily database backup timer:
 - name: Deploy PostgreSQL backup timer
   hosts: db_servers
   become: yes
+  pre_tasks:
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: /var/backups/postgresql
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0750'
+
+    - name: Deploy backup script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/pg-backup.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DEST="${BACKUP_DIR}/backup_${TIMESTAMP}.sql.gz"
+          mkdir -p "${BACKUP_DIR}"
+          pg_dumpall | gzip > "${DEST}"
+          # Keep only last 7 days of backups
+          find "${BACKUP_DIR}" -name "backup_*.sql.gz" -mtime +7 -delete
+          echo "Backup completed: ${DEST}"
+
   roles:
     - role: systemd_timer
       vars:
@@ -229,25 +253,6 @@ Playbook that deploys a daily database backup timer:
           PGHOST: localhost
           PGPORT: "5432"
           BACKUP_DIR: /var/backups/postgresql
-```
-
-And the backup script itself:
-
-```yaml
-    - name: Deploy backup script
-      ansible.builtin.copy:
-        dest: /usr/local/bin/pg-backup.sh
-        mode: '0755'
-        content: |
-          #!/bin/bash
-          set -euo pipefail
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          DEST="${BACKUP_DIR}/backup_${TIMESTAMP}.sql.gz"
-          mkdir -p "${BACKUP_DIR}"
-          pg_dumpall | gzip > "${DEST}"
-          # Keep only last 7 days of backups
-          find "${BACKUP_DIR}" -name "backup_*.sql.gz" -mtime +7 -delete
-          echo "Backup completed: ${DEST}"
 ```
 
 ## Deploying Multiple Timers
