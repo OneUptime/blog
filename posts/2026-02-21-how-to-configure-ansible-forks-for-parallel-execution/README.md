@@ -61,7 +61,7 @@ export ANSIBLE_FORKS=50
 ansible-playbook site.yml
 ```
 
-The command line flag takes precedence over `ansible.cfg`, and the environment variable takes precedence over both.
+The environment variable takes precedence over `ansible.cfg`, and the command line flag takes precedence over both.
 
 ## Finding the Right Fork Count
 
@@ -106,11 +106,11 @@ Here is a script to test different fork values and find the sweet spot:
 PLAYBOOK="site.yml"
 FORK_VALUES="5 10 20 30 50 75 100"
 
-echo "Fork Count | Execution Time | Memory Peak"
-echo "-----------|----------------|------------"
+echo "Fork Count | Execution Time"
+echo "-----------|---------------"
 
 for forks in $FORK_VALUES; do
-    # Clear any caches between runs for fair comparison
+    # Flush pending filesystem writes between runs
     sync
 
     # Time the playbook execution
@@ -217,7 +217,7 @@ A playbook to configure this across your environment:
   become: true
   tasks:
     - name: Set file descriptor limits for ansible user
-      pam_limits:
+      community.general.pam_limits:
         domain: "{{ ansible_user }}"
         limit_type: "{{ item }}"
         limit_item: nofile
@@ -241,6 +241,7 @@ Sometimes you want different fork counts for different host groups. While there 
 ---
 # Use fewer forks for database servers (be gentle)
 - hosts: databases
+  serial: 10
   tasks:
     - name: Run database maintenance
       command: /opt/db/maintenance.sh
