@@ -274,6 +274,7 @@ One of Podman's biggest advantages is running containers without root. Here is h
         enabled: true
         state: started
         scope: user
+        daemon_reload: true
 ```
 
 ## Generating Systemd Units
@@ -340,7 +341,7 @@ Here is what I have found works well with this collection:
 
 1. **Use the `:Z` volume suffix on SELinux systems.** Without it, containers cannot read mounted volumes on RHEL and Fedora. The `:Z` flag applies the correct SELinux context.
 
-2. **Generate systemd units with `new: true`.** The `new` parameter creates units that recreate containers from scratch on restart, which ensures the latest image and configuration are always used.
+2. **Generate systemd units with `new: true`.** The `new` parameter creates units that recreate containers from scratch on restart using the generated Podman command. Pull or rebuild images explicitly when you want to roll out a newer image.
 
 3. **Rootless needs lingering.** If your containers run as a non-root user, enable `loginctl enable-linger` for that user. Without it, containers stop when the user logs out.
 
