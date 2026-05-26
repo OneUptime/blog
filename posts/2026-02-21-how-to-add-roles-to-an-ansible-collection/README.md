@@ -96,7 +96,7 @@ Now the main task file:
     group: root
     mode: "0644"
     validate: "nginx -t -c %s"
-  notify: reload nginx
+  notify: nginx_proxy | reload nginx
 
 - name: Deploy upstream configurations
   ansible.builtin.template:
@@ -106,7 +106,7 @@ Now the main task file:
     group: root
     mode: "0644"
   loop: "{{ nginx_proxy_upstreams }}"
-  notify: reload nginx
+  notify: nginx_proxy | reload nginx
 
 - name: Deploy site configurations
   ansible.builtin.template:
@@ -116,13 +116,13 @@ Now the main task file:
     group: root
     mode: "0644"
   loop: "{{ nginx_proxy_sites }}"
-  notify: reload nginx
+  notify: nginx_proxy | reload nginx
 
 - name: Remove default site configuration
   ansible.builtin.file:
     path: /etc/nginx/conf.d/default.conf
     state: absent
-  notify: reload nginx
+  notify: nginx_proxy | reload nginx
 
 - name: Ensure Nginx is started and enabled
   ansible.builtin.service:
@@ -137,12 +137,12 @@ The handler for reloading Nginx:
 # roles/nginx_proxy/handlers/main.yml
 # Handlers for the nginx_proxy role
 ---
-- name: reload nginx
+- name: nginx_proxy | reload nginx
   ansible.builtin.service:
     name: nginx
     state: reloaded
 
-- name: restart nginx
+- name: nginx_proxy | restart nginx
   ansible.builtin.service:
     name: nginx
     state: restarted
@@ -181,6 +181,18 @@ http {
     server_tokens off;
 
     include /etc/nginx/conf.d/*.conf;
+}
+```
+
+The upstream template defines the backend server pools used by site configurations:
+
+```nginx
+# roles/nginx_proxy/templates/upstream.conf.j2
+# Upstream configuration for {{ item.name }}
+upstream {{ item.name }} {
+{% for server in item.servers %}
+    server {{ server }};
+{% endfor %}
 }
 ```
 
@@ -418,7 +430,7 @@ Run tests with ansible-test:
 
 ```bash
 # Run integration tests
-ansible-test integration nginx_proxy --docker
+ansible-test integration nginx_proxy --docker ubuntu
 ```
 
 ## Workflow Overview
