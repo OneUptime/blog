@@ -109,7 +109,7 @@ host_vars/
     vault.yml
 ```
 
-Ansible merges all files in the directory:
+Ansible reads all files in the directory in lexicographical order and merges the variables:
 
 ```yaml
 # host_vars/db-primary.example.com/connection.yml
@@ -178,12 +178,14 @@ ansible-vault create host_vars/db-primary.example.com/vault.yml
 ```
 
 ```yaml
-# host_vars/db-primary.example.com/vault.yml (encrypted)
+# host_vars/db-primary.example.com/vault.yml (before encryption)
 vault_pg_admin_password: "very-secret-password"
 vault_replication_password: "repl-secret-pw"
 vault_backup_encryption_passphrase: "backup-enc-key"
 vault_monitoring_api_key: "abc123def456"
 ```
+
+After `ansible-vault create` saves the file, the file on disk is encrypted and starts with an Ansible Vault header such as `$ANSIBLE_VAULT;1.1;AES256`.
 
 Reference the vault variables from the regular files:
 
@@ -216,7 +218,7 @@ backup_retention_full: 2      # Keep more backups for primary
 
 The replica server does not need a host_vars file at all if the group defaults are fine for it.
 
-The variable precedence order:
+The simplified inventory variable precedence order:
 
 ```mermaid
 graph LR
@@ -323,7 +325,7 @@ ansible-playbook -i inventory.ini playbook.yml --limit db-primary.example.com -v
 ansible db-primary.example.com -i inventory.ini -m debug -a "var=pg_max_connections"
 ```
 
-The `-vvv` flag prints which files were loaded and in what order, making it easy to trace where a variable value came from.
+Verbose output can show more inventory and variable-loading detail, but `ansible-inventory --host` is the most direct way to inspect the final variables Ansible resolved for a host.
 
 ## Common Mistakes
 
