@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Dnf5, Fedora, RHEL, Package Management
 
-Description: Learn how to use the Ansible dnf5 module for next-generation package management on Fedora and future RHEL systems.
+Description: Learn how to use the Ansible dnf5 module for next-generation package management on Fedora and newer RHEL-family systems.
 
 ---
 
-dnf5 is the next generation of the dnf package manager. It is a complete rewrite in C++ that replaces both the dnf command-line tool and the underlying libdnf library. Fedora 39+ ships dnf5 as the default, and it is expected to become the default in future RHEL versions. Ansible has a `dnf5` module in the `ansible.builtin` namespace to work with this new package manager. This post covers what is different about dnf5 and how to use the Ansible module.
+dnf5 is the next generation of the dnf package manager. It is a complete rewrite in C++ that replaces both the dnf command-line tool and the underlying libdnf library. Fedora 41+ ships dnf5 as the default, and dnf5 is available in earlier Fedora releases for testing and transition work. Ansible has a `dnf5` module in the `ansible.builtin` namespace to work with this new package manager. This post covers what is different about dnf5 and how to use the Ansible module.
 
 ## What Changed in dnf5
 
@@ -20,7 +20,7 @@ dnf5 is not just a version bump. It is a ground-up rewrite with several importan
 - Module streams handling has changed
 - The Python API is replaced by a C++ library with Python bindings
 
-From an Ansible perspective, the `dnf5` module provides the same core functionality as the `dnf` module but talks to the dnf5 backend instead of the dnf4 one.
+From an Ansible perspective, the `dnf5` module provides the same core package and group operations as the `dnf` module but talks to the dnf5 backend instead of the dnf4 one. It is not full feature parity with `dnf`, so check the module documentation for option-specific limitations.
 
 ## Basic Usage
 
@@ -289,8 +289,9 @@ In typical benchmarks, dnf5 is 2-3x faster for metadata refresh and dependency r
         autoremove: yes
 
     - name: Clean dnf cache
-      ansible.builtin.dnf5:
-        autoremove: yes
+      ansible.builtin.command:
+        cmd: dnf5 clean all
+      changed_when: false
 ```
 
 ## Module Compatibility Matrix
@@ -298,10 +299,10 @@ In typical benchmarks, dnf5 is 2-3x faster for metadata refresh and dependency r
 ```mermaid
 graph TD
     A[Target System] --> B{OS Version?}
-    B -->|Fedora 39+| C[Use dnf5 module]
+    B -->|Fedora 41+| C[Use dnf5 module]
     B -->|RHEL 8/9, Rocky, Alma| D[Use dnf module]
     B -->|RHEL 7, CentOS 7| E[Use yum module]
-    B -->|Fedora 22-38| F[Use dnf module]
+    B -->|Fedora 22-40| F[Use dnf module]
     C --> G[ansible.builtin.dnf5]
     D --> H[ansible.builtin.dnf]
     E --> I[ansible.builtin.yum]
@@ -315,7 +316,7 @@ graph TD
 | Backend | libdnf (Python) | libdnf5 (C++) |
 | Speed | Standard | 2-3x faster |
 | Module streams | Full support | Evolving support |
-| Availability | RHEL 8+, Fedora 22+ | Fedora 39+ |
+| Availability | RHEL 8/9, Fedora 22-40 | Fedora 41+ by default; Fedora 38-40 for testing |
 | FQCN | ansible.builtin.dnf | ansible.builtin.dnf5 |
 
 ## Tips for Transitioning
@@ -326,7 +327,7 @@ graph TD
 
 3. **Check module stream support.** dnf5's module stream handling is still maturing. If you rely heavily on module streams, test thoroughly before switching.
 
-4. **Update your CI/CD pipelines.** If your pipeline tests use dnf and you are upgrading to Fedora 39+, switch to dnf5 in your test playbooks.
+4. **Update your CI/CD pipelines.** If your pipeline tests use dnf and you are upgrading to Fedora 41+, switch to dnf5 in your test playbooks.
 
 5. **Watch the Ansible changelog.** The dnf5 module is actively developed. New parameters and bug fixes land regularly.
 
