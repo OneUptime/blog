@@ -90,7 +90,7 @@ A common use case is running application commands as the service user:
       register: replication_status
       changed_when: false
 
-    - name: Deploy application as app user
+    - name: Deploy application config owned by app user
       ansible.builtin.copy:
         src: files/app-config.yaml
         dest: /opt/myapp/config.yaml
@@ -98,7 +98,6 @@ A common use case is running application commands as the service user:
         group: appuser
         mode: '0640'
       become: true
-      become_user: appuser
 ```
 
 ## Handling sudo Passwords
@@ -303,14 +302,14 @@ Here is a practical playbook that combines several sudo patterns for system hard
         path: /etc/ssh/sshd_config
         regexp: '^PermitRootLogin'
         line: 'PermitRootLogin no'
-      notify: Restart sshd
+      notify: Restart ssh
 
     - name: Set SSH allowed users
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^AllowUsers'
         line: "AllowUsers {{ allowed_users | join(' ') }}"
-      notify: Restart sshd
+      notify: Restart ssh
 
     - name: Configure sudo logging
       ansible.builtin.copy:
@@ -322,9 +321,9 @@ Here is a practical playbook that combines several sudo patterns for system hard
         validate: 'visudo -cf %s'
 
   handlers:
-    - name: Restart sshd
+    - name: Restart ssh
       ansible.builtin.systemd:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
