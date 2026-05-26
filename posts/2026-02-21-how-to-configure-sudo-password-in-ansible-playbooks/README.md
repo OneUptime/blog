@@ -155,7 +155,7 @@ You can pass the become password through an environment variable:
 
 ```bash
 # Set the password in an environment variable
-export ANSIBLE_BECOME_PASSWORD="the-sudo-password"
+export ANSIBLE_BECOME_PASS="the-sudo-password"
 ansible-playbook deploy.yml
 ```
 
@@ -166,7 +166,7 @@ This is useful in CI/CD pipelines where you store secrets in the pipeline's secr
 deploy:
   stage: deploy
   variables:
-    ANSIBLE_BECOME_PASSWORD: $SUDO_PASSWORD  # From GitLab CI secret
+    ANSIBLE_BECOME_PASS: $SUDO_PASSWORD  # From GitLab CI secret
   script:
     - ansible-playbook -i inventory.ini deploy.yml
 ```
@@ -333,7 +333,8 @@ Common issues and fixes:
 
 # Issue: "Incorrect sudo password"
 # Fix: Verify the vault variable name is correct
-# Must be: ansible_become_password (not ansible_sudo_pass)
+# Prefer: ansible_become_password
+# For sudo specifically, ansible_sudo_pass is also supported
 ```
 
 ## Security Best Practices
