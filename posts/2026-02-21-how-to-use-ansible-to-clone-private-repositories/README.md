@@ -23,6 +23,12 @@ SSH is the most common method for private repository access:
   become: true
 
   tasks:
+    - name: Ensure SSH directory exists
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        mode: "0700"
+
     - name: Deploy SSH key
       ansible.builtin.copy:
         content: "{{ lookup('file', 'keys/deploy_key') }}"
@@ -60,18 +66,19 @@ Use a personal access token or machine token in the URL:
   hosts: webservers
   become: true
   vars:
+    git_user: "{{ lookup('env', 'GITHUB_USER') }}"
     git_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
 
   tasks:
     - name: Clone with HTTPS token
       ansible.builtin.git:
-        repo: "https://{{ git_token }}@github.com/myorg/private-app.git"
+        repo: "https://{{ git_user }}:{{ git_token }}@github.com/myorg/private-app.git"
         dest: /opt/app
         version: main
       no_log: true
 ```
 
-For GitHub Apps or fine-grained tokens:
+For GitHub App installation tokens:
 
 ```yaml
     - name: Clone with GitHub App installation token
@@ -139,6 +146,7 @@ Use your local SSH agent without copying keys:
 # Clones private repos using SSH agent forwarding from the controller
 - name: Clone with SSH agent forwarding
   hosts: webservers
+  become: true
   vars:
     ansible_ssh_common_args: "-o ForwardAgent=yes"
 
@@ -148,7 +156,7 @@ Use your local SSH agent without copying keys:
         repo: "git@github.com:myorg/private-app.git"
         dest: /opt/app
         version: main
-        accept_hostkey: true
+        accept_newhostkey: true
 ```
 
 Note: Agent forwarding requires that your SSH agent has the key loaded (`ssh-add`) and that the SSH server allows forwarding.
@@ -162,6 +170,7 @@ Note: Agent forwarding requires that your SSH agent has the key loaded (`ssh-add
   hosts: webservers
   become: true
   vars:
+    git_user: "{{ lookup('env', 'GITHUB_USER') }}"
     git_token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
     private_repos:
       - name: frontend
@@ -180,7 +189,7 @@ Note: Agent forwarding requires that your SSH agent has the key loaded (`ssh-add
   tasks:
     - name: Set up credential store
       ansible.builtin.copy:
-        content: "https://x-access-token:{{ git_token }}@github.com"
+        content: "https://{{ git_user }}:{{ git_token }}@github.com"
         dest: /root/.git-credentials
         mode: "0600"
       no_log: true
@@ -224,6 +233,7 @@ Note: Agent forwarding requires that your SSH agent has the key loaded (`ssh-add
   hosts: webservers
   become: true
   vars:
+    github_user: "deploy-bot"
     # This variable is encrypted with ansible-vault
     github_token: !vault |
       $ANSIBLE_VAULT;1.1;AES256
@@ -232,7 +242,7 @@ Note: Agent forwarding requires that your SSH agent has the key loaded (`ssh-add
   tasks:
     - name: Clone private repository securely
       ansible.builtin.git:
-        repo: "https://x-access-token:{{ github_token }}@github.com/myorg/app.git"
+        repo: "https://{{ github_user }}:{{ github_token }}@github.com/myorg/app.git"
         dest: /opt/app
         version: main
       no_log: true
@@ -252,7 +262,7 @@ Different platforms use slightly different token formats:
   tasks:
     - name: Clone from GitHub (personal access token)
       ansible.builtin.git:
-        repo: "https://x-access-token:{{ github_token }}@github.com/org/repo.git"
+        repo: "https://{{ github_user }}:{{ github_token }}@github.com/org/repo.git"
         dest: /opt/github-app
         version: main
       no_log: true
@@ -264,9 +274,9 @@ Different platforms use slightly different token formats:
         version: main
       no_log: true
 
-    - name: Clone from Bitbucket (app password)
+    - name: Clone from Bitbucket (API token)
       ansible.builtin.git:
-        repo: "https://{{ bitbucket_user }}:{{ bitbucket_app_password }}@bitbucket.org/org/repo.git"
+        repo: "https://x-bitbucket-api-token-auth:{{ bitbucket_api_token }}@bitbucket.org/org/repo.git"
         dest: /opt/bitbucket-app
         version: main
       no_log: true
@@ -290,7 +300,7 @@ Different platforms use slightly different token formats:
 
     - name: Write credentials
       ansible.builtin.copy:
-        content: "https://x-access-token:{{ lookup('env', 'GIT_TOKEN') }}@github.com"
+        content: "https://{{ lookup('env', 'GITHUB_USER') }}:{{ lookup('env', 'GIT_TOKEN') }}@github.com"
         dest: "{{ cred_file.path }}"
         mode: "0600"
       no_log: true
