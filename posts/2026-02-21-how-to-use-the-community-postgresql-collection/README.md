@@ -28,7 +28,7 @@ The `psycopg2` library (or `psycopg2-binary`) must be installed on the machine r
 ---
 collections:
   - name: community.postgresql
-    version: ">=3.2.0"
+    version: ">=3.13.0"
 ```
 
 ## Database Management
@@ -141,7 +141,7 @@ The `postgresql_privs` module is where the real power lies. It manages fine-grai
   tasks:
     - name: Grant all privileges on database to app_user
       community.postgresql.postgresql_privs:
-        database: "{{ app_db }}"
+        login_db: "{{ app_db }}"
         type: database
         privs: ALL
         role: app_user
@@ -149,7 +149,7 @@ The `postgresql_privs` module is where the real power lies. It manages fine-grai
 
     - name: Grant read-only access to all tables in public schema
       community.postgresql.postgresql_privs:
-        database: "{{ app_db }}"
+        login_db: "{{ app_db }}"
         schema: public
         type: table
         objs: ALL_IN_SCHEMA
@@ -159,7 +159,7 @@ The `postgresql_privs` module is where the real power lies. It manages fine-grai
 
     - name: Grant read-only access to sequences (for serial columns)
       community.postgresql.postgresql_privs:
-        database: "{{ app_db }}"
+        login_db: "{{ app_db }}"
         schema: public
         type: sequence
         objs: ALL_IN_SCHEMA
@@ -169,7 +169,7 @@ The `postgresql_privs` module is where the real power lies. It manages fine-grai
 
     - name: Set default privileges for future tables
       community.postgresql.postgresql_privs:
-        database: "{{ app_db }}"
+        login_db: "{{ app_db }}"
         schema: public
         type: default_privs
         objs: TABLES
@@ -180,7 +180,7 @@ The `postgresql_privs` module is where the real power lies. It manages fine-grai
 
     - name: Grant specific table permissions
       community.postgresql.postgresql_privs:
-        database: "{{ app_db }}"
+        login_db: "{{ app_db }}"
         schema: public
         type: table
         objs: users,orders,products
@@ -190,7 +190,7 @@ The `postgresql_privs` module is where the real power lies. It manages fine-grai
 
     - name: Revoke public access
       community.postgresql.postgresql_privs:
-        database: "{{ app_db }}"
+        login_db: "{{ app_db }}"
         type: database
         privs: ALL
         role: PUBLIC
@@ -211,7 +211,7 @@ The `postgresql_query` module lets you run arbitrary SQL:
   tasks:
     - name: Check database size
       community.postgresql.postgresql_query:
-        db: myapp_production
+        login_db: myapp_production
         query: "SELECT pg_size_pretty(pg_database_size('myapp_production')) as db_size"
       register: db_size
 
@@ -221,7 +221,7 @@ The `postgresql_query` module lets you run arbitrary SQL:
 
     - name: Get table row counts
       community.postgresql.postgresql_query:
-        db: myapp_production
+        login_db: myapp_production
         query: |
           SELECT schemaname, relname as table_name,
                  n_live_tup as row_count
@@ -236,7 +236,7 @@ The `postgresql_query` module lets you run arbitrary SQL:
 
     - name: Run parameterized query
       community.postgresql.postgresql_query:
-        db: myapp_production
+        login_db: myapp_production
         query: "SELECT * FROM users WHERE created_at > %(date)s LIMIT %(limit)s"
         named_args:
           date: "2024-01-01"
@@ -244,10 +244,9 @@ The `postgresql_query` module lets you run arbitrary SQL:
       register: recent_users
 
     - name: Run migration script
-      community.postgresql.postgresql_query:
-        db: myapp_production
-        path_to_script: /opt/migrations/002_add_email_index.sql
-        as_single_query: false
+      community.postgresql.postgresql_script:
+        login_db: myapp_production
+        path: /opt/migrations/002_add_email_index.sql
 ```
 
 ## Schema Management
@@ -263,7 +262,7 @@ The `postgresql_query` module lets you run arbitrary SQL:
     - name: Create schemas for multi-tenant app
       community.postgresql.postgresql_schema:
         name: "{{ item }}"
-        database: myapp_production
+        login_db: myapp_production
         owner: app_user
         state: present
       loop:
@@ -275,7 +274,7 @@ The `postgresql_query` module lets you run arbitrary SQL:
     - name: Drop deprecated schema
       community.postgresql.postgresql_schema:
         name: old_tenant
-        database: myapp_production
+        login_db: myapp_production
         state: absent
         cascade_drop: true
 ```
@@ -293,7 +292,7 @@ The `postgresql_query` module lets you run arbitrary SQL:
     - name: Install commonly needed extensions
       community.postgresql.postgresql_ext:
         name: "{{ item }}"
-        database: myapp_production
+        login_db: myapp_production
         state: present
       loop:
         - pg_stat_statements
@@ -306,13 +305,13 @@ The `postgresql_query` module lets you run arbitrary SQL:
     - name: Install PostGIS for spatial data
       community.postgresql.postgresql_ext:
         name: postgis
-        database: myapp_production
+        login_db: myapp_production
         state: present
 
     - name: Update extension to latest version
       community.postgresql.postgresql_ext:
         name: pg_stat_statements
-        database: myapp_production
+        login_db: myapp_production
         version: latest
 ```
 
@@ -327,8 +326,8 @@ The `postgresql_query` module lets you run arbitrary SQL:
   become_user: postgres
   tasks:
     - name: Set performance parameters
-      community.postgresql.postgresql_set:
-        name: "{{ item.name }}"
+      community.postgresql.postgresql_alter_system:
+        param: "{{ item.name }}"
         value: "{{ item.value }}"
       loop:
         - { name: shared_buffers, value: "2GB" }
@@ -342,8 +341,8 @@ The `postgresql_query` module lets you run arbitrary SQL:
       notify: restart postgresql
 
     - name: Configure logging
-      community.postgresql.postgresql_set:
-        name: "{{ item.name }}"
+      community.postgresql.postgresql_alter_system:
+        param: "{{ item.name }}"
         value: "{{ item.value }}"
       loop:
         - { name: log_min_duration_statement, value: "1000" }
@@ -448,7 +447,7 @@ graph TD
     E --> E2[postgresql_script]
     E --> E3[postgresql_copy]
 
-    F --> F1[postgresql_set]
+    F --> F1[postgresql_alter_system]
     F --> F2[postgresql_info]
 
     G --> G1[postgresql_ext]
