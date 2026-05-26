@@ -24,14 +24,14 @@ Never write directly to `/etc/sudoers` without validating the content first. Bot
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
-The `validate` parameter runs `visudo -cf %s` where `%s` is replaced with a temporary file path. If validation fails, the original `/etc/sudoers` remains unchanged. This is the most important safety mechanism.
+The `validate` parameter runs `visudo -csf %s` where `%s` is replaced with a temporary file path. If validation fails, the original `/etc/sudoers` remains unchanged. This is the most important safety mechanism.
 
 ## Using the sudoers.d Directory (Recommended)
 
-The cleanest approach is to leave the main `/etc/sudoers` file alone and manage drop-in files in `/etc/sudoers.d/`. This is safer because a bad drop-in file does not corrupt the main sudoers config.
+The cleanest approach is to leave the main `/etc/sudoers` file alone and manage drop-in files in `/etc/sudoers.d/`. This is safer because a bad drop-in file does not overwrite the main sudoers config, though sudo still parses included files, so you must validate drop-ins before installing them.
 
 First, make sure the `#includedir` directive is present in the main sudoers file.
 
@@ -43,7 +43,7 @@ First, make sure the `#includedir` directive is present in the main sudoers file
     regexp: '^#includedir /etc/sudoers\.d'
     line: '#includedir /etc/sudoers.d'
     state: present
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
 Note: The `#includedir` line is not a comment. The `#` is part of the directive syntax.
@@ -61,8 +61,10 @@ Then deploy individual sudoers files for each team or application.
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
+
+This validates the staged drop-in file before it is copied into place. If your drop-in depends on aliases or defaults defined in other sudoers files, also run `visudo -c` against the complete policy after deployment.
 
 ## Common sudoers Patterns
 
@@ -79,7 +81,7 @@ Then deploy individual sudoers files for each team or application.
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
 ### Restricted Command Access
@@ -95,7 +97,7 @@ Then deploy individual sudoers files for each team or application.
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
 ### Application Service Account
@@ -115,7 +117,7 @@ Then deploy individual sudoers files for each team or application.
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
 ## Using Templates for Dynamic sudoers Files
@@ -131,7 +133,7 @@ When the sudo rules depend on variables, use a template.
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
 The template file.
@@ -187,18 +189,23 @@ A role that manages sudoers for multiple teams from a variable definition.
 
   tasks:
     - name: Deploy sudoers files for each team
-      ansible.builtin.copy:
-        content: |
-          # Sudoers rules for {{ item.name }} - managed by Ansible
-          {% for rule in item.rules %}
-          %{{ item.name }} {{ rule }}
-          {% endfor %}
+      ansible.builtin.template:
+        src: templates/team-sudoers.j2
         dest: "/etc/sudoers.d/{{ item.filename }}"
         owner: root
         group: root
         mode: '0440'
-        validate: '/usr/sbin/visudo -cf %s'
+        validate: '/usr/sbin/visudo -csf %s'
       loop: "{{ sudo_groups }}"
+```
+
+The template file.
+
+```jinja2
+# Sudoers rules for {{ item.name }} - managed by Ansible
+{% for rule in item.rules %}
+%{{ item.name }} {{ rule }}
+{% endfor %}
 ```
 
 ## Removing sudoers Entries
@@ -236,7 +243,7 @@ Add security-focused defaults to your sudoers configuration.
     owner: root
     group: root
     mode: '0440'
-    validate: '/usr/sbin/visudo -cf %s'
+    validate: '/usr/sbin/visudo -csf %s'
 ```
 
 ## Emergency Recovery
@@ -250,10 +257,15 @@ If something goes wrong despite validation, having an emergency plan is essentia
   ansible.builtin.copy:
     content: |
       #!/bin/bash
-      # Check if sudoers is valid, restore backup if not
-      if ! /usr/sbin/visudo -cf /etc/sudoers > /dev/null 2>&1; then
+      # Check if sudoers policy is valid, restore backups if not
+      if ! /usr/sbin/visudo -csf /etc/sudoers > /dev/null 2>&1; then
         cp /etc/sudoers.backup-known-good /etc/sudoers
+        rm -rf /etc/sudoers.d
+        cp -a /etc/sudoers.d.backup-known-good /etc/sudoers.d
+        chown root:root /etc/sudoers
+        chown -R root:root /etc/sudoers.d
         chmod 440 /etc/sudoers
+        find /etc/sudoers.d -type f -exec chmod 440 {} \;
         logger "ALERT: Restored sudoers from backup"
       fi
     dest: /usr/local/sbin/sudoers-recovery.sh
@@ -266,6 +278,11 @@ If something goes wrong despite validation, having an emergency plan is essentia
     remote_src: yes
     mode: '0440'
 
+- name: Save known-good sudoers.d backup
+  ansible.builtin.command:
+    cmd: cp -aT /etc/sudoers.d /etc/sudoers.d.backup-known-good
+  changed_when: false
+
 - name: Schedule sudoers recovery check
   ansible.builtin.cron:
     name: "Sudoers recovery check"
@@ -277,7 +294,7 @@ If something goes wrong despite validation, having an emergency plan is essentia
 
 ```mermaid
 graph TD
-    A[Write sudoers content to temp file] --> B[visudo -cf validates syntax]
+    A[Write sudoers content to temp file] --> B[visudo -csf validates syntax]
     B --> C{Validation passed?}
     C -->|Yes| D[Move temp file to /etc/sudoers.d/]
     C -->|No| E[Keep original file unchanged]
@@ -289,4 +306,4 @@ graph TD
 
 ## Summary
 
-Managing sudoers with Ansible is safe as long as you follow two rules: always use the `validate` parameter with `visudo -cf %s`, and prefer drop-in files in `/etc/sudoers.d/` over editing the main sudoers file directly. The drop-in approach is modular (each team or application gets its own file), reversible (remove the file to revoke access), and safer (a bad drop-in does not corrupt the main file). Use templates for dynamic rules, loops for multi-team configurations, and always set permissions to `0440` with root ownership. These practices let you manage sudo access confidently across your entire infrastructure.
+Managing sudoers with Ansible is safe as long as you follow two rules: always use the `validate` parameter with `visudo -csf %s`, and prefer drop-in files in `/etc/sudoers.d/` over editing the main sudoers file directly. The drop-in approach is modular (each team or application gets its own file), reversible (remove the file to revoke access), and safer (a bad drop-in does not overwrite the main file). Use templates for dynamic rules, loops for multi-team configurations, and always set permissions to `0440` with root ownership. These practices let you manage sudo access confidently across your entire infrastructure.
