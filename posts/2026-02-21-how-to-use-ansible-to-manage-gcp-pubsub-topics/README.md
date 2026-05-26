@@ -28,6 +28,7 @@ Publishers send messages to topics. Subscribers receive messages through subscri
 ## Prerequisites
 
 - Ansible 2.9+ with the `google.cloud` collection
+- Google Cloud CLI installed and authenticated
 - GCP service account with Pub/Sub Editor role
 - Pub/Sub API enabled
 
@@ -194,7 +195,7 @@ Subscriptions determine how messages are delivered to consumers:
 
 Key parameters:
 - `ack_deadline_seconds: 60` gives the consumer 60 seconds to acknowledge a message before Pub/Sub redelivers it
-- `message_retention_duration: 604800s` keeps unacknowledged messages for 7 days (the maximum)
+- `message_retention_duration: 604800s` keeps unacknowledged messages for 7 days
 - `retry_policy` controls the backoff between redelivery attempts for nacked messages
 - `expiration_policy.ttl: ""` (empty string) means the subscription never expires
 
@@ -312,9 +313,30 @@ Messages that fail processing repeatedly should go to a dead letter topic for in
         auth_kind: "{{ gcp_cred_kind }}"
         service_account_file: "{{ gcp_cred_file }}"
         state: present
+
+    - name: Get project number for Pub/Sub service agent
+      ansible.builtin.command: >
+        gcloud projects describe {{ gcp_project }}
+        --format=value(projectNumber)
+      register: project_number
+      changed_when: false
+
+    - name: Allow Pub/Sub to publish to the dead letter topic
+      ansible.builtin.command: >
+        gcloud pubsub topics add-iam-policy-binding user-events-dead-letter
+        --project={{ gcp_project }}
+        --member=serviceAccount:service-{{ project_number.stdout }}@gcp-sa-pubsub.iam.gserviceaccount.com
+        --role=roles/pubsub.publisher
+
+    - name: Allow Pub/Sub to acknowledge messages on the source subscription
+      ansible.builtin.command: >
+        gcloud pubsub subscriptions add-iam-policy-binding user-events-with-dlq
+        --project={{ gcp_project }}
+        --member=serviceAccount:service-{{ project_number.stdout }}@gcp-sa-pubsub.iam.gserviceaccount.com
+        --role=roles/pubsub.subscriber
 ```
 
-After 5 delivery attempts, the message is forwarded to the dead letter topic instead of being retried indefinitely. This prevents poison messages from blocking other messages in the subscription.
+After approximately 5 delivery attempts, the message is forwarded to the dead letter topic instead of being retried indefinitely. This prevents poison messages from blocking other messages in the subscription.
 
 ## Setting Up a Complete Messaging Infrastructure
 
