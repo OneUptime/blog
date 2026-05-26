@@ -72,7 +72,7 @@ vault kv put ansible/hosts/app02 \
 
 vault kv put ansible/hosts/db01 \
     ansible_host="10.0.3.30" \
-    ansible_port="5432" \
+    ansible_port="22" \
     datacenter="us-east"
 ```
 
@@ -238,7 +238,10 @@ def vault_approle_login(role_id, secret_id):
         'role_id': role_id,
         'secret_id': secret_id,
     }
-    response = requests.post(url, json=payload)
+    headers = {}
+    if VAULT_NAMESPACE:
+        headers['X-Vault-Namespace'] = VAULT_NAMESPACE
+    response = requests.post(url, json=payload, headers=headers)
     response.raise_for_status()
     return response.json()['auth']['client_token']
 
@@ -258,14 +261,20 @@ vault auth enable approle
 
 # Create a policy for the inventory script
 vault policy write ansible-inventory - <<EOF
-path "ansible/data/*" {
-  capabilities = ["read", "list"]
+path "ansible/data/groups/*" {
+  capabilities = ["read"]
 }
-path "ansible/metadata/*" {
+path "ansible/data/hosts/*" {
+  capabilities = ["read"]
+}
+path "ansible/data/credentials/*" {
+  capabilities = ["read"]
+}
+path "ansible/metadata/groups" {
   capabilities = ["list"]
 }
-path "ansible/credentials/*" {
-  capabilities = ["read"]
+path "ansible/metadata/hosts" {
+  capabilities = ["list"]
 }
 EOF
 
@@ -341,7 +350,7 @@ One benefit of this approach is that non-technical team members can update inven
 ```bash
 # Add a new host to the webservers group
 vault kv get -format=json ansible/groups/webservers | \
-    jq '.data.data.hosts | fromjson | . + ["web04"] | tojson' | \
+    jq -r '.data.data.hosts | fromjson | . + ["web04"] | tojson' | \
     xargs -I {} vault kv patch ansible/groups/webservers hosts='{}'
 
 # Set the new host's variables
