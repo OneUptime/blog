@@ -103,7 +103,7 @@ resource "aws_security_group" "web" {
 
 # Create the EC2 instance
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = "t3.micro"
   subnet_id     = aws_subnet.public.id
 
@@ -121,6 +121,8 @@ resource "aws_eip" "web" {
   tags = {
     Name = "web-server-eip"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 # Associate the EIP with the instance
@@ -172,6 +174,8 @@ resource "aws_eip" "bastion" {
   tags = {
     Name = "bastion-eip"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 ```
 
@@ -195,13 +199,12 @@ resource "aws_network_interface" "web_primary" {
   }
 }
 
-# Attach the network interface to the instance
+# Use the network interface as the instance's primary interface
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
 
-  network_interface {
-    device_index         = 0
+  primary_network_interface {
     network_interface_id = aws_network_interface.web_primary.id
   }
 
@@ -217,6 +220,8 @@ resource "aws_eip" "web" {
   tags = {
     Name = "web-eip"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 resource "aws_eip_association" "web" {
@@ -252,19 +257,13 @@ resource "aws_network_interface" "secondary" {
   }
 }
 
-# Instance with both interfaces
+# Instance with the primary interface
 resource "aws_instance" "multi_ip" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.medium"  # Must support multiple ENIs
 
-  network_interface {
-    device_index         = 0
+  primary_network_interface {
     network_interface_id = aws_network_interface.primary.id
-  }
-
-  network_interface {
-    device_index         = 1
-    network_interface_id = aws_network_interface.secondary.id
   }
 
   tags = {
@@ -272,10 +271,18 @@ resource "aws_instance" "multi_ip" {
   }
 }
 
+# Attach the secondary interface
+resource "aws_network_interface_attachment" "secondary" {
+  instance_id          = aws_instance.multi_ip.id
+  network_interface_id = aws_network_interface.secondary.id
+  device_index         = 1
+}
+
 # EIP for the primary interface
 resource "aws_eip" "primary" {
-  domain = "vpc"
-  tags   = { Name = "primary-eip" }
+  domain     = "vpc"
+  tags       = { Name = "primary-eip" }
+  depends_on = [aws_internet_gateway.main]
 }
 
 resource "aws_eip_association" "primary" {
@@ -285,8 +292,9 @@ resource "aws_eip_association" "primary" {
 
 # EIP for the secondary interface
 resource "aws_eip" "secondary" {
-  domain = "vpc"
-  tags   = { Name = "secondary-eip" }
+  domain     = "vpc"
+  tags       = { Name = "secondary-eip" }
+  depends_on = [aws_internet_gateway.main]
 }
 
 resource "aws_eip_association" "secondary" {
@@ -333,6 +341,8 @@ resource "aws_eip" "servers" {
   tags = {
     Name = "${each.key}-eip"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 # Associate each EIP with its corresponding instance
@@ -373,10 +383,10 @@ resource "aws_route53_record" "web" {
 
 A few things to keep in mind:
 
-- **EIPs are free** when associated with a running instance
-- **EIPs cost money** when allocated but not associated, or when associated with a stopped instance (approximately $0.005/hour as of early 2026)
+- **EIPs cost money** whether they are associated with a running resource or idle
+- **EIPs are billed as public IPv4 addresses** at approximately $0.005/hour as of early 2026
 - Each AWS account has a default limit of **5 EIPs per region** (you can request an increase)
-- You are charged for remapping an EIP more than 100 times per month
+- Carrier IP addresses in Wavelength Zones have remap charges after the first 100 remaps per month
 
 Add a lifecycle rule to prevent accidental deallocation of important EIPs:
 
