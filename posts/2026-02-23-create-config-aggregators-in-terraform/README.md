@@ -145,7 +145,7 @@ data "aws_caller_identity" "current" {}
 
 ## Organization-Wide Aggregator
 
-If you use AWS Organizations, the simplest approach is an organization aggregator. It automatically collects Config data from all accounts in the organization without requiring individual authorization.
+If you use AWS Organizations, the simplest approach is an organization aggregator. It automatically collects Config data from all accounts in the organization where AWS Config is enabled without requiring individual authorization.
 
 ```hcl
 # IAM role for the Config aggregator
@@ -171,7 +171,7 @@ resource "aws_iam_role_policy_attachment" "config_aggregator" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSConfigRoleForOrganizations"
 }
 
-# Organization aggregator - collects from all accounts and all regions
+# Organization aggregator - collects from all Config-enabled accounts and regions
 resource "aws_config_configuration_aggregator" "organization" {
   name = "organization-aggregator"
 
@@ -226,13 +226,13 @@ resource "aws_config_aggregate_authorization" "authorize_aggregator" {
 }
 ```
 
-If you need to authorize multiple regions:
+If you run aggregators in multiple regions, authorize each aggregator region:
 
 ```hcl
-# Authorize aggregation from all regions
+# Authorize multiple aggregator regions
 locals {
   aggregator_account_id = "999999999999"
-  regions = [
+  aggregator_regions = [
     "us-east-1",
     "us-west-2",
     "eu-west-1",
@@ -241,7 +241,7 @@ locals {
 }
 
 resource "aws_config_aggregate_authorization" "multi_region" {
-  for_each = toset(local.regions)
+  for_each = toset(local.aggregator_regions)
 
   account_id = local.aggregator_account_id
   region     = each.value
@@ -348,7 +348,7 @@ Conformance packs are collections of Config rules and remediation actions that y
 resource "aws_config_organization_conformance_pack" "security_baseline" {
   name = "security-baseline"
 
-  # Use an AWS managed template
+  # Define the conformance pack template
   template_body = <<-YAML
     Parameters:
       S3BucketVersioningEnabled:
