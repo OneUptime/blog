@@ -28,7 +28,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## System Preparation
 
-First, install the required system packages:
+First, install the required system packages on Debian/Ubuntu systems:
 
 ```yaml
 ---
@@ -50,6 +50,7 @@ First, install the required system packages:
           - python3-pip
           - python3-venv
           - python3-dev
+          - git
           - gcc
           - libpq-dev
           - libssl-dev
@@ -137,10 +138,11 @@ First, install the required system packages:
         - restart application
 
     - name: Enable and start application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         enabled: true
         state: started
+        daemon_reload: true
 ```
 
 ## Nginx Reverse Proxy
@@ -200,16 +202,16 @@ First, install the required system packages:
 ```yaml
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 
     - name: restart application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         state: restarted
 
     - name: reload nginx
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: nginx
         state: reloaded
 ```
@@ -229,16 +231,17 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. The tasks are designed to be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
+# Requires the community.general collection and the ufw package on managed hosts.
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -267,6 +270,7 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
@@ -311,7 +315,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -352,7 +356,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -414,4 +418,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
