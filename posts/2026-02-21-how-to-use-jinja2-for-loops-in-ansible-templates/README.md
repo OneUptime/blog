@@ -69,7 +69,7 @@ Jinja2 provides several built-in variables inside `for` loops.
 
 ```jinja2
 {# templates/loop-vars.conf.j2 #}
-{# Demonstrates all available loop variables #}
+{# Demonstrates common loop variables #}
 {% for item in items %}
 # Item {{ loop.index }} of {{ loop.length }}
 # Index (0-based): {{ loop.index0 }}
@@ -271,7 +271,7 @@ Loops can produce unwanted blank lines. Use `-` to strip whitespace.
 {% for item in items %}
 {{ item }}
 {% endfor %}
-{# Produces a blank line at the end #}
+{# Can produce extra blank lines depending on whitespace settings #}
 
 {# With whitespace control #}
 {% for item in items -%}
@@ -283,10 +283,10 @@ Loops can produce unwanted blank lines. Use `-` to strip whitespace.
 More precise control:
 
 ```jinja2
-{# Strip leading whitespace before the tag #}
+{# Strip leading whitespace before the for tag #}
 {%- for item in items %}
 {{ item }}
-{%- endfor %}
+{% endfor %}
 ```
 
 ## The cycle Helper
@@ -354,7 +354,7 @@ You can generate structured data inside templates using loops.
 }
 ```
 
-For JSON output, using the `to_json` or `to_nice_json` filter in the playbook is often simpler than manually formatting JSON in a template. But when you need specific formatting or comments, the loop approach gives you full control.
+For JSON output, using the `to_json` or `to_nice_json` filter in the playbook is often simpler than manually formatting JSON in a template. But when you need specific formatting, the loop approach gives you full control.
 
 ## Summary
 
