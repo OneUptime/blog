@@ -14,7 +14,7 @@ In this post, I will walk through the patterns and anti-patterns that determine 
 
 ## What Idempotency Actually Means in Practice
 
-When Ansible runs a task, it first checks the current state of the target system. If the system already matches the desired state, the task reports "ok" and moves on without making any changes. If the state does not match, Ansible makes the necessary change and reports "changed."
+When Ansible runs a task with a state-aware module, it first checks the current state of the target system. If the system already matches the desired state, the task reports "ok" and moves on without making any changes. If the state does not match, Ansible makes the necessary change and reports "changed."
 
 A playbook is idempotent when every task in it follows this pattern. The first run might show many "changed" results. Every subsequent run should show all "ok" results, assuming nothing else has modified the system in between.
 
@@ -58,10 +58,10 @@ If you absolutely must use shell or command, use the `creates` or `removes` para
 
 ### Anti-Pattern 2: Using lineinfile Incorrectly
 
-The lineinfile module can be tricky. Without the `regexp` parameter, it might add duplicate lines:
+The lineinfile module can be tricky. Without the `regexp` parameter, it only looks for the exact line you provide, so it might add a second setting instead of updating an existing one:
 
 ```yaml
-# BAD: Will add a new line every run if the exact string is not found
+# BAD: Can add a new line instead of updating an existing setting
 - name: Set max open files
   lineinfile:
     path: /etc/security/limits.conf
@@ -71,7 +71,7 @@ The lineinfile module can be tricky. Without the `regexp` parameter, it might ad
 Use regexp to make it idempotent:
 
 ```yaml
-# GOOD: The regexp ensures only one matching line exists
+# GOOD: The regexp updates an existing matching line
 - name: Set max open files
   lineinfile:
     path: /etc/security/limits.conf
@@ -251,7 +251,7 @@ ansible-playbook setup-webserver.yml --check --diff
 For automated testing, you can parse the playbook output programmatically:
 
 ```bash
-# Run playbook and capture stats, then check for zero changes
+# Run the playbook a second time and check the recap for zero changes
 ansible-playbook setup-webserver.yml 2>&1 | tail -1 | grep -q "changed=0"
 if [ $? -eq 0 ]; then
     echo "Playbook is idempotent"
