@@ -183,13 +183,13 @@ Also avoid free when using `delegate_to` that targets the same host from multipl
 
 ## Debugging Free Strategy Runs
 
-The free strategy makes output harder to read because tasks from different hosts interleave. Use the `yaml` callback plugin for cleaner output:
+The free strategy makes output harder to read because tasks from different hosts interleave. With ansible-core 2.13 and later, use the default callback's YAML result format for cleaner task results:
 
 ```ini
 # Make free strategy output more readable
 [defaults]
 strategy = free
-stdout_callback = yaml
+callback_result_format = yaml
 ```
 
 You can also use the `debug` strategy during development and switch to `free` for production runs:
@@ -199,7 +199,7 @@ You can also use the `debug` strategy during development and switch to `free` fo
 # Development: use debug strategy to step through tasks
 # Production: use free strategy for speed
 - hosts: webservers
-  strategy: "{{ lookup('env', 'ANSIBLE_STRATEGY') | default('free') }}"
+  strategy: "{{ lookup('ansible.builtin.env', 'ANSIBLE_STRATEGY') | default('free', true) }}"
   tasks:
     - name: Setup webserver
       include_role:
@@ -225,7 +225,7 @@ strategy = free
 forks = 50
 ```
 
-With 100 hosts and 50 forks, Ansible picks 50 hosts for the first batch. Under the free strategy, as a host finishes all its tasks, Ansible can start a new host in its place, even if other hosts in the batch are still working. This is more efficient than the linear strategy, where all 50 hosts must finish the current task before the batch moves forward.
+With 100 hosts and 50 forks, the play's batch is still all 100 hosts by default, but only up to 50 hosts can run at once. Under the free strategy, as a host finishes all its tasks, Ansible can start a new host in its place, even if other hosts in the batch are still working. This is more efficient than the linear strategy, where Ansible runs each task in lockstep across the current batch, subject to the fork limit, before moving to the next task.
 
 ## Handling Errors with Free Strategy
 
