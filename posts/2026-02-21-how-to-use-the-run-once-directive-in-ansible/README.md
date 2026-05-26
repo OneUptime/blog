@@ -8,7 +8,7 @@ Description: Learn how to use the run_once directive in Ansible to execute tasks
 
 ---
 
-When a playbook targets multiple hosts, every task runs on every host by default. But some tasks should only run once, regardless of how many hosts are in the play. Database migrations, shared cache initialization, one-time API calls, and cluster setup commands are examples where running on every host would be redundant or harmful. The `run_once` directive tells Ansible to execute a task on just one host and skip it on all the others.
+When a playbook targets multiple hosts, every task runs on every host by default. But some tasks should only run once, regardless of how many hosts are in the current batch. Database migrations, shared cache initialization, one-time API calls, and cluster setup commands are examples where running on every host would be redundant or harmful. The `run_once` directive tells Ansible to execute a task on just one host and apply the results to the other hosts in the same batch.
 
 ## Basic Usage
 
@@ -48,7 +48,7 @@ Add `run_once: true` to any task:
 
 ## Which Host Runs the Task?
 
-By default, `run_once` executes the task on the first host in the play's host list. You can control which host runs it using `delegate_to`:
+By default, `run_once` executes the task on the first host in the play's current batch. You can control which host runs it using `delegate_to`:
 
 ```yaml
 # specify-host.yml - Control which host runs the task
@@ -84,7 +84,7 @@ By default, `run_once` executes the task on the first host in the play's host li
 
 ## How run_once Interacts with register
 
-When a `run_once` task registers a variable, that variable is available on ALL hosts in the play, not just the one that ran the task. Ansible copies the result to every host's variable scope:
+When a `run_once` task registers a variable, that variable is available on ALL hosts in the current batch, not just the one that ran the task. Ansible copies the result to every host's variable scope:
 
 ```yaml
 # register-sharing.yml - Register from run_once is shared
@@ -274,7 +274,7 @@ If you need a task to truly run only once across all serial batches, use a flag:
     - name: Run migration only on the very first batch
       command: /opt/myapp/bin/migrate
       run_once: true
-      when: ansible_play_batch | first == inventory_hostname
+      when: inventory_hostname == ansible_play_hosts_all[0]
       # Only the first host of the first batch runs this
 ```
 
@@ -347,4 +347,4 @@ Apply `run_once` to a block to run a group of related tasks on a single host:
 
 ## Summary
 
-The `run_once` directive is perfect for tasks that should execute on a single host: database migrations, shared resource initialization, API calls, and notifications. The registered variables from `run_once` tasks are shared across all hosts in the play. Use `delegate_to` to control which host runs the task, and be aware that `run_once` executes once per serial batch, not once per playbook. For truly global one-time execution with serial, add additional conditional logic.
+The `run_once` directive is perfect for tasks that should execute on a single host: database migrations, shared resource initialization, API calls, and notifications. The registered variables from `run_once` tasks are shared across all hosts in the current batch. Use `delegate_to` to control which host runs the task, and be aware that `run_once` executes once per serial batch, not once per playbook. For truly global one-time execution with serial, add additional conditional logic.
