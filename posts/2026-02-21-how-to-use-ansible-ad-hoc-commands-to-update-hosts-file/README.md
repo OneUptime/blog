@@ -55,7 +55,7 @@ ansible all -m lineinfile -a "path=/etc/hosts regexp='^.*db\.internal.*$' line='
 ansible all -m lineinfile -a "path=/etc/hosts regexp='^10\.0\.1\.50' line='10.0.2.50 db.internal db' state=present" --become
 ```
 
-The `regexp` parameter matches the existing line, and the `line` parameter replaces it entirely. This ensures you do not end up with duplicate entries.
+The `regexp` parameter matches the existing line, and the `line` parameter replaces the last matching line. This prevents adding a duplicate when there is a single existing matching entry.
 
 ## Removing a Hosts Entry
 
