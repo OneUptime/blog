@@ -282,7 +282,7 @@ Here is a full deployment workflow that handles requirements properly:
         state: present
 
     - name: Deploy application code
-      ansible.builtin.synchronize:
+      ansible.posix.synchronize:
         src: dist/
         dest: "{{ app_dir }}/src/"
       register: code_deploy
