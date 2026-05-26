@@ -16,7 +16,7 @@ This guide covers enabling Inspector, configuring scan types, setting up suppres
 
 - Terraform 1.0 or later
 - AWS CLI configured with appropriate permissions
-- EC2 instances with the SSM Agent installed (for EC2 scanning)
+- EC2 instances managed by AWS Systems Manager for agent-based EC2 scanning
 - ECR repositories (for container image scanning)
 
 ## Provider Configuration
@@ -100,6 +100,18 @@ resource "aws_inspector2_member_association" "accounts" {
   depends_on = [aws_inspector2_delegated_admin_account.security]
 }
 
+# Enable Inspector scans for existing member accounts
+resource "aws_inspector2_enabler" "member_accounts" {
+  provider = aws.security
+
+  count = length(var.member_account_ids) > 0 ? 1 : 0
+
+  account_ids    = var.member_account_ids
+  resource_types = ["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"]
+
+  depends_on = [aws_inspector2_member_association.accounts]
+}
+
 variable "security_account_id" {
   type        = string
   description = "Account ID for the security/audit account"
@@ -107,7 +119,7 @@ variable "security_account_id" {
 
 variable "member_account_ids" {
   type        = list(string)
-  description = "List of member account IDs to enable Inspector on"
+  description = "List of member account IDs to associate and enable Inspector on"
   default     = []
 }
 ```
@@ -314,10 +326,38 @@ resource "aws_cloudwatch_log_group" "inspector_findings" {
   retention_in_days = 90
 }
 
+data "aws_iam_policy_document" "eventbridge_logs" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+
+    resources = ["${aws_cloudwatch_log_group.inspector_findings.arn}:*"]
+
+    principals {
+      type = "Service"
+      identifiers = [
+        "events.amazonaws.com",
+        "delivery.logs.amazonaws.com",
+      ]
+    }
+  }
+}
+
+resource "aws_cloudwatch_log_resource_policy" "eventbridge_logs" {
+  policy_name     = "inspector-eventbridge-log-publishing"
+  policy_document = data.aws_iam_policy_document.eventbridge_logs.json
+}
+
 resource "aws_cloudwatch_event_target" "inspector_to_logs" {
   rule      = aws_cloudwatch_event_rule.inspector_critical.name
   target_id = "send-to-cloudwatch-logs"
   arn       = aws_cloudwatch_log_group.inspector_findings.arn
+
+  depends_on = [aws_cloudwatch_log_resource_policy.eventbridge_logs]
 }
 
 resource "aws_cloudwatch_log_metric_filter" "inspector_critical" {
