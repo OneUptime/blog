@@ -56,6 +56,7 @@ Before any change runs, validate prerequisites:
         status_code: 200
       register: change_ticket_data
       delegate_to: localhost
+      become: false
       run_once: true
 
     - name: Verify change is approved
@@ -115,6 +116,7 @@ Wrap every change in logging and audit trail:
           timestamp: "{{ ansible_date_time.iso8601 }}"
           executor: "ansible-automation"
       delegate_to: localhost
+      become: false
 
     - name: Create backup before change
       ansible.builtin.include_role:
@@ -143,6 +145,7 @@ Wrap every change in logging and audit trail:
           message: "Change executed successfully on {{ inventory_hostname }}"
           timestamp: "{{ ansible_date_time.iso8601 }}"
       delegate_to: localhost
+      become: false
 ```
 
 ## Rollback on Failure
@@ -214,6 +217,7 @@ Implement automatic rollback when post-change checks fail:
               status: "rolled_back"
               message: "Change rolled back on {{ inventory_hostname }} due to verification failure"
           delegate_to: localhost
+          become: false
 
         - name: Fail the playbook after rollback
           ansible.builtin.fail:
@@ -273,7 +277,7 @@ Create a local audit log for all changes:
 
 ```yaml
 # roles/change_audit/tasks/main.yml
-# Log every change to a central audit file
+# Log every change to a local audit file
 
 - name: Create audit log directory
   ansible.builtin.file:
@@ -327,6 +331,7 @@ Connect Ansible to your ITSM platform:
     status_code: 201
   register: snow_change
   delegate_to: localhost
+  become: false
   run_once: true
 
 - name: Store change number
@@ -336,4 +341,4 @@ Connect Ansible to your ITSM platform:
 
 ## Summary
 
-Ansible automates change management by encoding approval checks, execution, verification, and rollback into playbooks. Pre-checks validate that changes are approved and within the scheduled window. Block/rescue patterns handle automatic rollback when changes fail. Every step logs to your ITSM platform for audit compliance. Standard changes can run fully automated, while normal changes require approval gates. This approach satisfies governance requirements while eliminating the manual overhead that slows teams down.
+Ansible automates change management by encoding approval checks, execution, verification, and rollback into playbooks. Pre-checks validate that changes are approved and within the scheduled window. Block/rescue patterns handle automatic rollback when changes fail. Key steps log to your ITSM platform for audit compliance. Standard changes can run fully automated, while normal changes require approval gates. This approach satisfies governance requirements while eliminating the manual overhead that slows teams down.
