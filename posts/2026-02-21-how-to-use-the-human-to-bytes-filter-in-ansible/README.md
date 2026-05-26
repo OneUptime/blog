@@ -262,14 +262,14 @@ The filter handles both with and without spaces, and accepts both short (K, M, G
 
 ## Using with isbits Parameter
 
-For network bandwidth values measured in bits:
+For bit-based values that use Ansible's binary K/M/G scale:
 
 ```yaml
-# Convert bit-based bandwidth values
-- name: Convert bandwidth values
+# Convert bit-based values
+- name: Convert bit-based values
   ansible.builtin.debug:
     msg: |
-      1 Mb (megabits): {{ "1Mb" | human_to_bytes(isbits=true) }} bits
+      1 Mb: {{ "1Mb" | human_to_bytes(isbits=true) }} bits
       100 Mb: {{ "100Mb" | human_to_bytes(isbits=true) }} bits
       1 Gb: {{ "1Gb" | human_to_bytes(isbits=true) }} bits
 ```
