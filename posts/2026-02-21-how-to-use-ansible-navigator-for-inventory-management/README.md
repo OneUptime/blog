@@ -136,9 +136,9 @@ This shows the fully resolved variable set, including inherited variables:
 }
 ```
 
-## Viewing Group Variables
+## Viewing Group Hierarchy
 
-See variables defined at the group level:
+See the inventory group hierarchy:
 
 ```bash
 # View group information
@@ -171,9 +171,9 @@ ansible-navigator handles dynamic inventories the same way. The inventory script
 Test a dynamic AWS inventory:
 
 ```yaml
-# aws_inventory.yml - AWS EC2 dynamic inventory
+# inventory.aws_ec2.yml - AWS EC2 dynamic inventory
 ---
-plugin: amazon.aws.ec2
+plugin: amazon.aws.aws_ec2
 regions:
   - us-east-1
   - us-west-2
@@ -198,11 +198,11 @@ Browse the dynamic inventory:
 
 ```bash
 # Browse AWS dynamic inventory using an EE with boto3
-ansible-navigator inventory -i aws_inventory.yml \
+ansible-navigator inventory -i inventory.aws_ec2.yml \
   --execution-environment-image quay.io/myorg/ee-aws:2.1.0
 
 # List all hosts from the dynamic inventory
-ansible-navigator inventory -i aws_inventory.yml \
+ansible-navigator inventory -i inventory.aws_ec2.yml \
   --execution-environment-image quay.io/myorg/ee-aws:2.1.0 \
   --list --mode stdout
 ```
@@ -215,7 +215,7 @@ You can point ansible-navigator at a directory containing multiple inventory fil
 # Directory structure
 # inventory/
 #   static.yml     - Static hosts
-#   aws_ec2.yml    - AWS dynamic inventory
+#   inventory.aws_ec2.yml - AWS dynamic inventory
 #   group_vars/
 #     all.yml
 #     webservers.yml
@@ -326,10 +326,10 @@ When your inventory uses plugins that need specific Python libraries (like boto3
 
 ```bash
 # This will fail if the default EE doesn't have boto3
-ansible-navigator inventory -i aws_ec2.yml
+ansible-navigator inventory -i inventory.aws_ec2.yml
 
 # This works because the AWS EE has boto3
-ansible-navigator inventory -i aws_ec2.yml \
+ansible-navigator inventory -i inventory.aws_ec2.yml \
   --execution-environment-image quay.io/myorg/ee-aws:2.1.0
 ```
 
@@ -343,8 +343,10 @@ ansible-navigator:
     image: quay.io/myorg/ee-aws:2.1.0
     pull:
       policy: missing
-  inventories:
-    - inventory/
+  ansible:
+    inventory:
+      entries:
+        - inventory/
 ```
 
 ## Exporting Inventory Data
