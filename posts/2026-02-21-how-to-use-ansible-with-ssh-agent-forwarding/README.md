@@ -100,7 +100,7 @@ web02 ansible_host=10.0.1.11
 
 ### Method 4: In the Playbook
 
-Use the `environment` or `ssh` connection parameters in your playbook:
+Use SSH connection variables in your playbook:
 
 ```yaml
 # deploy.yml
@@ -116,7 +116,7 @@ Use the `environment` or `ssh` connection parameters in your playbook:
         repo: "git@github.com:company/private-app.git"
         dest: /opt/app
         version: main
-        accept_hostkey: yes
+        accept_newhostkey: yes
 ```
 
 ## Practical Use Case: Git Deployment
@@ -156,7 +156,7 @@ Here is a complete example of using agent forwarding to deploy from a private re
         repo: "{{ repo_url }}"
         dest: "{{ app_dir }}"
         version: "{{ branch }}"
-        accept_hostkey: yes
+        accept_newhostkey: yes
       become: no  # Run as the SSH user, not root, to use the forwarded agent
 ```
 
@@ -175,14 +175,13 @@ The most common pitfall with agent forwarding is losing access to the agent when
     ansible_ssh_extra_args: "-o ForwardAgent=yes"
 
   tasks:
-    # This task runs as root but needs the SSH agent
+    # This task runs as the SSH user to use the forwarded agent
     - name: Clone repo as deploy user
       git:
         repo: "git@github.com:company/app.git"
         dest: /opt/app
         version: main
-        accept_hostkey: yes
-      become_user: "{{ ansible_user }}"
+        accept_newhostkey: yes
       become: no
 ```
 
@@ -228,12 +227,14 @@ ansible web01 -m shell -a "ssh -T git@github.com" \
 
 Agent forwarding is convenient but comes with security implications. When you enable agent forwarding, anyone with root access on the remote server can use your agent socket to authenticate as you for the duration of your connection.
 
-To minimize risk:
+To minimize risk, enable forwarding only for plays or inventory groups that need it:
 
 ```yaml
-# Only forward the agent for tasks that need it
+# Only forward the agent for hosts that need it
 - name: Deploy application
   hosts: webservers
+  vars:
+    ansible_ssh_extra_args: "-o ForwardAgent=yes"
   tasks:
     # This task does not need agent forwarding
     - name: Install packages
@@ -250,11 +251,7 @@ To minimize risk:
       git:
         repo: "git@github.com:company/app.git"
         dest: /opt/app
-        accept_hostkey: yes
-      environment:
-        SSH_AUTH_SOCK: "{{ ansible_env.SSH_AUTH_SOCK | default('') }}"
-      vars:
-        ansible_ssh_extra_args: "-o ForwardAgent=yes"
+        accept_newhostkey: yes
 ```
 
 Additional security recommendations:
@@ -304,4 +301,4 @@ If forwarding is not working, common causes include:
 
 ## Wrapping Up
 
-SSH agent forwarding is a clean way to give managed hosts access to your SSH credentials without distributing private keys. Enable it in `ansible.cfg` for broad use or in specific playbook tasks for tighter security. Watch out for the `become` gotcha, where root cannot access the forwarded agent by default. For production, always set key lifetimes on your agent and limit forwarding to only the tasks that actually need it.
+SSH agent forwarding is a clean way to give managed hosts access to your SSH credentials without distributing private keys. Enable it in `ansible.cfg` for broad use or in specific plays or inventory groups for tighter security. Watch out for the `become` gotcha, where root cannot access the forwarded agent by default. For production, always set key lifetimes on your agent and limit forwarding to only the hosts that actually need it.
