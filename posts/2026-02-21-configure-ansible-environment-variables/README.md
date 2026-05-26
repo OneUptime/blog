@@ -8,17 +8,17 @@ Description: A complete guide to using environment variables to configure Ansibl
 
 ---
 
-Environment variables are one of the most powerful ways to configure Ansible. They let you override ansible.cfg settings on the fly, pass secrets without putting them in files, and customize behavior per CI/CD pipeline run. Every setting in ansible.cfg has a corresponding environment variable, and they take precedence over the config file. This guide covers the most useful Ansible environment variables and practical patterns for using them.
+Environment variables are one of the most powerful ways to configure Ansible. They let you override ansible.cfg settings on the fly, pass secrets without putting them in files, and customize behavior per CI/CD pipeline run. Many settings in ansible.cfg have corresponding environment variables, and those environment variables take precedence over the config file. This guide covers the most useful Ansible environment variables and practical patterns for using them.
 
 ## How Ansible Environment Variables Work
 
-Ansible's configuration precedence for any individual setting is:
+Within Ansible's configuration settings, precedence for any individual setting is:
 
-1. Environment variable (highest priority)
+1. Environment variable
 2. ansible.cfg setting
-3. Built-in default (lowest priority)
+3. Built-in default
 
-So if `forks = 10` is in your ansible.cfg, but you set `ANSIBLE_FORKS=50` as an environment variable, Ansible uses 50.
+So if `forks = 10` is in your ansible.cfg, but you set `ANSIBLE_FORKS=50` as an environment variable, Ansible uses 50. Command-line options, playbook keywords, and variables can still override configuration settings in Ansible's broader precedence rules.
 
 ## The Most Important Ansible Environment Variables
 
@@ -78,7 +78,7 @@ Path to the file containing the vault password:
 
 ```bash
 export ANSIBLE_VAULT_PASSWORD_FILE=~/.vault_pass
-ansible-playbook --ask-vault-pass deploy.yml  # This won't prompt because the file is set
+ansible-playbook deploy.yml  # Ansible reads the vault password from the file
 ```
 
 ### ANSIBLE_HOST_KEY_CHECKING
@@ -92,14 +92,15 @@ ansible-playbook deploy.yml
 
 ### ANSIBLE_STDOUT_CALLBACK
 
-Change the output format:
+Change the output callback or result format:
 
 ```bash
-# Use YAML output
-export ANSIBLE_STDOUT_CALLBACK=yaml
+# Use YAML-formatted task results with the built-in default callback
+export ANSIBLE_STDOUT_CALLBACK=default
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
 
-# Use JSON output (good for machine parsing)
-export ANSIBLE_STDOUT_CALLBACK=json
+# Use JSON output (requires the ansible.posix collection)
+export ANSIBLE_STDOUT_CALLBACK=ansible.posix.json
 
 # Use minimal output
 export ANSIBLE_STDOUT_CALLBACK=minimal
@@ -227,7 +228,8 @@ jobs:
     env:
       ANSIBLE_FORCE_COLOR: "true"
       ANSIBLE_HOST_KEY_CHECKING: "false"
-      ANSIBLE_STDOUT_CALLBACK: yaml
+      ANSIBLE_STDOUT_CALLBACK: default
+      ANSIBLE_CALLBACK_RESULT_FORMAT: yaml
       ANSIBLE_FORKS: "20"
     steps:
       - uses: actions/checkout@v4
@@ -276,7 +278,8 @@ For your personal workstation, add commonly used Ansible environment variables t
 # ~/.bashrc or ~/.zshrc
 
 # Ansible defaults
-export ANSIBLE_STDOUT_CALLBACK=yaml
+export ANSIBLE_STDOUT_CALLBACK=default
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
 export ANSIBLE_HOST_KEY_CHECKING=False
 export ANSIBLE_PIPELINING=True
 export ANSIBLE_FORKS=20
@@ -319,7 +322,8 @@ For project-specific environment variables, create a `.env` file and source it:
 export ANSIBLE_CONFIG=ansible.cfg
 export ANSIBLE_VAULT_PASSWORD_FILE=.vault_pass
 export ANSIBLE_FORKS=20
-export ANSIBLE_STDOUT_CALLBACK=yaml
+export ANSIBLE_STDOUT_CALLBACK=default
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
 export ANSIBLE_LOG_PATH=logs/ansible.log
 ```
 
