@@ -83,7 +83,7 @@ The `synchronize` module wraps rsync and supports delegation. This is great for 
       delegate_to: build.example.com
 ```
 
-When you delegate `synchronize` to a host, that host becomes the source and pushes files to the current target. The `mode: push` means the delegated host pushes to the play target. If you use `mode: pull`, the play target pulls from the delegated host.
+When you delegate `synchronize` to a host, that host becomes the local side of the rsync operation. The `mode: push` means the delegated host pushes to the play target. If you use `mode: pull`, the delegated host pulls from the play target.
 
 Here is a diagram showing how the synchronize delegation flow works:
 
@@ -144,7 +144,7 @@ The `slurp` module returns file contents as base64-encoded data. You decode it w
 
 ## Pattern 4: Template Rendering with Cross-Host Variables
 
-A powerful pattern is using variables from one host to render templates on another. Delegation combined with `hostvars` makes this possible.
+A powerful pattern is using variables from one host to render templates on another. The `hostvars` dictionary makes this possible.
 
 ```yaml
 # cross_host_template.yml - Use facts from multiple hosts in a template
@@ -282,7 +282,7 @@ For large directory transfers, compress first, then transfer:
 
 When doing cross-host file operations at scale, keep these points in mind:
 
-1. **Serial transfers are slow.** If you need to distribute a file to 100 hosts, Ansible will do it one at a time (or based on your `serial` setting). Use the `synchronize` module for large files since rsync is much faster.
+1. **Limited parallelism can be slow.** If you need to distribute a file to 100 hosts, Ansible runs the task across hosts according to its strategy, `forks`, and any `serial` setting. Use the `synchronize` module for large files since rsync is much faster.
 
 2. **Memory limits with slurp.** The `slurp` module loads entire files into memory. Do not use it for files larger than a few megabytes. Use `fetch` and `copy` instead.
 
