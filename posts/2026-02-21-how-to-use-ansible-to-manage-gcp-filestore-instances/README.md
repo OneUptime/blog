@@ -24,10 +24,11 @@ Filestore is the right choice when you need:
 
 Filestore offers several tiers with different performance characteristics:
 
-- **BASIC_HDD**: Standard capacity, HDD-backed. Good for general file sharing.
-- **BASIC_SSD**: Standard capacity, SSD-backed. Better performance for latency-sensitive workloads.
-- **HIGH_SCALE_SSD**: High performance, up to 100TB. For demanding workloads.
-- **ENTERPRISE**: Multi-zone availability with snapshots. For production critical data.
+- **BASIC_HDD**: Legacy Basic tier backed by HDD. Good for general file sharing and lower-cost workloads.
+- **BASIC_SSD**: Legacy Basic tier backed by SSD. Better performance for latency-sensitive workloads.
+- **ZONAL**: Single-zone SSD-backed tier with performance that scales with capacity. For demanding workloads.
+- **REGIONAL**: Multi-zone availability with replication. For production critical data.
+- **ENTERPRISE**: Regional multishare tier optimized for GKE workloads that need high availability and multiple shares.
 
 ## Prerequisites
 
@@ -437,9 +438,9 @@ You can increase the capacity of a Filestore instance without downtime.
 
 ## Best Practices
 
-1. **Choose the right tier.** BASIC_HDD is fine for archival and infrequent access. BASIC_SSD for active workloads. ENTERPRISE for production data that needs multi-zone availability.
+1. **Choose the right tier.** BASIC_HDD is fine for archival and infrequent access. BASIC_SSD for active workloads. REGIONAL for production data that needs multi-zone availability. ENTERPRISE for GKE multishare workloads.
 
-2. **Use reserved IP ranges.** Specifying a reserved IP range prevents conflicts with other services on your network and makes firewall rules more predictable.
+2. **Use reserved IP ranges.** Specifying a reserved IP range prevents conflicts with other services on your network and makes firewall rules more predictable. For the Basic tiers shown in these examples, use a `/29` CIDR range.
 
 3. **Plan your capacity.** BASIC_HDD minimum is 1TB, BASIC_SSD minimum is 2.5TB. You cannot go below these minimums.
 
