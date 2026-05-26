@@ -43,14 +43,14 @@ Tags are the safest option for reproducible installations because they point to 
 
 ## Installing from a Subdirectory
 
-Some repositories contain multiple collections or have the collection in a subdirectory rather than the repository root. Use the `--subdirectory` option or the URL fragment to handle this:
+Some repositories contain multiple collections or have the collection in a subdirectory rather than the repository root. Use the URL fragment to handle this:
 
 ```bash
 # Install from a subdirectory within the repository
-ansible-galaxy collection install git+https://github.com/org/ansible-collections.git#subdirectory=docker,main
+ansible-galaxy collection install git+https://github.com/org/ansible-collections.git#/docker/,main
 ```
 
-The URL fragment `#subdirectory=docker` tells ansible-galaxy to look for the collection structure inside the `docker` directory of the repository.
+The URL fragment `#/docker/` tells ansible-galaxy to look for the collection structure inside the `docker` directory of the repository.
 
 ## Using requirements.yml with Git Sources
 
@@ -96,7 +96,7 @@ Private Git repositories require authentication. There are several ways to handl
 
 ```bash
 # Install from a private repo using SSH
-ansible-galaxy collection install git+git@github.com:my-org/private-collection.git,v1.2.0
+ansible-galaxy collection install git@github.com:my-org/private-collection.git,v1.2.0
 ```
 
 In a requirements file:
@@ -110,7 +110,7 @@ collections:
     version: v1.2.0
 ```
 
-**HTTPS with token authentication** works well in CI/CD pipelines where SSH keys might not be available:
+**HTTPS with token authentication** works in CI/CD pipelines where SSH keys might not be available, but avoid putting tokens in URLs when you can because they can be exposed in logs:
 
 ```bash
 # Install using a personal access token in the URL
@@ -168,20 +168,20 @@ collections:
 
 ## Repository Structure Requirements
 
-For `ansible-galaxy` to install a collection from Git, the repository must contain certain files. At minimum, you need a `galaxy.yml` file at the root (or at the subdirectory root if using `#subdirectory`).
+For `ansible-galaxy` to install a collection from Git, the repository must contain certain files. At minimum, you need a `galaxy.yml` or `MANIFEST.json` file at the root (or at the subdirectory root if using a URL fragment).
 
 Here is the minimum structure that ansible-galaxy expects:
 
 ```text
 my-collection/
   galaxy.yml          # Required: Collection metadata
+  README.md           # Required by the readme field in galaxy.yml
   plugins/            # Optional: Modules and plugins
     modules/
   roles/              # Optional: Roles
-  README.md           # Optional but recommended
 ```
 
-The `galaxy.yml` file must contain the namespace and collection name:
+The `galaxy.yml` file must contain required metadata such as the namespace, collection name, version, readme, and authors:
 
 ```yaml
 # galaxy.yml - Minimum required metadata
@@ -189,12 +189,13 @@ The `galaxy.yml` file must contain the namespace and collection name:
 namespace: my_org
 name: my_collection
 version: 1.0.0
+readme: README.md
 description: My custom collection
 authors:
   - Your Name <your.email@example.com>
 ```
 
-If the repository is missing `galaxy.yml`, the install will fail with an error about not being able to determine the collection metadata.
+If the repository is missing `galaxy.yml` or `MANIFEST.json`, the install will fail with an error about not being able to determine the collection metadata.
 
 ## Development Workflow: Using Git Collections Locally
 
