@@ -68,7 +68,7 @@ resource "aws_rds_cluster" "postgres" {
 
 ## Adding Cluster Instances
 
-Each instance provides compute for the cluster. The first instance becomes the writer:
+Each instance provides compute for the cluster. Aurora has one writer and promotes readers during failover; the instance index and tags below are deployment conventions, not a permanent role assignment:
 
 ```hcl
 # Aurora PostgreSQL instances
@@ -107,6 +107,11 @@ variable "instance_count" {
   description = "Total number of instances (1 writer + N-1 readers)"
   type        = number
   default     = 3
+
+  validation {
+    condition     = var.instance_count >= 3
+    error_message = "This example requires at least 3 instances because the reporting endpoint uses instances 1 and 2."
+  }
 }
 
 variable "writer_instance_class" {
@@ -122,7 +127,7 @@ variable "reader_instance_class" {
 }
 ```
 
-Using different instance classes for writer and reader is a common pattern. The writer typically needs more resources since it handles writes and some reads, while readers can be smaller.
+Using different instance classes for the initial writer and readers is a common pattern. The writer typically needs more resources since it handles writes and some reads, while readers can be smaller. After a failover, a promoted reader keeps its own instance class, so size readers appropriately for the workload they might need to handle.
 
 ## Cluster Parameter Group for PostgreSQL
 
@@ -170,10 +175,11 @@ resource "aws_rds_cluster_parameter_group" "postgres" {
     value = "ddl,role"
   }
 
-  # WAL settings (Aurora handles most WAL config, but some are tunable)
+  # Store pg_cron metadata in the application database instead of the default postgres database
   parameter {
-    name  = "checkpoint_timeout"
-    value = "900"
+    name         = "cron.database_name"
+    value        = "myapp"
+    apply_method = "pending-reboot"
   }
 
   tags = {
@@ -247,7 +253,7 @@ resource "aws_db_parameter_group" "aurora_pg" {
 
 ## IAM Database Authentication
 
-Aurora PostgreSQL supports IAM-based authentication, which avoids managing database passwords:
+Aurora PostgreSQL supports IAM-based authentication for database users, which avoids managing application database passwords:
 
 ```hcl
 # The cluster already has iam_database_authentication_enabled = true
@@ -303,7 +309,7 @@ resource "aws_rds_cluster_endpoint" "reporting" {
   }
 }
 
-# Endpoint for the writer only (useful for admin tasks)
+# Endpoint pinned to the first instance (does not follow writer failovers)
 resource "aws_rds_cluster_endpoint" "admin" {
   cluster_identifier          = aws_rds_cluster.postgres.id
   cluster_endpoint_identifier = "admin"
@@ -411,9 +417,10 @@ CREATE EXTENSION IF NOT EXISTS uuid-ossp;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS postgis;  -- If you need geospatial
 CREATE EXTENSION IF NOT EXISTS pg_cron;  -- For scheduled jobs
+CREATE EXTENSION IF NOT EXISTS pgaudit;  -- If you enabled pgAudit in shared_preload_libraries
 ```
 
-The `shared_preload_libraries` parameter in the cluster parameter group must include any extensions that need to be loaded at startup (like `pg_stat_statements` and `pg_cron`).
+The `shared_preload_libraries` parameter in the cluster parameter group must include any extensions that need to be loaded at startup (like `pg_stat_statements`, `pg_cron`, and `pgaudit`).
 
 ## Summary
 
