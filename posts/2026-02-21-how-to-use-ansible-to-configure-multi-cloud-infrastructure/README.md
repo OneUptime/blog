@@ -46,8 +46,8 @@ ansible-galaxy collection install google.cloud
 
 # Install Python SDKs
 pip install boto3 botocore
-pip install azure-identity azure-mgmt-compute azure-mgmt-network azure-mgmt-resource
-pip install google-auth google-cloud-compute
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
+pip install requests google-auth
 ```
 
 ## Project Structure
@@ -80,6 +80,7 @@ multi-cloud/
 │   ├── common/           # Shared across all clouds
 │   ├── webserver/        # Cloud-agnostic web config
 │   ├── database/         # Cloud-agnostic DB config
+│   ├── monitoring_agent/ # Cloud-agnostic monitoring config
 │   ├── aws_infra/        # AWS-specific provisioning
 │   ├── azure_infra/      # Azure-specific provisioning
 │   └── gcp_infra/        # GCP-specific provisioning
@@ -98,6 +99,8 @@ Each provider uses different authentication mechanisms. Keep them separate and s
 # vars/aws.yml (encrypt with ansible-vault)
 ---
 aws_region: us-east-1
+aws_availability_zone: us-east-1a
+aws_ami_id: "ami-xxxxxxxxxxxxxxxxx"
 aws_access_key: "AKIAXXXXXXXXXXXXXXXX"
 aws_secret_key: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
@@ -129,6 +132,9 @@ gcp_service_account_file: /path/to/service-account.json
   vars_files:
     - ../vars/common.yml
     - ../vars/aws.yml
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ aws_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ aws_secret_key }}"
 
   tasks:
     # Create VPC
@@ -148,7 +154,7 @@ gcp_service_account_file: /path/to/service-account.json
       amazon.aws.ec2_vpc_subnet:
         vpc_id: "{{ aws_vpc.vpc.id }}"
         cidr: 10.0.1.0/24
-        az: "{{ aws_region }}a"
+        az: "{{ aws_availability_zone }}"
         region: "{{ aws_region }}"
         tags:
           Name: "{{ project_name }}-public"
@@ -177,7 +183,7 @@ gcp_service_account_file: /path/to/service-account.json
       amazon.aws.ec2_instance:
         name: "{{ project_name }}-web-{{ item }}"
         instance_type: t3.medium
-        image_id: ami-0c55b159cbfafe1f0
+        image_id: "{{ aws_ami_id }}"
         key_name: deploy-key
         vpc_subnet_id: "{{ aws_subnet.subnet.id }}"
         security_group: "{{ aws_sg.group_id }}"
@@ -203,6 +209,11 @@ gcp_service_account_file: /path/to/service-account.json
   vars_files:
     - ../vars/common.yml
     - ../vars/azure.yml
+  environment:
+    AZURE_SUBSCRIPTION_ID: "{{ azure_subscription_id }}"
+    AZURE_CLIENT_ID: "{{ azure_client_id }}"
+    AZURE_SECRET: "{{ azure_secret }}"
+    AZURE_TENANT: "{{ azure_tenant }}"
 
   tasks:
     # Create resource group
@@ -253,6 +264,16 @@ gcp_service_account_file: /path/to/service-account.json
             direction: Inbound
         state: present
 
+    # Associate NSG with subnet
+    - name: Associate NSG with subnet
+      azure.azcollection.azure_rm_subnet:
+        resource_group: "{{ project_name }}-rg"
+        virtual_network_name: "{{ project_name }}-vnet"
+        name: "{{ project_name }}-subnet"
+        address_prefix_cidr: "10.1.1.0/24"
+        security_group: "{{ project_name }}-nsg"
+        state: present
+
     # Create VMs
     - name: Create Azure VMs
       azure.azcollection.azure_rm_virtualmachine:
@@ -298,6 +319,7 @@ gcp_service_account_file: /path/to/service-account.json
       google.cloud.gcp_compute_network:
         name: "{{ project_name }}-vpc"
         auto_create_subnetworks: false
+        routing_mode: REGIONAL
         project: "{{ gcp_project }}"
         auth_kind: "{{ gcp_auth_kind }}"
         service_account_file: "{{ gcp_service_account_file }}"
@@ -351,7 +373,7 @@ gcp_service_account_file: /path/to/service-account.json
               - name: External NAT
                 type: ONE_TO_ONE_NAT
         tags:
-          items: ['web']
+          tag_values: ['web']
         labels:
           project: "{{ project_name }}"
           role: webserver
@@ -384,6 +406,7 @@ The real value comes from configuration playbooks that work regardless of which 
           - certbot
           - htop
           - curl
+          - chrony
     - role: webserver
     - role: monitoring_agent
       vars:
@@ -411,9 +434,10 @@ The real value comes from configuration playbooks that work regardless of which 
 
 - name: Configure NTP
   ansible.builtin.service:
-    name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'ntpd' }}"
+    name: chrony
     state: started
     enabled: true
+  when: ansible_os_family == "Debian"
 ```
 
 ## Multi-Cloud Orchestration
