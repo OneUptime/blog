@@ -8,7 +8,7 @@ Description: Automate Cisco IOS-XR routers with Ansible for service provider and
 
 ---
 
-Cisco IOS-XR is the network operating system that runs on Cisco's service provider and high-end enterprise routers, including the ASR 9000, NCS 5000/5500, and CRS series. IOS-XR is fundamentally different from IOS and NX-OS. It uses a commit-based configuration model (similar to JunOS), runs on a Linux-based microkernel architecture, and supports true process isolation and in-service software upgrades.
+Cisco IOS-XR is the network operating system that runs on Cisco's service provider and high-end enterprise routers, including the ASR 9000, NCS 5000/5500, and CRS series. IOS-XR is fundamentally different from IOS and NX-OS. It uses a commit-based configuration model (similar to JunOS), runs on a modular, process-isolated architecture, and supports in-service software upgrades. Classic 32-bit IOS-XR used a QNX microkernel, while modern 64-bit IOS-XR and IOS-XR 7 are Linux-based.
 
 If you manage service provider infrastructure or large-scale routing environments, automating IOS-XR with Ansible can save significant operational time while reducing the risk of configuration errors.
 
@@ -253,7 +253,9 @@ BGP is the core routing protocol for service provider networks. Here is how to c
   gather_facts: no
 
   vars:
-    isis_net: "49.0001.{{ router_id | regex_replace('\\.', '') | regex_replace('(..)', '\\1.') }}.00"
+    router_id_octets: "{{ router_id.split('.') | map('int') | list }}"
+    isis_system_id: "{{ '%03d%03d%03d%03d' | format(router_id_octets[0], router_id_octets[1], router_id_octets[2], router_id_octets[3]) }}"
+    isis_net: "{{ '49.0001.%s.%s.%s.00' | format(isis_system_id[0:4], isis_system_id[4:8], isis_system_id[8:12]) }}"
 
   tasks:
     - name: Configure IS-IS process
@@ -302,10 +304,10 @@ BGP is the core routing protocol for service provider networks. Here is how to c
     - name: Configure VRF for Customer A
       cisco.iosxr.iosxr_config:
         lines:
+          - rd 65000:100
           - address-family ipv4 unicast
           - import route-target 65000:100
           - export route-target 65000:100
-          - rd 65000:100
         parents: vrf CUSTOMER-A
 
     - name: Assign interface to VRF
@@ -335,20 +337,21 @@ IOS-XR has excellent NETCONF support. Using NETCONF gives you structured XML dat
 ```yaml
 # playbook-iosxr-netconf.yml
 # Uses NETCONF for structured configuration management
-- name: Configure via NETCONF
+- name: Get configuration via NETCONF
   hosts: iosxr_netconf
   gather_facts: no
 
   tasks:
     - name: Get interface configuration via NETCONF
-      cisco.iosxr.iosxr_command:
-        commands:
-          - show running-config interface brief
+      ansible.netcommon.netconf_get:
+        source: running
+        display: pretty
+        filter: <interface-configurations xmlns="http://cisco.com/ns/yang/Cisco-IOS-XR-ifmgr-cfg"></interface-configurations>
       register: intf_config
 
     - name: Display interface configuration
       ansible.builtin.debug:
-        msg: "{{ intf_config.stdout_lines[0] }}"
+        msg: "{{ intf_config.output }}"
 ```
 
 For NETCONF, update the inventory:
