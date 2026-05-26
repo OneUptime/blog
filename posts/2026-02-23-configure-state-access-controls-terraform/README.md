@@ -27,38 +27,50 @@ Controlling state access is not optional for production environments.
 
 ### IAM Policies for State Access
 
-Create separate IAM policies for read-only and read-write access:
+Create separate IAM policies for state-read and state-write access. The current S3 backend supports native S3 lock files with `use_lockfile`; DynamoDB-based locking is deprecated in Terraform and should only be kept while migrating older configurations:
 
 ```hcl
-# Read-only policy for Terraform state (for plan operations)
+# State-read policy for Terraform state (for plan operations, including lock file access)
 
 resource "aws_iam_policy" "terraform_state_read" {
   name        = "terraform-state-read"
-  description = "Read-only access to Terraform state in S3"
+  description = "Read state and manage the S3 lock file for Terraform plans"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowStateRead"
+        Sid    = "AllowStateList"
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::my-terraform-state",
+          "arn:aws:s3:::my-terraform-state"
+        ]
+      },
+      {
+        Sid    = "AllowStateRead"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = [
           "arn:aws:s3:::my-terraform-state/*"
         ]
       },
       {
-        # DynamoDB read access for state locking info
-        Sid    = "AllowLockRead"
+        # S3 lock file access for state locking
+        Sid    = "AllowLockFileAccess"
         Effect = "Allow"
         Action = [
-          "dynamodb:GetItem"
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
-        Resource = "arn:aws:dynamodb:us-east-1:123456789012:table/terraform-locks"
+        Resource = [
+          "arn:aws:s3:::my-terraform-state/*.tflock"
+        ]
       }
     ]
   })
@@ -73,29 +85,26 @@ resource "aws_iam_policy" "terraform_state_write" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "AllowStateList"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::my-terraform-state"
+        ]
+      },
+      {
         Sid    = "AllowStateReadWrite"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:DeleteObject"
         ]
         Resource = [
-          "arn:aws:s3:::my-terraform-state",
           "arn:aws:s3:::my-terraform-state/*"
         ]
-      },
-      {
-        # DynamoDB access for state locking
-        Sid    = "AllowLocking"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
-        ]
-        Resource = "arn:aws:dynamodb:us-east-1:123456789012:table/terraform-locks"
       }
     ]
   })
@@ -115,11 +124,25 @@ resource "aws_iam_policy" "terraform_state_production" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "AllowProductionStateList"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::my-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "production/*"
+          }
+        }
+      },
+      {
         Sid    = "AllowProductionStateAccess"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:PutObject"
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
         Resource = [
           # Only the production state path
@@ -149,6 +172,19 @@ resource "aws_iam_policy" "terraform_state_dev" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Sid    = "AllowDevStateList"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::my-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "dev/*"
+          }
+        }
+      },
       {
         Sid    = "AllowDevStateAccess"
         Effect = "Allow"
@@ -214,7 +250,7 @@ Add a bucket policy as a secondary layer of defense:
 ### IAM Bindings for GCS
 
 ```hcl
-# Read-only access for planners
+# Read-only access for state consumers
 resource "google_storage_bucket_iam_member" "state_viewer" {
   bucket = google_storage_bucket.terraform_state.name
   role   = "roles/storage.objectViewer"
@@ -275,7 +311,7 @@ resource "azurerm_role_assignment" "terraform_state_reader" {
 }
 ```
 
-### Private Endpoint for Network-Level Control
+### Storage Account Network Rules for Network-Level Control
 
 ```hcl
 # Restrict state access to a specific VNet
@@ -338,6 +374,7 @@ resource "tfe_team_access" "staging_custom" {
     state_versions    = "read-outputs"  # Can read outputs but not full state
     sentinel_mocks    = "read"
     workspace_locking = false
+    run_tasks         = false
   }
 }
 ```
