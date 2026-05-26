@@ -131,6 +131,11 @@ class FilterModule:
         import pdb; pdb.set_trace()  # Drops into interactive debugger
         result = do_something(value)
         return result
+
+    def filters(self):
+        return {
+            'my_filter': self.my_filter,
+        }
 ```
 
 Run with a single fork so pdb works:
@@ -140,7 +145,7 @@ Run with a single fork so pdb works:
 ansible-playbook test.yml --forks 1
 ```
 
-For connection and strategy plugins that run in forked processes, pdb will not work directly. Use remote debugging instead:
+For plugins that run in forked worker processes or non-interactive contexts, pdb will not work directly. Use remote debugging instead:
 
 ```python
 # Remote debugging with debugpy (VS Code compatible)
@@ -274,19 +279,19 @@ return {'timestamp': datetime.now().isoformat()}
 Ansible has several environment variables that help with debugging:
 
 ```bash
-# Show full Python tracebacks on errors
+# Enable Ansible's debug output
 export ANSIBLE_DEBUG=1
 
 # Enable verbose mode programmatically
 export ANSIBLE_VERBOSITY=3
 
-# Show what plugins are being loaded
+# Show more internal debug output, including plugin loading details
 export ANSIBLE_DEBUG=1
 
 # Keep remote temporary files for inspection
 export ANSIBLE_KEEP_REMOTE_FILES=1
 
-# Show the module arguments sent to remote hosts
+# Show detailed task execution and module transfer output
 export ANSIBLE_DEBUG=1
 ansible-playbook test.yml -vvvv
 ```
