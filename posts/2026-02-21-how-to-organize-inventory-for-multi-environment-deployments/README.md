@@ -214,7 +214,7 @@ common_packages:
   - jq
 ```
 
-Reference the shared variables from your playbooks using `vars_files` or set up symlinks:
+Reference the shared variables by setting up symlinks:
 
 ```bash
 # Create symlinks to shared group_vars in each environment
@@ -222,13 +222,21 @@ cd inventories/development/group_vars
 ln -s ../../shared_group_vars/webservers.yml webservers_shared.yml
 ```
 
-Or use a more elegant approach with `ansible.cfg`:
+If the shared values are role defaults rather than inventory policy, put them in the role's defaults instead:
 
-```ini
-# ansible.cfg
-[defaults]
-# Load shared vars first, then environment-specific ones override
-vars_plugins_enabled = host_group_vars
+```yaml
+# roles/common/defaults/main.yml
+ntp_servers:
+  - ntp1.example.com
+  - ntp2.example.com
+dns_servers:
+  - 10.0.0.53
+  - 10.0.0.54
+common_packages:
+  - vim
+  - curl
+  - htop
+  - jq
 ```
 
 ## Pattern 3: Using the constructed Plugin for Environment Groups
