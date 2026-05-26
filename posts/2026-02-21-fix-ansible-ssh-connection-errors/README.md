@@ -139,12 +139,12 @@ The `-vvvv` output shows the exact SSH command Ansible runs, which you can copy 
 
 If the target needs a different connection type:
 
-```yaml
+```ini
 # For local execution
 localhost ansible_connection=local
 
 # For Docker containers
-container1 ansible_connection=docker
+container1 ansible_connection=community.docker.docker
 
 # For Windows hosts
 winserver ansible_connection=winrm
@@ -156,12 +156,12 @@ SSH connection errors in Ansible are almost always a connectivity or authenticat
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these troubleshooting techniques prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these techniques
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -193,7 +193,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -275,7 +275,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these techniques
 - name: Robust task execution
   hosts: all
   tasks:
@@ -337,4 +337,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
