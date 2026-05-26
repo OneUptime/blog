@@ -90,7 +90,7 @@ When a connection fails, Ansible can retry automatically:
 retries = 3
 ```
 
-This retries the SSH connection up to 3 times before giving up. Combined with a reasonable timeout, this handles most transient failures:
+This makes up to 3 SSH connection attempts before giving up. Ansible retries SSH connections only for SSH errors that return code 255. Combined with a reasonable timeout, this handles many transient connection failures:
 
 ```ini
 # ansible.cfg - Reliable configuration
@@ -102,7 +102,7 @@ retries = 3
 ssh_args = -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
 ```
 
-With these settings, each retry waits up to 30 seconds for a connection. Three retries means a total of up to 90 seconds before Ansible gives up on a host.
+With these settings, each connection attempt waits up to 30 seconds for a connection. Three attempts means a total of up to 90 seconds before Ansible gives up on a host, plus any SSH retry overhead.
 
 ## Task-Level Retries
 
@@ -179,8 +179,8 @@ connect_timeout = 30
 # How long to wait for a command to complete (seconds)
 command_timeout = 30
 
-# Idle timeout before closing persistent connection
-idle_timeout = 60
+# How long to retry connecting to the local persistent connection socket (seconds)
+connect_retry_timeout = 15
 ```
 
 ## Module-Specific Timeouts
@@ -307,7 +307,7 @@ Use callback plugins to track which tasks are slow or timing out:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = timer, profile_tasks, profile_roles
+callbacks_enabled = timer, profile_tasks, profile_roles
 
 # Show task duration thresholds
 [callback_profile_tasks]
@@ -339,10 +339,10 @@ When hosts are completely unreachable, you can control how Ansible handles them:
 
 ## Retry Files
 
-When a playbook fails partway through, Ansible creates a `.retry` file listing the failed hosts:
+When retry files are enabled and a playbook fails partway through, Ansible creates a `.retry` file listing the failed hosts:
 
 ```bash
-# Ansible creates playbook_name.retry with failed hosts
+# Ansible can create playbook_name.retry with failed hosts
 # Retry only the failed hosts
 ansible-playbook site.yml --limit @site.retry
 ```
