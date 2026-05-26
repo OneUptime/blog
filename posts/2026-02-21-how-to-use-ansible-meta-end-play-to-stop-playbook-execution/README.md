@@ -176,6 +176,7 @@ Implement a dry-run mode that checks what would change and then stops.
 
   vars:
     dry_run: false
+    target_version: "3.2.1"
 
   tasks:
     - name: Calculate changes
@@ -192,9 +193,9 @@ Implement a dry-run mode that checks what would change and then stops.
             msg: |
               === Deployment Plan ===
               Host: {{ inventory_hostname }}
-              Current version: {{ current_state.stdout | default('not installed') }}
+              Current version: {{ current_state.stdout if current_state.rc == 0 else 'not installed' }}
               Target version: {{ target_version }}
-              Action: {{ 'UPGRADE' if current_state.stdout is defined else 'INSTALL' }}
+              Action: {{ 'UPGRADE' if current_state.rc == 0 else 'INSTALL' }}
 
     - name: End play after dry run report
       ansible.builtin.meta: end_play
@@ -285,7 +286,7 @@ When a playbook has multiple plays, `end_play` only stops the current play. Subs
 
 The `meta: end_play` directive is not a task in the traditional sense. It is a meta-action that modifies the play execution flow. Because of this, it has some behaviors worth noting:
 
-1. It cannot be used inside a `block/rescue/always` structure
+1. It can be used inside blocks, but it is not a failure and will not trigger `rescue` sections
 2. It does not trigger handlers that were notified before it
 3. It ends the play for ALL hosts, even if the `when` condition only applies to one host
 4. It does not count as a failure, so subsequent plays in the playbook still execute
