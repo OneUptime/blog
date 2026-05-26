@@ -231,25 +231,28 @@ For this to work, both template files need to be accessible to Ansible. Place th
 
 ## Macro Scope and Variables
 
-One thing to know about macros is that they have their own scope. Variables defined outside the macro are not automatically available inside it. You need to pass everything the macro needs as parameters:
+One thing to know about macros is that imported macros do not receive the current template's local context by default. A macro defined in the same template can read top-level template variables, but a macro imported from another file should receive everything it needs as parameters:
 
 ```jinja2
-{# This will NOT work - environment is not in macro scope #}
-{% set environment = "production" %}
-
-{% macro broken_macro() %}
-    Environment: {{ environment }}
-{% endmacro %}
-
-{# This WILL work - pass it as a parameter #}
-{% macro working_macro(env) %}
+{# templates/macros/env_macros.j2 #}
+{% macro environment_line(env) %}
     Environment: {{ env }}
 {% endmacro %}
 
-{{ working_macro(environment) }}
+{# templates/app.conf.j2 #}
+{% set environment = "production" %}
+{% from 'macros/env_macros.j2' import environment_line %}
+
+{{ environment_line(environment) }}
 ```
 
-There is one exception: Ansible variables (facts, inventory variables, role defaults) are available inside macros through the special `varargs` context, but relying on this can make your macros harder to test and reuse. It is better practice to pass everything explicitly.
+If you really need an imported macro to access the caller's context directly, Jinja also supports importing with context:
+
+```jinja2
+{% from 'macros/env_macros.j2' import environment_line with context %}
+```
+
+However, passing values explicitly usually makes macros easier to test and reuse. The special `varargs` variable is not an Ansible variable context; it only contains extra positional arguments passed to the macro.
 
 ## Debugging Macros
 
