@@ -73,7 +73,7 @@ debugger: on_failed
 # Only when the host is unreachable
 debugger: on_unreachable
 
-# Only when the task reports a non-ok result (failed or unreachable)
+# Only when the task is skipped
 debugger: on_skipped
 
 # Never activate (useful to override inherited settings)
@@ -96,14 +96,15 @@ fatal: [web-01]: FAILED! => {"changed": false, "msg": "Could not find or access 
 At this prompt, you can type several commands. Here is the complete list:
 
 ```text
-p <expression>    - Print a variable or expression
-task.args         - Show current task arguments
-task.vars         - Show task variables
-vars              - Show all available variables
-r                 - Re-run the current task
-c                 - Continue to the next task
-q                 - Quit the debugger and abort the play
-u <key>=<value>   - Update a task argument or variable
+p or print        - Print information about task, task.args, task_vars, host, or result
+task.args[key] = value
+                  - Update a module argument
+task_vars[key] = value
+                  - Update a task variable
+u or update_task  - Recreate the task after updating task variables
+r or redo         - Re-run the current task
+c or continue     - Continue to the next task
+q or quit         - Quit the debugger and abort the play
 ```
 
 ## Inspecting Variables with p
@@ -202,7 +203,8 @@ Now you can investigate:
 # Let's set it and retry
 [web-01] TASK: Configure monitoring port (debug)> task_vars['listen_address'] = '0.0.0.0'
 
-# Retry the task
+# Recreate the task with the updated variable, then retry it
+[web-01] TASK: Configure monitoring port (debug)> update_task
 [web-01] TASK: Configure monitoring port (debug)> r
 
 ok: [web-01]
@@ -324,7 +326,7 @@ A few things to keep in mind when using the debugger:
 
 - The debugger only works when running Ansible interactively (not in CI/CD pipelines or cron jobs)
 - When running against multiple hosts, the debugger activates once per failing host, which can be tedious with large inventories
-- The `r` (retry) command re-runs the task from scratch, including any `when` conditions
+- The `r` (redo) command re-runs the task from the debugger; after changing `task_vars`, run `u` or `update_task` before retrying
 - Variable changes made in the debugger only persist for the current task retry
 - The debugger uses Python syntax, not Jinja2, so use `task_vars['var_name']` instead of `{{ var_name }}`
 
