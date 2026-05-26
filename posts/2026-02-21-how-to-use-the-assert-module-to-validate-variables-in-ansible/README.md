@@ -58,7 +58,7 @@ When you have multiple assertions, a generic failure message is not helpful. You
         that:
           - db_host is defined
           - db_host | length > 0
-        fail_msg: "db_host must be defined and non-empty. Got: '{{ db_host }}'"
+        fail_msg: "db_host must be defined and non-empty. Got: '{{ db_host | default('undefined') }}'"
 
     - name: Validate database port
       ansible.builtin.assert:
@@ -84,7 +84,7 @@ When you have multiple assertions, a generic failure message is not helpful. You
 
 ## Validating Variable Types
 
-Ansible does not enforce variable types, so incoming data might be the wrong type. The `type_debug` filter and type checks help with this.
+Ansible does not enforce variable types, so incoming data might be the wrong type. The `type_debug` filter can help during debugging, but type tests are better for validation.
 
 ```yaml
 # type-validation.yml - Check that variables have the expected type
@@ -105,9 +105,8 @@ Ansible does not enforce variable types, so incoming data might be the wrong typ
     - name: Port must be an integer
       ansible.builtin.assert:
         that:
-          - server_port | type_debug in ['int', 'AnsibleUnsafeText', 'str']
-          - server_port | int == server_port
-        fail_msg: "server_port must be an integer"
+          - server_port is integer
+        fail_msg: "server_port must be an integer, got {{ server_port | type_debug }}"
 
     - name: server_name must be a string
       ansible.builtin.assert:
@@ -244,7 +243,7 @@ Roles should validate their input variables in the first task file. This catches
     - name: Validate IP address format
       ansible.builtin.assert:
         that:
-          - bind_address is match('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+          - bind_address is match('^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$')
         fail_msg: "bind_address must be a valid IPv4 address: {{ bind_address }}"
 
     - name: Validate port range
@@ -257,7 +256,7 @@ Roles should validate their input variables in the first task file. This catches
     - name: Validate CIDR notation
       ansible.builtin.assert:
         that:
-          - item is match('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$')
+          - item is match('^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)/(?:[0-9]|[12]\d|3[0-2])$')
         fail_msg: "Invalid CIDR notation: {{ item }}"
       loop: "{{ allowed_cidrs }}"
 ```
@@ -276,7 +275,7 @@ flowchart TD
 
 ## Using assert with quiet Mode
 
-In Ansible 2.10+, you can use `quiet: true` to suppress the success message output. This is useful when you have many assertions and do not want verbose success output.
+In Ansible 2.8+, you can use `quiet: true` to suppress verbose output. This is useful when you have many assertions and do not want verbose success output.
 
 ```yaml
 # quiet-assert.yml - Suppress success messages
