@@ -76,14 +76,14 @@ The core pattern is simple: for each server, remove it from the load balancer po
           socat stdio /var/run/haproxy/admin.sock
       delegate_to: "{{ groups['loadbalancers'][0] }}"
 
-    - name: Verify server is receiving traffic
+    - name: Verify server is marked UP
       ansible.builtin.shell: |
-        # Check that the server has active sessions within 30 seconds
+        # Check that the server is marked UP within 30 seconds
         for i in $(seq 1 30); do
           STATUS=$(echo "show stat" | socat stdio /var/run/haproxy/admin.sock | \
             grep "web_backend,{{ inventory_hostname }}" | cut -d, -f18)
           if [ "$STATUS" = "UP" ]; then
-            echo "Server is UP and receiving traffic"
+            echo "Server is UP"
             exit 0
           fi
           sleep 1
@@ -248,12 +248,15 @@ For AWS load balancers, you use the AWS modules delegated to localhost (since th
 
     - name: Wait for deregistration and connection draining
       community.aws.elb_target_info:
-        target_group_arn: "{{ target_group_arn }}"
+        get_unused_target_groups: false
+        instance_id: "{{ ec2_instance_id }}"
         region: "{{ region }}"
       register: tg_health
       delegate_to: localhost
       until: >
-        tg_health.targets | selectattr('target.id', 'equalto', ec2_instance_id) | list | length == 0
+        (tg_health.instance_target_groups |
+         selectattr('target_group_arn', 'equalto', target_group_arn) |
+         list | length) == 0
       retries: 30
       delay: 10
 
@@ -289,13 +292,19 @@ For AWS load balancers, you use the AWS modules delegated to localhost (since th
 
     - name: Wait for ALB health check to pass
       community.aws.elb_target_info:
-        target_group_arn: "{{ target_group_arn }}"
+        get_unused_target_groups: false
+        instance_id: "{{ ec2_instance_id }}"
         region: "{{ region }}"
       register: tg_health
       delegate_to: localhost
       until: >
-        (tg_health.targets | selectattr('target.id', 'equalto', ec2_instance_id) |
-         selectattr('target_health.state', 'equalto', 'healthy') | list | length) > 0
+        (tg_health.instance_target_groups |
+         selectattr('target_group_arn', 'equalto', target_group_arn) |
+         map(attribute='targets') |
+         flatten |
+         selectattr('target_id', 'equalto', ec2_instance_id) |
+         selectattr('target_health.state', 'equalto', 'healthy') |
+         list | length) > 0
       retries: 30
       delay: 10
 ```
