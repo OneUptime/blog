@@ -157,6 +157,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "ecs_exec_logs" {
 resource "aws_cloudwatch_log_group" "ecs_exec" {
   name              = "/ecs/exec-logs"
   retention_in_days = 30
+  kms_key_id        = aws_kms_key.ecs_exec.arn
 }
 
 # Cluster with exec configuration
@@ -276,6 +277,43 @@ resource "aws_iam_role_policy" "task_permissions" {
           "ssmmessages:OpenDataChannel"
         ]
         Resource = "*"
+      },
+      {
+        # Required when using a customer managed KMS key for ECS Exec
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.ecs_exec.arn
+      },
+      {
+        # Required for ECS Exec CloudWatch logging
+        Effect   = "Allow"
+        Action   = "logs:DescribeLogGroups"
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:DescribeLogStreams",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.ecs_exec.arn}:*"
+      },
+      {
+        # Required for ECS Exec S3 logging
+        Effect   = "Allow"
+        Action   = "s3:GetBucketLocation"
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:GetEncryptionConfiguration"
+        Resource = aws_s3_bucket.ecs_exec_logs.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.ecs_exec_logs.arn}/*"
       }
     ]
   })
