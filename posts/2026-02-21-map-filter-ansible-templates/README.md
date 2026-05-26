@@ -8,7 +8,7 @@ Description: Learn how to use the Jinja2 map filter in Ansible to transform list
 
 ---
 
-The `map` filter is one of the most versatile tools for working with lists in Ansible. It applies a transformation to every element in a list and returns a new list with the results. If you have ever found yourself writing a `{% for %}` loop just to transform each item and build a new list, `map` can likely replace that loop with a single expression.
+The `map` filter is one of the most versatile tools for working with lists in Ansible. It applies a transformation to every element in a list and returns an iterable with the results. If you have ever found yourself writing a `{% for %}` loop just to transform each item and build a new list, `map` can likely replace that loop with a single expression.
 
 ## Basic Syntax
 
@@ -46,7 +46,7 @@ users:
 {# Output: ['alice@example.com', 'bob@example.com', 'charlie@example.com'] #}
 ```
 
-Note: You need `| list` at the end because `map` returns a generator in Jinja2, not a list. Without `| list`, you cannot iterate over it more than once or serialize it.
+Note: You need `| list` at the end when you need a concrete list because `map` returns a generator-like iterable in Jinja2. Filters such as `join` can consume that iterable directly, but converting it to a list is useful when you need to reuse it or pass a list to an Ansible module.
 
 ## Applying Filters to Each Element
 
@@ -221,14 +221,14 @@ The real power of `map` comes from chaining it with other filters:
         ip: "10.0.2.10"
         metrics_port: 9090
   tasks:
-    - name: Build scrape target list
+    - name: Build server IP list
       ansible.builtin.set_fact:
-        # Build "ip:port" strings for each server
-        scrape_targets: "{{ app_servers | map(attribute='ip') | list }}"
+        # Build just the IP strings for each server
+        scrape_target_ips: "{{ app_servers | map(attribute='ip') | list }}"
         # We need more complex transformation for ip:port pairs
 ```
 
-For cases where you need to build derived values (like `ip:port`), `map` alone is not enough since it cannot combine multiple attributes. Use a loop or list comprehension instead:
+For cases where you need to build derived values (like `ip:port`), `map` alone is not enough since it cannot combine multiple attributes. Use a loop or another transformation approach instead:
 
 ```jinja2
 {# Build ip:port strings using a loop #}
@@ -319,7 +319,7 @@ groups:
 
 ## Performance Considerations
 
-For large lists, `map` is more efficient than a Jinja2 `{% for %}` loop because it operates at the Python level. However, each `map` call creates a generator, and chaining many `map` calls is still very fast because generators are lazy (they process one element at a time).
+For large lists, `map` can be clearer than a Jinja2 `{% for %}` loop because it avoids manual list-building. Each `map` call returns an iterable, so chained `map`, `select`, and `reject` operations stay lazy until a consuming filter such as `list`, `join`, or `sort` needs the values.
 
 ```jinja2
 {# Efficient chained operations #}
