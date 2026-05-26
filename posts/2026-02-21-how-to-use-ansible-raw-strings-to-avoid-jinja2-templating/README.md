@@ -10,7 +10,7 @@ Description: Learn how to prevent Ansible from interpreting Jinja2 curly braces 
 
 Ansible processes almost every string through its Jinja2 templating engine. This is usually what you want. Variables get expanded, filters get applied, and conditionals get evaluated. But sometimes you need to pass a literal string that contains curly braces `{{ }}` or other Jinja2 syntax without Ansible trying to interpret it. This happens more often than you might think: deploying Prometheus alerting rules, Grafana dashboards, Go templates, Terraform configurations, or any application that uses a similar templating syntax.
 
-In this post, I will cover every technique for telling Ansible to leave your strings alone.
+In this post, I will cover the most common techniques for telling Ansible to leave your strings alone.
 
 ## The Problem
 
@@ -32,7 +32,7 @@ Consider this task that deploys a Prometheus alerting rule:
     dest: /etc/prometheus/rules/node_alerts.yml
 ```
 
-Ansible sees `{{ $value }}` and `{{ $labels.instance }}` and tries to resolve them as Jinja2 variables. Since `$value` and `$labels` do not exist in the Ansible context, this task fails with an undefined variable error.
+Ansible sees `{{ $value }}` and `{{ $labels.instance }}` and passes them to Jinja2. Since `$value` and `$labels` are Prometheus template variables, not valid Jinja2 variable syntax, this task fails with a template syntax error.
 
 ## Solution 1: The {% raw %} Block
 
@@ -162,9 +162,9 @@ groups:
           summary: {{ prometheus_annotation }}
 ```
 
-## Solution 5: The raw Lookup Plugin
+## Solution 5: Copying External Files Without Templating
 
-For loading raw content from external files, the `file` lookup with `!unsafe` works well:
+For loading raw content from external files, it might be tempting to combine the `file` lookup with `!unsafe`:
 
 ```yaml
 # Load file content without any Jinja2 processing
@@ -174,7 +174,7 @@ For loading raw content from external files, the `file` lookup with `!unsafe` wo
     dest: /opt/terraform/user-data.tftpl
 ```
 
-Wait, that does not actually work because `!unsafe` and Jinja2 lookups conflict. Instead, use the `copy` module with `src` directly:
+That does not do what you want: marking the value as `!unsafe` prevents the Jinja2 expression from being templated, so the lookup is not evaluated. Instead, use the `copy` module with `src` directly:
 
 ```yaml
 # Copy a file without any templating
