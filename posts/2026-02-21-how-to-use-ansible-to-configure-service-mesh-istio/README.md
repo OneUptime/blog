@@ -24,7 +24,7 @@ Your Ansible control node needs kubectl configured and access to the target Kube
 # Install Kubernetes collection for Ansible
 
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes openshift
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Installing Istio with Ansible
@@ -63,13 +63,15 @@ pip install kubernetes openshift
       --set profile={{ istio_profile }}
       --set values.global.proxy.resources.requests.cpu={{ istio_proxy_cpu_request }}
       --set values.global.proxy.resources.requests.memory={{ istio_proxy_memory_request }}
+      --set values.global.proxy.resources.limits.cpu={{ istio_proxy_cpu_limit }}
+      --set values.global.proxy.resources.limits.memory={{ istio_proxy_memory_limit }}
   register: istio_manifest
   changed_when: false
 
 - name: Apply Istio manifest
   kubernetes.core.k8s:
     state: present
-    definition: "{{ istio_manifest.stdout }}"
+    definition: "{{ istio_manifest.stdout | from_yaml_all | list }}"
 ```
 
 ## Default Variables
@@ -77,13 +79,14 @@ pip install kubernetes openshift
 ```yaml
 # roles/istio/defaults/main.yml
 # Istio deployment configuration
-istio_version: "1.20.2"
-istio_profile: "default"  # minimal, default, demo, or custom
+istio_version: "1.30.0"
+istio_profile: "default"  # default, demo, minimal, remote, empty, preview, or ambient
 istio_proxy_cpu_request: "100m"
 istio_proxy_memory_request: "128Mi"
 istio_proxy_cpu_limit: "500m"
 istio_proxy_memory_limit: "256Mi"
-istio_mtls_mode: "STRICT"  # STRICT, PERMISSIVE, or DISABLE
+istio_mtls_mode: "STRICT"  # STRICT, PERMISSIVE, DISABLE, or UNSET
+istio_mtls_destination_host: "reviews.production.svc.cluster.local"
 istio_tracing_enabled: true
 istio_tracing_sampling: 100
 istio_namespaces_to_inject:
@@ -125,7 +128,7 @@ istio_namespaces_to_inject:
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: security.istio.io/v1beta1
+      apiVersion: security.istio.io/v1
       kind: PeerAuthentication
       metadata:
         name: default
@@ -134,17 +137,17 @@ istio_namespaces_to_inject:
         mtls:
           mode: "{{ istio_mtls_mode }}"
 
-- name: Apply destination rule for mTLS
+- name: Apply destination rule for explicit service mTLS
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: DestinationRule
       metadata:
         name: default
         namespace: istio-system
       spec:
-        host: "*.local"
+        host: "{{ istio_mtls_destination_host }}"
         trafficPolicy:
           tls:
             mode: ISTIO_MUTUAL
@@ -159,7 +162,7 @@ istio_namespaces_to_inject:
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: VirtualService
       metadata:
         name: "{{ item.name }}"
@@ -192,7 +195,7 @@ istio_namespaces_to_inject:
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: DestinationRule
       metadata:
         name: "{{ item.name }}"
@@ -218,7 +221,7 @@ istio_namespaces_to_inject:
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: Gateway
       metadata:
         name: main-gateway
