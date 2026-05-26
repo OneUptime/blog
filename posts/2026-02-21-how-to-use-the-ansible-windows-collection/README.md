@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Window, WinRM, PowerShell, DevOps
+Tags: Ansible, Windows, WinRM, PowerShell, DevOps
 
 Description: Guide to managing Windows servers with the ansible.windows collection covering WinRM setup, Windows features, services, registry, and file management.
 
@@ -19,16 +19,16 @@ On the control node (Linux), install the required Python package:
 ```bash
 # Install pywinrm for WinRM connectivity
 
-pip install pywinrm
+pip3 install "pywinrm>=0.4.0"
 
 # Install the ansible.windows collection
 ansible-galaxy collection install ansible.windows
 ```
 
-On the Windows target, enable WinRM. Run this in an elevated PowerShell session:
+On the Windows target, enable WinRM. Run this in an elevated PowerShell session. The setup script creates a self-signed HTTPS listener that is useful for development or evaluation; production environments should use CA-signed certificates and secure authentication such as Kerberos where appropriate.
 
 ```powershell
-# Enable WinRM with HTTPS (recommended for production)
+# Enable WinRM with HTTPS using a self-signed certificate
 # Download and run the Ansible WinRM setup script
 $url = "https://raw.githubusercontent.com/ansible/ansible-documentation/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
 $file = "$env:temp\ConfigureRemotingForAnsible.ps1"
@@ -181,7 +181,8 @@ Working with files on Windows uses Windows-specific modules:
       ansible.windows.win_get_url:
         url: https://releases.internal.com/myapp/myapp-2.1.0.msi
         dest: C:\Temp\myapp-2.1.0.msi
-        checksum: sha256:abc123def456...
+        checksum: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        checksum_algorithm: sha256
 
     - name: Remove old log files (older than 30 days)
       ansible.windows.win_find:
@@ -221,11 +222,11 @@ The `win_regedit` module manages Windows registry keys and values:
         data: "ntp.internal.com,0x9"
         type: string
 
-    - name: Set power plan to high performance
+    - name: Enable long path support
       ansible.windows.win_regedit:
-        path: HKLM:\SYSTEM\CurrentControlSet\Control\Power
-        name: CsEnabled
-        data: 0
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem
+        name: LongPathsEnabled
+        data: 1
         type: dword
 
     - name: Remove a registry value
@@ -263,7 +264,7 @@ Install and manage software packages:
     - name: Install package from URL
       ansible.windows.win_package:
         path: https://releases.internal.com/tools/agent-setup.exe
-        product_id: "{12345678-ABCD-EFGH-IJKL-123456789012}"
+        product_id: "{12345678-ABCD-EF12-3456-123456789012}"
         state: present
         arguments:
           - /S
@@ -271,7 +272,7 @@ Install and manage software packages:
 
     - name: Uninstall old software
       ansible.windows.win_package:
-        product_id: "{OLD-APP-GUID-HERE}"
+        product_id: "{87654321-DCBA-FE21-6543-210987654321}"
         state: absent
 ```
 
@@ -288,7 +289,7 @@ When modules do not cover your use case, run PowerShell directly:
     - name: Get disk space information
       ansible.windows.win_powershell:
         script: |
-          Get-WmiObject -Class Win32_LogicalDisk |
+          Get-CimInstance -ClassName Win32_LogicalDisk |
             Where-Object { $_.DriveType -eq 3 } |
             Select-Object DeviceID,
               @{N='SizeGB';E={[math]::Round($_.Size/1GB,2)}},
