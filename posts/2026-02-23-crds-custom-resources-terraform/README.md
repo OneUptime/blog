@@ -121,21 +121,20 @@ YAML
 }
 
 # Create a Certificate that references the ClusterIssuer
-resource "kubectl_manifest" "wildcard_cert" {
+resource "kubectl_manifest" "app_cert" {
   yaml_body = <<YAML
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: wildcard-cert
+  name: app-cert
   namespace: production
 spec:
-  secretName: wildcard-tls
+  secretName: app-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - "*.example.com"
-    - example.com
+    - app.example.com
 YAML
 
   depends_on = [
@@ -306,7 +305,7 @@ resource "kubectl_manifest" "cert_manager_crds" {
 }
 ```
 
-You can also add finalizers to custom resources to prevent accidental deletion:
+Do not add arbitrary finalizers to custom resources as a deletion guard unless you also run a controller that removes them during deletion. For Terraform-managed critical resources, use Terraform lifecycle protection:
 
 ```hcl
 resource "kubectl_manifest" "critical_certificate" {
@@ -314,17 +313,15 @@ resource "kubectl_manifest" "critical_certificate" {
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: production-wildcard
+  name: production-app
   namespace: production
-  finalizers:
-    - kubernetes
 spec:
-  secretName: production-wildcard-tls
+  secretName: production-app-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - "*.production.example.com"
+    - app.production.example.com
 YAML
 
   lifecycle {
