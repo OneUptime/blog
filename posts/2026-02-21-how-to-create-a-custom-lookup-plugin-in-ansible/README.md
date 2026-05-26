@@ -16,13 +16,12 @@ In this guide, I will walk you through the process of building your own lookup p
 
 Lookup plugins in Ansible are Python classes that inherit from `LookupBase`. They live in specific directories where Ansible knows to find them. When you call `lookup('my_plugin', 'some_term')` in a playbook, Ansible searches for a Python file named `my_plugin.py` in the lookup plugin path.
 
-The plugin search order is:
+Common discovery locations include:
 
 1. `./lookup_plugins/` relative to the playbook
-2. `~/.ansible/plugins/lookup/`
-3. `/usr/share/ansible/plugins/lookup/`
-4. Any path defined in `ANSIBLE_LOOKUP_PLUGINS` environment variable
-5. Paths listed in `ansible.cfg` under `lookup_plugins`
+2. A standalone role's `lookup_plugins/` directory
+3. An installed collection's `plugins/lookup/` directory
+4. The configured lookup plugin path, set with `lookup_plugins` in `ansible.cfg` or the `ANSIBLE_LOOKUP_PLUGINS` environment variable, whose defaults commonly include `~/.ansible/plugins/lookup/` and `/usr/share/ansible/plugins/lookup/`
 
 ## The Minimal Lookup Plugin Structure
 
@@ -65,7 +64,7 @@ Running this playbook produces the output: `Hello, Alice!,Hello, Bob!,Hello, Cha
 
 Let us build something more useful: a lookup plugin that reads configuration values from a JSON-based configuration store. This simulates fetching data from an external API or database.
 
-First, create the configuration file:
+First, create the configuration file as `config_store.json`:
 
 ```json
 {
