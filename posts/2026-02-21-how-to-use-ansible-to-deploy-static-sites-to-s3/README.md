@@ -32,12 +32,13 @@ flowchart LR
 
 ## Prerequisites
 
-You need the AWS Ansible collection and boto3 installed:
+You need the AWS Ansible collections and boto3 installed:
 
 ```bash
 # Install the AWS Ansible collection
 
 ansible-galaxy collection install amazon.aws
+ansible-galaxy collection install community.aws
 
 # Install boto3 for Python
 pip install boto3 botocore
@@ -121,7 +122,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
     aws_secret_key: "{{ aws_secret_key }}"
 
 - name: Configure bucket for static website hosting
-  amazon.aws.s3_website:
+  community.aws.s3_website:
     name: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     state: present
@@ -151,7 +152,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
     aws_secret_key: "{{ aws_secret_key }}"
 
 - name: Sync HTML files with short cache
-  amazon.aws.s3_sync:
+  community.aws.s3_sync:
     bucket: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     file_root: "{{ s3_local_build_dir }}"
@@ -163,7 +164,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
   register: html_sync
 
 - name: Sync CSS files with long cache
-  amazon.aws.s3_sync:
+  community.aws.s3_sync:
     bucket: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     file_root: "{{ s3_local_build_dir }}"
@@ -175,7 +176,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
   register: css_sync
 
 - name: Sync JavaScript files with long cache
-  amazon.aws.s3_sync:
+  community.aws.s3_sync:
     bucket: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     file_root: "{{ s3_local_build_dir }}"
@@ -187,7 +188,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
   register: js_sync
 
 - name: Sync image files with long cache
-  amazon.aws.s3_sync:
+  community.aws.s3_sync:
     bucket: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     file_root: "{{ s3_local_build_dir }}"
@@ -199,7 +200,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
   register: image_sync
 
 - name: Sync font files
-  amazon.aws.s3_sync:
+  community.aws.s3_sync:
     bucket: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     file_root: "{{ s3_local_build_dir }}"
@@ -211,7 +212,7 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
   register: font_sync
 
 - name: Remove old files from S3 that are not in build
-  amazon.aws.s3_sync:
+  community.aws.s3_sync:
     bucket: "{{ s3_bucket_name }}"
     region: "{{ s3_region }}"
     file_root: "{{ s3_local_build_dir }}"
@@ -240,9 +241,9 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
 # roles/s3_static_site/tasks/cloudfront.yml
 ---
 - name: Create CloudFront distribution
-  amazon.aws.cloudfront_distribution:
+  community.aws.cloudfront_distribution:
     state: present
-    caller_reference: "{{ s3_bucket_name }}-{{ ansible_date_time.epoch }}"
+    caller_reference: "{{ s3_bucket_name }}"
     origins:
       - id: "S3-{{ s3_bucket_name }}"
         domain_name: "{{ s3_bucket_name }}.s3-website-{{ s3_region }}.amazonaws.com"
@@ -264,16 +265,11 @@ aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
     default_root_object: "{{ s3_index_document }}"
     price_class: "{{ s3_cloudfront_price_class }}"
     enabled: true
-    aliases:
-      items: "{{ s3_cloudfront_domain_aliases }}"
-    viewer_certificate:
-      acm_certificate_arn: "{{ s3_cloudfront_ssl_cert_arn }}"
-      ssl_support_method: sni-only
-      minimum_protocol_version: TLSv1.2_2021
+    aliases: "{{ s3_cloudfront_domain_aliases }}"
+    viewer_certificate: "{{ {'acm_certificate_arn': s3_cloudfront_ssl_cert_arn, 'ssl_support_method': 'sni-only', 'minimum_protocol_version': 'TLSv1.2_2021'} if s3_cloudfront_ssl_cert_arn | length > 0 else {'cloudfront_default_certificate': true} }}"
     aws_access_key: "{{ aws_access_key }}"
     aws_secret_key: "{{ aws_secret_key }}"
   register: cf_distribution
-  when: s3_cloudfront_domain_aliases | length > 0
 
 - name: Invalidate CloudFront cache
   ansible.builtin.command: >
