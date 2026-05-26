@@ -121,7 +121,7 @@ The prompt patterns are Python regular expressions, giving you flexibility in ma
 
 ## Handling Repeated Prompts
 
-Some commands ask the same question multiple times. You can provide a list of responses.
+Some commands ask the same question multiple times. A string response is repeated for every match. Use a list when the same prompt appears multiple times and needs different answers for successive matches.
 
 ```yaml
 # repeated_prompts.yml - Handle the same prompt appearing multiple times
@@ -131,15 +131,15 @@ Some commands ask the same question multiple times. You can provide a list of re
   become: yes
 
   tasks:
-    - name: Handle password confirmation (same prompt twice)
+    - name: Handle password rotation with one repeated prompt
       ansible.builtin.expect:
         command: /opt/myapp/bin/change-master-key
         responses:
-          # Provide a list when the same prompt appears multiple times
-          "Enter new master key:":
-            - "NewMasterK3y!2026"
-          "Confirm master key:":
-            - "NewMasterK3y!2026"
+          # Provide a list when the same prompt needs different answers
+          "Master key:":
+            - "{{ old_master_key }}"
+            - "{{ new_master_key }}"
+            - "{{ new_master_key }}"
           "Are you sure.*": "yes"
         timeout: 30
       no_log: true
@@ -202,6 +202,7 @@ Interactive SSL/TLS operations are a common use case.
       ansible.builtin.expect:
         command: >
           openssl req -new -x509 -days 365
+          -newkey rsa:4096
           -keyout /etc/ssl/private/myapp.key
           -out /etc/ssl/certs/myapp.crt
         responses:
@@ -230,7 +231,7 @@ Interactive SSL/TLS operations are a common use case.
       register: keytool_result
       failed_when:
         - keytool_result.rc != 0
-        - "'already exists' not in keytool_result.stdout"
+        - "'already exists' not in ((keytool_result.stdout | default('')) + (keytool_result.stderr | default('')))"
 ```
 
 ## Database Initialization
@@ -352,7 +353,7 @@ The expect module should be a last resort. Always check for non-interactive alte
         type: ed25519
       become_user: deploy
 
-    # Instead of expect with mysql, use pipe
+    # Instead of expect with mysql, use non-interactive flags
     - name: Run SQL without expect
       ansible.builtin.shell:
         cmd: "mysql -u root -p'{{ vault_mysql_password }}' -e 'SHOW DATABASES'"
