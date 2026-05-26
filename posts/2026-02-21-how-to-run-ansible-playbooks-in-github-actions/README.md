@@ -47,17 +47,17 @@ jobs:
     steps:
       # Check out the repository
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Install Python and Ansible
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install Ansible
         run: |
-          pip install ansible==8.7.0
+          pip install ansible==13.7.0
           pip install ansible-lint
 
       # Install any required collections
@@ -99,15 +99,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install Ansible
-        run: pip install ansible==8.7.0
+        run: pip install ansible==13.7.0
 
       # Write the vault password to a file for ansible-vault
       - name: Set up Ansible Vault password
@@ -171,11 +171,16 @@ jobs:
     environment: staging
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Set up Python and Ansible
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible
         run: |
-          pip install ansible==8.7.0
+          pip install ansible==13.7.0
           ansible-galaxy collection install -r ansible/requirements.yml
 
       - name: Set up SSH
@@ -191,18 +196,23 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
 
-  # Deploy to production after staging succeeds and manual approval
+  # Deploy to production after staging succeeds and any required environment approval
   production:
     runs-on: ubuntu-latest
     needs: staging
-    environment: production  # Requires manual approval
+    environment: production  # Add required reviewers to this environment for manual approval
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Set up Python and Ansible
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible
         run: |
-          pip install ansible==8.7.0
+          pip install ansible==13.7.0
           ansible-galaxy collection install -r ansible/requirements.yml
 
       - name: Set up SSH
@@ -261,12 +271,12 @@ Run lint and syntax checks before deployment.
 lint:
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
-        python-version: '3.11'
+        python-version: '3.12'
 
     - name: Install ansible-lint
       run: pip install ansible-lint
@@ -293,7 +303,7 @@ jobs:
     # runs-on: [self-hosted, linux, datacenter-east]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Ansible may already be installed on self-hosted runners
       - name: Verify Ansible installation
@@ -313,8 +323,10 @@ Make your workflow notify the team when deployments fail.
 # Add notification step after deployment
 - name: Notify on failure
   if: failure()
-  uses: slackapi/slack-github-action@v1.25.0
+  uses: slackapi/slack-github-action@v3.0.3
   with:
+    webhook: ${{ secrets.SLACK_WEBHOOK }}
+    webhook-type: incoming-webhook
     payload: |
       {
         "text": "Ansible deployment FAILED on ${{ github.ref_name }}",
@@ -328,13 +340,11 @@ Make your workflow notify the team when deployments fail.
           }
         ]
       }
-  env:
-    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 ```
 
 ## Tips for Production Workflows
 
-1. Always pin Ansible versions in your workflow (`pip install ansible==8.7.0`). Floating versions will eventually break your deployments.
+1. Always pin Ansible versions in your workflow (`pip install ansible==13.7.0`). Floating versions will eventually break your deployments.
 2. Use `paths` filters in your workflow trigger so Ansible deployments only run when infrastructure code actually changes.
 3. Keep SSH keys and vault passwords as repository secrets. Never commit them to the repo.
 4. Use `if: always()` on cleanup steps to make sure sensitive files get removed even when the playbook fails.
