@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Ansible-lint, VS Code, IDE
 
-Description: Configure VS Code to run ansible-lint in real time with the Ansible extension, providing inline warnings, auto-completion, and quick fixes.
+Description: Configure VS Code to run ansible-lint with the Ansible extension, providing inline warnings, auto-completion, and optional automatic fixes.
 
 ---
 
-Running ansible-lint from the terminal is fine, but seeing lint warnings directly in your editor as you type is much better. VS Code has excellent support for Ansible through the official Red Hat Ansible extension, which integrates ansible-lint to provide real-time feedback, inline diagnostics, and even auto-fix capabilities.
+Running ansible-lint from the terminal is fine, but seeing lint warnings directly in your editor is much better. VS Code has excellent support for Ansible through the official Red Hat Ansible extension, which integrates ansible-lint to provide inline diagnostics on open and save, plus optional auto-fix capabilities.
 
 This guide walks through setting up VS Code for Ansible development with full ansible-lint integration.
 
@@ -145,13 +145,23 @@ playbook.yml
   Line 18: yaml[truthy]: Truthy value should be one of [false, true] (ansible-lint)
 ```
 
-## Quick Fixes
+## Automatic Fixes
 
-Some ansible-lint rules support quick fixes. When you see a lightbulb icon next to a warning, click it (or press `Ctrl+.`) to see available fixes:
+Some ansible-lint rules support automatic fixes. To run ansible-lint fixes whenever you save a file, enable auto-fix on save:
 
-- Fix Jinja2 spacing
-- Fix truthy values (`yes` to `true`)
-- Add missing task names (generates a placeholder)
+```json
+{
+    "ansible.validation.lint.autoFixOnSave": true
+}
+```
+
+You can also run fixes from the terminal:
+
+```bash
+ansible-lint --fix
+```
+
+Supported transforms include rules such as Jinja2 spacing, YAML formatting, fully qualified collection names, and task names.
 
 ## Configuring ansible-lint for VS Code
 
@@ -196,15 +206,7 @@ ansible-lint can be slow on large projects. Here are some VS Code settings to im
 }
 ```
 
-If ansible-lint is still too slow for real-time feedback, you can configure it to run only on save:
-
-```json
-{
-    "ansible.validation.lint.enabled": true
-}
-```
-
-The extension runs lint on file save by default. If you want it to run on every keystroke, the delay is configurable but can be resource-intensive.
+The extension runs ansible-lint when you open and save Ansible documents. Syntax validation is provided while you type, but ansible-lint diagnostics are not intended to run on every keystroke.
 
 ## Recommended Extensions for Ansible Development
 
@@ -305,6 +307,6 @@ Set up keyboard shortcuts for common Ansible/lint operations:
 
 **No diagnostics appearing:** Make sure the file is recognized as Ansible (check the language mode in the bottom-right corner of VS Code). If it says "YAML" instead of "Ansible", right-click the language indicator and select "Ansible".
 
-**Slow diagnostics:** Increase the validation timeout or exclude large directories from file watching. Check if ansible-lint runs quickly from the terminal first to rule out a tool-level issue.
+**Slow diagnostics:** Exclude large directories from file watching. Check if ansible-lint runs quickly from the terminal first to rule out a tool-level issue.
 
 Setting up ansible-lint in VS Code takes about 10 minutes and pays dividends immediately. You catch issues as you write code instead of discovering them when you push and CI fails. That tight feedback loop makes you a faster, more productive Ansible developer.
