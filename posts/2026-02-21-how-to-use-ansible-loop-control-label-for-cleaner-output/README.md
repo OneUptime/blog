@@ -253,10 +253,10 @@ This immediately tells you which users are being removed versus managed.
 
 ## Label with Sensitive Data
 
-A critical use case for `label` is hiding sensitive data from logs. When your loop items contain passwords, API keys, or tokens, the label prevents them from appearing in the output:
+A common mistake is treating `label` as a way to hide sensitive data from logs. When your loop items contain passwords, API keys, or tokens, use `no_log: true` to prevent disclosure. The label can still describe the non-sensitive part of each item:
 
 ```yaml
-# Hide sensitive data from output using label
+# Protect sensitive data with no_log, while keeping a non-sensitive label
 - name: Configure database connections
   ansible.builtin.template:
     src: db.conf.j2
@@ -268,10 +268,10 @@ A critical use case for `label` is hiding sensitive data from logs. When your lo
     - { name: "analytics", host: "db3.internal", user: "analyst", password: "an@lyt1cs_p@ss" }
   loop_control:
     label: "{{ item.name }} -> {{ item.host }}"
-  no_log: false
+  no_log: true
 ```
 
-The passwords exist in the data and get passed to the template, but they never appear in the terminal output. For truly sensitive operations, you should also use `no_log: true`, but `label` provides a first line of defense for keeping logs clean.
+The passwords exist in the data and get passed to the template. The `label` keeps the item identifier readable, but `no_log: true` is what prevents sensitive values from being disclosed in task output and logs.
 
 ## Practical Example: Infrastructure Provisioning
 
@@ -340,4 +340,4 @@ Every task produces clean, informative output that tells you exactly what is hap
 
 ## Summary
 
-The `label` option in `loop_control` is a small feature with outsized impact on playbook usability. It keeps your terminal output readable, helps you quickly identify which iterations changed or failed, and prevents sensitive data from leaking into logs. Any time you loop over a data structure more complex than a simple string, add a label. It costs one line and saves minutes of log parsing.
+The `label` option in `loop_control` is a small feature with outsized impact on playbook usability. It keeps your terminal output readable and helps you quickly identify which iterations changed or failed. Any time you loop over a data structure more complex than a simple string, add a label. It costs one line and saves minutes of log parsing.
