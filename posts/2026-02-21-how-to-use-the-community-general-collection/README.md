@@ -8,7 +8,7 @@ Description: Explore the community.general collection with practical examples co
 
 ---
 
-The `community.general` collection is the largest Ansible collection by module count. It is the catch-all for modules that do not fit into a more specific collection. Need to manage system timezones? It is in here. NetworkManager interfaces? In here. UFW firewall rules? In here too. Keycloak, LDAP, Jenkins, Proxmox, LXD, and dozens more. This post highlights the most practical modules and shows how to use them.
+The `community.general` collection is the largest Ansible collection by module count. It is the catch-all for modules that do not fit into a more specific collection. Need to manage system timezones? It is in here. NetworkManager interfaces? In here. UFW firewall rules? In here too. Keycloak, LDAP, Jenkins, LXD, and dozens more. This post highlights the most practical modules and shows how to use them.
 
 ## Installation
 
@@ -311,6 +311,12 @@ For Ubuntu systems using UFW:
 
 ## Proxmox VM Management
 
+Proxmox modules have moved from `community.general` to the `community.proxmox` collection:
+
+```bash
+ansible-galaxy collection install community.proxmox
+```
+
 ```yaml
 # proxmox-vm.yml - Manage Proxmox virtual machines
 ---
@@ -318,7 +324,7 @@ For Ubuntu systems using UFW:
   hosts: localhost
   tasks:
     - name: Create a new VM
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_user: root@pam
         api_password: "{{ vault_proxmox_password }}"
         api_host: proxmox.internal.com
@@ -333,7 +339,7 @@ For Ubuntu systems using UFW:
         state: present
 
     - name: Start the VM
-      community.general.proxmox_kvm:
+      community.proxmox.proxmox_kvm:
         api_user: root@pam
         api_password: "{{ vault_proxmox_password }}"
         api_host: proxmox.internal.com
@@ -363,7 +369,7 @@ For Ubuntu systems using UFW:
           key: "ssh-ed25519 BBBB... admin@company.com"
 
     - name: Add known hosts entries
-      community.general.known_hosts:
+      ansible.builtin.known_hosts:
         name: "{{ item }}"
         key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + item) }}"
         state: present
@@ -385,15 +391,12 @@ graph TD
     B --> B1[timezone]
     B --> B2[modprobe]
     B --> B3[locale_gen]
-    B --> B4[syslogd]
 
     C --> C1[nmcli]
     C --> C2[ufw]
-    C --> C3[known_hosts]
 
-    D --> D1[proxmox_kvm]
-    D --> D2[lxd_container]
-    D --> D3[xenserver_guest]
+    D --> D1[lxd_container]
+    D --> D2[xenserver_guest]
 
     E --> E1[jenkins_plugin]
     E --> E2[keycloak_realm]
@@ -431,4 +434,4 @@ The collection also ships filter plugins:
 
 ## Conclusion
 
-The `community.general` collection is the toolbox you will reach into most often. Rather than memorizing all its modules (there are hundreds), know that it covers system configuration (timezone, modprobe, locale), networking (nmcli, ufw, known_hosts), storage (LVM, filesystem), and integrations with tools like Jenkins, Keycloak, Proxmox, and LDAP. When you need a module for something that is not in `ansible.builtin` or a vendor-specific collection, check `community.general` first.
+The `community.general` collection is the toolbox you will reach into most often. Rather than memorizing all its modules (there are hundreds), know that it covers system configuration (timezone, modprobe, locale), networking (nmcli, ufw), storage (LVM, filesystem), and integrations with tools like Jenkins, Keycloak, and LDAP. When you need a module for something that is not in `ansible.builtin` or a vendor-specific collection, check `community.general` first.
