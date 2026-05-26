@@ -100,7 +100,7 @@ grafana_datasources:
 # Plugins to install
 grafana_plugins:
   - grafana-clock-panel
-  - grafana-piechart-panel
+  - grafana-polystat-panel
 
 # Log settings
 grafana_log_mode: "console file"
@@ -120,23 +120,25 @@ grafana_anonymous_org_role: "Viewer"
   ansible.builtin.apt:
     name:
       - apt-transport-https
-      - software-properties-common
+      - python3-debian
       - wget
+      - gnupg
     state: present
     update_cache: yes
   become: true
 
-- name: Add Grafana GPG key
-  ansible.builtin.apt_key:
-    url: https://apt.grafana.com/gpg.key
-    state: present
-  become: true
-
 - name: Add Grafana APT repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://apt.grafana.com stable main"
+  ansible.builtin.deb822_repository:
+    name: grafana
+    types:
+      - deb
+    uris: https://apt.grafana.com
+    suites:
+      - stable
+    components:
+      - main
+    signed_by: https://apt.grafana.com/gpg-full.key
     state: present
-    filename: grafana
   become: true
 
 - name: Install Grafana
@@ -199,13 +201,13 @@ grafana_anonymous_org_role: "Viewer"
 # roles/grafana/tasks/plugins.yml
 ---
 - name: Get list of installed plugins
-  ansible.builtin.command: grafana-cli plugins ls
+  ansible.builtin.command: grafana cli plugins ls
   register: installed_plugins
   changed_when: false
   become: true
 
 - name: Install Grafana plugins
-  ansible.builtin.command: "grafana-cli plugins install {{ item }}"
+  ansible.builtin.command: "grafana cli plugins install {{ item }}"
   loop: "{{ grafana_plugins }}"
   when: item not in installed_plugins.stdout
   become: true
@@ -374,8 +376,7 @@ datasources:
         editable: false
     grafana_plugins:
       - grafana-clock-panel
-      - grafana-piechart-panel
-      - grafana-worldmap-panel
+      - grafana-polystat-panel
   roles:
     - grafana
 ```
