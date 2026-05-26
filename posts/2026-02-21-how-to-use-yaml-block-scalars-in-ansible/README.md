@@ -100,17 +100,17 @@ indented: |2
       #!/bin/bash
       set -euo pipefail
 
-      echo "Deploying version $1"
-
-      if [ -z "$1" ]; then
+      if [ -z "${1:-}" ]; then
           echo "Error: version argument required"
           exit 1
       fi
 
-      docker pull registry.example.com/app:$1
+      echo "Deploying version $1"
+
+      docker pull "registry.example.com/app:$1"
       docker stop app || true
       docker rm app || true
-      docker run -d --name app registry.example.com/app:$1
+      docker run -d --name app "registry.example.com/app:$1"
 ```
 
 ### Configuration Files
@@ -173,12 +173,12 @@ indented: |2
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this feature proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this feature
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -292,7 +292,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this feature
 - name: Robust task execution
   hosts: all
   tasks:
