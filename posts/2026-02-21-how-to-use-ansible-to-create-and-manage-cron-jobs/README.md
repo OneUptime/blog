@@ -25,7 +25,7 @@ The simplest cron task specifies a name, the command to run, and the schedule.
     job: "/opt/scripts/backup-database.sh >> /var/log/backup.log 2>&1"
 ```
 
-The `name` parameter is critical. Ansible uses it as a unique identifier for the cron entry. Without a name, you cannot update or remove the entry later, and running the task again would create duplicates.
+The `name` parameter is critical and required. Ansible uses it as a unique identifier for the cron entry. Changing the name later creates a new cron task, so keep it stable when you want to update or remove the same entry.
 
 ## Cron Schedule Parameters
 
@@ -94,7 +94,7 @@ Ansible supports cron's special time strings through the `special_time` paramete
     job: "/opt/scripts/collect-metrics.sh"
 ```
 
-Available special time values: `reboot`, `yearly` (or `annually`), `monthly`, `weekly`, `daily` (or `midnight`), and `hourly`.
+Available special time values: `reboot`, `yearly` (or `annually`), `monthly`, `weekly`, `daily`, and `hourly`.
 
 ## Managing Cron for Specific Users
 
@@ -306,7 +306,7 @@ graph LR
     A --> C[hour 0-23]
     A --> D[day 1-31]
     A --> E[month 1-12]
-    A --> F[weekday 0-7]
+    A --> F[weekday 0-6]
 ```
 
 | Expression | Meaning |
