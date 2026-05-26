@@ -8,7 +8,7 @@ Description: Create custom credential types in AWX to securely manage API keys, 
 
 ---
 
-AWX ships with built-in credential types for SSH, cloud providers, and version control. But what about your internal APIs, SaaS platforms, or custom services that need authentication? Custom credential types let you define new credential schemas with their own fields, and control exactly how those credentials get injected into playbooks. The credentials are encrypted at rest and never exposed in job logs.
+AWX ships with built-in credential types for SSH, cloud providers, and version control. But what about your internal APIs, SaaS platforms, or custom services that need authentication? Custom credential types let you define new credential schemas with their own fields, and control exactly how those credentials get injected into playbooks. Secret credential fields are encrypted at rest and are not exposed through the AWX API.
 
 ## Why Custom Credential Types
 
@@ -17,7 +17,7 @@ Say you have a playbook that calls your company's internal deployment API. It ne
 Custom credential types solve this by:
 - Storing sensitive values encrypted in the AWX database
 - Injecting values as environment variables or extra variables at runtime
-- Hiding sensitive values from job output
+- Keeping secret fields out of the API, with `no_log` available for tasks that might print secret values
 - Allowing credential reuse across multiple job templates
 
 ## Anatomy of a Custom Credential Type
@@ -79,7 +79,7 @@ curl -s -X POST \
 
 Breaking down the key parts:
 
-- Fields with `"secret": true` are encrypted and masked in logs.
+- Fields with `"secret": true` are encrypted. If a task might print a secret value, use Ansible's `no_log` on that task.
 - The `injectors` section controls how values reach the playbook. `extra_vars` adds Ansible variables, `env` sets environment variables.
 - `required` lists which fields must be filled in.
 
@@ -122,7 +122,9 @@ Values injected as extra variables become regular Ansible variables.
   "extra_vars": {
     "database_host": "{{ db_host }}",
     "database_port": "{{ db_port }}",
-    "database_name": "{{ db_name }}"
+    "database_name": "{{ db_name }}",
+    "database_user": "{{ db_user }}",
+    "database_password": "{{ db_password }}"
   }
 }
 ```
@@ -146,10 +148,10 @@ For credentials that need to be written to a file (like certificates or kubeconf
 ```json
 "injectors": {
   "file": {
-    "template": "{{ kubeconfig_content }}"
+    "template.kubeconfig": "{{ kubeconfig_content }}"
   },
   "env": {
-    "KUBECONFIG": "{{ tower.filename.kubeconfig_content }}"
+    "KUBECONFIG": "{{ awx.filename.kubeconfig }}"
   }
 }
 ```
@@ -298,22 +300,23 @@ flowchart TD
     F --> H
     G --> H
     H --> I[Clean Up Temp Files]
-    I --> J[Mask Secrets in Output]
+    I --> J[Store Job Output]
 ```
 
 ## Input Validation
 
-Custom credential types support basic input validation.
+Custom credential types support basic input guidance and validation, including required fields, multiple choice fields, and SSH private key format checks.
 
 ```json
 "inputs": {
   "fields": [
     {
-      "id": "port",
+      "id": "private_key",
       "type": "string",
-      "label": "Port Number",
-      "help_text": "Must be between 1 and 65535",
-      "format": "text"
+      "label": "SSH Private Key",
+      "format": "ssh_private_key",
+      "secret": true,
+      "multiline": true
     },
     {
       "id": "region",
