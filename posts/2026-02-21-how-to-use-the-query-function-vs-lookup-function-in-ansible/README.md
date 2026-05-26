@@ -134,7 +134,7 @@ With `lookup()`, this would be trickier because an empty result returns an empty
     - name: lookup with no matches returns empty string
       set_fact:
         result_lookup: "{{ lookup('fileglob', 'nonexistent/*.xyz') }}"
-      # result_lookup is "" (empty string, but truthy check passes for string type)
+      # result_lookup is "" (empty string, which is falsy but still a string)
 
     - name: query with no matches returns empty list
       set_fact:
