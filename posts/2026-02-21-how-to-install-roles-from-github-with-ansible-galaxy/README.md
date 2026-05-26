@@ -144,7 +144,8 @@ roles:
 Wait, that lookup will not work in a requirements file because it is not processed by Jinja2. Instead, embed the token in the URL using environment variable substitution in your CI script:
 
 ```bash
-# Use envsubst to inject the token into requirements
+# Use envsubst to inject the username and token into requirements
+export GITHUB_USER="my-github-username"
 export GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
 
 # Create a temporary requirements file with the token injected
@@ -164,7 +165,7 @@ The template file:
 ---
 roles:
   - name: internal_webserver
-    src: git+https://${GITHUB_TOKEN}@github.com/myorg/ansible-role-webserver.git
+    src: git+https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/myorg/ansible-role-webserver.git
     version: v2.0.0
 ```
 
@@ -180,7 +181,7 @@ roles:
     src: https://github.com/geerlingguy/ansible-role-nginx/archive/refs/tags/3.1.0.tar.gz
 ```
 
-This approach does not require Git on the target system since it downloads a plain tarball. However, version management is manual since you need to update the URL for each version.
+This approach does not require Git on the machine running `ansible-galaxy` since it downloads a plain tarball. However, version management is manual since you need to update the URL for each version.
 
 ## Setting Up a Role Repository Structure
 
