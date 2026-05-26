@@ -187,16 +187,26 @@ When standard Unix permissions are not enough, POSIX ACLs let you grant access t
     name: acl
     state: present
 
-# Set a default ACL on a directory so new files inherit permissions
+# Find directories before setting default ACLs
+- name: Find log directories
+  ansible.builtin.find:
+    paths: /var/log/myapp
+    file_type: directory
+    recurse: yes
+  register: log_dirs
+
+# Set default ACLs on directories so new files inherit permissions
 - name: Set default ACL for monitoring group
   ansible.posix.acl:
-    path: /var/log/myapp
+    path: "{{ item.path }}"
     entity: monitoring
     etype: group
     permissions: rx
     default: yes
-    recursive: yes
     state: present
+  loop: "{{ [{'path': '/var/log/myapp'}] + log_dirs.files }}"
+  loop_control:
+    label: "{{ item.path }}"
 
 # Set ACL on existing files too
 - name: Set ACL on existing log files
@@ -209,7 +219,7 @@ When standard Unix permissions are not enough, POSIX ACLs let you grant access t
     state: present
 ```
 
-The `default: yes` parameter sets a default ACL, which means any new files or directories created inside `/var/log/myapp` will automatically inherit the ACL entry. The second task handles files that already exist.
+The `default: yes` parameter sets a default ACL on directories, which means any new files or directories created inside `/var/log/myapp` will automatically inherit the ACL entry. The second task handles files that already exist.
 
 ## A Reusable Role for Permission Management
 
