@@ -181,7 +181,7 @@ COMMIT
 
 ## Flattening with with_items (Legacy)
 
-In older Ansible versions, `with_items` automatically flattened lists. The modern `loop` directive does not. This caught a lot of people off guard during the migration:
+In older Ansible versions, `with_items` automatically flattened one level of lists. The modern `loop` directive does not. This caught a lot of people off guard during the migration:
 
 ```yaml
 # Old style - with_items auto-flattens
@@ -196,10 +196,10 @@ In older Ansible versions, `with_items` automatically flattened lists. The moder
 - name: New way (explicit flatten)
   ansible.builtin.debug:
     msg: "{{ item }}"
-  loop: "{{ [[1, 2, 3], [4, 5, 6]] | flatten }}"
+  loop: "{{ [[1, 2, 3], [4, 5, 6]] | flatten(levels=1) }}"
 ```
 
-If you are converting old playbooks that use `with_items` with nested lists to the `loop` syntax, always add `| flatten` to maintain the same behavior.
+If you are converting old playbooks that use `with_items` with nested lists to the `loop` syntax, add `| flatten(levels=1)` to maintain the same behavior.
 
 ## Using flatten with map
 
@@ -243,9 +243,9 @@ When working with optional variables, flatten helps clean up lists that might co
 
 The combination of `flatten` and `select` (which removes falsy values like empty strings and None) gives you a clean list regardless of which variable sources are defined.
 
-## Generating Comma-Separated Values
+## Generating Line-Oriented Values
 
-Flatten is useful when you need to produce comma-separated values from nested data:
+Flatten is useful when you need to produce repeated configuration lines from nested data:
 
 ```jinja2
 {# templates/pg_hba.conf.j2 - Generate PostgreSQL HBA entries #}
@@ -264,15 +264,15 @@ There are a few things to be aware of:
 
 1. Flatten on a list that is already flat does nothing. It is safe to use defensively.
 
-2. Flatten does not work on strings. If you pass a string, it stays as a string.
+2. Flatten expects a list as input. Do not use it as a general-purpose string splitter.
 
-3. If your list contains None or null values mixed with sublists, flatten preserves the None values. Use `select` or `reject('none')` to clean those out.
+3. If your list contains None or null values mixed with sublists, flatten skips them by default. Pass `skip_nulls=False` if you need to preserve them, then use `reject('none')` to clean them out later.
 
 ```yaml
-# Flatten preserves None values - clean them if needed
+# Preserve None values during flattening - clean them if needed
 - name: Flatten and clean
   ansible.builtin.debug:
-    msg: "{{ messy | flatten | select('defined') | list }}"
+    msg: "{{ messy | flatten(skip_nulls=False) | reject('none') | list }}"
   vars:
     messy:
       - [1, 2]
@@ -282,4 +282,4 @@ There are a few things to be aware of:
 
 ## Summary
 
-The flatten filter is a workhorse for data aggregation in Ansible. Any time you combine variables from multiple sources, you are likely to end up with lists of lists. Use flatten to collapse them into a single list, pair it with `unique` to remove duplicates, and add `sort` for idempotent output. Remember that `loop` does not auto-flatten like the old `with_items` did, so add flatten explicitly when migrating legacy playbooks.
+The flatten filter is a workhorse for data aggregation in Ansible. Any time you combine variables from multiple sources, you are likely to end up with lists of lists. Use flatten to collapse them into a single list, pair it with `unique` to remove duplicates, and add `sort` for idempotent output. Remember that `loop` does not auto-flatten one level like the old `with_items` did, so add `flatten(levels=1)` explicitly when migrating legacy playbooks.
