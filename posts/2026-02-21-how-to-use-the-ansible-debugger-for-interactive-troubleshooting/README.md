@@ -61,7 +61,7 @@ The `debugger` keyword accepts these values:
 
 ```yaml
 # Available debugger activation modes:
-# always    - Enter debugger before and after every task (very verbose)
+# always    - Enter debugger regardless of task outcome (very verbose)
 # never     - Never enter debugger (default behavior)
 # on_failed - Enter debugger only when a task fails
 # on_unreachable - Enter debugger when a host is unreachable
@@ -75,8 +75,8 @@ You can also enable the debugger globally through `ansible.cfg` or an environmen
 ```ini
 # ansible.cfg
 [defaults]
-# Enable the debug strategy globally
-# This makes all tasks drop into the debugger on failure
+# Enable the task debugger globally
+# This makes failed tasks drop into the debugger by default
 enable_task_debugger = True
 ```
 
@@ -95,8 +95,8 @@ When the debugger activates, you get an interactive prompt. Here are the availab
 | `print` | `p` | Print task/variable information |
 | `task.args[key] = value` | | Modify task arguments |
 | `task_vars[key] = value` | | Modify task variables |
-| `update_task` | `u` | Re-run the task with your modifications |
-| `redo` | `r` | Re-run the task unchanged |
+| `update_task` | `u` | Recreate the task after modifying task variables |
+| `redo` | `r` | Run the task again |
 | `continue` | `c` | Continue to the next task (mark current as successful) |
 | `quit` | `q` | Quit the playbook |
 
@@ -155,7 +155,8 @@ Now you are in the debugger. Here is what you can do:
 # Fix it by setting the misspelled variable to the correct value
 [web01] TASK: Deploy application configuration (debug)> task_vars['max_conections'] = task_vars['max_connections']
 
-# Re-run the task with the fix
+# Recreate the task with the updated variable, then re-run it
+[web01] TASK: Deploy application configuration (debug)> update_task
 [web01] TASK: Deploy application configuration (debug)> redo
 ```
 
@@ -270,13 +271,13 @@ The debugger becomes even more useful when combined with verbose output:
 ansible-playbook deploy.yml -vvv
 ```
 
-With `-vvv`, the debugger shows you the full module arguments, connection details, and the raw response from the managed host.
+With `-vvv`, Ansible prints more debug messages around playbook execution. If you need deeper connection-level debugging, increase verbosity to `-vvvv`.
 
 ## Practical Tips
 
 **Use `on_failed` mode for production debugging.** The `always` mode stops at every single task and is only useful in rare situations.
 
-**Set variables to work around issues temporarily.** If a variable is not resolving correctly, set it directly in the debugger and retry. Then fix the root cause in your code afterward.
+**Set variables to work around issues temporarily.** If a variable is not resolving correctly, set it directly in the debugger, run `update_task`, and retry. Then fix the root cause in your code afterward.
 
 **Use `continue` to skip past a non-critical failure.** If a task fails but you know it is safe to proceed, `continue` marks it as successful and moves on.
 
