@@ -43,16 +43,16 @@ Output:
 db1 | CHANGED => {
     "ansible_job_id": "124587236789.5432",
     "changed": true,
-    "finished": 0,
-    "results_file": "/root/.ansible_async/124587236789.5432",
-    "started": 1
+    "finished": false,
+    "results_file": "~/.ansible_async/124587236789.5432",
+    "started": true
 }
 db2 | CHANGED => {
     "ansible_job_id": "987654321012.6543",
     "changed": true,
-    "finished": 0,
-    "results_file": "/root/.ansible_async/987654321012.6543",
-    "started": 1
+    "finished": false,
+    "results_file": "~/.ansible_async/987654321012.6543",
+    "started": true
 }
 ```
 
@@ -73,8 +73,8 @@ If the job is still running:
 {
     "ansible_job_id": "124587236789.5432",
     "changed": false,
-    "finished": 0,
-    "started": 1
+    "finished": false,
+    "started": true
 }
 ```
 
@@ -87,7 +87,7 @@ When the job completes:
     "cmd": "pg_dump production | gzip > /backups/production_20260221.sql.gz",
     "delta": "0:05:23.456789",
     "end": "2026-02-21 14:35:23.456789",
-    "finished": 1,
+    "finished": true,
     "rc": 0,
     "start": "2026-02-21 14:30:00.000000",
     "stderr": "",
@@ -107,13 +107,13 @@ System updates on a fleet of servers can take 10-30 minutes per host:
 ansible all -m apt -a "upgrade=dist update_cache=yes" --become -B 7200 -P 0
 
 # Note the job IDs from the output, then check periodically
-ansible all -m async_status -a "jid=<job_id>" --one-line
+ansible <host> -m async_status -a "jid=<job_id>" --one-line
 
 # Or poll every 60 seconds until completion
 ansible all -m apt -a "upgrade=dist update_cache=yes" --become -B 7200 -P 60
 ```
 
-With `-P 60`, Ansible checks every 60 seconds and only returns when all hosts have finished (or timed out). This keeps the SSH connections alive but does not require a persistent terminal session.
+With `-P 60`, Ansible checks every 60 seconds and only returns when all hosts have finished (or timed out). In most cases, Ansible keeps the SSH connections open between polls, so the Ansible process still needs to keep running.
 
 ### Database Backups
 
@@ -121,12 +121,12 @@ With `-P 60`, Ansible checks every 60 seconds and only returns when all hosts ha
 # Start backups on all database servers
 ansible databases -m shell -a "
 BACKUP_FILE=/backups/full_backup_\$(date +%Y%m%d_%H%M%S).sql.gz
-pg_dump --format=custom production | gzip > \$BACKUP_FILE
+pg_dump production | gzip > \$BACKUP_FILE
 echo \"Backup complete: \$BACKUP_FILE (\$(du -sh \$BACKUP_FILE | awk '{print \$1}'))\"
 " --become --become-user=postgres -B 14400 -P 0
 
 # Check status later
-ansible databases -m async_status -a "jid=<job_id>"
+ansible <database_host> -m async_status -a "jid=<job_id>"
 ```
 
 ### Large File Transfers
@@ -173,7 +173,7 @@ Here is a script that monitors background jobs across your fleet:
 
 ```bash
 #!/bin/bash
-# monitor_async_jobs.sh - Monitor Ansible background jobs
+# monitor_async_jobs.sh - Monitor one Ansible background job
 # Usage: ./monitor_async_jobs.sh <inventory> <host_pattern> <job_id>
 
 INVENTORY=$1
@@ -186,8 +186,8 @@ echo "================================"
 while true; do
     RESULT=$(ansible "$HOSTS" -i "$INVENTORY" -m async_status -a "jid=$JOB_ID" --one-line 2>/dev/null)
 
-    FINISHED=$(echo "$RESULT" | grep -c '"finished": 1')
-    RUNNING=$(echo "$RESULT" | grep -c '"finished": 0')
+    FINISHED=$(echo "$RESULT" | grep -Ec '"finished": (true|1)')
+    RUNNING=$(echo "$RESULT" | grep -Ec '"finished": (false|0)')
     FAILED=$(echo "$RESULT" | grep -c "FAILED")
 
     echo "$(date '+%H:%M:%S') - Finished: $FINISHED, Running: $RUNNING, Failed: $FAILED"
@@ -232,7 +232,7 @@ ansible db1.example.com -m async_status -a "jid=124587236789.5432"
 
 # Clean up stale async results files
 ansible all -m shell -a "ls -la ~/.ansible_async/ 2>/dev/null" --one-line
-ansible all -m shell -a "find ~/.ansible_async/ -mtime +1 -delete 2>/dev/null"
+ansible db1.example.com -m async_status -a "jid=124587236789.5432 mode=cleanup"
 ```
 
 ## Async Results Storage
@@ -246,8 +246,8 @@ ansible web1.example.com -m shell -a "ls -la ~/.ansible_async/"
 # Read a specific result file
 ansible web1.example.com -m shell -a "cat ~/.ansible_async/124587236789.5432"
 
-# Clean up old results
-ansible all -m shell -a "rm -rf ~/.ansible_async/*" --become
+# Clean up a specific result file
+ansible web1.example.com -m async_status -a "jid=124587236789.5432 mode=cleanup"
 ```
 
 ## Important Limitations
