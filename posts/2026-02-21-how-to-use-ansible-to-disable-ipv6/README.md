@@ -68,7 +68,7 @@ This playbook disables IPv6 using sysctl parameters:
 
 ## Method 2: Disabling via GRUB
 
-For a more thorough approach, you can disable IPv6 at the kernel level by adding boot parameters. This prevents the IPv6 kernel module from loading at all.
+For a more thorough approach, you can disable IPv6 at the kernel level by adding boot parameters. This disables IPv6 from boot before normal userspace startup.
 
 This playbook modifies GRUB to disable IPv6 at boot time:
 
@@ -83,28 +83,28 @@ This playbook modifies GRUB to disable IPv6 at boot time:
     - name: Add ipv6.disable to GRUB config (Debian/Ubuntu)
       ansible.builtin.lineinfile:
         path: /etc/default/grub
-        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
-        line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash ipv6.disable=1"'
-        backrefs: false
+        regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT="(?![^"]*\bipv6\.disable=1\b)[^"]*)"$'
+        line: '\1 ipv6.disable=1"'
+        backrefs: true
       register: grub_debian
       when: ansible_os_family == "Debian"
 
-    - name: Add ipv6.disable to GRUB config (RHEL)
-      ansible.builtin.lineinfile:
-        path: /etc/default/grub
-        regexp: '^GRUB_CMDLINE_LINUX='
-        line: 'GRUB_CMDLINE_LINUX="crashkernel=auto ipv6.disable=1"'
-        backrefs: false
-      register: grub_rhel
+    - name: Check kernel arguments (RHEL)
+      ansible.builtin.command: grubby --info=ALL
+      register: grub_rhel_info
+      changed_when: false
       when: ansible_os_family == "RedHat"
+
+    - name: Add ipv6.disable to all installed kernels (RHEL)
+      ansible.builtin.command: grubby --update-kernel=ALL --args="ipv6.disable=1"
+      register: grub_rhel
+      when:
+        - ansible_os_family == "RedHat"
+        - "'ipv6.disable=1' not in grub_rhel_info.stdout"
 
     - name: Update GRUB (Debian/Ubuntu)
       ansible.builtin.command: update-grub
       when: grub_debian.changed | default(false)
-
-    - name: Update GRUB (RHEL)
-      ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
-      when: grub_rhel.changed | default(false)
 
     - name: Notify about required reboot
       ansible.builtin.debug:
@@ -114,9 +114,9 @@ This playbook modifies GRUB to disable IPv6 at boot time:
 
 ## Method 3: Blacklisting the IPv6 Module
 
-You can also prevent the IPv6 kernel module from loading via modprobe configuration.
+You can also disable the IPv6 kernel module via modprobe configuration.
 
-This playbook blacklists the ipv6 kernel module:
+This playbook blacklists the ipv6 kernel module and sets its disable option:
 
 ```yaml
 # disable_ipv6_modprobe.yml - Blacklist IPv6 kernel module
@@ -162,6 +162,9 @@ This playbook updates common services to use IPv4 only:
   become: true
 
   tasks:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
     - name: Configure SSH to use IPv4 only
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
@@ -174,7 +177,7 @@ This playbook updates common services to use IPv4 only:
         path: /etc/postfix/main.cf
         regexp: "^inet_protocols"
         line: "inet_protocols = ipv4"
-      when: "'postfix' in ansible_facts.services | default({})"
+      when: "'postfix.service' in ansible_facts.services or 'postfix' in ansible_facts.services"
       notify: restart postfix
       failed_when: false
 
@@ -201,7 +204,7 @@ This playbook updates common services to use IPv4 only:
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 
     - name: restart postfix
@@ -247,12 +250,33 @@ The main tasks file:
 - name: Disable IPv6 in GRUB
   ansible.builtin.lineinfile:
     path: /etc/default/grub
-    regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT=".*)(")'
-    line: '\1 ipv6.disable=1\2'
+    regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT="(?![^"]*\bipv6\.disable=1\b)[^"]*)"$'
+    line: '\1 ipv6.disable=1"'
     backrefs: true
   register: grub_change
-  when: ipv6_disable_method in ['grub', 'all']
-  notify: update grub
+  when:
+    - ipv6_disable_method in ['grub', 'all']
+    - ansible_os_family == "Debian"
+
+- name: Update GRUB
+  ansible.builtin.command: update-grub
+  when: grub_change.changed | default(false)
+
+- name: Disable IPv6 in installed kernels
+  ansible.builtin.command: grubby --info=ALL
+  register: grubby_info
+  changed_when: false
+  when:
+    - ipv6_disable_method in ['grub', 'all']
+    - ansible_os_family == "RedHat"
+
+- name: Add IPv6 disable argument to installed kernels
+  ansible.builtin.command: grubby --update-kernel=ALL --args="ipv6.disable=1"
+  register: grubby_change
+  when:
+    - ipv6_disable_method in ['grub', 'all']
+    - ansible_os_family == "RedHat"
+    - "'ipv6.disable=1' not in grubby_info.stdout"
 
 - name: Blacklist IPv6 module
   ansible.builtin.copy:
@@ -275,8 +299,14 @@ The main tasks file:
     path: /etc/ssh/sshd_config
     regexp: "^#?AddressFamily"
     line: "AddressFamily inet"
+  register: ssh_config
   when: ipv6_update_services
-  notify: restart sshd
+
+- name: Restart SSH
+  ansible.builtin.service:
+    name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+    state: restarted
+  when: ssh_config.changed | default(false)
 ```
 
 ## Verification Playbook
@@ -298,19 +328,19 @@ After making changes, verify that IPv6 is actually disabled:
       failed_when: false
 
     - name: Check for IPv6 addresses on interfaces
-      ansible.builtin.shell: ip -6 addr show 2>/dev/null | grep -c inet6
+      ansible.builtin.command: ip -6 addr show
       register: ipv6_addrs
       changed_when: false
       failed_when: false
 
     - name: Check if IPv6 module is loaded
-      ansible.builtin.shell: lsmod | grep -c ipv6
+      ansible.builtin.shell: lsmod | awk '{print $1}' | grep -cx ipv6
       register: ipv6_module
       changed_when: false
       failed_when: false
 
     - name: Check for IPv6 listening sockets
-      ansible.builtin.shell: ss -6 -tlnp 2>/dev/null | wc -l
+      ansible.builtin.shell: ss -H -6 -tlnp 2>/dev/null | wc -l
       register: ipv6_sockets
       changed_when: false
       failed_when: false
@@ -319,7 +349,7 @@ After making changes, verify that IPv6 is actually disabled:
       ansible.builtin.debug:
         msg:
           - "Sysctl disable_ipv6: {{ sysctl_check.stdout | default('N/A') }}"
-          - "IPv6 addresses found: {{ ipv6_addrs.stdout | default('0') }}"
+          - "IPv6 addresses found: {{ ipv6_addrs.stdout_lines | default([]) | select('search', 'inet6') | list | length }}"
           - "IPv6 module loaded: {{ 'yes' if (ipv6_module.stdout | default('0') | int > 0) else 'no' }}"
           - "IPv6 listening sockets: {{ ipv6_sockets.stdout | default('0') }}"
 ```
