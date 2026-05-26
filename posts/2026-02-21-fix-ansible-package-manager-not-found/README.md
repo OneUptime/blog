@@ -8,13 +8,13 @@ Description: Fix Ansible package manager not found errors by using the correct m
 
 ---
 
-The "Package manager not found" error occurs when you use a package module that does not match the target system's package manager. For example, using the `apt` module on a CentOS system, or the `yum` module on Ubuntu.
+The "Package manager not found" error occurs when you use a package module that does not match the target system's package manager. For example, using the `apt` module on a CentOS system, or the `dnf` module on Ubuntu.
 
 ## The Error
 
 ```text
 fatal: [centos-server]: FAILED! => {
-    "msg": "No package matching 'apt' is available"
+    "msg": "Could not import python modules: apt, apt_pkg. Please install python3-apt package."
 }
 ```
 
@@ -22,7 +22,7 @@ Or more directly:
 
 ```text
 fatal: [server1]: FAILED! => {
-    "msg": "Could not detect which major revision of yum is in use"
+    "msg": "Could not detect which major revision of dnf is in use"
 }
 ```
 
@@ -33,7 +33,7 @@ fatal: [server1]: FAILED! => {
 The `package` module auto-detects the package manager:
 
 ```yaml
-# Works on both apt and yum systems
+# Works on both apt and dnf systems
 
 - name: Install package (cross-platform)
   package:
@@ -51,7 +51,7 @@ The `package` module auto-detects the package manager:
   when: ansible_os_family == "Debian"
 
 - name: Install on RedHat/CentOS
-  yum:
+  dnf:
     name: nginx
     state: present
   when: ansible_os_family == "RedHat"
@@ -70,10 +70,10 @@ The `package` module auto-detects the package manager:
       apt:
         - nginx
         - python3-pip
-      yum:
+      dnf:
         - nginx
         - python3-pip
-      dnf:
+      dnf5:
         - nginx
         - python3-pip
 ```
@@ -83,24 +83,25 @@ The `package` module auto-detects the package manager:
 Different distros use different package names:
 
 ```yaml
-vars:
-  package_map:
-    Debian:
-      web: nginx
-      db_client: postgresql-client
-    RedHat:
-      web: nginx
-      db_client: postgresql
-
-- name: Install web server
-  package:
-    name: "{{ package_map[ansible_os_family].web }}"
-    state: present
+- hosts: all
+  vars:
+    package_map:
+      Debian:
+        web: nginx
+        db_client: postgresql-client
+      RedHat:
+        web: nginx
+        db_client: postgresql
+  tasks:
+    - name: Install web server
+      package:
+        name: "{{ package_map[ansible_os_family].web }}"
+        state: present
 ```
 
 ## Summary
 
-Package manager errors come from using the wrong module for the target OS. The `package` module handles this automatically for simple cases. For complex scenarios where package names differ across distributions, use OS-family conditionals or variable maps. Always gather facts before package tasks so Ansible knows which OS it is working with.
+Package manager errors come from using the wrong module for the target OS. The `package` module handles this automatically for simple cases. For complex scenarios where package names differ across distributions, use OS-family conditionals or variable maps. Gather facts before using OS facts in package tasks so Ansible knows which OS it is working with.
 
 ## Common Use Cases
 
@@ -173,16 +174,18 @@ Here are several practical scenarios where this module proves essential in real-
         - "22"
         - "80"
         - "443"
+      when: ansible_os_family == "Debian"
 
     - name: Enable firewall
       community.general.ufw:
         state: enabled
         policy: deny
+      when: ansible_os_family == "Debian"
 
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
         state: restarted
 ```
 
@@ -236,6 +239,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -260,6 +264,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -285,4 +295,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
