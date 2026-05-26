@@ -35,6 +35,7 @@ Here is the fundamental pattern showing all three sections.
             src: app-v2.jar
             dest: /opt/app/app.jar
             backup: true
+          register: deploy_copy
 
         - name: Start the application
           ansible.builtin.systemd:
@@ -48,8 +49,10 @@ Here is the fundamental pattern showing all three sections.
 
         - name: Restore previous version
           ansible.builtin.command:
-            cmd: cp /opt/app/app.jar.bak /opt/app/app.jar
-          when: ansible_check_mode is not defined
+            cmd: cp {{ deploy_copy.backup_file }} /opt/app/app.jar
+          when:
+            - not ansible_check_mode
+            - deploy_copy.backup_file is defined
 
         - name: Restart with old version
           ansible.builtin.systemd:
@@ -131,14 +134,16 @@ Database migrations are a prime use case because a failed migration needs rollba
             msg: "Migration failed, starting database restore"
 
         - name: Find latest backup
-          ansible.builtin.command:
-            cmd: ls -t /var/backups/pre_migration_*.dump
+          ansible.builtin.find:
+            paths: /var/backups
+            patterns: "pre_migration_*.dump"
+            file_type: file
           register: backup_files
 
         - name: Restore database from backup
           ansible.builtin.command:
-            cmd: pg_restore -d myapp_db --clean {{ backup_files.stdout_lines[0] }}
-          when: backup_files.stdout_lines | length > 0
+            cmd: pg_restore -d myapp_db --clean {{ (backup_files.files | sort(attribute='mtime', reverse=true) | first).path }}
+          when: backup_files.matched > 0
 
         - name: Mark migration as failed
           ansible.builtin.copy:
