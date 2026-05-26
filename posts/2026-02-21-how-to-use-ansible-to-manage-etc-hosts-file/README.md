@@ -20,7 +20,7 @@ For adding or updating individual entries, `lineinfile` is the most straightforw
 - name: Add database server to /etc/hosts
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: '.*db-primary\.internal$'
+    regexp: '^\S+\s+db-primary\.internal(\s|$)'
     line: "10.0.1.50    db-primary.internal db-primary"
     state: present
     backup: yes
@@ -57,8 +57,8 @@ The real power comes from building host entries dynamically from your Ansible in
 - name: Build /etc/hosts entries from inventory
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: '.*{{ hostvars[item].inventory_hostname }}$'
-    line: "{{ hostvars[item].ansible_host }}    {{ hostvars[item].inventory_hostname }}.{{ domain }} {{ hostvars[item].inventory_hostname }}"
+    regexp: '.*{{ item }}$'
+    line: "{{ hostvars[item].ansible_host }}    {{ item }}.{{ domain }} {{ item }}"
     state: present
   loop: "{{ groups['all'] }}"
   vars:
@@ -139,7 +139,7 @@ In a cluster scenario, each server needs to know about all other cluster members
     - name: Add all cluster nodes to /etc/hosts
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        regexp: '.*{{ item }}\.{{ cluster_domain }}$'
+        regexp: '^\S+\s+{{ item }}\.{{ cluster_domain }}\s+{{ item }}$'
         line: "{{ hostvars[item].ansible_default_ipv4.address }}    {{ item }}.{{ cluster_domain }} {{ item }}"
         state: present
       loop: "{{ groups['cluster_nodes'] }}"
@@ -178,7 +178,7 @@ Do not forget about IPv6 if your infrastructure uses it.
 - name: Add IPv4 entries for app servers
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: '^{{ item.ipv4 }}\s+{{ item.name }}'
+    regexp: '^\d{1,3}(\.\d{1,3}){3}\s+{{ item.fqdn }}\s+{{ item.name }}$'
     line: "{{ item.ipv4 }}    {{ item.fqdn }} {{ item.name }}"
     state: present
   loop: "{{ app_servers }}"
@@ -186,7 +186,7 @@ Do not forget about IPv6 if your infrastructure uses it.
 - name: Add IPv6 entries for app servers
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: '^{{ item.ipv6 }}\s+{{ item.name }}'
+    regexp: '^[0-9A-Fa-f:]+\s+{{ item.fqdn }}\s+{{ item.name }}$'
     line: "{{ item.ipv6 }}    {{ item.fqdn }} {{ item.name }}"
     state: present
   loop: "{{ app_servers }}"
@@ -251,7 +251,7 @@ Here is a reusable role for managing `/etc/hosts`.
 - name: Add inventory-based entries for specified groups
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: '.*{{ item }}\.{{ hosts_domain }}$'
+    regexp: '^\S+\s+{{ item }}\.{{ hosts_domain }}\s+{{ item }}$'
     line: "{{ hostvars[item].ansible_host }}    {{ item }}.{{ hosts_domain }} {{ item }}"
     state: present
   loop: "{{ hosts_inventory_groups | map('extract', groups) | flatten | unique }}"
@@ -263,13 +263,15 @@ Here is a reusable role for managing `/etc/hosts`.
 ```mermaid
 graph TD
     A[Application resolves hostname] --> B{nsswitch.conf order}
-    B --> C[Check /etc/hosts first]
-    C --> D{Found in /etc/hosts?}
-    D -->|Yes| E[Return IP from /etc/hosts]
-    D -->|No| F[Query DNS server]
-    F --> G{Found in DNS?}
-    G -->|Yes| H[Return IP from DNS]
-    G -->|No| I[Resolution fails]
+    B --> C{files before dns?}
+    C -->|Yes| D[Check /etc/hosts]
+    D --> E{Found in /etc/hosts?}
+    E -->|Yes| F[Return IP from /etc/hosts]
+    E -->|No| G[Query DNS server]
+    C -->|No| G
+    G --> H{Found in DNS?}
+    H -->|Yes| I[Return IP from DNS]
+    H -->|No| J[Resolution fails]
 ```
 
 ## Summary
