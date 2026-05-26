@@ -208,7 +208,7 @@ Raw CLI output is text, which is hard to work with programmatically. You can par
 
 ### Using TextFSM Templates
 
-For structured parsing, use the `ansible.utils.cli_parse` module with TextFSM:
+For structured parsing, use the `ansible.utils.cli_parse` module with the TextFSM parser and a matching template:
 
 ```yaml
 # playbook-textfsm-parse.yml
@@ -223,14 +223,18 @@ For structured parsing, use the `ansible.utils.cli_parse` module with TextFSM:
         command: show ip bgp summary
       register: bgp_output
 
-    - name: Parse BGP output
-      ansible.builtin.set_fact:
-        bgp_neighbors: "{{ bgp_output.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+\\d+\\s+(\\d+)\\s+(\\d+)') }}"
+    - name: Parse BGP output with TextFSM
+      ansible.utils.cli_parse:
+        text: "{{ bgp_output.stdout }}"
+        parser:
+          name: ansible.utils.textfsm
+          command: show ip bgp summary
+      register: bgp_neighbors
 
     - name: Display parsed neighbors
       ansible.builtin.debug:
-        msg: "Neighbor: {{ item[0] }}, AS: {{ item[1] }}, Prefixes: {{ item[2] }}"
-      loop: "{{ bgp_neighbors }}"
+        msg: "{{ item }}"
+      loop: "{{ bgp_neighbors.parsed }}"
 ```
 
 ## Building a Network Health Check Playbook
@@ -291,7 +295,7 @@ Here is a comprehensive health check playbook that uses `cli_command` to verify 
           timestamp: "{{ lookup('pipe', 'date +%Y-%m-%d_%H:%M:%S') }}"
           cpu: "{{ cpu_output.stdout }}"
           memory: "{{ memory_output.stdout }}"
-          ntp_synced: "{{ 'synchronized' in ntp_output.stdout | lower }}"
+          ntp_synced: "{{ 'clock is synchronized' in (ntp_output.stdout | lower) }}"
           bgp_neighbors: "{{ bgp_output.stdout_lines | length - 1 }}"
           recent_logs: "{{ log_output.stdout_lines | length }}"
 
@@ -385,7 +389,7 @@ You can vary commands based on device type or other conditions:
 
 ## Error Handling
 
-The `cli_command` module will fail if the command returns an error. Use `failed_when` and `ignore_errors` to handle this:
+The `cli_command` module will fail when the module or connection reports an error. Some devices also return CLI error text in `stdout`, so use `failed_when` and output checks to handle commands that may not exist on every platform:
 
 ```yaml
     - name: Run command that might not exist on all platforms
@@ -397,7 +401,9 @@ The `cli_command` module will fail if the command returns an error. Use `failed_
     - name: Process BGP data if available
       ansible.builtin.debug:
         msg: "BGP data: {{ bgp_result.stdout }}"
-      when: bgp_result.rc == 0 | default(bgp_result.failed == false)
+      when:
+        - bgp_result.stdout is defined
+        - "'Invalid input' not in bgp_result.stdout"
 ```
 
 ## Tips for cli_command
