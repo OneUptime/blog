@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Data Aggregation, Automation, Integration
 
-Description: Learn how to use Ansible to aggregate data from multiple sources including APIs, files, databases, and host facts into unified data structures for automation.
+Description: Learn how to use Ansible to aggregate data from multiple sources including APIs, files, environment variables, and host facts into unified data structures for automation.
 
 ---
 
@@ -239,7 +239,7 @@ Collect data from multiple hosts and aggregate centrally:
           {% set result = {} %}
           {% for var_name, var_value in vars.items() %}
           {% if var_name.startswith('fragment_') and var_value is mapping %}
-          {% set result = result | combine(var_value, recursive=true) %}
+          {% set _ = result.update(result | combine(var_value, recursive=true)) %}
           {% endif %}
           {% endfor %}
           {{ result }}
@@ -260,7 +260,7 @@ Collect data from multiple hosts and aggregate centrally:
       register: git_tag
       changed_when: false
 
-    - name: Get Docker image digest
+    - name: Get Docker image manifest
       ansible.builtin.uri:
         url: "https://registry.example.com/v2/myapp/manifests/{{ git_tag.stdout }}"
         headers:
@@ -272,7 +272,7 @@ Collect data from multiple hosts and aggregate centrally:
         file: deploy-config.yml
         name: deploy_config
 
-    - name: Load secrets from vault
+    - name: Load secrets from environment
       ansible.builtin.set_fact:
         deploy_secrets:
           db_url: "{{ lookup('env', 'DATABASE_URL') }}"
@@ -283,7 +283,7 @@ Collect data from multiple hosts and aggregate centrally:
         deployment_manifest:
           application: "{{ deploy_config.application }}"
           version: "{{ git_tag.stdout }}"
-          image_digest: "{{ docker_manifest.json.config.digest | default('unknown') }}"
+          image_config_digest: "{{ docker_manifest.json.config.digest | default('unknown') }}"
           timestamp: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
           config: "{{ deploy_config.config }}"
           environment: "{{ deploy_secrets }}"
