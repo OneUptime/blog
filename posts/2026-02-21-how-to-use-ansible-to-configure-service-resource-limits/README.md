@@ -16,7 +16,7 @@ Ansible makes it straightforward to deploy these limits consistently across your
 
 There are two layers of resource limiting on modern Linux:
 
-**Traditional ulimits** (set via `/etc/security/limits.conf` or `LimitXXX` in unit files) control per-process resource limits. These are enforced by the kernel and apply to individual processes.
+**Traditional ulimits** (set for login sessions via `/etc/security/limits.conf`, or for systemd services via `LimitXXX` in unit files) mostly control per-process resource limits. These are enforced by the kernel, though some limits such as `LimitNPROC` are counted per real user ID.
 
 **systemd resource controls** (set via `CPUQuota`, `MemoryMax`, etc. in unit files) use cgroups to limit resources at the service level, which includes all processes spawned by that service.
 
@@ -56,7 +56,7 @@ ExecStart={{ svc_exec_start }}
 # File descriptor limit
 LimitNOFILE={{ svc_limit_nofile | default(65536) }}
 
-# Maximum number of processes/threads
+# Per-UID process limit; use TasksMax for a per-service task limit
 LimitNPROC={{ svc_limit_nproc | default(4096) }}
 
 # Core dump size (0 = disable core dumps)
@@ -163,6 +163,11 @@ After=network.target
 Type={{ svc_type | default('simple') }}
 User={{ svc_user | default('root') }}
 ExecStart={{ svc_exec_start }}
+
+{% if svc_limit_nofile is defined %}
+# File descriptor limit
+LimitNOFILE={{ svc_limit_nofile }}
+{% endif %}
 
 # ---- cgroup-based CPU limits ----
 {% if svc_cpu_quota is defined %}
@@ -389,4 +394,4 @@ Drop-in files in the `.d` directory are merged with the main unit file. This way
 
 ## Summary
 
-Resource limits are a fundamental part of production service management. systemd gives you two complementary approaches: per-process ulimits via `LimitXXX` directives (good for file descriptors and process counts) and cgroup-based controls via `MemoryMax`, `CPUQuota`, and friends (good for overall service resource consumption). Ansible templates let you deploy these consistently, and drop-in files let you customize limits for package-installed services without touching their unit files. Always verify your limits are applied after deployment, and start with conservative values that you can relax as you observe real-world usage patterns.
+Resource limits are a fundamental part of production service management. systemd gives you two complementary approaches: process resource limits via `LimitXXX` directives (useful for file descriptors and similar limits) and cgroup-based controls via `MemoryMax`, `CPUQuota`, `TasksMax`, and friends (good for overall service resource consumption). Ansible templates let you deploy these consistently, and drop-in files let you customize limits for package-installed services without touching their unit files. Always verify your limits are applied after deployment, and start with conservative values that you can relax as you observe real-world usage patterns.
