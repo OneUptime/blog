@@ -30,13 +30,13 @@ GCP offers two network modes:
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `google.cloud` collection
+- ansible-core 2.16+ with the `google.cloud` collection
 - GCP service account with Network Admin role
 - Compute Engine API enabled
 
 ```bash
 ansible-galaxy collection install google.cloud
-pip install google-auth requests google-api-python-client
+pip install google-auth requests
 ```
 
 ## Creating a Custom Mode VPC Network
@@ -140,7 +140,7 @@ With a custom mode VPC, you create subnets explicitly:
       loop: "{{ subnet_results.results }}"
 ```
 
-The `private_ip_google_access: true` setting allows VMs without external IPs to reach Google APIs and services. This is essential for private instances that need to pull container images from GCR, write to Cloud Storage, or call any Google API.
+The `private_ip_google_access: true` setting allows VMs without external IPs to reach Google APIs and services. This is essential for private instances that need to pull container images from Artifact Registry, write to Cloud Storage, or call any Google API.
 
 ## Creating Subnets with Secondary Ranges
 
@@ -192,7 +192,7 @@ GKE clusters need secondary IP ranges for pods and services. Define these on the
       ansible.builtin.debug:
         msg:
           - "Primary: {{ gke_subnet.ipCidrRange }}"
-          - "Pod range: 10.100.0.0/14 (65,536 addresses)"
+          - "Pod range: 10.100.0.0/14 (262,144 addresses)"
           - "Service range: 10.104.0.0/20 (4,096 addresses)"
 ```
 
@@ -200,10 +200,10 @@ The pod CIDR needs to be large because each GKE node allocates a /24 block from 
 
 ## Creating a Complete Network Architecture
 
-Here is a full network setup with public and private subnets, Cloud NAT for outbound internet access, and a Cloud Router:
+Here is a full network setup with public and private subnets and a Cloud Router that you can use for Cloud NAT:
 
 ```yaml
-# full-network-setup.yml - Complete VPC architecture with NAT and routing
+# full-network-setup.yml - Complete VPC architecture with routing
 ---
 - name: Complete Network Setup
   hosts: localhost
@@ -274,6 +274,7 @@ Here is a full network setup with public and private subnets, Cloud NAT for outb
           - "Public subnet: 10.0.0.0/24"
           - "Private subnet: 10.0.1.0/24"
           - "Cloud Router: {{ router.name }}"
+          - "Add a Cloud NAT gateway to this router if private instances need outbound internet access."
 ```
 
 ## Deleting Network Resources
