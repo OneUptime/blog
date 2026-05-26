@@ -8,7 +8,7 @@ Description: Debug and fix common YAML indentation problems in Ansible playbooks
 
 ---
 
-Indentation errors are the number one source of YAML parsing failures in Ansible. YAML uses indentation to define structure, and a single misplaced space can completely change the meaning of your playbook or cause it to fail entirely.
+Indentation errors are a common source of YAML parsing failures in Ansible. YAML uses indentation to define structure, and a single misplaced space can completely change the meaning of your playbook or cause it to fail entirely.
 
 ## The Golden Rules
 
@@ -117,12 +117,12 @@ insert_final_newline = true
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where consistent indentation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow using consistent indentation
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -154,7 +154,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -236,7 +236,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with consistent indentation
 - name: Robust task execution
   hosts: all
   tasks:
@@ -303,4 +303,3 @@ Here are several practical scenarios where this module proves essential in real-
 ## Conclusion
 
 Indentation issues in YAML are preventable. Configure your editor to use spaces and show whitespace, use yamllint in your workflow, and follow the 2-space convention consistently. When debugging, remember that YAML indentation defines structure, so a task's `when` clause must be at the same level as the module name, not inside the module arguments.
-
