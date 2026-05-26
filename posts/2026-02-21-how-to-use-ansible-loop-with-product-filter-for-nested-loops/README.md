@@ -42,7 +42,7 @@ That is 2 x 3 = 6 combinations.
       - analytics
 ```
 
-This produces 9 iterations (3 users x 3 databases). Each `item` is a list with two elements: `item.0` from the first list and `item.1` from the second list.
+This produces 9 iterations (3 users x 3 databases). Each `item` is a tuple-like sequence with two elements: `item.0` from the first list and `item.1` from the second list.
 
 ## Real-World Example: Database Grants
 
@@ -50,11 +50,12 @@ This produces 9 iterations (3 users x 3 databases). Each `item` is a list with t
 # Create database user grants for every user-database pair
 - name: Configure database access
   community.postgresql.postgresql_privs:
-    db: "{{ item.1 }}"
+    login_db: "{{ item.1 }}"
     role: "{{ item.0 }}"
-    privs: SELECT
+    privs: CONNECT
     type: database
     state: present
+  become: true
   become_user: postgres
   loop: "{{ readonly_users | product(accessible_databases) | list }}"
   loop_control:
@@ -70,7 +71,7 @@ This produces 9 iterations (3 users x 3 databases). Each `item` is a list with t
       - support
 ```
 
-Every user in `readonly_users` gets SELECT access to every database in `accessible_databases`. That is 9 grant operations from two simple lists.
+Every user in `readonly_users` gets CONNECT access to every database in `accessible_databases`. That is 9 grant operations from two simple lists.
 
 ## Multi-Environment, Multi-Region Deployment
 
@@ -154,25 +155,7 @@ This creates 6 firewall rules allowing traffic from each source network to each 
 
 ## Filtering Product Results
 
-Sometimes you do not want every combination. Use `reject` or `select` to filter:
-
-```yaml
-# Create DNS records but skip same-region pairs
-- name: Set up cross-region DNS failover
-  ansible.builtin.debug:
-    msg: "DNS failover: {{ item.0 }} -> {{ item.1 }}"
-  loop: >-
-    {{
-      regions | product(regions) | reject('sameas_pair') | list
-    }}
-  vars:
-    regions:
-      - us-east
-      - us-west
-      - eu-central
-```
-
-Since `reject` with a custom test is not straightforward, you can use `when` instead:
+Sometimes you do not want every combination. Since comparing values inside each product result with `reject` or `select` is not straightforward, you can use `when` instead:
 
 ```yaml
 # Create cross-region connections, skip same-region pairs
