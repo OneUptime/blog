@@ -39,7 +39,7 @@ server1 ansible_remote_tmp=/tmp/.ansible/tmp
 ### Fix 3: Create the Directory with a Pre-Task
 
 ```yaml
-# Use raw module which does not need the temp directory
+# Put this in a play with gather_facts: false; raw does not use the module subsystem
 - name: Ensure ansible temp directory exists
   raw: mkdir -p /tmp/.ansible/tmp && chmod 700 /tmp/.ansible/tmp
   become: yes
@@ -50,7 +50,7 @@ server1 ansible_remote_tmp=/tmp/.ansible/tmp
 ```bash
 # On the target host, check if the user's home is writable
 ls -la /home/ansible_user/
-chmod 755 /home/ansible_user/
+chmod u+rwx /home/ansible_user/
 ```
 
 ### Fix 5: Handle noexec on /tmp
@@ -81,7 +81,7 @@ Remote temp directory errors are about file system access on the target host. Th
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these settings prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -118,7 +118,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -262,4 +262,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
