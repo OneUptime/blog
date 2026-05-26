@@ -1,4 +1,4 @@
-# How to Remove Roles with ansible-galaxy remove
+# How to Remove Roles with ansible-galaxy role remove
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: How to remove Ansible Galaxy roles and collections using the CLI, c
 
 ---
 
-Over time, Ansible projects accumulate roles that are no longer needed. Maybe you replaced a Galaxy role with a custom one, or a service was decommissioned and its automation is no longer relevant. Leaving unused roles around clutters your environment and can cause confusion. The `ansible-galaxy remove` command handles cleanup, and this post covers all the ways to use it.
+Over time, Ansible projects accumulate roles that are no longer needed. Maybe you replaced a Galaxy role with a custom one, or a service was decommissioned and its automation is no longer relevant. Leaving unused roles around clutters your environment and can cause confusion. The `ansible-galaxy role remove` command handles cleanup, and this post covers all the ways to use it.
 
 ## Removing a Role
 
@@ -17,10 +17,10 @@ The basic removal command takes the role name:
 ```bash
 # Remove a specific role
 
-ansible-galaxy remove geerlingguy.nginx
+ansible-galaxy role remove geerlingguy.nginx
 ```
 
-This deletes the role directory from the default roles path (`~/.ansible/roles/`). You will see output like:
+This deletes the role directory from the first writable directory in Ansible's configured roles path, which is commonly `~/.ansible/roles/`. You will see output like:
 
 ```text
 - successfully removed geerlingguy.nginx
@@ -38,10 +38,10 @@ If your roles are installed in a project-local directory, specify the path:
 
 ```bash
 # Remove a role from a specific directory
-ansible-galaxy remove geerlingguy.nginx -p ./roles/
+ansible-galaxy role remove geerlingguy.nginx -p ./roles/
 ```
 
-This is important because `ansible-galaxy remove` only checks the default path unless you tell it otherwise. If you installed to `./roles/` but try to remove without `-p`, it will report the role as not installed.
+This is important because `ansible-galaxy role remove` uses the configured roles path unless you tell it otherwise. If you installed to `./roles/` but try to remove without `-p`, it can report the role as not installed.
 
 ## Removing Multiple Roles
 
@@ -49,7 +49,7 @@ You can remove multiple roles in one command:
 
 ```bash
 # Remove several roles at once
-ansible-galaxy remove geerlingguy.nginx geerlingguy.postgresql geerlingguy.redis
+ansible-galaxy role remove geerlingguy.nginx geerlingguy.postgresql geerlingguy.redis
 ```
 
 Each role is removed independently, and you get a status message for each one.
@@ -297,7 +297,7 @@ When you remove a role, do not forget to update your `requirements.yml`:
 
 ```bash
 # Remove the role
-ansible-galaxy remove geerlingguy.nginx -p ./roles/
+ansible-galaxy role remove geerlingguy.nginx -p ./roles/
 
 # Edit requirements.yml to remove the entry
 # Then commit both changes together
@@ -309,4 +309,4 @@ If you remove the role from the filesystem but leave it in `requirements.yml`, t
 
 ## Summary
 
-Removing roles with `ansible-galaxy remove` is straightforward for roles, but collections require manual deletion. The bigger challenge is knowing which roles to remove. Use dependency scanning scripts to find unused roles before cleaning them up. Always update your `requirements.yml` after removing content, and in CI/CD, prefer clean installs over incremental removal. Keeping your Ansible content lean reduces confusion, speeds up installations, and makes your automation project easier to maintain.
+Removing roles with `ansible-galaxy role remove` is straightforward for roles, but collections require manual deletion. The bigger challenge is knowing which roles to remove. Use dependency scanning scripts to find unused roles before cleaning them up. Always update your `requirements.yml` after removing content, and in CI/CD, prefer clean installs over incremental removal. Keeping your Ansible content lean reduces confusion, speeds up installations, and makes your automation project easier to maintain.
