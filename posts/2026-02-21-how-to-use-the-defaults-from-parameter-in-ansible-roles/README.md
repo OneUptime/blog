@@ -257,6 +257,11 @@ And the task file that uses it:
 
 ```yaml
 # roles/app_deploy/tasks/main.yml
+- name: Create application group
+  ansible.builtin.group:
+    name: "{{ app_group }}"
+    system: yes
+
 - name: Create application user
   ansible.builtin.user:
     name: "{{ app_user }}"
