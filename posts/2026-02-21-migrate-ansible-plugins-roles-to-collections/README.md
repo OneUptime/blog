@@ -61,10 +61,11 @@ Initialize the collection:
 
 ```bash
 # Create the collection skeleton
-ansible-galaxy collection init myorg.myutils
+mkdir -p collections/ansible_collections
+ansible-galaxy collection init --init-path collections/ansible_collections myorg.myutils
 
 # This creates:
-# myorg/myutils/
+# collections/ansible_collections/myorg/myutils/
 #   galaxy.yml
 #   plugins/
 #     README.md
@@ -77,7 +78,7 @@ ansible-galaxy collection init myorg.myutils
 Set up the plugin directories you need:
 
 ```bash
-cd myorg/myutils
+cd collections/ansible_collections/myorg/myutils
 
 # Create directories for each plugin type you have
 mkdir -p plugins/filter
@@ -99,19 +100,19 @@ Copy plugins to their new locations. Note that directory names change:
 
 ```bash
 # Filter plugins: filter_plugins/ -> plugins/filter/
-cp ../my_project/filter_plugins/my_filters.py plugins/filter/
+cp ../../../../my_project/filter_plugins/my_filters.py plugins/filter/
 
 # Lookup plugins: lookup_plugins/ -> plugins/lookup/
-cp ../my_project/lookup_plugins/my_lookup.py plugins/lookup/
+cp ../../../../my_project/lookup_plugins/my_lookup.py plugins/lookup/
 
 # Callback plugins: callback_plugins/ -> plugins/callback/
-cp ../my_project/callback_plugins/my_callback.py plugins/callback/
+cp ../../../../my_project/callback_plugins/my_callback.py plugins/callback/
 
 # Modules: library/ -> plugins/modules/
-cp ../my_project/library/my_module.py plugins/modules/
+cp ../../../../my_project/library/my_module.py plugins/modules/
 
 # Module utilities: module_utils/ -> plugins/module_utils/
-cp ../roles/my_role/module_utils/role_utils.py plugins/module_utils/
+cp ../../../../roles/my_role/module_utils/role_utils.py plugins/module_utils/
 ```
 
 ## Step 3: Update Import Paths
@@ -170,7 +171,8 @@ def check_file(filepath):
             if module.startswith('ansible.module_utils.') and \
                not module.startswith('ansible.module_utils.basic') and \
                not module.startswith('ansible.module_utils.common') and \
-               not module.startswith('ansible.module_utils.urls'):
+               not module.startswith('ansible.module_utils.urls') and \
+               not module.startswith('ansible.module_utils.six'):
                 print("%s:%d - UPDATE: from %s import ..." % (
                     filepath, node.lineno, module
                 ))
@@ -297,7 +299,7 @@ Create tests for every migrated plugin:
 ```python
 # tests/unit/plugins/filter/test_my_filters.py
 import pytest
-from plugins.filter.my_filters import FilterModule
+from ansible_collections.myorg.myutils.plugins.filter.my_filters import FilterModule
 
 
 class TestMyFilter:
@@ -317,8 +319,8 @@ class TestMyFilter:
 Run the tests:
 
 ```bash
-cd myorg/myutils
-python -m pytest tests/unit/ -v
+cd collections/ansible_collections/myorg/myutils
+ansible-test units --docker default -v
 ansible-test sanity --docker default
 ```
 
