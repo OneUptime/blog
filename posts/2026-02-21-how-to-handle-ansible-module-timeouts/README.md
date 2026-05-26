@@ -22,7 +22,7 @@ The `uri` module is one of the most commonly used modules with a built-in timeou
 ---
 - name: API calls with module-level timeouts
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   tasks:
     - name: Check external API health with 10 second timeout
       ansible.builtin.uri:
@@ -86,9 +86,9 @@ The `wait_for` module is entirely built around timeouts. It waits for a conditio
 
 ## Package Manager Module Timeouts
 
-Package managers like `apt`, `yum`, and `dnf` do not have a built-in timeout parameter in their Ansible modules. This is a common source of hung playbooks because package installations can stall on network issues, lock contention, or large downloads.
+Package managers like `apt`, `yum`, and `dnf` do not have a general built-in runtime timeout parameter in their Ansible modules. This is a common source of long-running playbooks because package installations can stall on network issues or large downloads.
 
-You need to use async for these modules:
+You need to use async for a total runtime boundary, and use module-specific lock timeouts where available:
 
 ```yaml
 # package-timeouts.yml - Handling package manager timeouts with async
@@ -101,6 +101,7 @@ You need to use async for these modules:
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
+        lock_timeout: 60     # Wait up to 60 seconds for the apt lock
       async: 120            # 2 minute timeout for cache update
       poll: 10
 
@@ -111,6 +112,7 @@ You need to use async for these modules:
           - certbot
           - python3-certbot-nginx
         state: present
+        lock_timeout: 120
       async: 600            # 10 minute timeout
       poll: 15
       register: pkg_install
@@ -124,9 +126,9 @@ You need to use async for these modules:
       when: pkg_install is failed
 ```
 
-## Handling apt/yum Lock Contention
+## Handling apt/dnf Lock Contention
 
-A frequent cause of module "timeouts" is lock contention. Another process (like unattended-upgrades) holds the package manager lock, and your task waits indefinitely. Here is how to handle it:
+A frequent cause of module "timeouts" is lock contention. Another process (like unattended-upgrades) holds the package manager lock, and your task waits until the module's lock timeout is reached. Here is how to handle it:
 
 ```yaml
 # handle-lock.yml - Deal with package manager locks before installing
@@ -135,27 +137,19 @@ A frequent cause of module "timeouts" is lock contention. Another process (like 
   hosts: all
   become: true
   tasks:
-    - name: Wait for apt lock to be released
-      ansible.builtin.shell: |
-        # Loop until the lock is free, up to 5 minutes
-        TIMEOUT=300
-        ELAPSED=0
-        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-          if [ $ELAPSED -ge $TIMEOUT ]; then
-            echo "TIMEOUT waiting for apt lock" >&2
-            exit 1
-          fi
-          sleep 5
-          ELAPSED=$((ELAPSED + 5))
-        done
-        echo "Lock is free"
-      register: lock_check
-      changed_when: false
-
-    - name: Install packages after lock is free
+    - name: Install packages after waiting for apt lock
       ansible.builtin.apt:
         name: nginx
         state: present
+        lock_timeout: 300
+      async: 300
+      poll: 10
+
+    - name: Install packages after waiting for dnf lock
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+        lock_timeout: 300
       async: 300
       poll: 10
 ```
@@ -195,7 +189,7 @@ Here are examples for common cloud modules:
         master_user_password: "{{ db_password }}"
         allocated_storage: 100
         wait: true
-        wait_timeout: 1800    # 30 minutes - RDS creation is genuinely slow
+        # RDS uses an internal waiter when wait is true
       register: rds_result
 
     # Azure VM creation
@@ -214,30 +208,25 @@ Here are examples for common cloud modules:
         ssh_public_keys:
           - path: /home/azureuser/.ssh/authorized_keys
             key_data: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
-      # Azure module uses its own internal timeout
       # Use async for an outer timeout boundary
       async: 900
       poll: 30
 ```
 
-## Custom Module Timeout Wrapper
+## Custom Command Timeout Wrapper
 
-When a module does not support a timeout parameter and you cannot use async (maybe because you need the return value synchronously), you can write a wrapper using the `shell` module with `timeout`.
+When a command or script does not support its own timeout parameter, you can write a wrapper using the `shell` module with `timeout`.
 
 ```yaml
-# module-timeout-wrapper.yml - Wrapping module calls with OS timeout
+# command-timeout-wrapper.yml - Wrapping commands with OS timeout
 ---
-- name: Timeout wrapper for modules without built-in timeout
+- name: Timeout wrapper for commands without built-in timeout
   hosts: appservers
   tasks:
-    - name: Run a module that might hang, via command wrapper
+    - name: Run a script that might hang, via command wrapper
       ansible.builtin.shell: |
-        # Use ansible command-line to run a single module with OS timeout
-        timeout 120 ansible -m ansible.builtin.get_url \
-          -a "url=https://releases.example.com/myapp-2.0.tar.gz dest=/tmp/myapp-2.0.tar.gz" \
-          localhost
-      delegate_to: "{{ inventory_hostname }}"
-      register: download_result
+        timeout 120 /opt/myapp/bin/refresh-cache
+      register: cache_refresh_result
 
     # Better approach: use get_url with async
     - name: Download artifact with async timeout
@@ -300,4 +289,4 @@ For frequently used operations, you can create a role that wraps common tasks wi
 
 ## Summary
 
-Module timeouts in Ansible fall into three categories: modules with built-in timeout parameters (like `uri`, `get_url`, `wait_for`, and cloud modules), modules that need async/poll wrapping (like `apt`, `yum`, `copy`), and edge cases where the OS `timeout` command provides a safety net. The best approach is to know your modules, set appropriate timeouts for each, and always have a fallback plan for when things take longer than expected. In production playbooks, every task that touches the network or an external service should have a bounded execution time.
+Module timeouts in Ansible fall into three categories: modules with built-in timeout parameters (like `uri`, `get_url`, `wait_for`, and some cloud modules), modules that need async/poll wrapping for a total runtime boundary (like `apt`, `yum`, and `dnf`), and edge cases where the OS `timeout` command provides a safety net. The best approach is to know your modules, set appropriate timeouts for each, and always have a fallback plan for when things take longer than expected. In production playbooks, every task that touches the network or an external service should have a bounded execution time.
