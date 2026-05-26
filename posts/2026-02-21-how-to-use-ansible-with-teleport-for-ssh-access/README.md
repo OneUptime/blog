@@ -31,11 +31,16 @@ Before integrating Ansible with Teleport, you need:
 - Target nodes enrolled in Teleport
 - The `tsh` CLI installed on your Ansible controller
 - A Teleport user with permissions to access the target nodes
+- `jq` installed if you use the version detection command below
 
 ```bash
 # Install tsh on the Ansible controller (Ubuntu/Debian)
 
-curl https://goteleport.com/static/install.sh | bash -s 14.0.0
+TELEPORT_VERSION="$(curl -s https://teleport.example.com/webapi/find | jq -r '.server_version')"
+curl -O "https://cdn.teleport.dev/teleport-v${TELEPORT_VERSION}-linux-amd64-bin.tar.gz"
+tar -xzf "teleport-v${TELEPORT_VERSION}-linux-amd64-bin.tar.gz"
+cd teleport
+sudo ./install
 
 # Verify installation
 tsh version
@@ -48,6 +53,15 @@ tsh login --proxy=teleport.example.com --user=ansible-svc
 
 The simplest approach is telling Ansible to use `tsh ssh` instead of the regular `ssh` command.
 
+```bash
+# Create an ssh-compatible wrapper for Ansible
+sudo tee /usr/local/bin/tsh-ssh >/dev/null <<'EOF'
+#!/bin/sh
+exec /usr/local/bin/tsh ssh "$@"
+EOF
+sudo chmod +x /usr/local/bin/tsh-ssh
+```
+
 ```ini
 # ansible.cfg
 # Route all SSH connections through Teleport's tsh command
@@ -55,8 +69,8 @@ The simplest approach is telling Ansible to use `tsh ssh` instead of the regular
 inventory = inventory/teleport_hosts.ini
 
 [ssh_connection]
-ssh_executable = /usr/local/bin/tsh
-scp_if_ssh = true
+ssh_executable = /usr/local/bin/tsh-ssh
+transfer_method = piped
 ```
 
 Your inventory uses the Teleport node names rather than IP addresses.
@@ -97,7 +111,7 @@ Then point Ansible at this SSH config.
 # ansible.cfg
 # Use the Teleport-generated SSH config
 [ssh_connection]
-ssh_args = -F ~/.tsh/teleport_ssh_config -o StrictHostKeyChecking=no
+ssh_args = -F ~/.tsh/teleport_ssh_config
 ```
 
 ## Method 3: ProxyCommand Approach
@@ -118,6 +132,7 @@ With this approach, your inventory can reference nodes by their Teleport-registe
 # inventory/hosts.ini
 [all:vars]
 ansible_user=root
+ansible_port=3022
 
 [webservers]
 web-prod-01.teleport.example.com
@@ -205,22 +220,22 @@ In automated environments, you cannot interactively log in to Teleport. Use mach
 
 ```bash
 # Create a Teleport bot for Ansible
-tctl bots add ansible-bot --roles=ansible-access --token=bot-join-token
+tctl bots add ansible-bot --roles=ansible-access --logins=root
 
 # On the Ansible controller, start the bot agent
-tbot start \
-  --destination-dir=/opt/teleport/ansible-certs \
+tbot start identity \
+  --destination=file:///opt/teleport/ansible-certs \
   --token=bot-join-token \
-  --auth-server=teleport.example.com:443 \
+  --proxy-server=teleport.example.com:443 \
   --join-method=token
 ```
 
-Then configure Ansible to use the bot-generated certificates.
+Then configure Ansible to use the bot-generated OpenSSH configuration.
 
 ```ini
 # ansible.cfg for CI/CD with Teleport bot certs
 [ssh_connection]
-ssh_args = -o ProxyCommand="tsh proxy ssh --cert-file=/opt/teleport/ansible-certs/ssh_client -o IdentityFile=/opt/teleport/ansible-certs/identity %r@%h:%p"
+ssh_args = -F /opt/teleport/ansible-certs/ssh_config
 ```
 
 ## A Complete Playbook Example
@@ -293,7 +308,7 @@ Common problems include:
 Using Teleport with Ansible provides security benefits that plain SSH cannot match:
 
 1. Short-lived certificates eliminate the risk of compromised long-lived SSH keys
-2. Every Ansible session is recorded and can be replayed for auditing
+2. Ansible sessions can be recorded and replayed for auditing
 3. RBAC policies control which users can run Ansible against which nodes
 4. No need to distribute or manage SSH keys across your fleet
 5. All access is logged in Teleport's audit log with user identity attached
