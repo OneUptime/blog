@@ -14,7 +14,7 @@ Ansible modules are Python scripts that run on the target host. If Python is not
 
 ```text
 fatal: [server1]: FAILED! => {
-    "msg": "ansible-core requires a minimum of Python version 3.8. Current version: None"
+    "msg": "ansible-core requires a minimum of Python version 3.9. Current version: None"
 }
 ```
 
@@ -88,7 +88,7 @@ The `raw` module does not need Python on the target:
 
 ### Fix 5: For Alpine Linux
 
-Alpine uses a different Python path:
+Alpine uses `apk` to install Python, and the interpreter is typically available at `/usr/bin/python3`:
 
 ```ini
 [alpine_hosts]
@@ -106,12 +106,12 @@ Python interpreter errors mean Ansible cannot find Python on the target host. Th
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -143,7 +143,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -225,7 +225,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -287,4 +287,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
