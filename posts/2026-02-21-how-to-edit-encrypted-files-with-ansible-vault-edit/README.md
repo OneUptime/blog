@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Vault, Encryption, Security, Secrets Management
 
-Description: Learn how to safely edit Ansible Vault encrypted files using ansible-vault edit without ever leaving plain-text secrets on disk.
+Description: Learn how to safely edit Ansible Vault encrypted files using ansible-vault edit without leaving the original file decrypted on disk.
 
 ---
 
-One of the most common operations with Ansible Vault is editing existing encrypted files. You need to add a new password, change an API key, or remove an old secret. The naive approach of decrypting, editing, and re-encrypting leaves a window where plain-text secrets sit on your filesystem. The `ansible-vault edit` command eliminates that risk by handling the entire decrypt-edit-encrypt cycle in a single atomic operation.
+One of the most common operations with Ansible Vault is editing existing encrypted files. You need to add a new password, change an API key, or remove an old secret. The naive approach of decrypting, editing, and re-encrypting leaves a window where the original file sits on your filesystem in plain text. The `ansible-vault edit` command reduces that risk by handling the decrypt-edit-encrypt cycle for you.
 
 ## How ansible-vault edit Works
 
@@ -21,7 +21,7 @@ When you run `ansible-vault edit`, here is what happens behind the scenes:
 5. It overwrites the original with the newly encrypted version
 6. It removes the temporary file
 
-At no point does the decrypted content exist as the original file on disk. The plain text only lives in a temporary file while your editor is open, and that temporary file is cleaned up automatically.
+At no point does the decrypted content exist as the original file on disk. The plain text lives in a temporary file while your editor is open, and that temporary file is cleaned up automatically when the editor exits. Your editor can still create plaintext swap, backup, or autosave files, so configure it carefully for secrets.
 
 ## Basic Usage
 
@@ -73,7 +73,7 @@ ansible-vault edit group_vars/production/vault.yml
 
 ## Choosing Your Editor
 
-`ansible-vault edit` uses the editor defined by the `$EDITOR` environment variable. If `$EDITOR` is not set, it falls back to `vi`.
+`ansible-vault edit` uses Ansible's configured editor. In practice, set `$EDITOR`, `$ANSIBLE_EDITOR`, or the `editor` setting in `ansible.cfg`; if no editor is configured, Ansible falls back to `vi`.
 
 ```bash
 # Use vim
@@ -113,6 +113,8 @@ ansible-vault edit --vault-id staging@prompt \
 ```
 
 The `@prompt` suffix tells Ansible to ask for the password interactively. The `@filepath` suffix reads the password from a file.
+
+If you pass more than one `--vault-id` to an editing command, also specify `--encrypt-vault-id` so Ansible knows which vault ID to use when it writes the file back.
 
 ## Practical Editing Scenarios
 
@@ -288,7 +290,7 @@ In a CI/CD pipeline, you typically do not edit vault files interactively. But au
 
 ## What Happens If the Editor Crashes?
 
-If your editor crashes or you close the terminal without saving, Ansible cleans up the temporary file. The original encrypted file remains unchanged. No data is lost and no secrets are exposed.
+If your editor exits without saving, Ansible cleans up the temporary file. The original encrypted file remains unchanged. If the editor or terminal crashes abruptly, check for editor-created recovery, swap, or backup files because those can contain plaintext.
 
 If you save the file but the re-encryption fails (very rare), Ansible will print an error and the temporary file might be left behind. Check `/tmp` for any leftover files and remove them:
 
@@ -299,22 +301,21 @@ ls -la /tmp/tmp*vault* 2>/dev/null
 
 ## Diff After Editing
 
-After editing a vault file, Git will show the entire file as changed because the encrypted content is completely different, even if you only changed one line. This is expected behavior because AES encryption uses random initialization vectors, so the same content encrypts differently each time.
+After editing a vault file, Git will show the encrypted blob as changed because Ansible Vault includes random salt in the vault payload, so the same content encrypts differently each time.
 
 To see what actually changed:
 
 ```bash
 # Compare the decrypted old version with the decrypted new version
-git stash
-ansible-vault view group_vars/production/vault.yml > /tmp/old.yml
-git stash pop
+git show HEAD:group_vars/production/vault.yml > /tmp/old-vault.yml
+ansible-vault view /tmp/old-vault.yml > /tmp/old.yml
 ansible-vault view group_vars/production/vault.yml > /tmp/new.yml
 diff /tmp/old.yml /tmp/new.yml
-rm /tmp/old.yml /tmp/new.yml
+rm /tmp/old-vault.yml /tmp/old.yml /tmp/new.yml
 ```
 
 ## Tips for Efficient Editing
 
 Keep vault files small and focused. One vault file per environment or per service is easier to manage than one giant vault file with everything. Use a consistent naming convention (prefix with `vault_`) so you can quickly identify which variables come from vault files. When editing, double-check the YAML syntax before saving. A syntax error in a vault file is frustrating to debug because you cannot just open the file and look at it.
 
-The `ansible-vault edit` command is the safest way to modify encrypted secrets. It keeps plain text off your filesystem, handles cleanup automatically, and integrates with your preferred editor. Use it as your default workflow for any vault file changes.
+The `ansible-vault edit` command is the safest built-in way to modify encrypted vault files interactively. It avoids leaving the original file decrypted on disk, handles its temporary file cleanup automatically, and integrates with your preferred editor. Use it as your default workflow for any vault file changes.
