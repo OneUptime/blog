@@ -8,7 +8,7 @@ Description: Automatically generate infrastructure documentation using Ansible f
 
 ---
 
-Infrastructure documentation goes stale the moment someone makes a change and forgets to update the wiki. The solution is to generate documentation directly from your infrastructure. Ansible already knows your hosts, their configurations, installed software, and network details. Use that data to produce documentation that is always accurate.
+Infrastructure documentation goes stale the moment someone makes a change and forgets to update the wiki. The solution is to generate documentation directly from your infrastructure. Ansible already knows your hosts and many system details, and it can collect configuration, software, and network data with facts and tasks. Use that data to produce documentation that is always accurate.
 
 ## Fact-Based Documentation
 
@@ -62,7 +62,7 @@ Ansible gathers detailed facts about every host. Use these to generate server do
           architecture: "{{ ansible_architecture }}"
           cpu_cores: "{{ ansible_processor_vcpus }}"
           memory_mb: "{{ ansible_memtotal_mb }}"
-          disk_total_gb: "{{ (ansible_mounts | selectattr('mount', 'equalto', '/') | first).size_total / 1073741824 | round(2) }}"
+          disk_total_gb: "{{ ((ansible_mounts | selectattr('mount', 'equalto', '/') | first).size_total / 1073741824) | round(2) }}"
           groups: "{{ group_names }}"
           services: "{{ running_services.stdout_lines | default([]) }}"
           ports: "{{ listening_ports.stdout_lines[1:] | default([]) }}"
@@ -97,6 +97,12 @@ Ansible gathers detailed facts about every host. Use these to generate server do
       ansible.builtin.set_fact:
         all_hosts: "{{ raw_docs.results | map(attribute='content') | map('b64decode') | map('from_json') | list }}"
 
+    - name: Ensure documentation directory exists
+      ansible.builtin.file:
+        path: docs
+        state: directory
+        mode: '0755'
+
     - name: Generate markdown documentation
       ansible.builtin.template:
         src: infrastructure-doc.md.j2
@@ -105,7 +111,7 @@ Ansible gathers detailed facts about every host. Use these to generate server do
 
 ## Documentation Template
 
-```jinja2
+````jinja2
 {# templates/infrastructure-doc.md.j2 #}
 # Infrastructure Inventory
 
@@ -139,11 +145,11 @@ Total Servers: {{ all_hosts | length }}
 {% endfor %}
 
 **Listening Ports:**
-```
+```text
 {% for port in host.ports[:15] %}
 {{ port }}
 {% endfor %}
-```text
+```
 
 {% endfor %}
 {% endfor %}
@@ -153,7 +159,7 @@ Total Servers: {{ all_hosts | length }}
 - Total CPU Cores: {{ all_hosts | map(attribute='cpu_cores') | map('int') | sum }}
 - Total Memory: {{ (all_hosts | map(attribute='memory_mb') | map('int') | sum / 1024) | round(1) }}GB
 - Total Disk: {{ all_hosts | map(attribute='disk_total_gb') | map('float') | sum | round(1) }}GB
-```
+````
 
 ## Role Documentation Generator
 
@@ -285,6 +291,9 @@ on:
     - cron: '0 6 * * 1'  # Every Monday at 6 AM
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -297,6 +306,8 @@ jobs:
             -i inventories/production/hosts.yml
       - name: Commit updated docs
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/
           git diff --staged --quiet || git commit -m "Update infrastructure documentation"
           git push
