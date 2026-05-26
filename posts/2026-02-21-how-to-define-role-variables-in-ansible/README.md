@@ -29,27 +29,32 @@ Like defaults, Ansible automatically loads `vars/main.yml` when the role is appl
 
 ## The Precedence Difference
 
-This is the single most important thing to understand. In Ansible's 22-level variable precedence hierarchy, role defaults sit near the bottom (level 2), while role vars sit at level 18. That means role vars override almost everything except:
+This is the single most important thing to understand. In Ansible's 22-level variable precedence hierarchy, role defaults sit near the bottom (level 2), while role vars sit at level 15. That means role vars override inventory variables, facts, play vars, vars_prompt, and vars_files, but they can still be overridden by:
 
 - Block variables
 - Task variables
-- `include_params`
+- `include_vars`
 - `set_fact` / `register`
+- Role parameters
+- Include parameters
 - Extra vars (`-e`)
 
 Here is a simplified view of the relevant precedence levels:
 
 ```mermaid
 flowchart TB
-    A["Extra vars (-e)"] --> B["Task vars"]
-    B --> C["Block vars"]
-    C --> D["Role vars (vars/main.yml)"]
-    D --> E["Playbook vars"]
-    E --> F["Host vars"]
-    F --> G["Group vars"]
-    G --> H["Role defaults (defaults/main.yml)"]
-    style D fill:#f96,stroke:#333,stroke-width:2px
-    style H fill:#6f9,stroke:#333,stroke-width:2px
+    A["Extra vars (-e)"] --> B["Include params / role params"]
+    B --> C["set_fact / register"]
+    C --> D["include_vars"]
+    D --> E["Task vars"]
+    E --> F["Block vars"]
+    F --> G["Role vars (vars/main.yml)"]
+    G --> H["Playbook vars"]
+    H --> I["Host vars"]
+    I --> J["Group vars"]
+    J --> K["Role defaults (defaults/main.yml)"]
+    style G fill:#f96,stroke:#333,stroke-width:2px
+    style K fill:#6f9,stroke:#333,stroke-width:2px
 ```
 
 ## When to Use vars/ vs defaults/
@@ -180,7 +185,7 @@ postgresql_common_packages:
   - acl
 ```
 
-Files in `vars/main/` are auto-loaded and merged. The OS-specific files (`Debian.yml`, `RedHat.yml`) remain separate because you load them explicitly with `include_vars`.
+Files in `vars/main/` are auto-loaded in alphabetical order. The OS-specific files (`Debian.yml`, `RedHat.yml`) remain separate because you load them explicitly with `include_vars`.
 
 ## Protecting Internal Variables
 
