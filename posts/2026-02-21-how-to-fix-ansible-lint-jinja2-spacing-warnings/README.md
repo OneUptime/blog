@@ -14,7 +14,7 @@ Let us go through each Jinja2 spacing warning and how to fix it.
 
 ## jinja[spacing]: The Core Rule
 
-The main rule is straightforward: there should be exactly one space after `{{` and before `}}`, and exactly one space after `{%` and before `%}`.
+The main rule is straightforward: ansible-lint expects readable spacing inside Jinja2 expressions, including spaces inside `{{ }}` and around operators and filters.
 
 **The problem:**
 
@@ -172,7 +172,7 @@ For very complex expressions, consider breaking them up:
 
 ## Spacing in Template Files
 
-The same spacing rules apply inside `.j2` template files, though ansible-lint only checks them when they are referenced by tasks.
+Use the same spacing style inside `.j2` template files. ansible-lint checks Jinja2 embedded in Ansible YAML, while standalone template files are better checked with a dedicated Jinja2 linter.
 
 ```jinja2
 {# templates/nginx.conf.j2 - Correct Jinja2 spacing in templates #}
@@ -229,7 +229,7 @@ find . -name "*.yml" -o -name "*.yaml" | while read -r file; do
 done
 ```
 
-A more reliable approach is to use a proper Jinja2 formatter. The `j2lint` tool can help:
+A more reliable approach for standalone template files is to use a proper Jinja2 linter. The `j2lint` tool can help:
 
 ```bash
 # Install j2lint
@@ -238,20 +238,20 @@ pip install j2lint
 # Check Jinja2 formatting
 j2lint templates/
 
-# Or use the built-in ansible-lint --fix option (available in recent versions)
+# Or use the built-in ansible-lint --fix option for Ansible YAML
 ansible-lint --fix playbook.yml
 ```
 
 ## The --fix Option
 
-Recent versions of ansible-lint include an experimental `--fix` option that can automatically fix some Jinja2 spacing issues:
+Recent versions of ansible-lint include a `--fix` option that can automatically fix some Jinja2 spacing issues:
 
 ```bash
 # Auto-fix supported issues (including Jinja2 spacing)
 ansible-lint --fix playbook.yml
 
-# Preview what would be fixed without making changes
-ansible-lint --fix --diff playbook.yml
+# Review the changes after fixing
+git diff -- playbook.yml
 ```
 
 Not all rules support auto-fix, but Jinja2 spacing is one that often does. Always review the changes before committing.
