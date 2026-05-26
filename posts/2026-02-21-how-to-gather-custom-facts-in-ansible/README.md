@@ -16,7 +16,7 @@ Imagine you deploy a Java application to 50 servers. Some run version 2.3, other
 
 ## Local Facts (fact.d)
 
-The simplest way to add custom facts is through local facts files. Ansible looks for files in `/etc/ansible/facts.d/` on each managed host. These files can be INI format, JSON format, or executable scripts that output JSON.
+The simplest way to add custom facts is through local facts files. Ansible looks for `.fact` files in `/etc/ansible/facts.d/` on each managed host. These files can be INI format, JSON format, or executable scripts that output JSON.
 
 Here is an example of deploying a static custom fact file.
 
@@ -118,7 +118,7 @@ If you prefer JSON over INI, that works too. JSON facts do not need section head
 
 ## Executable Fact Scripts
 
-The most powerful option is executable scripts. Any file in `facts.d` that has the execute permission will be run, and its stdout is parsed as JSON. This lets you gather dynamic information.
+The most powerful option is executable scripts. Any `.fact` file in `facts.d` that has the execute permission will be run, and its stdout is parsed as JSON. This lets you gather dynamic information.
 
 Here is a script that reports the currently running application version by checking what is actually deployed.
 
@@ -171,15 +171,19 @@ Here is a script that reports the currently running application version by check
           fi
 
           # Output JSON
-          cat <<EOF
-          {
-            "java_version": "$JAVA_VER",
-            "app_status": "$APP_STATUS",
-            "app_pid": $APP_PID,
-            "app_uptime_seconds": ${APP_UPTIME:-0},
-            "app_version": "$APP_VERSION"
-          }
-          EOF
+          export JAVA_VER APP_STATUS APP_PID APP_UPTIME APP_VERSION
+          python3 - <<'PY'
+          import json
+          import os
+
+          print(json.dumps({
+              "java_version": os.environ["JAVA_VER"],
+              "app_status": os.environ["APP_STATUS"],
+              "app_pid": int(os.environ["APP_PID"]),
+              "app_uptime_seconds": int(os.environ.get("APP_UPTIME") or 0),
+              "app_version": os.environ["APP_VERSION"],
+          }))
+          PY
 
     - name: Gather local facts
       ansible.builtin.setup:
@@ -309,12 +313,12 @@ A powerful pattern is generating fact files from templates. This lets you bake d
 {# templates/deploy-metadata.fact.j2 #}
 {# Records deployment information as a local Ansible fact #}
 {
-  "version": "{{ app_version }}",
-  "environment": "{{ deploy_env }}",
-  "deployed_at": "{{ ansible_date_time.iso8601 }}",
-  "deployed_by": "{{ lookup('env', 'USER') }}",
-  "ansible_version": "{{ ansible_version.full }}",
-  "git_commit": "{{ lookup('pipe', 'git rev-parse --short HEAD') }}"
+  "version": {{ app_version | to_json }},
+  "environment": {{ deploy_env | to_json }},
+  "deployed_at": {{ ansible_date_time.iso8601 | to_json }},
+  "deployed_by": {{ lookup('env', 'USER') | to_json }},
+  "ansible_version": {{ ansible_version.full | to_json }},
+  "git_commit": {{ lookup('pipe', 'git rev-parse --short HEAD') | to_json }}
 }
 ```
 
