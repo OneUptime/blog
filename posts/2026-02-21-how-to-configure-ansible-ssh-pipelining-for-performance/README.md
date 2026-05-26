@@ -177,7 +177,7 @@ To get task-level timing data, enable the timer callback:
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [ssh_connection]
 pipelining = True
@@ -193,7 +193,7 @@ Pipelining works best when combined with other SSH optimizations:
 # ansible.cfg - Full performance configuration
 [defaults]
 forks = 20
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_facts_cache
@@ -236,10 +236,10 @@ However, `pbrun` and `pfexec` may have their own TTY requirements. Test each one
 
 ## When Pipelining Does Not Help
 
-Pipelining helps most with tasks that execute modules (command, shell, copy content, template, etc.). It does not significantly improve:
+Pipelining helps most with tasks that execute Python modules without transferring files (command, shell, package, service, user, etc.). It does not significantly improve:
 
-- **File transfers** (using the `copy` module with `src` parameter) - These need the actual file content transferred
-- **Large template files** - The template still needs to be processed and transferred
+- **File transfers** (using modules such as `copy`, `fetch`, or `template`) - These need the actual file content transferred
+- **Large template files** - The template still needs to be processed and transferred, and pipelining does not apply to that file transfer
 - **gather_facts** - The setup module still takes time regardless of pipelining
 
 ## Verifying Pipelining Is Active
@@ -251,14 +251,13 @@ To confirm pipelining is actually being used:
 ansible all -m ping -vvvv
 ```
 
-Look for this in the output:
+Look for a line like this in the output:
 
 ```text
-<web01> EXEC /bin/sh -c 'echo ~ && sleep 0'
-<web01> EXEC /bin/sh -c '( umask 77 && mkdir -p "` echo ~/.ansible/tmp `"&& mkdir "` echo ~/.ansible/tmp/ansible-tmp-... `" && echo ansible-tmp-... )'
+<web01> Pipelining is enabled.
 ```
 
-Without pipelining, you will see multiple EXEC lines for temp directory creation, file transfer, and execution. With pipelining, you will see fewer EXEC lines because the module is piped directly.
+Without pipelining, you will see multiple EXEC lines for temp directory creation, file transfer, and execution. With pipelining, you will see fewer EXEC lines because the module is piped directly. If you see Ansible creating `~/.ansible/tmp/ansible-tmp-...` for a normal Python module, pipelining is not active for that task.
 
 ## Per-Task Pipelining Control
 
