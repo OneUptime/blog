@@ -18,7 +18,7 @@ The `win_package` module installs or removes software on Windows. It supports:
 - MSIX packages
 - Local files, UNC paths, and HTTP/HTTPS URLs
 
-It determines whether software is already installed by checking the product ID (for MSI) or the registry.
+It determines whether software is already installed with provider-specific checks, such as the MSI ProductCode, the MSIX package name or full name, the registry uninstall key for EXE installers, or `creates_*` checks.
 
 ## Installing from an MSI File
 
@@ -42,23 +42,22 @@ MSI installers are the most straightforward because they have a standard interfa
     - name: Install application from network share
       ansible.windows.win_package:
         path: \\fileserver\software\myapp-3.2.1.msi
-        product_id: '{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}'
+        product_id: '{00000000-0000-0000-0000-000000000000}'
         state: present
 
     # Install from an HTTP URL
-    - name: Install Notepad++ from URL
+    - name: Install RDCMan from URL
       ansible.windows.win_package:
-        path: https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.6.2/npp.8.6.2.Installer.x64.exe
-        product_id: 'Notepad++'
-        arguments: /S
+        path: https://download.microsoft.com/download/A/F/0/AF0071F3-B198-4A35-AA90-C68D103BDCCF/rdcman.msi
+        product_id: '{0240359E-6A4C-4884-9E94-B397A02D893C}'
         state: present
 ```
 
-The `product_id` is crucial for idempotency. It tells Ansible how to check whether the software is already installed, so it does not reinstall on every run.
+The `product_id` is important for idempotency when the package is an EXE, when the package comes from a URL or network share, or when Ansible cannot derive the product ID from a local package. For local MSI files, Ansible can derive the product code from the MSI file, but setting it explicitly makes the intended package identity clear.
 
 ## Finding the Product ID
 
-You can find the product ID for installed MSI packages using PowerShell.
+You can find the product ID for installed packages by checking the Windows uninstall registry keys. For MSI packages, the registry key name is usually the MSI ProductCode GUID.
 
 ```yaml
 # find-product-id.yml - Discover product IDs of installed software
@@ -66,29 +65,18 @@ You can find the product ID for installed MSI packages using PowerShell.
 - name: Find product IDs
   hosts: windows_servers
   tasks:
-    # List all installed MSI products
-    - name: Get installed MSI product IDs
-      ansible.windows.win_shell: |
-        Get-WmiObject -Class Win32_Product |
-          Select-Object Name, IdentifyingNumber, Version |
-          Sort-Object Name |
-          Format-Table -AutoSize
-      register: products
-
-    - name: Show installed products
-      ansible.builtin.debug:
-        var: products.stdout_lines
-
-    # Alternative: check the registry for installed software
+    # Check the registry for installed software
     - name: Check registry for installed software
       ansible.windows.win_shell: |
         $paths = @(
             'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
-            'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKCU:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
         )
         Get-ItemProperty $paths |
           Where-Object { $_.DisplayName -like '*notepad*' } |
-          Select-Object DisplayName, PSChildName, UninstallString |
+          Select-Object DisplayName, DisplayVersion, PSChildName, WindowsInstaller, UninstallString |
           Format-List
       register: registry_check
 
@@ -99,7 +87,7 @@ You can find the product ID for installed MSI packages using PowerShell.
 
 ## Installing EXE Installers
 
-EXE installers require you to specify the silent installation arguments and expected return codes.
+EXE installers require you to specify the silent installation arguments. You can also override the expected return codes when an installer uses nonstandard success codes.
 
 ```yaml
 # install-exe.yml - Install EXE-based software
@@ -127,7 +115,7 @@ EXE installers require you to specify the silent installation arguments and expe
         state: present
 ```
 
-The `expected_return_code` parameter is important for EXE installers. Code 3010 means "success, but reboot required" and is common for Windows installers.
+The `expected_return_code` parameter is useful when you need to override the module defaults. By default, `win_package` treats return codes 0 and 3010 as success for MSI, MSP, and registry providers. Code 3010 means "success, but reboot required" and is common for Windows installers.
 
 ## Installing with Custom MSI Arguments
 
@@ -140,11 +128,13 @@ You can pass additional arguments to MSI installations for customization.
   hosts: windows_servers
   tasks:
     # Install with custom MSI properties
-    - name: Install SQL Server Management Studio
+    - name: Install application with custom MSI properties
       ansible.windows.win_package:
-        path: C:\Installers\SSMS-Setup-ENU.exe
-        product_id: '{ABCDEFGH-1234-5678-9012-ABCDEFGHIJKL}'
-        arguments: /install /quiet /norestart SSMSInstallRoot="C:\SSMS"
+        path: C:\Installers\myapp.msi
+        product_id: '{12345678-1234-1234-1234-123456789012}'
+        arguments: >-
+          INSTALLDIR="C:\Applications\MyApp"
+          ADDLOCAL=ALL
         state: present
 
     # Install MSI with logging enabled
@@ -155,7 +145,7 @@ You can pass additional arguments to MSI installations for customization.
         arguments: >-
           INSTALLDIR="C:\Applications\MyApp"
           ADDLOCAL=ALL
-          /l*v C:\Logs\myapp_install.log
+        log_path: C:\Logs\myapp_install.log
         state: present
 ```
 
@@ -172,7 +162,7 @@ Uninstalling software uses `state: absent`.
     # Remove an MSI-installed package
     - name: Remove old application version
       ansible.windows.win_package:
-        product_id: '{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}'
+        product_id: '{00000000-0000-0000-0000-000000000000}'
         state: absent
 
     # Remove an EXE-installed package with uninstall arguments
@@ -204,11 +194,10 @@ Here is a playbook that sets up a development workstation with all the tools a d
         arguments: /VERYSILENT /NORESTART /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,addtopath
       - name: "Python 3.12"
         path: C:\Installers\python-3.12.1-amd64.exe
-        product_id: "{BFF94522-4E85-4D03-A3C7-ED8E5F8E7B8D}"
+        creates_path: C:\Program Files\Python312\python.exe
         arguments: /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
       - name: "Node.js 20 LTS"
         path: C:\Installers\node-v20.11.0-x64.msi
-        product_id: "{DDBD8ACA-1F28-4B2A-9A62-7D25A7A7F68A}"
 
   tasks:
     - name: Create installers directory
@@ -219,7 +208,8 @@ Here is a playbook that sets up a development workstation with all the tools a d
     - name: Install software packages
       ansible.windows.win_package:
         path: "{{ item.path }}"
-        product_id: "{{ item.product_id }}"
+        product_id: "{{ item.product_id | default(omit) }}"
+        creates_path: "{{ item.creates_path | default(omit) }}"
         arguments: "{{ item.arguments | default(omit) }}"
         expected_return_code:
           - 0
@@ -232,7 +222,7 @@ Here is a playbook that sets up a development workstation with all the tools a d
 
     - name: Check if reboot is needed
       ansible.builtin.set_fact:
-        needs_reboot: "{{ install_results.results | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 3010) | list | length > 0 }}"
+        needs_reboot: "{{ install_results.results | selectattr('reboot_required', 'defined') | selectattr('reboot_required') | list | length > 0 }}"
 
     - name: Reboot if any installer requires it
       ansible.windows.win_reboot:
@@ -245,7 +235,7 @@ Here is how `win_package` decides what to do.
 
 ```mermaid
 flowchart TD
-    A[win_package task] --> B{Check product_id}
+    A[win_package task] --> B[Check install state]
     B --> C{Software installed?}
     C -->|Yes, state=present| D[Skip - already installed]
     C -->|No, state=present| E{Source type?}
@@ -264,12 +254,12 @@ flowchart TD
 
 Here are some practical tips from real-world experience:
 
-1. **Always specify product_id**: Without it, Ansible cannot check if software is installed and will try to reinstall every time.
+1. **Specify product_id when needed**: Set it for EXE installers and URL or network-share packages. For local MSI files, Ansible can derive the product code from the file, but an explicit value can still make the playbook easier to audit.
 2. **Test silent switches first**: Run the installer manually with silent switches on a test machine before putting it in a playbook.
 3. **Watch for return codes**: Different installers use different codes. Code 0 means success, 3010 means reboot needed, 1641 means reboot initiated by installer.
 4. **Use network shares for large files**: WinRM has overhead for file transfers. Put large installers on a network share and reference them with UNC paths.
-5. **Log everything**: Add `/l*v C:\Logs\install.log` to MSI arguments for troubleshooting.
+5. **Log everything**: Use `log_path: C:\Logs\install.log` for MSI and MSP packages, or the installer's own logging argument for EXE installers.
 
 ## Summary
 
-The `win_package` module handles the messy reality of Windows software installation. Whether you are dealing with MSI files, EXE installers, or packages downloaded from URLs, it provides a consistent interface with idempotency through product ID checks. Combine it with proper return code handling and reboot management, and you can automate the entire software lifecycle on your Windows fleet.
+The `win_package` module handles the messy reality of Windows software installation. Whether you are dealing with MSI files, EXE installers, or packages downloaded from URLs, it provides a consistent interface with provider-specific idempotency checks. Combine it with proper return code handling and reboot management, and you can automate the entire software lifecycle on your Windows fleet.
