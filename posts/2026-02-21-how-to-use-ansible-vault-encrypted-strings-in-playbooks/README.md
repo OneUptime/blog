@@ -27,7 +27,7 @@ db_password: !vault |
           ...
 ```
 
-When Ansible loads this file, it detects the `!vault` tag and decrypts the value at runtime using the provided vault password. To the playbook, `db_password` is just a regular string variable containing the plaintext secret.
+When Ansible loads this file, it detects the `!vault` tag and decrypts the value on demand at runtime using the provided vault password. To the playbook, `db_password` is just a regular string variable containing the plaintext secret.
 
 ## Creating Encrypted Strings
 
@@ -60,7 +60,7 @@ echo -n 'SensitiveAPIKey' | ansible-vault encrypt_string \
 
 ## Embedding in Playbooks
 
-You can put encrypted strings directly in a playbook:
+You can put encrypted strings directly in a playbook. The encrypted payloads below are shortened for readability; replace them with the full output from `ansible-vault encrypt_string`:
 
 ```yaml
 # deploy.yml
@@ -78,13 +78,13 @@ You can put encrypted strings directly in a playbook:
               $ANSIBLE_VAULT;1.1;AES256
               62313365396662343061393464336163383764316462616131633538343062376662
               31303031633534393463313865303732646463376565326435613066643831386237
-              6337
+              ...
 
     session_secret: !vault |
               $ANSIBLE_VAULT;1.1;AES256
               37326433653634623237386339383832653935653931323932356230363861333335
               35353465303162323932313030323864353636313632343136643464353431303233
-              3439
+              ...
 
   tasks:
     - name: Create configuration file
@@ -111,17 +111,17 @@ The more common approach is to put encrypted strings in variable files rather th
 vault_db_password: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           62313365396662343061393464336163383764316462616131633538343062376662
-          6337
+          ...
 
 vault_api_key: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           37326433653634623237386339383832653935653931323932356230363861333335
-          3439
+          ...
 
 vault_smtp_password: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           34303133626261336162643664303038393537313334393363356537616531386338
-          6662
+          ...
 ```
 
 Then reference them from a plaintext vars file:
@@ -157,7 +157,7 @@ db_admin_user: postgres
 db_admin_password: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           62313365396662343061393464336163383764316462616131633538343062376662
-          6337
+          ...
 db_max_connections: 100
 db_port: 5432
 ```
@@ -171,11 +171,11 @@ Or in role vars for higher precedence:
 db_admin_password: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           37326433653634623237386339383832653935653931323932356230363861333335
-          3439
+          ...
 db_replication_password: !vault |
           $ANSIBLE_VAULT;1.1;AES256
           34303133626261336162643664303038393537313334393363356537616531386338
-          6662
+          ...
 ```
 
 ## Using Encrypted Strings in Inventory
@@ -195,13 +195,13 @@ all:
           mysql_root_password: !vault |
                     $ANSIBLE_VAULT;1.1;AES256
                     62313365396662343061393464336163383764316462616131633538343062376662
-                    6337
+                    ...
         db-replica:
           ansible_host: 10.0.1.11
           mysql_root_password: !vault |
                     $ANSIBLE_VAULT;1.1;AES256
                     37326433653634623237386339383832653935653931323932356230363861333335
-                    3439
+                    ...
 ```
 
 ## Encrypted Strings with Vault IDs
@@ -222,7 +222,7 @@ The output includes the vault ID in the header:
 vault_db_password: !vault |
           $ANSIBLE_VAULT;1.2;AES256;prod
           62313365396662343061393464336163383764316462616131633538343062376662
-          6337
+          ...
 ```
 
 ## Running Playbooks with Encrypted Strings
@@ -291,9 +291,9 @@ You cannot use `ansible-vault rekey` to change the password on inline encrypted 
 
 `ansible-vault view` does not work with files containing inline encrypted strings. It only works on fully vault-encrypted files.
 
-You cannot encrypt complex YAML structures (dictionaries or lists) as a single encrypted string. Each encrypted string replaces a single scalar value.
+You cannot encrypt complex YAML structures (dictionaries or lists) with `encrypt_string`. Each encrypted string replaces a single variable value.
 
-The `no_log: true` directive is important on any task that might print the decrypted value to the output. Without it, `ansible-playbook` will show the plaintext value in task output.
+The `no_log: true` directive is important on any task that might print the decrypted value to the output. Without it, `ansible-playbook` may show the plaintext value in task output or diffs.
 
 ## Summary
 
