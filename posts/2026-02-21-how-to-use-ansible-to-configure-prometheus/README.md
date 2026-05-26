@@ -198,9 +198,8 @@ scrape_configs:
 {% endfor %}
     # Drop high-cardinality labels to save storage
     metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: 'http_request_duration_seconds_bucket'
-        action: drop
+      - regex: "request_id|session_id"
+        action: labeldrop
 
   # PostgreSQL exporter
   - job_name: "postgres"
@@ -228,18 +227,21 @@ scrape_configs:
 When file-based service discovery is enabled, Ansible generates JSON target files that Prometheus watches for changes.
 
 ```json
-# roles/prometheus_config/templates/file_sd_targets.json.j2
+{# roles/prometheus_config/templates/file_sd_targets.json.j2 #}
 [
+{% set ns = namespace(first=true) %}
 {% for group_name in groups %}
 {% if group_name not in ['all', 'ungrouped', 'monitoring'] %}
 {% for host in groups[group_name] %}
+{% if not ns.first %},{% endif %}
   {
     "targets": ["{{ hostvars[host]['ansible_host'] }}:{{ node_exporter_port }}"],
     "labels": {
       "group": "{{ group_name }}",
       "hostname": "{{ host }}"
     }
-  }{% if not loop.last or not loop.parent is not defined %},{% endif %}
+  }
+{% set ns.first = false %}
 
 {% endfor %}
 {% endif %}
@@ -292,7 +294,7 @@ groups:
   - name: application
     rules:
       - alert: HighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        expr: sum by(job, instance) (rate(http_requests_total{status=~"5.."}[5m])) / sum by(job, instance) (rate(http_requests_total[5m])) > 0.05
         for: 5m
         labels:
           severity: critical
@@ -413,6 +415,8 @@ groups:
 ```
 
 ## Handlers
+
+The HTTP reload endpoint requires Prometheus to be started with `--web.enable-lifecycle`.
 
 ```yaml
 # roles/prometheus_config/handlers/main.yml
