@@ -57,8 +57,8 @@ Install everything with one command.
 # Install all collections from requirements.yml
 ansible-galaxy collection install -r requirements.yml
 
-# Force reinstall to update to the latest allowed versions
-ansible-galaxy collection install -r requirements.yml --force
+# Upgrade installed collections to the latest allowed versions
+ansible-galaxy collection install -r requirements.yml --upgrade
 
 # Install to a specific directory instead of the default
 ansible-galaxy collection install -r requirements.yml -p ./collections
@@ -66,7 +66,7 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 
 ## Version Constraint Syntax
 
-The version constraint syntax follows PEP 440-style specifiers. Here are the options you will use most.
+The version constraint syntax uses Ansible's collection range identifiers. Here are the options you will use most.
 
 ```yaml
 # requirements-version-examples.yml - version constraint patterns
@@ -83,9 +83,9 @@ collections:
   - name: amazon.aws
     version: ">=7.0.0,<8.0.0"
 
-  # Compatible release (allows patch updates within minor version)
+  # Minor-version range (allows patch updates within minor version)
   - name: kubernetes.core
-    version: "~=3.0"  # equivalent to >=3.0,<4.0
+    version: ">=3.0.0,<3.1.0"
 
   # Any version (not recommended for production)
   - name: community.crypto
@@ -138,10 +138,9 @@ ansible-galaxy collection download -r requirements.yml -p ./collection-tarballs/
 
 # Step 2: Transfer the tarballs directory to the restricted environment
 
-# Step 3: Install from local files
-ansible-galaxy collection install -r requirements.yml -p ./collections \
-  --offline \
-  --collections-path ./collection-tarballs/
+# Step 3: Install from the downloaded requirements file
+cd ./collection-tarballs/
+ansible-galaxy collection install -r requirements.yml -p ../collections
 ```
 
 You can also build a requirements file that points to local tarballs.
@@ -274,7 +273,7 @@ ansible-galaxy collection list
 # List collections matching a pattern
 ansible-galaxy collection list community.*
 
-# Verify collection integrity against Galaxy signatures
+# Compare the installed collection with the copy on the configured Galaxy server
 ansible-galaxy collection verify community.general
 ```
 
