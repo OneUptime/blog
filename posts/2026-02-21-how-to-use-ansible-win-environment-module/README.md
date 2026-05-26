@@ -8,16 +8,16 @@ Description: Set and manage Windows environment variables at the system and user
 
 ---
 
-Environment variables on Windows control how applications find libraries, where temporary files go, what proxy servers to use, and countless other runtime settings. The `win_environment` module lets you create, update, and remove environment variables at both the machine level (affecting all users) and the user level. This is essential for application deployments, build server configuration, and standardizing server settings across your fleet.
+Environment variables on Windows control how applications find libraries, where temporary files go, what proxy servers to use, and countless other runtime settings. The `win_environment` module lets you create, update, and remove environment variables at the machine level (affecting all users), user level, and process level. This is essential for application deployments, build server configuration, and standardizing server settings across your fleet.
 
 ## How Windows Environment Variables Work
 
 Windows has three scopes for environment variables:
 - **Machine (System)**: Stored in the registry under HKLM. Available to all users and services. Changes require a new process to take effect.
-- **User**: Stored under HKCU. Only available to the specific user. Also requires a new process.
+- **User**: Stored under HKCU for the user Ansible connects as. Only available to that user after they log off and on again.
 - **Process**: Only exists for the current running process. Not persistent across reboots.
 
-The `win_environment` module manages machine and user level variables, which persist across reboots.
+The `win_environment` module manages machine, user, and process level variables. Machine and user variables persist across reboots, while process variables only affect the current module process and are usually not useful for persistent configuration.
 
 ## Setting Environment Variables
 
@@ -46,11 +46,11 @@ Here is how to set environment variables at different scopes.
         level: machine
         state: present
 
-    # Set a user-level environment variable
+    # Set a user-level environment variable for the Ansible connection user
     - name: Set user-specific temp directory
       ansible.windows.win_environment:
         name: MY_APP_TEMP
-        value: C:\Users\svc_myapp\AppData\Local\Temp\MyApp
+        value: C:\Users\buildagent\AppData\Local\Temp\MyApp
         level: user
         state: present
 ```
@@ -302,17 +302,15 @@ Here is a playbook that configures environment variables differently based on th
 
 ## Environment Variable Scoping
 
-Here is how environment variables are resolved on Windows.
+Here is how environment variables are built and used on Windows.
 
 ```mermaid
 flowchart TD
-    A[Process requests environment variable] --> B{Check process environment}
-    B -->|Found| C[Use process value]
-    B -->|Not found| D{Check user environment}
-    D -->|Found| E[Use user value]
-    D -->|Not found| F{Check machine environment}
-    F -->|Found| G[Use machine value]
-    F -->|Not found| H[Variable not defined]
+    A[New process starts] --> B[Build process environment block]
+    B --> C[Include machine variables]
+    B --> D[Include user variables]
+    D --> E[Process reads its own environment block]
+    E --> F[Child processes inherit that block]
 
     subgraph Persistence
         I["Machine Level<br/>(HKLM Registry)"] -->|"All users + services"| J[Survives reboot]
@@ -372,7 +370,7 @@ A few things to keep in mind:
 2. **Value types**: All environment variable values are strings. If you need a number, pass it as a string (`"8080"`).
 3. **Do not store secrets**: Environment variables are readable by all processes running under the same user. Use Ansible Vault, Windows Credential Manager, or a secrets manager for sensitive data.
 4. **PATH is special**: Use `win_path` instead of `win_environment` for the PATH variable, because `win_path` handles the semicolon-delimited list correctly.
-5. **Broadcasting changes**: The module broadcasts a `WM_SETTINGCHANGE` message so that some applications (like Explorer) pick up changes without restart.
+5. **Broadcasting changes**: The module does not broadcast change events. Applications that can reload environment changes without a restart will not be notified by this module.
 
 ## Summary
 
