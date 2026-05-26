@@ -128,7 +128,7 @@ Save local changes, deploy, then reapply:
     - name: Stash local changes if any
       ansible.builtin.shell: |
         cd {{ app_dir }}
-        git stash save "ansible-deploy-$(date +%Y%m%d-%H%M%S)"
+        git stash push --include-untracked -m "ansible-deploy-$(date +%Y%m%d-%H%M%S)"
       when: git_status.stdout | length > 0
       register: stash_result
 
@@ -205,7 +205,7 @@ For servers where manual changes might be important:
 
   tasks:
     - name: Check for modifications
-      ansible.builtin.shell: "cd {{ app_dir }} && git diff --stat"
+      ansible.builtin.shell: "cd {{ app_dir }} && git diff HEAD --stat"
       register: git_diff
       changed_when: false
 
@@ -221,8 +221,8 @@ For servers where manual changes might be important:
         - name: Save diff to backup
           ansible.builtin.shell: |
             cd {{ app_dir }}
-            git diff > "{{ backup_path.path }}/changes.diff"
-            git diff --name-only | while read f; do
+            git diff HEAD > "{{ backup_path.path }}/changes.diff"
+            git diff HEAD --name-only | while read f; do
               mkdir -p "{{ backup_path.path }}/$(dirname $f)"
               cp "$f" "{{ backup_path.path }}/$f" 2>/dev/null || true
             done
@@ -312,7 +312,7 @@ The best approach is preventing conflicts in the first place:
         group: deploy
         recurse: true
 
-    - name: Add runtime directories to .gitignore
+    - name: Add runtime directories to the repository's local exclude file
       ansible.builtin.lineinfile:
         path: /opt/myapp/.git/info/exclude
         line: "{{ item }}"
@@ -335,4 +335,4 @@ The best approach is preventing conflicts in the first place:
 
 ## Summary
 
-Git conflicts during deployment are inevitable, but they are manageable with the right strategy. For most production deployments, `force: true` is the correct approach because the Git repository should be the single source of truth. Use the stash strategy when you need to preserve local modifications temporarily. Use the backup strategy when local changes might contain important manual fixes that need to be reviewed. The selective preservation pattern handles cases where certain local files (like environment configs) should survive deployments. And the best long-term approach is preventing conflicts proactively by controlling file permissions, using `.gitignore` for runtime files, and making the deployment user the only one that modifies the repository directory.
+Git conflicts during deployment are inevitable, but they are manageable with the right strategy. For most production deployments, `force: true` is the correct approach because the Git repository should be the single source of truth. Use the stash strategy when you need to preserve local modifications temporarily. Use the backup strategy when local changes might contain important manual fixes that need to be reviewed. The selective preservation pattern handles cases where certain local files (like environment configs) should survive deployments. And the best long-term approach is preventing conflicts proactively by controlling file permissions, using `.gitignore` or `.git/info/exclude` for runtime files, and making the deployment user the only one that modifies the repository directory.
