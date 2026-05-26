@@ -24,12 +24,12 @@ The simplest approach is passing environment variables directly:
     image: "{{ app_image }}:{{ app_version }}"
     state: started
     env:
-      APP_NAME: "{{ app_name }}"
+      APP_NAME: "{{ app_name | string }}"
       APP_PORT: "{{ app_port | string }}"
       DATABASE_URL: "postgresql://{{ db_user }}:{{ db_password }}@{{ db_host }}:5432/{{ db_name }}"
       REDIS_URL: "redis://{{ redis_host }}:6379/0"
-      LOG_LEVEL: "{{ log_level }}"
-      TZ: "{{ timezone }}"
+      LOG_LEVEL: "{{ log_level | string }}"
+      TZ: "{{ timezone | string }}"
 ```
 
 ## Using Environment Files
@@ -81,6 +81,7 @@ LOG_LEVEL={{ log_level }}
       SMTP_PASSWORD: "{{ vault_smtp_password }}"
       AWS_ACCESS_KEY_ID: "{{ vault_aws_access_key }}"
       AWS_SECRET_ACCESS_KEY: "{{ vault_aws_secret_key }}"
+  no_log: true
 
 - name: Deploy container with encrypted secrets
   community.docker.docker_container:
@@ -88,6 +89,7 @@ LOG_LEVEL={{ log_level }}
     image: "{{ app_image }}"
     state: started
     env: "{{ container_env }}"
+  no_log: true
 ```
 
 ## Dynamic Environment Variables
@@ -100,12 +102,12 @@ Generate variables based on the deployment environment and host:
 - name: Build dynamic environment configuration
   ansible.builtin.set_fact:
     dynamic_env:
-      HOSTNAME: "{{ inventory_hostname }}"
-      NODE_ID: "{{ groups['app_servers'].index(inventory_hostname) }}"
-      CLUSTER_NODES: "{{ groups['app_servers'] | join(',') }}"
-      INSTANCE_IP: "{{ ansible_default_ipv4.address }}"
-      DEPLOY_TIMESTAMP: "{{ ansible_date_time.iso8601 }}"
-      DEPLOY_VERSION: "{{ app_version }}"
+      HOSTNAME: "{{ inventory_hostname | string }}"
+      NODE_ID: "{{ groups['app_servers'].index(inventory_hostname) | string }}"
+      CLUSTER_NODES: "{{ groups['app_servers'] | join(',') | string }}"
+      INSTANCE_IP: "{{ ansible_default_ipv4.address | string }}"
+      DEPLOY_TIMESTAMP: "{{ ansible_date_time.iso8601 | string }}"
+      DEPLOY_VERSION: "{{ app_version | string }}"
 
 - name: Merge base and dynamic environment
   ansible.builtin.set_fact:
@@ -162,12 +164,12 @@ base_env:
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -199,7 +201,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -281,7 +283,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible tasks
 - name: Robust task execution
   hosts: all
   tasks:
