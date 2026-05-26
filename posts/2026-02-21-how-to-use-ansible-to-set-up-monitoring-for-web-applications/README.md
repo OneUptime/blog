@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Monitoring, Prometheus, Grafana, DevOps
 
-Description: Automate the setup of a complete monitoring stack for web applications using Ansible, covering Prometheus, Grafana, and alerting.
+Description: Automate the setup of a monitoring stack for web applications using Ansible, covering Prometheus, Grafana, and alerting rules.
 
 ---
 
-Running a web application without monitoring is like driving at night without headlights. You only find out something is wrong when it is already too late. Setting up a monitoring stack manually on every server is time-consuming and inconsistent. Ansible lets you deploy a complete monitoring pipeline in minutes, and redeploy it identically every time.
+Running a web application without monitoring is like driving at night without headlights. You only find out something is wrong when it is already too late. Setting up a monitoring stack manually on every server is time-consuming and inconsistent. Ansible lets you deploy a repeatable monitoring pipeline in minutes, and redeploy it identically every time.
 
-In this guide, I will walk through deploying a monitoring stack that covers system metrics, application health checks, log aggregation, and alerting. We will use Prometheus for metrics collection, Grafana for visualization, Node Exporter for system metrics, and Blackbox Exporter for endpoint monitoring.
+In this guide, I will walk through deploying a monitoring stack that covers system metrics, application health checks, and alerting rules. We will use Prometheus for metrics collection, Grafana for visualization, Node Exporter for system metrics, and Blackbox Exporter for endpoint monitoring.
 
 ## Architecture Overview
 
 ```mermaid
 flowchart TD
     A[Web Application Servers] -->|node_exporter :9100| B[Prometheus :9090]
-    A -->|app metrics :3000/metrics| B
+    A -->|app metrics :8080/metrics| B
     C[Blackbox Exporter :9115] -->|probe endpoints| A
     B -->|scrape| C
-    B --> D[Alertmanager :9093]
-    B --> E[Grafana :3000]
+    B -->|send alerts| D[Alertmanager :9093]
+    E[Grafana :3000] -->|query| B
     D -->|notifications| F[Slack / Email / PagerDuty]
 ```
 
@@ -50,6 +50,8 @@ monitoring-setup/
         main.yml
     node_exporter/
       tasks/
+        main.yml
+      handlers/
         main.yml
       defaults/
         main.yml
@@ -204,7 +206,7 @@ modules:
 
 ## Prometheus Configuration
 
-The Prometheus configuration template dynamically includes all your targets based on the inventory.
+The Prometheus configuration template dynamically includes all your targets based on the inventory. The alerting block assumes an Alertmanager instance is already listening on `localhost:9093`; deploy Alertmanager separately or add a role for it if you want notifications.
 
 ```yaml
 # roles/prometheus/defaults/main.yml
@@ -257,16 +259,18 @@ scrape_configs:
   # Blackbox Exporter for endpoint probing
   - job_name: "blackbox"
     metrics_path: /probe
-    params:
-      module: [http_2xx]
     static_configs:
-      - targets:
 {% for endpoint in monitored_endpoints %}
+      - targets:
           - "{{ endpoint.url }}"
+        labels:
+          module: "{{ endpoint.module }}"
 {% endfor %}
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
+      - source_labels: [module]
+        target_label: __param_module
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
@@ -333,7 +337,7 @@ groups:
           summary: "SSL certificate for {{ '{{ $labels.instance }}' }} expires in less than 14 days"
 
       - alert: HighResponseTime
-        expr: probe_http_duration_seconds > 2
+        expr: probe_duration_seconds > 2
         for: 5m
         labels:
           severity: warning
@@ -364,7 +368,8 @@ datasources:
 - name: Install Node Exporter on all app servers
   hosts: app_servers
   roles:
-    - node_exporter
+    - role: node_exporter
+      tags: node_exporter
 
 - name: Set up monitoring server
   hosts: monitoring
