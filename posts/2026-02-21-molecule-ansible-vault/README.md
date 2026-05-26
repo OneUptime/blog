@@ -144,7 +144,7 @@ my_role/
     main.yml          # Default variables (not encrypted)
   vars/
     main.yml          # Regular variables
-    vault.yml          # Encrypted variables
+    vault.yml          # Encrypted variables, loaded explicitly when needed
   tasks/
     main.yml
   molecule/
@@ -154,7 +154,7 @@ my_role/
       verify.yml
 ```
 
-The encrypted vars file might contain:
+The decrypted contents of the encrypted vars file might look like this:
 
 ```yaml
 # vars/vault.yml (encrypted with ansible-vault)
@@ -166,7 +166,7 @@ vault_ssl_private_key: |
   -----END PRIVATE KEY-----
 ```
 
-Your tasks reference these through regular variables:
+Your role defaults can reference these through regular variables:
 
 ```yaml
 # defaults/main.yml
@@ -176,7 +176,7 @@ api_key: "{{ vault_api_key }}"
 
 ## Strategy: Use Test-Specific Overrides
 
-A better approach for Molecule testing is to override vault variables with test values. This way, you do not need the actual vault password during testing.
+A better approach for Molecule testing is to override vault variables with test values. This way, you do not need the actual vault password during testing, as long as your Molecule converge playbook does not explicitly load the encrypted file.
 
 ```yaml
 # molecule/default/molecule.yml
@@ -307,7 +307,12 @@ You might want to verify that your vault files are properly encrypted and not ac
       register: vault_files
 
     - name: Check vault files are encrypted
-      ansible.builtin.command: "head -1 {{ item.path }}"
+      ansible.builtin.command:
+        argv:
+          - head
+          - -n
+          - "1"
+          - "{{ item.path }}"
       register: file_headers
       loop: "{{ vault_files.files }}"
       changed_when: false
