@@ -36,7 +36,7 @@ In my testing, the `-vvv` run was 12% slower than the quiet run on a 200-host pl
 
 ## Method 1: Use the minimal Callback Plugin
 
-The `minimal` callback plugin produces the least output:
+The `minimal` callback plugin produces less output than the default callback while still showing task results:
 
 ```ini
 # ansible.cfg - Use minimal output
@@ -65,15 +65,15 @@ The difference is small per task but significant across thousands of task-host c
 
 ## Method 2: Use the dense Callback Plugin
 
-The `dense` callback shows one line per host, overwriting the previous line:
+The `dense` callback from the `community.general` collection provides compact stdout output:
 
 ```ini
 # ansible.cfg - Dense output for minimal terminal noise
 [defaults]
-stdout_callback = dense
+stdout_callback = community.general.dense
 ```
 
-This is particularly efficient because it does not generate growing output. The terminal shows the current status without accumulating lines.
+This is particularly useful for reducing terminal noise in normal runs. In verbose mode, it acts the same as the default callback. Because it is not included in `ansible-core`, check that the `community.general` collection is installed before using it.
 
 ## Method 3: Use the null Callback Plugin
 
@@ -82,8 +82,10 @@ For automated runs where you only care about the exit code:
 ```ini
 # ansible.cfg - No output at all
 [defaults]
-stdout_callback = null
+stdout_callback = community.general.null
 ```
+
+Like `dense`, this callback is provided by the `community.general` collection rather than `ansible-core`.
 
 Or just redirect to /dev/null:
 
@@ -169,7 +171,7 @@ ansible-playbook deploy.yml -e debug_mode=true
 
 ## Method 6: Reduce Register Usage
 
-Every `register` stores the full result in memory and includes it in output processing:
+Every `register` stores the full result in memory. That does not automatically make normal output larger, but it can increase memory usage and can make verbose output or later `debug` output much larger:
 
 ```yaml
 # Bad: registering results you never use
@@ -209,13 +211,13 @@ Only register when you actually need the result:
 
 ## Method 7: Use changed_when: false
 
-Tasks that report as "changed" generate additional output. If a task does not actually change anything, mark it:
+Tasks that report as "changed" show up as changes in the output and can trigger handlers. If a task does not actually change anything, mark it:
 
 ```yaml
 # Without changed_when, command tasks always show as "changed"
 - name: Check disk space
   command: df -h
-  changed_when: false  # Suppresses the yellow "changed" output
+  changed_when: false  # Reports the task accurately as "ok"
 
 - name: Get current version
   command: cat /opt/app/VERSION
@@ -223,7 +225,7 @@ Tasks that report as "changed" generate additional output. If a task does not ac
   changed_when: false
 ```
 
-This is both a correctness improvement (accurate change tracking) and a slight performance improvement (less output formatting for "changed" tasks).
+This is primarily a correctness improvement: it keeps change tracking accurate and avoids triggering handlers from read-only commands.
 
 ## Method 8: Pipe Output to a File
 
@@ -233,7 +235,7 @@ If you need the output for auditing but do not want to slow down the terminal:
 # Write output to a file without terminal display
 ansible-playbook deploy.yml > /var/log/ansible/deploy-$(date +%Y%m%d-%H%M%S).log 2>&1
 
-# Or use tee if you want both file and (minimal) terminal output
+# Or use tee if you want both file and terminal output
 ansible-playbook deploy.yml 2>&1 | tee /var/log/ansible/deploy.log
 ```
 
@@ -278,7 +280,8 @@ display_ok_hosts = false
 ```ini
 # ansible-development.cfg - Detailed output for debugging
 [defaults]
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 display_skipped_hosts = true
 display_ok_hosts = true
 ```
@@ -304,6 +307,6 @@ ANSIBLE_CONFIG=ansible-development.cfg ansible-playbook deploy.yml -v
 | display_skipped_hosts: false | 3-5% faster | Low |
 | Reduce register usage | 2-4% faster | Medium |
 
-These numbers are from a 200-host playbook with 35 tasks. The percentages compound, so applying multiple techniques together yields significant improvement. On larger inventories, the impact is even greater because the output volume scales with host count.
+These numbers are from a 200-host playbook with 35 tasks. The effects can compound, but do not assume the percentages add together exactly. On larger inventories, the impact can be greater because the output volume scales with host count.
 
 Output reduction might not be the first optimization you think of, but it is one of the easiest to implement. For automated CI/CD pipelines, there is no reason to generate detailed output that no human reads. Use minimal callbacks, suppress verbose task output, and redirect to files when audit trails are needed.
