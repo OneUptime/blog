@@ -68,10 +68,10 @@ Not all Ansible modules produce diff output. The following modules support it:
 - `lineinfile` - shows the line change
 - `blockinfile` - shows the block change
 - `replace` - shows the replacement
-- `file` - shows permission and ownership changes
-- `ini_file` - shows the ini file change
+- `file` - shows permission and ownership changes, but not file contents for `absent` or `touch`
+- `community.general.ini_file` - shows the ini file change
 
-Modules like `command`, `shell`, `apt`, and `service` do not produce diff output since they do not modify files in a way that can be diffed.
+Modules like `command`, `shell`, and `systemd_service` do not produce diff output since they do not modify files in a way that can be diffed. Other non-file modules may still support diff mode when they have useful before-and-after data.
 
 ## Controlling Diff at the Task Level
 
@@ -137,9 +137,9 @@ You can enable diff mode by default in your Ansible configuration:
 
 ```ini
 # ansible.cfg
-[defaults]
+[diff]
 # Always show diffs
-diff = True
+always = True
 ```
 
 Or set it via environment variable:
@@ -190,7 +190,7 @@ The `copy` module shows diffs when using the `content` parameter:
   ansible.builtin.copy:
     content: |
       127.0.0.1 localhost
-      {{ ansible_default_ipv4.address }} {{ ansible_fqdn }} {{ ansible_hostname }}
+      10.0.1.50 web-01.example.com web-01
       10.0.1.10 db-primary.internal
       10.0.1.11 db-replica.internal
       10.0.1.20 cache-01.internal
@@ -278,8 +278,8 @@ Here is a playbook designed specifically for auditing configuration changes befo
 
     # Secrets file - suppress diff
     - name: Deploy API keys
-      ansible.builtin.copy:
-        content: "{{ vault_api_keys }}"
+      ansible.builtin.template:
+        src: api-keys.json.j2
         dest: /etc/app/api-keys.json
         mode: "0600"
       diff: false
@@ -308,14 +308,14 @@ ansible-playbook audit-config.yml --diff
 
 ## Using Diff Output in Callbacks
 
-If you want to capture diff output programmatically, you can use callback plugins. The JSON callback plugin includes diff data in its output:
+If you want to capture diff output programmatically, you can use callback plugins. The `ansible.posix.json` callback plugin includes diff data in its output:
 
 ```bash
 # Get machine-readable diff output
-ANSIBLE_STDOUT_CALLBACK=json ansible-playbook configure.yml --diff > output.json
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook configure.yml --diff > output.json
 ```
 
-The JSON output includes a `diff` key for each task that produced a diff:
+The JSON output includes a `diff` key for each task result that produced a diff. A simplified host result looks like this:
 
 ```json
 {
@@ -355,7 +355,7 @@ When a file is being created for the first time, the diff shows the entire conte
 
 ## Diff for Deleted Files
 
-When using `state: absent`, you see the entire content as removals:
+When using `state: absent` with the `file` module, Ansible reports state changes for the path, but it does not show deleted file contents. For directories, diff mode can list removed entries under `path_contents`:
 
 ```yaml
 - name: Remove old configuration
