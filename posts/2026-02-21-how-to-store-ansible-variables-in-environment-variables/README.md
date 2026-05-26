@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Environment Variable, Variable, DevOps
 
-Description: Learn how to use operating system environment variables to pass configuration and secrets into Ansible playbooks without storing them in files.
+Description: Learn how to use operating system environment variables to pass configuration and secrets into Ansible playbooks without storing them in playbook files.
 
 ---
 
-Environment variables are a universal way to pass configuration to programs without putting sensitive data in files. Ansible can both read environment variables from the control node and set them on remote hosts during task execution. This is particularly useful for secrets management, CI/CD integration, and following the twelve-factor app methodology.
+Environment variables are a universal way to pass configuration to programs without putting sensitive data in playbook files. Ansible can both read environment variables from the control node and set them on remote hosts during task execution. This is particularly useful for secrets management, CI/CD integration, and following the twelve-factor app methodology.
 
 ## Reading Environment Variables on the Control Node
 
@@ -244,8 +244,8 @@ export ANSIBLE_LOG_PATH=/var/log/ansible.log
 export ANSIBLE_HOST_KEY_CHECKING=False
 export ANSIBLE_PIPELINING=True
 export ANSIBLE_GATHERING=smart
-export ANSIBLE_FACT_CACHING=jsonfile
-export ANSIBLE_FACT_CACHING_CONNECTION=/tmp/ansible_cache
+export ANSIBLE_CACHE_PLUGIN=jsonfile
+export ANSIBLE_CACHE_PLUGIN_CONNECTION=/tmp/ansible_cache
 
 # Run Ansible - all settings are picked up from environment
 ansible-playbook site.yml
@@ -253,7 +253,7 @@ ansible-playbook site.yml
 
 ## Environment Variables for Secrets
 
-Environment variables are a common way to handle secrets without putting them in files.
+Environment variables are a common way to pass secrets into a run without putting them in playbook files.
 
 ```yaml
 # secrets-from-env.yml
@@ -352,4 +352,4 @@ Set environment variables for a specific block of tasks.
 
 ## Summary
 
-Environment variables provide a flexible, file-free way to pass configuration into Ansible. Use `lookup('env', 'VAR')` to read control node environment variables, the `environment` keyword to set variables on remote hosts, and `ANSIBLE_*` prefixed variables to configure Ansible itself. For secrets, environment variables keep sensitive data out of files and version control while integrating smoothly with CI/CD pipelines and secret management tools. The key is to always validate that required environment variables are set before proceeding with tasks that depend on them.
+Environment variables provide a flexible way to pass configuration into Ansible. Use `lookup('env', 'VAR')` to read control node environment variables, the `environment` keyword to set variables on remote hosts, and `ANSIBLE_*` prefixed variables to configure Ansible itself. For secrets, environment variables keep sensitive data out of playbook files and version control while integrating smoothly with CI/CD pipelines and secret management tools. The key is to always validate that required environment variables are set before proceeding with tasks that depend on them.
