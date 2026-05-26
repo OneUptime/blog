@@ -10,13 +10,13 @@ Description: A comprehensive guide to setting up RDS monitoring with Terraform, 
 
 Running a database without monitoring is like driving with your eyes closed. You might be fine for a while, but when something goes wrong, you will not see it coming. Amazon RDS provides several monitoring layers, from basic CloudWatch metrics to Enhanced Monitoring with OS-level stats and Performance Insights for query-level analysis. Setting all of these up in Terraform ensures monitoring is consistent and deployed automatically with your database.
 
-This guide covers every monitoring option RDS offers and how to configure each one in Terraform.
+This guide covers the main RDS monitoring options and how to configure each one in Terraform.
 
 ## The Monitoring Layers
 
 RDS monitoring comes in three tiers, each providing progressively more detail:
 
-1. **CloudWatch Metrics** - enabled by default, basic database metrics at 1-minute or 5-minute intervals
+1. **CloudWatch Metrics** - enabled by default, basic database metrics at 1-minute intervals
 2. **Enhanced Monitoring** - OS-level metrics (CPU, memory, disk, network) at up to 1-second granularity
 3. **Performance Insights** - query-level performance analysis, wait events, top SQL statements
 
@@ -205,11 +205,11 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-Enhanced Monitoring data is sent to CloudWatch Logs under the `/aws/rds/enhanced-monitoring` log group. The metrics include CPU usage per process, memory breakdown (active, inactive, buffers, cached), disk I/O per device, and network throughput.
+Enhanced Monitoring data is sent to CloudWatch Logs under the `RDSOSMetrics` log group. The metrics include CPU usage per process, memory breakdown (active, inactive, buffers, cached), disk I/O per device, and network throughput.
 
 ## Performance Insights
 
-Performance Insights is the most powerful RDS monitoring feature. It shows you exactly which queries are consuming resources and what they are waiting on:
+Performance Insights provides query-level RDS performance monitoring. It shows you exactly which queries are consuming resources and what they are waiting on:
 
 ```hcl
 resource "aws_db_instance" "main" {
@@ -228,7 +228,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-The free tier gives you 7 days of Performance Insights data. The paid tier extends to 2 years (731 days), which is worth it for production databases because it lets you compare performance across deployments and spot long-term trends.
+The free tier gives you 7 days of Performance Insights data. The paid tier extends to 2 years (731 days), which is worth it for production databases because it lets you compare performance across deployments and spot long-term trends. AWS has announced that the Performance Insights console experience and flexible retention period pricing will no longer be supported after June 30, 2026, so production databases that depend on paid Performance Insights retention should plan to use CloudWatch Database Insights Advanced mode.
 
 ## CloudWatch Log Exports
 
@@ -385,7 +385,7 @@ resource "aws_cloudwatch_dashboard" "rds" {
 
 ## Putting It All Together
 
-Here is the complete RDS instance with all monitoring enabled:
+Here is the complete RDS instance with the main monitoring features enabled:
 
 ```hcl
 resource "aws_db_instance" "main" {
@@ -426,4 +426,4 @@ resource "aws_db_instance" "main" {
 
 ## Summary
 
-RDS monitoring in Terraform involves three layers: CloudWatch metrics with alarms for alerting, Enhanced Monitoring for OS-level visibility, and Performance Insights for query-level analysis. Enable all three for production databases. Set up CloudWatch alarms for CPU, memory, storage, connections, and latency. Export database logs to CloudWatch for centralized analysis. Build dashboards that give your team a single view of database health. All of this is defined in Terraform, so every database you create gets the same monitoring treatment automatically.
+RDS monitoring in Terraform typically involves three layers: CloudWatch metrics with alarms for alerting, Enhanced Monitoring for OS-level visibility, and Performance Insights for query-level analysis. Enable all three for production databases. Set up CloudWatch alarms for CPU, memory, storage, connections, and latency. Export database logs to CloudWatch for centralized analysis. Build dashboards that give your team a single view of database health. All of this is defined in Terraform, so every database you create gets the same monitoring treatment automatically.
