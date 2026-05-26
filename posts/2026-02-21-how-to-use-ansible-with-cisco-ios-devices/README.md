@@ -289,8 +289,8 @@ For operational data that does not have a dedicated module, use `ios_command`:
                     destination:
                       address: 10.0.10.0
                       wildcard_bits: 0.0.0.255
-                    destination_port:
-                      eq: 443
+                      port_protocol:
+                        eq: "443"
 
                   - sequence: 20
                     grant: permit
@@ -301,8 +301,8 @@ For operational data that does not have a dedicated module, use `ios_command`:
                     destination:
                       address: 10.0.10.0
                       wildcard_bits: 0.0.0.255
-                    destination_port:
-                      eq: 80
+                      port_protocol:
+                        eq: "80"
 
                   - sequence: 100
                     grant: deny
@@ -433,11 +433,11 @@ You can use Ansible to verify that devices comply with your standards:
 
 ## Tips for IOS Automation
 
-**Always use `save_when: modified`.** This saves the running config to startup config only when changes were actually made. Without this, your changes survive a reboot only until the next power cycle.
+**Use `save_when` intentionally.** `save_when: modified` saves the running config to startup config when the running config differs from startup config. Use `save_when: changed` when you only want to save after the task made a change. Without saving, your changes survive only until the next reload.
 
 **Handle the enable password.** IOS requires an enable password to enter privileged mode. Set `ansible_become_method: enable` and provide the enable password.
 
-**Watch for prompts.** Some IOS commands trigger confirmation prompts (like `crypto key generate rsa`). The `ios_command` module has a `prompt` parameter to handle these.
+**Watch for prompts.** Some IOS commands trigger confirmation prompts. With `ios_command`, pass a command dictionary that includes `command`, `prompt`, and `answer` to handle these.
 
 **Use resource modules when possible.** Resource modules like `ios_interfaces`, `ios_vlans`, and `ios_acls` provide a structured, declarative approach. Use `ios_config` for settings that do not have a dedicated resource module.
 
