@@ -29,7 +29,9 @@ branches:
         strict: true
         contexts:
           - "ansible-lint"
-          - "molecule-tests"
+          - "molecule-tests (common)"
+          - "molecule-tests (nginx)"
+          - "molecule-tests (postgresql)"
           - "syntax-check"
       enforce_admins: true
       restrictions: null
@@ -71,6 +73,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   ansible-lint:
     runs-on: ubuntu-latest
@@ -98,6 +104,7 @@ jobs:
           done
 
   molecule-tests:
+    name: molecule-tests (${{ matrix.role }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -107,7 +114,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install molecule molecule-docker ansible-core
+      - run: pip install molecule "molecule-plugins[docker]" ansible-core
       - run: molecule test
         working-directory: roles/${{ matrix.role }}
 
@@ -258,7 +265,7 @@ graph TD
     H --> D
     G -->|No| I[Reviewer approves]
     I --> J{Production inventory changed?}
-    J -->|Yes| K[Second reviewer required]
+    J -->|Yes| K[Senior reviewer required]
     J -->|No| L[Merge to main]
     K --> L
 ```
@@ -301,7 +308,7 @@ ansible-playbook playbooks/site.yml \
   --check --diff 2>&1 > dry-run-report.txt
 ```
 
-Attach the dry-run output to the PR as a comment so reviewers can see exactly what will change on production servers.
+Attach the dry-run output to the PR as a comment so reviewers can see what supported modules report they would change on production servers.
 
 ## Summary
 
