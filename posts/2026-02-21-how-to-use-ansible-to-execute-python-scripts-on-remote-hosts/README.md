@@ -8,7 +8,7 @@ Description: Learn how to run Python scripts on remote hosts using Ansible with 
 
 ---
 
-Python is everywhere in the DevOps world, and if you are using Ansible, Python is already installed on your managed nodes (Ansible itself requires it). This makes running Python scripts on remote hosts a natural fit. Whether you are deploying data processing scripts, running health checks, or executing migration tools, Ansible gives you several ways to get Python code running on remote machines.
+Python is everywhere in the DevOps world, and most Ansible modules require Python on managed nodes to run Ansible-generated Python code. The `script` module itself does not require Python on the remote host, but your remote host still needs a Python interpreter if the script you run is Python. This makes running Python scripts on remote hosts a natural fit. Whether you are deploying data processing scripts, running health checks, or executing migration tools, Ansible gives you several ways to get Python code running on remote machines.
 
 This post covers the main approaches: transferring and executing scripts with the `script` module, running already-deployed scripts with `command`, using inline Python with `shell`, and deploying scripts with `copy` before executing them.
 
@@ -73,7 +73,7 @@ Here is how to run it across your fleet:
       when: "'WARNING' in disk_health.stdout"
 ```
 
-The `executable` parameter tells Ansible which interpreter to use. Without it, the script would be executed as a shell script.
+The `executable` parameter tells Ansible which interpreter to invoke the script with. Without it, Ansible processes the transferred script through the remote shell and relies on the script's shebang and executable behavior.
 
 ## Method 2: Deploy Then Execute with copy and command
 
@@ -113,7 +113,7 @@ When you need more control over where the script lives and how it is managed, de
       ansible.builtin.pip:
         requirements: "{{ script_dir }}/requirements.txt"
         virtualenv: "{{ script_dir }}/venv"
-        virtualenv_python: python3
+        virtualenv_command: python3 -m venv
 
     - name: Run migration script in virtualenv
       ansible.builtin.command:
@@ -137,7 +137,7 @@ For small one-off Python tasks, you can embed Python code directly in your playb
 - name: Quick Python checks
   hosts: all
   tasks:
-    - name: Get Python version and installed packages
+    - name: Get Python version and platform info
       ansible.builtin.shell:
         cmd: |
           python3 -c "
@@ -174,16 +174,16 @@ import json
 import os
 
 CONFIG = {
-    "app_name": "{{ app_name }}",
-    "environment": "{{ env }}",
-    "database_host": "{{ db_host }}",
-    "database_port": {{ db_port }},
-    "redis_host": "{{ redis_host }}",
-    "log_level": "{{ log_level | default('INFO') }}",
-    "workers": {{ worker_count | default(4) }}
+    "app_name": {{ app_name | to_json }},
+    "environment": {{ env | to_json }},
+    "database_host": {{ db_host | to_json }},
+    "database_port": {{ db_port | int }},
+    "redis_host": {{ redis_host | to_json }},
+    "log_level": {{ log_level | default('INFO') | to_json }},
+    "workers": {{ worker_count | default(4) | int }}
 }
 
-config_path = "/etc/{{ app_name }}/config.json"
+config_path = {{ ('/etc/' ~ app_name ~ '/config.json') | to_json }}
 os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
 with open(config_path, 'w') as f:
@@ -257,9 +257,9 @@ You can pass arguments to Python scripts in several ways:
 
     # Method 3: Pass JSON via stdin
     - name: Run script with JSON input via stdin
-      ansible.builtin.shell:
-        cmd: |
-          echo '{{ script_params | to_json }}' | python3 /opt/scripts/process.py --stdin
+      ansible.builtin.command:
+        cmd: python3 /opt/scripts/process.py --stdin
+        stdin: "{{ script_params | to_json }}"
       vars:
         script_params:
           input_dir: /data/raw
@@ -344,7 +344,7 @@ When your script has pip dependencies, always use a virtual environment to avoid
           - pandas
           - psycopg2-binary
         virtualenv: "{{ venv_path }}"
-        virtualenv_python: python3
+        virtualenv_command: python3 -m venv
 
     - name: Run script using virtualenv Python
       ansible.builtin.command:
