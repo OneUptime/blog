@@ -95,7 +95,7 @@ The foundation of any DR plan is reliable backups.
   tasks:
     # Snapshot RDS databases
     - name: Create RDS snapshot
-      amazon.aws.rds_snapshot:
+      amazon.aws.rds_instance_snapshot:
         db_instance_identifier: myapp-prod-db
         db_snapshot_identifier: "myapp-prod-db-dr-{{ backup_date }}"
         region: "{{ aws_region }}"
@@ -108,9 +108,9 @@ The foundation of any DR plan is reliable backups.
 
     # Copy snapshot to DR region
     - name: Copy RDS snapshot to DR region
-      amazon.aws.rds_snapshot:
-        db_snapshot_identifier: "myapp-prod-db-dr-{{ backup_date }}"
-        source_db_snapshot_identifier: "{{ rds_snapshot.db_snapshot_arn }}"
+      amazon.aws.rds_instance_snapshot:
+        id: "myapp-prod-db-dr-{{ backup_date }}"
+        source_id: "{{ rds_snapshot.db_snapshot_arn }}"
         source_region: "{{ aws_region }}"
         region: "{{ dr_region }}"
         tags:
@@ -132,7 +132,7 @@ The foundation of any DR plan is reliable backups.
 
     # Copy AMI to DR region
     - name: Copy AMI to DR region
-      amazon.aws.ec2_ami_copy:
+      community.aws.ec2_ami_copy:
         source_image_id: "{{ web_ami.image_id }}"
         source_region: "{{ aws_region }}"
         region: "{{ dr_region }}"
@@ -141,15 +141,17 @@ The foundation of any DR plan is reliable backups.
           Type: dr-backup
         wait: true
 
-    # Verify S3 cross-region replication is working
-    - name: Check S3 replication status
+    # Verify S3 cross-region replication is configured
+    - name: Check S3 replication configuration
       amazon.aws.s3_bucket_info:
-        name: myapp-data-prod
+        name_filter: myapp-data-prod
+        bucket_facts:
+          bucket_replication: true
         region: "{{ aws_region }}"
       register: s3_info
 
     - name: Clean up old snapshots (keep last 7)
-      amazon.aws.rds_snapshot:
+      amazon.aws.rds_instance_snapshot:
         db_snapshot_identifier: "{{ item }}"
         region: "{{ dr_region }}"
         state: absent
@@ -168,6 +170,7 @@ Pre-provision the DR infrastructure so it is ready when needed.
   gather_facts: false
 
   vars:
+    primary_region: us-east-1
     dr_region: us-west-2
     project: myapp
     env: dr
@@ -222,6 +225,7 @@ Pre-provision the DR infrastructure so it is ready when needed.
       amazon.aws.rds_instance:
         db_instance_identifier: myapp-dr-replica
         source_db_instance_identifier: "arn:aws:rds:us-east-1:123456789012:db:myapp-prod-db"
+        source_region: "{{ primary_region }}"
         db_instance_class: db.r5.large
         region: "{{ dr_region }}"
         multi_az: false
@@ -307,7 +311,7 @@ This is the playbook you run when disaster strikes. It should be tested regularl
         instance_type: t3.large
         image_id: "{{ dr_web_ami_id }}"
         key_name: deploy-key-dr
-        vpc_subnet_id: "{{ dr_public_subnets[item | int % 2] }}"
+        vpc_subnet_id: "{{ dr_public_subnets.results[item | int % 2].subnet.id }}"
         security_group: "{{ project }}-dr-web-sg"
         region: "{{ dr_region }}"
         tags:
@@ -325,7 +329,7 @@ This is the playbook you run when disaster strikes. It should be tested regularl
         instance_type: t3.xlarge
         image_id: "{{ dr_app_ami_id }}"
         key_name: deploy-key-dr
-        vpc_subnet_id: "{{ dr_private_subnets[item | int % 2] }}"
+        vpc_subnet_id: "{{ dr_private_subnets.results[item | int % 2].subnet.id }}"
         security_group: "{{ project }}-dr-app-sg"
         region: "{{ dr_region }}"
         tags:
@@ -339,12 +343,11 @@ This is the playbook you run when disaster strikes. It should be tested regularl
 
     # Step 3: Register instances with DR load balancer
     - name: Register web servers with DR target group
-      community.aws.elb_target_group:
-        name: "{{ project }}-dr-web-tg"
+      community.aws.elb_target:
+        target_group_name: "{{ project }}-dr-web-tg"
+        target_id: "{{ item.instances[0].instance_id }}"
+        target_port: 80
         region: "{{ dr_region }}"
-        targets:
-          - Id: "{{ item.instances[0].instance_id }}"
-            Port: 80
         state: present
       loop: "{{ dr_web_servers.results }}"
       loop_control:
@@ -406,7 +409,7 @@ Once the primary region is restored, fail back.
 ---
 - name: Fail back to primary region
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
 
   vars:
     primary_region: us-east-1
@@ -416,7 +419,7 @@ Once the primary region is restored, fail back.
   tasks:
     # Sync data from DR back to primary
     - name: Create RDS snapshot from DR database
-      amazon.aws.rds_snapshot:
+      amazon.aws.rds_instance_snapshot:
         db_instance_identifier: myapp-dr-replica
         db_snapshot_identifier: "failback-snapshot-{{ ansible_date_time.iso8601_basic_short }}"
         region: "{{ dr_region }}"
@@ -426,18 +429,19 @@ Once the primary region is restored, fail back.
 
     # Restore primary database from snapshot
     - name: Copy snapshot to primary region
-      amazon.aws.rds_snapshot:
-        db_snapshot_identifier: "failback-snapshot-{{ ansible_date_time.iso8601_basic_short }}"
-        source_db_snapshot_identifier: "{{ failback_snapshot.db_snapshot_arn }}"
+      amazon.aws.rds_instance_snapshot:
+        id: "failback-snapshot-{{ ansible_date_time.iso8601_basic_short }}"
+        source_id: "{{ failback_snapshot.db_snapshot_arn }}"
         source_region: "{{ dr_region }}"
         region: "{{ primary_region }}"
         state: present
         wait: true
 
     # Restore primary RDS from snapshot
-    - name: Restore primary database
+    - name: Restore replacement primary database
       amazon.aws.rds_instance:
-        db_instance_identifier: myapp-prod-db
+        db_instance_identifier: myapp-prod-db-restored
+        creation_source: snapshot
         db_snapshot_identifier: "failback-snapshot-{{ ansible_date_time.iso8601_basic_short }}"
         db_instance_class: db.r5.xlarge
         region: "{{ primary_region }}"
@@ -518,6 +522,7 @@ Test your DR plan regularly. This playbook runs a non-destructive DR test.
     - name: Restore test database from DR snapshot
       amazon.aws.rds_instance:
         db_instance_identifier: dr-test-db
+        creation_source: snapshot
         db_snapshot_identifier: "{{ dr_snapshots.snapshots[0].db_snapshot_identifier }}"
         db_instance_class: db.r5.large
         region: "{{ dr_region }}"
