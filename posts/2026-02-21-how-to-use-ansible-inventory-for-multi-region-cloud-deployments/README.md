@@ -198,10 +198,10 @@ This automatically creates groups like `region_us_east_1`, `role_webserver`, and
 
 ```bash
 # All webservers in EU
-ansible-playbook deploy.yml --limit 'role_webserver:&region_eu_west_1'
+ansible-playbook -i inventory/aws_ec2.yml deploy.yml --limit 'role_webserver:&region_eu_west_1'
 
 # All production instances in Asia Pacific
-ansible-playbook deploy.yml --limit 'env_production:&region_ap_southeast_1'
+ansible-playbook -i inventory/aws_ec2.yml deploy.yml --limit 'env_production:&region_ap_southeast_1'
 ```
 
 ## Multi-Cloud Multi-Region
