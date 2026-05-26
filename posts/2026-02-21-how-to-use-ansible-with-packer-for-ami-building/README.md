@@ -39,8 +39,8 @@ graph TD
 ```bash
 # Install Packer on Ubuntu/Debian
 
-wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
 sudo apt update && sudo apt install packer
 
 # Verify installation
@@ -196,7 +196,7 @@ Write the playbook that Packer will execute during the image build.
     # Install CloudWatch agent for monitoring
     - name: Download CloudWatch agent
       get_url:
-        url: "https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb"
+        url: "https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb"
         dest: /tmp/amazon-cloudwatch-agent.deb
 
     - name: Install CloudWatch agent
@@ -309,7 +309,7 @@ jobs:
 
       - name: Install Ansible
         run: |
-          pip install ansible==8.7.0
+          python3 -m pip install ansible==13.4.0
           ansible-galaxy collection install -r ansible/requirements.yml
 
       - name: Set up Packer
@@ -318,16 +318,19 @@ jobs:
           version: 'latest'
 
       - name: Initialize Packer
-        run: packer init packer/web-server.pkr.hcl
+        working-directory: packer
+        run: packer init web-server.pkr.hcl
 
       - name: Validate Packer template
-        run: packer validate packer/web-server.pkr.hcl
+        working-directory: packer
+        run: packer validate web-server.pkr.hcl
 
       - name: Build AMI
+        working-directory: packer
         run: |
           packer build \
             -var "app_version=${{ github.event.inputs.app_version || 'latest' }}" \
-            packer/web-server.pkr.hcl
+            web-server.pkr.hcl
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -349,7 +352,7 @@ jobs:
 
 ## Using Ansible Roles with Packer
 
-If you already have Ansible roles, reference them in your Packer template.
+If you install Ansible roles or collections from a requirements file during the Packer build, reference the Galaxy file and installation paths in your Packer template.
 
 ```hcl
 # Reference roles from your existing Ansible structure
