@@ -8,7 +8,7 @@ Description: Learn when and how to use YAML folded strings in Ansible playbooks 
 
 ---
 
-Folded strings (indicated by `>`) are one of YAML's most useful features for Ansible playbooks. They let you write long strings across multiple lines in your YAML file while collapsing them into a single line at runtime. This makes playbooks more readable without changing the behavior of your automation.
+Folded strings (indicated by `>`) are one of YAML's most useful features for Ansible playbooks. They let you write long strings across multiple lines in your YAML file while folding most single line breaks into spaces at runtime. This makes playbooks more readable without changing the behavior of your automation.
 
 ## How Folded Strings Work
 
@@ -123,7 +123,7 @@ keep: >+
 
 ```
 
-For `when` conditions and command arguments, always use `>-` (fold and strip) to avoid a trailing newline that could cause issues.
+For `when` conditions and command arguments, prefer `>-` (fold and strip) when you want one logical line with no trailing newline.
 
 ## Folded vs Literal: When to Use Each
 
@@ -151,8 +151,8 @@ script_content: |
 ## Common Pitfalls
 
 ```yaml
-# Pitfall 1: Forgetting >- causes trailing newline in commands
-# This adds a newline at the end which some tools do not like
+# Pitfall 1: Forgetting >- leaves a trailing newline in the scalar value
+# This can matter when the value must not include a final newline
 bad_cmd: >
   some command --flag
 
