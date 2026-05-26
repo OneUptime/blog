@@ -239,13 +239,13 @@ Notice the nested default on the `workers` line: it first tries `server_workers`
 
 ## Common Mistakes to Avoid
 
-One frequent error is quoting the default value when you want a number:
+One frequent error is quoting the default value when the rendered result will be parsed as YAML or another format that distinguishes strings from numbers:
 
 ```jinja2
-{# Wrong - this produces the string "80" instead of the number 80 #}
+{# Wrong for YAML output - this produces the string "80" instead of the number 80 #}
 port: {{ port | default("80") }}
 
-{# Right - this produces the number 80 #}
+{# Right for YAML output - this produces an unquoted numeric value #}
 port: {{ port | default(80) }}
 ```
 
