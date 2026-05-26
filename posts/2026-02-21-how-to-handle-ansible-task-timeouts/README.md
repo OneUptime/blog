@@ -14,7 +14,7 @@ Ansible provides several mechanisms to handle task timeouts. Understanding them 
 
 ## The async and poll Mechanism
 
-The primary way to set a timeout on an individual Ansible task is by using `async` and `poll`. The `async` parameter sets the maximum time (in seconds) that a task is allowed to run. The `poll` parameter controls how often Ansible checks if the task is done.
+A common way to set a timeout on a long-running Ansible task is by using `async` and `poll`. The `async` parameter sets the maximum time (in seconds) that a task is allowed to run, if the action supports async execution. The `poll` parameter controls how often Ansible checks if the task is done.
 
 This example runs a long package update with a 5-minute timeout:
 
@@ -87,7 +87,7 @@ This approach is useful when you need to timeout a specific command within a lar
         # timeout will kill curl after 10 seconds
         timeout 10 curl -s -o /dev/null -w "%{http_code}" https://api.example.com/health
       register: api_check
-      failed_when: api_check.rc != 0
+      failed_when: api_check.rc != 0 or api_check.stdout != "200"
 
     - name: Run database migration with timeout
       ansible.builtin.shell: |
@@ -122,9 +122,7 @@ This playbook attempts a deployment and cleans up if it times out:
           register: pull_result
 
         - name: Restart application service
-          ansible.builtin.systemd:
-            name: myapp
-            state: restarted
+          ansible.builtin.command: systemctl restart myapp
           async: 120
           poll: 5
 
@@ -153,7 +151,7 @@ This playbook attempts a deployment and cleans up if it times out:
 
 ## Setting Default Timeouts in ansible.cfg
 
-You can set default timeout values in your `ansible.cfg` to apply baseline timeouts across all tasks.
+You can set default timeout values in your `ansible.cfg` to apply baseline connection timeouts and, on current Ansible versions, a default task action timeout.
 
 ```ini
 # ansible.cfg - Default timeout settings
@@ -161,8 +159,12 @@ You can set default timeout values in your `ansible.cfg` to apply baseline timeo
 # Timeout for connection plugins (SSH, WinRM, etc.)
 timeout = 30
 
-# Default async timeout when using async without specifying a value
-# Note: This does not automatically make all tasks async
+# Maximum time for each task action to execute.
+# The default is 0, which means no task action timeout.
+task_timeout = 300
+
+# Default poll interval for async tasks when poll is not specified
+poll_interval = 15
 
 [persistent_connection]
 # Timeout for persistent connections (network devices)
@@ -170,7 +172,7 @@ command_timeout = 30
 connect_timeout = 30
 ```
 
-These settings affect connection-level timeouts, not individual task execution times. For task-level timeouts, you still need `async`/`poll` on each task.
+The `timeout`, `command_timeout`, and `connect_timeout` settings affect connection-level timeouts, not individual task execution times. For task-level timeouts, use the `timeout` task keyword, `task_timeout` in `ansible.cfg`, or `async`/`poll` on tasks where async execution is the right fit.
 
 ## Timeout Patterns for Common Scenarios
 
@@ -208,13 +210,23 @@ This playbook shows timeouts tuned for various real-world tasks:
       delay: 10         # Every 10 seconds
       # Total max wait: 5 minutes
 
-    # File transfers: depends on file size and network
-    - name: Copy large artifact to server
+    # Downloads: depends on file size and network
+    - name: Download large artifact to server
+      ansible.builtin.command: >
+        curl -fL --max-time 900
+        -o /opt/releases/myapp-2.0.tar.gz
+        https://artifacts.example.com/myapp-2.0.tar.gz
+      args:
+        creates: /opt/releases/myapp-2.0.tar.gz
+      async: 900        # 15 minutes for large downloads
+      poll: 30
+
+    # Local-to-remote file copies are not a good fit for async;
+    # Ansible's copy module does not perform a background file transfer.
+    - name: Copy local artifact to server
       ansible.builtin.copy:
         src: /builds/myapp-2.0.tar.gz
         dest: /opt/releases/myapp-2.0.tar.gz
-      async: 900        # 15 minutes for large files
-      poll: 30
 
     # Script execution: should be bounded
     - name: Run data processing script
