@@ -8,7 +8,7 @@ Description: Learn how to build Ansible roles that work across multiple operatin
 
 ---
 
-When you manage a mixed environment with Debian, Ubuntu, CentOS, Rocky Linux, and maybe even FreeBSD or macOS, you need roles that adapt to whatever platform they land on. Package names differ, service managers vary, file paths change, and sometimes entire workflows are different between operating systems. This post shows you how to build platform-specific Ansible roles that handle these differences cleanly.
+When you manage a mixed environment with Debian, Ubuntu, CentOS Stream, Rocky Linux, and maybe even FreeBSD or macOS, you need roles that adapt to whatever platform they land on. Package names differ, service managers vary, file paths change, and sometimes entire workflows are different between operating systems. This post shows you how to build platform-specific Ansible roles that handle these differences cleanly.
 
 ## The Core Pattern: OS-Specific Variables
 
@@ -29,7 +29,7 @@ nginx_default_site: /etc/nginx/sites-enabled/default
 
 ```yaml
 # roles/nginx/vars/RedHat.yml
-# Variables for RHEL-based systems (CentOS, Rocky, Alma, Fedora)
+# Variables for RHEL-based systems (CentOS Stream, Rocky, Alma, Fedora)
 ---
 nginx_package_name: nginx
 nginx_config_dir: /etc/nginx
@@ -113,24 +113,26 @@ Sometimes the differences between platforms go beyond variable values. Different
     name:
       - curl
       - gnupg2
-    state: present
-
-- name: Add Nginx signing key
-  ansible.builtin.apt_key:
-    url: https://nginx.org/keys/nginx_signing.key
+      - ca-certificates
+      - python3-debian
     state: present
 
 - name: Add Nginx repository
-  ansible.builtin.apt_repository:
-    repo: "deb http://nginx.org/packages/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} nginx"
+  ansible.builtin.deb822_repository:
+    name: nginx
+    types: deb
+    uris: "https://nginx.org/packages/{{ ansible_distribution | lower }}"
+    suites: "{{ ansible_distribution_release }}"
+    components: nginx
+    signed_by: https://nginx.org/keys/nginx_signing.key
     state: present
-    filename: nginx
+  register: nginx_repo
 
 - name: Install Nginx
   ansible.builtin.apt:
     name: nginx
     state: present
-    update_cache: yes
+    update_cache: "{{ nginx_repo.changed }}"
 ```
 
 ```yaml
@@ -138,13 +140,13 @@ Sometimes the differences between platforms go beyond variable values. Different
 # RHEL-specific: enable EPEL and install from there
 ---
 - name: Install EPEL repository
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: epel-release
     state: present
   when: ansible_distribution != "Fedora"
 
 - name: Install Nginx
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: nginx
     state: present
 
@@ -300,7 +302,7 @@ The `service` module automatically detects whether the system uses systemd, sysv
 # roles/myapp/handlers/main.yml
 ---
 - name: Reload systemd
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     daemon_reload: yes
   when: ansible_service_mgr == "systemd"
   listen: "daemon config changed"
@@ -319,7 +321,7 @@ Here is a full example of a cross-platform Node.js installation role:
 ```yaml
 # roles/nodejs/defaults/main.yml
 ---
-nodejs_version: "20"
+nodejs_version: "22"
 ```
 
 ```yaml
@@ -327,7 +329,7 @@ nodejs_version: "20"
 ---
 nodejs_package: "nodejs"
 nodejs_repo_key_url: "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key"
-nodejs_repo: "deb https://deb.nodesource.com/node_{{ nodejs_version }}.x nodistro main"
+nodejs_repo_url: "https://deb.nodesource.com/node_{{ nodejs_version }}.x"
 ```
 
 ```yaml
@@ -366,24 +368,25 @@ nodejs_repo_url: "https://rpm.nodesource.com/setup_{{ nodejs_version }}.x"
 ---
 - name: Install prerequisites
   ansible.builtin.apt:
-    name: [ca-certificates, curl, gnupg]
-    state: present
-
-- name: Add NodeSource GPG key
-  ansible.builtin.apt_key:
-    url: "{{ nodejs_repo_key_url }}"
+    name: [ca-certificates, curl, gnupg, python3-debian]
     state: present
 
 - name: Add NodeSource repository
-  ansible.builtin.apt_repository:
-    repo: "{{ nodejs_repo }}"
+  ansible.builtin.deb822_repository:
+    name: nodesource
+    types: deb
+    uris: "{{ nodejs_repo_url }}"
+    suites: nodistro
+    components: main
+    signed_by: "{{ nodejs_repo_key_url }}"
     state: present
+  register: nodesource_repo
 
 - name: Install Node.js
   ansible.builtin.apt:
     name: "{{ nodejs_package }}"
     state: present
-    update_cache: yes
+    update_cache: "{{ nodesource_repo.changed }}"
 ```
 
 ```yaml
@@ -395,7 +398,7 @@ nodejs_repo_url: "https://rpm.nodesource.com/setup_{{ nodejs_version }}.x"
     creates: /etc/yum.repos.d/nodesource-*.repo
 
 - name: Install Node.js
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "{{ nodejs_package }}"
     state: present
 ```
