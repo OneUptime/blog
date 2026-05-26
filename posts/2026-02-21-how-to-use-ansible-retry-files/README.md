@@ -8,11 +8,11 @@ Description: Learn how Ansible retry files work, how to configure them, and how 
 
 ---
 
-When an Ansible playbook runs against multiple hosts and some of them fail, Ansible generates a retry file. This file contains the names of the hosts that failed, so you can rerun the playbook targeting only those hosts. It is a simple but powerful mechanism for recovering from partial failures without wasting time re-running tasks on hosts that already succeeded.
+When Ansible retry files are enabled and a playbook runs against multiple hosts where some of them fail, Ansible generates a retry file. This file contains the names of the hosts that failed, so you can rerun the playbook targeting only those hosts. It is a simple but powerful mechanism for recovering from partial failures without wasting time re-running tasks on hosts that already succeeded.
 
 ## How Retry Files Work
 
-When a playbook finishes and at least one host has failed, Ansible writes a `.retry` file in the same directory as the playbook (by default). The file is named after the playbook with a `.retry` extension.
+When retry files are enabled and a playbook finishes with at least one failed or unreachable host, Ansible writes a `.retry` file in the same directory as the playbook by default. The file is named after the playbook with a `.retry` extension.
 
 For example, running `deploy.yml` against 10 hosts where 2 fail produces:
 
@@ -28,7 +28,7 @@ For example, running `deploy.yml` against 10 hosts where 2 fail produces:
 # web8.example.com : ok=0    changed=0    unreachable=1    failed=0
 # ...
 #
-# Retry limit reached: deploy.retry
+# to retry, use: --limit @/path/to/deploy.retry
 
 # The retry file contains just the failed/unreachable hosts:
 cat deploy.retry
@@ -43,7 +43,7 @@ You control retry files through `ansible.cfg`:
 ```ini
 # ansible.cfg - Retry file configuration options
 [defaults]
-# Enable or disable retry file creation (default: True in older versions, False in newer)
+# Enable or disable retry file creation (default: False in current Ansible versions)
 retry_files_enabled = True
 
 # Directory where retry files are saved
@@ -79,7 +79,7 @@ You can also combine the retry file limit with other limits:
 ansible-playbook deploy.yml --limit "@deploy.retry:&webservers"
 
 # Target failed hosts, but exclude a specific host for investigation
-ansible-playbook deploy.yml --limit "@deploy.retry:!web3.example.com"
+ansible-playbook deploy.yml --limit '@deploy.retry:!web3.example.com'
 ```
 
 ## A Complete Retry Workflow
@@ -160,23 +160,26 @@ deploy:
   stage: deploy
   script:
     # Create retry directory
-    - mkdir -p /tmp/ansible-retries
+    - mkdir -p retry-files
 
     # First attempt
     - |
+      ANSIBLE_RETRY_FILES_ENABLED=True \
+      ANSIBLE_RETRY_FILES_SAVE_PATH="$CI_PROJECT_DIR/retry-files" \
       ansible-playbook deploy.yml \
-        -e version=$CI_COMMIT_TAG \
-        -e ANSIBLE_RETRY_FILES_SAVE_PATH=/tmp/ansible-retries || true
+        -e version=$CI_COMMIT_TAG || true
 
     # Check if retry file exists (meaning some hosts failed)
     - |
-      RETRY_FILE=/tmp/ansible-retries/deploy.retry
+      RETRY_FILE=retry-files/deploy.retry
       if [ -f "$RETRY_FILE" ]; then
         echo "Some hosts failed. Retrying..."
         cat "$RETRY_FILE"
         sleep 30
 
         # Second attempt on failed hosts only
+        ANSIBLE_RETRY_FILES_ENABLED=True \
+        ANSIBLE_RETRY_FILES_SAVE_PATH="$CI_PROJECT_DIR/retry-files" \
         ansible-playbook deploy.yml \
           -e version=$CI_COMMIT_TAG \
           --limit "@$RETRY_FILE"
@@ -184,7 +187,7 @@ deploy:
   artifacts:
     when: on_failure
     paths:
-      - /tmp/ansible-retries/
+      - retry-files/
     expire_in: 7 days
 ```
 
@@ -195,6 +198,7 @@ A Jenkins pipeline equivalent:
 pipeline {
     agent any
     environment {
+        ANSIBLE_RETRY_FILES_ENABLED = "True"
         ANSIBLE_RETRY_FILES_SAVE_PATH = "${WORKSPACE}/retry-files"
     }
     stages {
@@ -296,7 +300,7 @@ if __name__ == "__main__":
 
 There are a few things to watch out for when using retry files.
 
-Retry files are overwritten on each playbook run. If you run the playbook again (even without `--limit`), the previous retry file is replaced. Save a copy if you need it.
+Retry files are overwritten each time a playbook run writes a retry file. If you run the playbook again and it fails (even without `--limit`), the previous retry file is replaced. Save a copy if you need it.
 
 ```bash
 # Save a copy before rerunning
