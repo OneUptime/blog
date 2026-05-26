@@ -4,20 +4,22 @@
 validated
 
 ## Post Type
-Tutorial
+Tutorial / Guide
 
 ## Technologies Covered
 - Ansible
 - Jinja2 templates and filters
 - URL percent-encoding
-- Python urllib.parse URL quoting behavior
-- HTTP API query strings
+- YAML playbook snippets
+- Ansible `ansible.builtin.uri` and `ansible.builtin.get_url` modules
 
 ## Sources Consulted
 - Ansible `ansible.builtin.urlencode` filter documentation: https://docs.ansible.com/projects/ansible-core/2.20/collections/ansible/builtin/urlencode_filter.html
 - Jinja `urlencode` filter documentation: https://jinja.palletsprojects.com/en/stable/templates/#jinja-filters.urlencode
-- Python `urllib.parse` URL quoting documentation: https://docs.python.org/3/library/urllib.parse.html#url-quoting
-- RFC 3986, Uniform Resource Identifier (URI): Generic Syntax: https://www.rfc-editor.org/rfc/rfc3986
+- Python `urllib.parse` URL quoting documentation: https://docs.python.org/3/library/urllib.parse.html
+- Ansible `ansible.builtin.uri` module documentation: https://docs.ansible.com/ansible/latest/collections/ansible/builtin/uri_module.html
+- Ansible `ansible.builtin.get_url` module documentation: https://docs.ansible.com/ansible/latest/collections/ansible/builtin/get_url_module.html
+- YAML folded scalar behavior, YAML 1.2 specification: https://yaml.org/spec/1.2.2/
 
 ## Issues Found
 - The dictionary query string example manually encoded only values and left parameter names unencoded. Changed it to use Jinja's documented mapping support with `{{ api_params | urlencode }}`, which encodes both keys and values and joins them as a query string.
