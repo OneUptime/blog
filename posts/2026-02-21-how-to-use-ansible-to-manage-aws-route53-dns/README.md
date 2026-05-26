@@ -8,7 +8,7 @@ Description: Practical guide to managing AWS Route53 hosted zones and DNS record
 
 ---
 
-DNS management is one of those tasks that feels simple until you are managing dozens of records across multiple hosted zones. One typo in a DNS record can take down your entire application. Manual changes through the Route53 console do not leave an audit trail, and there is no easy way to replicate DNS configurations across environments.
+DNS management is one of those tasks that feels simple until you are managing dozens of records across multiple hosted zones. One typo in a DNS record can take down your entire application. Manual changes through the Route53 console can be audited with CloudTrail, but they do not give you the same version-controlled review trail as code, and there is no easy way to replicate DNS configurations across environments.
 
 Ansible solves these problems by letting you define DNS records as code. This guide covers creating hosted zones, managing various record types, using alias records, and implementing health checks with Route53.
 
@@ -16,10 +16,10 @@ Ansible solves these problems by letting you define DNS records as code. This gu
 
 You need:
 
-- Ansible 2.14+
+- Ansible 2.16+ for the current `amazon.aws` collection
 - The `amazon.aws` and `community.aws` collections
 - AWS credentials with Route53 permissions
-- Python boto3
+- Python boto3 and botocore 1.34.0+
 
 ```bash
 # Install dependencies
@@ -65,11 +65,19 @@ A hosted zone contains all DNS records for a domain. Each record maps a name to 
         comment: "Production domain managed by Ansible"
       register: zone_result
 
+    - name: Get zone NS record
+      amazon.aws.route53:
+        state: get
+        zone: example.com
+        record: example.com
+        type: NS
+      register: zone_ns
+
     - name: Show hosted zone ID and nameservers
       ansible.builtin.debug:
         msg:
           - "Zone ID: {{ zone_result.zone_id }}"
-          - "Name servers: {{ zone_result.name_servers }}"
+          - "Name servers: {{ zone_ns.nameservers }}"
 ```
 
 After creating the zone, you need to update your domain registrar with the nameservers shown in the output. Until you do that, the zone will not actually serve DNS queries.
@@ -220,6 +228,7 @@ Route53 health checks monitor your endpoints and can automatically route traffic
     resource_path: /health
     request_interval: 30
     failure_threshold: 3
+    disabled: false
     tags:
       Name: api-health-check
       Environment: production
