@@ -82,7 +82,7 @@ Rather than manually configuring sudoers on each host, use Ansible to do it. You
 
     - name: Verify passwordless sudo works
       ansible.builtin.command: sudo -n whoami
-      become: false
+      become: true
       become_user: "{{ ansible_user_name }}"
       register: sudo_test
       changed_when: false
@@ -200,7 +200,7 @@ Here is a typical playbook that relies on passwordless sudo.
         path: /etc/ssh/sshd_config
         regexp: '^#?PermitRootLogin'
         line: 'PermitRootLogin no'
-      notify: restart sshd
+      notify: restart ssh
 
   handlers:
     - name: restart fail2ban
@@ -208,9 +208,9 @@ Here is a typical playbook that relies on passwordless sudo.
         name: fail2ban
         state: restarted
 
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -222,7 +222,7 @@ Here is a quick way to verify that passwordless sudo is working on all your host
 
 ```bash
 # Test passwordless sudo on all hosts
-ansible all -m command -a "sudo -n whoami" --become=false -v
+ansible all -m command -a "sudo -n whoami" -e ansible_become=false -v
 
 # Expected output for each host:
 # web1 | CHANGED | rc=0 >>
@@ -246,7 +246,7 @@ Passwordless sudo is a trade-off between security and automation. Here is how to
   become: true
 
   tasks:
-    - name: Ensure sudo logs all commands
+    - name: Ensure sudo logs command output
       ansible.builtin.lineinfile:
         path: /etc/sudoers.d/logging
         line: "Defaults log_output"
@@ -261,19 +261,19 @@ Passwordless sudo is a trade-off between security and automation. Here is how to
         mode: '0440'
         validate: "visudo -cf %s"
 
-    - name: Restrict sudo to specific user only
+    - name: Grant passwordless sudo to the deploy user only
       ansible.builtin.copy:
         content: |
           # Only the deploy user gets passwordless sudo
           deploy ALL=(ALL) NOPASSWD: ALL
-          # All other users require a password
-          Defaults !authenticate
+          # Other sudoers entries require a password unless explicitly tagged NOPASSWD
+          Defaults authenticate
         dest: /etc/sudoers.d/ansible
         mode: '0440'
         validate: "visudo -cf %s"
 
     - name: Ensure deploy user has a strong SSH key
-      ansible.builtin.authorized_key:
+      ansible.posix.authorized_key:
         user: deploy
         key: "{{ lookup('file', '~/.ssh/deploy_key.pub') }}"
         exclusive: true
@@ -296,8 +296,8 @@ sudo visudo -cf /etc/sudoers.d/ansible
 # Check if the user can sudo without a password
 sudo -l -U deploy
 
-# Look for sudo errors in the system log
-journalctl -u sudo | tail -20
+# Look for sudo errors in the system journal
+journalctl -t sudo -n 20
 
 # Common error: "sudo: unable to open /etc/sudoers.d/ansible: Permission denied"
 # Fix: Ensure the file has 0440 permissions and is owned by root
