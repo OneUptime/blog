@@ -102,23 +102,28 @@ After merging, you can target any group from any source. A playbook that targets
 
 The tricky part is that your static hosts and cloud-discovered hosts need to be in the same logical groups. There are two ways to handle this.
 
-### Method 1: Use group_vars with a parent group
+### Method 1: Use an inventory parent group
 
-Define a parent group in your static file that includes both static and dynamically-discovered groups:
+Define your static hosts first:
 
 ```ini
 # inventory/01-static-hosts.ini
 [onprem_web]
 web-dc-01.local ansible_host=192.168.1.20
 web-dc-02.local ansible_host=192.168.1.21
+```
 
+Then define a parent group in a later inventory file that includes both static and dynamically-discovered groups:
+
+```ini
+# inventory/03-parent-groups.ini
 # Create a parent group that includes on-prem and cloud web servers
 [webservers:children]
 onprem_web
 aws_role_web
 ```
 
-The `aws_role_web` group is created by the EC2 plugin's `keyed_groups` configuration. By including it in the static file's `[webservers:children]`, you create a unified group.
+The `aws_role_web` group is created by the EC2 plugin's `keyed_groups` configuration. By including it in a later `[webservers:children]` definition, you create a unified group after both child groups exist.
 
 ### Method 2: Use the constructed plugin
 
@@ -254,21 +259,24 @@ health_check_path: /health
 
 ## Handling Variable Conflicts
 
-When a host appears in both static and dynamic inventory (unlikely but possible), or when groups from different sources define the same variable, Ansible uses the standard precedence rules. Variables from files loaded later (alphabetically) override earlier ones.
+When a host appears in both static and dynamic inventory (unlikely but possible), or when inventory sources define the same variable, Ansible uses the standard precedence rules. For variables defined in multiple inventory sources, values loaded later override earlier ones. For variables from groups at the same parent/child level, Ansible merges groups alphabetically unless you set `ansible_group_priority`.
 
 To control this explicitly:
 
-```yaml
-# inventory/group_vars/dc_web.yml
+```ini
+# inventory/04-group-priority.ini
 # Higher priority for datacenter web servers
-ansible_group_priority: 20
-http_port: 80
+[dc_web:vars]
+ansible_group_priority=20
+http_port=80
 
-# inventory/group_vars/aws_web.yml
 # Lower priority for cloud web servers
-ansible_group_priority: 10
-http_port: 8080
+[aws_web:vars]
+ansible_group_priority=10
+http_port=8080
 ```
+
+Set `ansible_group_priority` in the inventory source itself, not in `group_vars/`, because Ansible uses it while loading group variable files.
 
 ## Debugging the Combined Inventory
 
@@ -288,11 +296,11 @@ ansible-inventory -i inventory/ --host web-dc-01.dc.local
 ansible webservers -i inventory/ -m ping
 ```
 
-If a dynamic inventory plugin fails, Ansible will report the error but still load the other inventory sources (unless `strict: true` is set in the plugin config).
+If a dynamic inventory plugin cannot parse a source, Ansible reports the error and continues trying the other inventory sources in the directory. Plugin options such as `strict: true` can make invalid constructed expressions fatal for that source, so fix plugin errors before relying on a partial inventory.
 
 ## Tips for Production Use
 
-1. **Number your files.** `01-static.ini`, `02-aws.yml`, `03-constructed.yml`. The alphabetical ordering determines load and merge priority.
+1. **Number your files.** `01-static.ini`, `02-aws_ec2.yml`, `03-constructed.yml`. The alphabetical ordering determines load and merge priority.
 
 2. **Use the constructed plugin for unification.** Do not rely on naming conventions alone. The constructed plugin explicitly defines which dynamic groups map to which unified groups.
 
