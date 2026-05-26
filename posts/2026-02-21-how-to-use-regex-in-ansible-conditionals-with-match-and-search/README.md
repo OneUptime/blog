@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Regex, Conditional, Jinja2, Automation
 
-Description: Learn how to use regex_match and regex_search in Ansible when conditionals for pattern matching in strings and command output.
+Description: Learn how to use match, search, and regex_search in Ansible when conditionals for pattern matching in strings and command output.
 
 ---
 
@@ -323,7 +323,7 @@ Watch out for YAML quoting issues. Backslashes in regex need careful handling in
     - name: Use single quotes for regex (recommended)
       ansible.builtin.debug:
         msg: "Matches digit pattern"
-      when: "'abc123' is regex('^[a-z]+\\d+$')"
+      when: '"abc123" is regex("^[a-z]+\\d+$")'
 
     # You can also use the > or | YAML block styles
     - name: Block style avoids quoting issues
