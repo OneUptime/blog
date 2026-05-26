@@ -72,7 +72,7 @@ server {{ server_ip }}:8080;
 {% endfor %}
 ```
 
-The difference is significant. The `set_fact` runs once, and each template render just iterates over a simple list of strings instead of performing expensive hostvars lookups.
+The difference is significant. The `set_fact` runs once for the current play batch, and each template render just iterates over a simple list of strings instead of performing expensive hostvars lookups.
 
 ## Problem: Deeply Nested Conditionals
 
@@ -108,11 +108,11 @@ config_option = standard
 {% endif %}
 ```
 
-The flattened version is easier to read and evaluates faster because it avoids redundant condition checking when outer conditions are false.
+The flattened version is easier to read and keeps each condition in one place, which avoids repeating the same checks as the template grows.
 
 ## Problem: Large Templates with Many Includes
 
-Jinja2 `include` statements add overhead because each include requires loading and parsing another file:
+Jinja2 `include` statements add overhead because each include renders another template:
 
 ```jinja2
 {# Bad: many includes for small fragments #}
@@ -127,7 +127,7 @@ Jinja2 `include` statements add overhead because each include requires loading a
 
 ### Solution: Consolidate Small Templates
 
-If the included files are small (under 50 lines each), consider merging them into a single template. The file I/O savings from avoiding multiple reads outweigh the organizational benefit of separate files.
+If the included files are small (under 50 lines each), consider merging them into a single template. The rendering overhead saved by avoiding many small includes can outweigh the organizational benefit of separate files.
 
 For templates that must remain modular, use Jinja2 macros instead of includes:
 
@@ -158,11 +158,11 @@ String concatenation inside loops is expensive in Jinja2:
 
 ```jinja2
 {# Bad: string building in a loop #}
-{% set server_list = "" %}
+{% set ns = namespace(server_list="") %}
 {% for server in app_servers %}
-{% set server_list = server_list + server + "," %}
+{% set ns.server_list = ns.server_list + server + "," %}
 {% endfor %}
-servers = {{ server_list.rstrip(",") }}
+servers = {{ ns.server_list.rstrip(",") }}
 ```
 
 ### Solution: Use join Filter
@@ -291,7 +291,7 @@ Profile template rendering time:
 
 ```bash
 # Enable profile_tasks and look for template task timings
-ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook deploy.yml 2>&1 | grep "template"
+ANSIBLE_CALLBACKS_ENABLED=ansible.posix.profile_tasks ansible-playbook deploy.yml 2>&1 | grep "template"
 ```
 
 If templates are consistently slow, test the rendering in isolation:
