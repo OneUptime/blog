@@ -23,7 +23,7 @@ Out of the box, Node Exporter collects a wide range of system metrics:
 - System load averages
 - Boot time and uptime
 
-You can also enable optional collectors for NTP, systemd, and hardware monitoring.
+You can also enable optional collectors for systemd, logind, and additional kernel or hardware metrics.
 
 ```mermaid
 flowchart LR
@@ -61,7 +61,7 @@ node-exporter/
 ```yaml
 # roles/node_exporter/defaults/main.yml
 
-node_exporter_version: "1.7.0"
+node_exporter_version: "1.11.1"
 node_exporter_platform: "linux-amd64"
 
 # System user
@@ -75,7 +75,7 @@ node_exporter_port: 9100
 # Textfile collector directory for custom metrics
 node_exporter_textfile_dir: "/var/lib/node_exporter/textfile_collector"
 
-# Enabled collectors (on top of defaults)
+# Collectors to enable explicitly or configure
 node_exporter_enabled_collectors:
   - systemd
   - textfile
@@ -365,7 +365,8 @@ Here is a simple cron job that writes a custom metric:
     name: "Update backup status metric"
     minute: "*/5"
     job: |
-      echo "backup_last_success_timestamp $(date +%s)" > {{ node_exporter_textfile_dir }}/backup.prom
+      echo "backup_last_success_timestamp $(date +%s)" > {{ node_exporter_textfile_dir }}/backup.prom.$$
+      mv {{ node_exporter_textfile_dir }}/backup.prom.$$ {{ node_exporter_textfile_dir }}/backup.prom
     user: "{{ node_exporter_user }}"
   become: true
 ```
