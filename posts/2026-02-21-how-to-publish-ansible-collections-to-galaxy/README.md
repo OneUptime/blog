@@ -19,7 +19,7 @@ Before you can publish, you need a namespace on Galaxy that matches the namespac
 3. Navigate to My Namespaces
 4. Create a new namespace or use your existing one
 
-Your GitHub username is automatically available as a namespace. For organization namespaces, you need to create them manually and they need to be approved by the Galaxy admins.
+Your Galaxy username is usually also available as a namespace, as long as it follows the namespace rules. Namespaces cannot contain hyphens. You can create additional namespaces manually.
 
 The namespace in your `galaxy.yml` must exactly match a namespace you own on Galaxy:
 
@@ -49,9 +49,9 @@ You can use the token in several ways:
 # Pass it directly on the command line (not recommended for shared machines)
 ansible-galaxy collection publish ./my_namespace-my_collection-1.0.0.tar.gz --api-key YOUR_TOKEN
 
-# Set it as an environment variable
-export ANSIBLE_GALAXY_TOKEN=YOUR_TOKEN
-ansible-galaxy collection publish ./my_namespace-my_collection-1.0.0.tar.gz
+# Set it as an environment variable and pass it to the command
+export GALAXY_API_KEY=YOUR_TOKEN
+ansible-galaxy collection publish ./my_namespace-my_collection-1.0.0.tar.gz --api-key "$GALAXY_API_KEY"
 
 # Store it in ansible.cfg
 ```
@@ -82,12 +82,14 @@ python3 -c "
 import yaml
 with open('galaxy.yml') as f:
     data = yaml.safe_load(f)
-    required = ['namespace', 'name', 'version', 'authors', 'description']
+    required = ['namespace', 'name', 'version', 'readme', 'authors', 'description']
     for field in required:
         if field not in data:
             print(f'Missing required field: {field}')
         else:
             print(f'{field}: {data[field]}')
+    if 'license' not in data and 'license_file' not in data:
+        print('Missing required field: license or license_file')
 "
 ```
 
@@ -145,7 +147,7 @@ After uploading, Galaxy runs an import process that:
 
 1. Extracts the tarball
 2. Validates the metadata
-3. Checks for required files (`galaxy.yml`, `MANIFEST.json`)
+3. Checks the collection manifest files (`MANIFEST.json`, `FILES.json`)
 4. Indexes module and plugin documentation
 5. Makes the collection available for download
 
@@ -186,13 +188,13 @@ Users can choose which version to install:
 
 ```bash
 # Install specific version
-ansible-galaxy collection install my_namespace.my_collection:1.0.1
+ansible-galaxy collection install my_namespace.my_collection:==1.0.1
 
 # Install latest
 ansible-galaxy collection install my_namespace.my_collection
 
 # Upgrade to latest
-ansible-galaxy collection install my_namespace.my_collection --force
+ansible-galaxy collection install my_namespace.my_collection --upgrade
 ```
 
 ## Automating Publishing with GitHub Actions
@@ -301,7 +303,7 @@ flowchart TD
 
 ## Publishing to Both Galaxy and Automation Hub
 
-If you want to publish to Red Hat Automation Hub as well, configure both servers:
+If you are certified or otherwise authorized to publish to Red Hat Automation Hub as well, configure both servers:
 
 ```ini
 # ansible.cfg - Multiple publishing targets
