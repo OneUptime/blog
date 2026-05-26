@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Git, Repository Management, Automation
 
-Description: Learn how to use Ansible to create Git repositories on local servers, GitHub, and GitLab including bare repos, initial commits, and branch protection setup.
+Description: Learn how to use Ansible to create Git repositories on local servers, GitHub, and GitLab including bare repos and initial commits.
 
 ---
 
@@ -71,7 +71,7 @@ Bare repositories are what Git servers use. They have no working directory:
 
 ## Creating a Repository with Initial Commit
 
-```yaml
+````yaml
 # playbook-init-repo.yml
 # Creates a Git repository with an initial commit including README and .gitignore
 - name: Create repository with initial content
@@ -107,7 +107,7 @@ Bare repositories are what Git servers use. They have no working directory:
           ```bash
           git clone <repository-url>
           cd {{ project_name }}
-          ```bash
+          ```
         dest: "{{ repo_path }}/README.md"
 
     - name: Create .gitignore
@@ -144,7 +144,8 @@ Bare repositories are what Git servers use. They have no working directory:
         git commit -m "Initial commit - project scaffolding"
       register: commit_result
       changed_when: "'nothing to commit' not in commit_result.stdout"
-```text
+      failed_when: commit_result.rc != 0 and 'nothing to commit' not in commit_result.stdout
+````
 
 ## Repository Creation Flow
 
@@ -156,7 +157,7 @@ graph TD
     A --> E[Gitea]
     B -->|bare| F["git init --bare"]
     B -->|working| G["git init + commit"]
-    C -->|API| H["POST /user/repos"]
+    C -->|API| H["POST /orgs/{org}/repos"]
     D -->|API| I["POST /projects"]
     E -->|API| J["POST /user/repos"]
 ```
@@ -198,7 +199,6 @@ Use the GitHub API to create repositories:
           description: "{{ item.description }}"
           private: "{{ item.private }}"
           auto_init: "{{ item.auto_init }}"
-          default_branch: main
         status_code: [201, 422]
       loop: "{{ repos_to_create }}"
       loop_control:
@@ -290,7 +290,7 @@ Create a repository with a complete project scaffold:
 
           [build-system]
           requires = ["setuptools>=61.0"]
-          build-backend = "setuptools.backends._legacy:_Backend"
+          build-backend = "setuptools.build_meta"
         dest: "{{ project_dir }}/pyproject.toml"
 
     - name: Create Dockerfile
@@ -322,6 +322,9 @@ Create a repository with a complete project scaffold:
         git config user.email "ansible@example.com"
         git add -A
         git commit -m "Initial scaffold for {{ project_name }}"
+      register: scaffold_commit_result
+      changed_when: "'nothing to commit' not in scaffold_commit_result.stdout"
+      failed_when: scaffold_commit_result.rc != 0 and 'nothing to commit' not in scaffold_commit_result.stdout
 ```
 
 ## Batch Repository Creation
@@ -356,7 +359,6 @@ Create a repository with a complete project scaffold:
           description: "{{ item.1.desc }}"
           private: "{{ item.1.private }}"
           auto_init: true
-          default_branch: main
         status_code: [201, 422]
       loop: "{{ team_repos | dict2items | subelements('value') }}"
       loop_control:
