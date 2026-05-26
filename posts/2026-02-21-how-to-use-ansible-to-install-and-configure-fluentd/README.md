@@ -8,9 +8,9 @@ Description: Automate Fluentd installation and pipeline configuration using Ansi
 
 ---
 
-Fluentd is an open-source data collector that unifies log collection across your infrastructure. Unlike Filebeat, which is tightly coupled to the Elastic ecosystem, Fluentd is vendor-neutral and supports over 500 plugins for inputs, outputs, and transformations. It can ship logs to Elasticsearch, S3, Kafka, BigQuery, and many other destinations simultaneously. Ansible makes deploying and configuring Fluentd consistent across your server fleet.
+Fluentd is an open-source data collector that unifies log collection across your infrastructure. Unlike Filebeat, which is tightly coupled to the Elastic ecosystem, Fluentd is vendor-neutral and supports over 500 plugins for inputs, outputs, and transformations. It can ship logs to destinations such as Elasticsearch, S3, Kafka, and BigQuery. Ansible makes deploying and configuring Fluentd consistent across your server fleet.
 
-This post covers building an Ansible role that installs Fluentd (via the td-agent package), configures input sources, applies filters, and routes logs to multiple outputs.
+This post covers building an Ansible role that installs Fluentd (via the supported fluent-package distribution), configures input sources, applies filters, and routes logs to multiple outputs.
 
 ## Fluentd Architecture
 
@@ -40,7 +40,7 @@ fluentd/
         configure.yml
         plugins.yml
       templates/
-        td-agent.conf.j2
+        fluentd.conf.j2
       defaults/
         main.yml
       handlers/
@@ -53,20 +53,21 @@ fluentd/
 ```yaml
 # roles/fluentd/defaults/main.yml
 
-# Installation method: "td-agent" (recommended) or "gem"
-fluentd_install_method: "td-agent"
-fluentd_version: "4"
+# Installation method: "fluent-package" (recommended) or "gem"
+fluentd_install_method: "fluent-package"
+fluentd_version: "6"
+fluentd_package_channel: "lts"
 
 # Service settings
-fluentd_user: "td-agent"
-fluentd_group: "td-agent"
-fluentd_config_dir: "/etc/td-agent"
-fluentd_config_file: "/etc/td-agent/td-agent.conf"
-fluentd_log_dir: "/var/log/td-agent"
+fluentd_user: "_fluentd"
+fluentd_group: "_fluentd"
+fluentd_config_dir: "/etc/fluent"
+fluentd_config_file: "/etc/fluent/fluentd.conf"
+fluentd_log_dir: "/var/log/fluent"
 
 # Buffer settings
 fluentd_buffer_type: "file"
-fluentd_buffer_path: "/var/log/td-agent/buffer"
+fluentd_buffer_path: "/var/log/fluent/buffer"
 fluentd_flush_interval: "5s"
 fluentd_chunk_limit_size: "8m"
 fluentd_total_limit_size: "2g"
@@ -77,12 +78,12 @@ fluentd_sources:
   - type: tail
     tag: "syslog"
     path: "/var/log/syslog"
-    pos_file: "/var/log/td-agent/pos/syslog.pos"
+    pos_file: "/var/log/fluent/pos/syslog.pos"
     parse_type: "syslog"
   - type: tail
     tag: "app.access"
     path: "/var/log/app/access.log"
-    pos_file: "/var/log/td-agent/pos/app-access.pos"
+    pos_file: "/var/log/fluent/pos/app-access.pos"
     parse_type: "json"
 
 # Forward input (for receiving from other Fluentd/Fluent Bit instances)
@@ -96,7 +97,6 @@ fluentd_outputs:
     host: "elasticsearch.example.com"
     port: 9200
     index_name: "fluentd"
-    type_name: "_doc"
 
 # Plugins to install
 fluentd_plugins:
@@ -104,7 +104,7 @@ fluentd_plugins:
   - fluent-plugin-s3
 
 # System configuration
-fluentd_workers: 2
+fluentd_workers: 1
 ```
 
 ## Installation Tasks
@@ -116,34 +116,22 @@ fluentd_workers: 2
   ansible.builtin.apt:
     name:
       - curl
-      - gnupg
     state: present
     update_cache: yes
   become: true
 
-- name: Add Treasure Data GPG key
-  ansible.builtin.apt_key:
-    url: https://packages.treasuredata.com/GPG-KEY-td-agent
-    state: present
-  become: true
-
-- name: Add td-agent repository
-  ansible.builtin.apt_repository:
-    repo: "deb http://packages.treasuredata.com/{{ fluentd_version }}/ubuntu/{{ ansible_distribution_release }}/ {{ ansible_distribution_release }} contrib"
-    state: present
-    filename: td-agent
-  become: true
-
-- name: Install td-agent
-  ansible.builtin.apt:
-    name: td-agent
-    state: present
-    update_cache: yes
+- name: Install fluent-package
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL "https://fluentd.cdn.cncf.io/sh/install-{{ ansible_distribution | lower }}-{{ ansible_distribution_release }}-fluent-package{{ fluentd_version }}-{{ fluentd_package_channel }}.sh" | sh
+  args:
+    executable: /bin/bash
+    creates: /opt/fluent/bin/fluentd
   become: true
 
 - name: Create position file directory
   ansible.builtin.file:
-    path: /var/log/td-agent/pos
+    path: /var/log/fluent/pos
     state: directory
     owner: "{{ fluentd_user }}"
     group: "{{ fluentd_group }}"
@@ -166,13 +154,13 @@ fluentd_workers: 2
 # roles/fluentd/tasks/plugins.yml
 ---
 - name: Get installed plugins
-  ansible.builtin.command: td-agent-gem list --local
+  ansible.builtin.command: fluent-gem list --local
   register: installed_plugins
   changed_when: false
   become: true
 
 - name: Install Fluentd plugins
-  ansible.builtin.command: "td-agent-gem install {{ item }}"
+  ansible.builtin.command: "fluent-gem install --no-document {{ item }}"
   loop: "{{ fluentd_plugins }}"
   when: item not in installed_plugins.stdout
   become: true
@@ -186,7 +174,7 @@ fluentd_workers: 2
 ---
 - name: Deploy Fluentd configuration
   ansible.builtin.template:
-    src: td-agent.conf.j2
+    src: fluentd.conf.j2
     dest: "{{ fluentd_config_file }}"
     owner: "{{ fluentd_user }}"
     group: "{{ fluentd_group }}"
@@ -195,11 +183,11 @@ fluentd_workers: 2
   notify: Restart fluentd
 
 - name: Validate Fluentd configuration
-  ansible.builtin.command: "td-agent --dry-run -c {{ fluentd_config_file }}"
+  ansible.builtin.command: "fluentd --dry-run -c {{ fluentd_config_file }}"
   become: true
   changed_when: false
 
-- name: Grant td-agent access to log files
+- name: Grant Fluentd access to log files
   ansible.builtin.user:
     name: "{{ fluentd_user }}"
     groups: adm
@@ -210,7 +198,7 @@ fluentd_workers: 2
 ## Fluentd Configuration Template
 
 ```text
-# roles/fluentd/templates/td-agent.conf.j2
+# roles/fluentd/templates/fluentd.conf.j2
 # Fluentd configuration - managed by Ansible
 # Do not edit this file manually
 
@@ -274,17 +262,18 @@ fluentd_workers: 2
   host {{ output.host }}
   port {{ output.port }}
   index_name {{ output.index_name }}
-  type_name {{ output.type_name | default('_doc') }}
   logstash_format true
   logstash_prefix {{ output.index_name }}
   include_tag_key true
+  suppress_type_name true
   reconnect_on_error true
   reload_on_failure true
   reload_connections false
 {% elif output.type == 's3' %}
   s3_bucket {{ output.bucket }}
   s3_region {{ output.region }}
-  path logs/{{ output.match }}/
+  path logs/{{ output.match | replace('*', 'all') }}/
+  s3_object_key_format %{path}%{time_slice}_%{index}.%{file_extension}
   time_slice_format %Y%m%d%H
   <format>
     @type json
@@ -296,10 +285,14 @@ fluentd_workers: 2
   </server>
 {% endif %}
 
-  <buffer>
+  <buffer{% if output.type == 's3' %} time{% endif %}>
     @type {{ fluentd_buffer_type }}
 {% if fluentd_buffer_type == 'file' %}
     path {{ fluentd_buffer_path }}/{{ output.match | replace('*', 'all') | replace('.', '_') }}
+{% endif %}
+{% if output.type == 's3' %}
+    timekey 1h
+    timekey_wait 10m
 {% endif %}
     flush_interval {{ fluentd_flush_interval }}
     chunk_limit_size {{ fluentd_chunk_limit_size }}
@@ -329,7 +322,7 @@ fluentd_workers: 2
 
 - name: Enable and start Fluentd
   ansible.builtin.systemd:
-    name: td-agent
+    name: fluentd
     state: started
     enabled: true
   become: true
@@ -342,7 +335,7 @@ fluentd_workers: 2
 ---
 - name: Restart fluentd
   ansible.builtin.systemd:
-    name: td-agent
+    name: fluentd
     state: restarted
   become: true
 ```
@@ -360,12 +353,12 @@ fluentd_workers: 2
       - type: tail
         tag: "nginx.access"
         path: "/var/log/nginx/access.log"
-        pos_file: "/var/log/td-agent/pos/nginx-access.pos"
+        pos_file: "/var/log/fluent/pos/nginx-access.pos"
         parse_type: "nginx"
       - type: tail
         tag: "app.logs"
         path: "/opt/myapp/logs/*.log"
-        pos_file: "/var/log/td-agent/pos/app.pos"
+        pos_file: "/var/log/fluent/pos/app.pos"
         parse_type: "json"
     fluentd_outputs:
       - match: "nginx.*"
@@ -394,9 +387,9 @@ ansible-playbook -i inventory/hosts.yml playbook.yml
 curl http://localhost:24220/api/plugins.json
 
 # View Fluentd logs
-journalctl -u td-agent -f
+journalctl -u fluentd -f
 ```
 
 ## Summary
 
-Fluentd's plugin ecosystem and vendor-neutral design make it a flexible choice for log aggregation. The Ansible role in this post handles td-agent installation, plugin management, and template-driven configuration that supports multiple input sources and output destinations. The tag-based routing system means you can send different log types to different destinations, and the buffering configuration ensures logs are not lost during network disruptions.
+Fluentd's plugin ecosystem and vendor-neutral design make it a flexible choice for log aggregation. The Ansible role in this post handles fluent-package installation, plugin management, and template-driven configuration that supports multiple input sources and output destinations. The tag-based routing system means you can send different log types to different destinations, and the buffering configuration ensures logs are not lost during network disruptions.
