@@ -410,12 +410,12 @@ Sometimes certain tasks should only run in specific environments:
 
 ## Dynamic Inventory for Cloud Environments
 
-For cloud environments, use dynamic inventory plugins instead of static files:
+For cloud environments, use dynamic inventory plugins instead of static files. The AWS EC2 inventory plugin requires the `amazon.aws` collection and its Python dependencies (`boto3` and `botocore`) on the control node:
 
 ```yaml
 # inventories/production/aws_ec2.yml - AWS dynamic inventory
 ---
-plugin: aws_ec2
+plugin: amazon.aws.aws_ec2
 regions:
   - us-east-1
   - us-west-2
