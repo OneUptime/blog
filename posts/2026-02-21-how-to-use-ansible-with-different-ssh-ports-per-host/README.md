@@ -177,7 +177,7 @@ Tell Ansible to use this SSH config:
 ```ini
 # ansible.cfg
 [ssh_connection]
-ssh_args = -F ~/.ssh/config
+ssh_args = -F ~/.ssh/config -C -o ControlMaster=auto -o ControlPersist=60s
 ```
 
 Now your inventory can be simple, since SSH handles the port mapping:
@@ -311,7 +311,7 @@ ansible-playbook -i inventory/staging site.yml
 
 ## Verifying Port Configuration
 
-Check which port Ansible will use for each host:
+Check the `ansible_port` inventory variable for hosts where you set it:
 
 ```bash
 # Show the port for a specific host
@@ -372,15 +372,15 @@ When changing SSH ports on live servers, be careful about the order of operation
 
     # Open the new port in the firewall BEFORE changing
     - name: Open new SSH port in firewall
-      ufw:
+      community.general.ufw:
         rule: allow
         port: "{{ new_ssh_port }}"
         proto: tcp
 
-    # Restart sshd (this will NOT break the current connection)
-    - name: Restart sshd
+    # Restart ssh (this will NOT break the current connection)
+    - name: Restart ssh
       service:
-        name: sshd
+        name: ssh
         state: restarted
 
     # Verify the new port works
@@ -394,7 +394,7 @@ When changing SSH ports on live servers, be careful about the order of operation
 
     # Close the old port (optional)
     - name: Close old SSH port in firewall
-      ufw:
+      community.general.ufw:
         rule: deny
         port: "22"
         proto: tcp
