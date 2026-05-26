@@ -47,11 +47,12 @@ RSA is the default, but you should use Ed25519 for new deployments. It is faster
         name: deploy
         generate_ssh_key: yes
         ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
         ssh_key_comment: "deploy@{{ inventory_hostname }}"
         state: present
 ```
 
-Here are the available key types:
+Common key types include:
 
 | Type | Parameter | Notes |
 |------|-----------|-------|
@@ -92,7 +93,7 @@ Let me explain each parameter:
 - **ssh_key_type**: The algorithm (rsa, ed25519, ecdsa).
 - **ssh_key_bits**: Key size in bits. Only relevant for RSA (use 4096) and ECDSA (256, 384, or 521). Ed25519 has a fixed size.
 - **ssh_key_comment**: A comment appended to the public key. Useful for identifying which key belongs to which server.
-- **ssh_key_file**: Path relative to the user's home directory. Defaults to `.ssh/id_rsa` for RSA keys.
+- **ssh_key_file**: Path relative to the user's home directory. Defaults to `.ssh/id_rsa` unless you set it explicitly.
 - **ssh_key_passphrase**: Passphrase to protect the private key. Empty string means no passphrase.
 
 ## SSH Key Generation Workflow
@@ -127,6 +128,7 @@ By default, the `user` module will not overwrite an existing SSH key. If you nee
         name: deploy
         generate_ssh_key: yes
         ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
         ssh_key_comment: "deploy@{{ inventory_hostname }}-rotated"
         force: yes
         state: present
@@ -137,7 +139,7 @@ By default, the `user` module will not overwrite an existing SSH key. If you nee
         msg: "New public key: {{ new_key.ssh_public_key }}"
 ```
 
-**Warning**: Using `force: yes` on the `user` module also forces other user properties. Be careful to only use it when you specifically want to regenerate the key.
+**Warning**: With `generate_ssh_key: yes`, `force: yes` overwrites the existing SSH key. The same parameter is also used with `state: absent` to force account removal on supported platforms, so be careful to only use it when you specifically want that behavior.
 
 ## Deploying the Generated Key to Other Servers
 
@@ -154,6 +156,7 @@ After generating a key on one server, you often need to deploy the public key to
         name: deploy
         generate_ssh_key: yes
         ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
         state: present
       register: deploy_user
 
@@ -196,6 +199,7 @@ Service accounts that need SSH access (like backup agents or monitoring tools) s
         create_home: yes
         generate_ssh_key: yes
         ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
         ssh_key_comment: "backup_agent@{{ inventory_hostname }}"
         state: present
       register: backup_user
@@ -222,11 +226,14 @@ When provisioning a team, generate keys for everyone in a loop:
     team_members:
       - name: alice
         key_type: ed25519
+        key_file: .ssh/id_ed25519
       - name: bob
         key_type: ed25519
+        key_file: .ssh/id_ed25519
       - name: carol
         key_type: rsa
         key_bits: 4096
+        key_file: .ssh/id_rsa
   tasks:
     - name: Create users with SSH keys
       ansible.builtin.user:
@@ -234,6 +241,7 @@ When provisioning a team, generate keys for everyone in a loop:
         generate_ssh_key: yes
         ssh_key_type: "{{ item.key_type }}"
         ssh_key_bits: "{{ item.key_bits | default(omit) }}"
+        ssh_key_file: "{{ item.key_file }}"
         ssh_key_comment: "{{ item.name }}@{{ inventory_hostname }}"
         state: present
       loop: "{{ team_members }}"
@@ -246,7 +254,7 @@ When provisioning a team, generate keys for everyone in a loop:
       when: item.ssh_public_key is defined
 ```
 
-## Collecting Keys with a Callback
+## Collecting Keys with Fetch
 
 If you need to collect all generated public keys into a central location:
 
@@ -261,6 +269,7 @@ If you need to collect all generated public keys into a central location:
         name: deploy
         generate_ssh_key: yes
         ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
         state: present
       register: deploy_key
 
@@ -301,6 +310,7 @@ Here is a playbook for periodic key rotation:
         name: "{{ rotation_user }}"
         generate_ssh_key: yes
         ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
         ssh_key_comment: "{{ rotation_user }}@{{ inventory_hostname }}-{{ ansible_date_time.date }}"
         force: yes
         state: present
