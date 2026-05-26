@@ -54,9 +54,9 @@ yamllint -f parsable .
 yamllint looks for configuration in these locations (in order):
 
 1. File specified with `-c` flag
-2. `.yamllint.yml` or `.yamllint.yaml` in the current directory
-3. `.yamllint` in the current directory
-4. `~/.config/yamllint/config`
+2. `.yamllint`, `.yamllint.yaml`, or `.yamllint.yml` in the current directory or a parent directory
+3. File referenced by the `YAMLLINT_CONFIG_FILE` environment variable
+4. `$XDG_CONFIG_HOME/yamllint/config` or `~/.config/yamllint/config`
 
 Here is a configuration optimized for Ansible projects:
 
@@ -78,11 +78,11 @@ rules:
     allowed-values: ["true", "false"]
     check-keys: false
 
-  # Comments: require space after # and 2 spaces before inline comments
+  # Comments: require space after # and at least 1 space before inline comments
   comments:
     require-starting-space: true
     ignore-shebangs: true
-    min-spaces-from-content: 2
+    min-spaces-from-content: 1
 
   # Indentation: 2 spaces, consistent sequences
   indentation:
@@ -130,10 +130,10 @@ rules:
   hyphens:
     max-spaces-after: 1
 
-  # Octal values: allow old-style octal (for file permissions like 0644)
+  # Octal values: require quoting file permissions like "0644"
   octal-values:
     forbid-implicit-octal: true
-    forbid-explicit-octal: false
+    forbid-explicit-octal: true
 
 ignore: |
   .cache/
@@ -192,10 +192,10 @@ tasks:
 
 ### Octal Values
 
-Ansible file permissions use octal notation. We need to allow explicit octal (`0644`) but forbid implicit octal (numbers starting with 0 that are not strings):
+Ansible file permissions use octal notation. For consistent results, quote file modes so Ansible receives them as strings:
 
 ```yaml
-# This should be allowed (explicit octal for file permissions)
+# This should be allowed (quoted mode for file permissions)
 - name: Set file permissions
   ansible.builtin.file:
     path: /etc/myapp/config
@@ -259,13 +259,13 @@ Add yamllint to your pre-commit configuration alongside ansible-lint:
 ---
 repos:
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         args: [-c, .yamllint.yml]
 
   - repo: https://github.com/ansible/ansible-lint
-    rev: v24.10.0
+    rev: v26.4.0
     hooks:
       - id: ansible-lint
 ```
