@@ -43,20 +43,17 @@ More commonly, you want to remove lines matching a pattern rather than an exact 
 
 This removes any line that starts with `DEPRECATED_OPTION=`, regardless of the value after the equals sign. If multiple lines match the regex, all of them are removed.
 
-Wait, that is actually not accurate. By default, `lineinfile` only removes the last line matching the regex. This is because `lineinfile` is designed for single-line operations. If you need to remove all matching lines, you need to run the task in a loop or use the `replace` module (covered later).
-
 ## Removing All Matching Lines
 
-To remove every line matching a pattern, you can use a `until` loop that keeps running until no more matches are found. But a simpler approach is to use the `replace` module with an empty string:
+To remove every line matching a pattern, use `lineinfile` with `state: absent` and a regex that matches the lines you want to delete:
 
 ```yaml
 # Remove all comment lines from a config file
-# Using replace module since lineinfile only removes the last match
 - name: Remove all comment lines
-  ansible.builtin.replace:
+  ansible.builtin.lineinfile:
     path: /etc/myapp/app.conf
-    regexp: "^#.*\n"
-    replace: ""
+    regexp: "^#.*"
+    state: absent
 ```
 
 However, if you know there is only one line to remove (which is the common case for configuration keys), `lineinfile` with `state: absent` is the right tool.
@@ -287,4 +284,4 @@ The `regex_escape` filter is important here. It escapes special regex characters
 
 ## Summary
 
-Removing lines with `lineinfile` and `state: absent` is the safe, idempotent way to clean up configuration files. Use `regexp` for pattern-based removal when you do not know the exact line content, always escape special characters in IP addresses and other patterns with `regex_escape`, create backups of critical files before removing lines, and remember that `lineinfile` only removes the last match of a regex pattern by default. For removing all instances of a pattern, use the `replace` module instead. Combining line removal with proper backup and conditional logic gives you a reliable cleanup workflow for decommissioning, hardening, and configuration migration tasks.
+Removing lines with `lineinfile` and `state: absent` is the safe, idempotent way to clean up configuration files. Use `regexp` for pattern-based removal when you do not know the exact line content, always escape special characters in IP addresses and other patterns with `regex_escape`, create backups of critical files before removing lines, and remember that `lineinfile` with `state: absent` removes matching line(s). For broader text substitutions rather than line removal, use the `replace` module instead. Combining line removal with proper backup and conditional logic gives you a reliable cleanup workflow for decommissioning, hardening, and configuration migration tasks.
