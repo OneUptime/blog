@@ -163,7 +163,7 @@ But what if you need to inject some Ansible values? Break up the raw blocks:
 
 ## Terraform HCL Files
 
-When generating Terraform configurations:
+When generating Terraform configurations, Terraform interpolation uses `${...}` rather than `{{...}}`, so raw blocks are usually not needed for Terraform syntax itself:
 
 ```jinja2
 {# templates/main.tf.j2 - Terraform config with both Ansible and HCL variables #}
@@ -175,7 +175,6 @@ provider "aws" {
   region = "{{ aws_region }}"
 }
 
-{% raw %}
 variable "environment" {
   description = "Deployment environment"
   type        = string
@@ -198,12 +197,11 @@ resource "aws_instance" "app" {
     ManagedBy   = "terraform"
   }
 }
-{% endraw %}
 ```
 
 ## Envoy Proxy Configuration
 
-Envoy uses Go template syntax in some dynamic configurations:
+Envoy access log format strings use `%...%` operators, not Jinja delimiters, so they usually do not need raw blocks unless you are embedding another template language in the same file:
 
 ```jinja2
 {# templates/envoy_lds.yml.j2 - Envoy listener config template #}
@@ -224,9 +222,7 @@ resources:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
               stat_prefix: ingress_http
               access_log_format:
-{% raw %}
-                "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% {{.upstream_host}}"
-{% endraw %}
+                "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %UPSTREAM_HOST%"
 ```
 
 ## Whitespace Control with raw
@@ -278,7 +274,7 @@ This is simpler than wrapping the entire file in a raw block.
 
 ## Performance Note
 
-Raw blocks have essentially zero performance overhead. Jinja2 simply skips parsing for the raw section and copies the text directly to the output. For very large template files where most content is in raw blocks, you might consider whether the `copy` module would be more appropriate, but for typical config files, raw blocks are perfectly fine.
+Raw blocks have negligible performance overhead in typical templates. Jinja2 treats the raw section as literal template data rather than evaluating expressions inside it. For very large template files where most content is in raw blocks, you might consider whether the `copy` module would be more appropriate, but for typical config files, raw blocks are perfectly fine.
 
 ## Testing Raw Block Output
 
@@ -292,9 +288,15 @@ Always verify that your raw blocks produce the expected output:
     dest: /tmp/test_rules.yml
 
 - name: Verify Go template syntax is preserved
-  ansible.builtin.shell: "grep -c '{{ .labels' /tmp/test_rules.yml"
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -c
+      - '[{][{] [$]labels'
+      - /tmp/test_rules.yml
   register: grep_result
   changed_when: false
+  failed_when: false
 
 - name: Confirm literal braces are present
   ansible.builtin.assert:
@@ -304,4 +306,4 @@ Always verify that your raw blocks produce the expected output:
 
 ## Summary
 
-Raw blocks are the most straightforward way to include literal `{{ }}`, `{% %}`, or `{# #}` syntax in Ansible templates. Use them whenever you generate configuration files for systems that share Jinja2's delimiter syntax, especially Prometheus, Consul Template, Terraform, Go templates, and other Jinja2-based template engines. Break up raw blocks when you need to mix Ansible variables with literal syntax, and consider using the `copy` module instead when the entire file needs no Ansible processing. Keep raw blocks as small as possible so you can still use Ansible variables for the parts that need dynamic values.
+Raw blocks are the most straightforward way to include literal `{{ }}`, `{% %}`, or `{# #}` syntax in Ansible templates. Use them whenever you generate configuration files for systems that share Jinja2's delimiter syntax, especially Prometheus, Consul Template, Go templates, and other Jinja2-based template engines. Break up raw blocks when you need to mix Ansible variables with literal syntax, and consider using the `copy` module instead when the entire file needs no Ansible processing. Keep raw blocks as small as possible so you can still use Ansible variables for the parts that need dynamic values.
