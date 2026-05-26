@@ -104,7 +104,7 @@ CPUQuota=200%
 {% endblock %}
 ```
 
-The web service template overrides the unit dependencies, environment, and exec blocks but keeps the default resource limits from the parent. The worker service overrides the resource limits with tighter constraints but does not need extra unit dependencies.
+The web service template overrides the unit dependencies, environment, and exec blocks but keeps the default resource limits from the parent. The worker service overrides the resource limits with custom constraints but does not need extra unit dependencies.
 
 ## Using It in a Playbook
 
@@ -120,6 +120,7 @@ Here is how you would use these templates in a playbook:
     service_description: "My Application Web Server"
     service_user: myapp
     service_group: myapp
+    service_workdir: /opt/myapp-web
     web_port: 8080
     database_url: "postgresql://db.internal:5432/myapp"
   tasks:
@@ -129,6 +130,11 @@ Here is how you would use these templates in a playbook:
         dest: /etc/systemd/system/myapp-web.service
       notify: Reload systemd
 
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
 - name: Deploy background workers
   hosts: worker_servers
   vars:
@@ -136,6 +142,7 @@ Here is how you would use these templates in a playbook:
     service_description: "My Application Background Worker"
     service_user: myapp
     service_group: myapp
+    service_workdir: /opt/myapp-worker
     redis_url: "redis://redis.internal:6379/0"
     queue_name: "default"
     worker_concurrency: 8
@@ -196,7 +203,8 @@ Base template:
 {% block upstream %}{% endblock %}
 
 server {
-    listen {{ listen_port | default(443) }} ssl http2;
+    listen {{ listen_port | default(443) }} ssl;
+    http2 on;
     server_name {{ server_name }};
 
     {% block ssl %}
@@ -302,7 +310,7 @@ This structure makes the inheritance hierarchy obvious to anyone reading the rol
 
 Template inheritance in Ansible has a few quirks to watch out for.
 
-First, the `{% extends %}` tag must be the first tag in the child template. You cannot put any output or other tags before it.
+First, the `{% extends %}` tag should be the first Jinja statement in the child template. Comments before it are fine, but any output before it will be rendered before the parent template and can cause confusing results.
 
 Second, the parent template path in `{% extends %}` is relative to the Ansible template search path. For roles, this is the `templates/` directory of the role. If you have templates in multiple locations, make sure the path resolves correctly.
 
