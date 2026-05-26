@@ -112,23 +112,81 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install ansible-core
-        run: pip install ansible-core
+        run: pip install ansible-core pyyaml
 
       - name: Check for collection updates
         run: |
-          echo "## Available Updates" > updates.md
-          echo "" >> updates.md
+          python3 <<'PY'
+          import json
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
 
-          while IFS= read -r line; do
-            name=$(echo "$line" | yq '.name')
-            current=$(echo "$line" | yq '.version')
-            latest=$(ansible-galaxy collection list "$name" 2>/dev/null | tail -1 | awk '{print $2}')
-            if [ "$current" != "$latest" ] && [ -n "$latest" ]; then
-              echo "- **$name**: $current -> $latest" >> updates.md
-            fi
-          done < <(yq '.collections[]' requirements.yml -o json -I 0)
+          import yaml
 
-      - name: Create update PR if needed
+          updates = []
+          requirements = yaml.safe_load(Path("requirements.yml").read_text())
+
+          for item in requirements.get("collections", []):
+              if isinstance(item, str):
+                  name = item
+                  current = "*"
+              else:
+                  name = item["name"]
+                  current = str(item.get("version", "*"))
+
+              install_path = tempfile.mkdtemp(prefix="ansible-galaxy-")
+              try:
+                  subprocess.run(
+                      [
+                          "ansible-galaxy",
+                          "collection",
+                          "install",
+                          name,
+                          "--no-deps",
+                          "--force",
+                          "-p",
+                          install_path,
+                      ],
+                      check=True,
+                      stdout=subprocess.DEVNULL,
+                  )
+                  result = subprocess.run(
+                      [
+                          "ansible-galaxy",
+                          "collection",
+                          "list",
+                          name,
+                          "-p",
+                          install_path,
+                          "--format",
+                          "json",
+                      ],
+                      check=True,
+                      capture_output=True,
+                      text=True,
+                  )
+                  installed = json.loads(result.stdout)
+                  latest = next(
+                      version
+                      for collections in installed.values()
+                      for collection_name, version in collections.items()
+                      if collection_name == name
+                  )
+              finally:
+                  shutil.rmtree(install_path)
+
+              if current != "*" and current != latest:
+                  updates.append(f"- **{name}**: {current} -> {latest}")
+
+          if updates:
+              Path("updates.md").write_text(
+                  "## Available Updates\n\n" + "\n".join(updates) + "\n"
+              )
+          PY
+
+      - name: Create update issue if needed
         run: |
           if [ -s updates.md ]; then
             gh issue create \
@@ -307,7 +365,7 @@ jobs:
           ansible-galaxy collection install \
             "${{ inputs.collection }}:==${{ inputs.version }}" --force
           # Install remaining dependencies
-          ansible-galaxy collection install -r requirements.yml
+          ansible-galaxy install -r requirements.yml
 
       - name: Run all Molecule tests
         run: |
