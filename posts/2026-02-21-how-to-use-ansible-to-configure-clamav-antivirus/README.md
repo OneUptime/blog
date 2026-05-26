@@ -14,7 +14,7 @@ In this post, I will walk through setting up ClamAV with Ansible, from installat
 
 ## Why ClamAV on Linux?
 
-ClamAV is not just for Windows virus detection. It catches Linux-specific malware, web shells, and malicious scripts. If your server handles file uploads (think email gateways, file sharing services, or web applications), scanning those files before they reach users is essential. Even if you are not processing user files, compliance frameworks like PCI DSS often require antivirus on all systems.
+ClamAV is not just for Windows virus detection. It catches Linux-specific malware, web shells, and malicious scripts. If your server handles file uploads (think email gateways, file sharing services, or web applications), scanning those files before they reach users is essential. Even if you are not processing user files, compliance frameworks like PCI DSS often require anti-malware protection on in-scope systems that are commonly affected by malware.
 
 ## Installing ClamAV
 
@@ -62,6 +62,8 @@ This playbook installs ClamAV and its update daemon on both Debian and RHEL syst
         - /var/log/clamav
         - /var/run/clamav
 ```
+
+The remaining examples use Debian and Ubuntu's default paths and service names. On RHEL, Fedora, and other EPEL-based systems, package names, configuration paths, and systemd units differ, so set variables for paths like `/etc/freshclam.conf` and `/etc/clamd.d/scan.conf` and service units such as `clamd@scan` when adapting these tasks.
 
 ## Configuring freshclam (Signature Updates)
 
@@ -281,13 +283,12 @@ This playbook deploys a scanning script and schedules it via cron:
           echo "Directories: $SCAN_DIRS" >> "$SCAN_LOG"
           echo "---" >> "$SCAN_LOG"
 
-          clamscan \
-              --recursive \
+          clamdscan \
+              --fdpass \
+              --multiscan \
               --infected \
               --move="$QUARANTINE" \
               --log="$SCAN_LOG" \
-              --max-filesize=25M \
-              --max-scansize=100M \
               $SCAN_DIRS
 
           SCAN_EXIT=$?
@@ -299,9 +300,10 @@ This playbook deploys a scanning script and schedules it via cron:
           # Send alert if infections found
           if [ $SCAN_EXIT -eq 1 ]; then
               INFECTED=$(grep "FOUND" "$SCAN_LOG" | wc -l)
-              echo "ClamAV found $INFECTED infected file(s) on $(hostname)" | \
-                  mail -s "ClamAV Alert: Infections on $(hostname)" \
-                  {{ alert_email }} < "$SCAN_LOG"
+              {
+                  echo "ClamAV found $INFECTED infected file(s) on $(hostname)"
+                  cat "$SCAN_LOG"
+              } | mail -s "ClamAV Alert: Infections on $(hostname)" {{ alert_email }}
           fi
 
           # Clean up old scan logs (keep 30 days)
@@ -345,7 +347,7 @@ This playbook configures on-access scanning for specific directories:
         path: /etc/clamav/clamd.conf
         block: |
           # On-access scanning configuration
-          OnAccessMountPath {{ on_access_dirs | join('\nOnAccessMountPath ') }}
+          OnAccessIncludePath {{ on_access_dirs | join('\nOnAccessIncludePath ') }}
           OnAccessPrevention false
           OnAccessExtraScanning true
           OnAccessExcludeUname clamav
