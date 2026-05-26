@@ -23,7 +23,7 @@ Enable services to start at boot:
   become: yes
   tasks:
     - name: Enable critical services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: yes
         state: started
@@ -69,9 +69,9 @@ When you enable a systemd service, it creates a symlink based on the `[Install]`
 graph TD
     A[multi-user.target] -->|WantedBy| B[nginx.service]
     A -->|WantedBy| C[sshd.service]
-    A -->|WantedBy| D[docker.service]
+    A -->|WantedBy| D[myapp.service]
     E[graphical.target] -->|After| A
-    F[network-online.target] -->|Before| A
+    F[network-online.target] -->|Before| D
 ```
 
 If your custom service unit has `WantedBy=multi-user.target`, enabling it creates a symlink in `/etc/systemd/system/multi-user.target.wants/`. This means it will start when the system reaches multi-user mode, which is the standard boot target for servers.
@@ -92,7 +92,7 @@ For services that need the network stack to be fully ready:
 # Wants=network-online.target
 ```
 
-The `network-online.target` is important. The plain `network.target` means the network interfaces are configured, but they might not actually have connectivity yet. `network-online.target` waits until the network is actually reachable.
+The `network-online.target` is important for services that cannot start until network configuration has completed. The plain `network.target` only means the network management stack has started; it does not guarantee configured interfaces or connectivity. `network-online.target` waits until the network manager reports the network as online, but your service should still verify any specific remote dependency it needs.
 
 ## Handling Boot Order with Dependencies
 
@@ -149,7 +149,7 @@ Ensure correct boot order through unit file dependencies:
       ansible.builtin.meta: flush_handlers
 
     - name: Enable both services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: yes
         state: started
@@ -160,7 +160,7 @@ Ensure correct boot order through unit file dependencies:
 
   handlers:
     - name: Reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: yes
 ```
 
@@ -266,14 +266,14 @@ Configure a delayed start using a systemd timer:
   notify: Reload systemd
 
 - name: Enable the delay timer instead of direct service enable
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: myapp-delayed.timer
     enabled: yes
     daemon_reload: yes
 
 # Also disable direct boot start since the timer handles it
 - name: Disable direct boot start
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: myapp.service
     enabled: no
 ```
@@ -374,4 +374,4 @@ Diagnose boot order issues:
 
 ## Summary
 
-Getting services to start reliably after reboot involves three things: enabling them with `enabled: yes`, configuring the right dependencies with `After` and `Requires` directives, and verifying they actually come up. Ansible gives you the tools to do all three. Use the `systemd` module to enable services, templates to deploy unit files with proper dependencies, and the `reboot` module followed by `service_facts` to verify everything comes back online. For production systems, always test the reboot path before relying on it.
+Getting services to start reliably after reboot involves three things: enabling them with `enabled: yes`, configuring the right dependencies with `After` and `Requires` directives, and verifying they actually come up. Ansible gives you the tools to do all three. Use the `systemd_service` module to enable services, templates to deploy unit files with proper dependencies, and the `reboot` module followed by `service_facts` to verify everything comes back online. For production systems, always test the reboot path before relying on it.
