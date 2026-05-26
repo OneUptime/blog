@@ -80,7 +80,7 @@ dns_bind_recursion: true
 dns_zones: []
 # Example:
 #   - name: example.internal
-#     type: master
+#     type: primary
 #     file: db.example.internal
 #     ttl: 3600
 #     soa:
@@ -102,9 +102,17 @@ dns_zones: []
 dns_reverse_zones: []
 # Example:
 #   - name: 0.10.in-addr.arpa
-#     type: master
+#     type: primary
 #     file: db.10.0
-#     subnet: "10.0"
+#     ttl: 3600
+#     soa:
+#       ns: ns1.example.internal
+#       email: admin.example.internal
+#       serial: 2024010101
+#       refresh: 3600
+#       retry: 900
+#       expire: 604800
+#       minimum: 86400
 #     records:
 #       - { ip_last_octet: "10.1", name: "web1.example.internal." }
 #       - { ip_last_octet: "11.1", name: "web2.example.internal." }
@@ -130,11 +138,14 @@ dns_bind_query_log: false
   when: not dns_use_systemd_resolved
 
 - name: Configure systemd-resolved
-  ansible.builtin.ini_file:
+  ansible.builtin.lineinfile:
     path: /etc/systemd/resolved.conf
-    section: Resolve
-    option: "{{ item.option }}"
-    value: "{{ item.value }}"
+    regexp: "^#?{{ item.option }}="
+    line: "{{ item.option }}={{ item.value }}"
+    insertafter: "^\\[Resolve\\]"
+    owner: root
+    group: root
+    mode: '0644'
   loop:
     - { option: "DNS", value: "{{ dns_nameservers | join(' ') }}" }
     - { option: "Domains", value: "{{ dns_search_domains | join(' ') }}" }
@@ -147,18 +158,17 @@ dns_bind_query_log: false
 # roles/dns/templates/resolv.conf.j2
 # DNS resolver configuration - managed by Ansible
 # Do not edit manually
-{% if dns_domain %}
-domain {{ dns_domain }}
-{% endif %}
 {% if dns_search_domains | length > 0 %}
 search {{ dns_search_domains | join(' ') }}
+{% elif dns_domain %}
+search {{ dns_domain }}
 {% endif %}
 {% for ns in dns_nameservers %}
 nameserver {{ ns }}
 {% endfor %}
-{% for opt in dns_options %}
-options {{ opt }}
-{% endfor %}
+{% if dns_options | length > 0 %}
+options {{ dns_options | join(' ') }}
+{% endif %}
 ```
 
 ## Server Installation Tasks
@@ -185,7 +195,7 @@ options {{ opt }}
   when: dns_bind_logging
 
 - name: Ensure BIND is started and enabled
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ dns_bind_service }}"
     state: started
     enabled: yes
@@ -294,8 +304,8 @@ logging {
 zone "{{ zone.name }}" {
     type {{ zone.type }};
     file "{{ dns_bind_config_dir }}/zones/{{ zone.file }}";
-{% if zone.type == "slave" and zone.masters is defined %}
-    masters { {{ zone.masters | join('; ') }}; };
+{% if zone.type == "secondary" and zone.primaries is defined %}
+    primaries { {{ zone.primaries | join('; ') }}; };
 {% endif %}
 };
 
@@ -305,8 +315,8 @@ zone "{{ zone.name }}" {
 zone "{{ zone.name }}" {
     type {{ zone.type }};
     file "{{ dns_bind_config_dir }}/zones/{{ zone.file }}";
-{% if zone.type == "slave" and zone.masters is defined %}
-    masters { {{ zone.masters | join('; ') }}; };
+{% if zone.type == "secondary" and zone.primaries is defined %}
+    primaries { {{ zone.primaries | join('; ') }}; };
 {% endif %}
 };
 
@@ -334,7 +344,7 @@ zone "{{ zone.name }}" {
     group: "{{ dns_bind_user }}"
     mode: '0644'
   loop: "{{ dns_zones }}"
-  when: item.type == "master"
+  when: item.type == "primary"
   notify: reload bind
 
 - name: Deploy reverse zone files
@@ -345,14 +355,14 @@ zone "{{ zone.name }}" {
     group: "{{ dns_bind_user }}"
     mode: '0644'
   loop: "{{ dns_reverse_zones }}"
-  when: item.type == "master"
+  when: item.type == "primary"
   notify: reload bind
 
 - name: Validate zone files
   ansible.builtin.command:
     cmd: "named-checkzone {{ item.name }} {{ dns_bind_config_dir }}/zones/{{ item.file }}"
   loop: "{{ dns_zones + dns_reverse_zones }}"
-  when: item.type == "master"
+  when: item.type == "primary"
   changed_when: false
 ```
 
@@ -369,6 +379,23 @@ $TTL {{ item.ttl | default(3600) }}
 
 {% for record in item.records %}
 {{ "%-20s" | format(record.name) }} IN  {{ record.type }}  {{ record.value }}
+{% endfor %}
+```
+
+```jinja2
+# roles/dns/templates/zone_reverse.j2
+; Reverse zone file for {{ item.name }} - managed by Ansible
+$TTL {{ item.ttl | default(3600) }}
+@   IN  SOA {{ item.soa.ns }}. {{ item.soa.email }}. (
+            {{ item.soa.serial }}     ; Serial
+            {{ item.soa.refresh }}    ; Refresh
+            {{ item.soa.retry }}      ; Retry
+            {{ item.soa.expire }}     ; Expire
+            {{ item.soa.minimum }} )  ; Minimum TTL
+
+@   IN  NS  {{ item.soa.ns }}.
+{% for record in item.records %}
+{{ "%-20s" | format(record.ip_last_octet) }} IN  PTR  {{ record.name }}
 {% endfor %}
 ```
 
@@ -396,7 +423,7 @@ $TTL {{ item.ttl | default(3600) }}
 ```yaml
 # roles/dns/handlers/main.yml
 - name: restart bind
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: "{{ dns_bind_service }}"
     state: restarted
 
@@ -406,7 +433,7 @@ $TTL {{ item.ttl | default(3600) }}
   changed_when: true
 
 - name: restart systemd-resolved
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: systemd-resolved
     state: restarted
 ```
@@ -432,7 +459,7 @@ $TTL {{ item.ttl | default(3600) }}
           - "10.0.0.0/8"
         dns_zones:
           - name: example.internal
-            type: master
+            type: primary
             file: db.example.internal
             ttl: 3600
             soa:
