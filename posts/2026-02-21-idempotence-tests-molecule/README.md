@@ -46,10 +46,10 @@ molecule idempotence -- -v
 
 ### Problem 1: Using command/shell Modules
 
-The command and shell modules always report "changed" because Ansible has no way to know if the command actually changed anything.
+The command and shell modules usually report "changed" unless you tell Ansible how to detect whether anything actually changed.
 
 ```yaml
-# BAD - always reports changed
+# BAD - reports changed whenever the command runs
 - name: Set hostname
   ansible.builtin.command: hostnamectl set-hostname webserver01
 
@@ -193,35 +193,37 @@ Sometimes the built-in idempotence check is not granular enough. You can write c
   hosts: all
   become: true
   tasks:
-    - name: Run role again and capture output
-      ansible.builtin.include_role:
-        name: my_role
-      register: role_result
-
-    - name: Collect task results
-      ansible.builtin.set_fact:
-        changed_tasks: "{{ ansible_play_hosts | map('extract', hostvars) | list }}"
-
-    # Alternatively, check specific files have not changed
-    - name: Stat critical config files
+    - name: Stat critical config files before rerun
       ansible.builtin.stat:
         path: "{{ item }}"
-      register: config_stats
+      register: config_stats_before
       loop:
         - /etc/myapp/config.yml
         - /etc/myapp/database.yml
         - /etc/nginx/sites-enabled/myapp
 
-    - name: Record config file checksums
-      ansible.builtin.copy:
-        content: "{{ config_stats | to_json }}"
-        dest: /tmp/config_checksums_run1.json
-        mode: '0644'
+    - name: Run role again
+      ansible.builtin.include_role:
+        name: my_role
+
+    - name: Stat critical config files after rerun
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: config_stats_after
+      loop:
+        - /etc/myapp/config.yml
+        - /etc/myapp/database.yml
+        - /etc/nginx/sites-enabled/myapp
+
+    - name: Assert critical config files did not change
+      ansible.builtin.assert:
+        that:
+          - "config_stats_before.results | map(attribute='stat.checksum') | list == config_stats_after.results | map(attribute='stat.checksum') | list"
 ```
 
 ## Excluding Tasks from Idempotence
 
-Some tasks legitimately cannot be idempotent (like sending a notification or writing to an external API). Tag these tasks and exclude them from the idempotence check.
+Some tasks legitimately cannot be idempotent (like sending a notification or writing to an external API). Tag these tasks so Molecule skips them during the idempotence action.
 
 ```yaml
 # In your role tasks
@@ -233,7 +235,7 @@ Some tasks legitimately cannot be idempotent (like sending a notification or wri
     body:
       text: "Role deployed successfully"
   tags:
-    - notest
+    - molecule-idempotence-notest
     - notification
   changed_when: false
 ```
@@ -340,6 +342,13 @@ Here is a small but complete role that passes idempotence tests. Notice how ever
           create 0640 www-data adm
       }
     mode: '0644'
+
+# handlers/main.yml
+---
+- name: reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
 ```
 
 Every task in this role uses modules that check the current state before making changes. The template module compares checksums. The file module checks if paths exist. The service module checks the current service state. The package module checks if packages are installed.
