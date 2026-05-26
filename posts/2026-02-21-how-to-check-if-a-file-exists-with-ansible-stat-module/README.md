@@ -82,9 +82,7 @@ The `stat` module works for directories too. Use the `isdir` attribute to confir
     - name: Verify it is actually a directory (not a file)
       ansible.builtin.fail:
         msg: "/opt/app/releases exists but is not a directory"
-      when:
-        - releases_dir.stat.exists
-        - not releases_dir.stat.isdir
+      when: releases_dir.stat.exists and not (releases_dir.stat.isdir | default(false))
 ```
 
 ## Checking File Permissions
@@ -122,12 +120,12 @@ The `stat` module returns detailed permission information:
         group: ssl-cert
       when:
         - key_file.stat.exists
-        - key_file.stat.mode != '0600'
+        - (key_file.stat.mode | default('')) != '0600'
 ```
 
 ## Checking Symlinks
 
-By default, `stat` follows symlinks and reports on the target. Use `follow: false` to check the symlink itself:
+By default, `stat` does not follow symlinks and reports on the link itself. Use `follow: true` when you want to check the symlink target:
 
 ```yaml
 # symlink-check.yml - Check symlink status
@@ -140,6 +138,7 @@ By default, `stat` follows symlinks and reports on the target. Use `follow: fals
     - name: Check current deployment symlink
       ansible.builtin.stat:
         path: /opt/app/current
+        follow: false
       register: current_link
 
     - name: Verify it is a symlink
@@ -151,20 +150,20 @@ By default, `stat` follows symlinks and reports on the target. Use `follow: fals
         - current_link.stat.exists
         - current_link.stat.islnk
 
-    - name: Check symlink without following it
+    - name: Check symlink target
       ansible.builtin.stat:
         path: /opt/app/current
-        follow: false
-      register: link_info
+        follow: true
+      register: current_target
+      when:
+        - current_link.stat.exists
+        - current_link.stat.islnk
 
     - name: Remove broken symlink
       ansible.builtin.file:
         path: /opt/app/current
         state: absent
-      when:
-        - link_info.stat.exists
-        - link_info.stat.islnk
-        - not current_link.stat.exists  # Target does not exist
+      when: current_link.stat.exists and current_link.stat.islnk and not current_target.stat.exists
 ```
 
 ## File Size Checks
@@ -189,18 +188,13 @@ Use size information to detect empty files, oversized logs, or unexpected file s
         cmd: >
           mv /var/log/myapp/application.log
           /var/log/myapp/application.log.{{ now(utc=true, fmt='%Y%m%d%H%M%S') }}
-      when:
-        - log_file.stat.exists
-        - log_file.stat.size > 104857600
+      when: log_file.stat.exists and log_file.stat.size > 104857600
       changed_when: true
-      notify: restart syslog
 
-    - name: Warn if config file is empty
+    - name: Warn if log file is empty
       ansible.builtin.fail:
-        msg: "Configuration file exists but is empty"
-      when:
-        - log_file.stat.exists
-        - log_file.stat.size == 0
+        msg: "Log file exists but is empty"
+      when: log_file.stat.exists and log_file.stat.size == 0
 ```
 
 ## Checksum Comparison
@@ -227,7 +221,7 @@ The `stat` module can compute file checksums, useful for verifying file integrit
       ansible.builtin.assert:
         that:
           - app_binary.stat.exists
-          - app_binary.stat.checksum == expected_checksum
+          - (app_binary.stat.checksum | default('')) == expected_checksum
         fail_msg: >
           Binary integrity check failed.
           Expected: {{ expected_checksum }}
@@ -324,12 +318,12 @@ A practical example that validates the entire deployment environment:
     - name: Validate deployment prerequisites
       ansible.builtin.assert:
         that:
-          - app_dir.stat.exists and app_dir.stat.isdir
+          - app_dir.stat.exists and (app_dir.stat.isdir | default(false))
           - ssl_cert.stat.exists
           - ssl_key.stat.exists
-          - ssl_key.stat.mode == '0600'
+          - (ssl_key.stat.mode | default('')) == '0600'
           - db_config.stat.exists
-          - db_config.stat.size > 0
+          - (db_config.stat.size | default(0)) > 0
         fail_msg: |
           Pre-deployment check failed:
           - App directory: {{ 'OK' if app_dir.stat.exists else 'MISSING' }}
