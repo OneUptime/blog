@@ -27,15 +27,15 @@ By default, Ansible treats a non-zero return code as a failure and stops the pla
       ansible.builtin.command:
         cmd: pgrep -x nginx
       register: nginx_check
-      failed_when: false  # Do not fail on non-zero exit
+      failed_when: nginx_check.rc not in [0, 1]  # Only allow found/not found
       changed_when: false  # This is a read-only check
 
-    # pgrep returns 0 if process found, 1 if not found
+    # pgrep returns 0 if process found, 1 if not found, 2+ for errors
     - name: Start nginx if not running
       ansible.builtin.systemd:
         name: nginx
         state: started
-      when: nginx_check.rc != 0
+      when: nginx_check.rc == 1
 
     - name: Report nginx is already running
       ansible.builtin.debug:
@@ -43,7 +43,7 @@ By default, Ansible treats a non-zero return code as a failure and stops the pla
       when: nginx_check.rc == 0
 ```
 
-The `.rc` attribute of the registered variable contains the return code. The `failed_when: false` directive prevents Ansible from treating a non-zero return code as a failure.
+The `.rc` attribute of the registered variable contains the return code. The `failed_when` directive prevents Ansible from treating expected non-zero return codes as failures.
 
 ## Common Return Code Patterns
 
@@ -176,7 +176,7 @@ The `failed_when` directive lets you define exactly which return codes count as 
             msg: "API is not reachable (curl exit code: {{ health_check.rc }})"
           when: health_check.rc != 0
 
-    # pg_isready returns: 0=accepting, 1=rejecting, 2=no response
+    # pg_isready returns: 0=accepting, 1=rejecting, 2=no response, 3=no attempt
     - name: Check PostgreSQL readiness
       ansible.builtin.command:
         cmd: pg_isready -h localhost -p 5432
@@ -193,7 +193,7 @@ The `failed_when` directive lets you define exactly which return codes count as 
 
     - name: Report PostgreSQL rejecting connections
       ansible.builtin.fail:
-        msg: "PostgreSQL is rejecting connections. Check pg_hba.conf"
+        msg: "PostgreSQL is rejecting connections. It may still be starting, or pg_hba.conf may need attention."
       when: pg_ready.rc == 1
 ```
 
@@ -380,7 +380,7 @@ When running commands in a loop, each iteration has its own return code.
 
   tasks:
     - name: Check if ports are in use
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: "ss -tlnp | grep -q ':{{ item.port }} '"
       loop: "{{ required_ports }}"
       register: port_checks
