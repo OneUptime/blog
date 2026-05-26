@@ -62,7 +62,8 @@ If your organization has multiple CAs (root CA, intermediate CAs, different CAs 
 cat root-ca.crt intermediate-ca.crt other-ca.crt > custom-ca-bundle.crt
 
 # Verify the bundle is valid PEM
-openssl x509 -in custom-ca-bundle.crt -noout -text | head -5
+openssl crl2pkcs7 -nocrl -certfile custom-ca-bundle.crt | \
+  openssl pkcs7 -print_certs -noout
 ```
 
 ## Configuring TFE with Custom CA Certificates
@@ -97,10 +98,9 @@ TFE_TLS_CA_BUNDLE_FILE=/opt/tfe/certs/combined-ca-bundle.crt
 
 ```yaml
 # docker-compose.yml with custom CA certificates
-version: "3.9"
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
     environment:
       TFE_HOSTNAME: tfe.example.com
       TFE_TLS_CERT_FILE: /etc/tfe/tls/tfe.crt
@@ -172,7 +172,8 @@ docker run -d \
   --name tfe-agent \
   -e TFC_ADDRESS=https://tfe.example.com \
   -e TFC_AGENT_TOKEN="${AGENT_TOKEN}" \
-  -e TFC_AGENT_CUSTOM_CA_CERT_FILE=/etc/ssl/custom/ca.crt \
+  -e SSL_CERT_FILE=/etc/ssl/custom/ca.crt \
+  -e REQUESTS_CA_BUNDLE=/etc/ssl/custom/ca.crt \
   -v /path/to/custom-ca-bundle.crt:/etc/ssl/custom/ca.crt:ro \
   hashicorp/tfc-agent:latest
 ```
@@ -186,14 +187,13 @@ FROM hashicorp/tfc-agent:latest
 USER root
 
 # Copy the custom CA certificate
-COPY custom-ca-bundle.crt /usr/local/share/ca-certificates/custom-ca.crt
-
-# Update the system CA trust store
-RUN update-ca-certificates
+COPY custom-ca-bundle.crt /home/tfc-agent/custom-ca-bundle.crt
+RUN chown tfc-agent:tfc-agent /home/tfc-agent/custom-ca-bundle.crt
 
 USER tfc-agent
 
-ENV TFC_AGENT_CUSTOM_CA_CERT_FILE=/usr/local/share/ca-certificates/custom-ca.crt
+ENV SSL_CERT_FILE=/home/tfc-agent/custom-ca-bundle.crt
+ENV REQUESTS_CA_BUNDLE=/home/tfc-agent/custom-ca-bundle.crt
 ```
 
 ## Terraform Provider CA Trust
@@ -225,8 +225,8 @@ provider "kubernetes" {
 After configuring the CA bundle, verify that TFE trusts the certificates:
 
 ```bash
-# Check TFE's health endpoint first
-curl -s https://tfe.example.com/_health_check | jq .
+# Check TFE readiness first
+docker compose exec tfe tfectl app health readiness
 
 # Test connectivity to internal services from the TFE container
 # Enter the TFE container
@@ -289,11 +289,6 @@ sed -i 's/\r$//' custom-ca-bundle.crt
 
 ```bash
 # Check if any CA certificates in the bundle are expired
-while openssl x509 -noout -enddate 2>/dev/null; do
-  :
-done < custom-ca-bundle.crt
-
-# More detailed check
 awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{print}' custom-ca-bundle.crt | \
   while IFS= read -r line; do
     if [[ "${line}" == "-----BEGIN CERTIFICATE-----" ]]; then
@@ -321,7 +316,7 @@ CA_BUNDLE_PATH="/opt/tfe/certs/custom-ca-bundle.crt"
 curl -s -o "${CA_BUNDLE_PATH}.new" https://pki.internal.example.com/ca-bundle.pem
 
 # Verify the new bundle is valid
-if openssl x509 -in "${CA_BUNDLE_PATH}.new" -noout -text > /dev/null 2>&1; then
+if openssl crl2pkcs7 -nocrl -certfile "${CA_BUNDLE_PATH}.new" | openssl pkcs7 -print_certs -noout > /dev/null 2>&1; then
   mv "${CA_BUNDLE_PATH}.new" "${CA_BUNDLE_PATH}"
   echo "CA bundle updated. Restarting TFE..."
   cd /opt/tfe && docker compose restart tfe
