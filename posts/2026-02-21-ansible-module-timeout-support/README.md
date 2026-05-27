@@ -15,6 +15,8 @@ Long-running operations need timeout handling to prevent modules from hanging in
 ```python
 import signal
 
+from ansible.module_utils.basic import AnsibleModule
+
 class TimeoutError(Exception):
     pass
 
@@ -47,7 +49,7 @@ def run_module():
 
 ## Thread-Based Timeout
 
-For operations that do not support signals:
+For operations that do not support signals, use a daemon thread so the module process can still exit after a timeout:
 
 ```python
 import threading
@@ -62,7 +64,7 @@ def run_with_timeout(func, timeout):
         except Exception as e:
             error[0] = e
 
-    thread = threading.Thread(target=wrapper)
+    thread = threading.Thread(target=wrapper, daemon=True)
     thread.start()
     thread.join(timeout)
 
@@ -75,4 +77,4 @@ def run_with_timeout(func, timeout):
 
 ## Key Takeaways
 
-Always add timeouts for network operations, API calls, and shell commands. Use signal-based timeouts when possible. Fall back to thread-based for complex operations. Make the timeout configurable as a module parameter.
+Always add timeouts for network operations, API calls, and shell commands. Use signal-based timeouts when possible on Unix-like systems from the main thread. Fall back to thread-based timeouts for complex operations, but remember that a timed-out thread is not forcibly stopped. Make the timeout configurable as a module parameter.
