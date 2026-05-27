@@ -49,10 +49,10 @@ gcloud container fleet memberships list
 
 # Check a specific cluster's membership
 gcloud container fleet memberships describe cluster-a \
-  --format="value(name, state.code)"
+  --format="yaml(name,endpoint)"
 ```
 
-All clusters should show `READY` state. If a cluster is missing:
+All participating clusters should appear as Fleet memberships. If a cluster is missing:
 
 ```bash
 # Register a cluster with the Fleet
@@ -70,6 +70,8 @@ MCS must be enabled as a Fleet feature:
 gcloud container fleet multi-cluster-services describe
 ```
 
+The feature `resourceState.state` should be `ACTIVE`, and each membership in `membershipStates` should show `state.code: OK`.
+
 If not enabled:
 
 ```bash
@@ -81,10 +83,10 @@ Also check that the MCS controller is running in each cluster:
 
 ```bash
 # Check MCS controller pods in the source cluster
-kubectl get pods -n gke-mcs -l app=gke-mcs-importer --context cluster-a-context
+kubectl get pods -n gke-mcs -l k8s-app=gke-mcs-importer --context cluster-a-context
 
 # Check in the destination cluster
-kubectl get pods -n gke-mcs -l app=gke-mcs-importer --context cluster-b-context
+kubectl get pods -n gke-mcs -l k8s-app=gke-mcs-importer --context cluster-b-context
 ```
 
 The MCS importer pods should be in Running state. If they are missing or failing, the MCS feature may not be properly installed.
@@ -117,12 +119,14 @@ The ServiceExport must have the same name and namespace as the Service you want 
 ```bash
 # Verify the Service exists with endpoints
 kubectl get svc your-service -n your-namespace --context cluster-a-context
-kubectl get endpoints your-service -n your-namespace --context cluster-a-context
+kubectl get endpointslice -n your-namespace \
+  -l kubernetes.io/service-name=your-service \
+  --context cluster-a-context
 ```
 
 ## Step 4 - Check the ServiceImport in the Remote Cluster
 
-After creating a ServiceExport, a ServiceImport should automatically appear in all other Fleet clusters:
+After creating a ServiceExport, a ServiceImport should automatically appear in all other Fleet clusters that have the namespace. The initial export can take approximately five minutes to sync:
 
 ```bash
 # Check for ServiceImport in the destination cluster
@@ -153,8 +157,8 @@ The MCS controller needs specific IAM permissions to sync across clusters:
 # Check IAM bindings for the MCS service account
 gcloud projects get-iam-policy your-project-id \
   --flatten="bindings[].members" \
-  --filter="bindings.members:gke-mcs" \
-  --format="table(bindings.role)"
+  --filter="bindings.members:gke-mcs-importer" \
+  --format="table(bindings.role, bindings.members)"
 ```
 
 Grant the required permissions if missing:
@@ -162,7 +166,7 @@ Grant the required permissions if missing:
 ```bash
 # Grant the MCS importer the necessary role
 gcloud projects add-iam-policy-binding your-project-id \
-  --member="serviceAccount:your-project-id.svc.id.goog[gke-mcs/gke-mcs-importer]" \
+  --member="principal://iam.googleapis.com/projects/your-project-number/locations/global/workloadIdentityPools/your-project-id.svc.id.goog/subject/ns/gke-mcs/sa/gke-mcs-importer" \
   --role="roles/compute.networkViewer"
 ```
 
@@ -188,25 +192,26 @@ nslookup your-service.your-namespace.svc.clusterset.local
 nslookup your-service.your-namespace.svc.cluster.local
 ```
 
-The `clusterset.local` domain should resolve to a VIP managed by MCS. If DNS does not resolve, check if the MCS DNS configuration is in place:
+The `clusterset.local` domain should resolve to the ClusterSetIP from the ServiceImport for ClusterSetIP services. If DNS does not resolve, check the ServiceImport and MCS feature state first, then verify that the cluster DNS pods are healthy:
 
 ```bash
-# Check if CoreDNS/kube-dns has the clusterset.local zone configured
-kubectl get configmap coredns -n kube-system --context cluster-b-context -o yaml
-```
+# Check the imported ClusterSetIP
+kubectl get serviceimport your-service -n your-namespace \
+  --context cluster-b-context -o yaml
 
-In GKE, the MCS controller automatically configures DNS. If it is not working, restart the DNS pods:
+# Check kube-dns pods
+kubectl get pods -n kube-system -l k8s-app=kube-dns --context cluster-b-context
 
-```bash
-# Restart kube-dns to pick up MCS DNS configuration
-kubectl rollout restart deployment kube-dns -n kube-system --context cluster-b-context
+# Check kube-dns logs for lookup errors
+kubectl logs -n kube-system -l k8s-app=kube-dns \
+  --all-containers --tail=100 --context cluster-b-context
 ```
 
 ## Step 7 - Check Network Connectivity Between Clusters
 
 For MCS to work, there must be network connectivity between the clusters. The pods in one cluster must be able to reach pod IPs in the other cluster.
 
-**Same VPC**: If both clusters are in the same VPC network, pod-to-pod connectivity should work automatically as long as the pod IP ranges do not overlap.
+**Same VPC**: If both clusters are in the same VPC network, MCS configures firewall rules to allow pod-to-pod connectivity, as long as the pod IP ranges do not overlap.
 
 **Different VPCs**: You need VPC peering or a VPN/Interconnect:
 
@@ -215,7 +220,7 @@ For MCS to work, there must be network connectivity between the clusters. The po
 gcloud compute networks peerings list --network your-vpc-network
 ```
 
-**Pod IP range overlap**: If both clusters use the same pod CIDR range (like 10.0.0.0/14), traffic will not route correctly. Each cluster must have unique pod and service CIDR ranges.
+**Pod IP range overlap**: If both clusters use the same pod CIDR range (like 10.0.0.0/14), traffic will not route correctly. Each cluster must have a unique pod CIDR range.
 
 ```bash
 # Check the pod IP range for each cluster
@@ -241,7 +246,7 @@ gcloud compute firewall-rules create allow-mcs-traffic \
   --destination-ranges 10.0.0.0/14,10.4.0.0/14
 ```
 
-Replace the CIDR ranges with your actual cluster pod and service ranges.
+Replace the CIDR ranges with your actual cluster pod ranges.
 
 ## Step 9 - Verify End-to-End Connectivity
 
@@ -262,7 +267,8 @@ Set up monitoring for MCS to catch issues early:
 
 ```bash
 # Check MCS controller logs for sync errors
-kubectl logs -n gke-mcs -l app=gke-mcs-importer --tail=100 --context cluster-a-context
+kubectl logs -n gke-mcs -l k8s-app=gke-mcs-importer \
+  --all-containers --tail=100 --context cluster-a-context
 
 # Check for MCS-related events
 kubectl get events -n gke-mcs --context cluster-a-context
@@ -272,7 +278,7 @@ kubectl get events -n gke-mcs --context cluster-a-context
 
 When multi-cluster service discovery fails:
 
-1. Verify both clusters are Fleet members in READY state
+1. Verify both clusters are Fleet members
 2. Confirm MCS feature is enabled
 3. Check ServiceExport exists in the source cluster with a matching Service
 4. Verify ServiceImport appears in the destination cluster
