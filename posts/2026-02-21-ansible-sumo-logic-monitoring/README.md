@@ -18,9 +18,21 @@ Sumo Logic is a cloud-native monitoring and analytics platform. Ansible can inst
 ---
 - name: Download Sumo Logic collector
   ansible.builtin.get_url:
-    url: "https://collectors.sumologic.com/rest/download/linux/64"
+    url: "https://download-collector.sumologic.com/rest/download/linux/64"
     dest: /tmp/SumoCollector.sh
     mode: '0755'
+
+- name: Create Sumo Logic configuration directory
+  ansible.builtin.file:
+    path: /etc/sumo
+    state: directory
+    mode: '0755'
+
+- name: Deploy source configuration
+  ansible.builtin.template:
+    src: sources.json.j2
+    dest: /etc/sumo/sources.json
+    mode: '0600'
 
 - name: Install Sumo Logic collector
   ansible.builtin.command:
@@ -33,13 +45,6 @@ Sumo Logic is a cloud-native monitoring and analytics platform. Ansible can inst
     creates: /opt/SumoCollector
   no_log: true
 
-- name: Deploy source configuration
-  ansible.builtin.template:
-    src: sources.json.j2
-    dest: /etc/sumo/sources.json
-    mode: '0600'
-  notify: restart sumo collector
-
 - name: Ensure collector is running
   ansible.builtin.service:
     name: collector
@@ -49,7 +54,7 @@ Sumo Logic is a cloud-native monitoring and analytics platform. Ansible can inst
 
 ## Source Configuration
 
-```json
+```jinja
 {
   "api.version": "v1",
   "sources": [
@@ -115,10 +120,11 @@ Here are several practical scenarios where this module proves essential in real-
           - vim
           - htop
           - jq
+          - ufw
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -262,4 +268,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
