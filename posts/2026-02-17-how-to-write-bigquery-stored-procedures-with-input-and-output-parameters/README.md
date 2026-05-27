@@ -46,7 +46,7 @@ CALL `my_project.my_dataset.refresh_daily_summary`();
 
 ## Input Parameters
 
-Input parameters let you make stored procedures flexible. You define them with a name, type, and optionally a default value.
+Input parameters let you make stored procedures flexible. You define them with a name and type. If you do not specify a parameter mode, BigQuery treats the parameter as an `IN` parameter.
 
 ```sql
 -- Stored procedure with input parameters
@@ -174,7 +174,7 @@ SELECT budget;  -- Shows 810000
 
 ## Error Handling in Stored Procedures
 
-BigQuery stored procedures do not have TRY-CATCH blocks like some other databases, but you can use conditional logic and the `@@error` system variable pattern to handle errors gracefully.
+BigQuery stored procedures do not have TRY-CATCH blocks like some other databases, but they do support `BEGIN...EXCEPTION...END` blocks for handling runtime errors. You can also use conditional logic to handle expected validation failures gracefully.
 
 A practical approach is to validate inputs before running the main logic.
 
@@ -227,12 +227,12 @@ END;
 
 ## Using Temporary Tables in Stored Procedures
 
-Stored procedures can create and use temporary tables for intermediate results. Temporary tables are automatically dropped when the procedure completes.
+Stored procedures can create and use temporary tables for intermediate results. Temporary tables exist for the duration of the current script, so a caller can reference a temporary table created by a procedure later in the same multi-statement query. BigQuery deletes them automatically after the query finishes, usually within 24 hours, unless you drop them earlier.
 
 ```sql
 -- Procedure that uses temporary tables for complex multi-step processing
 CREATE OR REPLACE PROCEDURE `my_project.my_dataset.generate_customer_report`(
-  IN report_date DATE,
+  IN target_report_date DATE,
   OUT customers_processed INT64
 )
 BEGIN
@@ -244,7 +244,7 @@ BEGIN
     SUM(amount) AS total_spent,
     MAX(order_date) AS last_order_date
   FROM `my_project.my_dataset.orders`
-  WHERE order_date <= report_date
+  WHERE order_date <= target_report_date
   GROUP BY customer_id;
 
   -- Step 2: Enrich with customer profile data
@@ -256,18 +256,18 @@ BEGIN
     co.order_count,
     co.total_spent,
     co.last_order_date,
-    DATE_DIFF(report_date, co.last_order_date, DAY) AS days_since_last_order
+    DATE_DIFF(target_report_date, co.last_order_date, DAY) AS days_since_last_order
   FROM customer_orders co
   JOIN `my_project.my_dataset.customer_profiles` cp
     ON co.customer_id = cp.customer_id;
 
   -- Step 3: Write the final report
   DELETE FROM `my_project.my_dataset.customer_report` cr
-  WHERE cr.report_date = report_date;
+  WHERE cr.report_date = target_report_date;
 
   INSERT INTO `my_project.my_dataset.customer_report`
   SELECT
-    report_date,
+    target_report_date,
     customer_id,
     customer_name,
     region,
