@@ -33,7 +33,7 @@ Key points about L2 mode:
 
 - **Single-node traffic** - one node handles all traffic for a given IP. Failover promotes a different node automatically.
 - **No special network gear** - any flat L2 network segment works.
-- **Gratuitous ARP on failover** - MAC tables across the network get updated when leadership changes.
+- **Gratuitous ARP on failover** - neighbor caches across the network get updated when leadership changes.
 
 ### Prerequisites
 
@@ -59,8 +59,8 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    # A /28 gives 16 addresses: 192.168.1.240 through 192.168.1.255
-    - 192.168.1.240/28
+    # A /29 gives 8 addresses: 192.168.1.240 through 192.168.1.247
+    - 192.168.1.240/29
 ```
 
 #### Range Notation
@@ -152,7 +152,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 192.168.1.240/28
+    - 192.168.1.240/29
   autoAssign: true          # services get IPs automatically
 ---
 apiVersion: metallb.io/v1beta1
@@ -193,7 +193,7 @@ kind: Service
 metadata:
   name: staging-app
   annotations:
-    metallb.universe.tf/address-pool: staging-pool
+    metallb.io/address-pool: staging-pool
 spec:
   type: LoadBalancer
   ports:
@@ -291,7 +291,7 @@ kubectl logs -n metallb-system -l component=speaker --tail=50  # ARP activity
 kubectl get svc -A | grep pending                 # stuck services?
 ```
 
-A service stuck in `Pending` means no pool is available or no L2Advertisement covers the pool.
+A service stuck in `Pending` means no compatible pool is available. If the service has an external IP but is unreachable, check that an `L2Advertisement` covers the pool and matches an eligible speaker node.
 
 ### Wrapping Up
 
