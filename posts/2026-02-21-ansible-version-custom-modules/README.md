@@ -15,7 +15,12 @@ Versioning custom modules helps track changes and manage compatibility.
 ```python
 DOCUMENTATION = r"""
 module: my_module
+short_description: Manage a custom resource
+description:
+    - Manage a custom resource.
 version_added: '1.0.0'
+author:
+    - Your Name (@yourhandle)
 options:
     name:
         description: Resource name.
@@ -28,10 +33,6 @@ options:
     old_param:
         description: Deprecated parameter.
         type: str
-        deprecated:
-            removed_in: '3.0.0'
-            why: Use new_param instead.
-            alternative: new_param
 """
 ```
 
@@ -40,21 +41,24 @@ options:
 ```yaml
 namespace: my_namespace
 name: my_collection
-version: 1.2.0  # Semantic versioning
+version: "1.2.0"  # Semantic versioning
+readme: README.md
+authors:
+  - Your Name
 ```
 
 ## Deprecation Warnings in Code
 
 ```python
 def run_module():
+    module_args = dict(
+        old_param=dict(
+            type='str',
+            removed_in_version='3.0.0',
+            removed_from_collection='my_namespace.my_collection',
+        ),
+    )
     module = AnsibleModule(argument_spec=module_args)
-
-    if module.params.get('old_param'):
-        module.deprecate(
-            msg='The old_param parameter is deprecated. Use new_param instead.',
-            version='3.0.0',
-            collection_name='my_namespace.my_collection',
-        )
 ```
 
 ## Changelog
@@ -76,4 +80,4 @@ Maintain a CHANGELOG.md:
 
 ## Key Takeaways
 
-Use semantic versioning for your collection. Document version_added for every option. Use the deprecated field and module.deprecate() for deprecations. Maintain a changelog for tracking changes.
+Use semantic versioning for your collection. Document version_added for every option. Use the argument_spec deprecation fields for deprecated parameters. Maintain a changelog for tracking changes.
