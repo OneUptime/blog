@@ -50,9 +50,9 @@ Cloud Armor evaluates rules by priority, lowest number first. Once a rule matche
 
 ```bash
 # List all rules in your security policy, ordered by priority
-gcloud compute security-policies rules list \
-  --security-policy=your-policy-name \
-  --format="table(priority, action, description)" \
+gcloud compute security-policies describe your-policy-name \
+  --flatten="rules[]" \
+  --format="table(rules.priority, rules.action, rules.description)" \
   --project=your-project-id
 ```
 
@@ -73,7 +73,7 @@ In this example, if the bad IP is in the US, the allow rule at priority 1000 mat
 
 ## Examine the Logs
 
-Cloud Armor logs every request evaluation. The logs tell you exactly which rule matched and what action was taken:
+Cloud Armor request logs are part of Cloud Load Balancing logs. Make sure logging is enabled on the backend service, and remember that Cloud Armor logs are subject to the load balancer logging sample rate. When logging is enabled, the logs tell you which rule matched and what action was taken:
 
 ```bash
 # Get detailed Cloud Armor enforcement logs
@@ -89,8 +89,10 @@ Look for these fields in the log entries:
 - `enforcedSecurityPolicy.name` - which policy was evaluated
 - `enforcedSecurityPolicy.priority` - which rule matched
 - `enforcedSecurityPolicy.configuredAction` - what action was taken
-- `enforcedSecurityPolicy.matchedFieldType` - what part of the request matched
-- `enforcedSecurityPolicy.matchedFieldValue` - the actual value that matched
+- `enforcedSecurityPolicy.outcome` - the outcome after the configured action was applied
+- `enforcedSecurityPolicy.preconfiguredExprIds` - which preconfigured WAF signatures matched, if any
+
+If you enable verbose logging while troubleshooting preconfigured WAF rules, you may also see fields such as `matchedFieldType`, `matchedFieldName`, and `matchedFieldValue`. These verbose matched-field fields are populated for requests that match preconfigured WAF rules, not for custom rules.
 
 If the priority in the log is `2147483647`, that means the default rule matched, which means none of your custom rules are matching the traffic.
 
@@ -100,7 +102,7 @@ CEL expression issues are the most common cause of rules not matching. Here are 
 
 ### Missing has() Check
 
-If you access a header that does not exist, the expression fails silently:
+If you access a header that does not exist, the map lookup returns an error and the expression will not match as intended:
 
 ```bash
 # Wrong - fails if user-agent header is missing
@@ -197,15 +199,20 @@ gcloud logging read \
 
 ### CDN in Front of Load Balancer
 
-If you have a CDN in front of your load balancer, the source IP will be the CDN's edge server IP. You might need to inspect the `X-Forwarded-For` header instead:
+If you have a CDN in front of your load balancer, the source IP will be the CDN's edge server IP. Configure Cloud Armor to resolve the original client IP from a trusted request header, then match on `origin.user_ip`:
 
 ```bash
-# Match based on X-Forwarded-For header instead of source IP
+# Configure the policy to resolve user IPs from X-Forwarded-For
+gcloud compute security-policies update your-policy-name \
+  --user-ip-request-headers=x-forwarded-for \
+  --project=your-project-id
+
+# Match based on the resolved user IP instead of the immediate source IP
 gcloud compute security-policies rules create 1000 \
   --security-policy=your-policy-name \
-  --expression="has(request.headers['x-forwarded-for']) && request.headers['x-forwarded-for'].matches('203\\.0\\.113\\..*')" \
+  --expression="inIpRange(origin.user_ip, '203.0.113.0/24')" \
   --action=deny-403 \
-  --description="Block traffic from specific IP range via XFF header"
+  --description="Block traffic from specific user IP range via XFF"
 ```
 
 ## Geographic Matching Issues
@@ -218,7 +225,7 @@ gcloud logging read \
   'resource.type="http_load_balancer"' \
   --project=your-project-id \
   --limit=10 \
-  --format="table(httpRequest.remoteIp, jsonPayload.enforcedSecurityPolicy.matchedFieldValue)"
+  --format="table(httpRequest.remoteIp, jsonPayload.securityPolicyRequestData.remoteIpInfo.region_code)"
 ```
 
 ## The Systematic Debugging Checklist
