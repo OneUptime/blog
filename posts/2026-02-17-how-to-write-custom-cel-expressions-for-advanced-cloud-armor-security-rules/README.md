@@ -31,7 +31,8 @@ Before writing expressions, you need to know what data you can work with. Cloud 
 | `origin.ip` | Client IP address |
 | `origin.region_code` | Two-letter country code |
 | `origin.asn` | Autonomous System Number |
-| `token.recaptcha_enterprise.score` | reCAPTCHA score |
+| `token.recaptcha_action.score` | reCAPTCHA action-token score |
+| `token.recaptcha_session.score` | reCAPTCHA session-token score |
 
 ## Basic CEL Expression Patterns
 
@@ -46,7 +47,7 @@ Block or allow traffic from specific countries:
 
 gcloud compute security-policies rules create 1000 \
   --security-policy=my-policy \
-  --expression="origin.region_code == 'XX' || origin.region_code == 'YY'" \
+  --expression="origin.region_code == 'AU' || origin.region_code == 'NZ'" \
   --action=deny-403 \
   --description="Block traffic from specific regions"
 ```
@@ -89,7 +90,7 @@ You can combine conditions with logical operators `&&` (AND), `||` (OR), and `!`
 # Block POST requests to login from outside the US without a valid referer
 gcloud compute security-policies rules create 1300 \
   --security-policy=my-policy \
-  --expression="request.method == 'POST' && request.path.matches('/login') && origin.region_code != 'US' && !request.headers['referer'].matches('https://yourdomain\\.com/.*')" \
+  --expression="request.method == 'POST' && request.path.matches('/login') && origin.region_code != 'US' && (!has(request.headers['referer']) || !request.headers['referer'].matches('https://yourdomain\\.com/.*'))" \
   --action=deny-403 \
   --description="Block suspicious login attempts from foreign IPs without valid referer"
 ```
@@ -115,7 +116,7 @@ The `matches()` function supports RE2 regular expressions:
 # Block requests where the path contains SQL injection patterns
 gcloud compute security-policies rules create 1500 \
   --security-policy=my-policy \
-  --expression="request.path.matches('.*(\\'|\\\"|--).*') || request.query.matches('.*(union|select|insert|drop|delete).*')" \
+  --expression="request.path.matches(\".*('|\\\"|--).*\") || request.query.matches('.*(union|select|insert|drop|delete).*')" \
   --action=deny-403 \
   --description="Block basic SQL injection patterns in URL"
 ```
@@ -154,17 +155,16 @@ Real-world scenarios often need complex rule combinations. Here is a pattern for
 # Complex rule: protect API from abuse
 # - Must have valid API key header
 # - Must not be from blocked countries
-# - Must have an acceptable content type for POST requests
 gcloud compute security-policies rules create 2000 \
   --security-policy=my-policy \
-  --expression="request.path.matches('/api/v1/.*') && request.method == 'POST' && (!has(request.headers['x-api-key']) || origin.region_code == 'XX' || !request.headers['content-type'].matches('application/json.*'))" \
+  --expression="request.path.matches('/api/v1/.*') && request.method == 'POST' && (!has(request.headers['x-api-key']) || origin.region_code == 'AU')" \
   --action=deny-403 \
   --description="Block invalid API POST requests"
 ```
 
 ## Expression Evaluation Order
 
-Cloud Armor evaluates rules by priority number, lowest first. Once a rule matches, Cloud Armor takes the specified action and stops evaluating. Keep this in mind when designing your rule set:
+Cloud Armor evaluates rules by priority number, lowest first. For enforced rules, the highest-priority matching rule is applied. Keep this in mind when designing your rule set:
 
 ```mermaid
 flowchart TD
@@ -194,7 +194,7 @@ gcloud logging read \
   'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.configuredAction!=""' \
   --project=your-project-id \
   --limit=20 \
-  --format="table(jsonPayload.enforcedSecurityPolicy.name, jsonPayload.enforcedSecurityPolicy.configuredAction, jsonPayload.enforcedSecurityPolicy.matchedFieldValue)"
+  --format="table(jsonPayload.enforcedSecurityPolicy.name, jsonPayload.enforcedSecurityPolicy.priority, jsonPayload.enforcedSecurityPolicy.configuredAction, jsonPayload.enforcedSecurityPolicy.outcome)"
 ```
 
 You can also use preview mode to test rules without actually enforcing them:
@@ -203,7 +203,7 @@ You can also use preview mode to test rules without actually enforcing them:
 # Create a rule in preview mode - logs matches but does not enforce
 gcloud compute security-policies rules create 3000 \
   --security-policy=my-policy \
-  --expression="request.headers['user-agent'].matches('.*curl.*')" \
+  --expression="has(request.headers['user-agent']) && request.headers['user-agent'].matches('.*curl.*')" \
   --action=deny-403 \
   --preview \
   --description="Preview: would block curl requests"
