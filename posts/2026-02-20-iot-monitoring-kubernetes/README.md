@@ -36,6 +36,26 @@ EMQX is a scalable MQTT broker that runs well on Kubernetes. Deploy it as a Stat
 # emqx-statefulset.yaml
 
 # Deploys EMQX MQTT broker with persistent storage
+apiVersion: v1
+kind: Service
+metadata:
+  name: emqx-headless
+  namespace: iot-monitoring
+spec:
+  clusterIP: None
+  selector:
+    app: emqx
+  ports:
+    - name: mqtt
+      port: 1883
+      targetPort: mqtt
+    - name: mqtt-ws
+      port: 8083
+      targetPort: mqtt-ws
+    - name: dashboard
+      port: 18083
+      targetPort: dashboard
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -66,11 +86,21 @@ spec:
             - containerPort: 18083
               name: dashboard
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: EMQX_NODE__NAME
+              value: emqx@$(POD_NAME).emqx-headless.$(POD_NAMESPACE).svc.cluster.local
             # Enable cluster discovery via Kubernetes DNS
             - name: EMQX_CLUSTER__DISCOVERY_STRATEGY
               value: dns
             - name: EMQX_CLUSTER__DNS__RECORD_TYPE
-              value: srv
+              value: a
             - name: EMQX_CLUSTER__DNS__NAME
               value: emqx-headless.iot-monitoring.svc.cluster.local
           volumeMounts:
@@ -115,10 +145,14 @@ data:
         "devices/+/diagnostics"
       ]
       data_format = "json"
-      # Extract device_id from topic path
+      # Store the full MQTT topic as a tag
       topic_tag = "topic"
       # Parse JSON payload fields as metrics
       json_string_fields = ["firmware_version", "device_type"]
+      # Extract device_id and message_type from topic path
+      [[inputs.mqtt_consumer.topic_parsing]]
+        topic = "devices/+/+"
+        tags = "_/device_id/message_type"
 
     # Expose metrics for Prometheus scraping
     [[outputs.prometheus_client]]
@@ -138,7 +172,7 @@ A lightweight service that tracks device heartbeats and flags devices that stop 
 
 import time
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from prometheus_client import start_http_server, Gauge, Counter
 import paho.mqtt.client as mqtt
 
@@ -179,7 +213,7 @@ def on_message(client, userdata, msg):
         device_id = parts[1]
         device_type = payload.get("device_type", "unknown")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         device_registry[device_id] = {
             "last_seen": now,
             "device_type": device_type,
@@ -199,7 +233,7 @@ def on_message(client, userdata, msg):
 
 def check_offline_devices():
     """Scan the registry and count offline devices."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     offline = 0
     for device_id, info in device_registry.items():
         if now - info["last_seen"] > OFFLINE_THRESHOLD:
@@ -212,7 +246,7 @@ def main():
     start_http_server(8000)
 
     # Connect to the MQTT broker
-    client = mqtt.Client()
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.on_message = on_message
     client.connect("emqx-headless", 1883, 60)
     client.subscribe("devices/+/status")
@@ -290,11 +324,11 @@ spec:
 
 ## Scaling Ingestion with HPA
 
-When the fleet grows, the Telegraf consumers must scale to keep up with message volume.
+When the fleet grows, the Telegraf consumers must scale to keep up with message volume. This example scales on CPU utilization, so the Telegraf Deployment should define CPU requests.
 
 ```yaml
 # telegraf-hpa.yaml
-# Auto-scale Telegraf pods based on MQTT message backlog
+# Auto-scale Telegraf pods based on CPU usage from message processing
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
