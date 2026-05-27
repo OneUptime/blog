@@ -90,17 +90,26 @@ except TimeoutError:
     streaming_pull_future.result()
 ```
 
-The Python client library automatically extends the acknowledgment deadline by sending `ModifyAckDeadline` requests while your callback is still running. You can control the extension interval:
+The Python client library automatically extends the acknowledgment deadline by sending `ModifyAckDeadline` requests while your callback is still running, up to the configured lease duration. You can control the duration requested by each lease extension:
 
 ```python
 # Custom subscriber with explicit ack deadline extension settings
 subscriber = pubsub_v1.SubscriberClient()
 
-# The min_ack_deadline controls how aggressively the client extends deadlines
-# The max_ack_deadline is the maximum extension the client will request
-subscriber_options = pubsub_v1.types.FlowControl(
+# The min_duration_per_lease_extension is the minimum extension duration
+# The max_duration_per_lease_extension is the maximum extension duration
+flow_control = pubsub_v1.types.FlowControl(
     max_messages=1000,
     max_bytes=100 * 1024 * 1024,  # 100MB
+    max_lease_duration=3600,       # Stop extending after 1 hour
+    min_duration_per_lease_extension=30,
+    max_duration_per_lease_extension=120,
+)
+
+streaming_pull_future = subscriber.subscribe(
+    subscription_path,
+    callback=callback,
+    flow_control=flow_control,
 )
 ```
 
@@ -201,7 +210,7 @@ spec:
 Keep an eye on these key Pub/Sub metrics:
 
 - **subscription/num_undelivered_messages**: If this is growing, your subscribers cannot keep up
-- **subscription/oldest_unacked_message_age**: If this exceeds your ack deadline, you have redelivery problems
+- **subscription/oldest_unacked_message_age**: If this keeps growing, your backlog is aging and subscribers are not keeping up
 - **subscription/ack_message_count vs expired_ack_deadlines_count**: A high ratio of expired deadlines to acks means your deadline is too short
 
 ```bash
