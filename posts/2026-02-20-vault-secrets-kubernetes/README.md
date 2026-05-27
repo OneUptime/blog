@@ -16,7 +16,7 @@ Kubernetes Secrets have several limitations that make them unsuitable for produc
 
 ```mermaid
 flowchart TD
-    subgraph Kubernetes Secrets - Limitations
+    subgraph k8sSecrets["Kubernetes Secrets - Limitations"]
         A[Base64 Encoded - Not Encrypted]
         B[Stored in etcd - Often Unencrypted]
         C[No Audit Trail]
@@ -24,7 +24,7 @@ flowchart TD
         E[Broad RBAC Access]
     end
 
-    subgraph Vault - Advantages
+    subgraph vaultAdvantages["Vault - Advantages"]
         F[AES-256 Encrypted at Rest]
         G[Full Audit Logging]
         H[Dynamic Secret Generation]
@@ -88,7 +88,7 @@ server:
         ui = true
 
         listener "tcp" {
-          tls_disable = 0
+          tls_disable = 1
           address = "[::]:8200"
           cluster_address = "[::]:8201"
         }
@@ -125,6 +125,17 @@ kubectl exec -n vault vault-0 -- vault operator init \
 kubectl exec -n vault vault-0 -- vault operator unseal <KEY_1>
 kubectl exec -n vault vault-0 -- vault operator unseal <KEY_2>
 kubectl exec -n vault vault-0 -- vault operator unseal <KEY_3>
+
+# Join the remaining pods to the Raft cluster and unseal them
+kubectl exec -n vault vault-1 -- vault operator raft join http://vault-0.vault-internal:8200
+kubectl exec -n vault vault-1 -- vault operator unseal <KEY_1>
+kubectl exec -n vault vault-1 -- vault operator unseal <KEY_2>
+kubectl exec -n vault vault-1 -- vault operator unseal <KEY_3>
+
+kubectl exec -n vault vault-2 -- vault operator raft join http://vault-0.vault-internal:8200
+kubectl exec -n vault vault-2 -- vault operator unseal <KEY_1>
+kubectl exec -n vault vault-2 -- vault operator unseal <KEY_2>
+kubectl exec -n vault vault-2 -- vault operator unseal <KEY_3>
 ```
 
 ## Configuring Kubernetes Authentication
@@ -134,6 +145,11 @@ Enable the Kubernetes auth method so pods can authenticate with Vault using thei
 ```bash
 # Enable the Kubernetes authentication method
 kubectl exec -n vault vault-0 -- vault auth enable kubernetes
+
+# Allow Vault's ServiceAccount to call the Kubernetes TokenReview API
+kubectl create clusterrolebinding vault-tokenreview-binding \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=vault:vault
 
 # Configure the auth method with the Kubernetes API details
 # Vault uses this to validate ServiceAccount tokens
@@ -236,7 +252,7 @@ spec:
           # Source the secrets file to load env vars
           command: ["/bin/sh", "-c"]
           args:
-            - "source /vault/secrets/db-creds && exec ./server"
+            - ". /vault/secrets/db-creds && exec ./server"
           ports:
             - containerPort: 8080
 ```
@@ -258,17 +274,16 @@ flowchart TD
 
 ## Secret Rotation
 
-The Vault Agent sidecar continuously watches for secret changes and updates the files when secrets are rotated.
+For KV v2 secrets, Vault Agent templates re-render non-leased secrets on an interval. The files are updated when the rendered content changes.
 
 ```yaml
-# Add these annotations to enable automatic secret rotation.
-# The agent will re-fetch secrets before the TTL expires.
+# Add this annotation to control how often static KV v2 secrets are re-rendered.
 metadata:
   annotations:
     vault.hashicorp.com/agent-inject: "true"
     vault.hashicorp.com/role: "app-role"
-    # Cache secrets and refresh every 5 minutes
-    vault.hashicorp.com/agent-cache-enable: "true"
+    # Re-render non-leased secrets such as KV v2 every 5 minutes
+    vault.hashicorp.com/template-static-secret-render-interval: "5m"
     vault.hashicorp.com/agent-run-as-user: "1000"
     vault.hashicorp.com/agent-inject-secret-db-creds: "secret/data/app/database"
 ```
