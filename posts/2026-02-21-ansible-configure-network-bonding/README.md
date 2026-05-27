@@ -8,7 +8,7 @@ Description: Automate Linux network bonding configuration using Ansible for link
 
 ---
 
-Network bonding (also called NIC bonding or link aggregation) combines multiple network interfaces into a single logical interface. This gives you either redundancy (if one link fails, traffic continues on the other) or increased bandwidth (traffic is spread across multiple links). For production servers, bonding is not optional; it is a requirement for high availability. Ansible makes bonding configuration consistent and reproducible across your fleet.
+Network bonding (also called NIC bonding or link aggregation) combines multiple network interfaces into a single logical interface. This gives you either redundancy (if one link fails, traffic continues on the other) or aggregate bandwidth across multiple flows. For production servers that need link-level high availability, bonding is often a requirement. Ansible makes bonding configuration consistent and reproducible across your fleet.
 
 ## Bonding Modes Explained
 
@@ -43,7 +43,7 @@ This playbook ensures bonding prerequisites are met:
       - eth0
       - eth1
     bond_ip: "10.0.1.100"
-    bond_netmask: "255.255.255.0"
+    bond_prefix: 24
     bond_gateway: "10.0.1.1"
     bond_dns:
       - "10.0.0.2"
@@ -54,6 +54,7 @@ This playbook ensures bonding prerequisites are met:
       ansible.builtin.apt:
         name:
           - ifenslave
+          - ethtool
           - net-tools
         state: present
         update_cache: true
@@ -101,7 +102,7 @@ This playbook configures network bonding through Netplan:
                   - {{ slave }}
                   {% endfor %}
                 addresses:
-                  - {{ bond_ip }}/{{ bond_netmask | ansible.utils.ipaddr('prefix') | default('24') }}
+                  - {{ bond_ip }}/{{ bond_prefix }}
                 routes:
                   - to: default
                     via: {{ bond_gateway }}
@@ -116,7 +117,9 @@ This playbook configures network bonding through Netplan:
                   lacp-rate: {{ bond_lacp_rate }}
                   transmit-hash-policy: {{ bond_xmit_hash_policy }}
       notify: Apply Netplan
-      when: ansible_os_family == "Debian"
+      when:
+        - ansible_distribution == "Ubuntu"
+        - ansible_distribution_version is version("18.04", ">=")
 
   handlers:
     - name: Apply Netplan
@@ -247,7 +250,7 @@ For older systems still using /etc/network/interfaces:
 
 ## Active-Backup Bonding for Simple Failover
 
-If you just need failover without LACP (the simplest and safest option):
+If you just need failover without LACP (the simplest and safest option), use `active-backup` as the bond mode in the Netplan, NetworkManager, or ifupdown examples above. For module-driven setups, you can persist active-backup module defaults like this:
 
 ```yaml
 # configure-active-backup.yml - Simple failover bonding
@@ -256,25 +259,15 @@ If you just need failover without LACP (the simplest and safest option):
   hosts: all
   become: true
   vars:
-    bond_name: bond0
-    bond_slaves:
-      - eth0
-      - eth1
     bond_primary: eth0
 
   tasks:
-    - name: Configure bonding module parameters
-      ansible.builtin.copy:
-        dest: /etc/modprobe.d/bonding.conf
-        mode: '0644'
-        content: |
-          # Bonding module options - managed by Ansible
-          options bonding mode=active-backup miimon=100 primary={{ bond_primary }} fail_over_mac=active
-
-    - name: Load bonding module with parameters
+    - name: Load bonding module with active-backup defaults
       community.general.modprobe:
         name: bonding
         state: present
+        params: "mode=active-backup miimon=100 primary={{ bond_primary }} fail_over_mac=active"
+        persistent: present
 ```
 
 ## Verifying Bond Configuration
@@ -409,6 +402,6 @@ This playbook sets up ongoing bond monitoring:
 
 **Only one slave active in LACP mode**: Verify your switch is configured for LACP on the corresponding ports. Without switch-side LACP configuration, Mode 4 will not work.
 
-**Intermittent connectivity**: Check `miimon` interval. If set too high, failover is slow. 100ms is a good default. Also check that both cables are connected to the same switch (for active-backup) or to an LACP-capable switch pair (for 802.3ad).
+**Intermittent connectivity**: Check `miimon` interval. If set too high, failover is slow. 100ms is a good default. Also check that each slave can reach the same network in active-backup mode, or that the relevant switch ports are configured as one LACP aggregation for 802.3ad.
 
 Network bonding is a critical piece of server infrastructure that Ansible manages beautifully. Define your bonding configuration in code, push it consistently, and know that every server has the redundancy it needs.
