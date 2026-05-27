@@ -14,15 +14,14 @@ This guide breaks down the core services you need to know, with practical advice
 
 ## Exam Overview
 
-The ACE exam covers five domains:
+The ACE exam covers four sections:
 
-1. Setting up a cloud solution environment (17.5%)
-2. Planning and configuring a cloud solution (17.5%)
-3. Deploying and implementing a cloud solution (25%)
-4. Ensuring successful operation of a cloud solution (20%)
-5. Configuring access and security (20%)
+1. Setting up a cloud solution environment (~23%)
+2. Planning and implementing a cloud solution (~30%)
+3. Ensuring successful operation of a cloud solution (~27%)
+4. Configuring access and security (~20%)
 
-The exam is 50 questions, 2 hours, and costs $200. You need hands-on experience - rote memorization will not get you through.
+The standard exam is 50-60 questions, 2 hours, and costs $125 plus applicable tax. You need hands-on experience - rote memorization will not get you through.
 
 ## Compute Services
 
@@ -99,9 +98,9 @@ gcloud run deploy my-service \
   --allow-unauthenticated
 ```
 
-### Cloud Functions
+### Cloud Run functions
 
-Understand triggers (HTTP, Pub/Sub, Cloud Storage), runtimes, and basic deployment. Know when to use Cloud Functions vs. Cloud Run.
+Understand triggers (HTTP, Pub/Sub, Cloud Storage through Eventarc), runtimes, and basic deployment. Know when to use Cloud Run functions vs. Cloud Run.
 
 ## Storage Services
 
@@ -117,7 +116,7 @@ This is heavily tested. Know the storage classes and their use cases:
 Understand lifecycle policies, versioning, ACLs vs. IAM permissions, and gsutil commands:
 
 ```bash
-# Create a bucket with a lifecycle rule to move objects to Nearline after 30 days
+# Create a bucket
 gsutil mb -l us-central1 gs://my-bucket
 
 # Set a lifecycle policy
@@ -126,7 +125,7 @@ gsutil lifecycle set lifecycle.json gs://my-bucket
 
 ### Cloud SQL
 
-Know how to create instances (MySQL, PostgreSQL, SQL Server), set up replicas, configure backups, and manage connections. Understand private IP vs. public IP access and Cloud SQL Proxy.
+Know how to create instances (MySQL, PostgreSQL, SQL Server), set up replicas, configure backups, and manage connections. Understand private IP vs. public IP access and the Cloud SQL Auth Proxy.
 
 ### Cloud Spanner
 
@@ -159,12 +158,12 @@ gcloud compute networks subnets create my-subnet \
 
 ### Load Balancing
 
-Know the load balancer types:
+Know the current load balancer families:
 
-- **HTTP(S) Load Balancer**: Global, Layer 7, supports URL maps
-- **TCP/SSL Proxy**: Global, Layer 4
-- **Network Load Balancer**: Regional, Layer 4, pass-through
-- **Internal Load Balancer**: Regional, for internal traffic
+- **Application Load Balancer**: Layer 7 HTTP(S), supports URL maps, available in external and internal modes
+- **Proxy Network Load Balancer**: Layer 4 TCP with optional SSL offload, available in global, regional, and internal modes
+- **Passthrough Network Load Balancer**: Regional, Layer 4, pass-through
+- **Internal Load Balancers**: For private traffic inside Google Cloud VPC networks and connected networks
 
 Understand when to use each type and how health checks work.
 
@@ -199,9 +198,9 @@ Know what these services do and when to use them. Error Reporting aggregates app
 
 ## Practical Study Strategy
 
-1. **Start with a free tier project**: Create a GCP project and use the free tier credits to practice. Actually run the commands, do not just read about them.
+1. **Start with a free tier project**: Create a GCP project and use the Free Program credits and free tier products to practice. Actually run the commands, do not just read about them.
 
-2. **Take the practice exam**: Google provides a free practice exam. Take it early to identify weak areas.
+2. **Review the sample questions**: Google provides free sample questions. Review them early to identify weak areas.
 
 3. **Focus on gcloud CLI**: Many exam questions ask about the correct gcloud command. Practice creating, listing, and modifying resources from the command line.
 
@@ -215,11 +214,11 @@ Know what these services do and when to use them. Error Reporting aggregates app
 
 Budget your study time based on the exam domain weights:
 
-- Deploying and implementing (25%): Spend the most time here. Practice deploying to Compute Engine, GKE, App Engine, Cloud Run, and Cloud Functions.
-- Ensuring successful operation (20%): Monitoring, logging, and troubleshooting.
+- Planning and implementing (30%): Spend the most time here. Practice deploying to Compute Engine, GKE, App Engine, Cloud Run, and Cloud Run functions.
+- Ensuring successful operation (27%): Monitoring, logging, and troubleshooting.
 - Configuring access and security (20%): IAM, service accounts, network security.
-- Setting up and planning (35% combined): Project setup, billing, resource hierarchy.
+- Setting up a cloud solution environment (23%): Project setup, billing, resource hierarchy, APIs, quotas, and initial networking.
 
 ## Wrapping Up
 
-The ACE exam is approachable if you have hands-on experience with GCP. The key is actual practice - create resources, break things, fix them, and do it again. Focus on compute services (Compute Engine and GKE carry the most weight), understand networking fundamentals, and make IAM second nature. Use the official practice exam to calibrate your readiness, and allocate at least four to six weeks of study time if you are coming from limited GCP experience.
+The ACE exam is approachable if you have hands-on experience with GCP. The key is actual practice - create resources, break things, fix them, and do it again. Focus on compute services, storage, and networking fundamentals, and make IAM second nature. Use the official sample questions to calibrate your readiness, and allocate at least four to six weeks of study time if you are coming from limited GCP experience.
