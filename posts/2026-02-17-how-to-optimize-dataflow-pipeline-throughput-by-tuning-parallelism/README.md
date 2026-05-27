@@ -88,11 +88,11 @@ gcloud dataflow jobs run optimized-pipeline \
   --gcs-location=gs://my-bucket/templates/my-template \
   --region=us-central1 \
   --num-workers=5 \
-  --max-num-workers=20 \
+  --max-workers=20 \
   --worker-machine-type=n1-standard-8
 ```
 
-A `n1-standard-8` worker has 8 vCPUs. Dataflow typically runs 1 thread per vCPU for CPU-bound work. So 5 workers with 8 vCPUs each gives you about 40 parallel processing threads.
+A `n1-standard-8` worker has 8 vCPUs. For Java batch jobs, Dataflow typically starts with 1 worker harness thread per vCPU, unless you configure worker harness threads or enable dynamic thread scaling. So 5 workers with 8 vCPUs each gives you about 40 parallel processing threads as a starting point.
 
 For I/O-bound work (like calling external APIs), you might benefit from more workers with fewer CPUs. For CPU-bound work (like complex transformations or compression), fewer workers with more CPUs is more efficient.
 
@@ -114,17 +114,17 @@ For Pub/Sub sources, parallelism is handled automatically based on the number of
 
 ## Optimizing GroupByKey Operations
 
-GroupByKey (and operations that use it internally, like Count, Sum, and CoGroupByKey) is often the biggest throughput bottleneck. All elements with the same key must be processed by the same worker.
+GroupByKey (and operations that use it internally, like CoGroupByKey) is often the biggest throughput bottleneck. All elements with the same key must be grouped together, which can create hot keys when the data is skewed.
 
 ```java
 // Before: potential hot key problem
+PCollection<KV<String, Iterable<Event>>> grouped = events
+    .apply("GroupByCountry", GroupByKey.create());
+// If 80% of events are from "US", most of the values are grouped under one key
+
+// Better: use a combiner so Beam can partially aggregate before the shuffle
 PCollection<KV<String, Long>> counts = events
     .apply("CountByCountry", Count.perKey());
-// If 80% of events are from "US", one worker handles 80% of the work
-
-// After: two-stage aggregation with combiner
-PCollection<KV<String, Long>> counts = events
-    .apply("CountByCountry", Count.<String>perKey());
 // Beam's Count uses a CombineFn, which allows partial aggregation on each worker
 ```
 
@@ -207,12 +207,12 @@ Before and after any optimization, measure throughput at each step.
 
 ```bash
 # Compare throughput metrics between two job runs
-gcloud dataflow metrics list JOB_ID_BEFORE \
+gcloud beta dataflow metrics list JOB_ID_BEFORE \
   --region=us-central1 \
   --filter="name.name=ElementCount" \
   --format="table(name.context.step, scalar.integer_value)"
 
-gcloud dataflow metrics list JOB_ID_AFTER \
+gcloud beta dataflow metrics list JOB_ID_AFTER \
   --region=us-central1 \
   --filter="name.name=ElementCount" \
   --format="table(name.context.step, scalar.integer_value)"
