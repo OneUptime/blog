@@ -8,9 +8,9 @@ Description: Learn how to run large-scale batch prediction jobs on Vertex AI for
 
 ---
 
-Not every prediction needs to happen in real-time. When you need to score your entire customer database for a marketing campaign, generate recommendations for all users overnight, or classify millions of documents, running these through an online endpoint is slow and expensive. Batch prediction processes all your data in one job, scales the compute automatically, and shuts down when it is done.
+Not every prediction needs to happen in real-time. When you need to score your entire customer database for a marketing campaign, generate recommendations for all users overnight, or classify millions of documents, running these through an online endpoint is slow and expensive. Batch prediction processes all your data in one job, partitions the work across the compute nodes you request, and shuts down when it is done.
 
-Vertex AI Batch Prediction takes your data from BigQuery or GCS, runs it through your model using multiple machines in parallel, and writes the results back. You pay only for the compute time used, which is significantly cheaper than keeping prediction endpoints running 24/7 for occasional large-scale inference.
+Vertex AI Batch Prediction takes your data from BigQuery or GCS, runs it through your model using multiple machines in parallel, and writes the results back. You pay for the node time used by the job, which can be significantly cheaper than keeping prediction endpoints running 24/7 for occasional large-scale inference.
 
 ## When to Use Batch vs Online Prediction
 
@@ -21,7 +21,7 @@ graph TD
     A{Prediction Need} -->|Low latency required| B[Online Prediction]
     A -->|High volume, latency OK| C[Batch Prediction]
     B --> D["Always-on endpoint<br>Pay per hour<br>Millisecond latency"]
-    C --> E["Ephemeral compute<br>Pay per job<br>Minutes to hours"]
+    C --> E["Ephemeral compute<br>Pay per node time<br>Minutes to hours"]
 ```
 
 ## Running a Basic Batch Prediction Job
@@ -50,7 +50,6 @@ batch_job = model.batch_predict(
     predictions_format="jsonl",  # Output format
     machine_type="n1-standard-4",
     starting_replica_count=5,  # Start with 5 machines
-    max_replica_count=20,  # Scale up to 20 if needed
     sync=False  # Do not block - run in background
 )
 
@@ -74,9 +73,9 @@ For CSV input:
 
 ```text
 feature1,feature2,feature3
-0.5,category_a,42
-0.8,category_b,17
-0.2,category_a,93
+0.5,"category_a",42
+0.8,"category_b",17
+0.2,"category_a",93
 ```
 
 This code prepares JSONL input from a pandas DataFrame:
@@ -91,15 +90,14 @@ def prepare_batch_input(df, output_path, id_column=None):
     Args:
         df: Input DataFrame with features
         output_path: Path to write the JSONL file
-        id_column: Optional column to use as instance key (for joining results)
+        id_column: Optional column to keep in the instance for joining results
     """
     with open(output_path, "w") as f:
         for _, row in df.iterrows():
             instance = row.to_dict()
 
-            # Vertex AI can pass through an instance key for matching
+            # Vertex AI includes the sent instance in JSONL output, which can help match results.
             if id_column and id_column in instance:
-                # Move the ID to the instance key field
                 pass  # Keep it in the instance for result matching
 
             f.write(json.dumps(instance) + "\n")
@@ -135,14 +133,13 @@ batch_job = model.batch_predict(
     predictions_format="bigquery",
     machine_type="n1-standard-8",
     starting_replica_count=10,
-    max_replica_count=50,
     sync=False
 )
 
 print(f"Job: {batch_job.resource_name}")
 ```
 
-The output table will be created automatically with the prediction results appended to the original columns.
+Vertex AI creates output tables automatically. When the model has instance and prediction schemata, the `predictions` table contains the instance columns together with the prediction columns; otherwise the output includes the returned instance and prediction values.
 
 ## GPU Batch Prediction
 
@@ -161,14 +158,13 @@ batch_job = model.batch_predict(
     accelerator_type="NVIDIA_TESLA_T4",
     accelerator_count=1,
     starting_replica_count=5,
-    max_replica_count=20,
     sync=False
 )
 ```
 
 ## Batch Prediction with Explanations
 
-You can request feature attributions alongside predictions in batch mode. This is useful for model auditing and compliance.
+You can request feature attributions alongside predictions in batch mode when the model has explanation metadata configured, or when you provide an explanation spec in the batch prediction request. This is useful for model auditing and compliance.
 
 ```python
 batch_job = model.batch_predict(
@@ -179,7 +175,6 @@ batch_job = model.batch_predict(
     predictions_format="jsonl",
     machine_type="n1-standard-8",
     starting_replica_count=5,
-    max_replica_count=20,
     generate_explanation=True,  # Include feature attributions
     sync=False
 )
@@ -193,6 +188,7 @@ This code monitors a running job:
 
 ```python
 from google.cloud import aiplatform
+from google.cloud.aiplatform_v1.types import JobState
 import time
 
 def monitor_batch_job(job_resource_name):
@@ -202,16 +198,16 @@ def monitor_batch_job(job_resource_name):
     while True:
         job_state = job.state
 
-        if job_state == "JOB_STATE_SUCCEEDED":
+        if job_state == JobState.JOB_STATE_SUCCEEDED:
             print("Job completed successfully!")
             print(f"Output: {job.output_info}")
             return True
 
-        elif job_state == "JOB_STATE_FAILED":
+        elif job_state == JobState.JOB_STATE_FAILED:
             print(f"Job failed: {job.error}")
             return False
 
-        elif job_state == "JOB_STATE_CANCELLED":
+        elif job_state == JobState.JOB_STATE_CANCELLED:
             print("Job was cancelled")
             return False
 
@@ -324,7 +320,6 @@ def run_daily_batch(request):
         predictions_format="bigquery",
         machine_type="n1-standard-8",
         starting_replica_count=10,
-        max_replica_count=50,
         sync=False
     )
 
@@ -339,12 +334,12 @@ def run_daily_batch(request):
 
 Batch prediction pricing is based on compute hours (machine type and duration) plus any accelerators. Here are ways to minimize costs.
 
-Choose the right machine type. For CPU models, n1-standard-4 is usually sufficient. Larger machines help if your model is memory-intensive. For GPU models, a single T4 per machine is the most cost-effective option for inference.
+Choose the right machine type. For CPU models, start with the smallest machine type that has enough CPU and memory for your model, then increase replicas for throughput. Larger machines help if your model is memory-intensive. For GPU models, a single T4 per machine is often a cost-effective option for inference, but you should benchmark with your model and region pricing.
 
-Set `starting_replica_count` based on your data size. For a million rows with a simple model, 5-10 replicas finish in minutes. For 100 million rows or complex deep learning models, start with 20-50 replicas.
+Set `starting_replica_count` based on your data size and target completion time. For custom-trained batch prediction jobs, Vertex AI uses `starting_replica_count` and ignores `max_replica_count`, so choose the replica count you actually want the job to use.
 
-Use preemptible machines for non-urgent batch jobs. While Vertex AI does not directly expose preemptible options for batch prediction, you can run custom jobs with preemptible VMs and implement your own batching logic for significant savings.
+Use Spot VMs for non-urgent, fault-tolerant inference jobs when they fit your requirements. Spot VMs can reduce costs, but they can be preempted and are configured through the supported API or SDK paths rather than the Google Cloud console.
 
 Split very large jobs. If you have a billion records, split them into smaller batch jobs that run in parallel. This provides better fault tolerance - if one job fails, you only need to retry that portion.
 
-Batch prediction on Vertex AI removes the need to maintain always-on prediction infrastructure for periodic, high-volume inference workloads. The managed scaling and automatic cleanup mean you process your data efficiently and pay only for what you use.
+Batch prediction on Vertex AI removes the need to maintain always-on prediction infrastructure for periodic, high-volume inference workloads. The managed parallel execution and automatic cleanup mean you process your data efficiently and pay for the node time your jobs use.
