@@ -32,7 +32,7 @@ Here is a Python script that processes data from Cloud Storage and writes result
 import os
 import sys
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.cloud import storage, bigquery
 
 def process_daily_data():
@@ -45,7 +45,7 @@ def process_daily_data():
     task_count = int(os.environ.get('CLOUD_RUN_TASK_COUNT', '1'))
 
     # Calculate yesterday's date for the data partition
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime('%Y/%m/%d')
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y/%m/%d')
     print(f"Processing data for {yesterday}, task {task_index} of {task_count}")
 
     # Initialize clients
@@ -169,8 +169,7 @@ View the logs:
 
 ```bash
 # View logs from the most recent execution
-gcloud run jobs executions logs read \
-  --job=daily-etl-job \
+gcloud run jobs logs read daily-etl-job \
   --region=us-central1 \
   --limit=50
 ```
@@ -201,7 +200,7 @@ gcloud scheduler jobs create http daily-etl-trigger \
   --location=us-central1 \
   --schedule="0 2 * * *" \
   --time-zone="UTC" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/my-project/jobs/daily-etl-job:run" \
+  --uri="https://run.googleapis.com/v2/projects/my-project/locations/us-central1/jobs/daily-etl-job:run" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-invoker@my-project.iam.gserviceaccount.com
 ```
@@ -250,9 +249,8 @@ gcloud monitoring policies create \
   --display-name="ETL Job Failure Alert" \
   --condition-display-name="Job execution failed" \
   --condition-filter='metric.type="run.googleapis.com/job/completed_task_attempt_count" AND resource.labels.job_name="daily-etl-job" AND metric.labels.result="failed"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=0s \
+  --if="> 0" \
+  --duration=0s \
   --combiner=OR
 ```
 
@@ -270,9 +268,9 @@ LATEST_EXECUTION=$(gcloud run jobs executions list \
 
 STATUS=$(gcloud run jobs executions describe "${LATEST_EXECUTION}" \
   --region=us-central1 \
-  --format="value(conditions[0].type)")
+  --format="value(status.conditions[0].status)")
 
-if [ "${STATUS}" != "Completed" ]; then
+if [ "${STATUS}" != "True" ]; then
   echo "WARNING: Latest ETL execution did not complete successfully"
   echo "Status: ${STATUS}"
   exit 1
@@ -296,7 +294,7 @@ The scheduler continues to trigger the job as before - it just runs the updated 
 
 ## Cost Efficiency
 
-Cloud Run Jobs are billed only for the time they are executing. If your ETL job runs for 10 minutes per day with 4 parallel tasks at 1 CPU and 1 GB memory, the monthly cost is approximately:
+Cloud Run Jobs are billed only for the time they are executing. If your ETL job runs for 10 minutes per day with 4 parallel tasks at 1 CPU and 1 GB memory, the monthly cost before any free tier usage is approximately:
 
 ```text
 Daily: 4 tasks * 10 min * 60 sec = 2,400 vCPU-seconds
