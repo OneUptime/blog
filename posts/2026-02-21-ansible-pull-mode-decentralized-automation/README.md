@@ -45,7 +45,7 @@ Run `ansible-pull` on any host that has Ansible installed.
 ansible-pull -U https://github.com/yourorg/ansible-configs.git
 ```
 
-By default, it looks for a playbook named `local.yml` in the root of the repository. You can specify a different playbook with the `-d` and playbook path arguments.
+By default, it looks first for a playbook named after the host's fully qualified domain name, then the short hostname, and finally `local.yml` in the root of the repository. You can specify a different playbook by passing the playbook path as an argument.
 
 ```bash
 # Specify the playbook to run
@@ -127,6 +127,17 @@ Let us build a working ansible-pull setup for a web server.
     - name: Include role-specific tasks
       include_tasks: "tasks/{{ node_role }}.yml"
       when: node_role != 'base'
+
+  handlers:
+    - name: Restart ssh
+      service:
+        name: ssh
+        state: restarted
+
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
 ```
 
 ```yaml
@@ -165,13 +176,7 @@ Let us build a working ansible-pull setup for a web server.
     - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
     - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
     - { regexp: '^X11Forwarding', line: 'X11Forwarding no' }
-  notify: Restart sshd
-
-  handlers:
-    - name: Restart sshd
-      service:
-        name: sshd
-        state: restarted
+  notify: Restart ssh
 ```
 
 ```yaml
@@ -200,12 +205,6 @@ Let us build a working ansible-pull setup for a web server.
     name: nginx
     state: started
     enabled: yes
-
-  handlers:
-    - name: Reload nginx
-      service:
-        name: nginx
-        state: reloaded
 ```
 
 ## Scheduling with Cron
