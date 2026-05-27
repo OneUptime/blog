@@ -16,7 +16,7 @@ This post covers how to set up Horizontal Pod Autoscaler (HPA), Vertical Pod Aut
 
 In standard GKE, you manage two layers of scaling: the cluster autoscaler (adds/removes nodes) and the pod autoscaler (adds/removes pod replicas). In Autopilot, Google manages the node layer entirely. You only deal with pod-level scaling.
 
-This is simpler, but it means your pod resource requests matter more. Autopilot provisions node capacity based on your pod resource requests, so if your requests are too high, you pay for unused resources. If they are too low, your pods might get throttled.
+This is simpler, but it means your pod resource requests matter more. Autopilot provisions node capacity based on your pod resource requests, so if your requests are too high, you pay for unused resources. If they are too low, your pods might get throttled or fail with out-of-memory errors.
 
 ## Setting Up Horizontal Pod Autoscaler (HPA)
 
@@ -53,7 +53,7 @@ spec:
               cpu: "250m"
               memory: "256Mi"
             limits:
-              # In Autopilot, limits default to requests if not set
+              # Limits above requests allow bursting on Autopilot clusters that support bursting
               cpu: "500m"
               memory: "512Mi"
           readinessProbe:
@@ -104,7 +104,7 @@ spec:
   behavior:
     scaleUp:
       # Allow rapid scale-up during traffic spikes
-      stabilizationWindowSeconds: 30
+      stabilizationWindowSeconds: 0
       policies:
         - type: Percent
           value: 100      # Can double the pods in one step
@@ -134,8 +134,8 @@ kubectl apply -f api-hpa.yaml
 
 The `behavior` section is where most people trip up. Without it, HPA uses defaults that can cause problems:
 
-- **Scale-up too slow**: By default, HPA is conservative about adding pods. During a traffic spike, you might be short on capacity for several minutes.
-- **Scale-down too fast**: HPA might remove pods immediately after a spike ends, only for traffic to come back and trigger another scale-up.
+- **Scale-up not tuned to your workload**: By default, HPA can add up to 4 pods or double the replica count every 15 seconds. That might be too aggressive or not aggressive enough depending on startup time and traffic shape.
+- **Scale-down too abrupt after stabilization**: HPA waits 5 minutes before scaling down by default, but after that window it can reduce replicas all the way to the configured minimum.
 
 The configuration above addresses both issues. Scale-up is aggressive (can double pods within 60 seconds), while scale-down is cautious (waits 5 minutes, removes only 25% at a time).
 
@@ -151,6 +151,12 @@ First, deploy the custom metrics adapter:
 # The custom metrics stackdriver adapter is needed
 # to expose Cloud Monitoring metrics to HPA
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-stackdriver/master/custom-metrics-stackdriver-adapter/deploy/production/adapter_new_resource_model.yaml
+
+# Allow the adapter's Kubernetes service account to read Cloud Monitoring metrics.
+# Autopilot clusters use Workload Identity Federation for GKE.
+gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
+  --role roles/monitoring.viewer \
+  --member=principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$PROJECT_ID.svc.id.goog/subject/ns/custom-metrics/sa/custom-metrics-stackdriver-adapter
 ```
 
 Then create an HPA that uses a Pub/Sub metric:
@@ -260,7 +266,7 @@ spec:
 
 ## Pod Disruption Budgets
 
-When scaling down or during node replacements, you want to make sure your service stays available. Set a PodDisruptionBudget:
+During voluntary disruptions such as node drains and VPA-initiated evictions, you want to make sure your service stays available. Set a PodDisruptionBudget:
 
 ```yaml
 # api-pdb.yaml - Ensure at least 50% of pods are always available
@@ -293,14 +299,14 @@ kubectl get events -n production --field-selector reason=SuccessfulRescale
 
 ## Common Pitfalls
 
-**Setting resource requests too low**: On Autopilot, if your actual usage exceeds your requests, pods get throttled. Set requests based on real usage data, not guesses.
+**Setting resource requests too low**: On Autopilot, if your pod resource sizes are too small, CPU can be throttled or the container can fail with out-of-memory errors. Set requests based on real usage data, not guesses.
 
 **Not setting minReplicas high enough**: For production services, minReplicas of 1 means a single pod failure takes your service down while a new pod starts. Use at least 2 for any service that needs availability.
 
-**Ignoring scale-down behavior**: Without a stabilization window, HPA will scale down aggressively after a spike, and if traffic comes back (which it often does), you get a painful cycle of scaling up and down.
+**Ignoring scale-down behavior**: The default scale-down stabilization window is 5 minutes, but the default scale-down policy can still remove a large portion of replicas after that window. If traffic comes back, you get a painful cycle of scaling up and down.
 
 **Using the same metric for HPA and VPA**: This causes them to conflict. Use HPA for horizontal scaling decisions and VPA for right-sizing the resource requests of individual pods.
 
 ## Wrapping Up
 
-Auto-scaling on GKE Autopilot is about getting pod-level scaling right. Use HPA for scaling replica counts based on load, configure aggressive scale-up with cautious scale-down, and consider custom metrics for workloads where CPU is not the right signal. Add VPA to right-size your resource requests, and pair everything with PodDisruptionBudgets to maintain availability during scaling events. The combination gives you responsive scaling that handles traffic spikes without wasting resources during quiet periods.
+Auto-scaling on GKE Autopilot is about getting pod-level scaling right. Use HPA for scaling replica counts based on load, configure aggressive scale-up with cautious scale-down, and consider custom metrics for workloads where CPU is not the right signal. Add VPA to right-size your resource requests, and pair everything with PodDisruptionBudgets to maintain availability during voluntary disruptions. The combination gives you responsive scaling that handles traffic spikes without wasting resources during quiet periods.
