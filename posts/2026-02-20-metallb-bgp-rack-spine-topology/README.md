@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, MetalLB, BGP, Rack and Spine, Data Center
 
-Description: Learn how to configure MetalLB BGP for rack-and-spine (leaf-spine) network topologies with multi-hop peering and ECMP load balancing.
+Description: Learn how to configure MetalLB BGP for rack-and-spine (leaf-spine) network topologies with per-rack peering and ECMP load balancing.
 
 ---
 
-Rack-and-spine (also called leaf-spine) is the standard network architecture for modern data centers. In this topology, every leaf (top-of-rack) switch connects to every spine switch, providing redundant paths and predictable latency. Configuring MetalLB BGP in this environment requires careful planning around multi-hop peering, ECMP, and per-rack address pools.
+Rack-and-spine (also called leaf-spine) is the standard network architecture for modern data centers. In this topology, every leaf (top-of-rack) switch connects to every spine switch, providing redundant paths and predictable latency. Configuring MetalLB BGP in this environment requires careful planning around rack-local peering, ECMP, and per-rack address pools.
 
 This guide walks through configuring MetalLB for a leaf-spine topology with BGP peering at the leaf layer, ECMP across spines, and proper address management across racks.
 
@@ -63,7 +63,7 @@ Key design decisions:
 - Kubernetes cluster spanning multiple racks
 - Leaf switches configured with BGP (one ASN per leaf)
 - Spine switches configured with BGP (shared ASN)
-- MetalLB installed in FRR mode
+- MetalLB installed in FRR-K8s mode, or FRR mode on older installations
 - Nodes labeled with their rack location
 
 ## Step 1: Label Nodes by Rack
@@ -229,7 +229,7 @@ spec:
 
 ## Step 5: Configure ECMP on the Leaf and Spine Switches
 
-For ECMP to work, both the leaf and spine switches need to be configured to use multiple equal-cost paths.
+For ECMP to work, both the leaf and spine switches need to be configured to use multiple equal-cost paths. If the spines receive the same service prefix from leaves with different ASNs, make sure your platform allows multipath across equal-length but different AS paths. On FRR spine routers, configure `bgp bestpath as-path multipath-relax` under `router bgp` when needed.
 
 ```bash
 # Cisco IOS leaf switch configuration example
@@ -304,7 +304,15 @@ After applying all configurations, verify end-to-end connectivity.
 for pod in $(kubectl get pods -n metallb-system -l component=speaker \
   -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== $pod ==="
-  kubectl exec -n metallb-system $pod -- \
+  kubectl exec -n metallb-system $pod -c frr -- \
+    vtysh -c "show bgp summary"
+done
+
+# With FRR-K8s mode, query the frr-k8s pods instead:
+for pod in $(kubectl get pods -n metallb-system -l app=frr-k8s \
+  -o jsonpath='{.items[*].metadata.name}'); do
+  echo "=== $pod ==="
+  kubectl exec -n metallb-system $pod -c frr -- \
     vtysh -c "show bgp summary"
 done
 
@@ -322,7 +330,7 @@ curl http://172.16.10.1:80
 
 ## Step 7: Handle Rack Failures Gracefully
 
-In a leaf-spine topology, losing an entire rack should not take down the service. MetalLB handles this automatically:
+In a leaf-spine topology, losing an entire rack should not take down a service if the service IP is still being advertised from other racks. MetalLB handles route withdrawal automatically:
 
 1. When a node goes down, MetalLB withdraws its route from the leaf
 2. The leaf withdraws the route from the spines (if no other node in the rack has it)
@@ -347,7 +355,7 @@ kubectl drain k8s-node-1 --ignore-daemonsets
 | Use eBGP between all layers | Simpler configuration, natural loop prevention |
 | Use one ASN per leaf | Enables proper path diversity detection at spines |
 | Use a single ASN for all MetalLB nodes | Keeps MetalLB config simple across racks |
-| Aggregate routes at the leaf | Reduces spine routing table size |
+| Aggregate routes where appropriate | Reduces routing table size |
 | Use BFD for fast failure detection | Reduces failover time from 90s to under 1s |
 | Label nodes by rack | Enables per-rack peer and advertisement targeting |
 
