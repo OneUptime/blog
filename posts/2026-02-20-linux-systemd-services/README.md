@@ -81,16 +81,19 @@ Service unit files go in `/etc/systemd/system/`. Let us create a service for a N
 [Unit]
 # Human-readable description shown in status output
 Description=My Node.js Web Application
-# Start after networking is available
+# Start after the basic networking target
 After=network.target
 # Optional: start after the database is ready
 After=postgresql.service
 Wants=postgresql.service
+# Give up after 5 start attempts in 60 seconds
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
-# Type=simple means systemd considers the service started
-# as soon as the ExecStart process is running
-Type=simple
+# Type=exec means systemd considers the service started
+# once the ExecStart binary has been executed
+Type=exec
 
 # Run the service as a non-root user
 User=myapp
@@ -114,10 +117,6 @@ Restart=on-failure
 
 # Wait 5 seconds before restarting
 RestartSec=5
-
-# Give up after 5 restart attempts in 60 seconds
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # Send SIGTERM to stop, wait 30 seconds, then SIGKILL
 TimeoutStopSec=30
@@ -167,7 +166,7 @@ stateDiagram-v2
 ```ini
 # Type=simple (default)
 # systemd considers the service started immediately
-# Use for processes that stay in the foreground
+# Type=exec is usually better for long-running services
 Type=simple
 ExecStart=/usr/bin/myapp
 
@@ -178,9 +177,9 @@ ExecStart=/usr/bin/myapp
 
 # Type=forking
 # For traditional daemons that fork into the background
-# Must specify PIDFile so systemd can track the main process
+# Specify PIDFile if the daemon writes one, so systemd can track the main process
 Type=forking
-PIDFile=/var/run/myapp.pid
+PIDFile=/run/myapp.pid
 ExecStart=/usr/bin/myapp --daemon
 
 # Type=oneshot
@@ -208,7 +207,7 @@ Environment=DB_PORT=5432
 Environment=DB_NAME=myapp
 
 # Method 2: Load from an environment file
-# This is preferred for secrets and many variables
+# This is preferred for many variables, but not for secrets
 [Service]
 EnvironmentFile=/etc/myapp/env
 
@@ -225,7 +224,7 @@ EnvironmentFile=-/etc/myapp/env.d/*
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=myapp
-DB_PASSWORD=secret123
+DB_USER=myapp
 ```
 
 ```bash
@@ -248,8 +247,8 @@ CPUQuota=200%
 # Limit number of open files
 LimitNOFILE=65536
 
-# Limit number of processes
-LimitNPROC=4096
+# Limit number of tasks in this service
+TasksMax=4096
 
 # Security hardening options
 # Prevent the service from gaining new privileges
@@ -312,9 +311,11 @@ flowchart TD
     A[Service Failed] --> B[systemctl status myapp]
     B --> C{Exit code?}
     C -->|203| D[ExecStart binary not found - check path]
-    C -->|217| E[Namespace setup failed - check User/Group]
+    C -->|217| E[User setup failed - check User/Group]
     C -->|226| F[Namespace setup failed - check Protect options]
-    C -->|200| G[Cgroup setup failed - check resource limits]
+    C -->|200| G[WorkingDirectory failed - check path]
+    C -->|205| N[Resource limit setup failed - check limits]
+    C -->|219| O[Cgroup setup failed - check cgroup configuration]
     C -->|Other| H[Check logs: journalctl -u myapp -n 50]
     H --> I{Permission error?}
     I -->|Yes| J[Check file permissions and User directive]
