@@ -39,11 +39,11 @@ Install ArgoCD into your Kubernetes cluster.
 kubectl create namespace argocd
 
 # Install ArgoCD using the official manifests
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all ArgoCD pods to be ready
-kubectl wait --for=condition=ready pod \
+kubectl wait --for=condition=Ready pod \
   -l app.kubernetes.io/part-of=argocd \
   -n argocd \
   --timeout=300s
@@ -63,7 +63,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 brew install argocd
 
 # Log in via CLI
-argocd login localhost:8080 --username admin --password <password>
+argocd login localhost:8080 --username admin --password <password> --insecure
 
 # Change the default password
 argocd account update-password
@@ -143,6 +143,16 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
+```
+
+```yaml
+# apps/my-app/base/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-app-config
+data:
+  APP_ENV: default
 ```
 
 ```yaml
@@ -320,13 +330,13 @@ sequenceDiagram
     participant K8s as Kubernetes
 
     Dev->>Git: Push new image tag to overlay
-    Git-->>Argo: Webhook notification
-    Argo->>Git: Pull latest manifests
+    Git-->>Argo: Polling or webhook notification
+    Argo->>Git: Fetch latest manifests
     Argo->>K8s: Compare desired vs actual
     Argo->>K8s: Apply differences
     K8s->>K8s: Rolling update
     Argo->>Argo: Update sync status
-    Argo-->>Dev: Notification - sync successful
+    Argo-->>Dev: UI, CLI, or configured notification shows sync status
 ```
 
 ## Rollback with ArgoCD
@@ -335,12 +345,16 @@ sequenceDiagram
 # View the sync history
 argocd app history my-app-prod
 
-# Rollback to a previous revision
-argocd app rollback my-app-prod <REVISION_NUMBER>
-
-# Or simply revert the Git commit and let ArgoCD sync
+# For applications with automated sync enabled, prefer reverting the Git commit
 git revert HEAD
 git push origin main
+
+# Or disable automated sync before rolling back to a previous revision
+argocd app set my-app-prod --sync-policy none
+argocd app rollback my-app-prod <REVISION_NUMBER>
+
+# Re-enable automated sync after the rollback if needed
+argocd app set my-app-prod --sync-policy automated --auto-prune --self-heal
 ```
 
 ## Health Checks
