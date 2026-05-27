@@ -12,7 +12,7 @@ Raspberry Pi OS (formerly Raspbian) is the official Linux distribution for Raspb
 
 ## Prerequisites
 
-Enable SSH on the Pi before first boot by placing an empty file named `ssh` in the boot partition. For Wi-Fi, create `wpa_supplicant.conf` in the boot partition.
+Enable SSH on the Pi before first boot with Raspberry Pi Imager's OS customisation settings, or manually by placing an empty file named `ssh` in the boot partition. For Wi-Fi on current Raspberry Pi OS releases, configure the wireless LAN settings in Raspberry Pi Imager before first boot; the older `wpa_supplicant.conf` boot-partition method only applies to older Raspberry Pi OS releases.
 
 ## Inventory
 
@@ -23,7 +23,7 @@ pi-sensor02 ansible_host=192.168.1.102
 pi-display01 ansible_host=192.168.1.103
 
 [raspberrypi:vars]
-ansible_user=pi
+ansible_user=ansible
 ansible_python_interpreter=/usr/bin/python3
 ```
 
@@ -89,11 +89,11 @@ ansible_python_interpreter=/usr/bin/python3
         line: "gpu_mem={{ gpu_memory }}"
       notify: reboot required
 
-    - name: Enable camera interface
+    - name: Enable camera auto-detection
       ansible.builtin.lineinfile:
         path: /boot/firmware/config.txt
-        regexp: '^#?start_x='
-        line: "start_x=1"
+        regexp: '^#?camera_auto_detect='
+        line: "camera_auto_detect=1"
       when: enable_camera
       notify: reboot required
 
@@ -129,10 +129,10 @@ ansible_python_interpreter=/usr/bin/python3
       ansible.builtin.command: "raspi-config nonint do_wifi_country {{ wifi_country }}"
       changed_when: true
 
-    - name: Change default pi user password
+    - name: Update Ansible user password
       ansible.builtin.user:
-        name: pi
-        password: "{{ vault_pi_password | password_hash('sha512') }}"
+        name: "{{ ansible_user }}"
+        password: "{{ vault_ansible_user_password | password_hash('sha512') }}"
 
     - name: Harden SSH
       ansible.builtin.lineinfile:
@@ -170,16 +170,16 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## Summary
 
-Raspberry Pi OS is Debian-based, so standard Debian Ansible modules work. The Pi-specific parts are hardware configuration through `/boot/firmware/config.txt` (GPU memory, camera, I2C, SPI), `raspi-config` for non-interactive setup, and GPIO/sensor packages. For fleet management, combine this playbook with dynamic inventory to manage dozens or hundreds of Pis.
+Raspberry Pi OS is Debian-based, so standard Debian Ansible modules work. The Pi-specific parts are hardware configuration through `/boot/firmware/config.txt` (GPU memory, camera auto-detection, I2C, SPI), `raspi-config` for non-interactive setup, and GPIO/sensor packages. For fleet management, combine this playbook with dynamic inventory to manage dozens or hundreds of Pis.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this playbook pattern proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this playbook pattern
 
 - name: Infrastructure provisioning
   hosts: all
@@ -212,7 +212,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -253,7 +253,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -294,7 +294,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust task error handling
 - name: Robust task execution
   hosts: all
   tasks:
@@ -356,4 +356,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
