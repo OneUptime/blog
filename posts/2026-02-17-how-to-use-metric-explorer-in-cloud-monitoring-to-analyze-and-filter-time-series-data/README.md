@@ -16,7 +16,7 @@ This guide covers how to use Metric Explorer effectively for common analysis tas
 
 Open the Google Cloud Console, navigate to Monitoring, and click Metric Explorer in the sidebar. You will see a query builder interface with options for selecting metrics, adding filters, and configuring aggregation.
 
-There are two query modes:
+There are three ways to build queries:
 
 - Builder mode: A point-and-click interface for building queries
 - PromQL mode: Write PromQL queries directly (if you are comfortable with Prometheus)
@@ -112,8 +112,8 @@ sum by (service_name)(rate(run_googleapis_com:request_count[5m]))
 # 95th percentile latency
 histogram_quantile(0.95, sum by (le)(rate(http_request_duration_seconds_bucket[5m])))
 
-# CPU utilization above 80%
-kubernetes_io:container_cpu_core_usage_time{namespace_name="production"} > 0.8
+# CPU limit utilization above 80%
+kubernetes_io:container_cpu_limit_utilization{namespace_name="production"} > 0.8
 ```
 
 PromQL mode is faster for complex queries once you know the syntax.
@@ -152,7 +152,7 @@ You can also select a custom range by clicking the calendar icon and specifying 
 
 ## Saving Queries as Dashboard Widgets
 
-When you build a useful query in Metric Explorer, you can save it directly to a dashboard.
+When you build a useful builder or PromQL query in Metric Explorer, you can save it directly to a dashboard.
 
 1. Build your query in Metric Explorer
 2. Click "Save Chart"
@@ -171,16 +171,19 @@ Metric Explorer data can be exported for further analysis.
 
 ```bash
 # Fetch time-series data using the API
-gcloud monitoring time-series list \
-  --filter='metric.type = "compute.googleapis.com/instance/cpu/utilization" AND resource.labels.instance_id = "1234567890"' \
-  --interval-start-time="2026-02-17T00:00:00Z" \
-  --interval-end-time="2026-02-17T12:00:00Z" \
-  --format=json
+PROJECT_ID="my-project"
+
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -G "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+  --data-urlencode 'filter=metric.type = "compute.googleapis.com/instance/cpu/utilization" AND resource.labels.instance_id = "1234567890"' \
+  --data-urlencode 'interval.startTime=2026-02-17T00:00:00Z' \
+  --data-urlencode 'interval.endTime=2026-02-17T12:00:00Z' \
+  --data-urlencode 'view=FULL'
 ```
 
 ## Advanced MQL Queries
 
-Monitoring Query Language (MQL) supports operations that are hard to express in the builder.
+Monitoring Query Language (MQL) supports operations that are hard to express in the builder, but it is no longer Google's recommended query language for new Cloud Monitoring work. Existing MQL queries still run, and you can still execute MQL in Metrics Explorer, but for new charts and alerts you should prefer PromQL or the builder.
 
 ```text
 # Ratio of 5xx to total requests
@@ -189,14 +192,15 @@ fetch cloud_run_revision
 | align rate(1m)
 | every 1m
 | {
-    filter metric.response_code_class = '5xx'
+    filter metric.response_code_class == '5xx'
   ;
     ident
   }
+| group_by drop[metric.response_code_class], sliding(5m), .sum
 | ratio
 ```
 
-MQL is powerful but has a learning curve. Use it when the builder and PromQL do not support what you need.
+MQL is powerful but has a learning curve. Use it for existing MQL assets or when you specifically need an MQL-only operation; otherwise, prefer PromQL or the builder.
 
 ## Tips for Effective Exploration
 
