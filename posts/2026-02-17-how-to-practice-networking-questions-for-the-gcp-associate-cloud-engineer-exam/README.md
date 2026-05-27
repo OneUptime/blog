@@ -54,7 +54,7 @@ gcloud compute networks subnets update us-subnet \
 
 "A VM in us-central1 needs to communicate with a VM in europe-west1. Both are in the same VPC. Do you need to configure anything?"
 
-Answer: No. VPC is global, so VMs in different regions of the same VPC can communicate using internal IPs. No VPN or peering needed.
+Answer: No VPN or peering is needed because the VPC is global and subnet routes are created automatically. You still need firewall rules that allow the required ingress traffic between the VMs.
 
 ## Firewall Rules
 
@@ -68,10 +68,11 @@ Firewall rules are applied at the VPC level and control traffic to and from VM i
 - **Target**: Which instances the rule applies to (all instances, instances with specific tags, or instances with specific service accounts)
 - **Source/Destination**: IP ranges, tags, or service accounts
 
-Default rules that exist in every VPC:
-- Allow egress to any destination (priority 65534)
-- Deny all ingress (priority 65534)
-- Allow internal traffic within the network (implied, but the auto-created rule is priority 65534)
+Implied rules that exist in every VPC:
+- Allow egress to any destination (priority 65535)
+- Deny all ingress (priority 65535)
+
+The default VPC network also includes pre-populated ingress rules at priority 65534 for internal traffic, SSH, RDP, and ICMP. Custom VPC networks do not create those allow rules automatically.
 
 ### Practice: Set Up Firewall Rules
 
@@ -134,12 +135,11 @@ Load balancing questions are common on the exam. Know the types:
 
 | Type | Scope | Layer | Use Case |
 |------|-------|-------|----------|
-| HTTP(S) LB | Global | 7 | Web applications, URL routing |
-| SSL Proxy | Global | 4 | Non-HTTP SSL traffic |
-| TCP Proxy | Global | 4 | Non-HTTP, non-SSL TCP traffic |
-| Network LB | Regional | 4 | UDP traffic, client IP preservation |
-| Internal TCP/UDP | Regional | 4 | Internal services |
-| Internal HTTP(S) | Regional | 7 | Internal web services |
+| External Application LB (HTTP/S) | Global, regional, or classic | 7 | Web applications, URL routing |
+| Proxy Network LB (TCP/SSL) | Global, regional, or classic | 4 | TCP traffic with proxying or SSL offload |
+| Passthrough Network LB | Regional | 4 | UDP traffic, client IP preservation, direct server return |
+| Internal passthrough Network LB | Regional | 4 | Internal TCP/UDP services |
+| Internal Application LB | Regional or cross-region | 7 | Internal web services |
 
 ### Practice: Create an HTTP(S) Load Balancer
 
@@ -162,32 +162,38 @@ gcloud compute instance-groups managed create web-mig \
   --size=3 \
   --zone=us-central1-a
 
-# 3. Create a health check
+# 3. Set the named port used by the backend service
+gcloud compute instance-groups managed set-named-ports web-mig \
+  --named-ports=http:80 \
+  --zone=us-central1-a
+
+# 4. Create a health check
 gcloud compute health-checks create http web-health-check \
   --port=80 \
   --request-path=/
 
-# 4. Create a backend service
+# 5. Create a backend service
 gcloud compute backend-services create web-backend \
   --protocol=HTTP \
+  --port-name=http \
   --health-checks=web-health-check \
   --global
 
-# 5. Add the instance group to the backend service
+# 6. Add the instance group to the backend service
 gcloud compute backend-services add-backend web-backend \
   --instance-group=web-mig \
   --instance-group-zone=us-central1-a \
   --global
 
-# 6. Create a URL map
+# 7. Create a URL map
 gcloud compute url-maps create web-map \
   --default-service=web-backend
 
-# 7. Create a target HTTP proxy
+# 8. Create a target HTTP proxy
 gcloud compute target-http-proxies create web-proxy \
   --url-map=web-map
 
-# 8. Create a forwarding rule (the actual external IP)
+# 9. Create a forwarding rule (the actual external IP)
 gcloud compute forwarding-rules create web-forwarding \
   --target-http-proxy=web-proxy \
   --ports=80 \
@@ -239,8 +245,8 @@ Know when to use Shared VPC vs. VPC Peering:
 Creates an encrypted tunnel between your on-premises network and GCP over the public internet.
 
 Two types:
-- **Classic VPN**: Single tunnel, 99.9% SLA
-- **HA VPN**: Two tunnels for redundancy, 99.99% SLA (the exam prefers this)
+- **Classic VPN**: Legacy VPN gateway option with a 99.9% SLA
+- **HA VPN**: High-availability VPN gateway with two interfaces. When configured with tunnels on both interfaces, it has a 99.99% SLA (the exam prefers this)
 
 ### Cloud Interconnect
 
@@ -252,7 +258,7 @@ Direct physical connection between your data center and Google's network. Two op
 
 "Your company needs to connect their on-premises data center to GCP with low latency and high bandwidth. They process sensitive financial data and want the traffic to avoid the public internet."
 
-Answer: Dedicated Interconnect (or Partner Interconnect if Dedicated is not available at their location).
+Answer: Dedicated Interconnect (or Partner Interconnect if Dedicated is not available at their location). If the requirement includes encrypting the traffic, use HA VPN over Cloud Interconnect or another supported encryption option, because Cloud Interconnect does not encrypt traffic by default.
 
 ## Cloud DNS
 
