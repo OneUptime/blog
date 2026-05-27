@@ -8,23 +8,23 @@ Description: Learn how to monitor Pub/Sub subscription backlog size and oldest u
 
 ---
 
-A Pub/Sub subscription backlog tells you how many messages are waiting to be processed. The oldest unacknowledged message age tells you how far behind your subscriber is. Together, these two metrics give you the clearest picture of whether your messaging pipeline is healthy or heading toward trouble.
+A Pub/Sub subscription backlog tells you how many messages are unacknowledged, including messages waiting to be delivered and messages currently being processed. The oldest unacknowledged message age tells you how far behind your subscriber is. Together, these two metrics give you the clearest picture of whether your messaging pipeline is healthy or heading toward trouble.
 
-If the backlog is growing, your subscriber is not keeping up with the publish rate. If the oldest unacked message age is increasing, something is stuck. Both of these situations need attention before they snowball into a production incident.
+If the backlog is growing, your subscriber is not keeping up with the publish rate. If the oldest unacked message age is increasing, the subscriber is falling behind or a message is stuck. Both of these situations need attention before they snowball into a production incident.
 
 ## The Key Metrics
 
 Pub/Sub exports several metrics to Cloud Monitoring, but two are essential for backlog monitoring:
 
-**`pubsub.googleapis.com/subscription/num_undelivered_messages`** - The number of messages that have been published to the topic but not yet acknowledged by the subscriber. This is your backlog size.
+**`pubsub.googleapis.com/subscription/num_undelivered_messages`** - The number of unacknowledged messages in the subscription. This is your backlog size.
 
 **`pubsub.googleapis.com/subscription/oldest_unacked_message_age`** - The age (in seconds) of the oldest unacknowledged message in the subscription. This tells you the maximum delay in your pipeline.
 
 A healthy subscription has a small, stable backlog and a low oldest message age. The exact numbers depend on your use case - a real-time alerting system should have near-zero backlog, while a batch processing system might intentionally accumulate messages between processing windows.
 
-## Checking Backlog from the Command Line
+## Checking Backlog and Subscription Settings
 
-You can quickly check a subscription's backlog with gcloud:
+You can quickly check a subscription's retention and acknowledgment settings with gcloud before querying backlog metrics:
 
 ```bash
 # Check subscription details including message retention and ack deadline
@@ -33,7 +33,7 @@ gcloud pubsub subscriptions describe my-subscription \
   --format="yaml(ackDeadlineSeconds, messageRetentionDuration)"
 ```
 
-For a quick snapshot, you can also use the Pub/Sub API directly:
+For a quick backlog snapshot, query the Cloud Monitoring API directly:
 
 ```python
 # Check subscription backlog programmatically
