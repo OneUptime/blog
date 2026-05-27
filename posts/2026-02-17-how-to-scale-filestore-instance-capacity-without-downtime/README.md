@@ -8,7 +8,7 @@ Description: Learn how to increase and decrease Google Cloud Filestore instance 
 
 ---
 
-One of the best features of managed storage services is the ability to resize on the fly. Google Cloud Filestore supports capacity scaling without downtime for most tiers. You can grow your file share when you need more space and, in some cases, shrink it when you are overprovisioned. Connected NFS clients see the new capacity automatically without needing to remount.
+One of the best features of managed storage services is the ability to resize on the fly. Google Cloud Filestore supports capacity scaling without downtime. You can grow your file share when you need more space and, for zonal, regional, and enterprise instances, shrink it when you are overprovisioned. Connected NFS clients see the new capacity automatically without needing to remount.
 
 In this post, I will cover how scaling works for each tier, walk through the commands, and share some strategies for automating capacity management.
 
@@ -16,7 +16,7 @@ In this post, I will cover how scaling works for each tier, walk through the com
 
 When you increase the capacity of a Filestore instance, the underlying storage infrastructure allocates additional space and makes it available to the NFS file share. This happens while the instance remains online and accessible. Connected clients do not need to unmount or remount - they see the new capacity the next time they check available space (typically within a few minutes).
 
-For Zonal and Regional tiers, performance also scales with capacity. So increasing capacity from 2 TB to 5 TB not only gives you more space but also higher throughput and IOPS limits.
+For enterprise instances, and for zonal and regional instances that use capacity-based performance limits, performance also scales with capacity. Zonal and regional instances can also use custom performance, which lets you configure IOPS independently from capacity.
 
 ## Scaling Up - Increasing Capacity
 
@@ -24,30 +24,30 @@ Scaling up is supported on all tiers and is the most common operation.
 
 ### Basic HDD and Basic SSD
 
-For Basic tiers, you can increase capacity in 1 GB increments:
+For Basic tiers, you can increase capacity in 1 GiB increments:
 
 ```bash
-# Scale up a Basic HDD instance from 1TB to 2TB
+# Scale up a Basic HDD instance from 1 TiB to 2 TiB
 
 gcloud filestore instances update my-filestore \
   --zone=us-central1-a \
-  --file-share=name=vol1,capacity=2TB
+  --file-share=name=vol1,capacity=2TiB
 ```
 
-The operation is immediate and the instance stays online. Connected clients see the new capacity within a few minutes.
+The instance stays online while the operation runs. Connected clients see the new capacity within a few minutes.
 
 ### Zonal, Regional, and Enterprise
 
 The higher tiers also support online scaling:
 
 ```bash
-# Scale up a Zonal instance from 1TB to 5TB
+# Scale up a Zonal instance from 1 TiB to 5 TiB
 gcloud filestore instances update my-zonal-filestore \
   --zone=us-central1-a \
-  --file-share=name=data,capacity=5TB
+  --file-share=name=data,capacity=5TiB
 ```
 
-For these tiers, remember that throughput and IOPS scale with capacity. After scaling up, you automatically get higher performance limits.
+For enterprise instances, and for zonal or regional instances that use capacity-based performance, throughput and IOPS scale with capacity. If your zonal or regional instance uses custom performance, review the configured performance separately after resizing.
 
 ## Verifying the New Capacity
 
@@ -73,19 +73,19 @@ If the client still shows the old capacity, wait a few minutes. The NFS client c
 
 Scaling down is more restrictive than scaling up. Not all tiers support it, and there are minimum capacity requirements.
 
-**Basic HDD:** Supports scale-down. Minimum capacity is 1 TB.
+**Basic HDD:** Does not support scale-down. Minimum capacity is 1 TiB.
 
-**Basic SSD:** Supports scale-down. Minimum capacity is 2.5 TB.
+**Basic SSD:** Does not support scale-down. Minimum capacity is 2.5 TiB.
 
 **Zonal and Regional:** Supports scale-down with restrictions. You cannot scale below the amount of data currently stored on the instance.
 
-**Enterprise:** Supports scale-down. Minimum capacity is 1 TB.
+**Enterprise:** Supports scale-down. Minimum capacity is 1 TiB.
 
 ```bash
-# Scale down a Basic HDD instance from 2TB to 1TB
-gcloud filestore instances update my-filestore \
+# Scale down a Zonal instance from 5 TiB to 4 TiB
+gcloud filestore instances update my-zonal-filestore \
   --zone=us-central1-a \
-  --file-share=name=vol1,capacity=1TB
+  --file-share=name=data,capacity=4TiB
 ```
 
 Before scaling down, always check how much data is on the instance:
@@ -114,9 +114,9 @@ The monitoring alert uses the `file.googleapis.com/nfs/server/used_bytes_percent
 gcloud alpha monitoring policies create \
   --display-name="Filestore High Usage" \
   --condition-display-name="Usage above 80%" \
-  --condition-filter='resource.type="filestore.googleapis.com/Instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
-  --condition-threshold-value=80 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-filter='resource.type="filestore_instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
+  --if='> 80' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID
 ```
 
@@ -138,7 +138,7 @@ def scale_filestore(event, context):
     instance = client.get_instance(name=instance_name)
     current_capacity_gb = instance.file_shares[0].capacity_gb
 
-    # Calculate new capacity (25% increase, rounded to nearest TB)
+    # Calculate new capacity (25% increase)
     new_capacity_gb = int(current_capacity_gb * 1.25)
     # Round up to nearest 256 GB for cleaner sizing
     new_capacity_gb = ((new_capacity_gb + 255) // 256) * 256
@@ -175,7 +175,7 @@ Rather than scaling reactively, it is often better to plan capacity ahead of tim
 ```bash
 # Check historical usage with Cloud Monitoring
 gcloud monitoring time-series list \
-  --filter='resource.type="filestore.googleapis.com/Instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
+  --filter='resource.type="filestore_instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
   --interval-start-time=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
@@ -184,11 +184,13 @@ gcloud monitoring time-series list \
 
 Each tier has minimum capacity increments for scaling:
 
-- Basic HDD: 1 GB increments, minimum 1 TB
-- Basic SSD: 1 GB increments, minimum 2.5 TB
-- Zonal: 256 GB increments, minimum 1 TB
-- Regional: 256 GB increments, minimum 1 TB
-- Enterprise: 256 GB increments, minimum 1 TB
+- Basic HDD: scale up only in 1 GiB increments, minimum 1 TiB
+- Basic SSD: scale up only in 1 GiB increments, minimum 2.5 TiB
+- Zonal lower capacity range: up or down in 1 GiB increments, minimum 1 TiB
+- Zonal higher capacity range: up or down in 2.5 TiB increments, minimum 10 TiB
+- Regional lower capacity range: up or down in 1 GiB increments with the small capacity instances feature, or 256 GiB increments otherwise
+- Regional higher capacity range: up or down in 2.5 TiB increments, minimum 10 TiB
+- Enterprise: up or down in 256 GiB increments, minimum 1 TiB
 
 ### The Client Side
 
@@ -196,4 +198,4 @@ When Filestore capacity changes, NFS clients automatically see the new capacity.
 
 ## Summary
 
-Online scaling is one of the strongest operational features of Filestore. You can grow capacity without any disruption to connected clients, and the performance improvements that come with larger instances on higher tiers are automatic. Combine monitoring-based alerts with automated scaling functions and you have a storage layer that grows and shrinks with your workload without manual intervention.
+Online scaling is one of the strongest operational features of Filestore. You can grow capacity without any disruption to connected clients, and capacity-based performance improvements on supported tiers come with larger instances automatically. Combine monitoring-based alerts with automated scaling functions and you have a storage layer that grows and shrinks with your workload without manual intervention.
