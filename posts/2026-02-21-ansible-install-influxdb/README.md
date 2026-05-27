@@ -46,8 +46,6 @@ influxdb_retention=30d
 - name: Install InfluxDB 2.x
   hosts: influxdb_servers
   become: true
-  vars:
-    influxdb_version: "2.7"
 
   tasks:
     - name: Install required packages
@@ -55,20 +53,44 @@ influxdb_retention=30d
         name:
           - curl
           - gnupg
-          - apt-transport-https
+          - ca-certificates
         state: present
         update_cache: true
 
-    - name: Add InfluxData GPG key
-      ansible.builtin.apt_key:
-        url: https://repos.influxdata.com/influxdata-archive_compat.key
-        state: present
+    - name: Create APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download InfluxData GPG key
+      ansible.builtin.get_url:
+        url: https://repos.influxdata.com/influxdata-archive.key
+        dest: /tmp/influxdata-archive.key
+        mode: "0644"
+
+    - name: Verify InfluxData GPG key fingerprint
+      ansible.builtin.command:
+        argv:
+          - gpg
+          - --show-keys
+          - --with-fingerprint
+          - --with-colons
+          - /tmp/influxdata-archive.key
+      register: influxdata_key
+      changed_when: false
+      failed_when: "'24C975CBA61A024EE1B631787C3D57159FC2F927' not in influxdata_key.stdout"
+
+    - name: Install InfluxData GPG key
+      ansible.builtin.command:
+        cmd: gpg --dearmor -o /etc/apt/keyrings/influxdata-archive.gpg /tmp/influxdata-archive.key
+        creates: /etc/apt/keyrings/influxdata-archive.gpg
 
     - name: Add InfluxDB APT repository
       ansible.builtin.apt_repository:
-        repo: "deb https://repos.influxdata.com/ubuntu {{ ansible_distribution_release }} stable"
+        repo: "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main"
         state: present
-        filename: influxdb
+        filename: influxdata
 
     - name: Install InfluxDB package
       ansible.builtin.apt:
@@ -124,17 +146,20 @@ InfluxDB 2.x requires an initial setup step that creates the first user, organiz
         url: "http://{{ ansible_host }}:{{ influxdb_port }}/api/v2/setup"
         method: POST
         body_format: json
-        body:
-          username: "{{ influxdb_admin_user }}"
-          password: "{{ vault_influxdb_admin_password }}"
-          org: "{{ influxdb_org }}"
-          bucket: "{{ influxdb_bucket }}"
-          retentionPeriodSeconds: "{{ influxdb_retention_seconds | default(2592000) }}"
-          token: "{{ vault_influxdb_admin_token }}"
+        body: |
+          {
+            "username": {{ influxdb_admin_user | to_json }},
+            "password": {{ vault_influxdb_admin_password | to_json }},
+            "org": {{ influxdb_org | to_json }},
+            "bucket": {{ influxdb_bucket | to_json }},
+            "retentionPeriodSeconds": {{ influxdb_retention_seconds | default(2592000) | int }},
+            "token": {{ vault_influxdb_admin_token | to_json }}
+          }
         status_code:
           - 201
       when: setup_check.json.allowed | default(false)
       register: setup_result
+      no_log: true
 
     - name: Save the admin token for later use
       ansible.builtin.copy:
@@ -148,7 +173,7 @@ InfluxDB 2.x requires an initial setup step that creates the first user, organiz
 
 ## Configuring InfluxDB
 
-InfluxDB 2.x uses a configuration file at `/etc/influxdb/config.toml`. Here is how to template it.
+InfluxDB 2.x packages use a configuration file at `/etc/influxdb/config.toml`. Here is how to template it.
 
 ```yaml
 # playbooks/configure-influxdb.yml
@@ -175,8 +200,8 @@ InfluxDB 2.x uses a configuration file at `/etc/influxdb/config.toml`. Here is h
         group: influxdb
         mode: "0750"
       loop:
-        - /var/lib/influxdb2
-        - /var/lib/influxdb2/engine
+        - /var/lib/influxdb
+        - /var/lib/influxdb/engine
 
   handlers:
     - name: Restart InfluxDB
@@ -195,8 +220,8 @@ The configuration template.
 http-bind-address = ":{{ influxdb_port }}"
 
 # Data storage paths
-bolt-path = "/var/lib/influxdb2/influxd.bolt"
-engine-path = "/var/lib/influxdb2/engine"
+bolt-path = "/var/lib/influxdb/influxd.bolt"
+engine-path = "/var/lib/influxdb/engine"
 
 # Query settings
 query-concurrency = {{ influxdb_query_concurrency | default(10) }}
@@ -205,7 +230,7 @@ query-queue-size = {{ influxdb_query_queue_size | default(10) }}
 # Storage settings
 storage-cache-max-memory-size = {{ influxdb_cache_max_memory | default('1073741824') }}
 storage-cache-snapshot-memory-size = {{ influxdb_cache_snapshot_memory | default('26214400') }}
-storage-compact-full-write-coldness = {{ influxdb_compact_coldness | default('4') }}
+storage-compact-full-write-cold-duration = "{{ influxdb_compact_cold_duration | default('4h0m0s') }}"
 
 # Logging
 log-level = "{{ influxdb_log_level | default('info') }}"
@@ -247,7 +272,7 @@ After the initial setup, create additional buckets for different data types.
   tasks:
     - name: Get the organization ID
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:{{ influxdb_port }}/api/v2/orgs"
+        url: "http://{{ ansible_host }}:{{ influxdb_port }}/api/v2/orgs?org={{ influxdb_org | urlencode }}"
         method: GET
         headers:
           Authorization: "Token {{ vault_influxdb_admin_token }}"
@@ -265,13 +290,18 @@ After the initial setup, create additional buckets for different data types.
         headers:
           Authorization: "Token {{ vault_influxdb_admin_token }}"
         body_format: json
-        body:
-          name: "{{ item.name }}"
-          orgID: "{{ org_id }}"
-          retentionRules:
-            - type: expire
-              everySeconds: "{{ item.retention }}"
-          description: "{{ item.description }}"
+        body: |
+          {
+            "name": {{ item.name | to_json }},
+            "orgID": {{ org_id | to_json }},
+            "retentionRules": [
+              {
+                "type": "expire",
+                "everySeconds": {{ item.retention | int }}
+              }
+            ],
+            "description": {{ item.description | to_json }}
+          }
         status_code:
           - 201
           - 422  # Already exists
@@ -296,7 +326,7 @@ Create scoped tokens for applications instead of using the admin token.
   tasks:
     - name: Get organization ID
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:{{ influxdb_port }}/api/v2/orgs"
+        url: "http://{{ ansible_host }}:{{ influxdb_port }}/api/v2/orgs?org={{ influxdb_org | urlencode }}"
         method: GET
         headers:
           Authorization: "Token {{ vault_influxdb_admin_token }}"
@@ -328,10 +358,16 @@ Create scoped tokens for applications instead of using the admin token.
                 orgID: "{{ orgs.json.orgs[0].id }}"
         status_code: 201
       register: write_token
+      no_log: true
 
-    - name: Display the new write token
-      ansible.builtin.debug:
-        msg: "Write token created. Save this: {{ write_token.json.token }}"
+    - name: Save the new write token
+      ansible.builtin.copy:
+        content: "{{ write_token.json.token }}"
+        dest: /etc/influxdb/metrics-write-token
+        owner: root
+        group: influxdb
+        mode: "0640"
+      no_log: true
 ```
 
 ## Installation Flow
@@ -363,13 +399,13 @@ If you run RHEL or CentOS, the package management is slightly different.
   ansible.builtin.yum_repository:
     name: influxdb
     description: InfluxDB Official Repository
-    baseurl: https://repos.influxdata.com/rhel/$releasever/$basearch/stable
+    baseurl: https://repos.influxdata.com/stable/$basearch/main
     gpgcheck: true
-    gpgkey: https://repos.influxdata.com/influxdata-archive_compat.key
+    gpgkey: https://repos.influxdata.com/influxdata-archive.key
     enabled: true
 
 - name: Install InfluxDB on RHEL
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name:
       - influxdb2
       - influxdb2-cli
