@@ -36,7 +36,7 @@ You need a few things before starting:
 - A GCP project with billing enabled
 - Cloud Functions API, Eventarc API, and Cloud Run API enabled
 - The `gcloud` CLI installed and configured
-- Node.js 18+ (or Python 3.11+ if you prefer Python)
+- Node.js 22+ (or Python 3.11+ if you prefer Python)
 
 Enable the required APIs with a single command.
 
@@ -48,7 +48,8 @@ gcloud services enable \
   eventarc.googleapis.com \
   run.googleapis.com \
   cloudbuild.googleapis.com \
-  pubsub.googleapis.com
+  pubsub.googleapis.com \
+  eventarcpublishing.googleapis.com
 ```
 
 ## Writing a Gen 2 Cloud Function
@@ -58,10 +59,22 @@ Gen 2 functions use the Functions Framework, which means they are basically HTTP
 ```javascript
 // index.js - A Gen 2 Cloud Function that handles multiple event types
 const functions = require("@google-cloud/functions-framework");
+const protobuf = require("protobufjs");
+
+let firestoreDataTypePromise;
+
+function getFirestoreDataType() {
+  if (!firestoreDataTypePromise) {
+    firestoreDataTypePromise = protobuf.load("data.proto").then((root) =>
+      root.lookupType("google.events.cloud.firestore.v1.DocumentEventData")
+    );
+  }
+  return firestoreDataTypePromise;
+}
 
 // Register a CloudEvent handler
 // This single handler will receive events from all Eventarc triggers
-functions.cloudEvent("handleEvent", (cloudEvent) => {
+functions.cloudEvent("handleEvent", async (cloudEvent) => {
   // The CloudEvent object has standard fields regardless of source
   const eventType = cloudEvent.type;
   const source = cloudEvent.source;
@@ -75,7 +88,7 @@ functions.cloudEvent("handleEvent", (cloudEvent) => {
       handleStorageUpload(data);
       break;
     case "google.cloud.firestore.document.v1.created":
-      handleFirestoreCreate(data);
+      await handleFirestoreCreate(data);
       break;
     case "google.cloud.audit.log.v1.written":
       handleAuditLog(data);
@@ -94,8 +107,12 @@ function handleStorageUpload(data) {
 }
 
 // Handler for new Firestore documents
-function handleFirestoreCreate(data) {
-  const document = data.value;
+async function handleFirestoreCreate(data) {
+  // Firestore direct events are delivered as protobuf bytes.
+  // Include google/events/cloud/firestore/v1/data.proto in your source as data.proto.
+  const DocumentEventData = await getFirestoreDataType();
+  const firestoreEvent = DocumentEventData.decode(data);
+  const document = firestoreEvent.value;
   console.log("New Firestore document:", JSON.stringify(document.fields));
 }
 
@@ -115,7 +132,7 @@ Deploy the function first, then attach Eventarc triggers to it. With Gen 2, the 
 # Deploy the Gen 2 Cloud Function
 gcloud functions deploy handleEvent \
   --gen2 \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --region us-central1 \
   --trigger-http \
   --entry-point handleEvent \
@@ -152,13 +169,14 @@ gcloud eventarc triggers create firestore-create-trigger \
   --event-filters "type=google.cloud.firestore.document.v1.created" \
   --event-filters "database=(default)" \
   --event-filters-path-pattern "document=users/{userId}" \
+  --event-data-content-type "application/protobuf" \
   --service-account PROJECT_NUMBER-compute@developer.gserviceaccount.com
 ```
 
 ### Trigger for Cloud Audit Log Events
 
 ```bash
-# Create a trigger for BigQuery job completion audit logs
+# Create a trigger for BigQuery job insertion audit logs
 gcloud eventarc triggers create audit-log-trigger \
   --location us-central1 \
   --destination-run-service handleEvent \
@@ -192,9 +210,9 @@ Then publish events from your application.
 
 ```javascript
 // Publishing a custom event from your application code
-const { EventarcPublisherClient } = require("@google-cloud/eventarc-publishing");
+const { PublisherClient } = require("@google-cloud/eventarc-publishing").v1;
 
-const client = new EventarcPublisherClient();
+const client = new PublisherClient();
 
 async function publishOrderEvent(orderId, customerId) {
   const channelName = `projects/my-project/locations/us-central1/channels/my-app-channel`;
@@ -202,15 +220,15 @@ async function publishOrderEvent(orderId, customerId) {
   // Construct a CloudEvent-formatted message
   await client.publishEvents({
     channel: channelName,
-    events: [
-      {
-        "@type": "type.googleapis.com/io.cloudevents.v1.CloudEvent",
+    textEvents: [
+      JSON.stringify({
+        specversion: "1.0",
         id: `order-${orderId}-${Date.now()}`,
         source: "//my-app/order-service",
         type: "com.myapp.order.created",
-        specVersion: "1.0",
-        textData: JSON.stringify({ orderId, customerId }),
-      },
+        datacontenttype: "application/json",
+        data: { orderId, customerId },
+      }),
     ],
   });
 
@@ -237,17 +255,18 @@ This separation of triggers from functions is really the main advantage. You can
 
 ## Event Filtering Best Practices
 
-Eventarc supports both exact-match filters and path-pattern filters. Use them to narrow down which events actually reach your function.
+Eventarc supports exact-match filters, and selected providers such as Firestore and Cloud Audit Logs also support path-pattern filters. Use them to narrow down which events actually reach your function.
 
 ```bash
-# Only trigger for JSON files in a specific prefix
-gcloud eventarc triggers create filtered-storage-trigger \
+# Only trigger for documents in a specific Firestore collection
+gcloud eventarc triggers create filtered-firestore-trigger \
   --location us-central1 \
   --destination-run-service handleEvent \
   --destination-run-region us-central1 \
-  --event-filters "type=google.cloud.storage.object.v1.finalized" \
-  --event-filters "bucket=my-data-bucket" \
-  --event-filters-path-pattern "name=incoming/*.json" \
+  --event-filters "type=google.cloud.firestore.document.v1.created" \
+  --event-filters "database=(default)" \
+  --event-filters-path-pattern "document=orders/{orderId}" \
+  --event-data-content-type "application/protobuf" \
   --service-account PROJECT_NUMBER-compute@developer.gserviceaccount.com
 ```
 
