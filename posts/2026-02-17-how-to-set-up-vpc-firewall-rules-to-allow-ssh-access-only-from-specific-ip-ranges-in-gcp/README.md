@@ -30,11 +30,12 @@ Rules are stateful - if an ingress rule allows a connection, the response traffi
 First, check if you have any rules allowing SSH from anywhere:
 
 ```bash
-# Find firewall rules that allow SSH from 0.0.0.0/0
+# Find firewall rules that explicitly allow SSH from 0.0.0.0/0
 
 gcloud compute firewall-rules list \
-  --filter="allowed[].ports:22 AND sourceRanges:0.0.0.0/0" \
-  --format="table(name, network, sourceRanges, targetTags)"
+  --flatten="allowed[]" \
+  --filter="direction=INGRESS AND allowed.IPProtocol=tcp AND allowed.ports=22 AND sourceRanges=0.0.0.0/0" \
+  --format="table(name, network, allowed.IPProtocol, allowed.ports, sourceRanges, targetTags)"
 ```
 
 The default VPC network comes with a rule called `default-allow-ssh` that allows SSH from anywhere. Delete it or modify it:
@@ -136,14 +137,14 @@ gcloud projects add-iam-policy-binding my-project \
   --role="roles/iap.tunnelResourceAccessor"
 ```
 
-You can also restrict IAP access to specific VMs using IAM conditions:
+You can also restrict IAP access to specific VMs using IAM conditions, such as a VM name prefix:
 
 ```bash
-# Grant IAP access only to VMs with a specific tag
+# Grant IAP access only to VMs whose names start with dev-
 gcloud projects add-iam-policy-binding my-project \
   --member="user:developer@mycompany.com" \
   --role="roles/iap.tunnelResourceAccessor" \
-  --condition='expression=resource.name.startsWith("projects/my-project/zones/us-central1-a/instances/dev-"),title=dev-vms-only'
+  --condition='expression=resource.type == "compute.googleapis.com/Instance" && resource.name.startsWith("projects/my-project/zones/us-central1-a/instances/dev-"),title=dev-vms-only'
 ```
 
 ## Creating a Deny-All SSH Baseline
@@ -188,10 +189,11 @@ gcloud compute firewall-rules list \
 ```
 
 ```bash
-# Find rules allowing any port from any source
+# Find rules allowing all TCP or UDP ports from any source
 gcloud compute firewall-rules list \
-  --filter="direction=INGRESS AND sourceRanges:0.0.0.0/0 AND allowed[].ports:*" \
-  --format="table(name, network, allowed)"
+  --flatten="allowed[]" \
+  --filter="direction=INGRESS AND sourceRanges=0.0.0.0/0 AND (allowed.IPProtocol=tcp OR allowed.IPProtocol=udp) AND -allowed.ports:*" \
+  --format="table(name, network, allowed.IPProtocol, sourceRanges, targetTags)"
 ```
 
 ## Logging Firewall Rule Hits
