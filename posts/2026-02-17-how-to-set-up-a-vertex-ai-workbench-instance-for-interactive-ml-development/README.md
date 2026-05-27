@@ -12,39 +12,56 @@ If you have ever struggled with setting up a local development environment for m
 
 ## Workbench Instance Types
 
-Vertex AI Workbench offers two types of instances:
+Vertex AI Workbench instances are the current VM-backed notebook environment for interactive ML development. Older Vertex AI Workbench documentation also includes managed notebooks and user-managed notebooks:
 
 **Managed notebooks** are fully managed by Google. They handle software updates, idle shutdown, and integrations automatically. This is what most people should use.
 
 **User-managed notebooks** give you more control - you can SSH in, install custom software, and configure the instance as you see fit. Use these when you need specific system-level configurations.
 
-## Creating a Managed Workbench Instance
+## Creating a Workbench Instance
 
-Here is how to create a managed workbench instance using the Python SDK:
+Here is how to create a Workbench instance using the Python client library for the Notebooks API:
 
 ```python
 # create_workbench.py
 
-# Create a Vertex AI Workbench managed instance
+# Create a Vertex AI Workbench instance
 
-from google.cloud import aiplatform
+from google.cloud import notebooks_v2
 
-aiplatform.init(
-    project='your-project-id',
-    location='us-central1',
+project_id = 'your-project-id'
+location = 'us-central1-a'
+
+client = notebooks_v2.NotebookServiceClient()
+
+instance = notebooks_v2.Instance(
+    gce_setup=notebooks_v2.GceSetup(
+        machine_type='n1-standard-8',
+        vm_image=notebooks_v2.VmImage(
+            project='cloud-notebooks-managed',
+            family='workbench-instances',
+        ),
+        # Add a GPU for training
+        accelerator_configs=[
+            notebooks_v2.AcceleratorConfig(
+                type_='NVIDIA_TESLA_T4',
+                core_count=1,
+            )
+        ],
+        gpu_driver_config=notebooks_v2.GPUDriverConfig(
+            enable_gpu_driver=True,
+        ),
+    ),
 )
 
-# Create a managed notebook instance
-instance = aiplatform.NotebookRuntimeTemplate.create(
-    display_name='ml-dev-notebook',
-    machine_type='n1-standard-8',
-    # Add a GPU for training
-    accelerator_type='NVIDIA_TESLA_T4',
-    accelerator_count=1,
-    description='Development notebook for ML experiments',
+operation = client.create_instance(
+    parent=f'projects/{project_id}/locations/{location}',
+    instance_id='ml-dev-notebook',
+    instance=instance,
 )
 
-print(f"Workbench instance template created: {instance.resource_name}")
+workbench_instance = operation.result()
+print(f"Workbench instance created: {workbench_instance.name}")
 ```
 
 The gcloud CLI is often more convenient for this:
@@ -110,7 +127,7 @@ To avoid paying for an instance that is sitting idle, configure automatic shutdo
 gcloud workbench instances create auto-shutdown-notebook \
   --location=us-central1-a \
   --machine-type=n1-standard-8 \
-  --idle-shutdown-timeout=60 \
+  --metadata=idle-timeout-seconds=3600 \
   --boot-disk-size=200GB
 ```
 
@@ -160,7 +177,7 @@ pip install plotly seaborn
 gcloud workbench instances create ml-notebook \
   --location=us-central1-a \
   --machine-type=n1-standard-8 \
-  --post-startup-script=gs://your-bucket/scripts/post-startup.sh \
+  --metadata=post-startup-script=gs://your-bucket/scripts/post-startup.sh \
   --boot-disk-size=200GB
 ```
 
@@ -221,7 +238,7 @@ aiplatform.init(
 job = aiplatform.CustomTrainingJob(
     display_name='training-from-notebook',
     script_path='./trainer/task.py',
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-17.py310:latest',
 )
 
 model = job.run(
@@ -280,7 +297,7 @@ Use a custom service account with least-privilege permissions:
 gcloud workbench instances create secure-notebook \
   --location=us-central1-a \
   --machine-type=n1-standard-4 \
-  --service-account=notebook-sa@your-project-id.iam.gserviceaccount.com
+  --service-account-email=notebook-sa@your-project-id.iam.gserviceaccount.com
 ```
 
 Place your instance in a VPC with appropriate firewall rules:
@@ -292,7 +309,7 @@ gcloud workbench instances create vpc-notebook \
   --machine-type=n1-standard-4 \
   --network=projects/your-project-id/global/networks/your-vpc \
   --subnet=projects/your-project-id/regions/us-central1/subnetworks/your-subnet \
-  --no-public-ip
+  --disable-public-ip
 ```
 
 ## Wrapping Up
