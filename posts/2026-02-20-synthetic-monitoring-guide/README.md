@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Synthetic Monitoring, Web Performance, Uptime, Testing, Observability
 
-Description: Learn how to set up synthetic monitoring to proactively detect issues before users do with endpoint checks and browser tests.
+Description: Learn how to set up synthetic monitoring to proactively detect issues before users do with endpoint checks, API flow checks, and SSL certificate monitoring.
 
 ---
 
@@ -46,7 +46,7 @@ import httpx
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,7 @@ class APIFlowMonitor:
         """Execute all steps in sequence."""
         # Store extracted values across steps
         context = {}
+        self.results = []
 
         async with httpx.AsyncClient(base_url=self.base_url) as client:
             for step in self.steps:
@@ -294,8 +295,10 @@ def check_ssl_certificate(hostname, port=443, warn_days=30):
 
         # Parse the expiration date
         expires_str = cert["notAfter"]
-        expires = datetime.strptime(expires_str, "%b %d %H:%M:%S %Y %Z")
-        expires = expires.replace(tzinfo=timezone.utc)
+        expires = datetime.fromtimestamp(
+            ssl.cert_time_to_seconds(expires_str),
+            timezone.utc
+        )
 
         # Calculate days until expiration
         now = datetime.now(timezone.utc)
@@ -347,7 +350,7 @@ graph LR
 # Schedule synthetic checks at different intervals
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 class SyntheticScheduler:
     def __init__(self):
@@ -374,7 +377,7 @@ class SyntheticScheduler:
         """Process a check result - alert if failed."""
         if not result.passed:
             print(
-                f"[{datetime.utcnow().isoformat()}] FAIL: "
+                f"[{datetime.now(timezone.utc).isoformat()}] FAIL: "
                 f"{result.url} - {result.error or result.status_code}"
             )
 
