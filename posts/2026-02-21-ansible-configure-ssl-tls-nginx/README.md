@@ -35,6 +35,9 @@ ssl-nginx/
         nginx-ssl.conf.j2
         ssl-params.conf.j2
       files/
+        example.com-fullchain.crt
+        example.com.key
+        example.com-chain.crt
         dhparam.pem
       handlers/
         main.yml
@@ -47,7 +50,10 @@ ssl-nginx/
 # group_vars/all.yml
 
 server_name: www.example.com
-ssl_cert_path: /etc/ssl/certs/example.com.crt
+ssl_cert_local_path: example.com-fullchain.crt
+ssl_key_local_path: example.com.key
+ssl_chain_local_path: example.com-chain.crt
+ssl_cert_path: /etc/ssl/certs/example.com-fullchain.crt
 ssl_key_path: /etc/ssl/private/example.com.key
 ssl_chain_path: /etc/ssl/certs/example.com-chain.crt
 ssl_dhparam_path: /etc/ssl/certs/dhparam.pem
@@ -62,7 +68,7 @@ DH parameters strengthen the Diffie-Hellman key exchange. Generate them once on 
 
 ```bash
 # Generate a 2048-bit DH parameter file (takes a few minutes)
-openssl dhparam -out files/dhparam.pem 2048
+openssl dhparam -out roles/nginx_ssl/files/dhparam.pem 2048
 ```
 
 ## Role Tasks
@@ -84,7 +90,7 @@ openssl dhparam -out files/dhparam.pem 2048
     group: root
     mode: '0700'
 
-- name: Copy SSL certificate to the server
+- name: Copy SSL full certificate chain to the server
   copy:
     src: "{{ ssl_cert_local_path }}"
     dest: "{{ ssl_cert_path }}"
@@ -269,6 +275,7 @@ For development or internal services, generate self-signed certificates with Ans
     -keyout {{ ssl_key_path }}
     -out {{ ssl_cert_path }}
     -subj "/CN={{ server_name }}/O=MyOrg/C=US"
+    -addext "subjectAltName=DNS:{{ server_name }}"
   args:
     creates: "{{ ssl_cert_path }}"
   notify: reload nginx
