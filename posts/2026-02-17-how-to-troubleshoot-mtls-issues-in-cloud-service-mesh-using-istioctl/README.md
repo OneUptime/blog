@@ -17,12 +17,9 @@ This guide covers the most common mTLS issues and exactly how to diagnose and fi
 First, make sure you have istioctl installed and configured for your Cloud Service Mesh cluster.
 
 ```bash
-# Install istioctl (if not already installed)
-
-curl -L https://istio.io/downloadIstio | sh -
-
-# Add to your PATH
-export PATH=$PWD/istio-*/bin:$PATH
+# Install the Cloud Service Mesh troubleshooting tool
+gcloud components update
+gcloud components install istioctl
 
 # Verify the connection to your cluster
 istioctl version
@@ -32,7 +29,7 @@ For Cloud Service Mesh managed control plane, the istioctl version should be com
 
 ```bash
 # Check the mesh revision
-kubectl get controlplanerevision -n istio-system -o jsonpath='{.items[0].metadata.labels.istio\.io/rev}'
+kubectl get controlplanerevision -n istio-system
 ```
 
 ## Issue 1: Connection Refused Between Services
@@ -51,16 +48,16 @@ istioctl proxy-status | grep "service-a"
 istioctl proxy-status | grep "service-b"
 ```
 
-If a pod does not appear in the proxy-status output, it does not have a sidecar and cannot participate in mTLS.
+If a pod does not appear in the proxy-status output, confirm whether the pod has an `istio-proxy` container. A pod without a sidecar cannot participate in sidecar mTLS. For managed Cloud Service Mesh with the Traffic Director control plane implementation, `istioctl proxy-status` is not supported; use pod inspection and the Cloud Service Mesh diagnostic commands instead.
 
 Next, check the mTLS configuration for the destination service.
 
 ```bash
 # Check the PeerAuthentication policies affecting service-b
-istioctl authn tls-check service-b.default.svc.cluster.local
+kubectl get peerauthentication -n default -o yaml
 ```
 
-This shows whether the destination is expecting STRICT mTLS, PERMISSIVE, or DISABLED. If it is STRICT and the source does not have a sidecar, connections will fail.
+Review the namespace-level policies and any selectors that match `service-b` to see whether the destination is expecting STRICT mTLS, PERMISSIVE, or DISABLED. If it is STRICT and the source does not have a sidecar, connections will fail.
 
 ### Fix
 
@@ -105,11 +102,11 @@ istioctl proxy-config listener service-b-pod-name -n default --port 8080 -o json
 
 ### Fix
 
-If specific pods cannot have sidecars (like third-party tools or job pods), create a per-port exception.
+If specific pods cannot have sidecars (like third-party tools or job pods), create a per-port exception. The `portLevelMtls` key is the workload container port, not the Kubernetes Service port.
 
 ```yaml
 # Allow plaintext on a specific port while keeping mTLS on others
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: service-b-exception
@@ -193,7 +190,7 @@ This command checks for common misconfigurations including:
 - Services with mixed sidecar/non-sidecar pods
 - Conflicting PeerAuthentication policies
 - DestinationRules that conflict with PeerAuthentication
-- Missing DestinationRules
+- Invalid or ineffective Istio configuration
 
 Check the proxy configuration to see what TLS mode each cluster is using.
 
@@ -238,30 +235,24 @@ kubectl describe pod service-b-pod-name -n default | grep -A5 "Restart\|Liveness
 
 ### Fix
 
-Istio automatically rewrites HTTP health probes to go through the sidecar. Verify this is working.
+Istio automatically rewrites HTTP, TCP, and gRPC health probes to go through the sidecar agent. Verify this is working.
 
 ```bash
-# Check if probe rewriting is enabled
-kubectl get cm istio -n istio-system -o jsonpath='{.data.mesh}' | grep rewriteAppHTTP
+# Check whether the pod's HTTP probe was rewritten to the sidecar agent
+kubectl get pod service-b-pod-name -n default -o jsonpath='{.spec.containers[*].livenessProbe.httpGet.path}{"\n"}'
+kubectl get pod service-b-pod-name -n default -o jsonpath='{.spec.containers[*].env[?(@.name=="ISTIO_KUBE_APP_PROBERS")].value}{"\n"}'
 ```
 
-If probe rewriting is not enabled, enable it.
+If probe rewriting was disabled on the pod, remove the disabling annotation and restart the workload.
 
-```yaml
-# Enable probe rewriting in mesh config
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: istio
-  namespace: istio-system
-data:
-  mesh: |-
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
-    enablePrometheusMerge: true
+```bash
+# Remove the pod-template annotation if it is present
+kubectl patch deployment service-b -n default --type=json \
+  -p='[{"op":"remove","path":"/spec/template/metadata/annotations/sidecar.istio.io~1rewriteAppHTTPProbers"}]'
+kubectl rollout restart deployment service-b -n default
 ```
 
-Alternatively, use TCP probes or gRPC probes instead of HTTP probes, which are not affected by mTLS.
+Alternatively, use exec probes when you do not want the probe to depend on HTTP, TCP, or gRPC traffic through the sidecar.
 
 ## Issue 6: Cross-Namespace mTLS Failures
 
@@ -291,7 +282,7 @@ If AuthorizationPolicies are restricting cross-namespace communication, update t
 
 ```yaml
 # Allow cross-namespace communication
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-namespace-a
