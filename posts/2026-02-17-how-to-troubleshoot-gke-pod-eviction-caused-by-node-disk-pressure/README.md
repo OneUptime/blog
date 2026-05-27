@@ -14,12 +14,12 @@ Let's figure out what is happening and how to fix it.
 
 ## How Disk Pressure Eviction Works
 
-The kubelet on each GKE node monitors disk usage. When available disk drops below certain thresholds, the node enters a "DiskPressure" condition and the kubelet starts evicting pods to free space. The default thresholds in GKE are:
+The kubelet on each GKE node monitors disk usage. When available disk drops below certain thresholds, the node enters a "DiskPressure" condition and the kubelet starts reclaiming node resources. If that is not enough, it starts evicting pods to free space. The default hard eviction thresholds include:
 
-- **Soft eviction threshold**: 85% disk usage (with a grace period)
-- **Hard eviction threshold**: 90% disk usage (immediate eviction)
+- **Node filesystem threshold**: `nodefs.available<10%`
+- **Image filesystem threshold**: `imagefs.available<15%`
 
-When eviction kicks in, the kubelet selects pods based on their priority, whether they exceed their ephemeral storage requests, and how much disk they are consuming. The evicted pods get rescheduled on other nodes - which might also be low on disk, causing a cascade.
+When eviction kicks in, the kubelet selects pods based on whether they exceed their ephemeral storage requests, their priority, and how much disk they are consuming relative to requests. If the evicted pods are managed by a Deployment, StatefulSet, or another controller, replacement pods get created and scheduled on nodes that might also be low on disk, causing a cascade.
 
 ## Step 1 - Confirm Disk Pressure
 
@@ -66,8 +66,8 @@ Once on the node, check disk usage:
 df -h
 
 # Find the biggest directories consuming disk space
-du -sh /var/lib/docker/* 2>/dev/null | sort -hr | head -10
 du -sh /var/lib/containerd/* 2>/dev/null | sort -hr | head -10
+du -sh /var/lib/docker/* 2>/dev/null | sort -hr | head -10  # legacy Docker-based nodes
 
 # Check container logs size
 du -sh /var/log/containers/* | sort -hr | head -10
@@ -134,42 +134,25 @@ Check log sizes for the heaviest offenders:
 
 ```bash
 # Find containers producing the most log data
-kubectl logs your-pod-name --tail=1 2>&1 | wc -c
+du -sh /var/log/pods/*/*/*.log 2>/dev/null | sort -hr | head -20
 ```
 
 Fix this at the application level by reducing log verbosity. Also configure log rotation in your container runtime. In GKE, you can set log max size and file count through a logging configuration:
 
 ```yaml
-# Use a logging sidecar with log rotation instead of direct stdout
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app-with-log-rotation
-spec:
-  containers:
-  - name: app
-    image: your-app:latest
-    # Write logs to a shared volume instead of stdout
-    volumeMounts:
-    - name: log-volume
-      mountPath: /var/log/app
-  - name: log-rotator
-    image: busybox
-    # Sidecar that periodically cleans old logs
-    command: ["/bin/sh", "-c"]
-    args:
-    - |
-      while true; do
-        find /var/log/app -name '*.log' -mtime +1 -delete
-        sleep 3600
-      done
-    volumeMounts:
-    - name: log-volume
-      mountPath: /var/log/app
-  volumes:
-  - name: log-volume
-    emptyDir:
-      sizeLimit: 500Mi  # cap the emptyDir size
+# node-system-config.yaml
+kubeletConfig:
+  containerLogMaxSize: "50Mi"
+  containerLogMaxFiles: 5
+```
+
+Apply the configuration to a Standard node pool:
+
+```bash
+gcloud container node-pools update default-pool \
+  --cluster your-cluster \
+  --location us-central1-a \
+  --system-config-from-file=node-system-config.yaml
 ```
 
 ## Step 6 - Increase Node Disk Size
@@ -187,11 +170,11 @@ gcloud container node-pools create large-disk-pool \
   --zone us-central1-a
 ```
 
-You cannot resize the boot disk of existing nodes. You need to create a new pool, migrate workloads, and delete the old pool. The default GKE boot disk is 100GB, which can be tight for clusters running many large container images.
+You can also update the disk size of a node pool, but GKE applies the new machine attributes by updating or recreating the nodes. Creating a new pool, migrating workloads, and deleting the old pool gives you more control over that disruption. The default GKE boot disk is 100GB, which can be tight for clusters running many large container images.
 
 ## Step 7 - Enable Image Streaming
 
-GKE supports image streaming, which lets containers start before the full image is downloaded. This reduces the amount of disk space consumed by image layers:
+GKE supports image streaming, which lets containers start before the full image is downloaded:
 
 ```bash
 # Enable image streaming on a node pool
@@ -202,62 +185,53 @@ gcloud container node-pools create streaming-pool \
   --zone us-central1-a
 ```
 
-Image streaming is particularly helpful if you use large images (1GB+) and the image cache is filling up your node disk.
+Image streaming is particularly helpful if you use large images (1GB+) and image pull time is slowing down startup. It is not a replacement for image garbage collection, because GKE still downloads and caches the full image on local disk in the background.
 
 ## Step 8 - Configure Garbage Collection
 
 The kubelet garbage collects unused container images, but the default thresholds might not be aggressive enough. In GKE, you can tune this with kubelet configuration:
 
 ```bash
-# Check current image garbage collection settings on a node
-# SSH into the node first, then:
-ps aux | grep kubelet | grep -o 'image-gc[^ ]*'
+# Check custom image garbage collection settings on a node pool
+gcloud container node-pools describe default-pool \
+  --cluster your-cluster \
+  --location us-central1-a
 ```
 
 The default settings are:
 - `imageGCHighThresholdPercent`: 85%
 - `imageGCLowThresholdPercent`: 80%
 
-If you need more aggressive cleanup, you can set up a CronJob that prunes unused images:
+If you need more aggressive cleanup, configure image garbage collection on the node pool:
 
 ```yaml
-# CronJob that runs crictl to clean up unused images on each node
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: image-cleanup
-spec:
-  schedule: "0 */6 * * *"  # every 6 hours
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          hostPID: true
-          nodeSelector:
-            cloud.google.com/gke-nodepool: default-pool
-          containers:
-          - name: cleanup
-            image: google/cloud-sdk:slim
-            command: ["/bin/sh", "-c"]
-            args:
-            - "crictl rmi --prune"
-            securityContext:
-              privileged: true
-          restartPolicy: OnFailure
+# node-system-config.yaml
+kubeletConfig:
+  imageGCHighThresholdPercent: 80
+  imageGCLowThresholdPercent: 70
+```
+
+Apply it to the node pool:
+
+```bash
+gcloud container node-pools update default-pool \
+  --cluster your-cluster \
+  --location us-central1-a \
+  --system-config-from-file=node-system-config.yaml
 ```
 
 ## Monitoring and Alerting
 
-Set up monitoring to catch disk pressure before it causes evictions. Create a Cloud Monitoring alert on the `kubernetes.io/node/ephemeral_storage/used_bytes` metric:
+Set up monitoring to catch disk pressure before it causes evictions. Create a Cloud Monitoring alert on the `kubernetes.io/node/ephemeral_storage/used_bytes` metric. This metric is measured in bytes, so set a byte threshold that matches your node size:
 
 ```bash
-# Create an alerting policy for high node disk usage
+# Create an alerting policy for high node ephemeral storage usage
 gcloud alpha monitoring policies create \
   --display-name="GKE Node Disk Pressure Warning" \
-  --condition-display-name="Node disk usage above 80%" \
-  --condition-filter='metric.type="kubernetes.io/node/ephemeral_storage/used_bytes"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-display-name="Node ephemeral storage above 80GB" \
+  --condition-filter='resource.type="k8s_node" AND metric.type="kubernetes.io/node/ephemeral_storage/used_bytes"' \
+  --if='> 80000000000' \
+  --duration=300s \
   --notification-channels="CHANNEL_ID"
 ```
 
