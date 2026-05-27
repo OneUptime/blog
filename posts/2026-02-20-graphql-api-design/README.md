@@ -36,11 +36,15 @@ query {
     name
     email
     orders {
-      id
-      total
-      items {
-        name
-        quantity
+      edges {
+        node {
+          id
+          total
+          items {
+            name
+            quantity
+          }
+        }
       }
     }
   }
@@ -96,6 +100,16 @@ type OrderItem {
   name: String!
   quantity: Int!
   price: Float!
+}
+
+type OrderConnection {
+  edges: [OrderEdge!]!
+  pageInfo: PageInfo!
+}
+
+type OrderEdge {
+  cursor: String!
+  node: Order!
 }
 ```
 
@@ -253,7 +267,7 @@ const resolvers = {
   },
 
   Mutation: {
-    // Create a new user with validated input
+    // Create a new user with the provided input
     createUser: async (
       _parent: unknown,
       args: { input: { name: string; email: string; role?: string } }
@@ -277,6 +291,14 @@ const resolvers = {
         data: args.input,
       });
     },
+
+    // Delete a user and return true when the record is removed
+    deleteUser: async (_parent: unknown, args: { id: string }) => {
+      await prisma.user.delete({
+        where: { id: args.id },
+      });
+      return true;
+    },
   },
 
   // Field-level resolver for nested data
@@ -284,12 +306,35 @@ const resolvers = {
   User: {
     orders: async (parent: { id: string }, args: { first?: number; after?: string }) => {
       const take = args.first || 10;
-      const orders = await prisma.order.findMany({
+      const queryArgs: Record<string, unknown> = {
         where: { userId: parent.id },
-        take,
+        take: take + 1,
         orderBy: { createdAt: "desc" },
+      };
+
+      if (args.after) {
+        queryArgs.cursor = { id: args.after };
+        queryArgs.skip = 1;
+      }
+
+      const orders = await prisma.order.findMany({
+        ...queryArgs,
       });
-      return orders;
+      const hasNextPage = orders.length > take;
+      const edges = orders.slice(0, take).map((order) => ({
+        cursor: order.id,
+        node: order,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          hasPreviousPage: !!args.after,
+          startCursor: edges[0]?.cursor || null,
+          endCursor: edges[edges.length - 1]?.cursor || null,
+        },
+      };
     },
   },
 };
