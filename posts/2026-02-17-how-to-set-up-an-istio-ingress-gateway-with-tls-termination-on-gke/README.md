@@ -57,6 +57,7 @@ spec:
       labels:
         app: istio-ingressgateway
         istio: ingressgateway
+        sidecar.istio.io/inject: "true"
     spec:
       serviceAccountName: istio-ingressgateway
       containers:
@@ -74,6 +75,31 @@ spec:
           protocol: TCP
         - containerPort: 8443
           protocol: TCP
+---
+# Allow the gateway proxy to read TLS credentials by SDS
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: istio-ingressgateway-sds
+  namespace: istio-system
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: istio-ingressgateway-sds
+  namespace: istio-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: istio-ingressgateway-sds
+subjects:
+- kind: ServiceAccount
+  name: istio-ingressgateway
+  namespace: istio-system
 ---
 apiVersion: v1
 kind: Service
@@ -106,7 +132,7 @@ Note the external IP address. You will need to point your DNS records at it.
 
 ## Step 2: Create the TLS Certificate Secret
 
-You need a TLS certificate for your domain. You can use a certificate from a public CA, Let's Encrypt, or Google-managed certificates.
+You need a TLS certificate for your domain. You can use a certificate from a public CA or Let's Encrypt.
 
 ### Option A: Use Your Own Certificate
 
@@ -126,13 +152,21 @@ Install cert-manager and configure automatic certificate provisioning.
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Create a certificate issuer and certificate.
 
 ```yaml
 # cert-issuer.yaml
+# IngressClass used by cert-manager's HTTP-01 solver
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: istio
+spec:
+  controller: istio.io/ingress-controller
+---
 # Let's Encrypt certificate issuer
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -147,7 +181,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ---
 # certificate.yaml
 # Certificate request for your domain
@@ -319,6 +353,16 @@ Istio uses SNI (Server Name Indication) to select the correct certificate based 
 
 For APIs that require client certificate authentication, configure the gateway for mutual TLS.
 
+Create the server certificate secret with the client CA certificate included.
+
+```bash
+kubectl create secret generic server-cert \
+    --from-file=tls.key=path/to/server.key \
+    --from-file=tls.crt=path/to/server.crt \
+    --from-file=ca.crt=path/to/client-ca.crt \
+    -n istio-system
+```
+
 ```yaml
 # mtls-gateway.yaml
 # Gateway requiring client certificates
@@ -338,8 +382,6 @@ spec:
     tls:
       mode: MUTUAL
       credentialName: server-cert
-      # The CA certificate used to verify client certificates
-      caCertificates: /etc/istio/gateway-ca/ca.pem
     hosts:
     - "secure-api.example.com"
 ```
