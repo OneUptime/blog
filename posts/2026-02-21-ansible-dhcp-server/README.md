@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DHCP, Networking, Linux, Infrastructure
 
-Description: Automate ISC DHCP server deployment with subnet configuration, static leases, and failover using Ansible playbooks for reliable network management.
+Description: Automate legacy ISC DHCP server deployment with subnet configuration, static leases, and failover using Ansible playbooks for reliable network management.
 
 ---
 
-Every network needs DHCP. Without it, you would be manually assigning IP addresses to every device that connects, which is not practical beyond a handful of machines. The ISC DHCP server is the standard implementation on Linux, and while the configuration syntax is straightforward, keeping it consistent across multiple subnets and maintaining static reservations for servers and printers can become a maintenance burden. Ansible brings order to this by letting you define your DHCP configuration as structured data.
+Every network needs DHCP. Without it, you would be manually assigning IP addresses to every device that connects, which is not practical beyond a handful of machines. The ISC DHCP server is a well-known legacy implementation on Linux. ISC ended maintenance for ISC DHCP at the end of 2022 and recommends Kea for most new server deployments, but many environments still run isc-dhcp-server for existing networks. While the configuration syntax is straightforward, keeping it consistent across multiple subnets and maintaining static reservations for servers and printers can become a maintenance burden. Ansible brings order to this by letting you define your DHCP configuration as structured data.
 
 This guide covers setting up an ISC DHCP server with Ansible, including subnet definitions, static leases, options, and failover for high availability.
 
@@ -75,9 +75,11 @@ dhcp_failover_local_address: 10.0.1.11
 ```yaml
 # roles/dhcp/tasks/main.yml - Install and configure ISC DHCP server
 ---
-- name: Install ISC DHCP server
+- name: Install ISC DHCP server and UFW
   apt:
-    name: isc-dhcp-server
+    name:
+      - isc-dhcp-server
+      - ufw
     state: present
     update_cache: yes
 
@@ -107,10 +109,17 @@ dhcp_failover_local_address: 10.0.1.11
     enabled: yes
 
 - name: Allow DHCP through firewall
-  ufw:
+  community.general.ufw:
     rule: allow
     port: "67"
     proto: udp
+
+- name: Allow DHCP failover traffic through firewall
+  community.general.ufw:
+    rule: allow
+    port: "647"
+    proto: tcp
+  when: dhcp_failover_enabled
 ```
 
 ## Interface Configuration Template
@@ -164,7 +173,9 @@ failover peer "dhcp-failover" {
 # Subnet definitions
 {% for subnet in dhcp_subnets %}
 subnet {{ subnet.network }} netmask {{ subnet.netmask }} {
+{% if not dhcp_failover_enabled %}
     range {{ subnet.range_start }} {{ subnet.range_end }};
+{% endif %}
     option routers {{ subnet.gateway }};
     option domain-name-servers {{ subnet.dns_servers | join(', ') }};
     option domain-name "{{ subnet.domain }}";
@@ -214,6 +225,7 @@ host {{ host.hostname }} {
 
 ```bash
 # Deploy the DHCP server
+ansible-galaxy collection install community.general
 ansible-playbook -i inventory/hosts.ini playbook.yml
 
 # Check lease database on the server
@@ -249,4 +261,4 @@ Add a task to set up lease monitoring:
 
 ## Summary
 
-Managing DHCP with Ansible means your network's IP allocation is defined in version-controlled YAML files rather than scattered across config files on servers. Adding new subnets, modifying address ranges, or creating static reservations is a matter of updating variables and running the playbook. The built-in configuration validation catches syntax errors before they reach the server, and the failover support ensures your DHCP service stays available even if one server goes down.
+Managing DHCP with Ansible means your network's IP allocation is defined in version-controlled YAML files rather than scattered across config files on servers. Adding new subnets, modifying address ranges, or creating static reservations is a matter of updating variables and running the playbook. The built-in configuration validation catches syntax errors before they reach the server, and failover support lets a pair of DHCP servers share address pools for high availability when both peers are configured consistently.
