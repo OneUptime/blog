@@ -101,7 +101,7 @@ Linear execution has several advantages:
 
 **Predictable ordering.** You know that every host has completed the previous task before the next one starts. This matters when tasks have dependencies (install the package before starting the service).
 
-**Handler coordination.** Handlers triggered by a task run after the task completes across all hosts. With linear strategy, you know the handler fires at a consistent point.
+**Handler coordination.** Handlers triggered by a task run after the play's tasks complete, or earlier if you call `meta: flush_handlers`. With linear strategy, you know the handler fires at a consistent point.
 
 **Error visibility.** If a task fails on some hosts, you see the failure before subsequent tasks run. This gives you a chance to evaluate the failure before more changes are made.
 
@@ -242,12 +242,12 @@ Combine the linear strategy with `serial` for rolling updates:
 
   tasks:
     - name: Pull new version
-      docker_image:
+      community.docker.docker_image:
         name: myapp:v2
         source: pull
 
     - name: Restart container
-      docker_container:
+      community.docker.docker_container:
         name: myapp
         image: myapp:v2
         state: started
@@ -262,7 +262,7 @@ Combine the linear strategy with `serial` for rolling updates:
       until: health.status == 200
 ```
 
-With `serial: 5`, the play runs on 5 hosts, completes all tasks linearly, then moves to the next batch of 5. If any host in a batch fails, you can stop the rollout before affecting more hosts.
+With `serial: 5`, the play runs on 5 hosts, completes all tasks linearly, then moves to the next batch of 5. If you want a batch failure to stop the rollout before affecting more hosts, use controls such as `max_fail_percentage` or `any_errors_fatal`.
 
 ## When to Use a Different Strategy
 
