@@ -26,25 +26,11 @@ The key differences:
 | Test user limit | N/A | 100 users in testing mode |
 | Publishing | Not needed | Required for unrestricted access |
 
-## Step 1: Create the IAP Brand
+## Step 1: Configure the OAuth Brand
 
-The brand is the OAuth consent screen configuration. You can create it through the console or the CLI.
+The brand is the OAuth consent screen configuration. Configure it in the Google Cloud Console under Google Auth Platform, then Branding. The old `gcloud iap oauth-brands` and `gcloud iap oauth-clients` commands used the IAP OAuth Admin API, which was shut down in March 2026 and should not be used for new setups.
 
-```bash
-# Create an IAP brand for external users
-
-gcloud iap oauth-brands create \
-    --application_title="My Partner Portal" \
-    --support_email="support@company.com" \
-    --project=my-project-id
-```
-
-Note: Only one brand can exist per project. If a brand already exists, you need to update it rather than create a new one.
-
-```bash
-# List existing brands
-gcloud iap oauth-brands list --project=my-project-id
-```
+Note: Only one OAuth brand configuration can exist per project. If a brand already exists, update it in the console rather than creating a new one.
 
 ## Step 2: Configure the OAuth Consent Screen
 
@@ -67,41 +53,28 @@ Authorized domains tell Google which domains are legitimate for your application
 
 ### Adding Domains in the Console
 
-In the OAuth consent screen settings, add your domains in the "Authorized domains" section. You need to add:
+In the OAuth consent screen settings, add the top private domains used by your app URLs. For example, if your app home page is `https://partner-portal.company.com`, add:
 
-1. Your application's domain (e.g., `partner-portal.company.com`)
-2. Your company's top-level domain (e.g., `company.com`)
+1. Your company's top private domain (e.g., `company.com`)
+2. Any other top private domains used by your home page, privacy policy, terms of service, redirect URIs, or JavaScript origins
 
 ### Domain Verification
 
-Google requires you to verify ownership of the authorized domains. You do this through the Google Search Console or by adding a DNS TXT record.
+Google requires you to verify ownership of the authorized domains. Use Google Search Console to verify the top private domain, such as `company.com` for `partner-portal.company.com`. Search Console can give you a DNS TXT record such as `google-site-verification=YOUR_VERIFICATION_CODE`; after adding it to DNS, finish verification in Search Console.
 
-```bash
-# Verify domain ownership via DNS TXT record
-# Add this TXT record to your domain's DNS:
-# google-site-verification=YOUR_VERIFICATION_CODE
-
-# After adding the DNS record, verify it
-gcloud domains verify company.com
-```
-
-Alternatively, verify through the Google Search Console at `https://search.google.com/search-console`.
+Go to `https://search.google.com/search-console` to complete the verification. There is no `gcloud domains verify` command for this OAuth authorized-domain verification flow.
 
 ## Step 4: Create an IAP OAuth Client
 
-Create the OAuth client that IAP will use for authentication.
+Create the OAuth client that IAP will use for authentication from the IAP settings page:
 
-```bash
-# Get the brand name
-BRAND_NAME=$(gcloud iap oauth-brands list \
-    --project=my-project-id \
-    --format="value(name)")
+1. Go to Security, then Identity-Aware Proxy.
+2. In the Applications tab, find the backend service.
+3. Open the resource settings and select Custom OAuth.
+4. Click **Auto Generate Credentials** or enter an existing OAuth client ID and secret.
+5. Download or copy the client credentials before saving, because the secret cannot be retrieved later.
 
-# Create an OAuth client for IAP
-gcloud iap oauth-clients create "$BRAND_NAME" \
-    --display_name="Partner Portal IAP Client" \
-    --project=my-project-id
-```
+When IAP auto-generates the client, it also creates the required redirect URI in Google Auth Platform in this format: `https://iap.googleapis.com/v1/oauth/clientIds/CLIENT_ID:handleRedirect`.
 
 ## Step 5: Enable IAP on Your Backend Service
 
@@ -145,7 +118,7 @@ When you first create an external OAuth consent screen, it is in testing mode. I
 
 - Only users explicitly added as test users can sign in
 - Maximum 100 test users
-- Tokens expire after 7 days
+- User authorizations expire after 7 days
 - No app verification needed
 
 Add test users in the OAuth consent screen settings under "Test users."
@@ -166,7 +139,9 @@ After publishing:
 
 ## Google App Verification
 
-If your external app requests sensitive or restricted OAuth scopes, Google requires you to go through app verification. IAP typically uses only the `email`, `profile`, and `openid` scopes, which are not considered sensitive. This means most IAP setups do not need verification.
+If your external app requests sensitive or restricted OAuth scopes, Google requires you to go through scope verification. IAP typically uses only the `email`, `profile`, and `openid` scopes, which are not considered sensitive. This means most IAP setups do not need sensitive-scope verification.
+
+Custom OAuth branding is a separate verification path. If you want your custom brand information to appear on the consent screen for an external app, submit the app for Google's brand verification from the OAuth consent screen settings.
 
 However, if you see a "This app has not been verified" warning when external users try to sign in, you may need to:
 
@@ -174,7 +149,7 @@ However, if you see a "This app has not been verified" warning when external use
 2. Provide the privacy policy and terms of service URLs
 3. Demonstrate legitimate use of the requested scopes
 
-For IAP with standard scopes, you can usually skip this by publishing the app and ensuring users trust the domain.
+For IAP with standard scopes, you can usually skip sensitive-scope verification, but you still need the app published and your authorized domains verified.
 
 ## Managing External User Lifecycle
 
@@ -197,18 +172,8 @@ When a partner relationship ends, remove them from the group. Their IAP access i
 ## Terraform Configuration
 
 ```hcl
-# IAP brand for external users
-resource "google_iap_brand" "external" {
-  support_email     = "support@company.com"
-  application_title = "Partner Portal"
-  project           = var.project_number
-}
-
-# IAP OAuth client
-resource "google_iap_client" "external" {
-  display_name = "Partner Portal IAP Client"
-  brand        = google_iap_brand.external.name
-}
+# Create the OAuth brand and custom OAuth client in the Google Cloud Console.
+# Store the generated client ID and secret securely, such as in Secret Manager.
 
 # Backend service with IAP
 resource "google_compute_backend_service" "partner_portal" {
@@ -224,8 +189,8 @@ resource "google_compute_backend_service" "partner_portal" {
   health_checks = [google_compute_health_check.app.id]
 
   iap {
-    oauth2_client_id     = google_iap_client.external.client_id
-    oauth2_client_secret = google_iap_client.external.secret
+    oauth2_client_id     = var.iap_oauth_client_id
+    oauth2_client_secret = var.iap_oauth_client_secret
   }
 }
 
@@ -240,7 +205,7 @@ resource "google_iap_web_backend_service_iam_member" "partners" {
 
 ## Troubleshooting External User Access
 
-**"This app is not yet verified" warning**: This appears when the app is in testing mode or uses sensitive scopes. Publish the app and ensure you are using standard scopes only.
+**"This app is not yet verified" warning**: This can appear when the app is in testing mode, uses unverified sensitive scopes, or has custom branding that has not completed Google's verification process. Publish the app, verify the domains, and submit the app for the verification path that applies.
 
 **"You do not have access" after sign-in**: The user authenticated but does not have the `iap.httpsResourceAccessor` role. Add them to an authorized group or grant individual access.
 
