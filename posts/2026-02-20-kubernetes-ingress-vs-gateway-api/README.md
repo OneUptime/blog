@@ -12,18 +12,18 @@ Description: Compare Kubernetes Ingress and Gateway API features, migration path
 
 Kubernetes Ingress has been the standard way to expose HTTP services since Kubernetes 1.1. It works, but it has limitations. The Gateway API was designed as its successor, offering more expressive routing, better role separation, and a standardized extension model.
 
-As of 2026, the Gateway API has reached GA (General Availability) and is production-ready. But does that mean you should migrate immediately?
+As of 2026, core Gateway API resources such as GatewayClass, Gateway, HTTPRoute, GRPCRoute, TLSRoute, and ReferenceGrant have reached GA (General Availability) and are production-ready. Some route types, including TCPRoute and UDPRoute, are still experimental. But does that mean you should migrate immediately?
 
 ```mermaid
 timeline
     title Kubernetes Traffic Management Timeline
     2015 : Ingress introduced (v1beta1)
-    2019 : Ingress goes GA (v1)
+    2020 : Ingress goes GA (v1)
     2020 : Gateway API project starts
     2023 : Gateway API v1.0 GA
     2024 : Gateway API v1.1 with more features
     2025 : Gateway API wide adoption
-    2026 : Gateway API recommended for new clusters
+    2026 : Gateway API recommended over Ingress for new clusters
 ```
 
 ## How Ingress Works
@@ -102,9 +102,15 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
     - name: https
       protocol: HTTPS
       port: 443
+      allowedRoutes:
+        namespaces:
+          from: All
       tls:
         mode: Terminate
         certificateRefs:
@@ -148,10 +154,10 @@ spec:
 | HTTPS/TLS | Yes | Yes |
 | Header-Based Routing | Via annotations | Native |
 | Traffic Splitting | Via annotations | Native |
-| TCP/UDP Routing | No | Yes (TCPRoute/UDPRoute) |
+| TCP/UDP Routing | No | Experimental (TCPRoute/UDPRoute) |
 | gRPC Routing | Via annotations | Native (GRPCRoute) |
 | Role Separation | No | Yes (GatewayClass/Gateway/Route) |
-| Cross-Namespace Routing | Limited | Native (ReferenceGrant) |
+| Cross-Namespace Routing | Limited | Native (allowedRoutes/ReferenceGrant) |
 | Portable Configuration | No (annotations) | Yes (standard spec) |
 | Request/Response Manipulation | Via annotations | Native (HTTPRoute filters) |
 | Status Reporting | Basic | Detailed per-route status |
@@ -170,6 +176,7 @@ metadata:
 spec:
   parentRefs:
     - name: main-gateway
+      namespace: gateway-system
   rules:
     # Route requests with X-Version: v2 to the new service
     - matches:
@@ -199,6 +206,7 @@ metadata:
 spec:
   parentRefs:
     - name: main-gateway
+      namespace: gateway-system
   hostnames:
     - "app.example.com"
   rules:
@@ -253,7 +261,7 @@ You do not have to migrate all at once. Both can coexist in the same cluster.
 kubectl get crd | grep gateway
 
 # Install Gateway API CRDs if not present
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
 # Verify the installation
 kubectl get gatewayclass
@@ -263,7 +271,7 @@ Many controllers support both Ingress and Gateway API simultaneously:
 
 ```bash
 # Example: Install Nginx Gateway Fabric (supports Gateway API)
-kubectl apply -f https://github.com/nginx/nginx-gateway-fabric/releases/download/v1.5.0/nginx-gateway-fabric.yaml
+kubectl apply -f https://raw.githubusercontent.com/nginx/nginx-gateway-fabric/v2.6.2/deploy/default/deploy.yaml
 ```
 
 ## When to Stick with Ingress
