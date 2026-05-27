@@ -8,7 +8,7 @@ Description: Learn how to configure Terraform Enterprise with external object st
 
 ---
 
-Terraform Enterprise stores a significant amount of data - state files, plan outputs, configuration versions, and policy sets. By default, a mounted disk handles all of this, but production deployments benefit enormously from external object storage. External storage gives you durability, scalability, and the ability to decouple storage from compute.
+Terraform Enterprise stores a significant amount of data - state files, plan outputs, run logs, and configuration versions. In disk mode, a mounted disk handles this data, but external and active-active deployments use external object storage. External storage gives you durability, scalability, and the ability to decouple storage from compute.
 
 This guide walks through configuring Terraform Enterprise with AWS S3, Azure Blob Storage, and Google Cloud Storage.
 
@@ -21,7 +21,7 @@ Before jumping into configuration, it helps to understand what you gain:
 - **Backup simplicity**: Object storage integrates with native backup and replication features.
 - **High availability**: Required for active-active TFE deployments.
 
-If you are running Terraform Enterprise in production, external object storage is not optional - it is a best practice.
+If you are running Terraform Enterprise in external or active-active mode, external object storage is not optional.
 
 ## Prerequisites
 
@@ -179,23 +179,6 @@ gsutil mb -p your-gcp-project \
 
 # Enable versioning
 gsutil versioning set on gs://tfe-object-storage-prod/
-
-# Set a lifecycle policy to clean up old versions after 90 days
-cat > lifecycle.json << 'EOF'
-{
-  "rule": [
-    {
-      "action": {"type": "Delete"},
-      "condition": {
-        "numNewerVersions": 3,
-        "isLive": false
-      }
-    }
-  ]
-}
-EOF
-
-gsutil lifecycle set lifecycle.json gs://tfe-object-storage-prod/
 ```
 
 ### Step 2: Create a Service Account
@@ -226,10 +209,9 @@ TFE_OBJECT_STORAGE_GOOGLE_BUCKET=tfe-object-storage-prod
 TFE_OBJECT_STORAGE_GOOGLE_PROJECT=your-gcp-project
 
 # Authentication via service account key
-TFE_OBJECT_STORAGE_GOOGLE_CREDENTIALS='{...contents of tfe-storage-key.json...}'
+TFE_OBJECT_STORAGE_GOOGLE_CREDENTIALS=BASE64_ENCODED_SERVICE_ACCOUNT_JSON
 
-# Or point to the key file path
-# GOOGLE_APPLICATION_CREDENTIALS=/path/to/tfe-storage-key.json
+# Or leave credentials blank to use the attached service account
 ```
 
 ## Applying Configuration with Docker Compose
@@ -244,6 +226,7 @@ services:
     image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
     environment:
       TFE_HOSTNAME: tfe.example.com
+      TFE_OPERATIONAL_MODE: external
       TFE_OBJECT_STORAGE_TYPE: s3
       TFE_OBJECT_STORAGE_S3_BUCKET: tfe-object-storage-prod
       TFE_OBJECT_STORAGE_S3_REGION: us-east-1
@@ -264,11 +247,11 @@ volumes:
 After restarting TFE with the new configuration, verify that object storage is working:
 
 ```bash
-# Check TFE health endpoint - object storage status is included
-curl -s https://tfe.example.com/_health_check | jq .
+# Check node readiness
+curl -s https://tfe.example.com/api/v1/health/readiness | jq .
 
 # Check the TFE logs for storage initialization
-docker logs tfe 2>&1 | grep -i "object storage"
+docker compose logs tfe 2>&1 | grep -i "object storage"
 
 # Trigger a test run and confirm state is stored
 # Create a simple workspace and run a plan - then check the bucket
