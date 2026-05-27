@@ -92,7 +92,7 @@ The relay server accepts email from your internal network and forwards it to an 
           /.+@.+\.internal$/    noreply@{{ sender_domain }}
           /.+@localhost$/       noreply@{{ sender_domain }}
           /root@.*/             server-alerts@{{ sender_domain }}
-      notify: rebuild sender canonical
+      notify: restart postfix
 
     # Create header checks to clean up internal hostnames
     - name: Deploy header checks
@@ -141,10 +141,6 @@ The relay server accepts email from your internal network and forwards it to an 
     - name: rebuild sasl map
       ansible.builtin.command:
         cmd: postmap /etc/postfix/sasl_passwd
-
-    - name: rebuild sender canonical
-      ansible.builtin.command:
-        cmd: postmap regexp:/etc/postfix/sender_canonical
 
     - name: rebuild transport map
       ansible.builtin.command:
@@ -303,7 +299,7 @@ After deploying both the relay server and client configurations, verify the whol
     - name: Send test email through relay
       ansible.builtin.shell:
         cmd: |
-          echo "Relay test from {{ inventory_hostname }} ({{ ansible_host }}) at $(date)" | \
+          echo "Relay test from {{ inventory_hostname }} ({{ ansible_host | default(ansible_default_ipv4.address | default(inventory_hostname)) }}) at $(date)" | \
           mail -s "Relay Test: {{ inventory_hostname }}" {{ test_recipient }}
       changed_when: true
 
@@ -438,7 +434,7 @@ For high availability, you can configure clients with multiple relay servers:
         marker: "# {mark} RELAY CONFIG - ANSIBLE MANAGED"
         block: |
           relayhost = [{{ relay_primary }}]:25
-          fallback_relay = [{{ relay_secondary }}]:25
+          smtp_fallback_relay = [{{ relay_secondary }}]:25
           smtp_connection_cache_on_demand = yes
           smtp_connection_cache_time_limit = 2s
       notify: restart postfix
@@ -462,7 +458,7 @@ Things I have learned running email relay infrastructure:
 
 4. Rewrite sender addresses at the relay, not on individual clients. This gives you a single place to manage sender identity and makes it easier to update when you switch email providers.
 
-5. Set up a secondary relay if email delivery is business-critical. The `fallback_relay` directive in Postfix makes this trivial. Both relays should have identical upstream configurations.
+5. Set up a secondary relay if email delivery is business-critical. The `smtp_fallback_relay` directive in Postfix makes this trivial. Both relays should have identical upstream configurations.
 
 6. Log retention on the relay server should be long enough to investigate delivery issues. I keep mail logs for 90 days, which covers most "I never got that notification" investigation requests.
 
