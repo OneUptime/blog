@@ -10,7 +10,7 @@ Description: Set up and use Presto on Dataproc clusters for fast interactive SQL
 
 When you need to run ad-hoc SQL queries against large datasets and Hive feels too slow, Presto is the answer. Presto is a distributed SQL query engine designed for interactive analytics. It runs queries in memory, avoids the overhead of MapReduce, and can query multiple data sources in a single SQL statement.
 
-Google Cloud makes it easy to run Presto on Dataproc. You add it as an optional component when creating your cluster, and within minutes you have a fully functional Presto deployment ready to query data in Cloud Storage, BigQuery, or the Hive Metastore.
+Google Cloud makes it easy to run Presto-compatible SQL on Dataproc. In Dataproc 2.1 and later images, the Presto optional component is available as Trino. You add it as an optional component when creating your cluster, and within minutes you have a fully functional Trino deployment ready to query data in Cloud Storage, BigQuery, or the Hive Metastore.
 
 ## Why Presto on Dataproc?
 
@@ -18,39 +18,39 @@ Presto fills a specific gap in the data analytics stack:
 
 - **Interactive speed** - Queries that take minutes in Hive often complete in seconds with Presto
 - **Federated queries** - Query data across GCS, BigQuery, and Hive tables in a single SQL statement
-- **ANSI SQL** - Presto supports standard SQL, so you do not need to learn a dialect
+- **SQL support** - Presto and Trino use a familiar SQL dialect with broad ANSI SQL compatibility
 - **No data movement** - Query data where it lives without loading it into a separate system
 
 ## Step 1: Create a Dataproc Cluster with Presto
 
-Presto is available as an optional component in Dataproc. Include it when creating your cluster:
+Presto is available as an optional component in Dataproc. With Dataproc 2.1 images, include the Trino optional component when creating your cluster:
 
 ```bash
-# Create a Dataproc cluster with Presto installed
+# Create a Dataproc cluster with Trino installed
 
 gcloud dataproc clusters create presto-cluster \
   --region=us-central1 \
   --zone=us-central1-a \
   --image-version=2.1-debian11 \
-  --optional-components=PRESTO \
+  --optional-components=TRINO \
   --num-workers=3 \
   --worker-machine-type=n2-highmem-4 \
   --master-machine-type=n2-highmem-4 \
   --enable-component-gateway
 ```
 
-The `--enable-component-gateway` flag gives you web access to the Presto UI through the Cloud Console. The `n2-highmem` machine types are a good fit for Presto since it runs queries in memory.
+The `--enable-component-gateway` flag gives you web access to the Trino UI through the Cloud Console. The `n2-highmem` machine types are a good fit for Presto-style interactive queries since they use significant memory.
 
-## Step 2: Connect to the Presto CLI
+## Step 2: Connect to the Trino CLI
 
-Once the cluster is up, SSH into the master node and use the Presto CLI:
+Once the cluster is up, SSH into the master node and use the Trino CLI:
 
 ```bash
 # SSH into the Dataproc master node
 gcloud compute ssh presto-cluster-m --zone=us-central1-a
 
-# Start the Presto CLI connected to the local Presto coordinator
-presto --server localhost:8080 --catalog hive --schema default
+# Start the Trino CLI connected to the local Trino coordinator
+trino --server localhost:8060 --catalog hive --schema default
 ```
 
 You are now in an interactive SQL shell. Try listing the available catalogs:
@@ -65,9 +65,9 @@ SHOW SCHEMAS FROM hive;
 
 ## Step 3: Query Data in Cloud Storage
 
-Presto on Dataproc uses the Hive Metastore to find table definitions. First, create a Hive external table that points to your GCS data, then query it with Presto.
+Trino on Dataproc uses the Hive Metastore to find table definitions. First, create a Hive external table that points to your GCS data, then query it with Trino.
 
-Create a table using the Presto CLI:
+Create a table using the Trino CLI:
 
 ```sql
 -- Create a schema for our data
@@ -107,19 +107,19 @@ LIMIT 20;
 
 ## Step 4: Configure the BigQuery Connector
 
-One of Presto's strengths on Dataproc is its ability to query BigQuery tables directly. To enable this, configure the BigQuery connector at cluster creation time:
+One of Presto's strengths on Dataproc is its ability to query BigQuery tables directly. Dataproc's Trino component is configured with a BigQuery connector by default. To add a separate catalog for a specific BigQuery project, configure it at cluster creation time:
 
 ```bash
-# Create a cluster with both Presto and the BigQuery connector
+# Create a cluster with Trino and an additional BigQuery catalog
 gcloud dataproc clusters create presto-bq-cluster \
   --region=us-central1 \
+  --zone=us-central1-a \
   --image-version=2.1-debian11 \
-  --optional-components=PRESTO \
+  --optional-components=TRINO \
   --num-workers=3 \
   --worker-machine-type=n2-highmem-4 \
   --enable-component-gateway \
-  --properties="presto:connector.name=bigquery" \
-  --metadata="bigquery-connector-url=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.30.0.jar"
+  --properties="trino-catalog:bigquery_public.connector.name=bigquery,trino-catalog:bigquery_public.bigquery.project-id=bigquery-public-data"
 ```
 
 Alternatively, you can configure the BigQuery catalog after cluster creation. SSH into the master node and create a catalog properties file:
@@ -129,24 +129,24 @@ Alternatively, you can configure the BigQuery catalog after cluster creation. SS
 gcloud compute ssh presto-bq-cluster-m --zone=us-central1-a
 
 # Create the BigQuery catalog configuration
-sudo tee /etc/presto/conf/catalog/bigquery.properties << 'EOF'
+sudo tee /usr/lib/trino/etc/catalog/bigquery_public.properties << 'EOF'
 connector.name=bigquery
-bigquery.project-id=my-project
+bigquery.project-id=bigquery-public-data
 bigquery.views-enabled=true
 EOF
 
-# Restart the Presto coordinator to pick up the new catalog
-sudo systemctl restart presto
+# Restart Trino to pick up the new catalog
+sudo systemctl restart trino
 ```
 
-Now you can query BigQuery tables from Presto:
+Now you can query BigQuery tables from Trino:
 
 ```sql
--- Query a BigQuery public dataset directly from Presto
+-- Query a BigQuery public dataset directly from Trino
 SELECT
     word,
     SUM(word_count) as total_count
-FROM bigquery."bigquery-public-data".samples.shakespeare
+FROM bigquery_public.samples.shakespeare
 GROUP BY word
 ORDER BY total_count DESC
 LIMIT 10;
@@ -164,25 +164,25 @@ SELECT
     u.user_name,
     u.account_tier
 FROM hive.analytics.web_events e
-JOIN bigquery.my_project.users u
+JOIN bigquery.user_dataset.users u
     ON e.user_id = CAST(u.user_id AS VARCHAR)
 WHERE e.event_type = 'purchase'
 ORDER BY e.event_timestamp DESC
 LIMIT 100;
 ```
 
-This query reads event data from Cloud Storage and user data from BigQuery, joins them in Presto's memory, and returns the result. No ETL pipeline needed.
+This query reads event data from Cloud Storage and user data from BigQuery, joins them in Trino's memory, and returns the result. No ETL pipeline needed.
 
-## Step 6: Access the Presto Web UI
+## Step 6: Access the Trino Web UI
 
-Dataproc's component gateway exposes the Presto Web UI through the Cloud Console. To access it:
+Dataproc's component gateway exposes the Trino Web UI through the Cloud Console. To access it:
 
 1. Go to the **Dataproc Clusters** page in the Cloud Console
 2. Click on your cluster name
 3. Click the **Web Interfaces** tab
-4. Click **Presto** to open the UI
+4. Click **Trino** to open the UI
 
-The Presto UI shows you:
+The Trino UI shows you:
 
 - Running and completed queries
 - Query execution plans
@@ -193,43 +193,44 @@ This is invaluable for debugging slow queries and understanding resource utiliza
 
 ## Step 7: Tune Presto for Performance
 
-Presto's performance depends heavily on how much memory is available. Here are key tuning parameters:
+Trino's performance depends heavily on how much memory is available. Here are key tuning parameters:
 
 ```bash
-# Create a cluster with tuned Presto settings
+# Create a cluster with tuned Trino settings
 gcloud dataproc clusters create tuned-presto \
   --region=us-central1 \
+  --zone=us-central1-a \
   --image-version=2.1-debian11 \
-  --optional-components=PRESTO \
+  --optional-components=TRINO \
   --num-workers=4 \
   --worker-machine-type=n2-highmem-8 \
   --properties="\
-presto:query.max-memory-per-node=8GB,\
-presto:query.max-memory=40GB,\
-presto:query.max-total-memory-per-node=10GB,\
-presto:memory.heap-headroom-per-node=4GB"
+trino:query.max-memory-per-node=8GB,\
+trino:query.max-memory=40GB,\
+trino:query.max-total-memory=60GB,\
+trino:memory.heap-headroom-per-node=4GB"
 ```
 
 A few tuning tips that have worked well in practice:
 
 - **Use columnar formats** - Parquet and ORC are significantly faster than CSV or JSON for Presto queries
-- **Partition your data** - Presto can skip entire partitions when your WHERE clause filters on partition columns
+- **Partition your data** - Presto and Trino can skip entire partitions when your WHERE clause filters on partition columns
 - **Avoid SELECT star** - Only select the columns you need, especially with wide tables
 - **Right-size your workers** - Presto is memory-hungry, so use highmem machine types
 
-## Submitting Presto Jobs from gcloud
+## Submitting Trino Jobs from gcloud
 
-For automated pipelines, you can submit Presto queries through the gcloud CLI without SSH:
+For automated pipelines, you can submit Trino queries through the gcloud CLI without SSH:
 
 ```bash
-# Submit a Presto query as a Dataproc job
-gcloud dataproc jobs submit presto \
+# Submit a Trino query as a Dataproc job
+gcloud dataproc jobs submit trino \
   --cluster=presto-cluster \
   --region=us-central1 \
   -e "SELECT event_type, COUNT(*) FROM hive.analytics.web_events GROUP BY event_type"
 
 # Or run a SQL file
-gcloud dataproc jobs submit presto \
+gcloud dataproc jobs submit trino \
   --cluster=presto-cluster \
   --region=us-central1 \
   -f gs://my-data-bucket/scripts/weekly_report.sql
@@ -249,4 +250,4 @@ Consider alternatives when:
 
 ## Wrapping Up
 
-Presto on Dataproc gives you a fast, standards-compliant SQL engine that queries data wherever it lives. The setup is minimal - just add it as an optional component - and the ability to run federated queries across GCS, BigQuery, and other sources makes it a versatile tool in your analytics stack. For teams that need interactive query speeds without moving all their data into a single warehouse, Presto is hard to beat.
+Presto-compatible SQL on Dataproc gives you a fast SQL engine that queries data wherever it lives. The setup is minimal - just add the Trino optional component on Dataproc 2.1 and later images - and the ability to run federated queries across GCS, BigQuery, and other sources makes it a versatile tool in your analytics stack. For teams that need interactive query speeds without moving all their data into a single warehouse, Presto and Trino are hard to beat.
