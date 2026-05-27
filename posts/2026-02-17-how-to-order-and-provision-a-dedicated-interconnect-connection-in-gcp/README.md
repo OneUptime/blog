@@ -18,7 +18,7 @@ Before you commit, consider whether Dedicated Interconnect is the right choice:
 
 | Factor | Dedicated Interconnect | Partner Interconnect | HA VPN |
 |--------|----------------------|---------------------|--------|
-| Bandwidth | 10-200 Gbps | 50 Mbps-50 Gbps | Up to 3 Gbps per tunnel |
+| Bandwidth | 10-200 Gbps per connection | 50 Mbps-50 Gbps | Up to 3 Gbps per tunnel |
 | Latency | Lowest (direct) | Low | Variable |
 | Cost | Higher upfront | Medium | Lowest |
 | Setup time | Weeks | Days | Minutes |
@@ -39,45 +39,51 @@ gcloud compute interconnects locations list \
     --format="table(name, description, facilityProvider, city)"
 ```
 
-Pick a facility that is geographically close to your existing infrastructure and in the same metro area as the GCP region you are targeting. For redundancy, choose two facilities in different metros if possible.
+Pick a facility that is geographically close to your existing infrastructure and suitable for the GCP region you are targeting. For non-critical production redundancy, use two connections in the same metro but in different Edge Availability Domains. For the 99.99% SLA, use two connections in one metro and two connections in another metro.
 
 ## Step 2: Verify Your Network Requirements
 
 Before ordering, confirm these technical details:
 
 - **Link speed**: 10 Gbps (10GBase-LR, single-mode fiber) or 100 Gbps (100GBASE-LR4)
-- **Number of links**: You need at least two links in different Edge Availability Domains for the 99.99% SLA
+- **Number of connections**: You need at least two connections in different Edge Availability Domains for the 99.9% SLA, or at least four connections across two metros for the 99.99% SLA
 - **Colocation cross-connect**: You will need to order a cross-connect from the colo provider to Google's demarcation point
 - **Router capability**: Your on-premises router must support BGP and the required link speed
 - **Optical specifications**: Single-mode fiber, 1310 nm wavelength for 10G, matching optics for 100G
 
-## Step 3: Create the Interconnect in GCP Console
+## Step 3: Create the Interconnect with gcloud
 
 Start by creating the Interconnect resource in your GCP project:
 
 ```bash
 # Create a Dedicated Interconnect connection
 gcloud compute interconnects create my-interconnect-1 \
+    --customer-name="Example Company" \
     --interconnect-type=DEDICATED \
     --link-type=LINK_TYPE_ETHERNET_10G_LR \
     --requested-link-count=1 \
     --location=iad-zone1-1 \
+    --noc-contact-email=noc@example.com \
     --admin-enabled \
     --description="Primary interconnect in IAD facility"
 ```
 
-For the 99.99% SLA, create a second interconnect in a different Edge Availability Domain:
+For non-critical production redundancy, create a second interconnect in a different Edge Availability Domain:
 
 ```bash
 # Create a second interconnect in a different availability domain
 gcloud compute interconnects create my-interconnect-2 \
+    --customer-name="Example Company" \
     --interconnect-type=DEDICATED \
     --link-type=LINK_TYPE_ETHERNET_10G_LR \
     --requested-link-count=1 \
     --location=iad-zone2-1 \
+    --noc-contact-email=noc@example.com \
     --admin-enabled \
     --description="Redundant interconnect in IAD facility"
 ```
+
+For the 99.99% SLA, repeat this pattern for another pair of connections in a second metro.
 
 After creating these resources, GCP generates a Letter of Authorization and Connecting Facility Assignment (LOA-CFA). This document tells the colocation provider exactly where to run the fiber.
 
@@ -118,9 +124,9 @@ gcloud compute interconnects describe my-interconnect-1 \
 
 The states you will see:
 
-1. **PENDING_CUSTOMER**: Waiting for you to order cross-connects
-2. **PENDING_PROVIDER**: Cross-connect ordered, waiting for physical completion
-3. **ACTIVE**: Physical link is up and ready for VLAN attachments
+1. **UNPROVISIONED**: The connection has not completed turn-up, and attachments cannot be provisioned yet
+2. **ACTIVE**: The connection is valid, turned up, and ready for VLAN attachments
+3. **UNDER_MAINTENANCE**: The connection is undergoing internal maintenance, and attachments cannot be provisioned or updated
 
 ## Step 7: Verify the Physical Connection
 
@@ -128,11 +134,11 @@ Once the state is ACTIVE, verify the link health:
 
 ```bash
 # Check the link details including light levels
-gcloud compute interconnects describe my-interconnect-1 \
-    --format="yaml(circuitInfos, operationalStatus, adminEnabled)"
+gcloud compute interconnects get-diagnostics my-interconnect-1 \
+    --format="yaml(links)"
 ```
 
-The `circuitInfos` field shows details about each physical link including the Google circuit ID and customer device information.
+The diagnostics output shows details about each physical link, including optical power, LACP status, and circuit IDs. The `circuitInfos` field from `gcloud compute interconnects describe` also shows circuit IDs and demarcation details.
 
 ## Step 8: Create VLAN Attachments
 
@@ -150,7 +156,7 @@ gcloud compute interconnects attachments dedicated create attachment-1 \
     --interconnect=my-interconnect-1 \
     --router=interconnect-router \
     --region=us-east4 \
-    --bandwidth=BPS_1G \
+    --bandwidth=1G \
     --vlan=100
 ```
 
@@ -159,11 +165,16 @@ gcloud compute interconnects attachments dedicated create attachment-1 \
 After creating VLAN attachments, configure BGP sessions between your on-premises router and Cloud Router:
 
 ```bash
+# Add a Cloud Router interface for the VLAN attachment
+gcloud compute routers add-interface interconnect-router \
+    --interface-name=if-attachment-1 \
+    --interconnect-attachment=attachment-1 \
+    --region=us-east4
+
 # Add BGP peer for the VLAN attachment
 gcloud compute routers add-bgp-peer interconnect-router \
     --peer-name=onprem-peer-1 \
     --interface=if-attachment-1 \
-    --peer-ip-address=169.254.0.2 \
     --peer-asn=65002 \
     --region=us-east4
 ```
@@ -205,7 +216,7 @@ Cost-wise, expect to pay for:
 - Check optical light levels - use an optical power meter
 - Make sure you are using the correct optics (single-mode, correct wavelength)
 
-**State stuck at PENDING_PROVIDER**:
+**State stuck at UNPROVISIONED**:
 - Contact Google Cloud support with your Interconnect's Google Reference ID
 - Verify the LOA-CFA information matches what was given to the colo provider
 
@@ -216,4 +227,4 @@ Cost-wise, expect to pay for:
 
 ## Wrapping Up
 
-Provisioning a Dedicated Interconnect takes planning and patience, but the result is a high-bandwidth, low-latency direct connection to Google Cloud. Start the process early - the physical provisioning alone can take two to four weeks. Always order interconnects in pairs across different Edge Availability Domains for the 99.99% SLA, and test thoroughly before migrating production traffic.
+Provisioning a Dedicated Interconnect takes planning and patience, but the result is a high-bandwidth, low-latency direct connection to Google Cloud. Start the process early - the physical provisioning alone can take two to four weeks. Always order redundant interconnects across different Edge Availability Domains, and use two metro pairs for the 99.99% SLA. Test thoroughly before migrating production traffic.
