@@ -14,7 +14,7 @@ This guide covers installing RabbitMQ using Ansible on Ubuntu/Debian systems, in
 
 ## Why RabbitMQ Installation Needs Automation
 
-RabbitMQ has a specific dependency on Erlang, and not just any Erlang. RabbitMQ 3.12+ requires Erlang 25.x or 26.x. Using the wrong Erlang version causes subtle runtime errors or outright startup failures. The distro-packaged Erlang is often too old. Ansible lets you pin the correct Erlang version alongside RabbitMQ and deploy both together.
+RabbitMQ has a specific dependency on Erlang, and not just any Erlang. RabbitMQ 4.3.x supports Erlang 26.2 through 27.x, while Erlang 28 is only partially supported for brand-new clusters. Using the wrong Erlang version causes subtle runtime errors or outright startup failures. The distro-packaged Erlang is often too old. Ansible lets you pin the correct Erlang version alongside RabbitMQ and deploy both together.
 
 ## Prerequisites
 
@@ -34,13 +34,13 @@ rabbit-3 ansible_host=10.0.7.12
 
 [rabbitmq_servers:vars]
 ansible_user=ubuntu
-rabbitmq_version=3.13.*
-erlang_version=1:26.*
+rabbitmq_version=4.3.*
+erlang_version=1:27.*
 ```
 
 ## Installation Playbook
 
-This playbook installs both Erlang and RabbitMQ from the official Cloudsmith repositories maintained by the RabbitMQ team.
+This playbook installs both Erlang and RabbitMQ from the official Team RabbitMQ apt repositories.
 
 ```yaml
 # playbooks/install-rabbitmq.yml
@@ -60,64 +60,80 @@ This playbook installs both Erlang and RabbitMQ from the official Cloudsmith rep
         state: present
         update_cache: true
 
-    # Erlang installation from RabbitMQ's curated repository
-    - name: Add RabbitMQ Erlang repository signing key
-      ansible.builtin.apt_key:
-        url: https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key
-        state: present
+    - name: Download Team RabbitMQ repository signing key
+      ansible.builtin.get_url:
+        url: https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA
+        dest: /tmp/com.rabbitmq.team.asc
+        mode: "0644"
 
-    - name: Add RabbitMQ server repository signing key
-      ansible.builtin.apt_key:
-        url: https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key
-        state: present
+    - name: Install Team RabbitMQ repository signing key
+      ansible.builtin.command:
+        cmd: gpg --dearmor -o /usr/share/keyrings/com.rabbitmq.team.gpg /tmp/com.rabbitmq.team.asc
+        creates: /usr/share/keyrings/com.rabbitmq.team.gpg
 
-    - name: Add Erlang repository
+    - name: Add Erlang repository mirror 1
       ansible.builtin.apt_repository:
-        repo: "deb https://ppa1.novemberain.com/rabbitmq/rabbitmq-erlang/deb/ubuntu {{ ansible_distribution_release }} main"
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/{{ 'debian' if ansible_distribution == 'Debian' else 'ubuntu' }}/{{ ansible_distribution_release }} {{ ansible_distribution_release }} main"
         state: present
-        filename: rabbitmq-erlang
+        filename: rabbitmq
 
-    - name: Add RabbitMQ repository
+    - name: Add Erlang repository mirror 2
       ansible.builtin.apt_repository:
-        repo: "deb https://ppa1.novemberain.com/rabbitmq/rabbitmq-server/deb/ubuntu {{ ansible_distribution_release }} main"
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/{{ 'debian' if ansible_distribution == 'Debian' else 'ubuntu' }}/{{ ansible_distribution_release }} {{ ansible_distribution_release }} main"
         state: present
-        filename: rabbitmq-server
+        filename: rabbitmq
 
-    - name: Pin Erlang version to prevent accidental upgrades
+    - name: Add RabbitMQ repository mirror 1
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/{{ 'debian' if ansible_distribution == 'Debian' else 'ubuntu' }}/{{ ansible_distribution_release }} {{ ansible_distribution_release }} main"
+        state: present
+        filename: rabbitmq
+
+    - name: Add RabbitMQ repository mirror 2
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/{{ 'debian' if ansible_distribution == 'Debian' else 'ubuntu' }}/{{ ansible_distribution_release }} {{ ansible_distribution_release }} main"
+        state: present
+        filename: rabbitmq
+
+    - name: Pin RabbitMQ and Erlang versions to prevent accidental upgrades
       ansible.builtin.copy:
-        dest: /etc/apt/preferences.d/erlang
+        dest: /etc/apt/preferences.d/rabbitmq
         content: |
           Package: erlang*
-          Pin: origin ppa1.novemberain.com
-          Pin-Priority: 1000
+          Pin: version {{ erlang_version }}
+          Pin-Priority: 1001
+
+          Package: rabbitmq-server
+          Pin: version {{ rabbitmq_version }}
+          Pin-Priority: 1001
         mode: "0644"
 
     - name: Install Erlang packages
       ansible.builtin.apt:
         name:
-          - erlang-base
-          - erlang-asn1
-          - erlang-crypto
-          - erlang-eldap
-          - erlang-ftp
-          - erlang-inets
-          - erlang-mnesia
-          - erlang-os-mon
-          - erlang-parsetools
-          - erlang-public-key
-          - erlang-runtime-tools
-          - erlang-snmp
-          - erlang-ssl
-          - erlang-syntax-tools
-          - erlang-tftp
-          - erlang-tools
-          - erlang-xmerl
+          - "erlang-base={{ erlang_version }}"
+          - "erlang-asn1={{ erlang_version }}"
+          - "erlang-crypto={{ erlang_version }}"
+          - "erlang-eldap={{ erlang_version }}"
+          - "erlang-ftp={{ erlang_version }}"
+          - "erlang-inets={{ erlang_version }}"
+          - "erlang-mnesia={{ erlang_version }}"
+          - "erlang-os-mon={{ erlang_version }}"
+          - "erlang-parsetools={{ erlang_version }}"
+          - "erlang-public-key={{ erlang_version }}"
+          - "erlang-runtime-tools={{ erlang_version }}"
+          - "erlang-snmp={{ erlang_version }}"
+          - "erlang-ssl={{ erlang_version }}"
+          - "erlang-syntax-tools={{ erlang_version }}"
+          - "erlang-tftp={{ erlang_version }}"
+          - "erlang-tools={{ erlang_version }}"
+          - "erlang-xmerl={{ erlang_version }}"
         state: present
         update_cache: true
 
     - name: Install RabbitMQ server
       ansible.builtin.apt:
-        name: rabbitmq-server
+        name: "rabbitmq-server={{ rabbitmq_version }}"
         state: present
         update_cache: true
 
@@ -144,18 +160,21 @@ RabbitMQ ships with several plugins disabled by default. The management plugin (
       community.rabbitmq.rabbitmq_plugin:
         names: rabbitmq_management
         state: enabled
+        new_only: true
       notify: Restart RabbitMQ
 
     - name: Enable the Prometheus metrics plugin
       community.rabbitmq.rabbitmq_plugin:
         names: rabbitmq_prometheus
         state: enabled
+        new_only: true
       notify: Restart RabbitMQ
 
     - name: Enable the shovel plugin for cross-cluster message forwarding
       community.rabbitmq.rabbitmq_plugin:
         names: rabbitmq_shovel,rabbitmq_shovel_management
         state: enabled
+        new_only: true
       notify: Restart RabbitMQ
 
   handlers:
@@ -256,7 +275,7 @@ Deploy a RabbitMQ configuration file with essential settings.
           # RabbitMQ environment - managed by Ansible
           NODENAME=rabbit@{{ inventory_hostname }}
           NODE_IP_ADDRESS={{ ansible_host }}
-          RABBITMQ_LOG_BASE=/var/log/rabbitmq
+          LOG_BASE=/var/log/rabbitmq
         owner: rabbitmq
         group: rabbitmq
         mode: "0640"
@@ -310,7 +329,7 @@ collect_statistics_interval = 5000
 ```mermaid
 flowchart TD
     A[Add Erlang Repository] --> B[Add RabbitMQ Repository]
-    B --> C[Pin Erlang Version]
+    B --> C[Pin RabbitMQ and Erlang Versions]
     C --> D[Install Erlang Packages]
     D --> E[Install RabbitMQ Server]
     E --> F[Apply System Tuning]
@@ -358,7 +377,7 @@ After installation, verify RabbitMQ is running and accessible.
 
     - name: Verify management UI is accessible
       ansible.builtin.uri:
-        url: "http://{{ ansible_host }}:15672/api/overview"
+        url: "http://127.0.0.1:15672/api/overview"
         method: GET
         user: guest
         password: guest
