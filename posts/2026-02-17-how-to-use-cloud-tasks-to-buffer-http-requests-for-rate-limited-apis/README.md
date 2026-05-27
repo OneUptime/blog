@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Tasks as a buffer to smooth out traff
 
 ---
 
-Almost every third-party API has rate limits. Stripe allows 100 requests per second. Twilio has concurrent request limits. Salesforce has daily API call quotas. When your application generates traffic that might exceed these limits, you need a buffer between your app and the API. Cloud Tasks is an excellent choice for this because it gives you precise control over dispatch rates and handles retries automatically.
+Almost every third-party API has rate limits. Stripe's basic live-mode API rate limit is 100 requests per second. Twilio has concurrent request limits. Salesforce has daily API call quotas. When your application generates traffic that might exceed these limits, you need a buffer between your app and the API. Cloud Tasks is an excellent choice for this because it gives you precise control over dispatch rates and handles retries automatically.
 
 In this post, I will show you how to use Cloud Tasks as a request buffer to protect rate-limited APIs from being overwhelmed by your application.
 
@@ -30,7 +30,7 @@ With Cloud Tasks as a buffer:
 ```mermaid
 flowchart LR
     A[500 orders/min] -->|Create tasks| Q[Cloud Tasks Queue]
-    Q -->|10 req/sec controlled| S[Slack API]
+    Q -->|1 req/sec controlled| S[Slack API]
     S -->|200 OK| Q
 ```
 
@@ -41,12 +41,11 @@ Create a Cloud Tasks queue configured to stay within the target API's rate limit
 ```bash
 # Create a queue that dispatches at a rate safe for the target API
 
-# Example: Slack allows ~1 request per second per method
+# Example: Slack generally allows ~1 message per second per channel
 gcloud tasks queues create slack-notification-buffer \
   --location=us-central1 \
   --max-dispatches-per-second=1 \
   --max-concurrent-dispatches=1 \
-  --max-burst-size=5 \
   --max-attempts=5 \
   --min-backoff="30s" \
   --max-backoff="300s" \
@@ -91,8 +90,6 @@ functions.http("slackBuffer", async (req, res) => {
       body: JSON.stringify({ channel, text, blocks }),
     });
 
-    const data = await response.json();
-
     if (response.status === 429) {
       // Rate limited - extract retry-after header
       const retryAfter = response.headers.get("retry-after") || "30";
@@ -101,6 +98,8 @@ functions.http("slackBuffer", async (req, res) => {
       res.status(429).json({ error: "rate_limited", retryAfter });
       return;
     }
+
+    const data = await response.json();
 
     if (!data.ok) {
       // Slack API error
@@ -137,6 +136,17 @@ gcloud functions deploy slack-buffer \
   --memory=256MB \
   --timeout=30s \
   --set-secrets="SLACK_TOKEN=slack-bot-token:latest"
+
+PROJECT_ID=$(gcloud config get-value project)
+
+# Create the service account Cloud Tasks will use for its OIDC token
+gcloud iam service-accounts create task-dispatcher \
+  --display-name="Cloud Tasks dispatcher"
+
+# Allow the Cloud Tasks OIDC service account to invoke the authenticated function
+gcloud functions add-invoker-policy-binding slack-buffer \
+  --region=us-central1 \
+  --member="serviceAccount:task-dispatcher@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
 ## Creating Buffered Tasks from Your Application
@@ -205,7 +215,7 @@ gcloud tasks queues create stripe-buffer \
   --max-attempts=5 \
   --min-backoff="5s"
 
-# Queue for SendGrid API (100 emails/sec for Pro plan)
+# Queue for SendGrid API (example throughput; adjust for your plan and account)
 gcloud tasks queues create sendgrid-buffer \
   --location=us-central1 \
   --max-dispatches-per-second=80 \
@@ -337,4 +347,4 @@ async function adjustQueueRate(currentQuotaRemaining, quotaResetSeconds) {
 
 ## Wrapping Up
 
-Using Cloud Tasks as a buffer for rate-limited APIs is a straightforward pattern that solves a common problem. Instead of handling rate limits in your application code with complex retry logic and backoff, you let Cloud Tasks manage the flow. Create a queue with appropriate rate limits, deploy a handler that forwards requests to the target API, and have your application create tasks instead of making direct API calls. The result is an application that never gets rate-limited, handles traffic spikes gracefully, and automatically retries failed requests.
+Using Cloud Tasks as a buffer for rate-limited APIs is a straightforward pattern that solves a common problem. Instead of handling rate limits in your application code with complex retry logic and backoff, you let Cloud Tasks manage the flow. Create a queue with appropriate rate limits, deploy a handler that forwards requests to the target API, and have your application create tasks instead of making direct API calls. The result is an application that is much less likely to get rate-limited, handles traffic spikes gracefully, and automatically retries failed requests.
