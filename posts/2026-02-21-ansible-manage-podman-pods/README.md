@@ -12,7 +12,7 @@ Podman pods bring the Kubernetes pod concept to standalone container hosts. A po
 
 ## What is a Podman Pod?
 
-A pod in Podman groups one or more containers under a shared infra container. The infra container (usually `k8s.gcr.io/pause`) holds the network namespace open, and all other containers in the pod share that namespace.
+A pod in Podman groups one or more containers under a shared infra container. The infra container is a lightweight pause container that holds the network namespace open, and all other containers in the pod share that namespace.
 
 ```mermaid
 flowchart TD
