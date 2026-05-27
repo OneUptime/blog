@@ -19,7 +19,7 @@ Add the Spanner client library to your project. For Maven:
 <dependency>
     <groupId>com.google.cloud</groupId>
     <artifactId>google-cloud-spanner</artifactId>
-    <version>6.58.0</version>
+    <version>6.103.0</version>
 </dependency>
 ```
 
@@ -27,7 +27,7 @@ For Gradle:
 
 ```groovy
 // Add to your build.gradle dependencies
-implementation 'com.google.cloud:google-cloud-spanner:6.58.0'
+implementation 'com.google.cloud:google-cloud-spanner:6.103.0'
 ```
 
 ## Creating a Client
@@ -201,7 +201,7 @@ When you need to read, compute, and write atomically:
 ```java
 public void transferFunds(String fromAccountId, String toAccountId, double amount) {
     // Run a read-write transaction with automatic retries
-    dbClient.readWriteTransaction().run(new TransactionCallable<Void>() {
+    dbClient.readWriteTransaction().run(new TransactionRunner.TransactionCallable<Void>() {
         @Override
         public Void run(TransactionContext txn) throws Exception {
             // Read the source account balance
@@ -251,8 +251,10 @@ You can also use DML statements inside transactions:
 
 ```java
 public long shipPendingOrders(String customerId) {
+    String logId = UUID.randomUUID().toString();
+
     // Use DML in a read-write transaction
-    return dbClient.readWriteTransaction().run(new TransactionCallable<Long>() {
+    return dbClient.readWriteTransaction().run(new TransactionRunner.TransactionCallable<Long>() {
         @Override
         public Long run(TransactionContext txn) throws Exception {
             // Execute a DML update and get the affected row count
@@ -267,7 +269,7 @@ public long shipPendingOrders(String customerId) {
                 txn.executeUpdate(Statement.newBuilder(
                     "INSERT INTO AuditLog (LogId, Message, CreatedAt) "
                     + "VALUES (@logId, @message, PENDING_COMMIT_TIMESTAMP())")
-                    .bind("logId").to(UUID.randomUUID().toString())
+                    .bind("logId").to(logId)
                     .bind("message").to(
                         String.format("Shipped %d orders for %s", rowCount, customerId))
                     .build());
@@ -356,7 +358,6 @@ SpannerOptions options = SpannerOptions.newBuilder()
     .setSessionPoolOption(SessionPoolOptions.newBuilder()
         .setMinSessions(10)       // Minimum sessions to keep open
         .setMaxSessions(100)      // Maximum concurrent sessions
-        .setWriteSessionsFraction(0.2f)  // 20% prepared for writes
         .build())
     .build();
 ```
