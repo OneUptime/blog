@@ -22,6 +22,7 @@ Semaphore is an open-source web UI for Ansible. It provides a visual interface f
       - git
       - python3
       - python3-pip
+      - xz-utils
     state: present
 
 - name: Install Ansible
@@ -31,7 +32,7 @@ Semaphore is an open-source web UI for Ansible. It provides a visual interface f
 
 - name: Download Semaphore
   ansible.builtin.get_url:
-    url: "https://github.com/ansible-semaphore/semaphore/releases/download/v{{ semaphore_version }}/semaphore_{{ semaphore_version }}_linux_amd64.deb"
+    url: "https://github.com/semaphoreui/semaphore/releases/download/v{{ semaphore_version }}/semaphore_{{ semaphore_version }}_linux_amd64.deb"
     dest: /tmp/semaphore.deb
     mode: '0644'
 
@@ -67,14 +68,21 @@ Semaphore is an open-source web UI for Ansible. It provides a visual interface f
     dest: /etc/systemd/system/semaphore.service
     mode: '0644'
   notify:
-    - daemon reload
     - restart semaphore
 
 - name: Ensure Semaphore is running
-  ansible.builtin.service:
+  ansible.builtin.systemd_service:
     name: semaphore
     state: started
     enabled: true
+
+# roles/semaphore/handlers/main.yml
+---
+- name: restart semaphore
+  ansible.builtin.systemd_service:
+    name: semaphore
+    state: restarted
+    daemon_reload: true
 ```
 
 ## Semaphore Configuration
@@ -87,6 +95,7 @@ Semaphore is an open-source web UI for Ansible. It provides a visual interface f
     "pass": "{{ semaphore_db_password }}",
     "name": "semaphore"
   },
+  "dialect": "mysql",
   "port": "{{ semaphore_port | default('3000') }}",
   "interface": "0.0.0.0",
   "tmp_path": "/tmp/semaphore",
@@ -103,14 +112,21 @@ Semaphore is an open-source web UI for Ansible. It provides a visual interface f
 ---
 - name: Create admin user
   ansible.builtin.command:
-    cmd: >
-      semaphore user add
-      --config /etc/semaphore/config.json
-      --login admin
-      --name "Admin"
-      --email admin@example.com
-      --password {{ semaphore_admin_password }}
-      --admin
+    argv:
+      - semaphore
+      - user
+      - add
+      - --config
+      - /etc/semaphore/config.json
+      - --login
+      - admin
+      - --name
+      - Admin
+      - --email
+      - admin@example.com
+      - --password
+      - "{{ semaphore_admin_password }}"
+      - --admin
   changed_when: true
   no_log: true
 ```
@@ -158,7 +174,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -302,4 +318,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
