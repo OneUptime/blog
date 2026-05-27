@@ -10,7 +10,7 @@ Description: Deploy Jaeger distributed tracing with Ansible including collector,
 
 When your application is split across multiple microservices, debugging a slow request becomes a detective game. Distributed tracing solves this by tracking requests as they flow through each service. Jaeger, originally built at Uber, is one of the most popular open-source tracing platforms. It supports OpenTelemetry natively and provides a clean UI for visualizing trace data.
 
-Deploying Jaeger in production involves several components: agents, collectors, a query service, and a storage backend. Ansible is the right tool for managing this because you need consistent configuration across all these pieces. In this post, I will walk through deploying a production-grade Jaeger setup using Ansible.
+Deploying Jaeger involves several components: collectors, a query service, and a storage backend. Older Jaeger client deployments may also use agents on application hosts, although the Jaeger Agent is deprecated in Jaeger 1.54 for new OpenTelemetry-based deployments. Ansible is the right tool for managing this because you need consistent configuration across all these pieces. In this post, I will walk through deploying a multi-component Jaeger setup using Ansible.
 
 ## Jaeger Architecture
 
@@ -51,6 +51,8 @@ es-01 ansible_host=10.0.3.20
 
 ## Variables
 
+This example pins Jaeger 1.54 because it includes the legacy Jaeger Agent binary. Jaeger v1 is archived, so use this pattern when you need to maintain an existing agent-based deployment; for new OpenTelemetry deployments, prefer Jaeger v2 or an OpenTelemetry Collector in front of Jaeger.
+
 ```yaml
 # group_vars/all.yml
 jaeger_version: "1.54.0"
@@ -60,6 +62,7 @@ jaeger_collector_http_port: 14268
 jaeger_query_port: 16686
 jaeger_agent_compact_port: 6831
 jaeger_agent_binary_port: 6832
+jaeger_agent_admin_port: 14271
 
 # Elasticsearch storage
 jaeger_storage_type: elasticsearch
@@ -100,6 +103,7 @@ The Collector is the central component that receives and stores spans.
   loop:
     - /etc/jaeger
     - /var/lib/jaeger
+    - /var/log/jaeger
 
 - name: Download Jaeger binaries
   ansible.builtin.get_url:
@@ -139,6 +143,10 @@ The Collector is the central component that receives and stores spans.
     mode: '0644'
   notify: Restart Jaeger Collector
 
+- name: Include Elasticsearch index cleanup tasks
+  ansible.builtin.include_tasks: index-cleaner.yml
+  when: jaeger_storage_type == "elasticsearch"
+
 - name: Deploy collector systemd service
   ansible.builtin.template:
     src: jaeger-collector.service.j2
@@ -165,8 +173,8 @@ ES_SERVER_URLS={{ jaeger_es_server_url }}
 ES_INDEX_PREFIX={{ jaeger_es_index_prefix }}
 ES_NUM_SHARDS={{ jaeger_es_num_shards }}
 ES_NUM_REPLICAS={{ jaeger_es_num_replicas }}
-COLLECTOR_GRPC_HOST_PORT=:{{ jaeger_collector_grpc_port }}
-COLLECTOR_HTTP_HOST_PORT=:{{ jaeger_collector_http_port }}
+COLLECTOR_GRPC_SERVER_HOST_PORT=:{{ jaeger_collector_grpc_port }}
+COLLECTOR_HTTP_SERVER_HOST_PORT=:{{ jaeger_collector_http_port }}
 SAMPLING_STRATEGIES_FILE=/etc/jaeger/sampling.json
 LOG_LEVEL=info
 ```
@@ -224,7 +232,7 @@ WantedBy=multi-user.target
 
 ## Jaeger Agent Role
 
-The Agent runs on every application host as a local daemon.
+The Agent runs on every application host as a local daemon for legacy Jaeger client traffic.
 
 ```yaml
 # roles/jaeger-agent/tasks/main.yml
@@ -287,6 +295,7 @@ ExecStart=/usr/local/bin/jaeger-agent \
   --reporter.grpc.host-port={{ jaeger_collector_host }}:{{ jaeger_collector_grpc_port }} \
   --processor.jaeger-compact.server-host-port=:{{ jaeger_agent_compact_port }} \
   --processor.jaeger-binary.server-host-port=:{{ jaeger_agent_binary_port }} \
+  --admin.http.host-port=:{{ jaeger_agent_admin_port }} \
   --log-level=info
 Restart=always
 RestartSec=5
@@ -302,6 +311,32 @@ The Query service serves the web UI for exploring traces.
 ```yaml
 # roles/jaeger-query/tasks/main.yml
 ---
+- name: Create jaeger system user
+  ansible.builtin.user:
+    name: jaeger
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Create Jaeger configuration directory
+  ansible.builtin.file:
+    path: /etc/jaeger
+    state: directory
+    owner: jaeger
+    group: jaeger
+    mode: '0755'
+
+- name: Download Jaeger binaries
+  ansible.builtin.get_url:
+    url: "https://github.com/jaegertracing/jaeger/releases/download/v{{ jaeger_version }}/jaeger-{{ jaeger_version }}-linux-amd64.tar.gz"
+    dest: /tmp/jaeger.tar.gz
+
+- name: Extract Jaeger binaries
+  ansible.builtin.unarchive:
+    src: /tmp/jaeger.tar.gz
+    dest: /tmp/
+    remote_src: yes
+
 - name: Install query binary
   ansible.builtin.copy:
     src: "/tmp/jaeger-{{ jaeger_version }}-linux-amd64/jaeger-query"
@@ -341,7 +376,7 @@ The Query service serves the web UI for exploring traces.
 SPAN_STORAGE_TYPE={{ jaeger_storage_type }}
 ES_SERVER_URLS={{ jaeger_es_server_url }}
 ES_INDEX_PREFIX={{ jaeger_es_index_prefix }}
-QUERY_HTTP_HOST_PORT=:{{ jaeger_query_port }}
+QUERY_HTTP_SERVER_HOST_PORT=:{{ jaeger_query_port }}
 LOG_LEVEL=info
 ```
 
@@ -443,7 +478,7 @@ After deployment, confirm the tracing pipeline works end to end.
   tasks:
     - name: Check collector health
       ansible.builtin.uri:
-        url: "http://localhost:14269/health"
+        url: "http://localhost:14269/"
         method: GET
         status_code: 200
 
@@ -456,11 +491,11 @@ After deployment, confirm the tracing pipeline works end to end.
 - name: Verify agents
   hosts: jaeger_agent
   tasks:
-    - name: Check agent is listening
-      ansible.builtin.wait_for:
-        port: "{{ jaeger_agent_compact_port }}"
-        state: started
-        timeout: 10
+    - name: Check agent health
+      ansible.builtin.uri:
+        url: "http://localhost:{{ jaeger_agent_admin_port }}/"
+        method: GET
+        status_code: 200
 ```
 
 ```bash
@@ -473,4 +508,4 @@ ansible-playbook -i inventory/hosts.ini verify-jaeger.yml
 
 ## Wrapping Up
 
-With this Ansible setup, you get a fully automated Jaeger deployment that covers all the components needed for production distributed tracing. The key things to tune for your environment are the sampling rate (start at 10% and adjust based on volume), Elasticsearch index lifecycle (7 days is a good default), and the number of collector replicas (scale based on span ingestion rate). Applications can send traces to localhost:6831 via Jaeger client libraries or OpenTelemetry SDK, and the local agent handles buffering and forwarding to the collector.
+With this Ansible setup, you get a fully automated Jaeger deployment that covers the core components needed for distributed tracing. The key things to tune for your environment are the sampling rate (start at 10% and adjust based on volume), Elasticsearch index lifecycle (7 days is a good default), and the number of collector replicas (scale based on span ingestion rate). Applications using Jaeger client libraries can send traces to localhost:6831, and the local agent handles buffering and forwarding to the collector. New OpenTelemetry SDK deployments should send OTLP directly to the collector on port 4317 or 4318, or through an OpenTelemetry Collector.
