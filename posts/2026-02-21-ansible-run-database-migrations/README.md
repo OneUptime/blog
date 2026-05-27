@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Database Migration, DevOps, Deployment
 
-Description: Learn how to safely automate database schema migrations using Ansible playbooks with rollback support and pre-migration checks.
+Description: Learn how to safely automate database schema migrations using Ansible playbooks with backups and pre-migration checks.
 
 ---
 
 Database migrations are the riskiest part of any deployment. A bad migration can corrupt data, cause downtime, or leave your schema in a half-applied state. Running migrations by hand adds human error to an already risky process. Ansible lets you automate migrations with pre-checks, backups, and rollback procedures, turning a nerve-wracking manual step into a repeatable workflow.
 
-This guide covers running database migrations with Ansible for PostgreSQL, MySQL, and applications using popular migration tools like Flyway, Alembic, and Django.
+This guide covers running PostgreSQL database migrations with Ansible and applications using popular migration tools like Flyway, Alembic, and Django.
 
 ## The Migration Workflow
 
@@ -40,7 +40,7 @@ db-primary ansible_host=10.0.9.10
 [app_servers]
 app-1 ansible_host=10.0.9.20
 
-[database_servers:vars]
+[all:vars]
 ansible_user=ubuntu
 db_name=myapp_production
 db_user=myapp
@@ -64,7 +64,7 @@ Before running any migration, verify the database is healthy and accessible.
   tasks:
     - name: Check database connectivity
       community.postgresql.postgresql_ping:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_user }}"
         login_password: "{{ vault_db_password }}"
@@ -77,7 +77,7 @@ Before running any migration, verify the database is healthy and accessible.
 
     - name: Check for active connections
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_user }}"
         login_password: "{{ vault_db_password }}"
@@ -107,7 +107,7 @@ Before running any migration, verify the database is healthy and accessible.
 
     - name: Check for any running migrations or locks
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_user }}"
         login_password: "{{ vault_db_password }}"
@@ -288,6 +288,12 @@ Sometimes you need to run raw SQL files without a migration framework.
       - "003_update_status_column.sql"
 
   tasks:
+    - name: Ensure SQL migration directory exists
+      ansible.builtin.file:
+        path: "{{ sql_migration_dir }}"
+        state: directory
+        mode: "0755"
+
     - name: Copy migration files to the server
       ansible.builtin.copy:
         src: "../migrations/{{ item }}"
@@ -296,12 +302,12 @@ Sometimes you need to run raw SQL files without a migration framework.
       loop: "{{ migration_files }}"
 
     - name: Execute each migration file in order
-      community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+      community.postgresql.postgresql_script:
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_user }}"
         login_password: "{{ vault_db_password }}"
-        path_to_script: "{{ sql_migration_dir }}/{{ item }}"
+        path: "{{ sql_migration_dir }}/{{ item }}"
       loop: "{{ migration_files }}"
       loop_control:
         label: "{{ item }}"
@@ -324,7 +330,7 @@ After running migrations, verify the schema is correct.
   tasks:
     - name: Check that expected tables exist
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_user }}"
         login_password: "{{ vault_db_password }}"
@@ -348,7 +354,7 @@ After running migrations, verify the schema is correct.
 
     - name: Run a sample query to verify data integrity
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         login_host: "{{ db_host }}"
         login_user: "{{ db_user }}"
         login_password: "{{ vault_db_password }}"
@@ -394,4 +400,4 @@ Tie everything together in the correct order.
 
 ## Conclusion
 
-Running database migrations with Ansible transforms a manual, high-stress process into an automated workflow with built-in safety checks. The playbooks here cover pre-migration validation, multiple migration tools, post-migration verification, and the full orchestration. Whether you use Flyway, Django, Alembic, or raw SQL, the pattern is the same: check, backup, migrate, validate.
+Running database migrations with Ansible transforms a manual, high-stress process into an automated workflow with built-in safety checks. The playbooks here cover pre-migration validation, multiple migration tools, post-migration verification, and the full orchestration around a backup step. Whether you use Flyway, Django, Alembic, or raw SQL, the pattern is the same: check, backup, migrate, validate.
