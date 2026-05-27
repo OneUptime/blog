@@ -22,11 +22,11 @@ Key points:
 - Uses standard BigQuery SQL syntax
 - Available in the Cloud Console under Logging > Log Analytics
 - Works with both the `_Default` and custom log buckets
-- No additional cost beyond normal Cloud Logging ingestion (though query costs may apply at scale)
+- No additional cost to upgrade a bucket or run SQL queries from the Log Analytics page; BigQuery analysis charges apply when you query a linked dataset from BigQuery
 
 ## Enabling Log Analytics
 
-Log Analytics needs to be enabled on each log bucket you want to query. The `_Required` bucket always has it enabled. For other buckets:
+Log Analytics needs to be enabled on each log bucket you want to query. You can upgrade system-created buckets like `_Required` and `_Default`, as well as custom buckets:
 
 ### Upgrading the _Default Bucket
 
@@ -36,10 +36,11 @@ Log Analytics needs to be enabled on each log bucket you want to query. The `_Re
 gcloud logging buckets update _Default \
   --location=global \
   --enable-analytics \
+  --async \
   --project=my-project
 ```
 
-Note: Once you upgrade a bucket to Log Analytics, you cannot downgrade it. The upgrade takes a few minutes.
+Note: Once you upgrade a bucket to Log Analytics, you cannot downgrade it. The upgrade is asynchronous and takes a few minutes.
 
 ### Creating a New Bucket with Log Analytics
 
@@ -171,7 +172,7 @@ FROM
   `my-project.global._Default._AllLogs`
 WHERE
   timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
-  AND http_request IS NOT NULL
+  AND http_request.status IS NOT NULL
 GROUP BY
   status_code
 ORDER BY
@@ -242,14 +243,13 @@ You can create a linked dataset that makes your Log Analytics data available as 
 
 ```bash
 # Create a linked BigQuery dataset from a log bucket
-gcloud logging links create my-log-link \
+gcloud logging links create log_analytics_linked \
   --bucket=_Default \
   --location=global \
-  --linked-dataset=log_analytics_linked \
   --project=my-project
 ```
 
-After creating the link, the log data appears as a BigQuery dataset that you can query from the BigQuery console or API.
+After creating the link, the log data appears as a BigQuery dataset named after the link ID that you can query from the BigQuery console or API.
 
 ## Terraform Configuration
 
