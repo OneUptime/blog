@@ -8,30 +8,24 @@ Description: Orchestrate Terraform plan and apply operations from Ansible playbo
 
 ---
 
-Sometimes you need Ansible to drive Terraform operations as part of a larger workflow. For example, scaling infrastructure based on monitoring alerts, provisioning new environments on demand, or running Terraform as part of an Ansible-orchestrated deployment pipeline. The `terraform` module in Ansible makes this straightforward.
+Sometimes you need Ansible to drive Terraform operations as part of a larger workflow. For example, scaling infrastructure based on monitoring alerts, provisioning new environments on demand, or running Terraform as part of an Ansible-orchestrated deployment pipeline. The `community.general.terraform` module in Ansible makes this straightforward.
 
 ## Using the Terraform Module
 
 ```yaml
 # roles/terraform_runner/tasks/main.yml
 
----
-- name: Initialize Terraform
-  community.general.terraform:
-    project_path: "{{ terraform_project_dir }}"
-    state: present
-    force_init: yes
-
 - name: Plan Terraform changes
   community.general.terraform:
     project_path: "{{ terraform_project_dir }}"
     state: planned
     plan_file: "{{ terraform_project_dir }}/tfplan"
+    force_init: true
   register: tf_plan
 
 - name: Display planned changes
-  debug:
-    msg: "Terraform will make {{ tf_plan.stdout_lines | length }} changes"
+  ansible.builtin.debug:
+    msg: "{{ tf_plan.stdout | default('Terraform plan completed') }}"
 
 - name: Apply Terraform changes
   community.general.terraform:
@@ -39,7 +33,7 @@ Sometimes you need Ansible to drive Terraform operations as part of a larger wor
     state: present
     plan_file: "{{ terraform_project_dir }}/tfplan"
   register: tf_apply
-  when: tf_plan.changed and (auto_approve | default(false))
+  when: auto_approve | default(false)
 ```
 
 ## With Variables
@@ -71,12 +65,12 @@ The community.general.terraform module lets Ansible drive Terraform operations n
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where Ansible-driven automation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -108,7 +102,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -190,7 +184,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in a playbook
 - name: Robust task execution
   hosts: all
   tasks:
@@ -252,4 +246,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
