@@ -242,10 +242,10 @@ func ProcessPubSubMessage(ctx context.Context, e event.Event) error {
         return fmt.Errorf("failed to parse Pub/Sub message: %w", err)
     }
 
-    // Decode the base64-encoded message data
+    // Unmarshal the message data, which Go decodes from base64 into []byte
     var order OrderEvent
     if err := json.Unmarshal(msg.Message.Data, &order); err != nil {
-        return fmt.Errorf("failed to decode order event: %w", err)
+        return fmt.Errorf("failed to unmarshal order event: %w", err)
     }
 
     log.Printf("Processing order: %s for customer: %s (amount: $%.2f)",
@@ -313,7 +313,7 @@ Run the function locally:
 
 ```bash
 # Start the local development server
-go run cmd/main.go
+FUNCTION_TARGET=HandleRequest go run cmd/main.go
 
 # Test the HTTP function
 curl -X POST http://localhost:8080 \
@@ -374,7 +374,7 @@ func TestHandleRequest_Create(t *testing.T) {
 # Deploy the HTTP function
 gcloud functions deploy handle-request \
     --gen2 \
-    --runtime go121 \
+    --runtime go125 \
     --trigger-http \
     --entry-point HandleRequest \
     --source . \
@@ -386,7 +386,7 @@ gcloud functions deploy handle-request \
 # Deploy the Cloud Storage event function
 gcloud functions deploy process-storage \
     --gen2 \
-    --runtime go121 \
+    --runtime go125 \
     --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
     --trigger-event-filters="bucket=my-upload-bucket" \
     --entry-point ProcessStorageEvent \
@@ -397,7 +397,7 @@ gcloud functions deploy process-storage \
 # Deploy the Pub/Sub function
 gcloud functions deploy process-orders \
     --gen2 \
-    --runtime go121 \
+    --runtime go125 \
     --trigger-topic=orders-topic \
     --entry-point ProcessPubSubMessage \
     --source . \
@@ -411,7 +411,7 @@ gcloud functions deploy process-orders \
 # Deploy with environment variables
 gcloud functions deploy my-function \
     --gen2 \
-    --runtime go121 \
+    --runtime go125 \
     --trigger-http \
     --entry-point HandleRequest \
     --set-env-vars "API_KEY=abc123,LOG_LEVEL=info" \
@@ -421,7 +421,7 @@ gcloud functions deploy my-function \
 # Use Secret Manager for sensitive values
 gcloud functions deploy my-function \
     --gen2 \
-    --runtime go121 \
+    --runtime go125 \
     --trigger-http \
     --entry-point HandleRequest \
     --set-secrets "DB_PASSWORD=db-password:latest" \
