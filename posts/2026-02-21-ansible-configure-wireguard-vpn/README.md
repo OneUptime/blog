@@ -12,7 +12,7 @@ WireGuard is a modern VPN protocol that is faster, simpler, and more secure than
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
+- Ansible 2.10+ on your control node, with the `ansible.posix` and `community.general` collections installed
 - Linux target hosts (kernel 5.6+ has WireGuard built-in, earlier versions need the module)
 - Root or sudo access
 - Understanding of basic VPN concepts (tunnels, key pairs, allowed IPs)
@@ -36,8 +36,8 @@ WireGuard is a modern VPN protocol that is faster, simpler, and more secure than
         update_cache: true
       when: ansible_os_family == "Debian"
 
-    - name: Install WireGuard on RHEL/CentOS 8+
-      ansible.builtin.yum:
+    - name: Install WireGuard tools on RHEL/CentOS/Fedora hosts with kernel support
+      ansible.builtin.dnf:
         name:
           - wireguard-tools
         state: present
@@ -95,7 +95,9 @@ WireGuard uses Curve25519 key pairs. Generate them on each host:
       register: private_key_content
 
     - name: Generate public key from private key
-      ansible.builtin.shell: echo "{{ private_key_content.content | b64decode | trim }}" | wg pubkey
+      ansible.builtin.command:
+        cmd: wg pubkey
+        stdin: "{{ private_key_content.content | b64decode | trim }}"
       register: wg_public_key
       changed_when: false
 
@@ -149,7 +151,7 @@ Here is a complete WireGuard server setup that accepts connections from multiple
       notify: Restart WireGuard
 
     - name: Enable and start WireGuard
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "wg-quick@{{ wg_interface }}"
         state: started
         enabled: true
@@ -164,7 +166,7 @@ Here is a complete WireGuard server setup that accepts connections from multiple
 
   handlers:
     - name: Restart WireGuard
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "wg-quick@{{ wg_interface }}"
         state: restarted
 ```
@@ -225,14 +227,14 @@ Configure WireGuard clients to connect to the server:
       notify: Restart WireGuard
 
     - name: Enable and start WireGuard
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "wg-quick@{{ wg_interface }}"
         state: started
         enabled: true
 
   handlers:
     - name: Restart WireGuard
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "wg-quick@{{ wg_interface }}"
         state: restarted
 ```
@@ -291,14 +293,14 @@ Connect two networks together over WireGuard:
       notify: Restart WireGuard
 
     - name: Enable WireGuard
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "wg-quick@{{ wg_interface }}"
         state: started
         enabled: true
 
   handlers:
     - name: Restart WireGuard
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "wg-quick@{{ wg_interface }}"
         state: restarted
 ```
@@ -363,10 +365,6 @@ Add or remove peers without restarting the tunnel:
         allowed-ips {{ new_peer_ip }}
       changed_when: true
 
-    - name: Save runtime config to file
-      ansible.builtin.command: "wg-quick save {{ wg_interface }}"
-      changed_when: true
-
     - name: Remove a peer
       ansible.builtin.command: >
         wg set {{ wg_interface }}
@@ -374,6 +372,10 @@ Add or remove peers without restarting the tunnel:
         remove
       changed_when: true
       when: remove_peer | default(false)
+
+    - name: Save runtime config to file
+      ansible.builtin.command: "wg-quick save {{ wg_interface }}"
+      changed_when: true
 ```
 
 ## Verification
