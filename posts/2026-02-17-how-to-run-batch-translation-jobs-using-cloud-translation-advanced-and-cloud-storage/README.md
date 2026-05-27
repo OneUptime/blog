@@ -22,7 +22,7 @@ The batch translation flow is straightforward:
 4. Results are written to an output Cloud Storage bucket
 5. You download or process the translated files
 
-The API supports plain text files, HTML files, and TSV files as input. Each file can be up to 10MB, and you can process up to 100 files per batch request.
+The API supports plain text files, HTML files, and TSV files as input. You can process up to 100 files and up to 10 target languages per batch request, with a total input size of up to 100M Unicode codepoints. Input files must use UTF-8 encoding.
 
 ## Prerequisites
 
@@ -32,6 +32,9 @@ Set up the required resources:
 # Enable the Translation API
 
 gcloud services enable translate.googleapis.com
+
+# Authenticate Application Default Credentials for the client libraries
+gcloud auth application-default login
 
 # Create input and output buckets
 gsutil mb -l us-central1 gs://your-translation-input
@@ -107,24 +110,12 @@ def batch_translate_text(
         mime_type="text/plain",  # Use "text/html" for HTML files
     )
 
-    # Configure the output destination for each target language
-    output_configs = []
-    for target_lang in target_languages:
-        gcs_destination = translate.GcsDestination(
-            output_uri_prefix=f"{output_uri}{target_lang}/"
-        )
-        output_config = translate.OutputConfig(gcs_destination=gcs_destination)
-        output_configs.append(output_config)
-
-    # Build the target language codes map
-    target_language_codes = target_languages
-
     # Submit the batch translation request
     operation = client.batch_translate_text(
         request={
             "parent": parent,
             "source_language_code": source_language,
-            "target_language_codes": target_language_codes,
+            "target_language_codes": target_languages,
             "input_configs": [input_config],
             "output_config": translate.OutputConfig(
                 gcs_destination=translate.GcsDestination(
@@ -151,7 +142,7 @@ def batch_translate_text(
 batch_translate_text(
     project_id="your-project-id",
     location="us-central1",
-    input_uri="gs://your-translation-input/en-source/*",
+    input_uri="gs://your-translation-input/en-source/*.txt",
     output_uri="gs://your-translation-output/",
     source_language="en",
     target_languages=["es", "fr", "de", "ja"],
@@ -272,13 +263,13 @@ batch_translate_html(
 
 ## Downloading and Processing Results
 
-After the job completes, download the translated files:
+After the job completes, download the translated files. Cloud Translation writes an `index.csv` file under the output prefix and generates translated files with the target language code in the file name:
 
 ```python
-from google.cloud import storage
 import os
+from google.cloud import storage
 
-def download_translations(bucket_name, prefix, local_dir):
+def download_translations(bucket_name, prefix, local_dir, target_language=None):
     """Download translated files from Cloud Storage."""
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
@@ -291,13 +282,20 @@ def download_translations(bucket_name, prefix, local_dir):
     for blob in blobs:
         if blob.name.endswith("/"):
             continue  # Skip directory markers
+        if blob.name.endswith("index.csv") or "_errors." in blob.name:
+            continue
+        if target_language:
+            translated_suffix = f"_{target_language}_translations."
+            glossary_suffix = f"_{target_language}_glossary_translations."
+            if translated_suffix not in blob.name and glossary_suffix not in blob.name:
+                continue
 
         # Preserve directory structure
         relative_path = blob.name[len(prefix):]
         local_path = os.path.join(local_dir, relative_path)
 
         # Create subdirectories as needed
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        os.makedirs(os.path.dirname(local_path) or local_dir, exist_ok=True)
 
         blob.download_to_filename(local_path)
         downloaded.append(local_path)
@@ -309,8 +307,9 @@ def download_translations(bucket_name, prefix, local_dir):
 # Download Spanish translations
 download_translations(
     bucket_name="your-translation-output",
-    prefix="es/",
-    local_dir="/path/to/translations/es"
+    prefix="",
+    local_dir="/path/to/translations/es",
+    target_language="es",
 )
 ```
 
@@ -399,14 +398,13 @@ class LocalizationPipeline:
 
         # Step 1: Upload source files
         input_prefix = f"jobs/{job_id}/source/"
-        self._upload_source_files(source_dir, input_prefix)
+        uploaded_types = self._upload_source_files(source_dir, input_prefix)
 
         # Step 2: Run batch translation
-        input_uri = f"gs://{self.input_bucket}/{input_prefix}*"
         output_uri = f"gs://{self.output_bucket}/jobs/{job_id}/"
 
         result = self._run_translation(
-            input_uri, output_uri, source_lang, target_langs, glossary_id
+            input_prefix, uploaded_types, output_uri, source_lang, target_langs, glossary_id
         )
 
         # Step 3: Generate job report
@@ -426,27 +424,53 @@ class LocalizationPipeline:
     def _upload_source_files(self, source_dir, prefix):
         """Upload source files to the input bucket."""
         bucket = self.storage_client.bucket(self.input_bucket)
+        uploaded_types = set()
 
         for filename in os.listdir(source_dir):
-            if filename.endswith((".txt", ".html")):
-                blob = bucket.blob(f"{prefix}{filename}")
+            if filename.endswith(".txt"):
+                blob = bucket.blob(f"{prefix}text/{filename}")
                 blob.upload_from_filename(os.path.join(source_dir, filename))
+                uploaded_types.add("text/plain")
+                print(f"  Uploaded: {filename}")
+            elif filename.endswith(".html"):
+                blob = bucket.blob(f"{prefix}html/{filename}")
+                blob.upload_from_filename(os.path.join(source_dir, filename))
+                uploaded_types.add("text/html")
                 print(f"  Uploaded: {filename}")
 
-    def _run_translation(self, input_uri, output_uri, source_lang, target_langs, glossary_id):
+        return uploaded_types
+
+    def _run_translation(self, input_prefix, uploaded_types, output_uri, source_lang, target_langs, glossary_id):
         """Execute the batch translation."""
         parent = f"projects/{self.project_id}/locations/{self.location}"
+
+        input_configs = []
+        if "text/plain" in uploaded_types:
+            input_configs.append(
+                translate.InputConfig(
+                    gcs_source=translate.GcsSource(
+                        input_uri=f"gs://{self.input_bucket}/{input_prefix}text/*"
+                    ),
+                    mime_type="text/plain",
+                )
+            )
+        if "text/html" in uploaded_types:
+            input_configs.append(
+                translate.InputConfig(
+                    gcs_source=translate.GcsSource(
+                        input_uri=f"gs://{self.input_bucket}/{input_prefix}html/*"
+                    ),
+                    mime_type="text/html",
+                )
+            )
+        if not input_configs:
+            raise ValueError("No supported .txt or .html files were uploaded")
 
         request = {
             "parent": parent,
             "source_language_code": source_lang,
             "target_language_codes": target_langs,
-            "input_configs": [
-                translate.InputConfig(
-                    gcs_source=translate.GcsSource(input_uri=input_uri),
-                    mime_type="text/plain",
-                )
-            ],
+            "input_configs": input_configs,
             "output_config": translate.OutputConfig(
                 gcs_destination=translate.GcsDestination(
                     output_uri_prefix=output_uri
