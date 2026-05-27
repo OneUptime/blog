@@ -14,7 +14,7 @@ In this guide, I will show you how to extract health signals from Pub/Sub messag
 
 ## The Approach
 
-The idea is straightforward. Your IoT devices publish telemetry to Pub/Sub with message attributes containing metadata like device ID, firmware version, and battery level. A Cloud Function triggers on each message (or batch of messages), extracts the health metrics, and writes them to Cloud Monitoring as custom metrics.
+The idea is straightforward. Your IoT devices publish telemetry to Pub/Sub with message attributes containing metadata like device ID, firmware version, and battery level. A Cloud Function triggers on each message, extracts the health metrics, and writes them to Cloud Monitoring as custom metrics.
 
 ```mermaid
 graph LR
@@ -29,7 +29,7 @@ graph LR
 
 - GCP project with Cloud Monitoring, Pub/Sub, and Cloud Functions APIs enabled
 - IoT devices publishing to a Pub/Sub topic
-- Python 3.8+
+- Python 3.11 for the deployed Cloud Function examples
 
 ## Step 1: Structure Your Pub/Sub Messages
 
@@ -48,7 +48,8 @@ topic_path = publisher.topic_path("your-project", "device-telemetry")
 
 def publish_telemetry(device_id, sensor_data):
     """Publishes telemetry with health metadata as message attributes.
-    Attributes are indexed by Pub/Sub and do not require payload parsing."""
+    Attributes can be used for subscription filtering and do not require
+    payload parsing."""
 
     payload = json.dumps(sensor_data)
 
@@ -76,6 +77,8 @@ def publish_telemetry(device_id, sensor_data):
 Before writing custom metrics, you need to define the metric descriptors. You can do this programmatically or let the first write create them automatically. I prefer defining them explicitly:
 
 ```python
+from google.api import label_pb2 as ga_label
+from google.api import metric_pb2 as ga_metric
 from google.cloud import monitoring_v3
 
 client = monitoring_v3.MetricServiceClient()
@@ -126,21 +129,21 @@ def create_metric_descriptors():
     ]
 
     for desc in descriptors:
-        descriptor = monitoring_v3.MetricDescriptor()
+        descriptor = ga_metric.MetricDescriptor()
         descriptor.type = desc["type"]
         descriptor.metric_kind = getattr(
-            monitoring_v3.MetricDescriptor.MetricKind, desc["metric_kind"]
+            ga_metric.MetricDescriptor.MetricKind, desc["metric_kind"]
         )
         descriptor.value_type = getattr(
-            monitoring_v3.MetricDescriptor.ValueType, desc["value_type"]
+            ga_metric.MetricDescriptor.ValueType, desc["value_type"]
         )
         descriptor.description = desc["description"]
 
         for label in desc.get("labels", []):
-            label_desc = monitoring_v3.LabelDescriptor()
+            label_desc = ga_label.LabelDescriptor()
             label_desc.key = label["key"]
             label_desc.value_type = getattr(
-                monitoring_v3.LabelDescriptor.ValueType,
+                ga_label.LabelDescriptor.ValueType,
                 label.get("value_type", "STRING"),
             )
             descriptor.labels.append(label_desc)
@@ -155,7 +158,7 @@ create_metric_descriptors()
 
 ## Step 3: Build the Cloud Function to Write Metrics
 
-This function triggers on Pub/Sub messages and writes health metrics to Cloud Monitoring:
+This function triggers on Pub/Sub messages and writes health metrics to Cloud Monitoring. Cloud Monitoring accepts one point per time series in each write call, and you should avoid writing to the same time series faster than once every 5 seconds:
 
 ```python
 # main.py - Cloud Function triggered by Pub/Sub messages
@@ -164,7 +167,6 @@ import base64
 import json
 import time
 from google.cloud import monitoring_v3
-from google.protobuf import timestamp_pb2
 
 client = monitoring_v3.MetricServiceClient()
 PROJECT_NAME = "projects/your-project"
@@ -194,16 +196,18 @@ def write_metric(metric_type, value, labels, value_type="double"):
     seconds = int(now)
     nanos = int((now - seconds) * 10**9)
 
-    interval = monitoring_v3.TimeInterval()
-    interval.end_time = timestamp_pb2.Timestamp(seconds=seconds, nanos=nanos)
-
-    point = monitoring_v3.Point()
-    point.interval = interval
+    interval = monitoring_v3.TimeInterval(
+        {"end_time": {"seconds": seconds, "nanos": nanos}}
+    )
 
     if value_type == "int64":
-        point.value.int64_value = int(value)
+        point = monitoring_v3.Point(
+            {"interval": interval, "value": {"int64_value": int(value)}}
+        )
     else:
-        point.value.double_value = float(value)
+        point = monitoring_v3.Point(
+            {"interval": interval, "value": {"double_value": float(value)}}
+        )
 
     series.points = [point]
 
@@ -255,6 +259,7 @@ Deploy the function:
 # Deploy the Cloud Function with Pub/Sub trigger
 gcloud functions deploy process-device-metrics \
   --runtime=python311 \
+  --no-gen2 \
   --trigger-topic=device-telemetry \
   --region=us-central1 \
   --memory=256MB \
@@ -264,7 +269,7 @@ gcloud functions deploy process-device-metrics \
 
 ## Step 4: Track Active Device Count
 
-For fleet-level metrics like active device count, you need a separate process that runs periodically rather than per message. Use Cloud Scheduler with a Cloud Function:
+For fleet-level metrics like active device count, you need a separate process that runs periodically rather than per message. Assuming your raw Pub/Sub messages are also stored in BigQuery, use Cloud Scheduler with a Cloud Function:
 
 ```python
 def count_active_devices(request):
@@ -303,23 +308,21 @@ Now create alerting policies for critical fleet health conditions:
 
 ```bash
 # Alert when any device battery drops below 20%
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Low Battery Alert" \
   --condition-display-name="Device battery below 20%" \
   --condition-filter='metric.type="custom.googleapis.com/iot/device/battery_level"' \
-  --condition-threshold-value=20 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=300s \
+  --if="< 20" \
+  --duration=300s \
   --notification-channels=YOUR_CHANNEL_ID
 
 # Alert when active device count drops significantly
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Fleet Size Drop Alert" \
   --condition-display-name="Active devices below expected threshold" \
   --condition-filter='metric.type="custom.googleapis.com/iot/fleet/active_devices"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=600s \
+  --if="< 100" \
+  --duration=600s \
   --notification-channels=YOUR_CHANNEL_ID
 ```
 
@@ -327,7 +330,7 @@ gcloud alpha monitoring policies create \
 
 Cloud Monitoring custom metrics are not free. Each custom metric descriptor is free, but you pay per data point written. At scale, writing one metric per device per message can get expensive. Consider:
 
-- Batching metrics and writing at intervals (every minute instead of every message)
+- Batching metrics and writing at intervals (every minute instead of every message) to reduce cost and stay within per-time-series write limits
 - Aggregating metrics on the device side before publishing
 - Using metric labels strategically - each unique label combination creates a separate time series
 
