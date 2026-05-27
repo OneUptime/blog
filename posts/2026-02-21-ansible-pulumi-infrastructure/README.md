@@ -44,6 +44,15 @@ subnet = aws.ec2.Subnet("web-subnet",
     cidr_block="10.0.1.0/24",
     availability_zone="us-east-1a")
 
+# Look up the latest Ubuntu 22.04 LTS AMI in the configured AWS region
+ubuntu_ami = aws.ec2.get_ami(
+    most_recent=True,
+    owners=["099720109477"],
+    filters=[
+        {"name": "name", "values": ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]},
+        {"name": "virtualization-type", "values": ["hvm"]},
+    ])
+
 # Create security group
 sg = aws.ec2.SecurityGroup("web-sg",
     vpc_id=vpc.id,
@@ -55,7 +64,7 @@ web_servers = []
 for i in range(3):
     server = aws.ec2.Instance(f"web-{i}",
         instance_type="t3.medium",
-        ami="ami-0abcdef1234567890",
+        ami=ubuntu_ami.id,
         subnet_id=subnet.id,
         vpc_security_group_ids=[sg.id],
         key_name="deploy-key",
@@ -75,13 +84,14 @@ Create a script that reads Pulumi outputs and generates inventory:
 # generate_inventory.py
 # Convert Pulumi outputs to Ansible inventory
 import json
+import os
 import subprocess
 import yaml
 
 # Get outputs from Pulumi
 result = subprocess.run(
     ["pulumi", "stack", "output", "--json"],
-    capture_output=True, text=True
+    capture_output=True, text=True, check=True
 )
 outputs = json.loads(result.stdout)
 
@@ -105,6 +115,7 @@ for i, ip in enumerate(outputs.get("web_ips", [])):
         "ansible_host": ip
     }
 
+os.makedirs("inventories", exist_ok=True)
 with open("inventories/pulumi-generated.yml", "w") as f:
     yaml.dump(inventory, f, default_flow_style=False)
 
@@ -156,10 +167,24 @@ def deploy():
     ], check=True)
 
 def generate_ansible_inventory(web_ips):
+    import os
     import yaml
-    inventory = {"all": {"children": {"webservers": {"hosts": {}}}}}
+    inventory = {
+        "all": {
+            "children": {
+                "webservers": {
+                    "hosts": {}
+                }
+            },
+            "vars": {
+                "ansible_user": "ubuntu",
+                "ansible_ssh_private_key_file": "~/.ssh/deploy-key"
+            }
+        }
+    }
     for i, ip in enumerate(web_ips):
         inventory["all"]["children"]["webservers"]["hosts"][f"web-{i}"] = {"ansible_host": ip}
+    os.makedirs("inventories", exist_ok=True)
     with open("inventories/pulumi-generated.yml", "w") as f:
         yaml.dump(inventory, f)
 
@@ -181,12 +206,12 @@ Pulumi and Ansible serve different purposes and work well together. Pulumi excel
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these tools prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these tools
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -218,7 +243,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -259,7 +284,7 @@ Here are several practical scenarios where this module proves essential in real-
   handlers:
     - name: restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -300,7 +325,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling for Ansible tasks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -362,4 +387,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
