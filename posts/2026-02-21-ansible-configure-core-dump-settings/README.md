@@ -55,12 +55,20 @@ On production servers that do not need debugging, disabling core dumps is often 
 
     # Set the sysctl to disable core dumps for SUID programs
     - name: Disable SUID core dumps via sysctl
-      ansible.builtin.sysctl:
+      ansible.posix.sysctl:
         name: fs.suid_dumpable
         value: "0"
         state: present
         sysctl_set: true
         reload: true
+
+    - name: Create coredump.conf.d directory
+      ansible.builtin.file:
+        path: /etc/systemd/coredump.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
     # Configure systemd to not store core dumps
     - name: Configure systemd-coredump to disable storage
@@ -82,9 +90,9 @@ On production servers that do not need debugging, disabling core dumps is often 
         masked: true
       failed_when: false
 
-    # Set the core pattern to /dev/null as a fallback
+    # Set the core pattern to discard dumps as a fallback
     - name: Set core_pattern to discard
-      ansible.builtin.sysctl:
+      ansible.posix.sysctl:
         name: kernel.core_pattern
         value: "|/bin/false"
         state: present
@@ -92,7 +100,7 @@ On production servers that do not need debugging, disabling core dumps is often 
         reload: true
 
     # Verify core dumps are disabled
-    - name: Verify core dump limits
+    - name: Show current Ansible task core limit
       ansible.builtin.shell:
         cmd: "ulimit -c"
       register: core_limit
@@ -100,7 +108,7 @@ On production servers that do not need debugging, disabling core dumps is often 
 
     - name: Display core dump status
       ansible.builtin.debug:
-        msg: "{{ inventory_hostname }}: Core dump limit = {{ core_limit.stdout }} (should be 0)"
+        msg: "{{ inventory_hostname }}: current task core dump limit = {{ core_limit.stdout }} (PAM limits apply to new login sessions)"
 
   handlers:
     - name: reload systemd
@@ -120,7 +128,7 @@ On development and staging servers, you want core dumps enabled so developers ca
   become: true
 
   vars:
-    coredump_storage_path: /var/coredumps
+    coredump_storage_path: /var/lib/systemd/coredump
     coredump_max_size_mb: 2048
     coredump_max_files: 10
     coredump_compress: true
@@ -134,7 +142,7 @@ On development and staging servers, you want core dumps enabled so developers ca
         state: directory
         owner: root
         group: root
-        mode: '1777'
+        mode: '0755'
 
     # Set core dump file size limits
     - name: Configure core dump limits
@@ -148,23 +156,31 @@ On development and staging servers, you want core dumps enabled so developers ca
           * soft core unlimited
           * hard core unlimited
 
-    # Configure the core pattern for where dumps are stored
-    - name: Set core dump file pattern
-      ansible.builtin.sysctl:
+    # Configure the core pattern to use systemd-coredump
+    - name: Set core_pattern to systemd-coredump
+      ansible.posix.sysctl:
         name: kernel.core_pattern
-        value: "{{ coredump_storage_path }}/core.%e.%p.%t"
+        value: "|/usr/lib/systemd/systemd-coredump %P %u %g %s %t %c %h"
         state: present
         sysctl_set: true
         reload: true
 
     # Allow SUID programs to dump core (needed for some debugging)
     - name: Configure SUID dumpable setting
-      ansible.builtin.sysctl:
+      ansible.posix.sysctl:
         name: fs.suid_dumpable
         value: "2"
         state: present
         sysctl_set: true
         reload: true
+
+    - name: Create coredump.conf.d directory
+      ansible.builtin.file:
+        path: /etc/systemd/coredump.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
     # Configure systemd-coredump for managed storage
     - name: Configure systemd-coredump
@@ -251,7 +267,7 @@ On modern systems with systemd, `systemd-coredump` provides managed core dump ha
 
     # Set kernel core pattern to use systemd-coredump
     - name: Set core_pattern to systemd-coredump
-      ansible.builtin.sysctl:
+      ansible.posix.sysctl:
         name: kernel.core_pattern
         value: "|/usr/lib/systemd/systemd-coredump %P %u %g %s %t %c %h"
         state: present
@@ -291,14 +307,14 @@ Track core dumps across your fleet to identify unstable applications:
     # Check for recent core dumps using coredumpctl
     - name: Check for recent core dumps (systemd)
       ansible.builtin.shell:
-        cmd: "coredumpctl list --since '7 days ago' --no-pager 2>/dev/null | tail -20 || echo 'No coredumpctl available'"
+        cmd: "if command -v coredumpctl >/dev/null 2>&1; then coredumpctl list --since '7 days ago' --no-pager 2>/dev/null | tail -20; else echo 'No coredumpctl available'; fi"
       register: recent_dumps
       changed_when: false
 
     # Check for core files on disk
     - name: Find core dump files on disk
       ansible.builtin.shell:
-        cmd: "find /var/coredumps /var/lib/systemd/coredump /tmp -name 'core*' -type f -mtime -7 2>/dev/null | head -20 || echo 'None found'"
+        cmd: "find /var/coredumps /var/lib/systemd/coredump /tmp -name 'core*' -type f -mtime -7 2>/dev/null | head -20"
       register: core_files
       changed_when: false
 
@@ -317,7 +333,7 @@ Track core dumps across your fleet to identify unstable applications:
           - "Recent dumps: {{ recent_dumps.stdout_lines | length }} entries"
           - "Core files on disk: {{ core_files.stdout_lines | length }}"
           - "Storage used: {{ dump_usage.stdout }}"
-      when: recent_dumps.stdout != 'No coredumpctl available' or core_files.stdout != 'None found'
+      when: recent_dumps.stdout != 'No coredumpctl available' or core_files.stdout != ''
 
     # Alert on servers with many recent core dumps
     - name: Alert on excessive core dumps
@@ -341,9 +357,9 @@ For security compliance, verify core dump settings match policy:
 
   tasks:
     # Check ulimit settings
-    - name: Check hard core limit
+    - name: Check configured core limits
       ansible.builtin.shell:
-        cmd: "grep -r 'core' /etc/security/limits.conf /etc/security/limits.d/ 2>/dev/null || echo 'No limits configured'"
+        cmd: "grep -RhE '^\\s*\\*\\s+(hard|soft)\\s+core\\s+0\\s*$' /etc/security/limits.conf /etc/security/limits.d/ 2>/dev/null || true"
       register: limits_check
       changed_when: false
 
@@ -372,11 +388,11 @@ For security compliance, verify core dump settings match policy:
       ansible.builtin.set_fact:
         coredump_compliance:
           hostname: "{{ inventory_hostname }}"
-          limits_configured: "{{ 'core' in limits_check.stdout }}"
+          limits_configured: "{{ '* hard core 0' in limits_check.stdout and '* soft core 0' in limits_check.stdout }}"
           suid_dumpable: "{{ suid_dumpable.stdout }}"
           core_pattern: "{{ core_pattern.stdout }}"
           systemd_storage: "{{ coredump_storage.stdout | trim }}"
-          compliant: "{{ suid_dumpable.stdout == '0' and '0' in limits_check.stdout }}"
+          compliant: "{{ suid_dumpable.stdout == '0' and '* hard core 0' in limits_check.stdout and '* soft core 0' in limits_check.stdout }}"
 
     - name: Display compliance status
       ansible.builtin.debug:
@@ -399,8 +415,8 @@ From managing core dump configurations in production:
 
 4. Monitor core dump activity. Frequent core dumps from the same application indicate a stability problem that needs investigation, not just cleanup.
 
-5. Clean up core dumps on a schedule. Even with size limits, old core dumps waste disk space. A weekly cron job that removes dumps older than 7 days (or whatever your investigation SLA is) keeps storage under control.
+5. Clean up core dumps on a schedule. Even with size limits, old core dumps waste disk space. A scheduled cleanup job that removes dumps older than 7 days (or whatever your investigation SLA is) keeps storage under control.
 
-6. Remember that core dumps can be very large. A process using 8 GB of memory will create an 8 GB core dump. Set `ProcessSizeMax` appropriately to avoid filling up your disk from a single crash.
+6. Remember that core dumps can be very large. A process using 8 GB of memory can create a very large core dump. Set `ExternalSizeMax` for saved dump size and `ProcessSizeMax` for processing limits to avoid filling up your disk from a single crash.
 
 Core dump configuration is a balance between debuggability and security. Ansible lets you apply the right policy to the right servers, whether that is disabling dumps entirely on production or enabling full debugging on development systems.
