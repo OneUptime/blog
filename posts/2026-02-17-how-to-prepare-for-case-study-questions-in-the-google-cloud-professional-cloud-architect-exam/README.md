@@ -86,9 +86,9 @@ Here is a mapping exercise for common case study requirements:
 |---|---|
 | HIPAA compliance | Cloud Healthcare API, BAA-covered services, VPC Service Controls |
 | Minimize operational overhead | Cloud Run, GKE Autopilot, Cloud SQL, managed services |
-| Global low latency | Cloud CDN, Cloud Armor, multi-region deployments |
+| Global low latency | Cloud CDN, Cloud Load Balancing, multi-region deployments |
 | Real-time data processing | Dataflow, Pub/Sub, BigQuery streaming |
-| IoT data ingestion | IoT Core, Pub/Sub, Dataflow |
+| IoT data ingestion | Pub/Sub, Dataflow, MQTT broker or IoT platform architectures |
 | Machine learning | Vertex AI, BigQuery ML, AutoML |
 | Disaster recovery | Multi-region, cross-region replication, Cloud SQL HA |
 | Cost optimization | Committed use discounts, preemptible VMs, autoscaling |
@@ -112,7 +112,7 @@ Case study questions often test whether you understand the trade-offs between si
 **Cloud SQL vs Cloud Spanner vs Bigtable vs Firestore**
 - Cloud SQL: traditional relational, vertical scaling, good for moderate workloads
 - Cloud Spanner: relational with horizontal scaling, globally consistent, expensive
-- Bigtable: wide-column NoSQL, high throughput, no SQL support
+- Bigtable: wide-column NoSQL, high throughput, not a traditional relational SQL database
 - Firestore: document database, real-time sync, good for mobile backends
 
 **GKE Standard vs GKE Autopilot vs Cloud Run vs App Engine**
@@ -124,7 +124,7 @@ Case study questions often test whether you understand the trade-offs between si
 **Dataflow vs Dataproc vs BigQuery**
 - Dataflow: managed Apache Beam, streaming and batch, auto-scaling
 - Dataproc: managed Spark/Hadoop, good for existing Spark workloads
-- BigQuery: serverless analytics, SQL-based, not for real-time processing
+- BigQuery: serverless analytics, SQL-based, supports streaming ingestion but is not a general-purpose stream processing engine
 
 ## Strategy 5: Time-Box Your Case Study Review
 
