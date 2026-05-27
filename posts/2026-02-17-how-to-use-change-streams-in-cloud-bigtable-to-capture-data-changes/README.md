@@ -8,21 +8,21 @@ Description: Learn how to enable and consume Cloud Bigtable change streams to ca
 
 ---
 
-Change Data Capture (CDC) is one of those capabilities that transforms how you build data pipelines. Instead of polling your database for changes or maintaining complex dual-write logic, you get a stream of exactly what changed, when it changed, and what the new values are. Cloud Bigtable's change streams give you exactly that.
+Change Data Capture (CDC) is one of those capabilities that transforms how you build data pipelines. Instead of polling your database for changes or maintaining complex dual-write logic, you get a stream of what changed, when it changed, and what the new values are. Cloud Bigtable's change streams give you that.
 
 I started using Bigtable change streams when I needed to sync data from Bigtable to a search index in near real-time. Before change streams, I had a cron job that scanned the entire table every five minutes looking for updates. It was slow, expensive, and always lagged behind. With change streams, I get notified of every mutation within seconds. In this post, I will show you how to set up and consume Bigtable change streams.
 
 ## What Are Change Streams?
 
-Change streams are a feature of Cloud Bigtable that captures mutations (inserts, updates, deletes) as they happen and makes them available as a stream of change records. Each record contains:
+Change streams are a feature of Cloud Bigtable that captures mutations (inserts, updates, deletes) as they happen and makes them available as a stream of change records. Garbage collection changes are also captured. Each record contains:
 
 - The row key that was modified
 - The column family and qualifier that changed
 - The new cell value
 - The timestamp of the mutation
-- The type of mutation (set cell, delete cells, delete row)
+- The type of mutation (set cell, delete cells, delete family)
 
-Change streams work at the table level. You enable them on a specific table and then consume the stream of changes using Dataflow or a custom client.
+Change streams work at the table level. You enable them on a specific table and then consume the stream of changes using a Google-provided Dataflow template, the Bigtable Beam connector, or the Cloud Bigtable client library for Java.
 
 ## Enabling Change Streams
 
@@ -50,77 +50,19 @@ gcloud bigtable tables create my-new-table \
 
 ## Consuming Change Streams with Dataflow
 
-The most common way to process change streams is with an Apache Beam pipeline running on Dataflow. Google provides a built-in Bigtable change stream connector.
+The most common way to process change streams is with a Dataflow pipeline. Google provides Dataflow templates for common sinks and a Java Bigtable Beam connector for custom pipelines.
 
-Here is a Python pipeline that reads changes and writes them to Pub/Sub:
+If all you need is to publish changes to Pub/Sub, use the Google-provided Dataflow template:
 
-```python
-# change_stream_pipeline.py - Process Bigtable change stream with Dataflow
-import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from apache_beam.io.gcp.bigtableio import ReadFromBigtableChangeStream
-import json
-import datetime
-
-class FormatChangeRecord(beam.DoFn):
-    """Convert Bigtable change records into JSON for downstream processing."""
-
-    def process(self, record):
-        # Extract key fields from the change record
-        change_event = {
-            "row_key": record.row_key.decode("utf-8"),
-            "timestamp": record.commit_timestamp.isoformat(),
-            "mutation_type": record.mutation_type,
-            "changes": []
-        }
-
-        # Process each cell change in the record
-        for entry in record.entries:
-            change = {
-                "family": entry.column_family,
-                "qualifier": entry.column_qualifier.decode("utf-8"),
-                "value": entry.value.decode("utf-8") if entry.value else None,
-                "timestamp": entry.timestamp.isoformat()
-            }
-            change_event["changes"].append(change)
-
-        yield json.dumps(change_event).encode("utf-8")
-
-def run_change_stream_pipeline():
-    """Run a Dataflow pipeline that processes Bigtable change streams."""
-
-    options = PipelineOptions([
-        "--project=my-project",
-        "--region=us-central1",
-        "--runner=DataflowRunner",
-        "--temp_location=gs://my-bucket/temp",
-        "--staging_location=gs://my-bucket/staging",
-        "--job_name=bigtable-change-stream",
-        "--max_num_workers=5",
-    ])
-    options.view_as(StandardOptions).streaming = True
-
-    with beam.Pipeline(options=options) as pipeline:
-        (
-            pipeline
-            # Read from the Bigtable change stream
-            | "ReadChangeStream" >> ReadFromBigtableChangeStream(
-                project_id="my-project",
-                instance_id="my-instance",
-                table_id="my-table",
-                # Start reading from the beginning of retained changes
-                start_time=datetime.datetime.now(datetime.timezone.utc)
-            )
-            # Format each change record as JSON
-            | "FormatChanges" >> beam.ParDo(FormatChangeRecord())
-            # Publish to Pub/Sub for downstream consumers
-            | "WriteToPubSub" >> beam.io.WriteToPubSub(
-                topic="projects/my-project/topics/bigtable-changes"
-            )
-        )
-
-if __name__ == "__main__":
-    run_change_stream_pipeline()
+```bash
+gcloud dataflow flex-template run bigtable-change-stream \
+  --region=us-central1 \
+  --template-file-gcs-location=gs://dataflow-templates-us-central1/latest/flex/Bigtable_Change_Streams_to_PubSub \
+  --parameters \
+bigtableReadInstanceId=my-instance,\
+bigtableReadTableId=my-table,\
+bigtableChangeStreamAppProfile=my-single-cluster-app-profile,\
+pubSubTopic=projects/my-project/topics/bigtable-changes
 ```
 
 ## Change Stream Architecture Patterns
@@ -157,51 +99,61 @@ Publish changes to Pub/Sub and let downstream microservices react to data change
 
 ## Filtering Change Records
 
-Not every change is relevant to every consumer. You can filter change records in your pipeline:
+Not every change is relevant to every consumer. With the Google-provided Pub/Sub template, you can ignore specific column families or columns using template parameters. If you build your own Java Beam pipeline, you can filter the `KV<ByteString, ChangeStreamMutation>` records before flattening the entries:
 
-```python
-# Filter change records to only process specific column families or row key patterns
-class FilterChanges(beam.DoFn):
-    """Filter change records to only relevant mutations."""
+```java
+static class FilterChanges
+    extends DoFn<KV<ByteString, ChangeStreamMutation>, KV<ByteString, ChangeStreamMutation>> {
+  private final String familyFilter;
+  private final String keyPrefix;
 
-    def __init__(self, family_filter=None, key_prefix=None):
-        self.family_filter = family_filter
-        self.key_prefix = key_prefix
+  FilterChanges(String familyFilter, String keyPrefix) {
+    this.familyFilter = familyFilter;
+    this.keyPrefix = keyPrefix;
+  }
 
-    def process(self, record):
-        # Filter by row key prefix if specified
-        if self.key_prefix:
-            row_key = record.row_key.decode("utf-8")
-            if not row_key.startswith(self.key_prefix):
-                return
+  @ProcessElement
+  public void process(
+      @Element KV<ByteString, ChangeStreamMutation> record,
+      OutputReceiver<KV<ByteString, ChangeStreamMutation>> out) {
+    if (keyPrefix != null && !record.getKey().toStringUtf8().startsWith(keyPrefix)) {
+      return;
+    }
 
-        # Filter by column family if specified
-        if self.family_filter:
-            relevant_entries = [
-                e for e in record.entries
-                if e.column_family == self.family_filter
-            ]
-            if not relevant_entries:
-                return
+    if (familyFilter == null || hasFamily(record.getValue(), familyFilter)) {
+      out.output(record);
+    }
+  }
 
-        yield record
+  private boolean hasFamily(ChangeStreamMutation mutation, String family) {
+    for (Entry entry : mutation.getEntries()) {
+      if (entry instanceof SetCell && ((SetCell) entry).getFamilyName().equals(family)) {
+        return true;
+      }
+      if (entry instanceof DeleteCells && ((DeleteCells) entry).getFamilyName().equals(family)) {
+        return true;
+      }
+      if (entry instanceof DeleteFamily && ((DeleteFamily) entry).getFamilyName().equals(family)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
 
-# Use the filter in your pipeline
-(
-    changes
-    | "FilterToUserEvents" >> beam.ParDo(
-        FilterChanges(family_filter="events", key_prefix="user#"))
-    | "ProcessFilteredChanges" >> beam.ParDo(ProcessChanges())
-)
+PCollection<KV<ByteString, ChangeStreamMutation>> filteredChanges =
+    changes.apply(
+        "FilterToUserEvents",
+        ParDo.of(new FilterChanges("events", "user#")));
 ```
 
 ## Handling Late Data and Ordering
 
 Change streams provide records in approximately commit-timestamp order, but there are some nuances:
 
-**Within a single row:** Changes to the same row are guaranteed to arrive in order.
+**Within a single row and cluster:** Changes for the same row key and cluster are streamed in commit timestamp order.
 
-**Across rows:** Changes to different rows may arrive slightly out of order. If ordering across rows matters, use the commit timestamp to reorder in your consumer.
+**Across rows or clusters:** There is no ordering guarantee for records from different row keys or different clusters. If ordering across rows matters, use the commit timestamp to reorder in your consumer.
 
 **Partition changes:** Bigtable may split or merge stream partitions as the table scales. Your consumer needs to handle partition changes gracefully. The Dataflow connector handles this automatically.
 
@@ -213,51 +165,56 @@ Set up monitoring to make sure your change stream consumer keeps up:
 # Create a dashboard to monitor change stream lag
 # Key metrics to track:
 
-# 1. Processing lag - how far behind is your consumer?
-# Metric: dataflow.googleapis.com/job/system_lag
+# 1. Data freshness - how far behind is the Dataflow watermark?
+# Metric: Dataflow data freshness
 
-# 2. Change stream throughput
-# Metric: bigtable.googleapis.com/table/change_stream/read_rows_count
+# 2. Mean processing delay from commit timestamp
+# Metric: processing_delay_from_commit_timestamp_MEAN
 
-# 3. Error rate in your pipeline
-# Metric: dataflow.googleapis.com/job/error_count
+# 3. Change stream storage usage
+# Metric: bigtable.googleapis.com/table/change_stream_log_used_bytes
+
+# 4. CPU utilization by change streams
+# Metric: bigtable.googleapis.com/cluster/cpu_load_by_app_profile_by_method_by_table
 ```
 
-You should alert on system lag exceeding your acceptable threshold. For real-time use cases like cache invalidation, you might alert if lag exceeds 30 seconds. For analytics pipelines, a few minutes of lag might be acceptable.
+You should alert on data freshness exceeding your acceptable threshold. For real-time use cases like cache invalidation, you might alert if lag exceeds 30 seconds. For analytics pipelines, a few minutes of lag might be acceptable.
 
 ## Resuming After Failures
 
 One of the best features of change streams is the ability to resume from a checkpoint. If your Dataflow pipeline crashes or needs to be redeployed, it can pick up from where it left off.
 
-The Dataflow connector stores checkpoints automatically. When you restart the pipeline, it resumes from the last committed checkpoint. As long as the gap is within your retention period (up to 7 days), you will not miss any changes.
+The Dataflow connector stores operational state in its metadata table. When you resume a compatible pipeline, it resumes from the stored state. The connector can emit duplicate records, so downstream processing should be idempotent. If a pipeline has been stopped long enough that records fall outside the retention period, Bigtable fails the pipeline instead of silently skipping those changes.
 
-For custom consumers, you need to store checkpoints yourself:
+For custom Java consumers, you need to store continuation tokens for each stream partition yourself:
 
 ```python
-# Store and retrieve stream continuation tokens for resumable reading
+# Store and retrieve serialized stream continuation tokens for resumable reading.
 import json
+import datetime
 from google.cloud import storage
 
-def save_checkpoint(bucket_name, token):
-    """Save the stream continuation token to Cloud Storage."""
+def save_checkpoint(bucket_name, partition_id, serialized_token):
+    """Save a partition's stream continuation token to Cloud Storage."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob("bigtable-change-stream-checkpoint.json")
-    blob.upload_from_string(json.dumps({
-        "token": token,
-        "saved_at": datetime.datetime.now().isoformat()
-    }))
+    checkpoints = load_checkpoints(bucket_name)
+    checkpoints[partition_id] = {
+        "token": serialized_token,
+        "saved_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+    blob.upload_from_string(json.dumps(checkpoints))
 
-def load_checkpoint(bucket_name):
-    """Load the last saved stream continuation token."""
+def load_checkpoints(bucket_name):
+    """Load saved stream continuation tokens by partition."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob("bigtable-change-stream-checkpoint.json")
 
     if blob.exists():
-        data = json.loads(blob.download_as_text())
-        return data["token"]
-    return None
+        return json.loads(blob.download_as_text())
+    return {}
 ```
 
 ## Cost Considerations
@@ -265,7 +222,7 @@ def load_checkpoint(bucket_name):
 Change streams add some overhead to your Bigtable costs:
 
 - **Storage:** Change records consume storage during the retention period
-- **Read throughput:** Reading the change stream uses read capacity
+- **Compute:** Reading change streams uses Bigtable cluster CPU
 - **Dataflow costs:** Running a Dataflow pipeline to consume the stream has its own cost
 
 To manage costs, set the retention period to the minimum you need. If your consumer processes changes within minutes and you have good monitoring, 1 day of retention may be sufficient. Only use 7 days if you expect extended downtime scenarios.
