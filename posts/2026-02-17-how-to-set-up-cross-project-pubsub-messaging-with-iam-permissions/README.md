@@ -182,16 +182,13 @@ gcloud pubsub subscriptions create my-local-sub \
   --ack-deadline=60
 ```
 
-For this to work, the Pub/Sub service account in Project A needs permission to attach to the topic in Project B:
+For this to work, the identity creating the subscription needs permission to create subscriptions in Project A and attach subscriptions to the topic in Project B:
 
 ```bash
-# Get Project A's Pub/Sub service account
-PROJECT_A_NUMBER=$(gcloud projects describe project-a --format="value(projectNumber)")
-
-# Grant Project A's Pub/Sub service agent permission to create subscriptions on Project B's topic
+# Grant the service account that creates subscriptions permission to attach to Project B's topic
 gcloud pubsub topics add-iam-policy-binding central-events \
   --project=project-b \
-  --member="serviceAccount:service-${PROJECT_A_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
+  --member="serviceAccount:subscription-admin@project-a.iam.gserviceaccount.com" \
   --role="roles/pubsub.subscriber"
 ```
 
@@ -208,16 +205,12 @@ resource "google_pubsub_subscription" "local_sub" {
   expiration_policy { ttl = "" }
 }
 
-# The Pub/Sub service agent in Project A needs subscriber access on the topic
+# The identity creating the subscription needs subscriber access on the topic
 resource "google_pubsub_topic_iam_member" "cross_project_sub_access" {
   project = "project-b"
   topic   = "central-events"
   role    = "roles/pubsub.subscriber"
-  member  = "serviceAccount:service-${data.google_project.project_a.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
-}
-
-data "google_project" "project_a" {
-  project_id = "project-a"
+  member  = "serviceAccount:subscription-admin@project-a.iam.gserviceaccount.com"
 }
 ```
 
@@ -327,12 +320,11 @@ gcloud auth list
 
 ### Subscription Creation Fails
 
-If creating a cross-project subscription fails, the Pub/Sub service agent needs subscriber access:
+If creating a cross-project subscription fails, the identity creating the subscription needs subscription creation access in the subscription project and attach access on the topic:
 
 ```bash
-# Check if the service agent has the right permissions
-PROJECT_NUMBER=$(gcloud projects describe project-a --format="value(projectNumber)")
-echo "Service agent: service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+# Verify which identity is creating the subscription
+gcloud auth list
 
 # Verify topic IAM
 gcloud pubsub topics get-iam-policy central-events --project=project-b
