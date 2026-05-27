@@ -59,9 +59,6 @@ serde_json = "1"
 ## Basic Async Function
 
 ```rust
-use std::time::Duration;
-use tokio::time::sleep;
-
 // The async keyword marks this function as asynchronous
 // It returns a Future that must be awaited or spawned
 async fn fetch_data(url: &str) -> Result<String, reqwest::Error> {
@@ -129,7 +126,7 @@ async fn fetch_all(urls: Vec<String>) -> Vec<Result<String, String>> {
     for handle in handles {
         match handle.await {
             Ok(result) => results.push(result),
-            Err(e) => results.push(Err(format!("Task panicked: {}", e))),
+            Err(e) => results.push(Err(format!("Task failed: {}", e))),
         }
     }
     results
@@ -234,7 +231,6 @@ async fn fetch_with_timeout(url: &str) -> Result<String, String> {
 tokio::select! runs multiple futures and acts on whichever completes first:
 
 ```rust
-use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
 
 async fn primary_source() -> String {
