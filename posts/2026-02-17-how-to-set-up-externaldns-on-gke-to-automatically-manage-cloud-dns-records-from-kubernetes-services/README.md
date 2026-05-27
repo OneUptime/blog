@@ -19,6 +19,7 @@ Before getting started, you need a few things in place:
 - A running GKE cluster
 - A Cloud DNS managed zone for your domain
 - The gcloud CLI configured with appropriate permissions
+- Workload Identity Federation for GKE enabled on the cluster and on the node pool that will run ExternalDNS
 
 If you do not have a Cloud DNS zone yet, create one first:
 
@@ -66,13 +67,12 @@ gcloud iam service-accounts add-iam-policy-binding \
 Set up the namespace and annotated service account for ExternalDNS:
 
 ```yaml
-# namespace.yaml - Dedicated namespace for ExternalDNS
+# external-dns-serviceaccount.yaml - Dedicated namespace and service account for ExternalDNS
 apiVersion: v1
 kind: Namespace
 metadata:
   name: external-dns
 ---
-# serviceaccount.yaml - K8s service account linked to GCP service account via Workload Identity
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -85,7 +85,7 @@ metadata:
 Apply the namespace and service account:
 
 ```bash
-kubectl apply -f namespace.yaml
+kubectl apply -f external-dns-serviceaccount.yaml
 ```
 
 ## RBAC Configuration
@@ -101,6 +101,9 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["services", "endpoints", "pods"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
     verbs: ["get", "watch", "list"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
@@ -149,18 +152,18 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             # Use Google Cloud DNS as the provider
             - --provider=google
             # Your GCP project ID
             - --google-project=my-project
-            # Only manage records in this DNS zone
+            # Only manage DNS names and zones under this domain
             - --domain-filter=example.com
             # Only look at Services with LoadBalancer type and Ingresses
             - --source=service
             - --source=ingress
-            # Use a TXT record prefix to track ownership
+            # Use a stable owner ID for the TXT registry records
             - --txt-owner-id=my-gke-cluster
             # Sync mode: upsert-only means it will create and update but not delete
             - --policy=upsert-only
