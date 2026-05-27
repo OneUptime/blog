@@ -19,7 +19,7 @@ graph LR
     A[Prometheus] -->|Firing Alert| B[Alertmanager]
     B -->|Critical| C[PagerDuty]
     B -->|Warning| D[Slack #ops-warnings]
-    B -->|All| E[Email to team]
+    B -->|Database| E[Email to DBA team]
     B -->|Custom| F[Webhook endpoint]
     C --> G[On-Call Engineer]
 ```
@@ -40,6 +40,8 @@ alert-notifications/
     alertmanager/
       tasks/main.yml
       templates/alertmanager.yml.j2
+      templates/alertmanager.service.j2
+      templates/notification.tmpl.j2
       handlers/main.yml
       defaults/main.yml
     prometheus-rules/
@@ -70,7 +72,7 @@ alert_email_to: "oncall-team@company.com"
 alert_email_auth_username: "{{ vault_smtp_username }}"
 alert_email_auth_password: "{{ vault_smtp_password }}"
 
-alert_pagerduty_service_key: "{{ vault_pagerduty_key }}"
+alert_pagerduty_routing_key: "{{ vault_pagerduty_routing_key }}"
 
 alert_webhook_url: "https://hooks.internal.company.com/alerts"
 
@@ -191,7 +193,7 @@ global:
   smtp_auth_username: '{{ alert_email_auth_username }}'
   smtp_auth_password: '{{ alert_email_auth_password }}'
   smtp_require_tls: true
-{% if alert_pagerduty_service_key is defined %}
+{% if alert_pagerduty_routing_key is defined %}
   pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
 {% endif %}
 
@@ -208,42 +210,46 @@ route:
   receiver: 'slack-warnings'
 
   routes:
+    # Catch-all webhook for integration with other tools
+    - matchers:
+        - 'notify="webhook"'
+      receiver: 'generic-webhook'
+      continue: true
+
+    # Database alerts also go to the DBA team
+    - matchers:
+        - 'service=~"postgres|mysql|redis"'
+      receiver: 'email-dba'
+      repeat_interval: 2h
+      continue: true
+
+{% if alert_pagerduty_routing_key is defined %}
     # Critical alerts go to PagerDuty and Slack critical channel
-    - match:
-        severity: critical
+    - matchers:
+        - 'severity="critical"'
       receiver: 'pagerduty-critical'
       repeat_interval: {{ alert_repeat_interval_critical }}
       continue: true
+{% endif %}
 
-    - match:
-        severity: critical
+    - matchers:
+        - 'severity="critical"'
       receiver: 'slack-critical'
       repeat_interval: {{ alert_repeat_interval_critical }}
 
     # Warnings go to Slack warnings channel
-    - match:
-        severity: warning
+    - matchers:
+        - 'severity="warning"'
       receiver: 'slack-warnings'
       repeat_interval: {{ alert_repeat_interval_warning }}
-
-    # Database alerts go to the DBA team
-    - match_re:
-        service: 'postgres|mysql|redis'
-      receiver: 'email-dba'
-      repeat_interval: 2h
-
-    # Catch-all webhook for integration with other tools
-    - match:
-        notify: webhook
-      receiver: 'generic-webhook'
 
 # Inhibition rules to suppress less important alerts
 # when a more critical one is already firing
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - 'severity="critical"'
+    target_matchers:
+      - 'severity="warning"'
     equal: ['alertname', 'instance']
 
 receivers:
@@ -264,10 +270,10 @@ receivers:
         text: '{{ "{{ template \"slack.custom.text\" . }}" }}'
         send_resolved: true
 
-{% if alert_pagerduty_service_key is defined %}
+{% if alert_pagerduty_routing_key is defined %}
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: '{{ alert_pagerduty_service_key }}'
+      - routing_key: '{{ alert_pagerduty_routing_key }}'
         description: '{{ "{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}" }}'
         severity: '{{ "{{ if eq .CommonLabels.severity \"critical\" }}critical{{ else }}warning{{ end }}" }}'
         client: 'Prometheus Alertmanager'
@@ -380,7 +386,7 @@ After deployment, test that alerts route correctly by sending a test alert throu
   tasks:
     - name: Send a test critical alert
       ansible.builtin.uri:
-        url: "http://localhost:{{ alertmanager_port }}/api/v1/alerts"
+        url: "http://localhost:{{ alertmanager_port }}/api/v2/alerts"
         method: POST
         body_format: json
         body:
@@ -400,7 +406,7 @@ After deployment, test that alerts route correctly by sending a test alert throu
 
     - name: Resolve the test alert
       ansible.builtin.uri:
-        url: "http://localhost:{{ alertmanager_port }}/api/v1/alerts"
+        url: "http://localhost:{{ alertmanager_port }}/api/v2/alerts"
         method: POST
         body_format: json
         body:
