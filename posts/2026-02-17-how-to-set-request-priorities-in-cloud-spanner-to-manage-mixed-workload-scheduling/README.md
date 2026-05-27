@@ -10,30 +10,30 @@ Description: Learn how to use Cloud Spanner request priorities to manage mixed O
 
 When you run both transactional and analytical workloads on the same Spanner instance, they compete for resources. A heavy analytics query can consume CPU and I/O that your latency-sensitive OLTP transactions need. Without prioritization, a runaway report query can degrade the experience for every user of your application.
 
-Cloud Spanner's request priority feature lets you assign priority levels to individual requests, telling the internal scheduler which work matters most. High-priority requests get CPU time before low-priority ones. This means your user-facing transactions stay fast even when heavy background jobs are running.
+Cloud Spanner's request priority feature lets you assign priority levels to individual requests, giving the internal scheduler a hint about which work matters most. Higher-priority tasks generally run ahead of lower-priority ones under contention. This helps your user-facing transactions stay fast even when heavy background jobs are running.
 
 ## How Request Priority Works
 
-Spanner's scheduler uses a priority queue for CPU allocation. When the system is under contention, higher-priority requests get scheduled ahead of lower-priority ones. When there is no contention, priority has no effect - all requests run at full speed.
+Spanner uses priority as a scheduling hint for CPU allocation. When the system is under contention, higher-priority tasks generally run ahead of lower-priority ones, but priority does not guarantee execution order. When there is no contention, lower-priority work can use the available CPU and complete quickly.
 
 There are three priority levels:
 
 | Priority | Intended Use | Scheduling Behavior |
 |---|---|---|
-| HIGH | User-facing OLTP transactions | Scheduled first under contention |
-| MEDIUM | Default - normal operations | Scheduled after HIGH |
-| LOW | Background jobs, analytics, exports | Scheduled after MEDIUM |
+| HIGH | User-facing OLTP transactions | Generally scheduled ahead under contention |
+| MEDIUM | Normal operations that should be below user-facing traffic | Generally scheduled after HIGH |
+| LOW | Background jobs, analytics, exports | Generally scheduled after MEDIUM |
 
 ```mermaid
 graph TB
     subgraph "Spanner CPU Scheduler"
-        HQ[HIGH Priority Queue<br>OLTP Transactions] -->|First| CPU[CPU Resources]
-        MQ[MEDIUM Priority Queue<br>Normal Operations] -->|Second| CPU
-        LQ[LOW Priority Queue<br>Analytics/Reports] -->|Last| CPU
+        HQ[HIGH Priority Work<br>OLTP Transactions] -->|Generally first| CPU[CPU Resources]
+        MQ[MEDIUM Priority Work<br>Normal Operations] -->|Then| CPU
+        LQ[LOW Priority Work<br>Analytics/Reports] -->|Then| CPU
     end
 ```
 
-Priority only affects CPU scheduling. It does not affect data freshness, consistency guarantees, or the order of commits.
+Priority affects scheduling of Spanner work, especially CPU usage. It does not affect data freshness, consistency guarantees, or the order of commits. If no priority is specified, Spanner treats the request as high priority.
 
 ## Setting Request Priority in Python
 
@@ -70,12 +70,7 @@ def high_priority_transaction(user_id, amount):
             values=[[user_id, balance - amount]],
         )
 
-    database.run_in_transaction(
-        _process_payment,
-        request_options=RequestOptions(
-            priority=RequestOptions.Priority.PRIORITY_HIGH
-        ),
-    )
+    database.run_in_transaction(_process_payment)
 
 def low_priority_analytics(start_date, end_date):
     """Background analytics query - runs at LOW priority."""
@@ -106,13 +101,13 @@ def low_priority_analytics(start_date, end_date):
             print(f"Region: {row[0]}, Count: {row[1]}, Total: {row[2]}")
 
 def medium_priority_read(user_id):
-    """Normal read operation - runs at MEDIUM (default) priority."""
+    """Normal read operation - runs at MEDIUM priority."""
     with database.snapshot() as snapshot:
         results = snapshot.execute_sql(
             "SELECT * FROM users WHERE user_id = @user_id",
             params={"user_id": user_id},
             param_types={"user_id": spanner.param_types.STRING},
-            # MEDIUM is the default, but being explicit makes the intent clear
+            # Unspecified priority is treated as HIGH, so set MEDIUM explicitly.
             request_options=RequestOptions(
                 priority=RequestOptions.Priority.PRIORITY_MEDIUM
             ),
@@ -125,45 +120,40 @@ def medium_priority_read(user_id):
 ```java
 // PriorityExample.java
 import com.google.cloud.spanner.*;
-import com.google.spanner.v1.RequestOptions;
 
 public class PriorityExample {
 
     // High priority for user-facing reads
     public static Struct getUserProfile(DatabaseClient client, String userId) {
-        return client.singleUseReadOnlyTransaction()
+        try (ResultSet resultSet = client.singleUse()
             .executeQuery(
                 Statement.newBuilder("SELECT * FROM users WHERE user_id = @userId")
                     .bind("userId").to(userId)
                     .build(),
                 // Set HIGH priority for user-facing operations
-                Options.priority(RpcPriority.HIGH)
-            )
-            .next() ? client.singleUseReadOnlyTransaction()
-                .executeQuery(
-                    Statement.newBuilder("SELECT * FROM users WHERE user_id = @userId")
-                        .bind("userId").to(userId)
-                        .build(),
-                    Options.priority(RpcPriority.HIGH)
-                ).getCurrentRowAsStruct() : null;
+                Options.priority(Options.RpcPriority.HIGH)
+            )) {
+            return resultSet.next() ? resultSet.getCurrentRowAsStruct() : null;
+        }
     }
 
     // Low priority for batch operations
     public static void runDailyReport(DatabaseClient client) {
         try (ReadOnlyTransaction txn = client.singleUseReadOnlyTransaction()) {
-            ResultSet resultSet = txn.executeQuery(
+            try (ResultSet resultSet = txn.executeQuery(
                 Statement.of(
                     "SELECT DATE(created_at) AS date, COUNT(*) AS count " +
                     "FROM orders GROUP BY date ORDER BY date DESC LIMIT 30"
                 ),
                 // Set LOW priority for background reports
-                Options.priority(RpcPriority.LOW)
-            );
+                Options.priority(Options.RpcPriority.LOW)
+            )) {
 
-            while (resultSet.next()) {
-                System.out.printf("Date: %s, Orders: %d%n",
-                    resultSet.getDate("date"),
-                    resultSet.getLong("count"));
+                while (resultSet.next()) {
+                    System.out.printf("Date: %s, Orders: %d%n",
+                        resultSet.getDate("date"),
+                        resultSet.getLong("count"));
+                }
             }
         }
     }
@@ -182,6 +172,7 @@ import (
 
     "cloud.google.com/go/spanner"
     sppb "cloud.google.com/go/spanner/apiv1/spannerpb"
+    "google.golang.org/api/iterator"
 )
 
 // High priority transaction for user-facing operations
@@ -214,14 +205,12 @@ func processPayment(ctx context.Context, client *spanner.Client, userID string, 
             }
 
             // Update balance
-            txn.BufferWrite([]*spanner.Mutation{
+            return txn.BufferWrite([]*spanner.Mutation{
                 spanner.Update("accounts",
                     []string{"user_id", "balance"},
                     []interface{}{userID, balance - amount},
                 ),
             })
-
-            return nil
         },
         // Set transaction-level priority
         spanner.TransactionOptions{
@@ -249,12 +238,17 @@ func runAnalyticsQuery(ctx context.Context, client *spanner.Client) error {
 
     for {
         row, err := iter.Next()
-        if err != nil {
+        if err == iterator.Done {
             break
+        }
+        if err != nil {
+            return err
         }
         var region string
         var total float64
-        row.Columns(&region, &total)
+        if err := row.Columns(&region, &total); err != nil {
+            return err
+        }
         fmt.Printf("Region: %s, Total: %.2f\n", region, total)
     }
 
@@ -328,14 +322,13 @@ You can then view per-tag statistics in the Spanner query stats tables:
 -- Check performance by request tag
 SELECT
   request_tag,
-  COUNT(*) AS request_count,
-  AVG(latency_seconds) AS avg_latency,
-  MAX(latency_seconds) AS max_latency,
-  SUM(read_rows) AS total_rows_read
+  SUM(execution_count) AS request_count,
+  SUM(avg_latency_seconds * execution_count) / SUM(execution_count) AS avg_latency_seconds,
+  SUM(avg_rows_scanned * execution_count) AS total_rows_scanned
 FROM SPANNER_SYS.QUERY_STATS_TOP_MINUTE
 WHERE interval_end >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
 GROUP BY request_tag
-ORDER BY avg_latency DESC;
+ORDER BY avg_latency_seconds DESC;
 ```
 
 ## Monitoring Priority Effectiveness
@@ -346,12 +339,12 @@ Track whether priority settings are having the desired effect.
 -- Compare latency between priority levels
 SELECT
   request_tag,
-  COUNT(*) AS queries,
-  AVG(latency_seconds) * 1000 AS avg_latency_ms,
-  APPROX_QUANTILES(latency_seconds, 100)[OFFSET(99)] * 1000 AS p99_latency_ms
+  interval_end,
+  execution_count AS queries,
+  avg_latency_seconds * 1000 AS avg_latency_ms,
+  SPANNER_SYS.DISTRIBUTION_PERCENTILE(latency_distribution[OFFSET(0)], 99.0) * 1000 AS p99_latency_ms
 FROM SPANNER_SYS.QUERY_STATS_TOP_10MINUTE
 WHERE interval_end >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
-GROUP BY request_tag
 ORDER BY avg_latency_ms DESC;
 ```
 
@@ -359,4 +352,4 @@ If high-priority requests still show elevated latency, the instance may be under
 
 ## Wrapping Up
 
-Request priorities in Cloud Spanner are a straightforward way to manage mixed workloads on a shared database. The implementation is simple - add a priority parameter to each request - but the impact is significant. User-facing transactions stay responsive even when heavy analytics queries are running. The key is to be consistent: set priorities at the service or middleware level so every request gets the right priority automatically. And remember that priority only helps under contention. If your instance is running at comfortable utilization, everything runs fast regardless of priority. If everything is slow, you need more nodes, not just better priority settings.
+Request priorities in Cloud Spanner are a straightforward way to manage mixed workloads on a shared database. The implementation is simple - add a priority parameter to each request - but the impact can be significant under contention. User-facing transactions can stay responsive even when heavy analytics queries are running. The key is to be consistent: set priorities at the service or middleware level so every request gets the right priority automatically. And remember that priority only helps under contention. If your instance is running at comfortable utilization, everything runs fast regardless of priority. If everything is slow, you need more nodes, not just better priority settings.
