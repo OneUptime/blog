@@ -38,7 +38,7 @@ Configure Vault connection in your ansible.cfg or environment:
 
 ```ini
 # ansible.cfg
-[hashi_vault_connection]
+[hashi_vault_collection]
 url = https://vault.example.com:8200
 auth_method = token
 ```
@@ -47,7 +47,7 @@ Or set environment variables:
 
 ```bash
 export VAULT_ADDR=https://vault.example.com:8200
-export VAULT_TOKEN=s.your-vault-token
+export VAULT_TOKEN=hvs.your-vault-token
 ```
 
 ## Using the Vault Lookup Plugin
@@ -62,7 +62,7 @@ The lookup plugin retrieves secrets inline during playbook execution:
   hosts: app_servers
   become: true
   vars:
-    db_password: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/database/production', token=vault_token) }}"
+    db_password: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/database/production:password', token=vault_token) }}"
 
   tasks:
     - name: Deploy database configuration
@@ -71,7 +71,7 @@ The lookup plugin retrieves secrets inline during playbook execution:
         dest: "{{ app_config_dir }}/database.yml"
         mode: '0640'
       vars:
-        db_pass: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/database/production token=' + vault_token) | from_json }}"
+        db_pass: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/database/production:password', token=vault_token) }}"
       no_log: true
       notify: restart application
 ```
@@ -170,7 +170,7 @@ Ansible can also write secrets back to Vault:
 ---
 - name: Generate new API key
   ansible.builtin.set_fact:
-    new_api_key: "{{ lookup('password', '/dev/null length=48 chars=ascii_letters,digits') }}"
+    new_api_key: "{{ lookup('ansible.builtin.password', '/dev/null length=48 chars=ascii_letters,digits') }}"
   no_log: true
 
 - name: Store in Vault
@@ -228,7 +228,7 @@ Integrating Ansible with HashiCorp Vault gives you centralized secret management
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
@@ -265,7 +265,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -409,4 +409,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
