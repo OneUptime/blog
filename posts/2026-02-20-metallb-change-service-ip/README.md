@@ -8,7 +8,7 @@ Description: Learn how to change the external IP address of an existing LoadBala
 
 ---
 
-> Sometimes you need to change the external IP of a running service - maybe you are migrating to a new IP range, consolidating pools, or fixing a network conflict. MetalLB supports in-place IP changes through the `spec.loadBalancerIP` field and pool annotations. This guide shows you how to do it safely with zero downtime planning.
+> Sometimes you need to change the external IP of a running service - maybe you are migrating to a new IP range, consolidating pools, or fixing a network conflict. MetalLB supports in-place IP changes through the `metallb.io/loadBalancerIPs` annotation, the legacy `spec.loadBalancerIP` field, and pool annotations. This guide shows you how to do it safely with zero downtime planning.
 
 ---
 
@@ -18,7 +18,7 @@ Before changing an IP, understand how MetalLB decides which IP a service gets:
 
 ```mermaid
 flowchart TD
-    S[Service Created] --> Q1{Has loadBalancerIP\nfield?}
+    S[Service Created] --> Q1{Has fixed IP\nrequest?}
     Q1 -- Yes --> V{IP available\nin pool?}
     V -- Yes --> A1[Assign requested IP]
     V -- No --> FAIL[Service stays Pending]
@@ -31,7 +31,7 @@ flowchart TD
 
 ---
 
-## Method 1: Set a Specific IP with loadBalancerIP
+## Method 1: Set a Specific IP with MetalLB's IP Annotation
 
 The most direct approach - tell MetalLB exactly which IP you want:
 
@@ -47,7 +47,9 @@ Patch the service to request a new IP:
 ```bash
 # Change the service to use a specific new IP
 # MetalLB will release the old IP and assign the new one
-kubectl patch svc my-service -p '{"spec":{"loadBalancerIP":"10.0.50.20"}}'
+kubectl annotate svc my-service \
+  metallb.io/loadBalancerIPs=10.0.50.20 \
+  --overwrite
 ```
 
 Or edit the service YAML directly:
@@ -61,11 +63,11 @@ metadata:
   name: my-service
   annotations:
     # Ensure the target pool contains the requested IP
-    metallb.universe.tf/address-pool: primary-ips
+    metallb.io/address-pool: primary-ips
+    # Request a specific IP from the pool
+    metallb.io/loadBalancerIPs: 10.0.50.20
 spec:
   type: LoadBalancer
-  # Request a specific IP from the pool
-  loadBalancerIP: 10.0.50.20
   selector:
     app: my-app
   ports:
@@ -82,13 +84,13 @@ kubectl apply -f service-updated.yaml
 
 ## Method 2: Switch to a Different Pool
 
-To move a service to a different IP pool, update the pool annotation:
+To move a service without a fixed IP request to a different IP pool, update the pool annotation:
 
 ```bash
 # Change the pool annotation - MetalLB will release the old IP
 # and assign a new one from the new pool
 kubectl annotate svc my-service \
-  metallb.universe.tf/address-pool=secondary-ips \
+  metallb.io/address-pool=secondary-ips \
   --overwrite
 ```
 
@@ -99,7 +101,13 @@ kubectl annotate svc my-service \
 If you want MetalLB to pick any available IP:
 
 ```bash
-# Remove the loadBalancerIP field to let MetalLB auto-assign
+# Remove the fixed IP annotation to let MetalLB auto-assign
+kubectl annotate svc my-service metallb.io/loadBalancerIPs-
+```
+
+If the service still uses the deprecated Kubernetes `spec.loadBalancerIP` field, remove that field instead:
+
+```bash
 kubectl patch svc my-service --type=json \
   -p='[{"op":"remove","path":"/spec/loadBalancerIP"}]'
 ```
@@ -115,7 +123,7 @@ sequenceDiagram
     participant Old as Old IP (10.0.50.5)
     participant New as New IP (10.0.50.20)
 
-    Svc->>MLB: Patch loadBalancerIP to 10.0.50.20
+    Svc->>MLB: Set loadBalancerIPs to 10.0.50.20
     MLB->>Old: Stop advertising
     Note over Old: Traffic to old IP stops working
     MLB->>New: Start advertising
@@ -142,11 +150,12 @@ kubectl expose deployment my-app --name=my-service-new \
 
 # Annotate with the desired pool
 kubectl annotate svc my-service-new \
-  metallb.universe.tf/address-pool=primary-ips
+  metallb.io/address-pool=primary-ips
 
 # Set the new IP
-kubectl patch svc my-service-new \
-  -p '{"spec":{"loadBalancerIP":"10.0.50.20"}}'
+kubectl annotate svc my-service-new \
+  metallb.io/loadBalancerIPs=10.0.50.20 \
+  --overwrite
 
 # Step 2: Verify the new service is working
 curl http://10.0.50.20/health
@@ -214,7 +223,7 @@ arping -c 3 -D 10.0.50.20
 
 ## Batch IP Migration Script
 
-When migrating multiple services to a new pool:
+When migrating multiple services without fixed IP requests to a new pool:
 
 ```bash
 #!/bin/bash
@@ -233,7 +242,7 @@ for SVC in $SERVICES; do
   NAME=$(echo "$SVC" | cut -d'/' -f2)
   echo "Migrating $NS/$NAME to pool $NEW_POOL"
   kubectl -n "$NS" annotate svc "$NAME" \
-    metallb.universe.tf/address-pool="$NEW_POOL" \
+    metallb.io/address-pool="$NEW_POOL" \
     --overwrite
   # Wait briefly between services to avoid overwhelming MetalLB
   sleep 2
@@ -246,6 +255,6 @@ echo "Migration complete. Verify with: kubectl get svc -A -o wide"
 
 ## Wrapping Up
 
-Changing a MetalLB-managed service IP is straightforward with `loadBalancerIP` patches or pool annotation updates. For production services, use a parallel deployment strategy to eliminate the brief connectivity gap during the switch.
+Changing a MetalLB-managed service IP is straightforward with `metallb.io/loadBalancerIPs` or pool annotation updates. For production services, use a parallel deployment strategy to eliminate the brief connectivity gap during the switch.
 
 To monitor your services during IP migrations and get instant alerts if any endpoint becomes unreachable, use **[OneUptime](https://oneuptime.com)** for comprehensive infrastructure monitoring.
