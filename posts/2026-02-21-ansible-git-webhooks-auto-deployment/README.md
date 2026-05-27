@@ -10,7 +10,7 @@ Description: Set up Git webhooks to automatically trigger Ansible deployments wh
 
 Manually running Ansible playbooks every time you want to deploy gets old quickly. Git webhooks solve this by letting your version control system notify a deployment server whenever code changes. The webhook hits an endpoint, your server validates the payload, and then kicks off an Ansible playbook. No human needed.
 
-In this post, I will walk through building a lightweight webhook receiver that triggers Ansible deployments on push events from GitHub, GitLab, or Bitbucket.
+In this post, I will walk through building a lightweight webhook receiver that triggers Ansible deployments on push events from GitHub, with notes for GitLab.
 
 ## Architecture Overview
 
@@ -130,14 +130,13 @@ Here is the Ansible playbook that the webhook receiver triggers.
   become: true
   vars:
     app_dir: /opt/myapp
-    deploy_version: "{{ deploy_version | default('HEAD') }}"
 
   tasks:
     - name: Pull latest code
       git:
         repo: "https://github.com/{{ deploy_repo }}.git"
         dest: "{{ app_dir }}"
-        version: "{{ deploy_version }}"
+        version: "{{ deploy_version | default('HEAD') }}"
         force: true
       register: git_result
 
@@ -221,7 +220,7 @@ You can use Ansible itself to set up the webhook receiver on your deployment ser
           User=deploy
           Group=deploy
           WorkingDirectory=/opt/deploy
-          Environment=WEBHOOK_SECRET={{ webhook_secret }}
+          Environment="WEBHOOK_SECRET={{ webhook_secret }}"
           ExecStart=/usr/local/bin/gunicorn -w 2 -b 0.0.0.0:9000 webhook_receiver:app
           Restart=always
           RestartSec=5
@@ -241,19 +240,35 @@ You can use Ansible itself to set up the webhook receiver on your deployment ser
 
 Go to your GitHub repository settings, click Webhooks, and add a new webhook with these settings:
 
-- Payload URL: `https://deploy.myorg.com:9000/webhook`
+- Payload URL: `https://deploy.myorg.com/webhook`
 - Content type: `application/json`
 - Secret: The same secret you set in `WEBHOOK_SECRET`
 - Events: Select "Just the push event"
 
-For GitLab, the process is similar but the signature header is different. Here is how to verify GitLab webhooks.
+For GitLab, the process is similar but the signing headers are different. Current GitLab webhooks can use a signing token that sends a Standard Webhooks HMAC signature in the `webhook-signature` header.
 
 ```python
-# GitLab uses a simple token header instead of HMAC
-def verify_gitlab_token(request):
-    """Verify the webhook token from GitLab."""
-    token = request.headers.get('X-Gitlab-Token', '')
-    return hmac.compare_digest(token, WEBHOOK_SECRET)
+# GitLab signing tokens use the Standard Webhooks format
+import base64
+import hashlib
+import hmac
+
+def verify_gitlab_signature(signing_token, request):
+    """Verify the HMAC signature from GitLab webhooks."""
+    message_id = request.headers.get('webhook-id', '')
+    timestamp = request.headers.get('webhook-timestamp', '')
+    received_signatures = request.headers.get('webhook-signature', '')
+    body = request.get_data(as_text=True)
+
+    raw_key = base64.b64decode(signing_token.removeprefix('whsec_'))
+    message = f"{message_id}.{timestamp}.{body}".encode('utf-8')
+    digest = hmac.new(raw_key, message, hashlib.sha256).digest()
+    expected = "v1," + base64.b64encode(digest).decode('utf-8')
+
+    return any(
+        hmac.compare_digest(expected, signature)
+        for signature in received_signatures.split()
+    )
 ```
 
 ## Adding Branch-Based Deployment Logic
@@ -316,10 +331,9 @@ server {
     ssl_certificate /etc/letsencrypt/live/deploy.myorg.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/deploy.myorg.com/privkey.pem;
 
-    # Only allow requests from GitHub webhook IPs
-    allow 140.82.112.0/20;
-    allow 185.199.108.0/22;
-    allow 192.30.252.0/22;
+    # Only allow requests from GitHub webhook IPs.
+    # Generate this include from the current "hooks" list at https://api.github.com/meta.
+    include /etc/nginx/github-hooks-allowlist.conf;
     deny all;
 
     location /webhook {
