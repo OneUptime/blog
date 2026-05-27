@@ -8,7 +8,7 @@ Description: Debug custom Ansible modules using logging, direct execution, ANSIB
 
 ---
 
-Debugging custom modules requires different techniques than debugging regular Python code because modules run on remote hosts via SSH.
+Debugging custom modules requires different techniques than debugging regular Python code because modules usually run on managed hosts through Ansible's connection layer.
 
 ## Direct Execution
 
@@ -28,7 +28,7 @@ python3 library/my_module.py /tmp/args.json
 Tell Ansible to keep the module on the remote host:
 
 ```bash
-ANSIBLE_KEEP_REMOTE_FILES=1 ansible-playbook test.yml -v
+ANSIBLE_KEEP_REMOTE_FILES=1 ansible-playbook test.yml -vvv
 ```
 
 Then SSH to the remote host and find the module in ~/.ansible/tmp/.
@@ -60,12 +60,12 @@ except ImportError:
     pass
 ```
 
-## Ansible Debugger Strategy
+## Ansible Debugger
 
 ```yaml
 - name: Debug module
   hosts: localhost
-  strategy: debug
+  debugger: on_failed
   tasks:
     - name: Test my module
       my_module:
@@ -76,4 +76,4 @@ When a task fails, Ansible drops into an interactive debugger.
 
 ## Key Takeaways
 
-Test modules directly with a JSON args file first. Use ANSIBLE_KEEP_REMOTE_FILES to inspect what runs on remote hosts. Add logging for complex debugging. Use the debug strategy for interactive troubleshooting.
+Test modules directly with a JSON args file first. Use ANSIBLE_KEEP_REMOTE_FILES to inspect what runs on remote hosts. Add logging for complex debugging. Use the debugger keyword for interactive troubleshooting.
