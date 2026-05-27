@@ -14,10 +14,11 @@ Confidential VMs on GCP solve this by encrypting your VM's memory using hardware
 
 ## How Confidential VMs Work
 
-Confidential VMs use AMD SEV (Secure Encrypted Virtualization) or AMD SEV-SNP technology, depending on the machine type:
+Confidential VMs use AMD SEV (Secure Encrypted Virtualization), AMD SEV-SNP, or Intel TDX technology, depending on the machine type:
 
-- **AMD SEV**: Available on N2D machine types. Encrypts each VM's memory with a unique key managed by the AMD Secure Processor.
-- **AMD SEV-SNP**: Available on C2D and N2D machine types. Adds integrity protection on top of encryption, preventing memory replay attacks.
+- **AMD SEV**: Available on AMD-based machine types such as N2D, C2D, C3D, and C4D. Encrypts each VM's memory with a unique key managed by the AMD Secure Processor.
+- **AMD SEV-SNP**: Available on N2D machine types with the AMD Milan CPU platform. Adds integrity protection on top of encryption, helping prevent attacks such as memory replay and remapping.
+- **Intel TDX**: Available on supported Intel-based machine types such as C3. Creates a hardware-based trusted execution environment for the VM.
 
 The key insight is that encryption and decryption happen in the CPU hardware itself. The hypervisor, host OS, and even other VMs on the same physical server cannot read your VM's memory.
 
@@ -33,7 +34,7 @@ flowchart TD
 
 ## Creating a Confidential VM
 
-Creating a Confidential VM is just a matter of adding the `--confidential-compute` flag:
+Creating a Confidential VM is just a matter of setting the Confidential Computing type:
 
 ```bash
 # Create a Confidential VM using N2D machine type (AMD SEV)
@@ -41,17 +42,18 @@ Creating a Confidential VM is just a matter of adding the `--confidential-comput
 gcloud compute instances create my-confidential-vm \
     --zone=us-central1-a \
     --machine-type=n2d-standard-4 \
+    --min-cpu-platform="AMD Milan" \
     --image-family=debian-12 \
     --image-project=debian-cloud \
-    --confidential-compute \
-    --maintenance-policy=TERMINATE
+    --confidential-compute-type=SEV \
+    --maintenance-policy=MIGRATE
 ```
 
 A few important points:
 
-- **Machine type**: Confidential VMs require AMD-based machine types (N2D, C2D). Intel-based types are not supported.
-- **Maintenance policy**: Must be set to `TERMINATE` because live migration is not possible with encrypted memory.
-- **No additional cost for SEV**: The base Confidential VM feature (AMD SEV) does not have an extra charge beyond the N2D machine cost.
+- **Machine type**: Confidential VMs require supported machine types. These include AMD-based types such as N2D, C2D, C3D, and C4D, and Intel TDX-capable types such as C3.
+- **Maintenance policy**: N2D instances that use AMD SEV on the AMD Milan CPU platform support live migration with `MIGRATE`. Other Confidential VM configurations generally require `TERMINATE`.
+- **Pricing**: Confidential VM incurs additional per-vCPU and per-memory charges on top of Compute Engine pricing. The exact charge depends on the Confidential Computing technology and pricing model.
 
 ## Using AMD SEV-SNP for Stronger Protection
 
@@ -62,6 +64,7 @@ AMD SEV-SNP adds memory integrity protection on top of encryption. To use it:
 gcloud compute instances create my-snp-vm \
     --zone=us-central1-a \
     --machine-type=n2d-standard-4 \
+    --min-cpu-platform="AMD Milan" \
     --image-family=debian-12 \
     --image-project=debian-cloud \
     --confidential-compute-type=SEV_SNP \
@@ -81,10 +84,11 @@ For managed instance groups:
 # Create an instance template for Confidential VMs
 gcloud compute instance-templates create confidential-template \
     --machine-type=n2d-standard-4 \
+    --min-cpu-platform="AMD Milan" \
     --image-family=debian-12 \
     --image-project=debian-cloud \
-    --confidential-compute \
-    --maintenance-policy=TERMINATE
+    --confidential-compute-type=SEV \
+    --maintenance-policy=MIGRATE
 ```
 
 ## Terraform Configuration
@@ -92,9 +96,10 @@ gcloud compute instance-templates create confidential-template \
 ```hcl
 # Confidential VM with AMD SEV
 resource "google_compute_instance" "confidential" {
-  name         = "my-confidential-vm"
-  machine_type = "n2d-standard-4"
-  zone         = "us-central1-a"
+  name             = "my-confidential-vm"
+  machine_type     = "n2d-standard-4"
+  min_cpu_platform = "AMD Milan"
+  zone             = "us-central1-a"
 
   boot_disk {
     initialize_params {
@@ -109,18 +114,20 @@ resource "google_compute_instance" "confidential" {
 
   confidential_instance_config {
     enable_confidential_compute = true
+    confidential_instance_type  = "SEV"
   }
 
   scheduling {
-    on_host_maintenance = "TERMINATE"
+    on_host_maintenance = "MIGRATE"
     automatic_restart   = true
   }
 }
 
 # Confidential VM instance template for MIGs
 resource "google_compute_instance_template" "confidential" {
-  name_prefix  = "confidential-"
-  machine_type = "n2d-standard-4"
+  name_prefix      = "confidential-"
+  machine_type     = "n2d-standard-4"
+  min_cpu_platform = "AMD Milan"
 
   disk {
     source_image = "debian-cloud/debian-12"
@@ -135,10 +142,11 @@ resource "google_compute_instance_template" "confidential" {
 
   confidential_instance_config {
     enable_confidential_compute = true
+    confidential_instance_type  = "SEV"
   }
 
   scheduling {
-    on_host_maintenance = "TERMINATE"
+    on_host_maintenance = "MIGRATE"
     automatic_restart   = true
   }
 
@@ -197,7 +205,7 @@ Confidential VMs are not just a theoretical security improvement. Here are real 
 
 Memory encryption does have a performance cost, but it is smaller than you might expect:
 
-- **CPU overhead**: AMD SEV adds roughly 2-6% overhead for most workloads, depending on memory access patterns.
+- **CPU overhead**: AMD SEV performance is often close to a standard VM, but the exact overhead depends on the workload and memory access patterns.
 - **Memory-intensive workloads**: Applications that do heavy memory operations (databases, in-memory caches) may see slightly higher overhead.
 - **I/O workloads**: Disk and network I/O are not significantly affected since the encryption is at the memory level.
 
@@ -212,9 +220,10 @@ Confidential VMs work well alongside other GCP security features:
 gcloud compute instances create max-security-vm \
     --zone=us-central1-a \
     --machine-type=n2d-standard-4 \
+    --min-cpu-platform="AMD Milan" \
     --image-family=debian-12 \
     --image-project=debian-cloud \
-    --confidential-compute \
+    --confidential-compute-type=SEV \
     --shielded-secure-boot \
     --shielded-vtpm \
     --shielded-integrity-monitoring \
@@ -232,16 +241,16 @@ This gives you:
 For workloads that need to prove they are running in a Confidential VM (zero-trust architectures, regulated industries), you can use attestation:
 
 ```bash
-# Install the go-tpm-tools for attestation
+# Install Go-TPM Tools for attestation
 # This allows your application to generate an attestation report
 # that cryptographically proves it is running in a Confidential VM
 
 # From inside the Confidential VM
 sudo apt-get install -y golang
-go install github.com/google/go-tpm-tools/cmd/attest-tool@latest
+go install github.com/google/go-tpm-tools/cmd/gotpm@latest
 
-# Generate an attestation report
-~/go/bin/attest-tool
+# Inspect available attestation commands
+~/go/bin/gotpm attest --help
 ```
 
 The attestation report can be verified by a remote party to confirm that:
@@ -255,8 +264,8 @@ Enforce Confidential Computing across your organization:
 
 ```bash
 # Require Confidential Computing for all new VMs
-gcloud resource-manager org-policies enable-enforce \
-    compute.restrictNonConfidentialComputing \
+gcloud resource-manager org-policies deny \
+    compute.restrictNonConfidentialComputing is:compute.googleapis.com \
     --organization=ORGANIZATION_ID
 ```
 
@@ -264,4 +273,4 @@ This prevents anyone from creating VMs without Confidential Computing enabled.
 
 ## Wrapping Up
 
-Confidential VMs close the last major gap in data encryption - protecting data while it is being processed. With hardware-based memory encryption, even a compromised hypervisor or a rogue cloud administrator cannot access your data. The setup is simple (one flag), the performance overhead is minimal (2-6%), and the security improvement is substantial. If you are processing sensitive data on GCP, Confidential VMs should be on your shortlist. Combined with Shielded VMs and customer-managed encryption keys, you get end-to-end protection for your data at rest, in transit, and in use.
+Confidential VMs close the last major gap in data encryption - protecting data while it is being processed. With hardware-based memory encryption, even a compromised hypervisor or a rogue cloud administrator cannot access your data. The setup is simple, the performance overhead is often minimal depending on the workload, and the security improvement is substantial. If you are processing sensitive data on GCP, Confidential VMs should be on your shortlist. Combined with Shielded VMs and customer-managed encryption keys, you get end-to-end protection for your data at rest, in transit, and in use.
