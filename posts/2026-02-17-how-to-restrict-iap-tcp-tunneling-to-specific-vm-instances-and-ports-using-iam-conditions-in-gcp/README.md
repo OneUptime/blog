@@ -10,7 +10,7 @@ Description: Learn how to use IAM conditions to restrict Identity-Aware Proxy TC
 
 Granting the `iap.tunnelResourceAccessor` role at the project level gives a user IAP tunnel access to every VM in the project on every port. That is way too broad for most production environments. A database administrator should not have SSH access to application servers, and a developer should not be able to tunnel to the database port on production machines.
 
-IAM conditions let you scope IAP tunnel access to specific VM instances, specific zones, and specific ports. This post shows you how to set up these fine-grained controls.
+IAM conditions let you scope IAP tunnel access to specific VM instances and specific ports. This post shows you how to set up these fine-grained controls.
 
 ## The Problem with Broad Tunnel Access
 
@@ -24,7 +24,7 @@ gcloud projects add-iam-policy-binding my-project-id \
     --role="roles/iap.tunnelResourceAccessor"
 ```
 
-A user with this binding can SSH into any VM, tunnel to any database port, access any internal service - essentially having a skeleton key to your entire infrastructure.
+A user with this binding can request IAP tunnels to any VM and any port in the project, subject to firewall rules and the separate permissions or credentials needed by the protocol. That is still a very broad network path into your infrastructure.
 
 ## Restricting to Specific VM Instances
 
@@ -55,7 +55,7 @@ gcloud compute instances add-iam-policy-binding web-server-01 \
     --project=my-project-id
 ```
 
-Now the user can SSH into `web-server-01` but cannot tunnel to any other port on that machine.
+Now the user can use IAP to reach SSH on `web-server-01` but cannot tunnel to any other port on that machine. They still need the normal SSH permissions or credentials for the VM.
 
 ## Common Port Restriction Patterns
 
@@ -113,7 +113,7 @@ gcloud compute instances add-iam-policy-binding app-server \
 
 ## Project-Level Bindings with Conditions
 
-You can also apply conditions at the project level. This is useful when you want to give someone SSH access to all VMs but restrict the port.
+You can also apply conditions at the project level. This is useful when you want to give someone IAP access to port 22 on all VMs but still rely on normal SSH authorization for the login.
 
 ```bash
 # Allow SSH to all VMs in the project, but only on port 22
@@ -234,12 +234,12 @@ gcloud compute instances remove-iam-policy-binding web-server-01 \
 
 ## Audit Logging for Tunnel Access
 
-All IAP tunnel connections are logged. You can see who tunneled to which VM and on which port.
+IAP tunnel access requests are available in Cloud Audit Logs when Data Access audit logs are enabled for IAP. You can see who requested access to which VM.
 
 ```bash
 # View IAP tunnel connection logs
 gcloud logging read \
-    'resource.type="gce_instance" AND protoPayload.methodName="AuthorizeUser" AND protoPayload.resourceName:"tunnelInstances"' \
+    'resource.type="gce_instance" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="AuthorizeUser"' \
     --limit=20 \
     --project=my-project-id \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName)"
