@@ -14,7 +14,7 @@ This guide shows how to build a custom backup automation system using Cloud Sche
 
 ## The Limitations of Built-in Backups
 
-Cloud SQL's built-in automated backups are useful but have some constraints. They run once per day during a backup window you define. You get up to 365 backups retained. But you cannot easily copy backups to another region, trigger backups on a custom schedule (say, every 4 hours), or automatically test restores.
+Cloud SQL's built-in automated backups are useful but have some constraints. With standard backups, they run daily during a backup window you define and you can retain up to 365 automated backups. Enhanced backups support more schedule and retention options, but many teams still need a separate workflow to export logical backups to Cloud Storage, copy them to another region, or automatically test restores.
 
 By building your own automation layer on top of the Cloud SQL Admin API, you get full control over when backups run, where they go, and how they are verified.
 
@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ID = "your-project-id"
 INSTANCE_NAME = "production-db"
+DATABASE_NAME = "appdb"
 BACKUP_BUCKET = "your-project-sql-backups"
 DR_BUCKET = "your-project-sql-backups-dr"  # In a different region
 
@@ -116,7 +117,7 @@ def export_to_gcs():
             "kind": "sql#exportContext",
             "fileType": "SQL",
             "uri": export_uri,
-            "databases": [],  # Empty means all databases
+            "databases": [DATABASE_NAME],
             "sqlExportOptions": {
                 "schemaOnly": False,
             },
@@ -195,7 +196,7 @@ gcloud functions deploy sql-backup-runner \
   --trigger-http \
   --no-allow-unauthenticated \
   --memory=512MB \
-  --timeout=540s \
+  --timeout=1200s \
   --service-account=backup-sa@YOUR_PROJECT.iam.gserviceaccount.com
 ```
 
@@ -244,6 +245,8 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ID = "your-project-id"
 BACKUP_BUCKET = "your-project-sql-backups"
+INSTANCE_NAME = "production-db"
+DATABASE_NAME = "appdb"
 TEST_INSTANCE = "restore-test-instance"
 
 
@@ -281,8 +284,8 @@ def find_latest_export():
     client = storage.Client()
     bucket = client.bucket(BACKUP_BUCKET)
 
-    prefix = f"exports/{PROJECT_ID.split('-')[0]}-"
-    blobs = list(bucket.list_blobs(prefix="exports/"))
+    prefix = f"exports/{INSTANCE_NAME}/"
+    blobs = list(bucket.list_blobs(prefix=prefix))
 
     if not blobs:
         return None
@@ -301,6 +304,7 @@ def import_backup(export_uri):
             "kind": "sql#importContext",
             "fileType": "SQL",
             "uri": export_uri,
+            "database": DATABASE_NAME,
         }
     }
 
@@ -317,6 +321,27 @@ def import_backup(export_uri):
     wait_for_operation(service, operation_id, timeout=3600)
 
     return {"operation_id": operation_id, "status": "completed"}
+
+
+def wait_for_operation(service, operation_id, timeout=3600):
+    """Poll until a Cloud SQL operation completes."""
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        result = service.operations().get(
+            project=PROJECT_ID,
+            operation=operation_id,
+        ).execute()
+
+        status = result.get("status")
+        if status == "DONE":
+            if "error" in result:
+                raise Exception(f"Operation failed: {result['error']}")
+            return result
+
+        time.sleep(10)
+
+    raise Exception(f"Operation {operation_id} timed out after {timeout}s")
 
 
 def validate_restore():
@@ -367,7 +392,7 @@ gcloud scheduler jobs create http sql-restore-test \
 Set lifecycle rules on your backup buckets to manage storage costs.
 
 ```bash
-# Delete exports older than 90 days and DR copies older than 180 days
+# Delete exports older than 90 days
 gsutil lifecycle set - gs://your-project-sql-backups <<EOF
 {
   "lifecycle": {
@@ -380,6 +405,20 @@ gsutil lifecycle set - gs://your-project-sql-backups <<EOF
   }
 }
 EOF
+
+# Delete DR copies older than 180 days
+gsutil lifecycle set - gs://your-project-sql-backups-dr <<EOF
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "action": {"type": "Delete"},
+        "condition": {"age": 180}
+      }
+    ]
+  }
+}
+EOF
 ```
 
 ## IAM Permissions
@@ -387,7 +426,7 @@ EOF
 The service accounts need specific permissions to manage backups.
 
 ```bash
-# Grant the backup service account the necessary roles
+# Grant the backup function service account the necessary roles
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
   --member="serviceAccount:backup-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
   --role="roles/cloudsql.admin"
@@ -395,6 +434,25 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT \
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
   --member="serviceAccount:backup-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
+
+# Grant the Cloud SQL instance service account access to write and read exports
+INSTANCE_SA=$(gcloud sql instances describe production-db \
+  --format="value(serviceAccountEmailAddress)")
+
+gcloud storage buckets add-iam-policy-binding gs://your-project-sql-backups \
+  --member="serviceAccount:${INSTANCE_SA}" \
+  --role="roles/storage.objectAdmin"
+
+# Let Cloud Scheduler invoke the private Gen 2 HTTP functions
+gcloud run services add-iam-policy-binding sql-backup-runner \
+  --region=us-central1 \
+  --member="serviceAccount:scheduler-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+gcloud run services add-iam-policy-binding sql-restore-tester \
+  --region=us-central1 \
+  --member="serviceAccount:scheduler-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
 ```
 
 ## Wrapping Up
