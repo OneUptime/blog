@@ -227,8 +227,8 @@ def list_objects_paginated(bucket_name, prefix=None, page_size=100):
     client = storage.Client()
     bucket = client.bucket(bucket_name)
 
-    # Use max_results to control page size
-    pages = bucket.list_blobs(prefix=prefix, max_results=page_size).pages
+    # Use page_size to control how many blobs are returned per page
+    pages = bucket.list_blobs(prefix=prefix, page_size=page_size).pages
 
     total = 0
     for page in pages:
@@ -299,10 +299,10 @@ get_metadata("my-data-bucket", "imports/data.csv")
 
 ## Handling Large Files
 
-For files over 5MB, use resumable uploads. The library handles this automatically for `upload_from_filename`, but you can configure it explicitly:
+For files larger than 8 MiB, the Python library uses resumable uploads automatically. You can configure the chunk size explicitly:
 
 ```python
-# Upload a large file with progress tracking
+# Upload a large file with a configured chunk size
 def upload_large_file(bucket_name, source_path, dest_name):
     """Upload a large file with chunked resumable upload."""
     client = storage.Client()
@@ -349,7 +349,7 @@ def delete_objects_with_prefix(bucket_name, prefix):
 
 ## Generating Signed URLs
 
-For temporary access without requiring GCP credentials:
+For temporary access without requiring the recipient to have GCP credentials. Generating V4 signed URLs requires service account credentials that can sign URLs:
 
 ```python
 # Generate a signed URL for temporary access
@@ -404,4 +404,4 @@ def safe_download(bucket_name, blob_name):
 
 ## Summary
 
-The google-cloud-storage Python library provides a clean interface for all Cloud Storage operations. Use `upload_from_filename` for local files, `upload_from_string` for in-memory data, and `download_as_text` or `download_as_bytes` for retrieval. For large files, the library automatically uses resumable uploads. Always handle errors for NotFound and Forbidden cases, and use signed URLs when you need to share temporary access with external users or systems.
+The google-cloud-storage Python library provides a clean interface for all Cloud Storage operations. Use `upload_from_filename` for local files, `upload_from_string` for in-memory data, and `download_as_text` or `download_as_bytes` for retrieval. For files larger than 8 MiB, the library automatically uses resumable uploads. Always handle errors for NotFound and Forbidden cases, and use signed URLs when you need to share temporary access with external users or systems.
