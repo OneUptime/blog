@@ -46,12 +46,12 @@ Common error patterns:
 ```text
 autopilot-default-resources-mutator: Autopilot adjusted resources to meet
 requirements for Deployment default/your-app: adjusted requests for container
-"app" to meet minimum: {"cpu":"250m","ephemeral-storage":"1Gi","memory":"512Mi"}
+"app" to meet Autopilot defaults and minimums
 ```
 
 ```text
-GKE Autopilot does not allow containers with privilege escalation.
-Set allowPrivilegeEscalation to false.
+GKE Autopilot does not allow privileged containers.
+Set privileged to false.
 ```
 
 ```text
@@ -60,13 +60,13 @@ GKE Autopilot does not support host namespaces (hostNetwork, hostPID, hostIPC).
 
 ## Step 2 - Fix Resource Request Violations
 
-Autopilot has minimum and maximum resource requests per container:
+Autopilot has minimum and maximum resource requests that vary by compute class and cluster capabilities. For a general-purpose Pod, the common limits are:
 
 | Resource | Minimum | Maximum |
 |----------|---------|---------|
-| CPU | 250m | 28 vCPU (general), 80 vCPU (performance) |
-| Memory | 512Mi | varies by CPU |
-| Ephemeral Storage | 1Gi | 10Gi |
+| CPU | 50m if bursting is supported, otherwise 250m | 30 vCPU |
+| Memory | 52Mi if bursting is supported, otherwise 512Mi | 110Gi |
+| Ephemeral Storage | 10Mi total per Pod | 10Gi total per Pod |
 
 If your container requests less than the minimum, Autopilot bumps it up automatically (mutation). But if it exceeds the maximum, the workload is rejected.
 
@@ -79,7 +79,13 @@ kind: Deployment
 metadata:
   name: your-app
 spec:
+  selector:
+    matchLabels:
+      app: your-app
   template:
+    metadata:
+      labels:
+        app: your-app
     spec:
       containers:
       - name: app
@@ -88,18 +94,18 @@ spec:
           requests:
             cpu: "500m"                 # at least 250m
             memory: "1Gi"              # at least 512Mi
-            ephemeral-storage: "1Gi"   # at least 1Gi
+            ephemeral-storage: "1Gi"   # within the 10Mi to 10Gi range
           limits:
-            cpu: "500m"                # Autopilot sets limits equal to requests
+            cpu: "500m"
             memory: "1Gi"
-            ephemeral-storage: "1Gi"
+            ephemeral-storage: "1Gi"   # ephemeral storage limits must equal requests
 ```
 
-Important: In Autopilot, if you only set requests, the limits are automatically set to equal the requests. If you set limits higher than requests, Autopilot adjusts both to the limit values. This is different from Standard GKE where burstable resources are common.
+Important: In Autopilot, the behavior for CPU and memory limits depends on whether your cluster supports bursting. Clusters that support bursting can leave limits unset or set them higher than requests. Clusters that don't support bursting set limits equal to requests. Ephemeral storage limits must always be explicitly set equal to requests.
 
 ## Step 3 - Fix CPU to Memory Ratio Violations
 
-Autopilot enforces a specific ratio between CPU and memory requests. You cannot request 1 vCPU with 256Mi of memory, for example.
+Autopilot enforces a specific ratio between CPU and memory requests. If you request 1 vCPU with 256Mi of memory, for example, Autopilot increases the memory request.
 
 The allowed ratios depend on the compute class:
 
@@ -151,7 +157,7 @@ Fix:
 securityContext:
   privileged: false
   capabilities:
-    add: ["NET_ADMIN"]  # only if in allowed list
+    add: ["NET_ADMIN"]  # only if the cluster enables allow-net-admin
 ```
 
 **Host namespaces:**
@@ -168,8 +174,9 @@ There is no workaround for host namespaces in Autopilot. If your workload absolu
 
 **Privilege escalation:**
 
+Autopilot does not require `allowPrivilegeEscalation: false` by default, but you might see this rejection if you also enforce the Kubernetes Restricted Pod Security Standard or a custom policy. In that case, explicitly disable privilege escalation:
+
 ```yaml
-# Fix: explicitly disable privilege escalation
 securityContext:
   allowPrivilegeEscalation: false
   runAsNonRoot: true
@@ -182,11 +189,11 @@ securityContext:
 Autopilot restricts certain volume types:
 
 ```yaml
-# Not allowed in Autopilot
+# Blocked by default in Autopilot
 volumes:
 - name: host-path
   hostPath:              # rejected - no hostPath volumes
-    path: /var/log
+    path: /var/lib
 
 # Use emptyDir instead
 volumes:
@@ -202,11 +209,13 @@ Allowed volume types:
 - `persistentVolumeClaim`
 - `projected`
 - `downwardAPI`
+- `csi`
+- `gcePersistentDisk`
+- `nfs`
 
 Not allowed:
-- `hostPath`
+- `hostPath` except read-only access to `/var/log` for debugging
 - `local`
-- `nfs` (use Filestore CSI instead)
 
 For persistent storage, use PVCs with supported StorageClasses:
 
@@ -229,12 +238,17 @@ kind: Deployment
 metadata:
   name: compute-heavy-app
 spec:
+  selector:
+    matchLabels:
+      app: compute-heavy-app
   template:
     metadata:
-      annotations:
+      labels:
+        app: compute-heavy-app
+    spec:
+      nodeSelector:
         # Request a specific compute class
         cloud.google.com/compute-class: "Scale-Out"
-    spec:
       containers:
       - name: app
         resources:
@@ -245,9 +259,9 @@ spec:
 
 Available compute classes include:
 - **General-purpose** (default) - balanced workloads
-- **Balanced** - higher memory-to-CPU ratio
-- **Scale-Out** - optimized for horizontal scaling
-- **Performance** - highest per-node resources
+- **Balanced** - higher maximum CPU and memory than the default platform
+- **Scale-Out** - runs each vCPU on one physical core and enforces a 1:4 CPU-to-memory ratio
+- **Performance** - lets you request specific high-performance machine series
 
 For GPU workloads:
 
@@ -276,7 +290,7 @@ Autopilot restricts DaemonSets to prevent them from consuming too many resources
 kubectl describe daemonset your-daemonset -n your-namespace
 ```
 
-Autopilot allows DaemonSets from allowlisted controllers. For custom DaemonSets, you might need to use a different pattern:
+Autopilot supports DaemonSets, but it applies different default, minimum, and maximum resource requests to DaemonSet Pods. If a DaemonSet needs node-level privileges or blocked host features, use a different pattern:
 
 ```yaml
 # Alternative: Use a Deployment with pod anti-affinity instead of a DaemonSet
@@ -286,7 +300,13 @@ metadata:
   name: node-agent
 spec:
   replicas: 3  # match your node count
+  selector:
+    matchLabels:
+      app: node-agent
   template:
+    metadata:
+      labels:
+        app: node-agent
     spec:
       topologySpreadConstraints:
       - maxSkew: 1
@@ -321,7 +341,7 @@ If you are migrating from GKE Standard, these are the most common changes needed
 
 1. **Remove all privileged containers** - redesign using unprivileged alternatives
 2. **Replace hostPath volumes** - use emptyDir or PVCs
-3. **Set resource requests on all containers** - Autopilot requires them
+3. **Set resource requests on all containers** - Autopilot can add defaults, but explicit requests are safer
 4. **Remove hostNetwork usage** - use regular pod networking
 5. **Review DaemonSets** - convert to Deployments where possible
 6. **Add securityContext defaults** - runAsNonRoot, allowPrivilegeEscalation: false
