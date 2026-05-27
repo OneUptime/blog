@@ -8,7 +8,7 @@ Description: Deploy and manage Celery distributed task workers with Ansible incl
 
 ---
 
-Celery is the most popular distributed task queue on remote servers. This guide provides practical Ansible playbooks for this common automation task.
+Celery is one of the most popular distributed task queues for Python applications. This guide provides practical Ansible playbooks for this common automation task.
 
 ## Overview
 
@@ -42,7 +42,12 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
+    celery_app: myapp.celery_app
+    celery_service_name: "{{ app_name }}-celery"
+    celery_broker_url: redis://localhost:6379/0
+    celery_result_backend: redis://localhost:6379/1
+    celery_worker_concurrency: 4
+    celery_loglevel: INFO
 
   tasks:
     - name: Install system dependencies
@@ -73,37 +78,50 @@ ansible_python_interpreter=/usr/bin/python3
         state: latest
       become_user: "{{ app_user }}"
 
+    - name: Check for requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
+
+    - name: Install Celery with Redis transport support
+      ansible.builtin.pip:
+        virtualenv: "{{ app_dir }}/venv"
+        name: "celery[redis]"
+        state: present
+      become_user: "{{ app_user }}"
+
     - name: Install application dependencies
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
         requirements: "{{ app_dir }}/requirements.txt"
       become_user: "{{ app_user }}"
-      when: requirements_file.stat.exists | default(false)
+      when: requirements_file.stat.exists
 ```
 
 ## Configuration Tasks
 
 ```yaml
-    - name: Deploy application configuration
+    - name: Deploy Celery environment configuration
       ansible.builtin.template:
-        src: app_config.yml.j2
-        dest: "{{ app_dir }}/config.yml"
-        owner: "{{ app_user }}"
+        src: celery.env.j2
+        dest: "/etc/{{ celery_service_name }}.env"
+        owner: root
+        group: "{{ app_user }}"
         mode: '0600'
-      notify: restart application
+      notify: restart celery worker
 
-    - name: Create systemd service
+    - name: Create Celery systemd service
       ansible.builtin.template:
-        src: app.service.j2
-        dest: "/etc/systemd/system/{{ app_name }}.service"
+        src: celery.service.j2
+        dest: "/etc/systemd/system/{{ celery_service_name }}.service"
         mode: '0644'
       notify:
         - reload systemd
-        - restart application
+        - restart celery worker
 
-    - name: Enable and start application
+    - name: Enable and start Celery worker
       ansible.builtin.systemd:
-        name: "{{ app_name }}"
+        name: "{{ celery_service_name }}"
         enabled: true
         state: started
 ```
@@ -111,9 +129,15 @@ ansible_python_interpreter=/usr/bin/python3
 ## Systemd Service Template
 
 ```ini
-# templates/app.service.j2
+# templates/celery.env.j2
+CELERY_BROKER_URL={{ celery_broker_url }}
+CELERY_RESULT_BACKEND={{ celery_result_backend }}
+```
+
+```ini
+# templates/celery.service.j2
 [Unit]
-Description={{ app_name }}
+Description={{ app_name }} Celery Worker
 After=network.target
 
 [Service]
@@ -121,7 +145,8 @@ Type=simple
 User={{ app_user }}
 Group={{ app_user }}
 WorkingDirectory={{ app_dir }}
-ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}
+EnvironmentFile=/etc/{{ celery_service_name }}.env
+ExecStart={{ app_dir }}/venv/bin/celery -A {{ celery_app }} worker --loglevel={{ celery_loglevel }} --concurrency={{ celery_worker_concurrency }}
 Restart=always
 RestartSec=5
 Environment=PYTHONPATH={{ app_dir }}
@@ -133,14 +158,17 @@ WantedBy=multi-user.target
 ## Health Check
 
 ```yaml
-    - name: Wait for application to start
-      ansible.builtin.uri:
-        url: "http://localhost:8000/health"
-        status_code: 200
+    - name: Wait for Celery worker to respond
+      ansible.builtin.command: >
+        {{ app_dir }}/venv/bin/celery -A {{ celery_app }} status --timeout=5
+      environment:
+        CELERY_BROKER_URL: "{{ celery_broker_url }}"
+        CELERY_RESULT_BACKEND: "{{ celery_result_backend }}"
+      changed_when: false
       retries: 10
       delay: 3
-      register: health_check
-      until: health_check.status == 200
+      register: celery_status
+      until: celery_status.rc == 0
 ```
 
 ## Handlers
@@ -151,9 +179,9 @@ WantedBy=multi-user.target
       ansible.builtin.systemd:
         daemon_reload: true
 
-    - name: restart application
+    - name: restart celery worker
       ansible.builtin.systemd:
-        name: "{{ app_name }}"
+        name: "{{ celery_service_name }}"
         state: restarted
 ```
 
@@ -357,4 +385,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
