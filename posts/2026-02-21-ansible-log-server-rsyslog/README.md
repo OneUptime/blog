@@ -25,11 +25,13 @@ rsyslog_tls_enabled: true
 rsyslog_tls_ca_file: /etc/rsyslog.d/certs/ca.pem
 rsyslog_tls_cert_file: /etc/rsyslog.d/certs/server-cert.pem
 rsyslog_tls_key_file: /etc/rsyslog.d/certs/server-key.pem
+# Must match the server certificate CN or subjectAltName
+rsyslog_tls_server_name: logs.example.com
 
 # Log retention in days
 rsyslog_retention_days: 90
 
-# Organize logs by hostname and facility
+# Organize logs by hostname and program
 rsyslog_log_template: "/var/log/remote/%HOSTNAME%/%PROGRAMNAME%.log"
 
 # Allowed source networks
@@ -77,9 +79,9 @@ rsyslog_allowed_sources:
     group: root
     mode: '0600'
   loop:
-    - { src: "files/certs/ca.pem", dest: "{{ rsyslog_tls_ca_file }}" }
-    - { src: "files/certs/server-cert.pem", dest: "{{ rsyslog_tls_cert_file }}" }
-    - { src: "files/certs/server-key.pem", dest: "{{ rsyslog_tls_key_file }}" }
+    - { src: "certs/ca.pem", dest: "{{ rsyslog_tls_ca_file }}" }
+    - { src: "certs/server-cert.pem", dest: "{{ rsyslog_tls_cert_file }}" }
+    - { src: "certs/server-key.pem", dest: "{{ rsyslog_tls_key_file }}" }
   when: rsyslog_tls_enabled
   notify: restart rsyslog
 
@@ -107,34 +109,15 @@ rsyslog_allowed_sources:
 - name: Allow rsyslog ports through firewall
   ufw:
     rule: allow
-    port: "{{ item.port }}"
-    proto: "{{ item.proto }}"
-    src: "{{ item.src }}"
+    port: "{{ item[1].port }}"
+    proto: "{{ item[1].proto }}"
+    from_ip: "{{ item[0] }}"
   loop: "{{ rsyslog_allowed_sources | product([
     {'port': rsyslog_listen_port_tcp | string, 'proto': 'tcp'},
     {'port': rsyslog_listen_port_udp | string, 'proto': 'udp'},
     {'port': rsyslog_tls_port | string, 'proto': 'tcp'}
-  ]) | map('combine') | list }}"
-  when: false  # Simplified below
-
-- name: Allow syslog TCP port
-  ufw:
-    rule: allow
-    port: "{{ rsyslog_listen_port_tcp }}"
-    proto: tcp
-
-- name: Allow syslog UDP port
-  ufw:
-    rule: allow
-    port: "{{ rsyslog_listen_port_udp }}"
-    proto: udp
-
-- name: Allow syslog TLS port
-  ufw:
-    rule: allow
-    port: "{{ rsyslog_tls_port }}"
-    proto: tcp
-  when: rsyslog_tls_enabled
+  ]) | list }}"
+  when: item[1].port != (rsyslog_tls_port | string) or rsyslog_tls_enabled
 ```
 
 ## Server Configuration Template
@@ -159,7 +142,7 @@ global(
 input(type="imtcp" port="{{ rsyslog_tls_port }}"
       StreamDriver.Name="gtls"
       StreamDriver.Mode="1"
-      StreamDriver.AuthMode="x509/fingerprint")
+      StreamDriver.AuthMode="anon")
 {% endif %}
 
 # Listen on standard TCP port
@@ -216,9 +199,18 @@ if $fromhost-ip != '127.0.0.1' then {
     state: present
   when: rsyslog_tls_enabled
 
+- name: Create TLS certificates directory on clients
+  file:
+    path: /etc/rsyslog.d/certs
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: rsyslog_tls_enabled
+
 - name: Deploy CA certificate to client
   copy:
-    src: files/certs/ca.pem
+    src: certs/ca.pem
     dest: /etc/rsyslog.d/certs/ca.pem
     owner: root
     group: root
@@ -248,7 +240,8 @@ action(type="omfwd"
     protocol="tcp"
     StreamDriver="gtls"
     StreamDriverMode="1"
-    StreamDriverAuthMode="x509/fingerprint"
+    StreamDriverAuthMode="x509/name"
+    StreamDriverPermittedPeers="{{ rsyslog_tls_server_name }}"
     queue.type="LinkedList"
     queue.size="10000"
     queue.filename="fwd_tls"
@@ -305,4 +298,4 @@ cat /var/log/remote/<client-hostname>/test.log
 
 ## Summary
 
-Centralized logging with rsyslog and Ansible gives you a reliable, scalable log collection system without the overhead of heavyweight logging platforms. The rsyslog disk-assisted queue ensures logs are not lost during network issues, and TLS encryption keeps log data secure in transit. When you need to add new servers to your fleet, the client role automatically configures them to forward logs to your central server.
+Centralized logging with rsyslog and Ansible gives you a reliable, scalable log collection system without the overhead of heavyweight logging platforms. The rsyslog disk-assisted queue helps avoid losing logs during network issues, and TLS encryption keeps log data secure in transit. When you need to add new servers to your fleet, the client role automatically configures them to forward logs to your central server.
