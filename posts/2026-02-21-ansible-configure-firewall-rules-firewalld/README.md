@@ -14,8 +14,9 @@ This post covers practical patterns for automating firewalld with Ansible.
 
 ## Prerequisites
 
-- Ansible 2.9+ with the `ansible.posix` collection installed
+- A supported Ansible version with a compatible `ansible.posix` collection installed
 - RHEL, CentOS, or Fedora target hosts
+- firewalld and the `python-firewall` or `python3-firewall` bindings on target hosts
 - Root or sudo access on target machines
 - Basic familiarity with firewalld zones and services
 
@@ -74,7 +75,7 @@ The simplest use case is opening ports and enabling services. Here is a playbook
         state: enabled
 ```
 
-The `permanent: true` flag writes the rule to the permanent configuration, and `immediate: true` applies it to the running firewall without requiring a reload. Always use both together so the rule survives reboots and takes effect immediately.
+The `permanent: true` flag writes the rule to the permanent configuration, and `immediate: true` applies it to the running firewall without requiring a reload. Use both together when the rule needs to survive reboots and take effect immediately.
 
 ## Working with Zones
 
@@ -244,6 +245,9 @@ firewalld comes with predefined service definitions, but you can create custom o
         group: root
         mode: '0644'
       notify: Reload firewalld
+
+    - name: Reload firewalld so it can read the custom service
+      ansible.builtin.meta: flush_handlers
 
     - name: Enable custom service
       ansible.posix.firewalld:
