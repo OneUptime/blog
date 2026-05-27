@@ -14,9 +14,9 @@ In this guide, I will show you how to use the Entity Graph effectively for both 
 
 ## What Is the Entity Graph
 
-The Entity Graph is a knowledge graph built from all the UDM events in your Chronicle instance. Every event creates relationships between entities. A login event creates a relationship between a user and an IP address. A network connection creates a relationship between a source IP and a destination IP. A file access event links a user to a resource.
+The Entity Context Graph is an entity data model built from UDM events, entity context, derived context, and global context in your Chronicle instance. UDM fields such as `principal.*`, `target.*`, `src.*`, and `dst.*` provide the stable identifiers and relationship indicators that let Chronicle correlate users, assets, IP addresses, domains, files, and resources. A login event can relate a user to an IP address. A network connection can relate a source IP to a destination IP. A file access event can link a user to a resource.
 
-Chronicle builds and maintains this graph continuously. When you open the Entity Graph view, you are querying this pre-built graph rather than scanning raw events, which makes it fast even across months of data.
+Chronicle builds and maintains this graph continuously for use in rules, search, dashboards, and investigation views. When you explore entity context, you are using the enriched entity data that Chronicle maintains; use UDM search alongside it when you need the underlying raw event details for the time range available in your environment.
 
 ```mermaid
 graph TD
@@ -156,16 +156,16 @@ Filter by relationship type (authentication, network connection, resource access
 
 ### Prevalence Indicators
 
-Chronicle shows prevalence data for entities - how commonly an IP, domain, or file hash is seen across your environment and across all Chronicle customers. Low-prevalence entities (rare IPs, uncommon domains) are more likely to be malicious.
+Chronicle shows prevalence data for entities - how commonly an entity such as a domain is seen across your environment. Low-prevalence entities (rare IPs, uncommon domains) can be useful leads during an investigation, but they still need to be validated with event details and threat intelligence.
 
 ## Exporting Investigation Findings
 
-After building your investigation graph, you can:
+After building your investigation graph, you can document and operationalize the findings:
 
-1. **Take snapshots** - Save the current graph state for reports or handoffs
-2. **Export to cases** - Push findings to a Chronicle SOAR case for response
-3. **Generate IOC lists** - Extract IPs, domains, and file hashes as indicators of compromise
-4. **Create detection rules** - Turn your hunting findings into automated YARA-L detection rules
+1. **Add notes to cases** - Capture the relevant entities, events, and reasoning for response handoffs
+2. **Preserve indicators** - Track IPs, domains, and file hashes as indicators of compromise in your case, reference lists, or data tables
+3. **Create detection rules** - Turn validated hunting findings into automated YARA-L detection rules
+4. **Use UDM search for evidence** - Pull the raw events behind important graph relationships before closing the investigation
 
 ## Tips for Effective Graph-Based Investigation
 
