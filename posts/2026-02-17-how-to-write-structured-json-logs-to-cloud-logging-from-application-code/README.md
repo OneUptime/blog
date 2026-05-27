@@ -8,13 +8,13 @@ Description: Learn how to write structured JSON logs from your application code 
 
 ---
 
-If your application writes plain text log messages, Cloud Logging stores them as opaque strings that are hard to search and filter. But if you write logs as structured JSON, Cloud Logging automatically parses the JSON fields and makes them individually searchable. This means you can filter logs by any field in your JSON - error codes, user IDs, request durations, or any custom field you include.
+If your application writes plain text log messages, Cloud Logging stores them as opaque strings that are hard to search and filter. But if you write logs as structured JSON in a supported Google Cloud runtime or with a logging agent configured to parse JSON, Cloud Logging stores the JSON fields in `jsonPayload` and makes them individually searchable. This means you can filter logs by any field in your JSON - error codes, user IDs, request durations, or any custom field you include.
 
 In this post, I will show you how to write structured logs from several popular programming languages and how to use special fields that Cloud Logging recognizes.
 
 ## How Cloud Logging Handles Structured Logs
 
-When your application writes a JSON object to stdout or stderr, Cloud Logging does two things:
+When your application writes a JSON object to stdout or stderr in a supported managed runtime, or through an agent configured for structured logging, Cloud Logging does two things:
 
 1. It parses the JSON into the `jsonPayload` field of the log entry
 2. It recognizes certain special fields and maps them to the log entry's top-level properties
@@ -48,13 +48,14 @@ The simplest approach is to use Python's built-in `logging` module with a JSON f
 import json
 import logging
 import sys
+from datetime import datetime, timezone
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_entry = {
             "severity": record.levelname,
             "message": record.getMessage(),
-            "time": self.formatTime(record),
+            "time": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace("+00:00", "Z"),
             "logging.googleapis.com/sourceLocation": {
                 "file": record.pathname,
                 "line": record.lineno,
@@ -119,6 +120,7 @@ import logging
 import sys
 from flask import Flask, request, g
 import time
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -127,7 +129,7 @@ class CloudLoggingFormatter(logging.Formatter):
         log_entry = {
             "severity": record.levelname,
             "message": record.getMessage(),
-            "time": self.formatTime(record),
+            "time": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         # Add request context if available
         if hasattr(record, 'request_info'):
@@ -257,7 +259,7 @@ type LogEntry struct {
     Severity string                 `json:"severity"`
     Message  string                 `json:"message"`
     Time     string                 `json:"time"`
-    Fields   map[string]interface{} `json:"omitempty"`
+    Fields   map[string]interface{} `json:"fields,omitempty"`
 }
 
 func logJSON(severity, message string, fields map[string]interface{}) {
@@ -297,6 +299,7 @@ If you use Cloud Trace, include the trace context in your logs. This lets you cl
 import json
 import logging
 import sys
+from datetime import datetime, timezone
 
 def get_trace_context(request):
     """Extract trace context from the incoming request header."""
@@ -312,7 +315,7 @@ class TracingFormatter(logging.Formatter):
         entry = {
             "severity": record.levelname,
             "message": record.getMessage(),
-            "time": self.formatTime(record),
+            "time": datetime.fromtimestamp(record.created, timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         # Add trace context if available
         if hasattr(record, 'trace'):
