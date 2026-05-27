@@ -29,11 +29,49 @@ flowchart TD
 
 ## Step 1: Configure Prometheus Scraping
 
-Ensure Prometheus is scraping the MetalLB controller. The controller exposes metrics on its monitoring port.
+Ensure Prometheus is scraping the MetalLB controller. Current MetalLB manifests expose HTTPS metrics from the controller and speaker pods on the `metricshttps` port.
 
 ```yaml
 # metallb-servicemonitor.yaml
 
+# Headless Service for the MetalLB controller metrics endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-controller-metrics
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: controller
+spec:
+  clusterIP: None
+  selector:
+    app: metallb
+    component: controller
+  ports:
+    - name: metricshttps
+      port: 9120
+      targetPort: metricshttps
+---
+# Headless Service for the MetalLB speaker metrics endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-speaker-metrics
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: speaker
+spec:
+  clusterIP: None
+  selector:
+    app: metallb
+    component: speaker
+  ports:
+    - name: metricshttps
+      port: 9120
+      targetPort: metricshttps
+---
 # ServiceMonitor for the MetalLB controller
 # The controller is where IP allocation metrics are exposed
 apiVersion: monitoring.coreos.com/v1
@@ -46,15 +84,18 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: controller
-      app.kubernetes.io/name: metallb
+      app: metallb
+      component: controller
   namespaceSelector:
     matchNames:
       - metallb-system
   endpoints:
-    - port: monitoring
+    - port: metricshttps
       interval: 30s
       path: /metrics
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
 ---
 # ServiceMonitor for MetalLB speakers
 # Speakers expose per-node announcement metrics
@@ -68,15 +109,18 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: speaker
-      app.kubernetes.io/name: metallb
+      app: metallb
+      component: speaker
   namespaceSelector:
     matchNames:
       - metallb-system
   endpoints:
-    - port: monitoring
+    - port: metricshttps
       interval: 30s
       path: /metrics
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 ```bash
@@ -177,8 +221,9 @@ spec:
         # This catches the symptom rather than the cause
         - alert: MetalLBServicePending
           expr: >
-            kube_service_status_load_balancer_ingress == 0
-            and kube_service_spec_type == "LoadBalancer"
+            kube_service_spec_type{type="LoadBalancer"} == 1
+            unless on (namespace, service, uid)
+            kube_service_status_load_balancer_ingress
           for: 10m
           labels:
             severity: warning
@@ -239,6 +284,6 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring MetalLB IP pool utilization with Prometheus is a critical part of running MetalLB in production. The three-tier alerting approach (80% warning, 95% critical, 100% exhausted) gives you progressive warnings that align with typical capacity planning timelines. The predictive alert using `predict_linear` adds an extra safety net by forecasting exhaustion based on historical trends.
+Monitoring MetalLB IP pool utilization with Prometheus is a critical part of running MetalLB in production. The three-tier alerting approach (80% warning, 95% critical, 100% exhausted) gives you progressive warnings that align with typical capacity planning timelines. The allocation rate panel adds an extra safety net by showing whether pool usage is trending upward.
 
 For comprehensive monitoring that goes beyond infrastructure metrics, consider [OneUptime](https://oneuptime.com). While Prometheus tracks the internal state of your IP pools, OneUptime monitors the actual reachability of your LoadBalancer services from external networks. Together, they ensure that you know both when you are running low on IPs and when your services are actually unreachable, giving you complete visibility into your MetalLB-powered infrastructure.
