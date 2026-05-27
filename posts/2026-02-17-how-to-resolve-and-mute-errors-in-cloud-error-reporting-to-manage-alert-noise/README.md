@@ -79,33 +79,31 @@ def resolve_error_group(project_id, group_id):
 resolve_error_group("my-gcp-project", "CK3ax92Fq")
 ```
 
-Here is a script that resolves all error groups that have not had new occurrences in the last 30 days:
+Here is a script that resolves specified error groups that have not had new occurrences in the last 30 days:
 
 ```python
-# Bulk resolve stale error groups that haven't recurred in 30 days
+# Bulk resolve specified error groups that haven't recurred in 30 days
 from google.cloud import errorreporting_v1beta1
 from google.cloud.errorreporting_v1beta1 import types
-from datetime import datetime, timedelta, timezone
 
-def resolve_stale_errors(project_id, days_threshold=30):
+def resolve_stale_errors(project_id, group_ids):
     stats_client = errorreporting_v1beta1.ErrorStatsServiceClient()
     group_client = errorreporting_v1beta1.ErrorGroupServiceClient()
 
     project_name = f"projects/{project_id}"
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days_threshold)
-
-    # Fetch all open error groups
     time_range = types.QueryTimeRange(period=types.QueryTimeRange.Period.PERIOD_30_DAYS)
 
-    response = stats_client.list_group_stats(
+    request = types.ListGroupStatsRequest(
         project_name=project_name,
-        time_range=time_range
+        group_id=group_ids,
+        time_range=time_range,
     )
+    response = stats_client.list_group_stats(request=request)
 
     resolved_count = 0
     for group_stats in response:
-        # Check if the last occurrence is older than the threshold
-        if group_stats.last_seen_time < cutoff:
+        # Explicit group IDs return stats even when there were no events in the time range.
+        if group_stats.count == 0:
             group = group_stats.group
             group.resolution_status = types.ResolutionStatus.RESOLVED
             group_client.update_group(group=group)
@@ -114,7 +112,7 @@ def resolve_stale_errors(project_id, days_threshold=30):
 
     print(f"Resolved {resolved_count} stale error groups")
 
-resolve_stale_errors("my-gcp-project", days_threshold=30)
+resolve_stale_errors("my-gcp-project", ["CK3ax92Fq", "CP2by83Gr"])
 ```
 
 ## Muting Errors
@@ -127,6 +125,9 @@ To see muted errors, toggle the filter at the top of the Error Reporting page to
 
 ```python
 # Mute an error group
+from google.cloud import errorreporting_v1beta1
+from google.cloud.errorreporting_v1beta1 import types
+
 def mute_error_group(project_id, group_id):
     client = errorreporting_v1beta1.ErrorGroupServiceClient()
     group_name = f"projects/{project_id}/groups/{group_id}"
@@ -244,7 +245,7 @@ Even though you are muting errors, it is a good idea to periodically review them
 ## Best Practices
 
 1. **Resolve after deploying a fix, not before.** Do not mark errors as resolved when you commit the fix. Wait until the deployment is live.
-2. **Document why you are muting.** Add a comment or link a tracking issue before muting so future team members understand the decision.
+2. **Document why you are muting.** Add an issue tracker link before muting so future team members understand the decision.
 3. **Do not mute as a first response.** It is tempting to mute noisy errors immediately, but take the time to understand them first. A high-volume error might be a symptom of something serious.
 4. **Review error states during sprint planning.** Use the acknowledged state as a backlog indicator and prioritize accordingly.
 5. **Automate stale error cleanup.** Errors that have not recurred in 30 to 60 days can usually be safely resolved.
