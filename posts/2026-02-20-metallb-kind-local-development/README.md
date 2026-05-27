@@ -124,7 +124,7 @@ Install MetalLB using the official manifest. This deploys the MetalLB controller
 
 ```bash
 # Apply the MetalLB manifest (use the version appropriate for your needs)
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 Wait for the MetalLB pods to be ready before proceeding:
@@ -155,7 +155,7 @@ speaker-9m4tl                 1/1     Running   0          30s
 speaker-xp7rz                 1/1     Running   0          30s
 ```
 
-Notice there is one speaker pod per node. The speaker is a DaemonSet that runs on every node and is responsible for responding to ARP requests for the allocated IPs.
+Notice there is one speaker pod per node. The speaker is a DaemonSet that runs on every node and is responsible for announcing the allocated IPs on the network.
 
 ## Step 4: Configure the IP Address Pool
 
@@ -215,15 +215,16 @@ sequenceDiagram
     participant Host as Host Machine
     participant Docker as Docker Network
     participant Speaker as MetalLB Speaker
+    participant Node as Selected Kind Node
     participant Pod as Application Pod
 
     Host->>Docker: ARP: Who has 172.18.255.200?
     Docker->>Speaker: Forward ARP request
     Speaker->>Docker: ARP reply: I have it (node MAC)
-    Host->>Speaker: TCP traffic to 172.18.255.200
-    Speaker->>Pod: Forward to backend pod
-    Pod->>Speaker: Response
-    Speaker->>Host: Response back to host
+    Host->>Node: TCP traffic to 172.18.255.200
+    Node->>Pod: kube-proxy forwards to backend pod
+    Pod->>Node: Response
+    Node->>Host: Response back to host
 ```
 
 ## Step 6: Test with a Sample Service
@@ -294,7 +295,7 @@ The `EXTERNAL-IP` column now shows a real IP instead of `<pending>`. MetalLB all
 
 ## Step 7: Access the Service from Your Host
 
-Since the MetalLB IPs live on the Docker network and your host machine is connected to that network, you can reach the service directly:
+On a Linux host running Docker Engine, the MetalLB IPs live on the Docker bridge network and the host can reach that network directly:
 
 ```bash
 # Hit the LoadBalancer IP from your host machine
@@ -303,9 +304,11 @@ curl http://172.18.255.200
 
 You should see the default nginx welcome page HTML. This works because:
 
-1. Your host is connected to the Docker `kind` bridge network.
+1. Your host can route to the Docker `kind` bridge network.
 2. MetalLB's speaker responds to ARP requests for `172.18.255.200`.
-3. Traffic is forwarded to one of the nginx pods.
+3. The selected Kind node receives the traffic and Kubernetes forwards it to one of the nginx pods.
+
+If you are using Docker Desktop on macOS or Windows, Docker runs Linux containers inside a VM and the Docker bridge network is not directly reachable from the host. In that case, use a platform-specific workaround such as extra port mappings, a local proxy, or `cloud-provider-kind`.
 
 ## Troubleshooting Tips
 
@@ -339,7 +342,7 @@ When you are done testing, tear everything down:
 kind delete cluster --name metallb-lab
 ```
 
-This removes the Docker containers, the network, and all Kubernetes resources.
+This removes the Docker containers for the cluster and all Kubernetes resources inside it. The shared Docker `kind` network may remain if Docker or Kind still needs it.
 
 ## Wrapping Up
 
