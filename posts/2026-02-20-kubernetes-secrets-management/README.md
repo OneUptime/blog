@@ -19,7 +19,7 @@ flowchart TD
     C --> D{Who can read it?}
     D --> E[Anyone with etcd access]
     D --> F[Anyone with get secrets RBAC]
-    D --> G[Anyone who can exec into pods]
+    D --> G[Anyone who can create pods in the namespace]
     D --> H[Anyone reading CI/CD manifests]
 ```
 
@@ -145,7 +145,7 @@ Enable encryption at rest to protect secrets stored in etcd.
 
 ```yaml
 # encryption-config.yaml
-# This configuration encrypts secrets using AES-CBC.
+# This configuration encrypts secrets using Secretbox.
 # Place this file on the control plane node and reference it
 # in the API server's --encryption-provider-config flag.
 apiVersion: apiserver.config.k8s.io/v1
@@ -154,12 +154,12 @@ resources:
   - resources:
       - secrets
     providers:
-      # AES-CBC encryption with a 32-byte key
-      - aescbc:
+      # Secretbox encryption with a 32-byte key
+      - secretbox:
           keys:
             - name: key1
               # Generate with: head -c 32 /dev/urandom | base64
-              secret: "dGhpcyBpcyBhIDMyIGJ5dGUga2V5IGZvciBhZXM="
+              secret: "H0Gd7bGHuPiGSqmsLyatXD6htJsahRrxvcK7co6npwU="
       # Identity provider as fallback for reading old unencrypted secrets
       - identity: {}
 ```
@@ -195,7 +195,7 @@ flowchart LR
 ```yaml
 # secret-store.yaml
 # This SecretStore connects to AWS Secrets Manager.
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets
@@ -213,7 +213,7 @@ spec:
 # external-secret.yaml
 # This ExternalSecret syncs a secret from AWS Secrets Manager
 # into a Kubernetes Secret. It refreshes every hour.
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
