@@ -24,6 +24,7 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   containeranalysis.googleapis.com \
   containerscanning.googleapis.com \
+  ondemandscanning.googleapis.com \
   --project=my-project
 
 # Create the Docker repository
@@ -36,12 +37,15 @@ gcloud artifacts repositories create app-images \
 
 ## Granting Cloud Build Access
 
-Cloud Build needs permission to push images to Artifact Registry. The Cloud Build service account usually has this by default at the project level, but it is good practice to set it explicitly at the repository level:
+Cloud Build needs permission to push images to Artifact Registry and run on-demand vulnerability scans. The default Cloud Build service account has access to repositories in the same project, but it is good practice to set access explicitly for the service account that runs the build:
 
 ```bash
-# Get the Cloud Build service account
+# Get the legacy Cloud Build service account
 PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
 CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+# If your project uses the Compute Engine default service account for Cloud Build, use:
+# CLOUD_BUILD_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 # Grant write access to the repository
 gcloud artifacts repositories add-iam-policy-binding app-images \
@@ -49,6 +53,11 @@ gcloud artifacts repositories add-iam-policy-binding app-images \
   --member="serviceAccount:${CLOUD_BUILD_SA}" \
   --role="roles/artifactregistry.writer" \
   --project=my-project
+
+# Grant access to run on-demand scans and read their results
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/ondemandscanning.admin"
 ```
 
 ## Basic Build and Push Pipeline
@@ -88,7 +97,7 @@ options:
 steps:
   # Step 1: Install dependencies and run tests
   - id: 'test'
-    name: 'node:18'
+    name: 'node:22'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -129,7 +138,8 @@ steps:
         # Trigger on-demand scan
         SCAN_OUTPUT=$(gcloud artifacts docker images scan \
           us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA \
-          --location=us-central1 \
+          --remote \
+          --location=us \
           --format='value(response.scan)')
 
         # Check for critical vulnerabilities
@@ -264,19 +274,19 @@ Keep storage costs down by cleaning up old images automatically:
 cat > cleanup.json << 'EOF'
 [
   {
-    "id": "keep-releases",
+    "name": "keep-releases",
     "action": { "type": "Keep" },
-    "condition": { "tagPrefixes": ["v"] }
+    "condition": { "tagState": "tagged", "tagPrefixes": ["v"] }
   },
   {
-    "id": "keep-recent",
+    "name": "keep-recent",
     "action": { "type": "Keep" },
     "mostRecentVersions": { "keepCount": 20 }
   },
   {
-    "id": "delete-old",
+    "name": "delete-old",
     "action": { "type": "Delete" },
-    "condition": { "olderThan": "2592000s" }
+    "condition": { "olderThan": "30d" }
   }
 ]
 EOF
@@ -284,6 +294,7 @@ EOF
 gcloud artifacts repositories set-cleanup-policies app-images \
   --location=us-central1 \
   --policy=cleanup.json \
+  --no-dry-run \
   --project=my-project
 ```
 
