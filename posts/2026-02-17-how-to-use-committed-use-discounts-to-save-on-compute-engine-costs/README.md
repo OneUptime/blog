@@ -8,7 +8,7 @@ Description: A practical guide to purchasing and managing Committed Use Discount
 
 ---
 
-Compute Engine is often the biggest line item on a GCP bill. If you are running VMs around the clock for production workloads, you are leaving money on the table by paying on-demand prices. Committed Use Discounts (CUDs) let you commit to a specific amount of resources for one or three years in exchange for steep discounts - up to 57% off on-demand pricing.
+Compute Engine is often the biggest line item on a GCP bill. If you are running VMs around the clock for production workloads, you are leaving money on the table by paying on-demand prices. Committed Use Discounts (CUDs) let you commit to a specific amount of resources for one or three years in exchange for steep discounts - up to 70% off on-demand pricing for memory-optimized machine types and up to 55% for other machine types.
 
 This post covers how CUDs work, when they make sense, and how to purchase and manage them effectively.
 
@@ -18,21 +18,19 @@ The concept is simple. You tell Google that you will use a certain amount of vCP
 
 There are two types of CUDs:
 
-- **Resource-based commitments**: You commit to a specific number of vCPUs and amount of memory in a particular region. These apply across machine types within the same machine family.
-- **Spend-based commitments**: You commit to spending a minimum amount per hour on specific services (like Cloud SQL or VMware Engine). These are more flexible but apply to different services than resource-based commitments.
+- **Resource-based commitments**: You commit to a specific number of vCPUs and amount of memory in a particular region and machine series. These apply across eligible machine types within that series.
+- **Spend-based commitments**: You commit to spending a minimum amount per hour on eligible services. Compute flexible CUDs can apply across Compute Engine, GKE, and Cloud Run, while other spend-based CUDs apply to services like Cloud SQL or VMware Engine.
 
-For Compute Engine VMs, you will typically use resource-based commitments.
+For stable Compute Engine VM capacity that is tied to a specific region and machine series, you will typically use resource-based commitments.
 
 ## Discount Amounts
 
 The discounts vary based on commitment length and machine type:
 
-| Machine Family | 1-Year Discount | 3-Year Discount |
+| Commitment Type | 1-Year Discount | 3-Year Discount |
 |----------------|----------------|-----------------|
-| General-purpose (N2, N2D, E2) | Up to 20% | Up to 35% |
-| Compute-optimized (C2, C2D) | Up to 20% | Up to 35% |
-| Memory-optimized (M1, M2, M3) | Up to 25% | Up to 52% |
-| Accelerator-optimized (A2, A3) | Up to 25% | Up to 57% |
+| Resource-based CUDs for vCPU, memory, or both | Up to 37% | Up to 55% for most machine types, and up to 70% for memory-optimized machine types |
+| Compute flexible CUDs | 28% | 46% |
 
 These percentages are off the on-demand price. For workloads running 24/7, this adds up to serious savings over a year.
 
@@ -61,7 +59,7 @@ You will need to specify:
 
 - **Name**: A descriptive name for this commitment
 - **Region**: Where the resources will be used
-- **Commitment type**: General purpose, compute-optimized, memory-optimized, or accelerator-optimized
+- **Commitment type**: The machine series commitment type, such as General purpose N2, Compute-optimized C2, or Memory-optimized M3
 - **Duration**: 1 year or 3 years
 - **vCPUs**: Number of vCPUs to commit to
 - **Memory**: Amount of RAM (in GB) to commit to
@@ -77,7 +75,7 @@ gcloud compute commitments create my-prod-commitment \
   --region=us-central1 \
   --resources=vcpu=16,memory=64GB \
   --plan=12-month \
-  --type=GENERAL_PURPOSE
+  --type=general-purpose-n2
 ```
 
 For a three-year commitment:
@@ -88,33 +86,56 @@ gcloud compute commitments create my-prod-commitment-3yr \
   --region=us-central1 \
   --resources=vcpu=32,memory=128GB \
   --plan=36-month \
-  --type=GENERAL_PURPOSE
+  --type=general-purpose-n2
 ```
 
 ## Analyzing Your Usage Before Committing
 
-Before buying a CUD, you need to understand your baseline usage. Here is a BigQuery query you can run against your billing export to find your average vCPU and memory usage over the past 90 days:
+Before buying a CUD, you need to understand your baseline usage. Here is a BigQuery query you can run against your billing export to estimate your average daily vCPU and memory usage over the past 90 days:
 
 ```sql
--- Find average daily vCPU usage by region for Compute Engine
+-- Estimate average daily vCPU and memory usage by region for Compute Engine.
+-- Divide daily pricing-unit usage by 24 to estimate average committed units.
+WITH daily_usage AS (
+  SELECT
+    DATE(usage_start_time) AS usage_date,
+    location.region,
+    CASE
+      WHEN sku.description LIKE '%Instance Core%' THEN 'vcpu'
+      WHEN sku.description LIKE '%Instance Ram%' THEN 'memory'
+    END AS resource_type,
+    SUM(usage.amount_in_pricing_units) AS daily_pricing_units
+  FROM
+    `my-project.billing_export.gcp_billing_export_v1_*`
+  WHERE
+    service.description = 'Compute Engine'
+    AND (
+      sku.description LIKE '%Instance Core%'
+      OR sku.description LIKE '%Instance Ram%'
+    )
+    AND usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+  GROUP BY
+    usage_date,
+    location.region,
+    resource_type
+)
 SELECT
-  location.region,
-  AVG(usage.amount_in_pricing_units) AS avg_daily_vcpus,
-  MIN(usage.amount_in_pricing_units) AS min_daily_vcpus,
-  MAX(usage.amount_in_pricing_units) AS max_daily_vcpus
+  region,
+  resource_type,
+  AVG(daily_pricing_units / 24) AS avg_committed_units,
+  MIN(daily_pricing_units / 24) AS min_committed_units,
+  MAX(daily_pricing_units / 24) AS max_committed_units
 FROM
-  `my-project.billing_export.gcp_billing_export_v1_*`
-WHERE
-  service.description = 'Compute Engine'
-  AND sku.description LIKE '%Instance Core%'
-  AND usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+  daily_usage
 GROUP BY
-  location.region
+  region,
+  resource_type
 ORDER BY
-  avg_daily_vcpus DESC
+  region,
+  resource_type
 ```
 
-The minimum daily usage is your safest baseline for a commitment. Committing to more than your minimum means you might be paying for resources you are not always using.
+The minimum committed units are your safest baseline for a commitment. Committing to more than your minimum means you might be paying for resources you are not always using.
 
 ## Using the Recommendations Hub
 
@@ -131,7 +152,7 @@ gcloud recommender recommendations list \
 
 ## How CUDs Apply to Running VMs
 
-CUDs are not tied to specific VM instances. Instead, they apply at the region level across all VMs of the same machine family. If you commit to 16 vCPUs of general-purpose compute in us-central1, the discount automatically applies to any combination of general-purpose VMs (N2, N2D, E2) running in that region, up to 16 vCPUs.
+CUDs are not tied to specific VM instances. Instead, resource-based CUDs apply at the region level across eligible VMs of the committed machine series. If you commit to 16 vCPUs of N2 general-purpose compute in us-central1, the discount automatically applies to eligible N2 VMs running in that region, up to 16 vCPUs. It would not cover N2D or E2 usage unless you bought separate commitments for those machine series.
 
 This flexibility is important. You can resize, delete, and recreate VMs without worrying about losing your discount, as long as your total usage in that region stays at or above the committed amount.
 
@@ -154,9 +175,9 @@ gcloud compute commitments list \
 Important things to know about managing CUDs:
 
 - **CUDs cannot be cancelled** once purchased. You are locked in for the full term.
-- **CUDs cannot be transferred** between billing accounts or projects.
+- **Resource-based CUDs are purchased for a specific project**. You cannot change the project for the commitment, but you can share eligible discounts across projects on the same Cloud Billing account if CUD sharing is enabled.
 - **CUDs auto-apply** to eligible usage - you do not need to assign them to specific VMs.
-- **CUDs renew manually** - they do not auto-renew, so set a reminder before they expire.
+- **Resource-based CUDs do not auto-renew by default** - you can enable auto-renewal on new or existing active commitments, or set a reminder before they expire.
 
 ## Best Practices
 
@@ -176,10 +197,10 @@ Here is a quick back-of-the-envelope calculation. Say you run 32 vCPUs of n2-sta
 
 - On-demand cost per vCPU-hour: ~$0.031
 - Monthly on-demand cost: 32 * $0.031 * 730 hours = ~$724/month
-- With 1-year CUD (20% off): ~$579/month (saving ~$145/month)
-- With 3-year CUD (35% off): ~$471/month (saving ~$253/month)
+- With 1-year resource-based CUD (up to 37% off): ~$456/month (saving ~$268/month)
+- With 3-year resource-based CUD (up to 55% off): ~$326/month (saving ~$398/month)
 
-Over three years, a 3-year CUD on 32 vCPUs saves roughly $9,108 compared to on-demand pricing.
+Over three years, a 3-year CUD on 32 vCPUs saves roughly $14,328 compared to on-demand pricing.
 
 ## Wrapping Up
 
