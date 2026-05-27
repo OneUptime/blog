@@ -61,12 +61,12 @@ The problems include:
 
 ## Setting Up a Remote Backend with S3
 
-The most common remote backend uses AWS S3 with DynamoDB for locking.
+A common remote backend uses AWS S3 with native S3 lock files for locking.
 
 ```hcl
 # backend.tf
 
-# Configure S3 backend with DynamoDB locking
+# Configure S3 backend with native S3 locking
 terraform {
   backend "s3" {
     # S3 bucket to store the state file
@@ -78,8 +78,8 @@ terraform {
     # AWS region for the bucket
     region = "us-east-1"
 
-    # DynamoDB table for state locking
-    dynamodb_table = "terraform-state-locks"
+    # Use an S3 lock file for state locking
+    use_lockfile = true
 
     # Encrypt the state file at rest
     encrypt = true
@@ -87,7 +87,7 @@ terraform {
 }
 ```
 
-Before using this backend, you need to create the S3 bucket and DynamoDB table. Here is a bootstrap configuration.
+Before using this backend, you need to create the S3 bucket. Here is a bootstrap configuration.
 
 ```hcl
 # bootstrap/main.tf
@@ -130,20 +130,6 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-# Create the DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-
-  # The lock ID attribute is required by Terraform
-  hash_key = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
 ```
 
 ## How State Locking Works
@@ -153,7 +139,7 @@ State locking prevents concurrent modifications to the same state.
 ```mermaid
 sequenceDiagram
     participant A as Developer A
-    participant L as DynamoDB Lock Table
+    participant L as S3 Lock File
     participant S as S3 State File
     participant B as Developer B
 
