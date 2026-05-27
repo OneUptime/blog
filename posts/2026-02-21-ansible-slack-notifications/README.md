@@ -55,8 +55,7 @@ graph LR
     method: POST
     body_format: json
     body:
-      channel: "#deployments"
-      username: "Ansible"
+      text: "{{ app_name }} deployment {{ 'succeeded' if success else 'failed' }}"
       attachments:
         - color: "{{ '#36a64f' if success else '#ff0000' }}"
           title: "{{ app_name }} Deployment"
@@ -80,14 +79,11 @@ graph LR
 ```ini
 # ansible.cfg
 [defaults]
-callback_whitelist = community.general.slack
-```
+callbacks_enabled = community.general.slack
 
-```yaml
-# Configure Slack callback
-# group_vars/all/slack.yml
-slack_webhook_url: https://hooks.slack.com/services/XXX/YYY/ZZZ
-slack_channel: "#ansible-runs"
+[callback_slack]
+webhook_url = https://hooks.slack.com/services/XXX/YYY/ZZZ
+channel = #ansible-runs
 ```
 
 ## Deployment Playbook with Notifications
@@ -176,7 +172,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -320,4 +316,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
