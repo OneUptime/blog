@@ -1,14 +1,14 @@
-# How to Set Up a Data Governance Framework on GCP Using Data Catalog DLP API
+# How to Set Up a Data Governance Framework on GCP Using Dataplex Universal Catalog and DLP API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Data Governance, Data Catalog, DLP API, IAM, Data Classification, Compliance
+Tags: GCP, Data Governance, Dataplex Universal Catalog, DLP API, IAM, Data Classification, Compliance
 
-Description: A hands-on guide to building a data governance framework on GCP using Data Catalog for discovery, DLP API for sensitive data detection, and IAM policies for access control.
+Description: A hands-on guide to building a data governance framework on GCP using Dataplex Universal Catalog for discovery, DLP API for sensitive data detection, and IAM policies for access control.
 
 ---
 
-Data governance sounds like something only enterprises care about, but the truth is that any team storing customer data needs it. Knowing where your sensitive data lives, who can access it, and how it is classified is not just good practice - in many jurisdictions it is the law. On GCP, you can build a governance framework using Data Catalog for discovery and classification, DLP API for automated sensitive data detection, and IAM for access control. This guide walks through a practical implementation.
+Data governance sounds like something only enterprises care about, but the truth is that any team storing customer data needs it. Knowing where your sensitive data lives, who can access it, and how it is classified is not just good practice - in many jurisdictions it is the law. On GCP, you can build a governance framework using Dataplex Universal Catalog for discovery and metadata, BigQuery policy tags for classification, DLP API for automated sensitive data detection, and IAM for access control. This guide walks through a practical implementation.
 
 ## The Governance Framework
 
@@ -20,22 +20,23 @@ A data governance framework needs three capabilities:
 
 ```mermaid
 flowchart TD
-    A[Data Sources<br/>BigQuery, Cloud Storage, Cloud SQL] --> B[Data Catalog<br/>Discovery & Metadata]
+    A[Data Sources<br/>BigQuery, Cloud Storage, Cloud SQL] --> B[Dataplex Universal Catalog<br/>Discovery & Metadata]
     B --> C[DLP API<br/>Sensitive Data Detection]
     C --> D[Policy Tags<br/>Data Classification]
     D --> E[IAM Policies<br/>Access Control]
     E --> F[Audit Logs<br/>Monitoring & Compliance]
 ```
 
-## Step 1: Set Up Data Catalog for Discovery
+## Step 1: Set Up Dataplex Universal Catalog for Discovery
 
-Data Catalog automatically discovers BigQuery tables. For other sources, you need to register them:
+Dataplex Universal Catalog automatically retrieves metadata for Google Cloud resources such as BigQuery tables. For resources you want to organize in a lake, register them as Dataplex assets:
 
 ```bash
 # Enable required APIs
 
 gcloud services enable datacatalog.googleapis.com
 gcloud services enable dlp.googleapis.com
+gcloud services enable dataplex.googleapis.com
 
 # Create a Dataplex lake to organize your data assets
 gcloud dataplex lakes create governance-lake \
@@ -65,7 +66,7 @@ gcloud dataplex assets create orders-data \
 Define a taxonomy that represents your data classification levels:
 
 ```python
-# create_taxonomy.py - Set up data classification taxonomy in Data Catalog
+# create_taxonomy.py - Set up data classification taxonomy for BigQuery policy tags
 from google.cloud import datacatalog_v1
 
 client = datacatalog_v1.PolicyTagManagerClient()
@@ -200,11 +201,8 @@ After the DLP scan completes, apply policy tags to columns that contain sensitiv
 ```python
 # apply_classifications.py - Tag BigQuery columns based on DLP findings
 from google.cloud import bigquery
-from google.cloud import datacatalog_v1
 
 bq_client = bigquery.Client()
-dc_client = datacatalog_v1.PolicyTagManagerClient()
-
 # Mapping from DLP info types to policy tag IDs
 INFO_TYPE_TO_POLICY_TAG = {
     "EMAIL_ADDRESS": "projects/my-project/locations/us-central1/taxonomies/TAX_ID/policyTags/PII_TAG_ID",
@@ -220,11 +218,12 @@ def apply_policy_tags_from_dlp(project_id, dataset_id, table_id):
     # Query DLP findings for this table
     query = f"""
     SELECT
-      location.content_locations[0].record_location.field_id.name AS column_name,
+      locations.record_location.field_id.name AS column_name,
       info_type.name AS info_type,
       COUNT(*) AS finding_count
-    FROM `{project_id}.data_governance.dlp_findings`
-    WHERE resource_name LIKE '%{dataset_id}.{table_id}%'
+    FROM `{project_id}.data_governance.dlp_findings`,
+      UNNEST(location.content_locations) AS locations
+    WHERE locations.container_name LIKE '%{dataset_id}.{table_id}%'
     GROUP BY 1, 2
     HAVING finding_count >= 5  -- Minimum confidence threshold
     """
@@ -246,14 +245,10 @@ def apply_policy_tags_from_dlp(project_id, dataset_id, table_id):
             for i, field in enumerate(schema):
                 if field.name == column_name:
                     # Create a new field with the policy tag
-                    schema[i] = bigquery.SchemaField(
-                        name=field.name,
-                        field_type=field.field_type,
-                        mode=field.mode,
-                        description=field.description,
-                        policy_tags=bigquery.PolicyTagList(
-                            names=[policy_tag]
-                        )
+                    field_api_repr = field.to_api_repr()
+                    field_api_repr["policyTags"] = {"names": [policy_tag]}
+                    schema[i] = bigquery.SchemaField.from_api_repr(
+                        field_api_repr
                     )
                     schema_changed = True
                     print(f"Tagged {column_name} as {info_type}")
@@ -293,74 +288,85 @@ gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
   --role="roles/datacatalog.categoryFineGrainedReader"
 ```
 
-## Step 6: Create a Data Stewardship Tag Template
+## Step 6: Create a Data Stewardship Aspect Type
 
-Define a tag template for data stewardship information:
+Define an aspect type for data stewardship information:
 
 ```bash
-# Create a tag template for data stewardship metadata
-gcloud data-catalog tag-templates create data_stewardship \
+# stewardship-aspect.json
+cat > stewardship-aspect.json <<'EOF'
+{
+  "name": "data_stewardship",
+  "type": "record",
+  "recordFields": [
+    {
+      "name": "data_owner",
+      "type": "string",
+      "index": 1,
+      "constraints": {"required": true}
+    },
+    {
+      "name": "data_steward",
+      "type": "string",
+      "index": 2,
+      "constraints": {"required": true}
+    },
+    {
+      "name": "retention_period",
+      "type": "string",
+      "index": 3
+    },
+    {
+      "name": "classification_level",
+      "type": "string",
+      "index": 4
+    },
+    {
+      "name": "last_review_date",
+      "type": "string",
+      "index": 5
+    },
+    {
+      "name": "compliance_frameworks",
+      "type": "string",
+      "index": 6
+    }
+  ]
+}
+EOF
+
+# Create an aspect type for data stewardship metadata
+gcloud dataplex aspect-types create data-stewardship \
   --location=us-central1 \
   --display-name="Data Stewardship" \
-  --field=id=data_owner,display-name="Data Owner",type=string,required=true \
-  --field=id=data_steward,display-name="Data Steward",type=string,required=true \
-  --field=id=retention_period,display-name="Retention Period",type=string \
-  --field=id=classification_level,display-name="Classification Level",type='enum(Public|Internal|Confidential|Restricted)' \
-  --field=id=last_review_date,display-name="Last Review Date",type=string \
-  --field=id=compliance_frameworks,display-name="Compliance Frameworks",type=string
+  --metadata-template-file-name=stewardship-aspect.json
 ```
 
-Tag your datasets with stewardship information:
+Apply stewardship metadata to your datasets:
 
-```python
-# tag_stewardship.py - Apply stewardship tags to datasets
-from google.cloud import datacatalog_v1
+```bash
+# stewardship-data.yaml
+cat > stewardship-data.yaml <<'EOF'
+my-project.us-central1.data-stewardship:
+  data:
+    data_owner: data-engineering@company.com
+    data_steward: jane.smith@company.com
+    retention_period: 7 years
+    classification_level: Confidential
+    compliance_frameworks: SOC2, GDPR
+EOF
 
-client = datacatalog_v1.DataCatalogClient()
+# First find the entry name for the BigQuery dataset in Dataplex Universal Catalog.
+gcloud dataplex entries search \
+  'fully_qualified_name="bigquery:my-project.analytics"' \
+  --project=my-project
 
-def tag_dataset(project_id, dataset_id, stewardship_info):
-    """Tag a BigQuery dataset with stewardship metadata."""
-    resource = (
-        f"//bigquery.googleapis.com/projects/{project_id}"
-        f"/datasets/{dataset_id}"
-    )
-    entry = client.lookup_entry(request={"linked_resource": resource})
-
-    tag = datacatalog_v1.Tag()
-    tag.template = (
-        f"projects/{project_id}/locations/us-central1"
-        f"/tagTemplates/data_stewardship"
-    )
-
-    tag.fields["data_owner"] = datacatalog_v1.TagField(
-        string_value=stewardship_info["owner"]
-    )
-    tag.fields["data_steward"] = datacatalog_v1.TagField(
-        string_value=stewardship_info["steward"]
-    )
-    tag.fields["retention_period"] = datacatalog_v1.TagField(
-        string_value=stewardship_info["retention"]
-    )
-    tag.fields["classification_level"] = datacatalog_v1.TagField(
-        enum_value=datacatalog_v1.TagField.EnumValue(
-            display_name=stewardship_info["classification"]
-        )
-    )
-    tag.fields["compliance_frameworks"] = datacatalog_v1.TagField(
-        string_value=stewardship_info["compliance"]
-    )
-
-    client.create_tag(parent=entry.name, tag=tag)
-    print(f"Tagged {dataset_id} with stewardship info")
-
-
-tag_dataset("my-project", "analytics", {
-    "owner": "data-engineering@company.com",
-    "steward": "jane.smith@company.com",
-    "retention": "7 years",
-    "classification": "Confidential",
-    "compliance": "SOC2, GDPR"
-})
+# Use the entry, entry group, and location returned by search.
+gcloud dataplex entries update ENTRY_ID \
+  --entry-group=ENTRY_GROUP_ID \
+  --location=us-central1 \
+  --project=my-project \
+  --update-aspects=stewardship-data.yaml
 ```
 
 ## Step 7: Set Up Audit Logging and Monitoring
@@ -368,11 +374,11 @@ tag_dataset("my-project", "analytics", {
 Enable audit logging to track who accesses what data:
 
 ```bash
-# Enable data access audit logs for BigQuery
+# Export the current IAM policy before adding audit log settings
 gcloud projects get-iam-policy my-project --format=json > policy.json
 ```
 
-Add the audit logging configuration:
+Add the audit logging configuration to `policy.json`:
 
 ```json
 {
@@ -386,6 +392,12 @@ Add the audit logging configuration:
     }
   ]
 }
+```
+
+Apply the updated policy:
+
+```bash
+gcloud projects set-iam-policy my-project policy.json
 ```
 
 Create a monitoring query to track access to sensitive data:
@@ -414,19 +426,25 @@ SELECT
   t.table_catalog AS project,
   t.table_schema AS dataset,
   t.table_name,
-  t.row_count,
-  ROUND(t.size_bytes / POW(1024, 3), 2) AS size_gb,
-  COUNTIF(c.policy_tags IS NOT NULL) AS classified_columns,
+  s.total_rows AS row_count,
+  ROUND(s.total_logical_bytes / POW(1024, 3), 2) AS size_gb,
+  COUNTIF(ARRAY_LENGTH(c.policy_tags) > 0) AS classified_columns,
   COUNT(*) AS total_columns
 FROM `my-project.region-us-central1.INFORMATION_SCHEMA.TABLES` t
+JOIN `my-project.region-us-central1.INFORMATION_SCHEMA.TABLE_STORAGE` s
+  ON t.table_catalog = s.table_catalog
+  AND t.table_schema = s.table_schema
+  AND t.table_name = s.table_name
 JOIN `my-project.region-us-central1.INFORMATION_SCHEMA.COLUMNS` c
-  ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+  ON t.table_catalog = c.table_catalog
+  AND t.table_schema = c.table_schema
+  AND t.table_name = c.table_name
 GROUP BY 1, 2, 3, 4, 5
 ORDER BY size_gb DESC;
 ```
 
 ## Key Takeaways
 
-Data governance on GCP is not a single product - it is a combination of tools working together. Data Catalog handles discovery and metadata, DLP API automates sensitive data detection, policy tags enforce column-level access, and audit logs provide the compliance trail. Start with your most sensitive datasets, automate the classification process, and expand coverage over time.
+Data governance on GCP is not a single product - it is a combination of tools working together. Dataplex Universal Catalog handles discovery and metadata, DLP API automates sensitive data detection, policy tags enforce column-level access, and audit logs provide the compliance trail. Start with your most sensitive datasets, automate the classification process, and expand coverage over time.
 
 The most common mistake is trying to classify everything manually. Use DLP API to scan your tables automatically and apply initial classifications, then have data stewards review and refine. Automation handles 80% of the work; human judgment handles the remaining 20%.
