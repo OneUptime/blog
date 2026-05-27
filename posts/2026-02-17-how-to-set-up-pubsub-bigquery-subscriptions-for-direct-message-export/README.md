@@ -26,7 +26,7 @@ Let me walk through each step.
 
 ## Creating the BigQuery Table
 
-Your BigQuery table schema needs to match the fields in your Pub/Sub messages. Pub/Sub can write messages in two modes: using the topic schema (if you have one) or writing the raw message to a generic table.
+Your BigQuery table schema needs to match the fields in your Pub/Sub messages. Pub/Sub can write messages in three modes: using the topic schema, using the BigQuery table schema for JSON messages, or writing the raw message to a generic table.
 
 For structured data, create a table that matches your message format:
 
@@ -52,7 +52,7 @@ If you do not want to define a specific schema, you can use the default table sc
 ```sql
 -- Generic table for raw Pub/Sub messages
 CREATE TABLE `my-project.analytics.raw_messages` (
-  data STRING,           -- The message body (base64 decoded)
+  data STRING,           -- The message body
   subscription_name STRING,
   message_id STRING,
   publish_time TIMESTAMP,
@@ -88,14 +88,14 @@ Now create the subscription that connects your topic to the BigQuery table:
 # Create a BigQuery subscription
 gcloud pubsub subscriptions create order-events-bq-sub \
   --topic=order-events \
-  --bigquery-table=my-project:analytics.order_events \
+  --bigquery-table=my-project.analytics.order_events \
   --use-topic-schema \
   --write-metadata
 ```
 
 The `--use-topic-schema` flag tells Pub/Sub to use the Avro or Protocol Buffer schema attached to the topic for mapping fields. The `--write-metadata` flag adds Pub/Sub metadata (message ID, publish time, subscription name, attributes) to the table.
 
-If your topic does not have a schema, omit the `--use-topic-schema` flag and Pub/Sub will write the raw message data to the `data` column.
+If your topic does not have a schema, omit the `--use-topic-schema` flag and Pub/Sub will write the raw message data to the `data` column. If you publish JSON messages and want Pub/Sub to map JSON fields to matching BigQuery columns instead, use the `--use-table-schema` option.
 
 ## Terraform Configuration
 
@@ -203,11 +203,11 @@ Pub/Sub maps message fields to BigQuery columns based on the topic schema. Here 
 | bytes | BYTES |
 | timestamp-micros (logical) | TIMESTAMP |
 
-If a field in the message does not match any column in the BigQuery table, it is silently dropped. If a required BigQuery column is missing from the message, the write fails and the message is nacked for retry.
+If the topic schema has a field that does not match any column in the BigQuery table, the write fails and the message stays in the subscription backlog unless you enable `drop_unknown_fields`. If you enable `drop_unknown_fields`, Pub/Sub drops fields that are in the topic schema but not in the BigQuery schema. If a required BigQuery column is missing from the message, the write fails and the message is nacked for retry.
 
 ## Handling Errors and Dead Letters
 
-Messages can fail to write to BigQuery for several reasons - schema mismatches, permission issues, or BigQuery API errors. You should configure a dead letter topic to catch these:
+Messages can fail to write to BigQuery for several reasons - schema mismatches, invalid field values, or BigQuery API errors. You should configure a dead letter topic to catch message-level write failures. Permission or table-state errors can put the subscription into an error state and leave messages in the backlog until you fix the configuration.
 
 ```hcl
 # Dead letter topic for messages that fail BigQuery insertion
@@ -235,6 +235,19 @@ resource "google_pubsub_subscription" "order_events_bq" {
     ttl = ""
   }
 }
+
+# Pub/Sub also needs permission to forward and acknowledge dead-lettered messages
+resource "google_pubsub_topic_iam_member" "order_events_bq_dlq_publisher" {
+  topic  = google_pubsub_topic.order_events_bq_dlq.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "order_events_bq_subscriber" {
+  subscription = google_pubsub_subscription.order_events_bq.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
 ```
 
 ## Monitoring the Subscription
@@ -246,22 +259,22 @@ Keep an eye on these metrics in Cloud Monitoring to make sure your BigQuery subs
 - `pubsub.googleapis.com/subscription/dead_letter_message_count` - Messages sent to the DLQ. Any increase here needs investigation.
 
 ```bash
-# Check the subscription backlog
+# Check the subscription configuration and state
 gcloud pubsub subscriptions describe order-events-bq-sub \
-  --format="value(messageRetentionDuration)"
+  --format="yaml(name,state,topic,bigqueryConfig,deadLetterPolicy)"
 ```
 
 ## Limitations to Know About
 
 BigQuery subscriptions are powerful but have some constraints:
 
-1. **No transformation**: Messages go to BigQuery exactly as they are. If you need to transform, enrich, or filter data, you still need Dataflow or a Cloud Function.
+1. **Limited transformation**: Messages are written to BigQuery without custom subscriber code. If you need complex transformations, enrichment, joins, windowing, or aggregation, you still need Dataflow or another processing layer.
 
-2. **Schema required for structured data**: If you want field-level mapping, your topic needs an Avro or Protocol Buffer schema. Otherwise, everything goes into a single `data` column.
+2. **Schema required for structured data**: If you want field-level mapping, use an Avro or Protocol Buffer topic schema, or use the BigQuery table schema option for JSON messages. Otherwise, everything goes into a single `data` column.
 
 3. **Throughput limits**: BigQuery subscriptions use the BigQuery Storage Write API, which has its own quotas. For extremely high-throughput topics, check that you are within limits.
 
-4. **No partitioned table support for time-based partitioning on custom columns**: The subscription writes to the table as-is. You can use BigQuery ingestion-time partitioning, but you cannot partition on a custom timestamp field from the message during write.
+4. **Streaming buffer behavior for partitioned tables**: BigQuery subscriptions can write to partitioned tables, but streaming writes can temporarily appear in the `__UNPARTITIONED__` partition for ingestion-time partitioned tables until BigQuery repartitions the data.
 
 ## When to Use BigQuery Subscriptions vs Dataflow
 
