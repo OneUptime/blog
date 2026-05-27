@@ -14,7 +14,7 @@ This post covers building that automation on GCP using Artifact Registry, Cloud 
 
 ## The Problem with Stale Base Images
 
-Consider a typical Node.js application. Your Dockerfile starts with `FROM node:20-alpine`. That image gets security patches regularly, but your CI pipeline only builds when your application code changes. Between deployments, the base image could accumulate multiple CVEs. By the time you deploy a code change, you're also deploying a stale base image with known vulnerabilities.
+Consider a typical Node.js application. Your Dockerfile starts with `FROM node:24-alpine`. That image gets security patches regularly, but your CI pipeline only builds when your application code changes. Between deployments, the base image could accumulate multiple CVEs. By the time you deploy a code change, you're also deploying a stale base image with known vulnerabilities.
 
 ## Architecture
 
@@ -38,21 +38,27 @@ graph TB
 Instead of pulling base images directly from Docker Hub, maintain your own curated set in Artifact Registry:
 
 ```bash
+# Enable Artifact Analysis vulnerability scanning
+gcloud services enable containerscanning.googleapis.com
+
 # Create a dedicated registry for base images
 
 gcloud artifacts repositories create base-images \
     --repository-format=docker \
     --location=us-central1 \
-    --description="Curated and scanned base images"
+    --description="Curated and scanned base images" \
+    --allow-vulnerability-scanning
 
 # Create separate registries for staging and production app images
 gcloud artifacts repositories create app-images-staging \
     --repository-format=docker \
-    --location=us-central1
+    --location=us-central1 \
+    --allow-vulnerability-scanning
 
 gcloud artifacts repositories create app-images-prod \
     --repository-format=docker \
-    --location=us-central1
+    --location=us-central1 \
+    --allow-vulnerability-scanning
 ```
 
 ## Base Image Update Pipeline
@@ -75,33 +81,17 @@ steps:
       - '${_REGISTRY}/${_IMAGE_NAME}:${_TAG}'
     id: 'tag'
 
-  # Push to our base image registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_REGISTRY}/${_IMAGE_NAME}:${_TAG}']
-    id: 'push'
-
-  # Wait for vulnerability scanning to complete
+  # Run an on-demand vulnerability scan before publishing the curated image
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "Waiting for vulnerability scan to complete..."
-        # Poll until scan is done (max 10 minutes)
-        for i in $(seq 1 60); do
-          STATUS=$(gcloud artifacts docker images describe \
-            "${_REGISTRY}/${_IMAGE_NAME}:${_TAG}" \
-            --show-package-vulnerability \
-            --format='value(package_vulnerability_summary.count)' 2>/dev/null)
-
-          if [ -n "$STATUS" ]; then
-            echo "Scan complete."
-            break
-          fi
-          echo "Scan in progress... attempt $i"
-          sleep 10
-        done
-    id: 'wait-scan'
+        gcloud artifacts docker images scan \
+          "${_REGISTRY}/${_IMAGE_NAME}:${_TAG}" \
+          --location=us \
+          --format='value(response.scan)' > /workspace/scan_id.txt
+    id: 'scan'
 
   # Check scan results against policy
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -111,12 +101,14 @@ steps:
       - |
         # Get vulnerability counts by severity
         CRITICAL=$(gcloud artifacts docker images list-vulnerabilities \
-          "${_REGISTRY}/${_IMAGE_NAME}:${_TAG}" \
+          "$(cat /workspace/scan_id.txt)" \
+          --location=us \
           --format='value(vulnerability.effectiveSeverity)' \
           | grep -c CRITICAL || true)
 
         HIGH=$(gcloud artifacts docker images list-vulnerabilities \
-          "${_REGISTRY}/${_IMAGE_NAME}:${_TAG}" \
+          "$(cat /workspace/scan_id.txt)" \
+          --location=us \
           --format='value(vulnerability.effectiveSeverity)' \
           | grep -c HIGH || true)
 
@@ -135,22 +127,26 @@ steps:
         echo "Image passed vulnerability policy check"
     id: 'policy-check'
 
+  # Push approved image to our base image registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGISTRY}/${_IMAGE_NAME}:${_TAG}']
+    id: 'push'
+
   # Notify downstream services that a new base image is available
   - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
     args:
-      - 'pubsub'
-      - 'topics'
-      - 'publish'
-      - 'base-image-updated'
-      - '--message'
-      - '{"image":"${_REGISTRY}/${_IMAGE_NAME}:${_TAG}","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}'
+      - '-c'
+      - |
+        gcloud pubsub topics publish base-image-updated \
+          --message "{\"image\":\"${_REGISTRY}/${_IMAGE_NAME}:${_TAG}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
     id: 'notify'
 
 substitutions:
   _REGISTRY: 'us-central1-docker.pkg.dev/YOUR_PROJECT/base-images'
-  _UPSTREAM_IMAGE: 'node:20-alpine'
+  _UPSTREAM_IMAGE: 'node:24-alpine'
   _IMAGE_NAME: 'node'
-  _TAG: '20-alpine'
+  _TAG: '24-alpine'
 ```
 
 ## Auto-Triggering Application Rebuilds
@@ -160,11 +156,11 @@ When a base image updates, automatically rebuild all applications that depend on
 ```python
 import base64
 import json
-from google.cloud import cloudbuild_v1
+from google.cloud.devtools import cloudbuild_v1
 
 # Mapping of base images to the Cloud Build triggers that depend on them
 BASE_IMAGE_DEPENDENCIES = {
-    "node:20-alpine": [
+    "node:24-alpine": [
         "trigger-api-service",
         "trigger-web-frontend",
         "trigger-worker-service",
@@ -173,7 +169,7 @@ BASE_IMAGE_DEPENDENCIES = {
         "trigger-ml-pipeline",
         "trigger-data-processor",
     ],
-    "golang:1.21-alpine": [
+    "golang:1.26-alpine": [
         "trigger-gateway-service",
     ],
 }
@@ -199,10 +195,7 @@ def on_base_image_updated(event, context):
 
     for trigger_name in triggers_to_fire:
         # Look up the trigger by name
-        triggers = client.list_build_triggers(
-            project_id=project_id
-        )
-        for trigger in triggers.triggers:
+        for trigger in client.list_build_triggers(project_id=project_id):
             if trigger.name == trigger_name:
                 # Run the trigger with the updated base image info
                 client.run_build_trigger(
@@ -220,8 +213,8 @@ def on_base_image_updated(event, context):
 
 def _extract_short_name(full_image_url):
     """Extract the original image name from the registry URL"""
-    # Convert 'us-central1-docker.pkg.dev/proj/base-images/node:20-alpine'
-    # to 'node:20-alpine'
+    # Convert 'us-central1-docker.pkg.dev/proj/base-images/node:24-alpine'
+    # to 'node:24-alpine'
     parts = full_image_url.split("/")
     return parts[-1]
 ```
@@ -232,25 +225,27 @@ Structure your Dockerfiles to work with the automated update pipeline:
 
 ```dockerfile
 # Use a build argument for the base image so it can be overridden
-ARG BASE_IMAGE=us-central1-docker.pkg.dev/YOUR_PROJECT/base-images/node:20-alpine
+ARG BASE_IMAGE=us-central1-docker.pkg.dev/YOUR_PROJECT/base-images/node:24-alpine
 FROM ${BASE_IMAGE}
+ARG BASE_IMAGE
+ARG BUILD_DATE=unknown
 
-# Pin package versions where possible
+# Install runtime packages
 RUN apk add --no-cache \
-    curl=8.5.0-r0 \
-    tini=0.19.0-r1
+    curl \
+    tini
 
 # Copy package files first to leverage Docker layer caching
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
 
 # Add labels for traceability
 LABEL base-image="${BASE_IMAGE}"
-LABEL build-date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+LABEL build-date="${BUILD_DATE}"
 
 EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--"]
@@ -268,7 +263,7 @@ gcloud artifacts repositories create dockerhub-proxy \
     --location=us-central1 \
     --mode=remote-repository \
     --remote-repo-config-desc="Docker Hub proxy" \
-    --remote-docker-repo=DOCKER_HUB
+    --remote-docker-repo=DOCKER-HUB
 
 # Create a virtual repository that combines curated and proxied images
 gcloud artifacts repositories create approved-images \
@@ -281,20 +276,18 @@ gcloud artifacts repositories create approved-images \
 The upstream policy prioritizes your curated images:
 
 ```json
-{
-  "upstreamPolicies": [
-    {
-      "id": "curated-first",
-      "repository": "projects/YOUR_PROJECT/locations/us-central1/repositories/base-images",
-      "priority": 100
-    },
-    {
-      "id": "dockerhub-fallback",
-      "repository": "projects/YOUR_PROJECT/locations/us-central1/repositories/dockerhub-proxy",
-      "priority": 200
-    }
-  ]
-}
+[
+  {
+    "id": "curated-first",
+    "repository": "projects/YOUR_PROJECT/locations/us-central1/repositories/base-images",
+    "priority": 200
+  },
+  {
+    "id": "dockerhub-fallback",
+    "repository": "projects/YOUR_PROJECT/locations/us-central1/repositories/dockerhub-proxy",
+    "priority": 100
+  }
+]
 ```
 
 ## Scheduling Regular Base Image Updates
@@ -304,8 +297,9 @@ Set up a Cloud Scheduler job to check for base image updates daily:
 ```bash
 # Schedule base image update checks
 gcloud scheduler jobs create http base-image-check \
+    --location=us-central1 \
     --schedule="0 4 * * *" \
-    --uri="https://cloudbuild.googleapis.com/v1/projects/YOUR_PROJECT/triggers/base-image-update:run" \
+    --uri="https://cloudbuild.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/triggers/BASE_IMAGE_UPDATE_TRIGGER_ID:run" \
     --http-method=POST \
     --oauth-service-account-email=build-sa@YOUR_PROJECT.iam.gserviceaccount.com
 ```
@@ -321,8 +315,8 @@ gcloud artifacts docker tags list \
 
 # Retag a known-good version
 gcloud artifacts docker tags add \
-    us-central1-docker.pkg.dev/YOUR_PROJECT/base-images/node:20-alpine-previous \
-    us-central1-docker.pkg.dev/YOUR_PROJECT/base-images/node:20-alpine
+    us-central1-docker.pkg.dev/YOUR_PROJECT/base-images/node:24-alpine-previous \
+    us-central1-docker.pkg.dev/YOUR_PROJECT/base-images/node:24-alpine
 ```
 
 ## Wrapping Up
