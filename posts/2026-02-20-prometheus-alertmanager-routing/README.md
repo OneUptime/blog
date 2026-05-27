@@ -38,7 +38,7 @@ global:
   smtp_from: 'alerts@example.com'
   smtp_auth_username: 'alerts@example.com'
   smtp_auth_password: 'secret'
-  # Time to wait before sending a resolved notification
+  # Default timeout for alerts that do not include EndsAt
   resolve_timeout: 5m
 
 # The routing tree - determines where alerts go
@@ -92,34 +92,34 @@ route:
   # Child routes - evaluated in order
   routes:
     # Critical alerts go to PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
       # Shorter repeat interval for critical alerts
       repeat_interval: 1h
       # Continue to next matching route as well
-      continue: false
+      continue: true
 
     # Warning alerts go to Slack
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'warning-slack'
       repeat_interval: 4h
 
     # Database team alerts - match using regex
-    - match_re:
-        team: 'database|dba'
+    - matchers:
+        - team=~"database|dba"
       receiver: 'db-team-slack'
       # Nested child routes
       routes:
         # Critical DB alerts also page
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'db-pagerduty'
 
     # Staging alerts - lower priority
-    - match:
-        environment: staging
+    - matchers:
+        - environment="staging"
       receiver: 'staging-email'
       # Longer repeat interval for staging
       repeat_interval: 12h
@@ -213,7 +213,7 @@ sequenceDiagram
     P->>A: New alert same group (t=2m)
     A->>R: Send update with new alert (t=5m30s)
     Note over A: repeat_interval: 4h
-    A->>R: Resend if still firing (t=4h30s)
+    A->>R: Resend if still firing (t=4h5m30s)
 ```
 
 Three timing parameters control notification frequency:
@@ -232,18 +232,18 @@ Inhibition rules suppress notifications for certain alerts when other alerts are
 # alertmanager.yml
 inhibit_rules:
   # If a critical alert fires, suppress warnings for the same alertname
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     # Only inhibit if these labels match between source and target
     equal: ['alertname', 'namespace']
 
   # If the cluster is down, suppress all pod-level alerts
-  - source_match:
-      alertname: 'ClusterDown'
-    target_match_re:
-      alertname: 'Pod.*'
+  - source_matchers:
+      - alertname="ClusterDown"
+    target_matchers:
+      - alertname=~"Pod.*"
     equal: ['cluster']
 ```
 
@@ -292,7 +292,7 @@ amtool config routes show --config.file=alertmanager.yml
 
 Run multiple Alertmanager instances in a cluster to avoid single points of failure:
 
-```yaml
+```bash
 # Run three Alertmanager instances with mesh networking
 # Each instance knows about the others
 # alertmanager-0
@@ -304,6 +304,11 @@ alertmanager --config.file=alertmanager.yml \
 alertmanager --config.file=alertmanager.yml \
   --cluster.peer=alertmanager-0:9094 \
   --cluster.peer=alertmanager-2:9094
+
+# alertmanager-2
+alertmanager --config.file=alertmanager.yml \
+  --cluster.peer=alertmanager-0:9094 \
+  --cluster.peer=alertmanager-1:9094
 ```
 
 ## Conclusion
