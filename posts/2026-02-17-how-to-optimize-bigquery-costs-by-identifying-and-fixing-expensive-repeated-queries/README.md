@@ -8,7 +8,7 @@ Description: Identify and fix expensive repeated BigQuery queries that drive up 
 
 ---
 
-BigQuery on-demand pricing charges $6.25 per TB of data processed. That sounds reasonable until you realize that a single poorly written query scanning a 10 TB table costs $62.50, and if that query runs every hour, it costs $1,500 per day. The most impactful way to reduce your BigQuery bill is to find these expensive repeated queries and fix them.
+BigQuery on-demand pricing charges $6.25 per TiB of data processed in many regions, including the US multi-region. That sounds reasonable until you realize that a single poorly written query scanning a 10 TiB table costs $62.50, and if that query runs every hour, it costs $1,500 per day. The most impactful way to reduce your BigQuery bill is to find these expensive repeated queries and fix them.
 
 I have helped teams cut their BigQuery costs by 50-80% just by identifying and optimizing their top 10 most expensive queries. Here is the exact process I follow.
 
@@ -22,9 +22,9 @@ SELECT
   user_email,
   SUBSTR(query, 1, 200) as query_preview,
   COUNT(*) as execution_count,
-  SUM(total_bytes_billed) / POWER(1024, 4) as total_tb_billed,
+  SUM(total_bytes_billed) / POWER(1024, 4) as total_tib_billed,
   SUM(total_bytes_billed) / POWER(1024, 4) * 6.25 as estimated_cost_usd,
-  AVG(total_bytes_billed) / POWER(1024, 3) as avg_gb_per_execution,
+  AVG(total_bytes_billed) / POWER(1024, 3) as avg_gib_per_execution,
   AVG(TIMESTAMP_DIFF(end_time, start_time, SECOND)) as avg_duration_seconds
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
@@ -32,7 +32,7 @@ WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND state = 'DONE'
   AND total_bytes_billed > 0
 GROUP BY user_email, query_preview
-ORDER BY total_tb_billed DESC
+ORDER BY total_tib_billed DESC
 LIMIT 20;
 ```
 
@@ -45,10 +45,10 @@ Many expensive queries are the same query running on a schedule or being trigger
 ```sql
 -- Find queries that run frequently and process a lot of data
 SELECT
-  -- Normalize the query by removing whitespace and parameters
+  -- Normalize whitespace so repeated queries group together more easily
   REGEXP_REPLACE(SUBSTR(query, 1, 500), r'\s+', ' ') as normalized_query,
   COUNT(*) as run_count,
-  SUM(total_bytes_billed) / POWER(1024, 4) as total_tb_billed,
+  SUM(total_bytes_billed) / POWER(1024, 4) as total_tib_billed,
   SUM(total_bytes_billed) / POWER(1024, 4) * 6.25 as estimated_cost_usd,
   MIN(creation_time) as first_run,
   MAX(creation_time) as last_run,
@@ -60,7 +60,7 @@ WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND total_bytes_billed > 0
 GROUP BY normalized_query
 HAVING run_count > 5
-ORDER BY total_tb_billed DESC
+ORDER BY total_tib_billed DESC
 LIMIT 20;
 ```
 
@@ -73,10 +73,10 @@ Understanding who is running expensive queries helps you target optimization eff
 SELECT
   user_email,
   COUNT(*) as query_count,
-  SUM(total_bytes_billed) / POWER(1024, 4) as total_tb_billed,
+  SUM(total_bytes_billed) / POWER(1024, 4) as total_tib_billed,
   SUM(total_bytes_billed) / POWER(1024, 4) * 6.25 as estimated_cost_usd,
-  AVG(total_bytes_billed) / POWER(1024, 3) as avg_gb_per_query,
-  MAX(total_bytes_billed) / POWER(1024, 3) as max_gb_single_query
+  AVG(total_bytes_billed) / POWER(1024, 3) as avg_gib_per_query,
+  MAX(total_bytes_billed) / POWER(1024, 3) as max_gib_single_query
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND job_type = 'QUERY'
@@ -85,16 +85,16 @@ GROUP BY user_email
 ORDER BY estimated_cost_usd DESC;
 ```
 
-## Step 4 - Find Queries Without Partition Filters
+## Step 4 - Find Queries to Check for Missing Partition Filters
 
 Queries that scan entire tables without using partition filters are often the most expensive.
 
 ```sql
--- Find queries that scan large amounts of data without partition filters
+-- Find queries that scan large amounts of data; review query_preview for missing partition filters
 SELECT
   job_id,
   user_email,
-  total_bytes_billed / POWER(1024, 3) as gb_billed,
+  total_bytes_billed / POWER(1024, 3) as gib_billed,
   SUBSTR(query, 1, 300) as query_preview,
   ARRAY(
     SELECT AS STRUCT t.table_id, t.dataset_id
@@ -104,7 +104,7 @@ FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
-  AND total_bytes_billed > 10 * POWER(1024, 3)  -- More than 10 GB
+  AND total_bytes_billed > 10 * POWER(1024, 3)  -- More than 10 GiB
 ORDER BY total_bytes_billed DESC
 LIMIT 20;
 ```
@@ -114,12 +114,12 @@ LIMIT 20;
 The single highest-impact optimization. If your tables are partitioned, always include partition-pruning filters.
 
 ```sql
--- Before: full table scan on a date-partitioned table ($62.50 for 10 TB)
+-- Before: full table scan on a date-partitioned table ($62.50 for 10 TiB)
 SELECT user_id, COUNT(*) as events
 FROM `my_dataset.events`
 GROUP BY user_id;
 
--- After: scan only the last 30 days ($5.00 if recent data is ~800 GB)
+-- After: scan only the last 30 days ($5.00 if recent data is ~800 GiB)
 SELECT user_id, COUNT(*) as events
 FROM `my_dataset.events`
 WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
@@ -146,7 +146,7 @@ AS
 SELECT
   DATE(event_timestamp) as day,
   user_segment,
-  COUNT(DISTINCT user_id) as unique_users,
+  APPROX_COUNT_DISTINCT(user_id) as unique_users,
   COUNT(*) as event_count,
   SUM(revenue) as total_revenue
 FROM `my_dataset.events`
@@ -166,7 +166,7 @@ BigQuery caches query results for 24 hours. If the same query runs multiple time
 SELECT
   cache_hit,
   COUNT(*) as query_count,
-  SUM(total_bytes_billed) / POWER(1024, 4) as tb_billed,
+  SUM(total_bytes_billed) / POWER(1024, 4) as tib_billed,
   SUM(total_bytes_billed) / POWER(1024, 4) * 6.25 as cost_usd
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
@@ -197,11 +197,11 @@ WHERE event_timestamp >= '2024-06-14 00:00:00 UTC';
 BigQuery is columnar - you only pay for the columns you read. Using SELECT * on a wide table is expensive.
 
 ```sql
--- Bad: SELECT * reads all 100 columns ($50 for a 10 TB table)
+-- Bad: SELECT * reads all 100 columns ($50 for an 8 TiB table)
 SELECT * FROM `my_dataset.wide_table`
 WHERE created_at >= '2024-06-01';
 
--- Good: select only needed columns ($2 if the 4 columns are 400 GB total)
+-- Good: select only needed columns ($2 if the 4 columns are about 328 GiB total)
 SELECT user_id, event_type, revenue, created_at
 FROM `my_dataset.wide_table`
 WHERE created_at >= '2024-06-01';
@@ -222,40 +222,37 @@ AS SELECT * FROM `my_dataset.events`;
 SELECT COUNT(*)
 FROM `my_dataset.events_clustered`
 WHERE event_timestamp >= '2024-06-01'
+  AND user_id = 'user_123'
   AND event_type = 'purchase';
 ```
 
-## Fix 6 - Set Custom Quotas per User
+## Fix 6 - Set Custom Per-User Quotas
 
-Prevent individual users from running excessively expensive queries.
+Prevent any one user or service account in a project from running excessively expensive queries. BigQuery custom quotas can be set at the project level or as a per-user limit applied separately to every user in the project, but they cannot be assigned to one specific user.
 
 ```bash
-# Set a custom quota for a specific user (10 TB per day)
+# Set a per-user custom quota, such as 10 TiB per day
 
-# This is configured through the Cloud Console or API
-# Navigate to BigQuery > Admin > Quotas
+# This is configured through the Google Cloud console or API.
+# Navigate to IAM & Admin > Quotas & System Limits, filter for the BigQuery API,
+# then edit "Query usage per day per user".
 ```
 
 You can also set project-level quotas.
 
 ```bash
-# Request a quota adjustment for the project
-gcloud alpha services quota update \
-    --service=bigquery.googleapis.com \
-    --consumer=project:my-project \
-    --metric=bigquery.googleapis.com/quota/query/usage \
-    --unit=1/d/{project} \
-    --value=10995116277760  # 10 TB in bytes
+# In the same Quotas & System Limits page, edit "Query usage per day"
+# to set a project-level cap. Enter the value in TiB.
 ```
 
-## Fix 7 - Consider Flat-Rate Pricing
+## Fix 7 - Consider Capacity-Based Pricing
 
-If your monthly on-demand costs exceed what flat-rate slots would cost, switching to reservations can save money and provide more predictable billing.
+If your monthly on-demand costs exceed what dedicated capacity would cost, switching to BigQuery reservations can save money and provide more predictable billing.
 
 ```sql
 -- Estimate monthly costs to decide on pricing model
 SELECT
-  SUM(total_bytes_billed) / POWER(1024, 4) as total_tb_billed,
+  SUM(total_bytes_billed) / POWER(1024, 4) as total_tib_billed,
   SUM(total_bytes_billed) / POWER(1024, 4) * 6.25 as on_demand_cost
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
@@ -263,7 +260,7 @@ WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND state = 'DONE';
 ```
 
-If your monthly on-demand cost exceeds $10,000-$15,000, flat-rate pricing is likely cheaper.
+If your workload is steady and expensive, compare this estimate against current BigQuery capacity pricing for your region and commitment term.
 
 ## Building a Cost Monitoring Dashboard
 
@@ -272,7 +269,7 @@ If your monthly on-demand cost exceeds $10,000-$15,000, flat-rate pricing is lik
 SELECT
   DATE(creation_time) as day,
   COUNT(*) as query_count,
-  SUM(total_bytes_billed) / POWER(1024, 4) as tb_billed,
+  SUM(total_bytes_billed) / POWER(1024, 4) as tib_billed,
   ROUND(SUM(total_bytes_billed) / POWER(1024, 4) * 6.25, 2) as estimated_cost_usd,
   SUM(CASE WHEN cache_hit THEN 1 ELSE 0 END) as cached_queries,
   ROUND(SUM(CASE WHEN cache_hit THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as cache_hit_rate_pct
