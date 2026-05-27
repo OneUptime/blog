@@ -16,7 +16,7 @@ This post covers how to enable package repositories on both Debian-based and Red
 
 The approach differs depending on your Linux family:
 
-- **Debian/Ubuntu**: Repositories are managed through `.list` files in `/etc/apt/sources.list.d/` or the main `/etc/apt/sources.list` file. Ansible provides the `apt_repository` module.
+- **Debian/Ubuntu**: Repositories are managed through `.list` files, DEB822 `.sources` files in `/etc/apt/sources.list.d/`, or the main `/etc/apt/sources.list` file. Ansible provides the `apt_repository` module for traditional one-line sources.
 - **RHEL/CentOS/Fedora**: Repositories are managed through `.repo` files in `/etc/yum.repos.d/`. Ansible provides the `yum_repository` module.
 
 Let me walk through both.
@@ -43,24 +43,26 @@ This creates a file at `/etc/yum.repos.d/nginx-stable.repo` with the correct con
 
 ### Enabling Built-in Repositories
 
-RHEL and CentOS ship with several repositories that are disabled by default. You can enable them using the `dnf` or `yum` command through the `command` module, but a cleaner approach is to use `community.general.rhsm_repository` for RHEL subscribed systems or edit the repo file directly.
+RHEL and CentOS ship with several repositories that are disabled by default. You can enable them using the `dnf` or `yum` command through the `command` module, but a cleaner approach is to use `community.general.rhsm_repository` for RHEL subscribed systems or manage the repo file directly on systems that are not controlled by RHSM.
 
 ```yaml
-# Enable the CodeReady Builder (CRB) repository on RHEL
-- name: Enable CRB repository
-  ansible.builtin.command:
-    cmd: dnf config-manager --set-enabled crb
-  changed_when: true
+# Enable the CodeReady Linux Builder repository on subscribed RHEL
+- name: Enable CodeReady Linux Builder repository
+  community.general.rhsm_repository:
+    name: "codeready-builder-for-rhel-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}-rpms"
+    state: enabled
+  when: ansible_distribution == "RedHat"
 
-# Alternative: Enable PowerTools on CentOS Stream 8
-- name: Enable PowerTools repository
+# Alternative: Enable CRB on CentOS Stream 9
+- name: Enable CRB repository
   ansible.builtin.yum_repository:
-    name: powertools
-    description: CentOS Stream 8 - PowerTools
-    mirrorlist: http://mirrorlist.centos.org/?release=$stream&arch=$basearch&repo=PowerTools&infra=$infra
+    name: crb
+    description: CentOS Stream 9 - CRB
+    baseurl: https://mirror.stream.centos.org/9-stream/CRB/$basearch/os/
     gpgcheck: true
     gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
     enabled: true
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "9"
 ```
 
 ### Adding Multiple Repositories
@@ -93,18 +95,25 @@ When you need several repositories, use a loop to keep things clean.
 
 ## Enabling Repositories on Debian/Ubuntu with apt_repository
 
-The `apt_repository` module handles adding and removing APT sources. Modern Debian and Ubuntu systems prefer the DEB822 format, but the traditional one-line format still works everywhere.
+The `apt_repository` module handles adding and removing APT sources. Modern Debian and Ubuntu systems prefer the DEB822 format, but the traditional one-line format is still widely supported.
 
 ```yaml
 # Add the Docker CE repository on Ubuntu
-- name: Add Docker GPG key
-  ansible.builtin.apt_key:
+- name: Ensure APT keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Docker GPG key
+  ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
 
 - name: Add Docker CE repository
   ansible.builtin.apt_repository:
-    repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
     filename: docker-ce
     update_cache: true
@@ -118,15 +127,21 @@ Starting with Ubuntu 22.04, the recommended approach is to use signed-by in the 
 
 ```yaml
 # Modern approach using signed-by (Ubuntu 22.04+)
+- name: Ensure APT keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Download Docker GPG key
   ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    dest: /usr/share/keyrings/docker-archive-keyring.asc
+    dest: /etc/apt/keyrings/docker.asc
     mode: '0644'
 
 - name: Add Docker repository with signed-by
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/docker-archive-keyring.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
     filename: docker-ce
 ```
@@ -156,7 +171,7 @@ In many environments, you manage a mix of distributions. Here is how to handle r
         description: Extra Packages for Enterprise Linux
         metalink: "https://mirrors.fedoraproject.org/metalink?repo=epel-{{ ansible_distribution_major_version }}&arch=$basearch"
         gpgcheck: true
-        gpgkey: "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-{{ ansible_distribution_major_version }}"
+        gpgkey: "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{ ansible_distribution_major_version }}"
         enabled: true
       when: ansible_os_family == "RedHat"
 
@@ -199,15 +214,10 @@ Sometimes you need to disable a repository rather than remove it entirely. On RH
 
 ## Repository Priority Management
 
-On RHEL systems, you can set repository priorities to control which repository gets preference when the same package exists in multiple repos. Lower numbers mean higher priority.
+On RHEL and other DNF/YUM-based systems, you can set repository priorities to control which repository gets preference when the same package exists in multiple repos. Lower numbers mean higher priority.
 
 ```yaml
-# Set repository priority (requires yum-plugin-priorities)
-- name: Ensure priorities plugin is installed
-  ansible.builtin.dnf:
-    name: yum-plugin-priorities
-    state: present
-
+# Set repository priority
 - name: Add high-priority internal repository
   ansible.builtin.yum_repository:
     name: internal-packages
@@ -239,13 +249,15 @@ yum_repositories:
     gpgcheck: true
 
 apt_repositories:
-  - repo: "deb https://apt.grafana.com stable main"
+  - repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
     filename: grafana
     key_url: https://apt.grafana.com/gpg.key
+    keyring: /etc/apt/keyrings/grafana.asc
 
-  - repo: "deb https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+  - repo: "deb [signed-by=/etc/apt/keyrings/hashicorp.asc] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
     filename: hashicorp
     key_url: https://apt.releases.hashicorp.com/gpg
+    keyring: /etc/apt/keyrings/hashicorp.asc
 ```
 
 ```yaml
@@ -262,10 +274,18 @@ apt_repositories:
   loop: "{{ yum_repositories }}"
   when: ansible_os_family == "RedHat"
 
-- name: Add APT repository keys
-  ansible.builtin.apt_key:
+- name: Ensure APT keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: ansible_os_family == "Debian"
+
+- name: Download APT repository keys
+  ansible.builtin.get_url:
     url: "{{ item.key_url }}"
-    state: present
+    dest: "{{ item.keyring }}"
+    mode: '0644'
   loop: "{{ apt_repositories }}"
   when: ansible_os_family == "Debian"
 
@@ -280,4 +300,4 @@ apt_repositories:
 
 ## Wrapping Up
 
-Managing package repositories with Ansible keeps your infrastructure consistent and auditable. The key points to remember: always import GPG keys before adding repositories, use the appropriate module for your distribution family, and consider using variables to define repositories as data. This approach scales well from a handful of servers to thousands, and makes it easy to add or remove repositories across your entire fleet with a single playbook run.
+Managing package repositories with Ansible keeps your infrastructure consistent and auditable. The key points to remember: always configure GPG keys before adding repositories, use the appropriate module for your distribution family, and consider using variables to define repositories as data. This approach scales well from a handful of servers to thousands, and makes it easy to add or remove repositories across your entire fleet with a single playbook run.
