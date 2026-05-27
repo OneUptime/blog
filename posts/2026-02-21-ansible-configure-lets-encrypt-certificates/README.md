@@ -15,7 +15,7 @@ Let's Encrypt provides free, automated SSL/TLS certificates that are trusted by 
 - Ansible 2.9+ on your control node
 - Target hosts with a public IP address
 - DNS A records pointing to your server
-- Port 80 or 443 accessible from the internet (for HTTP-01 or TLS-ALPN-01 challenges)
+- Port 80 accessible from the internet for HTTP-01 challenges, or port 443 for TLS-ALPN-01 challenges
 - Root or sudo access
 
 ## Installing Certbot
@@ -52,7 +52,7 @@ Certbot is the most popular Let's Encrypt client. Install it along with the web 
 
 ## Requesting a Certificate with Certbot (Nginx)
 
-The certbot nginx plugin can automatically configure Nginx to use the new certificate:
+The certbot nginx plugin can use your Nginx configuration to complete the certificate challenge. With `certonly`, Certbot obtains the certificate but does not install it into Nginx, so the playbook deploys the SSL configuration separately:
 
 ```yaml
 # certbot_nginx.yml - Request Let's Encrypt cert for Nginx
@@ -65,7 +65,7 @@ The certbot nginx plugin can automatically configure Nginx to use the new certif
     email: admin@example.com
     webroot: /var/www/html
   tasks:
-    - name: Ensure Nginx is installed and running
+    - name: Ensure Nginx is running
       ansible.builtin.service:
         name: nginx
         state: started
@@ -120,7 +120,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {{ domain }};
 
     ssl_certificate /etc/letsencrypt/live/{{ domain }}/fullchain.pem;
@@ -139,7 +140,7 @@ server {
 
 ## Webroot Method
 
-If you do not want certbot to touch your web server configuration, use the webroot method. It places a challenge file in your document root and lets the existing web server serve it:
+If you do not want certbot to touch your web server configuration, use the webroot method. It places a challenge file in your document root and lets the existing web server serve it. Make sure the challenge location is included in each relevant Nginx server block:
 
 ```yaml
 # certbot_webroot.yml - Request cert using webroot method
@@ -164,7 +165,7 @@ If you do not want certbot to touch your web server configuration, use the webro
         mode: '0755'
       loop: "{{ domains }}"
 
-    - name: Ensure Nginx serves ACME challenge files
+    - name: Create Nginx snippet for ACME challenge files
       ansible.builtin.copy:
         dest: /etc/nginx/snippets/letsencrypt.conf
         content: |
@@ -250,7 +251,7 @@ Wildcard certificates require the DNS-01 challenge. This is useful for domains l
 
 ## Auto-Renewal Configuration
 
-Let's Encrypt certificates are valid for only 90 days. Auto-renewal is essential:
+Default Let's Encrypt certificates are currently valid for 90 days, with shorter certificate profiles being phased in through 2028. Auto-renewal is essential:
 
 ```yaml
 # certbot_renewal.yml - Configure automatic certificate renewal
@@ -300,7 +301,7 @@ Let's Encrypt certificates are valid for only 90 days. Auto-renewal is essential
 
 ## Using the ACME Module Directly
 
-Ansible also has a built-in ACME module (`community.crypto.acme_certificate`) that talks to the Let's Encrypt API directly, without needing certbot installed:
+Ansible also has the `community.crypto.acme_certificate` module, provided by the `community.crypto` collection, that talks to the Let's Encrypt API directly, without needing certbot installed:
 
 ```yaml
 # acme_module.yml - Use Ansible ACME module for Let's Encrypt
@@ -351,6 +352,13 @@ Ansible also has a built-in ACME module (`community.crypto.acme_certificate`) th
         challenge: http-01
       register: acme_challenge
 
+    - name: Create challenge response directory
+      ansible.builtin.file:
+        path: "/var/www/html/{{ acme_challenge.challenge_data[domain]['http-01'].resource | dirname }}"
+        state: directory
+        mode: '0755'
+      when: acme_challenge is changed
+
     - name: Create challenge response file
       ansible.builtin.copy:
         dest: "/var/www/html/{{ acme_challenge.challenge_data[domain]['http-01'].resource }}"
@@ -387,7 +395,7 @@ graph TD
     H --> I[Deploy to Web Server]
     I --> J[Configure Auto-Renewal]
     J --> K[Cron: certbot renew]
-    K -->|Every 60 days| C
+    K -->|When renewal is due| C
 ```
 
 ## Monitoring Certificate Expiration
@@ -425,4 +433,4 @@ Even with auto-renewal, you should monitor for failures:
         label: "{{ item.item.path }}"
 ```
 
-Let's Encrypt with Ansible is a winning combination. You get free, trusted SSL certificates across your entire fleet with zero manual intervention. The key is to set up the initial certificate request with Ansible and then configure auto-renewal so that certificates rotate themselves every 60 days or so. The renewal hooks ensure your web server picks up the new certificate without any downtime.
+Let's Encrypt with Ansible is a winning combination. You get free, trusted SSL certificates across your entire fleet with zero manual intervention. The key is to set up the initial certificate request with Ansible and then configure auto-renewal so that certificates rotate themselves when renewal is due. The renewal hooks ensure your web server picks up the new certificate without any downtime.
