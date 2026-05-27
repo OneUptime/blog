@@ -16,7 +16,7 @@ When a Cloud Function instance spins up from scratch, Google Cloud has to:
 
 1. Allocate a container
 2. Load the runtime (Node.js, Python, Go, etc.)
-3. Download and extract your deployment package
+3. Prepare the deployed container and function code
 4. Load your dependencies into memory
 5. Execute your global/module-level code
 6. Run your function handler
@@ -37,18 +37,20 @@ const { Storage } = require('@google-cloud/storage');
 const express = require('express');
 
 const moduleLoadTime = Date.now() - moduleLoadStart;
+let isColdStart = true;
 
 // Track per-request execution time
 exports.myFunction = (req, res) => {
   const handlerStart = Date.now();
 
   // Log cold start metrics when the module was just loaded
-  if (moduleLoadTime > 0) {
+  if (isColdStart) {
     console.log(JSON.stringify({
       type: 'cold_start_metrics',
       moduleLoadMs: moduleLoadTime,
       totalColdStartMs: Date.now() - moduleLoadStart
     }));
+    isColdStart = false;
   }
 
   // ... actual function logic
@@ -112,10 +114,10 @@ du -sh node_modules/* | sort -rh | head -20
 
 Common offenders include:
 
-- `aws-sdk` (if accidentally included) - 60MB+
-- `@google-cloud/bigquery` - 15MB+
-- `moment` (replace with `dayjs`) - 4.2MB vs 7KB
-- `lodash` (use specific packages like `lodash.get`) - 4.7MB vs 11KB
+- `aws-sdk` (if accidentally included)
+- `@google-cloud/bigquery`
+- `moment` (replace with `dayjs` when you only need date utilities)
+- `lodash` (use native JavaScript features or targeted imports instead)
 
 Here is how to slim down a typical function:
 
@@ -124,9 +126,8 @@ Here is how to slim down a typical function:
 const _ = require('lodash');
 const result = _.get(data, 'deeply.nested.value');
 
-// AFTER: Import only the specific function you need (11KB)
-const get = require('lodash.get');
-const result = get(data, 'deeply.nested.value');
+// AFTER: Use native optional chaining for simple property access
+const result = data?.deeply?.nested?.value;
 ```
 
 For Python functions, the same principle applies:
@@ -156,7 +157,7 @@ For Node.js functions, bundling your code with a tool like esbuild or webpack ca
 npm install --save-dev esbuild
 
 # Bundle your function into a single file
-npx esbuild index.js --bundle --platform=node --target=node20 \
+npx esbuild index.js --bundle --platform=node --target=node22 \
   --outfile=dist/index.js --external:@google-cloud/*
 ```
 
@@ -167,8 +168,8 @@ Add this to your package.json:
 ```json
 {
   "scripts": {
-    "build": "esbuild index.js --bundle --platform=node --target=node20 --outfile=dist/index.js --external:@google-cloud/*",
-    "deploy": "npm run build && gcloud functions deploy myFunc --source=dist --runtime=nodejs20"
+    "build": "esbuild index.js --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@google-cloud/*",
+    "deploy": "npm run build && cp package*.json dist/ && gcloud functions deploy myFunc --source=dist --runtime=nodejs22 --gen2 --trigger-http"
   }
 }
 ```
@@ -225,17 +226,16 @@ If cold start time is critical and you have flexibility in your runtime choice, 
 
 ## Technique 6: Keep Your Deployment Package Small
 
-The size of your deployment artifact directly affects cold start time because it needs to be downloaded and extracted.
+The size of your source upload and installed dependencies affects deploy time and can contribute to startup latency because there is less code to build, package, load, and initialize.
 
 ```bash
-# Check your deployment package size
-gcloud functions describe my-function --region=us-central1 \
-  --format="value(buildConfig.source.storageSource)"
+# Estimate the size of your source upload before deploy
+du -sh . --exclude=node_modules
 ```
 
 Tips for reducing package size:
 - Add a proper `.gcloudignore` file to exclude test files, docs, and development artifacts
-- Use `--no-optional` when installing npm packages
+- Use `npm install --omit=optional` when installing npm packages
 - Remove TypeScript source files from deployed packages (only ship compiled JS)
 - For Python, avoid including unnecessary files in your source directory
 
@@ -264,7 +264,7 @@ gcloud functions deploy my-function \
   --region=us-central1
 ```
 
-This costs money since you are paying for an idle instance, but it eliminates cold starts entirely for your first concurrent request. Combine this with Gen 2 concurrency to handle multiple requests on that warm instance.
+This costs money since you are paying for an idle instance, but it greatly reduces cold starts for requests that can be served by the warm instance. Combine this with Gen 2 concurrency to handle multiple requests on that warm instance.
 
 ## Putting It All Together
 
