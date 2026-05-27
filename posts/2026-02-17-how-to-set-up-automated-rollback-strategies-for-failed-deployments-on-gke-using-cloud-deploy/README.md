@@ -43,9 +43,6 @@ kind: Deployment
 metadata:
   name: my-app
   namespace: production
-  annotations:
-    # Keep the last 10 revisions for rollback
-    deployment.kubernetes.io/revision: "1"
 spec:
   replicas: 5
   # Keep 10 revisions in history
@@ -55,7 +52,7 @@ spec:
     rollingUpdate:
       # Allow at most 1 extra pod during update
       maxSurge: 1
-      # Ensure at least 4 pods are always available
+      # Ensure all 5 existing pods stay available during the update
       maxUnavailable: 0
   selector:
     matchLabels:
@@ -106,11 +103,11 @@ spec:
   progressDeadlineSeconds: 300
 ```
 
-The `progressDeadlineSeconds` is critical for automated rollback. If the deployment does not complete within this time (because pods keep failing health checks), Kubernetes marks it as failed.
+The `progressDeadlineSeconds` is critical for detecting failed rollouts. If the deployment does not complete within this time (because pods keep failing readiness checks, pods cannot be created, or the rollout otherwise stalls), Kubernetes marks it as failed.
 
 ## Step 2: Set Up Cloud Deploy Pipeline with Rollback
 
-Configure Cloud Deploy with verification steps that trigger rollback on failure:
+Configure Cloud Deploy with verification steps and a repair automation rule that rolls back after failed rollout attempts:
 
 ```yaml
 # clouddeploy.yaml
@@ -138,8 +135,6 @@ serialPipeline:
           canaryDeployment:
             percentages: [10, 50]
             verify: true
-            postdeploy:
-              actions: ["verify-deployment"]
 ---
 apiVersion: deploy.cloud.google.com/v1
 kind: Target
@@ -154,38 +149,52 @@ metadata:
   name: production
 gke:
   cluster: projects/my-project/locations/us-central1/clusters/production
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Automation
+metadata:
+  name: production-repair
+description: Automatically roll back failed production rollouts
+suspended: false
+serviceAccount: cloud-deploy-automation@my-project.iam.gserviceaccount.com
+selector:
+  targets:
+    - id: production
+rules:
+  - repairRolloutRule:
+      id: rollback-after-failed-verification
+      jobs: ["deploy", "verify"]
+      repairPhases:
+        - retry:
+            attempts: 1
+            wait: 1m
+            backoffMode: LINEAR
+        - rollback:
+            destinationPhase: stable
 ```
 
 ## Step 3: Create Verification Jobs
 
-Build verification jobs that run after each deployment phase. If they fail, Cloud Deploy automatically rolls back:
+Build verification jobs in Skaffold that run after each deployment phase. If they fail, Cloud Deploy marks the rollout failed, and the `repairRolloutRule` above can roll back to the last successful release:
 
 ```yaml
-# k8s/verify-job.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: deployment-verify
-  annotations:
-    deploy.cloud.google.com/verify: "true"
-spec:
-  backoffLimit: 0
-  activeDeadlineSeconds: 600
-  template:
-    spec:
-      containers:
-        - name: verifier
-          image: gcr.io/my-project/deployment-verifier:latest
-          env:
-            - name: SERVICE_URL
-              value: "http://my-app-service.production.svc.cluster.local"
-            - name: EXPECTED_VERSION
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.labels['app.kubernetes.io/version']
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
+# skaffold.yaml
+apiVersion: skaffold/v4beta7
+kind: Config
+manifests:
+  rawYaml:
+    - k8s/deployment.yaml
+deploy:
+  kubectl: {}
+verify:
+  - name: verify-deployment
+    container:
+      name: verifier
+      image: gcr.io/my-project/deployment-verifier:latest
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+              SERVICE_URL="http://my-app-service.production.svc.cluster.local"
               echo "Starting deployment verification..."
 
               # Check 1: Health endpoint returns 200
@@ -234,7 +243,8 @@ spec:
               fi
 
               echo "All verification checks passed"
-      restartPolicy: Never
+    executionMode:
+      kubernetesCluster: {}
 ```
 
 ## Step 4: Automated Metrics-Based Rollback
@@ -245,22 +255,25 @@ Create a monitoring system that watches key metrics and triggers rollback when t
 # rollback_controller.py - Cloud Function for automated rollback
 import os
 import json
-import subprocess
+import base64
+import time
 from google.cloud import deploy_v1
-from google.cloud import container_v1
 
 PROJECT_ID = os.environ['PROJECT_ID']
 REGION = os.environ.get('REGION', 'us-central1')
 PIPELINE_NAME = os.environ.get('PIPELINE_NAME', 'my-app-pipeline')
+TARGET_ID = os.environ.get('TARGET_ID', 'production')
 
-deploy_client = deploy_v1.CloudDeployClient()
+deploy_client = deploy_v1.CloudDeployClient(
+    client_options={"api_endpoint": f"{REGION}-deploy.googleapis.com"}
+)
 
 def handle_alert(event, context):
     """
     Triggered by a Cloud Monitoring alert via Pub/Sub.
     Automatically rolls back the production deployment if metrics are degraded.
     """
-    alert_data = json.loads(event['data'].decode('utf-8'))
+    alert_data = json.loads(base64.b64decode(event['data']).decode('utf-8'))
 
     incident_state = alert_data.get('incident', {}).get('state', '')
     policy_name = alert_data.get('incident', {}).get('policy_name', '')
@@ -284,57 +297,23 @@ def handle_alert(event, context):
 
     print(f"Initiating automated rollback for policy: {policy_name}")
 
-    # Get the current rollout
     pipeline_path = f'projects/{PROJECT_ID}/locations/{REGION}/deliveryPipelines/{PIPELINE_NAME}'
 
     try:
-        # List recent rollouts for the production target
-        rollouts = deploy_client.list_rollouts(
+        rollout_id = f'auto-rollback-{int(time.time())}'
+        response = deploy_client.rollback_target(
             request={
-                'parent': f'{pipeline_path}/releases/-'
+                'name': pipeline_path,
+                'target_id': TARGET_ID,
+                'rollout_id': rollout_id,
             }
         )
 
-        # Find the current active rollout
-        current_rollout = None
-        for rollout in rollouts:
-            if rollout.state == deploy_v1.Rollout.State.SUCCEEDED:
-                current_rollout = rollout
-                break
-
-        if current_rollout:
-            # Trigger rollback using Cloud Deploy
-            print(f"Rolling back from: {current_rollout.name}")
-
-            # Use kubectl to perform immediate rollback
-            perform_kubectl_rollback()
-
-            print("Rollback initiated successfully")
-        else:
-            print("No active rollout found to roll back")
+        print(f"Rollback rollout created: {response.rollback_config.rollout.name}")
 
     except Exception as e:
         print(f"Error during rollback: {e}")
         raise
-
-def perform_kubectl_rollback():
-    """Use kubectl to roll back the deployment immediately."""
-    # Get cluster credentials
-    subprocess.run([
-        'gcloud', 'container', 'clusters', 'get-credentials',
-        'production', '--region', REGION, '--project', PROJECT_ID
-    ], check=True)
-
-    # Roll back to previous revision
-    result = subprocess.run([
-        'kubectl', 'rollout', 'undo',
-        'deployment/my-app', '-n', 'production'
-    ], capture_output=True, text=True)
-
-    print(f"Kubectl rollback output: {result.stdout}")
-    if result.returncode != 0:
-        print(f"Kubectl rollback error: {result.stderr}")
-        raise Exception(f"Rollback failed: {result.stderr}")
 ```
 
 ## Step 5: Set Up Alerting Policies That Trigger Rollback
@@ -345,35 +324,51 @@ Create monitoring alerts that feed into the rollback controller:
 # Create a Pub/Sub topic for rollback alerts
 gcloud pubsub topics create deployment-rollback-alerts
 
+# Create a Pub/Sub notification channel and use the returned channel ID below
+cat > pubsub-channel.json <<'EOF'
+{
+  "type": "pubsub",
+  "displayName": "Deployment rollback alerts",
+  "description": "Pub/Sub channel for deployment rollback alerts",
+  "labels": {
+    "topic": "projects/my-project/topics/deployment-rollback-alerts"
+  }
+}
+EOF
+
+gcloud beta monitoring channels create --channel-content-from-file=pubsub-channel.json
+
+# Allow Cloud Monitoring to publish to the topic
+gcloud pubsub topics add-iam-policy-binding deployment-rollback-alerts \
+  --member=serviceAccount:service-PROJECT_NUMBER@gcp-sa-monitoring-notification.iam.gserviceaccount.com \
+  --role=roles/pubsub.publisher
+
 # Create alert for high error rate
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="High Error Rate - Production" \
   --condition-display-name="5xx error rate above 5%" \
   --condition-filter='resource.type="k8s_container" AND metric.type="custom.googleapis.com/http/error_rate" AND resource.labels.namespace_name="production"' \
-  --condition-threshold-value=0.05 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=120s \
-  --notification-channels=projects/my-project/notificationChannels/rollback-pubsub
+  --if='> 0.05' \
+  --duration=120s \
+  --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 
 # Create alert for latency spike
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Latency Spike - Production" \
   --condition-display-name="P99 latency above 5 seconds" \
   --condition-filter='resource.type="k8s_container" AND metric.type="custom.googleapis.com/http/latency_p99" AND resource.labels.namespace_name="production"' \
-  --condition-threshold-value=5000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=120s \
-  --notification-channels=projects/my-project/notificationChannels/rollback-pubsub
+  --if='> 5000' \
+  --duration=120s \
+  --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 
 # Create alert for pod crash loops
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Pod Crash Loop - Production" \
   --condition-display-name="Pods restarting repeatedly" \
   --condition-filter='resource.type="k8s_container" AND metric.type="kubernetes.io/container/restart_count" AND resource.labels.namespace_name="production"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --notification-channels=projects/my-project/notificationChannels/rollback-pubsub
+  --if='> 5' \
+  --duration=300s \
+  --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 ```
 
 ## Step 6: Manual Rollback Commands
@@ -397,6 +392,7 @@ gcloud deploy targets rollback production \
 gcloud deploy releases promote \
   --release=release-v1-2-0 \
   --delivery-pipeline=my-app-pipeline \
+  --to-target=production \
   --region=us-central1
 ```
 
@@ -414,8 +410,9 @@ echo "Verifying rollback success..."
 kubectl rollout status deployment/my-app -n production --timeout=120s
 
 # Check pod health
-READY_PODS=$(kubectl get pods -n production -l app=my-app \
-  --field-selector=status.phase=Running -o name | wc -l)
+READY_PODS=$(kubectl get deployment my-app -n production \
+  -o jsonpath='{.status.readyReplicas}')
+READY_PODS=${READY_PODS:-0}
 
 DESIRED_PODS=$(kubectl get deployment my-app -n production \
   -o jsonpath='{.spec.replicas}')
