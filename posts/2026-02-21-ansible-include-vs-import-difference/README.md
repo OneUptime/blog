@@ -37,7 +37,7 @@ flowchart LR
 
 ## Available Directives
 
-Here is the full list of import and include directives in Ansible.
+Here is the full list of import and include directives for playbooks, roles, tasks, and variable files in Ansible.
 
 | Directive | Type | Used For |
 |-----------|------|----------|
@@ -46,14 +46,15 @@ Here is the full list of import and include directives in Ansible.
 | `import_role` | Static | Including roles |
 | `include_tasks` | Dynamic | Including task files |
 | `include_role` | Dynamic | Including roles |
+| `include_vars` | Dynamic | Including variable files |
 
-Note: `include_playbook` does not exist. Playbooks can only be imported statically.
+Note: `include_playbook` does not exist. Playbooks can only be imported statically. There is also no `import_vars`; use `vars_files` for static variable files.
 
 ## How They Differ in Practice
 
 ### Tag Behavior
 
-This is the most impactful difference. With `import_tasks`, tags on individual tasks inside the file work correctly with `--tags` and `--skip-tags`. With `include_tasks`, they do not.
+This is the most impactful difference. With `import_tasks`, tags on individual tasks inside the file are visible at parse time and work directly with `--tags` and `--skip-tags`. With `include_tasks`, the include task must run before Ansible can evaluate tags inside the file.
 
 ```yaml
 # tasks/deploy.yml
@@ -104,16 +105,19 @@ ansible-playbook playbook.yml --tags migrations
 ansible-playbook playbook.yml --tags migrations
 ```
 
-To make tags work with `include_tasks`, you must tag the include directive itself.
+To make a dynamic include run when you select an internal tag, put the same tag on the include directive itself.
 
 ```yaml
 - include_tasks: tasks/deploy.yml
-  tags: deploy
+  tags: migrations
 
 # Now this works
-# ansible-playbook playbook.yml --tags deploy
-# But it runs ALL tasks in the file, not just the ones tagged "migrations"
+# ansible-playbook playbook.yml --tags migrations
+# It runs the include task and then only the tasks inside the file
+# that are also tagged "migrations"
 ```
+
+If you want a tag on the include to apply to every task in the included file, use `apply` or wrap the include in a tagged block.
 
 ### Conditional Behavior
 
@@ -157,7 +161,7 @@ With `include_tasks`, the condition controls whether the file is loaded at all.
 
 ### Variable File Names
 
-`import_tasks` requires a literal file path. `include_tasks` can use variables.
+`import_tasks` can template file paths only with variables that are available when Ansible pre-processes the playbook. `include_tasks` can use runtime variables such as facts gathered during the play.
 
 ```yaml
 # THIS DOES NOT WORK
@@ -197,13 +201,13 @@ $ ansible-playbook playbook.yml --list-tasks
   tasks:
     # STATIC: Tasks are known at parse time
     # Tags work, --list-tasks shows individual tasks
-    # Cannot use loops or variable file names
+    # Cannot use loops or file names that depend on runtime facts
     - import_tasks: tasks/base-setup.yml
       tags: base
 
     # DYNAMIC: Tasks are loaded at runtime
     # Can use loops, variable paths, and true conditionals
-    # Tags on internal tasks do not work with --tags flag
+    # Internal tags require the include itself to run
     - include_tasks: "tasks/setup-{{ ansible_os_family | lower }}.yml"
       tags: os_setup
 
@@ -302,16 +306,16 @@ Use `include_tasks` here because you are looping.
 
 ## The Old include Directive
 
-If you see bare `include:` in older playbooks, that is the deprecated version. It was removed in Ansible 2.12. Always use the explicit `import_tasks` or `include_tasks` instead. The explicit names make it clear whether you are getting static or dynamic behavior.
+If you see bare `include:` in older playbooks, that is the deprecated version. It was removed in ansible-core 2.16. Always use the explicit `import_tasks` or `include_tasks` instead. The explicit names make it clear whether you are getting static or dynamic behavior.
 
 ## Summary
 
 | Feature | import_tasks | include_tasks |
 |---------|-------------|---------------|
 | Processing time | Parse time | Runtime |
-| Tags on internal tasks | Work with --tags | Do not work with --tags |
+| Tags on internal tasks | Work directly with --tags | Require the include task to be tagged too |
 | Loops | Not supported | Supported |
-| Variable file names | Not supported | Supported |
+| Variable file names | Only with parse-time variables | Supported, including runtime facts |
 | --list-tasks | Shows all tasks | Shows include only |
 | when behavior | Applied to each task | Controls file loading |
 | Performance | Slightly faster | Slightly slower |
