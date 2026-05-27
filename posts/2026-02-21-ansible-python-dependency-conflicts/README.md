@@ -30,10 +30,11 @@ pip check
 Some Ansible modules require specific libraries:
 
 ```yaml
-# This fails if 'requests' is not the right version
-- name: Call an API
+# This fails if 'gssapi' is missing or not compatible
+- name: Call an API with GSSAPI authentication
   ansible.builtin.uri:
     url: https://api.example.com
+    use_gssapi: true
 ```
 
 ### 3. Controller vs Remote Conflicts
@@ -155,12 +156,12 @@ Python dependency conflicts in Ansible are best prevented by using virtual envir
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where dependency isolation proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Example infrastructure provisioning workflow
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -192,7 +193,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -274,7 +275,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -336,4 +337,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
