@@ -22,13 +22,17 @@ ansible-project/
     staging/
       hosts.yml
       group_vars/
-        all.yml
+        all/
+          vars.yml
+          vault.yml
         webservers.yml
         databases.yml
     production/
       hosts.yml
       group_vars/
-        all.yml
+        all/
+          vars.yml
+          vault.yml
         webservers.yml
         databases.yml
   playbooks/
@@ -110,7 +114,7 @@ all:
 Each environment has its own `group_vars` directory where you define environment-specific settings.
 
 ```yaml
-# inventories/staging/group_vars/all.yml
+# inventories/staging/group_vars/all/vars.yml
 # Global variables for the staging environment
 ---
 env_name: staging
@@ -128,7 +132,7 @@ db_name: myapp_staging
 ```
 
 ```yaml
-# inventories/production/group_vars/all.yml
+# inventories/production/group_vars/all/vars.yml
 # Global variables for the production environment
 ---
 env_name: production
@@ -258,12 +262,14 @@ The only difference between deploying to staging and production is the inventory
 # Deploy to staging
 ansible-playbook playbooks/deploy.yml \
   -i inventories/staging/ \
-  -e "deploy_version=v2.5.0"
+  -e "deploy_version=v2.5.0" \
+  --ask-vault-pass
 
 # Deploy to production
 ansible-playbook playbooks/deploy.yml \
   -i inventories/production/ \
-  -e "deploy_version=v2.5.0"
+  -e "deploy_version=v2.5.0" \
+  --ask-vault-pass
 ```
 
 ## CI/CD Pipeline with Environment Gates
@@ -291,10 +297,15 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
         run: |
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > .ssh_key
+          chmod 600 .ssh_key
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
+          chmod 600 .vault_pass
           ansible-playbook playbooks/deploy.yml \
             -i inventories/staging/ \
             -e "deploy_version=${{ github.ref_name }}" \
-            --private-key <(echo "${{ secrets.SSH_KEY }}")
+            --private-key .ssh_key \
+            --vault-password-file .vault_pass
 
   deploy-production:
     runs-on: ubuntu-latest
@@ -308,10 +319,15 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
         run: |
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > .ssh_key
+          chmod 600 .ssh_key
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_pass
+          chmod 600 .vault_pass
           ansible-playbook playbooks/deploy.yml \
             -i inventories/production/ \
             -e "deploy_version=${{ github.ref_name }}" \
-            --private-key <(echo "${{ secrets.SSH_KEY }}")
+            --private-key .ssh_key \
+            --vault-password-file .vault_pass
 ```
 
 The `environment: production` setting in GitHub Actions enables required reviewers and other protection rules you have configured.
@@ -338,19 +354,19 @@ Each environment typically has different credentials. Use Ansible Vault to encry
 
 ```bash
 # Create encrypted vars files for each environment
-ansible-vault create inventories/staging/group_vars/vault.yml
-ansible-vault create inventories/production/group_vars/vault.yml
+ansible-vault create inventories/staging/group_vars/all/vault.yml
+ansible-vault create inventories/production/group_vars/all/vault.yml
 ```
 
 ```yaml
-# inventories/staging/group_vars/vault.yml (encrypted)
+# inventories/staging/group_vars/all/vault.yml (encrypted)
 # Staging secrets
 vault_db_password: staging_password_here
 vault_api_key: staging_api_key_here
 ```
 
 ```yaml
-# inventories/production/group_vars/vault.yml (encrypted)
+# inventories/production/group_vars/all/vault.yml (encrypted)
 # Production secrets
 vault_db_password: production_password_here
 vault_api_key: production_api_key_here
@@ -359,7 +375,7 @@ vault_api_key: production_api_key_here
 Reference the vault variables in your non-encrypted group_vars.
 
 ```yaml
-# inventories/staging/group_vars/all.yml
+# inventories/staging/group_vars/all/vars.yml
 # Reference encrypted variables
 db_password: "{{ vault_db_password }}"
 api_key: "{{ vault_api_key }}"
