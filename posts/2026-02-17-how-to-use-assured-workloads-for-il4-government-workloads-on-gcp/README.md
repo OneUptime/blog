@@ -16,8 +16,8 @@ This post covers setting up Assured Workloads for IL4, understanding the control
 
 IL4 is a DoD classification for information systems that handle CUI. The requirements are more stringent than FedRAMP Moderate and include:
 
-- Data must reside in the continental United States
-- Only US persons can access the data and infrastructure
+- Data must reside in US-only locations
+- IL4 support cases are routed to US Persons located in the US
 - FIPS 140-2 validated encryption is required
 - Specific logging and monitoring requirements
 - Network isolation from non-IL4 workloads
@@ -28,10 +28,10 @@ GCP addresses these through a combination of Assured Workloads controls and the 
 
 IL4 Assured Workloads has stricter prerequisites than other compliance regimes:
 
-1. A GCP Organization with a signed agreement for IL4 workloads
+1. A GCP Organization configured for Assured Workloads
 2. The Assured Workloads Admin role
-3. Engagement with Google Cloud's government sales team (IL4 is not self-service)
-4. A billing account approved for IL4 usage
+3. An Enhanced or Premium Cloud Customer Care subscription for IL4 support cases
+4. A billing account for the Assured Workloads Premium tier
 
 ```bash
 # Verify organization setup
@@ -51,22 +51,12 @@ gcloud assured workloads create \
   --organization=ORG_ID \
   --location=us \
   --display-name="IL4 Government Workloads" \
-  --compliance-regime=IL4 \
-  --billing-account=BILLING_ACCOUNT_ID \
-  --provisioned-resources-parent=organizations/ORG_ID \
-  --resource-settings='[{
-    "resourceType": "CONSUMER_FOLDER",
-    "displayName": "il4-workloads"
-  }, {
-    "resourceType": "ENCRYPTION_KEYS_PROJECT",
-    "displayName": "il4-keys-project"
-  }, {
-    "resourceType": "KEYRING",
-    "displayName": "il4-keyring"
-  }]'
+  --compliance-regime=data-boundary-for-il4 \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
+  --provisioned-resources-parent=organizations/ORG_ID
 ```
 
-For IL4, Assured Workloads automatically provisions a dedicated key project and key ring. This separation ensures encryption keys are managed independently from the workload resources.
+For IL4, Assured Workloads creates a folder that applies the Data Boundary for IL4 controls. If you configure CMEK settings during folder creation, Assured Workloads can also create a separate key project and key ring. Folder creation does not create cryptographic keys for you.
 
 Verify the creation:
 
@@ -88,8 +78,8 @@ Resources are restricted to US locations only:
 
 ```bash
 # Verify the resource location policy
-gcloud resource-manager org-policies describe \
-  constraints/gcp.resourceLocations \
+gcloud org-policies describe \
+  gcp.resourceLocations \
   --folder=FOLDER_ID \
   --effective
 ```
@@ -100,8 +90,8 @@ Only a subset of GCP services are authorized for IL4. The list is narrower than 
 
 ```bash
 # Check which services are allowed
-gcloud resource-manager org-policies describe \
-  constraints/gcp.restrictServiceUsage \
+gcloud org-policies describe \
+  gcp.restrictServiceUsage \
   --folder=FOLDER_ID \
   --effective
 ```
@@ -110,7 +100,7 @@ Common services authorized for IL4 include Compute Engine, Cloud Storage, Cloud 
 
 ### CMEK Requirements
 
-IL4 requires Customer-Managed Encryption Keys for all supported services. The key project and key ring were provisioned during folder creation:
+The IL4 control package sets the `gcp.restrictNonCmekServices` organization policy constraint for in-scope services. If you created a key project and key ring during folder creation, list them before creating keys:
 
 ```bash
 # List keys in the IL4 key ring
@@ -130,7 +120,6 @@ gcloud kms keys create compute-key \
   --location=us \
   --purpose=encryption \
   --rotation-period=90d \
-  --algorithm=google-symmetric-encryption \
   --project=il4-keys-project
 
 gcloud kms keys create storage-key \
@@ -138,7 +127,6 @@ gcloud kms keys create storage-key \
   --location=us \
   --purpose=encryption \
   --rotation-period=90d \
-  --algorithm=google-symmetric-encryption \
   --project=il4-keys-project
 
 gcloud kms keys create database-key \
@@ -146,13 +134,12 @@ gcloud kms keys create database-key \
   --location=us \
   --purpose=encryption \
   --rotation-period=90d \
-  --algorithm=google-symmetric-encryption \
   --project=il4-keys-project
 ```
 
 ### Personnel Controls
 
-Google applies personnel controls ensuring that only US persons can access the underlying infrastructure supporting your IL4 workloads. This is handled at the Google infrastructure level and does not require configuration on your part, but it is an important part of why IL4 requires Assured Workloads.
+For Data Boundary for IL4, technical support cases are routed to US Persons located in the US when you use an Enhanced or Premium Cloud Customer Care subscription. This is handled by Google Cloud support processes and does not require configuration in your projects.
 
 ## Deploying Workloads in the IL4 Environment
 
@@ -166,7 +153,7 @@ gcloud projects create il4-app-prod \
 
 # Link billing
 gcloud billing projects link il4-app-prod \
-  --billing-account=BILLING_ACCOUNT_ID
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID
 
 # Enable required services
 gcloud services enable compute.googleapis.com \
@@ -287,6 +274,8 @@ gcloud logging sinks create il4-audit-sink \
   --project=il4-app-prod
 ```
 
+The destination bucket must already exist, and the sink's writer identity must be granted permission to write to it.
+
 ## Ongoing Compliance Management
 
 Monitor for violations regularly:
@@ -313,8 +302,13 @@ Set up automated checks to verify CMEK is applied to all resources:
 # Find any Cloud Storage buckets without CMEK
 gcloud storage buckets list \
   --project=il4-app-prod \
-  --format="table(name,default_encryption_key)" \
-  --filter="NOT default_encryption_key:*"
+  --format="value(name)" | while read bucket; do
+    kms_key=$(gcloud storage buckets describe "gs://${bucket}" \
+      --format="value(default_kms_key)")
+    if [ -z "$kms_key" ]; then
+      echo "gs://${bucket}"
+    fi
+  done
 
 # Find any Compute Engine disks without CMEK
 gcloud compute disks list \
@@ -325,4 +319,4 @@ gcloud compute disks list \
 
 ## Summary
 
-IL4 Assured Workloads on GCP provides a controlled environment for DoD Controlled Unclassified Information. The setup requires creating an Assured Workloads folder with the IL4 compliance regime, which automatically provisions a key project and applies strict organizational policies for data residency, service restrictions, and encryption requirements. Every resource you deploy needs CMEK encryption, network isolation, and comprehensive audit logging. The ongoing work is monitoring for violations, managing encryption keys, and maintaining documentation for assessors.
+IL4 Assured Workloads on GCP provides a controlled environment for DoD Controlled Unclassified Information. The setup requires creating an Assured Workloads folder with the IL4 compliance regime, which applies strict organizational policies for data residency, service restrictions, and encryption requirements. Every supported resource you deploy needs appropriate encryption, network isolation, and comprehensive audit logging. The ongoing work is monitoring for violations, managing encryption keys, and maintaining documentation for assessors.
