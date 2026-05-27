@@ -19,7 +19,7 @@ GCP quotas come in two flavors:
 - **Rate quotas** - Limit the number of requests per time period (e.g., 100 requests per second to the Compute Engine API)
 - **Allocation quotas** - Limit the total number of resources you can have (e.g., maximum 24 CPUs per region)
 
-Both types can be monitored through Cloud Monitoring.
+Many quotas can be monitored through Cloud Monitoring, though not every Google Cloud service exposes quota metrics.
 
 ## Viewing Current Quota Usage
 
@@ -28,16 +28,15 @@ Start by checking what quotas you have and how much you are using:
 ```bash
 # List all quotas for a specific service
 
-gcloud services quotas list \
+gcloud beta quotas info list \
   --service=compute.googleapis.com \
-  --project=my-project \
-  --format="table(metric,unit,values.map().list())"
+  --project=my-project
 ```
 
-For a broader view across all services:
+For Compute Engine project-wide quotas:
 
 ```bash
-# Check quota usage for all services in a project
+# Check Compute Engine project-wide quota usage
 gcloud compute project-info describe \
   --project=my-project \
   --format="table(quotas.metric,quotas.limit,quotas.usage)"
@@ -61,9 +60,9 @@ Track how many API calls your project makes over time:
 gcloud monitoring time-series list \
   --project=my-project \
   --filter='metric.type="serviceruntime.googleapis.com/api/request_count"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(metric.labels.service,metric.labels.method,points.value.int64Value)" \
+  --format="table(resource.labels.service,metric.labels.response_code,points.value.int64Value)" \
   --sort-by="~points.value.int64Value"
 ```
 
@@ -75,9 +74,9 @@ gcloud monitoring time-series list \
   --project=my-project \
   --filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND
             resource.labels.service="storage.googleapis.com"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(metric.labels.method,points.value.int64Value)"
+  --format="table(metric.labels.response_code,points.value.int64Value)"
 ```
 
 ## Monitoring Quota Usage Metrics
@@ -85,12 +84,13 @@ gcloud monitoring time-series list \
 GCP provides specific metrics for quota monitoring:
 
 ```bash
-# Query quota usage as a ratio (0 to 1, where 1 means 100% used)
+# Query absolute quota usage. Compare this with quota/limit for utilization.
 gcloud monitoring time-series list \
   --project=my-project \
   --filter='metric.type="serviceruntime.googleapis.com/quota/allocation/usage" AND
+            resource.type="consumer_quota" AND
             resource.labels.service="compute.googleapis.com"' \
-  --interval-start-time=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --format="table(metric.labels.quota_metric,points.value)"
 ```
@@ -102,8 +102,9 @@ For rate quotas:
 gcloud monitoring time-series list \
   --project=my-project \
   --filter='metric.type="serviceruntime.googleapis.com/quota/rate/net_usage" AND
+            resource.type="consumer_quota" AND
             resource.labels.service="compute.googleapis.com"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --format="table(metric.labels.quota_metric,points.value)"
 ```
@@ -117,16 +118,24 @@ Set up alerts at 80% utilization so you have time to react:
 ```bash
 # Alert when Compute Engine CPU quota reaches 80% in a region
 gcloud monitoring policies create \
-  --display-name="CPU Quota 80% Alert" \
-  --condition-display-name="CPU quota usage exceeds 80%" \
-  --condition-filter='metric.type="compute.googleapis.com/quota/cpus_per_vm_family/usage" AND
-                      resource.type="compute.googleapis.com/Location"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
-  --combiner=OR \
-  --project=my-project
+  --project=my-project \
+  --policy='{
+    "displayName": "CPU Quota 80% Alert",
+    "combiner": "OR",
+    "notificationChannels": [
+      "projects/my-project/notificationChannels/CHANNEL_ID"
+    ],
+    "conditions": [
+      {
+        "displayName": "CPU quota usage exceeds 80%",
+        "conditionPrometheusQueryLanguage": {
+          "query": "(\n max by (project_id, quota_metric, location) ({\"serviceruntime.googleapis.com/quota/allocation/usage\", monitored_resource=\"consumer_quota\", service=\"compute.googleapis.com\"})\n /\n min by (project_id, quota_metric, location) ({\"serviceruntime.googleapis.com/quota/limit\", monitored_resource=\"consumer_quota\", service=\"compute.googleapis.com\", limit_name=\"CPUS-per-project-region\"})\n) > 0.8",
+          "duration": "300s",
+          "evaluationInterval": "60s"
+        }
+      }
+    ]
+  }'
 ```
 
 ### Alert on API Request Rate Spikes
@@ -140,9 +149,9 @@ gcloud monitoring policies create \
   --condition-display-name="Unusually high API request rate" \
   --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND
                       resource.labels.service="compute.googleapis.com"' \
-  --condition-threshold-value=1000 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE","crossSeriesReducer":"REDUCE_SUM","groupByFields":["resource.labels.service"]}' \
+  --if='> 1000' \
+  --duration=60s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=my-project
@@ -150,18 +159,17 @@ gcloud monitoring policies create \
 
 ### Alert on API Errors
 
-Monitor for 429 errors (rate limit exceeded) so you know when throttling starts:
+Monitor quota exceeded errors so you know when throttling starts:
 
 ```bash
 # Alert on API quota exceeded errors
 gcloud monitoring policies create \
   --display-name="API Quota Exceeded Alert" \
-  --condition-display-name="API returning 429 errors" \
-  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND
-                      metric.labels.response_code="429"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
+  --condition-display-name="Quota exceeded errors reported" \
+  --condition-filter='metric.type="serviceruntime.googleapis.com/quota/exceeded" AND
+                      resource.type="consumer_quota"' \
+  --if='> 0' \
+  --duration=60s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=my-project
@@ -203,7 +211,7 @@ gcloud monitoring dashboards create --config='{
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND metric.labels.response_code>=monitoring.regex.full_match(\"4.*|5.*\")"
+                  "filter": "metric.type=\"serviceruntime.googleapis.com/api/request_count\" AND metric.labels.response_code_class = one_of(\"4xx\", \"5xx\")"
                 }
               }
             }]
@@ -301,7 +309,7 @@ echo "Top API Consumers (last 24 hours):"
 gcloud monitoring time-series list \
   --project="$PROJECT" \
   --filter='metric.type="serviceruntime.googleapis.com/api/request_count"' \
-  --interval-start-time=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --format="table(resource.labels.service,points.value.int64Value)" 2>/dev/null | \
   sort -t$'\t' -k2 -rn | head -10
