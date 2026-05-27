@@ -16,7 +16,7 @@ In Apache Beam, the standard way to do this is with side inputs. A side input is
 
 You might be tempted to just query a database directly from your DoFn. I have seen pipelines do this, and it works for small volumes. But at scale, making a database call for every single element is a bad idea. If you are processing millions of events per second, that is millions of database queries per second - your database will not be happy.
 
-Side inputs solve this by loading the lookup data once and distributing it to all workers. The data lives in memory, so lookups are fast.
+Side inputs solve this by materializing the lookup data as a view and making it available to workers. Runners often cache side inputs, so lookups are fast, but you still need to keep the side input small enough for your runner and pipeline mode.
 
 ## Basic Side Input: Map Lookup
 
@@ -67,6 +67,8 @@ The key steps are:
 3. Pass it to your DoFn using `.withSideInputs()`
 4. Access it inside the DoFn using `c.sideInput()`
 
+When using `View.asMap()`, each key must have exactly one value per window. If your reference data can contain duplicate keys, combine it first or use `View.asMultimap()`.
+
 ## Side Input as a List
 
 Sometimes you need the lookup data as a list rather than a map. For example, a list of blocked IP addresses.
@@ -95,7 +97,7 @@ PCollection<Event> filteredEvents = rawEvents
         }).withSideInputs(blockedIpsView));
 ```
 
-For large lists of values you need to check membership against, consider converting to a `Set` inside your DoFn's `@Setup` method for O(1) lookups instead of O(n) list scans.
+For large lists of values you need to check membership against, consider representing the reference data as a map side input when possible, or building a cached `Set` from the side input inside `@ProcessElement`. Side inputs are not available in `@Setup`.
 
 ## Side Input as a Singleton
 
@@ -159,14 +161,14 @@ This pattern reads fresh data every 10 minutes and makes it available as a side 
 
 ## Side Input Size Limitations
 
-Side inputs need to fit in memory on each worker. For Dataflow, this typically means your side input should be under a few GB. If your lookup table is larger, you have a few options.
+Side inputs should be small enough for your runner and pipeline mode. In Dataflow streaming jobs that do not use Streaming Engine, side inputs are stored in worker memory. In streaming jobs that use Streaming Engine, side inputs are stored outside worker memory but have an 80 MB side input size limit. If your lookup table is larger, you have a few options.
 
 For lookup tables that fit in memory but are on the larger side, increase your worker machine type to get more RAM.
 
 For very large lookup tables, consider using Cloud Bigtable or a similar low-latency store and doing direct lookups from your DoFn. You can batch the lookups to reduce the number of round trips.
 
 ```java
-// For large lookup tables, use batched direct lookups instead of side inputs
+// For large lookup tables, use direct lookups instead of side inputs
 public class BigtableLookupFn extends DoFn<Event, EnrichedEvent> {
 
     private transient BigtableDataClient client;
@@ -183,7 +185,7 @@ public class BigtableLookupFn extends DoFn<Event, EnrichedEvent> {
         Event event = c.element();
 
         // Direct lookup from Bigtable - low latency, handles large tables
-        Row row = client.readRow(TABLE_ID, event.getUserId());
+        Row row = client.readRow(TableId.of(TABLE_ID), event.getUserId());
 
         String userName = "Unknown";
         if (row != null) {
