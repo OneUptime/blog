@@ -21,10 +21,10 @@ graph LR
     C -->|Transform + Forward| D[Slack Webhook]
     C -->|Transform + Forward| E[PagerDuty API]
     C -->|Transform + Forward| F[Custom Webhook]
-    C -->|On failure| G[Dead Letter Topic]
+    C -->|On repeated failure, if configured| G[Dead Letter Topic]
 ```
 
-The function subscribes to a Pub/Sub topic, transforms the message into the format the webhook expects, sends it, and handles any failures.
+The function subscribes to a Pub/Sub topic, transforms the message into the format the webhook expects, sends it, and handles failures. If you need a dead-letter topic, configure it on the Pub/Sub subscription that delivers messages to the function.
 
 ## The Webhook Forwarder Function
 
@@ -258,6 +258,7 @@ gcloud functions deploy forward-to-slack \
   --trigger-topic=alerts-topic \
   --memory=256Mi \
   --timeout=30s \
+  --retry \
   --set-env-vars="WEBHOOK_TYPE=slack" \
   --set-secrets="WEBHOOK_URL=slack-webhook-url:latest"
 ```
@@ -275,6 +276,7 @@ gcloud functions deploy forward-to-pagerduty \
   --trigger-topic=critical-alerts-topic \
   --memory=256Mi \
   --timeout=30s \
+  --retry \
   --set-env-vars="WEBHOOK_TYPE=pagerduty,WEBHOOK_URL=https://events.pagerduty.com/v2/enqueue" \
   --set-secrets="PAGERDUTY_ROUTING_KEY=pagerduty-key:latest"
 ```
@@ -292,6 +294,7 @@ gcloud functions deploy forward-to-partner-api \
   --trigger-topic=partner-events \
   --memory=256Mi \
   --timeout=30s \
+  --retry \
   --set-env-vars="WEBHOOK_TYPE=generic" \
   --set-secrets="WEBHOOK_URL=partner-webhook-url:latest,WEBHOOK_SECRET=partner-api-secret:latest"
 ```
@@ -326,16 +329,20 @@ async function sendAlert(title, message, severity) {
 }
 
 // Usage
-await sendAlert(
-  'High Error Rate Detected',
-  'Error rate exceeded 5% threshold on the /api/users endpoint',
-  'error'
-);
+async function main() {
+  await sendAlert(
+    'High Error Rate Detected',
+    'Error rate exceeded 5% threshold on the /api/users endpoint',
+    'error'
+  );
+}
+
+main().catch(console.error);
 ```
 
 ## Adding Request Signing
 
-For webhook endpoints that verify request signatures (like GitHub, Stripe, etc.), add HMAC signing:
+For custom webhook endpoints that verify request signatures, add HMAC signing:
 
 ```javascript
 const crypto = require('crypto');
