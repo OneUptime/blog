@@ -32,12 +32,13 @@ The logs show each build step and where it failed. Pay attention to the step num
 
 ### Cloud Build Service Account
 
-Cloud Build uses a service account to execute build steps. By default, this is `PROJECT_NUMBER@cloudbuild.gserviceaccount.com`. This account needs permissions for whatever your build does.
+Cloud Build uses a service account to execute build steps. Depending on your project and organization settings, this might be the Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`), the legacy Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`), or a user-specified service account. This account needs permissions for whatever your build does.
 
 ```bash
 # Find the Cloud Build service account
 gcloud projects describe my-project --format="value(projectNumber)"
-# The SA is: PROJECT_NUMBER@cloudbuild.gserviceaccount.com
+# The legacy Cloud Build SA is: PROJECT_NUMBER@cloudbuild.gserviceaccount.com
+# The Compute Engine default SA is: PROJECT_NUMBER-compute@developer.gserviceaccount.com
 
 # Check its current roles
 gcloud projects get-iam-policy my-project \
@@ -141,7 +142,7 @@ A common mistake is having `node_modules/` in `.gcloudignore` but your Dockerfil
 ### Build Context Too Large
 
 ```text
-ERROR: context size (512MB) exceeds limit (500MB)
+ERROR: Your build failed because the source archive or Docker build context is too large
 ```
 
 Your build context is too big. Use `.gcloudignore` to exclude unnecessary files:
@@ -186,7 +187,7 @@ steps:
 
 ### Timeout During Build
 
-Builds have a default timeout of 10 minutes. Complex builds may need more:
+Builds have a default timeout of 60 minutes. Complex builds may need more:
 
 ```yaml
 # Increase the build timeout in cloudbuild.yaml
@@ -218,7 +219,7 @@ steps:
     args: ['build', '-t', 'my-image', '.']
 ```
 
-Available machine types: `E2_MEDIUM` (default), `E2_HIGHCPU_8`, `E2_HIGHCPU_32`.
+Available machine types include `E2_MEDIUM`, `E2_HIGHCPU_8`, and `E2_HIGHCPU_32`.
 
 ## Using Secret Manager in Builds
 
@@ -228,9 +229,10 @@ If your build needs secrets (API keys, credentials), use Secret Manager instead 
 # Access secrets from Secret Manager during build
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build',
-           '--build-arg', 'API_KEY=$$API_KEY',
-           '-t', 'my-image', '.']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'docker build --build-arg "API_KEY=$$API_KEY" -t my-image .'
     secretEnv: ['API_KEY']
 
 availableSecrets:
