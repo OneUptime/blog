@@ -21,6 +21,7 @@ def run_module():
             name=dict(type='str', required=True),
             state=dict(type='str', default='present', choices=['present', 'absent']),
             force=dict(type='bool', default=False),
+            safe_mode=dict(type='bool', default=False),
             count=dict(type='int', default=1),
             tags=dict(type='list', elements='str', default=[]),
             config=dict(type='dict', default={}),
@@ -46,7 +47,7 @@ All parameters are available through module.params as a dictionary:
     tags = module.params['tags']
 ```
 
-Boolean parameters are automatically converted from strings to Python booleans. Integer parameters are converted to int. Lists and dicts are parsed from JSON.
+Boolean parameters are automatically converted from strings to Python booleans. Integer parameters are converted to int. Lists and dicts are accepted as native YAML values; string lists can be comma-separated, and string dicts can be JSON or key=value pairs.
 
 ## Check Mode
 
@@ -352,4 +353,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
