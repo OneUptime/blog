@@ -12,7 +12,7 @@ When you deploy to a fleet of 100 servers, you expect a few might fail. Maybe a 
 
 ## What max_fail_percentage Does
 
-This option tells Ansible: "If more than X% of hosts fail, stop the entire playbook." It gives you a middle ground between the default behavior (continue unless all hosts fail) and `any_errors_fatal` (stop on the first failure).
+This option tells Ansible: "If more than X% of hosts fail, abort the play." It gives you a middle ground between the default behavior (continue on hosts that have not failed) and `any_errors_fatal` (stop on the first unhandled failure).
 
 ```yaml
 # rolling-deploy.yml - stops if more than 20% of hosts fail
@@ -43,36 +43,36 @@ This option tells Ansible: "If more than X% of hosts fail, stop the entire playb
       delay: 3
 ```
 
-If you have 50 web servers and `max_fail_percentage` is set to 20, Ansible will abort the playbook if more than 10 hosts fail (20% of 50 = 10).
+If you have 50 web servers, no `serial` setting, and `max_fail_percentage` is set to 20, Ansible will abort the play if more than 10 hosts fail (20% of 50 = 10). With `serial: 5`, the threshold is evaluated against each 5-host batch instead, so more than 1 failed host in a batch aborts the play.
 
 ## How the Calculation Works
 
-Ansible calculates the threshold based on the total number of hosts in the play, not the number of hosts in each serial batch.
+Ansible calculates the threshold based on the current batch when you use `serial`. If you do not set `serial`, the batch is all hosts in the play.
 
 ```mermaid
 flowchart TD
-    A[Total Hosts: 50] --> B["max_fail_percentage: 20"]
-    B --> C["Max allowed failures: 50 * 0.20 = 10"]
-    C --> D{Failure count > 10?}
-    D -->|Yes| E[Abort Playbook]
+    A["Current Batch: 5 hosts"] --> B["max_fail_percentage: 20"]
+    B --> C["Max allowed failures: 5 * 0.20 = 1"]
+    C --> D{Failure count > 1?}
+    D -->|Yes| E[Abort Play]
     D -->|No| F[Continue Execution]
 ```
 
-There is a subtlety here. Ansible uses "greater than" comparison, not "greater than or equal to." So with 50 hosts and 20%, exactly 10 failures is still okay. The 11th failure triggers the abort.
+There is a subtlety here. Ansible uses "greater than" comparison, not "greater than or equal to." So with a 5-host batch and 20%, exactly 1 failure is still okay. The 2nd failure in that batch triggers the abort.
 
 ## Setting the Value to Zero
 
-Setting `max_fail_percentage: 0` does not mean "allow zero failures." Due to the way Ansible calculates it, `max_fail_percentage: 0` actually means "only abort if ALL hosts fail." This is a common point of confusion.
+Setting `max_fail_percentage: 0` means that any unhandled failure exceeds the threshold. Ansible still finishes the failed task on hosts in the current batch before aborting the play.
 
-If you want zero tolerance for failures, use `any_errors_fatal: true` instead.
+If you want the clearest zero-tolerance behavior, use `any_errors_fatal: true` instead.
 
 ```yaml
-# This does NOT stop on first failure
-- name: Misleading zero
+# This aborts the play after any unhandled failure in the current batch
+- name: Zero threshold
   hosts: webservers
   max_fail_percentage: 0
 
-# This DOES stop on first failure
+# This also stops playbook execution after the first unhandled failure
 - name: True zero tolerance
   hosts: webservers
   any_errors_fatal: true
@@ -158,7 +158,7 @@ Here is a complete deployment playbook that uses `max_fail_percentage` with a ro
       delegate_to: localhost
 ```
 
-With `serial: 5` and `max_fail_percentage: 10`, Ansible deploys 5 hosts at a time. If failures accumulate past the 10% threshold of your total fleet, the rollout stops. The hosts that have not been touched yet stay on the old version, limiting the blast radius.
+With `serial: 5` and `max_fail_percentage: 10`, Ansible deploys 5 hosts at a time. Since the threshold applies to each batch, one failed host in a batch is already more than 10%, so the rollout stops after the current task completes on that batch. The hosts that have not been touched yet stay on the old version, limiting the blast radius.
 
 ## Interaction with serial
 
@@ -195,7 +195,7 @@ The right threshold depends on your infrastructure and the type of change.
 
 | Scenario | Suggested Threshold |
 |----------|-------------------|
-| Database schema migrations | 0 (use any_errors_fatal) |
+| Database schema migrations | Use any_errors_fatal |
 | Application deployments | 10-20% |
 | Configuration updates | 20-30% |
 | Monitoring agent updates | 30-50% |
@@ -215,11 +215,11 @@ ansible-playbook -i production.ini deploy.yml 2>&1 | tee deploy.log
 grep -E "unreachable|failed" deploy.log
 ```
 
-For automated monitoring, use the JSON callback plugin.
+For automated monitoring, use the JSON callback plugin. In current Ansible, that callback is provided as `ansible.posix.json`.
 
 ```bash
 # Get machine-readable output
-ANSIBLE_STDOUT_CALLBACK=json ansible-playbook -i production.ini deploy.yml > deploy.json
+ANSIBLE_STDOUT_CALLBACK=ansible.posix.json ansible-playbook -i production.ini deploy.yml > deploy.json
 ```
 
 Then parse the JSON to extract per-host success/failure status and integrate it with your monitoring system.
@@ -235,7 +235,7 @@ When `max_fail_percentage` triggers an abort, tasks in the current batch that ha
   hosts: webservers
   become: yes
   serial: 5
-  max_fail_percentage: 15
+  max_fail_percentage: 39
 
   tasks:
     - block:
@@ -268,7 +268,7 @@ When `max_fail_percentage` triggers an abort, tasks in the current batch that ha
             msg: "Deployment failed and rolled back on {{ inventory_hostname }}"
 ```
 
-The rescue block rolls back the individual host, then uses `fail` to mark it as failed. This failure counts toward the `max_fail_percentage` threshold. If too many hosts hit the rescue path, the playbook stops.
+The rescue block rolls back the individual host, then uses `fail` to mark it as failed. This failure counts toward the `max_fail_percentage` threshold. With `serial: 5` and `max_fail_percentage: 39`, the second failed host in a batch stops the play.
 
 ## Summary
 
