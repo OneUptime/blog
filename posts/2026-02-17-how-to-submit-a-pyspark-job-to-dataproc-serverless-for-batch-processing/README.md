@@ -14,7 +14,7 @@ I switched several batch processing pipelines from cluster-based Dataproc to Ser
 
 ## How Dataproc Serverless Works
 
-When you submit a batch job to Dataproc Serverless, the service allocates compute resources on demand, runs your job, and releases the resources when the job completes. You do not manage clusters, workers, or scaling. You pay only for the compute time your job actually uses.
+When you submit a batch job to Dataproc Serverless, the service allocates compute resources on demand, runs your job, and releases the resources when the job completes. You do not manage clusters, workers, or scaling. You pay only for the resources consumed while your job runs.
 
 ```mermaid
 sequenceDiagram
@@ -29,22 +29,15 @@ sequenceDiagram
     Infra->>Infra: Scale as needed
     Infra->>API: Job complete
     Infra->>Infra: Release resources
-    API->>User: Return results
+    API->>User: Return status
 ```
 
 ## Prerequisites
 
-Before submitting your first serverless batch job, set up the required networking.
+Before submitting your first serverless batch job, choose a regional subnet for the workload.
 
 ```bash
-# Create a subnet with Private Google Access enabled
-
-# (required for Dataproc Serverless)
-gcloud compute networks subnets update default \
-  --region=us-central1 \
-  --enable-private-ip-google-access
-
-# Or create a dedicated subnet
+# Create a dedicated subnet
 gcloud compute networks subnets create dataproc-serverless \
   --network=default \
   --region=us-central1 \
@@ -52,7 +45,7 @@ gcloud compute networks subnets create dataproc-serverless \
   --enable-private-ip-google-access
 ```
 
-Dataproc Serverless requires Private Google Access because the Spark executors do not have external IP addresses.
+Dataproc Serverless workloads run on VMs with internal IP addresses only and use Private Google Access on the regional subnet. If you do not specify a subnet, Dataproc Serverless uses the default subnet in the batch region.
 
 ## Submitting a Basic PySpark Job
 
@@ -189,7 +182,7 @@ spark.submit.pyFiles=gs://my-bucket/libs/my_library.zip"
 
 # Option 3: Bundle dependencies in a zip file
 # Create the zip locally:
-# pip install -t deps/ pandas scikit-learn
+# pip install -t deps/ requests
 # cd deps && zip -r ../my-deps.zip . && cd ..
 gcloud dataproc batches submit pyspark \
   gs://my-bucket/jobs/ml_pipeline.py \
@@ -238,16 +231,15 @@ if __name__ == "__main__":
     main()
 ```
 
-Submit with the BigQuery connector.
+Submit the job. The BigQuery connector is installed in supported Dataproc Serverless runtimes.
 
 ```bash
-# Submit with BigQuery connector
+# Submit the BigQuery job
 gcloud dataproc batches submit pyspark \
   gs://my-bucket/jobs/pyspark_to_bigquery.py \
   --region=us-central1 \
   --subnet=default \
-  --service-account=my-sa@my-project.iam.gserviceaccount.com \
-  --jars=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.32.2.jar
+  --service-account=my-sa@my-project.iam.gserviceaccount.com
 ```
 
 ## Monitoring Batch Jobs
@@ -289,7 +281,7 @@ default_args = {
 with DAG(
     dag_id="daily_etl_serverless",
     default_args=default_args,
-    schedule_interval="0 2 * * *",  # Run at 2 AM daily
+    schedule="0 2 * * *",  # Run at 2 AM daily
     start_date=datetime(2026, 2, 1),
     catchup=False,
 ) as dag:
@@ -306,9 +298,6 @@ with DAG(
                     "--output-path", "gs://my-bucket/data/processed/",
                     "--date", "{{ ds }}",  # Airflow template for execution date
                 ],
-                "jar_file_uris": [
-                    "gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.32.2.jar"
-                ],
             },
             "runtime_config": {
                 "properties": {
@@ -319,7 +308,7 @@ with DAG(
             "environment_config": {
                 "execution_config": {
                     "service_account": "my-sa@my-project.iam.gserviceaccount.com",
-                    "subnetwork_uri": "default",
+                    "subnetwork_uri": "projects/my-project/regions/us-central1/subnetworks/default",
                 }
             },
         },
@@ -329,8 +318,8 @@ with DAG(
 
 ## Cost Comparison
 
-Dataproc Serverless charges per vCPU-hour and GB-hour of memory used. For batch jobs that run for fixed periods, compare the cost against a cluster-based approach.
+Dataproc Serverless charges in Data Compute Units (DCUs), prorated per second with a one-minute minimum. For batch jobs that run for fixed periods, compare the cost against a cluster-based approach.
 
-A job that uses 10 executors with 4 cores each for 30 minutes costs about the same as running a 10-worker Dataproc cluster for 30 minutes. The savings come from not paying for idle time. With clusters, you often pay for startup and teardown time. With Serverless, you pay only for actual compute time.
+A job that uses 10 executors with 4 cores each for 30 minutes should be compared against the Dataproc cluster management fee, the underlying Compute Engine VM costs, and persistent disk costs for an equivalent cluster. The savings come from not paying for idle time. With clusters, you often pay for startup and teardown time. With Serverless, you pay only while the workload consumes resources.
 
 Dataproc Serverless is the right choice for batch PySpark jobs that run periodically or on demand. It removes the operational burden of cluster management and lets you focus on the actual data processing logic.
