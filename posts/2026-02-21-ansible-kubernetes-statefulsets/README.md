@@ -14,7 +14,7 @@ Managing StatefulSets through Ansible lets you define your stateful infrastructu
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible Core 2.16+ with `kubernetes.core` collection
 - A Kubernetes cluster with a StorageClass configured
 - A valid kubeconfig
 
@@ -27,7 +27,7 @@ pip install kubernetes
 
 Before writing playbooks, know what StatefulSets give you:
 
-- **Stable pod names**: `podname-0`, `podname-1`, `podname-2` (always sequential)
+- **Stable pod names**: `statefulsetname-0`, `statefulsetname-1`, `statefulsetname-2` (always sequential)
 - **Stable network identity**: Each pod gets a DNS record via a headless Service
 - **Ordered deployment**: Pods are created in order (0, 1, 2) and terminated in reverse
 - **Persistent storage**: Each pod gets its own PersistentVolumeClaim that survives rescheduling
@@ -53,6 +53,8 @@ StatefulSets require a headless Service (ClusterIP: None) for DNS-based pod disc
     storage_size: 20Gi
     storage_class: standard
     postgres_version: "15"
+    postgres_user: postgres
+    postgres_password: change-me-in-production
 
   tasks:
     - name: Create the databases namespace
@@ -83,13 +85,27 @@ StatefulSets require a headless Service (ClusterIP: None) for DNS-based pod disc
               - port: 5432
                 targetPort: 5432
                 name: postgres
+
+    - name: Create PostgreSQL credentials
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: postgres-credentials
+            namespace: "{{ namespace }}"
+          type: Opaque
+          stringData:
+            username: "{{ postgres_user }}"
+            password: "{{ postgres_password }}"
 ```
 
-With this headless service, each pod gets a DNS record like `postgres-0.postgres-headless.databases.svc.cluster.local`. Applications can connect to a specific replica by name.
+With this headless service, each pod gets a DNS record like `postgres-0.postgres-headless.databases.svc.cluster.local`. Applications can connect to a specific pod by name.
 
 ## Creating the StatefulSet
 
-Now for the main event. This StatefulSet runs three PostgreSQL replicas, each with its own persistent volume.
+Now for the main event. This StatefulSet runs three PostgreSQL instances, each with its own persistent volume.
 
 ```yaml
     # Continued from the same playbook
@@ -149,7 +165,7 @@ Now for the main event. This StatefulSet runs three PostgreSQL replicas, each wi
                         command:
                           - pg_isready
                           - -U
-                          - postgres
+                          - "{{ postgres_user }}"
                       initialDelaySeconds: 10
                       periodSeconds: 5
                     livenessProbe:
@@ -157,7 +173,7 @@ Now for the main event. This StatefulSet runs three PostgreSQL replicas, each wi
                         command:
                           - pg_isready
                           - -U
-                          - postgres
+                          - "{{ postgres_user }}"
                       initialDelaySeconds: 30
                       periodSeconds: 10
             volumeClaimTemplates:
@@ -188,6 +204,15 @@ Kafka is another textbook StatefulSet use case. Each broker needs a unique ID an
   gather_facts: false
 
   tasks:
+    - name: Create the messaging namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: messaging
+
     - name: Create Kafka headless service
       kubernetes.core.k8s:
         state: present
@@ -199,6 +224,7 @@ Kafka is another textbook StatefulSet use case. Each broker needs a unique ID an
             namespace: messaging
           spec:
             clusterIP: None
+            publishNotReadyAddresses: true
             selector:
               app: kafka
             ports:
@@ -234,9 +260,37 @@ Kafka is another textbook StatefulSet use case. Each broker needs a unique ID an
                     ports:
                       - containerPort: 9092
                         name: broker
+                      - containerPort: 9093
+                        name: controller
+                    command:
+                      - /bin/bash
+                      - -c
+                    args:
+                      - |
+                        export KAFKA_NODE_ID=${HOSTNAME##*-}
+                        export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${HOSTNAME}.kafka-headless.messaging.svc.cluster.local:9092
+                        exec /etc/confluent/docker/run
                     env:
+                      - name: CLUSTER_ID
+                        value: "MkU3OEVBNTcwNTJENDM2Qk"
+                      - name: KAFKA_PROCESS_ROLES
+                        value: "broker,controller"
                       - name: KAFKA_LISTENERS
-                        value: "PLAINTEXT://:9092"
+                        value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+                      - name: KAFKA_CONTROLLER_LISTENER_NAMES
+                        value: "CONTROLLER"
+                      - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+                        value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+                      - name: KAFKA_INTER_BROKER_LISTENER_NAME
+                        value: "PLAINTEXT"
+                      - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+                        value: "0@kafka-0.kafka-headless.messaging.svc.cluster.local:9093,1@kafka-1.kafka-headless.messaging.svc.cluster.local:9093,2@kafka-2.kafka-headless.messaging.svc.cluster.local:9093"
+                      - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+                        value: "3"
+                      - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+                        value: "3"
+                      - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+                        value: "2"
                       - name: KAFKA_LOG_DIRS
                         value: /var/lib/kafka/data
                     volumeMounts:
@@ -261,7 +315,7 @@ Kafka is another textbook StatefulSet use case. Each broker needs a unique ID an
                       storage: 50Gi
 ```
 
-Notice `podManagementPolicy: Parallel`. By default, StatefulSets create pods one at a time (OrderedReady). For Kafka, all brokers can start simultaneously since they discover each other through ZooKeeper or KRaft, so Parallel speeds up initial deployment.
+Notice `podManagementPolicy: Parallel`. By default, StatefulSets create pods one at a time (OrderedReady). For Kafka, all brokers can start simultaneously because the KRaft controller quorum is configured with stable StatefulSet DNS names, so Parallel speeds up initial deployment.
 
 ## Scaling a StatefulSet
 
