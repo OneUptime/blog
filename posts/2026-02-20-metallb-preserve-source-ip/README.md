@@ -17,12 +17,12 @@ By default, Kubernetes services use `externalTrafficPolicy: Cluster`. Here is wh
 ```mermaid
 flowchart LR
     Client["Client<br/>IP: 203.0.113.50"] -->|"src: 203.0.113.50"| Node["Node 1<br/>MetalLB VIP"]
-    Node -->|"kube-proxy SNAT<br/>src: 10.244.0.1"| Pod["Application Pod"]
-    Pod -->|"Sees source as<br/>10.244.0.1"| Log["Access Log"]
-    Log -->|"Log entry:<br/>10.244.0.1 - GET /"| X["Client IP lost!"]
+    Node -->|"kube-proxy SNAT<br/>src: 192.168.1.10"| Pod["Application Pod"]
+    Pod -->|"Sees source as<br/>192.168.1.10"| Log["Access Log"]
+    Log -->|"Log entry:<br/>192.168.1.10 - GET /"| X["Client IP lost!"]
 ```
 
-The application pod sees `10.244.0.1` (the node's IP) instead of `203.0.113.50` (the real client IP). This breaks any logic that depends on the client IP.
+The application pod sees `192.168.1.10` (the node's IP) instead of `203.0.113.50` (the real client IP). This breaks any logic that depends on the client IP.
 
 ## The Solution: externalTrafficPolicy: Local
 
@@ -59,7 +59,7 @@ spec:
       labels:
         app: web-server
     spec:
-      # Spread pods across nodes so the MetalLB leader always has a pod
+      # Spread pods across nodes so more MetalLB-eligible nodes have a local endpoint
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -175,15 +175,15 @@ spec:
 
 ```bash
 # Test and check the response for your real IP
-curl -s http://192.168.1.201 | jq '.request.headers'
+curl -s http://192.168.1.201 | jq '.request'
 
-# The output should show your real client IP
-# in headers like x-forwarded-for or x-real-ip
+# The output should show your real client IP in the request IP fields.
+# x-forwarded-for or x-real-ip only appear if a proxy adds them.
 ```
 
 ## The Health Check Consideration
 
-When using `externalTrafficPolicy: Local`, Kubernetes creates a health check endpoint on each node. This health check tells external load balancers (and MetalLB in BGP mode) which nodes have pods for the service:
+When using `externalTrafficPolicy: Local`, Kubernetes creates a health check endpoint on each node. External load balancers can use this health check to determine which nodes have pods for the service. MetalLB also respects `externalTrafficPolicy: Local`; in BGP mode, only nodes with local service endpoints advertise the service:
 
 ```bash
 # Find the health check node port
@@ -193,26 +193,14 @@ kubectl get svc web-server -o jsonpath='{.spec.healthCheckNodePort}'
 curl http://node-1-ip:30000/healthz
 ```
 
-The response indicates whether the node has pods:
+The HTTP status code and response body indicate whether the node has pods:
 
-```json
-// Node with pods:
-{
-  "service": {
-    "namespace": "default",
-    "name": "web-server"
-  },
-  "localEndpoints": 1
-}
+```text
+# Node with pods: HTTP 200
+1 Service Endpoints found
 
-// Node without pods:
-{
-  "service": {
-    "namespace": "default",
-    "name": "web-server"
-  },
-  "localEndpoints": 0
-}
+# Node without pods: HTTP 503
+No Service Endpoints Found
 ```
 
 ```mermaid
@@ -220,17 +208,17 @@ flowchart TD
     HC["Health Check Port :30000"]
 
     subgraph Node1["Node 1"]
-        HC1["/healthz -> 200<br/>localEndpoints: 1"]
+        HC1["/healthz -> 200<br/>1 endpoint found"]
         P1["Pod running"]
     end
 
     subgraph Node2["Node 2"]
-        HC2["/healthz -> 503<br/>localEndpoints: 0"]
+        HC2["/healthz -> 503<br/>no endpoints found"]
         NP["No pods"]
     end
 
     subgraph Node3["Node 3"]
-        HC3["/healthz -> 200<br/>localEndpoints: 2"]
+        HC3["/healthz -> 200<br/>2 endpoints found"]
         P3a["Pod running"]
         P3b["Pod running"]
     end
