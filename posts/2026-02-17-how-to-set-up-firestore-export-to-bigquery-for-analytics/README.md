@@ -8,7 +8,7 @@ Description: Learn how to export Firestore data to BigQuery for running SQL anal
 
 ---
 
-Firestore is great for serving application data at scale, but it is not designed for analytics. You cannot run aggregation queries across millions of documents, join collections, or build the kind of reports that business teams need. That is where BigQuery comes in. By exporting your Firestore data to BigQuery, you get the full power of SQL for analytics while keeping Firestore as your production database.
+Firestore is great for serving application data at scale, but it is not designed for analytics. Firestore supports read-time aggregations like `count()`, `sum()`, and `average()`, but it is not built for joins across collections or the kind of complex reporting that business teams often need. That is where BigQuery comes in. By exporting your Firestore data to BigQuery, you get the full power of SQL for analytics while keeping Firestore as your production database.
 
 Google provides a built-in integration that makes this surprisingly straightforward. Let me walk you through setting it up.
 
@@ -43,12 +43,12 @@ During installation, you will be asked to configure:
 
 - **Collection path**: Which Firestore collection to export (e.g., `orders`)
 - **BigQuery dataset**: Where to store the data (e.g., `firestore_export`)
-- **Table ID**: The BigQuery table name (e.g., `orders_raw`)
+- **Table ID**: The BigQuery table and view prefix (e.g., `orders`)
 - **Cloud Functions location**: The region for the Cloud Function
 
 You can also install it from the Firebase Console by going to Extensions and searching for "Stream Firestore to BigQuery."
 
-After installation, the extension creates a Cloud Function that triggers on every document create, update, and delete in the specified collection. Each change is written as a row in BigQuery with the full document data as a JSON string.
+After installation, the extension creates a Cloud Function that triggers on every document create, update, and delete in the specified collection. Each change is written as a row in a raw changelog table such as `orders_raw_changelog`, with the full document data as a JSON string. The extension also creates a latest-state view such as `orders_raw_latest`.
 
 ## Option 2: Scheduled Export (Batch)
 
@@ -65,7 +65,7 @@ gcloud firestore export gs://your-bucket/firestore-exports/$(date +%Y-%m-%d) \
   --project=your-project-id
 ```
 
-Then load the exported data into BigQuery:
+If you exported with a `--collection-ids` filter, load the exported data into BigQuery:
 
 ```bash
 # Load the Firestore export into BigQuery
@@ -79,29 +79,25 @@ To automate this, set up a Cloud Scheduler job that triggers a Cloud Function:
 
 ```javascript
 // Cloud Function that exports Firestore to Cloud Storage on a schedule
-const functions = require('firebase-functions');
-const { Firestore } = require('@google-cloud/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const firestore = require('@google-cloud/firestore');
 
-const firestore = new Firestore();
+exports.scheduledFirestoreExport = onSchedule('every 24 hours', async () => {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+  const bucket = `gs://${projectId}-firestore-exports`;
+  const timestamp = new Date().toISOString().split('T')[0];
 
-exports.scheduledFirestoreExport = functions.pubsub
-  .schedule('every 24 hours')
-  .onRun(async () => {
-    const projectId = process.env.GCLOUD_PROJECT;
-    const bucket = `gs://${projectId}-firestore-exports`;
-    const timestamp = new Date().toISOString().split('T')[0];
+  const client = new firestore.v1.FirestoreAdminClient();
+  const databaseName = client.databasePath(projectId, '(default)');
 
-    const client = new Firestore.v1.FirestoreAdminClient();
-    const databaseName = client.databasePath(projectId, '(default)');
-
-    const [operation] = await client.exportDocuments({
-      name: databaseName,
-      outputUriPrefix: `${bucket}/${timestamp}`,
-      collectionIds: ['orders', 'users', 'products']
-    });
-
-    console.log(`Export started: ${operation.name}`);
+  const [operation] = await client.exportDocuments({
+    name: databaseName,
+    outputUriPrefix: `${bucket}/${timestamp}`,
+    collectionIds: ['orders', 'users', 'products']
   });
+
+  console.log(`Export started: ${operation.name}`);
+});
 ```
 
 ## Understanding the BigQuery Schema
@@ -129,8 +125,8 @@ Here are some practical SQL queries you can run once the data is in BigQuery.
 SELECT
   JSON_VALUE(data, '$.status') AS order_status,
   COUNT(*) AS order_count
-FROM `your-project.firestore_export.orders_raw`
-WHERE operation = 'CREATE'
+FROM `your-project.firestore_export.orders_raw_latest`
+WHERE operation != 'DELETE'
 GROUP BY order_status
 ORDER BY order_count DESC;
 ```
@@ -138,11 +134,11 @@ ORDER BY order_count DESC;
 ```sql
 -- Calculate daily revenue from orders
 SELECT
-  DATE(timestamp) AS order_date,
+  DATE(TIMESTAMP_SECONDS(CAST(JSON_VALUE(data, '$.createdAt._seconds') AS INT64))) AS order_date,
   SUM(CAST(JSON_VALUE(data, '$.total') AS FLOAT64)) AS daily_revenue,
   COUNT(*) AS num_orders
-FROM `your-project.firestore_export.orders_raw`
-WHERE operation = 'CREATE'
+FROM `your-project.firestore_export.orders_raw_latest`
+WHERE operation != 'DELETE'
   AND JSON_VALUE(data, '$.status') = 'completed'
 GROUP BY order_date
 ORDER BY order_date DESC
@@ -156,7 +152,7 @@ SELECT
   COUNT(*) AS action_count,
   MIN(timestamp) AS first_action,
   MAX(timestamp) AS last_action
-FROM `your-project.firestore_export.orders_raw`
+FROM `your-project.firestore_export.orders_raw_changelog`
 GROUP BY user_id
 ORDER BY action_count DESC
 LIMIT 20;
@@ -169,17 +165,32 @@ For frequently-run queries, create a materialized view so BigQuery does not repr
 ```sql
 -- Create a materialized view for order analytics
 -- This pre-processes the JSON and stays up to date automatically
-CREATE MATERIALIZED VIEW `your-project.firestore_export.orders_analytics` AS
+CREATE MATERIALIZED VIEW `your-project.firestore_export.orders_analytics`
+OPTIONS (
+  allow_non_incremental_definition = true,
+  enable_refresh = true,
+  refresh_interval_minutes = 60
+) AS
+WITH latests AS (
+  SELECT
+    document_name,
+    MAX_BY(document_id, timestamp) AS document_id,
+    MAX(timestamp) AS timestamp,
+    MAX_BY(operation, timestamp) AS operation,
+    MAX_BY(data, timestamp) AS data
+  FROM `your-project.firestore_export.orders_raw_changelog`
+  GROUP BY document_name
+)
 SELECT
   document_id AS order_id,
   JSON_VALUE(data, '$.userId') AS user_id,
   JSON_VALUE(data, '$.status') AS status,
   CAST(JSON_VALUE(data, '$.total') AS FLOAT64) AS total,
   JSON_VALUE(data, '$.currency') AS currency,
-  TIMESTAMP(JSON_VALUE(data, '$.createdAt._seconds')) AS created_at,
+  TIMESTAMP_SECONDS(CAST(JSON_VALUE(data, '$.createdAt._seconds') AS INT64)) AS created_at,
   timestamp AS synced_at
-FROM `your-project.firestore_export.orders_raw`
-WHERE operation IN ('CREATE', 'UPDATE');
+FROM latests
+WHERE operation != 'DELETE';
 ```
 
 Now you can query the materialized view with clean column names:
@@ -211,7 +222,7 @@ npx @firebaseextensions/fs-bq-import-collection \
   --table-name-prefix orders
 ```
 
-This reads every document in the specified collection and writes it to BigQuery as if it were a CREATE event.
+This reads every document in the specified collection and writes it to BigQuery with the `IMPORT` operation.
 
 ## Connecting to Looker Studio
 
