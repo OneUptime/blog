@@ -40,10 +40,10 @@ graph LR
 
 You will need:
 
-- A GCP project with Dataflow API, Bigtable API, and Pub/Sub API enabled
+- A GCP project with Dataflow API, Cloud Bigtable API, Cloud Bigtable Admin API, and Pub/Sub API enabled
 - A Pub/Sub topic and subscription
 - A Bigtable instance with a table created
-- Python 3.8+ or Java 11+ for development
+- Python 3.9+ or Java 11+ for development
 
 Let me set up the infrastructure first:
 
@@ -53,6 +53,7 @@ Let me set up the infrastructure first:
 gcloud services enable \
   dataflow.googleapis.com \
   bigtable.googleapis.com \
+  bigtableadmin.googleapis.com \
   pubsub.googleapis.com
 
 # Create a Pub/Sub topic and subscription for the pipeline input
@@ -95,18 +96,18 @@ class ParseEvent(beam.DoFn):
             message = json.loads(element.decode("utf-8"))
             yield message
         except json.JSONDecodeError as e:
-            # Log bad messages to a dead-letter output for later inspection
+            # Log bad messages for later inspection
             print(f"Failed to parse message: {e}")
 
 class CreateBigtableRow(beam.DoFn):
     """Convert parsed event dictionaries into Bigtable DirectRow mutations."""
 
     def process(self, event):
-        # Build a row key from user ID and timestamp for time-ordered scans
+        # Build a row key from a hash prefix, user ID, and timestamp
         user_id = event.get("user_id", "unknown")
         timestamp = event.get("timestamp", datetime.datetime.now().isoformat())
 
-        # Use a hash suffix to avoid hotspotting on sequential keys
+        # Use a hash prefix to avoid hotspotting on sequential keys
         hash_prefix = hashlib.md5(user_id.encode()).hexdigest()[:4]
         row_key = f"{hash_prefix}#{user_id}#{timestamp}"
 
@@ -117,13 +118,13 @@ class CreateBigtableRow(beam.DoFn):
         ts = datetime.datetime.now()
         direct_row.set_cell(
             "events",
-            "event_type",
+            b"event_type",
             event.get("event_type", "").encode("utf-8"),
             timestamp=ts
         )
         direct_row.set_cell(
             "events",
-            "payload",
+            b"payload",
             json.dumps(event.get("payload", {})).encode("utf-8"),
             timestamp=ts
         )
@@ -131,13 +132,13 @@ class CreateBigtableRow(beam.DoFn):
         # Set metadata columns
         direct_row.set_cell(
             "metadata",
-            "source",
+            b"source",
             event.get("source", "unknown").encode("utf-8"),
             timestamp=ts
         )
         direct_row.set_cell(
             "metadata",
-            "processed_at",
+            b"processed_at",
             datetime.datetime.now().isoformat().encode("utf-8"),
             timestamp=ts
         )
@@ -202,7 +203,7 @@ class CountEvents(beam.DoFn):
         direct_row = bt_row.DirectRow(row_key=row_key.encode("utf-8"))
         direct_row.set_cell(
             "events",
-            "event_count",
+            b"event_count",
             str(count).encode("utf-8"),
             timestamp=datetime.datetime.now()
         )
@@ -293,11 +294,11 @@ class ParseEventWithDLQ(beam.DoFn):
 
 A few tips for getting the best throughput from your Beam-to-Bigtable pipeline:
 
-- **Batch mutations.** The `WriteToBigTable` transform batches mutations automatically, but you can tune the batch size
-- **Size your Bigtable cluster.** Each node handles roughly 10,000 writes per second. Plan your cluster accordingly
+- **Batch mutations.** The `WriteToBigTable` transform batches mutations automatically, and you can tune flushing with `flush_count` and `max_row_bytes`
+- **Size your Bigtable cluster.** Each node handles roughly 10,000 to 14,000 1 KB writes per second, depending on the storage type. Plan your cluster accordingly
 - **Use Dataflow autoscaling.** Let Dataflow scale workers based on backlog, but set `max_num_workers` to cap costs
 - **Avoid large cell values.** Keep individual cell values under 10 MB for best performance
 
 ## Wrapping Up
 
-Apache Beam combined with Cloud Bigtable gives you a robust foundation for streaming data pipelines. Beam handles the complexity of exactly-once processing and windowing, while Bigtable delivers the write throughput and read performance your applications need. Start with a simple pipeline, get the row key design right, and then layer on windowing and aggregations as your requirements grow.
+Apache Beam combined with Cloud Bigtable gives you a robust foundation for streaming data pipelines. Beam handles the complexity of windowing, Dataflow provides exactly-once processing semantics, and Bigtable delivers the write throughput and read performance your applications need. Start with a simple pipeline, get the row key design right, and then layer on windowing and aggregations as your requirements grow.
