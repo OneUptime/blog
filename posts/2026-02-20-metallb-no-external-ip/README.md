@@ -178,7 +178,7 @@ Common error messages and their fixes:
 
 ## Step 6: Check for Namespace or Label Restrictions
 
-Your IPAddressPool or Advertisement may be restricted to certain namespaces or service labels:
+Your IPAddressPool may be restricted to certain namespaces or service labels:
 
 ```bash
 # Check if the pool has namespace or label selectors
@@ -251,7 +251,7 @@ kubectl get svc -A --field-selector spec.type=LoadBalancer -o json | jq -r '
 
 echo ""
 echo "=== Recent MetalLB Events ==="
-kubectl get events -n metallb-system --sort-by='.lastTimestamp' | tail -10
+kubectl get events -A --sort-by='.lastTimestamp' | grep -i metallb | tail -10
 ```
 
 ## Monitoring with OneUptime
