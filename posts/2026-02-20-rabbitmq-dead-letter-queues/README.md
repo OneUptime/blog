@@ -17,6 +17,7 @@ A dead letter queue is a queue that receives messages that could not be delivere
 1. The consumer rejects the message with `basic.nack` or `basic.reject` and `requeue=false`
 2. The message TTL (time-to-live) expires
 3. The queue exceeds its maximum length
+4. A quorum queue message is returned more times than its configured delivery limit
 
 ```mermaid
 graph LR
@@ -129,8 +130,12 @@ connection = pika.BlockingConnection(
 )
 channel = connection.channel()
 
-channel.queue_declare(queue="orders.processing", durable=True)
+channel.queue_declare(queue="orders.processing", passive=True)
 channel.basic_qos(prefetch_count=1)
+
+def save_order(order):
+    """Placeholder for your database write or API call."""
+    print(f"Saved order: {order['order_id']}")
 
 def process_order(ch, method, properties, body):
     """Process an order message. Reject to DLQ on failure."""
@@ -186,7 +191,7 @@ graph LR
 
 ```python
 # retry_setup.py
-# Sets up a retry chain with exponential backoff
+# Sets up a retry chain with increasing backoff
 import pika
 
 credentials = pika.PlainCredentials("admin", "secretpassword")
@@ -255,6 +260,10 @@ channel = connection.channel()
 MAX_RETRIES = 3
 RETRY_QUEUES = ["tasks.retry-1", "tasks.retry-2", "tasks.retry-3"]
 
+def execute_task(task):
+    """Placeholder for your task processing logic."""
+    print(f"Executed task: {task}")
+
 def get_retry_count(properties):
     """Extract the current retry count from message headers."""
     headers = properties.headers or {}
@@ -313,7 +322,6 @@ channel.start_consuming()
 # Monitors the DLQ and sends alerts when messages arrive
 import pika
 import json
-import requests
 
 credentials = pika.PlainCredentials("admin", "secretpassword")
 connection = pika.BlockingConnection(
