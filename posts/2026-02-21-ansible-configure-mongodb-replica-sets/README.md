@@ -130,8 +130,6 @@ Every replica set member needs the same base configuration with the replica set 
 
 storage:
   dbPath: {{ mongodb_dbpath | default('/var/lib/mongodb') }}
-  journal:
-    enabled: true
 {% if mongodb_wiredtiger_cache_size_gb is defined and mongodb_wiredtiger_cache_size_gb %}
   wiredTiger:
     engineConfig:
@@ -220,7 +218,7 @@ After initialization, create the admin user. This only needs to happen on the pr
 - name: Wait for primary to be ready
   command: >
     mongosh --quiet --port {{ mongodb_port }}
-    --eval "db.isMaster().ismaster"
+    --eval "db.hello().isWritablePrimary"
   register: is_primary
   until: is_primary.stdout | trim == "true"
   retries: 20
@@ -279,10 +277,10 @@ After initialization, create the admin user. This only needs to happen on the pr
 
   post_tasks:
     - name: Initialize replica set
-      include_tasks: roles/mongodb_replicaset/tasks/init-replicaset.yml
+      include_tasks: ../roles/mongodb_replicaset/tasks/init-replicaset.yml
 
     - name: Create admin user
-      include_tasks: roles/mongodb_replicaset/tasks/create-admin.yml
+      include_tasks: ../roles/mongodb_replicaset/tasks/create-admin.yml
 ```
 
 ## Monitoring Replica Set Health
@@ -364,10 +362,9 @@ After initialization, create the admin user. This only needs to happen on the pr
     - name: Add new member
       command: >
         mongosh --quiet
+        "mongodb://{{ groups['mongodb_replicaset'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', ':' ~ mongodb_port) | join(',') }}/admin?replicaSet={{ mongodb_replset_name }}"
         -u "{{ mongodb_admin_user }}"
         -p "{{ mongodb_admin_password }}"
-        --authenticationDatabase admin
-        --port {{ mongodb_port }}
         --eval "rs.add('{{ hostvars[new_member].ansible_host }}:{{ mongodb_port }}')"
       no_log: true
 ```
