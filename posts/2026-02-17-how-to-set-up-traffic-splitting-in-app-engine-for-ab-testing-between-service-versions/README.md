@@ -20,7 +20,6 @@ Deploy version 1:
 
 ```bash
 # Deploy the current stable version
-
 gcloud app deploy app.yaml --version=v1 --no-promote
 ```
 
@@ -33,7 +32,7 @@ Deploy version 2 with your changes:
 gcloud app deploy app.yaml --version=v2 --no-promote
 ```
 
-Now you have two versions running but only the original is receiving traffic. Check the versions:
+Now you have two versions deployed and no traffic has been changed yet. Check the versions:
 
 ```bash
 # List all versions and their traffic allocations
@@ -50,7 +49,7 @@ gcloud app services set-traffic default \
   --splits=v1=0.9,v2=0.1
 ```
 
-This immediately starts routing 10% of traffic to v2. Users are randomly assigned to one version or the other.
+This starts routing 10% of traffic to v2. By default, App Engine splits traffic by IP address unless you choose another method.
 
 To gradually increase traffic to the new version:
 
@@ -75,13 +74,13 @@ App Engine supports three methods for splitting traffic, and the choice matters 
 ### IP Address Splitting (Default)
 
 ```bash
-# Split by IP address - same user always sees same version
+# Split by IP address - requests from the same IP address stay consistent
 gcloud app services set-traffic default \
   --splits=v1=0.5,v2=0.5 \
   --split-by=ip
 ```
 
-IP-based splitting sends all requests from the same IP address to the same version. This means a user has a consistent experience - they do not flip between versions on different page loads. However, users behind a corporate NAT or proxy will all see the same version.
+IP-based splitting sends requests from the same sender IP address to the same version while that IP address stays the same. This usually gives a user a consistent experience - they do not flip between versions on different page loads. However, users behind a corporate NAT or proxy will all see the same version.
 
 ### Cookie-Based Splitting
 
@@ -92,7 +91,7 @@ gcloud app services set-traffic default \
   --split-by=cookie
 ```
 
-Cookie-based splitting uses the `GOOGAPPUID` cookie to ensure each user consistently sees the same version. This is the best option for A/B testing because it provides per-user consistency regardless of IP address changes.
+Cookie-based splitting uses the `GOOGAPPUID` cookie to route repeat requests with the same cookie value to the same version. This is usually the best option for A/B testing because it provides per-user consistency regardless of IP address changes.
 
 ### Random Splitting
 
@@ -114,7 +113,7 @@ First, deploy both versions with tracking code:
 ```python
 # main.py - Version A (the control)
 import os
-from flask import Flask, request
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
@@ -133,7 +132,7 @@ def index():
 ```python
 # main.py - Version B (the experiment)
 import os
-from flask import Flask, request
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
@@ -208,7 +207,7 @@ gcloud app services set-traffic $SERVICE \
 echo "Canary deployment complete."
 ```
 
-In practice, you would want to check error rates and latency between stages rather than just waiting. You can query Cloud Monitoring metrics programmatically:
+In practice, you would want to check error rates and latency between stages rather than just waiting. You can query Cloud Logging programmatically:
 
 ```bash
 # Check error rate for the new version
@@ -225,7 +224,7 @@ While traffic is split, monitor both versions:
 ```bash
 # Compare request latency between versions
 gcloud logging read \
-  'resource.type="gae_app" AND protoPayload.latency>"500ms"' \
+  'resource.type="gae_app" AND protoPayload.latency>"0.5s"' \
   --format="table(resource.labels.version_id, protoPayload.latency, timestamp)" \
   --limit=20
 ```
@@ -241,7 +240,7 @@ If the new version is causing problems, route all traffic back to the old versio
 gcloud app services set-traffic default --splits=v1=1.0
 ```
 
-This takes effect within seconds. The new version keeps running but receives no traffic. You can investigate and fix issues at your leisure.
+This takes effect quickly. The new version remains deployed but receives no traffic. You can investigate and fix issues at your leisure.
 
 ## Splitting Traffic for Multiple Services
 
