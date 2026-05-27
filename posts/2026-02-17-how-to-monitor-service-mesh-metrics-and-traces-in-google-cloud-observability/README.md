@@ -8,7 +8,7 @@ Description: Learn how to monitor service mesh metrics, distributed traces, and 
 
 ---
 
-One of the biggest benefits of running a service mesh is the observability you get for free. Every request that flows through the Envoy sidecar proxies generates metrics, traces, and logs without you adding any instrumentation to your application code. Cloud Service Mesh on GKE automatically sends this telemetry to Google Cloud's observability suite - Cloud Monitoring, Cloud Trace, and Cloud Logging. The challenge is not generating the data but knowing how to use it effectively.
+One of the biggest benefits of running a service mesh is the observability you get with little application instrumentation. Requests that flow through the Envoy sidecar proxies generate metrics and access log data, and can generate distributed trace spans when tracing is enabled. Cloud Service Mesh on GKE sends metrics and logs to Google Cloud's observability suite - Cloud Monitoring and Cloud Logging - and can send trace spans to Cloud Trace after you enable tracing. The challenge is not generating the data but knowing how to use it effectively.
 
 This guide covers how to access, query, and build dashboards around your mesh telemetry.
 
@@ -18,7 +18,7 @@ Every Envoy proxy in the mesh produces three types of telemetry:
 
 **Metrics** - Request counts, latencies, response sizes, connection counts, and more. These are emitted as Prometheus-compatible metrics and also sent to Cloud Monitoring.
 
-**Traces** - Distributed traces that follow a request through multiple services. Each hop through an Envoy proxy adds a span to the trace.
+**Traces** - Distributed traces that follow a request through multiple services. Each hop through an Envoy proxy can add a span to the trace when tracing is enabled and your applications propagate trace headers.
 
 **Logs** - Access logs for every request, including source, destination, response code, latency, and other details.
 
@@ -37,7 +37,7 @@ graph TD
 Google Cloud provides a built-in Service Mesh dashboard. Navigate to it in the Cloud Console.
 
 1. Go to the Google Cloud Console
-2. Navigate to Anthos, then Service Mesh (or search for "Service Mesh")
+2. Navigate to Cloud Service Mesh (or search for "Service Mesh")
 3. Select your mesh cluster
 
 The dashboard shows:
@@ -138,7 +138,7 @@ Here is an example dashboard configuration using the Monitoring API.
               {
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"istio.io/service/server/request_count\" resource.type=\"k8s_container\" metric.label.response_code>=\"500\"",
+                    "filter": "metric.type=\"istio.io/service/server/request_count\" resource.type=\"k8s_container\" metric.labels.response_code >= 500",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE",
@@ -162,15 +162,15 @@ Here is an example dashboard configuration using the Monitoring API.
 Create alerts for critical mesh health signals.
 
 ```bash
-# Create an alert policy for high error rates
+# Create an alert policy for 5xx request rate
 
-gcloud alpha monitoring policies create \
-    --display-name="Mesh Service High Error Rate" \
-    --condition-display-name="5xx error rate above 5%" \
-    --condition-filter='metric.type="istio.io/service/server/request_count" AND metric.label.response_code >= 500' \
-    --condition-threshold-value=0.05 \
-    --condition-threshold-duration=300s \
-    --condition-threshold-comparison=COMPARISON_GT \
+gcloud monitoring policies create \
+    --display-name="Mesh Service 5xx Request Rate" \
+    --condition-display-name="5xx request rate above 1 request/sec" \
+    --condition-filter='metric.type="istio.io/service/server/request_count" AND metric.labels.response_code >= 500' \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE","crossSeriesReducer":"REDUCE_SUM","groupByFields":["metric.label.destination_service_name"]}' \
+    --duration=300s \
+    --if='> 1' \
     --notification-channels=YOUR_CHANNEL_ID \
     --project=YOUR_PROJECT_ID
 ```
@@ -184,7 +184,7 @@ Key alerts to set up:
 
 ## Working with Distributed Traces in Cloud Trace
 
-Cloud Service Mesh automatically propagates trace headers (via the B3 or W3C Trace Context formats) through Envoy proxies. This gives you end-to-end traces across all services in the mesh.
+Cloud Service Mesh sidecar proxies can send trace spans to Cloud Trace, but your applications still need to propagate trace headers on outgoing requests so the spans can be correlated into one trace. The Stackdriver tracing configuration accepts B3, W3C Trace Context, Google Cloud Trace, and gRPC TraceBin header formats. This gives you end-to-end traces across all services in the mesh.
 
 ### Viewing Traces
 
@@ -199,8 +199,8 @@ The waterfall view shows each service hop as a span, with timing information for
 Use trace analysis to find patterns.
 
 ```text
-# In the Cloud Trace search, filter for slow traces
-latency > 1s AND /api/checkout
+# In a Cloud Trace API filter, filter for slow traces with a matching span
+span:/api/checkout latency:1s
 ```
 
 Common patterns to look for:
@@ -211,73 +211,61 @@ Common patterns to look for:
 
 ### Configuring Trace Sampling
 
-By default, Cloud Service Mesh samples a percentage of traces. For production, you generally want 1-5% sampling to balance visibility with cost.
+Cloud Trace is disabled by default in Cloud Service Mesh. After enabling tracing, configure sampling to balance visibility with cost. For production, you generally want 1-5% sampling.
 
 ```yaml
-# mesh-config.yaml
-# Configure trace sampling rate
-apiVersion: v1
-kind: ConfigMap
+# telemetry-tracing.yaml
+# Configure trace sampling rate for the mesh
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: istio
+  name: mesh-default
   namespace: istio-system
-data:
-  mesh: |-
-    defaultConfig:
-      tracing:
-        sampling: 1.0
+spec:
+  tracing:
+  - providers:
+    - name: stackdriver
+    randomSamplingPercentage: 1.00
 ```
 
-For the managed control plane, configure sampling through the fleet settings.
-
-```bash
-# Update trace sampling rate
-gcloud container fleet mesh update \
-    --memberships=mesh-cluster \
-    --config='{"tracing": {"sampling": 1.0}}' \
-    --project=YOUR_PROJECT_ID
-```
+For managed Cloud Service Mesh, keep a single mesh-wide Telemetry resource in the root namespace and include any existing telemetry customizations in the same resource.
 
 ## Working with Access Logs in Cloud Logging
 
-Envoy access logs capture detailed information about every request. In Cloud Logging, these logs are associated with the `k8s_container` resource type for the istio-proxy container.
+Cloud Service Mesh supports Google Cloud Observability traffic logs and Envoy access logs. Traffic logs are enabled by default on GKE and are written to the `server-accesslog-stackdriver` and `client-accesslog-stackdriver` logs. Envoy access logs are disabled by default and appear in the `istio-proxy` container logs when enabled.
 
 ### Querying Mesh Access Logs
 
-In the Cloud Logging log explorer, use this filter to find mesh access logs.
+In the Cloud Logging log explorer, use this filter to find server-side traffic logs.
 
 ```text
-resource.type="k8s_container"
-resource.labels.container_name="istio-proxy"
+logName="projects/YOUR_PROJECT_ID/logs/server-accesslog-stackdriver"
 ```
 
 To find specific patterns.
 
 ```text
 # Find all 5xx responses
-resource.type="k8s_container"
-resource.labels.container_name="istio-proxy"
-jsonPayload.response_code >= 500
+logName="projects/YOUR_PROJECT_ID/logs/server-accesslog-stackdriver"
+httpRequest.status >= 500
 
 # Find slow requests (over 5 seconds)
-resource.type="k8s_container"
-resource.labels.container_name="istio-proxy"
-jsonPayload.duration > 5000
+logName="projects/YOUR_PROJECT_ID/logs/server-accesslog-stackdriver"
+httpRequest.latency > "5s"
 
 # Find requests from a specific source service
-resource.type="k8s_container"
-resource.labels.container_name="istio-proxy"
-jsonPayload.source_name="frontend"
+logName="projects/YOUR_PROJECT_ID/logs/server-accesslog-stackdriver"
+labels.source_name="frontend"
 ```
 
 ### Enabling Detailed Access Logs
 
-By default, access logging may only capture errors. Enable full access logging for debugging.
+Traffic logs are enabled by default. If you previously disabled traffic logs or want to customize when they are written, configure the `stackdriver` access logging provider.
 
 ```yaml
 # telemetry.yaml
 # Enables detailed access logging for all mesh traffic
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -294,8 +282,8 @@ Be careful with full access logging in production - it can generate a lot of log
 
 ```yaml
 # telemetry-specific.yaml
-# Enables access logging only for a specific namespace
-apiVersion: telemetry.istio.io/v1alpha1
+# Writes traffic logs only for errors in a specific namespace
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: debug-logging
