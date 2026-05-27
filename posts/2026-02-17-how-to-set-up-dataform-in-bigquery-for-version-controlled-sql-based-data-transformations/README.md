@@ -24,30 +24,37 @@ The key concepts are:
 
 ## Setting Up Dataform in BigQuery
 
-Dataform is available directly in the BigQuery console. Start by creating a repository:
+Dataform is available in the Google Cloud console. Start by creating a repository:
 
 ```bash
-# Enable the Dataform API
-
-gcloud services enable dataform.googleapis.com
+# Enable the Dataform API and BigQuery API
+gcloud services enable dataform.googleapis.com bigquery.googleapis.com
 
 # Create a Dataform repository
-gcloud dataform repositories create analytics-transforms \
-  --region=us-central1 \
-  --display-name="Analytics Transformations"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dataform.googleapis.com/v1/projects/my-project/locations/us-central1/repositories?repositoryId=analytics-transforms" \
+  -d '{"displayName": "Analytics Transformations"}'
 ```
 
-Or set it up through the BigQuery console by navigating to BigQuery > Dataform and clicking "Create repository."
+Or set it up through the Google Cloud console by navigating to Dataform and clicking "Create repository."
 
 Connect the repository to a Git provider for version control:
 
 ```bash
 # Connect to a GitHub repository for version control
-gcloud dataform repositories update analytics-transforms \
-  --region=us-central1 \
-  --git-remote-url="https://github.com/my-org/analytics-transforms.git" \
-  --git-default-branch="main" \
-  --git-auth-token-secret="projects/my-project/secrets/github-token/versions/latest"
+curl -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dataform.googleapis.com/v1/projects/my-project/locations/us-central1/repositories/analytics-transforms?updateMask=gitRemoteSettings" \
+  -d '{
+    "gitRemoteSettings": {
+      "url": "https://github.com/my-org/analytics-transforms.git",
+      "defaultBranch": "main",
+      "authenticationTokenSecretVersion": "projects/my-project/secrets/github-token/versions/latest"
+    }
+  }'
 ```
 
 ## Creating a Development Workspace
@@ -56,9 +63,11 @@ Workspaces are where you write and test your transformations:
 
 ```bash
 # Create a development workspace
-gcloud dataform workspaces create dev-workspace \
-  --repository=analytics-transforms \
-  --region=us-central1
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dataform.googleapis.com/v1/projects/my-project/locations/us-central1/repositories/analytics-transforms/workspaces?workspaceId=dev-workspace" \
+  -d '{}'
 ```
 
 ## Project Structure
@@ -82,25 +91,21 @@ definitions/
 includes/
   constants.js
   helpers.js
-dataform.json
+workflow_settings.yaml
 ```
 
 ## Configuring the Project
 
-Set up the `dataform.json` configuration file:
+Set up the `workflow_settings.yaml` configuration file:
 
-```json
-{
-  "defaultSchema": "analytics",
-  "assertionSchema": "analytics_assertions",
-  "warehouse": "bigquery",
-  "defaultDatabase": "my-project",
-  "defaultLocation": "US",
-  "vars": {
-    "environment": "production",
-    "start_date": "2025-01-01"
-  }
-}
+```yaml
+defaultProject: my-project
+defaultDataset: analytics
+defaultLocation: US
+defaultAssertionDataset: analytics_assertions
+vars:
+  environment: production
+  start_date: "2025-01-01"
 ```
 
 ## Declaring Source Tables
@@ -159,14 +164,14 @@ SELECT
     PARTITION BY event_id
     ORDER BY event_timestamp DESC
   ) AS row_num
-FROM ${ref("raw_events")}
+FROM ${ref("events")}
 WHERE event_id IS NOT NULL
 QUALIFY row_num = 1
 ```
 
 ```sql
 -- definitions/staging/stg_customers.sqlx
--- Staging layer: clean customer data with SCD Type 2 handling
+-- Staging layer: clean customer data and keep the latest record per customer
 config {
   type: "table",
   schema: "staging",
@@ -183,7 +188,7 @@ SELECT
   COALESCE(country, 'unknown') AS country,
   COALESCE(segment, 'unclassified') AS segment,
   updated_at
-FROM ${ref("raw_customers")}
+FROM ${ref("customers")}
 -- Keep only the latest record per customer
 QUALIFY ROW_NUMBER() OVER (
   PARTITION BY customer_id
@@ -375,24 +380,33 @@ GROUP BY event_date
 Execute your Dataform project:
 
 ```bash
-# Compile the project to check for errors
-gcloud dataform compilations create \
-  --repository=analytics-transforms \
-  --region=us-central1 \
-  --git-commitish=main
+# Compile the project to check for errors. Save the "name" field from the response.
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dataform.googleapis.com/v1/projects/my-project/locations/us-central1/repositories/analytics-transforms/compilationResults" \
+  -d '{"gitCommitish": "main"}'
 
 # Run all transformations
-gcloud dataform workflow-invocations create \
-  --repository=analytics-transforms \
-  --region=us-central1 \
-  --compilation-result="projects/my-project/locations/us-central1/repositories/analytics-transforms/compilationResults/COMPILATION_ID"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dataform.googleapis.com/v1/projects/my-project/locations/us-central1/repositories/analytics-transforms/workflowInvocations" \
+  -d '{
+    "compilationResult": "projects/my-project/locations/us-central1/repositories/analytics-transforms/compilationResults/COMPILATION_ID"
+  }'
 
 # Run only specific tags
-gcloud dataform workflow-invocations create \
-  --repository=analytics-transforms \
-  --region=us-central1 \
-  --compilation-result="COMPILATION_ID" \
-  --included-tags="daily"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://dataform.googleapis.com/v1/projects/my-project/locations/us-central1/repositories/analytics-transforms/workflowInvocations" \
+  -d '{
+    "compilationResult": "projects/my-project/locations/us-central1/repositories/analytics-transforms/compilationResults/COMPILATION_ID",
+    "invocationConfig": {
+      "includedTags": ["daily"]
+    }
+  }'
 ```
 
 ## Scheduling with Cloud Composer
