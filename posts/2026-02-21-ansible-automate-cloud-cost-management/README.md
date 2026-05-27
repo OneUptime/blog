@@ -56,12 +56,9 @@ Tags are the foundation of cost allocation. Without them, you cannot tell which 
     # Identify instances missing required tags
     - name: Find instances missing required tags
       set_fact:
-        untagged_instances: >-
-          {{ all_instances.instances | selectattr('state.name', 'eq', 'running')
-             | rejectattr('tags.' + item, 'defined')
-             | list }}
-      loop: "{{ required_tags }}"
-      register: missing_tags_result
+        untagged_instances: "{{ (untagged_instances | default([])) + [item] }}"
+      loop: "{{ all_instances.instances | selectattr('state.name', 'eq', 'running') | list }}"
+      when: required_tags | difference(((item.tags | default({})).keys() | list)) | length > 0
 
     # Apply default tags to untagged resources
     - name: Apply default compliance tags
@@ -70,8 +67,7 @@ Tags are the foundation of cost allocation. Without them, you cannot tell which 
         resource: "{{ item.instance_id }}"
         tags: "{{ default_tags }}"
         state: present
-      loop: "{{ all_instances.instances | selectattr('state.name', 'eq', 'running') | list }}"
-      when: item.tags.team is not defined
+      loop: "{{ untagged_instances | default([]) }}"
 ```
 
 ## Scheduling Development Environment Shutdowns
@@ -172,6 +168,11 @@ Unattached EBS volumes and old snapshots are common sources of waste. This playb
   gather_facts: false
 
   tasks:
+    # Get the current AWS account ID
+    - name: Get AWS caller information
+      amazon.aws.aws_caller_info:
+      register: caller_info
+
     # Find unattached EBS volumes
     - name: Get unattached EBS volumes
       amazon.aws.ec2_vol_info:
@@ -191,15 +192,19 @@ Unattached EBS volumes and old snapshots are common sources of waste. This playb
     - name: Get all snapshots owned by this account
       amazon.aws.ec2_snapshot_info:
         region: us-east-1
-        filters:
-          owner-id: "{{ aws_account_id }}"
+        owner_ids:
+          - "{{ caller_info.account }}"
       register: all_snapshots
+
+    - name: Calculate snapshot cutoff date
+      set_fact:
+        snapshot_cutoff: "{{ lookup('pipe', 'date -u -d \"90 days ago\" +%Y-%m-%dT%H:%M:%S+00:00') }}"
 
     - name: Identify old snapshots
       set_fact:
         old_snapshots: >-
           {{ all_snapshots.snapshots
-             | selectattr('start_time', 'lt', (now() - timedelta(days=90)).isoformat())
+             | selectattr('start_time', 'lt', snapshot_cutoff)
              | list }}
 
     - name: Report old snapshots
@@ -227,7 +232,7 @@ You can use Ansible to pull cost data from the AWS Cost Explorer API and generat
 - name: Generate cloud cost report
   hosts: localhost
   connection: local
-  gather_facts: false
+  gather_facts: true
 
   tasks:
     # Query AWS Cost Explorer
@@ -289,10 +294,10 @@ The same patterns apply to Azure. Here is how to find and deallocate stopped VMs
         name: "{{ item.name }}"
         allocated: false
       loop: "{{ all_vms.vms }}"
-      when: item.power_state == 'VM stopped'
+      when: item.power_state == 'stopped'
 ```
 
-In Azure, a "stopped" VM still costs money. You need to "deallocate" it to stop charges. This is a common source of unexpected spend.
+In Azure, a "stopped" VM that is not deallocated still incurs compute charges. You need to "deallocate" it to stop compute charges, though disks and other associated resources can continue to incur charges. This is a common source of unexpected spend.
 
 ## Setting Up Scheduled Cost Automation
 
@@ -301,25 +306,10 @@ Tie everything together with AWX or a simple cron-based runner:
 ```yaml
 # cost-automation-schedule.yml - Master playbook for cost management
 ---
-- name: Run all cost management tasks
-  hosts: localhost
-  connection: local
-  gather_facts: true
-
-  tasks:
-    - name: Include tagging enforcement
-      include_tasks: enforce-tags.yml
-
-    - name: Include waste detection
-      include_tasks: find-waste.yml
-
-    - name: Include dev shutdown (evenings only)
-      include_tasks: stop-dev-instances.yml
-      when: ansible_date_time.hour | int >= 19
-
-    - name: Include cost reporting (first of month)
-      include_tasks: cost-report.yml
-      when: ansible_date_time.day == "01"
+- import_playbook: enforce-tags.yml
+- import_playbook: find-waste.yml
+- import_playbook: stop-dev-instances.yml
+- import_playbook: cost-report.yml
 ```
 
 ## Practical Tips
