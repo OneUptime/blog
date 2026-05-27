@@ -31,7 +31,7 @@ Avro is a popular choice because it is well-supported across languages and works
 # Create an Avro schema for user events
 
 gcloud pubsub schemas create user-event-schema \
-  --type=AVRO \
+  --type=avro \
   --definition='{
     "type": "record",
     "name": "UserEvent",
@@ -44,7 +44,7 @@ gcloud pubsub schemas create user-event-schema \
   }'
 ```
 
-This schema defines four fields: a required user_id string, an event_type enum with specific allowed values, a timestamp, and an optional metadata map.
+This schema defines four fields: a required user_id string, an event_type enum with specific allowed values, a timestamp, and a metadata map with a default value for schema evolution.
 
 In Terraform:
 
@@ -93,7 +93,7 @@ If your organization already uses protobuf, you can use that instead. Protobuf s
 ```bash
 # Create a Protocol Buffer schema from a proto file
 gcloud pubsub schemas create order-event-schema \
-  --type=PROTOCOL_BUFFER \
+  --type=protocol-buffer \
   --definition='
 syntax = "proto3";
 
@@ -213,6 +213,7 @@ invalid_message = {
     "user_id": "usr_12345",
     "event_type": "INVALID_TYPE",  # Not in the enum
     "timestamp": 1708100000000,
+    "metadata": {}
 }
 
 # This will raise an exception because the message fails validation
@@ -233,7 +234,7 @@ Before attaching a schema to a topic, validate it to catch syntax errors:
 ```bash
 # Validate an Avro schema definition
 gcloud pubsub schemas validate-schema \
-  --type=AVRO \
+  --type=avro \
   --definition='{
     "type": "record",
     "name": "TestEvent",
@@ -265,7 +266,7 @@ Schemas change over time. You can create new revisions of a schema without break
 ```bash
 # Create a new revision of an existing schema (add a new optional field)
 gcloud pubsub schemas commit user-event-schema \
-  --type=AVRO \
+  --type=avro \
   --definition='{
     "type": "record",
     "name": "UserEvent",
@@ -279,24 +280,20 @@ gcloud pubsub schemas commit user-event-schema \
   }'
 ```
 
-Adding a new optional field (with a default value) is backward-compatible. Existing publishers continue to work because the new field has a default. Removing a required field or changing a field's type is a breaking change.
+Adding a new nullable field with a default value is backward-compatible. Existing publishers can continue to work when the topic accepts the older schema revision, and newer publishers can send the new field. Removing a required field or changing a field's type is a breaking change.
 
-When configuring a topic, you can specify which schema revisions to accept:
+When configuring a topic with gcloud or the Pub/Sub API, you can specify which schema revisions to accept:
 
-```hcl
-# Topic that accepts messages matching any revision of the schema
-resource "google_pubsub_topic" "user_events" {
-  name = "user-events"
-
-  schema_settings {
-    schema   = google_pubsub_schema.user_event.id
-    encoding = "JSON"
-    # Accept messages that match the first or last revision
-    first_revision_id = "2026-02-01T00:00:00Z"
-    last_revision_id  = ""  # Empty means latest
-  }
-}
+```bash
+# Topic that accepts messages matching a bounded revision range
+gcloud pubsub topics create user-events \
+  --schema=user-event-schema \
+  --message-encoding=json \
+  --first-revision-id=97e34f8c \
+  --last-revision-id=2c5f8a7b
 ```
+
+The current Terraform `google_pubsub_topic` resource supports `schema` and `encoding` in `schema_settings`, but does not expose `first_revision_id` or `last_revision_id`.
 
 ## Choosing Between Avro and Protocol Buffers
 
@@ -306,7 +303,7 @@ Both work well, but here are some considerations:
 - You primarily use JSON encoding
 - You need rich schema evolution support (Avro has well-defined compatibility rules)
 - Your consumers include data warehouses like BigQuery (Avro maps well to BigQuery schemas)
-- You want self-describing messages
+- You want a schema format commonly used in data pipeline tooling
 
 **Use Protocol Buffers when:**
 - You already use protobuf in your organization
@@ -316,7 +313,7 @@ Both work well, but here are some considerations:
 
 ## Common Pitfalls
 
-1. **Default values matter for Avro.** If you add a new field without a default, existing publishers will fail. Always add defaults to new fields.
+1. **Default values matter for Avro.** If you add a new field without a default, compatibility checks and readers can fail. Defaults do not make a field optional at encoding time, so plan your revision range and publisher rollout carefully.
 
 2. **JSON encoding is case-sensitive.** Field names must match exactly. `user_id` and `User_Id` are different fields.
 
@@ -328,4 +325,4 @@ Both work well, but here are some considerations:
 
 ## Wrapping Up
 
-Schema validation in Pub/Sub is one of those features that costs almost nothing to set up but saves you from hours of debugging malformed data downstream. Define your schemas in Avro or protobuf, attach them to your topics, and bad messages get rejected at publish time instead of corrupting your pipeline. Use JSON encoding for readability during development and consider binary encoding for production efficiency. Most importantly, plan for schema evolution from the start by always adding optional fields with defaults.
+Schema validation in Pub/Sub is one of those features that costs almost nothing to set up but saves you from hours of debugging malformed data downstream. Define your schemas in Avro or protobuf, attach them to your topics, and bad messages get rejected at publish time instead of corrupting your pipeline. Use JSON encoding for readability during development and consider binary encoding for production efficiency. Most importantly, plan for schema evolution from the start by adding nullable fields with defaults and managing accepted revision ranges carefully.
