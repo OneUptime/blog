@@ -67,7 +67,7 @@ Next, create a Dockerfile.
 
 ```dockerfile
 # Dockerfile - Multi-stage build for a lean production image
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY . .
 # Build a statically linked binary
@@ -121,7 +121,7 @@ Here is where things get interesting. The `skaffold.yaml` file ties everything t
 
 ```yaml
 # skaffold.yaml - Pipeline config using Cloud Build for remote builds
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-app
@@ -133,7 +133,7 @@ build:
     # Timeout for the build step
     timeout: 600s
   artifacts:
-    - image: us-central1-docker.pkg.dev/my-gcp-project/my-repo/my-app
+    - image: my-app
       docker:
         dockerfile: Dockerfile
 deploy:
@@ -142,7 +142,7 @@ deploy:
       - k8s/*.yaml
 ```
 
-The `googleCloudBuild` section tells Skaffold to send your source code to Cloud Build instead of building locally. Cloud Build runs the Docker build on GCP infrastructure and pushes the resulting image to Artifact Registry.
+The `googleCloudBuild` section tells Skaffold to send your source code to Cloud Build instead of building locally. Cloud Build runs the Docker build on GCP infrastructure and, when you use `--default-repo`, pushes the resulting image to Artifact Registry.
 
 ## Running the Development Loop
 
@@ -169,7 +169,7 @@ For interpreted languages or cases where you want faster iteration, Skaffold sup
 
 ```yaml
 # skaffold.yaml - With file sync for faster iteration
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-app
@@ -177,7 +177,7 @@ build:
   googleCloudBuild:
     projectId: my-gcp-project
   artifacts:
-    - image: us-central1-docker.pkg.dev/my-gcp-project/my-repo/my-app
+    - image: my-app
       docker:
         dockerfile: Dockerfile
       sync:
@@ -199,13 +199,13 @@ One of the strongest Skaffold features is profiles. You can define different bui
 
 ```yaml
 # skaffold.yaml - With profiles for local and cloud builds
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-app
 build:
   artifacts:
-    - image: us-central1-docker.pkg.dev/my-gcp-project/my-repo/my-app
+    - image: my-app
       docker:
         dockerfile: Dockerfile
 deploy:
@@ -233,7 +233,7 @@ Activate a profile with the `-p` flag.
 skaffold dev -p local
 
 # Use Cloud Build for heavier workloads
-skaffold dev -p cloud
+skaffold dev -p cloud --default-repo=us-central1-docker.pkg.dev/my-gcp-project/my-repo
 ```
 
 ## Integrating with Cloud Build Triggers
@@ -243,14 +243,24 @@ For production deployments, you probably want Cloud Build triggers rather than r
 ```yaml
 # cloudbuild.yaml - Use Skaffold inside Cloud Build for CI/CD
 steps:
-  - name: 'gcr.io/k8s-skaffold/skaffold:v2.10.0'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'gcloud'
+    args:
+      - 'container'
+      - 'clusters'
+      - 'get-credentials'
+      - 'my-dev-cluster'
+      - '--region=us-central1'
+      - '--project=$PROJECT_ID'
+    env:
+      - 'KUBECONFIG=/workspace/kubeconfig'
+  - name: 'gcr.io/k8s-skaffold/skaffold:v2.17.0'
     entrypoint: 'skaffold'
     args:
       - 'run'
       - '--default-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo'
     env:
-      - 'CLOUDSDK_COMPUTE_REGION=us-central1'
-      - 'CLOUDSDK_CONTAINER_CLUSTER=my-dev-cluster'
+      - 'KUBECONFIG=/workspace/kubeconfig'
 ```
 
 This gives you a consistent pipeline. The same Skaffold config that works on your laptop also works in CI/CD.
@@ -264,7 +274,7 @@ Skaffold also has a debug mode that automatically configures debugging for your 
 skaffold debug --default-repo=us-central1-docker.pkg.dev/my-gcp-project/my-repo
 ```
 
-For Go, it installs and configures Delve. For Java, it sets up JDWP. For Node.js, it enables the inspector. You can then connect your IDE's debugger to the remote port.
+For recognized Go images, it configures the application to run under Delve. For Java, it sets up JDWP. For Node.js, it enables the inspector. You can then connect your IDE's debugger to the remote port.
 
 ## Common Pitfalls
 
