@@ -79,7 +79,7 @@ def load_geojson_boundaries(project_id, dataset, table, geojson_file):
         print(f"Loaded {len(rows)} boundaries")
 
 load_geojson_boundaries(
-    "my-project", "geo_analytics", "delivery_zones", "delivery_zones.geojson"
+    "my-project", "geo_analytics", "delivery_zones_raw", "delivery_zones.geojson"
 )
 ```
 
@@ -87,12 +87,12 @@ Then convert the string geometry to proper GEOGRAPHY:
 
 ```sql
 -- Convert the GeoJSON strings to GEOGRAPHY type
-CREATE OR REPLACE TABLE `MY_PROJECT.geo_analytics.delivery_zones` AS
+CREATE OR REPLACE TABLE `my-project.geo_analytics.delivery_zones` AS
 SELECT
   zone_id,
   zone_name,
   ST_GEOGFROMGEOJSON(boundary) as boundary
-FROM `MY_PROJECT.geo_analytics.delivery_zones_raw`;
+FROM `my-project.geo_analytics.delivery_zones_raw`;
 ```
 
 ## Step 2: Point-in-Polygon Spatial Join
@@ -110,7 +110,7 @@ SELECT
   z.zip_code,
   z.city,
   z.state_code
-FROM `MY_PROJECT.geo_analytics.customers` c
+FROM `my-project.geo_analytics.customers` c
 JOIN `bigquery-public-data.geo_us_boundaries.zip_codes` z
   ON ST_CONTAINS(z.zip_code_geom, c.location)
 ```
@@ -124,7 +124,7 @@ SELECT
   c.customer_name,
   z.zip_code,
   COALESCE(z.state_code, 'Unknown') as state
-FROM `MY_PROJECT.geo_analytics.customers` c
+FROM `my-project.geo_analytics.customers` c
 LEFT JOIN `bigquery-public-data.geo_us_boundaries.zip_codes` z
   ON ST_CONTAINS(z.zip_code_geom, c.location)
 ```
@@ -139,16 +139,16 @@ This query counts customers and calculates revenue per county:
 -- Customer count and revenue by county
 SELECT
   county.county_name,
-  county.state_name,
+  county.state_fips_code,
   COUNT(DISTINCT c.customer_id) as customer_count,
   SUM(o.total_amount) as total_revenue,
   ROUND(SUM(o.total_amount) / COUNT(DISTINCT c.customer_id), 2) as revenue_per_customer
-FROM `MY_PROJECT.geo_analytics.customers` c
+FROM `my-project.geo_analytics.customers` c
 JOIN `bigquery-public-data.geo_us_boundaries.counties` county
   ON ST_CONTAINS(county.county_geom, c.location)
-LEFT JOIN `MY_PROJECT.sales.orders` o
+LEFT JOIN `my-project.sales.orders` o
   ON c.customer_id = o.customer_id
-GROUP BY county.county_name, county.state_name
+GROUP BY county.county_name, county.state_fips_code
 ORDER BY total_revenue DESC
 LIMIT 50;
 ```
@@ -173,8 +173,8 @@ WITH distances AS (
       PARTITION BY c.customer_id
       ORDER BY ST_DISTANCE(c.location, s.location)
     ) as rank
-  FROM `MY_PROJECT.geo_analytics.customers` c
-  CROSS JOIN `MY_PROJECT.geo_analytics.store_locations` s
+  FROM `my-project.geo_analytics.customers` c
+  CROSS JOIN `my-project.geo_analytics.store_locations` s
 )
 SELECT
   customer_id,
@@ -202,8 +202,8 @@ WITH nearby_stores AS (
       PARTITION BY c.customer_id
       ORDER BY ST_DISTANCE(c.location, s.location)
     ) as rank
-  FROM `MY_PROJECT.geo_analytics.customers` c
-  CROSS JOIN `MY_PROJECT.geo_analytics.store_locations` s
+  FROM `my-project.geo_analytics.customers` c
+  CROSS JOIN `my-project.geo_analytics.store_locations` s
   -- Pre-filter to only consider stores within 50 miles (~80km)
   WHERE ST_DWITHIN(c.location, s.location, 80467)
 )
@@ -230,8 +230,8 @@ SELECT
     ST_AREA(ST_INTERSECTION(dz.boundary, fr.boundary)) /
     ST_AREA(dz.boundary) * 100, 1
   ) as pct_zone_affected
-FROM `MY_PROJECT.geo_analytics.delivery_zones` dz
-JOIN `MY_PROJECT.geo_analytics.flood_risk_areas` fr
+FROM `my-project.geo_analytics.delivery_zones` dz
+JOIN `my-project.geo_analytics.flood_risk_areas` fr
   ON ST_INTERSECTS(dz.boundary, fr.boundary)
 WHERE ST_AREA(ST_INTERSECTION(dz.boundary, fr.boundary)) > 0
 ORDER BY pct_zone_affected DESC;
@@ -243,16 +243,26 @@ Identify areas not covered by any boundary, such as finding locations outside yo
 
 ```sql
 -- Find customers outside all delivery zones
+WITH unserved_customers AS (
+  SELECT
+    c.customer_id,
+    c.customer_name,
+    c.location
+  FROM `my-project.geo_analytics.customers` c
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM `my-project.geo_analytics.delivery_zones` dz
+    WHERE ST_CONTAINS(dz.boundary, c.location)
+  )
+)
 SELECT
   c.customer_id,
   c.customer_name,
   c.location,
   -- Find the nearest delivery zone boundary for unserved customers
   MIN(ST_DISTANCE(c.location, dz.boundary)) as meters_to_nearest_zone
-FROM `MY_PROJECT.geo_analytics.customers` c
-LEFT JOIN `MY_PROJECT.geo_analytics.delivery_zones` dz
-  ON ST_CONTAINS(dz.boundary, c.location)
-WHERE dz.zone_id IS NULL  -- No zone contains this customer
+FROM unserved_customers c
+CROSS JOIN `my-project.geo_analytics.delivery_zones` dz
 GROUP BY c.customer_id, c.customer_name, c.location
 ORDER BY meters_to_nearest_zone ASC;
 ```
@@ -262,18 +272,17 @@ ORDER BY meters_to_nearest_zone ASC;
 Spatial joins can be computationally expensive. Here are key optimization strategies:
 
 ```sql
--- Tip 1: Pre-filter with ST_DWITHIN before exact spatial join
--- ST_DWITHIN is faster than ST_CONTAINS for initial distance-based filtering
-SELECT c.*, z.zip_code
+-- Tip 1: Use ST_DWITHIN for radius-limited joins
+-- BigQuery optimizes ST_DWITHIN spatial joins when the distance is constant
+SELECT c.*, s.store_id
 FROM customers c
-JOIN zip_codes z
-  ON ST_DWITHIN(z.zip_code_geom, c.location, 10000)
-  AND ST_CONTAINS(z.zip_code_geom, c.location);
+JOIN store_locations s
+  ON ST_DWITHIN(c.location, s.location, 10000);
 
 -- Tip 2: Cluster tables on geography columns
-CREATE TABLE `MY_PROJECT.geo_analytics.customers_clustered`
+CREATE TABLE `my-project.geo_analytics.customers_clustered`
 CLUSTER BY location AS
-SELECT * FROM `MY_PROJECT.geo_analytics.customers`;
+SELECT * FROM `my-project.geo_analytics.customers`;
 
 -- Tip 3: Simplify complex polygons if high precision isn't needed
 -- Reduce vertex count for faster containment checks
@@ -282,13 +291,12 @@ SELECT
   ST_SIMPLIFY(boundary, 100) as simplified_boundary  -- 100 meter tolerance
 FROM delivery_zones;
 
--- Tip 4: For very large datasets, partition by region first
-CREATE TABLE `MY_PROJECT.geo_analytics.customers_partitioned`
-PARTITION BY state
-CLUSTER BY location AS
-SELECT * FROM `MY_PROJECT.geo_analytics.customers`;
+-- Tip 4: For very large datasets, cluster by region first
+CREATE TABLE `my-project.geo_analytics.customers_by_region`
+CLUSTER BY state_code, location AS
+SELECT * FROM `my-project.geo_analytics.customers`;
 ```
 
 ## Summary
 
-Spatial joins in BigQuery GIS let you connect location data to geographic boundaries using SQL that feels familiar. The key functions are ST_CONTAINS for point-in-polygon, ST_INTERSECTS for polygon overlap, and ST_DISTANCE combined with ROW_NUMBER for nearest-neighbor analysis. For large datasets, always pre-filter with ST_DWITHIN where possible, cluster your tables on geography columns, and simplify complex polygons when exact boundary precision is not critical. These techniques scale to billions of points and thousands of polygons without requiring any specialized GIS infrastructure.
+Spatial joins in BigQuery GIS let you connect location data to geographic boundaries using SQL that feels familiar. The key functions are ST_CONTAINS for point-in-polygon, ST_INTERSECTS for polygon overlap, and ST_DISTANCE combined with ROW_NUMBER for nearest-neighbor analysis. For large datasets, pre-filter with ST_DWITHIN where possible, cluster your tables on geography columns, and simplify complex polygons when exact boundary precision is not critical. These techniques can scale to very large point and polygon datasets without requiring any specialized GIS infrastructure.
