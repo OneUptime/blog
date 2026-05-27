@@ -27,8 +27,10 @@ This is essential for microservices architectures where you want a unified entry
 
 Make sure you have an Ingress controller installed:
 
+> Note: The community-maintained `kubernetes/ingress-nginx` controller was retired after March 2026. The commands below are still useful for learning or for existing ingress-nginx clusters, but for new production deployments you should use a maintained Ingress controller or Gateway API implementation.
+
 ```bash
-# Install Nginx Ingress Controller using Helm
+# Install ingress-nginx Controller using Helm
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
@@ -170,7 +172,7 @@ Matches based on a URL path prefix split by `/`. `/api` matches `/api`, `/api/`,
 
 ### ImplementationSpecific
 
-Matching depends on the Ingress controller. For Nginx, this allows regex patterns.
+Matching depends on the Ingress controller. For ingress-nginx, this allows regex patterns when `nginx.ingress.kubernetes.io/use-regex` is enabled.
 
 ```mermaid
 graph TD
@@ -331,15 +333,15 @@ spec:
                   number: 80
 ```
 
-The Ingress controller merges rules from all Ingress resources for the same host.
+With ingress-nginx, different paths for the same host are merged across Ingress resources.
 
 ## Path Priority and Ordering
 
-When multiple paths match a request, Kubernetes uses these rules:
+When multiple paths match a request, keep these rules in mind:
 
-1. **Exact** matches take priority over **Prefix** matches
-2. Longer prefix paths take priority over shorter ones
-3. If two paths are equal, the one defined first wins
+1. Longer matching paths take priority over shorter ones
+2. If two paths are otherwise equally matched, **Exact** matches take priority over **Prefix** matches
+3. With ingress-nginx, if the same host and path are defined in multiple Ingress resources, the oldest rule wins
 
 ```yaml
 # priority-routing.yaml
@@ -442,17 +444,17 @@ spec:
 Verify your routing configuration:
 
 ```bash
-# Get the Ingress controller external IP
-INGRESS_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get the Ingress controller external address
+INGRESS_ADDRESS=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Test each path
-curl -H "Host: myapp.example.com" http://$INGRESS_IP/
+curl -H "Host: myapp.example.com" http://$INGRESS_ADDRESS/
 # Expected: Hello from Frontend
 
-curl -H "Host: myapp.example.com" http://$INGRESS_IP/api/
+curl -H "Host: myapp.example.com" http://$INGRESS_ADDRESS/api/
 # Expected: Hello from API service
 
-curl -H "Host: myapp.example.com" http://$INGRESS_IP/docs/
+curl -H "Host: myapp.example.com" http://$INGRESS_ADDRESS/docs/
 # Expected: Hello from Docs service
 
 # Check the generated Nginx configuration
