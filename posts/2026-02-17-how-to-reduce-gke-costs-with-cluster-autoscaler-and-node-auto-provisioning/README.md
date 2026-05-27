@@ -59,29 +59,45 @@ NAP is enabled at the cluster level and requires you to set resource limits:
 gcloud container clusters update my-cluster \
   --zone=us-central1-a \
   --enable-autoprovisioning \
-  --autoprovisioning-max-cpu=100 \
-  --autoprovisioning-max-memory=400 \
-  --autoprovisioning-min-cpu=4 \
-  --autoprovisioning-min-memory=16
+  --max-cpu=100 \
+  --max-memory=400 \
+  --min-cpu=4 \
+  --min-memory=16
 ```
 
 The resource limits tell NAP the maximum total CPU and memory it can provision across all auto-provisioned node pools. This acts as a safety net to prevent runaway scaling.
 
 ### Configuring NAP Machine Types
 
-You can restrict which machine families NAP is allowed to use:
+You can guide NAP toward specific machine families or machine types with a ComputeClass:
 
-```bash
-# Allow only specific machine families for auto-provisioned nodes
-gcloud container clusters update my-cluster \
-  --zone=us-central1-a \
-  --enable-autoprovisioning \
-  --autoprovisioning-max-cpu=100 \
-  --autoprovisioning-max-memory=400 \
-  --autoprovisioning-machine-types="e2-standard-2,e2-standard-4,e2-standard-8,n2-standard-4"
+```yaml
+# compute-class.yaml
+# Prefer lower-cost machine families for auto-created node pools
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: cost-optimized
+spec:
+  priorities:
+  - machineFamily: e2
+  - machineFamily: n2
+  whenUnsatisfiable: DoNotScaleUp
+  nodePoolAutoCreation:
+    enabled: true
 ```
 
-This keeps NAP from picking expensive machine types when cheaper ones would work fine.
+Then select that ComputeClass in workloads that should use those auto-created node pools:
+
+```yaml
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/compute-class: cost-optimized
+```
+
+This keeps NAP from picking expensive machine families when cheaper ones would work fine.
 
 ## Tuning the Autoscaler for Cost Optimization
 
@@ -123,7 +139,7 @@ spec:
       app: my-app
 ```
 
-Without PDBs, the autoscaler might be blocked from removing nodes because it cannot safely evict pods that lack disruption budgets.
+Without PDBs, the autoscaler can still evict pods, but Kubernetes has no application-specific availability budget to preserve during voluntary disruptions. Overly restrictive PDBs can also block scale-down, so set budgets that protect availability without preventing evictions entirely.
 
 ## Setting Resource Requests Properly
 
@@ -203,6 +219,7 @@ gcloud container node-pools create spot-pool \
   --cluster=my-cluster \
   --zone=us-central1-a \
   --spot \
+  --node-taints=cloud.google.com/gke-spot="true":NoSchedule \
   --enable-autoscaling \
   --min-nodes=0 \
   --max-nodes=20 \
