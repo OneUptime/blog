@@ -87,25 +87,43 @@ Load data into bronze from various sources:
 
 ```sql
 -- Load from Cloud Storage (batch ingestion)
+-- Each newline-delimited JSON object should contain raw_payload, _source_system,
+-- _source_file, and _batch_id fields that map to the table columns.
 LOAD DATA INTO `my-project.bronze.orders_raw`
-(raw_payload, _source_system, _source_file, _batch_id)
+(
+  raw_payload STRING,
+  _source_system STRING,
+  _source_file STRING,
+  _batch_id STRING
+)
 FROM FILES (
   format = 'JSON',
   uris = ['gs://my-project-data-landing/orders/2026/02/17/*.json']
-)
-WITH CONNECTION `us-central1.my-connection`;
+);
 ```
 
 For streaming ingestion, use the BigQuery Storage Write API or Pub/Sub to BigQuery subscription:
+
+```sql
+-- Pub/Sub BigQuery subscriptions without a schema write to a data column.
+CREATE OR REPLACE TABLE `my-project.bronze.orders_pubsub_raw`
+(
+  data JSON OPTIONS(description='Original Pub/Sub message body'),
+  subscription_name STRING OPTIONS(description='Pub/Sub subscription name'),
+  message_id STRING OPTIONS(description='Pub/Sub message ID'),
+  publish_time TIMESTAMP OPTIONS(description='When Pub/Sub published the message'),
+  attributes JSON OPTIONS(description='Pub/Sub message attributes')
+)
+PARTITION BY DATE(publish_time);
+```
 
 ```bash
 # Create a Pub/Sub subscription that writes directly to BigQuery
 
 gcloud pubsub subscriptions create orders-to-bronze \
   --topic=order-events \
-  --bigquery-table=my-project:bronze.orders_raw \
-  --write-metadata \
-  --use-topic-schema
+  --bigquery-table=my-project.bronze.orders_pubsub_raw \
+  --write-metadata
 ```
 
 ## Step 3: Build the Silver Layer
@@ -187,7 +205,30 @@ WHEN MATCHED AND source.updated_at > target.updated_at THEN
     updated_at = source.updated_at,
     _processed_at = CURRENT_TIMESTAMP()
 WHEN NOT MATCHED THEN
-  INSERT ROW;
+  INSERT (
+    order_id,
+    customer_id,
+    order_date,
+    status,
+    total_amount,
+    item_count,
+    shipping_address,
+    created_at,
+    updated_at,
+    _processed_at
+  )
+  VALUES (
+    source.order_id,
+    source.customer_id,
+    source.order_date,
+    source.status,
+    source.total_amount,
+    source.item_count,
+    source.shipping_address,
+    source.created_at,
+    source.updated_at,
+    CURRENT_TIMESTAMP()
+  );
 ```
 
 ## Step 4: Build the Gold Layer
@@ -244,15 +285,16 @@ Use BigQuery scheduled queries to keep each layer fresh:
 bq query --use_legacy_sql=false \
   --schedule="every 1 hours" \
   --display_name="Bronze to Silver: Orders" \
-  --destination_table="" \
+  --target_dataset="silver" \
+  --location="us-central1" \
   "$(cat silver_transform.sql)"
 
-# Schedule silver-to-gold aggregation (runs daily)
+# Schedule silver-to-gold aggregation (runs daily, for a DDL script that creates the table)
 bq query --use_legacy_sql=false \
   --schedule="every 24 hours" \
   --display_name="Silver to Gold: Daily Metrics" \
-  --destination_table="my-project:gold.daily_order_metrics" \
-  --replace \
+  --target_dataset="gold" \
+  --location="us-central1" \
   "$(cat gold_metrics.sql)"
 ```
 
@@ -263,6 +305,14 @@ Add quality checks between layers to catch issues early:
 ```sql
 -- Quality check: Verify silver layer data quality after each refresh
 -- Store results in a monitoring table
+CREATE TABLE IF NOT EXISTS `my-project.silver._data_quality_log`
+(
+  check_name STRING,
+  check_time TIMESTAMP,
+  status STRING,
+  details STRING
+);
+
 INSERT INTO `my-project.silver._data_quality_log` (check_name, check_time, status, details)
 
 SELECT 'null_check_order_id' AS check_name, CURRENT_TIMESTAMP(),
@@ -294,16 +344,22 @@ Apply different access controls to each layer:
 
 ```bash
 # Bronze: Only the data engineering team can access
-bq add-iam-policy-binding --member="group:data-engineering@company.com" \
-  --role="roles/bigquery.dataEditor" my-project:bronze
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataEditor`
+   ON SCHEMA `my-project`.bronze
+   TO "group:data-engineering@company.com"'
 
 # Silver: Data engineers can edit, analysts can read
-bq add-iam-policy-binding --member="group:data-analysts@company.com" \
-  --role="roles/bigquery.dataViewer" my-project:silver
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataViewer`
+   ON SCHEMA `my-project`.silver
+   TO "group:data-analysts@company.com"'
 
 # Gold: Everyone in the data org can read
-bq add-iam-policy-binding --member="group:data-org@company.com" \
-  --role="roles/bigquery.dataViewer" my-project:gold
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataViewer`
+   ON SCHEMA `my-project`.gold
+   TO "group:data-org@company.com"'
 ```
 
 ## Why This Pattern Works
