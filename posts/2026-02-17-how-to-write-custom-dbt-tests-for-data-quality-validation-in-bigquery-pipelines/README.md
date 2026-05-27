@@ -111,7 +111,7 @@ Generic tests are reusable test templates defined as macros. They accept paramet
 ```sql
 -- tests/generic/test_positive_value.sql
 -- Generic test: assert that a column's values are all positive
--- Usage in schema.yml: tests: [{positive_value: {}}]
+-- Usage in schema.yml: data_tests: [{positive_value: {}}]
 
 {% test positive_value(model, column_name) %}
 
@@ -133,11 +133,11 @@ models:
   - name: fct_orders
     columns:
       - name: total_amount
-        tests:
+        data_tests:
           - not_null
           - positive_value    # Uses our custom generic test
       - name: quantity
-        tests:
+        data_tests:
           - positive_value
 ```
 
@@ -146,7 +146,7 @@ models:
 ```sql
 -- tests/generic/test_value_in_range.sql
 -- Generic test: assert that values fall within a specified range
--- Usage: tests: [{value_in_range: {min_value: 0, max_value: 100}}]
+-- Usage: data_tests: [{value_in_range: {arguments: {min_value: 0, max_value: 100}}}]
 
 {% test value_in_range(model, column_name, min_value, max_value) %}
 
@@ -164,15 +164,17 @@ models:
   - name: fct_orders
     columns:
       - name: discount_percent
-        tests:
+        data_tests:
           - value_in_range:
-              min_value: 0
-              max_value: 100
+              arguments:
+                min_value: 0
+                max_value: 100
       - name: rating
-        tests:
+        data_tests:
           - value_in_range:
-              min_value: 1
-              max_value: 5
+              arguments:
+                min_value: 1
+                max_value: 5
 ```
 
 ### Test: Column Values Match a Pattern
@@ -198,13 +200,15 @@ models:
   - name: dim_customers
     columns:
       - name: email
-        tests:
+        data_tests:
           - matches_pattern:
-              pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+              arguments:
+                pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
       - name: phone
-        tests:
+        data_tests:
           - matches_pattern:
-              pattern: "^\\+?[0-9]{10,15}$"
+              arguments:
+                pattern: "^\\+?[0-9]{10,15}$"
 ```
 
 ### Test: No Duplicates on Compound Key
@@ -229,9 +233,10 @@ HAVING COUNT(*) > 1
 ```yaml
 models:
   - name: fct_daily_metrics
-    tests:
+    data_tests:
       - unique_combination:
-          combination: ['metric_date', 'tenant_id', 'metric_name']
+          arguments:
+            combination: ['metric_date', 'tenant_id', 'metric_name']
 ```
 
 ### Test: Freshness Check
@@ -265,9 +270,10 @@ models:
   - name: fct_events
     columns:
       - name: event_timestamp
-        tests:
+        data_tests:
           - freshness:
-              max_hours_old: 6  # Fail if no events in the last 6 hours
+              arguments:
+                max_hours_old: 6  # Fail if no events in the last 6 hours
 ```
 
 ## Test Severity Levels
@@ -279,17 +285,21 @@ models:
   - name: fct_orders
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - unique:
-              severity: error      # Pipeline fails on duplicates
+              config:
+                severity: error    # Pipeline fails on duplicates
           - not_null:
-              severity: error      # Pipeline fails on nulls
+              config:
+                severity: error    # Pipeline fails on nulls
       - name: discount_percent
-        tests:
+        data_tests:
           - value_in_range:
-              min_value: 0
-              max_value: 100
-              severity: warn       # Just a warning, pipeline continues
+              arguments:
+                min_value: 0
+                max_value: 100
+              config:
+                severity: warn     # Just a warning, pipeline continues
 ```
 
 You can also set a threshold for failures before the test is considered failed:
@@ -299,12 +309,12 @@ models:
   - name: fct_events
     columns:
       - name: user_id
-        tests:
+        data_tests:
           - not_null:
-              severity: error
-              # Allow up to 10 null values before failing
-              # Useful for known data quality issues you are working to fix
               config:
+                severity: error
+                # Allow up to 10 null values before failing
+                # Useful for known data quality issues you are working to fix
                 error_if: ">10"
                 warn_if: ">0"
 ```
@@ -315,12 +325,12 @@ By default, test results are just pass/fail. You can store the failing rows in a
 
 ```yaml
 # dbt_project.yml
-tests:
+data_tests:
   +store_failures: true
-  +schema: test_failures    # Store in a dedicated BigQuery dataset
+  +schema: test_failures    # Store in a dedicated BigQuery dataset/schema
 ```
 
-With this configuration, every test that fails creates a table in the `test_failures` dataset containing the offending rows. This makes debugging much easier - instead of re-running the test manually, you can just query the failures table.
+With this configuration, every test that fails creates a table in the configured test failures dataset/schema containing the offending rows. This makes debugging much easier - instead of re-running the test manually, you can just query the failures table.
 
 ## Running Tests
 
@@ -331,8 +341,8 @@ dbt test
 # Run tests for a specific model
 dbt test --select fct_orders
 
-# Run only tests with error severity (skip warnings)
-dbt test --severity error
+# Run tests except those configured with warning severity
+dbt test --exclude "config.severity:warn"
 
 # Run tests and store failures
 dbt test --store-failures
