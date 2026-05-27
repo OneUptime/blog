@@ -59,7 +59,7 @@ ssh_users:
 ssh_port: 22
 ssh_permit_root_login: "no"
 ssh_password_authentication: "no"
-ssh_challenge_response_authentication: "no"
+ssh_kbd_interactive_authentication: "no"
 ssh_pubkey_authentication: "yes"
 ssh_max_auth_tries: 3
 ssh_client_alive_interval: 300
@@ -69,10 +69,13 @@ ssh_x11_forwarding: "no"
 ssh_use_pam: "yes"
 ssh_allow_agent_forwarding: "no"
 ssh_allow_tcp_forwarding: "no"
+ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
 
 # Safety settings
 ssh_test_before_disable_password: true
 ```
+
+Make sure the account Ansible uses to connect, usually `ansible_user`, is included in `ssh_users` and is a member of `sshusers` before enabling `AllowGroups`.
 
 ## SSH Key Deployment Role
 
@@ -141,31 +144,15 @@ This role configures sshd to enforce key-only authentication and applies securit
 ```yaml
 # roles/ssh-hardening/tasks/main.yml
 ---
-# Phase 1: Deploy the new sshd configuration
-- name: Backup existing sshd_config
-  ansible.builtin.copy:
-    src: /etc/ssh/sshd_config
-    dest: /etc/ssh/sshd_config.backup
-    remote_src: yes
-    mode: '0600'
-
-- name: Deploy hardened sshd configuration
-  ansible.builtin.template:
-    src: sshd_config.j2
-    dest: /etc/ssh/sshd_config
-    owner: root
-    group: root
-    mode: '0600'
-    validate: '/usr/sbin/sshd -t -f %s'
-  notify: Restart sshd
-
-# Phase 2: Test key authentication before fully applying
-- name: Test SSH key authentication
+# Phase 1: Test key authentication before disabling password logins
+- name: Test SSH key authentication from the Ansible controller
   ansible.builtin.command:
-    cmd: "ssh -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=5 -p {{ ssh_port }} {{ ansible_user }}@localhost echo 'key_auth_works'"
+    cmd: "ssh -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=5 -p {{ ssh_port }} {{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }} echo 'key_auth_works'"
   register: key_test
   changed_when: false
-  ignore_errors: yes
+  failed_when: false
+  delegate_to: localhost
+  become: no
   when: ssh_test_before_disable_password | bool
 
 - name: Verify key authentication works
@@ -177,6 +164,27 @@ This role configures sshd to enforce key-only authentication and applies securit
       to prevent lockout. Fix the SSH key configuration and run again.
     success_msg: "SSH key authentication verified successfully."
   when: ssh_test_before_disable_password | bool
+
+# Phase 2: Deploy the new sshd configuration
+- name: Backup existing sshd_config
+  ansible.builtin.copy:
+    src: /etc/ssh/sshd_config
+    dest: /etc/ssh/sshd_config.backup
+    remote_src: yes
+    mode: '0600'
+
+- name: Deploy SSH login banner
+  ansible.builtin.import_tasks: banner.yml
+
+- name: Deploy hardened sshd configuration
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: '0600'
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: Restart sshd
 
 # Phase 3: Set correct permissions on SSH directories
 - name: Set secure permissions on /etc/ssh
@@ -220,7 +228,6 @@ This role configures sshd to enforce key-only authentication and applies securit
 
 # Basic settings
 Port {{ ssh_port }}
-Protocol 2
 AddressFamily inet
 
 # Host keys
@@ -231,7 +238,7 @@ HostKey /etc/ssh/ssh_host_ecdsa_key
 # Authentication
 PubkeyAuthentication {{ ssh_pubkey_authentication }}
 PasswordAuthentication {{ ssh_password_authentication }}
-ChallengeResponseAuthentication {{ ssh_challenge_response_authentication }}
+KbdInteractiveAuthentication {{ ssh_kbd_interactive_authentication }}
 PermitRootLogin {{ ssh_permit_root_login }}
 PermitEmptyPasswords no
 MaxAuthTries {{ ssh_max_auth_tries }}
@@ -273,7 +280,7 @@ Compression no
 UseDNS no
 
 # SFTP
-Subsystem sftp /usr/lib/openssh/sftp-server
+Subsystem sftp internal-sftp
 
 # Banner
 Banner /etc/ssh/banner
@@ -305,7 +312,7 @@ Banner /etc/ssh/banner
 ---
 - name: Restart sshd
   ansible.builtin.service:
-    name: sshd
+    name: "{{ ssh_service_name }}"
     state: restarted
 ```
 
@@ -401,10 +408,10 @@ If something goes wrong, here is how to recover.
 
     - name: Restart sshd
       ansible.builtin.service:
-        name: sshd
+        name: "{{ ssh_service_name }}"
         state: restarted
 ```
 
 ## Wrapping Up
 
-Switching to SSH key-only authentication is one of the highest-impact security improvements you can make. The Ansible approach ensures you do not lock yourself out by testing key access before disabling passwords. The phased rollout with serial processing gives you a safety net for large fleets. Once deployed, you eliminate brute force attacks entirely, simplify auditing (you know exactly which keys have access), and can easily revoke access by removing a key from the variables file and running the playbook.
+Switching to SSH key-only authentication is one of the highest-impact security improvements you can make. The Ansible approach helps prevent lockouts by testing key access before disabling passwords. The phased rollout with serial processing gives you a safety net for large fleets. Once deployed, you eliminate password brute-force login risk, simplify auditing (you know exactly which keys have access), and can easily revoke access by removing a key from the variables file and running the playbook.
