@@ -208,21 +208,18 @@ Generate an AppArmor profile for a running application by observing its behavior
 - name: Wait for application to exercise its code paths
   ansible.builtin.pause:
     minutes: "{{ apparmor_observe_minutes | default(10) }}"
-    prompt: "Application is in complain mode. Exercise all features, then press Enter."
+    prompt: "Application is in complain mode. Exercise all features during the observation window."
   when: apparmor_target_binary is defined
 
-- name: Generate profile from logs
-  ansible.builtin.command:
-    cmd: "aa-logprof"
+- name: Review and apply profile changes from logs
+  ansible.builtin.pause:
+    prompt: "Run 'sudo aa-logprof' on the target host to review and save suggested profile changes, then press Enter."
   when: apparmor_target_binary is defined
-  register: logprof_result
 
 - name: Switch to enforce mode after profile is generated
   ansible.builtin.command:
     cmd: "aa-enforce {{ apparmor_target_binary }}"
-  when:
-    - apparmor_target_binary is defined
-    - logprof_result is success
+  when: apparmor_target_binary is defined
 ```
 
 ## Docker and Container Profiles
@@ -242,6 +239,8 @@ AppArmor integrates with Docker to provide container-level MAC.
   loop: "{{ apparmor_docker_profiles | default([]) }}"
   notify: Reload AppArmor profiles
 ```
+
+After the profile is loaded, run the container with Docker's AppArmor security option, for example `docker run --security-opt apparmor=docker-webapp ...`.
 
 Example Docker profile variable.
 
@@ -317,13 +316,13 @@ apparmor_docker_profiles:
 
     - name: Count enforced profiles
       ansible.builtin.shell:
-        cmd: "aa-status --enforced"
+        cmd: "aa-status --show=profiles --filter.mode=enforce --count"
       register: enforced_count
       changed_when: false
 
     - name: Count complain profiles
       ansible.builtin.shell:
-        cmd: "aa-status --complaining"
+        cmd: "aa-status --show=profiles --filter.mode=complain --count"
       register: complain_count
       changed_when: false
 
