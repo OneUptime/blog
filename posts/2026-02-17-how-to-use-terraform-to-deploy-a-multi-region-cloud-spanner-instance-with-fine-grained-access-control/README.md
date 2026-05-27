@@ -8,7 +8,7 @@ Description: Deploy a multi-region Cloud Spanner instance with Terraform, includ
 
 ---
 
-Cloud Spanner is Google's globally distributed, strongly consistent database. It gives you the scalability of NoSQL with the ACID guarantees of a relational database. The multi-region configuration makes it ideal for applications that need low-latency reads and writes across geographies with automatic failover.
+Cloud Spanner is Google's globally distributed, strongly consistent database. It gives you the scalability of NoSQL with the ACID guarantees of a relational database. The multi-region configuration makes it ideal for applications that need low-latency reads across geographies with resilient writes and automatic failover.
 
 Deploying Spanner with Terraform lets you manage the instance, databases, schemas, and access controls as code. Let me walk through a production-grade setup.
 
@@ -21,9 +21,9 @@ graph TB
     subgraph "nam-eur-asia1 (Global)"
         US1["us-central1<br/>(Read-Write)"]
         US2["us-central2<br/>(Read-Write)"]
-        EU1["europe-west1<br/>(Read-Write)"]
-        EU2["europe-west4<br/>(Read-Write)"]
+        EU1["europe-west1<br/>(Read-Only)"]
         ASIA1["asia-east1<br/>(Read-Only)"]
+        WITNESS["us-east1<br/>(Witness)"]
     end
 
     Client1["US Client"] --> US1
@@ -35,7 +35,7 @@ The most common multi-region options are:
 - `nam14` - Three regions in North America
 - `eur6` - Three regions in Europe
 - `nam-eur-asia1` - Global coverage across continents
-- `nam7` - Four regions in North America (higher availability)
+- `nam7` - Two read-write regions in North America with a witness region and optional read-only replicas
 
 ## Creating the Spanner Instance
 
@@ -53,12 +53,11 @@ resource "google_spanner_instance" "main" {
   # nam-eur-asia1 provides global coverage
   config = "nam-eur-asia1"
 
-  # Processing units determine capacity
-  # 1000 processing units = 1 node
-  # Minimum is 100 for multi-region (1000 for production)
-  processing_units = var.processing_units
+  # Multi-region configurations require Enterprise Plus
+  edition = "ENTERPRISE_PLUS"
 
   # Autoscaling configuration for dynamic workloads
+  # Use autoscaling_config instead of processing_units or num_nodes
   autoscaling_config {
     autoscaling_limits {
       min_processing_units = var.min_processing_units
@@ -160,7 +159,7 @@ resource "google_spanner_database" "app" {
 
 ## Fine-Grained IAM Access Control
 
-Spanner supports IAM at the instance, database, and even table level. Here is how to set up access for different teams:
+Spanner supports IAM at the instance and database level, and table or column-level access through database roles. Here is how to set up access for different teams:
 
 ```hcl
 # iam.tf - Fine-grained access control for Spanner
@@ -217,7 +216,7 @@ resource "google_spanner_database_iam_member" "batch_reader" {
   condition {
     title       = "business-hours-only"
     description = "Allow access only during business hours UTC"
-    expression  = "request.time.getHours('UTC') >= 8 && request.time.getHours('UTC') <= 18"
+    expression  = "request.time.getHours(\"UTC\") >= 8 && request.time.getHours(\"UTC\") <= 18"
   }
 }
 
@@ -245,11 +244,9 @@ resource "google_spanner_database" "app" {
     # Create a database role for analysts with restricted access
     "CREATE ROLE analyst",
 
-    # Grant SELECT on specific tables only
-    "GRANT SELECT ON TABLE Users TO ROLE analyst",
+    # Grant SELECT on specific tables and columns only
     "GRANT SELECT ON TABLE Orders TO ROLE analyst",
 
-    # Revoke access to sensitive columns
     # Analysts can see orders but not the full user details
     "GRANT SELECT(UserId, Email, IsActive) ON TABLE Users TO ROLE analyst",
 
@@ -265,17 +262,26 @@ resource "google_spanner_database" "app" {
   ]
 }
 
-# Bind the database role to an IAM member
-resource "google_spanner_database_iam_member" "analyst_role" {
+# Grant permission to use the fine-grained access framework
+resource "google_spanner_database_iam_member" "analyst_fgac" {
   project  = var.project_id
   instance = google_spanner_instance.main.name
   database = google_spanner_database.app.name
   role     = "roles/spanner.fineGrainedAccessUser"
   member   = "group:analysts@myorg.com"
+}
+
+# Bind the database role to an IAM member
+resource "google_spanner_database_iam_member" "analyst_role" {
+  project  = var.project_id
+  instance = google_spanner_instance.main.name
+  database = google_spanner_database.app.name
+  role     = "roles/spanner.databaseRoleUser"
+  member   = "group:analysts@myorg.com"
 
   condition {
     title      = "analyst-role"
-    expression = "resource.type == 'spanner.googleapis.com/DatabaseRole' && resource.name.endsWith('/analyst')"
+    expression = "resource.type == \"spanner.googleapis.com/DatabaseRole\" && resource.name.endsWith(\"/analyst\")"
   }
 }
 ```
@@ -370,7 +376,6 @@ resource "google_monitoring_alert_policy" "spanner_storage" {
 variable "project_id" { type = string }
 variable "environment" { type = string }
 variable "team" { type = string; default = "platform" }
-variable "processing_units" { type = number; default = 1000 }
 variable "min_processing_units" { type = number; default = 1000 }
 variable "max_processing_units" { type = number; default = 5000 }
 variable "notification_channels" { type = list(string); default = [] }
@@ -391,7 +396,7 @@ output "app_service_account_email" {
 
 ## Cost Considerations
 
-Spanner pricing has three components: compute (processing units), storage, and network. Multi-region configurations cost significantly more than single-region. For example, `nam-eur-asia1` costs roughly 9x more per processing unit than a single-region setup.
+Spanner pricing includes compute capacity, database storage, backup storage, data replication, network usage, and optional Data Boost usage. Multi-region configurations cost significantly more than single-region because they replicate data across regions and require Enterprise Plus.
 
 Start with the smallest multi-region configuration that meets your latency requirements. Use autoscaling so you only pay for what you need. And make sure to set up budget alerts - a runaway Spanner instance can get expensive fast.
 
