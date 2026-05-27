@@ -8,7 +8,7 @@ Description: A complete guide to setting up Istio-based service mesh on GKE usin
 
 ---
 
-Running a service mesh on Kubernetes is powerful but historically painful. Installing Istio from scratch means managing control plane upgrades, debugging configuration drift, and spending more time on infrastructure than on your actual application. Google's Anthos Service Mesh (ASM) changes that equation by giving you a fully managed Istio-based service mesh on GKE.
+Running a service mesh on Kubernetes is powerful but historically painful. Installing Istio from scratch means managing control plane upgrades, debugging configuration drift, and spending more time on infrastructure than on your actual application. Google's Cloud Service Mesh, formerly Anthos Service Mesh (ASM), changes that equation by giving you a fully managed Istio-based service mesh on GKE.
 
 With managed ASM, Google handles the control plane lifecycle, upgrades, and scaling. You get all the benefits of Istio - mutual TLS, traffic management, observability - without the operational overhead of running the control plane yourself.
 
@@ -16,17 +16,16 @@ With managed ASM, Google handles the control plane lifecycle, upgrades, and scal
 
 Before you start, make sure you have:
 
-- A GKE cluster running version 1.25 or later
+- A GKE cluster running a supported GKE version in a supported region
 - The cluster should have Workload Identity enabled
-- At least 4 vCPUs available across your nodes (the sidecar proxies consume resources)
+- Enough node capacity for the managed mesh components and the sidecar proxies your workloads will run
 
 Enable the required APIs:
 
 ```bash
 # Enable the APIs needed for Anthos Service Mesh
 
-gcloud services enable mesh.googleapis.com
-gcloud services enable container.googleapis.com
+gcloud services enable mesh.googleapis.com --project=my-project
 ```
 
 ## Enabling Fleet Membership
@@ -36,7 +35,7 @@ Managed ASM requires your cluster to be registered with a fleet. If your cluster
 ```bash
 # Register the GKE cluster with the fleet
 gcloud container clusters update my-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --fleet-project=my-project
 ```
 
@@ -64,10 +63,10 @@ gcloud container fleet mesh update \
   --management automatic \
   --memberships my-cluster \
   --project my-project \
-  --location us-central1-a
+  --location us-central1
 ```
 
-The `automatic` management mode means Google will handle control plane provisioning and upgrades. This is the recommended option for most users.
+The `automatic` management mode means Google will handle control plane provisioning and upgrades. This is the recommended option for most users. The `--location` value is the fleet membership location, which is usually the cluster region for a newly registered zonal cluster.
 
 Check the status of the mesh provisioning:
 
@@ -94,14 +93,17 @@ Then label your namespace to enable automatic sidecar injection:
 ```bash
 # Enable sidecar injection for the default namespace
 kubectl label namespace default istio-injection=enabled --overwrite
+kubectl label namespace default istio.io/rev- --overwrite
 ```
 
 For revision-based injection (which gives you more control over upgrades):
 
 ```bash
 # Enable injection using a specific ASM revision
-kubectl label namespace default istio.io/rev=asm-managed --overwrite
+kubectl label namespace default istio-injection- istio.io/rev=asm-managed --overwrite
 ```
+
+Use the revision value from the `controlplanerevision` output, such as `asm-managed`, `asm-managed-rapid`, or `asm-managed-stable`.
 
 After labeling the namespace, restart your existing pods so they pick up the sidecar:
 
@@ -129,7 +131,7 @@ To enforce strict mTLS across the entire mesh, apply a PeerAuthentication policy
 
 ```yaml
 # strict-mtls.yaml - Enforce mTLS for all services in the mesh
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -155,7 +157,7 @@ First, define the available versions with a DestinationRule:
 
 ```yaml
 # destination-rule.yaml - Define subsets for different versions of the service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -174,7 +176,7 @@ Then create a VirtualService to split traffic:
 
 ```yaml
 # virtual-service.yaml - Route 90% of traffic to v1 and 10% to v2
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -195,11 +197,11 @@ spec:
 
 ## Observability
 
-Managed ASM integrates with Cloud Monitoring, Cloud Logging, and Cloud Trace out of the box. You can view service-level metrics in the Google Cloud Console under Anthos > Service Mesh.
+Managed ASM integrates with Cloud Monitoring and Cloud Logging out of the box, and can integrate with Cloud Trace when tracing is enabled. You can view service-level metrics in the Google Cloud Console under Cloud Service Mesh.
 
-The mesh automatically collects metrics like request count, latency, and error rate for every service-to-service call. You can view the service topology, identify bottlenecks, and trace requests across services.
+The mesh automatically collects metrics like request count, latency, and error rate for HTTP service-to-service traffic. You can view the service topology, identify bottlenecks, and trace requests across services when tracing is configured.
 
-For custom metrics, you can configure Envoy to export additional telemetry:
+For access logging customization, managed Cloud Service Mesh supports a cluster-wide Telemetry resource in the root namespace:
 
 ```yaml
 # telemetry.yaml - Configure access logging for all sidecars
@@ -220,7 +222,7 @@ Control which services can talk to each other using AuthorizationPolicy:
 
 ```yaml
 # auth-policy.yaml - Only allow the frontend service to call the backend
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: backend-policy
@@ -240,7 +242,7 @@ spec:
 
 ## Upgrading the Mesh
 
-With managed ASM, upgrades happen automatically. Google rolls out new versions of the control plane and data plane according to the release channel your cluster is on. You can check the current version:
+With managed ASM, control plane upgrades happen automatically. If the managed data plane is enabled, Google also rolls out new proxy versions according to the release channel your cluster is on. You can check the current version:
 
 ```bash
 # Check the current ASM control plane version
@@ -251,7 +253,7 @@ If you need to control the upgrade timing, you can use a revision-based approach
 
 ## Practical Considerations
 
-The sidecar proxies add latency and resource consumption. Each sidecar typically uses about 50-100m CPU and 64-128Mi memory at idle. For large clusters with hundreds of pods, this adds up. Plan your node capacity accordingly.
+The sidecar proxies add latency and resource consumption. Their resource usage depends on traffic volume, cluster mode, and any custom injection settings. For large clusters with hundreds of pods, this adds up. Plan your node capacity accordingly.
 
 Not every workload needs to be in the mesh. Jobs, CronJobs, and batch processing workloads often do not benefit from mesh features. You can exclude specific pods by annotating them with `sidecar.istio.io/inject: "false"`.
 
