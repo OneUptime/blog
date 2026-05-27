@@ -50,7 +50,9 @@ Here is a role that installs Istio on a Kubernetes cluster:
       istioctl install
       --set profile={{ istio_profile }}
       --set meshConfig.accessLogFile=/dev/stdout
-      --set meshConfig.enableTracing=true
+      --set meshConfig.extensionProviders[0].name=zipkin
+      --set meshConfig.extensionProviders[0].zipkin.service=zipkin.istio-system.svc.cluster.local
+      --set meshConfig.extensionProviders[0].zipkin.port=9411
       --set values.pilot.resources.requests.memory=256Mi
       --set values.pilot.resources.requests.cpu=200m
       -y
@@ -61,6 +63,7 @@ Here is a role that installs Istio on a Kubernetes cluster:
 
 - name: Wait for Istio control plane to be ready
   kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
     kind: Deployment
     namespace: istio-system
     name: istiod
@@ -81,6 +84,7 @@ Enable automatic sidecar injection for specific namespaces:
 ---
 - name: Label namespaces for sidecar injection
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: v1
@@ -93,6 +97,7 @@ Enable automatic sidecar injection for specific namespaces:
 
 - name: Label namespaces to skip injection
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: v1
@@ -114,6 +119,7 @@ One of the most valuable features of a service mesh is traffic management. Here 
 ---
 - name: Create VirtualService for canary deployment
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: networking.istio.io/v1beta1
@@ -137,14 +143,15 @@ One of the most valuable features of a service mesh is traffic management. Here 
               - destination:
                   host: "{{ app_name }}"
                   subset: stable
-                weight: "{{ stable_weight | default(90) }}"
+                weight: "{{ stable_weight | default(90) | int }}"
               - destination:
                   host: "{{ app_name }}"
                   subset: canary
-                weight: "{{ canary_weight | default(10) }}"
+                weight: "{{ canary_weight | default(10) | int }}"
 
 - name: Create DestinationRule with subsets
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: networking.istio.io/v1beta1
@@ -185,6 +192,7 @@ Service meshes enforce encrypted communication between services. Configure mTLS 
 ---
 - name: Enable strict mTLS mesh-wide
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: security.istio.io/v1beta1
@@ -198,12 +206,13 @@ Service meshes enforce encrypted communication between services. Configure mTLS 
 
 - name: Create authorization policy for frontend
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: security.istio.io/v1beta1
       kind: AuthorizationPolicy
       metadata:
-        name: "{{ app_name }}-policy"
+        name: "{{ app_name }}-{{ item }}-policy"
         namespace: "{{ app_namespace }}"
       spec:
         selector:
@@ -219,7 +228,7 @@ Service meshes enforce encrypted communication between services. Configure mTLS 
               - operation:
                   methods: ["GET", "POST"]
                   paths: ["/api/*"]
-          loop: "{{ allowed_service_accounts }}"
+  loop: "{{ allowed_service_accounts }}"
 ```
 
 ## Rate Limiting with EnvoyFilter
@@ -232,6 +241,7 @@ Apply rate limiting through Envoy configuration:
 ---
 - name: Apply rate limit EnvoyFilter
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
       apiVersion: networking.istio.io/v1alpha3
@@ -261,8 +271,8 @@ Apply rate limiting through Envoy configuration:
                   value:
                     stat_prefix: http_local_rate_limiter
                     token_bucket:
-                      max_tokens: "{{ rate_limit_max_tokens | default(100) }}"
-                      tokens_per_fill: "{{ rate_limit_refill | default(50) }}"
+                      max_tokens: "{{ rate_limit_max_tokens | default(100) | int }}"
+                      tokens_per_fill: "{{ rate_limit_refill | default(50) | int }}"
                       fill_interval: 60s
 ```
 
@@ -276,9 +286,10 @@ Configure the mesh to export telemetry data:
 ---
 - name: Configure Istio telemetry
   kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
     state: present
     definition:
-      apiVersion: telemetry.istio.io/v1alpha1
+      apiVersion: telemetry.istio.io/v1
       kind: Telemetry
       metadata:
         name: mesh-default
@@ -290,7 +301,7 @@ Configure the mesh to export telemetry data:
         tracing:
           - providers:
               - name: zipkin
-            randomSamplingPercentage: "{{ tracing_sample_rate | default(1.0) }}"
+            randomSamplingPercentage: "{{ tracing_sample_rate | default(1.0) | float }}"
 
 - name: Deploy Kiali dashboard
   ansible.builtin.command:
@@ -311,7 +322,8 @@ Configure the mesh to export telemetry data:
   hosts: k8s_control_plane
   become: true
   vars:
-    istio_version: "1.20.0"
+    istio_version: "1.30.0"
+    istio_major_version: "1.30"
     istio_profile: default
     istio_injected_namespaces:
       - production
