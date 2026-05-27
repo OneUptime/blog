@@ -113,7 +113,7 @@ def start_vms(request):
     result = compute.instances().list(
         project=project,
         zone=zone,
-        filter=f'labels.{label_key}={label_value} AND status=TERMINATED'
+        filter=f'(labels.{label_key} = {label_value}) (status = TERMINATED)'
     ).execute()
 
     instances = result.get('items', [])
@@ -144,7 +144,7 @@ def stop_vms(request):
     result = compute.instances().list(
         project=project,
         zone=zone,
-        filter=f'labels.{label_key}={label_value} AND status=RUNNING'
+        filter=f'(labels.{label_key} = {label_value}) (status = RUNNING)'
     ).execute()
 
     instances = result.get('items', [])
@@ -161,6 +161,13 @@ def stop_vms(request):
         print(f"Stopped {name}")
 
     return json.dumps({'stopped': stopped})
+```
+
+Add the dependencies in `requirements.txt` next to `main.py`:
+
+```text
+google-api-python-client
+functions-framework
 ```
 
 ### Deploy the Functions
@@ -255,7 +262,7 @@ resource "google_compute_instance" "dev_vm" {
     network = "default"
   }
 
-  resource_policies = [google_compute_resource_policy.dev_hours.id]
+  resource_policies = [google_compute_resource_policy.dev_hours.self_link]
 
   labels = {
     env  = "development"
@@ -299,6 +306,7 @@ If you use the Cloud Function approach, you can add holiday awareness:
 
 ```python
 # Add holiday checking to the start function
+import datetime
 import holidays
 
 def should_start_today():
@@ -324,12 +332,12 @@ Keep track of your scheduling to make sure it is working:
 ```bash
 # Check which VMs are currently running
 gcloud compute instances list \
-  --filter="status=RUNNING AND labels.schedule:*" \
+  --filter="(status = RUNNING) (labels.schedule:*)" \
   --format="table(name, zone, status, labels.schedule)"
 
 # Check which scheduled VMs are stopped
 gcloud compute instances list \
-  --filter="status=TERMINATED AND labels.schedule:*" \
+  --filter="(status = TERMINATED) (labels.schedule:*)" \
   --format="table(name, zone, status, labels.schedule)"
 ```
 
@@ -339,7 +347,7 @@ Set up a Cloud Monitoring alert to notify you if a scheduled VM is running outsi
 
 1. **Start with non-production** - Apply scheduling to development and staging environments first. Never schedule production VMs unless you have a very specific use case.
 
-2. **Add buffer time** - Schedule VMs to start 15-30 minutes before people need them. Boot time and application startup take time.
+2. **Add buffer time** - Schedule VMs to start 15-30 minutes before people need them. Instance schedules can take up to 15 minutes to begin the operation, and boot time and application startup take time.
 
 3. **Use labels consistently** - Label all schedulable VMs so you can manage them as a group.
 
