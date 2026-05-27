@@ -24,7 +24,7 @@ graph TD
     D --> F[Slack]
     D --> G[Email]
     D --> H[Webhook]
-    C -->|Critical + Auto-clean| I[Run Cleanup Tasks]
+    C -->|Issue + Auto-clean| I[Run Cleanup Tasks]
 ```
 
 ## Variables
@@ -50,7 +50,6 @@ disk_min_size_mb: 500
 
 # Alert channels
 disk_alert_slack_webhook: "{{ vault_slack_webhook | default('') }}"
-disk_alert_slack_channel: "#disk-alerts"
 disk_alert_email_to: "ops-team@company.com"
 disk_alert_email_from: "ansible-alerts@company.com"
 disk_alert_smtp_host: "smtp.company.com"
@@ -59,7 +58,6 @@ disk_alert_smtp_host: "smtp.company.com"
 disk_auto_cleanup: true
 disk_cleanup_journal_max_size: "500M"
 disk_cleanup_apt_cache: true
-disk_cleanup_old_kernels: true
 disk_cleanup_tmp_days: 7
 ```
 
@@ -79,9 +77,9 @@ disk_cleanup_tmp_days: 7
     - name: Get disk usage for all relevant filesystems
       ansible.builtin.shell:
         cmd: >
-          df -BM --output=target,fstype,size,used,avail,pcent
-          | tail -n +2
-          | grep -v -E '({{ disk_exclude_types | join("|") }})'
+          df -BM
+          {% for fs_type in disk_exclude_types %}-x {{ fs_type | quote }} {% endfor %}
+          --output=fstype,size,used,avail,pcent,target
       register: disk_output
       changed_when: false
 
@@ -89,15 +87,15 @@ disk_cleanup_tmp_days: 7
       ansible.builtin.set_fact:
         disk_status: >-
           {% set results = [] %}
-          {% for line in disk_output.stdout_lines %}
-          {% set parts = line.split() %}
+          {% for line in disk_output.stdout_lines[1:] %}
+          {% set parts = line.split(maxsplit=5) %}
           {% if parts | length >= 6 %}
-          {% set mount = parts[0] %}
-          {% set fstype = parts[1] %}
-          {% set total = parts[2] | replace('M','') | int %}
-          {% set used = parts[3] | replace('M','') | int %}
-          {% set avail = parts[4] | replace('M','') | int %}
-          {% set pct = parts[5] | replace('%','') | int %}
+          {% set fstype = parts[0] %}
+          {% set total = parts[1] | replace('M','') | int %}
+          {% set used = parts[2] | replace('M','') | int %}
+          {% set avail = parts[3] | replace('M','') | int %}
+          {% set pct = parts[4] | replace('%','') | int %}
+          {% set mount = parts[5] %}
           {% if total > disk_min_size_mb %}
           {% set status = 'EMERGENCY' if pct >= disk_emergency_threshold
                      else 'CRITICAL' if pct >= disk_critical_threshold
@@ -137,7 +135,7 @@ disk_cleanup_tmp_days: 7
 
 - name: Send consolidated alert report
   hosts: localhost
-  gather_facts: no
+  gather_facts: yes
   tasks:
     - name: Build alert message
       ansible.builtin.set_fact:
@@ -159,9 +157,6 @@ disk_cleanup_tmp_days: 7
         method: POST
         body_format: json
         body:
-          channel: "{{ disk_alert_slack_channel }}"
-          username: "Disk Monitor"
-          icon_emoji: ":floppy_disk:"
           text: |
             *Disk Space Alert*
             {% for entry in alert_hosts %}
@@ -275,7 +270,7 @@ When disk usage exceeds thresholds, these cleanup tasks reclaim space from commo
 
 - name: Re-check disk usage after cleanup
   ansible.builtin.shell:
-    cmd: "df -h {{ disk_issues | map(attribute='mount') | join(' ') }}"
+    cmd: "df -h {{ disk_issues | map(attribute='mount') | map('quote') | join(' ') }}"
   register: post_cleanup
   changed_when: false
 
@@ -310,7 +305,10 @@ Sometimes you need to watch specific directories that grow independently of over
   tasks:
     - name: Check directory sizes
       ansible.builtin.command:
-        cmd: "du -sm {{ item.path }}"
+        argv:
+          - du
+          - -sm
+          - "{{ item.path }}"
       register: dir_sizes
       loop: "{{ watched_directories }}"
       changed_when: false
@@ -361,10 +359,10 @@ ansible-playbook -i inventory/hosts.ini disk-monitor.yml
 ansible-playbook -i inventory/hosts.ini disk-monitor.yml --limit db-servers
 
 # Run with auto-cleanup disabled
-ansible-playbook -i inventory/hosts.ini disk-monitor.yml -e "disk_auto_cleanup=false"
+ansible-playbook -i inventory/hosts.ini disk-monitor.yml -e '{"disk_auto_cleanup": false}'
 
 # Run with lower thresholds for a stricter check
-ansible-playbook -i inventory/hosts.ini disk-monitor.yml -e "disk_warning_threshold=70 disk_critical_threshold=80"
+ansible-playbook -i inventory/hosts.ini disk-monitor.yml -e '{"disk_warning_threshold": 70, "disk_critical_threshold": 80}'
 ```
 
 ## Wrapping Up
