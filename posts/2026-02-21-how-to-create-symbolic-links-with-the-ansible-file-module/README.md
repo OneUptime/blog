@@ -99,11 +99,11 @@ The key here is that the symlink update is atomic at the filesystem level. The a
 
 ## Forcing Symlink Updates
 
-If the destination path exists as a regular file or directory (not a symlink), Ansible will refuse to overwrite it by default. Use `force: true` to replace it:
+If the destination path exists as a regular file (not a symlink), Ansible will refuse to overwrite it by default. Use `force: true` to replace it:
 
 ```yaml
-# Force creation of symlink even if a file or directory exists at the path
-- name: Force symlink creation (replaces existing file/directory)
+# Force creation of symlink even if a file exists at the path
+- name: Force symlink creation (replaces existing file)
   ansible.builtin.file:
     src: /opt/myapp/releases/v2.1.0
     dest: /opt/myapp/current
@@ -111,11 +111,11 @@ If the destination path exists as a regular file or directory (not a symlink), A
     force: true
 ```
 
-Be careful with `force: true` because it will delete whatever is at the destination path. Only use it when you are sure the destination should always be a symlink.
+Be careful with `force: true` because it will unlink the file at the destination path. It can also replace an empty directory, but Ansible refuses to replace a non-empty directory. Only use it when you are sure the destination should always be a symlink.
 
 ## Setting Ownership on Symlinks
 
-When you set `owner` and `group` on a symlink, Ansible changes the ownership of the symlink itself, not the target. On most Linux systems, symlink ownership does not matter much because permission checks follow through to the target. However, some security tools and policies check symlink ownership:
+By default, the `file` module follows existing symlinks when setting filesystem attributes. If you want to set `owner` and `group` on the symlink itself, set `follow: false`. On most Linux systems, symlink ownership does not matter much because permission checks follow through to the target. However, some security tools and policies check symlink ownership:
 
 ```yaml
 # Set ownership on the symlink itself
@@ -126,9 +126,10 @@ When you set `owner` and `group` on a symlink, Ansible changes the ownership of 
     state: link
     owner: deploy
     group: deploy
+    follow: false
 ```
 
-Note that you cannot set permissions (mode) on symlinks in Linux. Symlinks always have mode `0777` (lrwxrwxrwx). The actual access control is determined by the target file's permissions.
+Note that Linux symlink permissions are not used for access checks. Symlinks typically appear as mode `0777` (lrwxrwxrwx), and the actual access control is determined by the target file's permissions.
 
 ## Creating Multiple Symlinks with a Loop
 
@@ -271,7 +272,7 @@ After several deployments, you will want to clean up old releases. Here is a tas
 
 - name: Identify old releases to remove
   ansible.builtin.set_fact:
-    old_releases: "{{ all_releases.files | sort(attribute='mtime') | map(attribute='path') | list | reverse | list | slice(5) | last | default([]) }}"
+    old_releases: "{{ (all_releases.files | sort(attribute='mtime') | map(attribute='path') | list)[:-5] }}"
 
 - name: Remove old release directories
   ansible.builtin.file:
