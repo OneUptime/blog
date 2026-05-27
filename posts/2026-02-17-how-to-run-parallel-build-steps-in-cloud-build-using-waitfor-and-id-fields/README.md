@@ -65,7 +65,7 @@ steps:
 
 ### Key Rules for waitFor
 
-1. **Without waitFor** - The step waits for the immediately preceding step (default sequential behavior)
+1. **Without waitFor** - The step waits for all prior build steps to complete (default sequential behavior)
 2. **With waitFor: ['step-id']** - The step waits only for the specified step(s)
 3. **With waitFor: ['-']** - The step starts immediately when the build begins, without waiting for anything
 4. **Multiple IDs in waitFor** - The step waits for ALL listed steps to complete
@@ -270,7 +270,7 @@ Documentation generation happens in parallel with the entire build/push/deploy c
 
 When parallel steps fail, it can be harder to figure out what went wrong because multiple log streams are interleaved. Here are some tips:
 
-**Check step IDs in logs** - Each log line is prefixed with the step ID, making it easier to filter. In the Cloud Build console, you can click on individual steps to see their isolated output.
+**Check step IDs in logs** - Step IDs appear in the build step details, making it easier to identify which step failed. In the Cloud Build console, you can click on individual steps to see their isolated output.
 
 **Watch for workspace conflicts** - Parallel steps share the `/workspace` directory. If two steps write to the same file, the results are unpredictable. Make sure parallel steps either write to different files or read-only.
 
