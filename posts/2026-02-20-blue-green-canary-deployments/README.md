@@ -12,9 +12,9 @@ Deploying new code to production is one of the riskiest things you do regularly.
 
 ## The Problem with Rolling Updates
 
-Kubernetes rolling updates replace pods one at a time. While this avoids full downtime, it has drawbacks:
+Kubernetes rolling updates gradually replace pods according to the Deployment rollout settings. While this avoids full downtime, it has drawbacks:
 
-- No easy way to roll back instantly if something goes wrong
+- Rollback is another rollout rather than an instant traffic switch
 - Both old and new versions run simultaneously with no traffic control
 - No ability to test the new version with a subset of users first
 
@@ -199,7 +199,7 @@ graph LR
 
 ### Canary with Nginx Ingress
 
-You can implement canary deployments using Nginx Ingress annotations to split traffic by weight.
+You can implement canary deployments using Nginx Ingress annotations to split traffic by weight. The canary Ingress must be paired with an existing primary Ingress that uses the same host and path and routes to the stable service.
 
 ```yaml
 # canary-ingress.yaml
@@ -241,7 +241,7 @@ set -euo pipefail
 WEIGHTS=(5 10 25 50 75 100)
 # How long to observe each stage before progressing (in seconds)
 OBSERVE_PERIOD=120
-# Health check endpoint
+# Health check endpoint (run this script from a pod or CI runner with cluster DNS access)
 HEALTH_URL="http://myapp-canary.default.svc.cluster.local/health"
 
 for weight in "${WEIGHTS[@]}"; do
@@ -269,7 +269,7 @@ for weight in "${WEIGHTS[@]}"; do
     echo "Canary healthy at ${weight}% traffic"
 done
 
-echo "Canary rollout complete - promoting to stable"
+echo "Canary rollout complete - canary is receiving all traffic"
 ```
 
 ## Comparing the Strategies
@@ -281,7 +281,7 @@ echo "Canary rollout complete - promoting to stable"
 | Resource cost | 2x infrastructure | 1x + small canary |
 | Risk exposure | Full blast radius | Limited to canary % |
 | Complexity | Simple | Moderate |
-| Best for | Database migrations, breaking changes | Gradual feature rollouts |
+| Best for | Fast cutovers, full-environment validation | Gradual feature rollouts |
 
 ```mermaid
 graph TD
