@@ -40,7 +40,7 @@ brew install helm
 
 # Verify installation
 helm version
-# Output: version.BuildInfo{Version:"v3.14.0", ...}
+# Output includes the installed Helm version
 
 # Make sure kubectl is configured
 kubectl cluster-info
@@ -129,7 +129,11 @@ service:
 ingress:
   enabled: false
   className: nginx
-  host: myapp.example.com
+  hosts:
+    - host: myapp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
 
 # Resource limits and requests
 resources:
@@ -275,7 +279,7 @@ helm lint myapp/
 helm template my-release myapp/
 
 # Dry run to check against the cluster
-helm install my-release myapp/ --dry-run --debug
+helm install my-release myapp/ --dry-run=server --debug
 
 # Install the chart
 helm install my-release myapp/
@@ -313,7 +317,11 @@ resources:
 
 ingress:
   enabled: true
-  host: myapp.production.com
+  hosts:
+    - host: myapp.production.com
+      paths:
+        - path: /
+          pathType: Prefix
 ```
 
 ## Step 9: Package and Share
