@@ -16,7 +16,9 @@ This post shows you how to integrate Ansible with Slack using both the community
 
 Before writing any Ansible code, you need a Slack Incoming Webhook URL. Go to your Slack workspace settings, create a new app, enable Incoming Webhooks, and create a webhook for the channel you want to post to. You will get a URL that looks like `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`.
 
-Store this URL securely. In CI/CD, put it in your secrets store (GitHub Secrets, GitLab CI Variables, Vault, etc.).
+Store this URL securely. In CI/CD, put it in your secrets store (GitHub Secrets, GitLab CI Variables, Vault, etc.). For `community.general.slack`, store the webhook token portion from the end of the URL, such as `T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`. For raw webhook calls with `uri`, store the full webhook URL.
+
+Slack app incoming webhooks post to the channel and app identity configured when the webhook is installed. If Slack ignores `channel`, `username`, or icon overrides in your payload, set those values in the Slack app configuration or use Slack's Web API instead.
 
 ## Using the community.general.slack Module
 
@@ -194,9 +196,6 @@ If you do not want to install the community collection, you can use the `uri` mo
     method: POST
     body_format: json
     body:
-      channel: "#deployments"
-      username: "Ansible Bot"
-      icon_emoji: ":ansible:"
       text: "Deployment update"
       attachments:
         - color: "#36a64f"
