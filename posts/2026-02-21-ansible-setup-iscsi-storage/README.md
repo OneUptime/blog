@@ -38,11 +38,12 @@ This playbook installs and configures an iSCSI target with LIO (Linux-IO):
     iscsi_target_iqn: "iqn.2024-01.com.example:storage.target1"
     iscsi_portal_ip: "{{ ansible_default_ipv4.address }}"
     iscsi_portal_port: 3260
+    iscsi_target_service: "{{ 'rtslib-fb-targetctl' if ansible_os_family == 'Debian' else 'target' }}"
     iscsi_luns:
-      - name: lun0
+      - name: lv_iscsi_0
         device: /dev/vg_iscsi/lv_iscsi_0
         size: 100G
-      - name: lun1
+      - name: lv_iscsi_1
         device: /dev/vg_iscsi/lv_iscsi_1
         size: 50G
     iscsi_allowed_initiators:
@@ -72,10 +73,9 @@ This playbook installs and configures an iSCSI target with LIO (Linux-IO):
 
     - name: Enable and start target service
       ansible.builtin.systemd:
-        name: rtslib-fb-targetctl
+        name: "{{ iscsi_target_service }}"
         enabled: true
         state: started
-      failed_when: false
 
     - name: Create LVM volumes for iSCSI LUNs
       community.general.lvol:
@@ -150,10 +150,12 @@ This playbook configures iSCSI initiator clients:
   become: true
   vars:
     iscsi_initiator_iqn: "iqn.2024-01.com.example:client.{{ inventory_hostname_short }}"
-    iscsi_target_portal: "10.0.0.50:3260"
+    iscsi_target_portal: "10.0.0.50"
+    iscsi_target_port: "3260"
     iscsi_target_iqn: "iqn.2024-01.com.example:storage.target1"
     iscsi_chap_user: "{{ vault_iscsi_chap_user }}"
     iscsi_chap_password: "{{ vault_iscsi_chap_password }}"
+    iscsi_initiator_services: "{{ ['iscsid', 'open-iscsi'] if ansible_os_family == 'Debian' else ['iscsid'] }}"
 
   tasks:
     - name: Install iSCSI initiator packages
@@ -213,13 +215,12 @@ This playbook configures iSCSI initiator clients:
         name: "{{ item }}"
         enabled: true
         state: started
-      loop:
-        - iscsid
-        - open-iscsi
+      loop: "{{ iscsi_initiator_services }}"
 
     - name: Discover iSCSI targets
       community.general.open_iscsi:
         portal: "{{ iscsi_target_portal }}"
+        port: "{{ iscsi_target_port }}"
         discover: true
       register: discovered_targets
 
@@ -231,9 +232,13 @@ This playbook configures iSCSI initiator clients:
       community.general.open_iscsi:
         target: "{{ iscsi_target_iqn }}"
         portal: "{{ iscsi_target_portal }}"
+        port: "{{ iscsi_target_port }}"
         login: true
         auto_node_startup: true
+        node_user: "{{ iscsi_chap_user }}"
+        node_pass: "{{ iscsi_chap_password }}"
       register: login_result
+      no_log: true
 
   handlers:
     - name: Restart iscsid
@@ -254,10 +259,12 @@ This playbook configures multipath for iSCSI devices:
 - name: Configure iSCSI Multipath
   hosts: iscsi_clients
   become: true
+  vars:
+    multipath_package: "{{ 'multipath-tools' if ansible_os_family == 'Debian' else 'device-mapper-multipath' }}"
   tasks:
     - name: Install multipath tools
       ansible.builtin.package:
-        name: multipath-tools
+        name: "{{ multipath_package }}"
         state: present
 
     - name: Deploy multipath configuration
@@ -384,8 +391,8 @@ This playbook creates a filesystem on an iSCSI-attached device:
 ```mermaid
 graph TD
     A[iSCSI Target Server] --> B[LIO Target Framework]
-    B --> C[LUN 0: /dev/vg_iscsi/lv_0]
-    B --> D[LUN 1: /dev/vg_iscsi/lv_1]
+    B --> C[LUN 0: /dev/vg_iscsi/lv_iscsi_0]
+    B --> D[LUN 1: /dev/vg_iscsi/lv_iscsi_1]
     E[Initiator: web01] -->|Path 1: eth0| A
     E -->|Path 2: eth1| A
     F[Initiator: db01] -->|Path 1: eth0| A
@@ -436,9 +443,9 @@ This playbook checks the health of iSCSI connections:
 
 **Network reliability**: iSCSI depends on your network. A flaky switch or a congested network link means storage problems. For production, use dedicated VLANs or even dedicated NICs for iSCSI traffic.
 
-**Jumbo frames**: Enable jumbo frames (MTU 9000) on all network interfaces used for iSCSI traffic. This reduces CPU overhead and improves throughput significantly.
+**Jumbo frames**: Consider jumbo frames (MTU 9000) only when every switch port and network interface in the iSCSI path supports the same MTU. This can reduce CPU overhead and improve throughput, but it should be validated in your environment.
 
-**CHAP authentication**: Always enable CHAP. Without it, any machine on the network can connect to your iSCSI targets and access the data.
+**CHAP authentication**: Always enable CHAP. Without it, any machine that can reach the portal and matches the target access rules can connect to your iSCSI targets and access the data.
 
 **Boot order**: iSCSI devices are not available until the network is up and the iSCSI session is established. Use `_netdev` in your fstab entries to ensure proper boot ordering.
 
