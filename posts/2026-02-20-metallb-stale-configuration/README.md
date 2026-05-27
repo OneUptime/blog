@@ -8,7 +8,7 @@ Description: Learn how to detect and fix stale MetalLB configuration after makin
 
 ---
 
-> You updated an IPAddressPool or changed an L2Advertisement, but services still behave as if the old configuration is active. MetalLB can sometimes hold onto stale state, especially after rapid configuration changes or partial applies. This guide shows you how to detect stale configuration and fix it without disrupting running services.
+> You updated an IPAddressPool or changed an L2Advertisement, but services still behave as if the old configuration is active. MetalLB can sometimes hold onto stale state, especially after configuration changes that would otherwise disrupt assigned services. This guide shows you how to detect stale configuration and fix it with minimal disruption to running services.
 
 ---
 
@@ -34,7 +34,7 @@ graph TD
 | Edited pool CIDR but services keep old IPs | IPs outside the new range still assigned |
 | Deleted a pool that had active assignments | Services keep working but pool is gone |
 | Changed L2Advertisement selectors | Wrong pools being advertised |
-| Rapid apply/delete cycles | Controller missed intermediate states |
+| Invalid or disruptive configuration changes | MetalLB keeps the last valid configuration |
 | CRD version mismatch after upgrade | Resources exist but are not recognized |
 
 ---
@@ -119,10 +119,10 @@ kubectl get pods -n metallb-system -l app=metallb,component=speaker -o wide
 
 ## Fix 3: Re-apply All Configuration
 
-For persistent issues, delete and re-apply all MetalLB custom resources:
+For persistent issues, delete and re-apply all MetalLB custom resources from your clean source manifests:
 
 ```bash
-# Step 1: Export current configuration
+# Step 1: Export current configuration for reference
 kubectl get ipaddresspool -n metallb-system -o yaml > pools-backup.yaml
 kubectl get l2advertisement -n metallb-system -o yaml > l2adv-backup.yaml
 kubectl get bgpadvertisement -n metallb-system -o yaml > bgpadv-backup.yaml
@@ -135,10 +135,8 @@ kubectl delete bgpadvertisement --all -n metallb-system
 # Step 3: Wait for MetalLB to process the deletions
 sleep 10
 
-# Step 4: Re-apply the configuration
-kubectl apply -f pools-backup.yaml
-kubectl apply -f l2adv-backup.yaml
-kubectl apply -f bgpadv-backup.yaml
+# Step 4: Re-apply clean manifests from source control
+kubectl apply -f path/to/your/metallb-config/
 ```
 
 ---
@@ -148,16 +146,23 @@ kubectl apply -f bgpadv-backup.yaml
 If a service has an IP from a deleted pool, force it to get a new IP:
 
 ```bash
-# Remove the stale IP assignment by removing loadBalancerIP
-kubectl patch svc orphaned-service --type=json \
-  -p='[{"op":"remove","path":"/spec/loadBalancerIP"}]'
+# Remove an explicitly requested IP, if present
+kubectl patch svc orphaned-service --type=merge \
+  -p='{"spec":{"loadBalancerIP":null}}'
 
-# Remove the old pool annotation if present
+# Remove explicitly requested MetalLB IPs or pool, if present
 kubectl annotate svc orphaned-service \
-  metallb.universe.tf/address-pool- \
+  metallb.io/loadBalancerIPs- \
   --overwrite
 
-# The service will now get a new IP from an available pool
+kubectl annotate svc orphaned-service \
+  metallb.io/address-pool- \
+  --overwrite
+
+# If MetalLB preserved the old assignment as stale state, recreate the service
+# from its manifest so the controller can allocate a new IP.
+kubectl delete svc orphaned-service
+kubectl apply -f path/to/orphaned-service.yaml
 kubectl get svc orphaned-service -w
 ```
 
