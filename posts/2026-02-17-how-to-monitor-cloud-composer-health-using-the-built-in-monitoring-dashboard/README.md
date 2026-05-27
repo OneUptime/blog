@@ -28,11 +28,9 @@ Each of these panels pulls data from Cloud Monitoring metrics that Composer auto
 
 ## Understanding the Environment Overview
 
-The environment overview section gives you the high-level picture. It shows whether your environment is healthy, degraded, or unhealthy. The health status is determined by a combination of factors including scheduler heartbeat, database connectivity, and worker availability.
+The environment overview section gives you the high-level picture. It includes the environment health timeline, scheduler heartbeat, web server health, database health, environment operations, maintenance operations, and dependency checks. The environment health metric is reported by Composer's `airflow_monitoring` liveness DAG; a green status reflects the Composer deployment health, but it does not guarantee that every Airflow component is operational or that all DAGs can run.
 
-A healthy environment means all components are running as expected. A degraded state usually means something is partially failing - perhaps one of the workers has restarted or the scheduler is behind. An unhealthy state is a red flag that needs immediate attention.
-
-The overview also shows the Composer and Airflow versions, which is useful when debugging compatibility issues after upgrades.
+A healthy status means the liveness DAG is completing successfully. Red areas in the scheduler heartbeat, web server health, database health, or dependency checks point to the component you should investigate next.
 
 ## Monitoring DAG Runs
 
@@ -48,18 +46,18 @@ The panel also shows the distribution of DAG run durations, which helps you spot
 
 ## Task Instance Metrics
 
-Drilling down from DAG runs, the task instance metrics show you individual task performance. You can see how many tasks are in each state - queued, running, success, failed, or up for retry.
+Drilling down from DAG runs, the task instance metrics show you individual task performance. The dashboard shows completed task counts broken down by success and failure, along with currently running, queued, or deferred tasks.
 
 A growing number of queued tasks is a warning sign. It means your workers cannot keep up with the workload. This could indicate you need to scale up your worker count or increase worker resources.
 
-Here is how you can check task instance counts programmatically using the gcloud CLI:
+Here is how you can check task instance states programmatically using the gcloud CLI:
 
 ```bash
-# List recent task instances for a specific DAG
+# List task instance states for a specific DAG run
 
 gcloud composer environments run my-environment \
   --location us-central1 \
-  tasks list -- my-dag-id 2026-02-17
+  tasks states-for-dag-run -- my-dag-id scheduled__2026-02-17T00:00:00+00:00
 ```
 
 Retried tasks also deserve attention. A task that succeeds on its third retry is technically successful, but it is wasting resources and slowing down your pipeline. Track retry rates and fix the underlying issues.
@@ -70,7 +68,7 @@ The resource usage panels show CPU, memory, and disk utilization for both worker
 
 Key things to watch:
 
-**Worker CPU and Memory**: If workers consistently run above 80% CPU or memory, you are at risk of OOM kills and task failures. Consider either increasing the machine type or adding more workers.
+**Worker CPU and Memory**: If workers consistently run above 80% CPU or memory, you are at risk of OOM kills and task failures. Consider either increasing worker resources or adding more workers.
 
 **Scheduler CPU**: The scheduler is the brain of Airflow. If it is CPU-starved, DAGs will not get parsed on time, and task scheduling will lag. For environments with hundreds of DAGs, the scheduler needs sufficient resources.
 
@@ -149,8 +147,8 @@ While the built-in dashboard covers the essentials, you can create custom dashbo
 Some useful metrics to add to a custom dashboard:
 
 - `composer.googleapis.com/environment/dagbag_size` - Number of DAGs loaded
-- `composer.googleapis.com/environment/scheduler_heartbeat` - Scheduler liveness
-- `composer.googleapis.com/environment/zombie_task_killed` - Zombie tasks the scheduler had to clean up
+- `composer.googleapis.com/environment/scheduler_heartbeat_count` - Scheduler heartbeats
+- `composer.googleapis.com/environment/zombie_task_killed_count` - Zombie tasks the scheduler had to clean up
 - `composer.googleapis.com/workflow/run_duration` - DAG run duration
 
 ```bash
