@@ -109,13 +109,13 @@ Here is the Jinja2 template that uses those secrets.
 database:
   host: db.myorg.com
   port: 5432
-  username: "{{ db_credentials.data.username }}"
-  password: "{{ db_credentials.data.password }}"
+  username: "{{ db_credentials.username }}"
+  password: "{{ db_credentials.password }}"
   name: myapp_production
 
 api:
-  stripe_key: "{{ api_keys.data.stripe_key }}"
-  sendgrid_key: "{{ api_keys.data.sendgrid_key }}"
+  stripe_key: "{{ api_keys.stripe_key }}"
+  sendgrid_key: "{{ api_keys.sendgrid_key }}"
 ```
 
 ## Using Vault with Ansible Vault (Yes, Two Different Vaults)
@@ -163,9 +163,11 @@ jobs:
           VAULT_SECRET_ID: ${{ secrets.VAULT_SECRET_ID }}
           ANSIBLE_HOST_KEY_CHECKING: "false"
         run: |
+          install -m 600 /dev/null ssh_key
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ssh_key
           ansible-playbook playbooks/deploy-with-secrets.yml \
             -i inventory/production.yml \
-            --private-key <(echo "${{ secrets.SSH_KEY }}")
+            --private-key ssh_key
 ```
 
 ## Dynamic Secrets with Vault
@@ -188,7 +190,8 @@ One of Vault's best features is dynamic secrets. Instead of storing static datab
       auth_method='approle',
       role_id=lookup('env', 'VAULT_ROLE_ID'),
       secret_id=lookup('env', 'VAULT_SECRET_ID'),
-      url=vault_addr) }}"
+      url=vault_addr,
+      return_format='raw') }}"
 
   tasks:
     - name: Display lease information
@@ -216,7 +219,7 @@ flowchart LR
     C --> D[Ansible Fetches Secrets]
     D --> E[Deploy Application]
     E --> F[Token Expires After TTL]
-    F --> G[Secrets Are Never Stored on Disk]
+    F --> G[Secrets Are Not Stored in Code]
 ```
 
 ## Caching Vault Tokens Across Tasks
@@ -266,11 +269,14 @@ If your playbook makes many Vault lookups, authenticating for each one is ineffi
         src: templates/app-config.yml.j2
         dest: /opt/myapp/config.yml
         mode: '0600'
+      vars:
+        db_credentials: "{{ db_secrets.data.data.data }}"
+        api_keys: "{{ api_secrets.data.data.data }}"
 ```
 
 ## Security Best Practices
 
-When using Vault with Ansible in CI/CD, follow these guidelines. First, always use AppRole authentication for automated pipelines. Token-based auth requires manual token generation. Second, set short TTLs on tokens and leases. If a CI/CD job runs for 10 minutes, a 1-hour TTL is plenty. Third, use Vault namespaces to isolate secrets for different teams. Fourth, audit everything. Vault has built-in audit logging, so enable it to track which secrets are being accessed and when. Fifth, never log secrets. Use the `no_log: true` directive on any task that handles sensitive data.
+When using Vault with Ansible in CI/CD, follow these guidelines. First, use a machine-oriented authentication method such as AppRole for automated pipelines. Token-based auth requires manual token generation. Second, set short TTLs on tokens and leases. If a CI/CD job runs for 10 minutes, a 1-hour TTL is plenty. Third, if your Vault edition supports namespaces, use them to isolate secrets for different teams. Fourth, audit everything. Vault has built-in audit logging, so enable it to track which secrets are being accessed and when. Fifth, never log secrets. Use the `no_log: true` directive on any task that handles sensitive data.
 
 ```yaml
 # Prevent secrets from appearing in Ansible output
