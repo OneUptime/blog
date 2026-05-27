@@ -90,7 +90,7 @@ class LookupModule(LookupBase):
 Use dedicated methods for warnings and errors since they get special formatting:
 
 ```python
-# Warning: yellow text, always shown regardless of verbosity
+# Warning: specially formatted text, always shown regardless of verbosity
 self._display.warning("Certificate expires in 7 days")
 
 # Deprecation warning: includes version info
@@ -113,9 +113,10 @@ raise AnsibleError("Cannot continue: API returned 500")
 The `display()` method supports color:
 
 ```python
-# Available colors: black, dark gray, red, bright red, green, bright green,
-# yellow, bright yellow, blue, bright blue, purple, bright purple,
-# cyan, bright cyan, white, bright white, normal
+# Available colors include: black, dark gray, bright gray, red, bright red,
+# green, bright green, yellow, bright yellow, blue, bright blue, purple,
+# bright purple, magenta, bright magenta, cyan, bright cyan, white, normal.
+# You can also use colorNNN, rgbRGB, and grayNN forms.
 
 self._display.display("Success!", color='green')
 self._display.display("Warning!", color='yellow')
@@ -205,10 +206,8 @@ class CallbackModule(CallbackBase):
 For section headers, use the `banner()` method:
 
 ```python
-# Creates a formatted banner like:
-# ============================================
-# My Section Title
-# ============================================
+# Creates a formatted banner, using cowsay when enabled or a star banner like:
+# My Section Title ***************************
 self._display.banner("My Section Title")
 
 # Banner with a specific color
@@ -221,9 +220,6 @@ Strategy plugins often need to show progress information:
 
 ```python
 from ansible.plugins.strategy.linear import StrategyModule as LinearStrategy
-from ansible.utils.display import Display
-
-display = Display()
 
 
 class StrategyModule(LinearStrategy):
@@ -231,19 +227,10 @@ class StrategyModule(LinearStrategy):
         hosts = self._inventory.get_hosts(iterator._play.hosts)
         total = len(hosts)
 
-        display.display(
-            "Rolling deployment: %d hosts in batches of %d"
-            % (total, self._batch_size),
+        self._display.display(
+            "Linear strategy starting for %d hosts" % total,
             color='cyan'
         )
-
-        for i, batch in enumerate(self._get_batches(hosts)):
-            display.display(
-                "Processing batch %d/%d: %s"
-                % (i + 1, self._num_batches, ', '.join(h.name for h in batch)),
-                color='yellow'
-            )
-            # Process batch...
 
         return super(StrategyModule, self).run(iterator, play_context)
 ```
@@ -258,7 +245,7 @@ In addition to console output, you can write to the Ansible log file. The displa
 log_path = /var/log/ansible.log
 ```
 
-When `log_path` is configured, all `display()`, `v()`, `warning()`, and `error()` calls also write to the log file. You do not need to do anything extra in your plugin code.
+When `log_path` is configured, messages emitted by `display()`, verbose methods such as `v()`, `warning()`, and `error()` also write to the log file. Verbose messages still follow Ansible's verbosity settings unless log verbosity is configured separately. You do not need to do anything extra in your plugin code.
 
 ## Best Practices
 
