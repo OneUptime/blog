@@ -14,24 +14,20 @@ The F5 Ansible collection provides modules for nearly every BIG-IP object. This 
 
 ## Setting Up the F5 Collection
 
-Install the F5 collection and its dependencies.
+Install the F5 collection.
 
 ```bash
-# Install the F5 Ansible collection
+# Install the F5 imperative Ansible collection used in these examples
 
 ansible-galaxy collection install f5networks.f5_modules
-
-# Install the required Python SDK
-pip install f5-sdk
-pip install bigsuds
 ```
 
 ## Inventory Configuration
 
-F5 BIG-IP uses the httpapi connection type for API-based management.
+F5 maintains two BIG-IP Ansible collections. The imperative `f5networks.f5_modules` collection used in the examples below runs locally and connects through the `provider` dictionary. The newer declarative `f5networks.f5_bigip` collection uses the `httpapi` connection type for API-based management. If you use this inventory style, install that collection with `ansible-galaxy collection install f5networks.f5_bigip`.
 
 ```yaml
-# inventory/f5_devices.yml - F5 BIG-IP inventory
+# inventory/f5_devices.yml - F5 BIG-IP inventory for f5networks.f5_bigip
 ---
 all:
   children:
@@ -51,7 +47,7 @@ all:
         ansible_httpapi_port: 443
 ```
 
-Alternatively, many teams use the older provider-based connection method which is still widely documented.
+For the `f5networks.f5_modules` examples in this post, use the provider-based connection method.
 
 ```yaml
 # group_vars/f5_loadbalancers.yml - Provider-based F5 connection
@@ -353,15 +349,17 @@ Gracefully remove servers from pools for maintenance.
       password: "{{ vault_f5_password }}"
       validate_certs: false
     maintenance_server: web-server-03
+    maintenance_address: 10.20.1.12
     maintenance_port: 80
 
   tasks:
-    # Disable the pool member (stops new connections, drains existing)
+    # Force the pool member offline so only active connections continue
     - name: Disable pool member for maintenance
       f5networks.f5_modules.bigip_pool_member:
         provider: "{{ f5_provider }}"
         pool: pool_web_app1
         name: "{{ maintenance_server }}"
+        host: "{{ maintenance_address }}"
         port: "{{ maintenance_port }}"
         state: forced_offline
 
@@ -404,8 +402,9 @@ Re-enable after maintenance.
         provider: "{{ f5_provider }}"
         pool: pool_web_app1
         name: web-server-03
+        host: 10.20.1.12
         port: 80
-        state: present
+        state: enabled
 
     # Verify the member is receiving connections
     - name: Check pool member status
