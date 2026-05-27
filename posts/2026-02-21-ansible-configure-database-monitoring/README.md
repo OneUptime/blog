@@ -48,6 +48,11 @@ mysql-primary ansible_host=10.0.9.20
 [mongodb_servers]
 mongo-primary ansible_host=10.0.9.30
 
+[database_servers:children]
+postgres_servers
+mysql_servers
+mongodb_servers
+
 [prometheus_servers]
 prometheus ansible_host=10.0.10.50
 
@@ -303,6 +308,22 @@ The `postgres_exporter` exposes PostgreSQL metrics in Prometheus format.
     mongodb_exporter_port: 9216
 
   tasks:
+    - name: Create monitoring user in MongoDB
+      community.mongodb.mongodb_user:
+        login_user: "{{ vault_mongo_admin_user }}"
+        login_password: "{{ vault_mongo_admin_password }}"
+        login_database: admin
+        database: admin
+        name: monitoring
+        password: "{{ vault_mongo_monitoring_password }}"
+        roles:
+          - db: admin
+            role: clusterMonitor
+          - db: local
+            role: read
+        state: present
+      no_log: true
+
     - name: Create mongodb_exporter system user
       ansible.builtin.user:
         name: mongodb_exporter
@@ -535,7 +556,7 @@ Deploy alerting rules for common database issues.
 
 Here are the most important metrics for each database:
 
-**PostgreSQL**: `pg_stat_activity_count`, `pg_stat_bgwriter_buffers_alloc_total`, `pg_locks_count`, `pg_replication_lag`, `pg_database_size_bytes`
+**PostgreSQL**: `pg_stat_activity_count`, `pg_stat_bgwriter_buffers_alloc_total`, `pg_locks_count`, `pg_replication_lag_lag_seconds`, `pg_database_size_size_bytes`
 
 **MySQL**: `mysql_global_status_threads_connected`, `mysql_global_status_slow_queries`, `mysql_global_status_innodb_buffer_pool_reads`, `mysql_slave_status_seconds_behind_master`
 
