@@ -55,8 +55,9 @@ def create_dataset_transfer(
     project_id,
     source_dataset,
     destination_dataset,
+    destination_location='europe-west1',
     source_project=None,
-    schedule='every 1 hours',
+    schedule='every 12 hours',
 ):
     """Create a scheduled BigQuery dataset copy transfer."""
     client = bigquery_datatransfer_v1.DataTransferServiceClient()
@@ -80,7 +81,7 @@ def create_dataset_transfer(
     )
 
     # The parent is the destination location
-    parent = f'projects/{project_id}/locations/europe-west1'
+    parent = f'projects/{project_id}/locations/{destination_location}'
 
     response = client.create_transfer_config(
         parent=parent,
@@ -91,12 +92,13 @@ def create_dataset_transfer(
     print(f'Schedule: {schedule}')
     return response
 
-# Set up hourly replication for critical datasets
+# Set up replication for critical datasets.
+# Dataset copy transfers have a 12-hour minimum frequency.
 create_dataset_transfer(
     project_id='my-project',
     source_dataset='analytics_primary',
     destination_dataset='analytics_dr',
-    schedule='every 1 hours',
+    schedule='every 12 hours',
 )
 
 # Set up daily replication for historical datasets
@@ -145,7 +147,7 @@ def copy_table_cross_region(
 
     # Wait for the job to complete
     job.result()
-    print(f'Copied {source_ref} -> {dest_ref} ({job.total_bytes_processed} bytes)')
+    print(f'Copied {source_ref} -> {dest_ref}')
     return job
 
 def replicate_critical_tables(source_dataset, dest_dataset):
@@ -182,32 +184,64 @@ def incremental_replicate(
     dest_dataset,
     table_name,
     timestamp_column='created_at',
+    dedupe_key='event_id',
     lookback_hours=2,
 ):
-    """Replicate only new rows based on a timestamp column."""
+    """Replicate only new rows based on a timestamp column.
+
+    BigQuery query jobs cannot read from one location and write directly to
+    another, so this writes a temporary source-region table, copies that table
+    across regions, and merges from a destination-region staging table.
+    """
 
     # Calculate the cutoff time (with some overlap for safety)
     cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
     cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M:%S')
 
-    # Query new rows from the source
+    temp_table = f'_dr_incremental_{table_name}_{int(datetime.utcnow().timestamp())}'
+
+    # Query new rows into a temporary table in the source dataset's location
     query = f"""
     SELECT *
     FROM `my-project.{source_dataset}.{table_name}`
-    WHERE {timestamp_column} >= '{cutoff_str}'
+    WHERE `{timestamp_column}` >= '{cutoff_str}'
     """
 
-    # Write to the destination table
-    job_config = bigquery.QueryJobConfig(
-        destination=f'my-project.{dest_dataset}.{table_name}',
-        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+    source_stage_ref = f'my-project.{source_dataset}.{temp_table}'
+    source_job_config = bigquery.QueryJobConfig(
+        destination=source_stage_ref,
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
     )
 
-    job = bq_client.query(query, job_config=job_config)
-    job.result()
+    source_job = bq_client.query(query, job_config=source_job_config)
+    source_job.result()
 
-    print(f'Incremental replication: {job.total_rows} new rows -> {dest_dataset}.{table_name}')
-    return job
+    # Copy the temporary table across regions into a destination staging table
+    dest_stage_ref = f'my-project.{dest_dataset}.{temp_table}'
+    copy_job = bq_client.copy_table(
+        source_stage_ref,
+        dest_stage_ref,
+        job_config=bigquery.CopyJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        ),
+    )
+    copy_job.result()
+
+    # Merge from the destination staging table to avoid duplicating overlap rows
+    merge_query = f"""
+    MERGE `my-project.{dest_dataset}.{table_name}` T
+    USING `my-project.{dest_dataset}.{temp_table}` S
+    ON T.`{dedupe_key}` = S.`{dedupe_key}`
+    WHEN NOT MATCHED THEN INSERT ROW
+    """
+    merge_job = bq_client.query(merge_query)
+    merge_job.result()
+
+    bq_client.delete_table(source_stage_ref, not_found_ok=True)
+    bq_client.delete_table(dest_stage_ref, not_found_ok=True)
+
+    print(f'Incremental replication complete -> {dest_dataset}.{table_name}')
+    return merge_job
 ```
 
 ## Monitoring Transfer Health
@@ -217,7 +251,6 @@ Set up monitoring to ensure transfers are running on schedule and completing suc
 ```python
 # monitor_transfers.py
 from google.cloud import bigquery_datatransfer_v1
-from google.cloud import monitoring_v3
 import time
 
 def check_transfer_health(project_id, location='europe-west1'):
@@ -257,7 +290,7 @@ def check_transfer_health(project_id, location='europe-west1'):
 
         # Check if the latest run is too old (indicating a stuck schedule)
         run_age_hours = (time.time() - latest_run.run_time.timestamp()) / 3600
-        if run_age_hours > 3:  # Alert if more than 3 hours since last run
+        if run_age_hours > 13:  # Alert if more than 13 hours since last run
             unhealthy.append({
                 'config': config.display_name,
                 'issue': f'Latest run is {run_age_hours:.1f} hours old',
@@ -291,6 +324,8 @@ class BigQueryFailoverManager:
         self.project_id = project_id
         self.primary_dataset = os.environ.get('BQ_PRIMARY_DATASET', 'analytics_primary')
         self.dr_dataset = os.environ.get('BQ_DR_DATASET', 'analytics_dr')
+        self.primary_views_dataset = os.environ.get('BQ_PRIMARY_VIEWS_DATASET', 'analytics_views_primary')
+        self.dr_views_dataset = os.environ.get('BQ_DR_VIEWS_DATASET', 'analytics_views_dr')
         self.active_dataset = self.primary_dataset
         self.client = bigquery.Client()
 
@@ -310,8 +345,8 @@ class BigQueryFailoverManager:
         """Switch to the DR dataset."""
         print(f'Failing over from {self.primary_dataset} to {self.dr_dataset}')
         self.active_dataset = self.dr_dataset
-        # Update any views or references
-        self._update_view_references(self.dr_dataset)
+        # Update views in a dataset that is in the same location as the DR dataset
+        self._update_view_references(self.dr_dataset, self.dr_views_dataset)
         return self.active_dataset
 
     def failback_to_primary(self):
@@ -319,16 +354,15 @@ class BigQueryFailoverManager:
         if self.health_check():
             print(f'Failing back from {self.dr_dataset} to {self.primary_dataset}')
             self.active_dataset = self.primary_dataset
-            self._update_view_references(self.primary_dataset)
+            self._update_view_references(self.primary_dataset, self.primary_views_dataset)
             return self.active_dataset
         else:
             print('Primary still unavailable, staying on DR')
             return self.active_dataset
 
-    def _update_view_references(self, target_dataset):
-        """Update authorized views to point to the active dataset."""
-        # Update any views that reference the dataset
-        views_dataset = f'{self.project_id}.analytics_views'
+    def _update_view_references(self, target_dataset, views_dataset):
+        """Update views in the same BigQuery location as the active dataset."""
+        views_dataset = f'{self.project_id}.{views_dataset}'
         tables = self.client.list_tables(views_dataset)
 
         for table_ref in tables:
@@ -371,6 +405,10 @@ def validate_data_freshness(dataset, table, timestamp_column, max_age_hours=2):
         print(f'  Latest record: {row.latest_record}')
         print(f'  Age: {row.age_hours} hours')
         print(f'  Total rows: {row.total_rows}')
+
+        if row.latest_record is None:
+            print('  WARNING: Table has no records')
+            return False
 
         if row.age_hours > max_age_hours:
             print(f'  WARNING: Data is older than {max_age_hours} hours')
