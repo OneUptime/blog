@@ -105,7 +105,8 @@ JAVA_OPTS="${JAVA_OPTS} -XX:+UseG1GC"
 JAVA_OPTS="${JAVA_OPTS} -Xms4g -Xmx4g"
 
 # Target maximum GC pause time of 100 milliseconds
-# G1GC will adjust region sizes and collection sets to meet this target
+# G1GC treats this as a soft goal and adjusts young generation sizing
+# and collection sets to try to meet it
 JAVA_OPTS="${JAVA_OPTS} -XX:MaxGCPauseMillis=100"
 
 # Set the region size (must be a power of 2, between 1MB and 32MB)
@@ -115,11 +116,11 @@ JAVA_OPTS="${JAVA_OPTS} -XX:G1HeapRegionSize=4m"
 # Percentage of heap to keep as reserve to reduce evacuation failures
 JAVA_OPTS="${JAVA_OPTS} -XX:G1ReservePercent=15"
 
-# Number of parallel GC threads (match CPU cores)
+# Number of parallel GC threads (set explicitly only after measuring)
 JAVA_OPTS="${JAVA_OPTS} -XX:ParallelGCThreads=4"
 
 # Number of concurrent marking threads (typically 1/4 of parallel threads)
-JAVA_OPTS="${JAVA_OPTS} -XX:ConcGCThreads=2"
+JAVA_OPTS="${JAVA_OPTS} -XX:ConcGCThreads=1"
 
 # Start concurrent marking when heap is 45% full
 JAVA_OPTS="${JAVA_OPTS} -XX:InitiatingHeapOccupancyPercent=45"
@@ -141,15 +142,15 @@ ZGC delivers sub-millisecond pause times for latency-sensitive applications.
 JAVA_OPTS=""
 
 # Select ZGC as the garbage collector
+# In JDK 24+, ZGC is generational by default
 JAVA_OPTS="${JAVA_OPTS} -XX:+UseZGC"
 
-# Enable generational mode for better throughput (Java 21+)
-JAVA_OPTS="${JAVA_OPTS} -XX:+ZGenerational"
+# For Java 21-23, add -XX:+ZGenerational to enable generational mode
 
 # Set heap size (ZGC can handle very large heaps efficiently)
 JAVA_OPTS="${JAVA_OPTS} -Xms8g -Xmx8g"
 
-# ZGC allocates additional memory for colored pointers
+# ZGC has memory overhead for concurrent collection metadata
 # Soft max heap size limits the heap before reaching Xmx
 JAVA_OPTS="${JAVA_OPTS} -XX:SoftMaxHeapSize=6g"
 
