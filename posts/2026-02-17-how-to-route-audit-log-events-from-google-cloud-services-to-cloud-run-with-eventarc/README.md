@@ -8,7 +8,7 @@ Description: Learn how to use Eventarc to route Cloud Audit Log events from any 
 
 ---
 
-Every action in Google Cloud generates an audit log entry - creating a VM, modifying a firewall rule, changing IAM permissions, accessing a Cloud Storage object. Eventarc lets you capture these audit log events and route them to Cloud Run services in real time. This is powerful for security automation, compliance monitoring, and building reactive systems that respond to infrastructure changes.
+Many actions in Google Cloud generate audit log entries - creating a VM, modifying a firewall rule, changing IAM permissions, accessing a Cloud Storage object when Data Access logs are enabled. Eventarc lets you capture supported audit log events and route them to Cloud Run services in real time. This is powerful for security automation, compliance monitoring, and building reactive systems that respond to infrastructure changes.
 
 In this post, I will show you how to set up Eventarc triggers for audit log events and build Cloud Run handlers that respond to them.
 
@@ -21,7 +21,7 @@ Google Cloud generates several types of audit logs:
 - **System Event logs**: Capture Google-initiated system events
 - **Policy Denied logs**: Capture requests denied by VPC Service Controls or Organization Policies
 
-Eventarc can trigger on Admin Activity and Data Access logs. Admin Activity logs are the most useful for security automation because they capture all infrastructure changes.
+Eventarc can trigger on supported Cloud Audit Logs events, including Admin Activity and Data Access logs. Admin Activity logs are the most useful for security automation because they capture user-driven configuration and metadata changes.
 
 ## Prerequisites
 
@@ -31,6 +31,8 @@ Eventarc can trigger on Admin Activity and Data Access logs. Admin Activity logs
 gcloud services enable \
   run.googleapis.com \
   eventarc.googleapis.com \
+  eventarcpublishing.googleapis.com \
+  cloudbuild.googleapis.com \
   logging.googleapis.com
 ```
 
@@ -47,6 +49,24 @@ gcloud projects get-iam-policy YOUR_PROJECT --format=json > /tmp/policy.json
 
 Create a Cloud Run service that processes audit log events.
 
+```json
+{
+  "name": "audit-log-handler",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+```
+
 ```javascript
 // server.js
 // Cloud Run service that handles Cloud Audit Log events via Eventarc
@@ -62,6 +82,7 @@ app.post("/", async (req, res) => {
 
   console.log(`Audit event: ${eventType}`);
   console.log(`Subject: ${eventSubject}`);
+  console.log(`Event ID: ${eventId}`);
 
   // The audit log entry is in the request body
   const protoPayload = req.body.protoPayload;
@@ -135,7 +156,7 @@ async function handleIamChange(method, details) {
 
   // Alert on sensitive IAM changes
   const sensitiveActions = [
-    "google.iam.admin.v1.SetIamPolicy",
+    "google.iam.admin.v1.SetIAMPolicy",
     "SetIamPolicy",
     "google.iam.admin.v1.CreateServiceAccount",
     "google.iam.admin.v1.CreateServiceAccountKey",
@@ -235,6 +256,10 @@ Create triggers for specific service audit events.
 gcloud iam service-accounts create audit-trigger-sa \
   --display-name="Audit Log Trigger SA"
 
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:audit-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/eventarc.eventReceiver"
+
 gcloud run services add-iam-policy-binding audit-log-handler \
   --region=us-central1 \
   --member="serviceAccount:audit-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
@@ -247,7 +272,7 @@ gcloud eventarc triggers create iam-policy-changes \
   --destination-run-region=us-central1 \
   --event-filters="type=google.cloud.audit.log.v1.written" \
   --event-filters="serviceName=iam.googleapis.com" \
-  --event-filters="methodName=SetIamPolicy" \
+  --event-filters="methodName=google.iam.admin.v1.SetIAMPolicy" \
   --service-account=audit-trigger-sa@YOUR_PROJECT.iam.gserviceaccount.com
 
 # Trigger for Compute Engine firewall changes
