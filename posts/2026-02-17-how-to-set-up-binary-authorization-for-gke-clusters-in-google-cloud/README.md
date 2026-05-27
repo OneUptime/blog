@@ -8,7 +8,7 @@ Description: A complete walkthrough for setting up Binary Authorization on GKE c
 
 ---
 
-Binary Authorization is a deploy-time security control for GKE that ensures only trusted container images run on your clusters. It works by requiring that images have been signed by trusted authorities (attestors) before Kubernetes will admit them. If an image does not have the required attestations, the deployment is blocked.
+Binary Authorization is a deploy-time security control for GKE that ensures only trusted container images run on your clusters. It works by requiring that images have signed attestations from trusted authorities (attestors) before Kubernetes will admit them. If an image does not have the required attestations, the deployment is blocked.
 
 This is a critical control for production environments. Without it, anyone with kubectl access could deploy any image, including images from untrusted registries, images with known vulnerabilities, or images that have not been through your CI/CD pipeline. Binary Authorization closes that gap.
 
@@ -22,7 +22,7 @@ The flow looks like this:
 sequenceDiagram
     participant Dev as Developer
     participant CI as CI/CD Pipeline
-    participant CR as Container Registry
+    participant CR as Artifact Registry
     participant BA as Binary Authorization
     participant GKE as GKE Cluster
 
@@ -40,6 +40,9 @@ sequenceDiagram
 - A GCP project with GKE enabled
 - The Binary Authorization API enabled
 - Container Analysis API enabled (for storing attestations)
+- Artifact Registry API enabled (for storing container images)
+- Cloud KMS API enabled (for signing attestations)
+- An Artifact Registry Docker repository with an image to attest
 - A GKE cluster (or we will create one)
 
 ```bash
@@ -49,6 +52,8 @@ gcloud services enable \
   binaryauthorization.googleapis.com \
   containeranalysis.googleapis.com \
   container.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudkms.googleapis.com \
   --project=my-project-id
 ```
 
@@ -91,16 +96,11 @@ gcloud container binauthz policy export --project=my-project-id
 The default policy looks something like this:
 
 ```yaml
-admissionWhitelistPatterns:
-- namePattern: gcr.io/google_containers/*
-- namePattern: gcr.io/google-containers/*
-- namePattern: k8s.gcr.io/**
-- namePattern: gke.gcr.io/**
-- namePattern: gcr.io/stackdriver-agents/*
 defaultAdmissionRule:
   enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
   evaluationMode: ALWAYS_ALLOW
 globalPolicyEvaluationMode: ENABLE
+name: projects/my-project-id/policy
 ```
 
 ## Step 4: Switch to Require Attestations
@@ -111,21 +111,13 @@ Create a policy file:
 
 ```yaml
 # policy.yaml - Require attestations for all images
-admissionWhitelistPatterns:
-  # Allow GKE system images
-  - namePattern: gcr.io/google_containers/*
-  - namePattern: gcr.io/google-containers/*
-  - namePattern: k8s.gcr.io/**
-  - namePattern: gke.gcr.io/**
-  - namePattern: gcr.io/stackdriver-agents/*
-  # Allow your trusted registry
-  - namePattern: gcr.io/my-project-id/*
+globalPolicyEvaluationMode: ENABLE
 defaultAdmissionRule:
   enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
   evaluationMode: REQUIRE_ATTESTATION
   requireAttestationsBy:
     - projects/my-project-id/attestors/build-attestor
-globalPolicyEvaluationMode: ENABLE
+name: projects/my-project-id/policy
 ```
 
 ```bash
@@ -165,7 +157,7 @@ curl -X POST \
     "name": "projects/my-project-id/notes/build-attestor-note",
     "attestation": {
       "hint": {
-        "humanReadableName": "Build Pipeline Attestor"
+        "human_readable_name": "Build Pipeline Attestor"
       }
     }
   }' \
@@ -194,12 +186,13 @@ After your CI/CD pipeline builds an image, sign it with an attestation.
 
 ```bash
 # First, get the image digest (not the tag - attestations require digests)
-IMAGE_DIGEST=$(gcloud container images describe gcr.io/my-project-id/my-app:latest \
+IMAGE_PATH="us-central1-docker.pkg.dev/my-project-id/my-repo/my-app"
+IMAGE_DIGEST=$(gcloud artifacts docker images describe "${IMAGE_PATH}:latest" \
   --format='value(image_summary.digest)')
 
 # Create the attestation
 gcloud container binauthz attestations sign-and-create \
-  --artifact-url="gcr.io/my-project-id/my-app@${IMAGE_DIGEST}" \
+  --artifact-url="${IMAGE_PATH}@${IMAGE_DIGEST}" \
   --attestor=build-attestor \
   --attestor-project=my-project-id \
   --keyversion-project=my-project-id \
@@ -207,6 +200,7 @@ gcloud container binauthz attestations sign-and-create \
   --keyversion-keyring=binauthz-keyring \
   --keyversion-key=attestor-key \
   --keyversion=1 \
+  --validate \
   --project=my-project-id
 ```
 
@@ -217,7 +211,7 @@ Try deploying the attested image - it should succeed:
 ```bash
 # Deploy the attested image (will be allowed)
 kubectl run my-app \
-  --image=gcr.io/my-project-id/my-app@${IMAGE_DIGEST} \
+  --image="${IMAGE_PATH}@${IMAGE_DIGEST}" \
   --port=8080
 ```
 
@@ -234,12 +228,18 @@ You should see an error like: `admission webhook "imagepolicywebhook.image-polic
 
 ## Step 9: View Policy Audit Logs
 
-Binary Authorization logs every admission decision.
+Binary Authorization writes policy enforcement events to Cloud Audit Logs.
 
 ```bash
 # View Binary Authorization audit logs
 gcloud logging read \
-  'resource.type="k8s_cluster" AND protoPayload.methodName="io.k8s.core.v1.pods.create" AND protoPayload.response.reason="Forbidden"' \
+  'resource.type="k8s_cluster"
+   logName:"cloudaudit.googleapis.com%2Factivity"
+   (protoPayload.methodName="io.k8s.core.v1.pods.create" OR
+    protoPayload.methodName="io.k8s.core.v1.pods.update")
+   protoPayload.response.status="Failure"
+   (protoPayload.response.reason="VIOLATES_POLICY" OR
+    protoPayload.response.reason="Forbidden")' \
   --limit=10 \
   --format="table(timestamp, protoPayload.response.message)" \
   --project=my-project-id
@@ -249,16 +249,16 @@ gcloud logging read \
 
 Sometimes you need to deploy without attestation in an emergency. Binary Authorization supports a break-glass mechanism.
 
-Add an annotation to the pod spec to bypass the policy:
+Add a break-glass label to the pod spec to bypass the policy:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: emergency-deployment
-  annotations:
-    # Break-glass annotation to bypass Binary Authorization
-    alpha.image-policy.k8s.io/break-glass: "true"
+  labels:
+    # Break-glass label to bypass Binary Authorization
+    image-policy.k8s.io/break-glass: "true"
 spec:
   containers:
     - name: app
