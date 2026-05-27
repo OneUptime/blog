@@ -23,7 +23,7 @@ The Recommendations Hub is a centralized console in GCP that aggregates recommen
 - **IAM recommendations** - Suggests removing unused permissions
 - **Network and firewall** - Identifies overly permissive firewall rules
 
-Each recommendation includes an estimated cost impact, so you can prioritize the ones with the biggest savings.
+Cost recommendations include an estimated cost impact, so you can prioritize the ones with the biggest savings.
 
 ## Accessing the Recommendations Hub
 
@@ -38,9 +38,8 @@ The dashboard shows a summary of all recommendations organized by category (Cost
 You can also pull recommendations programmatically:
 
 ```bash
-# List all available recommenders
-
-gcloud recommender recommenders list --format="table(name)"
+# For supported recommender IDs and locations, see:
+# https://cloud.google.com/recommender/docs/recommenders
 
 # List cost recommendations for Compute Engine rightsizing
 gcloud recommender recommendations list \
@@ -66,7 +65,7 @@ for ZONE in $(gcloud compute zones list --filter="region=$REGION" --format="valu
     --project=$PROJECT \
     --format="table(
       content.operationGroups[0].operations[0].resource,
-      content.operationGroups[0].operations[0].value.machineType,
+      content.operationGroups[0].operations[0].value,
       primaryImpact.costProjection.cost.units,
       stateInfo.state)" 2>/dev/null
 done
@@ -139,7 +138,7 @@ gcloud recommender recommendations list \
 
 ## Acting on Recommendations
 
-Each recommendation has a state: ACTIVE, CLAIMED, SUCCEEDED, or FAILED. Here is the workflow:
+Each recommendation has a state: ACTIVE, CLAIMED, SUCCEEDED, FAILED, or DISMISSED. Here is the workflow:
 
 ### Mark a Recommendation as Claimed
 
@@ -218,13 +217,20 @@ def export_recommendations(event, context):
     ]
 
     project_id = "my-project"
+    region = "us-central1"
     zones = ["us-central1-a", "us-central1-b", "us-central1-c"]
+    recommender_locations = {
+        "google.compute.instance.MachineTypeRecommender": zones,
+        "google.compute.instance.IdleResourceRecommender": zones,
+        "google.compute.disk.IdleResourceRecommender": zones,
+        "google.compute.address.IdleResourceRecommender": [region, "global"],
+    }
     rows = []
 
     for recommender_id in recommenders:
-        for zone in zones:
+        for location in recommender_locations[recommender_id]:
             parent = (
-                f"projects/{project_id}/locations/{zone}"
+                f"projects/{project_id}/locations/{location}"
                 f"/recommenders/{recommender_id}"
             )
             try:
@@ -235,7 +241,7 @@ def export_recommendations(event, context):
                     rows.append({
                         "timestamp": datetime.datetime.utcnow().isoformat(),
                         "project": project_id,
-                        "zone": zone,
+                        "location": location,
                         "recommender": recommender_id,
                         "recommendation_id": rec.name,
                         "state": rec.state_info.state.name,
@@ -245,7 +251,7 @@ def export_recommendations(event, context):
                         ) if rec.primary_impact.cost_projection else "0",
                     })
             except Exception as e:
-                print(f"Error fetching {recommender_id} for {zone}: {e}")
+                print(f"Error fetching {recommender_id} for {location}: {e}")
 
     # Insert rows into BigQuery
     if rows:
