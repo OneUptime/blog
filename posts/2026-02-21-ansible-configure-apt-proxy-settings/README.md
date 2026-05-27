@@ -61,12 +61,13 @@ For environments where proxy settings vary across hosts or data centers, use a J
 {# templates/apt-proxy.conf.j2 #}
 {# APT proxy configuration managed by Ansible #}
 {% if apt_proxy_host is defined %}
+{% if apt_proxy_username is defined %}
+Acquire::http::Proxy "http://{{ apt_proxy_username }}:{{ apt_proxy_password }}@{{ apt_proxy_host }}:{{ apt_proxy_port | default(3128) }}";
+Acquire::https::Proxy "http://{{ apt_proxy_username }}:{{ apt_proxy_password }}@{{ apt_proxy_host }}:{{ apt_proxy_port | default(3128) }}";
+{% else %}
 Acquire::http::Proxy "http://{{ apt_proxy_host }}:{{ apt_proxy_port | default(3128) }}";
 Acquire::https::Proxy "http://{{ apt_proxy_host }}:{{ apt_proxy_port | default(3128) }}";
 {% endif %}
-{% if apt_proxy_username is defined %}
-Acquire::http::Proxy::Username "{{ apt_proxy_username }}";
-Acquire::http::Proxy::Password "{{ apt_proxy_password }}";
 {% endif %}
 {% if apt_proxy_exceptions is defined %}
 {% for host in apt_proxy_exceptions %}
@@ -133,7 +134,7 @@ You can also use Ansible to set up the apt-cacher-ng server itself.
           Remap-debrep: file:deb_mirror*.gz /debian ; file:backends_debian
           Remap-uburep: file:ubuntu_mirrors /ubuntu ; file:backends_ubuntu
           ReportPage: acng-report.html
-          ExTreshold: 4
+          ExThreshold: 4
           PassThroughPattern: .*
           VerboseLog: 1
         mode: '0644'
@@ -188,6 +189,8 @@ You might want certain repositories to bypass the proxy, for example, local mirr
       // Direct access for internal repositories
       Acquire::http::Proxy::repo.internal.company.com "DIRECT";
       Acquire::http::Proxy::mirror.local.lan "DIRECT";
+      Acquire::https::Proxy::repo.internal.company.com "DIRECT";
+      Acquire::https::Proxy::mirror.local.lan "DIRECT";
     mode: '0644'
 ```
 
