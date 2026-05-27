@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Clear Linux, Intel, Performance, Linux
 
-Description: Configure Intel Clear Linux with Ansible using swupd package management and performance-optimized system tuning for Intel hardware.
+Description: Configure legacy Intel Clear Linux systems with Ansible using swupd package management and performance-optimized system tuning for Intel hardware.
 
 ---
 
-Clear Linux is Intel's performance-optimized Linux distribution. It is designed to squeeze maximum performance from Intel hardware with aggressive compiler optimizations, automatic performance tuning, and a unique bundle-based package system called `swupd`. This guide covers Ansible automation for Clear Linux.
+Clear Linux was Intel's performance-optimized Linux distribution. It was designed to squeeze maximum performance from Intel hardware with aggressive compiler optimizations, automatic performance tuning, and a unique bundle-based package system called `swupd`. Intel ended support for Clear Linux OS on July 18, 2025, so this guide applies only to existing legacy systems or environments with an internal Clear Linux mirror.
 
 ## Clear Linux Specifics
 
@@ -20,7 +20,7 @@ Key differences:
 - System configs go in `/etc/` to override defaults
 - Auto-tuned for Intel hardware
 - Uses systemd
-- Rolling release model
+- Historical rolling release model; no longer maintained by Intel
 
 ## Inventory
 
@@ -47,10 +47,10 @@ ansible_python_interpreter=/usr/bin/python3
         that:
           - ansible_distribution == "Clear Linux OS" or ansible_distribution == "ClearLinux"
 
-    - name: Update Clear Linux
+    - name: Update Clear Linux from configured swupd mirror
       ansible.builtin.command: swupd update
       register: swupd_update
-      changed_when: "'Update successful' in swupd_update.stdout"
+      changed_when: "'Update complete' in swupd_update.stdout or 'Successfully updated' in swupd_update.stdout"
 
     - name: Install essential bundles
       ansible.builtin.command: "swupd bundle-add {{ item }}"
@@ -64,10 +64,10 @@ ansible_python_interpreter=/usr/bin/python3
         - containers-basic
         - git
       register: bundle_result
-      changed_when: "'Installed' in bundle_result.stdout"
+      changed_when: "'Successfully installed' in bundle_result.stdout"
       failed_when:
         - bundle_result.rc != 0
-        - "'already installed' not in bundle_result.stdout"
+        - "'already installed' not in (bundle_result.stdout + bundle_result.stderr)"
 
     - name: Set timezone
       community.general.timezone:
@@ -78,7 +78,7 @@ ansible_python_interpreter=/usr/bin/python3
         name: "{{ inventory_hostname }}"
 
     - name: Enable and start services
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: true
         state: started
@@ -96,9 +96,9 @@ ansible_python_interpreter=/usr/bin/python3
         mode: '0600'
       notify: restart sshd
 
-    - name: Configure performance tuning
-      ansible.builtin.command: clr-power set performance
-      changed_when: true
+    - name: Inspect Clear Linux power tuning
+      ansible.builtin.command: clr_power --debug
+      changed_when: false
       failed_when: false
 
     - name: Sysctl performance tuning
@@ -115,23 +115,23 @@ ansible_python_interpreter=/usr/bin/python3
 
   handlers:
     - name: restart sshd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: restarted
 ```
 
 ## Summary
 
-Clear Linux management with Ansible uses `swupd` commands for bundle installation since there is no Ansible module for swupd. The distribution's stateless design means default configs live in `/usr/share/defaults/` and your overrides go in `/etc/`. Clear Linux excels on Intel hardware with its performance optimizations. Use it for compute-intensive workloads where squeezing extra performance from Intel CPUs matters.
+Clear Linux management with Ansible uses `swupd` commands for bundle installation since there is no Ansible module for swupd. The distribution's stateless design means default configs live in `/usr/share/defaults/` and your overrides go in `/etc/`. Clear Linux excelled on Intel hardware with its performance optimizations, but it is no longer maintained by Intel. Keep it only for legacy systems while planning migration to an actively maintained distribution.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 
 - name: Infrastructure provisioning
   hosts: all
@@ -164,7 +164,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -246,7 +246,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -308,4 +308,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
