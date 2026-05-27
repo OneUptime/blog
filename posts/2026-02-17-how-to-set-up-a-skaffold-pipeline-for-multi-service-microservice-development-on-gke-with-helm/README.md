@@ -115,13 +115,11 @@ spec:
       containers:
         - name: {{ .Release.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
           env:
-            {{- range .Values.env }}
-            - name: {{ .name }}
-              value: {{ .value | quote }}
-            {{- end }}
+            {{- toYaml .Values.env | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
@@ -159,7 +157,7 @@ Here is the main `skaffold.yaml` that ties everything together.
 
 ```yaml
 # skaffold.yaml - Multi-service pipeline with Helm
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-platform
@@ -192,22 +190,22 @@ deploy:
         chartPath: helm/api-gateway
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_api_gateway}}"
-          image.tag: "{{.IMAGE_TAG_api_gateway}}"
+          image.tag: "{{.IMAGE_TAG_api_gateway}}@{{.IMAGE_DIGEST_api_gateway}}"
       - name: user-service
         chartPath: helm/user-service
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_user_service}}"
-          image.tag: "{{.IMAGE_TAG_user_service}}"
+          image.tag: "{{.IMAGE_TAG_user_service}}@{{.IMAGE_DIGEST_user_service}}"
       - name: order-service
         chartPath: helm/order-service
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_order_service}}"
-          image.tag: "{{.IMAGE_TAG_order_service}}"
+          image.tag: "{{.IMAGE_TAG_order_service}}@{{.IMAGE_DIGEST_order_service}}"
       - name: notification-service
         chartPath: helm/notification-service
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_notification_service}}"
-          image.tag: "{{.IMAGE_TAG_notification_service}}"
+          image.tag: "{{.IMAGE_TAG_notification_service}}@{{.IMAGE_DIGEST_notification_service}}"
 
 portForward:
   - resourceType: service
@@ -216,7 +214,7 @@ portForward:
     localPort: 8080
 ```
 
-The `setValueTemplates` section is key. Skaffold injects the built image repository and tag into the Helm values, replacing the placeholders with the actual image references. The variable names are derived from the artifact image names with dots and hyphens replaced by underscores.
+The `setValueTemplates` section is key. Skaffold injects the built image repository, tag, and digest into the Helm values, replacing the placeholders with the actual image references. The variable names are derived from the artifact image names with dots and hyphens replaced by underscores.
 
 ## Running the Pipeline
 
@@ -290,7 +288,7 @@ profiles:
               - helm/user-service/values-dev.yaml
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_user_service}}"
-              image.tag: "{{.IMAGE_TAG_user_service}}"
+              image.tag: "{{.IMAGE_TAG_user_service}}@{{.IMAGE_DIGEST_user_service}}"
 
   - name: production
     build:
@@ -305,7 +303,7 @@ profiles:
               - helm/user-service/values-prod.yaml
             setValueTemplates:
               image.repository: "{{.IMAGE_REPO_user_service}}"
-              image.tag: "{{.IMAGE_TAG_user_service}}"
+              image.tag: "{{.IMAGE_TAG_user_service}}@{{.IMAGE_DIGEST_user_service}}"
 ```
 
 ## Service Dependencies
@@ -329,18 +327,18 @@ deploy:
         chartPath: helm/user-service
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_user_service}}"
-          image.tag: "{{.IMAGE_TAG_user_service}}"
+          image.tag: "{{.IMAGE_TAG_user_service}}@{{.IMAGE_DIGEST_user_service}}"
       - name: order-service
         chartPath: helm/order-service
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_order_service}}"
-          image.tag: "{{.IMAGE_TAG_order_service}}"
+          image.tag: "{{.IMAGE_TAG_order_service}}@{{.IMAGE_DIGEST_order_service}}"
       # Deploy gateway last
       - name: api-gateway
         chartPath: helm/api-gateway
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_api_gateway}}"
-          image.tag: "{{.IMAGE_TAG_api_gateway}}"
+          image.tag: "{{.IMAGE_TAG_api_gateway}}@{{.IMAGE_DIGEST_api_gateway}}"
 ```
 
 ## Using Skaffold Modules
@@ -349,7 +347,7 @@ For larger projects, you can split the Skaffold config into modules.
 
 ```yaml
 # skaffold.yaml - Root config importing modules
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-platform
@@ -362,7 +360,7 @@ requires:
 
 ```yaml
 # services/user-service/skaffold.yaml - Per-service config
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: user-service
@@ -378,7 +376,7 @@ deploy:
         chartPath: ../../helm/user-service
         setValueTemplates:
           image.repository: "{{.IMAGE_REPO_user_service}}"
-          image.tag: "{{.IMAGE_TAG_user_service}}"
+          image.tag: "{{.IMAGE_TAG_user_service}}@{{.IMAGE_DIGEST_user_service}}"
 ```
 
 This lets you develop individual services independently or run the whole platform.
