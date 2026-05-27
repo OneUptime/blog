@@ -44,12 +44,13 @@ The kube-prometheus-stack includes many dashboards by default. You can also impo
 
 ```bash
 # Port-forward Grafana to access the UI
+# Replace prometheus-grafana with <release-name>-grafana if your Helm release name is different.
 
 kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
 
 # Default credentials (if using kube-prometheus-stack):
 # Username: admin
-# Password: (value you set in values.yaml)
+# Password: grafana.adminPassword from values.yaml, or the generated admin-password secret
 ```
 
 Import a community dashboard by ID:
@@ -102,7 +103,7 @@ count(kube_node_info)
 # Number of nodes in Ready state
 count(kube_node_status_condition{condition="Ready", status="true"} == 1)
 
-# Total pods running vs capacity
+# Total running pods
 count(kube_pod_status_phase{phase="Running"})
 
 # Cluster CPU utilization percentage
@@ -178,7 +179,7 @@ sum by(namespace) (kube_pod_container_resource_requests{resource="memory"})
 sum by(namespace) (kube_pod_container_resource_limits{resource="memory"})
 
 # Resource quota usage per namespace
-kube_resourcequota{type="used"} / kube_resourcequota{type="hard"} * 100
+kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"} * 100
 ```
 
 ## Dashboard 4: Pod and Container Metrics
@@ -205,6 +206,7 @@ kube_pod_status_ready{condition="true"} == 0
 
 # Container states (waiting, running, terminated)
 kube_pod_container_status_waiting_reason
+kube_pod_container_status_running
 kube_pod_container_status_terminated_reason
 ```
 
@@ -330,7 +332,7 @@ Use template variables to make dashboards interactive and reusable.
 # But using PrometheusRules is generally preferred for production
 
 # Example Grafana alert condition:
-# Query: container_memory_working_set_bytes{pod="my-app"} / container_spec_memory_limit_bytes{pod="my-app"}
+# Query: sum by(namespace, pod) (container_memory_working_set_bytes{pod="my-app", container!=""}) / sum by(namespace, pod) (kube_pod_container_resource_limits{pod="my-app", resource="memory"})
 # Condition: IS ABOVE 0.85
 # For: 5m
 # Notification channel: Slack, Email, PagerDuty, etc.
