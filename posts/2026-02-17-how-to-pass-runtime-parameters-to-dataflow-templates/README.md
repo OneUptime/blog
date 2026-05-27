@@ -143,10 +143,7 @@ Now you can launch the template with different parameters each time.
 gcloud dataflow jobs run my-daily-job \
   --gcs-location=gs://my-bucket/templates/my-template \
   --region=us-central1 \
-  --parameters \
-    inputFile=gs://my-bucket/data/2026-02-17/*.csv,\
-    outputTable=my-project:analytics.daily_results,\
-    filterDate=2026-02-01
+  --parameters=inputFile=gs://my-bucket/data/2026-02-17/*.csv,outputTable=my-project:analytics.daily_results,filterDate=2026-02-01
 ```
 
 You can also launch templates programmatically using the Dataflow REST API or client libraries, which is handy for orchestration with Cloud Composer or Cloud Functions.
@@ -155,7 +152,7 @@ You can also launch templates programmatically using the Dataflow REST API or cl
 # Launch a Dataflow template from Python using the REST API
 from googleapiclient.discovery import build
 
-def launch_template(project, template_path, job_name, parameters):
+def launch_template(project, region, template_path, job_name, parameters):
     dataflow = build('dataflow', 'v1b3')
 
     # Build the launch request with runtime parameters
@@ -168,8 +165,9 @@ def launch_template(project, template_path, job_name, parameters):
         }
     }
 
-    request = dataflow.projects().templates().launch(
+    request = dataflow.projects().locations().templates().launch(
         projectId=project,
+        location=region,
         gcsPath=template_path,
         body=request_body
     )
@@ -180,6 +178,7 @@ def launch_template(project, template_path, job_name, parameters):
 # Call with runtime parameters
 launch_template(
     project="my-gcp-project",
+    region="us-central1",
     template_path="gs://my-bucket/templates/my-template",
     job_name="daily-etl-2026-02-17",
     parameters={
