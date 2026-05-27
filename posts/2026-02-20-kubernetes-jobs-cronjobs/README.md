@@ -55,7 +55,7 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: url
-      # Jobs should never restart on their own
+      # Use Never when you want failed Pods to be replaced instead of restarted
       restartPolicy: Never
 ```
 
@@ -135,14 +135,14 @@ spec:
       restartPolicy: Never
 ```
 
-### Pod Failure Policy (Kubernetes 1.26+)
+### Pod Failure Policy (Kubernetes 1.25+, stable in 1.31)
 
-You can define rules for how to handle specific exit codes:
+You can define rules for how to handle specific exit codes or Pod conditions:
 
 ```yaml
 # pod-failure-policy.yaml
 # Treat exit code 42 as a non-retryable failure
-# and exit code 137 (OOMKilled) as retryable.
+# and ignore Pod disruptions so they do not count toward backoffLimit.
 spec:
   backoffLimit: 3
   podFailurePolicy:
@@ -153,7 +153,7 @@ spec:
           containerName: task
           operator: In
           values: [42]
-      # Ignore OOM kills and retry
+      # Ignore Pod disruptions and create a replacement Pod
       - action: Ignore
         onPodConditions:
           - type: DisruptionTarget
@@ -171,7 +171,7 @@ CronJobs create Jobs on a schedule using standard cron syntax.
 
 ```yaml
 # report-cronjob.yaml
-# Generate a daily report at 2:00 AM UTC.
+# Generate a daily report at 2:00 AM in America/New_York.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
