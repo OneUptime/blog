@@ -12,7 +12,7 @@ Apache Kafka is an open-source distributed event streaming platform used by thou
 
 ## What Is Apache Kafka?
 
-Kafka is a distributed commit log that stores events (messages) in an ordered, fault-tolerant way. Unlike traditional message queues, Kafka retains messages for a configurable period, allowing multiple consumers to read the same data independently.
+Kafka is a distributed commit log that stores events (messages) in an ordered, fault-tolerant way within each partition. Unlike traditional message queues, Kafka retains messages for a configurable period, allowing multiple consumers to read the same data independently.
 
 ## Core Concepts
 
@@ -47,7 +47,7 @@ Every record within a partition gets a sequential ID called an offset. Consumers
 
 ### Producers
 
-Producers publish records to topics. They decide which partition a record goes to, either by specifying a key or letting Kafka round-robin.
+Producers publish records to topics. They decide which partition a record goes to, either by specifying a key or letting Kafka's default partitioner choose one.
 
 ### Consumer Groups
 
@@ -61,10 +61,9 @@ The fastest way to start is with Docker Compose.
 # docker-compose.yml
 
 # Spins up a single-node Kafka cluster with KRaft (no ZooKeeper)
-version: "3.9"
 services:
   kafka:
-    image: apache/kafka:3.7.0
+    image: apache/kafka:4.3.0
     ports:
       - "9092:9092"
     environment:
@@ -75,6 +74,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       # Auto-create topics for development convenience
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -91,8 +94,8 @@ docker compose up -d
 
 ```bash
 # Create a topic named "events" with 3 partitions and replication factor 1
-docker exec -it kafka \
-  kafka-topics.sh --create \
+docker compose exec kafka \
+  /opt/kafka/bin/kafka-topics.sh --create \
     --topic events \
     --partitions 3 \
     --replication-factor 1 \
