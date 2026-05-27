@@ -35,13 +35,13 @@ Grafana supports several variable types:
 | Text box | User input | Free-form filtering |
 | Interval | Time intervals | Adjustable rate windows |
 | Data source | Data source list | Switch between Prometheus instances |
-| Ad hoc filters | Label-based filters | Exploratory filtering |
+| Filters | Label-based filters | Exploratory filtering |
 
 ## Creating a Query Variable
 
 ### Step 1: Open Variable Settings
 
-Navigate to Dashboard Settings > Variables > New Variable.
+Click Edit, open Dashboard settings, go to Variables, and click Add variable.
 
 ### Step 2: Configure a Namespace Variable
 
@@ -53,7 +53,9 @@ Data source: Prometheus
 
 # This query returns all unique namespace label values
 
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_pod_info
 
 # Sort alphabetically
 Sort: Alphabetical (asc)
@@ -63,14 +65,14 @@ Include All option: Yes
 Custom all value: .*
 ```
 
-The `label_values()` function is specific to the Prometheus data source. It returns all unique values for a given label.
+The Prometheus `Label values` query type returns all unique values for a given label. The older `label_values()` classic query syntax is still common in existing dashboards, but Grafana marks the classic variable query editor as deprecated.
 
 ### Step 3: Use the Variable in a Panel Query
 
 ```promql
 # Reference the variable with $variable_name
 sum by (pod) (
-    rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])
+    rate(container_cpu_usage_seconds_total{namespace=~"$namespace"}[5m])
 )
 ```
 
@@ -78,7 +80,7 @@ When the user selects "production" from the dropdown, the query becomes:
 
 ```promql
 sum by (pod) (
-    rate(container_cpu_usage_seconds_total{namespace="production"}[5m])
+    rate(container_cpu_usage_seconds_total{namespace=~"production"}[5m])
 )
 ```
 
@@ -99,36 +101,42 @@ flowchart LR
 
 ```text
 Name: namespace
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_pod_info
 ```
 
 ### Service Variable (depends on namespace)
 
 ```text
 Name: service
-Query: label_values(kube_pod_info{namespace="$namespace"}, created_by_name)
+Query type: Label values
+Label: created_by_name
+Metric: kube_pod_info{namespace=~"$namespace"}
 ```
 
 ### Pod Variable (depends on namespace and service)
 
 ```text
 Name: pod
-Query: label_values(kube_pod_info{namespace="$namespace", created_by_name="$service"}, pod)
+Query type: Label values
+Label: pod
+Metric: kube_pod_info{namespace=~"$namespace", created_by_name="$service"}
 Multi-value: Yes
 Include All option: Yes
 ```
 
 ## Multi-Value Variables
 
-When a variable allows multiple selections, Grafana joins the values with a pipe for regex matching:
+When a variable allows multiple selections, Grafana formats the values as a regex-compatible string for Prometheus:
 
 ```promql
 # When pod variable has multi-value enabled
 # and user selects pod-1 and pod-2
-# Grafana generates: {pod=~"pod-1|pod-2"}
+# Grafana generates a regex-compatible value such as: {pod=~"pod-1|pod-2"}
 sum by (pod) (
     rate(container_cpu_usage_seconds_total{
-        namespace="$namespace",
+        namespace=~"$namespace",
         pod=~"$pod"
     }[5m])
 )
@@ -152,7 +160,7 @@ Use it in queries:
 ```promql
 # The rate window adjusts based on user selection
 sum by (pod) (
-    rate(container_cpu_usage_seconds_total{namespace="$namespace"}[$interval])
+    rate(container_cpu_usage_seconds_total{namespace=~"$namespace"}[$interval])
 )
 ```
 
@@ -222,26 +230,38 @@ Panel title: CPU Usage - $namespace / $service
 
 This dynamically updates the title based on the selected values.
 
-## Common label_values Queries
+## Common Label Values Queries
 
 ```text
 # All namespaces
-label_values(kube_pod_info, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_pod_info
 
 # All pods in a namespace
-label_values(kube_pod_info{namespace="$namespace"}, pod)
+Query type: Label values
+Label: pod
+Metric: kube_pod_info{namespace=~"$namespace"}
 
 # All nodes
-label_values(node_uname_info, nodename)
+Query type: Label values
+Label: nodename
+Metric: node_uname_info
 
 # All jobs
-label_values(up, job)
+Query type: Label values
+Label: job
+Metric: up
 
 # All instances for a job
-label_values(up{job="$job"}, instance)
+Query type: Label values
+Label: instance
+Metric: up{job="$job"}
 
 # All HTTP status codes
-label_values(http_requests_total, status_code)
+Query type: Label values
+Label: status_code
+Metric: http_requests_total
 ```
 
 ## Query-Based Variable with Regex Extraction
@@ -250,7 +270,9 @@ Sometimes you need to extract part of a label value:
 
 ```text
 Name: deployment
-Query: label_values(kube_deployment_status_replicas, deployment)
+Query type: Label values
+Label: deployment
+Metric: kube_deployment_status_replicas
 Regex: /(.+)/
 ```
 
@@ -258,7 +280,9 @@ Or extract a prefix:
 
 ```text
 Name: service_group
-Query: label_values(http_requests_total, service)
+Query type: Label values
+Label: service
+Metric: http_requests_total
 # Extract everything before the first hyphen
 Regex: /^([^-]+)/
 ```
@@ -271,7 +295,7 @@ Here is a complete dashboard configuration using multiple variables:
 # Panel 1: CPU Usage by Pod
 sum by (pod) (
     rate(container_cpu_usage_seconds_total{
-        namespace="$namespace",
+        namespace=~"$namespace",
         pod=~"$pod"
     }[$interval])
 )
@@ -279,7 +303,7 @@ sum by (pod) (
 # Panel 2: Memory Usage by Pod
 sum by (pod) (
     container_memory_working_set_bytes{
-        namespace="$namespace",
+        namespace=~"$namespace",
         pod=~"$pod"
     }
 )
@@ -287,20 +311,20 @@ sum by (pod) (
 # Panel 3: Request Rate
 sum by (status_code) (
     rate(http_requests_total{
-        namespace="$namespace",
+        namespace=~"$namespace",
         service="$service"
     }[$interval])
 )
 
 # Panel 4: Error Rate Percentage
 sum(rate(http_requests_total{
-    namespace="$namespace",
+    namespace=~"$namespace",
     service="$service",
     status_code=~"5.."
 }[$interval]))
 /
 sum(rate(http_requests_total{
-    namespace="$namespace",
+    namespace=~"$namespace",
     service="$service"
 }[$interval]))
 * 100
