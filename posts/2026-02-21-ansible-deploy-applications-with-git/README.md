@@ -57,7 +57,7 @@ app_dir: /opt/myapp
 deploy_strategy: release  # simple or release
 keep_releases: 5
 post_deploy_commands:
-  - "npm ci --production"
+  - "npm ci --omit=dev"
   - "npm run build"
 deploy_key_path: /home/deploy/.ssh/deploy_key
 ```
@@ -89,8 +89,7 @@ Before deploying from a private repository, you need a deploy key. This task set
     content: |
       Host github.com
         IdentityFile {{ deploy_key_path }}
-        StrictHostKeyChecking no
-        UserKnownHostsFile /dev/null
+        IdentitiesOnly yes
     dest: "/home/{{ app_user }}/.ssh/config"
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
@@ -118,7 +117,7 @@ The simple approach pulls code directly into the application directory.
     dest: "{{ app_dir }}"
     version: "{{ app_branch }}"
     force: yes
-    accept_hostkey: yes
+    accept_newhostkey: yes
     key_file: "{{ deploy_key_path }}"
   become_user: "{{ app_user }}"
   register: git_result
@@ -170,7 +169,7 @@ This approach creates a new directory for each deployment and uses a symlink to 
     dest: "{{ release_dir }}"
     version: "{{ app_branch }}"
     depth: 1
-    accept_hostkey: yes
+    accept_newhostkey: yes
     key_file: "{{ deploy_key_path }}"
   become_user: "{{ app_user }}"
   register: git_result
@@ -263,15 +262,23 @@ This separate playbook lets you quickly roll back to a previous release.
         path: "{{ app_dir }}/current"
       register: current_link
 
-    - name: Identify previous release
+    - name: Fail if current release symlink is missing
+      fail:
+        msg: "Current release symlink is missing"
+      when: not (current_link.stat.islnk | default(false))
+
+    - name: Set current release path
       set_fact:
-        previous_release: "{{ sorted_releases[-2] }}"
-      when: sorted_releases | length >= 2
+        current_release: "{{ current_link.stat.lnk_source }}"
 
     - name: Fail if no previous release exists
       fail:
         msg: "No previous release found to roll back to"
-      when: sorted_releases | length < 2
+      when: sorted_releases | length < 2 or current_release not in sorted_releases or sorted_releases.index(current_release) == 0
+
+    - name: Identify previous release
+      set_fact:
+        previous_release: "{{ sorted_releases[(sorted_releases.index(current_release) | int) - 1] }}"
 
     - name: Read previous release commit
       slurp:
@@ -292,9 +299,15 @@ This separate playbook lets you quickly roll back to a previous release.
 
     - name: Remove the failed release
       file:
-        path: "{{ sorted_releases[-1] }}"
+        path: "{{ current_release }}"
         state: absent
       when: remove_failed_release | default(false)
+
+  handlers:
+    - name: restart application
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
 ```
 
 ## Deploying Specific Tags or Commits
@@ -321,7 +334,7 @@ If your project uses Git submodules:
     dest: "{{ release_dir }}"
     version: "{{ app_branch }}"
     recursive: yes  # Initialize and update submodules
-    accept_hostkey: yes
+    accept_newhostkey: yes
     key_file: "{{ deploy_key_path }}"
   become_user: "{{ app_user }}"
 ```
