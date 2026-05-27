@@ -8,41 +8,43 @@ Description: Learn how to implement custom cost controls in BigQuery using proje
 
 ---
 
-BigQuery on-demand pricing is convenient until someone accidentally runs a query that scans a petabyte of data. Without cost controls in place, a single poorly-written query can generate a bill that blows your entire monthly budget. Google Cloud provides several mechanisms for controlling BigQuery costs, from hard quotas that prevent queries from running to soft alerts that notify you when spending approaches a threshold.
+BigQuery on-demand pricing is convenient until someone accidentally runs a query that scans a petabyte of data. Without cost controls in place, a single poorly-written query can generate a bill that blows your entire monthly budget. Google Cloud provides several mechanisms for controlling BigQuery costs, from custom quotas that reject queries after limits are reached to soft alerts that notify you when spending approaches a threshold.
 
 In this post, I will walk through setting up comprehensive cost controls for BigQuery, covering project-level quotas, per-user limits, budget alerts, and automated enforcement.
 
 ## Setting Project-Level Query Quotas
 
-The most direct way to limit BigQuery costs is setting a quota on the maximum bytes processed per day. When the quota is reached, additional queries are rejected until the next day.
+The most direct way to limit BigQuery costs is setting a quota on the maximum query usage per day. Daily quotas reset at midnight Pacific Time. Custom quotas are an additional safeguard, but they are approximate and are not designed to be an exact spending cap.
 
 ```bash
-# Set a project-level quota limiting daily query usage to 10 TB
+# Set a project-level quota limiting daily query usage to 10 TiB.
+# The Service Usage quota value is in MiB, so 10 TiB is 10 * 1024 * 1024 MiB.
 
-gcloud services set-quota \
-  --project=my-project \
+gcloud alpha services quota update \
   --consumer=projects/my-project \
   --service=bigquery.googleapis.com \
   --metric=bigquery.googleapis.com/quota/query/usage \
-  --unit=1/d/project \
-  --value=10995116277760  # 10 TB in bytes
+  --unit=1/d/{project} \
+  --value=10485760 \
+  --force
 ```
 
-You can also configure this through the Google Cloud Console by navigating to IAM and Admin, then Quotas, and searching for BigQuery. The relevant quotas include "Query usage per day" at the project level and "Query usage per day per user" for per-user limits.
+You can also configure this through the Google Cloud Console by navigating to IAM and Admin, then Quotas and System Limits, and searching for BigQuery. The relevant quotas include "Query usage per day" at the project level and "Query usage per day per user" for per-user limits.
 
 ## Per-User Query Limits
 
 Project-level quotas protect the overall budget, but per-user limits prevent any single user from monopolizing the shared budget.
 
 ```bash
-# Set a per-user daily query limit of 1 TB
-gcloud services set-quota \
-  --project=my-project \
+# Set a per-user daily query limit of 1 TiB.
+# The Service Usage quota value is in MiB, so 1 TiB is 1024 * 1024 MiB.
+gcloud alpha services quota update \
   --consumer=projects/my-project \
   --service=bigquery.googleapis.com \
   --metric=bigquery.googleapis.com/quota/query/usage \
-  --unit=1/d/project/user \
-  --value=1099511627776  # 1 TB in bytes
+  --unit=1/d/{project}/{user} \
+  --value=1048576 \
+  --force
 ```
 
 When a user hits their daily limit, they will receive an error message explaining that their quota has been exceeded. This prevents a situation where one data analyst running expensive exploratory queries uses up the capacity that ETL pipelines need.
@@ -106,15 +108,16 @@ gcloud billing budgets create \
   --billing-account=BILLING_ACCOUNT_ID \
   --display-name="BigQuery Monthly Budget" \
   --budget-amount=5000USD \
+  --calendar-period=month \
   --threshold-rule=percent=0.5 \
   --threshold-rule=percent=0.8 \
   --threshold-rule=percent=1.0 \
   --filter-projects="projects/my-project" \
   --filter-services="services/24E6-581D-38E5" \
-  --notifications-pubsub-topic="projects/my-project/topics/billing-alerts"
+  --notifications-rule-pubsub-topic="projects/my-project/topics/billing-alerts"
 ```
 
-The service ID "24E6-581D-38E5" corresponds to BigQuery. The Pub/Sub topic receives notifications when thresholds are crossed, which you can use to trigger automated responses.
+The service ID "24E6-581D-38E5" corresponds to BigQuery. The Pub/Sub topic receives notifications when thresholds are crossed, which you can use to trigger automated responses. Budget alerts are not real-time hard caps, so use them with quotas and per-query limits rather than as your only control.
 
 ## Automated Cost Enforcement with Cloud Functions
 
@@ -124,7 +127,6 @@ By connecting budget alerts to a Cloud Function through Pub/Sub, you can automat
 # Cloud Function triggered by budget alert Pub/Sub messages
 import base64
 import json
-from google.cloud import bigquery_reservation_v1
 from googleapiclient import discovery
 
 def budget_alert_handler(event, context):
@@ -179,9 +181,9 @@ def send_alert_notification(message):
     # Add your notification logic here
 ```
 
-## Custom Quotas with Labels
+## Cost Attribution with Labels
 
-BigQuery supports labels on jobs, which you can use to track and control costs by team, department, or purpose.
+BigQuery supports labels on jobs, which you can use to track costs by team, department, or purpose.
 
 ```python
 from google.cloud import bigquery
@@ -209,8 +211,8 @@ You can then analyze costs by label using INFORMATION_SCHEMA.
 SELECT
   labels.value AS team,
   COUNT(*) AS query_count,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 4) AS tb_processed,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 6.25, 2) AS estimated_cost
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4), 4) AS tib_billed,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS estimated_cost
 FROM
   `region-us-central1`.INFORMATION_SCHEMA.JOBS,
   UNNEST(labels) AS labels
@@ -218,6 +220,7 @@ WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND labels.key = 'team'
   AND job_type = 'QUERY'
+  AND statement_type != 'SCRIPT'
 GROUP BY
   team
 ORDER BY
@@ -249,14 +252,14 @@ SELECT
   project_id,
   COUNT(*) AS total_queries,
   -- Queries that were rejected by quotas
-  COUNTIF(error_result.reason = 'quotaExceeded') AS quota_rejected_queries,
-  -- Total data processed
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 4) AS tb_processed,
+  COUNTIF(error_result.reason = 'usageQuotaExceeded') AS quota_rejected_queries,
+  -- Total data billed
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4), 4) AS tib_billed,
   -- Estimated cost
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 6.25, 2) AS estimated_cost,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS estimated_cost,
   -- Average cost per query
   ROUND(
-    SUM(total_bytes_processed) / POW(1024, 4) * 6.25 / COUNT(*),
+    SUM(total_bytes_billed) / POW(1024, 4) * 6.25 / COUNT(*),
     4
   ) AS avg_cost_per_query
 FROM
@@ -264,6 +267,7 @@ FROM
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
   AND job_type = 'QUERY'
+  AND statement_type != 'SCRIPT'
 GROUP BY
   month, project_id
 ORDER BY
@@ -272,4 +276,4 @@ ORDER BY
 
 ## Wrapping Up
 
-Effective cost control in BigQuery requires a layered approach. Project quotas provide a hard ceiling on spending. Per-user limits prevent any individual from exhausting the budget. Budget alerts give you early warning when spending is trending high. Automated enforcement through Cloud Functions provides a safety net for when human intervention is not fast enough. And requiring partition filters prevents the most common cause of unexpected costs - accidental full-table scans. Implement these controls before you need them, not after you get the surprise bill.
+Effective cost control in BigQuery requires a layered approach. Project quotas provide an important safeguard on query usage. Per-user limits prevent any individual from exhausting the budget. Budget alerts give you early warning when spending is trending high. Automated enforcement through Cloud Functions provides a safety net for when human intervention is not fast enough. And requiring partition filters prevents the most common cause of unexpected costs - accidental full-table scans. Implement these controls before you need them, not after you get the surprise bill.
