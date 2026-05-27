@@ -16,13 +16,13 @@ Google Cloud Monitoring integrates tightly with Dataflow, providing dozens of bu
 
 Dataflow exports metrics to Cloud Monitoring automatically. Here are the ones that matter most for daily operations.
 
-**System lag** is the single most important metric for streaming pipelines. It measures how far behind the pipeline is from real-time. A system lag of 30 seconds means data is being processed about 30 seconds after it arrives. If this number keeps growing, your pipeline cannot keep up with the input rate.
+**System lag** is the single most important metric for streaming pipelines. It reports the current maximum time that an element has been processing or waiting to be processed. A system lag of 30 seconds means at least one element has spent about 30 seconds in the pipeline or waiting in the source. If this number keeps growing, your pipeline cannot keep up with the input rate.
 
-**Backlog bytes** shows how much unprocessed data is sitting in the source. For Pub/Sub sources, this maps to unacknowledged messages. A growing backlog combined with stable throughput means you need more workers.
+**Backlog bytes** shows the known unprocessed input for a stage, in bytes. For Pub/Sub sources, Dataflow also exposes Pub/Sub-specific metrics such as pulled-but-unacknowledged message ages. A growing backlog combined with stable throughput means you need more workers.
 
-**Data freshness** measures the age of the most recent element that has been processed. Unlike system lag which is an average, data freshness tells you about the worst-case latency.
+**Data freshness** measures the difference between processing time and event time for processed elements. Dataflow shows the maximum data freshness value at a point in time, so it helps you spot worst-case event-time delays.
 
-**Current vCPUs** and **current worker count** show your resource usage. These help you understand cost and capacity.
+**Current vCPUs** and worker metrics such as active or target worker instances show your resource usage. These help you understand cost and capacity.
 
 **Elements produced** at each step gives you throughput numbers. If a particular step shows low throughput, that is your bottleneck.
 
@@ -112,7 +112,7 @@ Here is a dashboard configuration that covers the essential metrics.
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Current Workers",
+          "title": "Current vCPUs",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
@@ -139,14 +139,13 @@ Dashboards are great for investigation, but you need alerts to be notified of pr
 
 ```bash
 # Create an alert for high system lag
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Dataflow High System Lag" \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --condition-display-name="System lag above 5 minutes" \
   --condition-filter='resource.type="dataflow_job" AND metric.type="dataflow.googleapis.com/job/system_lag"' \
-  --condition-threshold-value=300 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --duration=300s \
+  --if="> 300" \
   --combiner=OR
 ```
 
@@ -157,7 +156,7 @@ I recommend these alert thresholds as a starting point.
 | System lag | 2 minutes | 10 minutes |
 | Backlog bytes | 100 MB | 1 GB |
 | Data freshness | 5 minutes | 30 minutes |
-| Worker CPU | 80% for 10 min | 95% for 5 min |
+| Aggregated worker utilization | 80% for 10 min | 95% for 5 min |
 
 Adjust these based on your SLAs and the characteristics of your pipeline.
 
@@ -176,10 +175,6 @@ public class ProcessEventsFn extends DoFn<String, Event> {
     // Distribution: tracks processing latency
     private final Distribution processLatency = Metrics.distribution(
         "pipeline", "process_latency_ms");
-
-    // Gauge: tracks current batch size
-    private final Gauge currentBatchSize = Metrics.gauge(
-        "pipeline", "current_batch_size");
 
     @ProcessElement
     public void processElement(ProcessContext c) {
@@ -201,18 +196,19 @@ public class ProcessEventsFn extends DoFn<String, Event> {
 }
 ```
 
-These custom metrics appear in Cloud Monitoring under the `custom.googleapis.com/dataflow/` namespace. You can chart them on dashboards and create alerts just like built-in metrics.
+Dataflow reports Beam `Counter` and `Distribution` metrics to Cloud Monitoring. They appear as Dataflow user metrics such as `dataflow.googleapis.com/job/user_counter`, with labels for the metric name and transform. For backward compatibility, Dataflow also publishes them under the `custom.googleapis.com/dataflow/` namespace. You can chart them on dashboards and create alerts just like built-in metrics.
 
 ## Monitoring Per-Step Performance
 
 Dataflow tracks metrics per pipeline step, which helps identify bottlenecks.
 
 ```bash
-# List all metrics for a specific job, filtered by step
-gcloud dataflow metrics list JOB_ID \
+# List service metrics for a specific job, filtered by transform
+gcloud beta dataflow metrics list JOB_ID \
   --region=us-central1 \
-  --source=user \
-  --format="table(name.name, name.context.step, scalar.integer_value)"
+  --source=service \
+  --transform=STEP_NAME \
+  --format="table(name.name, name.context.step, scalar)"
 ```
 
 Look for steps where throughput drops significantly compared to upstream steps. That step is likely your bottleneck. Common causes include:
@@ -270,6 +266,7 @@ def check_data_freshness(request):
     series = monitoring_v3.TimeSeries()
     series.metric.type = "custom.googleapis.com/pipeline/output_freshness_seconds"
     series.resource.type = "global"
+    series.resource.labels["project_id"] = "my-project"
 
     point = monitoring_v3.Point()
     point.value.double_value = freshness_seconds
