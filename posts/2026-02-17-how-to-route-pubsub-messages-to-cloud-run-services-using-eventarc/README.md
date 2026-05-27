@@ -40,7 +40,10 @@ Enable the required APIs.
 gcloud services enable \
   run.googleapis.com \
   eventarc.googleapis.com \
-  pubsub.googleapis.com
+  pubsub.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  logging.googleapis.com
 ```
 
 ## Step 1: Create the Pub/Sub Topic
@@ -148,6 +151,23 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Pub/Sub handler listening on port ${PORT}`);
 });
+```
+
+Add a `package.json` file so Cloud Run can install Express and start the service when deploying from source.
+
+```json
+{
+  "name": "order-event-handler",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
 ```
 
 Deploy the service.
@@ -295,8 +315,8 @@ Each service independently receives every message published to the topic.
 
 Eventarc uses Pub/Sub's push delivery. The acknowledgment behavior is:
 
-- Return HTTP 2xx: Message is acknowledged and removed from the subscription
-- Return HTTP 4xx or 5xx: Message is nacked and will be redelivered after the ack deadline
+- Return HTTP 102, 200, 201, 202, or 204: Message is acknowledged and removed from the subscription
+- Return any other HTTP status code: Message is nacked and will be redelivered after the ack deadline
 
 ```javascript
 // Proper acknowledgment handling
