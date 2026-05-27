@@ -8,19 +8,19 @@ Description: Configure Amazon Linux 2023 EC2 instances with Ansible covering dnf
 
 ---
 
-Amazon Linux 2023 (AL2023) is Amazon's latest Linux distribution for EC2 and other AWS services. It is based on Fedora (not CentOS like AL2 was) and uses dnf as its package manager. AL2023 introduces deterministic updates through versioned repositories and has SELinux enabled in permissive mode by default. This guide covers Ansible automation specific to AL2023.
+Amazon Linux 2023 (AL2023) is Amazon's latest Linux distribution for EC2 and other AWS services. It includes components from Fedora and other upstreams, while maintaining its own release and support lifecycle, and uses dnf as its package manager. AL2023 introduces deterministic updates through versioned repositories and has SELinux enabled in permissive mode by default. This guide covers Ansible automation specific to AL2023.
 
 ## Key Differences from Amazon Linux 2
 
 AL2023 brings significant changes:
 
-- Based on Fedora instead of CentOS/RHEL
+- Built from multiple upstreams, including Fedora and CentOS Stream
 - Uses dnf instead of yum
 - SELinux is present (permissive by default)
 - Deterministic updates with versioned repositories
-- No EPEL (Amazon provides its own equivalent packages)
+- No binary-compatible EPEL repository; use AL2023 packages or Supplementary Packages for Amazon Linux where appropriate
 - Python 3.9+ included
-- systemd-resolved for DNS
+- systemd-networkd for network configuration
 
 ## Inventory
 
@@ -84,21 +84,21 @@ ansible_ssh_private_key_file=~/.ssh/aws-key.pem
           - bash-completion
           - python3-pip
           - amazon-cloudwatch-agent
-          - aws-cli-2
+          - awscli-2
         state: present
 
     - name: Set timezone
       community.general.timezone:
         name: "{{ timezone }}"
 
-    - name: Set hostname from EC2 tag
+    - name: Set hostname from inventory name
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
 ```
 
 ## Deterministic Updates
 
-AL2023 uses versioned repositories. You can lock to a specific version for consistency:
+AL2023 uses versioned repositories. You can check for newer repository versions and update against a specific version for consistency:
 
 ```yaml
     - name: Check current repository version
@@ -112,8 +112,8 @@ AL2023 uses versioned repositories. You can lock to a specific version for consi
         msg: "{{ release_update.stdout_lines }}"
       when: release_update.stdout != ""
 
-    # To lock to a specific version:
-    # dnf releasever --set 2023.3.20240312
+    # To update deterministically to a specific repository version:
+    # dnf upgrade --releasever=2023.3.20240312
 ```
 
 ## SELinux Configuration
@@ -136,7 +136,7 @@ AL2023 ships with SELinux in permissive mode. For production, switch to enforcin
 
 ## AWS Integration
 
-AL2023 comes with AWS tools pre-installed. Configure them:
+AL2023 ships with AWS CLI v2, AWS-provided AMIs usually include SSM Agent, and the CloudWatch agent is available as an AL2023 package. Configure them:
 
 ```yaml
     - name: Configure CloudWatch agent
@@ -280,4 +280,4 @@ AL2023 does not include firewalld by default. Use nftables or iptables:
 
 ## Summary
 
-Amazon Linux 2023 brings modern Fedora-based foundations to the AWS ecosystem. Key Ansible considerations: use dnf (not yum), configure SELinux for enforcing mode, leverage AWS-native tools (CloudWatch agent, SSM agent, AWS CLI v2), and handle deterministic versioned repositories for update management. No EPEL is needed since Amazon provides equivalent packages. This playbook provides the base configuration optimized for EC2 workloads.
+Amazon Linux 2023 brings modern RPM-based foundations to the AWS ecosystem. Key Ansible considerations: use dnf (not yum), configure SELinux for enforcing mode, leverage AWS-native tools (CloudWatch agent, SSM agent, AWS CLI v2), and handle deterministic versioned repositories for update management. Use AL2023 packages or Supplementary Packages for Amazon Linux instead of assuming EPEL compatibility. This playbook provides the base configuration optimized for EC2 workloads.
