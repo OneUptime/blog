@@ -55,6 +55,8 @@ gcloud services enable bigquery.googleapis.com \
 ## Step 3: Create the Destination Resources
 
 ```bash
+AUDIT_BUCKET="org-audit-archive-$(date +%Y%m%d)"
+
 # Create BigQuery dataset for audit logs
 bq mk --dataset \
   --location=US \
@@ -63,7 +65,7 @@ bq mk --dataset \
   org-audit-central:centralized_audit_logs
 
 # Create Cloud Storage bucket for archival
-gcloud storage buckets create gs://org-audit-archive-$(date +%Y%m%d) \
+gcloud storage buckets create gs://${AUDIT_BUCKET} \
   --project=org-audit-central \
   --location=us-central1 \
   --uniform-bucket-level-access \
@@ -90,32 +92,38 @@ Create separate sinks for different log types and destinations. This gives you m
 # Sink 1: All Admin Activity logs to BigQuery
 # These are the most important - they record all configuration changes
 gcloud logging sinks create org-admin-to-bigquery \
+  "bigquery.googleapis.com/projects/org-audit-central/datasets/centralized_audit_logs" \
   --organization=ORG_ID \
-  --log-filter='logName:"cloudaudit.googleapis.com/activity"' \
-  --destination="bigquery.googleapis.com/projects/org-audit-central/datasets/centralized_audit_logs" \
+  --log-filter='log_id("cloudaudit.googleapis.com/activity")' \
   --include-children \
   --use-partitioned-tables
 
 # Sink 2: Data Access logs to BigQuery (can be high volume)
 gcloud logging sinks create org-data-access-to-bigquery \
+  "bigquery.googleapis.com/projects/org-audit-central/datasets/centralized_audit_logs" \
   --organization=ORG_ID \
-  --log-filter='logName:"cloudaudit.googleapis.com/data_access"' \
-  --destination="bigquery.googleapis.com/projects/org-audit-central/datasets/centralized_audit_logs" \
+  --log-filter='log_id("cloudaudit.googleapis.com/data_access")' \
   --include-children \
   --use-partitioned-tables
 
 # Sink 3: All audit logs to Cloud Storage for archival
 gcloud logging sinks create org-audit-to-gcs \
+  "storage.googleapis.com/${AUDIT_BUCKET}" \
   --organization=ORG_ID \
-  --log-filter='logName:"cloudaudit.googleapis.com"' \
-  --destination="storage.googleapis.com/org-audit-archive-20260217" \
+  --log-filter='
+    log_id("cloudaudit.googleapis.com/activity") OR
+    log_id("cloudaudit.googleapis.com/data_access") OR
+    log_id("cloudaudit.googleapis.com/system_event") OR
+    log_id("cloudaudit.googleapis.com/policy")
+  ' \
   --include-children
 
 # Sink 4: High-severity events to Pub/Sub for real-time alerting
 gcloud logging sinks create org-alerts-to-pubsub \
+  "pubsub.googleapis.com/projects/org-audit-central/topics/audit-log-stream" \
   --organization=ORG_ID \
   --log-filter='
-    logName:"cloudaudit.googleapis.com/activity"
+    log_id("cloudaudit.googleapis.com/activity")
     AND (
       protoPayload.methodName:"SetIamPolicy" OR
       protoPayload.methodName:"delete" OR
@@ -124,7 +132,6 @@ gcloud logging sinks create org-alerts-to-pubsub \
       protoPayload.methodName:"CreateServiceAccountKey"
     )
   ' \
-  --destination="pubsub.googleapis.com/projects/org-audit-central/topics/audit-log-stream" \
   --include-children
 ```
 
@@ -151,7 +158,7 @@ for SINK_NAME in org-admin-to-bigquery org-data-access-to-bigquery org-audit-to-
   # Grant Storage access for GCS sink
   if [[ $SINK_NAME == *"gcs"* ]]; then
     gcloud storage buckets add-iam-policy-binding \
-      gs://org-audit-archive-20260217 \
+      gs://${AUDIT_BUCKET} \
       --member="$SINK_SA" \
       --role="roles/storage.objectCreator"
   fi
@@ -177,12 +184,12 @@ SELECT
   COUNT(*) as log_count,
   MIN(timestamp) as earliest,
   MAX(timestamp) as latest
-FROM `org-audit-central.centralized_audit_logs.cloudaudit_googleapis_com_activity_*`
-WHERE _TABLE_SUFFIX >= FORMAT_DATE("%Y%m%d", CURRENT_DATE())
+FROM `org-audit-central.centralized_audit_logs.cloudaudit_googleapis_com_activity`
+WHERE DATE(timestamp) >= CURRENT_DATE()
 '
 
 # Check the GCS bucket for log files
-gcloud storage ls gs://org-audit-archive-20260217/ --recursive | head -20
+gcloud storage ls gs://${AUDIT_BUCKET}/ --recursive | head -20
 
 # Check Pub/Sub for messages
 gcloud pubsub subscriptions pull siem-subscription \
@@ -193,15 +200,15 @@ gcloud pubsub subscriptions pull siem-subscription \
 
 ## Step 7: Handle Data Access Log Volume
 
-Data Access logs can be extremely high volume. Not every project needs them, and some services generate more than others. Use exclusion filters to manage volume.
+Data Access logs can be extremely high volume. Not every project needs them, and some services generate more than others. Use sink filters or exclusion filters to manage volume.
 
 ```bash
-# Create an exclusion filter to drop noisy Data Access logs
+# Update the sink filter to drop noisy Data Access logs
 # For example, exclude routine BigQuery job read operations
 gcloud logging sinks update org-data-access-to-bigquery \
   --organization=ORG_ID \
   --log-filter='
-    logName:"cloudaudit.googleapis.com/data_access"
+    log_id("cloudaudit.googleapis.com/data_access")
     AND NOT protoPayload.methodName="google.cloud.bigquery.v2.JobService.GetQueryResults"
     AND NOT protoPayload.methodName="google.cloud.bigquery.v2.TableService.GetTable"
   '
@@ -223,22 +230,44 @@ gcloud projects set-iam-policy PROJECT_ID /tmp/policy.yaml
 The audit log infrastructure itself needs protection. If an attacker compromises an admin account, one of the first things they will try to do is delete or modify the log sinks.
 
 ```bash
-# Create an alert for changes to organization log sinks
+# Check recent changes to organization log sinks
 gcloud logging read '
   protoPayload.methodName=("google.logging.v2.ConfigServiceV2.UpdateSink" OR
                            "google.logging.v2.ConfigServiceV2.DeleteSink")
-  AND resource.type="organization"
+  AND resource.type="audited_resource"
 ' --organization=ORG_ID --limit=10
 
 # Set up a monitoring alert for sink modifications
-gcloud alpha monitoring policies create \
-  --display-name="Audit Sink Modified" \
-  --condition-display-name="Organization log sink was modified or deleted" \
-  --condition-filter='
-    resource.type="audited_resource"
-    AND protoPayload.methodName=("google.logging.v2.ConfigServiceV2.UpdateSink" OR "google.logging.v2.ConfigServiceV2.DeleteSink")
-  ' \
-  --notification-channels="projects/org-audit-central/notificationChannels/CHANNEL_ID"
+cat > audit-sink-modified-policy.json <<'EOF'
+{
+  "displayName": "Audit Sink Modified",
+  "documentation": {
+    "content": "An organization log sink was modified or deleted.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Organization log sink was modified or deleted",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"audited_resource\" AND protoPayload.methodName=(\"google.logging.v2.ConfigServiceV2.UpdateSink\" OR \"google.logging.v2.ConfigServiceV2.DeleteSink\")"
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": [
+    "projects/org-audit-central/notificationChannels/CHANNEL_ID"
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  }
+}
+EOF
+
+gcloud monitoring policies create \
+  --project=org-audit-central \
+  --policy-from-file=audit-sink-modified-policy.json
 ```
 
 ## Querying Across the Organization
@@ -253,9 +282,9 @@ SELECT
     protopayload_auditlog.authenticationInfo.principalEmail AS actor,
     protopayload_auditlog.methodName AS method,
     protopayload_auditlog.requestMetadata.callerIp AS source_ip
-FROM `org-audit-central.centralized_audit_logs.cloudaudit_googleapis_com_activity_*`
+FROM `org-audit-central.centralized_audit_logs.cloudaudit_googleapis_com_activity`
 WHERE protopayload_auditlog.methodName LIKE '%SetIamPolicy%'
-AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 ORDER BY timestamp DESC;
 ```
 
