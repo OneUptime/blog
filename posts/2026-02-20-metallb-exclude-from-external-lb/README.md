@@ -25,7 +25,7 @@ flowchart LR
 
 ## When This Label Gets Added
 
-Kubernetes automatically adds this label to control-plane nodes starting with Kubernetes v1.24. You can also manually add it to any node you want to exclude.
+Kubeadm adds this label to the control-plane nodes it creates in current Kubernetes clusters. You can also manually add it to any node you want to exclude.
 
 ```bash
 # Check which nodes have the exclude label
@@ -48,26 +48,26 @@ MetalLB checks this label when deciding which nodes can announce services. The b
 
 ### L2 Mode
 
-In L2 mode, MetalLB selects a single node to respond to ARP/NDP requests. If the best candidate node has the exclude label, MetalLB skips it and selects the next eligible node.
+In L2 mode, MetalLB speakers select a single node to respond to ARP/NDP requests. If a candidate node has the exclude label, MetalLB skips it and selects an eligible node.
 
 ```mermaid
 sequenceDiagram
-    participant MC as MetalLB Controller
+    participant MS as MetalLB Speakers
     participant CP as Control-Plane Node
     participant W1 as Worker-1
     participant W2 as Worker-2
 
-    MC->>CP: Check node for eligibility
-    Note over MC,CP: Has exclude label - SKIP
-    MC->>W1: Check node for eligibility
-    Note over MC,W1: No exclude label - ELIGIBLE
-    MC->>W1: Assign as L2 announcer
+    MS->>CP: Check node for eligibility
+    Note over MS,CP: Has exclude label - SKIP
+    MS->>W1: Check node for eligibility
+    Note over MS,W1: No exclude label - ELIGIBLE
+    MS->>W1: Elect as L2 announcer
     W1->>W1: Respond to ARP requests
 ```
 
 ### BGP Mode
 
-In BGP mode, MetalLB advertises routes from all eligible nodes. Nodes with the exclude label will not establish BGP sessions for LoadBalancer service routes.
+In BGP mode, MetalLB advertises routes from all eligible nodes. Nodes with the exclude label will not advertise LoadBalancer service routes.
 
 ## The Problem in Small Clusters
 
@@ -100,7 +100,7 @@ Note the trailing `-` which removes the label.
 
 ## Fix 2: Use Node Selectors in Advertisements
 
-Instead of relying on the exclude label, explicitly define which nodes should advertise:
+For finer control over non-excluded nodes, explicitly define which nodes should advertise:
 
 ```yaml
 # l2advertisement.yaml
@@ -127,20 +127,20 @@ Then label the nodes you want:
 kubectl label node worker-1 metallb-advertise=true
 kubectl label node worker-2 metallb-advertise=true
 
-# If you want control-plane to advertise too
+# If you want control-plane to advertise too, also remove the exclude label
 kubectl label node control-plane metallb-advertise=true
 ```
 
-## Fix 3: Prevent Kubernetes from Adding the Label
+## Fix 3: Configure MetalLB to Ignore the Label
 
-On some managed Kubernetes distributions, you can configure the node lifecycle controller to not add this label. However, this is cluster-level configuration and may not be available in all environments.
+If you intentionally want MetalLB to advertise from nodes that keep this label, configure the MetalLB speakers with the `--ignore-exclude-lb` flag. This can be set through the MetalLB Helm chart or Kustomize overlays, depending on how you installed MetalLB.
 
-For kubeadm clusters, check the controller-manager flags:
+For a manifest-based installation, check the speaker DaemonSet arguments:
 
 ```bash
-# Check if the node lifecycle controller is configured
-kubectl get pods -n kube-system -l component=kube-controller-manager \
-  -o jsonpath='{.items[0].spec.containers[0].command}' | tr ',' '\n' | grep node
+# Check the MetalLB speaker arguments
+kubectl get daemonset speaker -n metallb-system \
+  -o jsonpath='{range .spec.template.spec.containers[0].args[*]}{.}{"\n"}{end}' | grep -- --ignore-exclude-lb
 ```
 
 ## Checking if the Label Is Causing Your Issue
