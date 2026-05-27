@@ -53,6 +53,10 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 # Variables for configuration
 variable "aws_region" {
   description = "AWS region to deploy into"
@@ -151,11 +155,11 @@ output "cluster_arn" {
 
 - HCL is not a general-purpose language (limited loops, no functions beyond built-ins)
 - State management can be complex at scale
-- No built-in testing framework
+- Testing usually requires separate test files with `terraform test` or external frameworks like Terratest
 
 ## Pulumi: General-Purpose Languages for IaC
 
-Pulumi lets you write infrastructure code in TypeScript, Python, Go, or C#. You get full language features: loops, conditionals, classes, and packages.
+Pulumi lets you write infrastructure code in TypeScript, JavaScript, Python, Go, C#, Java, or YAML. You get full language features: loops, conditionals, classes, and packages.
 
 ```typescript
 // index.ts
@@ -181,22 +185,20 @@ const vpc = new aws.ec2.Vpc("main-vpc", {
 
 // Create subnets using a loop - not possible in HCL without count/for_each
 const publicSubnets: aws.ec2.Subnet[] = [];
-const azs = aws.getAvailabilityZones({ state: "available" });
+const availableAzs = await aws.getAvailabilityZones({ state: "available" });
 
-azs.then((availableAzs) => {
-  for (let i = 0; i < 2; i++) {
-    const subnet = new aws.ec2.Subnet(`public-subnet-${i}`, {
-      vpcId: vpc.id,
-      cidrBlock: `10.0.${i + 1}.0/24`,
-      availabilityZone: availableAzs.names[i],
-      mapPublicIpOnLaunch: true,
-      tags: {
-        Name: `${environment}-public-${i + 1}`,
-      },
-    });
-    publicSubnets.push(subnet);
-  }
-});
+for (let i = 0; i < 2; i++) {
+  const subnet = new aws.ec2.Subnet(`public-subnet-${i}`, {
+    vpcId: vpc.id,
+    cidrBlock: `10.0.${i + 1}.0/24`,
+    availabilityZone: availableAzs.names[i],
+    mapPublicIpOnLaunch: true,
+    tags: {
+      Name: `${environment}-public-${i + 1}`,
+    },
+  });
+  publicSubnets.push(subnet);
+}
 
 // ECS cluster
 const cluster = new aws.ecs.Cluster("main-cluster", {
@@ -295,7 +297,7 @@ export class WebAppStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, "MainCluster", {
       vpc,
       clusterName: `${environment}-cluster`,
-      containerInsights: true,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
     // High-level pattern: Fargate service behind an ALB
@@ -374,12 +376,12 @@ graph TD
 
 | Feature | Terraform | Pulumi | AWS CDK |
 |---|---|---|---|
-| Language | HCL | TS, Python, Go, C# | TS, Python, Java, Go |
+| Language | HCL | TS, JS, Python, Go, C#, Java, YAML | TS, JS, Python, Java, C#, Go |
 | Cloud Support | Multi-cloud | Multi-cloud | AWS (primarily) |
 | State Management | Remote backends | Pulumi Cloud or self-managed | CloudFormation |
 | Learning Curve | Medium | Low (if you know the language) | Low (if you know AWS) |
 | Abstraction Level | Low to medium | Low to medium | Medium to high |
-| Testing | Terratest (external) | Native test frameworks | CDK assertions |
+| Testing | `terraform test`, Terratest (external) | Native test frameworks | CDK assertions |
 | Community Size | Very large | Growing | Large (AWS ecosystem) |
 
 ## Testing Infrastructure Code
