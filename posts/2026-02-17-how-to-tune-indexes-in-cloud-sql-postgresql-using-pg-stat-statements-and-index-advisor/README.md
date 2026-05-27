@@ -12,17 +12,7 @@ Indexes are the most impactful performance tool in PostgreSQL. A well-chosen ind
 
 ## Enabling pg_stat_statements
 
-pg_stat_statements tracks execution statistics for all SQL statements. On Cloud SQL, you enable it through database flags:
-
-```bash
-# Enable pg_stat_statements on your Cloud SQL instance
-
-gcloud sql instances patch my-instance \
-  --database-flags \
-  cloudsql.enable_pg_stat_statements=on
-```
-
-Then create the extension in your database:
+pg_stat_statements tracks execution statistics for all SQL statements. On Cloud SQL, it is a supported PostgreSQL extension. Create it in your database:
 
 ```sql
 -- Create the extension in your database
@@ -46,7 +36,7 @@ SELECT
   rows,
   ROUND((shared_blks_hit::numeric / NULLIF(shared_blks_hit + shared_blks_read, 0)) * 100, 2) AS cache_hit_pct
 FROM pg_stat_statements
-WHERE dbname = current_database()
+WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
 ORDER BY total_exec_time DESC
 LIMIT 20;
 ```
@@ -65,13 +55,13 @@ SELECT
   SUBSTR(query, 1, 120) AS query_preview,
   calls,
   ROUND(mean_exec_time::numeric, 2) AS avg_ms,
-  rows AS avg_rows_returned,
+  ROUND(rows::numeric / calls, 2) AS avg_rows_returned,
   shared_blks_read + shared_blks_hit AS total_blocks,
   ROUND(
     (shared_blks_read + shared_blks_hit)::numeric / NULLIF(rows, 0), 2
   ) AS blocks_per_row
 FROM pg_stat_statements
-WHERE dbname = current_database()
+WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
   AND calls > 100  -- Only consider queries that run frequently
   AND rows > 0
 ORDER BY (shared_blks_read + shared_blks_hit)::numeric / NULLIF(rows, 0) DESC
@@ -82,24 +72,20 @@ A high blocks_per_row value means the query is reading a lot of data to return e
 
 ## Using Cloud SQL Index Advisor
 
-Cloud SQL's Index Advisor analyzes your workload and suggests indexes. Access it through the Cloud SQL console or query the recommendations:
+Cloud SQL's Index Advisor analyzes your workload and suggests indexes. It requires a Cloud SQL Enterprise Plus instance with Query Insights and Index Advisor enabled. Access it through the Cloud SQL console or query the recommendations:
 
 ```sql
 -- View index recommendations from the advisor
--- These are based on actual query patterns from pg_stat_statements
+-- These are based on actual query patterns tracked by the advisor
 SELECT
-  index_name AS suggested_index,
-  table_name,
-  index_columns,
-  estimated_improvement,
-  query_count AS affected_queries,
-  recommendation_reason
-FROM google_db_advisor_recommendations
-WHERE recommendation_type = 'INDEX'
-ORDER BY estimated_improvement DESC;
+  index AS suggested_index,
+  estimated_storage_size_in_mb,
+  affected_queries
+FROM google_db_advisor_recommended_indexes
+ORDER BY affected_queries DESC;
 ```
 
-The advisor looks at your actual query patterns and suggests specific indexes. Each recommendation includes the expected improvement and the number of queries that would benefit.
+The advisor looks at your actual query patterns and suggests specific indexes. Each recommendation includes a complete `CREATE INDEX` statement, the estimated storage required, and the number of queries that would benefit.
 
 ## Finding Unused Indexes
 
@@ -110,8 +96,8 @@ Indexes that are never used waste disk space and slow down every write operation
 -- Candidates for removal
 SELECT
   schemaname,
-  tablename,
-  indexname,
+  relname AS tablename,
+  indexrelname AS indexname,
   idx_scan AS times_used,
   pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
 FROM pg_stat_user_indexes
@@ -124,14 +110,16 @@ Before dropping an index, check how long the stats have been collecting:
 
 ```sql
 -- Check when statistics were last reset
-SELECT stats_reset FROM pg_stat_bgwriter;
+SELECT stats_reset
+FROM pg_stat_database
+WHERE datname = current_database();
 ```
 
 If stats were reset yesterday, an index with 0 scans might just not have been used today. Wait for at least a full business cycle (ideally a month) before dropping unused indexes.
 
 ## Finding Duplicate and Redundant Indexes
 
-Duplicate indexes are wasteful. If you have an index on (a, b) and another on (a), the first index already covers queries that filter on just (a):
+Duplicate indexes are wasteful. For B-tree indexes, if you have an index on (a, b) and another on (a), the first index already covers queries that filter on just (a):
 
 ```sql
 -- Find potentially redundant indexes
@@ -146,13 +134,16 @@ WITH index_info AS (
       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
       ORDER BY k.ord
     ), ', ') AS index_columns,
-    ix.indkey AS key_array,
+    ARRAY(SELECT unnest(ix.indkey))::int2[] AS key_array,
     pg_relation_size(i.oid) AS index_size
   FROM pg_index ix
   JOIN pg_class t ON t.oid = ix.indrelid
   JOIN pg_class i ON i.oid = ix.indexrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace
+  JOIN pg_am am ON am.oid = i.relam
   WHERE n.nspname = 'public'
+    AND am.amname = 'btree'
+    AND ix.indexprs IS NULL
 )
 SELECT
   a.table_name,
@@ -164,7 +155,7 @@ SELECT
 FROM index_info a
 JOIN index_info b ON a.table_name = b.table_name
   AND a.index_name != b.index_name
-  AND a.key_array <@ b.key_array  -- a's columns are a subset of b's
+  AND a.key_array = b.key_array[1:array_length(a.key_array, 1)]  -- a's columns are a left-prefix of b's
 ORDER BY a.index_size DESC;
 ```
 
@@ -257,7 +248,7 @@ SELECT
   ROUND(total_exec_time::numeric / 1000, 2) AS total_time_sec,
   ROUND(mean_exec_time::numeric, 2) AS avg_ms
 FROM pg_stat_statements
-WHERE dbname = current_database()
+WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
 ORDER BY total_exec_time DESC
 LIMIT 20;
 ```
