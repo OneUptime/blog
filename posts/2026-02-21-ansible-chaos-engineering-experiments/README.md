@@ -57,11 +57,11 @@ The simplest chaos experiment is killing a service process:
 
     - name: Display pre-chaos state
       ansible.builtin.debug:
-        msg: "Steady state request rate: {{ steady_state.json.data.result[0].value[1] | default('N/A') }}"
+        msg: "Steady state request rate: {{ steady_state.json.data.result[0].value[1] if (steady_state.json.data.result | default([]) | length > 0) else 'N/A' }}"
 
     - name: Kill the service process
-      ansible.builtin.command:
-        cmd: "kill -9 $(pidof {{ service_name }})"
+      ansible.builtin.shell:
+        cmd: "kill -9 $(pidof {{ service_name | quote }})"
       changed_when: true
 
     - name: Wait for observation period
@@ -70,9 +70,15 @@ The simplest chaos experiment is killing a service process:
         prompt: "Observing system behavior for {{ observation_time }} seconds..."
 
     - name: Check if service auto-recovered
-      ansible.builtin.systemd:
-        name: "{{ service_name }}"
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - --property=ActiveState
+          - --value
+          - "{{ service_name }}"
       register: service_status
+      changed_when: false
 
     - name: Record post-chaos metrics
       ansible.builtin.uri:
@@ -87,15 +93,17 @@ The simplest chaos experiment is killing a service process:
     - name: Evaluate hypothesis
       ansible.builtin.assert:
         that:
-          - service_status.status.ActiveState == 'active'
+          - service_status.stdout == 'active'
         fail_msg: "FINDING: Service {{ service_name }} did not auto-recover after process kill"
         success_msg: "Service recovered automatically as expected"
+      register: recovery_assertion
+      ignore_errors: true
 
     - name: Force recovery if needed
       ansible.builtin.systemd:
         name: "{{ service_name }}"
         state: started
-      when: service_status.status.ActiveState != 'active'
+      when: service_status.stdout != 'active'
 ```
 
 ## Experiment: Network Latency Injection
@@ -113,7 +121,6 @@ Simulate network problems between services:
     latency_ms: 500
     jitter_ms: 100
     duration_seconds: 120
-    target_port: 5432
 
   tasks:
     - name: Install traffic control dependencies
@@ -127,7 +134,7 @@ Simulate network problems between services:
       register: baseline_ping
       changed_when: false
 
-    - name: Inject latency on outgoing traffic to database port
+    - name: Inject latency on outgoing traffic
       ansible.builtin.command:
         cmd: >
           tc qdisc add dev {{ ansible_default_ipv4.interface }} root netem
@@ -145,6 +152,7 @@ Simulate network problems between services:
         status_code: [200, 503]
         timeout: 10
       register: health_during_chaos
+      ignore_errors: true
 
     - name: Remove latency injection
       ansible.builtin.command:
@@ -193,7 +201,7 @@ Test how your application handles slow disk I/O:
       ansible.builtin.command:
         cmd: "dd if=/dev/zero of=/tmp/chaos_test bs=1M count=100 oflag=direct"
       register: baseline_disk
-      changed_when: false
+      changed_when: true
 
     - name: Start disk I/O stress
       ansible.builtin.command:
@@ -247,6 +255,11 @@ Test how your application handles slow disk I/O:
     duration_seconds: 60
 
   tasks:
+    - name: Install stress-ng
+      ansible.builtin.apt:
+        name: stress-ng
+        state: present
+
     - name: Get total memory
       ansible.builtin.set_fact:
         total_mem_mb: "{{ ansible_memtotal_mb }}"
@@ -304,10 +317,18 @@ Track all experiments and their results:
   tasks:
     - name: Record experiment start
       ansible.builtin.set_fact:
-        experiment_start: "{{ ansible_date_time.iso8601 }}"
+        experiment_start: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
 
     - name: Run the actual experiment
-      ansible.builtin.include_tasks: "{{ experiment_name }}.yml"
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - "{{ playbook_dir }}/{{ experiment_name }}.yml"
+          - --extra-vars
+          - "target_host={{ target_host }}"
+      register: experiment_run
+      changed_when: true
+      failed_when: false
 
     - name: Record results to database
       ansible.builtin.uri:
@@ -318,10 +339,10 @@ Track all experiments and their results:
           name: "{{ experiment_name }}"
           target: "{{ target_host }}"
           started_at: "{{ experiment_start }}"
-          completed_at: "{{ ansible_date_time.iso8601 }}"
+          completed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
           hypothesis: "{{ experiment_hypothesis | default('not specified') }}"
-          result: "{{ 'pass' if experiment_passed | default(true) else 'fail' }}"
-          findings: "{{ experiment_findings | default([]) }}"
+          result: "{{ 'pass' if experiment_run.rc == 0 else 'fail' }}"
+          findings: "{{ experiment_findings | default([experiment_run.stderr] if experiment_run.rc != 0 else []) }}"
 ```
 
 ## Key Takeaways
