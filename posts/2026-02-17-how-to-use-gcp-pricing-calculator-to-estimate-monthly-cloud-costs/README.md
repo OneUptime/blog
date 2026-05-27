@@ -63,8 +63,8 @@ This helps you find the sweet spot between performance and cost.
 The calculator lets you apply CUD pricing. Toggle the commitment option to see how 1-year or 3-year commitments affect the total:
 
 - On-demand: Full price
-- 1-year CUD: ~20% discount
-- 3-year CUD: ~35% discount
+- 1-year compute flexible CUD: up to ~28% discount for eligible E2, N1, N2, N2D, N4, C3, C4, and similar machine series
+- 3-year compute flexible CUD: up to ~46% discount for those eligible machine series
 
 This is a great way to calculate the ROI of a commitment before purchasing.
 
@@ -72,7 +72,7 @@ This is a great way to calculate the ROI of a commitment before purchasing.
 
 GKE pricing has multiple components. Here is how to model it:
 
-1. **GKE management fee**: $0.10/hour per cluster (free for one Autopilot or one Standard cluster per billing account)
+1. **GKE management fee**: $0.10/hour per cluster, offset by $74.40 in monthly free-tier credits per billing account for Autopilot clusters or zonal Standard clusters
 2. **Node compute**: Based on machine types and count
 3. **Persistent disks**: For stateful workloads
 4. **Network egress**: For traffic leaving the cluster
@@ -86,7 +86,7 @@ In the calculator:
 
 A typical small GKE cluster might look like:
 
-- 1 cluster (management fee: $0 for the first cluster)
+- 1 zonal Standard or Autopilot cluster (management fee offset by the monthly free-tier credit)
 - 3 nodes, e2-standard-4 (always running)
 - 2-5 autoscaling nodes, e2-standard-2 (running ~50% of the time)
 - 100 GB SSD persistent disks per node
@@ -105,9 +105,9 @@ BigQuery pricing depends heavily on your query patterns:
    - **Streaming inserts**: If you use streaming ingestion
 
 For example:
-- 5 TB active storage: ~$100/month
-- 10 TB queried per month: ~$62.50/month
-- Total: ~$162.50/month
+- 5 TiB active logical storage: ~$118/month
+- 10 TiB of billable query data beyond the free tier: ~$62.50/month
+- Total: ~$180.50/month
 
 ### Flat-Rate (Editions) Pricing
 
@@ -168,16 +168,16 @@ Total                            | ~$737/month
 
 With a 1-year CUD on the VMs:
 ```text
-3x e2-standard-4 with 1yr CUD    | ~$232
-Savings on VMs                    | ~$58/month
-New Total                         | ~$679/month
+3x e2-standard-4 with 1yr CUD    | ~$209
+Savings on VMs                    | ~$81/month
+New Total                         | ~$656/month
 ```
 
 ## Tips for Accurate Estimates
 
 ### 1. Account for Network Costs
 
-Network egress is often underestimated. Data leaving GCP (to the internet or another cloud provider) costs money. Intra-region traffic is free, but inter-region and internet egress add up.
+Network egress is often underestimated. Data leaving GCP (to the internet or another cloud provider) costs money. VM-to-VM traffic within the same zone over internal IP addresses is free, but cross-zone traffic within a region, inter-region traffic, and internet egress can add up.
 
 ### 2. Include All Storage Components
 
@@ -185,7 +185,7 @@ Do not forget about:
 - Boot disks on VMs (default 10 GB but often larger)
 - Snapshot storage
 - Cloud SQL backup storage
-- Container Registry or Artifact Registry storage
+- Artifact Registry storage
 
 ### 3. Factor in Data Growth
 
@@ -193,7 +193,7 @@ If your data grows 10% per month, your storage costs will grow accordingly. The 
 
 ### 4. Use Sustained Use Discounts
 
-For Compute Engine, the calculator automatically includes Sustained Use Discounts for instances running more than 25% of the month. Make sure your hours-per-month setting is accurate.
+For eligible Compute Engine resources, the calculator can include Sustained Use Discounts for resources used more than 25% of the month. Make sure your hours-per-month setting is accurate.
 
 ### 5. Consider Free Tier
 
