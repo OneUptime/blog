@@ -237,7 +237,7 @@ deploy_staging:
   stage: deploy-staging
   image: python:3.11-slim
   before_script:
-    - pip install ansible boto3
+    - pip install ansible boto3 botocore
     - ansible-galaxy collection install amazon.aws
   script:
     - ansible-playbook playbooks/deploy.yml
@@ -252,12 +252,12 @@ deploy_production:
   stage: deploy-production
   image: python:3.11-slim
   before_script:
-    - pip install ansible boto3
+    - pip install ansible boto3 botocore
     - ansible-galaxy collection install amazon.aws
   script:
     - ansible-playbook playbooks/deploy.yml
         -i inventories/production/
-        -e "deploy_version=${CI_COMMIT_TAG}"
+        -e "deploy_version=${CI_COMMIT_TAG} auto_confirm=true"
   only:
     - tags
   when: manual
@@ -306,45 +306,48 @@ In CI/CD, you pass `auto_confirm=true` because the approval gate is handled by t
 
 ## Inventory Variables Precedence
 
-Understanding variable precedence is crucial when working with multiple environments. Here is the order Ansible resolves variables.
+Understanding variable precedence is crucial when working with multiple environments. Here is a simplified view of the most relevant variable precedence levels, from lowest to highest.
 
 ```mermaid
 flowchart TD
-    A[Command Line -e vars] --> B[Playbook vars]
-    B --> C[Host vars]
-    C --> D[Group vars - child groups]
-    D --> E[Group vars - parent groups]
-    E --> F[Group vars - all group]
-    F --> G[Inventory file vars]
-    G --> H[Role defaults]
+    A[Role defaults] --> B[Inventory file or script group vars]
+    B --> C[Group vars - all group]
+    C --> D[Group vars - parent groups]
+    D --> E[Group vars - child groups]
+    E --> F[Inventory file or script host vars]
+    F --> G[Host vars]
+    G --> H[Playbook vars]
+    H --> I[Task and include vars]
+    I --> J[Command line -e vars]
 
-    style A fill:#ff6b6b,color:#fff
-    style H fill:#4ecdc4,color:#fff
+    style A fill:#4ecdc4,color:#fff
+    style J fill:#ff6b6b,color:#fff
 ```
 
-Command line variables (`-e`) have the highest precedence, and role defaults have the lowest. This means you can always override an inventory variable from your CI/CD command.
+Command line variables (`-e`) have the highest precedence, and role defaults have the lowest. This means you can override an inventory variable from your CI/CD command.
 
 ## Multi-Cloud Inventory
 
 If you run infrastructure across multiple clouds, you can combine dynamic inventory sources.
 
 ```yaml
-# inventories/production/combined.yml
+# inventories/production/99_constructed.yml
 # Combine AWS and GCP inventory sources
 plugin: constructed
 strict: false
 groups:
-  cloud_aws: "'aws' in group_names"
-  cloud_gcp: "'gcp' in group_names"
+  cloud_aws: "'aws_ec2' in group_names"
+  cloud_gcp: "'gcp_compute' in group_names"
 ```
 
-Create separate inventory files for each cloud in the same directory.
+Create separate inventory files for each cloud in the same directory, with prefixes so Ansible loads the constructed inventory after the provider inventories.
 
 ```bash
 # Ansible will load all inventory files in the directory
 inventories/production/
-  aws_ec2.yml    # AWS dynamic inventory
-  gcp_compute.yml  # GCP dynamic inventory
+  01_aws.aws_ec2.yml      # AWS dynamic inventory
+  02_gcp.gcp_compute.yml  # GCP dynamic inventory
+  99_constructed.yml      # Groups hosts after provider inventories load
   group_vars/
     all.yml
 ```
