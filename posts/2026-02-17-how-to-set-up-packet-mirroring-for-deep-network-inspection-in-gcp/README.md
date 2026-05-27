@@ -10,7 +10,7 @@ Description: Learn how to configure Packet Mirroring in GCP to copy network traf
 
 Firewall rules and flow logs tell you what connections are happening in your network, but they do not show you what is inside those connections. When you need to inspect actual packet contents - for threat detection, compliance auditing, or troubleshooting application protocols - you need Packet Mirroring.
 
-Packet Mirroring copies traffic from specific VMs to a collector instance or internal load balancer where you run inspection tools like Suricata, Zeek, or a commercial IDS/IPS solution. The mirrored traffic is an exact copy - the original traffic is not affected.
+Packet Mirroring copies traffic from specific VMs to a collector destination behind an internal passthrough Network Load Balancer where you run inspection tools like Suricata, Zeek, or a commercial IDS/IPS solution. The mirrored traffic is a copy of the original packet data, including headers and payloads.
 
 In this post, I will walk through setting up Packet Mirroring end to end, from creating the collector to configuring mirroring policies.
 
@@ -24,11 +24,11 @@ graph LR
     C --> E[Collector VM 2<br/>IDS/IPS]
 ```
 
-Packet Mirroring sends a copy of each packet to the collector. The source VMs do not know their traffic is being mirrored, and there is no performance impact on the source VMs since mirroring happens at the network infrastructure level.
+Packet Mirroring sends a copy of each packet to the collector. The source VMs do not know their traffic is being mirrored, but mirrored traffic consumes additional bandwidth on the mirrored VMs and can reduce the packet processing rate.
 
 Key components:
 - **Mirrored sources**: The VMs whose traffic you want to copy. You can specify them by instance, tag, or subnet.
-- **Collector**: An internal load balancer (ILB) fronting one or more collector VMs that run your inspection software.
+- **Collector**: An internal passthrough Network Load Balancer fronting one or more collector VMs that run your inspection software.
 - **Mirroring policy**: Defines which sources to mirror, which collector to send to, and optional filters on protocol, direction, and CIDR ranges.
 
 ## Step 1: Create the Collector Infrastructure
@@ -44,11 +44,14 @@ gcloud compute instances create ids-collector-1 \
   --zone=us-central1-a \
   --machine-type=e2-standard-4 \
   --subnet=collector-subnet \
+  --tags=ids-collector \
   --image-family=debian-12 \
   --image-project=debian-cloud \
   --metadata=startup-script='#!/bin/bash
     apt-get update
-    apt-get install -y suricata
+    apt-get install -y nginx suricata
+    systemctl enable nginx
+    systemctl start nginx
     systemctl enable suricata
     systemctl start suricata'
 ```
@@ -59,11 +62,14 @@ gcloud compute instances create ids-collector-2 \
   --zone=us-central1-b \
   --machine-type=e2-standard-4 \
   --subnet=collector-subnet \
+  --tags=ids-collector \
   --image-family=debian-12 \
   --image-project=debian-cloud \
   --metadata=startup-script='#!/bin/bash
     apt-get update
-    apt-get install -y suricata
+    apt-get install -y nginx suricata
+    systemctl enable nginx
+    systemctl start nginx
     systemctl enable suricata
     systemctl start suricata'
 ```
@@ -71,39 +77,54 @@ gcloud compute instances create ids-collector-2 \
 ### Create an Instance Group
 
 ```bash
-# Create an unmanaged instance group for the collectors
-gcloud compute instance-groups unmanaged create ids-collector-group \
+# Create unmanaged instance groups for the collectors
+gcloud compute instance-groups unmanaged create ids-collector-group-a \
   --zone=us-central1-a
 
-gcloud compute instance-groups unmanaged add-instances ids-collector-group \
+gcloud compute instance-groups unmanaged add-instances ids-collector-group-a \
   --zone=us-central1-a \
   --instances=ids-collector-1
+
+gcloud compute instance-groups unmanaged create ids-collector-group-b \
+  --zone=us-central1-b
+
+gcloud compute instance-groups unmanaged add-instances ids-collector-group-b \
+  --zone=us-central1-b \
+  --instances=ids-collector-2
 ```
 
-For multi-zone setups, create instance groups in each zone and add them as backends.
+For multi-zone setups, each zone needs its own instance group, and each group must be added as a backend.
 
 ### Create the Internal Load Balancer
 
-The Packet Mirroring collector must be an internal load balancer with `--is-mirroring-collector` enabled:
+The Packet Mirroring collector must be an internal passthrough Network Load Balancer with `--is-mirroring-collector` enabled on the forwarding rule:
 
 ```bash
-# Create a health check for the collector instances
-gcloud compute health-checks create tcp ids-health-check \
-  --port=4789 \
+# Create a regional health check for the collector instances
+gcloud compute health-checks create http ids-health-check \
+  --region=us-central1 \
+  --port=80 \
   --description="Health check for packet mirroring collectors"
 
-# Create the backend service with mirroring collector flag
+# Create the backend service
 gcloud compute backend-services create ids-backend \
   --load-balancing-scheme=INTERNAL \
-  --protocol=UDP \
+  --protocol=TCP \
   --region=us-central1 \
+  --health-checks-region=us-central1 \
   --health-checks=ids-health-check \
-  --is-mirroring-collector
+  --session-affinity=NONE \
+  --subsetting-policy=NONE
 
-# Add the collector instance group as a backend
+# Add the collector instance groups as backends
 gcloud compute backend-services add-backend ids-backend \
-  --instance-group=ids-collector-group \
+  --instance-group=ids-collector-group-a \
   --instance-group-zone=us-central1-a \
+  --region=us-central1
+
+gcloud compute backend-services add-backend ids-backend \
+  --instance-group=ids-collector-group-b \
+  --instance-group-zone=us-central1-b \
   --region=us-central1
 
 # Create the forwarding rule
@@ -113,12 +134,10 @@ gcloud compute forwarding-rules create ids-forwarding-rule \
   --network=production-vpc \
   --subnet=collector-subnet \
   --backend-service=ids-backend \
-  --ip-protocol=UDP \
-  --ports=4789 \
+  --ip-protocol=TCP \
+  --ports=all \
   --is-mirroring-collector
 ```
-
-Port 4789 is the VXLAN port used to encapsulate mirrored packets.
 
 ## Step 2: Create the Packet Mirroring Policy
 
@@ -165,7 +184,7 @@ gcloud compute packet-mirrorings create mirror-specific-vms \
 You can filter mirrored traffic to reduce the volume and focus on what matters:
 
 ```bash
-# Mirror only HTTP and HTTPS traffic going to external IPs
+# Mirror TCP traffic going to external IPs
 gcloud compute packet-mirrorings create mirror-filtered \
   --region=us-central1 \
   --network=production-vpc \
@@ -173,35 +192,31 @@ gcloud compute packet-mirrorings create mirror-filtered \
   --mirrored-tags=web-server \
   --filter-protocols=tcp \
   --filter-cidr-ranges=0.0.0.0/0 \
-  --filter-direction=BOTH \
+  --filter-direction=both \
   --description="Mirror TCP traffic to/from external IPs"
 ```
 
 Filter options:
-- `--filter-protocols`: Specify tcp, udp, or icmp
-- `--filter-cidr-ranges`: Only mirror traffic to/from these ranges
-- `--filter-direction`: INGRESS, EGRESS, or BOTH
+- `--filter-protocols`: Specify protocols such as `tcp`, `udp`, `icmp`, `esp`, `ah`, `ipip`, `sctp`, or an IANA protocol number
+- `--filter-cidr-ranges`: Only mirror traffic to/from these ranges. By default, all IPv4 traffic is mirrored; use `0.0.0.0/0,::/0` to mirror all IPv4 and IPv6 traffic
+- `--filter-direction`: `ingress`, `egress`, or `both`
 
 ## Step 4: Configure the Collector Software
 
-Mirrored packets arrive at the collector encapsulated in VXLAN (UDP port 4789). Your IDS/IPS needs to handle this encapsulation. Here is how to configure Suricata to inspect VXLAN-encapsulated traffic:
+Mirrored packets arrive at the collector instances through the Packet Mirroring collector load balancer. Configure your IDS/IPS to inspect traffic on the collector VM's receiving interface:
 
 ```bash
 # SSH into the collector VM
 gcloud compute ssh ids-collector-1 --zone=us-central1-a
-
-# Create a VXLAN interface to decapsulate mirrored traffic
-sudo ip link add vxlan0 type vxlan id 1 dev eth0 dstport 4789 local 10.10.0.50
-sudo ip link set vxlan0 up
 ```
 
-Configure Suricata to listen on the VXLAN interface. Edit the Suricata configuration:
+Configure Suricata to listen on the receiving interface. Edit the Suricata configuration:
 
 ```yaml
 # /etc/suricata/suricata.yaml - relevant section
-# Configure Suricata to monitor the VXLAN interface
+# Configure Suricata to monitor the collector interface
 af-packet:
-  - interface: vxlan0
+  - interface: eth0
     cluster-id: 99
     cluster-type: cluster_flow
     defrag: yes
@@ -224,8 +239,7 @@ Check the mirroring policy status:
 ```bash
 # List all packet mirroring policies
 gcloud compute packet-mirrorings list \
-  --region=us-central1 \
-  --format="table(name, network, mirroredResources, collectorIlb, enable)"
+  --filter="region:(us-central1)"
 ```
 
 ```bash
@@ -238,7 +252,7 @@ Generate test traffic from a mirrored VM and verify it appears on the collector:
 
 ```bash
 # On the collector VM, use tcpdump to verify mirrored packets arrive
-sudo tcpdump -i eth0 -n port 4789 -c 10
+sudo tcpdump -i eth0 -n -c 10
 ```
 
 ## Enabling and Disabling Mirroring
@@ -259,11 +273,12 @@ gcloud compute packet-mirrorings update mirror-production-web \
 
 ## Cost and Performance Considerations
 
-Packet Mirroring itself does not charge per packet, but you pay for:
+Packet Mirroring charges for data processed, and you also pay for related resources such as:
 
 - **Collector VM compute costs**: The collector VMs need to be sized to handle the traffic volume
 - **Network egress**: If the collector is in a different zone, you pay inter-zone egress for mirrored traffic
 - **Storage**: If your IDS stores captured packets for forensic analysis
+- **Mirrored traffic processing**: Pricing depends on the amount of mirrored traffic processed
 
 To minimize costs:
 - Use filters to mirror only the traffic you need
@@ -272,4 +287,4 @@ To minimize costs:
 
 ## Wrapping Up
 
-Packet Mirroring gives you deep visibility into your network traffic without installing agents on your VMs or modifying your applications. It is essential for organizations that need IDS/IPS capabilities, regulatory compliance requiring packet-level auditing, or deep troubleshooting of network issues. Set up your collector infrastructure, create targeted mirroring policies with appropriate filters, and make sure your IDS is configured to handle VXLAN-encapsulated traffic. The key is starting focused - mirror critical workloads first, then expand as you build confidence in your collector capacity.
+Packet Mirroring gives you deep visibility into your network traffic without installing agents on your VMs or modifying your applications. It is essential for organizations that need IDS/IPS capabilities, regulatory compliance requiring packet-level auditing, or deep troubleshooting of network issues. Set up your collector infrastructure, create targeted mirroring policies with appropriate filters, and make sure your IDS is configured to inspect traffic on the collector interface. The key is starting focused - mirror critical workloads first, then expand as you build confidence in your collector capacity.
