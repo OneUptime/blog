@@ -24,8 +24,8 @@ Here is a comparison of the key differences:
 | Concurrency | 1 request per instance | Up to 1000 per instance |
 | Min instances | Supported | Supported (native Cloud Run) |
 | Traffic splitting | Not supported | Supported |
-| Regions | Limited set | All Cloud Run regions |
-| Pricing | Per invocation + compute | Cloud Run pricing |
+| Regions | Limited set | Cloud Functions supported regions, including more 2nd-gen-only regions |
+| Pricing | Per invocation + compute | Based on Cloud Run pricing |
 
 The concurrency change alone is transformative. In v1, each function instance handled exactly one request at a time. If you had 100 concurrent users, you needed 100 instances. In v2, a single instance can handle many concurrent requests, which dramatically reduces cold starts and costs.
 
@@ -155,8 +155,8 @@ export const processMessage = onMessagePublished(
   },
   async (event) => {
     const message = event.data.message;
-    const data = JSON.parse(
-      Buffer.from(message.data, "base64").toString()
+    const data = message.json ?? JSON.parse(
+      Buffer.from(message.data ?? "", "base64").toString()
     );
 
     console.log("Received message:", data);
@@ -261,17 +261,18 @@ export const criticalApi = onRequest(
     memory: "512MiB",
   },
   async (req, res) => {
-    // This will never have a cold start for the first ~80 concurrent users
+    // This should avoid cold starts for roughly the first 80 concurrent requests
+    // while the minimum instance remains warm
     res.json({ fast: true });
   }
 );
 ```
 
-The cost of min instances is the idle Cloud Run instance cost. For a 512 MiB instance, that is roughly $15-20/month. Compare that to the user experience improvement of eliminating cold starts.
+The cost of min instances is the idle Cloud Run instance cost. Firebase's documentation estimates that a 256 MiB minimum instance costs about $3/month with 1st-gen CPU allocation and concurrency disabled, or about $8/month with 1 CPU and concurrency enabled. The Firebase CLI also shows a cost estimate at deployment time for functions with reserved minimum instances. Compare that to the user experience improvement of reducing cold starts.
 
 ## Longer Timeouts for Heavy Processing
 
-v2 functions can run for up to 60 minutes:
+HTTP and callable v2 functions can run for up to 60 minutes. Scheduled and task queue functions can run for up to 30 minutes, and other event-driven functions can run for up to 9 minutes.
 
 ```typescript
 // Long-running data export function
@@ -314,7 +315,7 @@ gcloud run services describe api --region=us-central1
 gcloud run services logs read api --region=us-central1 --limit=50
 ```
 
-You can even update Cloud Run-specific settings that are not exposed in the Firebase CLI:
+You can even update Cloud Run-specific settings that are not exposed in the Firebase CLI, but use this carefully. Firebase deployments normally treat your source code as the source of truth and may overwrite external changes unless you set `preserveExternalChanges: true`:
 
 ```bash
 # Update Cloud Run settings directly (use with caution)
@@ -431,7 +432,7 @@ The concurrency improvement often makes v2 cheaper than v1 because fewer instanc
 
 3. **Handle concurrent state carefully** - Avoid shared mutable state between requests. Use databases for shared data.
 
-4. **Set memory and CPU together** - Cloud Run allocates CPU proportional to memory. If you need more CPU, increase memory too.
+4. **Set memory and CPU deliberately** - Firebase v2 has CPU defaults that increase with larger memory sizes, and Cloud Run enforces valid CPU/memory combinations. If you need more CPU, set `cpu` explicitly and choose a compatible memory size.
 
 5. **Use the gen2 execution environment** - It provides better performance and compatibility.
 
