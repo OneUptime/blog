@@ -8,13 +8,13 @@ Description: Learn how to use Ansible check mode to preview changes before apply
 
 ---
 
-Running a playbook directly in production without knowing what it will change is a gamble nobody should take. Ansible's check mode (also called dry run) lets you preview exactly what changes a playbook would make without actually modifying anything on your target hosts. This is an essential tool for validating playbooks before deploying to live environments.
+Running a playbook directly in production without knowing what it will change is a gamble nobody should take. Ansible's check mode (also called dry run) lets you preview what supported modules would change without actually modifying anything on your target hosts. This is an essential tool for validating playbooks before deploying to live environments.
 
 ## What Check Mode Does
 
-When you run a playbook in check mode, Ansible goes through all the tasks and reports what it would change. It connects to the remote hosts, gathers facts, evaluates conditions, and checks the current state of resources. But it stops short of making any actual modifications.
+When you run a playbook in check mode, Ansible goes through the tasks and reports what supported modules would change. It connects to the remote hosts, gathers facts, evaluates conditions, and checks the current state of resources. But modules that support check mode stop short of making actual modifications.
 
-Think of it as a "what if" scenario. The output looks the same as a normal run, but every task that would make a change shows up as "changed" without actually changing anything.
+Think of it as a "what if" scenario. The output looks similar to a normal run, but supported tasks that would make a change show up as "changed" without actually changing anything.
 
 ## Running Check Mode from the Command Line
 
@@ -61,11 +61,12 @@ You do not have to run the entire playbook in check mode. You can mark individua
 
   tasks:
     # This task always runs in check mode, even during a real run
-    - name: Verify disk space before deployment
-      shell: df -h /var/www | tail -1 | awk '{print $5}' | sed 's/%//'
-      register: disk_usage
+    - name: Verify supported operating system before deployment
+      assert:
+        that:
+          - ansible_facts['os_family'] in ['Debian', 'RedHat']
+        fail_msg: "Unsupported operating system"
       check_mode: yes
-      changed_when: false
 
     # This task never runs in check mode (it always executes)
     - name: Log deployment attempt to audit system
@@ -84,13 +85,13 @@ You do not have to run the entire playbook in check mode. You can mark individua
         dest: /var/www/app/
 ```
 
-Setting `check_mode: yes` on a task means it will always operate in check mode, which is useful for validation tasks. Setting `check_mode: no` means the task will always execute, which makes sense for audit logging or read-only operations.
+Setting `check_mode: yes` on a task means it will always operate in check mode, which is useful for validation tasks that use modules with check mode support. Setting `check_mode: no` means the task will always execute, even when the playbook is run with `--check`, which makes sense for audit logging or read-only operations.
 
 ## Handling Modules That Do Not Support Check Mode
 
-Not every Ansible module supports check mode. The `shell`, `command`, and `raw` modules are the biggest offenders because Ansible has no way to predict what a shell command will do without actually running it.
+Not every Ansible module supports check mode. The `raw` module does not support check mode, and the `shell` and `command` modules only have partial support. Because Ansible has no way to predict what an arbitrary command will do without running it, `shell` and `command` can only predict changed status in check mode when you use options such as `creates` or `removes`.
 
-When check mode hits one of these tasks, it skips them entirely. This can cause issues if later tasks depend on the output of a skipped task.
+When check mode hits an unsupported task, or a `shell` or `command` task without enough information to predict the result, it skips the task. This can cause issues if later tasks depend on the output of a skipped task.
 
 ```yaml
 # workaround.yml - handles check mode for shell commands
@@ -100,7 +101,7 @@ When check mode hits one of these tasks, it skips them entirely. This can cause 
   become: yes
 
   tasks:
-    # This shell task gets skipped in check mode, so register a default
+    # A plain shell task would be skipped in check mode, so force this read-only check to run
     - name: Check current database schema version
       shell: psql -t -c "SELECT version FROM schema_info LIMIT 1;"
       register: schema_version
@@ -214,7 +215,7 @@ Check mode is not perfect. Here are the situations where it falls short:
 
 **Dependent tasks chain**: If task B depends on output from task A, and task A gets skipped in check mode, task B might fail or report incorrect results.
 
-**Idempotency assumptions**: Check mode assumes modules are idempotent, but `shell` and `command` modules cannot be checked because Ansible does not know what the command will do.
+**Idempotency assumptions**: Check mode assumes modules are idempotent, but arbitrary `shell` and `command` tasks cannot be fully checked because Ansible does not know what the command will do. Without hints such as `creates` or `removes`, they are skipped in check mode.
 
 **External state changes**: If your playbook interacts with external APIs or services, check mode cannot predict how those services will respond to actual requests.
 
