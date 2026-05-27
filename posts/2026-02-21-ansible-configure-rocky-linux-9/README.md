@@ -57,16 +57,15 @@ ansible_python_interpreter=/usr/bin/python3
           - ansible_distribution_major_version == "9"
         fail_msg: "Expected Rocky Linux 9, got {{ ansible_distribution }} {{ ansible_distribution_version }}"
 
-    - name: Enable CRB repository
+    - name: Install dnf plugins
       ansible.builtin.dnf:
-        name: "rocky-release-crb"
+        name: dnf-plugins-core
         state: present
-      failed_when: false
 
-    - name: Enable CRB using dnf config-manager as fallback
-      ansible.builtin.command: dnf config-manager --set-enabled crb
-      changed_when: true
-      when: false
+    - name: Enable CRB repository
+      community.general.dnf_config_manager:
+        name: crb
+        state: enabled
 
     - name: Install EPEL repository
       ansible.builtin.dnf:
@@ -95,6 +94,7 @@ ansible_python_interpreter=/usr/bin/python3
           - sysstat
           - iotop
           - chrony
+          - firewalld
           - fail2ban-firewalld
           - rsyslog
           - policycoreutils-python-utils
@@ -245,7 +245,7 @@ ansible_python_interpreter=/usr/bin/python3
 
         - name: Enable automatic updates timer
           ansible.builtin.systemd:
-            name: dnf-automatic.timer
+            name: dnf-automatic-install.timer
             enabled: true
             state: started
 ```
@@ -308,7 +308,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -331,20 +331,22 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
+    - name: Enable firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        enabled: true
+        state: started
 
-    - name: Enable firewall
-      community.general.ufw:
+    - name: Configure firewall rules
+      ansible.posix.firewalld:
+        service: "{{ item }}"
+        permanent: true
+        immediate: true
         state: enabled
-        policy: deny
+      loop:
+        - ssh
+        - http
+        - https
 
   handlers:
     - name: restart sshd
@@ -452,4 +454,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
