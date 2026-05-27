@@ -45,6 +45,7 @@ graph LR
 
 - name: Wait for ArgoCD server to be ready
   kubernetes.core.k8s_info:
+    api_version: apps/v1
     kind: Deployment
     namespace: argocd
     name: argocd-server
@@ -191,12 +192,12 @@ ArgoCD and Ansible complement each other in a GitOps workflow. Ansible handles t
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating Ansible automation
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -228,7 +229,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -310,7 +311,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with Ansible tasks
 - name: Robust task execution
   hosts: all
   tasks:
@@ -323,6 +324,7 @@ Here are several practical scenarios where this module proves essential in real-
       ansible.builtin.command: /opt/app/fallback-task.sh
       when: primary_result.rc != 0
       register: fallback_result
+      failed_when: false
 
     - name: Report final status
       ansible.builtin.debug:
@@ -347,6 +349,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Ensure scripts directory exists
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -372,4 +380,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
