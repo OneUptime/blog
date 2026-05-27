@@ -337,6 +337,8 @@ app.get('/events', (req, res) => {
 });
 ```
 
+This in-memory history is useful for a single instance, but it is not durable and is not shared across Cloud Run instances. For multi-instance deployments, store event history in a shared system such as a database, Redis, or Pub/Sub-backed fanout.
+
 ## Deploying to Cloud Run
 
 ```bash
@@ -350,7 +352,7 @@ gcloud run deploy sse-service \
   --port 8080 \
   --timeout 3600 \
   --min-instances 1 \
-  --max-instances 10 \
+  --max-instances 1 \
   --concurrency 1000 \
   --memory 256Mi
 ```
@@ -360,6 +362,7 @@ Important settings:
 - `--timeout 3600`: Allows connections up to 1 hour
 - `--concurrency 1000`: SSE connections are lightweight, so a single instance can handle many
 - `--min-instances 1`: Avoid cold starts for real-time features
+- `--max-instances 1`: Keeps the in-memory client list and replay history consistent for this example. For production scaling beyond one instance, use shared state and fanout instead of in-memory sets.
 
 ## Starting the Server
 
