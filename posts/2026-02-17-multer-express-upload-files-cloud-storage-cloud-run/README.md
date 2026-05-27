@@ -19,19 +19,19 @@ In this post, I will show you how to configure Multer with a custom storage engi
 
 mkdir multer-gcs && cd multer-gcs
 npm init -y
-npm install express multer @google-cloud/storage multer-cloud-storage uuid
+npm install express multer @google-cloud/storage
 ```
 
-## Using multer-cloud-storage
+## Using a Custom Storage Engine
 
-The `multer-cloud-storage` package provides a Multer storage engine that writes directly to Cloud Storage.
+Multer lets you define a custom storage engine that writes directly to Cloud Storage.
 
 ```javascript
 // app.js - Express app with Multer and Cloud Storage
 const express = require('express');
 const multer = require('multer');
 const { Storage } = require('@google-cloud/storage');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const path = require('path');
 
 const app = express();
@@ -45,12 +45,19 @@ const bucket = storage.bucket(BUCKET_NAME);
 const cloudStorageEngine = {
   _handleFile(req, file, cb) {
     // Generate a unique filename
-    const uniqueId = uuidv4();
+    const uniqueId = randomUUID();
     const extension = path.extname(file.originalname);
-    const destFileName = `uploads/${uniqueId}${extension}`;
+    const fileName = `${uniqueId}${extension}`;
+    const destFileName = `uploads/${fileName}`;
 
     // Create a write stream to Cloud Storage
     const gcsFile = bucket.file(destFileName);
+    let size = 0;
+
+    file.stream.on('data', (chunk) => {
+      size += chunk.length;
+    });
+
     const writeStream = gcsFile.createWriteStream({
       metadata: {
         contentType: file.mimetype,
@@ -72,18 +79,19 @@ const cloudStorageEngine = {
     writeStream.on('finish', () => {
       cb(null, {
         bucket: BUCKET_NAME,
-        filename: destFileName,
+        filename: fileName,
+        path: destFileName,
         originalname: file.originalname,
         contentType: file.mimetype,
-        size: writeStream.bytesWritten,
-        publicUrl: `https://storage.googleapis.com/${BUCKET_NAME}/${destFileName}`,
+        size,
+        gcsUri: `gs://${BUCKET_NAME}/${destFileName}`,
       });
     });
   },
 
   _removeFile(req, file, cb) {
     // Delete the file from Cloud Storage if needed
-    const gcsFile = bucket.file(file.filename);
+    const gcsFile = bucket.file(file.path || `uploads/${file.filename}`);
     gcsFile.delete().then(() => cb()).catch(cb);
   },
 };
@@ -229,9 +237,10 @@ app.post('/api/upload-url', async (req, res) => {
     return res.status(400).json({ error: 'filename and contentType are required' });
   }
 
-  const uniqueId = uuidv4();
+  const uniqueId = randomUUID();
   const extension = path.extname(filename);
-  const destFileName = `uploads/${uniqueId}${extension}`;
+  const fileName = `${uniqueId}${extension}`;
+  const destFileName = `uploads/${fileName}`;
   const file = bucket.file(destFileName);
 
   try {
@@ -245,7 +254,7 @@ app.post('/api/upload-url', async (req, res) => {
 
     res.json({
       uploadUrl,
-      filename: destFileName,
+      filename: fileName,
       expiresIn: '15 minutes',
       // Client uses PUT to upload to this URL
       method: 'PUT',
@@ -260,7 +269,7 @@ app.post('/api/upload-url', async (req, res) => {
 });
 ```
 
-The client can then upload directly from the browser.
+The client can then upload directly from the browser. Because the browser sends the `PUT` request to `storage.googleapis.com`, make sure your bucket's CORS configuration allows your web origin, the `PUT` method, and the `Content-Type` header.
 
 ```javascript
 // Browser-side: upload directly to Cloud Storage
