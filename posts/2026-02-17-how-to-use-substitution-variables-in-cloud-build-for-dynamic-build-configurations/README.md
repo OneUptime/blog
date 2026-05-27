@@ -39,7 +39,7 @@ $TRIGGER_NAME   # Name of the trigger that started the build
 
 ### Using Built-In Variables
 
-You can reference these variables anywhere in your cloudbuild.yaml:
+You can reference these variables in Cloud Build fields that support substitutions, such as build step arguments and image names:
 
 ```yaml
 # Using built-in variables to tag images and set build args
@@ -299,7 +299,7 @@ steps:
         fi
 ```
 
-Be careful with the dollar sign in scripts. `$_ENV` gets replaced by Cloud Build, but `$HOME` or `$PATH` are shell variables. If you need a literal dollar sign that should not be substituted, use `$$`:
+Be careful with the dollar sign in scripts. `$_ENV` gets replaced by Cloud Build, but `$HOME` or `$PATH` must be escaped as `$$HOME` or `$$PATH` if you want the shell to see them as shell variables. If you need a literal dollar sign that should not be substituted by Cloud Build, use `$$`:
 
 ```yaml
 # Escaping dollar signs to avoid Cloud Build substitution
@@ -326,7 +326,7 @@ To see which substitution values were used for a specific build:
 gcloud builds describe BUILD_ID --format="yaml(substitutions)"
 ```
 
-If a substitution is not defined and has no default, Cloud Build leaves the variable reference as a literal string in the output. This can cause confusing errors, so always define defaults in the `substitutions` block.
+If a custom substitution is not defined and has no default, Cloud Build returns an error by default. Triggered builds use the `ALLOW_LOOSE` substitution option by default, so missing substitutions may not stop the build in that case. To avoid confusing behavior, define defaults in the `substitutions` block.
 
 ## Wrapping Up
 
