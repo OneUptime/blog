@@ -103,7 +103,7 @@ graph LR
         create_namespace: true
         values: "{{ lookup('template', 'values/{{ environment_name }}.yml.j2') | from_yaml }}"
         wait: true
-        wait_timeout: "5m0s"
+        timeout: "5m0s"
 ```
 
 ## Environment-Specific Values
@@ -150,18 +150,22 @@ autoscaling:
 # tasks/helm-operations.yml
 # Common Helm operations
 ---
-- name: List all Helm releases
+- name: Get Helm release information
   kubernetes.core.helm_info:
     release_name: "{{ app_name }}"
     release_namespace: "{{ app_namespace }}"
   register: release_info
 
 - name: Rollback to previous version
-  kubernetes.core.helm:
-    name: "{{ app_name }}"
-    release_namespace: "{{ app_namespace }}"
-    state: present
-    atomic: true
+  ansible.builtin.command:
+    argv:
+      - helm
+      - rollback
+      - "{{ app_name }}"
+      - --namespace
+      - "{{ app_namespace }}"
+      - --wait
+  changed_when: true
   when: rollback | default(false)
 
 - name: Uninstall a release
@@ -220,13 +224,16 @@ autoscaling:
 
     - name: Verify deployment
       kubernetes.core.k8s_info:
+        api_version: apps/v1
         kind: Deployment
         namespace: "{{ app_namespace }}"
         name: "{{ app_name }}"
+        wait: true
+        wait_timeout: 150
+        wait_condition:
+          type: Available
+          status: "True"
       register: deploy_status
-      retries: 10
-      delay: 15
-      until: deploy_status.resources[0].status.readyReplicas == deploy_status.resources[0].spec.replicas
 ```
 
 ## Key Takeaways
@@ -272,7 +279,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -416,4 +423,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
