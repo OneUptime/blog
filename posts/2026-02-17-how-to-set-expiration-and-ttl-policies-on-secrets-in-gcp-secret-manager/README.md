@@ -79,7 +79,7 @@ If plans change and the secret needs to stick around longer, you can remove the 
 ```bash
 # Remove the expiration from a secret
 gcloud secrets update partner-api-key \
-  --remove-expire-time \
+  --remove-expiration \
   --project=my-project-id
 ```
 
@@ -171,38 +171,27 @@ echo -n "incident-admin-token" | gcloud secrets create incident-response-creds \
   --project=my-project-id
 ```
 
-## Version-Level Expiration
+## Version-Level Delayed Destruction
 
-Secret Manager also supports expiration on individual secret versions using the Secret Manager API. This is useful when you want the secret resource to persist but specific versions to be cleaned up:
+Secret Manager does not support setting an automatic expiration time on individual secret versions. If you want the secret resource to persist but need a recoverable cleanup window for versions, configure delayed destruction on the secret and then destroy the versions you no longer need:
 
-```python
-# Python: Create a secret version with an expiration
-from google.cloud import secretmanager
-from google.protobuf import timestamp_pb2
-import datetime
+```bash
+# Enable delayed destruction for versions of a secret
+gcloud secrets update my-secret \
+  --version-destroy-ttl="604800s" \
+  --project=my-project-id
 
-client = secretmanager.SecretManagerServiceClient()
-
-# Calculate expiration time (7 days from now)
-expire_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
-
-# Add a version with the expiration set at the secret level
-# Note: version-level TTL requires using the API directly
-parent = "projects/my-project-id/secrets/my-secret"
-response = client.add_secret_version(
-    request={
-        "parent": parent,
-        "payload": {
-            "data": b"temporary-value",
-        },
-    }
-)
-print(f"Created version: {response.name}")
+# Schedule a specific version for destruction
+gcloud secrets versions destroy 3 \
+  --secret="my-secret" \
+  --project=my-project-id
 ```
 
-## Notifications Before Expiration
+The version is disabled immediately and permanently destroyed after the configured delay.
 
-Secret Manager can publish notifications when secrets are about to expire. Configure a Pub/Sub topic to receive these events:
+## Notifications and Alerts Before Expiration
+
+Secret Manager can publish Pub/Sub notifications when a secret is deleted because it expired. Configure a Pub/Sub topic to receive these events:
 
 ```bash
 # Add event notifications to a secret
@@ -211,28 +200,28 @@ gcloud secrets update partner-api-key \
   --project=my-project-id
 ```
 
-Then set up a Cloud Function or alerting pipeline that listens for `SECRET_EXPIRE` events:
+Then set up a Cloud Function or alerting pipeline that listens for `SECRET_DELETE` events with `deleteType` set to `EXPIRATION`:
 
 ```python
-# Cloud Function to notify team about expiring secrets
-import json
-import base64
+# Cloud Function to notify team when a secret expires
 import functions_framework
 
 @functions_framework.cloud_event
 def handle_secret_event(cloud_event):
     """Handle Secret Manager notification events."""
-    data = base64.b64decode(cloud_event.data.get("message", {}).get("data", ""))
-    event = json.loads(data) if data else {}
+    message = cloud_event.data.get("message", {})
+    attributes = message.get("attributes", {})
 
-    event_type = event.get("eventType", "")
-    secret_name = event.get("name", "")
+    event_type = attributes.get("eventType", "")
+    delete_type = attributes.get("deleteType", "")
+    secret_name = attributes.get("secretId", "")
 
-    if "SECRET_EXPIRE" in event_type:
-        # Secret is about to expire - notify the team
-        print(f"Warning: Secret {secret_name} is expiring soon!")
+    if event_type == "SECRET_DELETE" and delete_type == "EXPIRATION":
+        print(f"Secret {secret_name} expired and was deleted.")
         # Send notification via Slack, email, PagerDuty, etc.
 ```
+
+For alerts before expiration, use Secret Manager expiration logs. Secret Manager writes log entries at 30 days, 7 days, 1 day, 6 hours, and 1 hour before expiration, which you can use for log-based metrics and alerts.
 
 ## Finding Secrets Without Expiration
 
@@ -250,7 +239,7 @@ This shows all secrets without an expiration date. Review this list regularly an
 
 ## Best Practices
 
-Label temporary secrets with their purpose and the requestor. When the secret expires, the labels provide context about why it existed and who to contact if there are questions.
+Label temporary secrets with their purpose and the requestor. Before the secret expires, the labels provide context about why it exists and who to contact if there are questions.
 
 Set expiration dates that are generous but not indefinite. If a migration should take a week, set the TTL to 14 days, not 90 days. You can always extend it if needed.
 
