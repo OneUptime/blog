@@ -17,12 +17,12 @@ This post is a practical troubleshooting guide based on the most common provisio
 Before diving into fixes, it helps to understand what happens when you create a Google-managed certificate:
 
 1. You create the certificate resource and attach it to a target HTTPS proxy
-2. Google attempts to validate domain ownership via the HTTP-01 challenge
-3. Google's infrastructure makes an HTTP request to `http://YOUR_DOMAIN/.well-known/acme-challenge/TOKEN`
-4. If the challenge succeeds, Google issues the certificate
+2. Google works with a Certificate Authority to validate that the domain resolves to the load balancer
+3. The CA checks the domain's DNS records and attempts to contact the load balancer's IP address from multiple locations
+4. If validation succeeds, Google issues the certificate
 5. The certificate status changes from `PROVISIONING` to `ACTIVE`
 
-The entire process can take 15 minutes to several hours. But if something is wrong, it will sit in `PROVISIONING` or transition to a failure state.
+Provisioning can take up to 60 minutes after DNS and load balancer changes have propagated, and DNS propagation itself can take up to 72 hours. But if something is wrong, it will sit in `PROVISIONING` or transition to a failure state.
 
 ## Checking Certificate Status
 
@@ -38,7 +38,7 @@ gcloud compute ssl-certificates describe my-cert \
 
 This shows the overall status and per-domain status. Look for these values:
 
-- `PROVISIONING` - Still in progress, give it more time (up to 24 hours)
+- `PROVISIONING` - Still in progress, give it more time after DNS and load balancer changes have propagated
 - `ACTIVE` - Successfully provisioned
 - `FAILED_NOT_VISIBLE` - Domain validation failed
 - `FAILED_CAA_CHECKING` - CAA record issue
@@ -47,13 +47,16 @@ This shows the overall status and per-domain status. Look for these values:
 
 ## Problem 1: DNS Not Pointing to the Load Balancer
 
-This is the single most common cause of provisioning failure. The domain must resolve to the load balancer's external IP address before Google can validate it.
+This is the single most common cause of provisioning failure. The domain must resolve only to the load balancer's external IP address or addresses before Google can validate it.
 
 Check your DNS:
 
 ```bash
-# Verify DNS resolution for your domain
+# Verify IPv4 DNS resolution for your domain
 dig +short A app.example.com
+
+# Also check IPv6 if you have an AAAA record
+dig +short AAAA app.example.com
 
 # Compare with your load balancer IP
 gcloud compute addresses describe lb-ip --global --format="get(address)"
@@ -62,20 +65,23 @@ gcloud compute addresses describe lb-ip --global --format="get(address)"
 If these do not match, fix your DNS records. Common issues:
 
 - DNS record pointing to the old server instead of the load balancer IP
+- AAAA record pointing somewhere other than the load balancer, even if the A record is correct
 - Using a CNAME instead of an A record (both work, but make sure the CNAME resolves correctly)
 - DNS changes not yet propagated (check with multiple DNS servers)
 
 ```bash
 # Check DNS from Google's public DNS
 dig @8.8.8.8 +short A app.example.com
+dig @8.8.8.8 +short AAAA app.example.com
 
 # Check DNS from Cloudflare's DNS
 dig @1.1.1.1 +short A app.example.com
+dig @1.1.1.1 +short AAAA app.example.com
 ```
 
 ## Problem 2: Forwarding Rule Not Created
 
-The load balancer must be fully configured with a forwarding rule before the certificate can be provisioned. Google's validation system needs to reach the load balancer on port 80 and/or port 443.
+The load balancer must be fully configured with a forwarding rule before the certificate can be provisioned. For Application Load Balancers and external proxy Network Load Balancers, the frontend forwarding rule must include TCP port 443.
 
 Verify the forwarding rule exists:
 
@@ -84,61 +90,58 @@ Verify the forwarding rule exists:
 gcloud compute forwarding-rules list --global
 ```
 
-You should see a forwarding rule on port 443 (and ideally port 80 as well). If you only have a port 443 rule, the HTTP-01 challenge might fail because it needs port 80 access.
+You should see a forwarding rule on port 443. A separate port 80 forwarding rule is useful for HTTP-to-HTTPS redirects, but it is not the requirement that makes Google-managed certificate provisioning work.
 
-Create an HTTP forwarding rule if missing:
+Create an HTTPS forwarding rule if missing:
 
 ```bash
-# Create an HTTP forwarding rule to support ACME validation
-gcloud compute target-http-proxies create http-proxy-for-cert \
-    --url-map=my-url-map
+# Create an HTTPS forwarding rule for the certificate-bearing proxy
+gcloud compute target-https-proxies create https-proxy-for-cert \
+    --url-map=my-url-map \
+    --ssl-certificates=my-cert \
+    --global-ssl-certificates \
+    --global
 
-gcloud compute forwarding-rules create http-rule \
+gcloud compute forwarding-rules create https-rule \
     --address=lb-ip \
     --global \
-    --target-http-proxy=http-proxy-for-cert \
-    --ports=80
+    --target-https-proxy=https-proxy-for-cert \
+    --ports=443
 ```
 
 ## Problem 3: CAA Record Blocking Google
 
-Certificate Authority Authorization (CAA) records in DNS specify which certificate authorities are allowed to issue certificates for your domain. If you have a CAA record that does not include Google's CA, provisioning will fail.
+Certificate Authority Authorization (CAA) records in DNS specify which certificate authorities are allowed to issue certificates for your domain. If you have a CAA record that does not include a CA Google Cloud can use, provisioning will fail.
 
 Check for CAA records:
 
 ```bash
-# Check CAA records for your domain
+# Check CAA records for the exact hostname
+dig CAA app.example.com
+
+# Also check the registrable parent domain
 dig CAA example.com
-
-# Also check the parent domain
-dig CAA com
 ```
 
-If you have CAA records, make sure they include `pki.goog`:
-
-```text
-example.com.  CAA  0 issue "pki.goog"
-```
-
-Or if you want to allow both Let's Encrypt and Google:
+If you have CAA records, make sure they include the CAs Google Cloud can use. For best reliability, allow both `pki.goog` and `letsencrypt.org`:
 
 ```text
 example.com.  CAA  0 issue "pki.goog"
 example.com.  CAA  0 issue "letsencrypt.org"
 ```
 
-If you do not have any CAA records, that is fine - the absence of CAA records means any CA can issue certificates.
+If you allow only one of those CAs, Google Cloud uses only that CA for creation and renewal. If you do not have any CAA records, that is fine - the absence of CAA records allows Google Cloud to use either `pki.goog` or `letsencrypt.org`.
 
-## Problem 4: Firewall Blocking Validation Requests
+## Problem 4: Validation Path Blocked
 
-Google's ACME validation system needs to reach your load balancer on port 80. If something is blocking this traffic, the HTTP-01 challenge fails silently.
+The CA needs to validate the domain from multiple locations across the internet. If DNS points to an intermediate CDN, a location-based DNS answer, a redirect chain, or a filtering rule instead of directly to the load balancer IP, validation can fail.
 
 Things to check:
-- VPC firewall rules blocking port 80 ingress
-- Cloud Armor security policies blocking the validation requests
-- The load balancer URL map returning a non-200 response to the challenge path
+- DNS A and AAAA records resolving only to the load balancer IP address or addresses
+- GeoDNS or location-based DNS returning different answers in different regions
+- Third-party CDN or proxy layers in front of the load balancer
 
-If you have a Cloud Armor policy, make sure it does not block requests to `/.well-known/acme-challenge/*`:
+If you have a Cloud Armor policy, check whether it is attached to the backend service and whether it could block validation traffic that reaches your load balancer:
 
 ```bash
 # Check if Cloud Armor is attached to your backend service
@@ -148,9 +151,9 @@ gcloud compute backend-services describe my-backend --global \
 
 ## Problem 5: Rate Limiting
 
-If you have been creating and deleting certificates for the same domain repeatedly, you might hit rate limits. Google follows Let's Encrypt-style rate limits.
+If you have been creating and deleting certificates for the same domain repeatedly, you might hit Certificate Authority rate limits. Google Cloud also does not process certificate requests with overlapping domain sets in parallel.
 
-There is not much you can do except wait. Rate limits typically reset after a few hours to a day. Avoid creating and deleting certificates unnecessarily.
+There is not much you can do except wait, create a replacement certificate after fixing the configuration, or contact Google Cloud Support. Avoid creating and deleting certificates unnecessarily.
 
 ## Problem 6: Multi-Domain Certificate Issues
 
@@ -184,6 +187,7 @@ Then attach both to the target proxy:
 # Attach multiple certificates to the proxy
 gcloud compute target-https-proxies update my-proxy \
     --ssl-certificates=cert-app,cert-api \
+    --global-ssl-certificates \
     --global
 ```
 
@@ -207,7 +211,9 @@ gcloud compute ssl-certificates create my-cert \
 
 # Reattach to the proxy
 gcloud compute target-https-proxies update my-proxy \
-    --ssl-certificates=my-cert --global
+    --ssl-certificates=my-cert \
+    --global-ssl-certificates \
+    --global
 ```
 
 ## Monitoring Certificate Expiry
@@ -221,21 +227,21 @@ gcloud compute ssl-certificates describe my-cert \
     --format="get(expireTime)"
 ```
 
-Google typically starts the renewal process 30 days before expiry. If you see a certificate getting close to expiry without renewal, the same troubleshooting steps above apply - the renewal uses the same validation process as the initial provisioning.
+Google-managed certificates are valid for 90 days, and Google typically starts the renewal process about one month before expiry. If you see a certificate getting close to expiry without renewal, the same troubleshooting steps above apply - renewal also requires the DNS and load balancer configuration to validate correctly.
 
 ## Quick Troubleshooting Checklist
 
 Here is the checklist I run through every time a managed certificate is not provisioning:
 
-1. DNS A record points to the load balancer IP
-2. Forwarding rule exists on port 443 (and preferably port 80)
-3. No CAA records blocking `pki.goog`
-4. No Cloud Armor rules blocking ACME challenge paths
+1. DNS A and AAAA records point only to the load balancer IP address or addresses
+2. Forwarding rule exists on port 443
+3. No CAA records blocking `pki.goog` or `letsencrypt.org`
+4. No CDN, GeoDNS, redirect, or filtering layer interfering with validation
 5. No Cloudflare proxy interfering with validation
 6. All domains on a multi-domain cert are individually valid
 7. No rate limiting from recent certificate churn
 
-Work through these in order and you will find the issue in 95% of cases. If everything checks out and provisioning still fails after 24 hours, contact GCP support.
+Work through these in order and you will find the issue in 95% of cases. If everything checks out and provisioning still fails after DNS has fully propagated, contact GCP support.
 
 ## Wrapping Up
 
