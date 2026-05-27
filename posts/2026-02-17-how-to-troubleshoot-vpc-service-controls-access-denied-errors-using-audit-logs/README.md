@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, VPC Service Controls, Troubleshooting, Audit Log, Cloud Security
 
-Description: A practical troubleshooting guide for diagnosing and fixing VPC Service Controls access denied errors using Cloud Audit Logs and the VPC SC troubleshooter.
+Description: A practical troubleshooting guide for diagnosing and fixing VPC Service Controls access denied errors using Cloud Audit Logs and the VPC SC violation analyzer.
 
 ---
 
@@ -31,7 +31,7 @@ Use the unique identifier from the error message to find the exact log entry.
 # Search for a specific VPC SC violation using the unique ID
 
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.status.message:"UNIQUE_ID_HERE"' \
+  'protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.vpcServiceControlsUniqueId="UNIQUE_ID_HERE"' \
   --limit=1 \
   --format=json \
   --project=my-project-id
@@ -42,7 +42,7 @@ If you do not have the unique ID, search by time and identity:
 ```bash
 # Search for recent VPC SC violations
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!=""' \
+  'protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!=""' \
   --limit=20 \
   --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName, protoPayload.metadata.violationReason)" \
   --project=my-project-id
@@ -67,7 +67,9 @@ The audit log entry contains a `metadata` field with the details you need. Here 
       "resourceNames": [
         "projects/123456789"
       ],
-      "securityPolicy": "accessPolicies/POLICY_ID/servicePerimeters/my-perimeter",
+      "securityPolicyInfo": {
+        "servicePerimeterName": "accessPolicies/POLICY_ID/servicePerimeters/my-perimeter"
+      },
       "vpcServiceControlsUniqueId": "abc123xyz",
       "accessLevels": [],
       "dryRun": false,
@@ -90,7 +92,7 @@ The `violationReason` field tells you the category of the violation:
 |---|---|---|
 | RESOURCES_NOT_IN_SAME_SERVICE_PERIMETER | The caller and resource are in different perimeters | Add ingress/egress rules or add resources to the same perimeter |
 | NO_MATCHING_ACCESS_LEVEL | Caller does not meet any access level requirements | Update access levels (IP range, device policy) |
-| SERVICE_NOT_ALLOWED | The API service is not in the perimeter's restricted services list | This is rare - usually means a misconfiguration |
+| SERVICE_NOT_ALLOWED_FROM_VPC | The API service is not allowed by the perimeter's VPC accessible services configuration | Ensure the service is allowed by the VPC accessible services configuration |
 
 ## Step 4: Diagnose Common Scenarios
 
@@ -134,7 +136,7 @@ A service account in an external project is trying to access resources inside th
 ```bash
 # Check the identity in the violation log
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.authenticationInfo.principalEmail="external-sa@other-project.iam.gserviceaccount.com"' \
+  'protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.authenticationInfo.principalEmail="external-sa@other-project.iam.gserviceaccount.com"' \
   --limit=5 \
   --format=json \
   --project=my-project-id
@@ -152,29 +154,19 @@ Common service agents that need consideration:
 - Dataflow service agent
 - Cloud Functions service agent
 
-Fix: Add the Google-managed project to the perimeter's access levels, or use VPC-accessible services.
+Fix: Create ingress or egress rules for the relevant service agent identity, and check the service-specific VPC SC guidance for that product.
 
-## Step 5: Use the VPC SC Troubleshooter
+## Step 5: Use the VPC SC Violation Analyzer
 
-Google provides a troubleshooter in the Cloud Console.
+Google provides a violation analyzer in the Cloud Console.
 
 1. Go to Security > VPC Service Controls
-2. Click "Troubleshoot" in the top menu
-3. Enter the unique violation ID
-4. The troubleshooter shows you exactly why the request was blocked and suggests fixes
+2. Click "Violation analyzer"
+3. Enter the unique violation ID in the "Troubleshooting token (or unique ID)" field
+4. Click "Continue"
+5. The analyzer shows you why the request was blocked and suggests fixes
 
-You can also use the API:
-
-```bash
-# Use the troubleshooter API
-curl -X POST \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "accessToken": "'"$(gcloud auth print-access-token)"'"
-  }' \
-  "https://policytroubleshooter.googleapis.com/v3/iam:troubleshoot"
-```
+The VPC Service Controls violation analyzer is available in the Google Cloud console. The Policy Troubleshooter API is for IAM access checks and does not diagnose VPC Service Controls denials.
 
 ## Step 6: Create a Monitoring Dashboard
 
@@ -186,8 +178,8 @@ gcloud monitoring policies create \
   --display-name="VPC SC Violations" \
   --condition-display-name="VPC SC access denied" \
   --condition-filter='resource.type="audited_resource" AND metric.type="logging.googleapis.com/user/vpc_sc_violations"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-duration=300s \
+  --if="> 0" \
+  --duration=300s \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
@@ -198,7 +190,7 @@ First, create the log-based metric:
 # Create a log-based metric for VPC SC violations
 gcloud logging metrics create vpc_sc_violations \
   --description="Count of VPC Service Controls violations" \
-  --filter='protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!="" AND protoPayload.metadata.dryRun=false' \
+  --log-filter='protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!="" AND protoPayload.metadata.dryRun=false' \
   --project=my-project-id
 ```
 
@@ -219,7 +211,7 @@ if [ -z "$UNIQUE_ID" ]; then
   echo "Recent VPC SC violations in $PROJECT_ID:"
   echo "==========================================="
   gcloud logging read \
-    'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!=""' \
+    'protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!=""' \
     --limit=10 \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.serviceName, protoPayload.methodName, protoPayload.metadata.violationReason)" \
     --project=$PROJECT_ID
@@ -252,4 +244,4 @@ When you hit a VPC SC error, go through this checklist:
 
 ## Conclusion
 
-VPC Service Controls errors are intimidating at first, but once you know how to read the audit logs, they become straightforward to diagnose. The violation metadata tells you exactly who tried to do what, why it was blocked, and which perimeter was involved. Build the habit of checking audit logs immediately when you see a VPC SC error, and keep the troubleshooter bookmarked. Over time, you will start recognizing the common patterns and fixing them quickly.
+VPC Service Controls errors are intimidating at first, but once you know how to read the audit logs, they become straightforward to diagnose. The violation metadata tells you exactly who tried to do what, why it was blocked, and which perimeter was involved. Build the habit of checking audit logs immediately when you see a VPC SC error, and keep the violation analyzer bookmarked. Over time, you will start recognizing the common patterns and fixing them quickly.
