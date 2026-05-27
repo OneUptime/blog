@@ -35,7 +35,7 @@ const functions = require('@google-cloud/functions-framework');
 const { BigQuery } = require('@google-cloud/bigquery');
 
 const bigquery = new BigQuery();
-const PROJECT_ID = process.env.GCP_PROJECT;
+const PROJECT_ID = process.env.PROJECT_ID;
 const DATASET = process.env.BQ_DATASET || 'analytics';
 
 functions.http('runTransformations', async (req, res) => {
@@ -44,6 +44,14 @@ functions.http('runTransformations', async (req, res) => {
   // Determine which date to process
   // Default to yesterday, allow override via query parameter
   const targetDate = req.query.date || getYesterdayDate();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    res.status(400).json({
+      status: 'error',
+      error: 'date must use YYYY-MM-DD format'
+    });
+    return;
+  }
 
   console.log(`Starting transformation pipeline for date: ${targetDate}`);
 
@@ -127,12 +135,13 @@ async function checkSourceData(date) {
 
 async function runUserMetricsAggregation(date) {
   // Aggregate user activity metrics for the day
+  const tableName = `daily_user_metrics_${date.replace(/-/g, '')}`;
   const query = `
-    CREATE OR REPLACE TABLE \`${PROJECT_ID}.${DATASET}.daily_user_metrics_${date.replace(/-/g, '')}\`
+    CREATE OR REPLACE TABLE \`${PROJECT_ID}.${DATASET}.${tableName}\`
     AS
     SELECT
       user_id,
-      DATE(@target_date) as metric_date,
+      @target_date as metric_date,
       COUNT(*) as total_events,
       COUNT(DISTINCT session_id) as unique_sessions,
       COUNTIF(event_type = 'page_view') as page_views,
@@ -152,13 +161,15 @@ async function runUserMetricsAggregation(date) {
     types: { target_date: 'DATE' }
   });
 
-  const [metadata] = await job.getMetadata();
   await job.getQueryResults();
 
+  const [rows] = await bigquery.query(`
+    SELECT COUNT(*) AS row_count
+    FROM \`${PROJECT_ID}.${DATASET}.${tableName}\`
+  `);
+
   return {
-    rowsAffected: parseInt(
-      metadata.statistics.query.numDmlAffectedRows || '0'
-    )
+    rowsAffected: Number(rows[0].row_count)
   };
 }
 
@@ -168,7 +179,7 @@ async function runRevenueSummary(date) {
     MERGE INTO \`${PROJECT_ID}.${DATASET}.daily_revenue_summary\` T
     USING (
       SELECT
-        DATE(@target_date) as summary_date,
+        @target_date as summary_date,
         product_category,
         COUNT(DISTINCT user_id) as unique_buyers,
         COUNT(*) as transaction_count,
@@ -199,8 +210,8 @@ async function runRevenueSummary(date) {
     types: { target_date: 'DATE' }
   });
 
-  const [metadata] = await job.getMetadata();
   await job.getQueryResults();
+  const [metadata] = await job.getMetadata();
 
   return {
     rowsAffected: parseInt(
@@ -248,8 +259,8 @@ async function runFunnelAnalysis(date) {
     types: { target_date: 'DATE' }
   });
 
-  const [metadata] = await job.getMetadata();
   await job.getQueryResults();
+  const [metadata] = await job.getMetadata();
 
   return {
     rowsAffected: parseInt(
@@ -278,19 +289,34 @@ async function updateDataFreshness(date) {
 
 ## Deploying and Scheduling
 
+Create a `package.json` file so Cloud Functions installs the dependencies used by the function:
+
+```json
+{
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^8.0.0",
+    "@google-cloud/functions-framework": "^4.0.0",
+    "axios": "^1.7.9"
+  }
+}
+```
+
 ```bash
 # Deploy the transformation function
 
 gcloud functions deploy run-transformations \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=runTransformations \
   --trigger-http \
   --memory=512Mi \
   --timeout=540s \
-  --set-env-vars="BQ_DATASET=analytics"
+  --set-env-vars="PROJECT_ID=my-project,BQ_DATASET=analytics"
 
 # Set up IAM for Cloud Scheduler
 gcloud run services add-iam-policy-binding run-transformations \
@@ -332,6 +358,8 @@ Add notification logic to alert when the pipeline fails:
 
 ```javascript
 // Send a notification on pipeline failure
+const axios = require('axios');
+
 async function notifyFailure(date, error) {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) return;
