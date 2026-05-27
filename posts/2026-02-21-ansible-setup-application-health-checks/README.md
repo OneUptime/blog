@@ -28,7 +28,7 @@ graph TD
 
 - **Liveness**: Is the process alive? Returns 200 if the application responds at all.
 - **Readiness**: Can it serve traffic? Returns 200 only when all dependencies are available.
-- **Deep/Startup**: Full dependency check including database connectivity, cache availability, disk space, and memory.
+- **Deep**: Full dependency check including database connectivity, cache availability, disk space, and memory.
 
 ## Project Structure
 
@@ -42,6 +42,7 @@ health-checks/
     health_checks/
       tasks/
         main.yml
+        check_dependency.yml
         deploy_endpoint.yml
         monitoring.yml
       templates/
@@ -62,7 +63,7 @@ app_name: myapp
 app_port: 8000
 app_health_path: /health
 app_readiness_path: /ready
-health_check_interval: 30  # seconds
+health_check_interval: 1   # minutes
 health_check_timeout: 10   # seconds
 health_check_retries: 3
 
@@ -136,6 +137,17 @@ The most important use of health checks in Ansible is verifying that a deploymen
   loop_control:
     loop_var: dep
 
+- name: Ensure script and log directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /opt/scripts
+    - "/var/log/{{ app_name }}"
+
 - name: Deploy health check monitoring script
   template:
     src: health-check-script.sh.j2
@@ -147,7 +159,7 @@ The most important use of health checks in Ansible is verifying that a deploymen
 - name: Schedule periodic health checks via cron
   cron:
     name: "Health check for {{ app_name }}"
-    minute: "*/{{ (health_check_interval / 60) | int | default(1) }}"
+    minute: "*/{{ health_check_interval | int }}"
     job: "/opt/scripts/health-check-{{ app_name }}.sh >> /var/log/{{ app_name }}/health-check.log 2>&1"
     user: root
 ```
