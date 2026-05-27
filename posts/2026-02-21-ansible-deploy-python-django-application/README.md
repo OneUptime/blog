@@ -78,7 +78,6 @@ venv_dir: /opt/mydjango/venv
 app_user: django
 app_group: django
 gunicorn_workers: 3
-gunicorn_bind: "unix:/run/{{ app_name }}/gunicorn.sock"
 server_name: mydjango.example.com
 django_settings_module: mydjango.settings.production
 db_host: db.example.com
@@ -97,6 +96,8 @@ vault_secret_key: "django-insecure-change-this-to-something-random"
 ## The Role Tasks
 
 Here is the main task file for the Django deployment role.
+
+The Django management tasks use the `community.general` collection. If you are using `ansible-core`, install it with `ansible-galaxy collection install community.general` before running the playbook.
 
 ```yaml
 # roles/django_app/tasks/main.yml
@@ -183,7 +184,7 @@ Here is the main task file for the Django deployment role.
   notify: restart gunicorn
 
 - name: Run Django database migrations
-  django_manage:
+  community.general.django_manage:
     command: migrate
     app_path: "{{ app_dir }}/src"
     virtualenv: "{{ venv_dir }}"
@@ -192,7 +193,7 @@ Here is the main task file for the Django deployment role.
   when: git_result.changed
 
 - name: Collect Django static files
-  django_manage:
+  community.general.django_manage:
     command: collectstatic
     app_path: "{{ app_dir }}/src"
     virtualenv: "{{ venv_dir }}"
@@ -203,6 +204,14 @@ Here is the main task file for the Django deployment role.
 - name: Create Gunicorn runtime directory
   file:
     path: "/run/{{ app_name }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+
+- name: Create Gunicorn log directory
+  file:
+    path: "/var/log/{{ app_name }}"
     state: directory
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
@@ -277,7 +286,9 @@ Description={{ app_name }} gunicorn socket
 
 [Socket]
 ListenStream=/run/{{ app_name }}/gunicorn.sock
-SocketUser={{ app_user }}
+SocketUser=www-data
+SocketGroup=www-data
+SocketMode=0660
 
 [Install]
 WantedBy=sockets.target
@@ -299,7 +310,6 @@ WorkingDirectory={{ app_dir }}/src
 EnvironmentFile={{ app_dir }}/.env
 ExecStart={{ venv_dir }}/bin/gunicorn \
     --workers {{ gunicorn_workers }} \
-    --bind {{ gunicorn_bind }} \
     --access-logfile /var/log/{{ app_name }}/access.log \
     --error-logfile /var/log/{{ app_name }}/error.log \
     {{ app_name }}.wsgi:application
@@ -407,7 +417,7 @@ If you need to create the initial admin user:
 ```yaml
 # Create Django superuser if it does not exist
 - name: Create Django superuser
-  django_manage:
+  community.general.django_manage:
     command: "createsuperuser --noinput"
     app_path: "{{ app_dir }}/src"
     virtualenv: "{{ venv_dir }}"
