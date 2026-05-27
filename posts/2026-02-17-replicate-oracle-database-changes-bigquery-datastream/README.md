@@ -14,7 +14,7 @@ This guide covers the complete setup process, including the Oracle-specific conf
 
 ## How Datastream Reads from Oracle
 
-Datastream uses Oracle LogMiner to capture changes from the redo logs. LogMiner is a built-in Oracle utility that interprets the binary redo log files and presents changes as SQL statements. Datastream connects to your Oracle instance, enables supplemental logging for the tables you want to replicate, and continuously reads new changes from LogMiner.
+Datastream can use Oracle LogMiner to capture changes from archived redo logs. LogMiner is a built-in Oracle utility that interprets the binary redo log files and presents changes as SQL statements. Datastream connects to your Oracle instance and reads changes from LogMiner after you configure supplemental logging for the tables you want to replicate.
 
 This approach does not require Oracle GoldenGate or any additional Oracle licensing beyond your existing database license.
 
@@ -66,19 +66,23 @@ GRANT CREATE SESSION TO datastream_user;
 
 -- Grant LogMiner privileges
 GRANT EXECUTE_CATALOG_ROLE TO datastream_user;
+GRANT CONNECT TO datastream_user;
+GRANT SELECT ON SYS.V_$DATABASE TO datastream_user;
+GRANT SELECT ON SYS.V_$LOG TO datastream_user;
+GRANT SELECT ON SYS.V_$LOGFILE TO datastream_user;
+GRANT SELECT ON SYS.V_$ARCHIVED_LOG TO datastream_user;
+GRANT SELECT ON SYS.V_$LOGMNR_CONTENTS TO datastream_user;
+GRANT SELECT ON SYS.V_$PARAMETER TO datastream_user;
+GRANT EXECUTE ON DBMS_LOGMNR TO datastream_user;
+GRANT EXECUTE ON DBMS_LOGMNR_D TO datastream_user;
 GRANT SELECT ANY TRANSACTION TO datastream_user;
-GRANT SELECT ANY DICTIONARY TO datastream_user;
+GRANT SELECT ANY TABLE TO datastream_user;
 GRANT LOGMINING TO datastream_user;
+GRANT SELECT ON DBA_EXTENTS TO datastream_user;
 
--- Grant SELECT on the tables to replicate
-GRANT SELECT ON schema_owner.orders TO datastream_user;
-GRANT SELECT ON schema_owner.customers TO datastream_user;
-GRANT SELECT ON schema_owner.products TO datastream_user;
-
--- Grant flashback for consistent reads during backfill
-GRANT FLASHBACK ON schema_owner.orders TO datastream_user;
-GRANT FLASHBACK ON schema_owner.customers TO datastream_user;
-GRANT FLASHBACK ON schema_owner.products TO datastream_user;
+-- If the database uses Transparent Data Encryption (TDE)
+GRANT SELECT ON DBA_TABLESPACES TO datastream_user;
+GRANT SELECT ON DBA_ENCRYPTED_COLUMNS TO datastream_user;
 ```
 
 For Oracle 12c and later with multitenant architecture (CDB/PDB), the user setup is slightly different:
@@ -89,39 +93,54 @@ ALTER SESSION SET CONTAINER = CDB$ROOT;
 
 -- Create a common user
 CREATE USER C##DATASTREAM IDENTIFIED BY "StrongPassword123";
-GRANT CREATE SESSION TO C##DATASTREAM CONTAINER = ALL;
-GRANT SET CONTAINER TO C##DATASTREAM CONTAINER = ALL;
-GRANT SELECT ANY DICTIONARY TO C##DATASTREAM CONTAINER = ALL;
-GRANT LOGMINING TO C##DATASTREAM CONTAINER = ALL;
-GRANT EXECUTE_CATALOG_ROLE TO C##DATASTREAM CONTAINER = ALL;
+GRANT CREATE SESSION TO C##DATASTREAM;
+GRANT SET CONTAINER TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$DATABASE TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$LOGMNR_CONTENTS TO C##DATASTREAM;
+GRANT EXECUTE ON DBMS_LOGMNR TO C##DATASTREAM;
+GRANT EXECUTE ON DBMS_LOGMNR_D TO C##DATASTREAM;
+GRANT LOGMINING TO C##DATASTREAM;
+GRANT EXECUTE_CATALOG_ROLE TO C##DATASTREAM;
 
 -- Switch to the PDB and grant object-level permissions
 ALTER SESSION SET CONTAINER = MY_PDB;
-GRANT SELECT ON schema_owner.orders TO C##DATASTREAM;
-GRANT SELECT ON schema_owner.customers TO C##DATASTREAM;
+GRANT CREATE SESSION TO C##DATASTREAM;
+GRANT SET CONTAINER TO C##DATASTREAM;
+GRANT SELECT ANY TABLE TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$DATABASE TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$LOG TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$LOGFILE TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$ARCHIVED_LOG TO C##DATASTREAM;
+GRANT SELECT ON DBA_SUPPLEMENTAL_LOGGING TO C##DATASTREAM;
+GRANT SELECT ON SYS.V_$PARAMETER TO C##DATASTREAM;
+GRANT SELECT ON DBA_EXTENTS TO C##DATASTREAM;
 ```
 
 ## Step 3: Configure Redo Log Retention
 
-Datastream reads from Oracle's redo logs, so you need to ensure logs are retained long enough for Datastream to process them. If logs are recycled before Datastream reads them, you will lose data.
+Datastream reads from Oracle's archived redo logs when using LogMiner, so you need to ensure archive logs are retained long enough for Datastream to process them. If logs are deleted before Datastream reads them, you will lose data.
 
-```sql
--- Check current redo log retention (in minutes)
-SELECT VALUE FROM V$PARAMETER WHERE NAME = 'db_flashback_retention_target';
-
--- Set log retention to at least 4 hours (240 minutes)
-ALTER SYSTEM SET DB_FLASHBACK_RETENTION_TARGET = 240 SCOPE = BOTH;
+```bash
+rman target / <<'RMAN'
+CONFIGURE RETENTION POLICY TO RECOVERY WINDOW OF 4 DAYS;
+RMAN
 ```
 
 For Amazon RDS Oracle instances, configure the retention through RDS:
 
-```bash
-# Set archive log retention for RDS Oracle (in hours)
+```sql
+-- Set archive log retention for RDS Oracle (in hours)
+BEGIN
+  rdsadmin.rdsadmin_util.set_configuration(
+    name  => 'archivelog retention hours',
+    value => '24');
+END;
+/
+COMMIT;
 
-aws rds modify-db-instance \
-  --db-instance-identifier my-oracle-instance \
-  --cloudwatch-logs-export-configuration '{"EnableLogTypes":["alert","trace","audit"]}' \
-  --backup-retention-period 7
+-- Verify the current RDS archived redo log retention
+SET SERVEROUTPUT ON
+EXEC rdsadmin.rdsadmin_util.show_configuration;
 ```
 
 ## Step 4: Network Connectivity
@@ -153,7 +172,7 @@ gcloud datastream connection-profiles create oracle-source \
   --oracle-port=1521 \
   --oracle-username=datastream_user \
   --oracle-password=StrongPassword123 \
-  --oracle-database-service=ORCL \
+  --database-service=ORCL \
   --location=us-central1 \
   --private-connection=oracle-private-conn \
   --project=my-project
@@ -169,32 +188,42 @@ gcloud datastream connection-profiles create bq-oracle-dest \
   --location=us-central1 \
   --project=my-project
 
+cat > oracle-source-config.json <<'JSON'
+{
+  "includeObjects": {
+    "oracleSchemas": [
+      {
+        "schema": "SCHEMA_OWNER",
+        "oracleTables": [
+          {"table": "ORDERS"},
+          {"table": "CUSTOMERS"},
+          {"table": "PRODUCTS"}
+        ]
+      }
+    ]
+  },
+  "logMiner": {}
+}
+JSON
+
+cat > bigquery-destination-config.json <<'JSON'
+{
+  "dataFreshness": "300s",
+  "singleTargetDataset": {
+    "datasetId": "my-project:oracle_replicated"
+  },
+  "merge": {}
+}
+JSON
+
 # Create the stream
 gcloud datastream streams create oracle-to-bq-stream \
   --display-name="Oracle to BigQuery CDC" \
   --location=us-central1 \
   --source=oracle-source \
-  --oracle-source-config='{
-    "includeObjects": {
-      "oracleSchemas": [
-        {
-          "schema": "SCHEMA_OWNER",
-          "oracleTables": [
-            {"table": "ORDERS"},
-            {"table": "CUSTOMERS"},
-            {"table": "PRODUCTS"}
-          ]
-        }
-      ]
-    }
-  }' \
+  --oracle-source-config=oracle-source-config.json \
   --destination=bq-oracle-dest \
-  --bigquery-destination-config='{
-    "dataFreshness": "300s",
-    "singleTargetDataset": {
-      "datasetId": "projects/my-project/datasets/oracle_replicated"
-    }
-  }' \
+  --bigquery-destination-config=bigquery-destination-config.json \
   --project=my-project
 ```
 
@@ -204,17 +233,17 @@ Oracle has some unique data types that get mapped to BigQuery types:
 
 | Oracle Type | BigQuery Type | Notes |
 |------------|---------------|-------|
-| NUMBER | NUMERIC or INT64 | Depends on scale and precision |
+| NUMBER | STRING, INT64, NUMERIC, or BIGNUMERIC | Depends on scale and precision |
 | VARCHAR2 | STRING | |
-| DATE | TIMESTAMP | Oracle DATE includes time |
+| DATE | DATETIME | Oracle DATE includes time |
 | TIMESTAMP | TIMESTAMP | |
-| CLOB | STRING | Up to 10 MB |
-| BLOB | BYTES | Up to 10 MB |
-| RAW | BYTES | |
-| XMLTYPE | STRING | Serialized as text |
-| INTERVAL | STRING | No direct BQ mapping |
+| CLOB | STRING | Requires `streamLargeObjects` in the stream configuration |
+| BLOB | BYTES | Requires `streamLargeObjects` in the stream configuration |
+| RAW | STRING | |
+| XMLTYPE | UNSUPPORTED | Replaced with NULL |
+| INTERVAL | UNSUPPORTED | Replaced with NULL |
 
-Oracle's NUMBER type is particularly interesting. A NUMBER(10,0) maps to INT64, while a NUMBER(38,10) maps to NUMERIC. If you have NUMBER columns without precision (just plain NUMBER), they map to FLOAT64, which can cause precision loss for large integers.
+Oracle's NUMBER type is particularly interesting. A NUMBER(10,0) maps to INT64, while NUMBER columns with positive scale map to BigQuery parameterized decimal types when the precision is within BigQuery's supported range. If you have NUMBER columns without precision (just plain NUMBER), Datastream maps them to STRING to avoid precision loss.
 
 ## Handling Oracle-Specific Challenges
 
@@ -230,7 +259,7 @@ ALTER TABLE schema_owner.customers ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
 
 Oracle sequences are not replicated by Datastream since they are not table data. If your BigQuery consumers need sequence values, you will need to handle those through the application layer.
 
-Tables with LOB columns (CLOB, BLOB) require extra attention. Large LOBs can slow down replication significantly. Consider excluding very large LOB columns if they are not needed in BigQuery.
+Tables with LOB columns (CLOB, BLOB) require extra attention. Datastream only streams LOB values when you include `streamLargeObjects` in the Oracle source configuration; otherwise, LOB columns are written as NULL in the destination. Large LOBs can slow down replication significantly. Consider excluding very large LOB columns if they are not needed in BigQuery.
 
 ```sql
 -- Check LOB column sizes to identify potential bottlenecks
