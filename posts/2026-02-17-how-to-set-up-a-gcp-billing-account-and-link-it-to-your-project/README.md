@@ -12,7 +12,7 @@ Before you can use most GCP services, you need a billing account linked to your 
 
 ## Creating a Billing Account
 
-If you do not have a billing account yet, you can create one through the Cloud Console or gcloud CLI. You will need a valid payment method (credit card, debit card, or bank account depending on your region).
+If you do not have a billing account yet, you can create one through the Cloud Console. You will need a valid payment method (credit card, debit card, or bank account depending on your region).
 
 ### Through the Console
 
@@ -25,7 +25,7 @@ If you do not have a billing account yet, you can create one through the Cloud C
 
 ### Through the CLI
 
-Creating billing accounts via the CLI is limited, but you can manage existing ones:
+The gcloud CLI can manage existing billing accounts, but it does not create standard Cloud Billing accounts:
 
 ```bash
 # List your existing billing accounts
@@ -60,10 +60,10 @@ projectId: my-project
 
 ## Linking Billing When Creating a Project
 
-You can link billing at project creation time:
+You can link billing immediately after creating a project:
 
 ```bash
-# Create a project and link billing in one step
+# Create a project, then link billing
 gcloud projects create my-new-project \
     --name="My New Project" \
     --organization=ORG_ID
@@ -105,15 +105,15 @@ gcloud billing budgets create \
     --billing-account=0X0X0X-0X0X0X-0X0X0X \
     --display-name="Monthly Budget" \
     --budget-amount=500 \
-    --threshold-rules=percent=0.25 \
-    --threshold-rules=percent=0.50 \
-    --threshold-rules=percent=0.75 \
-    --threshold-rules=percent=0.90 \
-    --threshold-rules=percent=1.0 \
+    --threshold-rule=percent=0.25 \
+    --threshold-rule=percent=0.50 \
+    --threshold-rule=percent=0.75 \
+    --threshold-rule=percent=0.90 \
+    --threshold-rule=percent=1.0 \
     --filter-projects="projects/my-project"
 ```
 
-This creates alerts at 25%, 50%, 75%, 90%, and 100% of a $500 monthly budget. Notifications go to billing admins by default.
+This creates alerts at 25%, 50%, 75%, 90%, and 100% of a $500 monthly budget. Notifications go to Billing Account Administrators and Billing Account Users by default.
 
 To send notifications to a Pub/Sub topic for automation:
 
@@ -126,9 +126,9 @@ gcloud billing budgets create \
     --billing-account=0X0X0X-0X0X0X-0X0X0X \
     --display-name="Automated Budget Alert" \
     --budget-amount=1000 \
-    --threshold-rules=percent=0.80 \
-    --threshold-rules=percent=1.0 \
-    --notifications-pubsub-topic=projects/my-project/topics/budget-alerts \
+    --threshold-rule=percent=0.80 \
+    --threshold-rule=percent=1.0 \
+    --notifications-rule-pubsub-topic=projects/my-project/topics/budget-alerts \
     --filter-projects="projects/my-project"
 ```
 
@@ -141,7 +141,7 @@ Different team members need different levels of billing access. Here are the key
 | Role | What It Does |
 |---|---|
 | `roles/billing.admin` | Full control over the billing account |
-| `roles/billing.user` | Can link projects to the billing account |
+| `roles/billing.user` | Can link projects to the billing account when combined with the required project permissions |
 | `roles/billing.viewer` | Can view billing information and costs |
 | `roles/billing.creator` | Can create new billing accounts |
 
@@ -169,7 +169,7 @@ gcloud billing accounts add-iam-policy-binding 0X0X0X-0X0X0X-0X0X0X \
 For detailed cost analysis, export billing data to BigQuery:
 
 ```bash
-# Enable the BigQuery Data Transfer Service API
+# Enable the BigQuery Data Transfer Service API if you plan to export pricing data
 gcloud services enable bigquerydatatransfer.googleapis.com --project=my-project
 
 # Create a BigQuery dataset for billing data
@@ -234,23 +234,25 @@ gcloud compute commitments list --region=us-central1
 gcloud compute commitments create my-commitment \
     --region=us-central1 \
     --resources=vcpu=32,memory=128GB \
-    --plan=twelve-month
+    --plan=12-month
 ```
 
-CUDs provide 37% discount for 1-year commitments and 55% for 3-year commitments on compute resources.
+CUDs can provide discounts of up to 55% for most Compute Engine resources, with higher discounts available for some resource types such as memory-optimized machine types and OS licenses.
 
 ## Free Tier and Trial
 
 If you are just getting started:
 
-- **Free Trial**: GCP offers $300 in credits for 90 days for new accounts
-- **Always Free Tier**: Certain resources are always free within limits (1 f1-micro VM, 5GB Cloud Storage, 1TB BigQuery queries per month)
+- **Free Trial**: GCP offers $300 in credits for 90 days for eligible new accounts
+- **Always Free Tier**: Certain resources are always free within limits (1 non-preemptible e2-micro VM in eligible US regions, 5GB-months Cloud Storage in eligible US regions, 1TiB BigQuery queries per month)
 
 ```bash
-# Check your remaining free trial credits
+# Confirm whether a billing account is open
 gcloud billing accounts describe 0X0X0X-0X0X0X-0X0X0X \
     --format="value(open)"
 ```
+
+To check your remaining free trial credits, use the Cloud Billing report or the Free credit pane in the Google Cloud Console.
 
 ## Unlink Billing to Stop All Charges
 
@@ -258,10 +260,10 @@ If you need to stop all charges immediately (emergency cost control):
 
 ```bash
 # Unlink billing from a project
-# This immediately stops all paid resources in the project
+# This disables billing for the project
 gcloud billing projects unlink my-project
 
-# WARNING: This will disable paid APIs and may delete resources
+# WARNING: This stops billable services and some resources might be removed
 # Only use this for emergency cost control
 ```
 
@@ -280,4 +282,4 @@ gcloud resource-manager org-policies describe \
     --project=my-project 2>/dev/null
 ```
 
-Getting billing right from the start saves you from errors down the road. Every "billing must be enabled" error, every "access not configured" message - they all trace back to billing setup. Link your billing account, set up budget alerts, and export to BigQuery so you always know what you are spending. It is one of those boring-but-essential tasks that pays off every day.
+Getting billing right from the start saves you from errors down the road. Many "billing must be enabled" errors trace back to billing setup, while "access not configured" errors can also indicate disabled APIs or missing permissions. Link your billing account, set up budget alerts, and export to BigQuery so you always know what you are spending. It is one of those boring-but-essential tasks that pays off every day.
