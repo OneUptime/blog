@@ -133,7 +133,7 @@ Different server roles need different booleans. Here is a role-based approach:
       # Allow MySQL/MariaDB to connect to any port
       - name: mysql_connect_any
         state: false
-      # Allow databases to use NFS for storage
+      # Allow confined SELinux users to connect to the local MySQL/MariaDB server
       - name: selinuxuser_mysql_connect_enabled
         state: true
 
@@ -304,15 +304,12 @@ Ensure all servers have the correct booleans set:
     - name: Check compliance
       ansible.builtin.assert:
         that:
-          - "item.value in bool_result.stdout"
-        fail_msg: "NON-COMPLIANT: {{ bool_result.item.key }} is not {{ item.value }}"
-        success_msg: "COMPLIANT: {{ bool_result.item.key }} is {{ item.value }}"
-      loop: "{{ required_booleans | dict2items }}"
+          - "item.item.value in item.stdout"
+        fail_msg: "NON-COMPLIANT: {{ item.item.key }} is not {{ item.item.value }}"
+        success_msg: "COMPLIANT: {{ item.item.key }} is {{ item.item.value }}"
+      loop: "{{ boolean_check.results }}"
       loop_control:
-        label: "{{ item.key }}"
-        loop_var: item
-      vars:
-        bool_result: "{{ boolean_check.results[loop.index0 | default(0)] }}"
+        label: "{{ item.item.key }}"
       failed_when: false
 
     # Generate compliance report
