@@ -46,9 +46,8 @@ config-management/
         main.yml
       templates/
         app.conf.j2
-        database.yml.j2
-        redis.conf.j2
-        logging.yml.j2
+        dotenv.j2
+        app.ini.j2
       handlers/
         main.yml
   playbook.yml
@@ -347,7 +346,10 @@ Always validate configuration before restarting services:
 
 - name: Restore backup if validation fails
   command: "cp {{ nginx_config.backup_file }} /etc/nginx/nginx.conf"
-  when: nginx_test.rc != 0
+  when:
+    - nginx_test.rc != 0
+    - nginx_config.changed
+    - nginx_config.backup_file is defined
 
 - name: Fail if configuration is invalid
   fail:
