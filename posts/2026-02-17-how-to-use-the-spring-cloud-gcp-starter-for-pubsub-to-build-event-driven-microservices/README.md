@@ -53,7 +53,7 @@ spring.cloud.gcp.project-id=my-project-id
 spring.cloud.gcp.pubsub.subscriber.parallel-pull-count=1
 spring.cloud.gcp.pubsub.subscriber.max-ack-extension-period=36000
 
-# JSON serialization for Pub/Sub messages
+# Flow control for Pub/Sub messages
 spring.cloud.gcp.pubsub.subscriber.flow-control.max-outstanding-element-count=100
 ```
 
@@ -225,10 +225,10 @@ public class OrderMessageProcessor {
             OrderEvent event = objectMapper.readValue(payload, OrderEvent.class);
 
             // Access Pub/Sub message attributes through headers
-            String eventType = (String) message.getHeaders()
-                    .get(GcpPubSubHeaders.ORIGINAL_MESSAGE);
+            String eventType = message.getHeaders().get("eventType", String.class);
 
-            System.out.println("Received order event: " + event.getOrderId());
+            System.out.println("Received order event: " + event.getOrderId()
+                    + " of type: " + eventType);
 
             // Process the event based on type
             handleOrderEvent(event);
@@ -353,16 +353,19 @@ public class OrderController {
 Configure a dead letter topic for messages that fail repeatedly:
 
 ```bash
-# Create a dead letter topic and subscription
+# Create a dead letter topic and a subscription to inspect dead-lettered messages
 gcloud pubsub topics create orders-dead-letter
+
+gcloud pubsub subscriptions create orders-dead-letter-sub \
+    --topic=orders-dead-letter
 
 gcloud pubsub subscriptions update orders-subscription \
     --dead-letter-topic=orders-dead-letter \
     --max-delivery-attempts=5
 ```
 
-After 5 delivery attempts, unprocessable messages move to the dead letter topic instead of blocking the subscription.
+After approximately 5 delivery attempts, unprocessable messages move to the dead letter topic instead of blocking the subscription, as long as the Pub/Sub service account has the required permissions.
 
 ## Wrapping Up
 
-The Spring Cloud GCP Pub/Sub starter gives you two clean ways to integrate Pub/Sub into your microservices. The `PubSubTemplate` approach is straightforward for simple publish-subscribe patterns. The Spring Integration channel adapter approach gives you more flexibility with message routing, transformation, and error handling. Either way, you get automatic credential management, JSON serialization, and manual acknowledgment support. Pair this with dead letter topics for messages that fail processing, and you have a solid foundation for event-driven microservices on GCP.
+The Spring Cloud GCP Pub/Sub starter gives you two clean ways to integrate Pub/Sub into your microservices. The `PubSubTemplate` approach is straightforward for simple publish-subscribe patterns. The Spring Integration channel adapter approach gives you more flexibility with message routing, transformation, and error handling. Either way, you get automatic credential management, payload conversion, and manual acknowledgment support. Pair this with dead letter topics for messages that fail processing, and you have a solid foundation for event-driven microservices on GCP.
