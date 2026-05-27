@@ -1,14 +1,14 @@
-# How to Configure MetalLB BGP with the Experimental FRR-K8s Mode
+# How to Configure MetalLB BGP with FRR-K8s Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, BGP, FRR-K8s, Experimental
+Tags: Kubernetes, MetalLB, BGP, FRR-K8s
 
-Description: Learn how to configure MetalLB with the experimental FRR-K8s mode for native Kubernetes integration of FRR routing capabilities.
+Description: Learn how to configure MetalLB with FRR-K8s mode for native Kubernetes integration of FRR routing capabilities.
 
 ---
 
-MetalLB's standard FRR mode runs an FRR sidecar inside each speaker pod. The experimental FRR-K8s mode takes a different approach: it deploys FRR as a standalone DaemonSet managed by a dedicated Kubernetes operator. This means FRR configuration is driven entirely by Kubernetes custom resources, and the FRR lifecycle is decoupled from the MetalLB speaker.
+MetalLB's deprecated FRR mode runs an FRR sidecar inside each speaker pod. FRR-K8s mode takes a different approach: it deploys FRR as part of a standalone FRR-K8s DaemonSet. This means FRR configuration is driven by Kubernetes custom resources, and the FRR lifecycle is decoupled from the MetalLB speaker.
 
 This guide covers what FRR-K8s mode is, how it differs from standard FRR mode, and how to set it up end-to-end.
 
@@ -23,33 +23,33 @@ graph LR
     end
 
     subgraph FRR-K8s Mode
-        B1[Speaker Pod] --> B2[FRR-K8s Operator]
-        B2 --> B3[FRR DaemonSet Pod - Node 1]
-        B2 --> B4[FRR DaemonSet Pod - Node 2]
+        B1[Speaker Pod] --> B2[FRRConfiguration CR]
+        B2 --> B3[FRR-K8s Pod - Node 1]
+        B2 --> B4[FRR-K8s Pod - Node 2]
     end
 ```
 
 | Feature | FRR Mode | FRR-K8s Mode |
 |---|---|---|
 | FRR lifecycle | Tied to speaker pod | Independent DaemonSet |
-| Configuration | Rendered by speaker | Driven by CRDs via operator |
+| Configuration | Rendered by speaker | Driven by FRRConfiguration CRDs |
 | Scalability | Per-speaker sidecar | Shared FRR instances |
-| Maturity | Stable | Experimental |
-| Extra FRR config | Limited | Full CRD-based control |
+| Maturity | Deprecated | Recommended default in current MetalLB releases |
+| Extra FRR config | Limited | Additive CRD-based control |
 
 FRR-K8s mode is useful when you want other components (not just MetalLB) to share the same FRR instance on each node. It also makes it easier to inject custom FRR configuration without patching the speaker.
 
 ### Prerequisites
 
-- Kubernetes v1.26 or later
+- A Kubernetes version supported by your MetalLB release
 - Helm v3 installed
 - An upstream BGP router
 - kubectl access to the cluster
 - Familiarity with basic BGP concepts (ASN, peering, prefixes)
 
-### Step 1: Install the FRR-K8s Operator
+### Step 1: Install FRR-K8s
 
-The FRR-K8s operator manages the FRR DaemonSet and watches for FRRConfiguration custom resources. Install it before MetalLB:
+FRR-K8s runs as a DaemonSet and watches for FRRConfiguration custom resources. Install it before MetalLB:
 
 ```bash
 # Add the FRR-K8s Helm repository
@@ -59,16 +59,16 @@ helm repo add frr-k8s https://metallb.github.io/frr-k8s
 # Update your local chart index
 helm repo update
 
-# Install the FRR-K8s operator into its own namespace
+# Install FRR-K8s into its own namespace
 helm install frr-k8s frr-k8s/frr-k8s \
   --namespace frr-k8s-system \
   --create-namespace
 ```
 
-Verify the operator and FRR pods are running:
+Verify the FRR-K8s pods are running:
 
 ```bash
-# Check the FRR-K8s operator pod
+# Check the FRR-K8s pods
 kubectl get pods -n frr-k8s-system
 
 # Confirm the FRR DaemonSet is deployed - one pod per node
@@ -77,16 +77,24 @@ kubectl get daemonset -n frr-k8s-system
 
 ### Step 2: Install MetalLB in FRR-K8s Mode
 
-Now install MetalLB and tell it to use the external FRR-K8s operator instead of its own sidecar:
+Now install MetalLB and tell it to use the external FRR-K8s deployment instead of its own sidecar:
 
 ```bash
+# Add the MetalLB Helm repository
+helm repo add metallb https://metallb.github.io/metallb
+
+# Update your local chart index
+helm repo update
+
 # Install MetalLB with FRR-K8s mode enabled
-# This disables the built-in FRR sidecar and connects to the FRR-K8s operator
+# This disables the built-in FRR sidecar and connects to the external FRR-K8s deployment
 helm install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
   --set speaker.frr.enabled=false \
-  --set frrk8s.enabled=true
+  --set frrk8s.enabled=true \
+  --set frrk8s.external=true \
+  --set frrk8s.namespace=frr-k8s-system
 ```
 
 ```bash
@@ -94,7 +102,7 @@ helm install metallb metallb/metallb \
 kubectl get pods -n metallb-system
 
 # Confirm the speaker pods do NOT have an frr container
-kubectl get pod -n metallb-system -l component=speaker \
+kubectl get pod -n metallb-system -l app.kubernetes.io/component=speaker \
   -o jsonpath='{.items[0].spec.containers[*].name}'
 # Expected output: speaker (no frr container)
 ```
@@ -124,7 +132,7 @@ kubectl apply -f ip-pool.yaml
 
 ### Step 4: Configure a BGP Peer
 
-Create the BGPPeer resource. MetalLB will translate this into an FRRConfiguration CR that the FRR-K8s operator picks up:
+Create the BGPPeer resource. MetalLB will translate this into FRRConfiguration CRs that FRR-K8s picks up:
 
 ```yaml
 # bgp-peer.yaml
@@ -172,7 +180,7 @@ kubectl apply -f bgp-advertisement.yaml
 
 ### Step 6: Inspect the Generated FRRConfiguration
 
-The MetalLB controller creates an FRRConfiguration CR in the FRR-K8s namespace. Inspect it to see what was generated:
+The MetalLB speaker creates FRRConfiguration CRs in the FRR-K8s namespace. Inspect them to see what was generated:
 
 ```bash
 # List FRRConfiguration resources created by MetalLB
@@ -189,12 +197,17 @@ The output will look similar to this (simplified):
 apiVersion: frrk8s.metallb.io/v1beta1
 kind: FRRConfiguration
 metadata:
-  name: metallb-tor-switch
+  name: metallb-worker-1
   namespace: frr-k8s-system
 spec:
+  nodeSelector:
+    matchLabels:
+      kubernetes.io/hostname: worker-1
   bgp:
     routers:
       - asn: 65001
+        prefixes:
+          - 10.200.0.0/24
         neighbors:
           - address: 10.0.0.1
             asn: 65000
@@ -206,7 +219,7 @@ spec:
 
 ### Step 7: Add Custom FRR Configuration
 
-One of the key advantages of FRR-K8s mode is that you can create your own FRRConfiguration resources alongside the ones MetalLB generates. For example, to add a static route or a route map:
+One of the key advantages of FRR-K8s mode is that you can create your own FRRConfiguration resources alongside the ones MetalLB generates. For example, to announce an additional prefix:
 
 ```yaml
 # custom-frr-config.yaml
@@ -237,7 +250,7 @@ spec:
 kubectl apply -f custom-frr-config.yaml
 ```
 
-The FRR-K8s operator merges all FRRConfiguration resources and renders a single FRR config file for each node.
+FRR-K8s merges all FRRConfiguration resources that select a node and renders the corresponding FRR config for that node.
 
 ### Step 8: Verify the BGP Session
 
@@ -257,13 +270,13 @@ kubectl exec -n frr-k8s-system "$FRR_POD" -c frr -- vtysh -c "show bgp neighbors
 ```mermaid
 sequenceDiagram
     participant User as User / kubectl
-    participant MC as MetalLB Controller
-    participant FRRK as FRR-K8s Operator
-    participant FRR as FRR DaemonSet Pod
+    participant MS as MetalLB Speaker
+    participant FRRK as FRR-K8s Controller
+    participant FRR as FRR-K8s Pod
     participant Router as Upstream Router
 
-    User->>MC: Create BGPPeer + IPAddressPool
-    MC->>FRRK: Generate FRRConfiguration CR
+    User->>MS: Create BGPPeer + IPAddressPool
+    MS->>FRRK: Generate FRRConfiguration CR
     FRRK->>FRR: Render frr.conf and reload
     FRR->>Router: Establish BGP session
     FRR->>Router: Advertise service IP prefixes
@@ -274,17 +287,17 @@ sequenceDiagram
 
 Consider FRR-K8s mode when:
 
-- You want to share FRR instances with other networking tools (e.g., Cilium BGP, custom route injection)
-- You need full control over FRR configuration via Kubernetes CRDs
+- You want to share FRR instances with other components that produce FRRConfiguration resources
+- You need additive FRR configuration through Kubernetes CRDs
 - You want to decouple the FRR lifecycle from MetalLB speaker restarts
 
 Avoid FRR-K8s mode when:
 
-- You need a stable, production-proven setup (standard FRR mode is more mature)
+- You cannot use the current recommended MetalLB BGP backend in your environment
 - You prefer a simpler deployment with fewer moving parts
 
 ### Summary
 
-FRR-K8s mode gives you the flexibility of a standalone FRR routing stack managed entirely through Kubernetes resources. It is still experimental, but it opens the door to multi-component routing configurations that standard FRR mode cannot support.
+FRR-K8s mode gives you the flexibility of a standalone FRR routing stack managed through Kubernetes resources. It opens the door to multi-component routing configurations that standard FRR mode cannot support.
 
 For end-to-end visibility into your MetalLB and BGP infrastructure, [OneUptime](https://oneuptime.com) provides monitoring, alerting, and status pages that help you catch peering issues before they affect your users.
