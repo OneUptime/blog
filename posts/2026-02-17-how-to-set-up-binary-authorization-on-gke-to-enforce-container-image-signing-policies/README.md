@@ -18,7 +18,7 @@ Let me walk through setting it up end to end.
 
 The system has three main components:
 
-1. **Attestors**: Entities that can sign (attest) container images. Usually your CI/CD system.
+1. **Attestors**: Verification authorities that store the public keys used to verify attestations. Usually these represent your CI/CD system.
 2. **Attestations**: Cryptographic signatures proving an image was verified by an attestor.
 3. **Policy**: Rules that specify which attestations are required to deploy an image.
 
@@ -44,7 +44,7 @@ You need:
 
 - A GCP project with billing enabled
 - A GKE cluster
-- Artifact Registry or Container Registry
+- Artifact Registry
 - Cloud KMS for signing keys
 
 ```bash
@@ -89,7 +89,7 @@ curl -X POST \
     "name": "projects/YOUR_PROJECT_ID/notes/build-attestor-note",
     "attestation": {
       "hint": {
-        "humanReadableName": "Build Pipeline Attestor"
+        "human_readable_name": "Build Pipeline Attestor"
       }
     }
   }'
@@ -124,15 +124,10 @@ The policy defines what attestations are required for images to be deployed.
 
 ```yaml
 # policy.yaml - Binary Authorization policy
-admissionWhitelistPatterns:
-  # Allow GKE system images (required for cluster functionality)
-  - namePattern: "gcr.io/google_containers/*"
-  - namePattern: "gcr.io/google-containers/*"
-  - namePattern: "k8s.gcr.io/*"
-  - namePattern: "gke.gcr.io/*"
-  - namePattern: "gcr.io/gke-release/*"
-  - namePattern: "gcr.io/config-management-release/*"
-  - namePattern: "gcr.io/stackdriver-agents/*"
+name: projects/YOUR_PROJECT_ID/policy
+
+# Allow Google-maintained system images required by GKE
+globalPolicyEvaluationMode: ENABLE
 
 defaultAdmissionRule:
   # Require attestation for all other images
@@ -174,6 +169,8 @@ gcloud container clusters create secure-cluster \
 ## Step 6: Sign Images in Your CI/CD Pipeline
 
 Now integrate attestation into your build pipeline. Here is how to do it in Cloud Build.
+
+Make sure the Cloud Build service account that runs this build has the Binary Authorization Attestor Viewer, Cloud KMS CryptoKey Signer/Verifier, and Artifact Analysis Notes Attacher roles.
 
 ```yaml
 # cloudbuild.yaml - Build, scan, and attest images
@@ -257,6 +254,9 @@ Before enforcing the policy, run it in dry-run mode to see what would be blocked
 
 ```yaml
 # policy-dryrun.yaml - Audit without enforcement
+name: projects/YOUR_PROJECT_ID/policy
+globalPolicyEvaluationMode: ENABLE
+
 defaultAdmissionRule:
   evaluationMode: REQUIRE_ATTESTATION
   enforcementMode: DRYRUN_AUDIT_LOG_ONLY  # Log only, do not block
@@ -279,14 +279,14 @@ gcloud logging read \
 Sometimes you need to deploy an unsigned image in an emergency. Binary Authorization supports a break-glass mechanism.
 
 ```yaml
-# Add an annotation to the pod to bypass the policy
+# Add a label to the pod to bypass the policy
 apiVersion: v1
 kind: Pod
 metadata:
   name: emergency-fix
-  annotations:
+  labels:
     # This bypasses Binary Authorization (but is audit logged)
-    alpha.image-policy.k8s.io/break-glass: "emergency-fix-for-outage"
+    image-policy.k8s.io/break-glass: "true"
 spec:
   containers:
     - name: fix
@@ -301,6 +301,9 @@ For critical workloads, require attestations from multiple stages.
 
 ```yaml
 # Policy requiring both build and security scan attestations
+name: projects/YOUR_PROJECT_ID/policy
+globalPolicyEvaluationMode: ENABLE
+
 defaultAdmissionRule:
   evaluationMode: REQUIRE_ATTESTATION
   enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
