@@ -164,62 +164,42 @@ http_with_retry:
     - max_retries: 3
     - initial_delay: 1
   steps:
-    - init:
-        assign:
-          - attempt: 0
-          - last_error: null
-
-    - retry_loop:
-        for:
-          value: i
-          range: [0, ${max_retries}]
+    - try_request:
+        try:
           steps:
-            - try_request:
-                try:
-                  steps:
-                    - dispatch_method:
-                        switch:
-                          - condition: ${method == "GET"}
-                            steps:
-                              - do_get:
-                                  call: http.get
-                                  args:
-                                    url: ${url}
-                                    timeout: 60
-                                  result: response
-                          - condition: ${method == "POST"}
-                            steps:
-                              - do_post:
-                                  call: http.post
-                                  args:
-                                    url: ${url}
-                                    body: ${body}
-                                    timeout: 60
-                                  result: response
-                    - return_response:
-                        return: ${response}
-                except:
-                  as: e
-                  steps:
-                    - update_state:
-                        assign:
-                          - attempt: ${attempt + 1}
-                          - last_error: ${e}
-                    - check_retryable:
-                        switch:
-                          - condition: ${e.code == 429 or e.code >= 500}
-                            steps:
-                              - backoff:
-                                  call: sys.sleep
-                                  args:
-                                    seconds: ${initial_delay * int(math.pow(2, i))}
-                          - condition: true
-                            raise: ${e}
+            - dispatch_method:
+                switch:
+                  - condition: ${method == "GET"}
+                    steps:
+                      - do_get:
+                          call: http.get
+                          args:
+                            url: ${url}
+                            timeout: 60
+                          result: response
+                  - condition: ${method == "POST"}
+                    steps:
+                      - do_post:
+                          call: http.post
+                          args:
+                            url: ${url}
+                            body: ${body}
+                            timeout: 60
+                          result: response
+                  - condition: true
+                    raise:
+                      code: 400
+                      message: '${"Unsupported HTTP method: " + method}'
+        retry:
+          predicate: ${http.default_retry_predicate}
+          max_retries: ${max_retries}
+          backoff:
+            initial_delay: ${initial_delay}
+            max_delay: 60
+            multiplier: 2
 
-    - all_failed:
-        raise:
-          code: 503
-          message: ${"Failed after " + string(max_retries) + " attempts: " + last_error.message}
+    - return_response:
+        return: ${response}
 
 # Reusable: Structured logging
 structured_log:
@@ -231,8 +211,9 @@ structured_log:
     - write_log:
         call: sys.log
         args:
-          text: ${message}
-          json: ${metadata}
+          json:
+            message: ${message}
+            metadata: ${metadata}
           severity: ${severity}
     - done:
         return: true
@@ -258,7 +239,7 @@ validate_response:
                   - condition: ${not(field in response.body)}
                     raise:
                       code: 422
-                      message: ${"Missing required field: " + field}
+                      message: '${"Missing required field: " + field}'
 
     - valid:
         return:
@@ -424,7 +405,7 @@ process_order:
     - fetch_order:
         call: http_with_retry
         args:
-          url: ${"https://api.example.com/orders/" + order_id}
+          url: '${"https://api.example.com/orders/" + order_id}'
           max_retries: 3
         result: order
 
