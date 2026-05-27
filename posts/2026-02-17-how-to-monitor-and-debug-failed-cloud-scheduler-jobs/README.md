@@ -25,8 +25,8 @@ gcloud scheduler jobs describe my-scheduled-job \
 The output will show you:
 - `state`: Whether the job is ENABLED, PAUSED, or DISABLED
 - `lastAttemptTime`: When the last attempt was made
-- `status`: The HTTP status code of the last attempt
-- `scheduleTime`: When the next execution is planned
+- `status`: The target response status from the last attempted execution
+- `scheduleTime`: When the next execution is planned, which might be a retry
 
 If the `status.code` is anything other than 0 (success), something went wrong.
 
@@ -52,7 +52,7 @@ gcloud logging read \
 For more detailed information, look at the full log entries.
 
 ```bash
-# View detailed log entries with the response body
+# View detailed log entries with status and debug information
 gcloud logging read \
   'resource.type="cloud_scheduler_job" AND resource.labels.job_id="my-scheduled-job" AND severity>=WARNING' \
   --limit=10 \
@@ -181,25 +181,25 @@ Do not rely on manually checking job status. Set up alerts in Cloud Monitoring.
 
 ### Using Metrics Explorer
 
-Cloud Scheduler exposes metrics that you can use for alerting:
+Cloud Scheduler publishes execution logs that you can turn into logs-based metrics for alerting:
 
-- `scheduler.googleapis.com/job/attempt_count` - Total attempts including retries
-- `scheduler.googleapis.com/job/attempt_dispatch_count` - Dispatched attempts
-- `scheduler.googleapis.com/job/error_count` - Failed attempts
+- `logging.googleapis.com/user/scheduler_failures` - Failed attempts counted from Cloud Scheduler error logs
+- `logging.googleapis.com/user/scheduler_warnings` - Warning-level execution events, if you want earlier signals
+- Target service metrics, such as Cloud Run request count and latency, for downstream behavior
 
 ### Creating an Alert Policy with gcloud
 
+After you create the logs-based metric in the next section, you can alert on it:
+
 ```bash
-# Create an alert policy that fires when a scheduler job fails
-gcloud alpha monitoring policies create \
+# Create an alert policy that fires when the logs-based failure metric increments
+gcloud monitoring policies create \
   --display-name="Cloud Scheduler Job Failure" \
   --condition-display-name="Scheduler job error rate" \
-  --condition-filter='resource.type = "cloud_scheduler_job" AND metric.type = "scheduler.googleapis.com/job/error_count"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison="COMPARISON_GT" \
-  --condition-threshold-duration="0s" \
-  --condition-threshold-aggregations-alignment-period="300s" \
-  --condition-threshold-aggregations-per-series-aligner="ALIGN_COUNT" \
+  --condition-filter='resource.type = "cloud_scheduler_job" AND metric.type = "logging.googleapis.com/user/scheduler_failures"' \
+  --if="> 0" \
+  --duration="0s" \
+  --aggregation='{"alignmentPeriod":"300s","perSeriesAligner":"ALIGN_DELTA"}' \
   --notification-channels="projects/YOUR_PROJECT/notificationChannels/CHANNEL_ID" \
   --documentation="A Cloud Scheduler job has failed. Check the job logs for details."
 ```
@@ -210,7 +210,7 @@ You can also create alerts based on log entries.
 
 ```bash
 # Create a log-based metric for scheduler failures
-gcloud logging metrics create scheduler-failures \
+gcloud logging metrics create scheduler_failures \
   --description="Count of Cloud Scheduler job failures" \
   --log-filter='resource.type="cloud_scheduler_job" AND severity>=ERROR'
 ```
@@ -252,7 +252,7 @@ The Google Cloud Console provides a visual execution history for each scheduler 
 1. Navigate to Cloud Scheduler in the Console
 2. Click on the job name
 3. View the "Recent execution attempts" section
-4. Each attempt shows the timestamp, status code, and response
+4. Each attempt shows the timestamp, status, and available execution details
 
 This is useful for spotting patterns - for example, if a job fails at certain times but succeeds at others, it might indicate a load-related issue on the target.
 
@@ -267,10 +267,10 @@ gcloud monitoring dashboards create \
 ```
 
 A useful dashboard includes:
-- Job execution count (success vs. failure)
-- Latency of job executions
-- Retry count per job
-- Current state of all jobs
+- Logs-based failure counts per job
+- Target service request count and latency
+- Recent warning and error log volume
+- Current job status from `gcloud scheduler jobs describe` or the Cloud Scheduler API
 
 ## Wrapping Up
 
