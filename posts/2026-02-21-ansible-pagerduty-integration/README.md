@@ -68,20 +68,20 @@ alertmanager_port: 9093
 
 # Alert routing rules
 pagerduty_routing:
-  - match:
-      severity: critical
-      environment: production
+  - matchers:
+      - severity="critical"
+      - environment="production"
     service: production_critical
     repeat_interval: 30m
 
-  - match:
-      severity: warning
-      environment: production
+  - matchers:
+      - severity="warning"
+      - environment="production"
     service: production_warning
     repeat_interval: 4h
 
-  - match:
-      environment: staging
+  - matchers:
+      - environment="staging"
     service: staging
     repeat_interval: 8h
 ```
@@ -96,6 +96,14 @@ The most common integration point. This role configures Alertmanager to route al
 - name: Create Alertmanager configuration directory
   ansible.builtin.file:
     path: /etc/alertmanager
+    state: directory
+    owner: alertmanager
+    group: alertmanager
+    mode: '0755'
+
+- name: Create Alertmanager template directory
+  ansible.builtin.file:
+    path: /etc/alertmanager/templates
     state: directory
     owner: alertmanager
     group: alertmanager
@@ -146,9 +154,9 @@ route:
 
   routes:
 {% for rule in pagerduty_routing %}
-    - match:
-{% for key, value in rule.match.items() %}
-        {{ key }}: '{{ value }}'
+    - matchers:
+{% for matcher in rule.matchers %}
+        - '{{ matcher }}'
 {% endfor %}
       receiver: 'pagerduty-{{ rule.service }}'
       repeat_interval: {{ rule.repeat_interval }}
@@ -158,7 +166,7 @@ route:
 receivers:
   - name: 'default-pagerduty'
     pagerduty_configs:
-      - service_key: '{{ pagerduty_services.production_warning.integration_key }}'
+      - routing_key: '{{ pagerduty_services.production_warning.integration_key }}'
         severity: 'warning'
         description: '{{ "{{ template \"pagerduty.description\" . }}" }}'
         client: 'Prometheus Alertmanager'
@@ -171,7 +179,7 @@ receivers:
 {% for service_name, service_config in pagerduty_services.items() %}
   - name: 'pagerduty-{{ service_name }}'
     pagerduty_configs:
-      - service_key: '{{ service_config.integration_key }}'
+      - routing_key: '{{ service_config.integration_key }}'
         severity: '{{ service_config.severity }}'
         description: '{{ "{{ template \"pagerduty.description\" . }}" }}'
         client: 'Prometheus Alertmanager'
@@ -184,10 +192,10 @@ receivers:
 {% endfor %}
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'cluster', 'service']
 ```
 
@@ -299,23 +307,30 @@ SOURCE="${3:-$(hostname)}"
 DETAILS="${4:-}"
 INTEGRATION_KEY="${PD_INTEGRATION_KEY:-{{ pagerduty_services.production_critical.integration_key }}}"
 
-PAYLOAD=$(cat <<EOF
-{
-  "routing_key": "${INTEGRATION_KEY}",
-  "event_action": "trigger",
-  "payload": {
-    "summary": "${SUMMARY}",
-    "source": "${SOURCE}",
-    "severity": "${SEVERITY}",
-    "component": "${SOURCE}",
-    "custom_details": {
-      "details": "${DETAILS}",
-      "hostname": "$(hostname)",
-      "timestamp": "$(date -Iseconds)"
+PAYLOAD=$(python3 - "$INTEGRATION_KEY" "$SEVERITY" "$SUMMARY" "$SOURCE" "$DETAILS" <<'PY'
+import datetime
+import json
+import socket
+import sys
+
+routing_key, severity, summary, source, details = sys.argv[1:6]
+payload = {
+    "routing_key": routing_key,
+    "event_action": "trigger",
+    "payload": {
+        "summary": summary,
+        "source": source,
+        "severity": severity,
+        "component": source,
+        "custom_details": {
+            "details": details,
+            "hostname": socket.gethostname(),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        }
     }
-  }
 }
-EOF
+print(json.dumps(payload))
+PY
 )
 
 RESPONSE=$(curl -s -X POST \
@@ -336,7 +351,7 @@ echo "PagerDuty response: ${RESPONSE}"
   tasks:
     - name: Send a test alert through Alertmanager
       ansible.builtin.uri:
-        url: "http://localhost:{{ alertmanager_port }}/api/v1/alerts"
+        url: "http://localhost:{{ alertmanager_port }}/api/v2/alerts"
         method: POST
         body_format: json
         body:
@@ -358,7 +373,7 @@ echo "PagerDuty response: ${RESPONSE}"
 
     - name: Resolve the test alert
       ansible.builtin.uri:
-        url: "http://localhost:{{ alertmanager_port }}/api/v1/alerts"
+        url: "http://localhost:{{ alertmanager_port }}/api/v2/alerts"
         method: POST
         body_format: json
         body:
