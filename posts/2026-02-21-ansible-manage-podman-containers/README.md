@@ -15,8 +15,8 @@ Podman has become a serious alternative to Docker, especially in enterprise Linu
 Podman solves some real problems that Docker has in certain environments:
 
 - **No daemon**: Podman does not need a background service running as root. Each container is a child process of the user who started it.
-- **Rootless by default**: Regular users can run containers without elevated privileges, which matters a lot for security compliance.
-- **Systemd integration**: Podman generates systemd unit files for containers, so containers can start on boot and restart on failure like any other service.
+- **Rootless operation**: Regular users can run containers without elevated privileges, which matters a lot for security compliance.
+- **Systemd integration**: Podman integrates with systemd through Quadlet files and generated units, so containers can start on boot and restart on failure like any other service.
 - **Docker CLI compatibility**: Most `docker` commands work with `podman` by just changing the command name.
 
 ```mermaid
@@ -235,7 +235,7 @@ Podman supports CNI and netavark networking. Create networks for container-to-co
 
 ## Generating Systemd Units
 
-One of Podman's best features is generating systemd unit files. This lets containers start on boot and be managed like regular services:
+Podman can generate systemd unit files, although current Podman documentation recommends Quadlet files for new systemd-managed container workflows. Generated units still let containers start on boot and be managed like regular services:
 
 ```yaml
 # systemd_containers.yml - Generate systemd units for Podman containers
@@ -249,6 +249,7 @@ One of Podman's best features is generating systemd unit files. This lets contai
       containers.podman.podman_container:
         name: webapp
         image: registry.example.com/webapp:latest
+        rm: true
         state: created  # Created but not started
         ports:
           - "8080:8080"
@@ -260,21 +261,25 @@ One of Podman's best features is generating systemd unit files. This lets contai
         name: webapp
         new: true
         restart_policy: on-failure
-        time: 30
+        stop_timeout: 30
         dest: "{{ ansible_user_dir }}/.config/systemd/user/"
       register: systemd_unit
 
     - name: Reload systemd user daemon
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
         scope: user
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
 
     - name: Enable and start the container service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "container-webapp"
         state: started
         enabled: true
         scope: user
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
 
     - name: Enable lingering for the user (so services run when logged out)
       ansible.builtin.command:
@@ -368,4 +373,4 @@ The parameters are very similar, so migration mostly involves changing module na
 
 ## Summary
 
-Podman with Ansible is a strong combination for environments that need rootless containers, daemonless operation, or tight systemd integration. The `containers.podman` collection provides modules that mirror the Docker collection's functionality, making migration straightforward. The key differences are rootless operation by default, systemd unit generation for service management, and the absence of a daemon. For RHEL and Fedora environments where Podman is the default container runtime, this is the natural choice for container automation.
+Podman with Ansible is a strong combination for environments that need rootless containers, daemonless operation, or tight systemd integration. The `containers.podman` collection provides modules that mirror the Docker collection's functionality, making migration straightforward. The key differences are rootless operation as a regular user, systemd integration for service management, and the absence of a daemon. For RHEL and Fedora environments where Podman is the default container runtime, this is the natural choice for container automation.

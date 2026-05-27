@@ -29,6 +29,8 @@ Store these credentials securely:
 cat > ~/.ovh.conf << 'CONF'
 [default]
 endpoint=ovh-eu
+
+[ovh-eu]
 application_key=your_app_key
 application_secret=your_app_secret
 consumer_key=your_consumer_key
@@ -43,9 +45,9 @@ Install the Python OVH SDK that Ansible will use:
 pip install ovh
 ```
 
-## Using the OVH API Module
+## Using the OVH API
 
-The community provides an `ovh_api` module, but you can also use Ansible's `uri` module to call the OVH API directly. Here is a role that wraps common OVH operations:
+The OVH Python SDK handles request signing for the OVH API, and you can also use Ansible's `uri` module if you calculate the OVH signature for each request. Here is a role that wraps common OVH operations:
 
 ```yaml
 # roles/ovhcloud/tasks/main.yml - Core OVH API interaction tasks
@@ -94,9 +96,9 @@ clouds:
       auth_url: https://auth.cloud.ovh.net/v3
       username: your_openstack_user
       password: your_openstack_password
-      project_name: your_project_id
-      project_domain_name: Default
-      user_domain_name: Default
+      project_id: your_project_id
+      project_domain_name: default
+      user_domain_name: default
     region_name: GRA11
     interface: public
     identity_api_version: 3
@@ -123,6 +125,7 @@ Now you can use standard OpenStack modules:
         flavor: b2-7
         image: "Ubuntu 22.04"
         network: Ext-Net
+    admin_cidr: 203.0.113.10/32
 
   tasks:
     # Create a security group
@@ -202,31 +205,44 @@ Dedicated servers on OVHcloud are managed through their proprietary API rather t
   connection: local
   gather_facts: false
 
+  vars:
+    ovh_api_base: https://eu.api.ovh.com/1.0
+
   tasks:
+    - name: Set OVH API timestamp
+      set_fact:
+        ovh_timestamp: "{{ lookup('pipe', 'date +%s') }}"
+
     # List all dedicated servers using the OVH API
     - name: Get list of dedicated servers
       uri:
-        url: "https://eu.api.ovh.com/1.0/dedicated/server"
+        url: "{{ ovh_query }}"
         method: GET
         headers:
           X-Ovh-Application: "{{ ovh_application_key }}"
-          X-Ovh-Timestamp: "{{ lookup('pipe', 'date +%s') }}"
+          X-Ovh-Timestamp: "{{ ovh_timestamp }}"
           X-Ovh-Consumer: "{{ ovh_consumer_key }}"
           X-Ovh-Signature: "{{ ovh_signature }}"
         return_content: true
+      vars:
+        ovh_query: "{{ ovh_api_base }}/dedicated/server"
+        ovh_signature: "$1${{ (ovh_application_secret ~ '+' ~ ovh_consumer_key ~ '+GET+' ~ ovh_query ~ '++' ~ ovh_timestamp) | hash('sha1') }}"
       register: server_list
 
     # Get details for each server
     - name: Get server details
       uri:
-        url: "https://eu.api.ovh.com/1.0/dedicated/server/{{ item }}"
+        url: "{{ ovh_query }}"
         method: GET
         headers:
           X-Ovh-Application: "{{ ovh_application_key }}"
-          X-Ovh-Timestamp: "{{ lookup('pipe', 'date +%s') }}"
+          X-Ovh-Timestamp: "{{ ovh_timestamp }}"
           X-Ovh-Consumer: "{{ ovh_consumer_key }}"
           X-Ovh-Signature: "{{ ovh_signature }}"
         return_content: true
+      vars:
+        ovh_query: "{{ ovh_api_base }}/dedicated/server/{{ item }}"
+        ovh_signature: "$1${{ (ovh_application_secret ~ '+' ~ ovh_consumer_key ~ '+GET+' ~ ovh_query ~ '++' ~ ovh_timestamp) | hash('sha1') }}"
       loop: "{{ server_list.json }}"
       register: server_details
 ```
@@ -352,7 +368,7 @@ if action == 'create':
 
 ## Private Network Setup
 
-Setting up private networks (vRack) on OVHcloud:
+Once your Public Cloud project is attached to a vRack, you can create private networks in OpenStack:
 
 ```yaml
 # ovh-private-network.yml - Configure OVHcloud private networking
