@@ -82,17 +82,27 @@ This playbook configures all three hostname types:
 
     - name: Set pretty hostname via hostnamectl
       ansible.builtin.command:
-        cmd: "hostnamectl set-hostname --pretty '{{ pretty_hostname }}'"
+        argv:
+          - hostnamectl
+          - --pretty
+          - hostname
+          - "{{ pretty_hostname }}"
       changed_when: true
 
     - name: Set chassis type for proper icon in management tools
       ansible.builtin.command:
-        cmd: "hostnamectl set-chassis server"
+        argv:
+          - hostnamectl
+          - chassis
+          - server
       changed_when: false
 
     - name: Set deployment environment
       ansible.builtin.command:
-        cmd: "hostnamectl set-deployment '{{ server_env }}'"
+        argv:
+          - hostnamectl
+          - deployment
+          - "{{ server_env }}"
       changed_when: false
 
     - name: Verify hostname configuration
@@ -162,7 +172,7 @@ hostname_format: "{{ hostname_role }}{{ hostname_separator }}{{ hostname_env }}{
 hostname_role: "{{ group_names[0] | default('srv') }}"
 hostname_env: "{{ lookup('env', 'ENVIRONMENT') | default('prod', true) }}"
 hostname_location: "us1"
-hostname_index: "{{ play_hosts.index(inventory_hostname) + 1 }}"
+hostname_index: "{{ ansible_play_hosts.index(inventory_hostname) + 1 }}"
 ```
 
 The main task file for the hostname role:
@@ -242,7 +252,10 @@ This playbook configures hostname persistence on AWS EC2 instances:
 
     - name: Set hostname via hostnamectl for persistence
       ansible.builtin.command:
-        cmd: "hostnamectl set-hostname {{ inventory_hostname }}"
+        argv:
+          - hostnamectl
+          - hostname
+          - "{{ inventory_hostname }}"
       changed_when: true
 ```
 
