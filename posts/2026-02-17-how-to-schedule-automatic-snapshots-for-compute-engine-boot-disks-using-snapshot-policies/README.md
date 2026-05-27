@@ -19,7 +19,7 @@ A few things to know about how snapshots work on GCP:
 - **Incremental by default**: After the first full snapshot, subsequent snapshots only store the blocks that have changed. This makes them fast and storage-efficient.
 - **Global resource**: Snapshots are stored globally and can be used to create disks in any region.
 - **Crash-consistent**: Snapshots capture the disk state as it is at that moment. For database workloads, you should flush writes before snapshotting or use application-level backups.
-- **No performance impact**: Taking a snapshot does not noticeably affect disk performance.
+- **Minimal performance impact**: Taking a snapshot usually has little to no noticeable effect on disk performance, but you should still schedule snapshots during quieter periods for busy workloads.
 
 ## Creating a Snapshot Schedule
 
@@ -41,10 +41,10 @@ gcloud compute resource-policies create snapshot-schedule daily-backup-policy \
 
 Let me break down the important parameters:
 
-- **--max-retention-days=14**: Snapshots older than 14 days are automatically deleted. This keeps your storage costs predictable.
+- **--max-retention-days=14**: Compute Engine attempts to automatically delete snapshots older than 14 days after a newer snapshot exists. This keeps your storage costs predictable.
 - **--on-source-disk-delete=keep-auto-snapshots**: If the source disk is deleted, the snapshots are preserved. The alternative is `apply-retention-policy`, which deletes snapshots according to the normal retention rules.
 - **--daily-schedule**: Take a snapshot once per day.
-- **--start-time=02:00**: Start the snapshot process at 2 AM UTC. Choose a time when your workload is quiet.
+- **--start-time=02:00**: Start the snapshot window at 2 AM UTC. The snapshot begins within the hour after the configured start time, so choose a quiet period for your workload.
 - **--storage-location=us**: Store snapshots in the US multi-region. You can also specify a single region.
 
 ## Creating Hourly and Weekly Schedules
@@ -57,8 +57,7 @@ gcloud compute resource-policies create snapshot-schedule hourly-backup-policy \
     --region=us-central1 \
     --max-retention-days=7 \
     --on-source-disk-delete=keep-auto-snapshots \
-    --hourly-schedule \
-    --hourly-cycle=4 \
+    --hourly-schedule=4 \
     --start-time=00:00 \
     --storage-location=us
 ```
@@ -69,8 +68,7 @@ gcloud compute resource-policies create snapshot-schedule weekly-backup-policy \
     --region=us-central1 \
     --max-retention-days=365 \
     --on-source-disk-delete=keep-auto-snapshots \
-    --weekly-schedule \
-    --day-of-week=monday \
+    --weekly-schedule=monday \
     --start-time=03:00 \
     --storage-location=us
 ```
@@ -157,7 +155,7 @@ resource "google_compute_resource_policy" "daily_backup" {
 # Attach the policy to a compute disk
 resource "google_compute_disk_resource_policy_attachment" "boot_disk_backup" {
   name = google_compute_resource_policy.daily_backup.name
-  disk = google_compute_instance.my_vm.boot_disk[0].device_name
+  disk = "my-boot-disk"
   zone = "us-central1-a"
 }
 ```
@@ -188,8 +186,8 @@ gcloud compute snapshots list --sort-by=~creationTimestamp --limit=20
 # List snapshots for a specific source disk
 gcloud compute snapshots list --filter="sourceDisk:my-boot-disk"
 
-# Check the total storage used by snapshots
-gcloud compute snapshots list --format="table(name,diskSizeGb,storageBytes.yesno(yes='has-data',no='pending'),status)"
+# Show storage used by each snapshot
+gcloud compute snapshots list --format="table(name,diskSizeGb,storageBytes,status)"
 ```
 
 ## Restoring from a Snapshot
@@ -199,7 +197,7 @@ When you need to restore, you create a new disk from the snapshot and then eithe
 ```bash
 # Create a new disk from a snapshot
 gcloud compute disks create restored-boot-disk \
-    --source-snapshot=my-boot-disk-20260217-020000 \
+    --source-snapshot=SNAPSHOT_NAME \
     --zone=us-central1-a
 
 # Create a new VM using the restored disk as its boot disk
@@ -210,7 +208,7 @@ gcloud compute instances create restored-vm \
 
 ## Cost Considerations
 
-Snapshot storage is charged at a per-GB rate that is lower than persistent disk storage. Since snapshots are incremental, the actual storage used is typically much less than the disk size. Here are some tips to keep costs under control:
+Snapshot storage is charged per GB-month based on the snapshot type and storage location. Since snapshots are incremental, the actual storage used is typically much less than the disk size. Here are some tips to keep costs under control:
 
 1. **Set appropriate retention periods.** Do you really need 365 days of daily snapshots? For most workloads, 14-30 days is sufficient.
 2. **Use multi-region storage only if needed.** Single-region snapshot storage is cheaper.
