@@ -35,7 +35,7 @@ flowchart TD
     end
 ```
 
-The controller watches all services and assigns IPs. Each speaker pod watches services and endpoints to decide whether to announce routes for services with pods on its node. More services means more watch events, more reconciliation loops, and more network announcements.
+The controller watches all services and assigns IPs. Each speaker pod watches services and endpoints to decide whether to announce eligible services; with `externalTrafficPolicy: Local`, a speaker only announces when its node has local endpoints. More services means more watch events, more reconciliation loops, and more network announcements.
 
 ## Strategy 1: Use Multiple IP Pools
 
@@ -95,7 +95,7 @@ metadata:
   name: public-api
   annotations:
     # Direct MetalLB to allocate from the web pool only
-    metallb.universe.tf/address-pool: web-pool
+    metallb.io/address-pool: web-pool
 spec:
   type: LoadBalancer
   ports:
@@ -149,7 +149,7 @@ spec:
 
 ## Strategy 3: Use BGP Mode for Better Scaling
 
-Layer 2 mode has inherent scaling limitations. Each IP is owned by exactly one node, creating a bottleneck. BGP mode distributes traffic across multiple nodes via ECMP:
+Layer 2 mode has inherent scaling limitations. Each IP is owned by exactly one node, creating a bottleneck. BGP mode can distribute traffic across multiple eligible nodes via ECMP when your routers are configured for multipath:
 
 ```mermaid
 flowchart LR
@@ -168,7 +168,7 @@ flowchart LR
         BGPNode1 --> BGPPod1[Pod]
         BGPNode2 --> BGPPod2[Pod]
         BGPNode3 --> BGPPod3[Pod]
-        BGPNote["Traffic distributed\nacross all nodes"]
+        BGPNote["Traffic distributed\nacross eligible nodes"]
     end
 ```
 
@@ -221,10 +221,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: metallb
+      name: controller-monitor-service
   endpoints:
-    - port: monitoring
+    - port: metricshttps
       interval: 30s
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 Key metrics to watch:
@@ -284,10 +287,11 @@ metadata:
   name: service-http
   annotations:
     # Both services share the same IP via this sharing key
-    metallb.universe.tf/allow-shared-ip: "shared-web-ip"
+    metallb.io/allow-shared-ip: "shared-web-ip"
+    # Request the specific shared IP from MetalLB
+    metallb.io/loadBalancerIPs: "10.100.1.50"
 spec:
   type: LoadBalancer
-  loadBalancerIP: "10.100.1.50"
   ports:
     - port: 80
       targetPort: 8080
@@ -299,10 +303,10 @@ kind: Service
 metadata:
   name: service-https
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-web-ip"
+    metallb.io/allow-shared-ip: "shared-web-ip"
+    metallb.io/loadBalancerIPs: "10.100.1.50"
 spec:
   type: LoadBalancer
-  loadBalancerIP: "10.100.1.50"
   ports:
     - port: 443
       targetPort: 8443
