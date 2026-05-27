@@ -155,6 +155,7 @@ spec:
     - port: http-metrics
       path: /metrics
       interval: 10s
+      honorLabels: true
 ```
 
 ## Essential Prometheus Alerts
@@ -215,12 +216,12 @@ groups:
 
       # Alert when PGs are not active+clean
       - alert: CephPGsUnhealthy
-        expr: ceph_pg_total - ceph_pg_active_clean > 0
+        expr: ceph_health_detail{name=~"PG_AVAILABILITY|PG_DEGRADED|PG_DAMAGED"} > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "{{ $value }} PGs are not active+clean"
+          summary: "Ceph placement groups are unhealthy"
 ```
 
 ## Key Prometheus Queries
@@ -322,7 +323,7 @@ Create a simple health check script for cron or a monitoring agent.
 #!/bin/bash
 # ceph-health-check.sh
 # Runs Ceph health checks and exits with appropriate code
-# Exit codes: 0 = healthy, 1 = warning, 2 = error
+# Exit codes: 0 = healthy, 1 = warning, 2 = error, 3 = unknown
 
 # Get the current health status
 HEALTH=$(ceph health -f json 2>/dev/null)
