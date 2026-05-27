@@ -27,14 +27,13 @@ flowchart LR
 
 ## Installation
 
-Add Sidekiq and Redis to your Gemfile:
+Add Sidekiq and sidekiq-cron to your Gemfile. Sidekiq uses a Redis-compatible server for storage, so make sure Redis, Valkey, or Dragonfly is available in your environment:
 
 ```ruby
 # Gemfile
 
 gem 'sidekiq'          # Background job processing
 gem 'sidekiq-cron'     # Scheduled/recurring jobs
-gem 'redis', '>= 4.0'  # Redis client
 ```
 
 ```bash
@@ -74,17 +73,14 @@ Configure the Redis connection:
 # Server-side configuration (Sidekiq worker process)
 Sidekiq.configure_server do |config|
   config.redis = {
-    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0'),
-    # Connection pool size should match concurrency
-    size: ENV.fetch('SIDEKIQ_CONCURRENCY', 10).to_i + 5
+    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
   }
 end
 
 # Client-side configuration (Rails web process)
 Sidekiq.configure_client do |config|
   config.redis = {
-    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0'),
-    size: 5
+    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
   }
 end
 ```
@@ -96,7 +92,7 @@ Define a basic Sidekiq worker:
 ```ruby
 # app/workers/email_notification_worker.rb
 class EmailNotificationWorker
-  include Sidekiq::Worker
+  include Sidekiq::Job
 
   # Configure retry behavior and queue assignment
   sidekiq_options queue: 'mailers', retry: 5, dead: true
@@ -171,7 +167,7 @@ stateDiagram-v2
 ```ruby
 # app/workers/report_generation_worker.rb
 class ReportGenerationWorker
-  include Sidekiq::Worker
+  include Sidekiq::Job
 
   sidekiq_options queue: 'low', retry: 3
 
@@ -215,9 +211,9 @@ end
 ```ruby
 # app/workers/payment_sync_worker.rb
 class PaymentSyncWorker
-  include Sidekiq::Worker
+  include Sidekiq::Job
 
-  # Custom retry delays: 1 min, 5 min, 30 min, 2 hours, 12 hours
+  # Retry failed jobs up to 5 times, then run sidekiq_retries_exhausted
   sidekiq_options queue: 'critical', retry: 5
 
   # Called when all retries are exhausted
@@ -300,10 +296,10 @@ flowchart TD
         T10["Thread 10"]
     end
 
-    CQ --> T1
-    DQ --> T2
-    MQ --> T3
-    LQ --> T10
+    CQ -->|weighted fetch| Workers
+    DQ -->|weighted fetch| Workers
+    MQ -->|weighted fetch| Workers
+    LQ -->|weighted fetch| Workers
 ```
 
 ## Running Sidekiq
@@ -330,11 +326,10 @@ Test your workers with RSpec:
 ```ruby
 # spec/workers/email_notification_worker_spec.rb
 require 'rails_helper'
-require 'sidekiq/testing'
 
 RSpec.describe EmailNotificationWorker do
   # Use fake mode so jobs are pushed to an array instead of Redis
-  before { Sidekiq::Testing.fake! }
+  before { Sidekiq.testing!(:fake) }
 
   let(:user) { create(:user) }
 
