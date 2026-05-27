@@ -14,7 +14,7 @@ Managing Service Accounts through Ansible lets you define pod identities alongsi
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible 2.16+ with `kubernetes.core` collection
 - A valid kubeconfig
 - Python `kubernetes` library
 
@@ -311,11 +311,11 @@ For pods that do not need to talk to the Kubernetes API, disable token mounting 
       automountServiceAccountToken: false
 ```
 
-With this setting, pods using the `web-only` Service Account will not have a Kubernetes API token mounted. If someone compromises the pod, they cannot use it to interact with the Kubernetes API.
+With this setting, pods using the `web-only` Service Account will not have a Kubernetes API token mounted unless the pod spec overrides it. If someone compromises the pod, they cannot use an automatically mounted Service Account token to interact with the Kubernetes API.
 
 ## Creating Long-Lived Tokens (Kubernetes 1.24+)
 
-Since Kubernetes 1.24, Service Account tokens are no longer automatically created as Secrets. To generate a token for external use (like CI/CD systems), create a Secret explicitly.
+Since Kubernetes 1.24, Service Account tokens are no longer automatically created as Secrets. For most external use cases, prefer short-lived tokens from the TokenRequest API. If you need a long-lived token for external use (like CI/CD systems), create a Secret explicitly.
 
 ```yaml
 # task: create a long-lived token for external access
