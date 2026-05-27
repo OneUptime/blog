@@ -58,23 +58,16 @@ gcloud compute networks subnets describe your-subnet \
 
 This shows you the primary range and any secondary ranges. You need at least two distinct ranges to assign to different gateways.
 
-## Step 2: Create Two Cloud Routers
+## Step 2: Create a Cloud Router
 
-Each NAT gateway needs its own Cloud Router. You can have multiple Cloud Routers on the same network:
+Each NAT gateway is associated with a Cloud Router. A single Cloud Router can host multiple NAT gateways, so you can use one router for both gateways:
 
 ```bash
-# Create the first Cloud Router
-gcloud compute routers create nat-router-1 \
+# Create the Cloud Router
+gcloud compute routers create nat-router \
   --network=your-vpc \
   --region=us-central1 \
-  --description="Router for NAT gateway 1 - VM traffic" \
-  --project=your-project-id
-
-# Create the second Cloud Router
-gcloud compute routers create nat-router-2 \
-  --network=your-vpc \
-  --region=us-central1 \
-  --description="Router for NAT gateway 2 - Pod traffic" \
+  --description="Router for NAT gateways" \
   --project=your-project-id
 ```
 
@@ -99,7 +92,7 @@ Configure the first gateway to handle the subnet's primary IP range (node/VM IPs
 ```bash
 # Create NAT gateway 1 for primary subnet range only
 gcloud compute routers nats create nat-gateway-1 \
-  --router=nat-router-1 \
+  --router=nat-router \
   --region=us-central1 \
   --nat-external-ip-pool=nat-gw1-ip-1,nat-gw1-ip-2 \
   --nat-custom-subnet-ip-ranges="your-subnet" \
@@ -115,7 +108,7 @@ Configure the second gateway to handle the secondary IP ranges (pod IPs, alias I
 ```bash
 # Create NAT gateway 2 for secondary (pod) IP ranges
 gcloud compute routers nats create nat-gateway-2 \
-  --router=nat-router-2 \
+  --router=nat-router \
   --region=us-central1 \
   --nat-external-ip-pool=nat-gw2-ip-1,nat-gw2-ip-2 \
   --nat-custom-subnet-ip-ranges="your-subnet:pods-range" \
@@ -131,14 +124,14 @@ Check both gateways:
 ```bash
 # Verify gateway 1
 gcloud compute routers nats describe nat-gateway-1 \
-  --router=nat-router-1 \
+  --router=nat-router \
   --region=us-central1 \
   --project=your-project-id \
   --format=yaml
 
 # Verify gateway 2
 gcloud compute routers nats describe nat-gateway-2 \
-  --router=nat-router-2 \
+  --router=nat-router \
   --region=us-central1 \
   --project=your-project-id \
   --format=yaml
@@ -151,7 +144,7 @@ Now that you have separate gateways, you can configure them independently:
 ```bash
 # Gateway 1: Conservative settings for VM traffic
 gcloud compute routers nats update nat-gateway-1 \
-  --router=nat-router-1 \
+  --router=nat-router \
   --region=us-central1 \
   --min-ports-per-vm=128 \
   --tcp-established-idle-timeout=1200 \
@@ -162,7 +155,7 @@ gcloud compute routers nats update nat-gateway-1 \
 
 # Gateway 2: Aggressive settings for high-throughput pod traffic
 gcloud compute routers nats update nat-gateway-2 \
-  --router=nat-router-2 \
+  --router=nat-router \
   --region=us-central1 \
   --enable-dynamic-port-allocation \
   --min-ports-per-vm=256 \
@@ -181,7 +174,7 @@ If your workloads are on different subnets rather than different IP ranges on th
 ```bash
 # Gateway for subnet A
 gcloud compute routers nats create nat-subnet-a \
-  --router=nat-router-1 \
+  --router=nat-router \
   --region=us-central1 \
   --auto-allocate-nat-external-ips \
   --nat-custom-subnet-ip-ranges="subnet-a" \
@@ -189,7 +182,7 @@ gcloud compute routers nats create nat-subnet-a \
 
 # Gateway for subnet B
 gcloud compute routers nats create nat-subnet-b \
-  --router=nat-router-2 \
+  --router=nat-router \
   --region=us-central1 \
   --auto-allocate-nat-external-ips \
   --nat-custom-subnet-ip-ranges="subnet-b" \
