@@ -215,7 +215,7 @@ print(f"Downloaded {len(image_bytes)} bytes")
 
 ## Resumable Uploads for Large Files
 
-For files over 5 MB, the library automatically uses resumable uploads. You can configure the chunk size:
+For files over 8 MiB, the library automatically uses resumable uploads. You can configure the chunk size:
 
 ```python
 from google.cloud import storage
@@ -226,9 +226,9 @@ def upload_large_file(bucket_name, source_file, destination_blob):
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(destination_blob)
 
-    # Set chunk size to 10 MB for large file uploads
-    # Must be a multiple of 256 KB
-    blob.chunk_size = 10 * 1024 * 1024  # 10 MB
+    # Set chunk size to 10 MiB for large file uploads
+    # Must be a multiple of 256 KiB
+    blob.chunk_size = 10 * 1024 * 1024  # 10 MiB
 
     blob.upload_from_filename(source_file)
 
@@ -284,16 +284,16 @@ stream_upload("my-bucket", "data/generated.csv", generate_data())
 stream_download("my-bucket", "data/generated.csv")
 ```
 
-## Upload with Progress Tracking
+## Upload with Size Logging
 
-When uploading large files, it is helpful to show progress:
+When uploading large files, it is helpful to log the file size before starting:
 
 ```python
 from google.cloud import storage
 import os
 
-def upload_with_progress(bucket_name, source_file, destination_blob):
-    """Upload a file and print progress updates."""
+def upload_with_size_logging(bucket_name, source_file, destination_blob):
+    """Upload a file and print size information."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(destination_blob)
@@ -301,14 +301,14 @@ def upload_with_progress(bucket_name, source_file, destination_blob):
     file_size = os.path.getsize(source_file)
     print(f"Uploading {source_file} ({file_size / 1024 / 1024:.1f} MB)")
 
-    # Use resumable upload and track progress via chunk callbacks
-    blob.chunk_size = 5 * 1024 * 1024  # 5 MB chunks
+    # Use resumable upload with a custom chunk size
+    blob.chunk_size = 5 * 1024 * 1024  # 5 MiB chunks
 
     blob.upload_from_filename(source_file)
 
     print(f"Upload complete: gs://{bucket_name}/{destination_blob}")
 
-upload_with_progress("my-bucket", "/tmp/large-file.zip", "uploads/large-file.zip")
+upload_with_size_logging("my-bucket", "/tmp/large-file.zip", "uploads/large-file.zip")
 ```
 
 ## Error Handling
