@@ -14,7 +14,7 @@ This guide walks through automating a private Docker registry deployment with TL
 
 ## Prerequisites
 
-You need Ansible 2.12+ on your control node, a target server running Ubuntu 22.04, and a domain name pointing to your server if you want proper TLS certificates. If you are running this internally, self-signed certificates work fine too.
+You need Ansible 2.12+ on your control node, the `community.docker` and `community.crypto` collections, a target server running Ubuntu 22.04, and a domain name pointing to your server if you want proper TLS certificates. If you are running this internally, self-signed certificates work fine too, but Docker clients must trust the self-signed certificate or be configured for an insecure registry.
 
 ## Project Layout
 
@@ -31,7 +31,6 @@ docker-registry/
       templates/
         docker-compose.yml.j2
         config.yml.j2
-        nginx.conf.j2
       defaults/
         main.yml
       handlers/
@@ -91,14 +90,21 @@ The main tasks start with ensuring Docker is available:
     state: present
     update_cache: yes
 
+- name: Create APT keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add Docker GPG key
-  apt_key:
+  get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
-    state: present
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
 
 - name: Add Docker apt repository
   apt_repository:
-    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     state: present
 
 - name: Install Docker CE and Docker Compose
@@ -109,6 +115,7 @@ The main tasks start with ensuring Docker is available:
       - containerd.io
       - docker-compose-plugin
     state: present
+    update_cache: yes
 
 - name: Ensure Docker service is running
   systemd:
@@ -252,8 +259,6 @@ Create htpasswd entries for registry users:
 
 ```yaml
 # roles/registry/templates/docker-compose.yml.j2 - Registry container definition
-version: '3.8'
-
 services:
   registry:
     image: registry:{{ registry_version }}
@@ -313,6 +318,16 @@ health:
 
 ## Running the Playbook
 
+```yaml
+# playbook.yml
+---
+- name: Deploy private Docker registry
+  hosts: registry
+  become: yes
+  roles:
+    - registry
+```
+
 ```bash
 # Deploy the private Docker registry
 ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
@@ -336,7 +351,7 @@ curl -u deployer:password https://registry.example.com:5000/v2/_catalog
 
 ## Garbage Collection
 
-Add a cron job for periodic garbage collection:
+Add a cron job for periodic garbage collection. Stop writes before running garbage collection so the registry does not delete blobs that are being uploaded:
 
 ```yaml
 # Task to schedule registry garbage collection
@@ -345,7 +360,11 @@ Add a cron job for periodic garbage collection:
     name: "Docker registry garbage collection"
     minute: "0"
     hour: "3"
-    job: "docker exec registry-registry-1 bin/registry garbage-collect /etc/docker/registry/config.yml --delete-untagged"
+    job: >
+      /usr/bin/docker compose -f /opt/registry/docker-compose.yml stop registry &&
+      /usr/bin/docker compose -f /opt/registry/docker-compose.yml run --rm --no-deps registry
+      garbage-collect --delete-untagged /etc/docker/registry/config.yml &&
+      /usr/bin/docker compose -f /opt/registry/docker-compose.yml up -d registry
     user: root
 ```
 
