@@ -26,14 +26,14 @@ graph TD
 # roles/grafana/tasks/main.yml
 
 ---
-- name: Add Grafana GPG key
-  ansible.builtin.apt_key:
-    url: https://apt.grafana.com/gpg.key
-    state: present
-
 - name: Add Grafana repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://apt.grafana.com stable main"
+  ansible.builtin.deb822_repository:
+    name: grafana
+    types: deb
+    uris: https://apt.grafana.com
+    suites: stable
+    components: main
+    signed_by: https://apt.grafana.com/gpg.key
     state: present
 
 - name: Install Grafana
@@ -67,7 +67,7 @@ graph TD
     url: "http://localhost:3000/api/datasources"
     method: POST
     headers:
-      Authorization: "Bearer {{ grafana_api_key }}"
+      Authorization: "Bearer {{ grafana_service_account_token }}"
     body_format: json
     body:
       name: Prometheus
@@ -82,7 +82,7 @@ graph TD
     url: "http://localhost:3000/api/datasources"
     method: POST
     headers:
-      Authorization: "Bearer {{ grafana_api_key }}"
+      Authorization: "Bearer {{ grafana_service_account_token }}"
     body_format: json
     body:
       name: Loki
@@ -97,6 +97,14 @@ graph TD
 ```yaml
 # roles/grafana/tasks/dashboards.yml
 ---
+- name: Create dashboard directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: '0755'
+
 - name: Create dashboard provisioning config
   ansible.builtin.copy:
     content: |
@@ -136,7 +144,7 @@ graph TD
     url: "http://localhost:3000/api/dashboards/db"
     method: POST
     headers:
-      Authorization: "Bearer {{ grafana_api_key }}"
+      Authorization: "Bearer {{ grafana_service_account_token }}"
     body_format: json
     body:
       dashboard: "{{ lookup('file', 'dashboards/' + item + '.json') | from_json }}"
@@ -334,4 +342,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
