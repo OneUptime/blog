@@ -16,14 +16,13 @@ This guide covers the full upgrade lifecycle from planning through validation.
 
 ```mermaid
 graph LR
-    A[v1.28] --> B[v1.29]
-    B --> C[v1.30]
-    C --> D[v1.31]
+    A[v1.34] --> B[v1.35]
+    B --> C[v1.36]
     style A fill:#f9f,stroke:#333
-    style D fill:#9f9,stroke:#333
+    style C fill:#9f9,stroke:#333
 ```
 
-Kubernetes only supports upgrading one minor version at a time. Jumping from v1.28 to v1.31 directly is not supported. Plan each hop as a separate upgrade cycle.
+Kubernetes only supports upgrading one minor version at a time. Jumping from v1.34 to v1.36 directly is not supported. Plan each hop as a separate upgrade cycle.
 
 ## Pre-Upgrade Checklist
 
@@ -34,7 +33,7 @@ Kubernetes only supports upgrading one minor version at a time. Jumping from v1.
 
 # 1. Check current cluster version
 echo "=== Current Version ==="
-kubectl version --short
+kubectl version
 
 # 2. Verify all nodes are Ready
 echo "=== Node Status ==="
@@ -43,7 +42,7 @@ kubectl get nodes -o wide
 # 3. Check for deprecated API usage in the target version
 # Install pluto (https://github.com/FairwindsOps/pluto)
 echo "=== Deprecated APIs ==="
-pluto detect-all-in-cluster --target-versions k8s=v1.30
+pluto detect-all-in-cluster --target-versions k8s=v1.35.5
 
 # 4. Check for PodDisruptionBudgets that might block draining
 echo "=== PodDisruptionBudgets ==="
@@ -70,64 +69,66 @@ ETCDCTL_API=3 etcdctl snapshot save /tmp/pre-upgrade-backup.db \
 
 ```python
 # check_deprecated_apis.py
-# Scans all resources in the cluster for deprecated API versions
-# Reports which resources need migration before upgrading
+# Checks API server metrics for recent requests to deprecated API versions
+# Reports API versions that are removed by the target Kubernetes version
 
 import subprocess
-import json
+import re
 import sys
 
-# APIs deprecated in Kubernetes v1.30
-# Maps old API group/version to the replacement
-DEPRECATED_APIS = {
-    "flowcontrol.apiserver.k8s.io/v1beta3": "flowcontrol.apiserver.k8s.io/v1",
+TARGET_K8S_VERSION = "1.35"
+
+# Maps old API group/version to the replacement.
+REPLACEMENTS = {
+    "flowcontrol.apiserver.k8s.io/v1beta2": "flowcontrol.apiserver.k8s.io/v1",
     "autoscaling/v2beta2": "autoscaling/v2",
     "batch/v1beta1": "batch/v1",
 }
 
 
-def get_api_resources():
-    """Fetch all API resources available in the cluster."""
-    result = subprocess.run(
-        ["kubectl", "api-resources", "-o", "wide", "--no-headers"],
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip().split("\n")
+def parse_minor(version):
+    """Parse a Kubernetes minor release like 1.35 or v1.35.1."""
+    version = version.lstrip("v")
+    major, minor, *_ = version.split(".")
+    return int(major), int(minor)
 
 
 def check_for_deprecated_usage():
-    """Scan for resources using deprecated API versions."""
+    """Check apiserver_requested_deprecated_apis for recent deprecated API use."""
     issues = []
+    target = parse_minor(TARGET_K8S_VERSION)
+    result = subprocess.run(
+        ["kubectl", "get", "--raw", "/metrics"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
 
-    for api_version, replacement in DEPRECATED_APIS.items():
-        # Try to list resources using the deprecated API version
-        result = subprocess.run(
-            [
-                "kubectl",
-                "get",
-                "--raw",
-                f"/apis/{api_version}",
-            ],
-            capture_output=True,
-            text=True,
+    metric_pattern = re.compile(
+        r'apiserver_requested_deprecated_apis\{([^}]*)\}\s+([0-9.eE+-]+)'
+    )
+    label_pattern = re.compile(r'(\w+)="([^"]*)"')
+
+    for labels_raw, value in metric_pattern.findall(result.stdout):
+        if float(value) <= 0:
+            continue
+
+        labels = dict(label_pattern.findall(labels_raw))
+        removed_release = labels.get("removed_release")
+        if not removed_release or parse_minor(removed_release) > target:
+            continue
+
+        group = labels.get("group", "")
+        version = labels.get("version", "")
+        api_version = f"{group}/{version}" if group else version
+        issues.append(
+            {
+                "api_version": api_version,
+                "resource": labels.get("resource", "<unknown>"),
+                "removed_release": removed_release,
+                "replacement": REPLACEMENTS.get(api_version, "check the migration guide"),
+            }
         )
-
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-            resources = data.get("resources", [])
-            for resource in resources:
-                name = resource.get("name", "")
-                # Skip sub-resources like status
-                if "/" in name:
-                    continue
-                issues.append(
-                    {
-                        "api_version": api_version,
-                        "resource": name,
-                        "replacement": replacement,
-                    }
-                )
 
     return issues
 
@@ -143,6 +144,7 @@ def main():
     for issue in issues:
         print(
             f"  - {issue['resource']} using {issue['api_version']} "
+            f"(removed in {issue['removed_release']}) "
             f"-> migrate to {issue['replacement']}"
         )
     sys.exit(1)
@@ -159,23 +161,33 @@ if __name__ == "__main__":
 # Upgrade the first control plane node
 
 # Step 1: Update the kubeadm package
+# Ensure /etc/apt/sources.list.d/kubernetes.list points to the v1.35 pkgs.k8s.io repository first.
+sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.30.0-00
+sudo apt-get install -y kubeadm='1.35.5-*'
+sudo apt-mark hold kubeadm
 
 # Step 2: Verify the upgrade plan
 sudo kubeadm upgrade plan
 
 # Step 3: Apply the upgrade to the first control plane node
-sudo kubeadm upgrade apply v1.30.0
+sudo kubeadm upgrade apply v1.35.5
 
-# Step 4: Upgrade kubelet and kubectl
-sudo apt-get install -y kubelet=1.30.0-00 kubectl=1.30.0-00
+# Step 4: Drain the node before upgrading kubelet
+kubectl drain "$(hostname)" --ignore-daemonsets
 
-# Step 5: Restart kubelet
+# Step 5: Upgrade kubelet and kubectl
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get update
+sudo apt-get install -y kubelet='1.35.5-*' kubectl='1.35.5-*'
+sudo apt-mark hold kubelet kubectl
+
+# Step 6: Restart kubelet
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
-# Step 6: Verify the node version
+# Step 7: Uncordon and verify the node version
+kubectl uncordon "$(hostname)"
 kubectl get nodes
 ```
 
@@ -191,7 +203,7 @@ sequenceDiagram
     Operator->>Node: kubectl cordon (mark unschedulable)
     Operator->>Node: kubectl drain (evict pods)
     Scheduler->>Pods: Reschedule on other nodes
-    Operator->>Node: Upgrade kubeadm, kubelet, kubectl
+    Operator->>Node: Upgrade kubeadm and kubelet
     Operator->>Node: kubeadm upgrade node
     Operator->>Node: Restart kubelet
     Operator->>Node: kubectl uncordon (mark schedulable)
@@ -226,9 +238,13 @@ echo "=== Upgrading packages on ${NODE_NAME} ==="
 # SSH to the node and upgrade packages
 ssh "${NODE_NAME}" << 'EOF'
   sudo apt-get update
-  sudo apt-get install -y kubeadm=1.30.0-00
+  sudo apt-mark unhold kubeadm
+  sudo apt-get install -y kubeadm='1.35.5-*'
+  sudo apt-mark hold kubeadm
   sudo kubeadm upgrade node
-  sudo apt-get install -y kubelet=1.30.0-00
+  sudo apt-mark unhold kubelet
+  sudo apt-get install -y kubelet='1.35.5-*'
+  sudo apt-mark hold kubelet
   sudo systemctl daemon-reload
   sudo systemctl restart kubelet
 EOF
@@ -299,11 +315,11 @@ If the upgrade fails on a control plane node, restore from the etcd backup taken
 Key rollback steps:
 
 1. Restore the etcd snapshot to revert cluster state.
-2. Downgrade kubeadm, kubelet, and kubectl to the previous version.
-3. Run `kubeadm upgrade apply` with the previous version.
+2. Restore the previous static Pod manifests and component configuration from backup.
+3. Reinstall the previous kubeadm, kubelet, and kubectl package versions if the node packages were already upgraded.
 4. Verify all nodes rejoin the cluster successfully.
 
-Never skip the etcd backup. It is your only reliable rollback mechanism for control plane failures.
+Never skip the etcd backup. It is the critical rollback mechanism for restoring control plane state after a failed upgrade.
 
 ## Key Takeaways
 
