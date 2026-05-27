@@ -18,11 +18,11 @@ Every App Engine application has at least one service called `default`. When you
 
 Each service gets its own URL pattern:
 
-- Default service: `https://your-project.appspot.com`
-- Named service: `https://service-name-dot-your-project.appspot.com`
-- Specific version: `https://version-dot-service-name-dot-your-project.appspot.com`
+- Default service: `https://your-project.REGION_ID.r.appspot.com`
+- Named service: `https://service-name-dot-your-project.REGION_ID.r.appspot.com`
+- Specific version: `https://version-dot-service-name-dot-your-project.REGION_ID.r.appspot.com`
 
-Services communicate with each other over HTTP, just like any microservices architecture. The key difference is that intra-service communication within the same App Engine application uses Google's internal network, which is fast and free.
+Services communicate with each other over HTTP, just like any microservices architecture. The key difference is that App Engine lets you target another service directly by including its service name in the App Engine URL.
 
 ## Project Structure
 
@@ -57,7 +57,7 @@ The default service is typically your frontend or main web application. Here is 
 runtime: python312
 service: default  # This is the default service (can omit this line)
 
-instance_class: F2  # 512MB memory for frontend rendering
+instance_class: F2  # 768MB memory for frontend rendering
 
 automatic_scaling:
   min_idle_instances: 1      # Keep at least 1 instance warm for fast responses
@@ -67,7 +67,7 @@ automatic_scaling:
   max_concurrent_requests: 30
 
 env_variables:
-  API_SERVICE_URL: "https://api-dot-your-project.appspot.com"
+  API_SERVICE_URL: "https://api-dot-your-project.REGION_ID.r.appspot.com"
 ```
 
 The frontend keeps at least one idle instance warm because users expect fast page loads. Setting `max_instances: 10` prevents runaway scaling during traffic spikes from driving up costs unexpectedly.
@@ -81,7 +81,7 @@ The API service handles backend logic and data processing:
 runtime: python312
 service: api
 
-instance_class: F4  # 1GB memory for data processing
+instance_class: F4  # 1536MB memory for data processing
 
 automatic_scaling:
   min_idle_instances: 2      # Keep 2 instances warm - API latency matters
@@ -106,7 +106,7 @@ Background workers have completely different scaling needs. They process tasks a
 runtime: python312
 service: worker
 
-instance_class: F4_HIGHMEM  # 2GB memory for batch processing
+instance_class: B4_1G  # 3072MB memory for batch processing
 
 basic_scaling:
   max_instances: 5
@@ -115,7 +115,7 @@ basic_scaling:
 env_variables:
   TASK_QUEUE: "worker-queue"
 
-# Workers do not need the default health check behavior
+# Enable warmup requests so instances can initialize before handling traffic
 inbound_services:
   - warmup
 ```
@@ -183,12 +183,12 @@ Services communicate with each other over HTTP. Here is how the frontend service
 # frontend/main.py - Making requests to the API service
 import requests
 import os
-from flask import Flask
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
-# URL of the API service - use internal App Engine URL for performance
-API_URL = os.environ.get("API_SERVICE_URL", "https://api-dot-your-project.appspot.com")
+# URL of the API service - include REGION_ID for apps created after February 2020
+API_URL = os.environ.get("API_SERVICE_URL", "https://api-dot-your-project.REGION_ID.r.appspot.com")
 
 @app.route("/dashboard")
 def dashboard():
