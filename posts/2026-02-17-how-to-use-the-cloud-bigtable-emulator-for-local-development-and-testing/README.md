@@ -10,19 +10,19 @@ Description: Set up and use the Cloud Bigtable emulator for local development an
 
 Running tests against a real Cloud Bigtable instance is slow and expensive. Every read and write costs money, tests depend on network connectivity, and if multiple developers share the same instance, they can step on each other's data. The Cloud Bigtable emulator solves all of these problems by giving you a local, in-memory Bigtable that runs on your machine.
 
-I use the emulator constantly during development. It starts in under a second, runs entirely on localhost, and supports the full Bigtable API surface. In this post, I will show you how to set it up, write tests against it, and integrate it into your CI/CD pipeline.
+I use the emulator constantly during development. It starts quickly, runs entirely on localhost, and supports the Bigtable client libraries for local reads and writes. In this post, I will show you how to set it up, write tests against it, and integrate it into your CI/CD pipeline.
 
 ## Installing the Emulator
 
-The Bigtable emulator comes bundled with the Google Cloud SDK. If you have `gcloud` installed, you already have it.
+The Bigtable emulator is available as a Google Cloud CLI component. If you have `gcloud` installed, you can install the beta commands and emulator component with:
 
 ```bash
 # Install the Bigtable emulator component via gcloud
 
-gcloud components install bigtable
+gcloud components install beta bigtable
 
 # Verify the installation
-gcloud emulators bigtable --help
+gcloud beta emulators bigtable --help
 ```
 
 If you prefer Docker, you can also run the emulator in a container:
@@ -72,7 +72,7 @@ gcloud beta emulators bigtable env-init
 
 ## Creating Tables in the Emulator
 
-The emulator starts empty - no instances, no tables. You need to create them before running your tests. Here is how to set up tables using Python:
+The emulator starts empty - no tables for the project and instance names you use. It does not provide administrative APIs to create or manage instances or clusters, but you can connect with any project and instance name to create tables before running your tests. Here is how to set up tables using Python:
 
 ```python
 # setup_emulator_tables.py - Create test tables in the Bigtable emulator
@@ -247,7 +247,7 @@ jobs:
       - name: Install Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          install_components: bigtable
+          install_components: beta,bigtable
 
       - name: Start Bigtable Emulator
         run: |
@@ -277,7 +277,7 @@ services:
     ports:
       - "8086:8086"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8086'"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -295,11 +295,12 @@ services:
 
 The emulator is excellent for functional testing, but there are some limitations to be aware of:
 
-- **No performance testing.** The emulator is single-threaded and in-memory. Performance numbers from the emulator mean nothing about production performance.
+- **No performance testing.** The emulator is local and in-memory, and it is not intended to model production Bigtable performance. Performance numbers from the emulator mean nothing about production performance.
 - **No IAM.** The emulator does not enforce authentication or authorization. Any client can connect without credentials.
+- **Limited administrative API support.** The emulator does not provide administrative APIs to create or manage instances and clusters.
 - **No replication.** Multi-cluster replication is not emulated. If your code relies on replication behavior, you need a real instance to test it.
 - **No data persistence.** Everything is lost when the emulator stops. This is intentional for testing but means you cannot use it as a development database.
-- **Eventual consistency.** Some behaviors around garbage collection timing may differ from production Bigtable.
+- **Garbage collection timing.** Some behaviors around garbage collection timing may differ from production Bigtable.
 
 ## Tips for Effective Emulator Testing
 
