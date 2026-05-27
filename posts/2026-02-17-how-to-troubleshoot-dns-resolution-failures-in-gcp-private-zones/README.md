@@ -14,12 +14,11 @@ DNS resolution failures in GCP private zones are one of the most frustrating iss
 
 Before diving into troubleshooting, let's understand how private zone resolution works in GCP. When a VM sends a DNS query to the internal metadata server at `169.254.169.254`, Cloud DNS checks the following in order:
 
-1. Response policies attached to the VPC
-2. Private zones attached to the VPC (longest suffix match wins)
-3. Forwarding zones attached to the VPC
-4. Peering zones attached to the VPC
-5. Auto-generated internal zones (like `.internal` for Compute Engine)
-6. Google public DNS
+1. Outbound DNS server policies with alternative name servers, if configured
+2. Response policies attached to the VPC
+3. Private, forwarding, and peering zones attached to the VPC (longest suffix match wins across these zones)
+4. Auto-generated internal zones (like `.internal` for Compute Engine)
+5. Google public DNS
 
 If a query matches a private zone but the zone does not have a record for that specific name, Cloud DNS returns NXDOMAIN. It does not fall through to public DNS. This "shadow" effect is a common source of confusion.
 
@@ -95,7 +94,7 @@ SSH into the VM and run DNS queries to understand what is happening.
 dig myapp.internal.example.com @169.254.169.254
 
 # Check what the response code is
-dig +short myapp.internal.example.com @169.254.169.254
+dig +noall +comments myapp.internal.example.com @169.254.169.254
 
 # Try with verbose output for full details
 dig +noall +answer +authority myapp.internal.example.com @169.254.169.254
@@ -129,7 +128,7 @@ To fix shadowing, either:
 
 ## Step 6: Check Conflicting Zones
 
-If multiple private zones could match a query, Cloud DNS uses the longest suffix match. For example, if you have zones for both `example.com` and `internal.example.com`, a query for `app.internal.example.com` will match the `internal.example.com` zone.
+If multiple private, forwarding, or peering zones could match a query, Cloud DNS uses the longest suffix match. For example, if you have zones for both `example.com` and `internal.example.com`, a query for `app.internal.example.com` will match the `internal.example.com` zone.
 
 ```bash
 # List all private zones to check for conflicts
@@ -173,30 +172,24 @@ The logs show you:
 
 This tells you definitively whether the query is reaching Cloud DNS and what Cloud DNS is returning.
 
-## Step 8: Check Firewall Rules
+## Step 8: Check Local Firewall, Proxy, and Routing
 
-VMs need to be able to reach the metadata server at `169.254.169.254` on UDP and TCP port 53. While GCP default firewall rules allow this, custom firewall rules might block it.
+VMs need to be able to reach the metadata server at `169.254.169.254` on UDP and TCP port 53. Google Cloud VPC firewall rules and hierarchical firewall policies do not apply to metadata server traffic, so adding a VPC firewall allow rule will not fix this path. However, a guest OS firewall, proxy configuration, or custom route inside the VM can still break access.
 
 ```bash
-# List firewall rules that might affect DNS traffic
-gcloud compute firewall-rules list \
-    --filter="direction=EGRESS" \
-    --format="table(name,direction,action,targetTags,destinationRanges)" \
-    --project=my-project
+# Check whether the metadata server is reachable
+ping -c 3 169.254.169.254
+
+# Check routes to the metadata server from inside the VM
+ip route get 169.254.169.254
 ```
 
-If you have deny-all egress rules, you need to explicitly allow DNS traffic to the metadata server.
+If local firewall rules are installed on the VM, check whether they block DNS to the metadata server.
 
 ```bash
-# Allow DNS traffic to the metadata server
-gcloud compute firewall-rules create allow-dns-metadata \
-    --direction=EGRESS \
-    --action=ALLOW \
-    --rules=udp:53,tcp:53 \
-    --destination-ranges=169.254.169.254/32 \
-    --priority=900 \
-    --network=my-vpc \
-    --project=my-project
+# Check common Linux local firewall rules
+sudo iptables -S
+sudo nft list ruleset
 ```
 
 ## Step 9: Check the VM's DNS Configuration
@@ -243,7 +236,7 @@ The network URL in the zone configuration must match the full self-link of the V
 | NXDOMAIN for existing record | Zone not attached to VM's network | Add network to zone |
 | NXDOMAIN for public names | Zone shadowing | Narrow zone scope or add records |
 | SERVFAIL | Forwarding target unreachable | Check network connectivity |
-| Timeout | Firewall blocking DNS | Allow UDP/TCP 53 to 169.254.169.254 |
+| Timeout | Local firewall, proxy, or custom routing issue | Check guest OS firewall rules and route to 169.254.169.254 |
 | Wrong answer | Multiple overlapping zones | Check zone precedence |
 | Intermittent failures | DNS server policy misconfiguration | Review alternative nameservers |
 
