@@ -58,7 +58,6 @@ BigQuery uses an internal service account to perform encryption and decryption. 
 
 ```bash
 # Get the BigQuery service account for your project
-# Replace PROJECT_NUMBER with your actual project number
 bq show --encryption_service_account --project_id=my-project-id
 ```
 
@@ -89,7 +88,7 @@ bq mk --dataset \
     my-project-id:cmek_dataset
 ```
 
-Every table created in this dataset will automatically be encrypted with your KMS key.
+Every new table created in this dataset will automatically be encrypted with your KMS key unless you specify a different CMEK key for the table.
 
 ## Step 5: Create a Table with CMEK (Per-Table Encryption)
 
@@ -165,6 +164,7 @@ If you have an existing dataset and want to add CMEK, you can update it.
 ```bash
 # Update an existing dataset to use CMEK
 bq update --default_kms_key="projects/my-project-id/locations/us/keyRings/bigquery-keyring/cryptoKeys/bigquery-encryption-key" \
+    --dataset \
     my-project-id:existing_dataset
 ```
 
@@ -172,7 +172,7 @@ This sets the default key for new tables, but existing tables in the dataset kee
 
 ```bash
 # Copy a table to re-encrypt it with CMEK
-bq cp --destination_kms_key="projects/my-project-id/locations/us/keyRings/bigquery-keyring/cryptoKeys/bigquery-encryption-key" \
+bq cp -f --destination_kms_key="projects/my-project-id/locations/us/keyRings/bigquery-keyring/cryptoKeys/bigquery-encryption-key" \
     my-project-id:existing_dataset.my_table \
     my-project-id:existing_dataset.my_table
 ```
@@ -185,9 +185,9 @@ When Cloud KMS rotates your key, it creates a new key version. BigQuery continue
 
 If you want to re-encrypt all data with the latest key version, you need to copy each table to itself as shown above.
 
-## Revoking Access by Disabling a Key
+## Revoking Access by Disabling a Key Version
 
-One of the primary reasons teams adopt CMEK is the ability to revoke access. If you disable a Cloud KMS key, all BigQuery data encrypted with that key becomes immediately inaccessible.
+One of the primary reasons teams adopt CMEK is the ability to revoke access. If you disable a Cloud KMS key version, all BigQuery data encrypted with that key version becomes inaccessible.
 
 ```bash
 # Disable a key version to make all data encrypted with it inaccessible
