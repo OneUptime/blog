@@ -149,10 +149,9 @@ Production workflows often require pushing the same image with multiple tags. Fo
 
     - name: Tag and push image with all tags
       community.docker.docker_image:
-        name: "{{ registry }}/{{ image_name }}"
-        tag: "{{ item }}"
+        name: "{{ registry }}/{{ image_name }}:{{ version }}"
         source: local
-        repository: "{{ registry }}/{{ image_name }}"
+        repository: "{{ registry }}/{{ image_name }}:{{ item }}"
         push: true
         force_tag: true
       loop: "{{ tags_to_push }}"
@@ -260,6 +259,12 @@ Here is a more complete example that integrates with a Git-based CI workflow. It
           pull: true
         push: false
 
+    - name: Log in to registry
+      community.docker.docker_login:
+        registry_url: "https://{{ registry }}"
+        username: "{{ registry_user }}"
+        password: "{{ registry_password }}"
+
     - name: Run smoke tests against the built image
       community.docker.docker_container:
         name: smoke-test
@@ -275,7 +280,7 @@ Here is a more complete example that integrates with a Git-based CI workflow. It
         tag: "{{ image_tag }}"
         push: true
         source: local
-      when: test_result.container.State.ExitCode == 0
+      when: test_result.status == 0
 
     - name: Clean up build directory
       ansible.builtin.file:
@@ -296,6 +301,8 @@ After pushing, it is good practice to verify the image actually made it to the r
     registry_url: "https://registry.example.com"
     image_name: myapp/worker
     expected_tag: "abc1234"
+    registry_user: "{{ vault_registry_user }}"
+    registry_password: "{{ vault_registry_password }}"
 
   tasks:
     - name: Check if tag exists in registry
