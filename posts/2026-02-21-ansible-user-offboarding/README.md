@@ -45,14 +45,14 @@ offboarding_users:
   when: offboarding_archive_home
 
 - name: Kill active user sessions
-  shell: "pkill -KILL -u {{ item.username }} || true"
+  shell: "pkill -KILL -u {{ item.username | quote }} || true"
   loop: "{{ offboarding_users }}"
   when: offboarding_kill_sessions
   changed_when: false
   ignore_errors: yes
 
 - name: Archive home directories before removal
-  archive:
+  community.general.archive:
     path: "/home/{{ item.username }}"
     dest: "{{ offboarding_archive_dir }}/{{ item.username }}_{{ item.date }}.tar.gz"
     format: gz
@@ -61,9 +61,10 @@ offboarding_users:
   ignore_errors: yes
 
 - name: Lock user accounts (disable password login)
-  command: "usermod -L {{ item.username }}"
+  user:
+    name: "{{ item.username }}"
+    password_lock: true
   loop: "{{ offboarding_users }}"
-  changed_when: true
   ignore_errors: yes
 
 - name: Set shell to nologin
@@ -93,9 +94,10 @@ offboarding_users:
   changed_when: false
 
 - name: Expire user account
-  command: "chage -E 0 {{ item.username }}"
+  user:
+    name: "{{ item.username }}"
+    expires: 0
   loop: "{{ offboarding_users }}"
-  changed_when: true
   ignore_errors: yes
 
 - name: Revoke database access
@@ -131,16 +133,27 @@ offboarding_users:
 ---
 - name: Terminate active database sessions
   become_user: postgres
-  postgresql_query:
-    query: "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '{{ item.username }}';"
+  community.postgresql.postgresql_query:
+    query: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = %s
+    positional_args:
+      - "{{ item.username }}"
   loop: "{{ offboarding_users }}"
   ignore_errors: yes
 
-- name: Revoke all database privileges
+- name: Disable database login
   become_user: postgres
-  postgresql_user:
+  community.postgresql.postgresql_user:
+    name: "{{ item.username }}"
+    role_attr_flags: NOLOGIN
+  loop: "{{ offboarding_users }}"
+  ignore_errors: yes
+
+- name: Remove database role when no object privileges remain
+  become_user: postgres
+  community.postgresql.postgresql_user:
     name: "{{ item.username }}"
     state: absent
+    fail_on_user: false
   loop: "{{ offboarding_users }}"
   ignore_errors: yes
 ```
@@ -385,4 +398,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
