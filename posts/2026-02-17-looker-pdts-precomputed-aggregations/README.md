@@ -151,13 +151,12 @@ For large tables, rebuilding the entire PDT every day is expensive and slow. Inc
 view: incremental_order_metrics {
   derived_table: {
     sql: SELECT
-      DATE(created_at) AS order_date,
-      region,
+      DATE(orders.created_at) AS order_date,
+      orders.region,
       COUNT(DISTINCT order_id) AS total_orders,
       SUM(total_amount) AS revenue
-    FROM `my-project.analytics.orders`
-    WHERE created_at >= TIMESTAMP({% date_start order_date %})
-      AND created_at < TIMESTAMP({% date_end order_date %})
+    FROM `my-project.analytics.orders` AS orders
+    WHERE {% incrementcondition %} orders.created_at {% endincrementcondition %}
     GROUP BY 1, 2 ;;
 
     datagroup_trigger: daily_datagroup
@@ -237,16 +236,16 @@ Keep an eye on your PDT builds to catch failures early.
 
 In Looker Admin, go to "Persistent Derived Tables" to see:
 
-- Build status (success, failure, building)
+- Last attempt status (success, build error, building, regenerating, not built)
 - Last build time and duration
-- Next scheduled build
+- Persistence rule, last checked time, and trigger details
 - Error messages for failed builds
 
-You can also query PDT build status through the Looker API:
+You can also query the PDT dependency graph through the Looker API, including status colors for each node:
 
 ```bash
-# List PDT builds using the Looker API
-curl -X GET "https://your-instance.cloud.looker.com/api/4.0/derived_table/graph/model/analytics" \
+# Get the PDT dependency graph using the Looker API
+curl -X GET "https://your-instance.cloud.looker.com/api/4.0/derived_table/graph/model/analytics?color=true" \
   -H "Authorization: token YOUR_API_TOKEN"
 ```
 
