@@ -8,7 +8,7 @@ Description: Use the Micronaut GCP module to integrate your Micronaut applicatio
 
 ---
 
-Micronaut's GCP module provides auto-configuration for Google Cloud services, making it straightforward to connect to Firestore and Cloud Storage from a Micronaut application. The module handles credential management, client creation, and injection so you can focus on your application logic rather than SDK boilerplate.
+Micronaut's GCP module provides credential configuration for Google Cloud services, making it straightforward to connect to Firestore and Cloud Storage from a Micronaut application. The module handles credential management, and you can expose Google Cloud Java clients as injectable beans so you can focus on your application logic rather than SDK boilerplate.
 
 In this post, I will walk through building a Micronaut application that uses Firestore for data storage and Cloud Storage for file management.
 
@@ -64,12 +64,18 @@ public class GcpClientFactory {
 
     @Value("${gcp.project-id}")
     private String projectId;
+    private final GoogleCredentials googleCredentials;
+
+    public GcpClientFactory(GoogleCredentials googleCredentials) {
+        this.googleCredentials = googleCredentials;
+    }
 
     // Create a Firestore client bean
     @Singleton
-    public Firestore firestore() throws IOException {
+    public Firestore firestore() {
         FirestoreOptions options = FirestoreOptions.newBuilder()
                 .setProjectId(projectId)
+                .setCredentials(googleCredentials)
                 .build();
         return options.getService();
     }
@@ -79,6 +85,7 @@ public class GcpClientFactory {
     public Storage storage() {
         StorageOptions options = StorageOptions.newBuilder()
                 .setProjectId(projectId)
+                .setCredentials(googleCredentials)
                 .build();
         return options.getService();
     }
@@ -253,6 +260,7 @@ public class FileStorageService {
     }
 
     // Generate a signed URL for temporary access
+    // The configured credentials must be able to sign blobs, such as service account credentials.
     public String generateSignedUrl(String fileName, int expirationMinutes) {
         BlobInfo blobInfo = BlobInfo.newBuilder(BlobId.of(bucketName, fileName)).build();
 
@@ -376,7 +384,7 @@ public class FileController {
         this.fileService = fileService;
     }
 
-    @Post("/upload")
+    @Post(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA)
     public HttpResponse<FileInfo> uploadFile(CompletedFileUpload file) throws IOException {
         FileInfo info = fileService.uploadFile(
                 file.getFilename(),
@@ -414,7 +422,9 @@ micronaut:
     name: gcp-demo
   server:
     port: ${PORT:8080}
+    max-request-size: 50MB
     multipart:
+      enabled: true
       max-file-size: 50MB
 gcp:
   project-id: my-project-id
@@ -424,4 +434,4 @@ gcp:
 
 ## Wrapping Up
 
-The Micronaut GCP module makes connecting to Firestore and Cloud Storage simple. The framework handles credential discovery and client lifecycle. Firestore gives you a flexible document database without schema management, and Cloud Storage handles file operations with features like signed URLs for temporary access. The key advantage of using Micronaut over Spring for this is startup time - the compile-time dependency injection means your application starts faster, which matters on serverless platforms like Cloud Run and Cloud Functions.
+The Micronaut GCP module makes connecting to Firestore and Cloud Storage simple. The framework handles credential discovery, and the factory above registers Google Cloud clients in Micronaut's bean context. Firestore gives you a flexible document database without schema management, and Cloud Storage handles file operations with features like signed URLs for temporary access. The key advantage of using Micronaut over Spring for this is startup time - the compile-time dependency injection means your application starts faster, which matters on serverless platforms like Cloud Run and Cloud Functions.
