@@ -56,7 +56,7 @@ If multiple tasks need the same environment variables, set them at the play leve
 
   environment:
     JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-    MAVEN_OPTS: "-Xmx512m -XX:MaxPermSize=128m"
+    MAVEN_OPTS: "-Xmx512m"
     APP_PROFILE: production
 
   tasks:
@@ -303,12 +303,19 @@ The `environment` keyword in Ansible only affects the current task execution. It
         mode: '0600'
 
     # Reference it in the systemd service
+    - name: Create systemd override directory
+      file:
+        path: /etc/systemd/system/myapp.service.d
+        state: directory
+        mode: '0755'
+
     - name: Configure systemd to use environment file
-      lineinfile:
-        path: /etc/systemd/system/myapp.service.d/override.conf
-        regexp: '^EnvironmentFile='
-        line: "EnvironmentFile=/etc/myapp/environment"
-        create: yes
+      copy:
+        content: |
+          [Service]
+          EnvironmentFile=/etc/myapp/environment
+        dest: /etc/systemd/system/myapp.service.d/override.conf
+        mode: '0644'
       notify: Reload systemd
 
   handlers:
