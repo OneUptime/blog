@@ -65,6 +65,7 @@ resource:
         id:
             description: Unique ID.
             type: str
+            returned: when resource is returned
             sample: 'abc-123'
 msg:
     description: Result message.
@@ -87,4 +88,4 @@ ansible-test sanity --test validate-modules
 
 ## Key Takeaways
 
-Always write all three documentation strings. Include all options with descriptions, types, and defaults. Provide realistic examples. Document every return value. Validate with ansible-doc.
+Always write all three documentation strings. Include all options with descriptions, types, and defaults. Provide realistic examples. Document every return value. Validate with ansible-test.
