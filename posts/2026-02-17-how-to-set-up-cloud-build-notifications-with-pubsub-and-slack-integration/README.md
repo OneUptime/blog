@@ -8,13 +8,13 @@ Description: Set up real-time Cloud Build notifications using Google Pub/Sub and
 
 ---
 
-When a production build fails at 3 AM, you want to know about it right away - not when you check the console the next morning. Google Cloud Build publishes build status events to a Pub/Sub topic by default, and you can hook into that to send notifications to Slack, email, PagerDuty, or any other service.
+When a production build fails at 3 AM, you want to know about it right away - not when you check the console the next morning. Google Cloud Build publishes build status events to Pub/Sub, and you can hook into that to send notifications to Slack, email, PagerDuty, or any other service.
 
 In this post, I will show you how to set up the full pipeline from Cloud Build events through Pub/Sub to Slack messages.
 
 ## How Cloud Build Notifications Work
 
-Every time a build starts, succeeds, fails, or times out, Cloud Build automatically publishes a message to a Pub/Sub topic called `cloud-builds` in your project. The message contains the full build object with details like status, duration, source, and images.
+Every time a build is created, starts working, or completes, Cloud Build publishes a message to the `cloud-builds` Pub/Sub topic by default if that topic exists in your project. The message contains the full build object with details like status, duration, source, and images.
 
 The flow looks like this:
 
@@ -36,6 +36,10 @@ gcloud services enable \
   cloudbuild.googleapis.com \
   pubsub.googleapis.com \
   cloudfunctions.googleapis.com \
+  --project=my-project
+
+# Create the default Cloud Build notifications topic
+gcloud pubsub topics create cloud-builds \
   --project=my-project
 ```
 
@@ -81,6 +85,8 @@ const STATUS_MAP = {
   FAILURE: { color: '#d32f2f', emoji: ':x:', text: 'failed' },
   TIMEOUT: { color: '#ff9800', emoji: ':hourglass:', text: 'timed out' },
   CANCELLED: { color: '#9e9e9e', emoji: ':no_entry_sign:', text: 'was cancelled' },
+  INTERNAL_ERROR: { color: '#d32f2f', emoji: ':warning:', text: 'had an internal error' },
+  EXPIRED: { color: '#ff9800', emoji: ':hourglass_flowing_sand:', text: 'expired in the queue' },
   QUEUED: { color: '#2196f3', emoji: ':clock1:', text: 'is queued' },
   WORKING: { color: '#2196f3', emoji: ':hammer:', text: 'is building' },
 };
@@ -91,8 +97,15 @@ exports.cloudBuildSlackNotifier = async (event, context) => {
     Buffer.from(event.data, 'base64').toString()
   );
 
-  // Only notify on terminal statuses (skip QUEUED and WORKING)
-  const terminalStatuses = ['SUCCESS', 'FAILURE', 'TIMEOUT', 'CANCELLED'];
+  // Only notify on terminal statuses (skip PENDING, QUEUED, and WORKING)
+  const terminalStatuses = [
+    'SUCCESS',
+    'FAILURE',
+    'TIMEOUT',
+    'CANCELLED',
+    'INTERNAL_ERROR',
+    'EXPIRED',
+  ];
   if (!terminalStatuses.includes(build.status)) {
     console.log(`Skipping notification for status: ${build.status}`);
     return;
@@ -207,7 +220,7 @@ Create a package.json for the function:
   "description": "Sends Cloud Build notifications to Slack",
   "main": "index.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
 ```
@@ -219,7 +232,7 @@ Deploy the function with your Slack webhook URL:
 ```bash
 # Deploy the Cloud Function triggered by the cloud-builds Pub/Sub topic
 gcloud functions deploy cloudBuildSlackNotifier \
-  --runtime=nodejs18 \
+  --runtime=nodejs22 \
   --trigger-topic=cloud-builds \
   --set-env-vars=SLACK_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/xxxx" \
   --region=us-central1 \
@@ -258,7 +271,12 @@ exports.cloudBuildSlackNotifier = async (event, context) => {
   );
 
   // Only notify on failures
-  if (build.status !== 'FAILURE' && build.status !== 'TIMEOUT') {
+  if (
+    build.status !== 'FAILURE' &&
+    build.status !== 'TIMEOUT' &&
+    build.status !== 'INTERNAL_ERROR' &&
+    build.status !== 'EXPIRED'
+  ) {
     return;
   }
 
@@ -288,14 +306,45 @@ spec:
     delivery:
       webhookUrl:
         secretRef: slack-webhook-url
+    template:
+      type: golang
+      uri: gs://my-project-notifiers-config/slack.json
   secrets:
     - name: slack-webhook-url
       value: projects/my-project/secrets/slack-webhook/versions/latest
 ```
 
+Create a Slack message template named `slack.json`:
+
+```json
+[
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "Cloud Build {{.Build.ProjectId}} {{.Build.Id}} status: {{.Build.Status}}"
+    }
+  },
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "<{{.Build.LogUrl}}|View Build Logs>"
+    }
+  }
+]
+```
+
 Store the webhook URL in Secret Manager:
 
 ```bash
+# Enable the additional APIs used by Cloud Build notifiers
+gcloud services enable \
+  run.googleapis.com \
+  compute.googleapis.com \
+  secretmanager.googleapis.com \
+  --project=my-project
+
 # Store the Slack webhook URL in Secret Manager
 echo -n "https://hooks.slack.com/services/T00/B00/xxxx" | \
   gcloud secrets create slack-webhook \
@@ -307,9 +356,15 @@ Deploy the notifier:
 
 ```bash
 # Deploy the pre-built Slack notifier
-gcloud builds submit \
-  --config=setup.yaml \
-  --substitutions=_NOTIFIER_CONFIG=slack-notifier.yaml
+git clone https://github.com/GoogleCloudPlatform/cloud-build-notifiers.git
+cd cloud-build-notifiers
+
+gcloud config set project my-project
+gcloud config set run/region us-central1
+
+./setup.sh slack ../slack-notifier.yaml \
+  -t ../slack.json \
+  -s slack-webhook
 ```
 
 ## Sending Notifications to Multiple Channels
