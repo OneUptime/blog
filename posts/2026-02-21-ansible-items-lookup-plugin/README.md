@@ -8,7 +8,7 @@ Description: Learn how to use the Ansible items lookup plugin to iterate over li
 
 ---
 
-The `items` lookup plugin is the most basic and commonly used lookup for looping in Ansible. It takes one or more lists and flattens them into a single list for iteration. If you have used `with_items` in older Ansible playbooks, you have already used this plugin. In modern Ansible, it is the mechanism behind the `loop` keyword when you pass a flat list.
+The `items` lookup plugin is the most basic and commonly used lookup for looping in Ansible. It takes one or more lists and flattens them into a single list for iteration. If you have used `with_items` in older Ansible playbooks, you have already used this plugin. In modern Ansible, simple list iteration is usually written with the `loop` keyword instead.
 
 ## What the items Lookup Does
 
@@ -152,7 +152,7 @@ Here is a real-world scenario managing user accounts across different groups.
 
 ## Dynamic List Combination
 
-You can conditionally include lists in the items lookup based on variables or facts.
+You can conditionally include lists before looping based on variables or facts.
 
 ```yaml
 # playbook.yml - Conditionally combine package lists
@@ -223,7 +223,7 @@ Managing multiple services in a single loop:
 
 ## Directory and File Structure Creation
 
-Creating multiple directories and files in a single pass:
+Creating multiple directories in a single pass:
 
 ```yaml
 # playbook.yml - Create application directory structure
@@ -374,6 +374,6 @@ The second approach makes a single call to the package manager with all packages
 
 4. **Empty lists**: Looping over an empty list simply skips the task. No error is raised.
 
-5. **String gotcha**: If you accidentally pass a string instead of a list to `loop`, it will iterate over each character. Always ensure your loop target is actually a list.
+5. **String gotcha**: If you accidentally pass a string instead of a list to `loop`, Ansible raises an error because `loop` requires list input. Use `query(...)` or `lookup(..., wantlist=True)` when feeding lookup results into `loop`.
 
-The `items` lookup is Ansible's simplest iteration tool. While modern Ansible favors the `loop` keyword with filters, understanding `items` is important because it is the foundation that all other loop constructs build upon, and you will encounter it in countless existing playbooks.
+The `items` lookup is Ansible's simplest iteration tool. While modern Ansible favors the `loop` keyword with filters, understanding `items` is important because you will encounter it in countless existing playbooks.
