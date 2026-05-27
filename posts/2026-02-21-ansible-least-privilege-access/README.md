@@ -156,8 +156,7 @@ The sudoers template that grants only specific commands:
 {{ item.name }} ALL=(root) NOPASSWD: {{ cmd }}
 {% endfor %}
 
-# Prevent this user from running anything else as root
-Defaults:{{ item.name }} !root_sudo
+# Record this user's sudo command output for audit review
 Defaults:{{ item.name }} log_output
 Defaults:{{ item.name }} logfile="/var/log/sudo-{{ item.name }}.log"
 ```
@@ -179,12 +178,6 @@ This task deploys a hardened SSH configuration:
         validate: '/usr/sbin/sshd -t -f %s'
       notify: Restart sshd
 
-    - name: Create SSH access control file
-      ansible.builtin.template:
-        src: ssh_allowed_users.j2
-        dest: /etc/ssh/allowed_users
-        mode: '0644'
-      notify: Restart sshd
 ```
 
 The SSH configuration template that restricts access:
@@ -194,7 +187,6 @@ The SSH configuration template that restricts access:
 # Managed by Ansible
 
 Port 22
-Protocol 2
 PermitRootLogin {{ ssh_permit_root_login }}
 PasswordAuthentication {{ ssh_password_authentication }}
 PubkeyAuthentication yes
