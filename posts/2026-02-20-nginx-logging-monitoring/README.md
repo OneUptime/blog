@@ -62,7 +62,7 @@ Key variables explained:
 - `$request_time` - Total time from first client byte to last byte sent to client
 - `$upstream_response_time` - Time spent receiving the response from the backend
 - `$upstream_connect_time` - Time spent establishing a connection to the backend
-- `$upstream_header_time` - Time between connecting to the backend and receiving the first header byte
+- `$upstream_header_time` - Time spent receiving the response header from the backend
 - `$upstream_cache_status` - Whether the response was served from cache (HIT, MISS, etc.)
 
 ## JSON Log Format
@@ -140,7 +140,7 @@ graph TD
     B -->|No| D{Static Asset?}
     D -->|Yes| C
     D -->|No| E[Log to access.log]
-    E --> F{Response Time > 0.5s?}
+    E --> F{Response Time >= 0.5s?}
     F -->|Yes| G[Also Log to slow.log]
     F -->|No| H[Done]
 ```
@@ -230,7 +230,7 @@ server {
 
     location /nginx_status {
         # Enable the stub status module
-        stub_status on;
+        stub_status;
 
         # Disable access logging for status checks
         access_log off;
@@ -261,7 +261,7 @@ Prevent log files from consuming all disk space.
 
 ```bash
 # /etc/logrotate.d/nginx
-/var/log/nginx/*.log {
+/var/log/nginx/*.log /var/log/nginx/*.json {
     daily            # Rotate daily
     missingok        # Do not error if log file is missing
     rotate 14        # Keep 14 days of logs
