@@ -8,7 +8,7 @@ Description: Learn how to implement JWT-based authentication and authorization i
 
 ---
 
-JWT (JSON Web Token) authentication is the standard approach for securing REST APIs. Unlike session-based authentication, JWTs are stateless and work well in distributed systems. This guide walks through implementing JWT authentication with Spring Security.
+JWT (JSON Web Token) authentication is a common approach for securing REST APIs. Unlike session-based authentication, JWTs are stateless and work well in distributed systems. This guide walks through implementing JWT authentication with Spring Security.
 
 ## Authentication Flow
 
@@ -20,6 +20,8 @@ sequenceDiagram
     participant AuthController
     participant AuthService
     participant JwtProvider
+    participant JwtAuthenticationFilter
+    participant ProtectedController
     participant Database
 
     Client->>AuthController: POST /api/auth/login (credentials)
@@ -33,10 +35,11 @@ sequenceDiagram
     AuthController-->>Client: 200 OK { token: "eyJ..." }
 
     Note over Client: Subsequent requests
-    Client->>AuthController: GET /api/data (Authorization: Bearer eyJ...)
-    AuthController->>JwtProvider: validateToken(token)
-    JwtProvider-->>AuthController: Claims (userId, roles)
-    AuthController-->>Client: 200 OK { data }
+    Client->>JwtAuthenticationFilter: GET /api/data (Authorization: Bearer eyJ...)
+    JwtAuthenticationFilter->>JwtProvider: validateToken(token)
+    JwtProvider-->>JwtAuthenticationFilter: Claims (username, roles)
+    JwtAuthenticationFilter->>ProtectedController: Continue authenticated request
+    ProtectedController-->>Client: 200 OK { data }
 ```
 
 ## Dependencies
@@ -109,7 +112,7 @@ public class JwtTokenProvider {
                 .collect(Collectors.toList()))
             .issuedAt(now)
             .expiration(expiryDate)
-            // Sign with HMAC-SHA256
+            // Sign with the strongest HMAC-SHA algorithm allowed by the key
             .signWith(key)
             .compact();
     }
@@ -261,6 +264,16 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    // Prevent Spring Boot from registering the filter outside Spring Security
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(
+            JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration =
+            new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
     // Authentication manager for login endpoint
     @Bean
     public AuthenticationManager authenticationManager(
@@ -272,7 +285,7 @@ public class SecurityConfig {
 
 ## Authentication Controller
 
-Create the login and registration endpoints.
+Create the login endpoint.
 
 ```java
 // AuthController.java - Authentication endpoints
@@ -282,15 +295,12 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
-    private final UserService userService;
 
     public AuthController(
             AuthenticationManager authenticationManager,
-            JwtTokenProvider tokenProvider,
-            UserService userService) {
+            JwtTokenProvider tokenProvider) {
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
-        this.userService = userService;
     }
 
     // POST /api/auth/login - Authenticate and return JWT
