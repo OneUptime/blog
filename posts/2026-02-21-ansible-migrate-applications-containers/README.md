@@ -61,14 +61,14 @@ containerize_apps:
   changed_when: false
 
 - name: Identify port bindings
-  command: "ss -tlnp | grep {{ item.port }}"
+  shell: "ss -tlnp | grep {{ item.port }}"
   register: port_info
   loop: "{{ containerize_apps }}"
   changed_when: false
   ignore_errors: yes
 
 - name: Check application dependencies
-  command: "lsof -i -P -n | grep {{ item.name }}"
+  shell: "lsof -i -P -n | grep {{ item.name }}"
   register: dep_info
   loop: "{{ containerize_apps }}"
   changed_when: false
@@ -101,9 +101,11 @@ containerize_apps:
   loop: "{{ containerize_apps }}"
 
 - name: Copy application source for build context
-  synchronize:
+  copy:
     src: "{{ item.source_dir }}/"
     dest: "/tmp/builds/{{ item.name }}/app/"
+    remote_src: true
+    mode: preserve
   loop: "{{ containerize_apps }}"
 
 - name: Build container images
@@ -128,9 +130,17 @@ WORKDIR /app
 # Copy application files
 COPY app/ .
 
+# Install packages required by the health check
+{% if item.base_image is search('alpine') %}
+RUN apk add --no-cache curl
+{% else %}
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+{% endif %}
+
 # Install dependencies based on detected package manager
 {% if item.base_image is search('node') %}
-RUN npm ci --production
+RUN npm ci --omit=dev
 {% elif item.base_image is search('python') %}
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -232,7 +242,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -376,4 +386,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
