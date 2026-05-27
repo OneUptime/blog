@@ -20,7 +20,7 @@ Cloud SQL exposes a rich set of metrics through Cloud Monitoring. Here are the o
 | `cloudsql.googleapis.com/database/memory/utilization` | Memory consumption as a fraction of total |
 | `cloudsql.googleapis.com/database/disk/utilization` | How full the disk is |
 | `cloudsql.googleapis.com/database/disk/bytes_used` | Absolute disk usage in bytes |
-| `cloudsql.googleapis.com/database/network/connections` | Current number of active connections |
+| `cloudsql.googleapis.com/database/network/connections` | Current number of connections for MySQL and SQL Server instances |
 | `cloudsql.googleapis.com/database/replication/replica_lag` | Replication lag for read replicas |
 | `cloudsql.googleapis.com/database/up` | Whether the instance is running |
 
@@ -74,7 +74,7 @@ Apply it:
 ```bash
 # Create the CPU utilization alert policy
 
-gcloud alpha monitoring policies create --policy-from-file=cloudsql-cpu-alert.json
+gcloud monitoring policies create --policy-from-file=cloudsql-cpu-alert.json
 ```
 
 ## Setting Up Memory Alerts
@@ -109,7 +109,7 @@ I recommend setting the memory threshold at 90 percent rather than 80 percent be
 
 ## Setting Up Disk Space Alerts
 
-Running out of disk space is one of the worst Cloud SQL failures because the database becomes read-only. If you have automatic storage increase enabled, you have a safety net, but you should still alert on it.
+Running out of disk space is one of the worst Cloud SQL failures because writes to the database start failing. If you have automatic storage increase enabled, you have a safety net, but you should still alert on it.
 
 Set up two alerts - a warning at 80 percent and a critical at 90 percent:
 
@@ -141,9 +141,9 @@ For the critical alert, duplicate this but change `thresholdValue` to 0.90 and r
 
 ## Monitoring Connection Counts
 
-Each Cloud SQL instance tier has a maximum connection limit. Hitting that limit means new connections are refused and your application starts throwing errors.
+Each Cloud SQL database engine has a maximum connection setting or limit. Hitting that limit means new connections are refused and your application starts throwing errors.
 
-The tricky part is that the connection limit varies by instance tier. For example, a `db-custom-1-3840` instance supports around 250 connections, while a `db-custom-8-30720` supports about 4000. You need to know your instance's limit and set the threshold accordingly.
+The tricky part is that the connection limit varies by database engine, configuration, and instance size. For MySQL and SQL Server instances, Cloud Monitoring exposes the current connection count through `cloudsql.googleapis.com/database/network/connections`. For PostgreSQL, check the `max_connections` setting and monitor active sessions with PostgreSQL-specific views or metrics.
 
 ```json
 {
@@ -169,7 +169,7 @@ The tricky part is that the connection limit varies by instance tier. For exampl
 }
 ```
 
-Adjust `thresholdValue` based on your instance tier's maximum. I usually set it at about 80 percent of the maximum.
+Adjust `thresholdValue` based on your engine's configured maximum. I usually set it at about 80 percent of the maximum.
 
 ## Monitoring Replication Lag
 
@@ -212,8 +212,10 @@ The simplest but most important alert - is your database actually running?
   "conditions": [
     {
       "displayName": "Instance is not up",
-      "conditionAbsent": {
+      "conditionThreshold": {
         "filter": "resource.type=\"cloudsql_database\" AND metric.type=\"cloudsql.googleapis.com/database/up\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
         "duration": "300s",
         "aggregations": [
           {
@@ -227,7 +229,7 @@ The simplest but most important alert - is your database actually running?
 }
 ```
 
-This uses `conditionAbsent` instead of `conditionThreshold` - it fires when the metric stops being reported, which indicates the instance is down.
+This uses `conditionThreshold` because the `database/up` metric reports `0` when the server is down.
 
 ## Terraform Configuration
 
@@ -276,10 +278,10 @@ gcloud beta monitoring channels create \
 gcloud beta monitoring channels create \
   --display-name="Alerts Slack Channel" \
   --type=slack \
-  --channel-labels=channel_name=alerts
+  --channel-labels=channel_name=alerts,auth_token=SLACK_BOT_USER_OAUTH_TOKEN
 ```
 
-Then reference the channel names in your alerting policy JSON.
+Then reference the notification channel resource names, such as `projects/PROJECT_ID/notificationChannels/CHANNEL_ID`, in your alerting policy JSON.
 
 ## Wrapping Up
 
