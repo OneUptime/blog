@@ -8,13 +8,13 @@ Description: Learn how to share files and build artifacts between steps in Googl
 
 ---
 
-Each step in a Cloud Build pipeline runs in its own container. This means that if step one generates a compiled binary or a test report, step two will not automatically have access to it. Understanding how to pass data between steps is essential for building any non-trivial pipeline.
+Each step in a Cloud Build pipeline runs in its own container. This means that if step one generates a compiled binary or a test report outside a shared location, step two will not automatically have access to it. Understanding how to pass data between steps is essential for building any non-trivial pipeline.
 
 Cloud Build provides two main mechanisms for sharing data between steps: the built-in workspace volume and custom volumes. Let me walk through both approaches and show you when to use each one.
 
 ## The Default Workspace Volume
 
-By default, Cloud Build mounts a persistent volume at `/workspace` for every step. This is the most common way to share files between build steps. Your source code gets cloned into `/workspace` at the beginning of the build, and any files you write there persist across all steps.
+By default, Cloud Build mounts a persistent volume at `/workspace` for every step. This is the most common way to share files between build steps. Your source code gets extracted into `/workspace` at the beginning of the build, and any files you write there persist across all steps.
 
 Here is a simple example:
 
@@ -55,7 +55,7 @@ Since all steps share `/workspace`, the build output from step one is available 
 A few things to keep in mind about the workspace:
 
 - The working directory for each step defaults to `/workspace`
-- If you specify a `dir` field in a step, it is relative to `/workspace`
+- If you specify a relative `dir` field in a step, it is relative to `/workspace`
 - The workspace persists for the entire build duration
 - The workspace is destroyed after the build completes
 
@@ -190,8 +190,12 @@ steps:
         path: '/pip-cache'
 
   - name: 'python:3.11'
-    entrypoint: 'python'
-    args: ['-m', 'pytest']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install -r requirements.txt --cache-dir /pip-cache
+        python -m pytest
     volumes:
       - name: 'pip-cache'
         path: '/pip-cache'
@@ -227,7 +231,7 @@ steps:
           -t gcr.io/$PROJECT_ID/my-app:$VERSION \
           .
 
-  # Step 3: Tag with the version
+  # Step 3: Push with the version
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -278,6 +282,20 @@ steps:
         # Access both volumes
         echo "cache contents:" && ls /cache
         echo "secrets:" && ls /secrets
+    volumes:
+      - name: 'build-cache'
+        path: '/cache'
+      - name: 'secrets-vol'
+        path: '/secrets'
+
+  - name: 'ubuntu'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Reuse both volumes in a later step
+        ls /cache
+        ls /secrets
     volumes:
       - name: 'build-cache'
         path: '/cache'
