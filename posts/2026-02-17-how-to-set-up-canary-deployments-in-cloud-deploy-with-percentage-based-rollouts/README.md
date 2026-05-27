@@ -22,7 +22,7 @@ Cloud Deploy makes this easy by managing the phased rollout for you. You define 
 
 For canary deployments in Cloud Deploy, you need:
 
-- A GKE cluster with the Gateway API enabled (for traffic management)
+- A GKE cluster, with Gateway API enabled if you want Gateway API traffic splitting
 - Cloud Deploy API enabled
 - A delivery pipeline and targets already configured
 - An application with a Kubernetes Deployment and Service
@@ -57,6 +57,7 @@ serialPipeline:
             serviceNetworking:
               service: my-web-app-service
               deployment: my-web-app
+              disablePodOverprovisioning: true
         canaryDeployment:
           percentages:
           - 10
@@ -72,7 +73,7 @@ The `percentages` array defines the canary phases. In this configuration, the ro
 
 The `runtimeConfig` section tells Cloud Deploy how to manage traffic splitting. For GKE with service networking, you specify the Kubernetes Service and Deployment names.
 
-Cloud Deploy creates a canary Deployment alongside your stable Deployment and adjusts the pod counts to achieve the desired traffic split. For a service-networking based canary, the traffic split is approximated by the ratio of canary pods to total pods.
+Cloud Deploy creates a canary Deployment alongside your stable Deployment and adjusts the pod counts to achieve the desired traffic split. For a service-networking based canary, the traffic split is approximated by the ratio of canary pods to total pods. This example sets `disablePodOverprovisioning: true` so Cloud Deploy keeps the total replica count stable by scaling the original Deployment down as the canary Deployment scales up.
 
 ## Preparing Your Kubernetes Manifests
 
@@ -180,7 +181,7 @@ gcloud deploy releases create canary-rel-001 \
   --images=my-web-app=us-central1-docker.pkg.dev/my-project/my-repo/my-web-app:v2.0.0
 ```
 
-When this release reaches the prod target, it will start at the 10% canary phase instead of deploying to all pods immediately.
+When this release reaches the prod target, it will start at the 10% canary phase instead of deploying to all pods immediately, as long as Cloud Deploy can recognize an existing stable version of the application. If this is the first deployment to that target, Cloud Deploy skips the canary phases and deploys the stable phase, because there is no previous version to split against.
 
 ## Advancing Through Canary Phases
 
