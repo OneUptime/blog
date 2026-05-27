@@ -59,22 +59,17 @@ If you are using Cloud Build for your CI pipeline, the build config looks like t
 # cloudbuild-prod.yaml
 # Production deployment that saves the manifest for CI to use
 steps:
-  # Install dbt
+  # Install dbt and run the full production pipeline
   - name: 'python:3.11'
-    entrypoint: 'pip'
-    args: ['install', 'dbt-bigquery']
-
-  # Run the full production pipeline
-  - name: 'python:3.11'
-    entrypoint: 'dbt'
-    args: ['run', '--target', 'prod', '--profiles-dir', '.']
+    entrypoint: 'bash'
+    args: ['-c', 'pip install dbt-bigquery && dbt run --target prod --profiles-dir .']
     env:
       - 'DBT_PROFILES_DIR=.'
 
   # Run tests
   - name: 'python:3.11'
-    entrypoint: 'dbt'
-    args: ['test', '--target', 'prod', '--profiles-dir', '.']
+    entrypoint: 'bash'
+    args: ['-c', 'pip install dbt-bigquery && dbt test --target prod --profiles-dir .']
 
   # Save the manifest for Slim CI
   - name: 'gcr.io/cloud-builders/gsutil'
@@ -89,38 +84,31 @@ The CI pipeline downloads the production manifest, compares it against the curre
 # cloudbuild-ci.yaml
 # Slim CI pipeline that only builds modified models
 steps:
-  # Install dbt
-  - name: 'python:3.11'
-    entrypoint: 'pip'
-    args: ['install', 'dbt-bigquery']
-
   # Download the production manifest
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['cp', 'gs://my-dbt-artifacts/prod/manifest.json', 'target-prod/manifest.json']
+    entrypoint: 'bash'
+    args: ['-c', 'mkdir -p target-prod && gsutil cp gs://my-dbt-artifacts/prod/manifest.json target-prod/manifest.json']
 
   # Compile the current branch to generate its manifest
   - name: 'python:3.11'
-    entrypoint: 'dbt'
-    args: ['compile', '--target', 'ci', '--profiles-dir', '.']
+    entrypoint: 'bash'
+    args: ['-c', 'pip install dbt-bigquery && dbt compile --target ci --profiles-dir .']
+    env:
+      - 'PR_NUMBER=$_PR_NUMBER'
 
   # Run only modified models and their dependents
   # Defer unmodified models to the production dataset
   - name: 'python:3.11'
-    entrypoint: 'dbt'
-    args: [
-      'build',
-      '--target', 'ci',
-      '--profiles-dir', '.',
-      '--select', 'state:modified+',
-      '--defer',
-      '--state', 'target-prod'
-    ]
+    entrypoint: 'bash'
+    args: ['-c', 'pip install dbt-bigquery && dbt build --target ci --profiles-dir . --select state:modified+ --defer --state target-prod']
+    env:
+      - 'PR_NUMBER=$_PR_NUMBER'
 ```
 
 The key flags here:
 
 - `--select state:modified+`: Only select models that changed (compared to the production manifest) plus all their downstream dependents
-- `--defer`: For any model that is not selected (unchanged upstream models), use the production version instead of rebuilding
+- `--defer`: For unselected upstream models that are not already present in the CI dataset, use the production version instead of rebuilding
 - `--state target-prod`: The directory containing the production manifest.json
 
 ## Configuring the CI Profile
@@ -151,12 +139,11 @@ my_analytics:
 
     ci:
       type: bigquery
-      method: service-account
+      method: oauth
       project: my-gcp-project
       # Use a PR-specific dataset to avoid conflicts between concurrent PRs
       dataset: "dbt_ci_pr_{{ env_var('PR_NUMBER', 'default') }}"
       threads: 4
-      keyfile: /secrets/ci-key.json
       location: US
 ```
 
@@ -177,6 +164,9 @@ on:
 jobs:
   dbt-ci:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -190,16 +180,20 @@ jobs:
 
       # Authenticate with GCP using Workload Identity Federation
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
+          project_id: 'my-project'
           workload_identity_provider: 'projects/123/locations/global/workloadIdentityPools/my-pool/providers/github'
           service_account: 'dbt-ci@my-project.iam.gserviceaccount.com'
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
 
       # Download the production manifest
       - name: Download production manifest
         run: |
           mkdir -p target-prod
-          gsutil cp gs://my-dbt-artifacts/prod/manifest.json target-prod/manifest.json
+          gcloud storage cp gs://my-dbt-artifacts/prod/manifest.json target-prod/manifest.json
 
       # Run Slim CI
       - name: dbt build (modified only)
@@ -245,7 +239,7 @@ For CI, `state:modified+` is usually the right choice. It catches both the chang
 
 ## Handling Deferred References
 
-When dbt defers to production, it replaces `{{ ref('unchanged_model') }}` with a direct reference to the production table. Here is what happens under the hood:
+When dbt defers to production, it replaces `{{ ref('unchanged_model') }}` with a direct reference to the production table when that node is not selected and does not already exist in the CI dataset (or when `--favor-state` is used). Here is what happens under the hood:
 
 ```sql
 -- Original model SQL
@@ -258,26 +252,26 @@ SELECT * FROM `my-project.dbt_ci_pr_42.stg_customers`  -- CI version (rebuilt)
 JOIN `my-project.analytics.stg_orders` USING (customer_id)  -- Production version (deferred)
 ```
 
-This means your CI build reads unchanged data directly from production, which is both fast (no rebuilding) and accurate (uses real data).
+This means your CI build can read unchanged data directly from production, which is both fast (no rebuilding) and accurate (uses real data).
 
 ## Cost Comparison
 
 Here is a rough comparison of full CI vs. Slim CI for a typical project:
 
 ```text
-Project: 300 models, 50TB total data
+Project: 300 models, 50TiB total data
 
 Full CI (every PR):
   - Models built: 300
-  - Data scanned: ~50TB per run
+  - Data scanned: ~50TiB per run
   - Time: ~45 minutes
-  - Cost: ~$250 per run (at $5/TB)
+  - Cost: ~$313 per run (at $6.25/TiB on-demand analysis pricing)
 
 Slim CI (typical PR touches 5 models):
   - Models built: 5 (modified) + ~15 (dependents) = 20
-  - Data scanned: ~3TB per run
+  - Data scanned: ~3TiB per run
   - Time: ~5 minutes
-  - Cost: ~$15 per run
+  - Cost: ~$19 per run
 ```
 
 That is a 94% reduction in cost and a 89% reduction in time. Multiply that by the number of PRs your team opens per day, and the savings are substantial.
@@ -309,7 +303,7 @@ done
 
 ## Troubleshooting Common Issues
 
-If state comparison is not detecting changes, make sure the production manifest is up to date. An outdated manifest means dbt thinks nothing has changed.
+If state comparison is not detecting changes correctly, make sure the production manifest comes from the latest successful production run. An outdated manifest can produce incorrect selections.
 
 If deferred references fail, check that the production tables exist and the CI service account has read access to the production dataset.
 
