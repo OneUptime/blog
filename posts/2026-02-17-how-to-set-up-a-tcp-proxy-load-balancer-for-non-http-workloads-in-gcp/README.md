@@ -84,8 +84,11 @@ The backend service for a TCP proxy load balancer uses the `TCP` protocol:
 ```bash
 # Create a backend service for TCP proxy load balancing
 gcloud compute backend-services create tcp-proxy-backend \
+    --load-balancing-scheme=EXTERNAL \
     --protocol=TCP \
     --health-checks=tcp-proxy-health-check \
+    --global-health-checks \
+    --port-name=my-tcp-port \
     --global
 ```
 
@@ -96,6 +99,8 @@ Add the instance group as a backend:
 gcloud compute backend-services add-backend tcp-proxy-backend \
     --instance-group=tcp-backend-group \
     --instance-group-zone=us-central1-a \
+    --balancing-mode=UTILIZATION \
+    --max-utilization=0.8 \
     --global
 ```
 
@@ -106,6 +111,8 @@ For multi-region setups, add instance groups from different regions:
 gcloud compute backend-services add-backend tcp-proxy-backend \
     --instance-group=tcp-backend-eu \
     --instance-group-zone=europe-west1-b \
+    --balancing-mode=UTILIZATION \
+    --max-utilization=0.8 \
     --global
 ```
 
@@ -144,20 +151,22 @@ gcloud compute addresses create tcp-proxy-ip \
 # Create the forwarding rule
 gcloud compute forwarding-rules create tcp-proxy-rule \
     --global \
+    --load-balancing-scheme=EXTERNAL \
     --target-tcp-proxy=my-tcp-proxy \
     --address=tcp-proxy-ip \
     --ports=5000
 ```
 
-You can specify multiple ports or port ranges:
+Target TCP proxy forwarding rules reference exactly one port. To expose additional ports on the same IP address, create separate forwarding rules with non-overlapping ports:
 
 ```bash
-# Forward a range of ports
-gcloud compute forwarding-rules create tcp-proxy-multi-port \
+# Forward an additional port on the same IP
+gcloud compute forwarding-rules create tcp-proxy-port-5001 \
     --global \
+    --load-balancing-scheme=EXTERNAL \
     --target-tcp-proxy=my-tcp-proxy \
     --address=tcp-proxy-ip \
-    --ports=5000-5010
+    --ports=5001
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -184,6 +193,8 @@ gcloud compute firewall-rules create allow-tcp-proxy-traffic \
     --rules=tcp:5000
 ```
 
+Make sure the backend instances have the `tcp-backend` network tag, or update the firewall rule target to match the tags you actually use.
+
 ## Step 7: Enable PROXY Protocol (Optional)
 
 Since the TCP proxy terminates the client connection, your backend normally cannot see the client's real IP address. PROXY protocol solves this by prepending the client's IP information to the TCP stream.
@@ -194,7 +205,9 @@ gcloud compute target-tcp-proxies update my-tcp-proxy \
     --proxy-header=PROXY_V1
 ```
 
-Your backend application needs to understand PROXY protocol to parse this header. Here is an example in Python:
+Your backend application needs to understand PROXY protocol to parse this header. If your health check uses the same port and your server expects PROXY protocol on every connection, update the health check with `--proxy-header=PROXY_V1` too.
+
+Here is an example in Python:
 
 ```python
 # Simple TCP server that reads PROXY protocol v1 header
@@ -237,8 +250,11 @@ A common use case for the TCP proxy load balancer is distributing database conne
 ```bash
 # Create backend for PostgreSQL read replicas on port 5432
 gcloud compute backend-services create postgres-read-pool \
+    --load-balancing-scheme=EXTERNAL \
     --protocol=TCP \
     --health-checks=tcp-pg-check \
+    --global-health-checks \
+    --port-name=postgres \
     --global \
     --session-affinity=CLIENT_IP \
     --connection-draining-timeout=300s
@@ -259,14 +275,18 @@ For game servers that use custom TCP protocols:
 ```bash
 # Create backend for game servers
 gcloud compute backend-services create game-server-pool \
+    --load-balancing-scheme=EXTERNAL \
     --protocol=TCP \
     --health-checks=game-health-check \
+    --global-health-checks \
+    --port-name=game-tcp \
     --global \
     --timeout=86400s
 
 # Long timeout for persistent game sessions
 gcloud compute forwarding-rules create game-server-rule \
     --global \
+    --load-balancing-scheme=EXTERNAL \
     --target-tcp-proxy=game-tcp-proxy \
     --address=game-server-ip \
     --ports=7777
