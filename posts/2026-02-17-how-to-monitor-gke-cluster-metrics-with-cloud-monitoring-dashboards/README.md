@@ -19,7 +19,7 @@ GKE automatically sends metrics to Cloud Monitoring. These fall into several cat
 - **Container metrics**: Per-container resource consumption, OOMKill events
 - **Cluster-level metrics**: Total allocatable resources, scheduler metrics, API server latency
 
-By default, GKE sends system metrics. If you enable Managed Prometheus or the Kubernetes Monitoring pipeline, you get even more detailed metrics including custom application metrics.
+By default, GKE sends system metrics. If you enable Managed Service for Prometheus or additional GKE observability metric packages, you get even more detailed metrics including kube state, control plane, cAdvisor, Kubelet, and custom application metrics.
 
 ## Setting Up Your First GKE Dashboard
 
@@ -31,39 +31,30 @@ The dashboard editor lets you add widgets by dragging them in. For GKE monitorin
 
 These two charts give you the foundation of cluster health. If nodes are maxed out, your pods cannot schedule.
 
-Here is how to configure a node CPU utilization chart using MQL:
+Here is how to configure a node CPU utilization chart using PromQL:
 
 ```text
 # Node CPU utilization as a fraction across all nodes
 
-fetch k8s_node
-| metric 'kubernetes.io/node/cpu/allocatable_utilization'
-| group_by [node_name], [val: mean(value.allocatable_utilization)]
-| every 1m
+avg by (node_name) ({"kubernetes.io/node/cpu/allocatable_utilization"})
 ```
 
 For memory, use a similar query:
 
 ```text
 # Node memory utilization across all nodes
-fetch k8s_node
-| metric 'kubernetes.io/node/memory/allocatable_utilization'
-| group_by [node_name], [val: mean(value.allocatable_utilization)]
-| every 1m
+avg by (node_name) ({"kubernetes.io/node/memory/allocatable_utilization"})
 ```
 
 ### Pod Status Overview
 
-Knowing how many pods are in each phase (Running, Pending, Failed, Succeeded) is critical. A growing count of Pending pods usually means your cluster needs more capacity.
+Knowing how many pods are in each phase (Running, Pending, Failed, Succeeded) is critical. A growing count of Pending pods usually means your cluster needs more capacity. This metric requires the GKE kube state metrics package.
 
-This metric visualization uses the pod phase metric:
+This metric visualization uses the kube state metrics pod phase metric:
 
 ```text
 # Count of pods by phase
-fetch k8s_pod
-| metric 'kubernetes.io/pod/phase'
-| group_by [phase], [val: count(value.phase)]
-| every 1m
+sum by (phase) (kube_pod_status_phase)
 ```
 
 ### Container Restart Counts
@@ -72,17 +63,14 @@ Frequent container restarts signal crashlooping applications. This is one of the
 
 ```text
 # Container restart count by pod and container name
-fetch k8s_container
-| metric 'kubernetes.io/container/restart_count'
-| group_by [pod_name, container_name], [val: max(value.restart_count)]
-| every 1m
+max by (pod_name, container_name) ({"kubernetes.io/container/restart_count"})
 ```
 
 ## Building a Comprehensive Dashboard with the API
 
 For teams that manage dashboards as code, the Cloud Monitoring API lets you define dashboards in JSON. Here is a template that includes the essential GKE widgets.
 
-The following JSON creates a dashboard with CPU, memory, and pod restart widgets:
+The following JSON creates a dashboard with CPU and memory widgets:
 
 ```json
 {
@@ -152,10 +140,7 @@ One of the biggest waste areas in Kubernetes is over-provisioning. Comparing wha
 
 ```text
 # CPU requested vs actually used per namespace
-fetch k8s_container
-| metric 'kubernetes.io/container/cpu/request_utilization'
-| group_by [namespace_name], [val: mean(value.request_utilization)]
-| every 5m
+avg by (namespace_name) ({"kubernetes.io/container/cpu/request_utilization"})
 ```
 
 If request utilization is consistently below 30 percent, your pods are requesting way more CPU than they need.
@@ -166,10 +151,7 @@ Network issues in GKE can be tricky to diagnose. Having throughput charts per no
 
 ```text
 # Network bytes received per node
-fetch k8s_node
-| metric 'kubernetes.io/node/network/received_bytes_count'
-| group_by [node_name], [val: rate(value.received_bytes_count)]
-| every 1m
+sum by (node_name) (rate({"kubernetes.io/node/network/received_bytes_count"}[5m]))
 ```
 
 ### Persistent Volume Usage
@@ -178,10 +160,7 @@ If your workloads use persistent volumes, tracking usage prevents outages caused
 
 ```text
 # PVC usage as a fraction of capacity
-fetch k8s_pod
-| metric 'kubernetes.io/pod/volume/utilization'
-| group_by [pod_name, volume_name], [val: mean(value.utilization)]
-| every 5m
+avg by (pod_name, volume_name) ({"kubernetes.io/pod/volume/utilization"})
 ```
 
 ## Using Terraform to Manage Dashboards
