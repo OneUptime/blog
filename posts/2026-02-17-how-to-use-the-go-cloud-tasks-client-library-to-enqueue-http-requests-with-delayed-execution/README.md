@@ -8,7 +8,7 @@ Description: Learn how to use the Go Cloud Tasks client library to enqueue HTTP 
 
 ---
 
-Cloud Tasks is Google Cloud's managed task queue. You push tasks onto a queue, and Cloud Tasks delivers them as HTTP requests to your target service at a controlled rate. The "delayed execution" part is what makes it especially useful - you can schedule a task to run 5 minutes from now, tomorrow, or any time within the 30-day limit.
+Cloud Tasks is Google Cloud's managed task queue. You push tasks onto a queue, and Cloud Tasks delivers them as HTTP requests to your target service at a controlled rate. The "delayed execution" part is what makes it especially useful - you can schedule a task to become eligible for dispatch 5 minutes from now, tomorrow, or any time within the 30-day limit.
 
 Common use cases include sending delayed notifications, retrying failed operations, scheduling cleanup jobs, and rate-limiting outbound API calls. Let me show you how to set this up with Go.
 
@@ -124,7 +124,7 @@ func (e *TaskEnqueuer) EnqueueHTTPTask(ctx context.Context, url string, payload 
 
 ## Enqueuing with Delayed Execution
 
-This is where it gets interesting. You can schedule a task to execute at a specific time in the future.
+This is where it gets interesting. You can schedule a task to be dispatched at or after a specific time in the future.
 
 ```go
 import "time"
@@ -316,6 +316,15 @@ func handleOrderTask(w http.ResponseWriter, r *http.Request) {
 
     // Return 200 to acknowledge the task
     w.WriteHeader(http.StatusOK)
+}
+
+func handleReminderTask(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
+
+func processOrder(task OrderTask) error {
+    // Add your order processing logic here
+    return nil
 }
 ```
 
