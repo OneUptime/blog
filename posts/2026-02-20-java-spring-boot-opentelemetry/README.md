@@ -38,7 +38,7 @@ Add the OpenTelemetry Spring Boot starter to your project.
         <dependency>
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-instrumentation-bom</artifactId>
-            <version>2.12.0</version>
+            <version>2.28.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -98,11 +98,11 @@ The Spring Boot starter automatically instruments common libraries.
 graph TD
     A[OpenTelemetry Auto-Instrumentation] --> B[Spring MVC]
     A --> C[Spring WebFlux]
-    A --> D[JDBC / JPA]
+    A --> D[JDBC / R2DBC]
     A --> E[RestTemplate / WebClient]
-    A --> F[Kafka / RabbitMQ]
-    A --> G[gRPC]
-    A --> H[Logback / Log4j]
+    A --> F[Kafka]
+    A --> G[MongoDB]
+    A --> H[Logback / MDC]
     B --> I[HTTP Server Spans]
     D --> J[Database Spans]
     E --> K[HTTP Client Spans]
@@ -168,7 +168,7 @@ public class OrderService {
             span.recordException(e);
             throw e;
         } finally {
-            // Always end the span to flush it to the exporter
+            // Always end the span so it can be processed and exported
             span.end();
         }
     }
@@ -293,7 +293,7 @@ sequenceDiagram
     participant OTelCollector
 
     Client->>OrderService: POST /orders (traceparent header)
-    Note over OrderService: Start root span
+    Note over OrderService: Start server span
     OrderService->>PaymentService: POST /charge (traceparent propagated)
     Note over PaymentService: Child span created
     PaymentService-->>OrderService: Payment confirmed
@@ -311,7 +311,7 @@ sequenceDiagram
 Connect logs to traces by including trace and span IDs.
 
 ```yaml
-# logback-spring.xml - Log format with trace correlation
+# application.yml - Log format with trace correlation
 logging:
   pattern:
     # Include trace_id and span_id in every log line
