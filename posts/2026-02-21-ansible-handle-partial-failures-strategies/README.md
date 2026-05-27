@@ -8,7 +8,7 @@ Description: Handle partial failures in Ansible deployments using strategy plugi
 
 ---
 
-Partial failures are the norm in large-scale Ansible deployments. When you run a playbook against 200 hosts, some will fail. A network glitch drops a connection, a disk fills up, a package repository is temporarily unavailable. The question is not whether failures will happen, but how you handle them. Ansible provides several mechanisms at the strategy level for dealing with partial failures gracefully.
+Partial failures are the norm in large-scale Ansible deployments. When you run a playbook against 200 hosts, some will fail. A network glitch drops a connection, a disk fills up, a package repository is temporarily unavailable. The question is not whether failures will happen, but how you handle them. Ansible provides several playbook-level mechanisms for dealing with partial failures gracefully.
 
 ## What Happens by Default
 
@@ -20,6 +20,7 @@ In the default linear strategy, when a host fails a task, that host is removed f
 ---
 - name: Configure servers
   hosts: all  # 10 hosts
+  gather_facts: false
 
   tasks:
     - name: Install packages  # host-05 fails here
@@ -240,10 +241,10 @@ grep "failed=1" deploy.log | awk '{print $1}' > /tmp/failed_hosts.txt
         name: deploy
 ```
 
-Or use a simpler approach with a limit file:
+Or use a simpler approach with a limit file if retry files are enabled:
 
 ```bash
-# Use Ansible's retry file (created automatically on failure)
+# Use Ansible's retry file, created on failure when retry_files_enabled is true
 ansible-playbook deploy.yml --limit @deploy.retry
 ```
 
@@ -303,7 +304,7 @@ Fork 2: host-02/task1 -> host-02/task2 -> host-02/task3 -> host-07/task1 -> ...
 
 ## Collecting Failure Information
 
-Use `set_stats` to aggregate failure information:
+Use `set_stats` to aggregate failure information. To display custom stats at the end of the run, enable `show_custom_stats` in `ansible.cfg` or set `ANSIBLE_SHOW_CUSTOM_STATS=true`.
 
 ```yaml
 - name: Deploy with failure tracking
@@ -326,13 +327,6 @@ Use `set_stats` to aggregate failure information:
         - name: Attempt recovery
           include_role:
             name: rollback
-
-  post_tasks:
-    - name: Show failure summary
-      debug:
-        msg: "Failed hosts: {{ ansible_stats.aggregated.failed_hosts | default([]) }}"
-      run_once: true
-      when: ansible_stats is defined
 ```
 
 ## Best Practices
@@ -344,7 +338,7 @@ Always have a plan for what happens after partial failures. Know how to:
 3. Re-run against only the failed hosts
 4. Verify the fleet is in a consistent state
 
-Use `--limit @playbook.retry` to re-run against failed hosts. Ansible automatically creates a `.retry` file listing hosts that failed.
+Use `--limit @playbook.retry` to re-run against failed hosts if retry files are enabled. In current Ansible versions, `retry_files_enabled` defaults to `False`, so you may need to enable it first or create a host list from the play recap.
 
 Combine multiple strategies: `serial` for batching, `max_fail_percentage` for automatic circuit breaking, `block/rescue` for per-host recovery, and `ignore_errors` for non-critical tasks. Each mechanism handles a different aspect of partial failure management.
 
