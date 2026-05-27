@@ -16,7 +16,7 @@ I have gone through this process for workloads ranging from a few thousand reque
 
 Each Bigtable node provides a certain amount of throughput capacity. The exact numbers depend on your workload profile, but here are the general guidelines from Google:
 
-- **SSD storage type:** Up to 10,000 reads/writes per second per node at 6ms latency (99th percentile)
+- **SSD storage type:** Up to 17,000 reads per second or 14,000 writes per second per node for typical 1 KB rows
 - **HDD storage type:** Up to 500 reads per second and 10,000 writes per second per node
 - **Storage per node:** Up to 5 TB for SSD, up to 16 TB for HDD
 
@@ -69,8 +69,8 @@ def calculate_cluster_size(
 
     # Per-node capacity baselines
     if storage_type == "SSD":
-        reads_per_node = 10000
-        writes_per_node = 10000
+        reads_per_node = 17000
+        writes_per_node = 14000
         storage_per_node_tb = 5
     else:
         reads_per_node = 500
@@ -98,7 +98,7 @@ def calculate_cluster_size(
     # Add 30% headroom for production stability
     recommended_nodes = int(min_nodes * 1.3) + 1
 
-    # Bigtable requires a minimum of 1 node (3 for production)
+    # Bigtable requires a minimum of 1 node; this example uses a 3-node floor for production headroom
     recommended_nodes = max(3, recommended_nodes)
 
     print(f"Nodes for read throughput: {nodes_for_reads:.1f}")
@@ -125,12 +125,12 @@ Never run a Bigtable cluster at 100% capacity. Here is the recommended utilizati
 ```mermaid
 graph TD
     A[Cluster Utilization] --> B{CPU Utilization}
-    B -->|Under 70%| C[Healthy - good headroom for traffic spikes]
-    B -->|70-85%| D[Warning - consider adding nodes]
-    B -->|Over 85%| E[Critical - add nodes immediately]
+    B -->|Under 60%| C[Healthy for latency-sensitive workloads]
+    B -->|60-90%| D[Watch closely - acceptable for throughput-focused workloads]
+    B -->|Over 90%| E[Critical - add nodes or lower autoscaling targets]
 ```
 
-Google recommends keeping CPU utilization below 70% for latency-sensitive workloads. This gives you headroom for traffic spikes, compaction operations, and the rebalancing that happens when tablets split.
+Google recommends keeping CPU utilization below 60% for latency-sensitive workloads and below 90% when optimizing for throughput. This gives you headroom for traffic spikes, compaction operations, and the rebalancing that happens when tablets split.
 
 ## Step 5: Choose Your Storage Type
 
@@ -140,7 +140,7 @@ The choice between SSD and HDD significantly impacts both performance and cost.
 - You need low-latency reads (under 10ms)
 - Your workload is read-heavy
 - You are serving real-time application traffic
-- Data size is under 10 TB per node
+- Data size fits comfortably within SSD storage limits
 
 **Choose HDD when:**
 - You are doing batch analytics or bulk processing
@@ -148,7 +148,7 @@ The choice between SSD and HDD significantly impacts both performance and cost.
 - Latency above 100ms is acceptable
 - You need to store massive amounts of data cheaply
 
-HDD nodes are roughly one-third the cost of SSD nodes, so the savings are significant for the right workload.
+HDD storage is cheaper per GiB than SSD storage, so the savings are significant for the right workload.
 
 ## Step 6: Create the Cluster
 
@@ -158,7 +158,8 @@ Once you have determined the right size, create the cluster:
 # Create a production Bigtable instance with an appropriately sized cluster
 gcloud bigtable instances create my-production-instance \
   --display-name="Production Bigtable" \
-  --cluster-config=id=my-cluster,zone=us-central1-a,nodes=6,storage-type=SSD
+  --cluster-storage-type=SSD \
+  --cluster-config=id=my-cluster,zone=us-central1-a,nodes=6
 
 # Verify the cluster configuration
 gcloud bigtable clusters list --instances=my-production-instance
@@ -186,7 +187,7 @@ The `--autoscaling-storage-target` is in GB per node. Setting it to 2560 (2.5 TB
 
 After deployment, monitor these key metrics:
 
-**CPU utilization per node.** The most important metric. If it consistently exceeds 70%, you need more nodes.
+**CPU utilization per node.** The most important metric. If it consistently exceeds your target for latency or throughput, you need more nodes.
 
 ```bash
 # Query CPU utilization metric for your Bigtable cluster
@@ -204,7 +205,7 @@ gcloud monitoring metrics list \
 
 ## Common Sizing Mistakes
 
-**Starting too small.** A 1-node cluster is fine for development but should never be used in production. Google recommends a minimum of 3 nodes for production to handle node failures.
+**Starting too small.** A 1-node cluster can be fine for development or light workloads, but production clusters should be sized for their actual workload, storage footprint, and failover requirements. Bigtable recovers quickly from node failures because data is stored separately from nodes, but undersized clusters still cause latency and throughput problems.
 
 **Ignoring rebalancing time.** When you add nodes, Bigtable takes time to redistribute tablets. During this period, performance may not improve immediately. Plan for 10-20 minutes of rebalancing time.
 
