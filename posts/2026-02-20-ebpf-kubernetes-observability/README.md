@@ -21,7 +21,6 @@ graph TD
     subgraph "User Space"
         App[Application]
         Agent[eBPF Agent / Loader]
-        Maps[eBPF Maps - Shared Data]
     end
 
     subgraph "Kernel Space"
@@ -30,6 +29,7 @@ graph TD
         Hook3[Tracepoint Hook]
         VM[eBPF Virtual Machine]
         Verifier[eBPF Verifier]
+        Maps[eBPF Maps - Shared Data]
     end
 
     Agent -->|Load Program| Verifier
@@ -65,19 +65,23 @@ graph LR
 
 ## Cilium for Kubernetes Networking
 
-Cilium is the most popular eBPF-based networking solution for Kubernetes. It replaces kube-proxy and provides advanced networking, security, and observability.
+Cilium is a popular eBPF-based networking solution for Kubernetes. It can replace kube-proxy and provides advanced networking, security, and observability.
 
 ### Installing Cilium
 
 ```bash
 # Install Cilium CLI
-
-curl -L --remote-name-all https://github.com/cilium/cilium-cli/releases/latest/download/cilium-linux-amd64.tar.gz
-tar xzvf cilium-linux-amd64.tar.gz
-sudo mv cilium /usr/local/bin/
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Install Cilium on your Kubernetes cluster
-cilium install --version 1.16.0
+cilium install
 
 # Wait for Cilium to be ready
 cilium status --wait
@@ -117,15 +121,25 @@ graph TD
 
 ## Hubble for Network Observability
 
-Hubble is Cilium's observability layer. It provides deep visibility into network flows, DNS queries, and HTTP requests using eBPF.
+Hubble is Cilium's observability layer. It provides deep visibility into network flows and DNS queries using eBPF, and it can show HTTP request details when Cilium L7 visibility or policy redirects the traffic through the L7 proxy.
 
 ### Installing Hubble
 
 ```bash
+# Install Hubble CLI
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+
 # Enable Hubble on an existing Cilium installation
 cilium hubble enable --ui
 
-# Wait for Hubble to be ready
+# Forward Hubble Relay to localhost for the Hubble CLI
 cilium hubble port-forward &
 
 # Verify Hubble is working
@@ -186,7 +200,7 @@ sequenceDiagram
 ## eBPF-Based Network Policies
 
 ```yaml
-# Cilium Network Policy - L7 aware policy using eBPF
+# Cilium Network Policy - L7 aware policy with Cilium
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -205,7 +219,7 @@ spec:
             - port: "8080"
               protocol: TCP
           rules:
-            # L7 HTTP rules - only possible with eBPF
+            # Cilium L7 HTTP rules
             http:
               - method: GET
                 path: "/api/v1/products"
@@ -224,8 +238,8 @@ spec:
     # Allow DNS resolution
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -240,9 +254,12 @@ spec:
 ### Using bpftrace for Kernel Tracing
 
 ```bash
-# Trace all system calls made by a specific container
-# First, find the container's PID
-CONTAINER_PID=$(kubectl exec -n production deploy/web-api -- cat /proc/1/status | grep "^Pid:" | awk '{print $2}')
+# Trace system calls made by a container's main process.
+# Run bpftrace on the Kubernetes node that hosts the container. The PID must be
+# the host PID, not the namespace-local PID shown inside the pod.
+CONTAINER_ID=$(kubectl get pod -n production -l app=web-api \
+  -o jsonpath='{.items[0].status.containerStatuses[0].containerID}' | sed 's#^[^/]*://##')
+CONTAINER_PID=$(sudo crictl inspect --output go-template --template '{{.info.pid}}' "$CONTAINER_ID")
 
 # Trace syscalls with latency
 bpftrace -e '
@@ -272,11 +289,10 @@ kretprobe:tcp_v4_connect /retval == 0/ {
 ### TCP Latency Monitoring
 
 ```python
-# Python script using bcc to monitor TCP latency per Kubernetes pod
+# Python script using bcc to monitor TCP connect latency
 from bcc import BPF
-import ctypes
 
-# eBPF program to trace TCP round-trip time
+# eBPF program to trace TCP connect latency
 bpf_program = """
 #include <uapi/linux/ptrace.h>
 #include <net/sock.h>
@@ -420,9 +436,9 @@ helm install tetragon cilium/tetragon -n kube-system
 kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon -c export-stdout -f | \
   tetra getevents -o compact
 
-# Filter for process execution events
+# Filter for process execution events from a specific binary
 kubectl logs -n kube-system -l app.kubernetes.io/name=tetragon -c export-stdout -f | \
-  tetra getevents -o compact --process-type exec
+  tetra getevents -o compact --processes web-api
 ```
 
 ## Advantages of eBPF Over Traditional Monitoring
@@ -439,7 +455,7 @@ graph TD
     subgraph "eBPF Monitoring"
         E1[No code changes needed]
         E2[Language agnostic]
-        E3[Near-zero overhead]
+        E3[Low overhead]
         E4[Full kernel visibility]
     end
 ```
