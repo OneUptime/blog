@@ -63,7 +63,7 @@ If MetalLB is not already installed, deploy it with the official manifests:
 # Apply the MetalLB namespace and deployment manifests
 
 # This creates the metallb-system namespace and deploys the controller and speakers
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 Wait for all pods to be running before proceeding:
@@ -124,7 +124,7 @@ sequenceDiagram
     Router->>Node: BGP KEEPALIVE
     Note over Node,Router: Session Established
     Node->>Router: BGP UPDATE (192.168.100.10/32)
-    Router->>Node: BGP UPDATE (acknowledgment)
+    Router->>Node: BGP KEEPALIVE
 ```
 
 Create the BGPPeer resource:
@@ -153,8 +153,8 @@ spec:
   # Lower values detect failures faster but generate more traffic
   keepaliveTime: 30s
 
-  # Time in seconds before the peer is considered dead if no keepalive is received
-  # Must be at least 3x the keepalive time
+  # Time before the peer is considered dead if no keepalive is received
+  # A common value is 3x the keepalive time
   holdTime: 90s
 
   # Optional: restrict which nodes peer with this router using a label selector
@@ -212,15 +212,15 @@ spec:
   # Optional: BGP communities to attach to the advertised routes
   # Communities are used by routers for policy decisions (filtering, preference, etc.)
   communities:
-    - "65535:65282"  # NO_EXPORT - prevents the route from being exported outside the AS
+    - "65535:65281"  # NO_EXPORT - prevents the route from being exported outside the AS
 
   # Optional: aggregation length for route summarization
   # /32 means each IP is announced individually (most specific)
   # A shorter prefix like /24 announces the whole block as one route
   aggregationLength: 32
 
-  # Optional: delay before advertising a newly assigned IP
-  # Gives time for the service to be fully ready before receiving traffic
+  # Optional: set BGP LOCAL_PREF for advertised routes
+  # Higher local preference is preferred by the BGP best path selection process
   # localPref: 100
 ```
 
@@ -247,7 +247,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 203.0.113.0/28  # 16 public IPs for external services
+    - 203.0.113.0/28  # Documentation range; replace with your public allocation
 ---
 # Pool for internal services
 apiVersion: metallb.io/v1beta1
@@ -280,7 +280,7 @@ spec:
   ipAddressPools:
     - internal-pool
   communities:
-    - "65535:65282"
+    - "65535:65281"
   aggregationLength: 24
 ```
 
