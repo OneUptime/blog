@@ -33,11 +33,10 @@ gcloud run services get-iam-policy my-service \
 If your service should be publicly accessible (like an API endpoint or web application), you need to allow unauthenticated invocations.
 
 ```bash
-# Allow unauthenticated access to a Cloud Run service
-gcloud run services add-iam-policy-binding my-service \
+# Allow unauthenticated access to an existing Cloud Run service
+gcloud run services update my-service \
     --region=us-central1 \
-    --member="allUsers" \
-    --role="roles/run.invoker"
+    --no-invoker-iam-check
 ```
 
 You can also set this during deployment.
@@ -47,10 +46,10 @@ You can also set this during deployment.
 gcloud run deploy my-service \
     --image=gcr.io/my-project/my-service:latest \
     --region=us-central1 \
-    --allow-unauthenticated
+    --no-invoker-iam-check
 ```
 
-Note that if your organization has the `constraints/iam.allowedPolicyMemberDomains` organization policy constraint, it might block the `allUsers` binding. In that case, you need to work with your org admin to add an exception or use a Cloud Load Balancer with Identity-Aware Proxy instead.
+You can also make a service public by granting `roles/run.invoker` to `allUsers`, but if your organization has the `constraints/iam.allowedPolicyMemberDomains` organization policy constraint, it might block the `allUsers` binding. In that case, use `--no-invoker-iam-check` or work with your org admin if the `constraints/run.managed.requireInvokerIam` constraint requires the Invoker IAM check.
 
 ## Scenario 2 - Service-to-Service Authentication
 
@@ -79,10 +78,11 @@ import requests
 def call_target_service():
     """Call another Cloud Run service with proper authentication."""
     target_url = "https://target-service-xxxxx.run.app/api/data"
+    audience = "https://target-service-xxxxx.run.app"
 
-    # Get an identity token with the target service URL as the audience
+    # Get an identity token with the target service URL, without the path, as the audience
     auth_req = google.auth.transport.requests.Request()
-    id_token = google.oauth2.id_token.fetch_id_token(auth_req, target_url)
+    id_token = google.oauth2.id_token.fetch_id_token(auth_req, audience)
 
     # Include the token in the Authorization header
     headers = {"Authorization": f"Bearer {id_token}"}
@@ -98,10 +98,11 @@ const { GoogleAuth } = require('google-auth-library');
 
 async function callTargetService() {
   const targetUrl = 'https://target-service-xxxxx.run.app/api/data';
+  const audience = 'https://target-service-xxxxx.run.app';
 
-  // Create an authenticated client with the target URL as the audience
+  // Create an authenticated client with the target service URL, without the path, as the audience
   const auth = new GoogleAuth();
-  const client = await auth.getIdTokenClient(targetUrl);
+  const client = await auth.getIdTokenClient(audience);
 
   // The client automatically adds the Authorization header
   const response = await client.request({ url: targetUrl });
@@ -154,7 +155,7 @@ gcloud run services describe my-service \
     --format="value(spec.template.metadata.annotations['run.googleapis.com/ingress'])"
 ```
 
-If ingress is set to `internal` or `internal-and-cloud-load-balancing`, requests from outside GCP or from other GCP projects will be blocked regardless of IAM permissions.
+If ingress is set to `internal` or `internal-and-cloud-load-balancing`, requests from the public internet will be blocked regardless of IAM permissions. Calls from other Cloud Run services or App Engine also need to route through a VPC network that Cloud Run treats as internal.
 
 ```bash
 # Update ingress settings to allow all traffic
@@ -183,9 +184,9 @@ Here is the systematic approach I use when debugging Cloud Run permission denied
 ```mermaid
 flowchart TD
     A[403 Permission Denied] --> B{Public or authenticated service?}
-    B -->|Public| C{allUsers has run.invoker?}
-    C -->|No| D[Add allUsers binding]
-    C -->|Yes| E{Org policy blocking allUsers?}
+    B -->|Public| C{Invoker IAM check disabled or allUsers has run.invoker?}
+    C -->|No| D[Disable Invoker IAM check or add allUsers binding]
+    C -->|Yes| E{Org policy blocking public access?}
     E -->|Yes| F[Work with org admin]
     B -->|Authenticated| G{Caller has run.invoker role?}
     G -->|No| H[Grant run.invoker to caller SA]
