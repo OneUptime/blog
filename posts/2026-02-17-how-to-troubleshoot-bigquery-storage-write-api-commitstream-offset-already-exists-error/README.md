@@ -1,22 +1,22 @@
-# Troubleshoot BigQuery Storage Write API CommitStream Offset Already Exists Error
+# Troubleshoot BigQuery Storage Write API AppendRows Offset Already Exists Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Storage Write API, Streaming, Data Ingestion, Troubleshooting
 
-Description: A practical guide to diagnosing and resolving the CommitStream offset already exists error when using BigQuery Storage Write API for data ingestion.
+Description: A practical guide to diagnosing and resolving the AppendRows offset already exists error when using BigQuery Storage Write API for data ingestion.
 
 ---
 
-The BigQuery Storage Write API is a high-performance data ingestion interface that gives you more control over exactly-once semantics compared to the legacy streaming API. But when you run into the "offset already exists" error during a CommitStream call, it can be confusing - especially if you think your offsets are correct. Let me walk you through what causes this and how to fix it.
+The BigQuery Storage Write API is a high-performance data ingestion interface that gives you more control over exactly-once semantics compared to the legacy streaming API. But when you run into the "offset already exists" error during an AppendRows call, it can be confusing - especially if you think your offsets are correct. Let me walk you through what causes this and how to fix it.
 
 ## What the Error Looks Like
 
 When this error occurs, you will typically see something like:
 
 ```text
-ALREADY_EXISTS: The offset 42 has already been committed to stream
-projects/my-project/datasets/my_dataset/tables/my_table/streams/_default
+ALREADY_EXISTS: The offset 42 has already been written to stream
+projects/my-project/datasets/my_dataset/tables/my_table/streams/writer_1
 ```
 
 Or in your application logs:
@@ -26,29 +26,30 @@ com.google.api.gax.rpc.AlreadyExistsException: io.grpc.StatusRuntimeException:
 ALREADY_EXISTS: Offset already exists.
 ```
 
-This means BigQuery has already processed and committed data at the offset you are trying to write to.
+This means BigQuery has already processed data at the offset you are trying to write to. Note that offsets are not allowed on the default stream, so if you see this error it is normally on an application-created stream.
 
 ## How the Write API Offset System Works
 
 Before diving into fixes, it helps to understand how offsets work in the Storage Write API.
 
-The Write API supports three modes:
+The Write API provides a default stream and three application-created stream types:
 
 1. **Default stream** - at-least-once semantics, no offset management needed
-2. **Committed type** - exactly-once semantics within a stream, requires offset tracking
-3. **Buffered type** - exactly-once with the ability to flush on demand
+2. **Committed type** - records are available immediately, and offsets can provide exactly-once semantics within a stream
+3. **Pending type** - records are committed atomically when the stream is finalized and batch-committed
+4. **Buffered type** - an advanced type where records are buffered until rows are committed by flushing the stream
 
-For committed and buffered streams, each AppendRows request includes an offset that acts as a sequence number. BigQuery tracks the last committed offset per stream, and if you send a request with an offset that has already been committed, you get this error.
+For application-created streams, an AppendRows request can include an offset from the start of the stream. The offset is a row position, not a request counter: if you append 100 rows at offset 0, the next offset is 100. BigQuery only allows writes at the current end of the stream, and if you send a request with an offset that has already been written, you get this error.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant WriteAPI as BigQuery Write API
-    Client->>WriteAPI: AppendRows(offset=0, rows)
-    WriteAPI-->>Client: Success (offset 0 committed)
-    Client->>WriteAPI: AppendRows(offset=1, rows)
-    WriteAPI-->>Client: Success (offset 1 committed)
-    Client->>WriteAPI: AppendRows(offset=1, rows)
+    Client->>WriteAPI: AppendRows(offset=0, 100 rows)
+    WriteAPI-->>Client: Success (next offset 100)
+    Client->>WriteAPI: AppendRows(offset=100, 50 rows)
+    WriteAPI-->>Client: Success (next offset 150)
+    Client->>WriteAPI: AppendRows(offset=100, 50 rows)
     WriteAPI-->>Client: ALREADY_EXISTS error
 ```
 
@@ -56,7 +57,7 @@ sequenceDiagram
 
 ### 1. Retrying Without Checking the Previous Response
 
-The most common cause is retrying a write request that actually succeeded. Your client sent data at offset N, the server committed it, but the response was lost due to a network issue. Your retry logic then sends offset N again, and BigQuery rejects it because it was already committed.
+The most common cause is retrying a write request that actually succeeded. Your client sent data at offset N, the server wrote it, but the response was lost due to a network issue. Your retry logic then sends offset N again, and BigQuery rejects it because rows already exist there.
 
 ### 2. Multiple Writers Sharing a Stream Without Coordination
 
@@ -64,11 +65,11 @@ If two processes or threads are writing to the same stream and both try to use t
 
 ### 3. Incorrect Offset Tracking After Application Restart
 
-When your application restarts, it might lose track of the last committed offset and start from a stale value.
+When your application restarts, it might lose track of the next offset to write and start from a stale value.
 
 ## Fix 1: Handle ALREADY_EXISTS as a Success
 
-The simplest and most important fix is to treat the ALREADY_EXISTS error as a success case in your retry logic. If BigQuery tells you the offset already exists, it means your data was already committed.
+The simplest and most important fix is to treat the ALREADY_EXISTS error as a success case when you are retrying the same batch at the same offset. If BigQuery tells you the offset already exists, it means rows were already written at that offset. If there are multiple writers or your offset state is suspect, first confirm that the retry batch really matches the original write.
 
 Here is a Python example showing proper handling:
 
@@ -76,28 +77,31 @@ Here is a Python example showing proper handling:
 from google.cloud import bigquery_storage_v1
 from google.api_core import exceptions
 
-def append_rows_with_retry(write_client, stream_name, proto_rows, offset, max_retries=3):
+def append_rows_with_retry(write_client, stream_name, proto_data, offset, row_count, max_retries=3):
     """Append rows with proper handling of ALREADY_EXISTS errors."""
     for attempt in range(max_retries):
         try:
             request = bigquery_storage_v1.types.AppendRowsRequest(
                 write_stream=stream_name,
-                offset=bigquery_storage_v1.types.Int64Value(value=offset),
-                proto_rows=proto_rows,
+                offset=offset,
+                proto_rows=proto_data,  # Include writer_schema on the first request.
             )
             response = write_client.append_rows(iter([request]))
 
             # Process the response
             for resp in response:
-                if resp.error.code != 0:
+                if resp.error.code == bigquery_storage_v1.types.StorageError.StorageErrorCode.OFFSET_ALREADY_EXISTS:
+                    print(f"Offset {offset} already written, moving on")
+                    return offset + row_count
+                if resp.error.code:
                     raise Exception(f"Append failed: {resp.error.message}")
-                return resp.append_result.offset.value
+                return offset + row_count
 
         except exceptions.AlreadyExists:
-            # This offset was already committed - the data is safe
+            # This offset was already written - the data is safe for this retry
             # Treat this as a success and move to the next offset
-            print(f"Offset {offset} already committed, moving on")
-            return offset
+            print(f"Offset {offset} already written, moving on")
+            return offset + row_count
 
         except exceptions.ServiceUnavailable:
             # Transient error - safe to retry with same offset
@@ -116,7 +120,7 @@ import json
 import os
 
 class OffsetTracker:
-    """Track committed offsets in a local file for recovery after restarts."""
+    """Track next offsets in a local file for recovery after restarts."""
 
     def __init__(self, checkpoint_file):
         self.checkpoint_file = checkpoint_file
@@ -129,16 +133,15 @@ class OffsetTracker:
                 return json.load(f)
         return {}
 
-    def save(self, stream_name, offset):
-        # Persist the latest committed offset
-        self.offsets[stream_name] = offset
+    def save(self, stream_name, next_offset):
+        # Persist the next offset to write
+        self.offsets[stream_name] = next_offset
         with open(self.checkpoint_file, 'w') as f:
             json.dump(self.offsets, f)
 
     def get_next_offset(self, stream_name):
         # Return the next offset to use for this stream
-        last = self.offsets.get(stream_name, -1)
-        return last + 1
+        return self.offsets.get(stream_name, 0)
 ```
 
 For production workloads, use something more robust than a local file - Cloud Datastore, Cloud SQL, or Redis work well.
@@ -160,7 +163,7 @@ def write_to_default_stream(project_id, dataset_id, table_id, rows):
     request = bigquery_storage_v1.types.AppendRowsRequest(
         write_stream=stream_name,
         # Note: no offset field set - BigQuery handles ordering
-        proto_rows=rows,
+        proto_rows=bigquery_storage_v1.types.AppendRowsRequest.ProtoData(rows=rows),
     )
 
     response = client.append_rows(iter([request]))
@@ -193,21 +196,18 @@ def create_exclusive_stream(client, table_path):
 
 With exclusive streams, each writer manages its own offset counter starting from 0, so there is no conflict between writers.
 
-## Fix 5: Query the Stream to Find the Last Committed Offset
+## Fix 5: Finalize a Stream to Confirm Its Row Count
 
-If you have lost track of where you left off, you can check the stream to find the current committed offset.
+If you are done writing to an application-created stream, you can finalize it to stop future appends and get the number of rows in the finalized stream. This is not a general-purpose recovery mechanism for a still-active stream, so you should still rely on durable checkpoints for ongoing offset recovery.
 
 ```python
-def get_current_offset(client, stream_name):
-    """Get the current state of a write stream."""
-    stream = client.get_write_stream(name=stream_name)
+def finalize_stream(client, stream_name):
+    """Finalize a stream and return its row count."""
+    response = client.finalize_write_stream(name=stream_name)
 
-    # The commit count tells you how many rows have been committed
-    print(f"Stream type: {stream.type_}")
-    print(f"Stream create time: {stream.create_time}")
-    print(f"Committed row count: {stream.commit_count}")
+    print(f"Finalized row count: {response.row_count}")
 
-    return stream.commit_count
+    return response.row_count
 ```
 
 ## Monitoring for This Error
@@ -227,9 +227,9 @@ A few occasional ALREADY_EXISTS errors during retries are normal and expected. B
 
 ## Summary
 
-The ALREADY_EXISTS error on offsets is not a data loss event - it is actually BigQuery telling you the data is already safely committed. The key takeaways are:
+The ALREADY_EXISTS error on offsets is not a data loss event when it happens during an idempotent retry - it is BigQuery telling you rows already exist at that offset. The key takeaways are:
 
-- Always handle ALREADY_EXISTS as a success in your retry logic
+- Handle ALREADY_EXISTS as a success only when retrying the same batch at the same offset
 - Persist your offsets durably to survive application restarts
 - Use exclusive streams for parallel writers
 - Consider the default stream if you do not need exactly-once semantics
