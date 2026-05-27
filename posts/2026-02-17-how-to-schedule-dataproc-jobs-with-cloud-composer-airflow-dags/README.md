@@ -46,7 +46,7 @@ dag = DAG(
     dag_id="daily_spark_etl",
     default_args=default_args,
     description="Daily ETL pipeline running Spark on Dataproc",
-    schedule_interval="0 6 * * *",  # Run at 6 AM UTC daily
+    schedule="0 6 * * *",  # Run at 6 AM UTC daily
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["dataproc", "etl", "daily"],
@@ -109,7 +109,7 @@ default_args = {
 dag = DAG(
     dag_id="serverless_spark_etl",
     default_args=default_args,
-    schedule_interval="0 6 * * *",
+    schedule="0 6 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
 )
@@ -154,7 +154,7 @@ Real pipelines usually have multiple stages with dependencies. Here is a DAG wit
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.google.cloud.operators.dataproc import DataprocSubmitJobOperator
-from airflow.operators.dummy import DummyOperator
+from airflow.operators.empty import EmptyOperator
 
 default_args = {
     "owner": "data-engineering",
@@ -165,7 +165,7 @@ default_args = {
 dag = DAG(
     dag_id="multi_stage_pipeline",
     default_args=default_args,
-    schedule_interval="0 4 * * *",
+    schedule="0 4 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
 )
@@ -188,7 +188,7 @@ def make_spark_job(script_name, extra_args=None, extra_properties=None):
     }
     return job
 
-start = DummyOperator(task_id="start", dag=dag)
+start = EmptyOperator(task_id="start", dag=dag)
 
 # Stage 1: Ingest raw data
 ingest = DataprocSubmitJobOperator(
@@ -221,7 +221,7 @@ aggregate = DataprocSubmitJobOperator(
     dag=dag,
 )
 
-end = DummyOperator(task_id="end", dag=dag)
+end = EmptyOperator(task_id="end", dag=dag)
 
 # Define the execution order
 start >> ingest >> transform >> aggregate >> end
@@ -249,7 +249,7 @@ default_args = {
 dag = DAG(
     dag_id="ephemeral_cluster_pipeline",
     default_args=default_args,
-    schedule_interval="0 2 * * *",
+    schedule="0 2 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
 )
