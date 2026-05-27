@@ -297,28 +297,32 @@ exports.onNewOrder = onDocumentCreated(
 
 ## Error Handling and Retries
 
-Cloud Functions triggered by Firestore are automatically retried on failure by default. Make sure your functions are idempotent - safe to run multiple times with the same input.
+Cloud Functions triggered by Firestore can be configured to retry on failure. Retries are not enabled by default, so turn them on explicitly when you want failed invocations to run again. Make sure your functions are idempotent - safe to run multiple times with the same input.
 
 ```javascript
 // Idempotent function that is safe to retry
 // Uses a processed flag to avoid duplicate processing
-exports.processPayment = functions.firestore
+exports.processPayment = functions
+  .runWith({ failurePolicy: true }) // Enable retries for this 1st gen function
+  .firestore
   .document('payments/{paymentId}')
   .onCreate(async (snapshot, context) => {
     const paymentId = context.params.paymentId;
     const payment = snapshot.data();
 
-    // Check if already processed (idempotency check)
-    if (payment.processed) {
+    // Check the current document state, not only the original event snapshot
+    const currentPayment = await snapshot.ref.get();
+    if (currentPayment.get('processed')) {
       console.log(`Payment ${paymentId} already processed`);
       return;
     }
 
     try {
       // Process the payment with your payment provider
-      const result = await chargePayment(payment);
+      // Use paymentId as an idempotency key with the provider when possible
+      const result = await chargePayment(payment, paymentId);
 
-      // Mark as processed so retries do not double-charge
+      // Mark as processed after the provider confirms the charge
       await snapshot.ref.update({
         processed: true,
         chargeId: result.chargeId,
