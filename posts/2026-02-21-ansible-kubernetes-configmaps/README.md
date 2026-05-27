@@ -10,15 +10,15 @@ Description: A practical guide to creating and managing Kubernetes ConfigMaps wi
 
 ConfigMaps are how Kubernetes decouples configuration from container images. Instead of baking environment-specific settings into your Docker images, you store them in ConfigMaps and mount them into pods at runtime. If you manage your infrastructure with Ansible, creating and updating ConfigMaps through playbooks keeps everything consistent and auditable.
 
-This article shows you how to create ConfigMaps with Ansible's `kubernetes.core.k8s` module using several different approaches: inline key-value pairs, multi-line configuration files, and binary data. We will also cover how to update ConfigMaps safely and trigger rolling restarts when configuration changes.
+This article shows you how to create ConfigMaps with Ansible's `kubernetes.core.k8s` module using several different approaches: inline key-value pairs and multi-line configuration files. We will also cover how to update ConfigMaps safely and trigger rolling restarts when configuration changes.
 
 ## Prerequisites
 
 You will need:
 
-- Ansible 2.12+
+- ansible-core 2.16+
 - The `kubernetes.core` collection (`ansible-galaxy collection install kubernetes.core`)
-- Python `kubernetes` library (`pip install kubernetes`)
+- Python 3.9+ and the Python `kubernetes` library 24.2.0+ (`pip install kubernetes`)
 - A valid kubeconfig file
 
 ## Creating a Simple ConfigMap with Key-Value Pairs
@@ -277,7 +277,7 @@ A common pain point: you update a ConfigMap, but pods using it do not pick up th
 
     - name: Trigger rolling restart if ConfigMap changed
       kubernetes.core.k8s:
-        state: present
+        state: patched
         definition:
           apiVersion: apps/v1
           kind: Deployment
