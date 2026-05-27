@@ -53,12 +53,12 @@ But before just increasing memory, profile your application to understand why it
 
 Cloud Run gives your container a limited time to start and begin listening on the configured port. If your container does not start in time, Cloud Run kills it with SIGKILL.
 
-The default startup timeout depends on your configuration, but you can adjust it.
+For Cloud Run services, instances must listen for requests within 4 minutes after being started, and all containers in the instance must be healthy. The `--timeout` flag does not change this startup deadline; it changes the request timeout.
 
 ```bash
-# Set a longer startup timeout (up to 3600 seconds)
+# Enable startup CPU boost to reduce cold start time
 gcloud run services update my-service \
-    --timeout=300 \
+    --cpu-boost \
     --region=us-central1
 ```
 
@@ -89,9 +89,9 @@ spec:
             timeoutSeconds: 3
 ```
 
-## Cause 3 - Request Timeout
+## Related Symptom - Request Timeout
 
-If a request takes too long, Cloud Run will terminate the container instance. The default request timeout is 300 seconds (5 minutes), but you can configure it up to 3600 seconds.
+If a request takes too long, Cloud Run returns a 504 response. That is not usually the same thing as a SIGKILL, but it can appear near startup or shutdown problems in your logs. The default request timeout is 300 seconds (5 minutes), but you can configure it up to 3600 seconds.
 
 ```bash
 # Check the current timeout setting
@@ -207,7 +207,7 @@ flowchart TD
     B -->|Not found| D{Check if container started successfully}
     D -->|No - never started listening| E[Startup failure - check container locally]
     D -->|Yes - was running fine| F{Check request duration}
-    F -->|Long requests before kill| G[Request timeout - increase timeout or offload work]
+    F -->|Long requests with 504s| G[Request timeout - increase timeout or offload work]
     F -->|Killed during scale-down| H[Graceful shutdown issue - handle SIGTERM properly]
     E --> I[Check env vars, configs, and dependencies]
     C --> J[Profile memory, reduce concurrency, optimize code]
@@ -220,11 +220,6 @@ flowchart TD
 Set up monitoring for these metrics to catch issues before they impact users.
 
 ```bash
-# Monitor container instance count and restarts
-gcloud run services describe my-service \
-    --region=us-central1 \
-    --format="value(status.traffic)"
-
 # Check container instance logs for restarts
 gcloud logging read \
     'resource.type="cloud_run_revision" AND resource.labels.service_name="my-service" AND severity>=ERROR' \
@@ -239,7 +234,7 @@ Here is a quick checklist to prevent SIGKILL issues on Cloud Run.
 
 1. Set memory limits with at least 20% headroom above your peak usage
 2. Handle SIGTERM in your application and exit within 8 seconds
-3. Set appropriate request timeouts for your use case
+3. Set appropriate request timeouts for your use case, but do not treat request timeout as a SIGKILL cause by itself
 4. Do not write large files to /tmp since it uses your memory allocation
 5. Reduce concurrency if each request uses significant memory
 6. Use startup probes so Cloud Run knows when your app is ready
@@ -248,4 +243,4 @@ Here is a quick checklist to prevent SIGKILL issues on Cloud Run.
 
 ## Summary
 
-SIGKILL on Cloud Run almost always comes down to one of three things: your container used too much memory, it took too long to start or respond, or it did not shut down fast enough when asked. The good news is that all of these are fixable. Start by checking logs for memory limit messages, then work through the other causes systematically. Proper SIGTERM handling and memory management will prevent most of these issues from happening in the first place.
+SIGKILL on Cloud Run almost always comes down to one of three things: your container used too much memory, it took too long to start, or it did not shut down fast enough when asked. The good news is that all of these are fixable. Start by checking logs for memory limit messages, then work through the other causes systematically. Proper SIGTERM handling and memory management will prevent most of these issues from happening in the first place.
