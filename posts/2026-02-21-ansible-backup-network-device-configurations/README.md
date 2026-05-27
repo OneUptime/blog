@@ -167,7 +167,7 @@ Storing backups in git gives you a complete history of every change, with diffs 
 # git_backup.yml - Backup configs to a git repository
 ---
 - name: Backup configs to git repository
-  hosts: all_network
+  hosts: ios_devices
   gather_facts: false
   connection: network_cli
 
@@ -175,13 +175,19 @@ Storing backups in git gives you a complete history of every change, with diffs 
     git_repo_path: "/opt/network-config-repo"
 
   tasks:
+    - name: Ensure config directory exists
+      ansible.builtin.file:
+        path: "{{ git_repo_path }}/configs"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+
     # Get the running configuration
     - name: Capture running configuration
       cisco.ios.ios_command:
         commands:
           - show running-config
       register: running_config
-      when: ansible_network_os == 'cisco.ios.ios'
 
     # Save config to the git repo directory
     - name: Save config to git repo
@@ -243,6 +249,16 @@ After taking a backup, compare it against the previous version to detect changes
     previous_dir: "{{ backup_root }}/previous"
 
   tasks:
+    - name: Ensure backup directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ current_dir }}"
+        - "{{ previous_dir }}"
+      delegate_to: localhost
+
     - name: Get running configuration
       cisco.ios.ios_command:
         commands:
@@ -317,11 +333,11 @@ A common compliance check is ensuring the running config matches the startup con
           - show startup-config
       register: startup
 
-    # Simple length comparison as a quick check
-    - name: Compare config lengths
+    # Simple content comparison as a quick check
+    - name: Compare config contents
       ansible.builtin.debug:
-        msg: "WARNING: Running config ({{ running.stdout[0] | length }} chars) differs from startup config ({{ startup.stdout[0] | length }} chars) on {{ inventory_hostname }}"
-      when: running.stdout[0] | length != startup.stdout[0] | length
+        msg: "WARNING: Running config differs from startup config on {{ inventory_hostname }}"
+      when: running.stdout[0] != startup.stdout[0]
 ```
 
 ## Scheduled Backup with Cron
