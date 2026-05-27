@@ -63,7 +63,7 @@ processors:
     spike_limit_mib: 256
 
   # Add GCP-specific resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [gcp]
     timeout: 5s
 
@@ -105,7 +105,7 @@ extensions:
   pprof:
     endpoint: 0.0.0.0:1777
 
-  # Prometheus metrics about the collector itself
+  # Debugging pages about the collector itself
   zpages:
     endpoint: 0.0.0.0:55679
 
@@ -115,25 +115,34 @@ service:
     # Trace pipeline
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes, batch]
+      processors: [memory_limiter, resource_detection, attributes, batch]
       exporters: [googlecloud]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes, batch]
+      processors: [memory_limiter, resource_detection, attributes, batch]
       exporters: [googlemanagedprometheus]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes, batch]
+      processors: [memory_limiter, resource_detection, attributes, batch]
       exporters: [googlecloud/logging]
 ```
 
 ## Step 2: Deploy the Collector on GKE
 
-For GKE deployments, a Kubernetes Deployment with a Service is the standard approach. Here is the manifest.
+For GKE deployments, a Kubernetes Deployment with a Service is the standard approach. First create the ConfigMap from the collector configuration.
+
+```bash
+kubectl create namespace observability
+kubectl create configmap otel-collector-config \
+    --from-file=config.yaml=otel-collector-config.yaml \
+    -n observability
+```
+
+Here is the manifest.
 
 ```yaml
 # collector-deployment.yaml
@@ -158,7 +167,7 @@ spec:
       containers:
         - name: otel-collector
           # Use the contrib image which includes GCP exporters
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args:
             - "--config=/etc/otel/config.yaml"
           ports:
@@ -168,6 +177,8 @@ spec:
               name: otlp-http
             - containerPort: 13133 # Health check
               name: health
+            - containerPort: 55679 # zPages
+              name: zpages
           resources:
             requests:
               cpu: 500m
@@ -209,6 +220,9 @@ spec:
     - name: otlp-http
       port: 4318
       targetPort: 4318
+    - name: zpages
+      port: 55679
+      targetPort: 55679
   type: ClusterIP
 ```
 
@@ -266,7 +280,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-gateway.observability.svc.clus
 OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 ```
 
-For services outside the cluster (Compute Engine, Cloud Run), you will need to expose the collector through an Internal Load Balancer.
+For services outside the cluster (Compute Engine, Cloud Run), you will need to expose the collector through an Internal Load Balancer. Those clients must be able to reach the cluster VPC; for Cloud Run, configure VPC egress to the same VPC or a connected VPC.
 
 ```yaml
 # internal-lb-service.yaml
@@ -292,7 +306,7 @@ spec:
 
 ## Step 5: Monitor the Collector Itself
 
-The collector exposes its own metrics that you should monitor. Use the zpages extension to check the collector's internal state.
+The collector exposes internal telemetry that you should monitor. Use the zpages extension to check the collector's internal state while troubleshooting.
 
 ```bash
 # Port-forward to check zpages locally
@@ -303,7 +317,7 @@ kubectl port-forward -n observability svc/otel-collector-gateway 55679:55679
 
 ## Scaling Considerations
 
-For high-throughput environments, consider these adjustments. Increase the number of replicas and ensure you have a Horizontal Pod Autoscaler configured based on CPU and memory usage. If you are receiving more than 10,000 spans per second, consider sharding by service name using the routing connector. And always set the memory limiter processor - without it, a burst of telemetry can crash the collector.
+For high-throughput environments, consider these adjustments. Increase the number of replicas and ensure you have a Horizontal Pod Autoscaler configured based on CPU and memory usage. If you are receiving more than 10,000 spans per second, consider routing by service name using the routing connector. And always set the memory limiter processor - without it, a burst of telemetry can crash the collector.
 
 ## Wrapping Up
 
