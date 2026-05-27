@@ -8,7 +8,7 @@ Description: Learn how to use Ansible to manage UFW firewall rules on Ubuntu and
 
 ---
 
-UFW (Uncomplicated Firewall) is the default firewall management tool on Ubuntu and Debian-based systems. It provides a friendly interface on top of iptables, making firewall management much less painful. When you combine UFW with Ansible, you get repeatable, auditable firewall configurations that you can roll out to hundreds of servers at once.
+UFW (Uncomplicated Firewall) is the default firewall management tool on Ubuntu and is available on Debian-based systems. It provides a friendly interface on top of iptables, making firewall management much less painful. When you combine UFW with Ansible, you get repeatable, auditable firewall configurations that you can roll out to hundreds of servers at once.
 
 In this post, I will show you how to use the `community.general.ufw` module to manage firewall rules across your infrastructure.
 
@@ -16,7 +16,7 @@ In this post, I will show you how to use the `community.general.ufw` module to m
 
 You will need:
 
-- Ansible 2.9+ on your control node
+- A supported Ansible or ansible-core version for your installed `community.general` collection
 - Ubuntu or Debian target hosts with UFW installed
 - SSH access with sudo privileges
 - The `community.general` collection installed (`ansible-galaxy collection install community.general`)
