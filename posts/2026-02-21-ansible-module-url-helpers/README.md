@@ -18,14 +18,16 @@ The simplest HTTP helper:
 from ansible.module_utils.urls import open_url
 import json
 
+url = 'https://api.example.com/resources'
+
 # GET request
 
-response = open_url('https://api.example.com/resources', method='GET')
+response = open_url(url, method='GET')
 data = json.loads(response.read())
 
 # POST request
 response = open_url(
-    'https://api.example.com/resources',
+    url,
     method='POST',
     data=json.dumps({'name': 'test'}),
     headers={'Content-Type': 'application/json'},
@@ -40,10 +42,17 @@ response = open_url(url, validate_certs=False)
 Integrated with AnsibleModule for proxy and auth support:
 
 ```python
-from ansible.module_utils.urls import fetch_url
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.urls import fetch_url, url_argument_spec
+import json
 
 def run_module():
+    module_args = url_argument_spec()
+    module_args.update(
+        token=dict(type='str', required=True, no_log=True),
+    )
     module = AnsibleModule(argument_spec=module_args)
+    token = module.params['token']
 
     response, info = fetch_url(
         module,
@@ -63,6 +72,10 @@ def run_module():
 ## Error Handling
 
 ```python
+import urllib.error
+
+from ansible.module_utils.urls import open_url
+
 try:
     response = open_url(url, method='GET')
 except urllib.error.HTTPError as e:
