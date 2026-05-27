@@ -14,12 +14,13 @@ Managing labels and annotations through Ansible ensures your metadata strategy i
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- Ansible with the `kubernetes.core` collection
+- Python 3.9+ with the Kubernetes client dependencies required by `kubernetes.core`
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Labels vs Annotations
@@ -98,7 +99,7 @@ Annotations carry metadata that tools and controllers read.
 
   vars:
     deploy_timestamp: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
-    git_commit: "{{ lookup('pipe', 'git rev-parse HEAD') | default('unknown') }}"
+    git_commit: "{{ lookup('pipe', 'git rev-parse HEAD 2>/dev/null || echo unknown') }}"
 
   tasks:
     - name: Annotate deployment with build and operational metadata
@@ -188,7 +189,7 @@ This pattern reads each resource's existing labels, merges in the standard label
 
 ## Annotation-Based Configuration for Ingress
 
-Annotations drive configuration for many Kubernetes controllers. The nginx Ingress controller is a prime example.
+Annotations drive configuration for many Kubernetes controllers. The community ingress-nginx controller is a common example in existing clusters, but it was retired by the Kubernetes project on March 24, 2026 and no longer receives releases, bug fixes, or security updates. For new deployments, prefer Gateway API or a maintained Ingress controller.
 
 ```yaml
 # playbook: configure-ingress-annotations.yml
@@ -214,7 +215,6 @@ Annotations drive configuration for many Kubernetes controllers. The nginx Ingre
         annotations:
           nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
           nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-          nginx.ingress.kubernetes.io/websocket-services: "ws-service"
 
   tasks:
     - name: Apply Ingress annotations
@@ -298,7 +298,7 @@ Labels are most useful when you query by them.
 
 ## Removing Labels and Annotations
 
-To remove a label or annotation, you need to patch the resource. The `k8s` module with `strategic-merge` can handle this.
+To remove a label or annotation, use a JSON Patch operation against the resource.
 
 ```yaml
 # playbook: remove-labels.yml
@@ -310,28 +310,15 @@ To remove a label or annotation, you need to patch the resource. The `k8s` modul
   gather_facts: false
 
   tasks:
-    - name: Get current deployment
-      kubernetes.core.k8s_info:
+    - name: Remove deprecated label from deployment
+      kubernetes.core.k8s_json_patch:
+        api_version: apps/v1
         kind: Deployment
         name: web-api
         namespace: production
-      register: current
-
-    - name: Build new labels without the one to remove
-      ansible.builtin.set_fact:
-        updated_labels: "{{ current.resources[0].metadata.labels | dict2items | rejectattr('key', 'equalto', 'deprecated-label') | items2dict }}"
-
-    - name: Apply updated labels
-      kubernetes.core.k8s:
-        state: present
-        force: true
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: web-api
-            namespace: production
-            labels: "{{ updated_labels }}"
+        patch:
+          - op: remove
+            path: /metadata/labels/deprecated-label
 ```
 
 ## Label-Based Deployment Tracking
