@@ -37,7 +37,7 @@ If you need a Cloud Run service to work with:
 # Deploy a sample Cloud Run service
 
 gcloud run deploy my-web-app \
-    --image=gcr.io/cloudrun/hello \
+    --image=us-docker.pkg.dev/cloudrun/container/hello \
     --platform=managed \
     --region=us-central1 \
     --allow-unauthenticated
@@ -82,7 +82,7 @@ gcloud compute backend-services add-backend my-cloud-run-backend \
     --network-endpoint-group-region=us-central1
 ```
 
-Note that serverless NEGs do not need health checks. Cloud Run manages the health of your service automatically.
+Note that backend services with serverless NEG backends do not support health checks, so you do not need to configure one for this load balancer.
 
 ## Step 4: Create a URL Map
 
@@ -98,6 +98,7 @@ gcloud compute url-maps create my-cloud-run-map \
 ```bash
 # Reserve a global IP address
 gcloud compute addresses create cloud-run-lb-ip \
+    --network-tier=PREMIUM \
     --ip-version=IPV4 \
     --global
 
@@ -117,6 +118,8 @@ gcloud compute target-https-proxies create cloud-run-https-proxy \
 ```bash
 # Create the forwarding rule to route HTTPS traffic
 gcloud compute forwarding-rules create cloud-run-https-rule \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
     --address=cloud-run-lb-ip \
     --global \
     --target-https-proxy=cloud-run-https-proxy \
@@ -167,6 +170,7 @@ gcloud compute url-maps add-path-matcher multi-service-map \
     --path-matcher-name=service-routes \
     --default-service=frontend-backend \
     --path-rules="/api/*=api-backend" \
+    --new-hosts=app.example.com \
     --global
 ```
 
@@ -216,6 +220,7 @@ gcloud compute security-policies create cloud-run-policy
 # Add a rate limiting rule
 gcloud compute security-policies rules create 1000 \
     --security-policy=cloud-run-policy \
+    --src-ip-ranges="*" \
     --action=throttle \
     --rate-limit-threshold-count=100 \
     --rate-limit-threshold-interval-sec=60 \
@@ -285,20 +290,13 @@ The load balancer automatically routes users to the nearest region.
 
 ## IAM and Authentication
 
-When Cloud Run is behind a load balancer, you can restrict direct access to the Cloud Run URL and only allow traffic through the load balancer:
+When Cloud Run is behind a load balancer, you can restrict direct access to the Cloud Run URL by allowing only internal and Cloud Load Balancing ingress:
 
 ```bash
-# Remove public access from Cloud Run
+# Allow requests only from internal sources and Cloud Load Balancing
 gcloud run services update my-web-app \
     --region=us-central1 \
-    --no-allow-unauthenticated
-
-# The load balancer uses IAM to authenticate to Cloud Run
-# Grant the Compute Engine default service account access
-gcloud run services add-iam-policy-binding my-web-app \
-    --region=us-central1 \
-    --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
-    --role="roles/run.invoker"
+    --ingress=internal-and-cloud-load-balancing
 ```
 
 ## Wrapping Up
