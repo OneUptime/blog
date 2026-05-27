@@ -86,7 +86,7 @@ resource "helm_release" "metallb" {
   name       = "metallb"
   repository = "https://metallb.github.io/metallb"
   chart      = "metallb"
-  version    = "0.14.9"
+  version    = "0.16.0"
   namespace  = "metallb-system"
 
   # Create the namespace if it does not exist
@@ -95,11 +95,6 @@ resource "helm_release" "metallb" {
   # Wait for all pods to be ready before continuing
   wait = true
   timeout = 300
-
-  set {
-    name  = "speaker.frr.enabled"
-    value = "true"
-  }
 }
 ```
 
@@ -129,6 +124,7 @@ resource "kubernetes_manifest" "web_pool" {
   }
 
   # Ensure MetalLB is installed before creating pools
+  # The MetalLB CRDs must already exist before Terraform can plan this resource
   depends_on = [helm_release.metallb]
 }
 
@@ -276,6 +272,9 @@ resource "kubernetes_manifest" "bgp_advertisement" {
 # Initialize Terraform with backend configuration
 terraform init
 
+# Install MetalLB and its CRDs first so kubernetes_manifest can discover them
+terraform apply -target=helm_release.metallb -var-file=envs/production.tfvars
+
 # Plan changes for production
 terraform plan -var-file=envs/production.tfvars -out=plan.out
 
@@ -294,9 +293,12 @@ infrastructure/
       metallb/
         kustomization.yaml
         namespace.yaml
+        helmrepository.yaml
         helmrelease.yaml
         ip-pools.yaml
         bgp-peers.yaml
+      metallb-install.yaml
+      metallb-config.yaml
     staging/
       metallb/
         kustomization.yaml
@@ -320,21 +322,17 @@ spec:
   chart:
     spec:
       chart: metallb
-      version: "0.14.9"
+      version: "0.16.0"
       sourceRef:
         kind: HelmRepository
         name: metallb
         namespace: flux-system
-  values:
-    speaker:
-      frr:
-        enabled: true
 ```
 
 ### Flux Kustomization
 
 ```yaml
-# clusters/production/metallb/kustomization.yaml
+# clusters/production/metallb-config.yaml
 # Ensures resources are applied in the correct order
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -350,7 +348,7 @@ spec:
     name: infrastructure
   # Wait for MetalLB CRDs to be available
   dependsOn:
-    - name: metallb
+    - name: metallb-install
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet
@@ -368,6 +366,7 @@ on:
   pull_request:
     paths:
       - "clusters/**/metallb/**"
+      - "clusters/**/metallb*.yaml"
       - "envs/*.tfvars"
 
 jobs:
@@ -376,8 +375,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: hashicorp/setup-terraform@v4
+
       - name: Validate YAML syntax
         run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint
           # Check all MetalLB YAML files for syntax errors
           find clusters/ -name "*.yaml" -exec yamllint -d relaxed {} \;
 
