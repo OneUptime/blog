@@ -14,12 +14,13 @@ This article covers how to launch Dataflow jobs from Airflow DAGs, monitor their
 
 ## Understanding the Integration
 
-There are two main ways to run Dataflow jobs from Composer:
+There are a few common ways to run Dataflow jobs from Composer:
 
 1. **Dataflow templates** - Pre-built or custom templates stored in GCS. Composer passes parameters and launches the template.
-2. **Flex templates** - Containerized Beam pipelines stored in Artifact Registry. More flexible than classic templates.
+2. **Flex templates** - Containerized Beam pipelines whose container images are stored in a registry such as Artifact Registry, with a template spec file stored in GCS. More flexible than classic templates.
+3. **Direct Beam submissions** - Python, Java, or Go Beam pipelines launched by Airflow's Beam operators.
 
-Both approaches use Airflow operators that handle job submission, monitoring, and status tracking.
+These approaches use Airflow operators that handle job submission, monitoring, and status tracking.
 
 ## Method 1: Launch a Classic Dataflow Template
 
@@ -43,23 +44,28 @@ default_args = {
 dag = DAG(
     dag_id="dataflow_template_pipeline",
     default_args=default_args,
-    schedule_interval="0 4 * * *",
+    schedule="0 4 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["dataflow", "etl"],
 )
 
-# Launch a Google-provided template (GCS Text to BigQuery)
+# Launch a Google-provided template (GCS CSV to BigQuery)
 gcs_to_bq = DataflowTemplatedJobStartOperator(
     task_id="gcs_text_to_bigquery",
-    template="gs://dataflow-templates/latest/GCS_Text_to_BigQuery",
+    template="gs://dataflow-templates-us-central1/latest/GCS_CSV_to_BigQuery",
     project_id="my-project",
     location="us-central1",
     parameters={
         "inputFilePattern": "gs://my-data-bucket/input/{{ ds }}/*.csv",
-        "JSONPath": "gs://my-data-bucket/schemas/events_schema.json",
+        "schemaJSONPath": "gs://my-data-bucket/schemas/events_schema.json",
         "outputTable": "my-project:analytics.raw_events",
+        "badRecordsOutputTable": "my-project:analytics.raw_events_errors",
         "bigQueryLoadingTemporaryDirectory": "gs://my-temp-bucket/dataflow/bq_temp/",
+        "delimiter": ",",
+        "csvFormat": "Default",
+        "containsHeaders": "true",
+        "csvFileEncoding": "UTF-8",
     },
     environment={
         "tempLocation": "gs://my-temp-bucket/dataflow/temp/",
@@ -91,7 +97,7 @@ default_args = {
 dag = DAG(
     dag_id="custom_dataflow_pipeline",
     default_args=default_args,
-    schedule_interval="0 2 * * *",
+    schedule="0 2 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
 )
@@ -142,7 +148,7 @@ default_args = {
 dag = DAG(
     dag_id="dataflow_flex_template",
     default_args=default_args,
-    schedule_interval="0 3 * * *",
+    schedule="0 3 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
 )
@@ -191,7 +197,7 @@ default_args = {
 dag = DAG(
     dag_id="direct_beam_pipeline",
     default_args=default_args,
-    schedule_interval="0 5 * * *",
+    schedule="0 5 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
 )
@@ -246,7 +252,7 @@ default_args = {
 dag = DAG(
     dag_id="full_data_pipeline",
     default_args=default_args,
-    schedule_interval="0 6 * * *",
+    schedule="0 6 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["dataflow", "bigquery", "production"],
@@ -340,7 +346,7 @@ wait_for_files >> process_data >> aggregate >> quality_check >> notify
 
 ## Monitoring Dataflow Jobs from Composer
 
-The Dataflow operators automatically monitor the job and wait for completion. You can see the Dataflow job status in several places:
+The Dataflow operators automatically monitor the job. By default, batch jobs wait for completion, while streaming jobs wait until the job has started. You can see the Dataflow job status in several places:
 
 1. **Airflow task logs** - The operator logs job progress and status
 2. **Dataflow Console** - View the job graph, worker logs, and metrics
@@ -353,7 +359,7 @@ To get the Dataflow job ID for downstream use:
 def check_job_details(**context):
     """Retrieve Dataflow job details from the upstream task."""
     ti = context["ti"]
-    job_id = ti.xcom_pull(task_ids="process_with_dataflow")
+    job_id = ti.xcom_pull(task_ids="process_with_dataflow", key="job_id")
     print(f"Dataflow job ID: {job_id}")
     # You can use this to query Dataflow metrics or logs
 
@@ -374,7 +380,19 @@ process_data = DataflowStartFlexTemplateOperator(
     task_id="process_data",
     project_id="my-project",
     location="us-central1",
-    body={...},
+    body={
+        "launchParameter": {
+            "jobName": "process-data-{{ ds_nodash }}",
+            "containerSpecGcsPath": "gs://my-templates/flex/process-data.json",
+            "parameters": {
+                "input_path": "gs://my-data-bucket/raw/{{ ds }}/",
+                "output_table": "my-project:analytics.processed_events",
+            },
+            "environment": {
+                "tempLocation": "gs://my-temp-bucket/dataflow/temp/",
+            },
+        }
+    },
     # Wait for the job to complete before marking task as done
     wait_until_finished=True,
     # Cancel the Dataflow job if the Airflow task times out
