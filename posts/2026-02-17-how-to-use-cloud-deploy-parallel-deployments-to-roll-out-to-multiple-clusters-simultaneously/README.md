@@ -8,7 +8,7 @@ Description: Learn how to configure parallel deployments in Google Cloud Deploy 
 
 ---
 
-When you run your application across multiple clusters or regions, deploying to each one sequentially is slow and impractical. If you have five production clusters, a serial pipeline would take five times as long. Google Cloud Deploy supports parallel deployments, which let you deploy to multiple targets simultaneously within a single pipeline stage. This dramatically reduces rollout time for multi-cluster architectures.
+When you run your application across multiple clusters or regions, deploying to each one sequentially is slow and impractical. If you have five production clusters, a serial pipeline would take five times as long. Google Cloud Deploy supports parallel deployments, which let you deploy to multiple targets simultaneously within a single pipeline stage, up to Cloud Build concurrency limits. This dramatically reduces rollout time for multi-cluster architectures.
 
 Let me show you how to set up parallel deployments in your delivery pipeline.
 
@@ -119,7 +119,7 @@ serialPipeline:
         verify: true
 ```
 
-When a release is promoted to `prod-all-regions`, Cloud Deploy creates child rollouts for each of the three cluster targets and deploys to all of them in parallel.
+When a release is promoted to `prod-all-regions`, Cloud Deploy creates child rollouts for each of the three cluster targets and deploys to all of them in parallel, up to Cloud Build concurrency limits.
 
 ## Skaffold Configuration for Multi-Cluster
 
@@ -199,7 +199,7 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
-  replicas: $REPLICAS
+  replicas: 3 # from-param: ${replicas}
 ```
 
 ## Creating and Promoting a Release
@@ -287,7 +287,7 @@ serialPipeline:
           verify: true
 ```
 
-Each cluster gets its own 10% canary phase. You advance them independently or set up automation to advance them together.
+Each cluster gets its own 10% canary phase. You advance the controller rollout, and Cloud Deploy advances the child rollouts together.
 
 ## Best Practices for Parallel Deployments
 
