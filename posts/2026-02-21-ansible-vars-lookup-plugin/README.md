@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible vars lookup plugin to dynamically reso
 
 ---
 
-Most of the time, you reference Ansible variables directly by name: `{{ my_variable }}`. But sometimes you need to construct a variable name dynamically at runtime and then look up its value. The `vars` lookup plugin takes a variable name as a string and returns its value. This enables patterns like computing a variable name from other variables and resolving it, which is something you cannot do with plain Jinja2 variable references.
+Most of the time, you reference Ansible variables directly by name: `{{ my_variable }}`. But sometimes you need to construct a variable name dynamically at runtime and then look up its value. The `vars` lookup plugin takes a top-level variable name as a string and returns its value. This enables patterns like computing a variable name from other variables and resolving it, which is something you cannot do with plain direct variable references.
 
 ## What the vars Lookup Does
 
-The `vars` lookup plugin takes one or more variable names as strings and returns their values. The key difference from regular variable access is that the name itself can be dynamic. You can build the variable name from other variables, facts, or computed strings.
+The `vars` lookup plugin takes one or more top-level variable names as strings and returns their values. The key difference from regular variable access is that the name itself can be dynamic. You can build the variable name from other variables, facts, or computed strings.
 
 ## Basic Usage
 
@@ -143,6 +143,7 @@ host_config_db01:
         src: "app_{{ my_config.role }}.conf.j2"
         dest: /etc/myapp/config.conf
         mode: '0644'
+      become: true
       when: my_config | length > 0
 
     - name: Skip hosts without configuration
@@ -195,6 +196,7 @@ The `vars` lookup is excellent for managing settings across multiple environment
         src: database.conf.j2
         dest: /etc/myapp/database.conf
         mode: '0644'
+      become: true
 ```
 
 ## Iterating Over Dynamic Variables
@@ -268,6 +270,7 @@ The `varnames` lookup finds variable names by pattern, and `vars` resolves their
           {% endfor %}
         dest: /etc/monitoring/targets.toml
         mode: '0644'
+      become: true
 ```
 
 ## Looking Up Multiple Variables at Once
