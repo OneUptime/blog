@@ -34,11 +34,13 @@ What you do not get:
 
 AlloyDB Omni runs as a container, so you need:
 
-- Docker Engine 20.10+ or a Kubernetes cluster
-- A Linux host (Ubuntu 20.04+, Debian 11+, CentOS 7+, or RHEL 8+)
-- At least 4 GB of RAM (8+ GB recommended)
+- Docker Engine 20.10+ or a Kubernetes 1.21+ cluster
+- A Debian-based Linux host or RHEL 8/9 with Linux kernel 5.3 or later and cgroups v2 enabled
+- An x86-64 CPU with AVX2 support
+- At least 2 GB of RAM (8+ GB recommended)
 - At least 2 CPU cores (4+ recommended)
-- Sufficient disk space for your data
+- At least 10 GB of disk space, plus sufficient disk space for your data
+- For Kubernetes deployments: `kubectl`, Helm, and cert-manager
 
 ## Step 1 - Install Docker
 
@@ -58,18 +60,18 @@ sudo usermod -aG docker $USER
 
 ## Step 2 - Pull the AlloyDB Omni Image
 
-AlloyDB Omni is distributed as a container image through Google's Artifact Registry:
+AlloyDB Omni is distributed as a container image through Docker Hub:
 
 ```bash
 # Pull the AlloyDB Omni container image
-docker pull gcr.io/alloydb-omni/pg-service:latest
+docker pull google/alloydbomni:17.5.0
 ```
 
 You can also pull a specific version:
 
 ```bash
 # Pull a specific version of AlloyDB Omni
-docker pull gcr.io/alloydb-omni/pg-service:15.5.2
+docker pull google/alloydbomni:16.8.0
 ```
 
 ## Step 3 - Create a Data Directory
@@ -91,21 +93,19 @@ Run the container with the following command:
 docker run -d \
   --name alloydb-omni \
   -e POSTGRES_PASSWORD=your_strong_password \
-  -e PGDATA=/var/lib/postgresql/data \
   -v /var/lib/alloydb-omni/data:/var/lib/postgresql/data \
   -p 5432:5432 \
-  --restart unless-stopped \
+  --restart=always \
   --shm-size=1g \
-  gcr.io/alloydb-omni/pg-service:latest
+  google/alloydbomni:17.5.0
 ```
 
 Let me explain each flag:
 
 - `-e POSTGRES_PASSWORD` - Sets the password for the postgres superuser
-- `-e PGDATA` - Specifies the data directory inside the container
 - `-v` - Mounts the host directory for persistent storage
 - `-p 5432:5432` - Maps PostgreSQL port to the host
-- `--restart unless-stopped` - Automatically restart the container after host reboot
+- `--restart=always` - Automatically restart the container after host reboot
 - `--shm-size=1g` - Allocates shared memory for PostgreSQL (increase for larger workloads)
 
 Check that it started successfully:
@@ -151,14 +151,20 @@ The columnar engine is one of the main reasons to use AlloyDB Omni over vanilla 
 -- Enable the columnar engine
 ALTER SYSTEM SET google_columnar_engine.enabled = 'on';
 
--- Configure memory allocation for the columnar engine (30% of available memory)
-ALTER SYSTEM SET google_columnar_engine.memory_size_percentage = 30;
+-- Configure memory allocation for the columnar engine, in megabytes
+ALTER SYSTEM SET google_columnar_engine.memory_size_in_mb = 2048;
+```
 
--- Reload the configuration
-SELECT pg_reload_conf();
+Restart the container for these settings to take effect:
 
+```bash
+docker restart alloydb-omni
+```
+
+```sql
 -- Verify it is enabled
 SHOW google_columnar_engine.enabled;
+SHOW google_columnar_engine.memory_size_in_mb;
 ```
 
 ## Step 7 - Configure for Production
@@ -166,9 +172,8 @@ SHOW google_columnar_engine.enabled;
 For production use, tune the PostgreSQL settings. Create a custom configuration:
 
 ```bash
-# Create a custom PostgreSQL configuration file
-# This will be mounted into the container
-cat > /var/lib/alloydb-omni/custom.conf << 'CONF'
+# Append custom PostgreSQL settings to the data directory's postgresql.conf
+sudo tee -a /var/lib/alloydb-omni/data/postgresql.conf > /dev/null << 'CONF'
 # Connection settings
 max_connections = 200
 listen_addresses = '*'
@@ -196,122 +201,79 @@ log_disconnections = on
 
 # Columnar engine
 google_columnar_engine.enabled = on
-google_columnar_engine.memory_size_percentage = 30
+google_columnar_engine.memory_size_in_mb = 2048
 CONF
 ```
 
-Restart the container to apply the configuration:
+Restart the container to apply settings that require a restart:
 
 ```bash
-# Stop and recreate the container with the custom config
-docker stop alloydb-omni
-docker rm alloydb-omni
-
-docker run -d \
-  --name alloydb-omni \
-  -e POSTGRES_PASSWORD=your_strong_password \
-  -e PGDATA=/var/lib/postgresql/data \
-  -v /var/lib/alloydb-omni/data:/var/lib/postgresql/data \
-  -v /var/lib/alloydb-omni/custom.conf:/var/lib/postgresql/data/postgresql.auto.conf:ro \
-  -p 5432:5432 \
-  --restart unless-stopped \
-  --shm-size=2g \
-  gcr.io/alloydb-omni/pg-service:latest
+docker restart alloydb-omni
 ```
 
 ## Running AlloyDB Omni on Kubernetes
 
-For Kubernetes deployments, use a StatefulSet with persistent volumes:
+For Kubernetes deployments, install the AlloyDB Omni operator, then create a database cluster:
+
+```bash
+# Install the AlloyDB Omni operator with Helm
+helm install alloydbomni-operator oci://gcr.io/alloydb-omni/alloydbomni-operator \
+  --version 1.7.0 \
+  --create-namespace \
+  --namespace alloydb-omni-system \
+  --atomic \
+  --timeout 5m
+```
 
 ```yaml
-# StatefulSet for AlloyDB Omni on Kubernetes
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: alloydb-omni
-spec:
-  serviceName: alloydb-omni
-  replicas: 1
-  selector:
-    matchLabels:
-      app: alloydb-omni
-  template:
-    metadata:
-      labels:
-        app: alloydb-omni
-    spec:
-      containers:
-        - name: alloydb-omni
-          image: gcr.io/alloydb-omni/pg-service:latest
-          ports:
-            - containerPort: 5432
-          env:
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: alloydb-secret
-                  key: password
-            - name: PGDATA
-              value: /var/lib/postgresql/data
-          resources:
-            requests:
-              cpu: "2"
-              memory: 8Gi
-            limits:
-              cpu: "4"
-              memory: 16Gi
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: fast-ssd
-        resources:
-          requests:
-            storage: 100Gi
----
-# Service to expose AlloyDB Omni
+# Secret for the postgres password
 apiVersion: v1
-kind: Service
+kind: Secret
+metadata:
+  name: db-pw-alloydb-omni
+type: Opaque
+data:
+  alloydb-omni: eW91cl9zdHJvbmdfcGFzc3dvcmQ=
+---
+# AlloyDB Omni database cluster
+apiVersion: alloydbomni.dbadmin.goog/v1
+kind: DBCluster
 metadata:
   name: alloydb-omni
 spec:
-  selector:
-    app: alloydb-omni
-  ports:
-    - port: 5432
-      targetPort: 5432
-  type: ClusterIP
+  databaseVersion: "17.5.0"
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-alloydb-omni
+    resources:
+      cpu: 2
+      memory: 16Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ```
 
 Apply it:
 
 ```bash
-# Create the secret and deploy
-kubectl create secret generic alloydb-secret --from-literal=password=your_strong_password
+# Deploy the database cluster
 kubectl apply -f alloydb-omni-k8s.yaml
 ```
 
 ## Setting Up Backups
 
-Since AlloyDB Omni does not have managed backups, you need to handle this yourself:
+Since AlloyDB Omni does not have managed backups in the same way as the fully managed AlloyDB service, you need to handle this yourself. Google recommends pgBackRest for physical backups of single-server container deployments, and the AlloyDB Omni container includes the `pgbackrest` utility. After you configure a backup volume and pgBackRest stanza, run:
 
 ```bash
-# Create a backup using pg_basebackup
-docker exec alloydb-omni pg_basebackup \
-  -U postgres \
-  -D /tmp/backup \
-  --format=tar \
-  --gzip \
-  --checkpoint=fast
+# Run a full physical backup with pgBackRest
+docker exec -u postgres alloydb-omni pgbackrest \
+  --config-path=/var/lib/postgresql/backups \
+  --stanza=omni \
+  --type=full \
+  backup
 
-# Copy the backup out of the container
-docker cp alloydb-omni:/tmp/backup /var/backups/alloydb-omni/
-
-# Or use pg_dump for logical backups
+# Or use pg_dump for logical backups of individual databases
 docker exec alloydb-omni pg_dump \
   -U postgres \
   -d myapp \
@@ -334,7 +296,7 @@ To upgrade to a new version:
 
 ```bash
 # Pull the new image
-docker pull gcr.io/alloydb-omni/pg-service:NEW_VERSION
+docker pull google/alloydbomni:NEW_VERSION
 
 # Stop the current container
 docker stop alloydb-omni
@@ -344,12 +306,11 @@ docker rm alloydb-omni
 docker run -d \
   --name alloydb-omni \
   -e POSTGRES_PASSWORD=your_strong_password \
-  -e PGDATA=/var/lib/postgresql/data \
   -v /var/lib/alloydb-omni/data:/var/lib/postgresql/data \
   -p 5432:5432 \
-  --restart unless-stopped \
+  --restart=always \
   --shm-size=2g \
-  gcr.io/alloydb-omni/pg-service:NEW_VERSION
+  google/alloydbomni:NEW_VERSION
 ```
 
 Always take a backup before upgrading.
