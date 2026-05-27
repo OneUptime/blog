@@ -113,6 +113,7 @@ This task deploys a hardened daemon.json configuration:
             "no-new-privileges": true,
             "icc": false,
             "userns-remap": "default",
+            "seccomp-profile": "/etc/docker/seccomp/default.json",
             "default-ulimits": {
               "nofile": {
                 "Name": "nofile",
@@ -140,7 +141,7 @@ Let me break down what each setting does:
 - **live-restore**: Keeps containers running during daemon upgrades
 - **userland-proxy**: Disabling this uses iptables instead, which is more performant and secure
 - **no-new-privileges**: Prevents processes inside containers from gaining additional privileges
-- **icc**: Disabling inter-container communication forces you to use explicit links or networks
+- **icc**: Disabling inter-container communication blocks unrestricted communication between containers on the default bridge network
 - **userns-remap**: Maps container root to a non-root user on the host
 
 ## Securing the Docker Socket
@@ -162,7 +163,7 @@ This section locks down the Docker socket permissions:
         append: true
       loop: "{{ docker_users }}"
 
-    - name: Set secure permissions on Docker socket directory
+    - name: Set secure permissions on Docker socket
       ansible.builtin.file:
         path: /var/run/docker.sock
         owner: root
@@ -174,7 +175,9 @@ This section locks down the Docker socket permissions:
         path: /lib/systemd/system/docker.service
         regexp: '^ExecStart=.*-H tcp://'
         state: absent
-      notify: Reload systemd
+      notify:
+        - Reload systemd
+        - Restart Docker
 ```
 
 ## Kernel Security Parameters for Docker
@@ -246,7 +249,7 @@ This task sets up auditd rules for Docker:
 
 ## Container Runtime Restrictions
 
-Beyond the daemon, you should enforce restrictions on how containers run. This role creates a default AppArmor profile and seccomp profile.
+Beyond the daemon, you should enforce restrictions on how containers run. This role creates a seccomp profile and configures Docker to use it by default.
 
 This task deploys a custom seccomp profile that blocks dangerous syscalls:
 
@@ -351,7 +354,7 @@ This playbook validates that Docker hardening is applied correctly:
 
     - name: Check that Docker is not listening on TCP
       ansible.builtin.shell: |
-        ss -tlnp | grep -c "2375\|2376" || echo "0"
+        ss -tlnp | awk '/:(2375|2376)[[:space:]]/ { count++ } END { print count + 0 }'
       register: tcp_check
       changed_when: false
 
