@@ -92,12 +92,12 @@ DECLARE duplicate_pct FLOAT64;
 
 -- Check data quality metrics
 SET null_pct = (
-  SELECT COUNTIF(customer_id IS NULL) * 100.0 / COUNT(*)
+  SELECT COALESCE(SAFE_DIVIDE(COUNTIF(customer_id IS NULL) * 100.0, COUNT(*)), 0)
   FROM `my_project.my_dataset.staging_orders`
 );
 
 SET duplicate_pct = (
-  SELECT (COUNT(*) - COUNT(DISTINCT order_id)) * 100.0 / COUNT(*)
+  SELECT COALESCE(SAFE_DIVIDE((COUNT(*) - COUNT(DISTINCT order_id)) * 100.0, COUNT(*)), 0)
   FROM `my_project.my_dataset.staging_orders`
 );
 
@@ -207,28 +207,23 @@ For more flexible loop control, use LOOP with LEAVE (break) and CONTINUE (skip).
 DECLARE attempt INT64 DEFAULT 0;
 DECLARE max_attempts INT64 DEFAULT 3;
 DECLARE success BOOL DEFAULT FALSE;
-DECLARE error_count INT64;
+DECLARE last_error STRING;
 
 LOOP
   SET attempt = attempt + 1;
 
-  -- Try to process the data
-  INSERT INTO `my_project.my_dataset.output_table`
-  SELECT *
-  FROM `my_project.my_dataset.input_table`
-  WHERE processed = FALSE;
-
-  -- Check if all rows were processed successfully
-  SET error_count = (
-    SELECT COUNT(*)
+  BEGIN
+    -- Try to process the data
+    INSERT INTO `my_project.my_dataset.output_table`
+    SELECT *
     FROM `my_project.my_dataset.input_table`
-    WHERE processed = FALSE
-  );
+    WHERE processed = FALSE;
 
-  IF error_count = 0 THEN
     SET success = TRUE;
     LEAVE;  -- Exit the loop on success
-  END IF;
+  EXCEPTION WHEN ERROR THEN
+    SET last_error = @@error.message;
+  END;
 
   IF attempt >= max_attempts THEN
     LEAVE;  -- Exit after max attempts
@@ -237,7 +232,7 @@ LOOP
   -- Brief pause logic could go here
   -- In practice, you might want to log the retry
   SELECT CONCAT('Retry attempt ', CAST(attempt AS STRING),
-                ', remaining errors: ', CAST(error_count AS STRING)) AS retry_status;
+                ', last error: ', last_error) AS retry_status;
 END LOOP;
 
 -- Report final status
