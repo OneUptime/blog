@@ -114,7 +114,7 @@ def main():
 
     # Save the model
     model_dir = os.environ.get('AIP_MODEL_DIR', '/tmp/model')
-    model.save(model_dir)
+    model.export(model_dir)
 
 if __name__ == '__main__':
     main()
@@ -140,8 +140,8 @@ aiplatform.init(
 job = aiplatform.CustomTrainingJob(
     display_name='fashion-mnist-experiment',
     script_path='trainer/task.py',
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
-    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-14:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-16.py310:latest',
+    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest',
 )
 
 # Run with TensorBoard linked
@@ -153,7 +153,7 @@ model = job.run(
     model_display_name='fashion-mnist-model',
     # Link to TensorBoard instance
     tensorboard='projects/your-project-id/locations/us-central1/tensorboards/TB_ID',
-    # Where to write service account info for TensorBoard
+    # Service account that runs the training workload; required when using TensorBoard
     service_account='your-sa@your-project-id.iam.gserviceaccount.com',
 )
 
@@ -248,7 +248,15 @@ tensorboard = aiplatform.Tensorboard(
     'projects/your-project-id/locations/us-central1/tensorboards/TB_ID'
 )
 
-print(f"TensorBoard URL: https://us-central1.tensorboard.googleusercontent.com/experiment/{tensorboard.resource_name}")
+experiment_name = (
+    f'{tensorboard.resource_name}/experiments/EXPERIMENT_NAME'
+)
+experiment_url_path = experiment_name.replace('/', '+')
+
+print(
+    'TensorBoard URL: '
+    f'https://us-central1.tensorboard.googleusercontent.com/experiment/{experiment_url_path}'
+)
 ```
 
 Or use gcloud:
