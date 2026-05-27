@@ -24,14 +24,14 @@ CMEK monitoring breaks down into several areas:
 
 ## Enabling Cloud KMS Audit Logs
 
-Cloud KMS generates audit logs for all key operations. Data Access logs are not enabled by default for KMS - you need to explicitly turn them on.
+Cloud KMS generates audit logs for key operations. Admin Activity logs are enabled by default; Data Access logs are not enabled by default for KMS, so you need to explicitly turn them on.
 
-This command enables all audit log types for Cloud KMS at the organization level.
+This command enables configurable Cloud KMS Data Access audit logs at the organization level.
 
 ```bash
 # Enable comprehensive audit logging for Cloud KMS
 
-gcloud organizations set-iam-policy 123456789 --format=json | \
+gcloud organizations get-iam-policy 123456789 --format=json | \
   python3 -c "
 import json, sys
 policy = json.load(sys.stdin)
@@ -40,7 +40,6 @@ kms_config = {
     'service': 'cloudkms.googleapis.com',
     'auditLogConfigs': [
         {'logType': 'ADMIN_READ'},
-        {'logType': 'ADMIN_WRITE'},
         {'logType': 'DATA_READ'},
         {'logType': 'DATA_WRITE'}
     ]
@@ -59,7 +58,7 @@ gcloud organizations set-iam-policy 123456789 /tmp/org-policy.json
 Alternatively, use Terraform for cleaner management.
 
 ```hcl
-# Enable comprehensive KMS audit logging at the organization level
+# Enable configurable KMS audit logging at the organization level
 resource "google_organization_iam_audit_config" "kms" {
   org_id  = "123456789"
   service = "cloudkms.googleapis.com"
@@ -88,6 +87,7 @@ gcloud logging sinks create kms-audit-sink \
   bigquery.googleapis.com/projects/audit-project/datasets/kms_audit_logs \
   --organization=123456789 \
   --include-children \
+  --use-partitioned-tables \
   --log-filter='resource.type="cloudkms_cryptokey" OR resource.type="cloudkms_keyring" OR resource.type="cloudkms_cryptokeyversion"'
 ```
 
@@ -105,10 +105,9 @@ SINK_SA=$(gcloud logging sinks describe kms-audit-sink \
   --organization=123456789 \
   --format='value(writerIdentity)')
 
-bq add-iam-policy-binding \
+gcloud projects add-iam-policy-binding audit-project \
   --member="${SINK_SA}" \
-  --role="roles/bigquery.dataEditor" \
-  audit-project:kms_audit_logs
+  --role="roles/bigquery.dataEditor"
 ```
 
 ## Querying Key Usage Patterns
@@ -166,7 +165,7 @@ Key rotation is a common compliance requirement. This script checks all keys in 
 # Check key rotation compliance across the organization
 from google.cloud import kms
 from google.cloud import resourcemanager_v3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Maximum allowed age for the primary key version
 MAX_KEY_AGE_DAYS = 90
@@ -188,9 +187,11 @@ def check_rotation_compliance(org_id):
 
         # List all locations with key rings
         try:
-            locations = ["us-central1", "us-east1", "europe-west1", "global"]
+            locations = kms_client.list_locations(
+                request={"name": f"projects/{project_id}"}
+            )
             for location in locations:
-                parent = f"projects/{project_id}/locations/{location}"
+                parent = f"projects/{project_id}/locations/{location.location_id}"
 
                 try:
                     key_rings = kms_client.list_key_rings(
@@ -210,7 +211,7 @@ def check_rotation_compliance(org_id):
 
                         # Get the primary version
                         if key.primary and key.primary.create_time:
-                            age = datetime.utcnow() - key.primary.create_time.replace(tzinfo=None)
+                            age = datetime.now(timezone.utc) - key.primary.create_time
                             if age > timedelta(days=MAX_KEY_AGE_DAYS):
                                 non_compliant_keys.append({
                                     "key": key.name,
@@ -243,44 +244,77 @@ One of the biggest audit needs is finding resources that should have CMEK but do
 gcloud asset search-all-resources \
   --scope=organizations/123456789 \
   --asset-types=storage.googleapis.com/Bucket \
-  --query="NOT kmsKeyName:*" \
+  --query="NOT kmsKeys:*" \
   --format="table(name, project, location)"
 
 # Search for BigQuery datasets without default CMEK
 gcloud asset search-all-resources \
   --scope=organizations/123456789 \
   --asset-types=bigquery.googleapis.com/Dataset \
-  --format=json | python3 -c "
-import json, sys
-datasets = json.load(sys.stdin)
-for ds in datasets:
-    config = ds.get('additionalAttributes', {})
-    if not config.get('defaultEncryptionConfiguration'):
-        print(f'No CMEK: {ds[\"name\"]} in {ds.get(\"project\", \"unknown\")}')"
+  --query="NOT kmsKeys:*" \
+  --format="table(name, project, location)"
 ```
 
 ## Setting Up Alerts for Critical Key Events
 
 Create Cloud Monitoring alerts for key events that require immediate attention.
 
-```bash
-# Alert when a key version is destroyed
-gcloud monitoring policies create \
-  --display-name="KMS Key Destruction Alert" \
-  --condition-display-name="Key version destroyed" \
-  --condition-filter='resource.type="cloudkms_cryptokeyversion" AND protoPayload.methodName="DestroyCryptoKeyVersion"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --notification-channels=projects/audit-project/notificationChannels/CHANNEL_ID
+```json
+{
+  "displayName": "KMS Key Destruction Alert",
+  "conditions": [
+    {
+      "displayName": "Key version destroyed",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloudkms_cryptokeyversion\" AND protoPayload.serviceName=\"cloudkms.googleapis.com\" AND protoPayload.methodName=\"DestroyCryptoKeyVersion\""
+      }
+    }
+  ],
+  "combiner": "OR",
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/audit-project/notificationChannels/CHANNEL_ID"
+  ]
+}
+```
 
-# Alert when a key is disabled
+Save the policy as `kms-key-destruction-alert.json`, then create it.
+
+```bash
 gcloud monitoring policies create \
-  --display-name="KMS Key Disabled Alert" \
-  --condition-display-name="Key version disabled" \
-  --condition-filter='resource.type="cloudkms_cryptokeyversion" AND protoPayload.methodName="DisableCryptoKeyVersion"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --notification-channels=projects/audit-project/notificationChannels/CHANNEL_ID
+  --policy-from-file="kms-key-destruction-alert.json" \
+  --project=audit-project
+```
+
+Use the same log-based alerting pattern for disabled key versions.
+
+```json
+{
+  "displayName": "KMS Key Disabled Alert",
+  "conditions": [
+    {
+      "displayName": "Key version disabled",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloudkms_cryptokeyversion\" AND protoPayload.serviceName=\"cloudkms.googleapis.com\" AND protoPayload.methodName=\"DisableCryptoKeyVersion\""
+      }
+    }
+  ],
+  "combiner": "OR",
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/audit-project/notificationChannels/CHANNEL_ID"
+  ]
+}
 ```
 
 ## Building a CMEK Compliance Dashboard
