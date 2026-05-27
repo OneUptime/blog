@@ -250,15 +250,13 @@ gcloud composer environments run my-composer-env \
   db clean -- --clean-before-timestamp "2024-06-01T00:00:00+00:00" -y
 ```
 
-Configure metadata cleanup in your environment:
+Configure automatic metadata cleanup in Cloud Composer 3 by setting a database retention policy:
 
 ```bash
-# Set up automatic metadata cleanup
+# Keep Airflow metadata for 60 days
 gcloud composer environments update my-composer-env \
   --location=us-central1 \
-  --update-airflow-configs="\
-core-max_num_rendered_ti_fields_per_task=3,\
-core-store_dag_code=False"
+  --airflow-database-retention-days=60
 ```
 
 ## Monitoring at Scale
@@ -270,6 +268,7 @@ Set up Cloud Monitoring dashboards to track key metrics:
 gcloud monitoring policies create --policy-from-file=- << 'EOF'
 {
   "displayName": "Composer Task Queue Depth Alert",
+  "combiner": "OR",
   "conditions": [{
     "displayName": "Task queue depth > 50 for 10 minutes",
     "conditionThreshold": {
