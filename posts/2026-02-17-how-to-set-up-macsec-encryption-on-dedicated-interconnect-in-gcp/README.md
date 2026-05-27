@@ -14,14 +14,14 @@ In this post, I will explain what MACsec does, when you need it, and how to conf
 
 ## What is MACsec?
 
-MACsec encrypts Ethernet frames at layer 2, right above the physical layer. Every frame that crosses the wire is encrypted and authenticated. Unlike IPsec (which operates at layer 3), MACsec encrypts everything - including the IP headers - and operates at wire speed with no performance penalty.
+MACsec encrypts Ethernet frames at layer 2, right above the physical layer. Every frame that crosses the wire is encrypted and authenticated. Unlike IPsec (which operates at layer 3), MACsec encrypts the Ethernet payload - including the IP headers - and, on supported hardware, operates at line rate.
 
 Key characteristics:
 
-- **Line-rate encryption**: No throughput reduction. A 10G link with MACsec still delivers 10G.
+- **Line-rate encryption**: MACsec is designed to run at the speed of the physical link on supported hardware.
 - **Hop-by-hop**: Encrypts between directly connected devices (your router to Google's edge).
 - **Hardware-based**: Uses dedicated crypto hardware in the network interfaces.
-- **Standards-based**: IEEE 802.1AE with GCM-AES-256 cipher suite.
+- **Standards-based**: IEEE 802.1AE with GCM-AES-256-XPN or GCM-AES-256 cipher suites.
 
 ```mermaid
 graph LR
@@ -53,35 +53,36 @@ If your traffic is already encrypted at higher layers (TLS for application traff
 
 Before enabling MACsec:
 
-- You need a Dedicated Interconnect (MACsec is not available for Partner Interconnect)
-- Your on-premises router must support MACsec with GCM-AES-256
-- The Interconnect link must support MACsec (check with Google if your location supports it)
-- You need a 10G or 100G link (MACsec is supported on both)
+- This guide assumes Dedicated Interconnect. MACsec for Partner Interconnect depends on your service provider's support and protects the connection between Google's peering edge router and the service provider's peering edge router.
+- Your on-premises router must support MACsec with GCM-AES-256-XPN or GCM-AES-256. Google recommends GCM-AES-256-XPN, especially for high-bandwidth links.
+- The Interconnect link must be MACsec capable. 100G and 400G links are MACsec capable by default; 10G MACsec requires support at the colocation facility and must be enabled for your project by your Google Cloud account team.
+- You need a 10G, 100G, or 400G link.
 
 ## Step 1: Create a MACsec-Enabled Interconnect
 
 When creating a new Dedicated Interconnect, specify MACsec support:
 
 ```bash
-# Create a Dedicated Interconnect with MACsec enabled
+# Request a MACsec-capable Dedicated Interconnect
 
 gcloud compute interconnects create my-macsec-interconnect \
+    --customer-name="Example Company" \
     --interconnect-type=DEDICATED \
     --link-type=LINK_TYPE_ETHERNET_10G_LR \
     --requested-link-count=1 \
     --location=iad-zone1-1 \
-    --admin-enabled \
-    --macsec-enabled \
+    --requested-features=MACSEC \
     --description="MACsec-enabled interconnect"
 ```
 
-If you have an existing Interconnect, you can enable MACsec on it:
+If you have an existing Interconnect, first verify that it is MACsec capable:
 
 ```bash
-# Enable MACsec on an existing interconnect
-gcloud compute interconnects update my-interconnect \
-    --macsec-enabled
+# Check whether an existing interconnect is MACsec capable
+gcloud compute interconnects describe my-interconnect
 ```
+
+For 10G links, look for `availableFeatures: IF_MACSEC`. 100G and 400G links are MACsec capable by default. If an existing 10G connection is not MACsec capable, request a new MACsec-capable connection or work with your Google Cloud account manager to migrate it to MACsec-capable ports.
 
 ## Step 2: Generate and Configure MACsec Keys
 
@@ -100,72 +101,43 @@ Retrieve the key details:
 
 ```bash
 # Get the MACsec key information
-gcloud compute interconnects describe my-macsec-interconnect \
-    --format="yaml(macsec)"
+gcloud compute interconnects macsec get-config my-macsec-interconnect
 ```
 
 This shows you the CAK (Connectivity Association Key) and CKN (Connectivity Association Key Name) that you need to configure on your on-premises router.
 
 ## Step 3: Configure MACsec on Your On-Premises Router
 
-Here is how to configure MACsec on common router platforms.
-
-### Cisco IOS XE
+Use your router vendor's documentation to configure MACsec on the physical interface connected to Google. For compatibility with Google's routers, use these settings:
 
 ```text
-! Define the MACsec key chain
-key chain macsec-keychain macsec
-  key 01
-    cryptographic-algorithm aes-256-cmac
-    key-string <CAK-value-from-GCP>
-    lifetime 00:00:00 Feb 17 2026 infinite
-
-! Configure the MACsec policy
-mka policy gcp-macsec-policy
-  macsec-cipher-suite gcm-aes-256
-  confidentiality-offset 0
-  key-server priority 200
-
-! Apply to the physical interface
-interface TenGigabitEthernet0/0
-  mka policy gcp-macsec-policy
-  mka pre-shared-key key-chain macsec-keychain
-  macsec
-  no shutdown
+MACsec cipher suite: GCM-AES-256-XPN, or GCM-AES-256 if XPN is unavailable
+CAK cryptographic algorithm: AES_256_CMAC
+Key server priority: 15
+SAK rekey interval: 28800 seconds
+Confidentiality offset: 0
+Replay protection window size: 64
+ICV indicator: yes
+Secure Channel Identifier (SCI): enabled
+CAK: <CAK-value-from-GCP>
+CKN: <CKN-value-from-GCP>
 ```
 
-### Juniper Junos
+Do not enable MACsec on your router until the CAK, CKN, and the rest of the MACsec parameters are configured. Enabling MACsec on only one side can interrupt traffic.
 
-```text
-# Configure MACsec connectivity association
-set security macsec connectivity-association gcp-macsec
-set security macsec connectivity-association gcp-macsec cipher-suite gcm-aes-256
-set security macsec connectivity-association gcp-macsec security-mode static-cak
-set security macsec connectivity-association gcp-macsec pre-shared-key ckn <CKN-value>
-set security macsec connectivity-association gcp-macsec pre-shared-key cak <CAK-value>
+## Step 4: Enable MACsec on GCP
 
-# Apply to the interface
-set security macsec interfaces xe-0/0/0 connectivity-association gcp-macsec
+After the keys and router parameters are in place, enable MACsec on the Cloud Interconnect connection:
+
+```bash
+# Enable MACsec on the interconnect
+gcloud compute interconnects macsec update my-macsec-interconnect \
+    --enabled
 ```
 
-### Arista EOS
+When you enable MACsec, the connection can briefly experience packet loss. Drain or stop production traffic on the VLAN attachments before enabling it.
 
-```text
-! Configure MACsec profile
-mac security
-  profile gcp-macsec
-    cipher aes256-gcm
-    key macsec-keychain
-      mka key 01
-        secret <CAK-value>
-        ckn <CKN-value>
-
-! Apply to the interface
-interface Ethernet1
-  mac security profile gcp-macsec
-```
-
-## Step 4: Verify MACsec Session
+## Step 5: Verify MACsec Session
 
 Once both sides are configured, the MACsec session should establish automatically through the MKA (MACsec Key Agreement) protocol.
 
@@ -174,7 +146,7 @@ On the GCP side:
 ```bash
 # Check MACsec status on the Interconnect
 gcloud compute interconnects get-diagnostics my-macsec-interconnect \
-    --format="yaml(result.macsecStatus)"
+    --format="yaml(result.links.macsec,result.links.operationalStatus,result.bundleOperationalStatus)"
 ```
 
 On the on-premises side (Cisco example):
@@ -193,7 +165,7 @@ You should see:
 - Encrypted packet counters incrementing
 - No decryption errors
 
-## Step 5: Configure Fail-Open or Fail-Close Behavior
+## Step 6: Configure Fail-Open or Fail-Close Behavior
 
 An important decision: what happens if MACsec fails? You have two options:
 
@@ -205,19 +177,25 @@ On GCP:
 
 ```bash
 # Set fail-open behavior (allow unencrypted traffic if MACsec fails)
-gcloud compute interconnects update my-macsec-interconnect \
-    --macsec-fail-open
+gcloud compute interconnects macsec update my-macsec-interconnect \
+    --no-enabled \
+    --fail-open
+gcloud compute interconnects macsec update my-macsec-interconnect \
+    --enabled
 
 # Or set fail-close behavior (drop traffic if MACsec fails)
-gcloud compute interconnects update my-macsec-interconnect \
-    --no-macsec-fail-open
+gcloud compute interconnects macsec update my-macsec-interconnect \
+    --no-enabled \
+    --no-fail-open
+gcloud compute interconnects macsec update my-macsec-interconnect \
+    --enabled
 ```
 
 For production environments where the Interconnect has redundant links, I recommend fail-close. If one MACsec session fails, traffic shifts to the other link (which still has MACsec active).
 
 ## Key Rotation
 
-Security best practices require periodic key rotation. GCP supports multiple MACsec keys with different start times, allowing hitless key rollover:
+Security best practices require periodic key rotation. GCP supports up to five MACsec keys with different start times, allowing hitless key rollover:
 
 ```bash
 # Add a new key with a future start time
@@ -226,25 +204,26 @@ gcloud compute interconnects macsec add-key my-macsec-interconnect \
     --start-time=2026-03-17T00:00:00Z
 
 # Configure the same new key on your on-premises router before the start time
-# Both keys remain active during the transition period
+# Verify the new key is active after the start time
+gcloud compute interconnects get-diagnostics my-macsec-interconnect
 
 # After the new key is active on both sides, remove the old key
 gcloud compute interconnects macsec remove-key my-macsec-interconnect \
     --key-name=macsec-key-1
 ```
 
-Plan key rotation well in advance. Add the new key on both sides before the start time to avoid any disruption.
+Plan key rotation well in advance. Consecutive key start times must be at least six hours apart. Add the new key on both sides before the start time, verify that the new key is active, and remove the old key from the on-premises router before removing it from Cloud Interconnect.
 
 ## Performance Considerations
 
 MACsec encryption is hardware-accelerated and operates at line rate. Unlike IPsec:
 
 - **No throughput impact**: Your 10G link still delivers 10G of encrypted traffic
-- **No latency impact**: Hardware encryption adds sub-microsecond delay
+- **Minimal latency impact**: MACsec is handled in hardware on supported platforms
 - **No CPU overhead**: Encryption is handled by the NIC/transceiver, not the router's CPU
-- **Small overhead**: MACsec adds about 32 bytes per frame (16-byte SecTAG + 16-byte ICV)
+- **Small overhead**: MACsec adds SecTAG and ICV bytes to each protected Ethernet frame
 
-The only consideration is that the 32-byte per-frame overhead slightly reduces the effective MTU. If you are using 1500-byte frames, the actual payload decreases slightly. Most modern equipment handles this transparently.
+The additional per-frame overhead can slightly reduce the effective payload size if the physical interface MTU is not adjusted. Make sure the router interface MTU and VLAN attachment MTU are planned with MACsec overhead in mind.
 
 ## MACsec vs IPsec: Which One?
 
@@ -253,11 +232,11 @@ The only consideration is that the 32-byte per-frame overhead slightly reduces t
 | Layer | 2 (Ethernet) | 3 (IP) |
 | Performance | Line rate, hardware | Software/hardware, may reduce throughput |
 | Scope | Point-to-point (single hop) | End-to-end (multi-hop) |
-| What is encrypted | Everything including L3 headers | IP payload only |
-| Use with Interconnect | Yes (Dedicated only) | Not natively (would use VPN) |
+| What is encrypted | Ethernet payload, including L3 headers | IP payload; tunnel mode also protects the original IP header |
+| Use with Interconnect | Yes | Yes, for example with HA VPN over Cloud Interconnect |
 
 They solve different problems. MACsec protects the physical link. IPsec protects the data end-to-end. You can use both if needed.
 
 ## Wrapping Up
 
-MACsec on Dedicated Interconnect adds strong, hardware-accelerated encryption to your physical link with zero performance penalty. The setup involves creating MACsec keys in GCP and configuring matching keys on your on-premises router. Once the MKA session establishes, all traffic is encrypted transparently. For production deployments, use redundant links with fail-close behavior, and plan regular key rotations to maintain security hygiene.
+MACsec on Dedicated Interconnect adds strong, hardware-accelerated encryption to your physical link with minimal operational overhead. The setup involves creating MACsec keys in GCP and configuring matching keys on your on-premises router. Once the MKA session establishes, all traffic is encrypted transparently. For production deployments, use redundant links with fail-close behavior, and plan regular key rotations to maintain security hygiene.
