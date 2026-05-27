@@ -14,7 +14,7 @@ This guide shows you how to use ephemeral containers effectively for MetalLB deb
 
 ## What Are Ephemeral Containers?
 
-Ephemeral containers are temporary containers that run alongside the existing containers in a pod. They share the pod's namespaces (network, PID, IPC) but have their own filesystem. They are designed specifically for debugging and are removed when the pod is deleted.
+Ephemeral containers are temporary containers that run alongside the existing containers in a pod. They share the pod's network namespace like other containers in the pod, can target another container's process namespace when the container runtime supports it, and have their own filesystem. They are designed specifically for debugging and are removed when the pod is deleted.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     N --- E[Node Network Interface]
 ```
 
-The key advantage is that the ephemeral container shares the network namespace with the MetalLB containers. This means you can see the same network interfaces, IP addresses, and connections that the speaker or controller sees.
+The key advantage is that the ephemeral container runs in the same pod network namespace as the MetalLB containers. This means you can see the same network interfaces, IP addresses, and connections that the speaker or controller sees.
 
 ## Prerequisites
 
@@ -37,7 +37,7 @@ Ephemeral containers require Kubernetes 1.25 or later (where they became stable)
 # Check your Kubernetes version
 
 # Ephemeral containers are stable in 1.25+
-kubectl version --short
+kubectl version
 
 # Verify ephemeral containers are enabled
 # This command should not return an error
@@ -79,7 +79,7 @@ kubectl debug -it \
 # Explanation of flags:
 # -it              : Interactive terminal
 # --image          : The debug container image with tools
-# --target=speaker : Share the network namespace with the speaker container
+# --target=speaker : Target the speaker container's process namespace, if supported
 # -- /bin/bash     : The command to run in the debug container
 ```
 
@@ -91,7 +91,7 @@ Once inside the debug container, you have full access to the speaker's network n
 # Inside the ephemeral container:
 
 # Check all network interfaces visible to the speaker
-# You should see the node's interfaces, not pod-only interfaces
+# Default MetalLB speaker pods use hostNetwork, so you should see the node's interfaces
 ip addr show
 
 # Check the ARP table for LoadBalancer IPs
@@ -176,14 +176,14 @@ nslookup kubernetes.default.svc
 # The controller runs a webhook server for validating MetalLB resources
 ss -tlnp | grep 9443
 
-# Test connectivity to speaker pods
+# Confirm API server health
 # The controller and speakers communicate through the API server
 curl -sk https://kubernetes.default.svc/healthz
 ```
 
 ## Debugging FRR in BGP Mode
 
-When MetalLB uses BGP mode with FRR (Free Range Routing), you can attach to the FRR sidecar container specifically.
+When MetalLB uses BGP mode with FRR (Free Range Routing), you can target the FRR sidecar container's process namespace for network and process-level checks.
 
 ```bash
 # Attach to the FRR container in the speaker pod
@@ -199,16 +199,30 @@ kubectl debug -it \
 ```bash
 # Inside the ephemeral container targeting FRR:
 
-# Check FRR's view of BGP neighbors
-# The vtysh command connects to FRR's management interface
-# Note: vtysh may not be in netshoot, use the FRR container's tools instead
-cat /etc/frr/frr.conf
-
 # Check the FRR process status
 ps aux | grep -E "bgpd|zebra|bfdd"
 
-# Check the BGP session state by looking at FRR logs
-cat /var/log/frr/frr.log | tail -50
+# Capture BGP traffic on the shared pod network namespace
+tcpdump -i any port 179 -nn -vv
+```
+
+For FRR's own configuration and BGP state, use the FRR container's tools directly:
+
+```bash
+# Check FRR's view of BGP neighbors
+# The vtysh command connects to FRR's management interface
+kubectl exec -it \
+  -n metallb-system \
+  speaker-abc12 \
+  -c frr \
+  -- vtysh -c "show bgp neighbor"
+
+# Check the running FRR configuration
+kubectl exec -it \
+  -n metallb-system \
+  speaker-abc12 \
+  -c frr \
+  -- vtysh -c "show running-config"
 ```
 
 ```mermaid
@@ -229,6 +243,6 @@ flowchart TD
 
 Ephemeral containers are the cleanest way to debug MetalLB pods in production. They do not require modifying deployments, rebuilding images, or restarting pods. You get a fully equipped debugging environment that shares the exact network context of the MetalLB components.
 
-The key patterns are: use `--target` to share the network namespace, use `nicolaka/netshoot` for a comprehensive toolset, and use `--share-processes` when you need to inspect the MetalLB processes directly.
+The key patterns are: use `nicolaka/netshoot` for a comprehensive toolset, use `--target` when you need to inspect the target container's processes, and remember that `--share-processes` applies when creating a copied debug pod with `--copy-to`.
 
 For ongoing monitoring of your MetalLB infrastructure without manual debugging, consider [OneUptime](https://oneuptime.com). OneUptime provides automated health checks, uptime monitoring, and alerting for your Kubernetes services, reducing the need for manual debugging sessions and helping you catch issues before they impact users.
