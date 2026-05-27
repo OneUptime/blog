@@ -41,6 +41,12 @@ gcloud container clusters update my-cluster \
     --workload-pool=my-project.svc.id.goog \
     --zone=us-central1-a
 
+# For existing Standard cluster node pools, enable the GKE metadata server
+gcloud container node-pools update my-node-pool \
+    --cluster=my-cluster \
+    --workload-metadata=GKE_METADATA \
+    --zone=us-central1-a
+
 # Create a Google Cloud service account for your workload
 gcloud iam service-accounts create my-app-sa \
     --display-name="My App Service Account"
@@ -80,7 +86,13 @@ metadata:
   name: my-app
   namespace: my-namespace
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       serviceAccountName: my-k8s-sa
       containers:
@@ -112,8 +124,7 @@ VMs on Compute Engine can use the metadata server to obtain tokens without any k
 gcloud compute instances create my-vm \
     --zone=us-central1-a \
     --service-account=my-app-sa@my-project.iam.gserviceaccount.com \
-    --scopes=cloud-platform \
-    --no-service-account-key
+    --scopes=cloud-platform
 ```
 
 From inside the VM, applications automatically get tokens from the metadata server:
@@ -145,12 +156,14 @@ gcloud iam workload-identity-pools create aws-pool \
 gcloud iam workload-identity-pools providers create-aws aws-provider \
     --workload-identity-pool=aws-pool \
     --location=global \
-    --account-id=123456789012
+    --account-id=123456789012 \
+    --attribute-mapping="google.subject=assertion.arn,attribute.aws_role=assertion.arn.extract('assumed-role/{role_name}/')" \
+    --attribute-condition="assertion.arn.startsWith('arn:aws:sts::123456789012:assumed-role/')"
 
 # Allow the AWS role to impersonate a GCP service account
 gcloud iam service-accounts add-iam-policy-binding my-app-sa@my-project.iam.gserviceaccount.com \
     --role=roles/iam.workloadIdentityUser \
-    --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/aws-pool/attribute.aws_role/arn:aws:sts::123456789012:assumed-role/my-aws-role"
+    --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/aws-pool/attribute.aws_role/my-aws-role"
 ```
 
 Generate a credential configuration file that your application uses:
@@ -178,6 +191,11 @@ python my_app.py
 ### Federating with GitHub Actions
 
 ```bash
+# Create a workload identity pool for CI
+gcloud iam workload-identity-pools create ci-pool \
+    --location=global \
+    --description="Pool for CI workloads"
+
 # Create a provider for GitHub Actions OIDC
 gcloud iam workload-identity-pools providers create-oidc github-provider \
     --workload-identity-pool=ci-pool \
@@ -258,7 +276,7 @@ gcloud resource-manager org-policies set-policy disable-sa-keys.yaml \
 ```yaml
 # disable-sa-keys.yaml
 # Prevents creation of new service account keys across the organization
-constraint: iam.disableServiceAccountKeyCreation
+constraint: constraints/iam.disableServiceAccountKeyCreation
 booleanPolicy:
   enforced: true
 ```
