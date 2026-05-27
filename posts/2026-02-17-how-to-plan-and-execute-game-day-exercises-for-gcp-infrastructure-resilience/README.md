@@ -44,7 +44,7 @@ Scenario: Cloud SQL primary instance becomes unavailable
 Success criteria:
 - Monitoring detects the outage within 2 minutes
 - On-call receives alert within 3 minutes
-- Automatic failover to replica completes within 5 minutes
+- Automatic failover to the standby instance completes within 5 minutes
 - Application reconnects automatically within 1 minute after failover
 - No data loss
 - Total user-facing impact under 10 minutes
@@ -73,7 +73,7 @@ gcloud monitoring dashboards create --config-from-file=game-day-dashboard.json
 gcloud logging sinks list --project=my-project
 
 # Verify alerting policies are active
-gcloud alpha monitoring policies list \
+gcloud monitoring policies list \
   --project=my-project \
   --format="table(displayName, enabled)"
 ```
@@ -82,7 +82,7 @@ gcloud alpha monitoring policies list \
 
 ### Scenario 1: Compute Engine Instance Failure
 
-Simulate an instance failure by stopping an instance in a managed instance group:
+Simulate an instance failure by recreating an instance in a managed instance group:
 
 ```bash
 # List instances in the group to pick a target
@@ -90,8 +90,9 @@ gcloud compute instance-groups managed list-instances web-servers \
   --zone=us-central1-a \
   --project=my-project
 
-# Stop an instance to simulate failure
-gcloud compute instances stop web-server-abc123 \
+# Recreate an instance to simulate failure and replacement
+gcloud compute instance-groups managed recreate-instances web-servers \
+  --instances=web-server-abc123 \
   --zone=us-central1-a \
   --project=my-project
 
@@ -105,7 +106,7 @@ gcloud compute instances stop web-server-abc123 \
 Record timestamps for everything:
 
 ```text
-10:00:00 - Instance stopped
+10:00:00 - Instance recreation started
 10:00:45 - Health check marks instance unhealthy
 10:01:15 - Load balancer removes instance from pool
 10:01:30 - Alert fires in Cloud Monitoring
