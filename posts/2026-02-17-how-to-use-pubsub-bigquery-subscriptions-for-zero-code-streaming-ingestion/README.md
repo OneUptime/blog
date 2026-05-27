@@ -50,7 +50,7 @@ bq mk --dataset MY_PROJECT:streaming_data
 
 # Create the destination table
 bq mk --table MY_PROJECT:streaming_data.events \
-  event_id:STRING,event_type:STRING,user_id:STRING,timestamp:TIMESTAMP,payload:STRING,source:STRING
+  event_id:STRING,event_type:STRING,user_id:STRING,timestamp:TIMESTAMP,source:STRING
 ```
 
 If your messages have nested fields, use a JSON schema file:
@@ -88,11 +88,6 @@ PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
 gcloud projects add-iam-policy-binding MY_PROJECT \
   --member="serviceAccount:${PUBSUB_SA}" \
   --role="roles/bigquery.dataEditor"
-
-# Grant metadata access
-gcloud projects add-iam-policy-binding MY_PROJECT \
-  --member="serviceAccount:${PUBSUB_SA}" \
-  --role="roles/bigquery.metadataViewer"
 ```
 
 ## Step 3: Create the BigQuery Subscription
@@ -103,17 +98,15 @@ Now create the subscription that connects the topic to the table.
 # Create a BigQuery subscription
 gcloud pubsub subscriptions create events-to-bq \
   --topic=events-topic \
-  --bigquery-table=MY_PROJECT:streaming_data.events \
-  --use-topic-schema \
-  --write-metadata \
+  --bigquery-table=MY_PROJECT.streaming_data.events \
+  --use-table-schema \
   --drop-unknown-fields
 ```
 
 Let me break down the flags:
 
-- `--bigquery-table`: The destination table in `project:dataset.table` format
-- `--use-topic-schema`: Maps Pub/Sub message fields to BigQuery columns based on the topic's schema
-- `--write-metadata`: Adds Pub/Sub metadata (message ID, publish time, attributes) to the row
+- `--bigquery-table`: The destination table in `project.dataset.table` format
+- `--use-table-schema`: Uses the BigQuery table schema to map JSON message fields to BigQuery columns
 - `--drop-unknown-fields`: Ignores message fields that do not match BigQuery columns (instead of failing)
 
 ## Step 4: Publish a Test Message
@@ -127,11 +120,6 @@ gcloud pubsub topics publish events-topic --message='{
   "event_type": "page_view",
   "user_id": "user-123",
   "timestamp": "2026-02-17T14:00:00Z",
-  "data": {
-    "action": "view",
-    "value": 1.0,
-    "metadata": "homepage"
-  },
   "source": "web"
 }'
 ```
@@ -164,7 +152,7 @@ gcloud pubsub schemas create events-schema \
       {"name": "event_id", "type": "string"},
       {"name": "event_type", "type": "string"},
       {"name": "user_id", "type": ["null", "string"]},
-      {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-micros"}},
+      {"name": "timestamp", "type": "string"},
       {"name": "source", "type": ["null", "string"]}
     ]
   }'
@@ -183,7 +171,7 @@ If your topic does not have a schema, the subscription can use the BigQuery tabl
 # Create subscription using table schema
 gcloud pubsub subscriptions create events-to-bq \
   --topic=events-topic \
-  --bigquery-table=MY_PROJECT:streaming_data.events \
+  --bigquery-table=MY_PROJECT.streaming_data.events \
   --use-table-schema \
   --drop-unknown-fields
 ```
@@ -199,7 +187,7 @@ gcloud pubsub topics create events-dead-letter
 # Create the subscription with dead letter handling
 gcloud pubsub subscriptions create events-to-bq \
   --topic=events-topic \
-  --bigquery-table=MY_PROJECT:streaming_data.events \
+  --bigquery-table=MY_PROJECT.streaming_data.events \
   --use-table-schema \
   --drop-unknown-fields \
   --dead-letter-topic=projects/MY_PROJECT/topics/events-dead-letter \
@@ -209,6 +197,10 @@ gcloud pubsub subscriptions create events-to-bq \
 Monitor the dead letter topic to catch schema issues:
 
 ```bash
+# Create a subscription for the dead letter topic
+gcloud pubsub subscriptions create events-dead-letter-sub \
+  --topic=events-dead-letter
+
 # Pull messages from the dead letter topic to inspect failures
 gcloud pubsub subscriptions pull events-dead-letter-sub --auto-ack --limit=10
 ```
@@ -220,7 +212,7 @@ BigQuery subscriptions are great when:
 - Your messages are already in a format that maps cleanly to BigQuery columns
 - You do not need to transform, enrich, or filter the data
 - You want to minimize operational overhead
-- The volume is within BigQuery streaming insert limits
+- The volume is within BigQuery Storage Write API throughput limits
 
 Stick with Dataflow when:
 
@@ -233,10 +225,10 @@ Stick with Dataflow when:
 
 A few things to keep in mind:
 
-- BigQuery subscriptions use the Storage Write API, which supports up to 3 GB/s per project
+- BigQuery subscriptions consume only the Storage Write API throughput quota, but the 3 GB/s limit applies to the `US` and `EU` multi-regions; regional tables default to 300 MB/s per project
 - Messages up to 10 MB are supported
 - Latency is typically a few seconds from publish to queryable in BigQuery
-- There is no cost for the subscription itself - you pay for Pub/Sub message delivery and BigQuery streaming inserts
+- BigQuery subscriptions have Pub/Sub throughput pricing for reading from the subscription and writing to BigQuery, with no additional BigQuery ingestion charge
 
 ## Monitoring
 
