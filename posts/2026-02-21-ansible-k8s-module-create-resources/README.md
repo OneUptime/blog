@@ -12,7 +12,7 @@ The `k8s` module from the `kubernetes.core` collection is the Swiss Army knife o
 
 ## How the k8s Module Creates Resources
 
-When you set `state: present`, the k8s module checks if the resource already exists. If it does not, the module creates it. If it does exist, the module updates it to match your definition. This makes the module idempotent, so you can run the same playbook multiple times without creating duplicate resources.
+When you set `state: present`, the k8s module checks if the resource already exists. If it does not, the module creates it. If it does exist, the module patches it with the attributes in your definition. This makes the module idempotent, so you can run the same playbook multiple times without creating duplicate resources.
 
 ```mermaid
 flowchart TD
@@ -20,8 +20,8 @@ flowchart TD
     B -->|No| C[Create Resource]
     B -->|Yes| D{Definition Changed?}
     D -->|Yes| E[Update Resource]
-    D -->|No| F[No Change - Skipped]
-    C --> G[Resource Ready]
+    D -->|No| F[No Change]
+    C --> G[Task Complete]
     E --> G
     F --> G
 ```
@@ -388,7 +388,7 @@ Request storage for stateful workloads:
 
 ## Waiting for Resources to be Ready
 
-The `wait` parameter ensures the resource is actually running before the task completes:
+The `wait` parameter tells the module to wait for supported resources to reach the desired state before the task completes. For this Deployment, the task waits for the `Available` condition:
 
 ```yaml
     - name: Create deployment and wait until ready
@@ -429,7 +429,7 @@ The `wait` parameter ensures the resource is actually running before the task co
 
 ## Force Replacing Resources
 
-Some resources cannot be updated in place. Use `force: true` to delete and recreate them:
+Some resources cannot be updated in place. Use `force: true` when you need the module to replace an existing object instead of patching it:
 
 ```yaml
     - name: Force replace a Job (Jobs are immutable)
@@ -499,4 +499,4 @@ Deploy a complete application stack in a single play:
 
 ## Summary
 
-The `k8s` module provides a single, consistent interface for creating any Kubernetes resource type. Whether you use inline YAML definitions for quick tasks, separate files for complex manifests, or Jinja2 templates for parameterized deployments, the module handles idempotent creation and updates. Use the `wait` parameter to block until resources are ready, `force` for immutable resources that need replacement, and template files to keep your Kubernetes manifests DRY across environments. The module is the building block for every Kubernetes automation task in Ansible.
+The `k8s` module provides a single, consistent interface for creating any Kubernetes resource type. Whether you use inline YAML definitions for quick tasks, separate files for complex manifests, or Jinja2 templates for parameterized deployments, the module handles idempotent creation and updates. Use the `wait` parameter to block until supported resources reach the desired state, `force` for resources that need replacement instead of patching, and template files to keep your Kubernetes manifests DRY across environments. The module is the building block for every Kubernetes automation task in Ansible.
