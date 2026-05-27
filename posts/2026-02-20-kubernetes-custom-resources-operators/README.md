@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CRD, Operator, Custom Resources, Extensibility
 
-Description: A guide to building Kubernetes custom resources and operators using the Operator SDK for extending Kubernetes functionality.
+Description: A guide to building Kubernetes custom resources and operators using Kopf for extending Kubernetes functionality.
 
 ---
 
@@ -221,6 +221,7 @@ def update_webapp(spec, name, namespace, logger, **kwargs):
     resources = spec.get("resources", {})
 
     deployment = build_deployment(name, namespace, image, replicas, port, resources)
+    service = build_service(name, namespace, port)
 
     apps_api = client.AppsV1Api()
     apps_api.patch_namespaced_deployment(
@@ -229,6 +230,14 @@ def update_webapp(spec, name, namespace, logger, **kwargs):
         body=deployment,
     )
     logger.info(f"Deployment {name} updated")
+
+    core_api = client.CoreV1Api()
+    core_api.patch_namespaced_service(
+        name=name,
+        namespace=namespace,
+        body=service,
+    )
+    logger.info(f"Service {name} updated")
 
 
 # Handler for when a WebApp is deleted
@@ -256,7 +265,11 @@ def delete_webapp(name, namespace, logger, **kwargs):
 def build_deployment(name, namespace, image, replicas, port, resources):
     """Build a Deployment object for the WebApp."""
     return client.V1Deployment(
-        metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+        metadata=client.V1ObjectMeta(
+            name=name,
+            namespace=namespace,
+            labels={"app": name, "managed-by": "webapp-operator"},
+        ),
         spec=client.V1DeploymentSpec(
             replicas=replicas,
             selector=client.V1LabelSelector(
@@ -289,7 +302,11 @@ def build_deployment(name, namespace, image, replicas, port, resources):
 def build_service(name, namespace, port):
     """Build a Service object for the WebApp."""
     return client.V1Service(
-        metadata=client.V1ObjectMeta(name=name, namespace=namespace),
+        metadata=client.V1ObjectMeta(
+            name=name,
+            namespace=namespace,
+            labels={"app": name, "managed-by": "webapp-operator"},
+        ),
         spec=client.V1ServiceSpec(
             selector={"app": name, "managed-by": "webapp-operator"},
             ports=[
@@ -329,6 +346,11 @@ Package the operator as a container and deploy it to the cluster:
 # operator-deployment.yaml
 # Deploy the WebApp operator in the cluster.
 # It needs RBAC permissions to manage Deployments, Services, and WebApps.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: operators
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
