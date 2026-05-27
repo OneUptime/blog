@@ -17,34 +17,34 @@ In this post, I will show you how to enable Query Insights, interpret the data i
 Query Insights collects and aggregates performance data about the SQL queries running on your AlloyDB instances. It tracks things like:
 
 - Query execution time (latency)
-- Number of rows scanned vs. rows returned
+- Rows retrieved or affected
 - Wait events (I/O, lock contention, CPU)
-- Query plans and their costs
+- Sampled query plans
 - Top queries by various metrics
 
-The data is retained for a configurable period and can be viewed through the Google Cloud Console or queried programmatically. The overhead is minimal - Google designed it to run in production without noticeable impact on your workload.
+You can access one week of data on the Query Insights dashboard, and the metrics are also available through Cloud Monitoring. The overhead is minimal - Google designed it to run in production with a small expected performance impact.
 
 ## Enabling Query Insights
 
-Query Insights is enabled at the instance level. You can turn it on during instance creation or update an existing instance.
+Query Insights is enabled by default on AlloyDB instances. You can edit its configuration at the instance level during instance creation or by updating an existing instance.
 
-To enable it on an existing primary instance:
+To update the Query Insights configuration on an existing primary instance:
 
 ```bash
-# Enable Query Insights on an existing AlloyDB instance
+# Update Query Insights settings on an existing AlloyDB instance
 
 gcloud alloydb instances update my-primary-instance \
   --cluster=my-cluster \
   --region=us-central1 \
   --insights-config-query-string-length=1024 \
   --insights-config-query-plans-per-minute=5 \
-  --insights-config-record-application-tags=true
+  --insights-config-record-application-tags
 ```
 
 Here is what each flag controls:
 
-- `--insights-config-query-string-length`: How many characters of the query string to capture. The default is 1024. Increase it if your queries are long and you need to see the full text.
-- `--insights-config-query-plans-per-minute`: How many query execution plans to capture per minute. Setting this to 5 gives you a good sample without excessive overhead.
+- `--insights-config-query-string-length`: How many bytes of the query string to capture, from 256 to 4500. The default is 1024. Increase it if your queries are long and you need to see more text. Changing this value requires an instance restart.
+- `--insights-config-query-plans-per-minute`: How many query execution plans to capture per minute. The default is 5, valid values are 0 through 20, and setting it to 0 disables query plan sampling.
 - `--insights-config-record-application-tags`: When enabled, Query Insights captures application-level tags you set via SQL comments, which lets you trace queries back to specific parts of your application.
 
 ## Navigating the Query Insights Dashboard
@@ -70,7 +70,7 @@ Below the chart, you will find a table of the most resource-intensive queries. Y
 - Average execution time
 - Total execution time
 - Number of calls
-- Rows scanned
+- Average rows fetched
 
 This table normalizes queries by replacing literal values with placeholders, so `SELECT * FROM users WHERE id = 42` and `SELECT * FROM users WHERE id = 99` show up as a single entry: `SELECT * FROM users WHERE id = $1`.
 
@@ -90,20 +90,20 @@ cur = conn.cursor()
 
 # Add tags as SQL comments - Query Insights picks these up
 cur.execute("""
-    /* controller='OrderController',action='list_orders',
-       request_id='abc-123' */
     SELECT o.id, o.total, c.name
     FROM orders o
     JOIN customers c ON o.customer_id = c.id
     WHERE o.status = %s
     ORDER BY o.created_at DESC
     LIMIT 50
+    /* controller='OrderController',action='list_orders',
+       application='orders-api' */
 """, ('pending',))
 
 results = cur.fetchall()
 ```
 
-With tagging enabled, you can filter the Query Insights dashboard by controller, action, or any custom tag. This makes it straightforward to identify which API endpoint or background job is generating problematic queries.
+With tagging enabled, you can filter the Query Insights dashboard by supported sqlcommenter tags such as controller, action, framework, route, application, and database driver. Query Insights drops unsupported custom keys, so use those supported tag names when you want tags to appear in the dashboard. This makes it straightforward to identify which API endpoint or background job is generating problematic queries.
 
 ## Analyzing Query Plans
 
@@ -124,12 +124,13 @@ You can create Cloud Monitoring alerts based on AlloyDB metrics to get notified 
 
 ```bash
 # Create an alert for high average query latency
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="AlloyDB High Query Latency" \
   --condition-display-name="Query latency above 500ms" \
-  --condition-filter='resource.type="alloydb.googleapis.com/Instance" AND metric.type="alloydb.googleapis.com/database/postgresql/insights/aggregate/latencies"' \
-  --condition-threshold-value=500 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-filter='resource.type="alloydb.googleapis.com/Database" AND metric.type="alloydb.googleapis.com/database/postgresql/insights/aggregate/latencies"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_99"}' \
+  --if="> 500000" \
+  --duration=300s \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -139,7 +140,7 @@ Here are patterns I frequently encounter when using Query Insights:
 
 ### Missing Indexes
 
-Query Insights shows a query scanning 500,000 rows to return 10 results. The fix is usually straightforward:
+Query Insights shows a query fetching far more rows than the application needs, or the sampled query plan shows a sequential scan on a large table. The fix is usually straightforward:
 
 ```sql
 -- Create an index to support the frequently queried column
@@ -167,17 +168,15 @@ The database load chart shows spikes in the Lock wait event. This often happens 
 
 ## Exporting Query Insights Data
 
-For longer-term analysis, you can export AlloyDB metrics to BigQuery through Cloud Monitoring:
+For longer-term analysis, you can export AlloyDB metrics from the Cloud Monitoring API to BigQuery with a scheduled job:
 
 ```bash
-# Create a metrics export sink to BigQuery
-gcloud logging sinks create alloydb-metrics-sink \
-  bigquery.googleapis.com/projects/my-project/datasets/alloydb_metrics \
-  --log-filter='resource.type="alloydb.googleapis.com/Instance"'
+# Create the destination dataset for exported metrics
+bq mk --location=US --dataset my-project:alloydb_metrics
 ```
 
-This lets you run historical analysis across weeks or months of data, which is useful for capacity planning and tracking whether your optimizations are having the desired effect.
+The job can call the Cloud Monitoring `timeSeries.list` API for metrics such as `alloydb.googleapis.com/database/postgresql/insights/aggregate/latencies` and write the returned time-series points into BigQuery. This lets you run historical analysis across weeks or months of data, which is useful for capacity planning and tracking whether your optimizations are having the desired effect.
 
 ## Wrapping Up
 
-Query Insights removes a lot of the guesswork from AlloyDB performance tuning. Enable it on all your instances, set up application tagging so you can trace queries back to your code, and check the dashboard regularly - not just when things break. The queries that are slow today might become the outage of tomorrow if your data grows and the query plan does not scale. Catching these issues early with Query Insights is much easier than debugging them during an incident.
+Query Insights removes a lot of the guesswork from AlloyDB performance tuning. Keep it configured on your instances, set up application tagging so you can trace queries back to your code, and check the dashboard regularly - not just when things break. The queries that are slow today might become the outage of tomorrow if your data grows and the query plan does not scale. Catching these issues early with Query Insights is much easier than debugging them during an incident.
