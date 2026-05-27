@@ -49,19 +49,19 @@ def run_module():
   when: result.resource.status == 'active'
 ```
 
-## Standard Return Keys
+## Common Return Keys
 
-Always include these:
+Common return keys include:
 
 ```python
 module.exit_json(
-    changed=True,           # Required: were changes made?
-    msg='Success message',  # Recommended: human message
+    changed=True,           # Were changes made?
+    msg='Success message',  # Human-readable message
     diff=dict(              # For diff mode
         before={},
         after={},
     ),
-    warnings=[],            # Non-fatal warnings
+    warnings=[],            # Non-fatal warnings, when needed
 )
 ```
 
@@ -86,21 +86,25 @@ Document every return value:
 ```python
 RETURN = r"""
 resource:
-    description: Resource details
+    description: Resource details.
     type: dict
     returned: when state is present
     contains:
         id:
-            description: Unique ID
+            description: Unique ID.
             type: str
+            returned: when state is present
             sample: 'abc-123'
         name:
-            description: Resource name
+            description: Resource name.
             type: str
+            returned: when state is present
+            sample: test
 msg:
-    description: Result message
+    description: Result message.
     type: str
     returned: always
+    sample: Resource created
 """
 ```
 
