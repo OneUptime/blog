@@ -35,11 +35,12 @@ Kubecost gives you a per-namespace, per-deployment, and per-pod breakdown of you
 ```bash
 # Install Kubecost using Helm
 
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
-helm install kubecost kubecost/cost-analyzer \
+helm repo add kubecost https://kubecost.github.io/kubecost/
+helm repo update
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="your-token-here"
+  --set global.clusterId="your-cluster-name"
 
 # Verify the installation
 kubectl get pods -n kubecost
@@ -81,8 +82,15 @@ spec:
           count(missing) > 0
           msg := sprintf("Missing required labels: %v", [missing])
         }
+        violation[{"msg": msg}] {
+          provided := {label | input.review.object.spec.template.metadata.labels[label]}
+          required := {label | label := input.parameters.labels[_]}
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("Missing required pod template labels: %v", [missing])
+        }
 ---
-# Enforce cost labels on all Deployments
+# Enforce cost labels on all Deployments and their pod templates
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
 metadata:
@@ -233,6 +241,10 @@ spec:
     metadata:
       labels:
         app: batch-processor
+        team: data-engineering
+        project: etl-pipeline
+        environment: production
+        cost-center: DE-001
     spec:
       # Tolerate spot instance taints
       tolerations:
@@ -315,11 +327,10 @@ spec:
 # cost_report.py
 # Generates a weekly cost report from the Kubecost API
 import requests
-import json
 from datetime import datetime, timedelta
 
 # Kubecost API endpoint
-KUBECOST_URL = "http://kubecost.kubecost.svc.cluster.local:9090"
+KUBECOST_URL = "http://kubecost-frontend.kubecost.svc.cluster.local:9090"
 
 def get_namespace_costs(days=7):
     """Fetch per-namespace cost data from Kubecost."""
@@ -335,6 +346,7 @@ def get_namespace_costs(days=7):
             "accumulate": "true",
         },
     )
+    response.raise_for_status()
     return response.json()
 
 def generate_report():
@@ -352,7 +364,7 @@ def generate_report():
     for ns, info in sorted(allocations.items()):
         cpu_cost = info.get("cpuCost", 0)
         ram_cost = info.get("ramCost", 0)
-        ns_total = cpu_cost + ram_cost
+        ns_total = info.get("totalCost", cpu_cost + ram_cost)
         total_cost += ns_total
         # Print each namespace with its cost breakdown
         print(f"{ns:<25} ${cpu_cost:>9.2f} ${ram_cost:>9.2f} ${ns_total:>9.2f}")
