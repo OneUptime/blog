@@ -44,6 +44,7 @@ mariadb_port: 3306
 mariadb_bind_address: "127.0.0.1"
 mariadb_datadir: "/var/lib/mysql"
 mariadb_socket: "/var/run/mysqld/mysqld.sock"
+mariadb_config_file: "/etc/mysql/mariadb.conf.d/99-custom.cnf"
 mariadb_service_name: "mariadb"
 ```
 
@@ -85,22 +86,23 @@ mariadb_service_name: "mariadb"
       - apt-transport-https
       - curl
       - gnupg2
+      - python3-debian
       - python3-mysqldb
       - python3-pymysql
       - software-properties-common
     state: present
     update_cache: true
 
-- name: Add MariaDB signing key
-  apt_key:
-    url: "https://mariadb.org/mariadb_release_signing_key.pgp"
-    state: present
-
 - name: Add MariaDB APT repository
-  apt_repository:
-    repo: "deb https://dlm.mariadb.com/repo/mariadb-server/{{ mariadb_version }}/repo/ubuntu {{ ansible_distribution_release }} main"
+  deb822_repository:
+    name: mariadb
+    types: deb
+    uris: "https://dlm.mariadb.com/repo/mariadb-server/{{ mariadb_version }}/repo/{{ ansible_distribution | lower }}"
+    suites: "{{ ansible_distribution_release }}"
+    components:
+      - main
+    signed_by: "https://mariadb.org/mariadb_release_signing_key.pgp"
     state: present
-    filename: mariadb
 
 - name: Install MariaDB server and client
   apt:
@@ -152,6 +154,8 @@ mariadb_service_name: "mariadb"
 - name: Set service name for RHEL
   set_fact:
     mariadb_service_name: mariadb
+    mariadb_socket: /var/lib/mysql/mysql.sock
+    mariadb_config_file: /etc/my.cnf.d/99-custom.cnf
 ```
 
 ## Securing the Installation
@@ -282,7 +286,7 @@ After installation, you will want to tune MariaDB for your workload. Here is a b
 # Apply basic MariaDB configuration after installation
 - name: Deploy MariaDB server configuration
   copy:
-    dest: /etc/mysql/mariadb.conf.d/99-custom.cnf
+    dest: "{{ mariadb_config_file }}"
     owner: root
     group: root
     mode: '0644'
@@ -292,9 +296,10 @@ After installation, you will want to tune MariaDB for your workload. Here is a b
       innodb_buffer_pool_size = {{ mariadb_innodb_buffer_pool_size | default('256M') }}
       innodb_log_file_size = {{ mariadb_innodb_log_file_size | default('64M') }}
       innodb_flush_log_at_trx_commit = 1
-      innodb_flush_method = O_DIRECT
 
       # Connection settings
+      bind-address = {{ mariadb_bind_address }}
+      port = {{ mariadb_port }}
       max_connections = {{ mariadb_max_connections | default(151) }}
       wait_timeout = 28800
 
