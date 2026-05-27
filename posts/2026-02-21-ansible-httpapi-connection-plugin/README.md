@@ -4,35 +4,35 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Httpapi, REST API, Network Automation
 
-Description: Learn how to use the Ansible httpapi connection plugin to automate network devices through their REST APIs for faster, structured management.
+Description: Learn how to use the Ansible httpapi connection plugin to automate network devices through HTTP(S)-based APIs for faster, structured management.
 
 ---
 
-The httpapi connection plugin is Ansible's way of talking to network devices through their REST APIs instead of CLI over SSH. Platforms like Arista EOS (eAPI), Cisco NX-OS (NX-API), Cisco FTD, and F5 BIG-IP all expose REST interfaces that return structured JSON data natively. Using httpapi instead of network_cli gives you cleaner data, better performance, and access to API-only features.
+The httpapi connection plugin is Ansible's way of talking to network devices through their HTTP(S)-based APIs instead of CLI over SSH. Platforms like Arista EOS (eAPI), Cisco NX-OS (NX-API), Cisco FTD, and F5 BIG-IP expose API interfaces that can return structured data. Using httpapi instead of network_cli can give you cleaner data, better performance, and access to API-only features.
 
 This post explains how the httpapi plugin works, how to configure it for different platforms, and when to choose it over other connection types.
 
 ## How httpapi Differs from network_cli
 
-With `network_cli`, Ansible opens an SSH session and types commands into the CLI, just like a human would. The responses come back as raw text that needs parsing.
+With `network_cli`, Ansible opens an SSH session and types commands into the CLI, just like a human would. Command responses often come back as raw text that needs parsing unless the module or platform requests structured output.
 
-With `httpapi`, Ansible sends HTTP/HTTPS requests to a REST API endpoint. Responses come back as structured JSON. No text parsing needed.
+With `httpapi`, Ansible sends HTTP/HTTPS requests to the platform API endpoint. Responses can come back as structured JSON when the platform and module support it.
 
 ```mermaid
 sequenceDiagram
     participant A as Ansible
     participant D as Device (httpapi)
 
-    A->>D: HTTPS POST /api/eos/v1/exec
-    Note right of A: {"commands": ["show version"]}
+    A->>D: HTTPS POST /command-api
+    Note right of A: {"jsonrpc": "2.0", "method": "runCmds"}
     D->>A: JSON Response
     Note left of D: {"result": [{"modelName": "..."}]}
 ```
 
 The key benefits:
 
-- **Structured responses** - JSON from the start, no regex parsing
-- **Performance** - HTTPS is often faster than SSH for bulk operations
+- **Structured responses** - JSON output where the platform and module support it
+- **Performance** - HTTPS can be faster than SSH for bulk operations
 - **API-only features** - Some configuration options are only available through the API
 - **Parallel requests** - HTTP connections can be more efficient at scale
 
@@ -116,7 +116,7 @@ all:
 
 ## Working with EOS via httpapi
 
-Once httpapi is configured, you use the same Ansible modules as with network_cli. The connection type is transparent to the playbook.
+Once httpapi is configured, use modules that support the eAPI transport. Command and configuration modules support eAPI; some resource modules are documented for `network_cli`, so check the module notes before switching a playbook.
 
 ```yaml
 # eos_httpapi_playbook.yml - Manage Arista EOS through eAPI
@@ -126,20 +126,13 @@ Once httpapi is configured, you use the same Ansible modules as with network_cli
   gather_facts: false
 
   tasks:
-    # Resource modules work the same way over httpapi
+    # Configure VLANs with eos_config over eAPI
     - name: Configure VLANs
-      arista.eos.eos_vlans:
-        config:
-          - vlan_id: 100
-            name: PRODUCTION
-            state: active
-          - vlan_id: 200
-            name: DEVELOPMENT
-            state: active
-          - vlan_id: 300
-            name: MANAGEMENT
-            state: active
-        state: merged
+      arista.eos.eos_config:
+        lines:
+          - name PRODUCTION
+          - state active
+        parents: vlan 100
       register: vlan_result
 
     - name: Show VLAN changes
@@ -147,35 +140,51 @@ Once httpapi is configured, you use the same Ansible modules as with network_cli
         var: vlan_result.commands
       when: vlan_result.changed
 
-    # Run show commands - responses are already structured JSON
+    - name: Configure additional VLANs
+      arista.eos.eos_config:
+        lines:
+          - "name {{ item.name }}"
+          - state active
+        parents: "vlan {{ item.vlan_id }}"
+      loop:
+        - vlan_id: 200
+          name: DEVELOPMENT
+        - vlan_id: 300
+          name: MANAGEMENT
+
+    # Run show commands with JSON output
     - name: Get version info
       arista.eos.eos_command:
         commands:
-          - show version
+          - command: show version
+            output: json
       register: version
 
     - name: Display model info
       ansible.builtin.debug:
         msg: "{{ inventory_hostname }}: {{ version.stdout[0].modelName }} running EOS {{ version.stdout[0].version }}"
 
-    # Configure interfaces
+    # Configure interfaces with eos_config
     - name: Configure interfaces
-      arista.eos.eos_interfaces:
-        config:
-          - name: Ethernet1
-            description: "Server Port 1"
-            enabled: true
-            mtu: 9214
-          - name: Ethernet2
-            description: "Server Port 2"
-            enabled: true
-            mtu: 9214
-        state: merged
+      arista.eos.eos_config:
+        lines:
+          - description Server Port 1
+          - mtu 9214
+          - no shutdown
+        parents: interface Ethernet1
+
+    - name: Configure second interface
+      arista.eos.eos_config:
+        lines:
+          - description Server Port 2
+          - mtu 9214
+          - no shutdown
+        parents: interface Ethernet2
 ```
 
 ## Working with NX-OS via httpapi
 
-The same transparent approach works for NX-OS. Modules work identically regardless of whether you use httpapi or network_cli.
+The same general approach works for NX-OS. Many NX-OS modules support both CLI and NX-API, but returned data formats can differ, so check the module and platform notes.
 
 ```yaml
 # nxos_httpapi_playbook.yml - Manage NX-OS through NX-API
@@ -255,12 +264,11 @@ ansible_httpapi_ca_path: /etc/ssl/certs/ca-certificates.crt
 ansible_httpapi_port: 443
 
 # Connection timeouts
-ansible_persistent_connect_timeout: 30
-ansible_persistent_command_timeout: 60
+ansible_connect_timeout: 30
+ansible_command_timeout: 60
 
-# Custom HTTP headers if needed
-# ansible_httpapi_headers:
-#   X-Custom-Header: "value"
+# Custom User-Agent if needed
+# ansible_httpapi_http_agent: "ansible-httpapi"
 
 # Use proxy settings
 # ansible_httpapi_use_proxy: true
@@ -268,7 +276,7 @@ ansible_persistent_command_timeout: 60
 
 ## Token-Based Authentication
 
-Some httpapi implementations support token-based authentication for better security.
+Some httpapi implementations support a session key for token-style authentication.
 
 ```yaml
 # token_auth.yml - Use token-based authentication with httpapi
@@ -281,11 +289,12 @@ Some httpapi implementations support token-based authentication for better secur
   vars:
     ansible_httpapi_use_ssl: true
     ansible_httpapi_validate_certs: false
+    ansible_httpapi_session_key:
+      Authorization: "Bearer {{ vault_api_token }}"
 
   tasks:
-    # For platforms that support session tokens
-    # The httpapi plugin handles token acquisition automatically
-    # based on the platform's httpapi plugin implementation
+    # For platform plugins that support session keys,
+    # ansible_httpapi_session_key is used instead of the password.
 
     - name: Run commands using token auth
       arista.eos.eos_command:
@@ -314,6 +323,8 @@ Here is a practical comparison of httpapi vs network_cli for common operations.
     - name: Gather device facts via httpapi
       arista.eos.eos_facts:
         gather_subset:
+          - min
+        gather_network_resources:
           - interfaces
           - vlans
       register: httpapi_facts
@@ -335,6 +346,8 @@ Here is a practical comparison of httpapi vs network_cli for common operations.
     - name: Gather device facts via CLI
       arista.eos.eos_facts:
         gather_subset:
+          - min
+        gather_network_resources:
           - interfaces
           - vlans
       register: cli_facts
