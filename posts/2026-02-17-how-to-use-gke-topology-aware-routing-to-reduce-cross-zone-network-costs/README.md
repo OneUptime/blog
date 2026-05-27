@@ -10,11 +10,11 @@ Description: Learn how to enable topology-aware routing in GKE to keep traffic w
 
 Cross-zone network traffic in Google Cloud is not free. Every time a pod in zone A talks to a pod in zone B, you pay for the data transfer between zones. For high-traffic services in a regional GKE cluster, this cost adds up quickly. I have seen clusters where cross-zone traffic accounts for a significant portion of the monthly bill.
 
-Topology-aware routing tells Kubernetes to prefer routing traffic to endpoints in the same zone as the client pod. If your service has pods in zones A, B, and C, a request from a pod in zone A will go to a service endpoint also in zone A, instead of being load-balanced across all zones.
+Topology-aware routing tells Kubernetes to prefer routing traffic to endpoints in the same zone as the client pod. If your service has pods in zones A, B, and C, a request from a pod in zone A will prefer a service endpoint also in zone A, instead of being load-balanced across all zones.
 
 ## Understanding the Cost
 
-In GCP, intra-zone traffic is free. Cross-zone traffic within the same region costs around $0.01 per GB. That sounds cheap until you do the math. If you have a service handling 10,000 requests per second with 10 KB responses, that is about 100 MB/s. If half of that goes cross-zone, you are looking at roughly $1,300/month just for that one service pair.
+In GCP, intra-zone traffic using internal IP addresses is free. Cross-zone traffic within the same region costs around $0.01 per GiB. That sounds cheap until you do the math. If you have a service handling 10,000 requests per second with 10 KB responses, that is about 100 MB/s. If half of that goes cross-zone, you are looking at roughly $1,300/month just for that one service pair.
 
 Multiply that by all the services in a microservices architecture, and cross-zone traffic can easily cost thousands of dollars monthly.
 
@@ -37,11 +37,11 @@ graph TB
     end
 ```
 
-Without topology-aware routing, Pod A might be routed to any of the endpoints. With it, Pod A is routed to the endpoint in Zone A.
+Without topology-aware routing, Pod A might be routed to any of the endpoints. With it, Pod A prefers endpoints in Zone A.
 
 ## Enabling Topology-Aware Routing
 
-Enabling it is straightforward. You add an annotation to your Service:
+Enabling it is straightforward. You set a traffic distribution preference on your Service:
 
 ```yaml
 # service.yaml - Service with topology-aware routing enabled
@@ -50,10 +50,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-service
-  annotations:
-    # Enable topology-aware routing to prefer same-zone endpoints
-    service.kubernetes.io/topology-mode: Auto
 spec:
+  # Prefer endpoints in the same zone as the client
+  trafficDistribution: PreferSameZone
   selector:
     app: my-app
   ports:
@@ -61,7 +60,7 @@ spec:
       targetPort: 8080
 ```
 
-The `service.kubernetes.io/topology-mode: Auto` annotation is the current way to enable this feature. In older versions, you might see `service.kubernetes.io/topology-aware-hints: auto` - both work, but the newer annotation is preferred.
+The `spec.trafficDistribution: PreferSameZone` field is the current Kubernetes API for preferring same-zone endpoints. If you are using a Kubernetes or GKE version that does not support this field, use the `service.kubernetes.io/topology-mode: Auto` annotation instead. In older versions, you might see `service.kubernetes.io/topology-aware-hints: auto` - both annotation forms are supported for topology-aware routing, but `trafficDistribution` is the newer API.
 
 Apply the change:
 
@@ -70,12 +69,13 @@ Apply the change:
 kubectl apply -f service.yaml
 ```
 
-You can also add the annotation to an existing service:
+You can also patch an existing service:
 
 ```bash
 # Enable topology-aware routing on an existing service
-kubectl annotate service my-service \
-  service.kubernetes.io/topology-mode=Auto --overwrite
+kubectl patch service my-service \
+  --type=merge \
+  -p '{"spec":{"trafficDistribution":"PreferSameZone"}}'
 ```
 
 ## Verifying It Is Working
@@ -99,16 +99,17 @@ endpoints:
         - name: us-central1-a
 ```
 
-If hints are not appearing, the controller might have decided that topology-aware routing is not safe for this service (more on that below).
+If hints are not appearing, confirm that your cluster version supports `trafficDistribution`. For older clusters using the `service.kubernetes.io/topology-mode: Auto` annotation, the controller might have decided that topology-aware routing is not safe for this service (more on that below).
 
-## When Topology-Aware Routing Does Not Activate
+## When Auto Mode Does Not Activate
 
-The EndpointSlice controller is conservative. It will not add zone hints if doing so would create an imbalanced traffic distribution. Specifically, it requires:
+For the older `service.kubernetes.io/topology-mode: Auto` annotation, the EndpointSlice controller is conservative. It will not add zone hints if doing so would create an imbalanced traffic distribution. Specifically, it requires:
 
-- At least one endpoint in each zone that has pods consuming the service
-- The allocation per zone should not exceed 150% of the proportional share
+- At least as many endpoints as zones in the cluster
+- Enough node topology and allocatable CPU information to calculate zone proportions
+- A balanced allocation that stays below the controller's overload threshold
 
-For example, if you have 3 pods in zone A, 3 in zone B, and 1 in zone C, but your client pods are evenly distributed, the controller might skip zone C because it would receive disproportionately more traffic relative to its capacity.
+The `Auto` heuristic allocates endpoints proportionally based on allocatable CPU cores in each zone, not just the number of client pods in each zone. For example, if you have 3 pods in zone A, 3 in zone B, and 1 in zone C, but your client pods are evenly distributed, the controller might skip hints because zone C would receive disproportionately more traffic relative to its capacity.
 
 You can check if hints were skipped:
 
@@ -165,12 +166,9 @@ To measure the cost savings, you need to track cross-zone traffic before and aft
 Check network traffic metrics in Cloud Monitoring:
 
 ```bash
-# Query cross-zone traffic metrics using gcloud
-gcloud monitoring time-series list \
-  --project=my-project \
-  --filter='metric.type="networking.googleapis.com/vm_flow/egress_bytes_count" AND resource.type="gce_instance"' \
-  --interval-start-time="2026-02-10T00:00:00Z" \
-  --interval-end-time="2026-02-17T00:00:00Z"
+# Query cross-zone traffic metrics using the Cloud Monitoring API
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?filter=metric.type%3D%22networking.googleapis.com%2Fpod_flow%2Fegress_bytes_count%22%20AND%20resource.type%3D%22k8s_pod%22%20AND%20metric.labels.remote_location_type%3D%22CLOUD%22&interval.startTime=2026-02-10T00:00:00Z&interval.endTime=2026-02-17T00:00:00Z&view=FULL"
 ```
 
 You can also use VPC Flow Logs to get detailed per-pod traffic analysis:
@@ -186,15 +184,16 @@ gcloud compute networks subnets update my-gke-subnet \
 
 ## Applying to All Services
 
-If you want topology-aware routing on all services in your cluster, you can write a script to annotate them:
+If you want topology-aware routing on all services in your cluster, you can write a script to patch them:
 
 ```bash
 # Enable topology-aware routing on all ClusterIP services
 for svc in $(kubectl get services --all-namespaces -o jsonpath='{range .items[?(@.spec.type=="ClusterIP")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'); do
   ns=$(echo $svc | cut -d/ -f1)
   name=$(echo $svc | cut -d/ -f2)
-  kubectl annotate service "$name" -n "$ns" \
-    service.kubernetes.io/topology-mode=Auto --overwrite
+  kubectl patch service "$name" -n "$ns" \
+    --type=merge \
+    -p '{"spec":{"trafficDistribution":"PreferSameZone"}}'
 done
 ```
 
