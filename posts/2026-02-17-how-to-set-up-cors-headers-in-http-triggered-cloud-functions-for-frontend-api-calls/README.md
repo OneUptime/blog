@@ -164,12 +164,12 @@ functions.http('authenticatedApi', (req, res) => {
   // When using credentials, you must specify the exact origin
   if (ALLOWED_ORIGINS.has(origin)) {
     res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
     res.set('Access-Control-Allow-Credentials', 'true');
   }
 
   res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
-  res.set('Access-Control-Expose-Headers', 'Set-Cookie');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.set('Access-Control-Max-Age', '3600');
 
   if (req.method === 'OPTIONS') {
