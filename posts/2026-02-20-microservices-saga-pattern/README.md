@@ -8,7 +8,7 @@ Description: Learn how to implement the Saga pattern for managing distributed tr
 
 ---
 
-In a monolithic application, a single database transaction can span multiple operations atomically. In microservices, each service owns its own database, so you cannot use traditional ACID transactions. The Saga pattern solves this by breaking a distributed transaction into a sequence of local transactions, each with a compensating action for rollback.
+In a monolithic application, a single database transaction can span multiple operations atomically. In microservices, each service owns its own database, so you cannot use a single traditional ACID transaction across all services. The Saga pattern solves this by breaking a distributed transaction into a sequence of local transactions, each with a compensating action for rollback.
 
 ## The Problem: Distributed Transactions
 
@@ -25,7 +25,7 @@ flowchart LR
     D -->|Own DB| D1[(Shipping DB)]
 ```
 
-If the payment succeeds but shipping fails, you need to undo the payment and release the reserved inventory. Traditional two-phase commit does not scale in microservices.
+If the payment succeeds but shipping fails, you need to undo the payment and release the reserved inventory. Traditional two-phase commit is often avoided in microservices because it tightly couples services and can hurt availability and scalability.
 
 ## What Is a Saga?
 
@@ -99,7 +99,6 @@ sequenceDiagram
 # Each service publishes and subscribes to specific events.
 
 from dataclasses import dataclass, asdict
-from datetime import datetime
 import json
 
 
@@ -161,7 +160,6 @@ def serialize_event(event) -> str:
 # Inventory Service event handler for the choreography saga.
 # Listens for OrderCreated events and reserves inventory.
 
-import json
 from events import InventoryReserved, InventoryReservationFailed, serialize_event
 
 
@@ -408,7 +406,7 @@ flowchart TD
 | Coupling | Loose | Tighter to orchestrator |
 | Complexity | Grows with services | Centralized |
 | Visibility | Distributed | Single point |
-| Single point of failure | None | Orchestrator |
+| Single point of failure | No central coordinator | Orchestrator unless highly available |
 | Debugging | Harder | Easier |
 
 ## Handling Compensation Failures
