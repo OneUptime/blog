@@ -35,29 +35,29 @@ graph LR
 - A Dialogflow CX agent with flows and pages configured
 - A telephony partner integration (Avaya, Cisco, Genesys, or Dialogflow CX Phone Gateway)
 - Cloud Speech-to-Text and Text-to-Speech APIs enabled
+- For Dialogflow CX Phone Gateway, an agent in the `global` location; Phone Gateway currently supports Google-hosted US phone numbers
 
 ## Step 1: Enable Dialogflow CX Phone Gateway
 
 The simplest way to get started is with the Dialogflow CX Phone Gateway, which provides a phone number directly through Google.
 
-This script creates a phone gateway integration:
+Phone Gateway phone numbers are claimed from the Dialogflow CX console. If you want production traffic to use a versioned environment, create an environment first:
 
 ```python
 from google.cloud import dialogflowcx_v3
 
-def setup_phone_gateway(project_id, location, agent_id):
-    """Sets up a Dialogflow CX phone gateway for the agent."""
+def create_production_environment(project_id, agent_id, flow_id, version_id):
+    """Creates a Dialogflow CX environment for production traffic."""
     client = dialogflowcx_v3.EnvironmentsClient()
 
-    agent_name = f"projects/{project_id}/locations/{location}/agents/{agent_id}"
+    agent_name = f"projects/{project_id}/locations/global/agents/{agent_id}"
 
-    # Create an environment for the phone gateway
     environment = dialogflowcx_v3.Environment(
         display_name="Production Phone",
         description="Production environment for phone channel",
         version_configs=[
             dialogflowcx_v3.Environment.VersionConfig(
-                version=f"{agent_name}/flows/DEFAULT_FLOW_ID/versions/1"
+                version=f"{agent_name}/flows/{flow_id}/versions/{version_id}"
             )
         ],
     )
@@ -118,9 +118,11 @@ def configure_agent_speech(agent_name):
     print("Speech settings configured")
 
 configure_agent_speech(
-    "projects/my-project/locations/us-central1/agents/AGENT_ID"
+    "projects/my-project/locations/global/agents/AGENT_ID"
 )
 ```
+
+Phone Gateway uses the `phone_call` speech model by default unless you enable the setting to override the request-level speech model.
 
 ## Step 3: Design Voice-Optimized Conversation Flows
 
@@ -130,6 +132,7 @@ This script creates a voice-optimized welcome page with DTMF support:
 
 ```python
 from google.cloud import dialogflowcx_v3
+from google.protobuf import duration_pb2
 
 def create_voice_welcome_page(flow_name):
     """Creates a voice-optimized welcome page with DTMF support."""
@@ -152,19 +155,19 @@ def create_voice_welcome_page(flow_name):
                     )
                 )
             ],
-            # Enable barge-in so users can interrupt the prompt
-            set_parameter_actions=[
-                dialogflowcx_v3.Fulfillment.SetParameterAction(
-                    parameter="barge_in_enabled",
-                    value=True,
-                )
-            ],
         ),
-        # Configure advanced speech settings for this page
+        # Configure advanced speech and DTMF settings for this page
         advanced_settings=dialogflowcx_v3.AdvancedSettings(
             speech_settings=dialogflowcx_v3.AdvancedSettings.SpeechSettings(
-                no_speech_timeout={"seconds": 5},
+                no_speech_timeout=duration_pb2.Duration(seconds=5),
                 endpointer_sensitivity=50,
+            ),
+            dtmf_settings=dialogflowcx_v3.AdvancedSettings.DtmfSettings(
+                enabled=True,
+                max_digits=1,
+                finish_digit="#",
+                interdigit_timeout_duration=duration_pb2.Duration(seconds=3),
+                endpointing_timeout_duration=duration_pb2.Duration(seconds=1),
             ),
         ),
     )
@@ -198,13 +201,14 @@ def create_dtmf_intent(agent_name, display_name, dtmf_digits, training_phrases):
     intent = dialogflowcx_v3.Intent(
         display_name=display_name,
         training_phrases=phrases,
+        dtmf_pattern=dtmf_digits,
     )
 
     response = client.create_intent(parent=agent_name, intent=intent)
     print(f"Intent created: {response.display_name}")
     return response
 
-agent_name = "projects/my-project/locations/us-central1/agents/AGENT_ID"
+agent_name = "projects/my-project/locations/global/agents/AGENT_ID"
 
 # Create DTMF-enabled intents
 
@@ -212,21 +216,21 @@ create_dtmf_intent(
     agent_name,
     "dtmf.order.status",
     "1",
-    ["order status", "check my order", "where is my package", "1"]
+    ["order status", "check my order", "where is my package"]
 )
 
 create_dtmf_intent(
     agent_name,
     "dtmf.returns",
     "2",
-    ["return", "I want to return something", "make a return", "2"]
+    ["return", "I want to return something", "make a return"]
 )
 
 create_dtmf_intent(
     agent_name,
     "dtmf.agent",
     "3",
-    ["speak to an agent", "talk to someone", "human agent", "representative", "3"]
+    ["speak to an agent", "talk to someone", "human agent", "representative"]
 )
 ```
 
@@ -332,18 +336,20 @@ Test your voice bot before going live. You can use the Dialogflow CX test consol
 
 ```bash
 # Test the agent using the API with audio input
+AUDIO_BASE64=$(base64 -w 0 sample-8000hz-linear16.wav)
+
 curl -X POST \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
-  "https://dialogflow.googleapis.com/v3/projects/MY_PROJECT/locations/us-central1/agents/AGENT_ID/sessions/test-session:detectIntent" \
+  "https://dialogflow.googleapis.com/v3/projects/MY_PROJECT/locations/global/agents/AGENT_ID/sessions/test-session:detectIntent" \
   -d '{
     "queryInput": {
       "audio": {
         "config": {
           "audioEncoding": "AUDIO_ENCODING_LINEAR_16",
-          "sampleRateHertz": 8000,
-          "singleUtterance": true
-        }
+          "sampleRateHertz": 8000
+        },
+        "audio": "'"${AUDIO_BASE64}"'"
       },
       "languageCode": "en"
     }
