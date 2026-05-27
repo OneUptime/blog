@@ -35,7 +35,7 @@ Without node selectors, every node is a candidate. That is a problem when nodes 
 
 ### Prerequisites
 
-- Kubernetes v1.20+ with MetalLB v0.13+ installed in `metallb-system`.
+- Kubernetes v1.20+ with MetalLB v0.13.2+ installed in `metallb-system`.
 - `kubectl` configured and pointed at your cluster.
 - At least two nodes available.
 
@@ -96,7 +96,7 @@ spec:
     - ingress-pool
 
   # nodeSelectors restricts which nodes can win the leader election
-  # Only nodes matching ALL selectors will be candidates
+  # A node matching any one selector block will be a candidate
   nodeSelectors:
     - matchLabels:
         network-role: ingress
@@ -140,7 +140,7 @@ metadata:
   name: test-lb-service
   annotations:
     # Tell MetalLB to pull from our ingress pool
-    metallb.universe.tf/address-pool: ingress-pool
+    metallb.io/address-pool: ingress-pool
 spec:
   type: LoadBalancer
   ports:
@@ -159,7 +159,7 @@ kubectl apply -f test-service.yaml
 kubectl get svc test-lb-service --watch
 
 # Confirm the announcing node matches your labeled nodes
-kubectl logs -n metallb-system -l app=metallb-speaker | grep "announcing"
+kubectl describe svc test-lb-service | grep "announcing from node"
 ```
 
 ### Using matchExpressions for Advanced Selection
@@ -204,14 +204,14 @@ sequenceDiagram
     participant Client
     participant Node1 as Node 1 (Active)
     participant Node2 as Node 2 (Standby)
-    participant MetalLB as MetalLB Controller
+    participant MetalLB as MetalLB Speakers
 
     Node1->>Client: ARP Response for 192.168.1.100
     Client->>Node1: Traffic flows to Node 1
 
     Note over Node1: Node 1 goes down
 
-    MetalLB->>MetalLB: Detects failure, triggers re-election
+    MetalLB->>MetalLB: Detects failure and recalculates ownership
     MetalLB->>Node2: Elects Node 2 (matches nodeSelector)
     Node2->>Client: Gratuitous ARP for 192.168.1.100
     Client->>Node2: Traffic now flows to Node 2
