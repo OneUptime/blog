@@ -110,7 +110,7 @@ gcloud sql instances list --project=my-project --format="value(name)"
 gcloud compute networks list --project=my-project --format="value(name)"
 
 # List all GKE clusters
-gcloud container clusters list --project=my-project --format="value(name,zone)"
+gcloud container clusters list --project=my-project --format="value(name,location)"
 
 # List all Cloud Run services
 gcloud run services list --project=my-project --format="value(metadata.name,region)"
@@ -240,8 +240,8 @@ import {
 
 # Cloud Run Service
 import {
-  to = google_cloud_run_service.example
-  id = "locations/REGION/namespaces/PROJECT/services/NAME"
+  to = google_cloud_run_v2_service.example
+  id = "projects/PROJECT/locations/REGION/services/NAME"
 }
 
 # IAM Service Account
@@ -277,7 +277,7 @@ Common issues you will run into during bulk imports:
 
 ## Using for_each with Import Blocks
 
-For importing multiple similar resources, combine import blocks with `for_each`:
+For importing multiple similar resources with Terraform 1.7 or later, combine import blocks with `for_each`:
 
 ```hcl
 # variables.tf - Define the instances to import
