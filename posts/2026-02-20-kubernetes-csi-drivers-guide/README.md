@@ -30,9 +30,9 @@ flowchart TD
         H[Pod with Volume]
     end
 
-    A -->|CreateVolume| B
     C -->|Watches PVCs| A
     C -->|Calls CreateVolume| B
+    A -->|Creates VolumeAttachment| D
     D -->|Calls ControllerPublish| B
     E -->|Calls CreateSnapshot| B
     B -->|Creates disk| I[Storage Backend]
@@ -112,7 +112,7 @@ parameters:
   numberOfReplicas: "3"
   # Data locality preference
   dataLocality: best-effort
-  # Use striped storage for better performance
+  # Remove stale replicas after 48 hours
   staleReplicaTimeout: "2880"
 ```
 
@@ -136,13 +136,18 @@ parameters:
   # Ceph user credentials
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 ```
 
 ## CSI Driver Installation
 
-Most CSI drivers are installed via Helm charts. Here is an example installing the AWS EBS CSI driver:
+Many CSI drivers can be installed via Helm charts. Here is an example installing the AWS EBS CSI driver:
 
 ```bash
 # Add the EBS CSI driver Helm repository
@@ -189,7 +194,7 @@ Key selection criteria:
 |----------|----------------------|---------------------------|----------------------|
 | Access Modes | RWO only | RWO, some RWX | RWO, ROX, RWX |
 | Performance | High IOPS | Moderate | Moderate |
-| Replication | Cloud-managed | Application-managed | Backend-managed |
+| Replication | Cloud-managed | Storage-system-managed | Backend-managed |
 | Snapshots | Yes | Yes | Limited |
 | Complexity | Low | Medium-High | Low |
 | Cost | Per-GB + IOPS | Node disk cost | Per-GB |
