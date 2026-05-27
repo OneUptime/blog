@@ -21,7 +21,7 @@ The key advantages that make Borg worth the setup effort:
 - LZ4, ZSTD, and LZMA compression options
 - Fast backup and restore operations
 - Supports remote repositories over SSH
-- Append-only mode for protection against ransomware
+- Append-only mode to make deleted or pruned remote data recoverable until compaction
 
 ## Installing BorgBackup
 
@@ -36,7 +36,7 @@ The key advantages that make Borg worth the setup effort:
   tasks:
     # Install Borg from system packages
     - name: Install BorgBackup (RedHat)
-      ansible.builtin.yum:
+      ansible.builtin.dnf:
         name:
           - borgbackup
         state: present
@@ -50,7 +50,7 @@ The key advantages that make Borg worth the setup effort:
         update_cache: true
       when: ansible_os_family == "Debian"
 
-    # If system packages are too old, install from pip
+    # Check the installed version
     - name: Check Borg version
       ansible.builtin.command:
         cmd: borg --version
@@ -81,7 +81,7 @@ Before backing up, you need to create a Borg repository. Here is how to handle b
     # Local repo path
     borg_local_repo: /backup/borg
     # Remote repo (optional)
-    borg_remote_repo: "backup@10.0.1.50:/backup/repos/{{ inventory_hostname }}"
+    borg_remote_repo: "ssh://backup@10.0.1.50/backup/repos/{{ inventory_hostname }}"
 
   environment:
     BORG_PASSPHRASE: "{{ borg_passphrase }}"
@@ -229,6 +229,7 @@ echo $$ > "$LOCK_FILE"
 log "Starting backup: $BACKUP_NAME"
 
 # Create the backup archive
+set +e
 borg create \
     --verbose \
     --stats \
@@ -238,12 +239,12 @@ borg create \
     --exclude-caches \
     "::$BACKUP_NAME" \
 {% for path in borg_backup_paths %}
-    {{ path }} {% if not loop.last %}\{% endif %}
-
+    {{ path }} \
 {% endfor %}
     2>> "$LOG_FILE"
 
 CREATE_EXIT=$?
+set -e
 
 if [ $CREATE_EXIT -eq 0 ]; then
     log "Backup created successfully"
@@ -256,6 +257,7 @@ fi
 
 # Prune old backups according to retention policy
 log "Pruning old backups..."
+set +e
 borg prune \
     --verbose \
     --list \
@@ -268,6 +270,16 @@ borg prune \
     2>> "$LOG_FILE"
 
 PRUNE_EXIT=$?
+set -e
+
+if [ $PRUNE_EXIT -eq 0 ]; then
+    log "Prune completed successfully"
+elif [ $PRUNE_EXIT -eq 1 ]; then
+    log "WARNING: Prune completed with warnings"
+else
+    log "ERROR: Prune failed with exit code $PRUNE_EXIT"
+    exit $PRUNE_EXIT
+fi
 
 # Compact the repository to free space
 log "Compacting repository..."
@@ -349,7 +361,7 @@ Regular verification of backup integrity and freshness is critical:
           - "Repository: {{ borg_repo }}"
           - "Total size: {{ (repo_info.cache.stats.total_size / 1073741824) | round(2) }} GB"
           - "Deduplicated size: {{ (repo_info.cache.stats.unique_size / 1073741824) | round(2) }} GB"
-          - "Total archives: {{ repo_info.cache.stats.total_chunks }}"
+          - "Total chunks: {{ repo_info.cache.stats.total_chunks }}"
 
     # List recent archives
     - name: List recent archives
@@ -377,14 +389,19 @@ Regular verification of backup integrity and freshness is critical:
     # Check backup freshness
     - name: Get latest archive info
       ansible.builtin.command:
-        cmd: borg list --last 1 --format "{time}"
+        cmd: borg list --last 1 --format "{time:%s}{NL}"
       register: latest_time
       changed_when: false
 
+    - name: Calculate latest backup age
+      ansible.builtin.set_fact:
+        latest_backup_age_hours: "{{ ((ansible_date_time.epoch | int) - (latest_time.stdout | int)) / 3600 }}"
+      when: latest_time.stdout | length > 0
+
     - name: Alert on stale backup
       ansible.builtin.debug:
-        msg: "WARNING: Latest backup on {{ inventory_hostname }} may be stale. Last: {{ latest_time.stdout }}"
-      when: latest_time.stdout | length == 0
+        msg: "WARNING: Latest backup on {{ inventory_hostname }} may be stale. Age: {{ latest_backup_age_hours | default('unknown') }} hours"
+      when: latest_time.stdout | length == 0 or (latest_backup_age_hours | default(0) | float) > max_backup_age_hours
 ```
 
 ## Restoring from BorgBackup
@@ -484,7 +501,7 @@ Lessons from running BorgBackup in production environments:
 
 4. Run `borg check --verify-data` periodically (weekly is reasonable), not just after every backup. This reads back data from the repository and verifies checksums, catching corruption that might otherwise go unnoticed until restore time.
 
-5. Consider append-only mode for remote repositories. If a server is compromised, an attacker with access to the Borg passphrase could delete backups. Append-only mode on the repository server prevents deletion, even with valid credentials.
+5. Consider append-only mode for remote repositories. If a server is compromised, an attacker with access to the Borg passphrase could mark backups as deleted. Append-only mode on the repository server prevents committed data from being permanently removed until the repository is compacted in non-append-only mode.
 
 6. The deduplication ratio improves over time. Your first backup is always a full backup. After that, Borg only stores new or changed data chunks. For typical servers, I see 3:1 to 10:1 deduplication ratios after a month of daily backups.
 
