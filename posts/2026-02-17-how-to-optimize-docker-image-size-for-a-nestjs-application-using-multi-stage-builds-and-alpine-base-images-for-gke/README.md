@@ -60,7 +60,7 @@ COPY src ./src
 RUN npm run build
 
 # Remove devDependencies after build
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Stage 2: Production runtime
 FROM node:20-alpine AS runner
@@ -283,7 +283,7 @@ COPY src ./src
 RUN npm run build
 
 # Remove devDependencies
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Remove unnecessary files from node_modules
 RUN node-prune
