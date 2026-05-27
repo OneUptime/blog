@@ -8,7 +8,7 @@ Description: Learn how to diagnose and resolve HTTP 429 Too Many Requests errors
 
 ---
 
-You are making API calls to a GCP service and suddenly start getting HTTP 429 responses. This is GCP telling you that you are sending requests too fast and it is rate limiting you. Unlike quota exceeded errors (which are about total resource usage), 429 errors are about request velocity - how many API calls you are making per second or per minute.
+You are making API calls to a GCP service and suddenly start getting HTTP 429 responses. This is GCP telling you that you are sending requests too fast or have exceeded a rate quota. Some quota exceeded errors are about total resource usage, but 429 errors are usually about request velocity - how many API calls you are making per second or per minute.
 
 The fix depends on why you are hitting the rate limit and which API it is. Let me walk through the diagnosis and solutions.
 
@@ -44,10 +44,9 @@ Check which API and which quota metric is being exceeded:
 ```bash
 # View your project's quota usage for a specific API
 
-gcloud services quotas list \
+gcloud beta quotas info list \
     --service=compute.googleapis.com \
-    --consumer=projects/my-project \
-    --format="table(metricName, unit, values)"
+    --project=my-project
 
 # Check recent 429 errors in the logs
 gcloud logging read \
@@ -57,17 +56,17 @@ gcloud logging read \
     --format="table(timestamp, httpRequest.requestUrl, httpRequest.status)"
 ```
 
-Common rate limits across GCP APIs:
+Common rate limits across GCP APIs vary by API method, region, project, and account. Always check the current quota page for your project, but these examples show the kind of limits you might run into:
 
 | API | Default Rate Limit | Unit |
 |---|---|---|
-| Compute Engine | 20 requests/second | Per project |
-| Cloud Storage | 5000 object reads/second | Per bucket |
-| BigQuery | 100 concurrent queries | Per project |
-| Cloud SQL Admin | 480 requests/minute | Per project |
-| Pub/Sub | 600 publish requests/minute | Per project |
-| Cloud Functions | 16 API calls/second | Per project |
-| IAM | 600 requests/minute | Per project |
+| Compute Engine | Varies by method group, enforced per minute | Per project |
+| Cloud Storage | Initially about 5000 object reads/second, then scales as needed | Per bucket |
+| BigQuery | Dynamic query concurrency; specific limits also apply to queued jobs, remote functions, and external data sources | Per project |
+| Cloud SQL Admin | 500 get/list requests/minute and 180 mutate requests/minute | Per user, per region |
+| Pub/Sub | Publisher throughput is measured in kB/minute by region size | Per project, per region |
+| Cloud Run functions | 5000 read API calls/100 seconds for 1st gen; 1200 read API calls/60 seconds for 2nd gen | Per project or per region, depending on generation |
+| IAM | 6000 read requests/minute and 600 write requests/minute for the IAM v1 API | Per project |
 
 ## Step 2: Implement Exponential Backoff
 
@@ -76,8 +75,6 @@ The first line of defense is implementing exponential backoff with jitter in you
 Here is a Python implementation:
 
 ```python
-import time
-import random
 from google.api_core import exceptions, retry
 
 # Using google-cloud library's built-in retry
@@ -93,7 +90,7 @@ custom_retry = retry.Retry(
     initial=1.0,        # First retry after 1 second
     maximum=60.0,        # Maximum wait of 60 seconds
     multiplier=2.0,      # Double the wait time each retry
-    deadline=300.0,      # Give up after 5 minutes total
+    timeout=300.0,       # Give up after 5 minutes total
     predicate=retry.if_exception_type(
         exceptions.TooManyRequests,
         exceptions.ServiceUnavailable,
@@ -109,7 +106,19 @@ Manual implementation for any HTTP client:
 ```python
 import time
 import random
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import requests
+
+def parse_retry_after(value):
+    """Parse Retry-After as seconds or an HTTP date."""
+    try:
+        return int(value)
+    except ValueError:
+        retry_at = parsedate_to_datetime(value)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(0, (retry_at - datetime.now(timezone.utc)).total_seconds())
 
 def call_with_backoff(url, headers, max_retries=5):
     """Make an API call with exponential backoff on 429 errors."""
@@ -123,7 +132,7 @@ def call_with_backoff(url, headers, max_retries=5):
             # Check for Retry-After header
             retry_after = response.headers.get('Retry-After')
             if retry_after:
-                wait_time = int(retry_after)
+                wait_time = max(wait_time, parse_retry_after(retry_after))
 
             print(f"Rate limited. Waiting {wait_time:.1f}s before retry {attempt + 1}")
             time.sleep(wait_time)
@@ -170,23 +179,27 @@ const result = await callWithBackoff(() =>
 Instead of making many individual API calls, batch them where possible:
 
 ```python
-# Bad: Individual API calls in a loop
+# Bad: Individual metadata updates in a loop
 # This generates 1000 API calls
 for item in items:
-    bucket.blob(item).upload_from_string(data)
+    blob = bucket.blob(item)
+    blob.metadata = {"processed": "true"}
+    blob.patch()
 
 # Better: Use batch operations
-# This reduces the number of API calls
+# This groups multiple JSON API calls into fewer HTTP requests
 from google.cloud import storage
 
 client = storage.Client()
 bucket = client.bucket("my-bucket")
 
-# Cloud Storage supports batch operations
+# Cloud Storage supports batching metadata updates and deletes,
+# but not uploads or downloads.
 with client.batch():
     for item in items[:100]:  # Batch up to 100 at a time
         blob = bucket.blob(item)
-        blob.upload_from_string(data)
+        blob.metadata = {"processed": "true"}
+        blob.patch()
 ```
 
 For Compute Engine, use batch API calls:
@@ -205,9 +218,9 @@ If your application legitimately needs higher rate limits, request an increase:
 
 ```bash
 # View current quota limits
-gcloud services quotas list \
+gcloud beta quotas info list \
     --service=compute.googleapis.com \
-    --consumer=projects/my-project
+    --project=my-project
 
 # Request a quota increase through the Console
 # Go to APIs & Services > Quotas
@@ -215,25 +228,26 @@ gcloud services quotas list \
 # Click Edit Quotas
 ```
 
-Some quotas can be increased through gcloud:
+Some quota preferences can be created through gcloud:
 
 ```bash
-# Request a quota increase (if supported via CLI)
-gcloud alpha services quotas update \
+# Request a quota preference (if supported for the quota)
+gcloud beta quotas preferences create \
     --service=compute.googleapis.com \
-    --consumer=projects/my-project \
-    --metric=compute.googleapis.com/read_requests \
-    --unit=1/min/{project} \
-    --value=1000
+    --project=my-project \
+    --quota-id=GlobalReadsPerMinutePerProject \
+    --preferred-value=1000 \
+    --justification="Production workload needs higher read API quota"
 ```
 
 ## Step 5: Distribute Load Across Projects
 
-For extremely high throughput workloads, you can distribute API calls across multiple projects:
+For workloads that legitimately span multiple projects, you can distribute API calls to the project that owns each workload:
 
 ```python
-# Distribute API calls across multiple projects
-# Each project has its own rate limit
+# Route API calls to the project that owns each workload.
+# Each project has its own quota, but this should not be used
+# just to bypass quota policy for a single workload.
 import itertools
 
 projects = ['project-1', 'project-2', 'project-3']
