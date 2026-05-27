@@ -44,7 +44,7 @@ One of the most common runbook tasks is restarting a service that has become unr
 
   tasks:
     - name: Check current service status
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ service_name }}"
       register: service_status
 
@@ -62,9 +62,9 @@ One of the most common runbook tasks is restarting a service that has become unr
         echo "=== Top processes ==="
         ps aux --sort=-%mem | head -20
         echo "=== Open connections ==="
-        ss -tlnp | grep {{ service_name }} || true
+        ss -tlnp | grep {{ service_name | quote }} || true
         echo "=== Recent logs ==="
-        journalctl -u {{ service_name }} --no-pager -n 50
+        journalctl -u {{ service_name | quote }} --no-pager -n 50
       register: pre_restart_state
       changed_when: false
 
@@ -87,7 +87,7 @@ One of the most common runbook tasks is restarting a service that has become unr
       when: lb_api is defined
 
     - name: Restart the service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ service_name }}"
         state: restarted
 
@@ -108,7 +108,7 @@ One of the most common runbook tasks is restarting a service that has become unr
       when: lb_api is defined
 
     - name: Confirm service is running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ service_name }}"
       register: post_status
       failed_when: post_status.status.ActiveState != 'active'
@@ -176,6 +176,10 @@ Another common on-call task is clearing disk space when alerts fire:
       loop: "{{ old_files.files }}"
       when: old_files.matched > 0
 
+    - name: Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
     - name: Clean Docker resources
       community.docker.docker_prune:
         containers: true
@@ -187,7 +191,7 @@ Another common on-call task is clearing disk space when alerts fire:
 
     - name: Remove old application releases (keep 3)
       ansible.builtin.shell: |
-        cd {{ app_releases_dir }} && ls -dt */ | tail -n +4 | xargs rm -rf
+        cd {{ app_releases_dir | quote }} && ls -dt */ | tail -n +4 | xargs rm -rf
       when: app_releases_dir is defined
       changed_when: true
 
@@ -217,7 +221,7 @@ Another common on-call task is clearing disk space when alerts fire:
   tasks:
     - name: Check active connections
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         query: |
           SELECT
             count(*) as total,
@@ -225,7 +229,9 @@ Another common on-call task is clearing disk space when alerts fire:
             count(*) FILTER (WHERE state = 'idle') as idle,
             count(*) FILTER (WHERE state = 'idle in transaction') as idle_in_tx
           FROM pg_stat_activity
-          WHERE datname = '{{ db_name }}';
+          WHERE datname = %(db_name)s;
+        named_args:
+          db_name: "{{ db_name }}"
       register: conn_stats
 
     - name: Display connection stats
@@ -238,31 +244,37 @@ Another common on-call task is clearing disk space when alerts fire:
 
     - name: Kill idle in transaction connections (older than 5 min)
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         query: |
           SELECT pg_terminate_backend(pid)
           FROM pg_stat_activity
-          WHERE datname = '{{ db_name }}'
+          WHERE datname = %(db_name)s
             AND state = 'idle in transaction'
             AND state_change < now() - interval '5 minutes';
+        named_args:
+          db_name: "{{ db_name }}"
       register: killed_idle_tx
 
     - name: Kill long-running idle connections (older than 30 min)
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
+        login_db: "{{ db_name }}"
         query: |
           SELECT pg_terminate_backend(pid)
           FROM pg_stat_activity
-          WHERE datname = '{{ db_name }}'
+          WHERE datname = %(db_name)s
             AND state = 'idle'
             AND state_change < now() - interval '30 minutes'
             AND usename != 'postgres';
+        named_args:
+          db_name: "{{ db_name }}"
       register: killed_idle
 
     - name: Verify connections after cleanup
       community.postgresql.postgresql_query:
-        db: "{{ db_name }}"
-        query: "SELECT count(*) as total FROM pg_stat_activity WHERE datname = '{{ db_name }}';"
+        login_db: "{{ db_name }}"
+        query: "SELECT count(*) as total FROM pg_stat_activity WHERE datname = %(db_name)s;"
+        named_args:
+          db_name: "{{ db_name }}"
       register: final_count
 
     - name: Display results
@@ -311,14 +323,24 @@ Trigger runbooks automatically from alerts:
   connection: local
 
   tasks:
-    - name: Route to correct runbook
-      ansible.builtin.include_tasks: "{{ runbook_map[alert_type] }}"
+    - name: Run the correct runbook
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - "runbooks/{{ runbook_map[alert_type] }}"
+          - "-e"
+          - "{{ runbook_extra_vars | to_json }}"
       when: alert_type in runbook_map
+      changed_when: true
       vars:
         runbook_map:
           high_disk_usage: clear-disk-space.yml
           service_down: restart-service.yml
           db_connections_high: db-connection-reset.yml
+        runbook_extra_vars:
+          target_hosts: "{{ target_hosts }}"
+          target_service: "{{ target_service | default('') }}"
+          db_name: "{{ db_name | default('') }}"
 
     - name: Acknowledge PagerDuty incident
       ansible.builtin.uri:
@@ -329,6 +351,7 @@ Trigger runbooks automatically from alerts:
           routing_key: "{{ pagerduty_routing_key }}"
           event_action: acknowledge
           dedup_key: "{{ incident_key }}"
+        status_code: 202
 ```
 
 ## Key Takeaways
