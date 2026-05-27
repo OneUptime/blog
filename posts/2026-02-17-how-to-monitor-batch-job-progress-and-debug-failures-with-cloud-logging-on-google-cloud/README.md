@@ -14,7 +14,7 @@ This guide covers how to configure logging for Batch jobs, query logs effectivel
 
 ## Enabling Logging for Batch Jobs
 
-Cloud Logging is the default destination for Batch job logs. You can configure it explicitly in your job definition.
+If you create a job using the Google Cloud console, Cloud Logging is enabled for Batch job logs. If you create a job using the gcloud CLI or Batch API, enable Cloud Logging explicitly in your job definition.
 
 ```python
 # Logging configuration in a Batch job
@@ -40,7 +40,7 @@ Plain text logs work, but structured JSON logs give you much better filtering an
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 TASK_INDEX = int(os.environ.get("BATCH_TASK_INDEX", 0))
 TASK_COUNT = int(os.environ.get("BATCH_TASK_COUNT", 1))
@@ -53,7 +53,7 @@ def log(severity, message, **kwargs):
         "message": message,
         "task_index": TASK_INDEX,
         "task_count": TASK_COUNT,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     entry.update(kwargs)
     print(json.dumps(entry))
@@ -62,7 +62,7 @@ def log(severity, message, **kwargs):
 
 def process_chunk():
     """Process a data chunk with progress logging."""
-    log("INFO", "Task starting", phase="init")
+    log("Info", "Task starting", phase="init")
 
     total_records = 10000
     processed = 0
@@ -77,7 +77,7 @@ def process_chunk():
             # Log progress every 1000 records
             if processed % 1000 == 0:
                 progress = (processed / total_records) * 100
-                log("INFO", f"Progress: {progress:.1f}%",
+                log("Info", f"Progress: {progress:.1f}%",
                     phase="processing",
                     records_processed=processed,
                     records_total=total_records,
@@ -85,20 +85,20 @@ def process_chunk():
 
         except Exception as e:
             errors += 1
-            log("WARNING", f"Record {i} failed: {str(e)}",
+            log("Warning", f"Record {i} failed: {str(e)}",
                 phase="processing",
                 record_index=i,
                 error_type=type(e).__name__)
 
             if errors > total_records * 0.1:  # Fail if error rate exceeds 10%
-                log("ERROR", "Error rate exceeded threshold, aborting",
+                log("Error", "Error rate exceeded threshold, aborting",
                     phase="processing",
                     error_rate=errors / processed if processed > 0 else 1,
                     records_processed=processed,
                     total_errors=errors)
                 sys.exit(1)
 
-    log("INFO", "Task completed successfully",
+    log("Info", "Task completed successfully",
         phase="complete",
         records_processed=processed,
         total_errors=errors,
@@ -123,25 +123,28 @@ Cloud Logging lets you filter logs by job, task, severity, and any structured fi
 
 ```text
 # Cloud Logging query - all logs for a specific Batch job
-resource.type="cloud_batch_job"
-labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
+resource.type="batch.googleapis.com/Job"
+logName="projects/PROJECT_ID/logs/batch_task_logs"
+labels.job_uid="JOB_UID_HERE"
 ```
 
 ### Filter by Task Index
 
 ```text
 # Logs for a specific task within the job
-resource.type="cloud_batch_job"
-labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
-labels."batch.googleapis.com/task_id"="task/0/0"
+resource.type="batch.googleapis.com/Job"
+logName="projects/PROJECT_ID/logs/batch_task_logs"
+labels.job_uid="JOB_UID_HERE"
+labels.task_id:"JOB_UID_HERE-group0-0"
 ```
 
 ### Find Failed Tasks
 
 ```text
 # All error-level logs from a job
-resource.type="cloud_batch_job"
-labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
+resource.type="batch.googleapis.com/Job"
+logName="projects/PROJECT_ID/logs/batch_task_logs"
+labels.job_uid="JOB_UID_HERE"
 severity>=ERROR
 ```
 
@@ -149,7 +152,8 @@ severity>=ERROR
 
 ```text
 # Find tasks that exceeded the error threshold
-resource.type="cloud_batch_job"
+resource.type="batch.googleapis.com/Job"
+logName="projects/PROJECT_ID/logs/batch_task_logs"
 jsonPayload.phase="processing"
 jsonPayload.error_rate>0.05
 ```
@@ -161,20 +165,20 @@ You can also query logs from the command line.
 ```bash
 # View recent logs for a specific Batch job
 gcloud logging read \
-  'resource.type="cloud_batch_job" AND labels."batch.googleapis.com/job_uid"="abc123"' \
+  'logName="projects/PROJECT_ID/logs/batch_task_logs" AND labels.job_uid="abc123"' \
   --limit=100 \
   --format="table(timestamp, severity, jsonPayload.message)"
 
 # Find error logs from the last hour
 gcloud logging read \
-  'resource.type="cloud_batch_job" AND severity>=ERROR AND timestamp>="2026-02-17T00:00:00Z"' \
+  'logName="projects/PROJECT_ID/logs/batch_task_logs" AND severity>=ERROR AND timestamp>="2026-02-17T00:00:00Z"' \
   --limit=50 \
   --format=json
 
 # Count failures per task
 gcloud logging read \
-  'resource.type="cloud_batch_job" AND severity=ERROR AND labels."batch.googleapis.com/job_uid"="abc123"' \
-  --format="value(labels.batch_task_uid)" \
+  'logName="projects/PROJECT_ID/logs/batch_task_logs" AND severity=ERROR AND labels.job_uid="abc123"' \
+  --format="value(labels.task_id)" \
   | sort | uniq -c | sort -rn
 ```
 
@@ -195,37 +199,37 @@ def create_batch_monitoring_dashboard(project_id):
         grid_layout=monitoring_dashboard_v1.GridLayout(
             columns=2,
             widgets=[
-                # Widget 1: Active jobs count
+                # Widget 1: Batch task log entries
                 monitoring_dashboard_v1.Widget(
-                    title="Active Batch Jobs",
+                    title="Batch Task Log Entries",
                     scorecard=monitoring_dashboard_v1.Scorecard(
                         time_series_query=monitoring_dashboard_v1.TimeSeriesQuery(
                             time_series_filter=monitoring_dashboard_v1.TimeSeriesFilter(
-                                filter='metric.type="batch.googleapis.com/job/state" AND metric.labels.state="RUNNING"',
+                                filter='metric.type="logging.googleapis.com/log_entry_count" AND resource.type="batch.googleapis.com/Job" AND metric.labels.log="batch_task_logs"',
                             )
                         ),
                     ),
                 ),
-                # Widget 2: Failed tasks in the last hour
+                # Widget 2: Error logs
                 monitoring_dashboard_v1.Widget(
-                    title="Failed Tasks (Last Hour)",
+                    title="Batch Error Logs",
                     scorecard=monitoring_dashboard_v1.Scorecard(
                         time_series_query=monitoring_dashboard_v1.TimeSeriesQuery(
                             time_series_filter=monitoring_dashboard_v1.TimeSeriesFilter(
-                                filter='metric.type="batch.googleapis.com/task/state" AND metric.labels.state="FAILED"',
+                                filter='metric.type="logging.googleapis.com/log_entry_count" AND resource.type="batch.googleapis.com/Job" AND metric.labels.log="batch_task_logs" AND metric.labels.severity="ERROR"',
                             )
                         ),
                     ),
                 ),
-                # Widget 3: Task completion rate over time
+                # Widget 3: Task log volume over time
                 monitoring_dashboard_v1.Widget(
-                    title="Task Completion Rate",
+                    title="Task Log Volume",
                     xy_chart=monitoring_dashboard_v1.XyChart(
                         data_sets=[
                             monitoring_dashboard_v1.XyChart.DataSet(
                                 time_series_query=monitoring_dashboard_v1.TimeSeriesQuery(
                                     time_series_filter=monitoring_dashboard_v1.TimeSeriesFilter(
-                                        filter='metric.type="batch.googleapis.com/task/state"',
+                                        filter='metric.type="logging.googleapis.com/log_entry_count" AND resource.type="batch.googleapis.com/Job" AND metric.labels.log="batch_task_logs"',
                                     )
                                 ),
                             )
@@ -240,7 +244,7 @@ def create_batch_monitoring_dashboard(project_id):
                             monitoring_dashboard_v1.XyChart.DataSet(
                                 time_series_query=monitoring_dashboard_v1.TimeSeriesQuery(
                                     time_series_filter=monitoring_dashboard_v1.TimeSeriesFilter(
-                                        filter='metric.type="logging.googleapis.com/user/batch_errors"',
+                                        filter='metric.type="logging.googleapis.com/user/batch-job-failures" AND resource.type="batch.googleapis.com/Job"',
                                     )
                                 ),
                             )
@@ -268,17 +272,16 @@ Create alerts that notify you when batch jobs fail.
 # Create a log-based metric for batch job failures
 gcloud logging metrics create batch-job-failures \
   --description="Count of Batch job task failures" \
-  --log-filter='resource.type="cloud_batch_job" AND severity>=ERROR'
+  --log-filter='logName="projects/PROJECT_ID/logs/batch_task_logs" AND severity>=ERROR'
 
 # Create an alert policy based on the metric
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Batch Job Failure Alert" \
   --notification-channels=YOUR_CHANNEL_ID \
   --condition-display-name="Batch task failures detected" \
-  --condition-filter='metric.type="logging.googleapis.com/user/batch-job-failures"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s
+  --condition-filter='metric.type="logging.googleapis.com/user/batch-job-failures" AND resource.type="batch.googleapis.com/Job"' \
+  --if='> 0' \
+  --duration=60s
 ```
 
 ## Checking Job Status Programmatically
@@ -304,12 +307,13 @@ def monitor_job(project_id, region, job_id, poll_interval=30):
         state = job.status.state
 
         # Count tasks by state
-        task_groups = job.status.status_events
+        task_group_status = job.status.task_groups
         run_duration = job.status.run_duration
 
         logger.info(
             f"Job {job_id}: state={state.name}, "
-            f"duration={run_duration}"
+            f"duration={run_duration}, "
+            f"task_groups={dict(task_group_status)}"
         )
 
         # Check task group progress
@@ -367,8 +371,9 @@ Here are the most common Batch job failures and how to find them in logs.
 **Task timeout**: Look for tasks that stopped logging near the timeout limit. The last log entry often shows where the task was when it timed out.
 
 ```text
-resource.type="cloud_batch_job"
-labels."batch.googleapis.com/job_uid"="abc123"
+resource.type="batch.googleapis.com/Job"
+logName="projects/PROJECT_ID/logs/batch_task_logs"
+labels.job_uid="abc123"
 jsonPayload.phase="processing"
 ```
 
@@ -377,7 +382,8 @@ jsonPayload.phase="processing"
 **Permission errors**: Usually appear early in the task execution. Search for "permission denied" or "403" in the logs.
 
 ```text
-resource.type="cloud_batch_job"
+resource.type="batch.googleapis.com/Job"
+logName="projects/PROJECT_ID/logs/batch_task_logs"
 textPayload=~"permission denied|403|AccessDenied"
 ```
 
