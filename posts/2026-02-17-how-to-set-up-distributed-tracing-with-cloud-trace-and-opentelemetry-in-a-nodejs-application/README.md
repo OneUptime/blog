@@ -47,7 +47,7 @@ This file configures the OpenTelemetry SDK with the Cloud Trace exporter and aut
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Create the Cloud Trace exporter
@@ -60,7 +60,7 @@ const traceExporter = new TraceExporter({
 // Configure the OpenTelemetry SDK
 const sdk = new NodeSDK({
   // Define resource attributes that identify this service
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-api-service',
     [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
@@ -73,7 +73,10 @@ const sdk = new NodeSDK({
       '@opentelemetry/instrumentation-fs': { enabled: false },
       // Configure HTTP instrumentation
       '@opentelemetry/instrumentation-http': {
-        ignoreIncomingPaths: ['/health', '/readiness'],
+        ignoreIncomingRequestHook: (req) => {
+          const path = req.url?.split('?')[0];
+          return ['/health', '/readiness'].includes(path);
+        },
       },
     }),
   ],
@@ -146,7 +149,7 @@ This example shows how to create custom spans for operations that matter to your
 
 ```javascript
 // services/userService.js
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 // Get a tracer instance for this module
 const tracer = trace.getTracer('user-service');
@@ -192,7 +195,7 @@ async function getUserWithDetails(userId) {
     } catch (error) {
       // Record the error on the span
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       span.end();
       throw error;
     }
@@ -278,7 +281,7 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
