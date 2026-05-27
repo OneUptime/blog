@@ -85,7 +85,7 @@ This playbook executes the CIS benchmark scan and generates both XML and HTML re
           {{ scap_content }}
       register: scan_result
       # OpenSCAP returns non-zero when findings exist, so we allow failures
-      failed_when: scan_result.rc > 2
+      failed_when: scan_result.rc not in [0, 2]
 
     - name: Fetch the HTML report back to control node
       ansible.builtin.fetch:
@@ -124,11 +124,24 @@ This playbook parses the XML output and creates a summary of pass/fail results:
 
     - name: Parse each result file for pass/fail counts
       ansible.builtin.shell: |
-        # Count pass, fail, and other results from XCCDF output
-        PASS=$(grep -c 'result="pass"' "{{ item.path }}" || echo 0)
-        FAIL=$(grep -c 'result="fail"' "{{ item.path }}" || echo 0)
-        NOTAPPLICABLE=$(grep -c 'result="notapplicable"' "{{ item.path }}" || echo 0)
-        echo "{{ item.path | basename }}: PASS=$PASS FAIL=$FAIL N/A=$NOTAPPLICABLE"
+        python3 - {{ item.path | quote }} <<'PY'
+        import os
+        import sys
+        import xml.etree.ElementTree as ET
+
+        result_file = sys.argv[1]
+        counts = {"pass": 0, "fail": 0, "notapplicable": 0}
+
+        for event, elem in ET.iterparse(result_file, events=("end",)):
+            if elem.tag.split("}", 1)[-1] == "result" and elem.text in counts:
+                counts[elem.text] += 1
+            elem.clear()
+
+        print(
+            f"{os.path.basename(result_file)}: "
+            f"PASS={counts['pass']} FAIL={counts['fail']} N/A={counts['notapplicable']}"
+        )
+        PY
       loop: "{{ result_files.files }}"
       register: parsed_results
       changed_when: false
@@ -155,17 +168,20 @@ This task generates an Ansible playbook from your scan findings that will fix no
   become: true
   vars:
     scap_profile: xccdf_org.ssgproject.content_profile_cis
-    scap_content: /usr/share/xml/scap/ssg/content/ssg-rhel8-ds.xml
+    scan_date: "{{ ansible_date_time.date }}"
+    results_dir: /var/log/compliance-scans
+    scan_results: "{{ results_dir }}/{{ inventory_hostname }}-{{ scan_date }}.xml"
+    remediation_result_id: "xccdf_org.open-scap_testresult_{{ scap_profile }}"
 
   tasks:
-    - name: Generate Ansible remediation content from SCAP profile
+    - name: Generate Ansible remediation content from scan results
       ansible.builtin.command:
         cmd: >
           oscap xccdf generate fix
           --fix-type ansible
-          --profile {{ scap_profile }}
+          --result-id {{ remediation_result_id }}
           --output /tmp/remediation-playbook.yml
-          {{ scap_content }}
+          {{ scan_results }}
       register: gen_result
       failed_when: gen_result.rc != 0
 
@@ -250,8 +266,12 @@ This task creates a weekly cron job that triggers the compliance scan playbook:
             --results ${RESULTS_DIR}/scan-${SCAN_DATE}.xml \
             --report ${RESULTS_DIR}/scan-${SCAN_DATE}.html \
             /usr/share/xml/scap/ssg/content/ssg-rhel8-ds.xml
+          rc=$?
           # Exit 0 even if findings exist (exit code 2)
-          exit 0
+          if [ "$rc" -eq 2 ]; then
+            exit 0
+          fi
+          exit "$rc"
 
     - name: Set up weekly cron job for compliance scanning
       ansible.builtin.cron:
