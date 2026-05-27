@@ -53,7 +53,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.25.0"
+      version = "~> 3.1.0"
     }
   }
 }
@@ -68,7 +68,7 @@ provider "kubernetes" {
 }
 ```
 
-If you are provisioning the cluster with Terraform as well, you can chain the outputs directly.
+If the cluster is provisioned with Terraform in a separate configuration or apply step, you can pass the cluster outputs directly.
 
 ```hcl
 # provider.tf
@@ -87,7 +87,7 @@ Namespaces are the starting point for organizing Kubernetes resources.
 ```hcl
 # namespace.tf
 # Create a namespace for the application
-resource "kubernetes_namespace" "app" {
+resource "kubernetes_namespace_v1" "app" {
   metadata {
     # Name of the namespace
     name = "my-application"
@@ -104,42 +104,42 @@ resource "kubernetes_namespace" "app" {
 
 ## Deploying an Application
 
-Here is a complete deployment with a service.
+Here is a complete deployment.
 
 ```hcl
 # deployment.tf
 # Deploy a web application with 3 replicas
-resource "kubernetes_deployment" "web_app" {
+resource "kubernetes_deployment_v1" "web_app" {
   metadata {
-    name      = "web-app"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    name      = var.app_name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
 
     labels = {
-      app = "web-app"
+      app = var.app_name
     }
   }
 
   spec {
     # Run 3 replicas for high availability
-    replicas = 3
+    replicas = var.replicas
 
     selector {
       match_labels = {
-        app = "web-app"
+        app = var.app_name
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "web-app"
+          app = var.app_name
         }
       }
 
       spec {
         container {
-          name  = "web-app"
-          image = "nginx:1.25"
+          name  = var.app_name
+          image = "nginx:${var.image_tag}"
 
           # Expose port 80 inside the container
           port {
@@ -161,7 +161,7 @@ resource "kubernetes_deployment" "web_app" {
           # Health check to verify the app is running
           liveness_probe {
             http_get {
-              path = "/healthz"
+              path = "/"
               port = 80
             }
             initial_delay_seconds = 10
@@ -179,16 +179,18 @@ resource "kubernetes_deployment" "web_app" {
 ```hcl
 # service.tf
 # Create a LoadBalancer service to expose the deployment
-resource "kubernetes_service" "web_app" {
+resource "kubernetes_service_v1" "web_app" {
   metadata {
     name      = "web-app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
+
+  wait_for_load_balancer = true
 
   spec {
     # Match pods with the app=web-app label
     selector = {
-      app = "web-app"
+      app = var.app_name
     }
 
     # Use LoadBalancer for external access
@@ -200,19 +202,21 @@ resource "kubernetes_service" "web_app" {
       protocol    = "TCP"
     }
   }
+
+  depends_on = [kubernetes_deployment_v1.web_app]
 }
 ```
 
 Resource Dependency Flow
 
-Terraform automatically determines the order in which resources should be created.
+Terraform automatically determines the order in which resources should be created when resources reference each other. For label-only relationships, use `depends_on` to make the dependency explicit.
 
 ```mermaid
 graph LR
-    A[kubernetes_namespace] --> B[kubernetes_deployment]
-    A --> C[kubernetes_service]
-    A --> D[kubernetes_config_map]
-    D --> B
+    A[kubernetes_namespace_v1] --> B[kubernetes_deployment_v1]
+    A --> C[kubernetes_service_v1]
+    A --> D[kubernetes_config_map_v1]
+    A --> E[kubernetes_secret_v1]
     B --> C
 ```
 
@@ -221,10 +225,10 @@ graph LR
 ```hcl
 # configmap.tf
 # Store application configuration in a ConfigMap
-resource "kubernetes_config_map" "app_config" {
+resource "kubernetes_config_map_v1" "app_config" {
   metadata {
     name      = "app-config"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
   # Key-value pairs for configuration
@@ -237,10 +241,10 @@ resource "kubernetes_config_map" "app_config" {
 
 # secret.tf
 # Store sensitive data in a Kubernetes Secret
-resource "kubernetes_secret" "app_secrets" {
+resource "kubernetes_secret_v1" "app_secrets" {
   metadata {
     name      = "app-secrets"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
   # Values are base64-encoded automatically by Terraform
@@ -252,6 +256,8 @@ resource "kubernetes_secret" "app_secrets" {
   type = "Opaque"
 }
 ```
+
+Terraform marks the secret values as sensitive in output, but they are still stored in Terraform state. Protect your state backend accordingly.
 
 ## Using Variables for Flexibility
 
@@ -295,12 +301,12 @@ variable "api_key" {
 # Export useful information after apply
 output "namespace" {
   description = "The namespace where resources are deployed"
-  value       = kubernetes_namespace.app.metadata[0].name
+  value       = kubernetes_namespace_v1.app.metadata[0].name
 }
 
-output "service_ip" {
-  description = "The external IP of the LoadBalancer service"
-  value       = kubernetes_service.web_app.status[0].load_balancer[0].ingress[0].ip
+output "service_endpoint" {
+  description = "The external IP or hostname of the LoadBalancer service"
+  value       = coalesce(kubernetes_service_v1.web_app.status[0].load_balancer[0].ingress[0].ip, kubernetes_service_v1.web_app.status[0].load_balancer[0].ingress[0].hostname)
 }
 ```
 
@@ -313,10 +319,10 @@ Run the standard Terraform workflow to deploy your resources.
 terraform init
 
 # Preview the changes Terraform will make
-terraform plan -var="image_tag=v1.2.3"
+terraform plan -var="image_tag=1.25" -var="db_password=change-me" -var="api_key=change-me"
 
 # Apply the changes to the cluster
-terraform apply -var="image_tag=v1.2.3"
+terraform apply -var="image_tag=1.25" -var="db_password=change-me" -var="api_key=change-me"
 ```
 
 ## When to Use Terraform vs kubectl
