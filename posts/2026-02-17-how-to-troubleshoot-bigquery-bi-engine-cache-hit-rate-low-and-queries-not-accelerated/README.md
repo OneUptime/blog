@@ -12,22 +12,24 @@ BigQuery BI Engine is supposed to make your queries faster by caching table data
 
 ## How BI Engine Works
 
-BI Engine maintains an in-memory cache of BigQuery table data. When a query runs, BigQuery checks if the required data is already cached in BI Engine. If it is, the query runs much faster because it reads from memory instead of scanning storage. The key metric is the "cache hit rate" - the percentage of bytes served from cache vs. total bytes scanned.
+BI Engine maintains an in-memory cache of the BigQuery data you use most frequently. When a query runs, BigQuery can use BI Engine to accelerate the query if the required columns, rows, and partitions can be served from the BI Engine reservation. The key diagnostic is the BI Engine acceleration status for each query, which shows whether the full query, only the inputs, or none of the query benefited from BI Engine.
 
 ## Checking Your BI Engine Status
 
 First, verify that BI Engine is actually enabled and has capacity allocated.
 
-```bash
-# Check BI Engine reservations
-
-bq ls --reservation --location=us --project=my-project
-
-# Get detailed BI Engine reservation info
-bq show --reservation --location=us --project=my-project my-bi-engine-reservation
+```sql
+-- Check current BI Engine capacity
+SELECT
+  project_id,
+  bi_capacity_name,
+  size,
+  preferred_tables
+FROM
+  `my-project.region-us`.INFORMATION_SCHEMA.BI_CAPACITIES;
 ```
 
-You should see a reservation with `BI_ENGINE` type and the allocated memory in GB.
+You should see a `default` BI Engine capacity entry with the allocated memory in bytes.
 
 ## Step 1: Check Query Acceleration Status in INFORMATION_SCHEMA
 
@@ -43,7 +45,7 @@ SELECT
   bi_engine_statistics.acceleration_mode,
   bi_engine_statistics.bi_engine_reasons
 FROM
-  `region-us`.INFORMATION_SCHEMA.JOBS
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   AND job_type = 'QUERY'
@@ -52,11 +54,13 @@ ORDER BY creation_time DESC
 LIMIT 20;
 ```
 
-The `acceleration_mode` field tells you exactly what happened:
+The `bi_engine_mode` field tells you the high-level status:
 
 - `FULL` - entire query was accelerated
 - `PARTIAL` - only some parts were accelerated
 - `DISABLED` - BI Engine was not used at all
+
+The `acceleration_mode` field gives more detail with values such as `FULL_QUERY`, `FULL_INPUT`, `PARTIAL_INPUT`, and `BI_ENGINE_DISABLED`.
 
 The `bi_engine_reasons` field explains why acceleration was limited or disabled.
 
@@ -71,7 +75,7 @@ SELECT
   reason.message,
   COUNT(*) as occurrence_count
 FROM
-  `region-us`.INFORMATION_SCHEMA.JOBS,
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT,
   UNNEST(bi_engine_statistics.bi_engine_reasons) AS reason
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
@@ -82,36 +86,44 @@ ORDER BY occurrence_count DESC;
 
 Common reason codes include:
 
-- `TABLE_TOO_LARGE` - the table exceeds BI Engine cache capacity
+- `INSUFFICIENT_RESERVATION` - not enough BI Engine memory was available
 - `UNSUPPORTED_SQL_TEXT` - the query uses features BI Engine does not support
 - `NO_RESERVATION` - no BI Engine reservation exists for this project
 - `INPUT_TOO_LARGE` - the query scans too much data
-- `OTHER_BILLING_ACCOUNT` - the table is in a different billing account
+- `OTHER_REASON` - BI Engine could not accelerate the query for another reason
 
 ## Step 3: Ensure Sufficient Memory Reservation
 
 BI Engine needs enough memory to cache the tables you query most frequently. If your tables are larger than your reservation, only a portion gets cached.
 
-```bash
-# Check current reservation size
-bq show --reservation --location=us my-bi-engine-reservation
+```sql
+-- Check current reservation size
+SELECT
+  size / 1024 / 1024 / 1024 AS size_gib,
+  preferred_tables
+FROM
+  `my-project.region-us`.INFORMATION_SCHEMA.BI_CAPACITIES;
 
-# Update the reservation to allocate more memory (in GB)
-bq update --reservation \
-    --location=us \
-    --bi_engine_preferred_tables="my-project:my_dataset.table1,my-project:my_dataset.table2" \
-    --reservation_size=10 \
-    my-bi-engine-reservation
+-- Update the reservation to allocate more memory (in GiB)
+ALTER BI_CAPACITY `my-project.region-us.default`
+SET OPTIONS (
+  size_gb = 10,
+  preferred_tables = [
+    "my-project.my_dataset.table1",
+    "my-project.my_dataset.table2"
+  ]);
 ```
 
 You can also specify preferred tables to tell BI Engine which tables to prioritize caching:
 
-```bash
-# Set preferred tables for caching priority
-bq update --reservation \
-    --location=us \
-    --bi_engine_preferred_tables="my-project.my_dataset.dashboard_metrics,my-project.my_dataset.user_events" \
-    my-bi-engine-reservation
+```sql
+-- Set preferred tables for caching priority
+ALTER BI_CAPACITY `my-project.region-us.default`
+SET OPTIONS (
+  preferred_tables = [
+    "my-project.my_dataset.dashboard_metrics",
+    "my-project.my_dataset.user_events"
+  ]);
 ```
 
 ## Step 4: Use Supported SQL Features Only
@@ -119,11 +131,12 @@ bq update --reservation \
 BI Engine does not support every BigQuery SQL feature. Queries that use unsupported features will fall back to regular BigQuery execution. Features that prevent acceleration include:
 
 - JavaScript UDFs
-- STRUCT types in certain positions
-- Some complex window functions
-- Queries across multiple datasets in different regions
-- DML statements (INSERT, UPDATE, DELETE)
-- Queries using TABLESAMPLE
+- External tables, including BigLake tables
+- Querying JSON data
+- Writing results to a permanent BigQuery table
+- Some window functions, depending on table size and query shape
+- Transactions
+- Row-level security
 
 Rewrite your queries to avoid unsupported features when possible:
 
@@ -186,7 +199,7 @@ SELECT
   SUM(total_bytes_processed) as total_bytes,
   AVG(total_slot_ms) as avg_slot_ms
 FROM
-  `region-us`.INFORMATION_SCHEMA.JOBS
+  `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
