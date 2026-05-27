@@ -155,8 +155,8 @@ To find out what questions a package asks, you have several options.
   changed_when: false
 
 - name: Extract debconf templates from the package
-  ansible.builtin.command:
-    cmd: dpkg-deb --ctrl-tarfile /tmp/phpmyadmin_*.deb
+  ansible.builtin.shell:
+    cmd: dpkg-deb --ctrl-tarfile /tmp/phpmyadmin_*.deb | tar -xO ./templates
   register: ctrl_tar
   changed_when: false
 ```
