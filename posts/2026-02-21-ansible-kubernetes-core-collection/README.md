@@ -8,7 +8,7 @@ Description: Get started with the kubernetes.core Ansible collection for managin
 
 ---
 
-The `kubernetes.core` collection is the official Ansible collection for managing Kubernetes resources. It provides modules for creating, updating, and deleting any Kubernetes resource, along with inventory plugins, lookup plugins, and connection plugins. If you are managing Kubernetes with Ansible, this collection is the foundation everything else builds on.
+The `kubernetes.core` collection is the Ansible collection for managing Kubernetes resources. It provides modules for creating, updating, and deleting any Kubernetes resource, along with lookup plugins, filter plugins, and connection plugins. If you are managing Kubernetes with Ansible, this collection is the foundation everything else builds on.
 
 ## What is in the Collection?
 
@@ -17,7 +17,7 @@ The `kubernetes.core` collection includes several modules and plugins:
 ```mermaid
 flowchart TD
     A[kubernetes.core Collection] --> B[Modules]
-    A --> C[Inventory Plugins]
+    A --> C[Filter Plugins]
     A --> D[Lookup Plugins]
     A --> E[Connection Plugins]
     B --> B1[k8s - Manage any K8s resource]
@@ -27,7 +27,7 @@ flowchart TD
     B --> B5[k8s_scale - Scale deployments]
     B --> B6[k8s_drain - Drain nodes]
     B --> B7[helm - Manage Helm charts]
-    C --> C1[k8s inventory - Dynamic pod inventory]
+    C --> C1[k8s_config_resource_name - Generate ConfigMap or Secret names]
     D --> D1[k8s lookup - Query K8s API]
     E --> E1[kubectl connection - Run tasks in pods]
 ```
@@ -42,10 +42,10 @@ Install the collection and its Python dependencies:
 ansible-galaxy collection install kubernetes.core
 
 # Install required Python libraries
-pip install kubernetes openshift PyYAML
+pip install kubernetes PyYAML jsonpatch
 ```
 
-The `kubernetes` Python library is required for all modules. The `openshift` library adds extra capabilities like applying strategic merge patches.
+The Kubernetes resource modules require the `kubernetes` Python library, and the `k8s` module also requires `jsonpatch` for patch operations. The Helm modules require the Helm CLI to be available where the module runs.
 
 ## Authentication Setup
 
