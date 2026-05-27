@@ -10,14 +10,15 @@ Description: A practical guide to automating Redis installation across your infr
 
 Redis is one of those tools that shows up in almost every modern stack. Whether you are using it as a cache, session store, message broker, or all three, you probably have it running on multiple servers. Installing Redis by hand once is straightforward. Installing it on 50 servers while making sure every instance matches your spec is a different story. That is where Ansible comes in.
 
-This post covers how to install Redis using Ansible, with playbooks that work on Ubuntu/Debian and RHEL/CentOS systems.
+This post covers how to install Redis using Ansible, with playbooks that work on Ubuntu/Debian and RHEL-compatible systems such as Rocky Linux and AlmaLinux.
 
 ## Prerequisites
 
 You will need:
 
-- Ansible 2.9+ on your control node
-- Target servers running Ubuntu 20.04+, Debian 11+, or RHEL 8+/CentOS 8+
+- Ansible 2.15+ on your control node
+- The `ansible.posix` collection installed for the system tuning playbook
+- Target servers running Ubuntu 20.04+, Debian 11+, or RHEL-compatible systems such as Rocky Linux 8+/AlmaLinux 8+
 - SSH access with sudo privileges on target hosts
 
 ## Inventory Setup
@@ -65,25 +66,32 @@ Here is a playbook that installs Redis from the official repository on Ubuntu/De
         state: present
         update_cache: true
 
+    - name: Create APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
     - name: Add the official Redis GPG key
-      ansible.builtin.apt_key:
+      ansible.builtin.get_url:
         url: https://packages.redis.io/gpg
-        state: present
+        dest: /etc/apt/keyrings/redis-archive-keyring.asc
+        mode: "0644"
 
     - name: Add the Redis APT repository
       ansible.builtin.apt_repository:
-        repo: "deb https://packages.redis.io/deb {{ ansible_distribution_release }} main"
+        repo: "deb [signed-by=/etc/apt/keyrings/redis-archive-keyring.asc] https://packages.redis.io/deb {{ ansible_distribution_release }} main"
         state: present
         filename: redis
 
-    - name: Install Redis server package
+    - name: Install Redis package
       ansible.builtin.apt:
-        name: redis-server
+        name: redis
         state: present
         update_cache: true
 
     - name: Ensure Redis is started and enabled on boot
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: redis-server
         state: started
         enabled: true
@@ -91,7 +99,7 @@ Here is a playbook that installs Redis from the official repository on Ubuntu/De
 
 ## Multi-OS Installation
 
-In real environments, you rarely have a homogeneous fleet. Here is a playbook that handles both Debian-family and RedHat-family distributions.
+In real environments, you rarely have a homogeneous fleet. Here is a playbook that handles both Debian-family and RHEL-compatible distributions.
 
 ```yaml
 # playbooks/install-redis-multi-os.yml
@@ -114,50 +122,52 @@ In real environments, you rarely have a homogeneous fleet. Here is a playbook th
             state: present
             update_cache: true
 
+        - name: Create APT keyring directory
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: "0755"
+
         - name: Add Redis GPG key for Debian
-          ansible.builtin.apt_key:
+          ansible.builtin.get_url:
             url: https://packages.redis.io/gpg
-            state: present
+            dest: /etc/apt/keyrings/redis-archive-keyring.asc
+            mode: "0644"
 
         - name: Add Redis repository for Debian
           ansible.builtin.apt_repository:
-            repo: "deb https://packages.redis.io/deb {{ ansible_distribution_release }} main"
+            repo: "deb [signed-by=/etc/apt/keyrings/redis-archive-keyring.asc] https://packages.redis.io/deb {{ ansible_distribution_release }} main"
             state: present
             filename: redis
 
         - name: Install Redis on Debian
           ansible.builtin.apt:
-            name: redis-server
+            name: redis
             state: present
             update_cache: true
 
-    # RHEL/CentOS installation block
-    - name: Install Redis on RHEL/CentOS
+    # RHEL-compatible installation block
+    - name: Install Redis on RHEL-compatible systems
       when: ansible_os_family == "RedHat"
       block:
-        - name: Install EPEL repository
-          ansible.builtin.yum:
-            name: epel-release
-            state: present
-
-        - name: Add Redis repository for RHEL
+        - name: Add Redis repository for RHEL-compatible systems
           ansible.builtin.yum_repository:
             name: redis
             description: Redis Official Repository
-            baseurl: https://packages.redis.io/rpm/rhel$releasever/$basearch
+            baseurl: "https://packages.redis.io/rpm/rockylinux{{ ansible_distribution_major_version }}"
             gpgcheck: true
             gpgkey: https://packages.redis.io/gpg
             enabled: true
 
-        - name: Install Redis on RHEL
-          ansible.builtin.yum:
+        - name: Install Redis on RHEL-compatible systems
+          ansible.builtin.dnf:
             name: redis
             state: present
 
     # Common tasks for all OS families
     - name: Enable Redis service on boot
-      ansible.builtin.systemd:
-        name: redis
+      ansible.builtin.systemd_service:
+        name: "{{ 'redis-server' if ansible_os_family == 'Debian' else 'redis' }}"
         state: started
         enabled: true
 ```
@@ -194,7 +204,7 @@ Redis works best with certain kernel parameters tuned. This is something most pe
         content: |
           [Unit]
           Description=Disable Transparent Huge Pages
-          Before=redis-server.service
+          Before=redis-server.service redis.service
 
           [Service]
           Type=oneshot
@@ -220,7 +230,7 @@ Redis works best with certain kernel parameters tuned. This is something most pe
 
   handlers:
     - name: Reload systemd and start THP service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
         name: disable-thp
         state: started
@@ -291,6 +301,23 @@ Sometimes the package managers do not have the exact version you need. In that c
         group: redis
         mode: "0750"
 
+    - name: Create Redis configuration directory
+      ansible.builtin.file:
+        path: /etc/redis
+        state: directory
+        owner: redis
+        group: redis
+        mode: "0750"
+
+    - name: Install Redis configuration file
+      ansible.builtin.copy:
+        src: "/tmp/redis-{{ redis_version }}/redis.conf"
+        dest: /etc/redis/redis.conf
+        remote_src: true
+        owner: redis
+        group: redis
+        mode: "0640"
+
     - name: Create systemd unit file for Redis
       ansible.builtin.copy:
         dest: /etc/systemd/system/redis.service
@@ -314,7 +341,7 @@ Sometimes the package managers do not have the exact version you need. In that c
 
   handlers:
     - name: Start Redis service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
         name: redis
         state: started
@@ -331,11 +358,13 @@ After installation, verify that Redis is running and responding correctly.
 - name: Verify Redis installation
   hosts: redis_servers
   become: true
+  vars:
+    redis_service_name: "{{ 'redis-server' if ansible_os_family == 'Debian' else 'redis' }}"
 
   tasks:
     - name: Check Redis service status
-      ansible.builtin.systemd:
-        name: redis-server
+      ansible.builtin.systemd_service:
+        name: "{{ redis_service_name }}"
       register: redis_service
 
     - name: Ping Redis to verify it responds
@@ -366,9 +395,9 @@ Here is the overall flow of the Redis installation process.
 flowchart TD
     A[Start] --> B{Which OS?}
     B -->|Debian/Ubuntu| C[Add Redis APT Repo]
-    B -->|RHEL/CentOS| D[Add Redis YUM Repo]
+    B -->|RHEL-compatible| D[Add Redis RPM Repo]
     B -->|Source Install| E[Download Source Tarball]
-    C --> F[Install redis-server Package]
+    C --> F[Install redis Package]
     D --> G[Install redis Package]
     E --> H[Compile from Source]
     F --> I[Apply System Tuning]
