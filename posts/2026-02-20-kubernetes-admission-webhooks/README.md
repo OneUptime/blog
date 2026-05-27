@@ -43,8 +43,6 @@ Let us build a webhook that enforces a policy: all Pods must have resource limit
 
 ```python
 from flask import Flask, request, jsonify
-import json
-import base64
 
 app = Flask(__name__)
 
@@ -60,26 +58,25 @@ def validate():
 
     # Extract the Pod spec from the request
     pod_spec = admission_request["object"]["spec"]
-    pod_name = admission_request["object"]["metadata"].get("name", "unknown")
-
-    # Check every container in the pod for resource limits
+    # Check every app container and init container in the pod for resource limits
     errors = []
-    for container in pod_spec.get("containers", []):
-        container_name = container.get("name", "unnamed")
-        resources = container.get("resources", {})
-        limits = resources.get("limits", {})
+    for field in ("containers", "initContainers"):
+        for container in pod_spec.get(field, []):
+            container_name = container.get("name", "unnamed")
+            resources = container.get("resources", {})
+            limits = resources.get("limits", {})
 
-        # Validate that CPU limits are set
-        if "cpu" not in limits:
-            errors.append(
-                f"Container '{container_name}' is missing CPU limits"
-            )
+            # Validate that CPU limits are set
+            if "cpu" not in limits:
+                errors.append(
+                    f"Container '{container_name}' is missing CPU limits"
+                )
 
-        # Validate that memory limits are set
-        if "memory" not in limits:
-            errors.append(
-                f"Container '{container_name}' is missing memory limits"
-            )
+            # Validate that memory limits are set
+            if "memory" not in limits:
+                errors.append(
+                    f"Container '{container_name}' is missing memory limits"
+                )
 
     # Build the AdmissionReview response
     allowed = len(errors) == 0
@@ -116,7 +113,6 @@ if __name__ == "__main__":
 Mutating webhooks modify the request object. A common use case is injecting sidecar containers, adding labels, or setting defaults.
 
 ```python
-import copy
 import json
 import base64
 from flask import Flask, request, jsonify
@@ -202,9 +198,6 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies
-
-COPY requirements.txt .
 RUN pip install --no-cache-dir flask
 
 COPY webhook.py .
@@ -299,6 +292,35 @@ webhooks:
     namespaceSelector:
       matchLabels:
         webhook-enabled: "true"
+---
+# mutating-webhook-config.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: pod-defaults-mutator
+webhooks:
+  - name: mutate.pod-defaults.example.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    # Only intercept Pod creation
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+    clientConfig:
+      service:
+        name: admission-webhook
+        namespace: webhook-system
+        path: /mutate
+      # CA bundle for verifying the webhook's TLS certificate
+      caBundle: <BASE64_ENCODED_CA_CERT>
+    # Do not block the API server if the webhook is unavailable
+    failurePolicy: Ignore
+    # Only apply to namespaces with this label
+    namespaceSelector:
+      matchLabels:
+        webhook-enabled: "true"
 ```
 
 ## Generating TLS Certificates
@@ -331,6 +353,8 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
     -CAcreateserial -out server.crt -days 365 \
     -extfile <(echo "subjectAltName=DNS:${SERVICE}.${NAMESPACE}.svc")
 
+kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
 # Create the Kubernetes secret with the TLS certificate
 kubectl create secret tls webhook-tls \
     --cert=server.crt \
@@ -345,9 +369,12 @@ cat ca.crt | base64 | tr -d '\n'
 ## Testing the Webhook
 
 ```bash
+kubectl create namespace webhook-demo
+kubectl label namespace webhook-demo webhook-enabled=true
+
 # Test the validating webhook - this pod should be rejected
 # because it lacks resource limits
-kubectl run test-no-limits --image=nginx --restart=Never
+kubectl run test-no-limits --image=nginx --restart=Never -n webhook-demo
 
 # Expected output:
 # Error from server: admission webhook "validate.resource-limits.example.com"
@@ -356,7 +383,8 @@ kubectl run test-no-limits --image=nginx --restart=Never
 
 # This pod should pass validation
 kubectl run test-with-limits --image=nginx --restart=Never \
-    --limits="cpu=500m,memory=256Mi"
+    -n webhook-demo \
+    --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"test-with-limits","image":"nginx","resources":{"limits":{"cpu":"500m","memory":"256Mi"}}}]}}'
 ```
 
 ## Common Webhook Patterns
