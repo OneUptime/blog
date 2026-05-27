@@ -112,12 +112,12 @@ Recommendation:
 
 The four recommendation levels give you flexibility:
 
-- **Lower Bound**: The minimum resources your container needs. Below this, you will likely see performance issues.
+- **Lower Bound**: The minimum recommended CPU and memory requests. This amount is not guaranteed to be sufficient; running below it is likely to affect performance or availability.
 - **Target**: The recommended value based on observed usage. This is what VPA would set if you enabled auto mode.
 - **Uncapped Target**: Same as target, but ignoring any min/max constraints you set in the VPA policy.
-- **Upper Bound**: The maximum the container has used. Setting requests at this level gives lots of headroom.
+- **Upper Bound**: The maximum recommended CPU and memory requests. Requests higher than this are likely to be wasted.
 
-For most production workloads, I recommend setting requests at the target value and limits at the upper bound (or slightly above). This gives your pods enough room to handle spikes without wasting resources during normal operation.
+For most production workloads, I recommend setting requests at the target value, then setting limits separately based on your application's behavior and SLOs. This gives your pods enough reserved capacity without wasting resources during normal operation.
 
 ## Applying Recommendations Manually
 
@@ -148,10 +148,6 @@ spec:
               # Set to VPA target recommendation
               cpu: 100m
               memory: 128Mi
-            limits:
-              # Set to VPA upper bound for headroom
-              cpu: 400m
-              memory: 512Mi
 ```
 
 ## Enabling Auto Mode
@@ -190,32 +186,44 @@ The `minAllowed` and `maxAllowed` constraints are important safety rails. Withou
 
 ## VPA and HPA Together
 
-A common question is whether you can use VPA and the Horizontal Pod Autoscaler (HPA) together. The answer is yes, but with a caveat - VPA should not manage the same resource that HPA uses for scaling decisions.
+A common question is whether you can use VPA and the Horizontal Pod Autoscaler (HPA) together. On GKE, if you want CPU-based horizontal scaling and memory-based vertical scaling at the same time, use Multidimensional Pod Autoscaling. You can also use VPA with HPA when HPA scales on custom or external metrics.
 
-If HPA scales based on CPU, then VPA should only manage memory. If HPA scales based on custom metrics, VPA can manage both CPU and memory.
+The following example uses CPU for horizontal scaling and memory for vertical scaling:
 
 ```yaml
-# VPA that only manages memory, leaving CPU for HPA
-apiVersion: autoscaling.k8s.io/v1
-kind: VerticalPodAutoscaler
+# Multidimensional Pod Autoscaler that scales replicas based on CPU
+# and manages memory requests vertically
+apiVersion: autoscaling.gke.io/v1beta1
+kind: MultidimPodAutoscaler
 metadata:
-  name: api-server-vpa
+  name: api-server-autoscaler
 spec:
-  targetRef:
+  scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: api-server
-  updatePolicy:
-    updateMode: "Auto"
-  resourcePolicy:
-    containerPolicies:
-      - containerName: api-server
-        # Only manage memory, let HPA handle CPU-based scaling
-        controlledResources: ["memory"]
-        minAllowed:
-          memory: 64Mi
-        maxAllowed:
-          memory: 2Gi
+  goals:
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 60
+  constraints:
+    global:
+      minReplicas: 3
+      maxReplicas: 10
+    containerControlledResources: ["memory"]
+    container:
+      - name: api-server
+        requests:
+          minAllowed:
+            memory: 64Mi
+          maxAllowed:
+            memory: 2Gi
+  policy:
+    updateMode: Auto
 ```
 
 ## Monitoring the Impact
@@ -223,9 +231,8 @@ spec:
 After applying VPA recommendations, track the difference:
 
 ```bash
-# Compare actual usage vs requests to measure resource efficiency
-# This shows the ratio of actual CPU usage to requested CPU
-kubectl top pods -n production --containers | sort -k3 -rn
+# View current per-container CPU and memory usage, sorted by CPU
+kubectl top pods -n production --containers --sort-by=cpu
 ```
 
 You can also set up a Cloud Monitoring dashboard to track resource utilization before and after VPA changes. Key metrics to watch include `kubernetes.io/container/cpu/request_utilization` and `kubernetes.io/container/memory/request_utilization`. Healthy values are between 60 and 80 percent - high enough to be efficient but with room for bursts.
