@@ -48,6 +48,7 @@ The `containers.podman.podman_image` module handles both pulling and building im
         src: app/
         dest: /tmp/build/myapp/
         mode: '0644'
+        directory_mode: '0755'
 
     - name: Create Containerfile
       ansible.builtin.copy:
@@ -68,7 +69,7 @@ The `containers.podman.podman_image` module handles both pulling and building im
           EXPOSE 8000
 
           HEALTHCHECK --interval=30s --timeout=5s \
-            CMD curl -f http://localhost:8000/health || exit 1
+            CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"
 
           CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:create_app()"]
 
@@ -104,6 +105,19 @@ Multi-stage builds keep your final image small by separating the build environme
     app_version: "2.0.0"
 
   tasks:
+    - name: Create build context directory
+      ansible.builtin.file:
+        path: /tmp/build
+        state: directory
+        mode: '0755'
+
+    - name: Copy application source to build context
+      ansible.builtin.copy:
+        src: app/
+        dest: /tmp/build/
+        mode: '0644'
+        directory_mode: '0755'
+
     - name: Create Containerfile with multi-stage build
       ansible.builtin.copy:
         dest: /tmp/build/Containerfile
@@ -295,7 +309,7 @@ After building, push the image to a registry:
         push_args:
           dest: "{{ registry }}/{{ image_name }}:{{ image_tag }}"
 
-    - name: Also tag and push as latest
+    - name: Also push as latest
       containers.podman.podman_image:
         name: "{{ registry }}/{{ image_name }}"
         tag: "{{ image_tag }}"
@@ -391,6 +405,11 @@ Builds produce a lot of cached layers. Clean up periodically:
     - name: Remove images older than 7 days
       ansible.builtin.command:
         cmd: podman image prune -a --filter until=168h -f
+      changed_when: true
+
+    - name: Remove build cache
+      ansible.builtin.command:
+        cmd: podman image prune --build-cache -f
       changed_when: true
 
     - name: Clean Buildah containers
