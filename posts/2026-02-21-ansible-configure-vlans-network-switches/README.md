@@ -186,7 +186,8 @@ Uplinks between switches need trunk ports that carry multiple VLANs. Here is how
           - name: GigabitEthernet0/24
             mode: trunk
             trunk:
-              allowed_vlans: "10,20,30,40,50,99"
+              allowed_vlans:
+                - "10,20,30,40,50,99"
               native_vlan: 99
               encapsulation: dot1q
         state: merged
@@ -198,7 +199,8 @@ Uplinks between switches need trunk ports that carry multiple VLANs. Here is how
           - name: GigabitEthernet0/23
             mode: trunk
             trunk:
-              allowed_vlans: "10,20,30,40,50,99"
+              allowed_vlans:
+                - "10,20,30,40,50,99"
               native_vlan: 99
               encapsulation: dot1q
         state: merged
@@ -233,7 +235,8 @@ voice_ports:
 
 trunk_ports:
   - name: GigabitEthernet0/23
-    allowed_vlans: "10,20,30,40,50,99"
+    allowed_vlans:
+      - "10,20,30,40,50,99"
     native_vlan: 99
     description: "Uplink to dist-sw01"
 
@@ -336,6 +339,9 @@ If you want to make sure switches have exactly the VLANs you define and no extra
         state: active
       - vlan_id: 40
         name: VOIP
+        state: active
+      - vlan_id: 50
+        name: PRINTERS
         state: active
       - vlan_id: 99
         name: NATIVE_VLAN
