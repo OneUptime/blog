@@ -14,7 +14,7 @@ This guide covers practical performance optimizations I have applied to dashboar
 
 ## Understanding Why Dashboards Are Slow
 
-Every chart in a Looker Studio report generates at least one BigQuery query. A typical dashboard page with 10 charts generates 10 separate queries every time someone opens the page. Change a filter, and all 10 queries run again.
+Every chart in a Looker Studio report backed by a live BigQuery data source can generate at least one BigQuery query. A typical dashboard page with 10 charts can generate 10 separate queries every time someone opens the page. Change a filter, and those charts can query again.
 
 The performance bottleneck is usually:
 
@@ -75,22 +75,23 @@ The refresh runs the BigQuery query once and updates the extract. Between refres
 
 There are important trade-offs:
 
-- **Maximum 100 million rows** per extract. If your data exceeds this, pre-aggregate in BigQuery.
-- **No custom SQL** in extracts. You must use a table or view as the source.
+- **Maximum 100 MB** per extract. If your data exceeds this, pre-aggregate in BigQuery.
+- **Maximum 750,000 rows** per extract. If your data exceeds this, pre-aggregate in BigQuery.
+- **Extracts are built from an existing data source.** Put complex shaping logic in the source query, table, or view before extracting.
 - **Fields are fixed** at extract creation. Adding a new field requires recreating the extract.
 - **Data freshness** depends on the refresh schedule. Users do not see real-time data.
 
 ## BigQuery BI Engine
 
-BI Engine is a BigQuery feature that caches query results in memory. It sits between Looker Studio and BigQuery, intercepting queries and serving results from its in-memory cache.
+BI Engine is BigQuery's in-memory analysis service. It accelerates eligible SQL queries by caching frequently used data in memory and using a vectorized execution engine.
 
 ```bash
-# Create a BI Engine reservation
+# Create or update a BI Engine reservation
 
-bq mk --bi_reservation --location=us --size=1G --project_id=my-project
+bq update --project_id=my-project --location=us --bi_reservation_size=1G
 ```
 
-BI Engine works transparently. You do not need to change your data sources or reports. Once the reservation is created, queries that fit in the cache are served from memory instead of running against BigQuery storage.
+BI Engine works transparently for Looker Studio reports that use supported BigQuery features. You do not need to change your data sources or reports. Once the reservation is created, eligible queries that fit in the reservation can be accelerated from memory.
 
 ```mermaid
 graph LR
@@ -103,7 +104,7 @@ graph LR
 
 Sizing your BI Engine reservation:
 
-- **1 GB** - Good for dashboards querying up to a few hundred million rows
+- **1 GB** - Good for small aggregated datasets or initial testing
 - **5 GB** - Handles most medium-sized analytics workloads
 - **10+ GB** - For large datasets with many concurrent users
 
@@ -111,7 +112,10 @@ You can monitor BI Engine usage:
 
 ```bash
 # Check BI Engine utilization
-bq show --bi_reservation --location=us --project_id=my-project
+bq query --use_legacy_sql=false '
+SELECT *
+FROM `region-us`.INFORMATION_SCHEMA.BI_CAPACITIES;
+'
 ```
 
 ## Optimizing BigQuery Tables
@@ -177,11 +181,11 @@ Each chart is an independent query. More charts means more queries and slower pa
 
 ## Caching Behavior
 
-Looker Studio has built-in caching with approximately 15-minute TTL. You can control this:
+Looker Studio has built-in caching. For BigQuery data sources, the default data freshness is 12 hours, and you can lower it to minutes or hours depending on how fresh the report needs to be:
 
 **Enable data freshness controls.** In your data source settings, enable "Data freshness" and set it to the maximum acceptable staleness. This tells Looker Studio it can serve cached results for longer.
 
-**Avoid dynamic date ranges for cache efficiency.** A filter for "Last 7 days" generates a different query each day, which misses the cache. Consider using fixed week boundaries instead (e.g., Monday to Sunday).
+**Avoid dynamic date ranges for cache efficiency.** A filter for "Last 7 days" changes as time moves forward, which can reduce cache reuse after the effective date range changes. Consider using fixed week boundaries instead (e.g., Monday to Sunday).
 
 **Use the refresh button.** Add a note to your dashboard telling users to click the refresh button if they need the latest data, rather than relying on every interaction hitting BigQuery.
 
@@ -223,7 +227,6 @@ FROM `my-project.region-us`.INFORMATION_SCHEMA.JOBS
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND statement_type = 'SELECT'
-  AND STARTS_WITH(user_email, 'service-')
 GROUP BY 1
 ORDER BY total_gb_processed DESC;
 ```
