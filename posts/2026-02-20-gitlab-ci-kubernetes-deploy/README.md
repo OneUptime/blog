@@ -37,14 +37,14 @@ Before you begin:
 
 ## Setting Up CI/CD Variables
 
-Configure these variables in GitLab under Settings > CI/CD > Variables.
+Configure your kubeconfig variable in GitLab under Settings > CI/CD > Variables. GitLab provides the container registry variables automatically when the project container registry is enabled.
 
 | Variable | Description | Masked | Protected |
 |----------|-------------|--------|-----------|
-| KUBE_CONFIG | Base64-encoded kubeconfig | Yes | Yes |
+| KUBE_CONFIG | Base64-encoded kubeconfig | Yes | Yes for staging/production; No if used by review environments |
 | KUBE_NAMESPACE | Target namespace | No | No |
-| REGISTRY_USER | Container registry username | No | No |
-| REGISTRY_PASSWORD | Container registry password | Yes | Yes |
+| CI_REGISTRY_USER | Predefined container registry username | N/A | N/A |
+| CI_REGISTRY_PASSWORD | Predefined container registry password | N/A | N/A |
 
 ## Basic Pipeline Configuration
 
@@ -84,7 +84,7 @@ build:
   stage: build
   before_script:
     # Log in to GitLab's container registry
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     # Build the Docker image with commit info labels
     - |
@@ -98,8 +98,9 @@ build:
     - docker push $IMAGE_NAME:$IMAGE_TAG
     - docker push $IMAGE_NAME:latest
   rules:
-    # Only build on pushes, not on merge requests (to avoid duplicate builds)
+    # Build on branch pipelines and merge request pipelines
     - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 ```
 
 ## Test Stage
