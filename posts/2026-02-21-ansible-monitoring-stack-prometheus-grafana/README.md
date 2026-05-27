@@ -10,7 +10,7 @@ Description: Deploy a complete monitoring stack with Prometheus for metrics coll
 
 Monitoring is not optional in production. You need to know when services go down, when disks fill up, and when response times spike before your users start complaining. Prometheus and Grafana together form the most popular open-source monitoring stack. Prometheus scrapes metrics from your services and stores them as time-series data, while Grafana turns those numbers into dashboards and alerts. Setting up both manually takes time and is hard to replicate across environments. Ansible solves that problem.
 
-This guide walks through deploying a complete Prometheus and Grafana monitoring stack with Ansible, including Node Exporter on all monitored hosts, alert rules, and pre-configured dashboards.
+This guide walks through deploying a complete Prometheus and Grafana monitoring stack with Ansible, including Node Exporter on all monitored hosts, alert rules, and a pre-configured Prometheus data source in Grafana.
 
 ## Architecture Overview
 
@@ -20,8 +20,6 @@ graph TD
     B[Node Exporter<br>Server 2] -->|:9100| P
     C[App Metrics<br>:8080/metrics] -->|:8080| P
     P --> G[Grafana<br>:3000]
-    P --> AM[Alertmanager<br>:9093]
-    AM --> S[Slack/Email]
 ```
 
 ## Role Defaults
@@ -32,12 +30,10 @@ graph TD
 prometheus_version: "2.48.0"
 grafana_version: "10.2.0"
 node_exporter_version: "1.7.0"
-alertmanager_version: "0.26.0"
 
 prometheus_port: 9090
 grafana_port: 3000
 node_exporter_port: 9100
-alertmanager_port: 9093
 
 prometheus_data_dir: /var/lib/prometheus
 prometheus_config_dir: /etc/prometheus
@@ -46,10 +42,6 @@ prometheus_scrape_interval: "15s"
 
 grafana_admin_user: admin
 grafana_admin_password: "{{ vault_grafana_admin_password }}"
-
-# Alertmanager configuration
-alertmanager_slack_webhook: "{{ vault_slack_webhook_url }}"
-alertmanager_slack_channel: "#alerts"
 ```
 
 ## Prometheus Installation Tasks
@@ -147,12 +139,6 @@ global:
 rule_files:
   - "rules/*.yml"
 
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-            - "localhost:{{ alertmanager_port }}"
-
 scrape_configs:
   # Prometheus self-monitoring
   - job_name: 'prometheus'
@@ -164,7 +150,7 @@ scrape_configs:
     static_configs:
       - targets:
 {% for host in groups['monitored'] %}
-          - '{{ hostvars[host].ansible_host }}:{{ node_exporter_port }}'
+          - '{{ hostvars[host].ansible_host | default(host) }}:{{ node_exporter_port }}'
 {% endfor %}
 
   # Grafana metrics
@@ -219,20 +205,27 @@ groups:
 ```yaml
 # roles/monitoring/tasks/grafana.yml - Install Grafana
 ---
+- name: Ensure APT keyring directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
 - name: Add Grafana GPG key
-  apt_key:
-    url: https://apt.grafana.com/gpg.key
-    state: present
+  get_url:
+    url: https://apt.grafana.com/gpg-full.key
+    dest: /etc/apt/keyrings/grafana.asc
+    mode: '0644'
 
 - name: Add Grafana repository
   apt_repository:
-    repo: "deb https://apt.grafana.com stable main"
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
     state: present
     filename: grafana
 
 - name: Install Grafana
   apt:
-    name: grafana
+    name: "grafana={{ grafana_version }}"
     state: present
     update_cache: yes
 
