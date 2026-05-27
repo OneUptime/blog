@@ -8,13 +8,13 @@ Description: Build real-time applications on App Engine Flexible Environment usi
 
 ---
 
-App Engine Standard does not support WebSockets because its request model is designed for short-lived HTTP request-response cycles. If you need persistent, bidirectional connections for real-time features like live chat, collaborative editing, or streaming dashboards, App Engine Flexible Environment is the way to go. Flex runs your application in Docker containers on Compute Engine VMs, which means long-lived connections work just fine.
+App Engine Standard does not support WebSockets because its request model is designed for short-lived HTTP request-response cycles. If you need persistent, bidirectional connections for real-time features like live chat, collaborative editing, or streaming dashboards, App Engine Flexible Environment is the way to go. Flex runs your application in Docker containers on Compute Engine VMs, which means long-lived connections work, subject to App Engine's WebSocket timeout.
 
 In this guide, I will walk through building a real-time application on App Engine Flex with WebSockets, covering the server setup, scaling considerations, and session management.
 
 ## Why App Engine Flex for WebSockets
 
-App Engine Flex handles WebSocket connections because it does not have the same request timeout constraints as Standard. Each Flex instance can maintain persistent connections for as long as the client stays connected. The load balancer in front of Flex supports WebSocket protocol upgrades, and connections can stay open for up to 24 hours.
+App Engine Flex handles WebSocket connections because it does not have the same request model constraints as Standard. Each Flex instance can maintain persistent connections until the client disconnects or App Engine's WebSocket timeout is reached. The load balancer in front of Flex supports WebSocket protocol upgrades, and established WebSocket connections time out after one hour.
 
 ## Setting Up the Server - Node.js with ws
 
@@ -50,10 +50,10 @@ wss.on("connection", (ws, req) => {
   }));
 
   // Handle incoming messages
-  ws.on("message", (data) => {
+  ws.on("message", async (data) => {
     try {
       const message = JSON.parse(data.toString());
-      handleMessage(clientId, message);
+      await handleMessage(clientId, message);
     } catch (err) {
       console.error("Invalid message format:", err.message);
     }
@@ -81,11 +81,11 @@ wss.on("connection", (ws, req) => {
   }, 30000); // Ping every 30 seconds
 });
 
-function handleMessage(clientId, message) {
+async function handleMessage(clientId, message) {
   switch (message.type) {
     case "broadcast":
       // Send message to all connected clients
-      broadcastMessage(clientId, message.data);
+      await broadcastMessage(clientId, message.data);
       break;
     case "direct":
       // Send message to a specific client
@@ -145,15 +145,15 @@ For Python applications, use the `websockets` library with `asyncio`:
 # server.py - Python WebSocket server for App Engine Flex
 
 import asyncio
-import websockets
 import json
 import os
-from aiohttp import web
+from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosed
 
 # Track connected clients
 connected_clients = {}
 
-async def websocket_handler(websocket, path):
+async def websocket_handler(websocket):
     """Handle WebSocket connections."""
     client_id = f"client-{id(websocket)}"
     connected_clients[client_id] = websocket
@@ -170,11 +170,11 @@ async def websocket_handler(websocket, path):
             data = json.loads(message)
             await handle_message(client_id, data)
 
-    except websockets.exceptions.ConnectionClosed:
+    except ConnectionClosed:
         pass
     finally:
         # Clean up on disconnect
-        del connected_clients[client_id]
+        connected_clients.pop(client_id, None)
 
 async def handle_message(sender_id, message):
     """Process incoming WebSocket messages."""
@@ -192,12 +192,12 @@ async def handle_message(sender_id, message):
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-# Run the WebSocket server
-port = int(os.environ.get("PORT", 8080))
-start_server = websockets.serve(websocket_handler, "0.0.0.0", port)
+async def main():
+    port = int(os.environ.get("PORT", 8080))
+    async with serve(websocket_handler, "0.0.0.0", port):
+        await asyncio.Future()
 
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+asyncio.run(main())
 ```
 
 ## App Engine Flex Configuration
@@ -209,7 +209,7 @@ Configure your `app.yaml` for WebSocket support:
 runtime: custom
 env: flex
 
-# Use session affinity so WebSocket connections stick to the same instance
+# Best-effort affinity for fallback HTTP long polling and reconnections
 network:
   session_affinity: true
 
@@ -244,7 +244,7 @@ env_variables:
   NODE_ENV: "production"
 ```
 
-The `session_affinity: true` setting is important. It ensures that once a client establishes a WebSocket connection to an instance, subsequent HTTP requests from the same client go to the same instance. Without this, reconnection attempts might hit a different instance.
+The `session_affinity: true` setting can help clients that fall back to HTTP long polling, and it can improve the chance that requests from the same browser go to the same instance. App Engine implements session affinity on a best-effort basis with cookies, so reconnection attempts can still hit a different instance. Do not rely on session affinity as the only mechanism for application state.
 
 ## Dockerfile for the Custom Runtime
 
@@ -255,7 +255,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY server.js ./
 
@@ -281,70 +281,80 @@ const { PubSub } = require("@google-cloud/pubsub");
 
 const pubsub = new PubSub();
 const TOPIC_NAME = "websocket-messages";
-const SUBSCRIPTION_NAME = `ws-instance-${process.env.GAE_INSTANCE || "local"}`;
+const INSTANCE_ID = process.env.GAE_INSTANCE || "local";
+const SUBSCRIPTION_NAME = `ws-instance-${INSTANCE_ID}`;
 
 let subscription;
 
-async function initPubSub() {
-  // Get or create the topic
-  const [topic] = await pubsub.topic(TOPIC_NAME).get({ autoCreate: true });
+function createPubSubBridge(clients, WebSocket) {
+  async function initPubSub() {
+    // Get or create the topic
+    const [topic] = await pubsub.topic(TOPIC_NAME).get({ autoCreate: true });
 
-  // Create a unique subscription for this instance
-  try {
-    [subscription] = await topic.createSubscription(SUBSCRIPTION_NAME);
-  } catch (err) {
-    // Subscription might already exist
-    [subscription] = await topic.subscription(SUBSCRIPTION_NAME).get();
+    // Create a unique subscription for this instance
+    try {
+      [subscription] = await topic.createSubscription(SUBSCRIPTION_NAME);
+    } catch (err) {
+      // Subscription might already exist
+      [subscription] = await topic.subscription(SUBSCRIPTION_NAME).get();
+    }
+
+    // Listen for messages from other instances
+    subscription.on("message", (msg) => {
+      const data = JSON.parse(msg.data.toString());
+
+      // Skip messages we published ourselves
+      if (data.sourceInstance === INSTANCE_ID) {
+        msg.ack();
+        return;
+      }
+
+      // Deliver to local clients
+      deliverToLocalClients(data);
+      msg.ack();
+    });
   }
 
-  // Listen for messages from other instances
-  subscription.on("message", (msg) => {
-    const data = JSON.parse(msg.data.toString());
+  async function publishMessage(messageData) {
+    // Add source instance identifier
+    const data = {
+      ...messageData,
+      sourceInstance: INSTANCE_ID
+    };
 
-    // Skip messages we published ourselves
-    if (data.sourceInstance === process.env.GAE_INSTANCE) {
-      msg.ack();
-      return;
-    }
+    const topic = pubsub.topic(TOPIC_NAME);
+    await topic.publishMessage({ data: Buffer.from(JSON.stringify(data)) });
+  }
 
-    // Deliver to local clients
-    deliverToLocalClients(data);
-    msg.ack();
-  });
+  function deliverToLocalClients(data) {
+    // Send to all local clients that should receive this message
+    const payload = JSON.stringify({
+      type: data.type,
+      senderId: data.senderId,
+      data: data.data
+    });
+
+    clients.forEach((ws, id) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+      }
+    });
+  }
+
+  return { initPubSub, publishMessage };
 }
 
-async function publishMessage(messageData) {
-  // Add source instance identifier
-  const data = {
-    ...messageData,
-    sourceInstance: process.env.GAE_INSTANCE || "local"
-  };
-
-  const topic = pubsub.topic(TOPIC_NAME);
-  await topic.publish(Buffer.from(JSON.stringify(data)));
-}
-
-function deliverToLocalClients(data) {
-  // Send to all local clients that should receive this message
-  const payload = JSON.stringify({
-    type: data.type,
-    senderId: data.senderId,
-    data: data.data
-  });
-
-  clients.forEach((ws, id) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(payload);
-    }
-  });
-}
-
-module.exports = { initPubSub, publishMessage };
+module.exports = { createPubSubBridge };
 ```
 
 Update the broadcast function to publish through Pub/Sub:
 
 ```javascript
+const { createPubSubBridge } = require("./pubsub-bridge");
+const { initPubSub, publishMessage } = createPubSubBridge(clients, WebSocket);
+
+initPubSub().catch(console.error);
+
 // Updated broadcast that works across multiple instances
 async function broadcastMessage(senderId, data) {
   // Deliver to local clients immediately
@@ -435,7 +445,7 @@ class RealtimeClient {
 }
 
 // Usage
-const client = new RealtimeClient("wss://your-project.appspot.com");
+const client = new RealtimeClient("wss://PROJECT_ID.REGION_ID.r.appspot.com");
 client.on("broadcast", (msg) => console.log("Broadcast:", msg.data));
 client.connect();
 ```
