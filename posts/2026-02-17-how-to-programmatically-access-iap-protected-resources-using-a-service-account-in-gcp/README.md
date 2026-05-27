@@ -49,6 +49,8 @@ gcloud compute backend-services describe my-backend-service \
 
 Save this client ID. It looks something like `123456789-abcdefg.apps.googleusercontent.com`.
 
+If this command returns an empty value, your application is likely using the Google-managed OAuth client. Programmatic access with an OIDC token is blocked by default for Google-managed OAuth clients; configure a programmatic OAuth client allowlist for the application, or use the service account signed JWT flow with the protected resource URL as the audience.
+
 ## Step 2: Grant the Service Account IAP Access
 
 The service account needs the `roles/iap.httpsResourceAccessor` role on the backend service.
@@ -173,7 +175,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 
 	"google.golang.org/api/idtoken"
 )
@@ -265,6 +266,7 @@ impersonated = impersonated_credentials.Credentials(
 id_token_creds = impersonated_credentials.IDTokenCredentials(
     target_credentials=impersonated,
     target_audience=IAP_CLIENT_ID,
+    include_email=True,
 )
 
 # Refresh to get the token
@@ -275,7 +277,7 @@ id_token_creds.refresh(auth_request)
 headers = {"Authorization": f"Bearer {id_token_creds.token}"}
 ```
 
-The source service account needs the `roles/iam.serviceAccountTokenCreator` role on the target service account.
+IAP requires the generated ID token to include the service account email claim. For this `google-auth` impersonation pattern, the source service account needs the `roles/iam.serviceAccountTokenCreator` role on the target service account.
 
 ## Common Mistakes
 
@@ -295,10 +297,11 @@ For local development, you can impersonate a service account without downloading
 # Impersonate a service account to get an ID token
 gcloud auth print-identity-token \
     --impersonate-service-account=my-automation@my-project-id.iam.gserviceaccount.com \
+    --include-email \
     --audiences=123456789-abcdefg.apps.googleusercontent.com
 ```
 
-This requires the `iam.serviceAccountTokenCreator` role on the service account.
+IAP requires the service account email claim in the generated ID token. The `gcloud --impersonate-service-account` flag requires the `roles/iam.serviceAccountTokenCreator` role on the service account.
 
 ## Summary
 
