@@ -131,7 +131,7 @@ The configuration file is tab-delimited, which is a common source of frustration
         owner: root
         group: root
         mode: '0644'
-        validate: "rsnapshot configtest"
+        validate: "rsnapshot -c %s configtest"
 
     # Create exclude file
     - name: Deploy exclude list
@@ -181,8 +181,11 @@ loglevel	3
 logfile	{{ rsnapshot_log }}
 lockfile	{{ rsnapshot_lockfile }}
 
-# Use lazy deletes to speed up rotations
+# Use rsync --link-dest for hard-linked snapshots
 link_dest	1
+
+# Use lazy deletes to speed up rotations
+use_lazy_deletes	1
 
 # Exclude file
 exclude_file	/etc/rsnapshot-exclude.conf
@@ -305,7 +308,7 @@ rsnapshot can also pull backups from remote servers over SSH. This is great for 
       ansible.posix.authorized_key:
         user: root
         key: "{{ backup_pubkey.content | b64decode }}"
-        key_options: 'command="/usr/bin/rsync --server --sender -vlHogDtprze.iLsfxCIvu . /",no-port-forwarding,no-X11-forwarding,no-pty'
+        key_options: 'no-port-forwarding,no-X11-forwarding,no-pty'
       delegate_to: "{{ item.ip }}"
       loop: "{{ remote_backup_targets }}"
 
@@ -315,6 +318,7 @@ rsnapshot can also pull backups from remote servers over SSH. This is great for 
         path: /etc/rsnapshot.conf
         marker: "# {mark} REMOTE BACKUPS - ANSIBLE MANAGED"
         block: |
+          ssh_args	-i /root/.ssh/rsnapshot_key -o IdentitiesOnly=yes
           {% for target in remote_backup_targets %}
           {% for path in target.paths %}
           backup	root@{{ target.ip }}:{{ path }}	{{ target.host }}/
@@ -446,6 +450,6 @@ From running rsnapshot across hundreds of servers:
 
 4. For database servers, dump the database to a file first, then let rsnapshot back up the dump. Backing up live database files with rsnapshot will give you corrupt backups.
 
-5. When doing remote backups, restrict the SSH key to rsync commands only using the `command=` option in authorized_keys. This limits what a compromised backup server can do on your production hosts.
+5. When doing remote backups, restrict the SSH key as much as possible. Options such as `no-port-forwarding`, `no-X11-forwarding`, and `no-pty` are a good baseline; for stricter command restriction, use an authorized_keys `command=` wrapper that validates `SSH_ORIGINAL_COMMAND` and only allows the rsync server commands rsnapshot actually requests.
 
 rsnapshot is not flashy, but it is dependable. Combined with Ansible, it gives you a fleet-wide backup solution that costs nothing, works reliably, and can be restored by anyone who understands filesystem directories.
