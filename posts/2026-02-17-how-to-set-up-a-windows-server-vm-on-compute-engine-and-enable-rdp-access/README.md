@@ -23,6 +23,8 @@ gcloud compute images list --project=windows-cloud --filter="family:windows"
 ```
 
 Common image families:
+- `windows-2025` - Windows Server 2025
+- `windows-2025-core` - Windows Server 2025 Core (no GUI)
 - `windows-2022` - Windows Server 2022
 - `windows-2022-core` - Windows Server 2022 Core (no GUI)
 - `windows-2019` - Windows Server 2019
@@ -109,8 +111,8 @@ gcloud compute firewall-rules create allow-rdp-from-iap \
 
 **Using the Cloud Console:**
 1. Go to Compute Engine > VM Instances
-2. Click the RDP button next to your Windows VM
-3. This opens an in-browser RDP session
+2. Copy the external IP address for your Windows VM
+3. Connect to that IP address with a Remote Desktop client, or use Chrome Remote Desktop if you have installed the Chrome Remote Desktop service on the VM
 
 **Using IAP tunnel (recommended for VMs without public IPs):**
 
@@ -160,12 +162,8 @@ resource "google_compute_instance" "windows" {
 
   # Windows-specific metadata
   metadata = {
-    # Enable WinRM for remote management
+    # Optional: install IIS
     windows-startup-script-ps1 = <<-EOF
-      # Enable WinRM for remote management
-      Enable-PSRemoting -Force
-      Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $true
-
       # Install IIS (optional)
       # Install-WindowsFeature -Name Web-Server -IncludeManagementTools
     EOF
@@ -238,13 +236,28 @@ C:\Program Files\Google\Compute Engine\agent\GCEWindowsAgent.log
 WinRM lets you run PowerShell commands on the Windows VM remotely, which is useful for automation:
 
 ```bash
-# Run a PowerShell command remotely via WinRM
-gcloud compute ssh windows-server \
-    --zone=us-central1-a \
-    --command="Get-Service | Where-Object {$_.Status -eq 'Running'}"
+# Allow WinRM over HTTPS from specific IP addresses
+gcloud compute firewall-rules create allow-winrm \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --source-ranges=YOUR_IP_ADDRESS/32 \
+    --target-tags=rdp-server \
+    --rules=tcp:5986
 ```
 
-Note that `gcloud compute ssh` on Windows VMs uses PowerShell over SSH (not the traditional Linux SSH).
+Then run the command from PowerShell on your workstation:
+
+```powershell
+$credentials = Get-Credential
+Invoke-Command -ComputerName 35.192.x.x `
+    -ScriptBlock { Get-Service | Where-Object {$_.Status -eq 'Running'} } `
+    -UseSSL `
+    -SessionOption (New-PSSessionOption -SkipCACheck -SkipCNCheck) `
+    -Credential $credentials
+```
+
+If you want to use `gcloud compute ssh` instead, enable Windows SSH first by installing the `google-compute-engine-ssh` package and setting `enable-windows-ssh=TRUE` in project or instance metadata.
 
 ## Installing SQL Server
 
