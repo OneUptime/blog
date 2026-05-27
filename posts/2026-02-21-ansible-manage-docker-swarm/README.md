@@ -87,7 +87,7 @@ The first manager node initializes the swarm. After that, other nodes join using
         advertise_addr: "{{ swarm_advertise_addr }}"
         listen_addr: "0.0.0.0:2377"
       register: swarm_init
-      when: swarm_info is failed or not swarm_info.can_talk_to_docker
+      when: not (swarm_info.docker_swarm_active | default(false))
 
     - name: Get manager join token
       community.docker.docker_swarm_info:
@@ -126,7 +126,7 @@ Once the first manager is up, additional managers and workers join using their r
         join_token: "{{ hostvars[first_manager]['manager_token'] }}"
         remote_addrs:
           - "{{ hostvars[first_manager]['manager_addr'] }}"
-      when: node_swarm_info is failed or not node_swarm_info.can_talk_to_docker
+      when: not (node_swarm_info.docker_swarm_active | default(false))
 ```
 
 ```yaml
@@ -151,12 +151,12 @@ Once the first manager is up, additional managers and workers join using their r
         join_token: "{{ hostvars[first_manager]['worker_token'] }}"
         remote_addrs:
           - "{{ hostvars[first_manager]['manager_addr'] }}"
-      when: node_swarm_info is failed or not node_swarm_info.can_talk_to_docker
+      when: not (node_swarm_info.docker_swarm_active | default(false))
 ```
 
 ## Full Cluster Setup Playbook
 
-Combine everything into a single master playbook:
+Combine everything into a single master playbook. This package task assumes Docker's apt repository has already been configured on the target hosts:
 
 ```yaml
 # setup_swarm_cluster.yml - Complete swarm cluster setup
@@ -167,7 +167,11 @@ Combine everything into a single master playbook:
   tasks:
     - name: Install Docker
       ansible.builtin.apt:
-        name: docker-ce
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - python3-docker
         state: present
         update_cache: true
 
@@ -281,6 +285,7 @@ Regular health checks help catch issues before they become outages:
       community.docker.docker_swarm_info:
         nodes: true
         services: true
+        verbose_output: true
       register: swarm_health
 
     - name: Report node status
@@ -371,11 +376,18 @@ When you need to take a node out of the cluster for maintenance:
       ansible.builtin.pause:
         seconds: 30
 
+    - name: Get target node ID
+      community.docker.docker_swarm_info:
+        nodes: true
+        verbose_output: true
+        nodes_filters:
+          name: "{{ target_node }}"
+      register: target_node_info
+
     - name: Remove node from swarm (from manager)
-      community.docker.docker_node:
-        hostname: "{{ target_node }}"
-        state: absent
-        force: true
+      community.docker.docker_swarm:
+        state: remove
+        node_id: "{{ target_node_info.nodes[0].ID }}"
 ```
 
 ## Summary
