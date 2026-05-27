@@ -14,8 +14,8 @@ This guide covers installing and managing SQL Server on Linux using Ansible.
 
 ## Prerequisites
 
-- Ansible 2.9+
-- Target servers running Ubuntu 20.04+ or RHEL 8+
+- Ansible 2.10+ with the `ansible.posix` collection installed
+- Target servers running Ubuntu 20.04 or 22.04, or RHEL 8 or 9 for SQL Server 2022
 - At least 4GB RAM (SQL Server minimum requirement is 2GB, but 4GB is practical)
 - 10GB+ free disk space
 
@@ -53,20 +53,28 @@ mssql_backup_dir=/var/opt/mssql/backup
     - name: Install prerequisite packages
       ansible.builtin.apt:
         name:
+          - ca-certificates
           - curl
           - gnupg
           - software-properties-common
         state: present
         update_cache: true
 
-    - name: Add Microsoft GPG key
-      ansible.builtin.apt_key:
+    - name: Ensure APT keyring directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Microsoft package signing key
+      ansible.builtin.get_url:
         url: https://packages.microsoft.com/keys/microsoft.asc
-        state: present
+        dest: /etc/apt/keyrings/microsoft.asc
+        mode: "0644"
 
     - name: Add SQL Server repository
       ansible.builtin.apt_repository:
-        repo: "deb https://packages.microsoft.com/ubuntu/{{ ansible_distribution_version }}/mssql-server-{{ mssql_version }} {{ ansible_distribution_release }} main"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/ubuntu/{{ ansible_distribution_version }}/mssql-server-{{ mssql_version }} {{ ansible_distribution_release }} main"
         state: present
         filename: mssql-server
 
@@ -79,7 +87,7 @@ mssql_backup_dir=/var/opt/mssql/backup
 
     - name: Run mssql-conf setup to accept EULA and set SA password
       ansible.builtin.command:
-        cmd: /opt/mssql/bin/mssql-conf setup
+        cmd: /opt/mssql/bin/mssql-conf -n setup
       environment:
         ACCEPT_EULA: "Y"
         MSSQL_SA_PASSWORD: "{{ vault_mssql_sa_password }}"
@@ -107,9 +115,21 @@ The command-line tools (`sqlcmd`, `bcp`) are in a separate package.
   become: true
 
   tasks:
+    - name: Ensure APT keyring directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Microsoft package signing key
+      ansible.builtin.get_url:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        dest: /etc/apt/keyrings/microsoft.asc
+        mode: "0644"
+
     - name: Add Microsoft tools repository
       ansible.builtin.apt_repository:
-        repo: "deb https://packages.microsoft.com/ubuntu/{{ ansible_distribution_version }}/prod {{ ansible_distribution_release }} main"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/ubuntu/{{ ansible_distribution_version }}/prod {{ ansible_distribution_release }} main"
         state: present
         filename: mssql-tools
 
@@ -143,11 +163,23 @@ Use `mssql-conf` to configure SQL Server settings.
   become: true
 
   tasks:
+    - name: Create required directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: mssql
+        group: mssql
+        mode: "0750"
+      loop:
+        - "{{ mssql_data_dir }}"
+        - "{{ mssql_log_dir }}"
+        - "{{ mssql_backup_dir }}"
+
     - name: Set TCP port
       ansible.builtin.command:
         cmd: /opt/mssql/bin/mssql-conf set network.tcpport {{ mssql_tcp_port }}
       register: port_config
-      changed_when: "'changed' in port_config.stdout"
+      changed_when: true
       notify: Restart SQL Server
 
     - name: Set default data directory
@@ -184,18 +216,6 @@ Use `mssql-conf` to configure SQL Server settings.
       register: memory_config
       changed_when: true
       notify: Restart SQL Server
-
-    - name: Create required directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: mssql
-        group: mssql
-        mode: "0750"
-      loop:
-        - "{{ mssql_data_dir }}"
-        - "{{ mssql_log_dir }}"
-        - "{{ mssql_backup_dir }}"
 
   handlers:
     - name: Restart SQL Server
@@ -275,6 +295,13 @@ Use `sqlcmd` to manage databases and users through Ansible.
           -Q "IF NOT EXISTS (SELECT name FROM sys.database_principals WHERE name = '{{ item.name }}')
               CREATE USER [{{ item.name }}] FOR LOGIN [{{ item.name }}];
               {% for role in item.roles %}
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM sys.database_role_members drm
+                  JOIN sys.database_principals r ON drm.role_principal_id = r.principal_id
+                  JOIN sys.database_principals m ON drm.member_principal_id = m.principal_id
+                  WHERE r.name = '{{ role }}' AND m.name = '{{ item.name }}'
+              )
               ALTER ROLE [{{ role }}] ADD MEMBER [{{ item.name }}];
               {% endfor %}"
       loop: "{{ mssql_users }}"
@@ -376,6 +403,9 @@ flowchart TD
     - ../vault/sqlserver-secrets.yml
   vars:
     timestamp: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+    mssql_databases:
+      - name: AppDatabase
+      - name: ReportingDB
 
   tasks:
     - name: Create full backup of each database
@@ -448,9 +478,9 @@ flowchart TD
         msg: "{{ db_list.stdout_lines }}"
 ```
 
-## RHEL/CentOS Installation
+## RHEL Installation
 
-For RHEL systems, the installation is similar with YUM.
+For RHEL systems, the installation is similar with DNF.
 
 ```yaml
 # tasks/install-sqlserver-rhel.yml
@@ -465,18 +495,18 @@ For RHEL systems, the installation is similar with YUM.
     enabled: true
 
 - name: Install SQL Server on RHEL
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: mssql-server
     state: present
 ```
 
 ## Production Tips
 
-1. **Set the memory limit explicitly.** SQL Server will consume all available memory by default. Set `memory.memorylimitmb` to leave at least 2GB for the OS.
+1. **Set the memory limit explicitly.** SQL Server uses 80% of physical memory by default on Linux. Set `memory.memorylimitmb` to leave enough memory for the OS and other services.
 
-2. **Use the `-C` flag with sqlcmd for self-signed certs.** SQL Server 2022 enables encryption by default. The `-C` flag trusts the server certificate.
+2. **Use the `-C` flag with sqlcmd for self-signed certs.** ODBC Driver 18 enables encryption by default. The `-C` flag trusts the server certificate.
 
-3. **Enable trace flags for best performance on Linux.** Trace flag 3979 can help with I/O performance on Linux file systems.
+3. **Enable trace flags only when they match your storage configuration.** Trace flag 3979 is recommended for FUA-capable storage that meets Microsoft's documented conditions; most other Linux configurations should use the default trace flag 3982 behavior and avoid enabling 3979.
 
 4. **Monitor with the standard Linux tools.** `top`, `iostat`, and `sar` work perfectly for tracking SQL Server resource usage on Linux.
 
