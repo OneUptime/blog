@@ -85,7 +85,7 @@ The first step in network security is to deny all traffic by default, then white
       loop: "{{ namespaces }}"
 ```
 
-The empty `podSelector: {}` matches all pods in the namespace. With no ingress or egress rules defined, everything is denied. Now you need to explicitly allow the traffic your applications require.
+The empty `podSelector: {}` matches all pods in the namespace. With no ingress or egress rules defined, ingress and egress connections covered by NetworkPolicy are denied, apart from traffic that Kubernetes always allows such as traffic from the pod's local node and reply traffic for allowed connections. Now you need to explicitly allow the traffic your applications require.
 
 ## Allowing DNS Resolution
 
@@ -148,7 +148,7 @@ Let's build a typical three-tier application policy where the frontend can talk 
     namespace: production
 
   tasks:
-    - name: Allow ingress to frontend from any source
+    - name: Allow ingress to frontend from the ingress controller namespace
       kubernetes.core.k8s:
         state: present
         definition:
@@ -339,14 +339,14 @@ Some pods need to reach external APIs. You can allow egress to specific CIDR ran
         policyTypes:
           - Egress
         egress:
-          # Allow HTTPS to the payment provider's IP range
+          # Allow HTTPS to an example payment provider IP range
           - to:
               - ipBlock:
                   cidr: 203.0.113.0/24
             ports:
               - protocol: TCP
                 port: 443
-          # Allow HTTPS to another payment endpoint
+          # Allow HTTPS to another example payment endpoint
           - to:
               - ipBlock:
                   cidr: 198.51.100.0/24
@@ -380,4 +380,4 @@ After applying policies, test that they work as expected.
 
 ## Summary
 
-Network Policies are one of the most impactful security controls you can apply in Kubernetes. They cost nothing to run, add no latency (the CNI handles them at the kernel level), and dramatically reduce the blast radius of a compromised pod. Start with default deny, allow DNS, then incrementally open the specific paths your applications need. Managing them through Ansible ensures your network security posture is consistent, auditable, and reproducible across clusters.
+Network Policies are one of the most impactful security controls you can apply in Kubernetes. They do not require application code changes, and enforcement is handled by the cluster's networking implementation, but performance characteristics depend on the CNI plugin. They dramatically reduce the blast radius of a compromised pod. Start with default deny, allow DNS, then incrementally open the specific paths your applications need. Managing them through Ansible ensures your network security posture is consistent, auditable, and reproducible across clusters.
