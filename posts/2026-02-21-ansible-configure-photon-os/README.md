@@ -8,19 +8,19 @@ Description: Configure VMware Photon OS with Ansible using tdnf package manageme
 
 ---
 
-Photon OS is VMware's minimalist Linux distribution designed for running containers and cloud-native workloads on VMware infrastructure. It uses `tdnf` (Tiny DNF) as its package manager and is optimized for vSphere, VMware Cloud, and Kubernetes environments. This guide covers Ansible automation for Photon OS.
+Photon OS is VMware's minimalist Linux distribution designed for running containers and cloud-native workloads on VMware infrastructure. It uses `tdnf` (Tiny Dandified Yum) as its package manager and is optimized for vSphere, VMware Cloud, and Kubernetes environments. This guide covers Ansible automation for Photon OS.
 
 ## Photon OS Specifics
 
 Key characteristics:
 
 - Uses `tdnf` (compatible with dnf/yum syntax)
-- Minimal base footprint (~300 MB)
+- Minimal package footprint
 - Optimized for VMware vSphere
-- Ships with Docker/containerd
+- Includes Docker and supports common container runtimes
 - systemd-based
 - Designed for container workloads
-- Three variants: minimal, developer, and real-time
+- Available as minimal, full/developer, OSTree, and real-time variants
 
 ## Inventory
 
@@ -176,18 +176,19 @@ Here are several practical scenarios where this module proves essential in real-
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
     - name: Install required packages
-      ansible.builtin.package:
-        name:
-          - curl
-          - wget
-          - git
-          - vim
-          - htop
-          - jq
-        state: present
+      ansible.builtin.command: "tdnf install -y {{ item }}"
+      loop:
+        - curl
+        - wget
+        - git
+        - vim
+        - htop
+        - jq
+      register: pkg_result
+      changed_when: "'Nothing to do' not in pkg_result.stdout"
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -210,20 +211,31 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
+    - name: Check firewall rules
+      ansible.builtin.command: "iptables -C INPUT -p tcp -m tcp --dport {{ item }} -j ACCEPT"
+      register: firewall_check
+      failed_when: false
+      changed_when: false
       loop:
         - "22"
         - "80"
         - "443"
 
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+    - name: Configure firewall rules
+      ansible.builtin.command: "iptables -A INPUT -p tcp -m tcp --dport {{ item.item }} -j ACCEPT"
+      loop: "{{ firewall_check.results }}"
+      when: item.rc != 0
+
+    - name: Persist firewall rules
+      ansible.builtin.command: iptables-save
+      register: iptables_save
+      changed_when: false
+
+    - name: Save persistent firewall rules
+      ansible.builtin.copy:
+        dest: /etc/systemd/scripts/ip4save
+        content: "{{ iptables_save.stdout }}\n"
+        mode: '0644'
 
   handlers:
     - name: restart sshd
@@ -306,6 +318,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -329,6 +347,5 @@ Here are several practical scenarios where this module proves essential in real-
         hour: "3"
         weekday: "1"
         job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        user: root
 ```
-
