@@ -66,7 +66,7 @@ gcloud iam service-accounts list --project=my-project --format="table(email, dis
 # Check for service account keys (should be minimal)
 for sa in $(gcloud iam service-accounts list --project=my-project --format='value(email)'); do
   echo "Keys for ${sa}:"
-  gcloud iam service-accounts keys list --iam-account=$sa --format="table(keyId, validAfterTime, keyType)"
+  gcloud iam service-accounts keys list --iam-account=$sa --format="table(name.scope(keys):label=KEY_ID, validAfterTime, validBeforeTime, keyType)"
 done
 ```
 
@@ -117,7 +117,7 @@ gcloud monitoring policies list --project=my-project --format=json > evidence/al
 gcloud monitoring uptime list-configs --project=my-project --format=json > evidence/uptime-checks.json
 
 # Evidence: Show Security Command Center is active
-gcloud scc settings describe --organization=123456789 --format=json > evidence/scc-settings.json
+gcloud scc manage services list --organization=123456789 --format=json > evidence/scc-services.json
 ```
 
 ### CC7.2 - Incident Detection and Response
@@ -149,11 +149,11 @@ gcloud compute instances list --format="table(name, zone, status, machineType)" 
 # Evidence: Show load balancer configuration
 gcloud compute forwarding-rules list --format=json > evidence/load-balancers.json
 
-# Evidence: Show auto-scaling configuration
-gcloud compute instance-groups managed list --format=json > evidence/autoscaling.json
+# Evidence: Show managed instance groups and autoscaler references
+gcloud compute instance-groups managed list --format=json > evidence/managed-instance-groups.json
 
 # Evidence: Show backup configurations
-gcloud sql instances list --format="table(name, backupConfiguration.enabled, backupConfiguration.startTime)" > evidence/sql-backups.txt
+gcloud sql instances list --format="table(name, settings.backupConfiguration.enabled, settings.backupConfiguration.startTime)" > evidence/sql-backups.txt
 ```
 
 ### A1.2 - Recovery and Business Continuity
@@ -177,7 +177,7 @@ gcloud storage buckets describe gs://my-critical-bucket \
 gcloud kms keys list --keyring=my-keyring --location=us-central1 --format=json > evidence/kms-keys.json
 
 # Evidence: Show encryption status of storage
-gcloud storage buckets list --format="table(name, defaultKmsKeyName)" > evidence/bucket-encryption.txt
+gcloud storage buckets list --format="table(name, default_kms_key)" > evidence/bucket-encryption.txt
 
 # Evidence: Show VPC Service Controls
 gcloud access-context-manager perimeters list --policy=POLICY_ID --format=json > evidence/vpc-service-controls.json
@@ -267,7 +267,7 @@ gcloud logging metrics create firewall-changes \
 # Create alert for encryption key changes
 gcloud logging metrics create kms-key-changes \
   --description="Tracks KMS key modifications" \
-  --log-filter='resource.type="cloudkms_cryptokey" AND protoPayload.methodName=("DestroyCryptoKeyVersion" OR "DisableCryptoKeyVersion")' \
+  --log-filter='protoPayload.serviceName="cloudkms.googleapis.com" AND (protoPayload.methodName="DestroyCryptoKeyVersion" OR protoPayload.methodName="UpdateCryptoKeyVersion" OR protoPayload.methodName="UpdateCryptoKeyPrimaryVersion" OR protoPayload.methodName="UpdateCryptoKey")' \
   --project=my-project
 ```
 
@@ -281,7 +281,7 @@ After going through several SOC 2 audits with Google Cloud infrastructure, here 
 
 3. **Map controls to Google Cloud services** - create a clear control matrix that shows exactly which Google Cloud feature implements each SOC 2 requirement.
 
-4. **Use Infrastructure as Code** - Terraform or Deployment Manager configurations are excellent evidence for change management controls.
+4. **Use Infrastructure as Code** - Terraform or Infrastructure Manager configurations are excellent evidence for change management controls.
 
 5. **Maintain a change log** - Git history of your IaC repositories serves as change management evidence.
 
