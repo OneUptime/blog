@@ -298,12 +298,12 @@ For additional security, sign your charts with Helm provenance:
 
 ```bash
 # Package and sign the chart
-helm package --sign --key 'my-key' --keyring ~/.gnupg/pubring.gpg my-app-chart/
+helm package --sign --key 'my-key' --keyring ~/.gnupg/secring.gpg my-app-chart/
 
-# Push both the chart and the provenance file
+# Push the chart. Helm uploads the .prov file too if it is next to the .tgz file.
 helm push my-app-chart-1.0.0.tgz oci://us-central1-docker.pkg.dev/my-project/helm-charts
 ```
 
 ## Wrapping Up
 
-Storing Helm charts in Artifact Registry using OCI format is clean and straightforward. You use Docker repositories with standard Helm push and pull commands. No separate chart museum server needed. The same IAM, vulnerability scanning, and cleanup policies that work for Docker images work for your Helm charts too. It all lives in one place, managed by one set of tools.
+Storing Helm charts in Artifact Registry using OCI format is clean and straightforward. You use Docker repositories with standard Helm push and pull commands. No separate chart museum server needed. The same IAM and cleanup policies that work for Docker repositories work for your Helm charts too. It all lives in one place, managed by one set of tools.
