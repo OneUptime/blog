@@ -19,11 +19,11 @@ graph TD
     subgraph "firewalld Zones"
         A[public zone] --> A1[eth0 - Internet facing]
         B[internal zone] --> B1[eth1 - App network]
-        C[trusted zone] --> C1[eth2 - Management]
+        C[management zone] --> C1[eth2 - Management]
     end
     A1 --> D[HTTP/HTTPS only]
     B1 --> E[App ports + monitoring]
-    C1 --> F[SSH + full access]
+    C1 --> F[SSH + monitoring]
 ```
 
 ## Variables
@@ -137,11 +137,38 @@ firewalld_role_rich_rules:
     state: started
     enabled: yes
 
+- name: Get current default zone
+  ansible.builtin.command:
+    cmd: firewall-cmd --get-default-zone
+  register: current_default_zone
+  changed_when: false
+
 - name: Set default zone
   ansible.builtin.command:
     cmd: "firewall-cmd --set-default-zone={{ firewalld_default_zone }}"
-  register: default_zone_result
-  changed_when: "'ZONE_ALREADY_SET' not in default_zone_result.stderr"
+  when: current_default_zone.stdout != firewalld_default_zone
+
+- name: Ensure configured zones exist
+  ansible.posix.firewalld:
+    zone: "{{ item.name }}"
+    state: present
+    permanent: yes
+  loop: "{{ firewalld_zones | default([]) }}"
+  register: configured_zones
+
+- name: Reload firewalld after zone creation
+  ansible.builtin.command:
+    cmd: firewall-cmd --reload
+  when: configured_zones is changed
+
+- name: Configure zone targets
+  ansible.posix.firewalld:
+    zone: "{{ item.name }}"
+    target: "{{ item.target }}"
+    state: present
+    permanent: yes
+  loop: "{{ firewalld_zones | default([]) }}"
+  when: item.target is defined
 
 # Assign interfaces to zones
 - name: Assign interfaces to zones
@@ -259,7 +286,7 @@ Create custom firewalld service definitions for application-specific ports.
 The custom service XML template.
 
 ```jinja2
-# roles/firewalld/templates/custom-service.xml.j2
+{# roles/firewalld/templates/custom-service.xml.j2 #}
 <?xml version="1.0" encoding="utf-8"?>
 <service>
   <short>{{ item.short_name | default(item.name) }}</short>
@@ -277,7 +304,8 @@ The custom service XML template.
 ---
 - name: Configure port forwarding rules
   ansible.posix.firewalld:
-    rich_rule: 'rule family="ipv4" forward-port port="{{ item.source_port }}" protocol="{{ item.protocol }}" to-port="{{ item.dest_port }}" to-addr="{{ item.dest_addr | default("") }}"'
+    rich_rule: >-
+      rule family="ipv4" forward-port port="{{ item.source_port }}" protocol="{{ item.protocol }}" to-port="{{ item.dest_port }}"{% if item.dest_addr is defined %} to-addr="{{ item.dest_addr }}"{% endif %}
     zone: "{{ item.zone | default(firewalld_default_zone) }}"
     permanent: yes
     immediate: yes
