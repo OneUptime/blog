@@ -22,20 +22,22 @@ The fastest way to get Jupyter on Dataproc is to include it as an optional compo
 gcloud dataproc clusters create jupyter-cluster \
   --region=us-central1 \
   --zone=us-central1-a \
-  --image-version=2.1-debian11 \
+  --image-version=2.3-debian12 \
   --optional-components=JUPYTER \
   --enable-component-gateway \
   --num-workers=2 \
   --worker-machine-type=n2-standard-4 \
   --master-machine-type=n2-standard-4 \
-  --bucket=my-notebooks-bucket
+  --bucket=my-notebooks-bucket \
+  --properties=dataproc:jupyter.notebook.gcs.dir=gs://my-notebooks-bucket/notebooks/jupyter/
 ```
 
 Key flags explained:
 
 - `--optional-components=JUPYTER` installs JupyterLab on the cluster
 - `--enable-component-gateway` exposes the Jupyter UI through a secure proxy in the Cloud Console
-- `--bucket` specifies where notebooks are stored in GCS (so they survive cluster deletion)
+- `--bucket` specifies the Dataproc staging bucket
+- `--properties=dataproc:jupyter.notebook.gcs.dir=...` specifies where notebooks are stored in GCS (so they survive cluster deletion)
 
 ## Step 2: Access the Jupyter Interface
 
@@ -111,7 +113,7 @@ For packages that need to be available on all worker nodes (not just the driver)
 # Create a cluster with additional Python packages pre-installed
 gcloud dataproc clusters create jupyter-cluster \
   --region=us-central1 \
-  --image-version=2.1-debian11 \
+  --image-version=2.3-debian12 \
   --optional-components=JUPYTER \
   --enable-component-gateway \
   --metadata="PIP_PACKAGES=plotly seaborn scikit-learn pandas-gbq" \
@@ -183,7 +185,7 @@ for item in sorted(spark.sparkContext.getConf().getAll()):
 
 ## Step 7: Save Notebooks to Cloud Storage
 
-When you specify a `--bucket` during cluster creation, notebooks are automatically saved to GCS. This means your work persists even if the cluster is deleted.
+By default, Dataproc saves notebooks to GCS in the cluster staging bucket. In the cluster creation example above, the `dataproc:jupyter.notebook.gcs.dir` property sets an explicit notebook location. This means your work persists even if the cluster is deleted.
 
 The notebooks are stored at:
 ```text
