@@ -17,14 +17,14 @@ In this post, I will show you how to set up generative AI features in Dialogflow
 Dialogflow CX generative AI features sit alongside the traditional flow-based architecture. You get the best of both worlds:
 
 - **Deterministic flows** handle well-defined use cases (order lookup, account changes, returns) where you need predictable behavior
-- **Generative fallback** handles everything else using an LLM grounded in your company's knowledge base
+- **Generative fallback and data store tools** handle long-tail conversational turns, with data store tools grounding answers in your company's knowledge base
 
 ```mermaid
 graph TD
     A[User Input] --> B{Intent Matched?}
     B -->|Yes - High Confidence| C[Deterministic Flow<br/>Predefined Response]
-    B -->|No - Low Confidence| D[Generative AI Agent]
-    D --> E[Knowledge Base<br/>Grounding]
+    B -->|No - Low Confidence| D[Generative Fallback<br/>or Data Store Tool]
+    D --> E[Data Store<br/>Grounding when configured]
     D --> F[LLM Response<br/>Generation]
     E --> F
     F --> G[Safety Filters]
@@ -35,33 +35,51 @@ graph TD
 ## Prerequisites
 
 - A Dialogflow CX agent with existing flows
-- Vertex AI API enabled
+- Dialogflow API and Discovery Engine API enabled
 - Knowledge base documents (FAQs, product docs, help articles)
-- Generative AI features enabled for your agent
+- Access to the agent's Generative AI settings
 
 ## Step 1: Enable Generative AI Features
 
-Enable the generative AI features on your Dialogflow CX agent. This unlocks LLM-powered responses, generative fallback, and data store-grounded answers.
+Configure the generative fallback settings on your Dialogflow CX agent. This controls the prompt used when a no-match handler has generative fallback enabled.
 
 ```python
 from google.cloud import dialogflowcx_v3
+from google.protobuf import field_mask_pb2
 
 def enable_generative_features(agent_name):
-    """Enables generative AI features on a Dialogflow CX agent."""
+    """Configures generative fallback settings on a Dialogflow CX agent."""
     client = dialogflowcx_v3.AgentsClient()
 
-    agent = client.get_agent(name=agent_name)
-
-    # Enable generative AI settings
-    agent.gen_app_builder_settings = dialogflowcx_v3.Agent.GenAppBuilderSettings(
-        engine="projects/my-project/locations/us-central1/collections/default_collection/engines/my-engine",
+    generative_settings_name = f"{agent_name}/generativeSettings"
+    settings = client.get_generative_settings(
+        name=generative_settings_name,
+        language_code="en",
     )
 
-    client.update_agent(
-        agent=agent,
-        update_mask={"paths": ["gen_app_builder_settings"]},
+    settings.fallback_settings = dialogflowcx_v3.GenerativeSettings.FallbackSettings(
+        selected_prompt="Support fallback",
+        prompt_templates=[
+            dialogflowcx_v3.GenerativeSettings.FallbackSettings.PromptTemplate(
+                display_name="Support fallback",
+                prompt_text=(
+                    "You are a concise support assistant. Use the conversation "
+                    "context and the last user message to answer helpfully. "
+                    "If the user asks for account-specific actions, ask them "
+                    "to continue in the appropriate support flow.\n\n"
+                    "Conversation: $conversation\n"
+                    "User: $last-user-utterance\n"
+                    "Relevant routes: $route-descriptions"
+                ),
+            )
+        ],
     )
-    print("Generative AI features enabled")
+
+    client.update_generative_settings(
+        generative_settings=settings,
+        update_mask=field_mask_pb2.FieldMask(paths=["fallback_settings"]),
+    )
+    print("Generative fallback settings configured")
 
 enable_generative_features(
     "projects/my-project/locations/us-central1/agents/AGENT_ID"
@@ -76,12 +94,24 @@ First, create a Vertex AI Search data store and populate it with your documents:
 
 ```python
 from google.cloud import discoveryengine_v1
+from google.api_core.client_options import ClientOptions
 
 def create_data_store(project_id, location, data_store_id):
     """Creates a data store for knowledge grounding."""
-    client = discoveryengine_v1.DataStoreServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine_v1.DataStoreServiceClient(
+        client_options=client_options
+    )
 
-    parent = f"projects/{project_id}/locations/{location}/collections/default_collection"
+    parent = client.collection_path(
+        project=project_id,
+        location=location,
+        collection="default_collection",
+    )
 
     data_store = discoveryengine_v1.DataStore(
         display_name="Customer Support Knowledge Base",
@@ -136,20 +166,17 @@ def import_documents(project_id, data_store_id, gcs_uri):
 import_documents("my-project", "support-knowledge-base", "gs://my-docs-bucket/support-docs/*")
 ```
 
+After the documents are indexed, connect the data store to your Dialogflow CX agent by creating a data store tool in the Conversational Agents console, or by adding data store connections through the API. The data store is what grounds knowledge responses; generative fallback by itself only uses the configured fallback prompt and conversation context.
+
 ## Step 3: Configure the Generative Fallback
 
-Set up the generative fallback handler so that when no intent matches with high confidence, the LLM generates a response grounded in your knowledge base.
+Set up the generative fallback handler so that when no intent matches with high confidence, Dialogflow CX can generate a response from the fallback prompt and conversation context. Use a data store tool or data store handler when the response must be grounded in your knowledge base.
 
 ```python
 from google.cloud import dialogflowcx_v3
 
-def configure_generative_fallback(agent_name, data_store_name):
+def configure_generative_fallback(agent_name):
     """Configures generative fallback for unmatched queries."""
-    client = dialogflowcx_v3.AgentsClient()
-
-    agent = client.get_agent(name=agent_name)
-
-    # Configure the default start flow to use generative fallback
     flows_client = dialogflowcx_v3.FlowsClient()
     default_flow_name = f"{agent_name}/flows/00000000-0000-0000-0000-000000000000"
     default_flow = flows_client.get_flow(name=default_flow_name)
@@ -181,37 +208,42 @@ def configure_generative_fallback(agent_name, data_store_name):
 
 ## Step 4: Set Up Conversation Persona and Instructions
 
-Control how the LLM behaves by setting a persona and providing instructions. This is crucial for keeping the agent on-brand and on-topic.
+Control how the LLM behaves by setting knowledge connector settings and fallback prompts. This is crucial for keeping the agent on-brand and on-topic.
 
 ```python
 from google.cloud import dialogflowcx_v3
+from google.protobuf import field_mask_pb2
 
 def configure_agent_persona(agent_name):
     """Sets up the generative agent's persona and behavioral instructions."""
     client = dialogflowcx_v3.AgentsClient()
 
-    agent = client.get_agent(name=agent_name)
-
-    # Set the agent's generative settings
-    agent.gen_app_builder_settings = dialogflowcx_v3.Agent.GenAppBuilderSettings(
-        engine=(
-            "projects/my-project/locations/global"
-            "/collections/default_collection/engines/support-engine"
-        ),
+    generative_settings_name = f"{agent_name}/generativeSettings"
+    settings = client.get_generative_settings(
+        name=generative_settings_name,
+        language_code="en",
     )
 
-    # Note: Persona configuration is typically done in the console
-    # under Agent Settings > ML > Generative AI
-    # Here we demonstrate the key settings:
+    settings.knowledge_connector_settings = (
+        dialogflowcx_v3.GenerativeSettings.KnowledgeConnectorSettings(
+            business="Acme Inc.",
+            agent="Acme Support Assistant",
+            agent_identity="virtual customer support assistant",
+            business_description="a company that provides Acme products and services",
+            agent_scope="Acme customer support documentation",
+        )
+    )
 
-    client.update_agent(
-        agent=agent,
-        update_mask={"paths": ["gen_app_builder_settings"]},
+    client.update_generative_settings(
+        generative_settings=settings,
+        update_mask=field_mask_pb2.FieldMask(
+            paths=["knowledge_connector_settings"]
+        ),
     )
     print("Agent persona configured")
 ```
 
-In the Dialogflow CX console, navigate to Agent Settings > Generative AI and configure:
+In the Dialogflow CX console, navigate to Agent Settings > Generative AI and configure the generative fallback prompt and knowledge connector settings:
 
 ```text
 Agent Name: Acme Support Assistant
@@ -232,28 +264,50 @@ Generative responses need guardrails to prevent off-topic responses, hallucinati
 
 ```python
 from google.cloud import dialogflowcx_v3
+from google.protobuf import field_mask_pb2
 
 def configure_safety_settings(agent_name):
     """Configures safety and content filtering for generative responses."""
     client = dialogflowcx_v3.AgentsClient()
-    agent = client.get_agent(name=agent_name)
 
-    # Safety settings are configured through the agent's generative settings
-    # These include:
-    # - Banned phrases that should never appear in responses
-    # - Topic restrictions to keep the agent focused
-    # - Content safety thresholds
+    generative_settings_name = f"{agent_name}/generativeSettings"
+    settings = client.get_generative_settings(
+        name=generative_settings_name,
+        language_code="en",
+    )
 
-    # Configure banned phrases via the console or API
-    # These prevent the agent from generating certain content
-    print("Safety settings should be configured in the console under:")
-    print("Agent Settings > Generative AI > Safety")
-    print("")
-    print("Recommended banned phrases:")
-    print("- Competitor product names")
-    print("- Legal advice language")
-    print("- Medical advice language")
-    print("- Pricing guarantees")
+    settings.generative_safety_settings = dialogflowcx_v3.SafetySettings(
+        default_banned_phrase_match_strategy=(
+            dialogflowcx_v3.SafetySettings.PhraseMatchStrategy.WORD_MATCH
+        ),
+        banned_phrases=[
+            dialogflowcx_v3.SafetySettings.Phrase(
+                text="guaranteed pricing",
+                language_code="en",
+            ),
+            dialogflowcx_v3.SafetySettings.Phrase(
+                text="legal advice",
+                language_code="en",
+            ),
+            dialogflowcx_v3.SafetySettings.Phrase(
+                text="medical advice",
+                language_code="en",
+            ),
+        ],
+        prompt_security_settings=(
+            dialogflowcx_v3.SafetySettings.PromptSecuritySettings(
+                enable_prompt_security=True,
+            )
+        ),
+    )
+
+    client.update_generative_settings(
+        generative_settings=settings,
+        update_mask=field_mask_pb2.FieldMask(
+            paths=["generative_safety_settings"]
+        ),
+    )
+    print("Generative safety settings configured")
 
 configure_safety_settings(
     "projects/my-project/locations/us-central1/agents/AGENT_ID"
@@ -262,7 +316,7 @@ configure_safety_settings(
 
 ## Step 6: Blend Deterministic and Generative Responses
 
-The real power comes from combining structured flows with generative capabilities. Use deterministic flows for transactional operations and generative responses for informational queries.
+The real power comes from combining structured flows with generative capabilities. Use deterministic flows for transactional operations, data store tools for grounded informational queries, and generative fallback for no-match recovery.
 
 Here is a pattern for routing between the two:
 
@@ -288,19 +342,21 @@ def create_hybrid_routing(agent_name, default_flow_name):
         transition_routes=[
             # High-confidence transactional intents go to deterministic flows
             dialogflowcx_v3.TransitionRoute(
-                intent="projects/.../intents/check-order-status",
-                target_flow="projects/.../flows/order-status-flow",
+                intent=f"{agent_name}/intents/CHECK_ORDER_STATUS_INTENT_ID",
+                target_flow=f"{agent_name}/flows/ORDER_STATUS_FLOW_ID",
             ),
             dialogflowcx_v3.TransitionRoute(
-                intent="projects/.../intents/return-item",
-                target_flow="projects/.../flows/returns-flow",
+                intent=f"{agent_name}/intents/RETURN_ITEM_INTENT_ID",
+                target_flow=f"{agent_name}/flows/RETURNS_FLOW_ID",
             ),
             dialogflowcx_v3.TransitionRoute(
-                intent="projects/.../intents/billing-question",
-                target_flow="projects/.../flows/billing-flow",
+                intent=f"{agent_name}/intents/BILLING_QUESTION_INTENT_ID",
+                target_flow=f"{agent_name}/flows/BILLING_FLOW_ID",
             ),
         ],
-        # For everything else, the generative fallback kicks in
+        # For everything else, the generative fallback kicks in.
+        # For grounded knowledge answers, attach a data store tool response
+        # to the relevant route or page fulfillment in the console or API.
         event_handlers=[
             dialogflowcx_v3.EventHandler(
                 event="sys.no-match-default",
@@ -328,7 +384,8 @@ from google.cloud import dialogflowcx_v3
 
 def get_conversation_analytics(agent_name):
     """Retrieves conversation analytics to identify improvement areas."""
-    # Use the Dialogflow CX API to export conversation history
+    # Use conversation history, BigQuery export, or the V3beta1
+    # ConversationHistory API to analyze conversations.
     # Then analyze it for:
     # 1. Queries that triggered generative fallback - add intents for common ones
     # 2. Low-confidence generative responses - add to knowledge base
@@ -340,10 +397,11 @@ def get_conversation_analytics(agent_name):
     print("- Containment rate (conversations resolved without human agent)")
     print("- Response relevance scores")
     print("")
-    print("Export conversations from:")
-    print(f"Dialogflow CX Console > {agent_name} > Conversation History")
+    print("Use:")
+    print(f"Dialogflow CX Console > {agent_name} > Manage > Conversation History")
+    print("or enable interaction logging export to BigQuery for larger analysis")
 ```
 
 ## Summary
 
-Generative AI agents in Dialogflow CX give you a safety net for the long tail of customer queries that you cannot anticipate with predefined intents. The key is grounding the LLM in your own data so it gives accurate, brand-appropriate answers, and setting up clear guardrails through persona instructions, banned phrases, and safety filters. Use deterministic flows for transactional operations where you need predictable behavior, and let the generative fallback handle informational queries. Monitor the generative responses closely at first, and gradually expand the knowledge base based on what customers are actually asking about.
+Generative AI agents in Dialogflow CX give you a safety net for the long tail of customer queries that you cannot anticipate with predefined intents. The key is using data store tools to ground knowledge answers in your own data, and setting up clear guardrails through persona instructions, banned phrases, and safety filters. Use deterministic flows for transactional operations where you need predictable behavior, data store tools for informational queries, and generative fallback for no-match recovery. Monitor the generative responses closely at first, and gradually expand the knowledge base based on what customers are actually asking about.
