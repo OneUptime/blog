@@ -113,7 +113,7 @@ spec:
     - 10.0.100.0/24
   serviceAllocation:
     # Lower priority number means higher priority
-    # This pool is used only when no namespace-specific pool matches
+    # This pool is considered after higher-priority namespace-specific pools
     priority: 100
 ```
 
@@ -168,7 +168,7 @@ sequenceDiagram
     Svc->>MLB: Request LoadBalancer IP
     MLB->>PA: Check namespace match (team-a)
     PA-->>MLB: Match - allocate 10.0.1.1
-    Note over MLB: Skips team-b-ips and default-ips
+    Note over MLB: Uses the highest-priority matching pool with available IPs
     MLB-->>Svc: Assigned 10.0.1.1
 ```
 
@@ -177,17 +177,17 @@ sequenceDiagram
 ## Testing the Scoping
 
 ```bash
-# Deploy a service in the frontend namespace
-kubectl -n frontend expose deployment web --type=LoadBalancer --port=80
+# Deploy a service in the team-a namespace
+kubectl -n team-a expose deployment web --type=LoadBalancer --port=80
 
-# Check that it got an IP from 10.0.10.0/28
-kubectl -n frontend get svc web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Check that it got an IP from 10.0.1.0/28
+kubectl -n team-a get svc web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
-# Deploy a service in the backend namespace
-kubectl -n backend expose deployment api --type=LoadBalancer --port=8080
+# Deploy a service in the team-b namespace
+kubectl -n team-b expose deployment api --type=LoadBalancer --port=8080
 
-# Check that it got an IP from 10.0.20.0/28
-kubectl -n backend get svc api -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Check that it got an IP from 10.0.2.0/28
+kubectl -n team-b get svc api -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 ```
 
 ---
@@ -199,7 +199,7 @@ kubectl -n backend get svc api -o jsonpath='{.status.loadBalancer.ingress[0].ip}
 | Namespace not labeled | Service falls through to default pool | Add the correct labels |
 | Typo in namespace name | Pool never matches | Verify with `kubectl get ns` |
 | No default pool | Services in unlisted namespaces stay Pending | Create a catch-all pool with high priority number |
-| Same priority on all pools | Undefined allocation order | Use distinct priority values |
+| Same priority on all pools | Random allocation order | Use distinct priority values |
 
 ---
 
