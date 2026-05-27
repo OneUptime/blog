@@ -159,6 +159,7 @@ Always validate before deploying to production:
         cmd: "npm run test:smoke -- --env=production --base-url=https://{{ production_domain }}"
       register: smoke_tests
       changed_when: false
+      failed_when: false
 
     - name: Update release tracking
       ansible.builtin.uri:
@@ -184,7 +185,7 @@ Prevent concurrent releases:
 
 ```yaml
 # roles/release_lock/tasks/main.yml
-# Acquire and release deployment locks
+# Acquire deployment locks
 ---
 - name: Check for existing lock
   ansible.builtin.uri:
@@ -203,11 +204,19 @@ Prevent concurrent releases:
     url: "{{ consul_url }}/v1/kv/deploy-lock/{{ app_name }}?acquire={{ session_id }}"
     method: PUT
     body: "{{ ansible_user_id }}@{{ ansible_date_time.iso8601 }}"
+    return_content: true
+  register: lock_acquire
+
+- name: Fail if release lock was not acquired
+  ansible.builtin.assert:
+    that:
+      - lock_acquire.content | trim == 'true'
+    fail_msg: "Could not acquire release lock for {{ app_name }}"
 ```
 
 ## Blue-Green Deployment Alternative
 
-For zero-downtime releases with instant rollback:
+For zero-downtime releases with a fast load balancer switch:
 
 ```yaml
 # playbooks/blue-green-release.yml
@@ -217,7 +226,7 @@ For zero-downtime releases with instant rollback:
   hosts: localhost
   connection: local
   vars:
-    current_color: "{{ lookup('file', '/opt/deploy/current_color') | default('blue') }}"
+    current_color: "{{ lookup('ansible.builtin.file', '/opt/deploy/current_color', errors='ignore') | default('blue', true) | trim }}"
     target_color: "{{ 'green' if current_color == 'blue' else 'blue' }}"
 
   tasks:
@@ -252,7 +261,7 @@ For zero-downtime releases with instant rollback:
     - name: Monitor for 10 minutes
       ansible.builtin.pause:
         minutes: 10
-        prompt: "Monitoring new deployment. Press Ctrl+C then 'A' to abort and rollback."
+        prompt: "Monitoring new deployment. Press Ctrl+C then 'A' to abort before marking the release stable."
 
     - name: Release is stable
       ansible.builtin.debug:
