@@ -80,13 +80,13 @@ build {
   # Run Ansible provisioner
   provisioner "ansible" {
     playbook_file = "../ansible/playbooks/packer-base.yml"
-    roles_path    = "../ansible/roles"
     extra_arguments = [
       "--extra-vars", "app_version=${var.app_version}",
       "--extra-vars", "packer_build=true"
     ]
     ansible_env_vars = [
-      "ANSIBLE_HOST_KEY_CHECKING=False"
+      "ANSIBLE_HOST_KEY_CHECKING=False",
+      "ANSIBLE_ROLES_PATH=../ansible/roles"
     ]
   }
 
@@ -214,7 +214,7 @@ name: Build Machine Images
 on:
   push:
     branches: [main]
-    paths: ['ansible/roles/**', 'packer/**']
+    paths: ['ansible/playbooks/**', 'ansible/roles/**', 'packer/**']
 
 jobs:
   build-base:
@@ -224,6 +224,8 @@ jobs:
       - uses: hashicorp/setup-packer@main
       - name: Install Ansible
         run: pip install ansible
+      - name: Initialize Packer plugins
+        run: packer init packer/base-image.pkr.hcl
       - name: Validate Packer template
         run: packer validate packer/base-image.pkr.hcl
       - name: Build base image
@@ -247,9 +249,26 @@ Some configuration must happen at boot time (like hostname, IP-specific settings
   become: true
 
   tasks:
+    - name: Get IMDSv2 token
+      ansible.builtin.uri:
+        url: "http://169.254.169.254/latest/api/token"
+        method: PUT
+        headers:
+          X-aws-ec2-metadata-token-ttl-seconds: "21600"
+        return_content: true
+      register: imds_token
+
+    - name: Get hostname from metadata
+      ansible.builtin.uri:
+        url: "http://169.254.169.254/latest/meta-data/local-hostname"
+        headers:
+          X-aws-ec2-metadata-token: "{{ imds_token.content }}"
+        return_content: true
+      register: metadata_hostname
+
     - name: Set hostname from metadata
       ansible.builtin.hostname:
-        name: "{{ lookup('url', 'http://169.254.169.254/latest/meta-data/local-hostname') }}"
+        name: "{{ metadata_hostname.content }}"
 
     - name: Enable and start services
       ansible.builtin.service:
