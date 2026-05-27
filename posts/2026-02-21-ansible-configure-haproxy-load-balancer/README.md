@@ -12,7 +12,7 @@ HAProxy is one of the most widely used open-source load balancers and reverse pr
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
+- Ansible 2.10+ on your control node
 - Ubuntu/Debian or RHEL/CentOS target hosts
 - Root or sudo access
 - Backend servers that HAProxy will balance traffic to
@@ -114,6 +114,7 @@ global
     daemon
 
     # SSL settings
+    ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305
     ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
 
@@ -401,4 +402,4 @@ Verify your HAProxy setup is healthy:
         msg: "Stats page is accessible: {{ stats_check.status }}"
 ```
 
-The `validate` parameter in the template task is your best friend with HAProxy. It runs `haproxy -c -f` on the generated config before deploying it, so syntax errors never make it to production. Combined with the reload handler (which does a graceful reload rather than a restart), you can update HAProxy configurations with zero downtime.
+The `validate` parameter in the template task is your best friend with HAProxy. It runs `haproxy -c -f` on the generated config before deploying it, so syntax errors never make it to production. Combined with the reload handler (which asks the service manager to reload rather than restart), you can update HAProxy configurations with minimal disruption when the HAProxy service is configured for graceful reloads.
