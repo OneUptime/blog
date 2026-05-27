@@ -31,8 +31,8 @@ graph TD
 You need:
 
 - Vertex AI Search for Commerce set up with a product catalog imported
-- At least 30 days of user event data (searches, product views, add-to-cart, purchases)
-- Minimum of 100 unique purchase events for meaningful recommendations
+- Enough `purchase-complete` events to meet the Frequently Bought Together data requirements: 1,000 purchase events and 100 unique catalog items in the last year, plus either 90 days of purchase events in the last year or 10 purchase occurrences per catalog item on average
+- A serving config for the trained recommendation model
 - The Retail API enabled on your project
 
 ## Step 1: Record Purchase Events
@@ -131,7 +131,7 @@ import_historical_events("my-project", "my-events-bucket", "purchase_events.json
 
 ## Step 2: Verify Event Data Quality
 
-Before training, check that your event data meets the minimum requirements and is properly linked to products in your catalog.
+Before training, check that your event data is properly linked to products in your catalog. The rejoin API can reprocess events that referenced products not yet available in the catalog.
 
 This script checks your event data quality:
 
@@ -139,7 +139,7 @@ This script checks your event data quality:
 from google.cloud import retail_v2
 
 def check_event_data(project_id):
-    """Checks the quality and quantity of recorded user events."""
+    """Rejoins previously unjoined user events after catalog updates."""
     client = retail_v2.UserEventServiceClient()
     parent = f"projects/{project_id}/locations/global/catalogs/default_catalog"
 
@@ -170,13 +170,14 @@ def train_fbt_model(project_id, catalog_id="default_catalog"):
     """Creates and trains a frequently bought together model."""
     client = retail_v2.ModelServiceClient()
     parent = f"projects/{project_id}/locations/global/catalogs/{catalog_id}"
+    model_id = "frequently-bought-together-v1"
 
     # Define the model configuration
     model = retail_v2.Model(
-        display_name="frequently-bought-together-v1",
+        name=f"{parent}/models/{model_id}",
+        display_name="Frequently Bought Together v1",
         type_="frequently-bought-together",
-        optimization_objective="ctr",
-        # The data time range for training
+        optimization_objective="revenue-per-order",
         training_state=retail_v2.Model.TrainingState.TRAINING,
         # Periodic retraining keeps the model fresh
         periodic_tuning_state=retail_v2.Model.PeriodicTuningState.PERIODIC_TUNING_ENABLED,
@@ -188,9 +189,9 @@ def train_fbt_model(project_id, catalog_id="default_catalog"):
         model=model,
     )
 
-    print("Model training started. This may take several hours...")
-    result = operation.result(timeout=86400)  # Up to 24 hours
-    print(f"Model training complete: {result.name}")
+    print("Model training started. Initial training and tuning usually takes 2-5 days.")
+    result = operation.result(timeout=432000)  # Up to 5 days
+    print(f"Model created: {result.name}")
     print(f"Serving state: {result.serving_state}")
     return result
 
@@ -199,7 +200,7 @@ train_fbt_model("my-project")
 
 ## Step 4: Check Model Training Status
 
-Model training can take several hours. Monitor the status periodically.
+Initial model training and tuning usually takes 2-5 days. Monitor the status periodically.
 
 ```python
 from google.cloud import retail_v2
@@ -233,14 +234,16 @@ This function fetches FBT recommendations for a given product:
 ```python
 from google.cloud import retail_v2
 
-def get_fbt_recommendations(project_id, product_id, visitor_id, num_results=5):
+from google.protobuf.json_format import MessageToDict
+
+def get_fbt_recommendations(project_id, product_id, visitor_id, serving_config_id, num_results=5):
     """Gets frequently bought together recommendations for a product."""
     client = retail_v2.PredictionServiceClient()
 
-    # The placement points to your trained model's serving config
+    # The serving config points to your trained recommendation model
     placement = (
         f"projects/{project_id}/locations/global"
-        f"/catalogs/default_catalog/placements/product_detail"
+        f"/catalogs/default_catalog/servingConfigs/{serving_config_id}"
     )
 
     # Build the prediction request
@@ -266,7 +269,14 @@ def get_fbt_recommendations(project_id, product_id, visitor_id, num_results=5):
     # Process recommendations
     recommendations = []
     for result in response.results:
-        product = result.product
+        product_value = result.metadata.get("product")
+        if product_value:
+            product = retail_v2.Product(
+                MessageToDict(product_value, preserving_proto_field_name=True)
+            )
+        else:
+            product = retail_v2.Product(id=result.id)
+
         recommendations.append({
             "id": product.id,
             "title": product.title,
@@ -277,7 +287,12 @@ def get_fbt_recommendations(project_id, product_id, visitor_id, num_results=5):
     return recommendations
 
 # Get recommendations for a running shoe product page
-recs = get_fbt_recommendations("my-project", "sku-running-shoes", "visitor-123")
+recs = get_fbt_recommendations(
+    "my-project",
+    "sku-running-shoes",
+    "visitor-123",
+    "fbt_product_detail",
+)
 for rec in recs:
     print(f"  Recommended: {rec['title']} - ${rec['price']}")
 ```
@@ -319,4 +334,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
 ## Summary
 
-Training a frequently bought together model with Vertex AI Search for Commerce comes down to three things: good product data, sufficient purchase history, and proper event recording. The model handles the heavy lifting of finding co-purchase patterns across your customer base. Start collecting purchase events as early as possible, aim for at least 30 days of data before training, and set up periodic retraining to keep recommendations fresh as buying patterns shift seasonally. The ROI on cross-sell recommendations is well documented, and Vertex AI Search for Commerce makes it accessible without a dedicated ML team.
+Training a frequently bought together model with Vertex AI Search for Commerce comes down to three things: good product data, sufficient purchase history, and proper event recording. The model handles the heavy lifting of finding co-purchase patterns across your customer base. Start collecting purchase events as early as possible, meet the Frequently Bought Together minimum data requirements before training, and set up periodic retraining to keep recommendations fresh as buying patterns shift seasonally. The ROI on cross-sell recommendations is well documented, and Vertex AI Search for Commerce makes it accessible without a dedicated ML team.
