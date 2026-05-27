@@ -115,6 +115,8 @@ spec:
         - name: Phase
           type: string
           jsonPath: .status.phase
+      subresources:
+        status: {}
   scope: Namespaced
   names:
     plural: databases
@@ -166,7 +168,7 @@ core_v1 = client.CoreV1Api()
 
 
 @kopf.on.create("app.example.com", "v1", "databases")
-def on_create(spec, name, namespace, **kwargs):
+def on_create(spec, name, namespace, patch, **kwargs):
     """
     Called when a new Database custom resource is created.
     Creates the underlying StatefulSet, Service, and ConfigMap.
@@ -215,11 +217,12 @@ def on_create(spec, name, namespace, **kwargs):
         body=_build_statefulset(name, image, replicas, storage, namespace)
     )
 
-    return {"phase": "Creating", "readyReplicas": 0}
+    patch.status["phase"] = "Creating"
+    patch.status["readyReplicas"] = 0
 
 
 @kopf.on.update("app.example.com", "v1", "databases")
-def on_update(spec, name, namespace, old, new, **kwargs):
+def on_update(spec, name, namespace, old, new, patch, **kwargs):
     """
     Called when a Database CR is updated.
     Handles scaling and version upgrades.
@@ -234,7 +237,8 @@ def on_update(spec, name, namespace, old, new, **kwargs):
             namespace=namespace,
             body={"spec": {"replicas": new_spec["replicas"]}}
         )
-        return {"phase": "Scaling"}
+        patch.status["phase"] = "Scaling"
+        return
 
     # Handle version upgrade
     if old_spec.get("version") != new_spec.get("version"):
@@ -252,7 +256,7 @@ def on_update(spec, name, namespace, old, new, **kwargs):
                 }
             }
         )
-        return {"phase": "Upgrading"}
+        patch.status["phase"] = "Upgrading"
 
 
 @kopf.on.delete("app.example.com", "v1", "databases")
