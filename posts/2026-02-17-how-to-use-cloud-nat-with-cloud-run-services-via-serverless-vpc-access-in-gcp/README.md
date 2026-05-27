@@ -66,9 +66,8 @@ Create a connector that bridges Cloud Run to your VPC:
 ```bash
 # Create a Serverless VPC Access connector
 gcloud compute networks vpc-access connectors create cloudrun-connector \
-  --network=cloudrun-vpc \
+  --subnet=cloudrun-subnet \
   --region=us-central1 \
-  --range=10.8.0.0/28 \
   --min-instances=2 \
   --max-instances=10 \
   --project=your-project-id
@@ -156,18 +155,20 @@ The other option is `--vpc-egress=private-ranges-only`, which only routes traffi
 Test that your Cloud Run service is using the static NAT IP:
 
 ```bash
-# Deploy a simple test service that returns its external IP
-gcloud run deploy nat-test \
+# Create and run a simple test job that prints its external IP
+gcloud run jobs create nat-test \
   --image=curlimages/curl \
   --region=us-central1 \
   --vpc-connector=cloudrun-connector \
   --vpc-egress=all-traffic \
   --command="curl" \
   --args="-s,ifconfig.me" \
+  --execute-now \
+  --wait \
   --project=your-project-id
 ```
 
-Or test from within your existing service by calling an IP echo service.
+Check the job logs for the IP address, or test from within your existing service by calling an IP echo service.
 
 ## Step 6: Configure for Direct VPC Egress (Alternative)
 
@@ -184,7 +185,7 @@ gcloud run deploy my-api-service \
   --project=your-project-id
 ```
 
-Direct VPC Egress is simpler (no connector to manage) and has better scaling characteristics. The subnet needs to be large enough for your Cloud Run instance count since each instance gets an IP from the subnet.
+Direct VPC Egress is simpler (no connector to manage) and has better scaling characteristics. The subnet needs to be at least `/26` and large enough for your Cloud Run instance count. At steady state, Cloud Run services use about 2x as many IP addresses as the number of instances, plus extra capacity for revision updates and scale events.
 
 ## Handling Multiple Cloud Run Services
 
