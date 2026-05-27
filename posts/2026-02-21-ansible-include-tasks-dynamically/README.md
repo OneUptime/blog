@@ -143,7 +143,7 @@ This is where `include_tasks` shines compared to `import_tasks`. You can use run
 
 ## Dynamic File Names
 
-You can construct the task file name from variables. This is impossible with static `import_tasks`.
+You can construct the task file name from variables. Static `import_tasks` can only use variables that are available while Ansible is pre-processing the playbook, but `include_tasks` can use values that are known during execution, such as inventory variables and facts.
 
 ```yaml
 # playbook.yml - dynamically constructs the task file path
@@ -234,7 +234,7 @@ flowchart TD
 
 ## Applying Tags to Included Tasks
 
-Tags applied to `include_tasks` propagate to all tasks within the included file.
+Tags applied directly to `include_tasks` apply to the include task itself. If you want the tag to apply to all tasks within the included file, use the `apply` keyword.
 
 ```yaml
 # playbook.yml - tags on include_tasks
@@ -245,15 +245,24 @@ Tags applied to `include_tasks` propagate to all tasks within the included file.
 
   tasks:
     - name: Base system setup
-      include_tasks: tasks/base-setup.yml
+      include_tasks:
+        file: tasks/base-setup.yml
+        apply:
+          tags: base
       tags: base
 
     - name: Security hardening
-      include_tasks: tasks/security.yml
+      include_tasks:
+        file: tasks/security.yml
+        apply:
+          tags: security
       tags: security
 
     - name: Application deployment
-      include_tasks: tasks/deploy-app.yml
+      include_tasks:
+        file: tasks/deploy-app.yml
+        apply:
+          tags: deploy
       tags: deploy
 ```
 
@@ -295,7 +304,7 @@ You can wrap `include_tasks` in a block for error handling.
 ## When to Use include_tasks vs import_tasks
 
 Use `include_tasks` when:
-- The task file name depends on a variable or fact
+- The task file name depends on a runtime variable or fact
 - You need to include tasks conditionally based on runtime state
 - You are using loops to include the same file multiple times
 - You need the tasks to be evaluated lazily (at runtime)
@@ -303,7 +312,7 @@ Use `include_tasks` when:
 Use `import_tasks` when:
 - The file name is static and known ahead of time
 - You want tasks to show up in `--list-tasks` output
-- You need tags on individual tasks inside the file to work with `--tags`
+- You want tags on the import to be inherited by every task in the imported file
 - Performance matters (static imports are slightly faster because they are processed once at parse time)
 
 The `include_tasks` module gives you runtime flexibility that static imports cannot match. Whenever your task inclusion logic depends on information that is only available during execution, `include_tasks` is the right tool.
