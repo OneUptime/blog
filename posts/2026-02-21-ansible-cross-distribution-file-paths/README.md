@@ -8,7 +8,7 @@ Description: Map configuration file paths across Linux distributions in Ansible 
 
 ---
 
-Configuration files live in different locations across Linux distributions. Apache's main config is at `/etc/apache2/apache2.conf` on Debian but `/etc/httpd/conf/httpd.conf` on RHEL. PHP's config directory is `/etc/php/8.2/` on Debian but `/etc/php.ini` on RHEL. This guide shows you how to handle these differences systematically in Ansible.
+Configuration files live in different locations across Linux distributions. Apache's main config is at `/etc/apache2/apache2.conf` on Debian but `/etc/httpd/conf/httpd.conf` on RHEL. PHP's main ini file is under `/etc/php/8.2/` on Debian but `/etc/php.ini` on RHEL. This guide shows you how to handle these differences systematically in Ansible.
 
 ## The Problem
 
@@ -34,10 +34,13 @@ Create distribution-specific path mappings:
 paths:
   apache:
     main_config: /etc/apache2/apache2.conf
+    server_root: /etc/apache2
     conf_dir: /etc/apache2/conf-available
     sites_dir: /etc/apache2/sites-available
     mods_dir: /etc/apache2/mods-available
     log_dir: /var/log/apache2
+    error_log: /var/log/apache2/error.log
+    access_log: /var/log/apache2/access.log
     document_root: /var/www/html
   nginx:
     main_config: /etc/nginx/nginx.conf
@@ -66,10 +69,13 @@ paths:
 paths:
   apache:
     main_config: /etc/httpd/conf/httpd.conf
+    server_root: /etc/httpd
     conf_dir: /etc/httpd/conf.d
     sites_dir: /etc/httpd/conf.d
     mods_dir: /etc/httpd/conf.modules.d
     log_dir: /var/log/httpd
+    error_log: /var/log/httpd/error_log
+    access_log: /var/log/httpd/access_log
     document_root: /var/www/html
   nginx:
     main_config: /etc/nginx/nginx.conf
@@ -119,7 +125,7 @@ paths:
         mode: '0644'
 
     - name: Check Apache logs
-      ansible.builtin.command: "tail -5 {{ paths.apache.log_dir }}/error_log"
+      ansible.builtin.command: "tail -5 {{ paths.apache.error_log }}"
       register: apache_errors
       changed_when: false
 ```
@@ -130,17 +136,17 @@ Your templates can also reference the path variables:
 
 ```text
 # apache.conf.j2 - Works across distributions
-ServerRoot "{{ paths.apache.main_config | dirname | dirname }}"
+ServerRoot "{{ paths.apache.server_root }}"
 
-ErrorLog "{{ paths.apache.log_dir }}/error_log"
-CustomLog "{{ paths.apache.log_dir }}/access_log" combined
+ErrorLog "{{ paths.apache.error_log }}"
+CustomLog "{{ paths.apache.access_log }}" combined
 
 IncludeOptional {{ paths.apache.conf_dir }}/*.conf
 ```
 
 ## Handling Apache Module Differences
 
-Debian uses `a2ensite`/`a2enmod` while RHEL loads modules from the config directory:
+Debian uses `a2ensite`/`a2enmod` while RHEL loads modules from configuration files:
 
 ```yaml
     - name: Enable Apache modules (Debian)
@@ -154,13 +160,14 @@ Debian uses `a2ensite`/`a2enmod` while RHEL loads modules from the config direct
       notify: restart web server
 
     - name: Enable Apache modules (RHEL)
-      ansible.builtin.copy:
-        content: "LoadModule {{ item.module }} {{ item.path }}"
-        dest: "{{ paths.apache.mods_dir }}/{{ item.name }}.conf"
+      ansible.builtin.lineinfile:
+        path: "{{ item.file }}"
+        regexp: "^#?LoadModule {{ item.module }} "
+        line: "LoadModule {{ item.module }} {{ item.path }}"
         mode: '0644'
       loop:
-        - { name: rewrite, module: rewrite_module, path: modules/mod_rewrite.so }
-        - { name: ssl, module: ssl_module, path: modules/mod_ssl.so }
+        - { file: /etc/httpd/conf.modules.d/00-base.conf, module: rewrite_module, path: modules/mod_rewrite.so }
+        - { file: /etc/httpd/conf.modules.d/00-ssl.conf, module: ssl_module, path: modules/mod_ssl.so }
       when: ansible_os_family == "RedHat"
       notify: restart web server
 ```
@@ -229,12 +236,12 @@ Handling cross-distribution file paths follows the same pattern as packages and 
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this pattern proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this pattern
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -348,7 +355,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this pattern
 - name: Robust task execution
   hosts: all
   tasks:
@@ -410,4 +417,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
