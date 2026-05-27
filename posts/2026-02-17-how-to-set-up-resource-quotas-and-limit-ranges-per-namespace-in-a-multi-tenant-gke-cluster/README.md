@@ -8,9 +8,9 @@ Description: A complete guide to configuring resource quotas and limit ranges pe
 
 ---
 
-Sharing a GKE cluster across teams sounds great in theory - lower infrastructure costs, shared tooling, centralized management. But without guardrails, one team's runaway deployment can consume all the cluster's resources, leaving nothing for everyone else. I have seen this happen: a developer accidentally sets 100 replicas instead of 10, or a memory leak causes pods to consume every available byte.
+Sharing a GKE cluster across teams sounds great in theory - lower infrastructure costs, shared tooling, centralized management. But without guardrails, one team's runaway deployment can reserve all the cluster's schedulable resources, leaving nothing for everyone else. I have seen this happen: a developer accidentally sets 100 replicas instead of 10, or a memory leak causes pods to hit their container limits and disrupt the node.
 
-Resource Quotas and Limit Ranges are Kubernetes' built-in mechanisms for preventing this. Quotas cap the total resources a namespace can consume, and Limit Ranges set defaults and boundaries for individual pods and containers. Together, they give you the controls you need for safe multi-tenancy.
+Resource Quotas and Limit Ranges are Kubernetes' built-in mechanisms for preventing this. Quotas cap the total declared requests, limits, storage, and object counts a namespace can use, and Limit Ranges set defaults and boundaries for individual pods and containers. Together, they give you the controls you need for safe multi-tenancy.
 
 ## The Two Layers of Control
 
@@ -68,10 +68,10 @@ kubectl apply -f quota-team-alpha.yaml
 
 ## Important: Quotas Require Resource Requests
 
-Once you create a ResourceQuota that limits CPU or memory in a namespace, every pod in that namespace MUST specify resource requests and limits. Otherwise, the pod will be rejected.
+Once you create a ResourceQuota that limits CPU or memory in a namespace, every pod in that namespace MUST specify the corresponding resource requests or limits. In the quota below, both requests and limits are configured for CPU and memory, so pods need both. Otherwise, the pod will be rejected.
 
 ```bash
-# This will FAIL if a quota is in place and the pod has no resource requests
+# This will FAIL if a quota is in place and the pod has no resource requests or limits
 kubectl -n team-alpha run test --image=nginx
 # Error: must specify limits/requests for cpu, memory
 ```
@@ -225,7 +225,7 @@ kind: PriorityClass
 metadata:
   name: low-priority
 value: 100
-globalDefault: true
+globalDefault: false
 description: "For development and testing"
 ---
 # Quota scoped to high-priority pods only
@@ -310,12 +310,12 @@ When a namespace hits its quota, new pods are rejected with a clear error messag
 
 ```bash
 # Attempting to create a pod that would exceed the quota
-kubectl -n team-alpha apply -f big-deployment.yaml
+kubectl -n team-alpha apply -f big-pod.yaml
 # Error: forbidden: exceeded quota: team-alpha-quota,
 # requested: requests.cpu=8, used: requests.cpu=14, limited: requests.cpu=16
 ```
 
-This is a hard limit - there is no grace period or overcommit. If the quota is reached, new pods simply will not be created until existing pods free up resources.
+This is a hard admission limit - there is no grace period or over-quota admission. If the quota is reached, new pods simply will not be created until existing pods free up resources. If you apply a Deployment that would exceed quota, the Deployment object can be created, but its new Pods will fail admission until quota is available.
 
 ## Best Practices
 
