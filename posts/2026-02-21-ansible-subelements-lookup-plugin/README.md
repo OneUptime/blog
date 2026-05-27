@@ -20,6 +20,8 @@ The classic use case is managing users and their SSH keys.
 
 This playbook creates users and deploys their SSH keys:
 
+When using the lookup plugin with `loop`, call it through `query()` so Ansible receives a list.
+
 ```yaml
 # playbook.yml - Create users with multiple SSH keys
 
@@ -56,7 +58,7 @@ This playbook creates users and deploys their SSH keys:
         user: "{{ item.0.name }}"
         key: "{{ item.1 }}"
         state: present
-      loop: "{{ lookup('subelements', users, 'ssh_keys') }}"
+      loop: "{{ query('ansible.builtin.subelements', users, 'ssh_keys') }}"
 ```
 
 In the subelements loop:
@@ -146,7 +148,7 @@ Managing database users with multiple privilege grants is a perfect fit for sube
         priv: "{{ item.1.database }}.*:{{ item.1.privileges }}"
         append_privs: true
         state: present
-      loop: "{{ lookup('subelements', db_users, 'grants') }}"
+      loop: "{{ query('ansible.builtin.subelements', db_users, 'grants') }}"
 ```
 
 ## Managing Virtual Hosts
@@ -185,11 +187,11 @@ Another practical example is deploying multiple virtual hosts where each host ha
       loop: "{{ virtual_hosts }}"
       notify: reload nginx
 
-    - name: Create SSL certificates for all domains and aliases
+    - name: Create SSL certificates for aliases
       ansible.builtin.command:
         cmd: "certbot certonly --nginx -d {{ item.1 }} --non-interactive --agree-tos -m admin@{{ item.0.domain }}"
         creates: "/etc/letsencrypt/live/{{ item.1 }}/fullchain.pem"
-      loop: "{{ lookup('subelements', virtual_hosts, 'aliases') }}"
+      loop: "{{ query('ansible.builtin.subelements', virtual_hosts, 'aliases') }}"
 ```
 
 ## Handling Missing Subelements
@@ -217,7 +219,7 @@ Sometimes a subelement list might not exist on every item. Use the `skip_missing
     - name: Process server tags (skip servers without tags)
       ansible.builtin.debug:
         msg: "Server {{ item.0.name }} has tag: {{ item.1 }}"
-      loop: "{{ lookup('subelements', servers, 'tags', {'skip_missing': True}) }}"
+      loop: "{{ query('ansible.builtin.subelements', servers, 'tags', {'skip_missing': True}) }}"
 ```
 
 Without `skip_missing: True`, the lookup would fail on `db01` because it has no `tags` key. With the flag set, `db01` is simply skipped.
@@ -267,7 +269,7 @@ Managing cron jobs for multiple applications, where each application has differe
         minute: "{{ item.1.minute }}"
         hour: "{{ item.1.hour }}"
         job: "{{ item.1.job }}"
-      loop: "{{ lookup('subelements', applications, 'cron_jobs') }}"
+      loop: "{{ query('ansible.builtin.subelements', applications, 'cron_jobs') }}"
 ```
 
 ## Firewall Rules Per Zone
@@ -304,7 +306,7 @@ Network security configurations often follow a hierarchical structure.
         port: "{{ item.1.port | default(omit) }}"
         permanent: true
         state: enabled
-      loop: "{{ lookup('subelements', firewall_zones, 'rules') }}"
+      loop: "{{ query('ansible.builtin.subelements', firewall_zones, 'rules') }}"
       notify: reload firewalld
 ```
 
@@ -328,7 +330,7 @@ You might wonder how `subelements` compares to using `loop` with `product` or ne
     - name: With subelements
       ansible.builtin.debug:
         msg: "{{ item.0.name }}: {{ item.1 }}"
-      loop: "{{ lookup('subelements', data, 'members') }}"
+      loop: "{{ query('ansible.builtin.subelements', data, 'members') }}"
 
     # Using loop with a Jinja2 expression (more verbose)
     - name: With nested Jinja2 loop in template
@@ -343,11 +345,11 @@ Both work, but the filter form `data | subelements('members')` is often more rea
 
 1. **Access pattern**: Always remember that `item.0` is the parent and `item.1` is the subelement. This is easy to mix up.
 
-2. **skip_missing**: Use it when the subelement key might not exist on every item. The syntax is `lookup('subelements', list, 'key', {'skip_missing': True})`.
+2. **skip_missing**: Use it when the subelement key might not exist on every item. The syntax with `loop` is `query('ansible.builtin.subelements', list, 'key', {'skip_missing': True})`.
 
 3. **Performance**: Each combination produces a separate task iteration. If you have 100 users with 5 keys each, that is 500 iterations. For very large datasets, consider batching or using a different approach.
 
-4. **Nested subelements**: The plugin works one level deep. If you need to iterate over nested subelements (lists within lists within lists), you will need to flatten the data first or use multiple tasks.
+4. **Nested subelements**: The plugin can traverse dotted keys such as `mysql.hosts`, but it pairs each parent with one sub-list at a time. If you need to iterate over lists within lists within lists, you will need to flatten the data first or use multiple tasks.
 
 5. **Task naming**: Include both the parent and child info in your task name for clearer output: `"Deploy {{ item.1 }} for {{ item.0.name }}"`.
 
