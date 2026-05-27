@@ -71,19 +71,15 @@ kubectl get pods -n kube-system -o wide \
 Export every MetalLB custom resource. Missing even one resource can make the bug report incomplete.
 
 ```bash
-# Export all MetalLB custom resources in one script
-# These are the CRDs that define MetalLB's behavior
-RESOURCES=(
-  "ipaddresspool"
-  "l2advertisement"
-  "bgpadvertisement"
-  "bgppeer"
-  "community"
-  "bfdprofile"
-)
+# Export all namespaced MetalLB custom resources in one script
+# This includes configuration resources and status resources exposed by your MetalLB version
+RESOURCES=$(kubectl api-resources \
+  --api-group=metallb.io \
+  --namespaced=true \
+  -o name)
 
 # Loop through each resource type and save the YAML
-for resource in "${RESOURCES[@]}"; do
+for resource in $RESOURCES; do
   echo "--- $resource ---" >> /tmp/metallb-config.yaml
   kubectl get "$resource" -n metallb-system -o yaml \
     >> /tmp/metallb-config.yaml 2>/dev/null
@@ -117,6 +113,7 @@ kubectl logs -n metallb-system \
   --all-containers \
   --timestamps \
   --since=1h \
+  --tail=-1 \
   > /tmp/speaker-logs.txt
 
 # If using BGP mode with FRR, collect FRR-specific logs
@@ -126,6 +123,7 @@ kubectl logs -n metallb-system \
   -c frr \
   --timestamps \
   --since=1h \
+  --tail=-1 \
   > /tmp/frr-logs.txt 2>/dev/null
 
 # Collect FRR metrics sidecar logs as well
@@ -134,6 +132,7 @@ kubectl logs -n metallb-system \
   -c frr-metrics \
   --timestamps \
   --since=1h \
+  --tail=-1 \
   > /tmp/frr-metrics-logs.txt 2>/dev/null
 ```
 
@@ -151,7 +150,7 @@ kubectl get events -n metallb-system \
 # Collect events for the affected service
 # Replace "default" and "my-service" with your namespace and service name
 kubectl get events -n default \
-  --field-selector involvedObject.name=my-service \
+  --field-selector involvedObject.kind=Service,involvedObject.name=my-service \
   --sort-by=.metadata.creationTimestamp \
   > /tmp/service-events.txt
 
@@ -177,7 +176,7 @@ kubectl debug node/worker-node-1 -it \
   -- arp -an > /tmp/arp-table.txt
 
 # Collect the IP address list
-# Verify the LoadBalancer IP appears on the correct interface
+# In Layer 2 mode, MetalLB answers ARP/NDP and does not bind the LoadBalancer IP to an interface
 kubectl debug node/worker-node-1 -it \
   --image=nicolaka/netshoot \
   -- ip addr show > /tmp/ip-addresses.txt
@@ -187,7 +186,7 @@ kubectl debug node/worker-node-1 -it \
   --image=nicolaka/netshoot \
   -- ip route show > /tmp/routes.txt
 
-# Collect iptables NAT rules related to the service
+# Collect iptables NAT rules related to the service, if kube-proxy is using iptables mode
 kubectl debug node/worker-node-1 -it \
   --image=nicolaka/netshoot \
   -- iptables -t nat -L -n -v > /tmp/iptables-nat.txt
@@ -223,7 +222,7 @@ Structure your GitHub issue with these sections:
 
 ## Conclusion
 
-A well-documented bug report with complete debug information dramatically increases the chances of getting a quick resolution. The automated collection script makes it easy to gather everything in one shot. Keep the script handy and run it as soon as you notice an issue, before the logs rotate or the state changes.
+A well-documented bug report with complete debug information dramatically increases the chances of getting a quick resolution. The commands above make it easier to gather the important details in one place. Keep them handy and run them as soon as you notice an issue, before the logs rotate or the state changes.
 
 Remember that the MetalLB maintainers are volunteers in many cases. Providing thorough, organized debug data shows respect for their time and helps the entire community.
 
