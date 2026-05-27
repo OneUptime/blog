@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Squid, Proxy, Networking, Security
 
-Description: Deploy a Squid forward proxy server with ACLs, caching, authentication, and SSL bump using Ansible for controlled and cached internet access.
+Description: Deploy a Squid forward proxy server with ACLs, caching, and authentication using Ansible for controlled and cached internet access.
 
 ---
 
-A forward proxy sits between your internal network and the internet, giving you control over outbound traffic. Squid is the most popular open-source proxy server, used for caching web content to reduce bandwidth, filtering access to specific sites, and logging all outbound HTTP/HTTPS requests. In environments where you need to audit internet access or restrict what servers can reach externally, Squid is the tool for the job. Ansible lets you deploy and manage Squid configurations consistently across your infrastructure.
+A forward proxy sits between your internal network and the internet, giving you control over outbound traffic. Squid is the most popular open-source proxy server, used for caching web content to reduce bandwidth, filtering access to specific sites, and logging outbound HTTP requests and HTTPS CONNECT requests. In environments where you need to audit internet access or restrict what servers can reach externally, Squid is the tool for the job. Ansible lets you deploy and manage Squid configurations consistently across your infrastructure.
 
 ## Role Defaults
 
@@ -35,11 +35,11 @@ squid_blocked_domains:
   - .tiktok.com
   - .reddit.com
 
-# Blocked file types
+# Blocked HTTP URL path patterns
 squid_blocked_extensions:
-  - .exe
-  - .msi
-  - .torrent
+  - '\.exe$'
+  - '\.msi$'
+  - '\.torrent$'
 
 # Authentication (optional)
 squid_auth_enabled: false
@@ -65,6 +65,7 @@ squid_business_hours:
     name:
       - squid
       - apache2-utils
+      - squidclient
     state: present
     update_cache: yes
 
@@ -100,8 +101,19 @@ squid_business_hours:
     mode: '0644'
   notify: reconfigure squid
 
-- name: Create htpasswd file for proxy authentication
-  command: "htpasswd -bc /etc/squid/passwd {{ item.username }} {{ item.password }}"
+- name: Ensure htpasswd file exists for proxy authentication
+  file:
+    path: /etc/squid/passwd
+    state: touch
+    owner: proxy
+    group: proxy
+    mode: '0640'
+  when: squid_auth_enabled
+
+- name: Update htpasswd file for proxy authentication
+  command: "htpasswd -im /etc/squid/passwd {{ item.username }}"
+  args:
+    stdin: "{{ item.password }}"
   loop: "{{ squid_auth_users }}"
   when: squid_auth_enabled
   no_log: true
@@ -178,12 +190,16 @@ http_access deny CONNECT !SSL_ports
 http_access deny blocked_domains
 http_access deny blocked_extensions
 
-{% if squid_auth_enabled %}
-http_access allow authenticated
-{% endif %}
-
 {% for network in squid_allowed_networks %}
+{% if squid_auth_enabled and squid_time_rules_enabled %}
+http_access allow {{ network.name }} authenticated business_hours
+{% elif squid_auth_enabled %}
+http_access allow {{ network.name }} authenticated
+{% elif squid_time_rules_enabled %}
+http_access allow {{ network.name }} business_hours
+{% else %}
 http_access allow {{ network.name }}
+{% endif %}
 {% endfor %}
 
 # Deny everything else
@@ -206,6 +222,15 @@ negative_dns_ttl 1 minute
 # roles/squid/templates/blocked_domains.txt.j2
 {% for domain in squid_blocked_domains %}
 {{ domain }}
+{% endfor %}
+```
+
+## Blocked Extensions Template
+
+```text
+# roles/squid/templates/blocked_extensions.txt.j2
+{% for extension in squid_blocked_extensions %}
+{{ extension }}
 {% endfor %}
 ```
 
