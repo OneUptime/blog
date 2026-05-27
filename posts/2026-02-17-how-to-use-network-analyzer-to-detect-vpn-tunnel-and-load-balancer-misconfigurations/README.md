@@ -16,22 +16,21 @@ Network Analyzer, part of Network Intelligence Center, continuously scans your n
 
 Network Analyzer runs automated checks against your network configuration and produces insights about potential problems. For VPN tunnels and load balancers, it checks things like:
 
-- VPN tunnel status and configuration consistency
-- IKE version and cipher mismatches
-- Route advertisement problems
-- Load balancer backend health
+- Routes whose next hop is a VPN tunnel that is deleted or not established
+- Dynamic routes that are shadowed by subnet or static routes
 - Firewall rules blocking health check probes
-- SSL certificate expiration
-- Backend service capacity issues
+- Health check port mismatches
+- Backend service balancing modes that can break session affinity
+- Google-managed SSL certificates that are not attached to load balancers or are attached to forwarding rules that do not expose port 443
 
 ## Enabling Network Analyzer
 
-Network Analyzer is enabled by default when you use Network Intelligence Center, but you need the right API enabled:
+Network Analyzer runs automatically, but if you want to query insights from the Google Cloud CLI, enable the Recommender API:
 
 ```bash
-# Enable the Network Management API for Network Analyzer
+# Enable the Recommender API for Network Analyzer insights
 
-gcloud services enable networkmanagement.googleapis.com --project=my-project
+gcloud services enable recommender.googleapis.com --project=my-project
 ```
 
 You also need appropriate permissions:
@@ -40,21 +39,23 @@ You also need appropriate permissions:
 # Grant the necessary role for viewing Network Analyzer insights
 gcloud projects add-iam-policy-binding my-project \
   --member="user:admin@example.com" \
-  --role="roles/networkmanagement.viewer"
+  --role="roles/recommender.networkAnalyzerViewer"
 ```
 
 ## Detecting VPN Tunnel Misconfigurations
 
 ### Tunnel Status Issues
 
-The most basic check is tunnel status. Network Analyzer flags tunnels that are not in the ESTABLISHED state:
+The most basic check is tunnel status. Network Analyzer can flag routes whose next hop is a VPN tunnel that is not established:
 
 ```bash
-# List Network Analyzer insights related to VPN tunnels
-gcloud network-management network-analyzer-findings list \
+# List Network Analyzer insights for routes that point to non-established VPN tunnels
+gcloud recommender insights list \
   --location=global \
   --project=my-project \
-  --filter="findingType:VPN"
+  --insight-type=google.networkanalyzer.vpcnetwork.connectivityInsight \
+  --filter='insightSubtype="ROUTE_NEXT_HOP_VPN_TUNNEL_NOT_ESTABLISHED"' \
+  --format="table(name,insightSubtype,description,stateInfo.state)"
 ```
 
 If you want to manually check tunnel status as well:
@@ -68,11 +69,18 @@ gcloud compute vpn-tunnels list \
 
 ### Route Advertisement Mismatches
 
-A common issue with Cloud VPN is when routes are not being advertised correctly. Network Analyzer catches cases where:
+A common issue with Cloud VPN is when routes are not being advertised correctly. Network Analyzer can catch dynamic routes that are shadowed by subnet routes or static routes:
 
-- The Cloud Router is not advertising the expected subnets
-- Custom route advertisements are missing important ranges
-- The on-premises side is not advertising routes back
+```bash
+# List Network Analyzer insights for shadowed dynamic routes
+gcloud recommender insights list \
+  --location=global \
+  --project=my-project \
+  --insight-type=google.networkanalyzer.hybridconnectivity.dynamicRouteInsight \
+  --format="table(name,insightSubtype,description,stateInfo.state)"
+```
+
+To verify BGP sessions and route advertisements directly:
 
 ```bash
 # Check Cloud Router BGP session status and advertised routes
@@ -82,34 +90,28 @@ gcloud compute routers get-status my-router \
   --format="yaml(result.bgpPeerStatus)"
 ```
 
-### MTU Mismatches
+### MTU Checks
 
-VPN tunnels have specific MTU requirements. If the tunnel MTU does not match the VPC MTU, you can get silent packet drops for larger packets. Network Analyzer detects this:
+VPN tunnels have specific MTU requirements. If the peer VPN gateway does not account for Cloud VPN encapsulation overhead, you can get packet drops for larger packets. Network Analyzer does not provide a dedicated VPN MTU insight, so check this manually:
 
 ```bash
-# Check VPN tunnel MTU settings
-gcloud compute vpn-tunnels describe my-tunnel \
-  --region=us-central1 \
-  --project=my-project \
-  --format="yaml(name,mtu)"
-
 # Compare with the VPC network MTU
 gcloud compute networks describe my-vpc \
   --project=my-project \
   --format="yaml(name,mtu)"
 ```
 
-If there is a mismatch, update the VPN tunnel MTU to match:
+If there is a mismatch, adjust the peer VPN gateway and workloads to account for Cloud VPN MTU:
 
 ```bash
-# The VPC MTU and tunnel MTU should be consistent
-# For standard VPN tunnels, the effective MTU is typically 1460 bytes
-# Adjust your on-premises MTU to match
+# Cloud VPN gateway MTU is 1460 bytes for Cloud VPN tunnels
+# The payload MTU is lower and depends on ciphers and gateway IP version
+# Configure the peer VPN gateway to use the corresponding Cloud VPN gateway MTU
 ```
 
 ### IKE Configuration Problems
 
-Network Analyzer checks for IKE version and cipher suite mismatches between your Cloud VPN gateway and the peer gateway:
+Cloud VPN automatically negotiates the connection when the peer gateway uses a supported IKE cipher setting. If the tunnel is down, verify the IKE version, peer IP, shared secret, and peer cipher configuration:
 
 ```bash
 # View detailed VPN tunnel configuration including IKE settings
@@ -128,6 +130,13 @@ The most common load balancer problem is health checks being blocked by firewall
 Network Analyzer flags this automatically, but you can also verify manually:
 
 ```bash
+# List Network Analyzer load balancer insights
+gcloud recommender insights list \
+  --location=global \
+  --project=my-project \
+  --insight-type=google.networkanalyzer.networkservices.loadBalancerInsight \
+  --format="table(name,insightSubtype,description,stateInfo.state)"
+
 # Check if firewall rules allow health check probe IPs
 gcloud compute firewall-rules list \
   --filter="network=my-vpc AND sourceRanges:(130.211.0.0/22 OR 35.191.0.0/16)" \
@@ -150,7 +159,7 @@ gcloud compute firewall-rules create allow-health-checks \
 
 ### Backend Configuration Issues
 
-Network Analyzer detects several backend-related problems:
+Network Analyzer detects several load balancer backend-related problems, such as health check firewall issues, health check port mismatches, and backend service balancing modes that can break session affinity. You can also check backend health directly:
 
 ```bash
 # Check backend service health for a specific load balancer
@@ -160,7 +169,7 @@ gcloud compute backend-services get-health my-backend-service \
   --format="yaml(status)"
 ```
 
-Common issues include:
+Common load balancer issues to check include:
 
 - All backends unhealthy (often a health check misconfiguration)
 - Backends in a single zone (no zone redundancy)
@@ -181,9 +190,9 @@ gcloud compute instance-groups managed set-named-ports my-instance-group \
   --project=my-project
 ```
 
-### SSL Certificate Expiration
+### SSL Certificate Attachment
 
-For HTTPS load balancers, Network Analyzer tracks SSL certificate expiration and alerts you before certificates expire:
+For HTTPS load balancers, Network Analyzer reports Google-managed SSL certificates that are not associated with a load balancer, or that are associated with forwarding rules that do not expose port 443:
 
 ```bash
 # List SSL certificates and their expiration dates
@@ -192,9 +201,9 @@ gcloud compute ssl-certificates list \
   --format="table(name,type,expireTime,managed.status)"
 ```
 
-### URL Map Misconfiguration
+### URL Map Review
 
-Network Analyzer also checks URL map rules for potential issues like unreachable rules (rules that will never match because a more general rule comes first):
+Network Analyzer does not currently publish a dedicated URL map unreachable-rule insight, but URL maps are still worth reviewing when backends are healthy and clients see routing errors:
 
 ```bash
 # Describe the URL map to review routing rules
@@ -212,8 +221,7 @@ You can set up alerts to be notified when Network Analyzer discovers new issues:
 # Create a log-based metric for Network Analyzer findings
 gcloud logging metrics create network-analyzer-findings \
   --description="Count of Network Analyzer findings" \
-  --log-filter='resource.type="network_management_connectivity_test" AND
-                severity>=WARNING' \
+  --log-filter='LOG_ID("networkanalyzer.googleapis.com%2Fanalyzer_reports")' \
   --project=my-project
 ```
 
@@ -225,9 +233,8 @@ gcloud monitoring policies create \
   --display-name="Network Analyzer New Findings" \
   --condition-display-name="New network configuration issues detected" \
   --condition-filter='metric.type="logging.googleapis.com/user/network-analyzer-findings"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
+  --if="> 0" \
+  --duration=60s \
   --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=my-project
@@ -243,7 +250,7 @@ flowchart TD
     B -->|VPN| C{Tunnel status?}
     C -->|Down| D[Check IKE config, peer IP, shared secret]
     C -->|Up but no traffic| E[Check route advertisements and firewall rules]
-    C -->|Intermittent| F[Check MTU settings and bandwidth limits]
+    C -->|Intermittent| F[Check MTU settings and bandwidth limits manually]
     B -->|Load Balancer| G{Backend health?}
     G -->|All unhealthy| H[Check health check config and firewall rules]
     G -->|Some unhealthy| I[Check specific instance logs and resource usage]
@@ -252,4 +259,4 @@ flowchart TD
 
 ## Summary
 
-Network Analyzer saves you from discovering misconfigurations the hard way - through outages and user complaints. It continuously checks your VPN tunnels for status issues, route problems, and MTU mismatches, and checks your load balancers for health check firewall issues, backend problems, and certificate expiration. Enable it, set up alerts for new findings, and address issues as they appear. Prevention is always better than firefighting.
+Network Analyzer saves you from discovering misconfigurations the hard way - through outages and user complaints. It continuously checks route and hybrid connectivity issues that can affect VPN traffic, and checks your load balancers for health check firewall issues, backend configuration problems, and Google-managed certificate attachment problems. Enable CLI access, set up alerts for new findings, and address issues as they appear. Prevention is always better than firefighting.
