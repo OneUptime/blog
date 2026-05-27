@@ -150,8 +150,9 @@ Start with the TACACS+ server definitions and AAA method lists.
         lines:
           # Log all exec sessions (login/logout)
           - aaa accounting exec default start-stop group TACACS_SERVERS
-          # Log all commands at all privilege levels
+          # Log commands at commonly used privilege levels
           - aaa accounting commands 0 default start-stop group TACACS_SERVERS
+          - aaa accounting commands 1 default start-stop group TACACS_SERVERS
           - aaa accounting commands 15 default start-stop group TACACS_SERVERS
           # Log configuration changes
           - aaa accounting system default start-stop group TACACS_SERVERS
@@ -178,7 +179,7 @@ Always configure local accounts as a fallback for when TACACS/RADIUS servers are
       loop: "{{ aaa_config.local_users }}"
       no_log: true
 
-    # Remove any unauthorized local accounts
+    # Review any unauthorized local accounts before removing them
     - name: Get current local users
       cisco.ios.ios_command:
         commands:
@@ -275,6 +276,12 @@ If you also use RADIUS (for example, for 802.1X or wireless authentication), add
         parents: aaa group server radius RADIUS_SERVERS
       loop: "{{ aaa_config.radius_servers }}"
 
+    # Set source interface for RADIUS
+    - name: Set RADIUS source interface
+      cisco.ios.ios_config:
+        lines:
+          - "ip radius source-interface {{ aaa_config.source_interface }}"
+
     # Configure 802.1X authentication using RADIUS
     - name: Configure dot1x authentication
       cisco.ios.ios_config:
@@ -309,8 +316,8 @@ After deploying AAA, verify that everything is working correctly.
           - "'aaa new-model' in aaa_enabled.stdout[0]"
         fail_msg: "AAA is not enabled on {{ inventory_hostname }}!"
 
-    # Check TACACS server reachability
-    - name: Test TACACS server reachability
+    # Check TACACS server statistics
+    - name: Show TACACS server statistics
       cisco.ios.ios_command:
         commands:
           - "show tacacs"
