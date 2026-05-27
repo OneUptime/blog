@@ -24,7 +24,7 @@ Key concepts in Litmus:
 
 ## Prerequisites
 
-You need a GKE cluster with workloads running on it. Create one if you do not already have one:
+You need a GKE cluster with workloads running on it, plus Helm 3 for the Litmus installation. Create a cluster if you do not already have one:
 
 ```bash
 # Create a GKE cluster for chaos testing
@@ -43,28 +43,30 @@ gcloud container clusters get-credentials chaos-testing-cluster \
 
 ## Installing Litmus on GKE
 
-Install Litmus using kubectl. The installation creates a dedicated namespace and deploys the Litmus control plane:
+Install Litmus using Helm. The installation creates a dedicated namespace and deploys the Litmus control plane:
 
 ```bash
+# Add the Litmus Helm repository
+helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
+helm repo update
+
 # Create the litmus namespace
 kubectl create namespace litmus
 
-# Install Litmus using the official manifest
-kubectl apply -f https://litmuschaos.github.io/litmus/3.0.0/litmus-3.0.0.yaml -n litmus
+# Install Litmus and expose the frontend through a LoadBalancer
+helm install chaos litmuschaos/litmus \
+  --namespace litmus \
+  --set portal.frontend.service.type=LoadBalancer
 
 # Verify the installation
 kubectl get pods -n litmus
 ```
 
-You should see the litmus-server, litmus-frontend, and MongoDB pods running. The Litmus portal provides a web UI for managing experiments:
+You should see the Litmus portal server, auth server, frontend, and MongoDB pods running. The Litmus portal provides a web UI for managing experiments:
 
 ```bash
-# Expose the Litmus portal via a LoadBalancer
-kubectl patch svc litmusportal-frontend-service -n litmus \
-  -p '{"spec": {"type": "LoadBalancer"}}'
-
 # Get the external IP
-kubectl get svc litmusportal-frontend-service -n litmus \
+kubectl get svc chaos-litmus-frontend-service -n litmus \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 ```
 
@@ -141,8 +143,12 @@ The pod-delete experiment kills pods in your application to test whether Kuberne
 First, install the experiment from the chaos hub:
 
 ```bash
-# Install the generic pod-delete experiment
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/pod-delete/experiment.yaml -n default
+# Download the Litmus chaos chart release and install the pod-delete fault
+LITMUS_CHART_VERSION=3.29.0
+tar -zxvf <(curl -sL https://github.com/litmuschaos/chaos-charts/archive/${LITMUS_CHART_VERSION}.tar.gz)
+find chaos-charts-${LITMUS_CHART_VERSION} -name fault.yaml \
+  | grep 'kubernetes/pod-delete' \
+  | xargs kubectl apply -n default -f
 ```
 
 Create a service account for the experiment:
@@ -163,13 +169,31 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["create", "delete", "get", "list", "patch", "update"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "deletecollection"]
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["create", "get", "list", "patch", "update"]
 - apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["get", "list", "create"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "replicasets", "daemonsets"]
+  verbs: ["list", "get"]
+- apiGroups: ["apps.openshift.io"]
+  resources: ["deploymentconfigs"]
+  verbs: ["list", "get"]
+- apiGroups: [""]
+  resources: ["replicationcontrollers"]
+  verbs: ["get", "list"]
+- apiGroups: ["argoproj.io"]
+  resources: ["rollouts"]
+  verbs: ["list", "get"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["create", "delete", "get", "list", "deletecollection"]
@@ -242,7 +266,20 @@ kubectl get chaosresult test-web-app-pod-delete-pod-delete -n default -o yaml
 
 ## Running a Node Drain Experiment
 
-This experiment simulates a node failure by draining a GKE node:
+This experiment simulates a node failure by draining a cordoned GKE node. Install the `node-drain` fault, create the `node-drain-sa` service account and ClusterRole permissions from the Litmus node-drain documentation, then cordon the target node before applying the ChaosEngine:
+
+```bash
+# Install the node-drain fault
+find chaos-charts-${LITMUS_CHART_VERSION} -name fault.yaml \
+  | grep 'kubernetes/node-drain' \
+  | xargs kubectl apply -n default -f
+
+# Pick the node that is running one of the test application pods
+kubectl get pods -l app=test-web-app -o wide
+
+# Cordon the target node before running node-drain
+kubectl cordon NODE_NAME
+```
 
 ```yaml
 # node-drain-chaos.yaml
@@ -252,10 +289,6 @@ metadata:
   name: test-node-drain
   namespace: default
 spec:
-  appinfo:
-    appns: default
-    applabel: app=test-web-app
-    appkind: deployment
   engineState: active
   chaosServiceAccount: node-drain-sa
   experiments:
@@ -265,15 +298,20 @@ spec:
         env:
         - name: TOTAL_CHAOS_DURATION
           value: "120"
-        - name: APP_NAMESPACE
-          value: "default"
-        - name: APP_LABEL
-          value: "app=test-web-app"
+        - name: TARGET_NODE
+          value: "NODE_NAME"
 ```
 
 ## Running a Network Chaos Experiment
 
-Test how your application handles network issues:
+Test how your application handles network issues. Install the `pod-network-loss` fault and create the `pod-network-loss-sa` service account with the RBAC permissions from the Litmus pod-network-loss documentation before applying the ChaosEngine:
+
+```bash
+# Install the pod-network-loss fault
+find chaos-charts-${LITMUS_CHART_VERSION} -name fault.yaml \
+  | grep 'kubernetes/pod-network-loss' \
+  | xargs kubectl apply -n default -f
+```
 
 ```yaml
 # pod-network-loss-chaos.yaml - Simulate network packet loss
@@ -303,6 +341,14 @@ spec:
         # Target container name
         - name: TARGET_CONTAINER
           value: "nginx"
+        # GKE nodes use containerd by default
+        - name: CONTAINER_RUNTIME
+          value: "containerd"
+        - name: SOCKET_PATH
+          value: "/run/containerd/containerd.sock"
+        # Number of pods to affect
+        - name: PODS_AFFECTED_PERC
+          value: "33"
 ```
 
 ## Interpreting Results
@@ -331,9 +377,8 @@ gcloud alpha monitoring policies create \
   --display-name="Chaos Validation: Pod Restart Rate" \
   --condition-display-name="Pod restarts > 0" \
   --condition-filter='resource.type="k8s_container" AND metric.type="kubernetes.io/container/restart_count"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=60s \
+  --if='> 0' \
+  --duration=60s \
   --project=my-project
 ```
 
