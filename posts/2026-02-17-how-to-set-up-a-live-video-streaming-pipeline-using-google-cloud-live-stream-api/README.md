@@ -39,7 +39,7 @@ gcloud services enable livestream.googleapis.com
 gcloud services enable storage.googleapis.com
 
 # Install the client library
-pip install google-cloud-live-stream
+pip install --upgrade google-cloud-video-live-stream
 
 # Create an output bucket
 gsutil mb -l us-central1 gs://your-stream-output-bucket
@@ -181,6 +181,7 @@ def create_channel(project_id, location, channel_id, input_name, output_bucket):
     for res in ["1080p", "720p", "480p"]:
         mux = types.MuxStream()
         mux.key = f"mux-{res}"
+        mux.container = "ts"
         mux.elementary_streams = [f"video-{res}", "audio-aac"]
         mux.segment_settings = types.SegmentSettings()
         mux.segment_settings.segment_duration = duration_pb2.Duration(seconds=4)
