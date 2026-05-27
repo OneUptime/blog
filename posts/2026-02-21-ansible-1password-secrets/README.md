@@ -23,12 +23,18 @@ Install the 1Password CLI:
     url: "https://cache.agilebits.com/dist/1P/op2/pkg/v{{ op_version }}/op_linux_amd64_v{{ op_version }}.zip"
     dest: /tmp/op.zip
     mode: '0644'
+  delegate_to: localhost
+  run_once: true
 
 - name: Extract 1Password CLI
   ansible.builtin.unarchive:
     src: /tmp/op.zip
     dest: /usr/local/bin/
     remote_src: true
+    mode: '0755'
+  delegate_to: localhost
+  become: true
+  run_once: true
 ```
 
 ## Retrieving Secrets
@@ -40,8 +46,8 @@ Install the 1Password CLI:
   hosts: app_servers
   become: true
   vars:
-    db_password: "{{ lookup('pipe', 'op read op://Production/DatabaseAdmin/password') }}"
-    api_key: "{{ lookup('pipe', 'op read op://Production/StripeAPI/credential') }}"
+    db_password: "{{ lookup('ansible.builtin.pipe', 'op read op://Production/DatabaseAdmin/password') }}"
+    api_key: "{{ lookup('ansible.builtin.pipe', 'op read op://Production/StripeAPI/credential') }}"
 
   tasks:
     - name: Deploy application config
@@ -68,24 +74,24 @@ export OP_SERVICE_ACCOUNT_TOKEN="ops_your_token_here"
 - name: Retrieve all app secrets from 1Password
   ansible.builtin.set_fact:
     app_secrets:
-      db_password: "{{ lookup('pipe', 'op read op://Production/Database/password') }}"
-      redis_password: "{{ lookup('pipe', 'op read op://Production/Redis/password') }}"
-      jwt_secret: "{{ lookup('pipe', 'op read op://Production/JWT/secret') }}"
+      db_password: "{{ lookup('ansible.builtin.pipe', 'op read op://Production/Database/password') }}"
+      redis_password: "{{ lookup('ansible.builtin.pipe', 'op read op://Production/Redis/password') }}"
+      jwt_secret: "{{ lookup('ansible.builtin.pipe', 'op read op://Production/JWT/secret') }}"
   no_log: true
 ```
 
 ## Key Takeaways
 
-1Password with Ansible provides a user-friendly way to manage secrets for automation. Use the 1Password CLI with the pipe lookup plugin to retrieve secrets at runtime. Service accounts provide non-interactive access for CI/CD pipelines. Always use no_log to prevent secrets from appearing in Ansible output.
+1Password with Ansible provides a user-friendly way to manage secrets for automation. Use the 1Password CLI with the pipe lookup plugin on the Ansible controller to retrieve secrets at runtime. Service accounts provide non-interactive access for CI/CD pipelines. Always use no_log to prevent secrets from appearing in Ansible output.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this approach proves essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating this approach
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -199,7 +205,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with this approach
 - name: Robust task execution
   hosts: all
   tasks:
@@ -261,4 +267,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
