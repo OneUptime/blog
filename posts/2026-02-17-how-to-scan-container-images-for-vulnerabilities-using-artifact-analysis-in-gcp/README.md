@@ -17,20 +17,21 @@ Let me show you how to use Artifact Analysis for comprehensive container securit
 Start by enabling the required APIs:
 
 ```bash
-# Enable Container Analysis and on-demand scanning APIs
+# Enable automatic and on-demand scanning APIs
 
 gcloud services enable \
+  artifactregistry.googleapis.com \
   containeranalysis.googleapis.com \
   containerscanning.googleapis.com \
   ondemandscanning.googleapis.com \
   --project=my-project
 ```
 
-Once enabled, automatic scanning kicks in for all images pushed to Artifact Registry (and Container Registry) in your project.
+Once enabled, automatic scanning kicks in for all images pushed to Artifact Registry Docker repositories in your project.
 
 ## Automatic Scanning
 
-After enabling the APIs, every Docker image pushed to Artifact Registry is automatically scanned. There is no additional configuration needed:
+After enabling the APIs, every Docker image pushed to an Artifact Registry Docker repository with scanning enabled is automatically scanned:
 
 ```bash
 # Push an image - it gets scanned automatically
@@ -55,26 +56,21 @@ For a detailed list of all vulnerabilities:
 
 ```bash
 # List all vulnerability occurrences for an image
-gcloud artifacts docker images list-vulnerabilities \
-  us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1.0.0 \
-  --format='table(
-    vulnerability.shortDescription,
-    vulnerability.effectiveSeverity,
-    vulnerability.packageIssue[0].affectedPackage,
-    vulnerability.packageIssue[0].affectedVersion.fullName,
-    vulnerability.packageIssue[0].fixedVersion.fullName
-  )' \
+gcloud artifacts docker images list --show-occurrences \
+  us-central1-docker.pkg.dev/my-project/my-repo/my-app \
+  --occurrence-filter='kind="VULNERABILITY"' \
+  --format=json \
   --project=my-project
 ```
 
-This shows each vulnerability along with the affected package, the vulnerable version, and the fixed version (if available).
+This shows each vulnerability occurrence, including the affected package, the vulnerable version, and the fixed version (if available).
 
-### Using the API
+### Using JSON Output
 
-For programmatic access, use the Container Analysis API:
+For machine-readable output from the CLI, request JSON:
 
 ```bash
-# Get occurrences for a specific image using the API
+# Get metadata for a specific image as JSON
 gcloud artifacts docker images describe \
   us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1.0.0 \
   --show-all-metadata \
@@ -84,7 +80,7 @@ gcloud artifacts docker images describe \
 
 ## On-Demand Scanning
 
-On-demand scanning lets you scan images before pushing them or scan images from external registries. This is useful for shift-left security practices.
+On-demand scanning lets you scan local images before pushing them, or scan images that are already in a supported registry. This is useful for shift-left security practices.
 
 ### Scanning a Local Image
 
@@ -92,17 +88,10 @@ On-demand scanning lets you scan images before pushing them or scan images from 
 # Build an image locally
 docker build -t my-app:latest .
 
-# Tag it for Artifact Registry
-docker tag my-app:latest \
-  us-central1-docker.pkg.dev/my-project/my-repo/my-app:test
-
-# Push it temporarily for scanning
-docker push us-central1-docker.pkg.dev/my-project/my-repo/my-app:test
-
 # Run an on-demand scan
 SCAN_RESULT=$(gcloud artifacts docker images scan \
-  us-central1-docker.pkg.dev/my-project/my-repo/my-app:test \
-  --location=us-central1 \
+  my-app:latest \
+  --location=us \
   --format='value(response.scan)')
 
 # View the results
@@ -115,16 +104,17 @@ gcloud artifacts docker images list-vulnerabilities $SCAN_RESULT \
   )'
 ```
 
-### Scanning with Additional Packages
+### Skipping Package Types
 
-On-demand scanning can also detect vulnerabilities in application-level packages like npm, pip, Go modules, and Java dependencies:
+On-demand scanning also scans supported application-level packages by default, including npm, Python, Go, Maven, NuGet, RubyGems, Rust, and Composer packages. If you want to skip specific package types, use `--skip-package-types`:
 
 ```bash
-# Scan with additional package types
+# Scan while skipping selected package types
 gcloud artifacts docker images scan \
   us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1.0.0 \
-  --location=us-central1 \
-  --additional-package-types=GO,NPM,PYPI,MAVEN \
+  --remote \
+  --location=us \
+  --skip-package-types=NPM,MAVEN \
   --format='value(response.scan)'
 ```
 
@@ -161,7 +151,8 @@ steps:
         echo "Scanning image for vulnerabilities..."
         SCAN=$(gcloud artifacts docker images scan \
           us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
-          --location=us-central1 \
+          --remote \
+          --location=us \
           --format='value(response.scan)')
 
         # Count vulnerabilities by severity
@@ -206,17 +197,17 @@ steps:
 
 ## Continuous Monitoring
 
-Artifact Analysis does not just scan at push time. It continuously monitors your images for newly discovered vulnerabilities. When a new CVE is published that affects a package in one of your images, the vulnerability report is updated automatically.
+Artifact Analysis does not just scan at push time. It continuously monitors your images for newly discovered vulnerabilities. When a new CVE is published that affects a package in one of your images, the vulnerability report is updated automatically while the image is still inside the continuous monitoring window.
 
 Set up notifications for new findings:
 
 ```bash
-# Create a Pub/Sub topic for vulnerability notifications
-gcloud pubsub topics create vulnerability-notes --project=my-project
+# Create the Artifact Analysis occurrences topic if it is missing
+gcloud pubsub topics create container-analysis-occurrences-v1 --project=my-project
 
 # Create a subscription
 gcloud pubsub subscriptions create vulnerability-sub \
-  --topic=vulnerability-notes \
+  --topic=container-analysis-occurrences-v1 \
   --project=my-project
 ```
 
@@ -227,12 +218,11 @@ You can then use a Cloud Function to process these notifications and alert your 
 Find all images in your project that have critical vulnerabilities:
 
 ```bash
-# List all images with their vulnerability counts
+# List images with critical vulnerability occurrence summaries
 gcloud artifacts docker images list \
   us-central1-docker.pkg.dev/my-project/my-repo \
   --show-occurrences \
   --occurrence-filter='kind="VULNERABILITY" AND vulnerability.effectiveSeverity="CRITICAL"' \
-  --format='table(package, tags, createTime)' \
   --project=my-project
 ```
 
@@ -243,7 +233,7 @@ Artifact Analysis can also generate Software Bill of Materials (SBOM) for your i
 ```bash
 # Generate an SBOM for an image
 gcloud artifacts sbom export \
-  --resource=us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1.0.0 \
+  --uri=us-central1-docker.pkg.dev/my-project/my-repo/my-app:v1.0.0 \
   --project=my-project
 ```
 
