@@ -84,15 +84,15 @@ spec:
 
 Common CIDR sizes:
 
-| CIDR | Addresses | Usable for Services |
-|------|-----------|-------------------|
+| CIDR | Addresses | Usable for Services by Default |
+|------|-----------|-------------------------------|
 | /32 | 1 | 1 |
 | /30 | 4 | 4 |
 | /28 | 16 | 16 |
 | /24 | 256 | 256 |
 | /20 | 4096 | 4096 |
 
-> MetalLB uses every address in the CIDR block, including the network (.0) and broadcast (.255) addresses. Be cautious with /24 or larger blocks if your network gear treats those addresses specially.
+> By default, MetalLB uses every address in the CIDR block, including IPv4 addresses ending in .0 and .255. If your network gear treats those addresses specially, enable `avoidBuggyIPs` on the pool to skip them.
 
 ---
 
@@ -118,7 +118,7 @@ spec:
 
 Key points about range notation:
 
-- Both IPs must be in the same subnet.
+- Both endpoints must parse as valid IP addresses.
 - The start IP must be numerically less than or equal to the end IP.
 - Useful for carving out a slice of a larger subnet you share with other systems.
 
@@ -191,7 +191,7 @@ flowchart TD
 | Mistake | Example | Fix |
 |---------|---------|-----|
 | Bare IP without mask | `192.168.1.5` | Use `192.168.1.5/32` or a range |
-| Range with IPs in different subnets | `10.0.1.5-10.0.2.5` | Split into two entries |
+| Range with start IP after end IP | `192.168.1.20-192.168.1.10` | Put the lower address first |
 | Overlapping entries | `/24` and a range inside it | Remove the overlap |
 | Wrong CIDR math | Using /28 expecting 32 IPs | /28 = 16 IPs, /27 = 32 IPs |
 
