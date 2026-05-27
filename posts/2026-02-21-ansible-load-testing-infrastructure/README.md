@@ -52,8 +52,11 @@ First, spin up the load generator instances:
         name: "loadgen-{{ item }}"
         instance_type: "{{ generator_type }}"
         image_id: "{{ ami_id }}"
-        subnet_id: "{{ subnet_id }}"
-        security_group: "{{ sg_id }}"
+        vpc_subnet_id: "{{ subnet_id }}"
+        network_interfaces:
+          - assign_public_ip: true
+            groups:
+              - "{{ sg_id }}"
         key_name: "{{ key_name }}"
         tags:
           Role: load-generator
@@ -86,14 +89,21 @@ k6 is a popular load testing tool. Here is a role that installs and configures i
 # roles/k6_setup/tasks/main.yml
 # Install k6 load testing tool on generators
 ---
-- name: Add k6 GPG key
-  ansible.builtin.apt_key:
-    url: https://dl.k6.io/key.gpg
+- name: Install APT repository requirements
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
     state: present
 
 - name: Add k6 repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://dl.k6.io/deb stable main"
+  ansible.builtin.deb822_repository:
+    name: k6
+    types: deb
+    uris: https://dl.k6.io/deb
+    suites: stable
+    components: main
+    signed_by: https://dl.k6.io/key.gpg
     state: present
 
 - name: Install k6
@@ -191,6 +201,15 @@ Orchestrate the test across all generators:
 # playbooks/run-load-test.yml
 # Execute distributed load test across all generators
 ---
+- name: Initialize test run
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Set test run ID
+      ansible.builtin.set_fact:
+        test_run_id: "{{ test_run_id | default(lookup('pipe', 'date +%Y%m%d_%H%M%S')) }}"
+
 - name: Configure load generators
   hosts: load_generators
   become: true
@@ -201,7 +220,7 @@ Orchestrate the test across all generators:
   hosts: load_generators
   vars:
     results_dir: /opt/load-tests/results
-    test_run_id: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+    test_run_id: "{{ hostvars['localhost'].test_run_id }}"
 
   tasks:
     - name: Create results directory
@@ -229,6 +248,9 @@ Orchestrate the test across all generators:
 
 - name: Collect results
   hosts: load_generators
+  vars:
+    results_dir: /opt/load-tests/results
+    test_run_id: "{{ hostvars['localhost'].test_run_id }}"
   tasks:
     - name: Fetch result files
       ansible.builtin.fetch:
@@ -239,6 +261,8 @@ Orchestrate the test across all generators:
 - name: Aggregate results
   hosts: localhost
   connection: local
+  vars:
+    test_run_id: "{{ hostvars['localhost'].test_run_id }}"
   tasks:
     - name: Read all summary files
       ansible.builtin.slurp:
@@ -261,17 +285,29 @@ If you prefer Locust for Python-based tests:
 # roles/locust_setup/tasks/main.yml
 # Install and configure Locust on load generators
 ---
-- name: Install Python and pip
+- name: Install Python, pip, and venv
   ansible.builtin.apt:
     name:
       - python3
       - python3-pip
+      - python3-venv
     state: present
+
+- name: Create test scripts and results directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/load-tests
+    - /opt/load-tests/results
 
 - name: Install Locust
   ansible.builtin.pip:
     name: locust
     state: present
+    virtualenv: /opt/load-tests/venv
+    virtualenv_command: "{{ ansible_python_interpreter | default('/usr/bin/python3') }} -m venv"
 
 - name: Deploy Locust test file
   ansible.builtin.template:
@@ -282,7 +318,7 @@ If you prefer Locust for Python-based tests:
 - name: Start Locust worker
   ansible.builtin.command:
     cmd: >
-      locust --worker
+      /opt/load-tests/venv/bin/locust --worker
       --master-host={{ locust_master_host }}
       --locustfile=/opt/load-tests/locustfile.py
   async: 7200
@@ -292,7 +328,7 @@ If you prefer Locust for Python-based tests:
 - name: Start Locust master
   ansible.builtin.command:
     cmd: >
-      locust --master
+      /opt/load-tests/venv/bin/locust --master
       --expect-workers={{ groups['load_generators'] | length - 1 }}
       --host={{ target_url }}
       --locustfile=/opt/load-tests/locustfile.py
