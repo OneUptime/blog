@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Terraform, Bootstrap, Prerequisites, DevOps
 
-Description: Use Ansible to set up Terraform prerequisites including backend storage, provider credentials, and execution environments.
+Description: Use Ansible to set up Terraform prerequisites including backend storage, state locking, and execution environments.
 
 ---
 
-Before Terraform can manage your infrastructure, certain prerequisites need to be in place: a state backend (S3 bucket, Azure blob, etc.), a DynamoDB table for state locking, IAM roles for Terraform execution, and potentially a CI/CD runner with Terraform installed. Ansible is ideal for bootstrapping these prerequisites since they need to exist before Terraform can run.
+Before Terraform can manage your infrastructure, certain prerequisites need to be in place: a state backend (S3 bucket, Azure blob, etc.), state locking (S3 lockfiles for current Terraform S3 backends, or a DynamoDB table for legacy DynamoDB-based locking), IAM roles for Terraform execution, and potentially a CI/CD runner with Terraform installed. Ansible is ideal for bootstrapping these prerequisites since they need to exist before Terraform can run.
 
 ## Bootstrap Tasks
 
@@ -20,6 +20,12 @@ Before Terraform can manage your infrastructure, certain prerequisites need to b
   get_url:
     url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip"
     dest: /tmp/terraform.zip
+  become: yes
+
+- name: Install unzip for Terraform archive extraction
+  package:
+    name: unzip
+    state: present
   become: yes
 
 - name: Extract Terraform
@@ -42,7 +48,7 @@ Before Terraform can manage your infrastructure, certain prerequisites need to b
       ignore_public_acls: true
       restrict_public_buckets: true
 
-- name: Create DynamoDB table for locking
+- name: Create DynamoDB table for legacy Terraform state locking
   community.aws.dynamodb_table:
     name: "{{ org_name }}-terraform-locks"
     region: "{{ aws_region }}"
@@ -67,7 +73,7 @@ ansible-playbook bootstrap-terraform.yml --ask-vault-pass
 
 ## Summary
 
-Ansible bootstraps the chicken-and-egg problem of Terraform prerequisites. It creates the state backend, locking mechanism, and execution environment that Terraform needs before it can manage anything. Run this once when setting up a new AWS account, region, or Terraform workspace.
+Ansible bootstraps the chicken-and-egg problem of Terraform prerequisites. It creates the state backend, locking mechanism, and execution environment that Terraform needs before it can manage anything. For current Terraform S3 backends, prefer S3 lockfiles in the backend configuration; create the DynamoDB table only when supporting legacy DynamoDB-based locking. Run this once when setting up a new AWS account, region, or Terraform project.
 
 ## Common Use Cases
 
@@ -252,4 +258,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
