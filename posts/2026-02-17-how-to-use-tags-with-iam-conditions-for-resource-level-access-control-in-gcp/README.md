@@ -8,7 +8,7 @@ Description: Learn how to combine GCP resource tags with IAM conditions to creat
 
 ---
 
-Standard IAM in GCP works at the project level. You grant someone a role on a project, and they get that role on every resource in the project. This is simple to manage but often too broad. A developer who needs to manage Cloud SQL instances in the staging environment should not automatically have access to production databases, even if they live in the same project.
+IAM in GCP is often granted at the project level. You grant someone a role on a project, and they get that role on every resource in the project. This is simple to manage but often too broad. A developer who needs to manage Cloud SQL instances in the staging environment should not automatically have access to production databases, even if they live in the same project.
 
 IAM Conditions solve part of this problem by letting you add conditional logic to role bindings. Tags take it further by giving you a way to label resources with metadata that conditions can evaluate. Together, tags and IAM conditions let you build attribute-based access control (ABAC) that targets specific resources without reorganizing your project structure.
 
@@ -16,13 +16,13 @@ IAM Conditions solve part of this problem by letting you add conditional logic t
 
 GCP has both labels and tags, and they serve different purposes. Labels are key-value metadata you can attach to resources for billing and organization. Tags are part of the Resource Manager service and are designed specifically to work with IAM and organization policies. Only tags can be used in IAM conditions - labels cannot.
 
-Tags are defined at the organization level as tag keys with allowed tag values. You then bind tag values to resources. For example, you might create a tag key called `environment` with values `production`, `staging`, and `development`, and then bind the appropriate value to each resource.
+Tags are defined at the organization or project level as tag keys with allowed tag values. You then bind tag values to resources. For example, you might create a tag key called `environment` with values `production`, `staging`, and `development`, and then bind the appropriate value to each resource.
 
 ## Prerequisites
 
-- A GCP organization (tags require an org node)
+- A GCP organization or project where you can create tag keys (the examples below use an organization)
 - The `roles/resourcemanager.tagAdmin` role to create tag keys and values
-- The `roles/resourcemanager.tagUser` role to bind tags to resources
+- The `roles/resourcemanager.tagUser` role on the tag value and the target resource, plus any resource-specific tag binding permissions required by the target service
 - The `roles/iam.securityAdmin` or equivalent to modify IAM policies
 
 ## Step 1 - Create Tag Keys and Values
@@ -42,15 +42,15 @@ Note the tag key ID returned - you will need it for creating values. Then create
 ```bash
 # Create tag values for each environment
 gcloud resource-manager tags values create production \
-  --parent=organizations/ORG_ID/tagKeys/TAG_KEY_ID \
+  --parent=tagKeys/TAG_KEY_ID \
   --description="Production environment"
 
 gcloud resource-manager tags values create staging \
-  --parent=organizations/ORG_ID/tagKeys/TAG_KEY_ID \
+  --parent=tagKeys/TAG_KEY_ID \
   --description="Staging environment"
 
 gcloud resource-manager tags values create development \
-  --parent=organizations/ORG_ID/tagKeys/TAG_KEY_ID \
+  --parent=tagKeys/TAG_KEY_ID \
   --description="Development environment"
 ```
 
@@ -61,13 +61,13 @@ Now attach tag values to your resources. Tags can be bound to projects, folders,
 ```bash
 # Bind the "production" tag to a Cloud SQL instance
 gcloud resource-manager tags bindings create \
-  --tag-value=organizations/ORG_ID/tagKeys/TAG_KEY_ID/tagValues/PRODUCTION_VALUE_ID \
+  --tag-value=tagValues/PRODUCTION_VALUE_ID \
   --parent=//sqladmin.googleapis.com/projects/my-project/instances/prod-database \
   --location=us-central1
 
 # Bind the "staging" tag to another instance
 gcloud resource-manager tags bindings create \
-  --tag-value=organizations/ORG_ID/tagKeys/TAG_KEY_ID/tagValues/STAGING_VALUE_ID \
+  --tag-value=tagValues/STAGING_VALUE_ID \
   --parent=//sqladmin.googleapis.com/projects/my-project/instances/staging-database \
   --location=us-central1
 ```
@@ -77,8 +77,8 @@ You can also bind tags at the project level, and they will be inherited by resou
 ```bash
 # Bind a tag to an entire project
 gcloud resource-manager tags bindings create \
-  --tag-value=organizations/ORG_ID/tagKeys/TAG_KEY_ID/tagValues/PRODUCTION_VALUE_ID \
-  --parent=//cloudresourcemanager.googleapis.com/projects/my-prod-project
+  --tag-value=tagValues/PRODUCTION_VALUE_ID \
+  --parent=//cloudresourcemanager.googleapis.com/projects/PROD_PROJECT_NUMBER
 ```
 
 ## Step 3 - Create IAM Bindings with Tag Conditions
@@ -124,6 +124,11 @@ resource "google_tags_tag_value" "staging" {
 resource "google_tags_tag_binding" "prod_project" {
   parent    = "//cloudresourcemanager.googleapis.com/projects/${var.prod_project_number}"
   tag_value = google_tags_tag_value.production.id
+}
+
+resource "google_tags_tag_binding" "staging_project" {
+  parent    = "//cloudresourcemanager.googleapis.com/projects/${var.staging_project_number}"
+  tag_value = google_tags_tag_value.staging.id
 }
 
 # Create conditional IAM binding
