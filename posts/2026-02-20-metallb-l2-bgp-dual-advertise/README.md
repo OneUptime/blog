@@ -212,10 +212,10 @@ flowchart TD
     end
 ```
 
-The MetalLB speaker on the elected node handles both:
+MetalLB handles the two advertisements independently:
 
-- Responding to ARP requests for the VIP on the local network
-- Advertising the VIP route via BGP to the upstream router
+- The L2-elected speaker responds to ARP requests for the VIP on the local network
+- Eligible speakers with established BGP sessions advertise the VIP route to the upstream router
 
 ## Verifying Both Advertisements Are Active
 
@@ -247,7 +247,7 @@ You can have different nodes participate in L2 versus BGP:
 ```yaml
 # selective-advertisements.yaml
 # Only edge nodes participate in BGP.
-# All nodes participate in L2 for local redundancy.
+# All nodes are eligible for L2 leader election.
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
@@ -256,7 +256,7 @@ metadata:
 spec:
   ipAddressPools:
     - dual-advertise-pool
-  # No node selector - all nodes participate in L2
+  # No node selector - all nodes are eligible L2 announcers
 ---
 apiVersion: metallb.io/v1beta1
 kind: BGPAdvertisement
