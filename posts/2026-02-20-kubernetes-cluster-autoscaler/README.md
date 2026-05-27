@@ -40,6 +40,7 @@ Cluster Autoscaler works with managed node groups or auto scaling groups on clou
 - A Kubernetes cluster on a supported cloud provider
 - Node groups configured with min and max sizes
 - Proper IAM permissions for the autoscaler to manage nodes
+- Kubernetes RBAC permissions for the autoscaler ServiceAccount to read and update cluster resources
 
 ## Step 1: Configure on AWS (EKS)
 
@@ -56,12 +57,19 @@ Cluster Autoscaler works with managed node groups or auto scaling groups on clou
         "autoscaling:DescribeAutoScalingInstances",
         "autoscaling:DescribeLaunchConfigurations",
         "autoscaling:DescribeScalingActivities",
-        "autoscaling:DescribeTags",
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
+        "ec2:DescribeImages",
         "ec2:DescribeLaunchTemplateVersions",
         "ec2:DescribeInstanceTypes",
+        "ec2:GetInstanceTypesFromInstanceRequirements",
         "eks:DescribeNodegroup"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
       ],
       "Resource": "*"
     }
@@ -92,10 +100,10 @@ spec:
       labels:
         app: cluster-autoscaler
     spec:
-      serviceAccountName: cluster-autoscaler  # SA with IAM role attached
+      serviceAccountName: cluster-autoscaler  # SA with IAM role and Kubernetes RBAC attached
       containers:
         - name: cluster-autoscaler
-          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.31.0
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0  # Match your cluster's Kubernetes minor version
           command:
             - ./cluster-autoscaler
             - --v=4
@@ -130,7 +138,7 @@ gcloud container clusters update my-cluster \
   --max-nodes 20 \
   --zone us-central1-a
 
-# Enable autoscaling profile for faster scaling
+# Enable an autoscaling profile that scales down more aggressively
 gcloud container clusters update my-cluster \
   --autoscaling-profile optimize-utilization \
   --zone us-central1-a
