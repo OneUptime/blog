@@ -16,7 +16,7 @@ In this post, I will show you how to query INFORMATION_SCHEMA.JOBS and INFORMATI
 
 BigQuery provides two main INFORMATION_SCHEMA views for job monitoring.
 
-INFORMATION_SCHEMA.JOBS contains one row per completed job with summary statistics including total slot milliseconds consumed, bytes processed, and duration. INFORMATION_SCHEMA.JOBS_TIMELINE contains time-sliced data with one row per job per second, showing how many slot milliseconds each job consumed during each second of its execution. The timeline view is what you need for understanding concurrent slot usage over time.
+INFORMATION_SCHEMA.JOBS contains one row per job with summary statistics including total slot milliseconds consumed, bytes processed, and duration. INFORMATION_SCHEMA.JOBS_TIMELINE contains time-sliced data with one row per job per second, showing how many slot milliseconds each job consumed during each second of its execution. The timeline view is what you need for understanding concurrent slot usage over time.
 
 Both views are available at the regional level using the `region-LOCATION` prefix.
 
@@ -41,7 +41,7 @@ WHERE
   period_start BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
     AND CURRENT_TIMESTAMP()
   AND job_type = 'QUERY'
-  AND state = 'DONE'
+  AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
 GROUP BY
   hour
 ORDER BY
@@ -77,6 +77,7 @@ WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
   AND job_type = 'QUERY'
   AND state = 'DONE'
+  AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
 ORDER BY
   total_slot_ms DESC
 LIMIT 20;
@@ -107,6 +108,7 @@ WHERE
   creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
+  AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
 GROUP BY
   user_email
 ORDER BY
@@ -131,6 +133,7 @@ FROM
 WHERE
   period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
   AND reservation_id IS NOT NULL
+  AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
 GROUP BY
   reservation_id, hour
 ORDER BY
@@ -139,36 +142,40 @@ ORDER BY
 
 ## Detecting Slot Contention
 
-Slot contention happens when queries compete for limited slots, causing them to run slower than they would with dedicated resources. You can detect this by looking for queries whose slot time is much higher than their wall-clock time would suggest.
+Slot contention happens when queries compete for limited slots, causing them to run slower than they would with dedicated resources. You can detect this by looking for queries that had runnable work waiting for slots during a large share of their execution.
 
 ```sql
 -- Find queries that might be experiencing slot contention
--- High slot_ms relative to duration suggests the query ran slowly
 SELECT
   job_id,
-  user_email,
-  creation_time,
-  TIMESTAMP_DIFF(end_time, start_time, SECOND) AS duration_seconds,
-  total_slot_ms,
-  -- Effective parallelism: how many slots the query averaged
-  ROUND(total_slot_ms / NULLIF(TIMESTAMP_DIFF(end_time, start_time, MILLISECOND), 0), 2) AS avg_slots,
-  -- If avg_slots is very low compared to what is available,
-  -- the query was likely throttled by contention
-  reservation_id
+  ANY_VALUE(user_email) AS user_email,
+  MIN(job_creation_time) AS creation_time,
+  TIMESTAMP_DIFF(MAX(job_end_time), MIN(job_start_time), SECOND) AS duration_seconds,
+  SUM(period_slot_ms) AS total_slot_ms,
+  -- Percentage of execution seconds where the job had runnable units waiting
+  ROUND(COUNTIF(period_estimated_runnable_units > 0) / COUNT(*) * 100, 1)
+    AS runnable_units_waiting_pct,
+  MAX(period_estimated_runnable_units) AS max_estimated_runnable_units,
+  ANY_VALUE(reservation_id) AS reservation_id
 FROM
-  `region-us-central1`.INFORMATION_SCHEMA.JOBS
+  `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
 WHERE
-  creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+  period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
   AND job_type = 'QUERY'
-  AND state = 'DONE'
-  -- Focus on queries that took a while
-  AND TIMESTAMP_DIFF(end_time, start_time, SECOND) > 30
+  AND job_start_time IS NOT NULL
+  AND job_end_time IS NOT NULL
+  AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
+GROUP BY
+  job_id
+HAVING
+  duration_seconds > 30
 ORDER BY
+  runnable_units_waiting_pct DESC,
   duration_seconds DESC
 LIMIT 50;
 ```
 
-Queries with low average slots relative to your reservation size are likely experiencing contention. This is a signal to either increase capacity or distribute load more evenly.
+Queries with a high runnable-units waiting percentage are likely experiencing contention. This is a signal to either increase capacity or distribute load more evenly.
 
 ## Minute-by-Minute Slot Usage
 
@@ -178,14 +185,15 @@ For fine-grained analysis, look at slot consumption at minute or even second gra
 -- Minute-by-minute slot usage for the last 2 hours
 SELECT
   TIMESTAMP_TRUNC(period_start, MINUTE) AS minute,
-  -- Total slots consumed per minute across all jobs
+  -- Average slots consumed during the minute across all jobs
   SUM(period_slot_ms) / (1000 * 60) AS slots_used,
-  -- Count of concurrent jobs
-  COUNT(DISTINCT job_id) AS concurrent_jobs
+  -- Count of jobs seen during the minute
+  COUNT(DISTINCT job_id) AS jobs_seen
 FROM
   `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
 WHERE
   period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 HOUR)
+  AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
 GROUP BY
   minute
 ORDER BY
@@ -202,19 +210,54 @@ For ongoing monitoring, create a scheduled query that writes slot utilization me
 -- Scheduled query: Write hourly slot metrics to a monitoring table
 INSERT INTO `my_project.monitoring.slot_utilization_hourly`
   (hour, reservation_id, avg_slots, peak_slots, job_count, total_slot_hours)
+WITH filtered AS (
+  SELECT
+    period_start,
+    COALESCE(reservation_id, 'ON_DEMAND') AS reservation_id,
+    period_slot_ms,
+    job_id
+  FROM
+    `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
+  WHERE
+    period_start >= TIMESTAMP_TRUNC(
+      TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR), HOUR)
+    AND period_start < TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), HOUR)
+    AND (statement_type != 'SCRIPT' OR statement_type IS NULL)
+),
+per_second AS (
+  SELECT
+    TIMESTAMP_TRUNC(period_start, HOUR) AS hour,
+    period_start,
+    reservation_id,
+    SUM(period_slot_ms) AS period_slot_ms
+  FROM
+    filtered
+  GROUP BY
+    period_start, reservation_id
+),
+per_hour AS (
+  SELECT
+    TIMESTAMP_TRUNC(period_start, HOUR) AS hour,
+    reservation_id,
+    COUNT(DISTINCT job_id) AS job_count
+  FROM
+    filtered
+  GROUP BY
+    hour, reservation_id
+)
 SELECT
-  TIMESTAMP_TRUNC(period_start, HOUR) AS hour,
-  COALESCE(reservation_id, 'ON_DEMAND') AS reservation_id,
+  hour,
+  reservation_id,
   ROUND(SUM(period_slot_ms) / (1000 * 3600), 2) AS avg_slots,
   ROUND(MAX(period_slot_ms) / 1000, 2) AS peak_slots,
-  COUNT(DISTINCT job_id) AS job_count,
+  ANY_VALUE(per_hour.job_count) AS job_count,
   ROUND(SUM(period_slot_ms) / (1000 * 3600), 2) AS total_slot_hours
 FROM
-  `region-us-central1`.INFORMATION_SCHEMA.JOBS_TIMELINE
-WHERE
-  period_start BETWEEN TIMESTAMP_TRUNC(
-    TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR), HOUR)
-  AND TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), HOUR)
+  per_second
+JOIN
+  per_hour
+USING
+  (hour, reservation_id)
 GROUP BY
   hour, reservation_id;
 ```
@@ -223,7 +266,7 @@ You can then build dashboards on this table and set up Cloud Monitoring alerts f
 
 ## Practical Patterns to Watch For
 
-There are several patterns that commonly show up in slot monitoring data. The midnight spike is when all scheduled queries and ETL jobs run at the same time - spread them out to reduce peak demand. The runaway query is a single query consuming hundreds of slots for hours, usually a poorly written ad-hoc query - use custom quotas to limit per-user slot consumption. The idle reservation is when a reservation consistently uses less than 50% of its allocated slots - either reduce the allocation or enable idle slot sharing. The consistently maxed reservation is when a reservation is always at 100% utilization - queries are likely queueing, so increase capacity or optimize the queries using those slots.
+There are several patterns that commonly show up in slot monitoring data. The midnight spike is when all scheduled queries and ETL jobs run at the same time - spread them out to reduce peak demand. The runaway query is a single query consuming hundreds of slots for hours, usually a poorly written ad-hoc query - use custom query quotas to limit per-user bytes processed when you use on-demand pricing, or reservation assignments to isolate workloads when you use capacity-based pricing. The idle reservation is when a reservation consistently uses less than 50% of its allocated slots - either reduce the allocation or enable idle slot sharing. The consistently maxed reservation is when a reservation is always at 100% utilization - queries are likely queueing, so increase capacity or optimize the queries using those slots.
 
 ## Wrapping Up
 
