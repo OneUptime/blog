@@ -21,7 +21,7 @@ graph TD
         L2[Simple configuration]
         L3[Low resource overhead]
         L4[Automatic mTLS]
-        L5[Built-in dashboard]
+        L5[Viz dashboard extension]
     end
 
     subgraph "Istio"
@@ -117,15 +117,18 @@ step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
   --profile intermediate-ca --not-after 8760h --no-password --insecure \
   --ca ca.crt --ca-key ca.key
 
+# Install the Gateway API CRDs if they are not already present
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+
 # Install CRDs
 helm install linkerd-crds linkerd-edge/linkerd-crds -n linkerd --create-namespace
 
 # Install control plane with custom certificates
 helm install linkerd-control-plane linkerd-edge/linkerd-control-plane \
   -n linkerd \
-  --set identityTrustAnchorsPEM="$(cat ca.crt)" \
-  --set identity.issuer.tls.crtPEM="$(cat issuer.crt)" \
-  --set identity.issuer.tls.keyPEM="$(cat issuer.key)"
+  --set-file identityTrustAnchorsPEM=ca.crt \
+  --set-file identity.issuer.tls.crtPEM=issuer.crt \
+  --set-file identity.issuer.tls.keyPEM=issuer.key
 ```
 
 ## Injecting the Data Plane
@@ -218,7 +221,8 @@ linkerd viz tap deploy/web-api -n production
 ## Traffic Splitting for Canary Deployments
 
 ```yaml
-# Linkerd uses the SMI (Service Mesh Interface) TrafficSplit resource
+# Linkerd supports the SMI (Service Mesh Interface) TrafficSplit resource,
+# but TrafficSplit is deprecated. Prefer dynamic request routing for new deployments.
 apiVersion: split.smi-spec.io/v1alpha2
 kind: TrafficSplit
 metadata:
@@ -247,7 +251,7 @@ graph LR
 
 ```yaml
 # Server resource defines a port and protocol for policy
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
   name: web-api-http
@@ -294,33 +298,52 @@ spec:
 ## Retries and Timeouts
 
 ```yaml
-# Service profile for configuring retries and timeouts
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# HTTPRoute for configuring retries and timeouts
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: web-api.production.svc.cluster.local
+  name: web-api-products
   namespace: production
+  annotations:
+    retry.linkerd.io/http: 5xx
+    retry.linkerd.io/limit: "2"
+    retry.linkerd.io/timeout: 300ms
+    timeout.linkerd.io/request: 3s
 spec:
-  routes:
-    - name: GET /api/v1/products
-      condition:
-        method: GET
-        pathRegex: /api/v1/products
-      responseClasses:
-        - condition:
-            status:
-              min: 500
-              max: 599
-          isFailure: true  # Mark 5xx as failures for retry logic
-      isRetryable: true    # Enable automatic retries
-      timeout: 3s          # Request timeout
+  parentRefs:
+    - name: web-api
+      kind: Service
+      group: core
+      port: 8080
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: PathPrefix
+            value: /api/v1/products
 
-    - name: POST /api/v1/orders
-      condition:
-        method: POST
-        pathRegex: /api/v1/orders
-      isRetryable: false   # Do not retry POST requests (not idempotent)
-      timeout: 5s
+---
+
+# POST requests get a timeout but no retry annotations because they are not idempotent
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-orders
+  namespace: production
+  annotations:
+    timeout.linkerd.io/request: 5s
+spec:
+  parentRefs:
+    - name: web-api
+      kind: Service
+      group: core
+      port: 8080
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: PathPrefix
+            value: /api/v1/orders
 ```
 
 ## Monitoring and Debugging
@@ -358,6 +381,6 @@ graph TD
 
 ## Conclusion
 
-Linkerd provides a lightweight, simple, and secure service mesh for Kubernetes. Its automatic mTLS, built-in dashboard, and minimal configuration make it an excellent choice for teams that want service mesh benefits without the complexity. Start by installing the control plane, inject your workloads, and enjoy automatic encryption, observability, and reliability.
+Linkerd provides a lightweight, simple, and secure service mesh for Kubernetes. Its automatic mTLS, Viz dashboard extension, and minimal configuration make it an excellent choice for teams that want service mesh benefits without the complexity. Start by installing the control plane, inject your workloads, and enjoy automatic encryption, observability, and reliability.
 
 For comprehensive monitoring of your Linkerd-meshed services and Kubernetes clusters, check out [OneUptime](https://oneuptime.com) for uptime monitoring, incident management, and real-time observability.
