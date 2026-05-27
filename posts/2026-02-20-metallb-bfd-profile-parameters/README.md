@@ -8,9 +8,9 @@ Description: Learn how to configure BFD (Bidirectional Forwarding Detection) pro
 
 ---
 
-BGP's default keepalive and hold timers operate on the order of seconds to minutes. When a link fails, it can take up to three minutes for BGP to detect the failure and withdraw routes. In environments where fast failover matters, this delay is unacceptable. Bidirectional Forwarding Detection (BFD) solves this by running a lightweight heartbeat protocol alongside BGP. BFD can detect link failures in milliseconds, triggering an immediate BGP session teardown and route withdrawal.
+BGP's default keepalive and hold timers operate on the order of seconds to minutes. When a link fails, it can take tens of seconds or longer for BGP to detect the failure and withdraw routes, depending on the negotiated hold timer. In environments where fast failover matters, this delay is unacceptable. Bidirectional Forwarding Detection (BFD) solves this by running a lightweight heartbeat protocol alongside BGP. BFD can detect link failures in milliseconds, triggering an immediate BGP session teardown and route withdrawal.
 
-MetalLB supports BFD through its FRR (Free Range Routing) backend. You configure BFD by creating a `BFDProfile` custom resource and referencing it from your `BGPPeer`. This guide walks through every BFD parameter that MetalLB exposes and explains how to tune them for your environment.
+MetalLB supports BFD through its FRR-based modes (FRR or FRR-K8s). You configure BFD by creating a `BFDProfile` custom resource and referencing it from your `BGPPeer`. This guide walks through every BFD parameter that MetalLB exposes and explains how to tune them for your environment.
 
 ## How BFD Works with MetalLB
 
@@ -44,18 +44,18 @@ MetalLB exposes the following BFD parameters through the `BFDProfile` custom res
 | `receiveInterval` | How often the local side expects to receive BFD packets (ms) | 300 | 10-60000 |
 | `transmitInterval` | How often the local side sends BFD packets (ms) | 300 | 10-60000 |
 | `detectMultiplier` | Number of missed packets before declaring session down | 3 | 2-255 |
-| `echoInterval` | Interval for BFD echo packets (ms) | 50 | 10-60000 |
+| `echoInterval` | Minimum interval for BFD echo packets (ms) | 50 | 10-60000 |
 | `echoMode` | Whether to enable BFD echo mode | false | true/false |
 | `passiveMode` | Whether the local side waits for the remote to initiate | false | true/false |
 | `minimumTtl` | Minimum TTL for incoming BFD packets (multi-hop) | 254 | 1-254 |
 
 ## Detection Time Calculation
 
-The detection time is the maximum time before BFD declares a session down. It is calculated as:
+The detection time is based on the agreed transmit interval for packets received from the remote peer and the local detect multiplier:
 
-$$T_{detect} = \text{receiveInterval} \times \text{detectMultiplier}$$
+$$T_{detect} = \max(\text{remote transmitInterval}, \text{local receiveInterval}) \times \text{local detectMultiplier}$$
 
-For example, with a `receiveInterval` of 300ms and a `detectMultiplier` of 3:
+For example, if both sides use a `transmitInterval` and `receiveInterval` of 300ms and a `detectMultiplier` of 3:
 
 $$T_{detect} = 300\text{ms} \times 3 = 900\text{ms}$$
 
@@ -63,10 +63,10 @@ This means BFD will detect a failure within 900 milliseconds.
 
 ## Prerequisites
 
-- Kubernetes cluster with MetalLB installed in FRR mode
+- Kubernetes cluster with MetalLB installed in an FRR-based mode
 - At least one BGPPeer configured
 - The upstream router must also support BFD
-- BFD must be enabled on the router interface facing the Kubernetes nodes
+- BFD must be enabled for the matching BGP neighbor on the router side
 
 ## Step 1: Create a BFDProfile with Default Parameters
 
@@ -140,7 +140,7 @@ kubectl get bgppeer -n metallb-system -o yaml | grep bfdProfile
 For environments that demand the fastest possible failover, reduce the intervals and keep the multiplier low. This increases CPU usage on both the MetalLB speakers and the router.
 
 ```yaml
-# Aggressive BFDProfile for sub-100ms detection
+# Aggressive BFDProfile for faster detection
 # Detection time: 50ms x 3 = 150ms
 # WARNING: This puts significant load on the control plane
 apiVersion: metallb.io/v1beta1
@@ -192,7 +192,7 @@ Use the following decision flow to pick the right profile for your environment:
 ```mermaid
 flowchart TD
     START[Choose BFD Parameters] --> Q1{How critical is<br/>fast failover?}
-    Q1 -- "Very critical<br/>(financial, real-time)" --> AGG[Aggressive Profile<br/>TX/RX: 50ms<br/>Multiplier: 3<br/>Detection: 150ms]
+    Q1 -- "Very critical<br/>(financial, real-time)" --> AGG[Aggressive Profile<br/>TX/RX: 50ms<br/>Multiplier: 3<br/>Detection: about 150ms]
     Q1 -- "Important but<br/>not extreme" --> DEF[Default Profile<br/>TX/RX: 300ms<br/>Multiplier: 3<br/>Detection: 900ms]
     Q1 -- "Nice to have" --> CON[Conservative Profile<br/>TX/RX: 1000ms<br/>Multiplier: 5<br/>Detection: 5s]
 
@@ -203,7 +203,7 @@ flowchart TD
 
 ## Step 5: Enable Echo Mode
 
-BFD echo mode sends packets that are looped back by the remote peer. This offloads failure detection to the forwarding plane and can reduce CPU usage on the remote side. Not all routers support echo mode.
+BFD echo mode sends packets that are looped back by the remote peer. This can offload failure detection to the forwarding plane and reduce control packet traffic when paired with longer control intervals. In FRR, echo mode is disabled by default, is not supported for multihop sessions, and only works with another FRR peer unless you are using distributed BFD.
 
 ```yaml
 # BFDProfile with echo mode enabled
@@ -296,7 +296,7 @@ spec:
 | Mistake | Consequence | Fix |
 |---|---|---|
 | Setting intervals too low on slow links | BFD flaps constantly | Increase intervals or raise the detect multiplier |
-| Mismatched parameters between MetalLB and router | BFD session may not establish | Ensure both sides agree on intervals and multiplier |
+| Incompatible parameters between MetalLB and router | BFD session may flap or converge at a slower interval than expected | Ensure both sides are configured with compatible intervals and multiplier |
 | Enabling echo mode on a router that does not support it | Echo packets are dropped, session flaps | Disable echo mode or upgrade the router firmware |
 | Forgetting to enable BFD on the router side | BFD session never comes up | Configure BFD on the router's BGP neighbor config |
 
