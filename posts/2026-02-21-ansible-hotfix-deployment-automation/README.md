@@ -74,9 +74,11 @@ Hotfixes skip some of the longer validation steps but keep the critical safety c
   become: true
   tasks:
     - name: Record current version for rollback
-      ansible.builtin.slurp:
+      ansible.builtin.copy:
         src: "{{ deploy_dir }}/current_version"
-      register: previous_version
+        dest: "{{ deploy_dir }}/.previous_version"
+        remote_src: true
+        mode: preserve
 
     - name: Deploy hotfix
       ansible.builtin.include_role:
@@ -118,10 +120,11 @@ Hotfixes skip some of the longer validation steps but keep the critical safety c
 
   tasks:
     - name: Record current version
-      ansible.builtin.command:
-        cmd: "cat {{ deploy_dir }}/current_version"
-      register: prev_ver
-      changed_when: false
+      ansible.builtin.copy:
+        src: "{{ deploy_dir }}/current_version"
+        dest: "{{ deploy_dir }}/.previous_version"
+        remote_src: true
+        mode: preserve
 
     - name: Deploy hotfix
       ansible.builtin.include_role:
@@ -154,6 +157,7 @@ Hotfixes skip some of the longer validation steps but keep the critical safety c
         cmd: "npm run test:smoke -- --suite=critical --env=production"
       register: smoke_result
       changed_when: false
+      failed_when: false
 
     - name: Update incident timeline
       ansible.builtin.uri:
@@ -169,6 +173,11 @@ Hotfixes skip some of the longer validation steps but keep the critical safety c
         token: "{{ slack_token }}"
         channel: "#incidents"
         msg: "HOTFIX {{ hotfix_version }} deployed to all production servers. Smoke tests {{ 'PASSED' if smoke_result.rc == 0 else 'FAILED' }}."
+
+    - name: Fail if smoke tests failed
+      ansible.builtin.fail:
+        msg: "Post-hotfix smoke tests failed"
+      when: smoke_result.rc != 0
 ```
 
 ## Quick Rollback for Failed Hotfixes
@@ -222,12 +231,12 @@ Hotfix deployments need to be fast but not reckless. Keep the critical safety ch
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these Ansible patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these Ansible patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -259,7 +268,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -341,7 +350,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these Ansible patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -403,4 +412,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
