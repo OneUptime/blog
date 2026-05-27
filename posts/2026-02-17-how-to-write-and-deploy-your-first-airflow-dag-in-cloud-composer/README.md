@@ -57,7 +57,7 @@ dag = DAG(
     dag_id="my_first_dag",           # Unique identifier for this DAG
     default_args=default_args,
     description="A simple tutorial DAG",
-    schedule_interval="@daily",       # Run once per day
+    schedule="@daily",                # Run once per day
     start_date=datetime(2025, 1, 1),  # When to start scheduling
     catchup=False,                    # Do not backfill past dates
     tags=["tutorial"],                # Tags for organizing in the UI
@@ -93,7 +93,6 @@ Let us write something more useful - a DAG that extracts data from an API, proce
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.providers.google.cloud.transfers.local_to_gcs import LocalFilesystemToGCSOperator
 import json
 import os
 
@@ -107,7 +106,7 @@ dag = DAG(
     dag_id="api_etl_pipeline",
     default_args=default_args,
     description="Extract data from API, transform, and load to GCS",
-    schedule_interval="0 8 * * *",  # Run at 8 AM UTC daily
+    schedule="0 8 * * *",  # Run at 8 AM UTC daily
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["etl", "api"],
@@ -289,10 +288,16 @@ gcloud composer environments run my-composer-env \
 If a task fails or you want to see the output, check the logs:
 
 ```bash
-# View logs for a specific task in the most recent DAG run
-gcloud composer environments run my-composer-env \
-  --location=us-central1 \
-  tasks logs -- api_etl_pipeline extract 2025-01-15
+# View task logs for a specific DAG run in Cloud Logging
+gcloud logging read \
+  --format="value(textPayload)" \
+  --order=asc \
+  'resource.type=cloud_composer_environment
+   resource.labels.location=us-central1
+   resource.labels.environment_name=my-composer-env
+   labels.workflow=api_etl_pipeline
+   labels."task-id"=extract
+   labels."execution-date"="2025-01-15T00:00:00+00:00"'
 ```
 
 In the Airflow UI, click on a task in the graph view and select "Log" to see the full output.
