@@ -65,44 +65,39 @@ For more complex checks, use OneUptime synthetic monitors to verify that the ful
 // OneUptime Synthetic Monitor Script
 // This script checks that a LoadBalancer service responds correctly.
 
-const https = require('https');
+const startTime = Date.now();
 
-async function monitor() {
-    // Replace with your MetalLB-assigned external IP or DNS name
-    const url = 'http://192.168.1.100/health';
+// Replace with your MetalLB-assigned external IP or DNS name
+const url = 'http://192.168.1.100/health';
 
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json'
-        },
-        // Set a timeout so we detect slow responses
-        signal: AbortSignal.timeout(5000)
-    });
+const response = await axios.get(url, {
+    headers: {
+        Accept: 'application/json'
+    },
+    timeout: 5000,
+    validateStatus: () => true
+});
 
-    // Check that the response status is 200
-    if (response.status !== 200) {
-        throw new Error(
-            `Unexpected status code: ${response.status}`
-        );
-    }
-
-    // Parse and validate the response body
-    const body = await response.json();
-    if (body.status !== 'healthy') {
-        throw new Error(
-            `Service reports unhealthy status: ${body.status}`
-        );
-    }
-
-    return {
-        status: 'ok',
-        responseTime: Date.now()
-    };
+// Check that the response status is 200
+if (response.status !== 200) {
+    throw new Error(
+        `Unexpected status code: ${response.status}`
+    );
 }
 
-// Execute the monitor function
-monitor();
+// Parse and validate the response body
+if (response.data.status !== 'healthy') {
+    throw new Error(
+        `Service reports unhealthy status: ${response.data.status}`
+    );
+}
+
+return {
+    data: {
+        status: 'ok',
+        responseTime: Date.now() - startTime
+    }
+};
 ```
 
 ### Monitor Type 3: Kubernetes Monitor via OpenTelemetry
@@ -127,8 +122,8 @@ data:
       prometheus:
         config:
           scrape_configs:
-            # Scrape MetalLB speaker pods for metrics
-            - job_name: 'metallb-speakers'
+            # Scrape MetalLB controller and speaker pod metrics
+            - job_name: 'metallb'
               kubernetes_sd_configs:
                 - role: pod
                   namespaces:
@@ -139,9 +134,13 @@ data:
                   regex: metallb
                   action: keep
                 - source_labels: [__meta_kubernetes_pod_label_component]
-                  regex: speaker
+                  regex: (controller|speaker)
                   action: keep
-              # MetalLB speakers expose metrics on port 7472
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
+                  regex: monitoring
+                  action: keep
+              # MetalLB controller and speaker pods expose metrics on the
+              # monitoring port, which is 7472 in the standard manifests.
               scrape_interval: 30s
 
     processors:
@@ -152,11 +151,11 @@ data:
 
     exporters:
       otlphttp:
-        # Replace with your OneUptime OTLP endpoint
+        # Replace with your OneUptime OTLP endpoint if self-hosting
         endpoint: "https://oneuptime.com/otlp"
         headers:
-          # Your OneUptime project API key
-          x-oneuptime-token: "your-oneuptime-api-key"
+          # Your OneUptime telemetry ingestion token
+          x-oneuptime-token: "your-oneuptime-telemetry-ingestion-token"
 
     service:
       pipelines:
