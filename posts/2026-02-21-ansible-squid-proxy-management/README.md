@@ -56,6 +56,8 @@ acl Safe_ports port 80 443 8080
 
 acl allowed_domains dstdomain "/etc/squid/allowlist.txt"
 
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
 http_access allow localnet allowed_domains
 http_access deny all
 
@@ -63,7 +65,7 @@ cache_mem {{ squid_cache_mem | default('256 MB') }}
 maximum_object_size {{ squid_max_object_size | default('50 MB') }}
 cache_dir ufs /var/spool/squid {{ squid_cache_size | default(10000) }} 16 256
 
-access_log /var/log/squid/access.log squid
+access_log stdio:/var/log/squid/access.log logformat=squid
 ```
 
 ## Key Takeaways
@@ -109,7 +111,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -253,4 +255,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
