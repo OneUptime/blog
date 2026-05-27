@@ -24,7 +24,7 @@ Google also provides a bunch of system-defined log-based metrics out of the box 
 
 ## Creating a Counter Metric
 
-Let's start with a counter metric that tracks HTTP 500 errors across all your services.
+Let's start with a counter metric that tracks HTTP 500 errors across all your Cloud Run services.
 
 This gcloud command creates a counter metric that increments each time a log entry matches the filter.
 
@@ -32,8 +32,8 @@ This gcloud command creates a counter metric that increments each time a log ent
 # Create a counter metric for HTTP 500 errors
 
 gcloud logging metrics create http-500-errors \
-  --description="Count of HTTP 500 responses across all services" \
-  --log-filter='httpRequest.status=500'
+  --description="Count of HTTP 500 responses across Cloud Run services" \
+  --log-filter='resource.type="cloud_run_revision" AND httpRequest.status=500'
 ```
 
 You can make the filter more specific if you need to. Here is one that only counts 500 errors from a particular Cloud Run service.
@@ -53,14 +53,30 @@ This metric extracts the latency value from a JSON field in your log entries and
 
 ```bash
 # Create a distribution metric for API response latency
+cat > /tmp/api-latency-metric.json << 'JSONEOF'
+{
+  "name": "api-latency",
+  "description": "Distribution of API response latency in milliseconds",
+  "filter": "resource.type=\"cloud_run_revision\" AND jsonPayload.latency_ms IS NOT NULL",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "unit": "ms"
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.latency_ms)",
+  "bucketOptions": {
+    "explicitBuckets": {
+      "bounds": [0, 50, 100, 200, 500, 1000, 2000, 5000]
+    }
+  }
+}
+JSONEOF
+
 gcloud logging metrics create api-latency \
-  --description="Distribution of API response latency in milliseconds" \
-  --log-filter='resource.type="cloud_run_revision" AND jsonPayload.latency_ms IS NOT NULL' \
-  --field-name="jsonPayload.latency_ms" \
-  --bucket-boundaries="0,50,100,200,500,1000,2000,5000"
+  --config-from-file=/tmp/api-latency-metric.json
 ```
 
-The `--bucket-boundaries` flag defines the histogram buckets. Choose boundaries that make sense for your use case. For latency, you usually want more granularity at the lower end.
+The `bucketOptions` field defines the histogram buckets. Choose boundaries that make sense for your use case. For latency, you usually want more granularity at the lower end.
 
 ## Adding Labels to Metrics
 
@@ -86,13 +102,13 @@ cat > /tmp/metric-definition.json << 'JSONEOF'
       },
       {
         "key": "status_code",
-        "valueType": "STRING",
+        "valueType": "INT64",
         "description": "HTTP status code"
       }
     ]
   },
   "labelExtractors": {
-    "endpoint": "EXTRACT(httpRequest.requestUrl)",
+    "endpoint": "REGEXP_EXTRACT(httpRequest.requestUrl, \"^[^:]+://[^/]+([^?]+)\")",
     "status_code": "EXTRACT(httpRequest.status)"
   }
 }
@@ -117,11 +133,10 @@ Here is how to create an alert that fires when the HTTP 500 error rate exceeds 1
 gcloud monitoring policies create \
   --display-name="High 500 Error Rate" \
   --condition-display-name="500 errors exceed threshold" \
-  --condition-filter='resource.type="global" AND metric.type="logging.googleapis.com/user/http-500-errors"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-duration=60s \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
+  --condition-filter='resource.type="cloud_run_revision" AND metric.type="logging.googleapis.com/user/http-500-errors"' \
+  --if='> 0.1667' \
+  --duration=60s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE"}' \
   --notification-channels="projects/YOUR_PROJECT_ID/notificationChannels/CHANNEL_ID"
 ```
 
@@ -137,9 +152,9 @@ resource "google_monitoring_alert_policy" "high_error_rate" {
     display_name = "HTTP 500 error count exceeds threshold"
 
     condition_threshold {
-      filter          = "resource.type = \"global\" AND metric.type = \"logging.googleapis.com/user/http-500-errors\""
+      filter          = "resource.type = \"cloud_run_revision\" AND metric.type = \"logging.googleapis.com/user/http-500-errors\""
       comparison      = "COMPARISON_GT"
-      threshold_value = 10
+      threshold_value = 0.1667
       duration        = "60s"
 
       aggregations {
@@ -190,10 +205,10 @@ cat > /tmp/dashboard.json << 'JSONEOF'
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/http-500-errors\"",
+                  "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/http-500-errors\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_RATE"
+                    "perSeriesAligner": "ALIGN_SUM"
                   }
                 }
               }
@@ -208,7 +223,7 @@ cat > /tmp/dashboard.json << 'JSONEOF'
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"logging.googleapis.com/user/api-latency\"",
+                  "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/api-latency\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_PERCENTILE_99"
