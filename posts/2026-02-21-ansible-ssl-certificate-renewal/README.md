@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, SSL, TLS, Certificate, Security
 
-Description: Automate SSL certificate renewal and deployment across your infrastructure using Ansible with Let's Encrypt and custom CA support.
+Description: Automate SSL certificate renewal and deployment across your infrastructure using Ansible with Let's Encrypt.
 
 ---
 
@@ -15,7 +15,6 @@ SSL certificate expiration is one of the most common causes of unplanned outages
 ```yaml
 # roles/ssl_renewal/defaults/main.yml - Certificate management configuration
 
-ssl_provider: letsencrypt
 ssl_email: admin@example.com
 ssl_cert_dir: /etc/letsencrypt/live
 ssl_renewal_threshold: 30
@@ -105,7 +104,7 @@ ssl_domains:
     minute: "0"
     hour: "3"
     weekday: "1"
-    job: "certbot renew --quiet --deploy-hook 'systemctl reload nginx'"
+    job: "certbot renew --quiet --deploy-hook 'systemctl reload {{ ssl_domains | map(attribute='services') | flatten | unique | join(' ') }}'"
     user: root
 ```
 
@@ -163,15 +162,21 @@ ssl_domains:
 ---
 - name: Fetch renewed certificates to control node
   fetch:
-    src: "{{ ssl_cert_dir }}/{{ item.name }}/{{ cert_file }}"
-    dest: "/tmp/certs/{{ item.name }}/"
+    src: "{{ ssl_cert_dir }}/{{ item.0.name }}/{{ item.1 }}"
+    dest: "/tmp/certs/{{ item.0.name }}/"
     flat: yes
-  loop: "{{ ssl_domains }}"
+  loop: "{{ ssl_domains | product(['fullchain.pem', 'privkey.pem']) | list }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item.0.name }}/{{ item.1 }}"
   delegate_to: "{{ ssl_renewal_server }}"
-  vars:
-    cert_file: "{{ lookup('items', ['fullchain.pem', 'privkey.pem']) }}"
+  run_once: yes
+
+- name: Create certificate directories on load balancers
+  file:
+    path: "/etc/ssl/{{ item.name }}"
+    state: directory
+    mode: '0750'
+  loop: "{{ ssl_domains }}"
 
 - name: Deploy certificates to load balancers
   copy:
