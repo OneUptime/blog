@@ -61,17 +61,22 @@ def prepare_tft_data(project_id):
     """.format(project_id=project_id)
 
     df = client.query(query).to_dataframe()
+    df["date"] = pd.to_datetime(df["date"])
 
     # Create a unique time series identifier
-    df["series_id"] = df["product_id"] + "_" + df["store_id"]
+    df["series_id"] = df["product_id"].astype(str) + "_" + df["store_id"].astype(str)
 
     # Add time index (days since start)
     df["time_idx"] = (df["date"] - df["date"].min()).dt.days
 
     # Encode categorical features
-    df["day_of_week"] = df["date"].dt.dayofweek
-    df["month"] = df["date"].dt.month
+    df["day_of_week"] = df["date"].dt.dayofweek.astype(str)
+    df["month"] = df["date"].dt.month.astype(str)
     df["week_of_year"] = df["date"].dt.isocalendar().week.astype(int)
+    df["is_holiday"] = df["is_holiday"].astype(str)
+    df["is_promotion"] = df["is_promotion"].astype(str)
+    df["product_category"] = df["product_category"].astype(str)
+    df["store_region"] = df["store_region"].astype(str)
 
     # Log transform the target (demand is often right-skewed)
     df["log_demand"] = np.log1p(df["daily_demand"])
@@ -108,7 +113,8 @@ Using PyTorch Forecasting, which provides a ready-made TFT implementation:
 import pytorch_forecasting
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer
 from pytorch_forecasting.data import GroupNormalizer
-import pytorch_lightning as pl
+from pytorch_forecasting.metrics import QuantileLoss
+import lightning.pytorch as pl
 
 def build_tft_model(training_df, validation_df, forecast_horizon=30):
     """Build and configure the TFT model"""
@@ -175,9 +181,7 @@ def build_tft_model(training_df, validation_df, forecast_horizon=30):
         hidden_continuous_size=64,
 
         # Loss function: quantile loss for prediction intervals
-        loss=pytorch_forecasting.metrics.QuantileLoss(
-            quantiles=[0.1, 0.25, 0.5, 0.75, 0.9]
-        ),
+        loss=QuantileLoss(quantiles=[0.1, 0.25, 0.5, 0.75, 0.9]),
 
         # Learning rate settings
         learning_rate=0.001,
@@ -206,10 +210,10 @@ def train_on_vertex_ai(project_id, location, training_data_uri):
     job = aiplatform.CustomTrainingJob(
         display_name="tft-demand-forecasting",
         script_path="train_tft.py",
-        container_uri="us-docker.pkg.dev/vertex-ai/training/pytorch-gpu.1-13.py310:latest",
+        container_uri="us-docker.pkg.dev/vertex-ai/training/pytorch-gpu.2-4.py310:latest",
         requirements=[
-            "pytorch-forecasting==1.0.0",
-            "pytorch-lightning==2.1.0",
+            "pytorch-forecasting==1.7.0",
+            "lightning==2.6.1",
             "google-cloud-bigquery",
             "google-cloud-storage",
         ],
@@ -223,6 +227,7 @@ def train_on_vertex_ai(project_id, location, training_data_uri):
             "--epochs", "50",
             "--batch-size", "64",
         ],
+        model_display_name="tft-demand-forecasting",
         replica_count=1,
         machine_type="n1-standard-8",
         accelerator_type="NVIDIA_TESLA_T4",
@@ -238,8 +243,11 @@ The actual training script:
 # train_tft.py - Runs inside the Vertex AI training container
 
 import argparse
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+import os
+import torch
+import lightning.pytorch as pl
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_forecasting import TemporalFusionTransformer
 
 def main():
     parser = argparse.ArgumentParser()
@@ -290,7 +298,8 @@ def main():
     best_model = TemporalFusionTransformer.load_from_checkpoint(
         checkpoint.best_model_path
     )
-    save_model_to_gcs(best_model, "gs://your-bucket/models/tft-demand/")
+    model_dir = os.environ.get("AIP_MODEL_DIR", "gs://your-bucket/models/tft-demand/")
+    save_model_to_gcs(best_model, model_dir)
 
 if __name__ == "__main__":
     main()
@@ -305,10 +314,12 @@ def interpret_tft_model(model, test_dataloader):
     """Extract and visualize TFT model interpretations"""
 
     # Get attention weights and feature importance
-    interpretation = model.interpret_output(
-        model.predict(test_dataloader, return_x=True, return_index=True),
-        reduction="mean",
+    raw_predictions = model.predict(
+        test_dataloader,
+        mode="raw",
+        return_x=True,
     )
+    interpretation = model.interpret_output(raw_predictions.output, reduction="mean")
 
     # Feature importance across all time series
     feature_importance = {
@@ -319,24 +330,27 @@ def interpret_tft_model(model, test_dataloader):
 
     print("\n=== Feature Importance ===")
     print("\nEncoder (historical) variable importance:")
-    for var, imp in sorted(
-        feature_importance["encoder_variables"].items(),
-        key=lambda x: x[1], reverse=True
-    ):
+    encoder_importance = dict(zip(
+        model.encoder_variables,
+        feature_importance["encoder_variables"].detach().cpu().tolist(),
+    ))
+    for var, imp in sorted(encoder_importance.items(), key=lambda x: x[1], reverse=True):
         print(f"  {var}: {imp:.4f}")
 
     print("\nDecoder (future) variable importance:")
-    for var, imp in sorted(
-        feature_importance["decoder_variables"].items(),
-        key=lambda x: x[1], reverse=True
-    ):
+    decoder_importance = dict(zip(
+        model.decoder_variables,
+        feature_importance["decoder_variables"].detach().cpu().tolist(),
+    ))
+    for var, imp in sorted(decoder_importance.items(), key=lambda x: x[1], reverse=True):
         print(f"  {var}: {imp:.4f}")
 
     print("\nStatic variable importance:")
-    for var, imp in sorted(
-        feature_importance["static_variables"].items(),
-        key=lambda x: x[1], reverse=True
-    ):
+    static_importance = dict(zip(
+        model.static_variables,
+        feature_importance["static_variables"].detach().cpu().tolist(),
+    ))
+    for var, imp in sorted(static_importance.items(), key=lambda x: x[1], reverse=True):
         print(f"  {var}: {imp:.4f}")
 
     # Get attention patterns showing which past time steps matter most
@@ -348,10 +362,10 @@ def interpret_tft_model(model, test_dataloader):
 
 ## Deploying for Online Predictions
 
-Deploy the trained model to a Vertex AI endpoint:
+Deploy the trained model to a Vertex AI endpoint with a custom serving container that loads the saved checkpoint and applies the same preprocessing used during training:
 
 ```python
-def deploy_tft_model(project_id, model_uri):
+def deploy_tft_model(project_id, model_uri, serving_image_uri):
     """Deploy the TFT model to a Vertex AI endpoint"""
     aiplatform.init(project=project_id, location="us-central1")
 
@@ -359,7 +373,7 @@ def deploy_tft_model(project_id, model_uri):
     model = aiplatform.Model.upload(
         display_name="tft-demand-forecasting",
         artifact_uri=model_uri,
-        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.1-13:latest",
+        serving_container_image_uri=serving_image_uri,
         serving_container_predict_route="/predict",
         serving_container_health_route="/health",
     )
