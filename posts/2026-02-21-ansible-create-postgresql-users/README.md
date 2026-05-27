@@ -212,9 +212,9 @@ After creating users, grant them access to specific databases.
 
 - name: Grant database access to users
   community.postgresql.postgresql_privs:
-    database: "{{ item.0.database }}"
+    login_db: "{{ item.database }}"
     type: database
-    roles: "{{ item.0.name }}"
+    roles: "{{ item.name }}"
     privs: CONNECT
     state: present
   loop: "{{ postgresql_users | selectattr('database', 'defined') | list }}"
@@ -275,7 +275,7 @@ Password rotation is a security best practice. Here is how to rotate passwords w
 
     - name: Verify new password works
       community.postgresql.postgresql_query:
-        db: myapp_production
+        login_db: myapp_production
         login_user: myapp_user
         login_password: "{{ new_myapp_user_password }}"
         login_host: "127.0.0.1"
@@ -295,7 +295,7 @@ Password rotation is a security best practice. Here is how to rotate passwords w
 # Remove a PostgreSQL user with reassignment of owned objects
 - name: Reassign owned objects before dropping user
   community.postgresql.postgresql_owner:
-    db: myapp_production
+    login_db: myapp_production
     new_owner: myapp_admin
     reassign_owned_by: old_user
   become: true
