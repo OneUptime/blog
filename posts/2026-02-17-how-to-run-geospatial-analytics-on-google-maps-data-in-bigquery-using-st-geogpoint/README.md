@@ -17,7 +17,7 @@ In this post, I will walk through the fundamentals of geospatial analytics in Bi
 `ST_GEOGPOINT(longitude, latitude)` takes a pair of coordinates and returns a GEOGRAPHY point object. A couple of things to note right away:
 
 - The parameter order is **longitude first, latitude second** - this trips up a lot of people because Google Maps shows them as lat, lng
-- The function returns a GEOGRAPHY type, which BigQuery treats as a spherical geometry on the WGS84 reference ellipsoid
+- The function returns a GEOGRAPHY type, which BigQuery treats as a point set on the WGS84 reference spheroid with geodesic edges
 
 ```sql
 -- Create a geography point for the Googleplex in Mountain View
@@ -27,7 +27,7 @@ SELECT ST_GEOGPOINT(-122.0841, 37.4220) as location;
 ## Prerequisites
 
 - A Google Cloud project with BigQuery enabled
-- Location data in BigQuery (or Google Maps public datasets)
+- Location data in BigQuery (or BigQuery public datasets)
 - Basic SQL familiarity
 
 ## Step 1: Load Location Data into BigQuery
@@ -121,7 +121,7 @@ WHERE ST_DWITHIN(location, search_center, radius_meters)
 ORDER BY distance_miles;
 ```
 
-## Step 4: Work with Google Maps Public Datasets
+## Step 4: Work with BigQuery Public Datasets
 
 BigQuery hosts several public datasets with geospatial data that pair well with Google Maps data.
 
@@ -129,7 +129,7 @@ This query uses a public dataset to analyze geographic patterns:
 
 ```sql
 -- Use the US census block groups public dataset for demographic analysis
--- Find population density within 5 miles of each store
+-- Find population within 5 miles of each store
 DECLARE radius FLOAT64 DEFAULT 5 * 1609.34;
 
 SELECT
@@ -139,7 +139,7 @@ SELECT
   SUM(bg.total_pop) as total_population_nearby
 FROM `MY_PROJECT.geo_analytics.store_locations` s
 CROSS JOIN `bigquery-public-data.census_bureau_acs.blockgroup_2020_5yr` bg
-JOIN `bigquery-public-data.geo_census_blockgroups.blockgroups_10` geo
+JOIN `bigquery-public-data.geo_census_blockgroups.us_blockgroups_national` geo
   ON bg.geo_id = geo.geo_id
 WHERE ST_DWITHIN(s.location, geo.blockgroup_geom, radius)
 GROUP BY s.store_id, s.store_name
@@ -186,7 +186,7 @@ ORDER BY overlap_sq_miles DESC;
 
 ## Step 6: Geocoding and Reverse Geocoding Patterns
 
-When you have address data instead of coordinates, you need to geocode first. Here is a pattern using a UDF that calls the Google Maps Geocoding API:
+When you have address data instead of coordinates, you need to geocode first. Here is a pattern using a lookup table populated from the Google Maps Geocoding API:
 
 ```sql
 -- If you have coordinates and need to enrich with address info,
@@ -213,7 +213,7 @@ from google.cloud import bigquery
 def batch_geocode(project_id, source_table, dest_table):
     """Batch geocodes addresses from BigQuery and writes back the results."""
     gmaps = googlemaps.Client(key="YOUR_API_KEY")
-    bq = bigquery.Client()
+    bq = bigquery.Client(project=project_id)
 
     # Read ungeocoded addresses
     query = f"""
@@ -261,8 +261,8 @@ SELECT
 FROM `MY_PROJECT.geo_analytics.raw_customers`;
 
 -- Use ST_DWITHIN for radius queries instead of computing distance and filtering
--- This lets BigQuery use spatial indexing
--- Good: uses spatial index
+-- This lets BigQuery optimize spatial predicates on clustered geography columns
+-- Good: uses an optimized spatial predicate
 SELECT * FROM locations WHERE ST_DWITHIN(location, target, 10000);
 
 -- Avoid: computes distance for every row first
@@ -271,4 +271,4 @@ SELECT * FROM locations WHERE ST_DISTANCE(location, target) < 10000;
 
 ## Summary
 
-ST_GEOGPOINT is the entry point for geospatial analytics in BigQuery, but the real power comes from combining it with functions like ST_DISTANCE, ST_DWITHIN, ST_BUFFER, and ST_INTERSECTION to answer location-based business questions. Remember that the parameter order is longitude first, use ST_DWITHIN instead of distance calculations for radius searches to get spatial index benefits, and consider clustering your tables on geography columns for large datasets. Whether you are analyzing store coverage, optimizing delivery routes, or understanding customer proximity, BigQuery GIS gives you SQL-based geospatial analysis at scale.
+ST_GEOGPOINT is the entry point for geospatial analytics in BigQuery, but the real power comes from combining it with functions like ST_DISTANCE, ST_DWITHIN, ST_BUFFER, and ST_INTERSECTION to answer location-based business questions. Remember that the parameter order is longitude first, use ST_DWITHIN instead of distance calculations for radius searches so BigQuery can optimize spatial predicates, and consider clustering your tables on geography columns for large datasets. Whether you are analyzing store coverage, optimizing delivery routes, or understanding customer proximity, BigQuery GIS gives you SQL-based geospatial analysis at scale.
