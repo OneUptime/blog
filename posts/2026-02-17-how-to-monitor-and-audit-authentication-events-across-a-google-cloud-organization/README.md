@@ -16,7 +16,7 @@ This guide covers how to collect, analyze, and alert on authentication events at
 
 Google Cloud has several types of authentication events you need to track. User logins through Google Workspace or Cloud Identity, service account key usage, OAuth token grants and refreshes, API key usage, workload identity federation token exchanges, and failed authentication attempts across all of these.
 
-Each generates audit log entries, but they appear in different log types and services, which is why organization-wide collection matters.
+Many generate Cloud Audit Logs or Admin SDK Reports API events, but they appear in different log types and services, which is why organization-wide collection matters.
 
 ## Step 1: Enable Comprehensive Audit Logging
 
@@ -51,32 +51,33 @@ gcloud organizations set-iam-policy ORG_ID /tmp/org-policy.yaml
 
 # Create an organization-level sink for authentication events
 gcloud logging sinks create auth-events-sink \
+  bigquery.googleapis.com/projects/audit-project/datasets/auth_events \
   --organization=ORG_ID \
   --log-filter='
     protoPayload.methodName:(
       "google.login.LoginService.loginSuccess" OR
       "google.login.LoginService.loginFailure" OR
       "google.iam.admin.v1.CreateServiceAccountKey" OR
-      "google.iam.credentials.v1.GenerateAccessToken" OR
-      "google.iam.credentials.v1.SignBlob" OR
+      "GenerateAccessToken" OR
+      "SignBlob" OR
       "SetIamPolicy"
     ) OR
-    logName:"cloudaudit.googleapis.com/activity"
+    protoPayload.authenticationInfo.principalEmail:"gserviceaccount.com" OR
+    log_id("cloudaudit.googleapis.com/activity")
   ' \
-  --destination="bigquery.googleapis.com/projects/audit-project/datasets/auth_events" \
   --include-children \
   --use-partitioned-tables
 ```
 
 ## Step 2: Collect Google Workspace Login Events
 
-Google Workspace login events are separate from GCP audit logs. You need the Admin SDK Reports API to access them.
+Google Workspace login events can be shared with Google Cloud Audit Logs, but if you do not enable that sharing, you need the Admin SDK Reports API to access them.
 
 ```python
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from google.cloud import bigquery
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def collect_login_events(admin_email, days_back=1):
     """Collect login events from Google Workspace Admin Reports."""
@@ -90,7 +91,7 @@ def collect_login_events(admin_email, days_back=1):
 
     # Calculate the time window
     start_time = (
-        datetime.utcnow() - timedelta(days=days_back)
+        datetime.now(timezone.utc) - timedelta(days=days_back)
     ).strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
     # Fetch login events
@@ -168,12 +169,11 @@ WITH baseline AS (
         protopayload_auditlog.authenticationInfo.principalEmail AS sa_email,
         protopayload_auditlog.requestMetadata.callerIp AS ip,
         COUNT(*) AS baseline_count
-    FROM `audit-project.auth_events.cloudaudit_googleapis_com_activity_*`
+    FROM `audit-project.auth_events.cloudaudit_googleapis_com_*`
     WHERE protopayload_auditlog.authenticationInfo.principalEmail
           LIKE '%gserviceaccount.com'
-    AND _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-        AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+    AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 31 DAY)
+    AND timestamp < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
     GROUP BY sa_email, ip
 ),
 recent AS (
@@ -182,10 +182,10 @@ recent AS (
         protopayload_auditlog.requestMetadata.callerIp AS ip,
         COUNT(*) AS recent_count,
         ARRAY_AGG(DISTINCT protopayload_auditlog.methodName LIMIT 10) AS methods
-    FROM `audit-project.auth_events.cloudaudit_googleapis_com_activity_*`
+    FROM `audit-project.auth_events.cloudaudit_googleapis_com_*`
     WHERE protopayload_auditlog.authenticationInfo.principalEmail
           LIKE '%gserviceaccount.com'
-    AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', CURRENT_DATE())
+    AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
     GROUP BY sa_email, ip
 )
 SELECT
@@ -207,7 +207,7 @@ Set up Cloud Functions triggered by Pub/Sub to process authentication events in 
 ```python
 import json
 import base64
-from collections import defaultdict
+from datetime import datetime, timezone
 from google.cloud import firestore
 
 db = firestore.Client()
@@ -296,7 +296,7 @@ def check_geo_anomaly(principal, source_ip):
 
             if last_country != current_country:
                 time_diff = calculate_time_diff(
-                    last_data.get('timestamp'), datetime.utcnow()
+                    last_data.get('timestamp'), datetime.now(timezone.utc)
                 )
                 # Alert if login from different country in less than 2 hours
                 if time_diff < 7200:
@@ -313,6 +313,27 @@ def check_geo_anomaly(principal, source_ip):
         'ip': source_ip,
         'timestamp': firestore.SERVER_TIMESTAMP,
     })
+
+def calculate_time_diff(previous, current):
+    """Return the difference between two timestamps in seconds."""
+    if previous is None:
+        return float('inf')
+    if previous.tzinfo is None:
+        previous = previous.replace(tzinfo=timezone.utc)
+    return (current - previous).total_seconds()
+
+def geoip_lookup(ip_address):
+    """Look up a country or region for an IP address using your GeoIP provider."""
+    # Replace this with your approved GeoIP database or API.
+    return 'unknown'
+
+def send_alert(severity, title, detail):
+    """Send the alert to your notification system."""
+    print(json.dumps({
+        'severity': severity,
+        'title': title,
+        'detail': detail,
+    }))
 ```
 
 ## Step 5: Generate Compliance Reports
@@ -333,12 +354,11 @@ def generate_auth_compliance_report(project_id, start_date, end_date):
     SELECT
         COUNT(DISTINCT protopayload_auditlog.authenticationInfo.principalEmail) AS unique_users,
         COUNT(*) AS total_auth_events,
-        COUNTIF(protopayload_auditlog.status.code != 0) AS failed_events,
-        COUNTIF(protopayload_auditlog.status.code = 0) AS successful_events
-    FROM `audit-project.auth_events.cloudaudit_googleapis_com_activity_*`
-    WHERE _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE('{start_date}'))
-        AND FORMAT_DATE('%Y%m%d', DATE('{end_date}'))
+        COUNTIF(IFNULL(protopayload_auditlog.statuscode, 0) != 0) AS failed_events,
+        COUNTIF(IFNULL(protopayload_auditlog.statuscode, 0) = 0) AS successful_events
+    FROM `audit-project.auth_events.cloudaudit_googleapis_com_*`
+    WHERE timestamp >= TIMESTAMP('{start_date}')
+    AND timestamp < TIMESTAMP_ADD(TIMESTAMP('{end_date}'), INTERVAL 1 DAY)
     """
     result = list(client.query(query).result())
     report_sections['summary'] = {
@@ -356,12 +376,11 @@ def generate_auth_compliance_report(project_id, start_date, end_date):
         COUNT(*) AS total_requests,
         MIN(timestamp) AS first_seen,
         MAX(timestamp) AS last_seen
-    FROM `audit-project.auth_events.cloudaudit_googleapis_com_activity_*`
+    FROM `audit-project.auth_events.cloudaudit_googleapis_com_*`
     WHERE protopayload_auditlog.authenticationInfo.principalEmail
           LIKE '%gserviceaccount.com'
-    AND _TABLE_SUFFIX BETWEEN
-        FORMAT_DATE('%Y%m%d', DATE('{start_date}'))
-        AND FORMAT_DATE('%Y%m%d', DATE('{end_date}'))
+    AND timestamp >= TIMESTAMP('{start_date}')
+    AND timestamp < TIMESTAMP_ADD(TIMESTAMP('{end_date}'), INTERVAL 1 DAY)
     GROUP BY sa_email
     ORDER BY total_requests DESC
     LIMIT 50
