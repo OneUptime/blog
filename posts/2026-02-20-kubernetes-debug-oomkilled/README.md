@@ -8,11 +8,11 @@ Description: Learn how to diagnose and fix OOMKilled errors in Kubernetes includ
 
 ---
 
-OOMKilled (Out of Memory Killed) happens when a container uses more memory than its configured limit. The Linux kernel OOM killer terminates the process, and Kubernetes restarts the container. This leads to CrashLoopBackOff if the problem persists. This guide shows you how to diagnose memory issues and configure limits correctly.
+OOMKilled (Out of Memory Killed) happens when a container uses more memory than its configured limit and the Linux kernel terminates a process in the container. Kubernetes restarts the container if the Pod's restart policy allows it. This leads to CrashLoopBackOff if the problem persists. This guide shows you how to diagnose memory issues and configure limits correctly.
 
 ## How OOMKilled Works
 
-Kubernetes uses Linux cgroups to enforce memory limits. When a container exceeds its memory limit, the kernel sends a SIGKILL (signal 9) to the process.
+Kubernetes uses Linux cgroups to enforce memory limits. Memory limits are enforced reactively: when the kernel detects memory pressure after a container exceeds its memory limit, it typically sends a SIGKILL (signal 9) to a process in that container.
 
 ```mermaid
 graph TD
@@ -139,9 +139,13 @@ Before adjusting limits, understand how much memory your application actually ne
 # Check memory usage inside the container
 kubectl exec -it your-pod-name -n your-namespace -- cat /proc/meminfo
 
-# Check the cgroup memory limit and current usage
+# Check the cgroup v2 memory limit and current usage
 kubectl exec -it your-pod-name -n your-namespace -- cat /sys/fs/cgroup/memory.current
 kubectl exec -it your-pod-name -n your-namespace -- cat /sys/fs/cgroup/memory.max
+
+# On cgroup v1 nodes, use these paths instead
+kubectl exec -it your-pod-name -n your-namespace -- cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+kubectl exec -it your-pod-name -n your-namespace -- cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 
 # Check process memory usage
 kubectl exec -it your-pod-name -n your-namespace -- ps aux --sort=-%mem | head -10
@@ -164,8 +168,9 @@ container_memory_usage_bytes{pod="your-pod-name", container="my-app"}
 container_spec_memory_limit_bytes{pod="your-pod-name", container="my-app"}
 
 # Percentage of limit being used
-container_memory_working_set_bytes{pod="your-pod-name"} /
-container_spec_memory_limit_bytes{pod="your-pod-name"} * 100
+container_memory_working_set_bytes{pod="your-pod-name", container="my-app"} /
+on (namespace, pod, container)
+container_spec_memory_limit_bytes{pod="your-pod-name", container="my-app"} * 100
 ```
 
 ## Step 5: Common Causes and Fixes
@@ -277,9 +282,13 @@ spec:
     # Alert when container memory usage exceeds 85% of its limit
     - alert: ContainerMemoryHigh
       expr: |
-        container_memory_working_set_bytes{container!=""}
-        / container_spec_memory_limit_bytes{container!=""}
-        > 0.85
+        (
+          container_memory_working_set_bytes{container!="", pod!=""}
+          / on (namespace, pod, container)
+          container_spec_memory_limit_bytes{container!="", pod!=""}
+        ) > 0.85
+        and on (namespace, pod, container)
+        container_spec_memory_limit_bytes{container!="", pod!=""} > 0
       for: 5m
       labels:
         severity: warning
@@ -298,7 +307,7 @@ spec:
 
 ## Step 7: Use VPA for Automatic Right-Sizing
 
-The Vertical Pod Autoscaler (VPA) can recommend or automatically adjust resource requests and limits based on actual usage.
+The Vertical Pod Autoscaler (VPA) can recommend or automatically adjust resource requests based on actual usage. It can also manage limits when configured to control both requests and limits.
 
 ```yaml
 # vpa.yaml - Get memory recommendations from VPA
@@ -336,8 +345,8 @@ kubectl get pod your-pod -o jsonpath='{.spec.containers[*].resources}'
 # 4. Look at memory usage over time in Prometheus
 # container_memory_working_set_bytes{pod="your-pod"}
 
-# 5. Check for OOMKilled events across the namespace
-kubectl get events -n your-namespace | grep OOMKill
+# 5. Check recent warning events across the namespace
+kubectl events -n your-namespace --types=Warning | grep -i OOMKilled
 ```
 
 ## Conclusion
