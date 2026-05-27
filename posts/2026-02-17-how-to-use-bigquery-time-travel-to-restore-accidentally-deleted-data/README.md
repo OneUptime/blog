@@ -14,9 +14,9 @@ In this post, I will show you how to use time travel to query historical data, r
 
 ## How Time Travel Works
 
-BigQuery automatically maintains a history of changes to every table for a configurable window of up to seven days (168 hours). During this window, you can query the table as it existed at any specific timestamp. This works for both the table contents and the table schema. You do not need to enable time travel - it is on by default for all tables.
+BigQuery automatically maintains a history of changes to every table for a configurable window of up to seven days (168 hours). During this window, you can query the table as it existed at any specific timestamp. This works for both the table contents and the table definition. You do not need to enable time travel - it is on by default for all tables.
 
-The time travel window is set at the dataset level and defaults to seven days. You can reduce it to as little as two days if you want to save on storage costs, but I recommend keeping it at the full seven days unless storage costs are a significant concern.
+The time travel window can be set at the dataset or project level and defaults to seven days. You can reduce it to as little as two days if you want to save on storage costs with physical storage billing, but I recommend keeping it at the full seven days unless storage costs are a significant concern.
 
 ## Querying Data at a Past Timestamp
 
@@ -44,15 +44,19 @@ This is useful when you know approximately when the data loss occurred. If someo
 
 If rows were accidentally deleted, you can restore them by querying the pre-deletion state and inserting the missing rows back.
 
-First, identify what was deleted by comparing the current table to the historical version.
+First, identify what was deleted by saving the historical version to a temporary table and comparing it to the current table. BigQuery does not let a single query reference the same table at both the current time and a historical point in time.
 
 ```sql
+-- Save the historical version first
+CREATE TEMP TABLE historical_events AS
+SELECT *
+FROM `my_project.analytics.events`
+FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR);
+
 -- Find rows that existed yesterday but are missing today
 -- These are the accidentally deleted rows
 SELECT historical.*
-FROM
-  `my_project.analytics.events`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR) AS historical
+FROM historical_events AS historical
 LEFT JOIN
   `my_project.analytics.events` AS current_data
 ON
@@ -65,17 +69,23 @@ Once you confirm these are the rows you need to restore, insert them back.
 
 ```sql
 -- Restore the deleted rows by inserting from the historical version
-INSERT INTO `my_project.analytics.events`
+CREATE TEMP TABLE historical_events AS
+SELECT *
+FROM `my_project.analytics.events`
+FOR SYSTEM_TIME AS OF TIMESTAMP('2026-02-16T14:59:00Z');
+
+CREATE TEMP TABLE rows_to_restore AS
 SELECT historical.*
-FROM
-  `my_project.analytics.events`
-  FOR SYSTEM_TIME AS OF TIMESTAMP('2026-02-16T14:59:00Z') AS historical
+FROM historical_events AS historical
 LEFT JOIN
   `my_project.analytics.events` AS current_data
 ON
   historical.event_id = current_data.event_id
 WHERE
   current_data.event_id IS NULL;
+
+INSERT INTO `my_project.analytics.events`
+SELECT * FROM rows_to_restore;
 ```
 
 ## Restoring an Entire Table from a Point in Time
@@ -98,32 +108,35 @@ FOR SYSTEM_TIME AS OF TIMESTAMP('2026-02-16T08:00:00Z');
 Be careful with CREATE OR REPLACE - it creates a new table with the old data, but any table-level settings like clustering, partitioning options, or access policies need to be reapplied. A safer approach is to truncate and reload.
 
 ```sql
--- Safer approach: Truncate and reload to preserve table settings
--- Step 1: Delete all current rows
-DELETE FROM `my_project.analytics.events` WHERE TRUE;
-
--- Step 2: Insert from the historical version
--- Note: The time travel reference is to the original table before the DELETE
-INSERT INTO `my_project.analytics.events`
+-- Safer approach: stage the historical data, then reload to preserve table settings
+-- Step 1: Save the historical version to a temporary table
+CREATE TEMP TABLE historical_events AS
 SELECT *
 FROM `my_project.analytics.events`
 FOR SYSTEM_TIME AS OF TIMESTAMP('2026-02-16T08:00:00Z');
+
+-- Step 2: Delete all current rows
+DELETE FROM `my_project.analytics.events` WHERE TRUE;
+
+-- Step 3: Insert from the staged historical version
+INSERT INTO `my_project.analytics.events`
+SELECT * FROM historical_events;
 ```
 
 ## Recovering a Dropped Table
 
-If someone dropped a table entirely using DROP TABLE, you can recover it using the table snapshot feature. BigQuery retains dropped tables within the time travel window.
+If someone dropped a table entirely using DROP TABLE, you can recover it by copying historical data with a time decorator. BigQuery retains dropped tables within the time travel window.
 
 ```bash
 # Recover a dropped table using bq cp with a time travel decorator
 
-# The @0 suffix means "at the time of deletion"
+# Use a Unix timestamp in milliseconds from before the table was deleted
 bq cp \
-  my_project:analytics.events@1708099200000 \
-  my_project:analytics.events_recovered
+  my_project:analytics.dropped_table@1771250400000 \
+  my_project:analytics.dropped_table_recovered
 ```
 
-The number after the @ is a Unix timestamp in milliseconds. You can also use a relative offset.
+The number after the @ is a Unix timestamp in milliseconds. You can also use @0 for the oldest available historical data or a relative offset.
 
 ```bash
 # Recover the table as it was 3 hours ago
@@ -144,7 +157,7 @@ import datetime
 client = bigquery.Client()
 
 # Specify the timestamp to recover from (before the drop)
-recovery_time = datetime.datetime(2026, 2, 16, 14, 0, 0)
+recovery_time = datetime.datetime(2026, 2, 16, 14, 0, 0, tzinfo=datetime.timezone.utc)
 # Convert to milliseconds since epoch
 recovery_ms = int(recovery_time.timestamp() * 1000)
 
@@ -164,29 +177,35 @@ Time travel is also useful for debugging data pipeline issues by comparing table
 
 ```sql
 -- Compare row counts at different points in time
+CREATE TEMP TABLE event_counts AS
 SELECT
   'Current' AS snapshot,
   COUNT(*) AS row_count
-FROM `my_project.analytics.events`
-UNION ALL
+FROM `my_project.analytics.events`;
+
+INSERT INTO event_counts
 SELECT
   '24h ago' AS snapshot,
   COUNT(*) AS row_count
 FROM `my_project.analytics.events`
-FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-UNION ALL
+FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR);
+
+INSERT INTO event_counts
 SELECT
   '48h ago' AS snapshot,
   COUNT(*) AS row_count
 FROM `my_project.analytics.events`
 FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 48 HOUR);
+
+SELECT *
+FROM event_counts;
 ```
 
 This can quickly reveal if a pipeline accidentally deleted or duplicated data.
 
 ## Configuring the Time Travel Window
 
-The time travel window is set at the dataset level. The default is seven days (168 hours). You can configure it between 48 hours and 168 hours.
+The time travel window can be set at the dataset or project level. The default is seven days (168 hours). You can configure it between 48 hours and 168 hours.
 
 ```sql
 -- Set the time travel window to 7 days (maximum)
@@ -208,7 +227,7 @@ For production datasets, always use the full 168-hour window. The extra storage 
 
 ## Fail-Safe Period
 
-Beyond the time travel window, BigQuery provides an additional fail-safe period of seven days. During this period, data is retained for disaster recovery but is not accessible through time travel queries. Only Google Cloud Support can access fail-safe data, and only in emergency situations. This means even if your time travel window is set to two days, data is technically recoverable for up to nine days (2 + 7) through a support request.
+Beyond the time travel window, BigQuery provides an additional fail-safe period of seven days. During this period, data is retained for disaster recovery but is not accessible through time travel queries or direct recovery. To recover data from fail-safe storage, you must contact Cloud Customer Care. This means even if your time travel window is set to two days, table-level data may be recoverable for up to nine days (2 + 7), but only through Cloud Customer Care.
 
 ## Best Practices for Data Recovery
 
