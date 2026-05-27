@@ -44,8 +44,12 @@ def run_module():
     try:
         client.head_bucket(Bucket=name)
         exists = True
-    except ClientError:
-        exists = False
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code')
+        if error_code in ['404', 'NoSuchBucket']:
+            exists = False
+        else:
+            module.fail_json(msg=str(e))
 
     if module.params['state'] == 'present':
         if exists:
@@ -53,10 +57,12 @@ def run_module():
         if module.check_mode:
             module.exit_json(changed=True)
         try:
-            client.create_bucket(
-                Bucket=name,
-                CreateBucketConfiguration={'LocationConstraint': module.params['region']}
-            )
+            create_args = {'Bucket': name}
+            if module.params['region'] != 'us-east-1':
+                create_args['CreateBucketConfiguration'] = {
+                    'LocationConstraint': module.params['region']
+                }
+            client.create_bucket(**create_args)
             if module.params['tags']:
                 client.put_bucket_tagging(
                     Bucket=name,
