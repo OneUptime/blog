@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, HAProxy, Load Balancing, High Availability
 
-Description: Deploy and configure HAProxy load balancers with Ansible for HTTP and TCP load balancing with health checks and SSL termination.
+Description: Deploy and configure HAProxy load balancers with Ansible for HTTP load balancing with health checks and SSL termination.
 
 ---
 
@@ -34,6 +34,12 @@ HAProxy is a high-performance load balancer used in production by major companie
     mode: '0644'
     validate: "haproxy -c -f %s"
   notify: reload haproxy
+
+- name: Create HAProxy certificate directory
+  ansible.builtin.file:
+    path: /etc/haproxy/certs
+    state: directory
+    mode: '0750'
 
 - name: Deploy SSL certificates
   ansible.builtin.copy:
@@ -109,14 +115,15 @@ listen stats
 
 - name: Alternatively use runtime API for zero-downtime changes
   ansible.builtin.command:
-    cmd: 'echo "set server app_servers/{{ item.name }} state {{ item.state }}" | socat stdio /var/run/haproxy.sock'
+    cmd: socat stdio /var/run/haproxy.sock
+    stdin: "set server app_servers/{{ item.name }} state {{ item.state }}"
   loop: "{{ backend_changes }}"
   changed_when: true
 ```
 
 ## Key Takeaways
 
-HAProxy with Ansible gives you automated, validated load balancer configuration. Use templates to generate HAProxy configs from your Ansible inventory. Validate configuration before applying changes. Use the runtime socket API for zero-downtime backend changes. This approach ensures your load balancer configuration stays in sync with your application servers automatically.
+HAProxy with Ansible gives you automated, validated load balancer configuration. Use templates to generate HAProxy configs from your Ansible inventory. Validate configuration before applying changes. Use the runtime socket API for zero-downtime state changes on existing backend servers. This approach ensures your load balancer configuration stays in sync with your application servers automatically.
 
 ## Common Use Cases
 
@@ -301,4 +308,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
