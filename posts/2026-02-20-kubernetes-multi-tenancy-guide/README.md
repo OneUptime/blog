@@ -183,10 +183,10 @@ Verify RBAC is working:
 
 ```bash
 # Test what a user can do in the namespace
-kubectl auth can-i create deployments --namespace=tenant-a --as=user@example.com
+kubectl auth can-i create deployments --namespace=tenant-a --as=user@example.com --as-group=team-a-developers
 
 # Test that cross-namespace access is denied
-kubectl auth can-i get pods --namespace=tenant-b --as=user@example.com
+kubectl auth can-i get pods --namespace=tenant-b --as=user@example.com --as-group=team-a-developers
 
 # List all role bindings in a namespace
 kubectl get rolebindings -n tenant-a
@@ -384,13 +384,18 @@ Create a script or controller to provision new tenants consistently.
 
 # Tenant name passed as argument
 TENANT_NAME=$1
+TENANT_DEVELOPER_GROUP=${2:-"${TENANT_NAME}-developers"}
+TENANT_VIEWER_GROUP=${3:-"${TENANT_NAME}-viewers"}
 
 if [ -z "$TENANT_NAME" ]; then
-  echo "Usage: ./provision-tenant.sh <tenant-name>"
+  echo "Usage: ./provision-tenant.sh <tenant-name> [developer-group] [viewer-group]"
   exit 1
 fi
 
 echo "Provisioning tenant: $TENANT_NAME"
+
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 # Create the namespace with labels
 kubectl create namespace "$TENANT_NAME"
@@ -400,17 +405,27 @@ kubectl label namespace "$TENANT_NAME" \
   pod-security.kubernetes.io/audit=restricted \
   pod-security.kubernetes.io/warn=restricted
 
+# Render the Tenant A example manifests for the new tenant
+sed "s/tenant-a/$TENANT_NAME/g" resource-quota.yaml > "$TMP_DIR/resource-quota.yaml"
+sed "s/tenant-a/$TENANT_NAME/g" limit-range.yaml > "$TMP_DIR/limit-range.yaml"
+sed "s/tenant-a/$TENANT_NAME/g" network-policy.yaml > "$TMP_DIR/network-policy.yaml"
+sed \
+  -e "s/tenant-a/$TENANT_NAME/g" \
+  -e "s/team-a-developers/$TENANT_DEVELOPER_GROUP/g" \
+  -e "s/team-a-viewers/$TENANT_VIEWER_GROUP/g" \
+  tenant-rbac.yaml > "$TMP_DIR/tenant-rbac.yaml"
+
 # Apply resource quota
-kubectl apply -n "$TENANT_NAME" -f resource-quota.yaml
+kubectl apply -f "$TMP_DIR/resource-quota.yaml"
 
 # Apply limit range
-kubectl apply -n "$TENANT_NAME" -f limit-range.yaml
+kubectl apply -f "$TMP_DIR/limit-range.yaml"
 
 # Apply network policies
-kubectl apply -n "$TENANT_NAME" -f network-policy.yaml
+kubectl apply -f "$TMP_DIR/network-policy.yaml"
 
-# Apply RBAC (update the group name)
-kubectl apply -n "$TENANT_NAME" -f tenant-rbac.yaml
+# Apply RBAC
+kubectl apply -f "$TMP_DIR/tenant-rbac.yaml"
 
 echo "Tenant $TENANT_NAME provisioned successfully"
 ```
@@ -419,7 +434,7 @@ echo "Tenant $TENANT_NAME provisioned successfully"
 
 ```bash
 # 1. Verify namespace isolation
-kubectl auth can-i get pods -n tenant-b --as=tenant-a-user
+kubectl auth can-i get pods -n tenant-b --as=tenant-a-user --as-group=team-a-developers
 
 # 2. Verify resource quotas are enforced
 kubectl describe resourcequota -n tenant-a
