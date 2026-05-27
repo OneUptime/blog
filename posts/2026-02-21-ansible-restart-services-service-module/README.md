@@ -39,7 +39,7 @@ Many services support reloading their configuration without a full restart. This
     state: reloaded
 ```
 
-Not all services support reloading. When you use `state: reloaded` on a service that does not support it, the behavior depends on the init system. Systemd will typically fall back to a restart.
+Not all services support reloading. When you use `state: reloaded` on a service that does not support it, the behavior depends on the init system. With systemd, a unit without reload support typically fails the reload rather than automatically restarting.
 
 Here is a pattern that tries reload first and falls back to restart.
 
@@ -350,18 +350,6 @@ Sometimes you want to schedule a restart for a maintenance window rather than do
 
 ```yaml
 # Schedule a service restart via a systemd timer (deferred restart)
-- name: Create a one-shot restart service
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/restart-myapp.service
-    content: |
-      [Unit]
-      Description=Restart MyApp Service
-
-      [Service]
-      Type=oneshot
-      ExecStart=/bin/systemctl restart myapp
-    mode: '0644'
-
 - name: Schedule restart for 3 AM
   ansible.builtin.command:
     cmd: systemd-run --on-calendar="03:00" systemctl restart myapp
