@@ -46,7 +46,7 @@ graph LR
 - Python 3.9+
 
 ```bash
-pip install google-cloud-discoveryengine google-cloud-aiplatform langchain-google-vertexai
+pip install google-cloud-discoveryengine google-cloud-aiplatform langchain-google-genai
 ```
 
 ## Setting Up the RAG Backend
@@ -235,7 +235,7 @@ def retrieve_with_answer(
                 summary_result_count=5,
                 include_citations=True,
                 model_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec.ModelSpec(
-                    version="gemini-1.5-flash-001/answer_gen/v1",
+                    version="stable",
                 ),
             ),
             extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
@@ -285,13 +285,13 @@ for s in answer['sources']:
 When you need more control over the generation step, use Vertex AI Search for retrieval and your own LLM call for answer generation.
 
 ```python
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 # Initialize the LLM
-llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
     project="your-project-id",
     location="us-central1",
     temperature=0.2,
@@ -353,8 +353,8 @@ class ConversationalRAG:
         self.engine_id = engine_id
         self.chat_history = []
 
-        self.llm = ChatVertexAI(
-            model_name="gemini-1.5-pro",
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-pro",
             project=project_id,
             location="us-central1",
             temperature=0.2,
