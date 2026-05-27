@@ -14,7 +14,7 @@ Running Spot VMs on GKE is straightforward once you understand how Kubernetes sc
 
 ## How Spot Nodes Work in GKE
 
-When you create a Spot node pool, GKE provisions Spot VMs. These VMs have a taint applied automatically, which prevents pods from scheduling on them unless the pods explicitly tolerate the taint.
+When you create a Spot node pool, GKE provisions Spot VMs. GKE labels these nodes automatically, and you should add a taint to the node pool so pods do not schedule on them unless the pods explicitly tolerate the taint.
 
 ```mermaid
 graph LR
@@ -46,6 +46,7 @@ gcloud container node-pools create spot-pool \
   --region us-central1 \
   --machine-type e2-standard-4 \
   --spot \
+  --node-taints=cloud.google.com/gke-spot="true":NoSchedule \
   --enable-autoscaling \
   --min-nodes 0 \
   --max-nodes 20 \
@@ -54,8 +55,9 @@ gcloud container node-pools create spot-pool \
 
 Key details:
 - `--spot`: Creates the pool with Spot VMs
+- `--node-taints`: Adds a taint so only workloads with a matching toleration can run on this pool
 - `--min-nodes 0`: Allows scaling to zero when no Spot workloads are running
-- The pool automatically gets a taint: `cloud.google.com/gke-spot=true:NoSchedule`
+- GKE automatically labels Spot nodes with `cloud.google.com/gke-spot=true`
 
 Verify the node pool and its taint.
 
@@ -74,6 +76,8 @@ kubectl get nodes -l cloud.google.com/gke-spot=true -o jsonpath='{.items[*].spec
 For pods to schedule on Spot nodes, they need to tolerate the Spot taint and optionally prefer (or require) Spot nodes.
 
 ### Option A: Tolerate Spot Nodes (can run anywhere, prefers Spot)
+
+Preferred node affinity influences scheduling onto existing nodes, but it does not cause the cluster autoscaler to scale up Spot nodes on its own. If the Spot pool can scale to zero and you require Spot capacity, use Option B instead.
 
 ```yaml
 # workload-tolerates-spot.yaml
@@ -152,13 +156,13 @@ spec:
             requests:
               cpu: "1"
               memory: "2Gi"
-      # Short grace period since Spot gives 30-second warning
-      terminationGracePeriodSeconds: 25
+      # Short grace period for GKE's default Spot pod shutdown window
+      terminationGracePeriodSeconds: 15
 ```
 
 ## Step 3: Handle Preemption Gracefully
 
-When Google reclaims a Spot VM, your pod gets a SIGTERM signal with approximately 30 seconds to shut down gracefully. Design your workloads to handle this.
+When Google reclaims a Spot VM, the VM terminates 30 seconds after the termination notice. By default, GKE gives non-system pods up to 15 seconds of graceful termination time on a best-effort basis, so design your workloads to handle SIGTERM quickly.
 
 ```javascript
 // Node.js - Graceful shutdown on SIGTERM
@@ -181,11 +185,11 @@ process.on("SIGTERM", () => {
     });
   });
 
-  // Force exit after 25 seconds (before the 30-second deadline)
+  // Force exit after 14 seconds (before the default 15-second pod grace period)
   setTimeout(() => {
     console.log("Forced exit after timeout");
     process.exit(1);
-  }, 25000);
+  }, 14000);
 });
 
 // Health check endpoint - report unhealthy during shutdown
@@ -209,6 +213,8 @@ import json
 import sys
 
 checkpoint_file = "/data/checkpoint.json"
+total_items = get_total_items()
+current_item = 0
 
 def save_checkpoint(processed_items):
     """Save progress so we can resume after preemption."""
@@ -254,7 +260,13 @@ metadata:
   name: payment-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       # No toleration for Spot taint = will NOT schedule on Spot nodes
       containers:
@@ -268,7 +280,13 @@ metadata:
   name: recommendation-engine
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: recommendation-engine
   template:
+    metadata:
+      labels:
+        app: recommendation-engine
     spec:
       tolerations:
         - key: cloud.google.com/gke-spot
@@ -310,7 +328,14 @@ kind: Deployment
 metadata:
   name: important-spot-workload
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: important-spot-workload
   template:
+    metadata:
+      labels:
+        app: important-spot-workload
     spec:
       priorityClassName: spot-high-priority
       tolerations:
@@ -318,6 +343,9 @@ spec:
           operator: Equal
           value: "true"
           effect: NoSchedule
+      containers:
+        - name: worker
+          image: important-spot-workload:latest
 ```
 
 ## Cost Savings Calculation
@@ -325,12 +353,13 @@ spec:
 Let me show a real cost comparison.
 
 ```bash
-# Check Spot vs on-demand pricing for your machine type
+# Confirm machine type specs, then check current Spot and on-demand prices
+# in the Google Cloud pricing page, Pricing Calculator, or Cloud Billing Catalog API.
 gcloud compute machine-types describe e2-standard-4 \
   --zone us-central1-a \
   --format "value(description)"
 
-# Approximate monthly cost comparison:
+# Illustrative monthly cost comparison:
 # e2-standard-4 on-demand: ~$97/month
 # e2-standard-4 Spot:      ~$29/month (70% savings)
 #
@@ -345,8 +374,8 @@ gcloud compute machine-types describe e2-standard-4 \
 Keep an eye on preemption events and capacity.
 
 ```bash
-# Watch for preemption events
-kubectl get events --field-selector reason=Preempted --sort-by='.lastTimestamp'
+# Watch for recent node shutdown or termination signals
+kubectl get events --all-namespaces --sort-by='.lastTimestamp' | grep -E 'Preempt|NodeShutdown|Terminated'
 
 # Check current Spot node count
 kubectl get nodes -l cloud.google.com/gke-spot=true --no-headers | wc -l
@@ -364,7 +393,7 @@ Set up monitoring alerts for:
 
 ## Best Practices Summary
 
-1. **Set `terminationGracePeriodSeconds` to 25 seconds or less** - Spot gives you 30 seconds, and you need a buffer.
+1. **Set `terminationGracePeriodSeconds` to 15 seconds or less for non-system pods** - Spot VMs terminate after 30 seconds, but GKE's default graceful termination period for non-system pods is up to 15 seconds on a best-effort basis.
 
 2. **Always have an on-demand fallback** - Set tolerations to prefer Spot but not require it, or keep a minimum on-demand pool.
 
@@ -376,4 +405,4 @@ Set up monitoring alerts for:
 
 ## Wrapping Up
 
-Spot node pools in GKE offer substantial cost savings for workloads that can tolerate interruptions. The setup is simple - create a Spot pool, add tolerations to your fault-tolerant workloads, and keep critical services on on-demand nodes. The key to success is proper workload classification: understand which of your services can handle a 30-second termination notice and which cannot. For batch processing, CI/CD, development environments, and stateless services with enough replicas, Spot VMs are an easy win that can cut your compute bill by more than half.
+Spot node pools in GKE offer substantial cost savings for workloads that can tolerate interruptions. The setup is simple - create a Spot pool, add tolerations to your fault-tolerant workloads, and keep critical services on on-demand nodes. The key to success is proper workload classification: understand which of your services can handle fast termination and which cannot. For batch processing, CI/CD, development environments, and stateless services with enough replicas, Spot VMs are an easy win that can cut your compute bill by more than half.
