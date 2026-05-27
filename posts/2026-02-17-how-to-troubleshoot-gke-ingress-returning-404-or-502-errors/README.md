@@ -25,7 +25,7 @@ flowchart LR
     NEG -->|Pod IP:Port| Pod2[Pod 2]
 ```
 
-A 404 or 502 typically means the load balancer cannot find a healthy backend to route traffic to.
+A 404 typically means no host or path rule matched and the request reached the default backend. A 502 typically means the load balancer could not successfully connect to a healthy backend.
 
 ## Step 1 - Check Ingress Status
 
@@ -67,9 +67,9 @@ The labels must match exactly. A typo in the selector is one of the most common 
 
 ## Step 3 - Fix Health Check Failures (502 Errors)
 
-The most frequent cause of 502 errors is the load balancer health check failing. When no backends pass the health check, the load balancer returns 502.
+The most frequent cause of 502 errors is the load balancer health check failing. For the classic external Application Load Balancer used by GKE external Ingress, the load balancer returns 502 when all backends are unhealthy.
 
-By default, the GKE Ingress health check sends requests to the root path `/` on the serving port. If your application does not respond with a 200 on `/`, the health check fails.
+GKE creates the load balancer health check from a BackendConfig, from compatible readiness probe settings, or from default values. If GKE falls back to defaults, the HTTP health check path is `/`. If your application does not respond with a 200 on the configured health check path and port, the health check fails.
 
 Check the health check status in the Cloud Console under Network Services > Load Balancing, or use gcloud:
 
@@ -127,7 +127,7 @@ Another common cause of 502 errors is a port mismatch. The health check, service
 Make sure:
 - The container listens on the port specified in `containerPort`
 - The Service's `targetPort` matches the container's listening port
-- The health check hits the correct port
+- The health check hits the correct port. With container-native load balancing, a BackendConfig health check port should match a serving Pod's `containerPort`; with instance group backends, it should match the Service's `nodePort`.
 
 ```yaml
 # Correct port configuration across all resources
@@ -136,7 +136,13 @@ kind: Deployment
 metadata:
   name: your-app
 spec:
+  selector:
+    matchLabels:
+      app: your-app
   template:
+    metadata:
+      labels:
+        app: your-app
     spec:
       containers:
       - name: app
