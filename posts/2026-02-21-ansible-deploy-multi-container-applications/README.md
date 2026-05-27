@@ -12,7 +12,7 @@ Most real applications consist of more than one container. A typical web applica
 
 ## Application Architecture Example
 
-Let us work with a realistic application that has five services:
+Let us work with a realistic application that has six application services behind a load balancer:
 
 ```mermaid
 flowchart TD
@@ -59,7 +59,7 @@ Before deploying any containers, create the networks they will communicate over:
             gateway: 172.21.0.1
 ```
 
-Using `internal: true` on the backend network means containers on that network cannot reach the outside internet, which adds a layer of security for databases and caches.
+Using `internal: true` on the backend network means containers attached only to that network cannot reach the outside internet, which adds a layer of security for databases and caches.
 
 ## Defining the Application Stack
 
@@ -313,7 +313,7 @@ ansible-playbook site.yml --tags app
 
 ## Rolling Updates
 
-Update application containers without downtime:
+Update application containers one at a time. With the single-container-per-service layout shown here, each restarted service has a short restart window; zero-downtime updates require running multiple instances or a blue-green pattern behind the load balancer.
 
 ```yaml
 # rolling_update.yml - Update app containers one at a time
@@ -324,6 +324,9 @@ Update application containers without downtime:
   vars:
     new_version: "2.4.0"
     registry: registry.example.com
+    db_password: "{{ vault_db_password }}"
+    redis_password: "{{ vault_redis_password }}"
+    rabbitmq_password: "{{ vault_rabbitmq_password }}"
 
   tasks:
     - name: Pull new images
@@ -341,7 +344,24 @@ Update application containers without downtime:
         image: "{{ registry }}/myapp-api:{{ new_version }}"
         state: started
         restart: true
-        # All other parameters stay the same
+        restart_policy: unless-stopped
+        networks:
+          - name: frontend_net
+          - name: backend_net
+        env:
+          DATABASE_URL: "postgres://appuser:{{ db_password }}@app-db:5432/appdb"
+          REDIS_URL: "redis://:{{ redis_password }}@app-cache:6379"
+          AMQP_URL: "amqp://appuser:{{ rabbitmq_password }}@app-queue:5672"
+          NODE_ENV: "production"
+          PORT: "8080"
+        memory: "1g"
+        cpus: 2.0
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 15s
+          timeout: 5s
+          retries: 3
+          start_period: 20s
       register: api_update
 
     - name: Verify API is healthy after update
@@ -358,6 +378,16 @@ Update application containers without downtime:
         image: "{{ registry }}/myapp-worker:{{ new_version }}"
         state: started
         restart: true
+        restart_policy: unless-stopped
+        networks:
+          - name: backend_net
+        env:
+          DATABASE_URL: "postgres://appuser:{{ db_password }}@app-db:5432/appdb"
+          REDIS_URL: "redis://:{{ redis_password }}@app-cache:6379"
+          AMQP_URL: "amqp://appuser:{{ rabbitmq_password }}@app-queue:5672"
+          WORKER_CONCURRENCY: "4"
+        memory: "768m"
+        cpus: 1.0
 
     - name: Update frontend
       community.docker.docker_container:
@@ -365,6 +395,14 @@ Update application containers without downtime:
         image: "{{ registry }}/myapp-web:{{ new_version }}"
         state: started
         restart: true
+        restart_policy: unless-stopped
+        networks:
+          - name: frontend_net
+        env:
+          API_URL: "http://app-api:8080"
+          PORT: "3000"
+        memory: "256m"
+        cpus: 0.5
 ```
 
 ## Health Verification
