@@ -38,11 +38,12 @@ Users in the US hit the US cluster, EU users hit the EU cluster, and Asian users
 
 ## Prerequisites
 
-Multi-Cluster Ingress requires GKE Enterprise (formerly Anthos). You also need:
+Multi-Cluster Ingress is included with GKE Enterprise and is also available with standalone Multi-Cluster Ingress pricing. You also need:
 
 - Multiple GKE clusters in different regions
 - Fleet membership for each cluster
-- The Hub and Multi-Cluster Ingress APIs enabled
+- The Hub, Multi-Cluster Ingress, and Multi-Cluster Service Discovery APIs enabled
+- VPC-native clusters with Workload Identity Federation for GKE enabled
 
 ```bash
 # Enable required APIs
@@ -51,8 +52,7 @@ gcloud services enable \
   gkehub.googleapis.com \
   multiclusteringress.googleapis.com \
   multiclusterservicediscovery.googleapis.com \
-  container.googleapis.com \
-  trafficdirector.googleapis.com
+  container.googleapis.com
 ```
 
 ## Step 1: Create GKE Clusters in Multiple Regions
@@ -64,18 +64,21 @@ Create clusters in at least two regions.
 gcloud container clusters create cluster-us \
   --region us-central1 \
   --num-nodes 3 \
+  --enable-ip-alias \
   --workload-pool YOUR_PROJECT_ID.svc.id.goog
 
 # Create the EU cluster
 gcloud container clusters create cluster-eu \
   --region europe-west1 \
   --num-nodes 3 \
+  --enable-ip-alias \
   --workload-pool YOUR_PROJECT_ID.svc.id.goog
 
 # Create the Asia cluster
 gcloud container clusters create cluster-asia \
   --region asia-southeast1 \
   --num-nodes 3 \
+  --enable-ip-alias \
   --workload-pool YOUR_PROJECT_ID.svc.id.goog
 ```
 
@@ -114,7 +117,7 @@ gcloud container fleet ingress enable \
   --location us-central1
 ```
 
-The config cluster is special - it hosts the MCI control plane resources. Pick a cluster in your primary region.
+The config cluster is special - it hosts the MCI Kubernetes resources that the Google-hosted controller watches. Pick a cluster in your primary region.
 
 ## Step 4: Deploy Your Application to All Clusters
 
@@ -204,6 +207,12 @@ kubectl apply -f multi-cluster-service.yaml
 
 The MultiClusterIngress resource creates the global load balancer.
 
+```bash
+# Reserve a global static IP and get the literal address
+gcloud compute addresses create web-app-global-ip --global
+gcloud compute addresses describe web-app-global-ip --global --format "value(address)"
+```
+
 ```yaml
 # multi-cluster-ingress.yaml - Global load balancer configuration
 apiVersion: networking.gke.io/v1
@@ -212,8 +221,8 @@ metadata:
   name: web-app-mci
   namespace: default
   annotations:
-    # Reserve and use a static IP
-    networking.gke.io/static-ip: web-app-global-ip
+    # Use the literal static IP address returned by gcloud, not the address name
+    networking.gke.io/static-ip: GLOBAL_IP
     # Enable CDN for static content (optional)
     # networking.gke.io/frontend-config: cdn-config
 spec:
@@ -227,16 +236,12 @@ spec:
           http:
             paths:
               - path: /
-                pathType: Prefix
                 backend:
                   serviceName: web-app-mcs
                   servicePort: 8080
 ```
 
 ```bash
-# Reserve a global static IP
-gcloud compute addresses create web-app-global-ip --global
-
 # Apply the MultiClusterIngress to the config cluster
 kubectl apply -f multi-cluster-ingress.yaml
 ```
@@ -301,17 +306,19 @@ metadata:
   name: web-app-mci
   namespace: default
   annotations:
-    networking.gke.io/static-ip: web-app-global-ip
+    networking.gke.io/static-ip: GLOBAL_IP
     networking.gke.io/pre-shared-certs: "web-app-ssl-cert"
 spec:
   template:
     spec:
+      backend:
+        serviceName: web-app-mcs
+        servicePort: 8080
       rules:
         - host: "app.example.com"
           http:
             paths:
               - path: /
-                pathType: Prefix
                 backend:
                   serviceName: web-app-mcs
                   servicePort: 8080
@@ -342,7 +349,7 @@ You can also set up alerts for when a backend in any region becomes unhealthy.
 
 Multi-Cluster Ingress costs include:
 
-- GKE Enterprise license (per vCPU per cluster)
+- GKE Enterprise licensing, or standalone Multi-Cluster Ingress backend Pod charges if you are not using GKE Enterprise
 - Global load balancer forwarding rules
 - Cross-region data transfer
 - Compute in each region
@@ -351,4 +358,4 @@ The cross-region data transfer is the one to watch. If your clusters need to com
 
 ## Wrapping Up
 
-Multi-Cluster Ingress on GKE gives you global load balancing with automatic failover across regions. Users get routed to the nearest healthy cluster for low latency, and if any region goes down, traffic seamlessly shifts to other regions. The setup requires GKE Enterprise and a bit of upfront work to register clusters and deploy applications across regions, but the availability improvement is significant. For any service that needs to survive regional outages or serve a global user base with low latency, this is the right architecture.
+Multi-Cluster Ingress on GKE gives you global load balancing with automatic failover across regions. Users get routed to the nearest healthy cluster for low latency, and if any region goes down, traffic seamlessly shifts to other regions. The setup requires a bit of upfront work to register clusters and deploy applications across regions, but the availability improvement is significant. For any service that needs to survive regional outages or serve a global user base with low latency, this is the right architecture.
