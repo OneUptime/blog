@@ -8,7 +8,7 @@ Description: Learn how to enable strict ARP mode for kube-proxy before installin
 
 ---
 
-If you have ever tried to set up MetalLB on a Kubernetes cluster and watched your LoadBalancer services sit in "Pending" forever, there is a good chance you missed one small but critical step - enabling strict ARP mode on kube-proxy. This is one of those things that trips people up because nothing breaks loudly. It just does not work, and the logs do not always make it obvious why.
+If you have ever tried to set up MetalLB on a Kubernetes cluster and watched your LoadBalancer services get an external IP but remain unreachable or flaky, there is a good chance you missed one small but critical step - enabling strict ARP mode on kube-proxy. This is one of those things that trips people up because nothing breaks loudly. It just does not work reliably, and the logs do not always make it obvious why.
 
 In this post, we will walk through what strict ARP mode is, why MetalLB needs it, and exactly how to enable and verify it on your cluster. If you are looking for a full MetalLB setup guide, check out our earlier post on [how to configure MetalLB with Kubernetes (Microk8s)](https://oneuptime.com/blog/post/2023-11-06-configure-metallb-with-kubernetes-microk8s/view). This post focuses specifically on the ARP prerequisite that you need to handle first.
 
@@ -18,11 +18,11 @@ ARP (Address Resolution Protocol) is how machines on a local network figure out 
 
 MetalLB in Layer 2 mode works by having one of your Kubernetes nodes respond to ARP requests for the LoadBalancer IP addresses it manages. The node essentially says "That IP is mine" and starts receiving traffic for that service.
 
-The problem? By default, kube-proxy is also happy to respond to ARP requests for any IP address it knows about - including LoadBalancer IPs. This creates a conflict.
+The problem? In IPVS mode, kube-proxy can also respond to ARP requests for service IPs it has placed on `kube-ipvs0` - including LoadBalancer IPs. This creates a conflict.
 
 ## The Problem with Default kube-proxy Behavior
 
-When kube-proxy runs in IPVS mode (which is common in production clusters), it binds service IPs to a local network interface called `kube-ipvs0`. This means the Linux kernel on every node thinks it "owns" those IPs and will respond to ARP requests for them.
+When kube-proxy runs in IPVS mode (which is still used in some clusters, although Kubernetes now recommends nftables as its replacement), it binds service IPs to a local network interface called `kube-ipvs0`. This means the Linux kernel on every node thinks it "owns" those IPs and will respond to ARP requests for them.
 
 Here is what happens without strict ARP mode:
 
@@ -42,7 +42,7 @@ sequenceDiagram
 
 Every node running kube-proxy in IPVS mode will answer ARP requests for service IPs. This means traffic might go to any node, not the one MetalLB has designated. The result is unreliable or completely broken load balancing.
 
-With strict ARP enabled, kube-proxy stops responding to ARP requests for IPs that are not actually assigned to the node's real network interfaces. This lets MetalLB be the only one answering ARP for its managed IPs.
+With strict ARP enabled, kube-proxy configures the node's ARP behavior so it avoids answering ARP queries for addresses on `kube-ipvs0`. This lets MetalLB be the only one answering ARP for its managed IPs.
 
 ```mermaid
 sequenceDiagram
@@ -62,7 +62,7 @@ sequenceDiagram
 
 You need to enable strict ARP mode when both of these are true:
 
-1. **kube-proxy is running in IPVS mode** - If you are using the default iptables mode, kube-proxy does not bind service IPs to a local interface, so there is no conflict. But many production clusters use IPVS for better performance.
+1. **kube-proxy is running in IPVS mode** - If you are using the default iptables mode, kube-proxy does not bind service IPs to a local interface, so there is no conflict. Some existing clusters still use IPVS, but current Kubernetes documentation recommends nftables as the replacement for IPVS on supported Linux systems.
 
 2. **MetalLB is running in Layer 2 mode** - In BGP mode, MetalLB announces routes through BGP rather than responding to ARP, so the ARP conflict does not apply.
 
@@ -164,11 +164,11 @@ The diff output should show only the `strictARP` line changing from `false` to `
 
 ## Step 3: Restart kube-proxy to Pick Up the Change
 
-Editing the ConfigMap does not automatically restart kube-proxy. The kube-proxy pods need to be restarted so they read the new configuration. The easiest way to do this is to delete the kube-proxy pods and let the DaemonSet recreate them.
+Editing the ConfigMap does not automatically restart kube-proxy. The kube-proxy pods need to be restarted so they read the new configuration. The easiest way to do this is to restart the kube-proxy DaemonSet and let it recreate the pods.
 
 ```bash
-# Delete all kube-proxy pods to force a restart
-# The DaemonSet will immediately recreate them with the new config
+# Restart kube-proxy pods so they load the new config
+# The DaemonSet will recreate them with the new config
 kubectl rollout restart daemonset kube-proxy -n kube-system
 ```
 
@@ -247,9 +247,9 @@ flowchart TD
 
 ## Common Issues and Troubleshooting
 
-### LoadBalancer IPs stuck in Pending after installing MetalLB
+### LoadBalancer IPs are assigned but unreachable after installing MetalLB
 
-This is the classic symptom of missing strict ARP. If you installed MetalLB first and forgot strict ARP, do not worry. Just enable it now, restart kube-proxy, and then restart the MetalLB speaker pods too:
+This is the classic symptom of missing strict ARP on an IPVS-based cluster. If you installed MetalLB first and forgot strict ARP, do not worry. Just enable it now, restart kube-proxy, and then restart the MetalLB speaker pods too:
 
 ```bash
 # Enable strict ARP (if not done already)
