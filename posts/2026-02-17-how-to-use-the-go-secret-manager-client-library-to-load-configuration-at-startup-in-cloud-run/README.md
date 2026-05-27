@@ -33,10 +33,12 @@ echo -n "my-api-key-12345" | gcloud secrets create api-key --data-file=-
 echo -n '{"host":"10.0.0.1","port":5432,"database":"mydb"}' | \
   gcloud secrets create db-config --data-file=-
 
-# Grant the Cloud Run service account access to read secrets
-gcloud secrets add-iam-policy-binding db-password \
-  --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
+# Grant the Cloud Run service account access to read each secret
+for SECRET in db-password api-key db-config; do
+  gcloud secrets add-iam-policy-binding "$SECRET" \
+    --member="serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+done
 
 # Install the Go dependency
 go get cloud.google.com/go/secretmanager/apiv1
@@ -53,7 +55,6 @@ package main
 import (
     "context"
     "fmt"
-    "log"
     "os"
 
     secretmanager "cloud.google.com/go/secretmanager/apiv1"
@@ -85,8 +86,15 @@ For a production service, you want to load all your secrets once at startup and 
 
 ```go
 import (
+    "context"
     "encoding/json"
+    "fmt"
+    "log"
+    "os"
     "sync"
+
+    secretmanager "cloud.google.com/go/secretmanager/apiv1"
+    smpb "cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 )
 
 // Config holds all application configuration including secrets
@@ -211,7 +219,10 @@ Wire the config into your main function and pass it to your handlers.
 package main
 
 import (
+    "context"
+    "log"
     "net/http"
+    "os"
     "time"
 )
 
@@ -276,7 +287,7 @@ func (sl *SecretLoader) GetSecretVersion(ctx context.Context, name string, versi
 
 ## Secret Refresh Without Restart
 
-For long-running services that need to pick up rotated secrets, you can refresh the cache periodically.
+For long-running services that keep the `SecretLoader` in use after startup, you can refresh the cache periodically.
 
 ```go
 // StartSecretRefresh periodically refreshes cached secrets
