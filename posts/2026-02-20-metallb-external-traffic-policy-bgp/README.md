@@ -49,10 +49,8 @@ spec:
   peerAddress: 192.168.1.1
   # Your router's AS number
   peerASN: 64501
-  # MetalLB's AS number (must be different from router's)
+  # MetalLB's AS number (use a different ASN for eBGP, or the same ASN for iBGP)
   myASN: 64500
-  # Source address for BGP sessions (optional)
-  sourceAddress: 192.168.1.31
 ---
 # bgp-advertisement.yaml
 # Advertise IPs from the pool via BGP.
@@ -185,11 +183,12 @@ sequenceDiagram
     Router->>N2: Forward Connection A (BROKEN - wrong node)
 ```
 
-To mitigate this, use resilient ECMP on your router if supported, or configure session affinity:
+To mitigate this, use resilient ECMP on your router if supported. Kubernetes session affinity can keep new connections from the same client mapped to the same pod after traffic reaches the cluster, but it does not prevent the upstream router from rehashing traffic when the ECMP next-hop set changes:
 
 ```yaml
 # service-with-affinity.yaml
-# Use session affinity to keep client connections on the same pod.
+# Use session affinity to keep the same client mapped to the same pod
+# after traffic reaches a Kubernetes node.
 apiVersion: v1
 kind: Service
 metadata:
@@ -198,7 +197,7 @@ metadata:
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
-  # Session affinity keeps the same client on the same pod
+  # Session affinity keeps the same client mapped to the same pod
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
@@ -252,8 +251,8 @@ kubectl get nodes --show-labels | grep edge
 | Traffic distribution | Very even (ECMP + kube-proxy) | Even across nodes with pods only |
 | Client source IP | Hidden (SNAT) | Preserved |
 | Network hops | May cross nodes | Stays on receiving node |
-| BGP route withdrawal | All nodes advertise always | Nodes without pods withdraw |
-| Pod scheduling impact | None | Must ensure pods on advertising nodes |
+| BGP route withdrawal | Eligible nodes advertise while the service has active endpoints | Nodes without pods withdraw |
+| Pod scheduling impact | Pods can run on any node | Must ensure pods on advertising nodes |
 | Resilience | Higher (any node can serve) | Lower (depends on pod placement) |
 
 ## Verifying BGP Sessions and Routes
