@@ -32,33 +32,41 @@ flowchart LR
 
 ## Inventory
 
-```ini
-# inventory/databases.ini
-
-[postgres_servers]
-pg-primary ansible_host=10.0.9.10 db_port=5432
-
-[mysql_servers]
-mysql-primary ansible_host=10.0.9.20 db_port=3306
-
-[mongodb_servers]
-mongo-primary ansible_host=10.0.9.30 db_port=27017
-
-[all:vars]
-ansible_user=ubuntu
-# Networks allowed to connect to databases
-allowed_app_networks:
-  - 10.0.1.0/24
-  - 10.0.2.0/24
-allowed_admin_networks:
-  - 10.0.100.0/24
-monitoring_hosts:
-  - 10.0.10.50
+```yaml
+# inventory/databases.yml
+---
+all:
+  vars:
+    ansible_user: ubuntu
+    # Networks allowed to connect to databases
+    allowed_app_networks:
+      - 10.0.1.0/24
+      - 10.0.2.0/24
+    allowed_admin_networks:
+      - 10.0.100.0/24
+    monitoring_hosts:
+      - 10.0.10.50
+  children:
+    postgres_servers:
+      hosts:
+        pg-primary:
+          ansible_host: 10.0.9.10
+          db_port: 5432
+    mysql_servers:
+      hosts:
+        mysql-primary:
+          ansible_host: 10.0.9.20
+          db_port: 3306
+    mongodb_servers:
+      hosts:
+        mongo-primary:
+          ansible_host: 10.0.9.30
+          db_port: 27017
 ```
 
 ## Using UFW (Ubuntu/Debian)
 
-UFW is the simplest option for Ubuntu systems. Ansible has a built-in module for it.
+UFW is the simplest option for Ubuntu systems. Ansible has a module for it in the community.general collection.
 
 ```yaml
 # playbooks/configure-ufw-database.yml
@@ -147,12 +155,17 @@ For RHEL-based systems, firewalld is the standard.
         state: started
         enabled: true
 
+    - name: Check current default zone
+      ansible.builtin.command:
+        cmd: firewall-cmd --get-default-zone
+      register: firewalld_default_zone
+      changed_when: false
+
     - name: Set default zone to drop (deny all)
-      ansible.posix.firewalld:
-        zone: drop
-        state: enabled
-        permanent: true
-        immediate: true
+      ansible.builtin.command:
+        cmd: firewall-cmd --set-default-zone=drop
+      changed_when: firewalld_default_zone.stdout != "drop"
+      when: firewalld_default_zone.stdout != "drop"
 
     - name: Create a database access zone
       ansible.posix.firewalld:
@@ -160,6 +173,17 @@ For RHEL-based systems, firewalld is the standard.
         state: present
         permanent: true
       notify: Reload firewalld
+
+    - name: Reload firewalld before using the new zone
+      ansible.builtin.meta: flush_handlers
+
+    - name: Set database zone target to drop
+      ansible.posix.firewalld:
+        zone: database
+        target: DROP
+        state: present
+        permanent: true
+        immediate: true
 
     - name: Add application network sources to database zone
       ansible.posix.firewalld:
@@ -194,6 +218,18 @@ For RHEL-based systems, firewalld is the standard.
         permanent: true
         immediate: true
       loop: "{{ monitoring_hosts }}"
+
+    - name: Allow monitoring exporter ports in the database zone
+      ansible.posix.firewalld:
+        zone: database
+        port: "{{ item }}/tcp"
+        state: enabled
+        permanent: true
+        immediate: true
+      loop:
+        - "9187"
+        - "9104"
+        - "9216"
 
   handlers:
     - name: Reload firewalld
