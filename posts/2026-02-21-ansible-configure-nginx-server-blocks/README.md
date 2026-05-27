@@ -40,7 +40,10 @@ nginx_server_blocks:
     ssl_cert: /etc/letsencrypt/live/app.example.com/fullchain.pem
     ssl_key: /etc/letsencrypt/live/app.example.com/privkey.pem
     client_max_body_size: "50m"
-    rate_limit_zone: api
+    rate_limit:
+      zone: api
+      rate: 10r/s
+      size: 10m
     extra_locations:
       - path: /api/v1
         backend: "http://10.0.1.25:8080"
@@ -121,11 +124,20 @@ nginx_server_blocks:
         msg: "Found unmanaged configs: {{ extra_configs.files | map(attribute='path') | list }}"
       when: extra_configs.files | length > 0
 
+    - name: Remove unmanaged server block configuration files
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ extra_configs.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+      notify: Test and reload Nginx
+
   handlers:
     - name: Test and reload Nginx
       ansible.builtin.command:
         cmd: nginx -t
-      changed_when: false
+      changed_when: true
       notify: Reload Nginx service
 
     - name: Reload Nginx service
@@ -142,6 +154,10 @@ This single Jinja2 template handles all server block types: static, reverse prox
 # templates/server-block.conf.j2
 # Server block for {{ item.domain }} - managed by Ansible
 # Type: {{ item.type }}
+
+{% if item.rate_limit is defined %}
+limit_req_zone $binary_remote_addr zone={{ item.rate_limit.zone }}:{{ item.rate_limit.size | default('10m') }} rate={{ item.rate_limit.rate | default('10r/s') }};
+{% endif %}
 
 {% if item.type == 'load_balanced' %}
 upstream {{ item.name }}_backends {
@@ -176,44 +192,57 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+{% elif item.type == 'load_balanced' %}
+    location / {
+        proxy_pass http://{{ item.name }}_backends;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 {% endif %}
 {% endif %}
 }
 
 {% if item.ssl | default(false) %}
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {{ item.domain }};
 
     # SSL
     ssl_certificate {{ item.ssl_cert }};
     ssl_certificate_key {{ item.ssl_key }};
-    include /etc/nginx/snippets/ssl-params.conf;
-    include /etc/nginx/snippets/security-headers.conf;
+{% for snippet in item.ssl_snippets | default([]) %}
+    include {{ snippet }};
+{% endfor %}
 
     # Client body size
     client_max_body_size {{ item.client_max_body_size | default('10m') }};
 
     # Logging
-    access_log /var/log/nginx/{{ item.name }}_access.log main;
+    access_log /var/log/nginx/{{ item.name }}_access.log combined;
     error_log /var/log/nginx/{{ item.name }}_error.log warn;
-
-{% if item.rate_limit_zone is defined %}
-    # Rate limiting
-    limit_req zone={{ item.rate_limit_zone }} burst=20 nodelay;
-{% endif %}
 
 {% if item.type == 'static' %}
     root {{ item.root }};
     index index.html;
 
     location / {
+{% if item.rate_limit is defined %}
+        limit_req zone={{ item.rate_limit.zone }} burst=20 nodelay;
+{% endif %}
         try_files $uri $uri/ =404;
     }
 
 {% if item.cache_static_files | default(false) %}
     # Cache static assets
     location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff2|svg)$ {
+{% if item.rate_limit is defined %}
+        limit_req zone={{ item.rate_limit.zone }} burst=20 nodelay;
+{% endif %}
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
@@ -221,6 +250,9 @@ server {
 
 {% elif item.type == 'reverse_proxy' %}
     location / {
+{% if item.rate_limit is defined %}
+        limit_req zone={{ item.rate_limit.zone }} burst=20 nodelay;
+{% endif %}
         proxy_pass {{ item.backend }};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -234,6 +266,9 @@ server {
 
 {% for loc in item.extra_locations | default([]) %}
     location {{ loc.path }} {
+{% if item.rate_limit is defined %}
+        limit_req zone={{ item.rate_limit.zone }} burst=20 nodelay;
+{% endif %}
         proxy_pass {{ loc.backend }};
         proxy_http_version 1.1;
 {% if loc.websocket | default(false) %}
@@ -249,6 +284,9 @@ server {
 
 {% elif item.type == 'load_balanced' %}
     location / {
+{% if item.rate_limit is defined %}
+        limit_req zone={{ item.rate_limit.zone }} burst=20 nodelay;
+{% endif %}
         proxy_pass http://{{ item.name }}_backends;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
@@ -260,7 +298,6 @@ server {
 
 {% if item.health_check_path is defined %}
     location {{ item.health_check_path }} {
-        limit_req off;
         proxy_pass http://{{ item.name }}_backends{{ item.health_check_path }};
     }
 {% endif %}
