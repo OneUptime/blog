@@ -40,6 +40,7 @@ otel_http_port: 4318
 
 observability_retention: 30d
 observability_data_dir: /opt/observability/data
+observability_network: observability
 ```
 
 ## Prometheus Setup
@@ -47,8 +48,19 @@ observability_data_dir: /opt/observability/data
 ```yaml
 # roles/observability/tasks/prometheus.yml - Metrics collection
 ---
+- name: Ensure Prometheus configuration directory exists
+  ansible.builtin.file:
+    path: /etc/prometheus
+    state: directory
+    mode: '0755'
+
+- name: Ensure observability Docker network exists
+  community.docker.docker_network:
+    name: "{{ observability_network }}"
+    state: present
+
 - name: Deploy Prometheus configuration
-  template:
+  ansible.builtin.template:
     src: prometheus.yml.j2
     dest: /etc/prometheus/prometheus.yml
     mode: '0644'
@@ -65,6 +77,8 @@ observability_data_dir: /opt/observability/data
     volumes:
       - /etc/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
+    networks:
+      - name: "{{ observability_network }}"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time={{ observability_retention }}'
@@ -75,8 +89,14 @@ observability_data_dir: /opt/observability/data
 ```yaml
 # roles/observability/tasks/loki.yml - Log aggregation
 ---
+- name: Ensure Loki configuration directory exists
+  ansible.builtin.file:
+    path: /etc/loki
+    state: directory
+    mode: '0755'
+
 - name: Deploy Loki configuration
-  template:
+  ansible.builtin.template:
     src: loki-config.yml.j2
     dest: /etc/loki/config.yml
     mode: '0644'
@@ -92,6 +112,8 @@ observability_data_dir: /opt/observability/data
     volumes:
       - /etc/loki:/etc/loki:ro
       - loki_data:/loki
+    networks:
+      - name: "{{ observability_network }}"
     command:
       - '-config.file=/etc/loki/config.yml'
 ```
@@ -101,8 +123,14 @@ observability_data_dir: /opt/observability/data
 ```yaml
 # roles/observability/tasks/tempo.yml - Distributed tracing
 ---
+- name: Ensure Tempo configuration directory exists
+  ansible.builtin.file:
+    path: /etc/tempo
+    state: directory
+    mode: '0755'
+
 - name: Deploy Tempo configuration
-  template:
+  ansible.builtin.template:
     src: tempo-config.yml.j2
     dest: /etc/tempo/config.yml
     mode: '0644'
@@ -115,10 +143,12 @@ observability_data_dir: /opt/observability/data
     restart_policy: unless-stopped
     ports:
       - "{{ tempo_port }}:3200"
-      - "4317:4317"
+      - "{{ otel_grpc_port }}:4317"
     volumes:
       - /etc/tempo:/etc/tempo:ro
       - tempo_data:/var/tempo
+    networks:
+      - name: "{{ observability_network }}"
     command:
       - '-config.file=/etc/tempo/config.yml'
 ```
@@ -128,6 +158,30 @@ observability_data_dir: /opt/observability/data
 ```yaml
 # roles/observability/tasks/grafana.yml - Visualization
 ---
+- name: Ensure Grafana data source provisioning directory exists
+  ansible.builtin.file:
+    path: /etc/grafana/provisioning/datasources
+    state: directory
+    mode: '0755'
+
+- name: Deploy Grafana data source provisioning
+  ansible.builtin.copy:
+    content: |
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://prometheus:9090
+          isDefault: true
+        - name: Loki
+          type: loki
+          url: http://loki:3100
+        - name: Tempo
+          type: tempo
+          url: http://tempo:3200
+    dest: /etc/grafana/provisioning/datasources/default.yml
+    mode: '0644'
+
 - name: Deploy Grafana with all data sources
   community.docker.docker_container:
     name: grafana
@@ -141,24 +195,8 @@ observability_data_dir: /opt/observability/data
     volumes:
       - grafana_data:/var/lib/grafana
       - /etc/grafana/provisioning:/etc/grafana/provisioning:ro
-
-- name: Deploy Grafana data source provisioning
-  copy:
-    content: |
-      apiVersion: 1
-      datasources:
-        - name: Prometheus
-          type: prometheus
-          url: http://prometheus:{{ prometheus_port }}
-          isDefault: true
-        - name: Loki
-          type: loki
-          url: http://loki:{{ loki_port }}
-        - name: Tempo
-          type: tempo
-          url: http://tempo:{{ tempo_port }}
-    dest: /etc/grafana/provisioning/datasources/default.yml
-    mode: '0644'
+    networks:
+      - name: "{{ observability_network }}"
 ```
 
 ## Running the Deployment
@@ -170,7 +208,7 @@ ansible-playbook -i inventory/hosts.ini observability.yml --ask-vault-pass
 
 ## Summary
 
-This Ansible playbook deploys a complete observability stack with metrics (Prometheus), logs (Loki), and traces (Tempo), all visualized through Grafana. The OpenTelemetry Collector serves as a unified ingestion point, making it easy for applications to emit telemetry data. Having all three pillars in a single, correlated platform makes debugging distributed systems significantly easier.
+This Ansible playbook deploys a complete observability stack with metrics (Prometheus), logs (Loki), and traces (Tempo), all visualized through Grafana. The exposed OTLP port on Tempo gives applications a tracing ingestion point; you can add an OpenTelemetry Collector in front when you want a unified ingestion layer. Having all three pillars in a single, correlated platform makes debugging distributed systems significantly easier.
 
 ## Common Use Cases
 
@@ -211,7 +249,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -355,4 +393,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
