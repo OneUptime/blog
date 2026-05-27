@@ -69,7 +69,7 @@ gcloud dataplex zones create raw-ingestion \
   --discovery-schedule="0 */6 * * *"
 
 # Create a CURATED zone for validated, production-ready data
-# CURATED zones enforce schema and format requirements
+# CURATED zones require Cloud Storage data to use supported formats and Hive-compatible layouts
 gcloud dataplex zones create curated-analytics \
   --lake=analytics-lake \
   --location=us-central1 \
@@ -106,6 +106,7 @@ gcloud dataplex assets create raw-events-bucket \
   --location=us-central1 \
   --resource-type=STORAGE_BUCKET \
   --resource-name=projects/my-project/buckets/raw-events-data \
+  --resource-read-access-mode=DIRECT \
   --display-name="Raw Events Data" \
   --description="Incoming event data from application backends" \
   --discovery-enabled
@@ -117,6 +118,7 @@ gcloud dataplex assets create raw-logs-bucket \
   --location=us-central1 \
   --resource-type=STORAGE_BUCKET \
   --resource-name=projects/my-project/buckets/application-logs \
+  --resource-read-access-mode=DIRECT \
   --display-name="Application Logs" \
   --description="Raw application and infrastructure logs"
 
@@ -161,15 +163,8 @@ Check what discovery has found:
 
 ```bash
 # List discovered entities (tables/files) in a zone
-gcloud dataplex content list \
-  --lake=analytics-lake \
-  --location=us-central1
-
-# Get details about a specific discovered entity
-gcloud dataplex entities list \
-  --lake=analytics-lake \
-  --zone=raw-ingestion \
-  --location=us-central1
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://dataplex.googleapis.com/v1/projects/my-project/locations/us-central1/lakes/analytics-lake/zones/raw-ingestion/entities?view=ENTITY_VIEW_UNSPECIFIED"
 ```
 
 ## Setting Up Access Control
@@ -188,7 +183,7 @@ gcloud dataplex zones add-iam-policy-binding raw-ingestion \
   --lake=analytics-lake \
   --location=us-central1 \
   --member="group:data-engineering@example.com" \
-  --role="roles/dataplex.dataEditor"
+  --role="roles/dataplex.dataOwner"
 
 # Grant analysts read-only access to curated zone only
 gcloud dataplex zones add-iam-policy-binding curated-analytics \
@@ -246,12 +241,17 @@ def create_zone_with_assets(project_id, location, lake_id, zone_config):
         asset = dataplex_v1.Asset()
         asset.display_name = asset_config["display_name"]
         asset.description = asset_config.get("description", "")
-        asset.resource_spec = dataplex_v1.Asset.ResourceSpec(
-            name=asset_config["resource_name"],
-            type_=dataplex_v1.Asset.ResourceSpec.Type.STORAGE_BUCKET
+        resource_spec = {
+            "name": asset_config["resource_name"],
+            "type_": dataplex_v1.Asset.ResourceSpec.Type.STORAGE_BUCKET
             if asset_config["type"] == "gcs"
             else dataplex_v1.Asset.ResourceSpec.Type.BIGQUERY_DATASET,
-        )
+        }
+        if asset_config["type"] == "gcs":
+            resource_spec["read_access_mode"] = (
+                dataplex_v1.Asset.ResourceSpec.AccessMode.DIRECT
+            )
+        asset.resource_spec = dataplex_v1.Asset.ResourceSpec(**resource_spec)
         asset.discovery_spec = dataplex_v1.Asset.DiscoverySpec(
             enabled=True,
         )
