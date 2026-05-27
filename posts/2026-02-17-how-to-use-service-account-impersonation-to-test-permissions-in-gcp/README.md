@@ -37,7 +37,14 @@ sequenceDiagram
 
 ### Grant the Token Creator Role
 
-First, you need the `roles/iam.serviceAccountTokenCreator` role on the target service account:
+First, enable the Service Account Credentials API in the project you are operating in:
+
+```bash
+gcloud services enable iamcredentials.googleapis.com \
+  --project=my-project
+```
+
+Then you need the `roles/iam.serviceAccountTokenCreator` role on the target service account:
 
 ```bash
 # Grant yourself permission to impersonate a service account
@@ -185,7 +192,7 @@ Equally important - verify that the service account cannot access things it shou
 gcloud storage ls gs://sensitive-data-bucket/ \
   --impersonate-service-account=app-backend@my-project.iam.gserviceaccount.com
 
-# This should fail - the SA should not be able to modify IAM
+# This should fail - the SA should not be able to read the project IAM policy
 gcloud projects get-iam-policy my-project \
   --impersonate-service-account=app-backend@my-project.iam.gserviceaccount.com
 ```
@@ -233,7 +240,7 @@ test_permission "Read app data bucket" "allow" \
   gcloud storage ls gs://app-data-bucket/
 
 test_permission "Publish to app topic" "allow" \
-  gcloud pubsub topics list
+  gcloud pubsub topics publish my-topic --message="test"
 
 # Negative tests - these should fail
 test_permission "Read sensitive bucket" "deny" \
@@ -253,8 +260,7 @@ In some cases, you might need to impersonate through a chain of service accounts
 ```bash
 # Impersonate through a chain: you -> SA-A -> SA-B
 gcloud storage ls gs://restricted-bucket/ \
-  --impersonate-service-account=sa-b@my-project.iam.gserviceaccount.com \
-  --impersonate-service-account-delegates=sa-a@my-project.iam.gserviceaccount.com
+  --impersonate-service-account=sa-a@my-project.iam.gserviceaccount.com,sa-b@my-project.iam.gserviceaccount.com
 ```
 
 For this to work:
