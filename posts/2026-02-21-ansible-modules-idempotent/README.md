@@ -73,6 +73,8 @@ For complex resources, write a comparison function:
 
 ```python
 def needs_update(current, desired):
+    if current is None:
+        return True
     for key, value in desired.items():
         if current.get(key) != value:
             return True
