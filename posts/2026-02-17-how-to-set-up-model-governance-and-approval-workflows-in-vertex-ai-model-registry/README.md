@@ -38,8 +38,9 @@ Every model registered in the Model Registry should include standardized metadat
 # governance/register_model.py
 
 from google.cloud import aiplatform
-from datetime import datetime
+from datetime import datetime, timezone
 import json
+import re
 
 # Required metadata fields for governance
 REQUIRED_METADATA = [
@@ -55,11 +56,17 @@ REQUIRED_METADATA = [
     "purpose",
 ]
 
+def to_label_value(value):
+    """Convert a metadata value to a valid Vertex AI label value."""
+    label = re.sub(r"[^a-z0-9_-]", "_", str(value).lower())[:64]
+    return label or "unknown"
+
 def register_model_with_governance(
     model_artifact_uri,
     display_name,
     metadata,
     labels=None,
+    compliance_checker=None,
 ):
     """Register a model with mandatory governance metadata.
     Rejects registration if required fields are missing."""
@@ -76,7 +83,7 @@ def register_model_with_governance(
     # Add governance-specific metadata
     governance_metadata = {
         **metadata,
-        "registration_timestamp": datetime.utcnow().isoformat(),
+        "registration_timestamp": datetime.now(timezone.utc).isoformat(),
         "governance_status": "pending_review",
         "approved_by": None,
         "approval_timestamp": None,
@@ -87,10 +94,10 @@ def register_model_with_governance(
     model = aiplatform.Model.upload(
         display_name=display_name,
         artifact_uri=model_artifact_uri,
-        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-2:latest",
+        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-5:latest",
         labels={
             "governance_status": "pending",
-            "team": metadata["team"],
+            "team": to_label_value(metadata["team"]),
             **(labels or {}),
         },
         description=json.dumps(governance_metadata),
@@ -100,7 +107,8 @@ def register_model_with_governance(
     print(f"Status: pending_review")
 
     # Trigger automated compliance checks
-    trigger_compliance_checks(model.resource_name, governance_metadata)
+    if compliance_checker:
+        compliance_checker.run_all_checks(model.resource_name, governance_metadata)
 
     return model.resource_name
 ```
@@ -143,9 +151,9 @@ class ModelComplianceChecker:
         # Update model labels based on results
         model = aiplatform.Model(model_resource_name)
         new_status = "pending_review" if all_passed else "compliance_failed"
-        model.update(
-            labels={"governance_status": new_status}
-        )
+        updated_labels = dict(model.labels or {})
+        updated_labels["governance_status"] = new_status
+        model.update(labels=updated_labels)
 
         return {"all_passed": all_passed, "checks": results}
 
@@ -180,14 +188,16 @@ class ModelComplianceChecker:
 
     def check_data_recency(self, metadata):
         """Verify training data is recent enough."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone
 
         dataset_version = metadata.get("training_dataset_version", "")
         # Parse the date from the dataset version
         try:
             dataset_date = datetime.fromisoformat(dataset_version)
+            if dataset_date.tzinfo is None:
+                dataset_date = dataset_date.replace(tzinfo=timezone.utc)
             max_age_days = 90
-            age = (datetime.utcnow() - dataset_date).days
+            age = (datetime.now(timezone.utc) - dataset_date).days
 
             if age > max_age_days:
                 return {
@@ -259,7 +269,7 @@ Create an approval system that tracks who approved a model and when.
 # governance/approval_workflow.py
 from google.cloud import aiplatform
 from google.cloud import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 class ModelApprovalWorkflow:
@@ -275,7 +285,7 @@ class ModelApprovalWorkflow:
         review_doc = {
             "model_resource_name": model_resource_name,
             "submitted_by": submitted_by,
-            "submitted_at": datetime.utcnow().isoformat(),
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
             "status": "pending_review",
             "notes": notes,
             "reviewers": [],
@@ -300,7 +310,7 @@ class ModelApprovalWorkflow:
 
         approval = {
             "approver": approver_email,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "comments": comments,
         }
 
@@ -310,11 +320,13 @@ class ModelApprovalWorkflow:
         required_approvals = 2
         if len(review["approvals"]) >= required_approvals:
             review["status"] = "approved"
-            review["approved_at"] = datetime.utcnow().isoformat()
+            review["approved_at"] = datetime.now(timezone.utc).isoformat()
 
             # Update the model labels in the registry
             model = aiplatform.Model(review["model_resource_name"])
-            model.update(labels={"governance_status": "approved"})
+            updated_labels = dict(model.labels or {})
+            updated_labels["governance_status"] = "approved"
+            model.update(labels=updated_labels)
 
             print(f"Model approved with {len(review['approvals'])} approvals")
         else:
@@ -331,7 +343,7 @@ class ModelApprovalWorkflow:
 
         rejection = {
             "rejector": rejector_email,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "reason": reason,
         }
 
@@ -340,7 +352,9 @@ class ModelApprovalWorkflow:
 
         # Update model labels
         model = aiplatform.Model(review["model_resource_name"])
-        model.update(labels={"governance_status": "rejected"})
+        updated_labels = dict(model.labels or {})
+        updated_labels["governance_status"] = "rejected"
+        model.update(labels=updated_labels)
 
         doc_ref.set(review)
         print(f"Model rejected by {rejector_email}")
@@ -363,16 +377,17 @@ class ModelApprovalWorkflow:
 
 ## Step 4: Create the Audit Trail
 
-Every governance action should be recorded in an immutable audit log.
+Every governance action should be recorded in an append-only audit log.
 
 ```python
 # governance/audit_log.py
 from google.cloud import bigquery
-from datetime import datetime
+from datetime import datetime, timezone
 import json
+import uuid
 
 class GovernanceAuditLog:
-    """Maintains an immutable audit trail for model governance actions."""
+    """Maintains an append-only audit trail for model governance actions."""
 
     def __init__(self, project_id, dataset_id="ml_governance"):
         self.client = bigquery.Client(project=project_id)
@@ -381,11 +396,11 @@ class GovernanceAuditLog:
     def log_event(self, event_type, model_resource, actor, details=None):
         """Record a governance event in the audit log."""
         row = {
-            "event_id": str(hash(f"{model_resource}{event_type}{datetime.utcnow()}")),
+            "event_id": str(uuid.uuid4()),
             "event_type": event_type,
             "model_resource": model_resource,
             "actor": actor,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "details": json.dumps(details or {}),
         }
 
