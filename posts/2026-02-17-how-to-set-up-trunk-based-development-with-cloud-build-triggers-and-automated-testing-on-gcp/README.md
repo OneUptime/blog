@@ -58,22 +58,37 @@ steps:
     id: 'unit-tests'
     waitFor: ['install']
 
-  # Step 4: Run integration tests (parallel with unit tests)
+  # Step 4: Start a test database for integration tests
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker run -d --name test-postgres --network=cloudbuild \
+          -e POSTGRES_USER=test \
+          -e POSTGRES_PASSWORD=test \
+          -e POSTGRES_DB=testdb \
+          postgres:16
+        until docker exec test-postgres pg_isready -U test -d testdb; do sleep 1; done
+    id: 'start-postgres'
+    waitFor: ['install']
+
+  # Step 5: Run integration tests (parallel with unit tests)
   - name: 'node:20'
     entrypoint: 'npm'
     args: ['run', 'test:integration']
     id: 'integration-tests'
-    waitFor: ['install']
+    waitFor: ['start-postgres']
     env:
-      - 'DATABASE_URL=postgresql://test:test@localhost:5432/testdb'
+      - 'DATABASE_URL=postgresql://test:test@test-postgres:5432/testdb'
 
-  # Step 5: Security scanning
+  # Step 6: Security scanning
   - name: 'gcr.io/cloud-builders/npm'
     args: ['audit', '--audit-level=high']
     id: 'security-audit'
     waitFor: ['install']
 
-  # Step 6: Build the container image (only if all tests pass)
+  # Step 7: Build the container image (only if all tests pass)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -85,13 +100,13 @@ steps:
     id: 'build'
     waitFor: ['lint', 'unit-tests', 'integration-tests', 'security-audit']
 
-  # Step 7: Push the image
+  # Step 8: Push the image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '--all-tags', '$_REGION-docker.pkg.dev/$PROJECT_ID/app-images/my-app']
     id: 'push'
     waitFor: ['build']
 
-  # Step 8: Deploy to staging
+  # Step 9: Deploy to staging
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'run'
@@ -100,22 +115,30 @@ steps:
       - '--image=$_REGION-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA'
       - '--region=$_REGION'
       - '--platform=managed'
-      - '--no-traffic'
-      - '--tag=test-$SHORT_SHA'
     id: 'deploy-staging'
     waitFor: ['push']
 
-  # Step 9: Run smoke tests against staging
+  # Step 10: Get the staging URL
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run services describe my-app-staging \
+          --region=$_REGION \
+          --format='value(status.url)' > /workspace/staging-url.txt
+    id: 'get-staging-url'
+    waitFor: ['deploy-staging']
+
+  # Step 11: Run smoke tests against staging
   - name: 'node:20'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        STAGING_URL=$(gcloud run services describe my-app-staging \
-          --region=$_REGION --format='value(status.url)')
-        npm run test:smoke -- --base-url="$STAGING_URL"
+        npm run test:smoke -- --base-url="$(cat /workspace/staging-url.txt)"
     id: 'smoke-tests'
-    waitFor: ['deploy-staging']
+    waitFor: ['get-staging-url']
 
 substitutions:
   _REGION: us-central1
@@ -174,11 +197,27 @@ steps:
     id: 'unit-tests'
     waitFor: ['install']
 
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker run -d --name test-postgres --network=cloudbuild \
+          -e POSTGRES_USER=test \
+          -e POSTGRES_PASSWORD=test \
+          -e POSTGRES_DB=testdb \
+          postgres:16
+        until docker exec test-postgres pg_isready -U test -d testdb; do sleep 1; done
+    id: 'start-postgres'
+    waitFor: ['install']
+
   - name: 'node:20'
     entrypoint: 'npm'
     args: ['run', 'test:integration']
     id: 'integration-tests'
-    waitFor: ['install']
+    waitFor: ['start-postgres']
+    env:
+      - 'DATABASE_URL=postgresql://test:test@test-postgres:5432/testdb'
 
   - name: 'gcr.io/cloud-builders/npm'
     args: ['audit', '--audit-level=high']
@@ -253,10 +292,20 @@ Make sure the CI pipeline is a hard requirement before merging to main. Configur
 # Using gh CLI to set branch protection
 gh api repos/my-org/my-repo/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["pr-validation"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true}' \
-  --field restrictions=null
+  --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["pr-validation"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "dismiss_stale_reviews": true
+  },
+  "restrictions": null
+}
+EOF
 ```
 
 ## Step 5: Set Up Build Notifications
@@ -264,16 +313,16 @@ gh api repos/my-org/my-repo/branches/main/protection \
 Developers need fast feedback. Configure notifications for build results:
 
 ```bash
-# Create a Pub/Sub topic for build notifications
-gcloud pubsub topics create cloud-build-notifications
+# Create the default Pub/Sub topic for build notifications
+gcloud pubsub topics create cloud-builds
 
 # Create a subscription that forwards to Slack
 gcloud pubsub subscriptions create slack-build-notifications \
-  --topic=cloud-build-notifications \
+  --topic=cloud-builds \
   --push-endpoint=https://your-slack-webhook-handler.run.app
 ```
 
-Here is a Cloud Function that formats build notifications for Slack:
+Here is an HTTP Cloud Function that formats build notifications for Slack:
 
 ```javascript
 // cloud-function: buildNotifier
@@ -284,19 +333,22 @@ const { WebClient } = require('@slack/web-api');
 const slack = new WebClient(process.env.SLACK_TOKEN);
 const CHANNEL = '#ci-builds';
 
-exports.notifyBuild = async (message) => {
+exports.notifyBuild = async (req, res) => {
+  const message = req.body.message;
   const build = JSON.parse(
     Buffer.from(message.data, 'base64').toString()
   );
 
   // Only notify on completion
   if (build.status !== 'SUCCESS' && build.status !== 'FAILURE' && build.status !== 'TIMEOUT') {
+    res.status(204).send();
     return;
   }
 
+  const substitutions = build.substitutions || {};
   const color = build.status === 'SUCCESS' ? '#36a64f' : '#ff0000';
-  const shortSha = build.substitutions.SHORT_SHA || 'unknown';
-  const trigger = build.substitutions.TRIGGER_NAME || 'manual';
+  const shortSha = substitutions.SHORT_SHA || 'unknown';
+  const trigger = substitutions.TRIGGER_NAME || 'manual';
   const duration = calculateDuration(build.startTime, build.finishTime);
 
   await slack.chat.postMessage({
@@ -307,11 +359,13 @@ exports.notifyBuild = async (message) => {
       fields: [
         { title: 'Commit', value: shortSha, short: true },
         { title: 'Duration', value: duration, short: true },
-        { title: 'Branch', value: build.substitutions.BRANCH_NAME || 'unknown', short: true }
+        { title: 'Branch', value: substitutions.BRANCH_NAME || 'unknown', short: true }
       ],
       footer: `Build ID: ${build.id}`
     }]
   });
+
+  res.status(204).send();
 };
 
 function calculateDuration(start, end) {
@@ -341,9 +395,6 @@ steps:
 options:
   # Use a faster machine type
   machineType: 'E2_HIGHCPU_32'
-  # Keep build artifacts in a specific region for faster access
-  env:
-    - 'DOCKER_BUILDKIT=1'
 ```
 
 ## Wrapping Up
