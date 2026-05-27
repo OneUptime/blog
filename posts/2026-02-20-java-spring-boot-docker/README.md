@@ -44,7 +44,7 @@ COPY .mvn .mvn
 COPY pom.xml .
 
 # Download dependencies separately to leverage Docker layer caching
-# This layer only rebuilds when pom.xml changes
+# This layer only rebuilds when pom.xml or Maven wrapper files change
 RUN ./mvnw dependency:go-offline -B
 
 # Copy the source code
@@ -197,8 +197,6 @@ Set up a local development environment with dependencies.
 
 ```yaml
 # docker-compose.yml - Local development stack
-version: '3.8'
-
 services:
   # Spring Boot application
   app:
@@ -212,8 +210,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/myapp
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      # JVM settings for development
-      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+      # JVM settings for development; Java reads this automatically
+      JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
     depends_on:
       db:
         condition: service_healthy
@@ -248,8 +246,10 @@ volumes:
 Add a health check so Docker can detect unhealthy containers.
 
 ```dockerfile
-# Add to the runtime stage of your Dockerfile
-# The health check uses Spring Boot Actuator's health endpoint
+# Add to the runtime stage of your Dockerfile before switching to appuser
+# The health check uses Spring Boot Actuator's health endpoint when Actuator is on the classpath
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 ```
