@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Internal Load Balancer, Serverless NEG, Cloud Run, Google Cloud Networking
 
-Description: Step-by-step guide to setting up a Google Cloud Internal Application Load Balancer with serverless NEGs for routing internal traffic to Cloud Run and other serverless services.
+Description: Step-by-step guide to setting up a Google Cloud Internal Application Load Balancer with serverless NEGs for routing internal traffic to Cloud Run services.
 
 ---
 
-Google Cloud's Internal Application Load Balancer lets you route traffic from within your VPC to backend services without exposing anything to the internet. When you combine it with Serverless Network Endpoint Groups (NEGs), you get a clean way to access Cloud Run, Cloud Functions, and App Engine services through internal-only endpoints. This is particularly useful for microservice architectures where services need to communicate privately.
+Google Cloud's Internal Application Load Balancer lets you route traffic from within your VPC to backend services without exposing anything to the internet. When you combine it with Serverless Network Endpoint Groups (NEGs), you get a clean way to access Cloud Run and Cloud Run functions (2nd gen) services through internal-only endpoints. This is particularly useful for microservice architectures where services need to communicate privately.
 
 In this post, I will walk through setting up an Internal Application Load Balancer that routes traffic to Cloud Run services using serverless NEGs.
 
@@ -40,11 +40,11 @@ Before starting, make sure you have a VPC network and a Cloud Run service deploy
 gcloud run deploy my-internal-service \
     --image=gcr.io/cloudrun/hello \
     --region=us-central1 \
-    --no-allow-unauthenticated \
-    --ingress=internal-and-cloud-load-balancing
+    --allow-unauthenticated \
+    --ingress=internal
 ```
 
-The `--ingress=internal-and-cloud-load-balancing` flag is critical. It restricts the Cloud Run service to only accept traffic from within your VPC and from Google Cloud load balancers.
+The `--ingress=internal` flag is critical. It prevents direct internet access to the Cloud Run service, and traffic from the internal Application Load Balancer is considered internal traffic.
 
 ## Step 1: Create a Proxy-Only Subnet
 
@@ -84,10 +84,10 @@ You can also point a serverless NEG at a Cloud Run service using a URL mask for 
 gcloud compute network-endpoint-groups create my-flexible-neg \
     --region=us-central1 \
     --network-endpoint-type=serverless \
-    --cloud-run-url-mask="<service>"
+    --cloud-run-url-mask="internal.example.com/<service>"
 ```
 
-With a URL mask, requests to `/my-service/path` would route to the Cloud Run service named `my-service`.
+With a URL mask, requests to `internal.example.com/my-service/path` would route to the Cloud Run service named `my-service`.
 
 ## Step 3: Create the Backend Service
 
@@ -132,6 +132,7 @@ gcloud compute url-maps add-path-matcher my-internal-url-map \
     --path-matcher-name=my-matcher \
     --default-service=my-internal-backend \
     --path-rules="/api/*=my-api-backend,/web/*=my-web-backend" \
+    --new-hosts=internal.example.com \
     --region=us-central1
 ```
 
@@ -283,9 +284,9 @@ Now internal clients can access the service at `http://api.internal.example.com`
 
 ## Practical Tips
 
-**Always set Cloud Run ingress to internal-and-cloud-load-balancing.** If you leave it as "all", the Cloud Run service remains accessible via its default URL, bypassing the load balancer entirely.
+**Always set Cloud Run ingress to internal for this setup.** If you leave it as "all", the Cloud Run service remains accessible via its default URL, bypassing the load balancer entirely.
 
-**Use the proxy-only subnet carefully.** The proxy-only subnet cannot be used for anything else. Do not assign VMs or other resources to it. Size it according to the expected number of concurrent connections.
+**Use the proxy-only subnet carefully.** The proxy-only subnet cannot be used for anything else. Do not assign VMs or other resources to it. Start with a /23 and adjust the size as your traffic needs change.
 
 **Consider IAM authentication.** Even though traffic is internal, you should still authenticate requests between services. Use Cloud Run's built-in IAM authentication and have calling services present identity tokens.
 
