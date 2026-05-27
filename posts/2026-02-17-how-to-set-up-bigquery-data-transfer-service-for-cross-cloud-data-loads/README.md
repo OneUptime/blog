@@ -77,18 +77,17 @@ bq mk --transfer_config \
   --data_source=amazon_s3 \
   --target_dataset=my_dataset \
   --display_name="Daily S3 Events Import" \
-  --schedule="every day 08:00" \
   --params='{
     "destination_table_name_template": "events_from_s3",
-    "data_path": "s3://my-data-bucket/events/{run_date|yyyyMMdd}/*.parquet",
+    "data_path": "s3://my-data-bucket/events/{run_time|\"%Y/%m/%d\"}/*.parquet",
     "access_key_id": "AKIAIOSFODNN7EXAMPLE",
     "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "file_format": "PARQUET",
-    "write_disposition": "APPEND"
+    "write_disposition": "WRITE_APPEND"
   }'
 ```
 
-The `{run_date|yyyyMMdd}` template dynamically resolves to the scheduled run date, so each run picks up only that day's files.
+The `{run_time|"%Y/%m/%d"}` template dynamically resolves to the scheduled run time, so each run picks up only that day's files. When you create Amazon S3 transfers with the `bq` CLI, BigQuery uses the default schedule. Use Terraform, the API, or the console if you need to set the schedule during creation.
 
 ### Step 4: Create the Transfer via Terraform
 
@@ -105,11 +104,10 @@ resource "google_bigquery_data_transfer_config" "s3_events" {
 
   params = {
     destination_table_name_template = "events_from_s3"
-    data_path                       = "s3://my-data-bucket/events/{run_date|yyyyMMdd}/*.parquet"
+    data_path                       = "s3://my-data-bucket/events/{run_time|\"%Y/%m/%d\"}/*.parquet"
     access_key_id                   = var.aws_access_key_id
-    secret_access_key               = var.aws_secret_access_key
     file_format                     = "PARQUET"
-    write_disposition               = "APPEND"
+    write_disposition               = "WRITE_APPEND"
   }
 
   # Sensitive credentials should come from variables, not hardcoded
@@ -130,15 +128,14 @@ bq mk --transfer_config \
   --data_source=azure_blob_storage \
   --target_dataset=my_dataset \
   --display_name="Daily Azure Events Import" \
-  --schedule="every day 09:00" \
   --params='{
     "destination_table_name_template": "events_from_azure",
-    "data_path": "https://mystorageaccount.blob.core.windows.net/mycontainer/events/{run_date|yyyy/MM/dd}/*.parquet",
+    "data_path": "events/{run_time|\"%Y/%m/%d\"}/*.parquet",
     "storage_account": "mystorageaccount",
     "container": "mycontainer",
     "sas_token": "sv=2021-06-08&ss=b&srt=sco&sp=rl&se=2027-01-01T00:00:00Z&sig=EXAMPLE",
     "file_format": "PARQUET",
-    "write_disposition": "APPEND"
+    "write_disposition": "WRITE_APPEND"
   }'
 ```
 
@@ -148,11 +145,9 @@ Generate a SAS token in the Azure Portal with read and list permissions on the c
 
 The write disposition controls how data is loaded into the destination table.
 
-**APPEND**: New data is appended to the existing table. Best for incremental loads.
+**WRITE_APPEND**: New data is appended to the existing table. Best for incremental loads.
 
 **WRITE_TRUNCATE**: The destination table is replaced with each transfer run. Best for full refresh scenarios.
-
-**MIRROR**: Keeps the BigQuery table in sync with the source. Only works with certain source types.
 
 ```bash
 # Full refresh transfer - replaces the table on each run
@@ -161,7 +156,6 @@ bq mk --transfer_config \
   --data_source=amazon_s3 \
   --target_dataset=my_dataset \
   --display_name="Full Refresh S3 Products" \
-  --schedule="every day 06:00" \
   --params='{
     "destination_table_name_template": "products",
     "data_path": "s3://my-data-bucket/products/latest/*.csv",
@@ -180,14 +174,14 @@ Use template variables in your data path to handle date-partitioned source data.
 
 ```text
 # Available template variables:
-# {run_time|yyyyMMddHH}  - Run timestamp with hour
-# {run_date|yyyyMMdd}    - Run date
-# {run_date|yyyy/MM/dd}  - Run date with slashes
+# {run_time|"%Y%m%d%H"}  - Run timestamp with hour
+# {run_date}             - Run date as YYYYMMDD
+# {run_time|"%Y/%m/%d"}  - Run date with slashes
 
 # Example paths:
-s3://bucket/data/{run_date|yyyy/MM/dd}/*.parquet
-s3://bucket/data/dt={run_date|yyyyMMdd}/part-*.parquet
-s3://bucket/hourly/{run_time|yyyyMMddHH}/*.json
+s3://bucket/data/{run_time|"%Y/%m/%d"}/*.parquet
+s3://bucket/data/dt={run_date}/part-*.parquet
+s3://bucket/hourly/{run_time|"%Y%m%d%H"}/*.json
 ```
 
 ## Monitoring Transfer Runs
@@ -233,11 +227,23 @@ ORDER BY creation_time DESC;
 
 Configure notifications to get alerted when transfers succeed or fail.
 
-```bash
-# Set up Pub/Sub notifications for a transfer config
-bq update --transfer_config \
-  --transfer_config_id=projects/my_project/locations/us/transferConfigs/abc123 \
-  --notification_pubsub_topic=projects/my_project/topics/transfer-alerts
+```python
+# Set up Pub/Sub notifications for an existing transfer config
+from google.cloud import bigquery_datatransfer
+from google.protobuf import field_mask_pb2
+
+transfer_config_name = "projects/my_project/locations/us/transferConfigs/abc123"
+pubsub_topic = "projects/my_project/topics/transfer-alerts"
+
+transfer_client = bigquery_datatransfer.DataTransferServiceClient()
+transfer_config = bigquery_datatransfer.TransferConfig(name=transfer_config_name)
+transfer_config.notification_pubsub_topic = pubsub_topic
+update_mask = field_mask_pb2.FieldMask(paths=["notification_pubsub_topic"])
+
+transfer_client.update_transfer_config({
+    "transfer_config": transfer_config,
+    "update_mask": update_mask,
+})
 ```
 
 Create a Cloud Function to process these notifications.
@@ -276,7 +282,6 @@ When you first set up a transfer, you often need to load historical data. Use th
 bq mk --transfer_run \
   --start_time='2026-01-01T00:00:00Z' \
   --end_time='2026-02-17T00:00:00Z' \
-  --run_time='2026-02-17T08:00:00Z' \
   projects/my_project/locations/us/transferConfigs/abc123
 ```
 
@@ -285,23 +290,23 @@ bq mk --transfer_run \
 When your source data schema changes, you need to handle it in BigQuery.
 
 ```bash
-# Update the transfer to allow new fields
+# Create a transfer after updating the destination table schema
 bq mk --transfer_config \
   --project_id=my_project \
   --data_source=amazon_s3 \
   --target_dataset=my_dataset \
-  --display_name="S3 Events with Schema Detection" \
+  --display_name="S3 Events with Managed Schema" \
   --params='{
     "destination_table_name_template": "events_evolving",
     "data_path": "s3://my-data-bucket/events/latest/*.parquet",
     "access_key_id": "AKIAIOSFODNN7EXAMPLE",
     "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "file_format": "PARQUET",
-    "write_disposition": "APPEND"
+    "write_disposition": "WRITE_APPEND"
   }'
 ```
 
-Parquet and Avro files carry their schema, so new columns are automatically added to the BigQuery table when the transfer runs.
+Parquet and Avro files carry schema information, but for recurring transfers you should update the BigQuery destination table schema before loading files with new columns.
 
 ## Wrapping Up
 
