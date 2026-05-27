@@ -76,14 +76,14 @@ The `cloudbuild.yaml` file defines your build steps. Each step runs in a contain
 # cloudbuild.yaml - Automated deployment pipeline for Cloud Functions
 steps:
   # Step 1: Install dependencies for the processOrders function
-  - name: "node:18"
+  - name: "node:22"
     entrypoint: "npm"
     args: ["ci"]
     dir: "functions/processOrders"
     id: "install-processOrders"
 
   # Step 2: Run tests for processOrders
-  - name: "node:18"
+  - name: "node:22"
     entrypoint: "npm"
     args: ["test"]
     dir: "functions/processOrders"
@@ -97,7 +97,7 @@ steps:
       - functions
       - deploy
       - processOrders
-      - --runtime=nodejs18
+      - --runtime=nodejs22
       - --trigger-topic=new-orders
       - --region=us-central1
       - --service-account=order-processor-sa@${PROJECT_ID}.iam.gserviceaccount.com
@@ -106,14 +106,15 @@ steps:
     waitFor: ["test-processOrders"]
 
   # Step 4: Install dependencies for sendNotifications
-  - name: "node:18"
+  - name: "node:22"
     entrypoint: "npm"
     args: ["ci"]
     dir: "functions/sendNotifications"
     id: "install-sendNotifications"
+    waitFor: ["-"]
 
   # Step 5: Run tests for sendNotifications
-  - name: "node:18"
+  - name: "node:22"
     entrypoint: "npm"
     args: ["test"]
     dir: "functions/sendNotifications"
@@ -127,7 +128,7 @@ steps:
       - functions
       - deploy
       - sendNotifications
-      - --runtime=nodejs18
+      - --runtime=nodejs22
       - --trigger-topic=notifications
       - --region=us-central1
       - --service-account=notifier-sa@${PROJECT_ID}.iam.gserviceaccount.com
@@ -160,9 +161,9 @@ gcloud builds connections create github my-github-connection \
   --region us-central1
 ```
 
-### For Cloud Source Repositories
+### For Existing Cloud Source Repositories
 
-If you use Cloud Source Repositories, the connection is automatic since it is already in GCP.
+If your organization already uses Cloud Source Repositories, the connection is automatic since it is already in GCP. Cloud Source Repositories is not available to new customers, so use a Cloud Build repository connection for new projects.
 
 ```bash
 # Mirror a GitHub repo to Cloud Source Repositories
@@ -179,6 +180,7 @@ A trigger tells Cloud Build when to start a build. The most common setup is trig
 # Create a trigger that fires on pushes to the main branch
 gcloud builds triggers create github \
   --name "deploy-functions-on-push" \
+  --region "us-central1" \
   --repository "projects/YOUR_PROJECT/locations/us-central1/connections/my-github-connection/repositories/my-functions-repo" \
   --branch-pattern "^main$" \
   --build-config "cloudbuild.yaml" \
@@ -191,6 +193,7 @@ You can also create triggers for pull requests to run tests without deploying.
 # Create a trigger for PR validation (tests only, no deployment)
 gcloud builds triggers create github \
   --name "test-functions-on-pr" \
+  --region "us-central1" \
   --repository "projects/YOUR_PROJECT/locations/us-central1/connections/my-github-connection/repositories/my-functions-repo" \
   --pull-request-pattern "^main$" \
   --build-config "cloudbuild-test-only.yaml" \
@@ -215,6 +218,11 @@ gcloud iam service-accounts add-iam-policy-binding \
   order-processor-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --member "serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role "roles/iam.serviceAccountUser"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  notifier-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --member "serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --role "roles/iam.serviceAccountUser"
 ```
 
 ## Using Substitution Variables
@@ -230,7 +238,7 @@ steps:
       - functions
       - deploy
       - processOrders
-      - --runtime=nodejs18
+      - --runtime=nodejs22
       - --trigger-topic=${_TOPIC_NAME}
       - --region=${_REGION}
       - --source=functions/processOrders
@@ -246,6 +254,7 @@ Override substitutions per trigger to deploy to different environments.
 # Create a staging trigger with different substitutions
 gcloud builds triggers create github \
   --name "deploy-functions-staging" \
+  --region "us-central1" \
   --repository "projects/YOUR_PROJECT/locations/us-central1/connections/my-github-connection/repositories/my-functions-repo" \
   --branch-pattern "^staging$" \
   --build-config "cloudbuild.yaml" \
@@ -254,10 +263,10 @@ gcloud builds triggers create github \
 
 ## Handling Secrets
 
-If your functions need secrets (API keys, database passwords), use Secret Manager with Cloud Build.
+If your functions need secrets (API keys, database passwords), use Secret Manager and pass the secret reference when you deploy the function.
 
 ```yaml
-# Reference secrets in your build steps
+# Pass a Secret Manager reference when deploying the function
 steps:
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "bash"
@@ -265,21 +274,16 @@ steps:
       - "-c"
       - |
         gcloud functions deploy processOrders \
-          --runtime nodejs18 \
+          --runtime nodejs22 \
           --trigger-topic new-orders \
           --region us-central1 \
           --set-secrets "API_KEY=api-key-secret:latest" \
           --source functions/processOrders
-
-availableSecrets:
-  secretManager:
-    - versionName: "projects/YOUR_PROJECT/secrets/api-key-secret/versions/latest"
-      env: "API_KEY"
 ```
 
 ## Selective Deployments
 
-When you have many functions in one repo, you probably do not want to redeploy all of them on every push. Use Cloud Build's `_CHANGED_FILES` or write a custom script that checks which directories changed.
+When you have many functions in one repo, you probably do not want to redeploy all of them on every push. Use trigger file filters or write a custom script that checks which directories changed.
 
 ```yaml
 # Deploy only functions that changed
@@ -296,7 +300,7 @@ steps:
         if echo "$CHANGED" | grep -q "functions/processOrders/"; then
           echo "Deploying processOrders..."
           gcloud functions deploy processOrders \
-            --runtime nodejs18 \
+            --runtime nodejs22 \
             --trigger-topic new-orders \
             --region us-central1 \
             --source functions/processOrders
