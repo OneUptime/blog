@@ -59,6 +59,23 @@ cd my-developer-portal
 # Install the Kubernetes plugin for viewing cluster resources
 yarn --cwd packages/backend add @backstage/plugin-kubernetes-backend
 yarn --cwd packages/app add @backstage/plugin-kubernetes
+
+# Install the GitHub scaffolder action module used by publish:github
+yarn --cwd packages/backend add @backstage/plugin-scaffolder-backend-module-github
+```
+
+```typescript
+// packages/backend/src/index.ts
+// Register the backend plugins and action modules you installed
+import { createBackend } from '@backstage/backend-defaults';
+
+const backend = createBackend();
+
+// Other plugins...
+backend.add(import('@backstage/plugin-kubernetes-backend'));
+backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
+
+backend.start();
 ```
 
 ```yaml
@@ -168,7 +185,8 @@ spec:
         repoUrl: github.com?owner=myorg&repo=${{ parameters.name }}
         description: ${{ parameters.description }}
         defaultBranch: main
-    # Step 3: Create the Kubernetes namespace
+    # Step 3: Create the Kubernetes namespace with a custom scaffolder action
+    # registered in your Backstage backend
     - id: create-namespace
       name: Create Namespace
       action: kubernetes:apply
@@ -234,18 +252,16 @@ spec:
 ```yaml
 # crossplane-composition.yaml
 # Allows developers to request a PostgreSQL database through Kubernetes
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xdatabases.platform.example.com
 spec:
+  scope: Namespaced
   group: platform.example.com
   names:
     kind: XDatabase
     plural: xdatabases
-  claimNames:
-    kind: Database
-    plural: databases
   versions:
     - name: v1alpha1
       served: true
@@ -277,28 +293,41 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XDatabase
-  resources:
-    - name: postgresql-instance
-      base:
-        apiVersion: database.aws.crossplane.io/v1beta1
-        kind: RDSInstance
-        spec:
-          forProvider:
-            engine: postgres
-            engineVersion: "16"
-            dbInstanceClass: db.t3.medium
-            masterUsername: admin
-            allocatedStorage: 20
-            skipFinalSnapshotBeforeDeletion: true
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: postgresql-instance
+            base:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-2
+                  engine: postgres
+                  engineVersion: "16"
+                  instanceClass: db.t3.medium
+                  username: admin
+                  allocatedStorage: 20
+                  autoGeneratePassword: true
+                  passwordSecretRef:
+                    name: postgresql-admin-password
+                    key: password
+                  skipFinalSnapshot: true
 ```
 
-Developers can then request a database with a simple claim:
+Developers can then request a database with a simple composite resource:
 
 ```yaml
-# database-claim.yaml
+# database.yaml
 # A developer requests a database for their service
 apiVersion: platform.example.com/v1alpha1
-kind: Database
+kind: XDatabase
 metadata:
   name: user-service-db
   namespace: user-service
@@ -339,7 +368,7 @@ import sys
 import json
 
 def create_service(name, team, port=8080):
-    """Scaffold a new service using the Backstage template."""
+    """Create a namespace for a new service."""
     print(f"Creating service '{name}' for team '{team}'...")
 
     # Apply the namespace with standard labels
@@ -388,9 +417,10 @@ def get_service_status(name):
     ready = sum(
         1
         for pod in pods.get("items", [])
-        if all(
+        if pod.get("status", {}).get("containerStatuses", [])
+        and all(
             cs.get("ready", False)
-            for cs in pod.get("status", {}).get("containerStatuses", [])
+            for cs in pod["status"]["containerStatuses"]
         )
     )
     print(f"Service: {name}")
@@ -403,9 +433,18 @@ if __name__ == "__main__":
 
     command = sys.argv[1]
     if command == "create":
+        if len(sys.argv) != 4:
+            print("Usage: platform-cli.py create <name> <team>")
+            sys.exit(1)
         create_service(sys.argv[2], sys.argv[3])
     elif command == "status":
+        if len(sys.argv) != 3:
+            print("Usage: platform-cli.py status <name>")
+            sys.exit(1)
         get_service_status(sys.argv[2])
+    else:
+        print("Usage: platform-cli.py [create|status] ...")
+        sys.exit(1)
 ```
 
 ## Measuring Platform Success
