@@ -38,6 +38,9 @@ Important to understand: Cloud Storage FUSE is not a traditional file system. It
 ```bash
 # Add the Cloud Storage FUSE repository
 
+sudo apt-get update
+sudo apt-get install -y curl lsb-release
+
 export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s)
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | sudo tee /etc/apt/sources.list.d/gcsfuse.list
 
@@ -63,6 +66,9 @@ repo_gpgcheck=0
 gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 EOF
+
+# Install FUSE if it is not already installed
+sudo yum install fuse
 
 # Install gcsfuse
 sudo yum install gcsfuse
@@ -96,6 +102,7 @@ That is it. You can now access your bucket contents at `/mnt/my-bucket/`.
 gcsfuse --only-dir=data/2026 \
   --file-mode=444 \
   --dir-mode=555 \
+  -o ro \
   my-bucket-name /mnt/my-data
 ```
 
@@ -122,9 +129,8 @@ fusermount -u /mnt/my-bucket
 ```bash
 # Mount with performance-oriented settings
 gcsfuse \
-  --stat-cache-capacity=20000 \
-  --stat-cache-ttl=60s \
-  --type-cache-ttl=60s \
+  --stat-cache-max-size-mb=34 \
+  --metadata-cache-ttl-secs=60 \
   --rename-dir-limit=200000 \
   --max-conns-per-host=100 \
   --implicit-dirs \
@@ -133,9 +139,8 @@ gcsfuse \
 
 Key options explained:
 
-- `--stat-cache-capacity` - number of entries to cache for stat calls
-- `--stat-cache-ttl` - how long to cache file metadata
-- `--type-cache-ttl` - how long to cache file type information
+- `--stat-cache-max-size-mb` - maximum memory size for the stat cache
+- `--metadata-cache-ttl-secs` - how long to cache metadata entries
 - `--max-conns-per-host` - maximum concurrent connections to GCS
 - `--implicit-dirs` - treat path prefixes as directories even if no directory object exists
 
@@ -152,7 +157,6 @@ file-cache:
 metadata-cache:
   stat-cache-max-size-mb: 32
   ttl-secs: 60
-  type-cache-max-size-mb: 4
 
 file-system:
   dir-mode: "0755"
@@ -178,7 +182,7 @@ To mount the bucket automatically at boot:
 
 ```bash
 # Add this line to /etc/fstab
-# my-bucket-name /mnt/my-bucket gcsfuse rw,user,implicit_dirs,_netdev 0 0
+my-bucket-name /mnt/my-bucket gcsfuse rw,user,implicit_dirs,_netdev 0 0
 ```
 
 Or using a systemd mount unit for more control:
@@ -194,7 +198,7 @@ Wants=network-online.target
 What=my-bucket-name
 Where=/mnt/my-bucket
 Type=gcsfuse
-Options=rw,implicit_dirs,stat_cache_ttl=60s
+Options=rw,implicit_dirs,metadata_cache_ttl_secs=60
 
 [Install]
 WantedBy=multi-user.target
@@ -267,16 +271,17 @@ Cloud Storage FUSE has fundamentally different performance characteristics than 
 ### What Does Not Work Well
 
 - **Random access patterns** - each seek may trigger a new HTTP request
-- **Frequent small writes** - each write creates a new object version
-- **Appending to files** - the entire object must be rewritten
+- **Frequent small writes** - many small upload operations can have high latency
+- **Appending to files** - patches and small-file appends can require object rewrites
 - **File locking** - not supported
-- **Hard links and symbolic links** - not supported
+- **Hard links** - not supported
+- **Symbolic links** - supported through Cloud Storage FUSE metadata, so test interoperability if other tools access the same objects
 - **Renaming directories** - requires renaming every object with that prefix
 
 ### Performance Tips
 
 ```bash
-# Enable kernel buffer for better read performance
+# Enable list caching for read-only or mostly read-only directory listings
 gcsfuse --kernel-list-cache-ttl-secs=60 my-bucket /mnt/my-bucket
 
 # For data processing workloads, use file caching
@@ -346,7 +351,7 @@ Enable debug logging to diagnose issues:
 
 ```bash
 # Mount with debug logging
-gcsfuse --debug_fuse --debug_gcs --debug_http my-bucket /mnt/my-bucket
+gcsfuse --log-severity=trace my-bucket /mnt/my-bucket
 ```
 
 Common issues:
@@ -354,6 +359,6 @@ Common issues:
 - **Permission denied** - check that the service account has `roles/storage.objectAdmin` or equivalent
 - **Transport endpoint not connected** - the gcsfuse process crashed, unmount and remount
 - **Slow listing** - enable implicit dirs and increase stat cache
-- **Writes seem slow** - gcsfuse uploads the entire object on close, so large files take time
+- **Writes seem slow** - writes are flushed to Cloud Storage and can involve whole-object uploads for patching or overwrite patterns, so large files take time
 
 Cloud Storage FUSE is a practical tool for bridging the gap between applications that expect a file system and data stored in Cloud Storage. Use it for batch processing, data analysis, and legacy application integration, but keep in mind that it is not a replacement for a local file system in latency-sensitive applications.
