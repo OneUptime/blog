@@ -98,7 +98,7 @@ Before attempting any upgrade, verify that the device is a candidate.
     - name: Check flash storage
       cisco.ios.ios_command:
         commands:
-          - dir flash: | include free
+          - "dir flash: | include free"
       register: flash_info
 
     - name: Parse free space
@@ -116,7 +116,7 @@ Before attempting any upgrade, verify that the device is a candidate.
     - name: Check for critical processes
       cisco.ios.ios_command:
         commands:
-          - show processes cpu | include CPU
+          - "show processes cpu | include CPU"
       register: cpu_info
 
     - name: Parse CPU usage
@@ -137,6 +137,14 @@ Before attempting any upgrade, verify that the device is a candidate.
         backup_options:
           dir_path: "backups/pre-upgrade"
           filename: "{{ inventory_hostname }}_{{ current_version }}.cfg"
+
+    - name: Ensure pre-upgrade report directory exists
+      ansible.builtin.file:
+        path: "reports/pre-upgrade"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
 
     - name: Record pre-upgrade state
       ansible.builtin.copy:
@@ -182,11 +190,11 @@ Copy the firmware image to each device.
     - name: Copy firmware to device
       cisco.ios.ios_command:
         commands:
-          - command: "copy scp://{{ firmware.file_server_user }}:{{ firmware.file_server_password }}@{{ firmware.file_server }}{{ firmware.file_server_path }}/{{ firmware.target_image }} flash:{{ firmware.target_image }}"
+          - command: "copy {{ firmware.file_server_protocol }}://{{ firmware.file_server_user }}:{{ firmware.file_server_password }}@{{ firmware.file_server }}{{ firmware.file_server_path }}/{{ firmware.target_image }} flash:{{ firmware.target_image }}"
             prompt:
               - "Destination filename"
             answer:
-              - ""
+              - "\r"
         wait_for:
           - result[0] contains "bytes copied"
       when: image_check is failed
@@ -258,10 +266,8 @@ With the image staged and verified, set the boot variable and reload.
           - command: reload
             prompt:
               - "confirm"
-              - "Save"
             answer:
-              - "y"
-              - "y"
+              - "\r"
       vars:
         ansible_command_timeout: 30
       ignore_errors: true
@@ -329,6 +335,14 @@ After the device comes back, verify it is running the correct version and is hea
     - name: Verify OSPF neighbors recovered
       ansible.builtin.debug:
         msg: "OSPF neighbors: {{ routing.stdout[0] | regex_findall('FULL') | length }}"
+
+    - name: Ensure post-upgrade report directory exists
+      ansible.builtin.file:
+        path: "reports/post-upgrade"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
 
     - name: Generate post-upgrade report
       ansible.builtin.copy:
