@@ -146,7 +146,11 @@ graph TD
 
 const logger = require('../services/logger');
 
-function errorHandler(err, req, res, _next) {
+function errorHandler(err, req, res, next) {
+    if (res.headersSent) {
+        return next(err);
+    }
+
     // Default to 500 if no status code is set
     const statusCode = err.statusCode || 500;
     const isOperational = err.isOperational || false;
@@ -273,6 +277,7 @@ module.exports = { rateLimiter };
 const express = require('express');
 const { validate, userSchemas } = require('../middleware/validate');
 const { AppError } = require('../errors/AppError');
+const userService = require('../services/userService');
 
 const router = express.Router();
 
@@ -323,7 +328,7 @@ const winston = require('winston');
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: winston.format.combine(
-        winston.format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.sssZ' }),
+        winston.format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
         winston.format.errors({ stack: true }),
         winston.format.json(),
     ),
