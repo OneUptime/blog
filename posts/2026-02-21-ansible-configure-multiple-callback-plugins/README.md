@@ -10,37 +10,41 @@ Description: Learn how to enable and configure multiple Ansible callback plugins
 
 Ansible supports running multiple callback plugins at the same time, but there are rules about how they combine. Understanding these rules lets you build a callback stack that gives you formatted terminal output, performance profiling, file logging, and notifications all in one playbook run.
 
-## The Two Types of Callbacks
+## The Callback Types
 
-Ansible has two categories of callback plugins:
+Ansible has three categories of callback plugins:
 
-**stdout callbacks** control what appears in your terminal. Only one can be active at a time. If you set multiple stdout callbacks, the last one wins. Examples: `default`, `yaml`, `json`, `dense`, `minimal`.
+**stdout callbacks** control the main output in your terminal. Only one can be active at a time. Examples: `default`, `minimal`, `oneline`, `ansible.posix.json`, `community.general.dense`.
 
-**notification callbacks** run in the background and do not affect terminal output. Multiple notification callbacks can run simultaneously. Examples: `timer`, `profile_tasks`, `profile_roles`, `junit`, `mail`, `slack`, `syslog`, `log_plays`, `tree`.
+**aggregate callbacks** add extra output alongside the stdout callback. Multiple aggregate callbacks can run simultaneously. Examples: `ansible.posix.timer`, `ansible.posix.profile_tasks`, `ansible.posix.profile_roles`, `ansible.builtin.junit`.
 
-The key rule: you get exactly one stdout callback plus as many notification callbacks as you want.
+**notification callbacks** run in the background to send or write events elsewhere. Multiple notification callbacks can run simultaneously. Examples: `community.general.mail`, `community.general.slack`, `community.general.syslog_json`, `community.general.log_plays`.
+
+The key rule: you get exactly one stdout callback plus as many aggregate and notification callbacks as you want.
 
 ## Configuring the Stack
 
-Set your stdout callback with `stdout_callback` and notification callbacks with `callback_whitelist`:
+Set your stdout callback with `stdout_callback` and aggregate or notification callbacks with `callbacks_enabled`:
 
 ```ini
 # ansible.cfg - Configure multiple callback plugins
 
 [defaults]
 # One stdout callback (controls terminal output)
-stdout_callback = yaml
+stdout_callback = default
+callback_result_format = yaml
 
-# Multiple notification callbacks (comma-separated)
-callback_whitelist = timer, profile_tasks, profile_roles, junit, log_plays
+# Multiple aggregate or notification callbacks (comma-separated)
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles, ansible.builtin.junit, community.general.log_plays
 ```
 
 Environment variable equivalent:
 
 ```bash
 # Set via environment
-export ANSIBLE_STDOUT_CALLBACK=yaml
-export ANSIBLE_CALLBACK_WHITELIST=timer,profile_tasks,profile_roles,junit,log_plays
+export ANSIBLE_STDOUT_CALLBACK=default
+export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
+export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks,ansible.posix.profile_roles,ansible.builtin.junit,community.general.log_plays
 ```
 
 ## Recommended Callback Stacks
@@ -54,8 +58,9 @@ For everyday development work, you want readable output with performance data:
 ```ini
 # ansible.cfg - Development callback stack
 [defaults]
-stdout_callback = yaml
-callback_whitelist = timer, profile_tasks
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks
 
 [callback_profile_tasks]
 sort_order = descending
@@ -71,8 +76,9 @@ For CI/CD pipelines, you need machine-readable output plus human-readable logs:
 ```ini
 # ansible.cfg - CI/CD callback stack
 [defaults]
-stdout_callback = yaml
-callback_whitelist = timer, profile_tasks, junit
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.builtin.junit
 
 [callback_junit]
 output_dir = ./test-results
@@ -94,13 +100,13 @@ For production deployments, add notifications and logging:
 # ansible.cfg - Production deployment callback stack
 [defaults]
 stdout_callback = default
-callback_whitelist = timer, profile_tasks, profile_roles, log_plays, community.general.slack, community.general.syslog
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.posix.profile_roles, community.general.log_plays, community.general.slack, community.general.syslog_json
 
 [callback_log_plays]
 log_folder = /var/log/ansible/hosts
 
 [callback_slack]
-webhook_url = {{ lookup('env', 'SLACK_WEBHOOK_URL') }}
+webhook_url = https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 channel = #deployments
 
 [callback_profile_tasks]
@@ -117,32 +123,25 @@ For compliance and security auditing:
 ```ini
 # ansible.cfg - Compliance audit callback stack
 [defaults]
-stdout_callback = yaml
-callback_whitelist = timer, log_plays, tree, junit
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, community.general.log_plays, ansible.builtin.junit
 
 [callback_log_plays]
 log_folder = /var/log/ansible/audit
-
-[callback_tree]
-directory = /var/log/ansible/tree
 
 [callback_junit]
 output_dir = /var/log/ansible/junit
 fail_on_change = true
 ```
 
-This produces four types of output: readable terminal output, per-host log files, per-host JSON tree files, and JUnit XML where any change is flagged as a failure.
+This produces three types of output: readable terminal output, per-host log files, and JUnit XML where any change is flagged as a failure.
 
 ## Loading Order and Precedence
 
-Ansible loads callbacks in a specific order:
+For callbacks enabled in configuration, the stdout callback receives events first. The other callbacks receive events in the order you list them in `callbacks_enabled`.
 
-1. Built-in callbacks from the Ansible package
-2. Callbacks from installed collections
-3. Callbacks from the `callback_plugins` directory in your project
-4. Callbacks from paths listed in `DEFAULT_CALLBACK_PLUGIN_PATH`
-
-If two callbacks have the same name, the one loaded later wins. This means a project-level callback can override a built-in one.
+For callbacks loaded from callback plugin directories, Ansible loads plugin files in alphanumeric order. For example, `1_first.py` runs before `2_second.py`.
 
 ## Configuring Each Callback
 
@@ -151,8 +150,9 @@ Each callback has its own configuration section in `ansible.cfg`. The section na
 ```ini
 # ansible.cfg - Individual callback configurations
 [defaults]
-stdout_callback = yaml
-callback_whitelist = timer, profile_tasks, junit, log_plays
+stdout_callback = default
+callback_result_format = yaml
+callbacks_enabled = ansible.posix.timer, ansible.posix.profile_tasks, ansible.builtin.junit, community.general.log_plays
 
 # Timer has no configuration options
 
@@ -183,17 +183,19 @@ MODE="${1:-dev}"
 
 case $MODE in
     dev)
-        export ANSIBLE_STDOUT_CALLBACK=yaml
-        export ANSIBLE_CALLBACK_WHITELIST=timer,profile_tasks
+        export ANSIBLE_STDOUT_CALLBACK=default
+        export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
+        export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks
         ;;
     ci)
-        export ANSIBLE_STDOUT_CALLBACK=yaml
-        export ANSIBLE_CALLBACK_WHITELIST=timer,profile_tasks,junit
+        export ANSIBLE_STDOUT_CALLBACK=default
+        export ANSIBLE_CALLBACK_RESULT_FORMAT=yaml
+        export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks,ansible.builtin.junit
         export JUNIT_OUTPUT_DIR=./test-results
         ;;
     prod)
         export ANSIBLE_STDOUT_CALLBACK=default
-        export ANSIBLE_CALLBACK_WHITELIST=timer,profile_tasks,log_plays,community.general.slack
+        export ANSIBLE_CALLBACKS_ENABLED=ansible.posix.timer,ansible.posix.profile_tasks,community.general.log_plays,community.general.slack
         ;;
 esac
 
@@ -223,8 +225,8 @@ Check which callbacks are active:
 ansible-doc -t callback -l
 
 # Show details about a specific callback
-ansible-doc -t callback yaml
-ansible-doc -t callback timer
+ansible-doc -t callback ansible.builtin.default
+ansible-doc -t callback ansible.posix.timer
 ```
 
 To verify your callback stack is working, run a simple playbook and check for output from each callback:
@@ -236,26 +238,26 @@ ansible-playbook site.yml -vvv 2>&1 | grep -i callback
 
 ## Performance Impact
 
-Each notification callback adds a small amount of overhead per event. For most callbacks, this is negligible (microseconds per task). However, network-based callbacks (slack, logstash, syslog over TCP) add latency proportional to network round-trip time.
+Each aggregate or notification callback adds some overhead per event. For local callbacks such as `ansible.posix.profile_tasks` and `ansible.posix.timer`, this is usually small. Network-based callbacks such as Slack, Logstash, or remote syslog callbacks can add latency from network I/O.
 
 Tips for minimizing impact:
 
 - Use UDP for syslog when milliseconds matter
-- The slack callback batches messages, so it adds minimal requests
-- profile_tasks and timer add effectively zero overhead
+- Keep network callback configuration simple and test it in the same environment where playbooks run
+- Use only the callbacks that produce output you actually consume
 - JUnit writes to disk at the end, not during execution
 
-Running 5-6 notification callbacks simultaneously is perfectly fine for almost all use cases.
+Running 5-6 aggregate or notification callbacks simultaneously is perfectly fine for almost all use cases.
 
 ## Troubleshooting
 
 If a callback is not working:
 
-1. Check that it is in the whitelist: `grep callback_whitelist ansible.cfg`
+1. Check that it is enabled: `grep callbacks_enabled ansible.cfg`
 2. Check that the collection is installed: `ansible-galaxy collection list`
 3. Check for import errors: `ansible-playbook site.yml -vvv 2>&1 | grep -i error`
-4. Verify the callback type: stdout callbacks go in `stdout_callback`, notification callbacks go in `callback_whitelist`
+4. Verify the callback type: stdout callbacks go in `stdout_callback`, aggregate and notification callbacks go in `callbacks_enabled`
 
-A common mistake is putting a notification callback in `stdout_callback` or vice versa. If you set `stdout_callback = timer`, it will not work because timer is a notification callback, not a stdout callback.
+A common mistake is putting an aggregate or notification callback in `stdout_callback` or vice versa. If you set `stdout_callback = timer`, it will not work because timer is an aggregate callback, not a stdout callback.
 
 Multiple callbacks working together give you the full picture of every Ansible run. Set up your stack once in `ansible.cfg` and every playbook run automatically gets formatted output, performance data, persistent logs, and notifications.
