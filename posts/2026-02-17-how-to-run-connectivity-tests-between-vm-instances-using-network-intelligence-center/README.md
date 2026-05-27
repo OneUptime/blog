@@ -16,7 +16,7 @@ In this post, I will show you how to set up and run connectivity tests between V
 
 Connectivity tests are a diagnostic tool within Network Intelligence Center that performs reachability analysis between a source and destination in your GCP network. They analyze your network configuration - firewall rules, routes, VPC peering, NAT, and load balancers - to determine whether traffic can flow from point A to point B.
 
-The important thing to understand is that connectivity tests do not send actual packets. They perform a configuration analysis. This means they can tell you about misconfigurations even before you try to send traffic.
+The important thing to understand is that connectivity tests always perform a configuration analysis, and for supported connectivity scenarios they can also perform live data plane analysis. The configuration analysis means they can tell you about misconfigurations even before you try to send traffic.
 
 ## Prerequisites
 
@@ -65,11 +65,12 @@ gcloud network-management connectivity-tests describe web-to-db-test \
 
 ## Understanding Test Results
 
-The test returns one of three overall results:
+The configuration analysis returns one of these common overall results:
 
 - **Reachable** - Traffic can flow from source to destination based on the current configuration.
 - **Unreachable** - Traffic is blocked somewhere along the path.
 - **Ambiguous** - The analysis could not determine reachability with certainty (often due to dynamic routing or complex configurations).
+- **Unknown** - The analysis could not complete, often because a resource does not exist or the caller does not have enough permissions to inspect it.
 
 For an unreachable result, the output includes a trace showing exactly where traffic gets dropped. Here is what a blocked-by-firewall result looks like:
 
@@ -97,11 +98,11 @@ reachabilityDetails:
           causesDrop: true
 ```
 
-This tells you exactly which firewall rule is blocking the traffic. In this case, the default deny ingress rule is preventing the connection.
+This tells you exactly which firewall rule is blocking the traffic. In this case, an ingress deny rule is preventing the connection.
 
 ## Fixing the Issue
 
-Based on the test results above, you need to create a firewall rule that allows TCP traffic on port 5432 from the web server's subnet:
+Based on the test results above, you need to create a firewall rule that allows TCP traffic on port 5432 from the web server's subnet to database VMs tagged with `database`:
 
 ```bash
 # Create a firewall rule to allow PostgreSQL traffic from web subnet to db subnet
@@ -142,11 +143,9 @@ gcloud network-management connectivity-tests create cross-vpc-test \
 If peering is not configured correctly, the trace will show a step like:
 
 ```text
-- state: APPLY_ROUTE
-  route:
-    routeType: PEERING_SUBNET
-  causesDrop: true
-  dropCause: NO_ROUTE_FOUND
+- state: DROP
+  drop:
+    cause: NO_ROUTE
 ```
 
 ## Testing External Connectivity
@@ -199,9 +198,9 @@ done
 
 ## Limits and Considerations
 
-There are a few things to keep in mind. Connectivity tests analyze configuration, not live traffic. If there is a transient network issue or a performance bottleneck, the test might still show reachable. For live traffic analysis, you would pair this with VPC Flow Logs.
+There are a few things to keep in mind. Connectivity tests always analyze configuration, and live data plane analysis is available only for supported scenarios. If there is a transient network issue or a performance bottleneck outside the supported live probing coverage, the test might still show reachable. For additional live traffic analysis, you would pair this with VPC Flow Logs.
 
-Each project can have up to 50 connectivity tests by default. You can request a quota increase if you need more.
+Connectivity Tests quotas are project-level and can be increased for adjustable quotas. Check the current quota for your project before creating a large number of tests.
 
 Tests involving third-party appliances or custom routing through VM instances may return ambiguous results, since the tool cannot analyze the routing logic inside those VMs.
 
