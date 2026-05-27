@@ -54,7 +54,7 @@ For Python functions, add it to your requirements.txt:
 
 ```text
 # requirements.txt for Python Cloud Function
-google-cloud-error-reporting==1.9.1
+google-cloud-error-reporting
 functions-framework==3.*
 ```
 
@@ -115,6 +115,8 @@ const { ErrorReporting } = require('@google-cloud/error-reporting');
 
 // Initialize outside the handler for connection reuse
 const errors = new ErrorReporting({
+  // Use 'always' so local tests report even when NODE_ENV is not production.
+  reportMode: 'always',
   serviceContext: {
     service: 'my-http-function',
     version: '1.0.0'
@@ -181,7 +183,7 @@ def process_pubsub(cloud_event):
         error_client.report(f"MalformedMessage: could not parse JSON from Pub/Sub message: {e}")
 
     except Exception as e:
-        # Report unexpected errors and re-raise to trigger retry
+        # Report unexpected errors and re-raise to trigger retry when retries are enabled
         error_client.report_exception()
         raise
 ```
@@ -195,7 +197,6 @@ You cannot report errors after a timeout, but you can detect when you are gettin
 ```python
 # Detect approaching timeout and report before the function is killed
 import time
-import signal
 import functions_framework
 from google.cloud import error_reporting
 
@@ -213,7 +214,8 @@ TIMEOUT_BUFFER = 5
 def handle_request(request):
     start_time = time.time()
 
-    items = request.get_json().get('items', [])
+    data = request.get_json(silent=True) or {}
+    items = data.get('items', [])
     processed = 0
 
     for item in items:
@@ -250,19 +252,17 @@ gcloud beta monitoring policies create \
   --notification-channels="projects/my-gcp-project/notificationChannels/CHANNEL_ID" \
   --condition-display-name="Function error rate" \
   --condition-filter='resource.type="cloud_function" AND metric.type="cloudfunctions.googleapis.com/function/execution_count" AND metric.labels.status="error"' \
-  --condition-threshold-value=5 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if='> 5' \
+  --duration=300s \
   --project=my-gcp-project
 ```
 
 ## Correlating Errors with Function Executions
 
-To connect errors with specific function invocations, include the execution ID in your error reports:
+To connect errors with specific function invocations, include the Cloud Trace context in your error reports:
 
 ```python
-# Include execution context in error reports for traceability
-import os
+# Include trace context in error reports for traceability
 import functions_framework
 from google.cloud import error_reporting
 
@@ -273,16 +273,16 @@ error_client = error_reporting.Client(
 
 @functions_framework.http
 def handle_request(request):
-    # Get the function execution ID from the environment
-    execution_id = request.headers.get('Function-Execution-Id', 'unknown')
+    # Get the trace context header that Cloud Functions adds to HTTP requests
+    trace_context = request.headers.get('X-Cloud-Trace-Context', 'unknown')
 
     try:
         result = do_work(request)
         return result
     except Exception as e:
-        # Include execution ID in the error message for correlation
+        # Include trace context in the error message for correlation
         error_client.report(
-            f"[execution:{execution_id}] {type(e).__name__}: {str(e)}"
+            f"[trace:{trace_context}] {type(e).__name__}: {str(e)}"
         )
         return {"error": "Internal error"}, 500
 ```
