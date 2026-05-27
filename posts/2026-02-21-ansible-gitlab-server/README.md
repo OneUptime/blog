@@ -44,6 +44,11 @@ gitlab_runner_enabled: true
 gitlab_runner_token: "{{ vault_gitlab_runner_token }}"
 gitlab_runner_executor: docker
 gitlab_runner_docker_image: "alpine:latest"
+
+# Docker repository for the runner host
+docker_apt_os: ubuntu
+docker_apt_release: "{{ ansible_distribution_release }}"
+docker_apt_arch: amd64
 ```
 
 ## Main Tasks
@@ -62,8 +67,8 @@ gitlab_runner_docker_image: "alpine:latest"
       - postfix
     state: present
     update_cache: yes
-    env:
-      DEBIAN_FRONTEND: noninteractive
+  environment:
+    DEBIAN_FRONTEND: noninteractive
 
 - name: Add GitLab package repository
   shell: |
@@ -176,12 +181,32 @@ grafana['enable'] = false
     state: present
     update_cache: yes
 
+- name: Create Docker apt keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Docker apt repository key
+  get_url:
+    url: "https://download.docker.com/linux/{{ docker_apt_os }}/gpg"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: Add Docker apt repository
+  apt_repository:
+    repo: "deb [arch={{ docker_apt_arch }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/{{ docker_apt_os }} {{ docker_apt_release }} stable"
+    filename: docker
+    state: present
+
 - name: Install Docker for Runner executor
   apt:
     name:
       - docker-ce
       - docker-ce-cli
+      - containerd.io
     state: present
+    update_cache: yes
 
 - name: Add gitlab-runner user to docker group
   user:
@@ -220,7 +245,7 @@ grafana['enable'] = false
 ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
 
 # After deployment, access GitLab at https://gitlab.example.com
-# The initial root password is in /etc/gitlab/initial_root_password
+# The initial root password is in /etc/gitlab/initial_root_password for 24 hours
 ```
 
 ## Restoring from Backup
@@ -231,18 +256,15 @@ ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
   hosts: gitlab
   become: yes
   tasks:
-    - name: Stop GitLab services
-      command: gitlab-ctl stop
-
-    - name: Start database services only
-      command: "gitlab-ctl start {{ item }}"
+    - name: Stop services connected to the database
+      command: "gitlab-ctl stop {{ item }}"
       loop:
-        - postgresql
-        - redis
+        - puma
+        - sidekiq
 
-    - name: Restore from latest backup
+    - name: Restore from selected backup
       command: >
-        gitlab-backup restore BACKUP={{ gitlab_backup_timestamp }} force=yes
+        gitlab-backup restore BACKUP={{ gitlab_backup_timestamp }}
       environment:
         GITLAB_ASSUME_YES: "1"
 
@@ -251,6 +273,9 @@ ansible-playbook -i inventory/hosts.ini playbook.yml --ask-vault-pass
 
     - name: Start all GitLab services
       command: gitlab-ctl start
+
+    - name: Check GitLab after restore
+      command: gitlab-rake gitlab:check SANITIZE=true
 ```
 
 ## Summary
