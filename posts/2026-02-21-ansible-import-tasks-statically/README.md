@@ -121,7 +121,7 @@ flowchart TD
 Because tasks are loaded at parse time:
 - All imported tasks appear in `--list-tasks` output
 - Tags on individual imported tasks work correctly with `--tags`
-- The imported file path must be static (cannot use variables)
+- The imported file path is resolved during parsing, so any variables in the path must already be available then
 - Conditions on `import_tasks` are applied to each imported task individually
 
 ## Tags Work Fully with Imports
@@ -268,7 +268,7 @@ Keep nesting shallow. Two levels deep is manageable. Three or more levels makes 
 
 ## Handlers in Imported Task Files
 
-Handlers are not imported with `import_tasks`. If your imported tasks need to notify handlers, define the handlers in the playbook or in a separate handlers file.
+Task files imported under `tasks:` do not define handlers. If your imported tasks need to notify handlers, define the handlers in the playbook or import a handler task file under `handlers:`.
 
 ```yaml
 # playbook.yml - handlers defined in the playbook
@@ -311,13 +311,13 @@ The imported task files can use `notify: Reload nginx` and it will work because 
     loop_var: user
 ```
 
-**No variable file names**: The file path must be a literal string, not a variable.
+**Limited variable file names**: The file path is templated during parsing, so variables in the path must already be available through sources such as `vars` or `--extra-vars`. Inventory variables are not available for static imports.
 
 ```yaml
-# THIS DOES NOT WORK
+# THIS DOES NOT WORK with inventory variables
 - import_tasks: "tasks/setup-{{ ansible_os_family }}.yml"
 
-# Use include_tasks for dynamic paths
+# Use include_tasks for paths that depend on inventory or runtime values
 - include_tasks: "tasks/setup-{{ ansible_os_family }}.yml"
 ```
 
@@ -325,4 +325,4 @@ The imported task files can use `notify: Reload nginx` and it will work because 
 
 ## Summary
 
-`import_tasks` is the right choice when you have static, predictable task files that you want to break out for organizational purposes. The tasks behave identically to inline tasks, tags work fully, and `--list-tasks` shows everything. Use it as your default for task file inclusion, and switch to `include_tasks` only when you need dynamic features like loops, variable file paths, or truly conditional file loading.
+`import_tasks` is the right choice when you have static, predictable task files that you want to break out for organizational purposes. The tasks behave identically to inline tasks, tags work fully, and `--list-tasks` shows everything. Use it as your default for task file inclusion, and switch to `include_tasks` only when you need dynamic features like loops, inventory-based file paths, or truly conditional file loading.
