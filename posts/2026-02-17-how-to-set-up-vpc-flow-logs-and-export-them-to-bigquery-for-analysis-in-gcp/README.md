@@ -14,7 +14,7 @@ In this post, I will walk through enabling flow logs, configuring the export pip
 
 ## Enabling VPC Flow Logs
 
-Flow logs are enabled at the subnet level. You can configure them when creating a subnet or update an existing one:
+In this subnet-focused example, flow logs are enabled at the subnet level. You can configure them when creating a subnet or update an existing one:
 
 ```bash
 # Enable flow logs on an existing subnet with custom settings
@@ -22,15 +22,15 @@ Flow logs are enabled at the subnet level. You can configure them when creating 
 gcloud compute networks subnets update prod-us-central1 \
   --region=us-central1 \
   --enable-flow-logs \
-  --logging-aggregation-interval=INTERVAL_5_SEC \
+  --logging-aggregation-interval=interval-5-sec \
   --logging-flow-sampling=0.5 \
   --logging-metadata=include-all \
-  --logging-filter-expr='has(jsonPayload.src_instance) || has(jsonPayload.dest_instance)'
+  --logging-filter-expr='jsonPayload.src_instance:* OR jsonPayload.dest_instance:*'
 ```
 
 Here is what each option does:
 
-- **aggregation-interval**: How frequently logs are aggregated. `INTERVAL_5_SEC` gives the most granular data. Options range from 5 seconds to 15 minutes.
+- **aggregation-interval**: How frequently logs are aggregated. `interval-5-sec` gives the most granular data. Options range from 5 seconds to 15 minutes.
 - **flow-sampling**: What fraction of flows to log. `0.5` logs 50% of flows. Use `1.0` for complete visibility or lower values to reduce costs.
 - **logging-metadata**: `include-all` captures source/destination instance names, zones, and other metadata. Without this, you only get IP addresses.
 - **logging-filter-expr**: Optional filter to reduce log volume. This example only logs flows involving VM instances.
@@ -44,7 +44,7 @@ gcloud compute networks subnets create monitored-subnet \
   --region=us-central1 \
   --range=10.10.0.0/20 \
   --enable-flow-logs \
-  --logging-aggregation-interval=INTERVAL_10_SEC \
+  --logging-aggregation-interval=interval-30-sec \
   --logging-flow-sampling=0.5 \
   --logging-metadata=include-all \
   --enable-private-ip-google-access
@@ -59,7 +59,7 @@ Each flow log record contains:
 - Bytes and packets transferred
 - Start and end timestamps
 - Source and destination instance information (if metadata is included)
-- Whether the traffic was allowed or denied by firewall rules
+- The side that reported the flow
 
 ## Creating a BigQuery Dataset
 
@@ -81,7 +81,7 @@ Create a log sink that routes VPC flow logs to BigQuery:
 # Create a log sink to export VPC flow logs to BigQuery
 gcloud logging sinks create vpc-flow-logs-to-bq \
   bigquery.googleapis.com/projects/my-project/datasets/vpc_flow_logs \
-  --log-filter='resource.type="gce_subnetwork" AND logName:"compute.googleapis.com%2Fvpc_flows"' \
+  --log-filter='resource.type="gce_subnetwork" AND logName="projects/my-project/logs/compute.googleapis.com%2Fvpc_flows"' \
   --use-partitioned-tables
 ```
 
@@ -95,10 +95,9 @@ WRITER_IDENTITY=$(gcloud logging sinks describe vpc-flow-logs-to-bq \
   --format="value(writerIdentity)")
 
 # Grant BigQuery Data Editor role to the sink's service account
-bq add-iam-policy-binding \
+gcloud projects add-iam-policy-binding my-project \
   --member="${WRITER_IDENTITY}" \
-  --role=roles/bigquery.dataEditor \
-  my-project:vpc_flow_logs
+  --role=roles/bigquery.dataEditor
 ```
 
 ## Verifying the Export
@@ -107,7 +106,7 @@ After a few minutes, check that data is flowing into BigQuery:
 
 ```bash
 # List tables in the dataset - you should see a flow logs table
-bq ls vpc_flow_logs
+bq ls my-project:vpc_flow_logs
 
 # Query the most recent records
 bq query --use_legacy_sql=false '
@@ -147,24 +146,23 @@ ORDER BY total_bytes DESC
 LIMIT 20
 ```
 
-### Denied Traffic Analysis
+### Firewall Follow-Up Candidates
 
-Identify traffic being blocked by firewall rules:
+VPC Flow Logs do not include a firewall allow or deny disposition. To investigate traffic that might require a firewall review, group flow records by source, destination, and port, then compare the results with Firewall Rules Logging for definitive allow or deny decisions:
 
 ```sql
--- Find all denied traffic in the last 24 hours, grouped by source
+-- Find traffic patterns to review against firewall rules
 SELECT
   jsonPayload.connection.src_ip AS source_ip,
   jsonPayload.connection.dest_ip AS dest_ip,
   jsonPayload.connection.dest_port AS dest_port,
   jsonPayload.connection.protocol AS protocol,
-  jsonPayload.disposition AS action,
-  COUNT(*) AS attempt_count
+  SUM(CAST(jsonPayload.bytes_sent AS INT64)) AS total_bytes,
+  COUNT(*) AS flow_count
 FROM `my-project.vpc_flow_logs.compute_googleapis_com_vpc_flows`
 WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-  AND jsonPayload.disposition = 'DENIED'
-GROUP BY source_ip, dest_ip, dest_port, protocol, action
-ORDER BY attempt_count DESC
+GROUP BY source_ip, dest_ip, dest_port, protocol
+ORDER BY flow_count DESC
 LIMIT 50
 ```
 
@@ -236,7 +234,7 @@ Flow logs can generate significant BigQuery storage costs. Here are ways to mana
 
 ```bash
 # Set table expiration to automatically delete old data (90 days)
-bq update --default_table_expiration=7776000 vpc_flow_logs
+bq update --default_table_expiration=7776000 my-project:vpc_flow_logs
 ```
 
 Reduce sampling rate for subnets where full visibility is not critical:
@@ -254,7 +252,7 @@ Use filtering to exclude noisy internal traffic:
 # Only log flows involving external IPs to reduce volume
 gcloud compute networks subnets update prod-subnet \
   --region=us-central1 \
-  --logging-filter-expr='!(has(jsonPayload.src_instance) && has(jsonPayload.dest_instance))'
+  --logging-filter-expr='NOT (jsonPayload.src_instance:* AND jsonPayload.dest_instance:*)'
 ```
 
 ## Wrapping Up
