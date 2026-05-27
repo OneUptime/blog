@@ -17,26 +17,25 @@ This guide covers how to set up scheduled deliveries that work reliably and stay
 To schedule a dashboard for email delivery:
 
 1. Open the dashboard in Looker
-2. Click the gear icon in the top right
-3. Select "Schedule"
+2. Click the dashboard actions three-dot menu in the top right
+3. Select "Schedule delivery"
 4. Configure the schedule settings
 
 Here are the key settings:
 
-**Recipients:** Add email addresses. You can use individual emails or distribution lists. Recipients do not need Looker accounts if you choose the right format.
+**Recipients:** Add email addresses. You can use individual emails or distribution lists. Recipients do not need Looker accounts if your Looker admin has allowed external email delivery or added their domains to the Email Domain Allowlist for Scheduled Content.
 
 **Schedule:** Set the frequency:
 - Hourly (every N hours)
 - Daily (at a specific time)
 - Weekly (on specific days at a specific time)
 - Monthly (on a specific date at a specific time)
-- Custom cron expression for complex schedules
+- Specific months or specific days for complex schedules
 
 **Format:** Choose how the content is delivered:
-- Inline table - Data rendered as an HTML table in the email body
-- Visualization - Charts rendered as images in the email
+- Visualization - Dashboard rendered as a PNG image
 - PDF attachment - Full dashboard as a PDF file
-- CSV attachment - Raw data as a CSV (for Looks, not dashboards)
+- CSV ZIP attachment - Dashboard tile data as CSV files in a zipped directory
 
 **Filters:** Apply filters to the scheduled run. This lets you send the same dashboard to different recipients with different filters (e.g., regional managers each getting their own region's data).
 
@@ -48,12 +47,12 @@ Looks (saved queries) can also be scheduled. The process is similar:
 2. Click the gear icon
 3. Select "Schedule"
 
-Looks offer additional format options that dashboards do not:
+Looks offer additional delivery format options that dashboards do not:
 
 - **CSV** - Comma-separated values
-- **Excel** - Native Excel spreadsheet
-- **Google Sheets** - Writes directly to a Google Sheet
+- **Excel (XLSX)** - Native Excel spreadsheet
 - **JSON** - Raw JSON format (useful for API integrations)
+- **Text or HTML** - Plain text or simple HTML output
 
 ## Creating a Schedule via the API
 
@@ -62,7 +61,7 @@ For programmatic schedule management, use the Looker API:
 ```python
 import looker_sdk
 
-def create_dashboard_schedule(dashboard_id, recipients, cron_tab):
+def create_dashboard_schedule(dashboard_id, recipients, cron_tab, timezone):
     """Create a scheduled plan for a Looker dashboard."""
     sdk = looker_sdk.init40()
 
@@ -71,6 +70,7 @@ def create_dashboard_schedule(dashboard_id, recipients, cron_tab):
         name=f"Weekly Dashboard Report - {dashboard_id}",
         dashboard_id=dashboard_id,
         crontab=cron_tab,
+        timezone=timezone,
         enabled=True,
         run_as_recipient=False,
         include_links=True,
@@ -95,7 +95,8 @@ def create_dashboard_schedule(dashboard_id, recipients, cron_tab):
 create_dashboard_schedule(
     dashboard_id=42,
     recipients=["exec-team@company.com", "vp-sales@company.com"],
-    cron_tab="0 8 * * 1 America/New_York"
+    cron_tab="0 8 * * 1",
+    timezone="America/New_York"
 )
 ```
 
@@ -114,6 +115,8 @@ One of the most useful patterns is sending the same dashboard to different peopl
 ### Automated Multi-Filter Scheduling via API
 
 ```python
+from urllib.parse import urlencode
+
 import looker_sdk
 
 def schedule_regional_reports(dashboard_id, regions_and_recipients):
@@ -124,10 +127,11 @@ def schedule_regional_reports(dashboard_id, regions_and_recipients):
         schedule = looker_sdk.models40.WriteScheduledPlan(
             name=f"Regional Report - {region}",
             dashboard_id=dashboard_id,
-            crontab="0 8 * * 1 America/New_York",
+            crontab="0 8 * * 1",
+            timezone="America/New_York",
             enabled=True,
             # Apply the region filter
-            filters_string=f"Region={region}",
+            filters_string=urlencode({"Region": region}),
             scheduled_plan_destination=[
                 looker_sdk.models40.ScheduledPlanDestination(
                     format="wysiwyg_pdf",
@@ -160,7 +164,7 @@ Looker integrates with Slack for schedule delivery:
 
 1. In the schedule dialog, choose "Slack" as the destination
 2. Select the Slack workspace and channel
-3. Choose the format (visualization, data table, or PDF)
+3. Choose the format (for dashboards, PDF, visualization PNG, or CSV ZIP)
 
 For Slack, inline visualizations work better than PDFs because they show up directly in the channel without requiring a download.
 
@@ -168,7 +172,7 @@ For Slack, inline visualizations work better than PDFs because they show up dire
 
 For data pipeline integrations, send scheduled results to GCS or S3:
 
-1. In the schedule dialog, choose "Amazon S3" or another storage destination
+1. In the schedule dialog, choose "Amazon S3" or an enabled integrated storage destination such as Google Cloud Storage
 2. Configure the bucket, path, and credentials
 
 This is useful for:
@@ -194,9 +198,9 @@ SELECT
   service_name,
   error_count,
   total_requests,
-  error_count / total_requests AS error_rate
+  1.0 * error_count / NULLIF(total_requests, 0) AS error_rate
 FROM service_metrics
-WHERE error_count / total_requests > 0.05
+WHERE 1.0 * error_count / NULLIF(total_requests, 0) > 0.05
   AND metric_date = CURRENT_DATE()
 ```
 
@@ -228,6 +232,8 @@ list_all_schedules()
 ### Disabling Schedules for Maintenance
 
 ```python
+import looker_sdk
+
 def disable_all_schedules():
     """Temporarily disable all scheduled plans."""
     sdk = looker_sdk.init40()
@@ -257,34 +263,10 @@ def enable_all_schedules():
 
 ## Monitoring Schedule Health
 
-Failed schedules can go unnoticed for weeks. Set up monitoring:
+Failed schedules can go unnoticed for weeks. The scheduled plan API can list schedules and their last run time, but it does not expose failures by calling `scheduled_plan_run_once_by_id`; that method creates and runs a copy of a schedule immediately. Check schedule history through Looker's admin pages instead:
 
-```python
-def check_failed_schedules():
-    """Find schedules that failed on their last run."""
-    sdk = looker_sdk.init40()
-    schedules = sdk.all_scheduled_plans(all_users=True)
-
-    failed = []
-    for s in schedules:
-        if s.enabled and s.last_run_at:
-            # Check the job status of the most recent run
-            jobs = sdk.scheduled_plan_run_once_by_id(s.id)
-            # Log any failures for investigation
-            if hasattr(s, 'last_run_at'):
-                failed.append({
-                    'id': s.id,
-                    'name': s.name,
-                    'last_run': s.last_run_at
-                })
-
-    return failed
-```
-
-You can also check schedule history through Looker's System Activity:
-
-1. Go to Admin, then Scheduler
-2. View the schedule history
+1. Go to Admin, then Alerts & Schedules
+2. Open the Schedule History page
 3. Filter for failed runs
 4. Check error messages
 
