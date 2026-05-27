@@ -37,7 +37,7 @@ Configure the Spanner connection in `application.properties`:
 
 spring.cloud.gcp.spanner.instance-id=my-instance
 spring.cloud.gcp.spanner.database=my-database
-spring.cloud.gcp.project-id=my-project
+spring.cloud.gcp.spanner.project-id=my-project
 ```
 
 ## Defining the Entities
@@ -115,9 +115,16 @@ public class TransactionLog {
         this.timestamp = Timestamp.now();
     }
 
-    // Getters and setters
     public String getTransactionId() { return transactionId; }
+    public void setTransactionId(String transactionId) { this.transactionId = transactionId; }
+    public String getFromAccount() { return fromAccount; }
+    public void setFromAccount(String fromAccount) { this.fromAccount = fromAccount; }
+    public String getToAccount() { return toAccount; }
+    public void setToAccount(String toAccount) { this.toAccount = toAccount; }
     public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public Timestamp getTimestamp() { return timestamp; }
+    public void setTimestamp(Timestamp timestamp) { this.timestamp = timestamp; }
 }
 ```
 
@@ -149,7 +156,7 @@ public interface TransactionLogRepository extends SpannerRepository<TransactionL
 
 ## Implementing Read-Write Transactions
 
-This is where things get interesting. Spanner read-write transactions use a two-phase commit protocol and are strongly consistent across regions. Spring Data Spanner supports the `@Transactional` annotation, but you can also use the `SpannerTemplate` for more control.
+This is where things get interesting. Spanner read-write transactions use two-phase commit when a transaction spans multiple splits, and they are externally consistent. Spring Data Spanner supports the `@Transactional` annotation, but you can also use the `SpannerTemplate` for more control.
 
 Here is a service that performs a money transfer using `@Transactional`:
 
@@ -223,10 +230,10 @@ public class BatchTransferService {
 
             for (TransferRequest transfer : transfers) {
                 // Read the source account within the transaction context
-                Account from = transactionOperations.readRow(
+                Account from = transactionOperations.read(
                         Account.class, Key.of(transfer.getFromAccountId()));
 
-                Account to = transactionOperations.readRow(
+                Account to = transactionOperations.read(
                         Account.class, Key.of(transfer.getToAccountId()));
 
                 if (from == null || to == null) {
@@ -253,30 +260,30 @@ public class BatchTransferService {
 
 There are a few things to keep in mind with Spanner transactions:
 
-Spanner uses pessimistic concurrency control with wound-wait deadlock prevention. If two transactions conflict, one will be aborted and retried. The Spring Data Spanner module handles retries automatically when you use `@Transactional`.
+With the default serializable isolation level and pessimistic concurrency, Spanner uses locking and wound-wait deadlock prevention. If two transactions conflict, Spanner may abort one of them. The Spanner client transaction runner retries the transaction body automatically when you use `SpannerTemplate.performReadWriteTransaction`.
 
-Read-write transactions acquire locks on the rows they read. This means you should keep your transactions short and avoid reading large ranges of data within a transaction.
+With pessimistic concurrency, read-write transactions acquire locks on the rows they read. This means you should keep your transactions short and avoid reading large ranges of data within a transaction.
 
-Spanner transactions have a 10-second idle timeout and a maximum duration of one hour. For most OLTP workloads, your transactions should complete in milliseconds.
+Spanner read-write transactions are considered idle if they have no outstanding reads or queries and have not started a read or query within the last 10 seconds. Idle transactions can be aborted. For most OLTP workloads, your transactions should complete in milliseconds.
 
 ## Handling Transaction Retries
 
-Spanner may abort transactions due to conflicts. The Spring Data Spanner module retries aborted transactions automatically, but you should make sure your transaction logic is idempotent.
+Spanner may abort transactions due to conflicts. If you use `SpannerTemplate.performReadWriteTransaction`, the underlying Spanner client transaction runner can retry the function body automatically, so you should make sure your transaction logic is idempotent.
 
 ```java
-// Configuration to customize retry behavior
+// Optional: disambiguate the Spanner transaction manager if your app has multiple transaction managers
 @Configuration
 public class SpannerConfig {
 
     @Bean
     public SpannerTransactionManager spannerTransactionManager(
-            SpannerDatabaseClient spannerDatabaseClient) {
-        return new SpannerTransactionManager(spannerDatabaseClient);
+            DatabaseClient databaseClient) {
+        return new SpannerTransactionManager(() -> databaseClient);
     }
 }
 ```
 
-When a transaction is retried, the entire method annotated with `@Transactional` runs again from the beginning. This is why it is important that your reads happen inside the transaction - stale reads from before the retry could lead to incorrect results.
+The `@Transactional` annotation creates a Spanner transaction boundary, but it does not rerun your Java method body after an aborted commit. If you want automatic retries around a declarative transaction, add a retry mechanism such as Spring Retry around the service method, or use `SpannerTemplate.performReadWriteTransaction` for work that should be retried by the Spanner client transaction runner. In either case, reads that determine writes should happen inside the transaction - stale reads from before a retry could lead to incorrect results.
 
 ## The REST Controller
 
@@ -307,4 +314,4 @@ public class TransferController {
 
 ## Wrapping Up
 
-Spring Data Spanner gives you a familiar programming model for working with Cloud Spanner. The `@Transactional` annotation works as you would expect, and the framework handles the Spanner-specific details like transaction retries and read-write semantics. When you need lower-level control, `SpannerTemplate.performReadWriteTransaction` lets you work directly with the transaction context. The biggest thing to remember is that Spanner transactions may be retried, so your logic needs to be idempotent and self-contained within the transaction boundary.
+Spring Data Spanner gives you a familiar programming model for working with Cloud Spanner. The `@Transactional` annotation works as you would expect for defining a transaction boundary, and `SpannerTemplate.performReadWriteTransaction` lets you work directly with a transaction context that can be retried by the Spanner client. The biggest thing to remember is that Spanner transactions may be retried, so your logic needs to be idempotent and self-contained within the transaction boundary.
