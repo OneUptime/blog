@@ -18,14 +18,14 @@ Here is how MetalLB assigns an IP and routes traffic to your service:
 
 ```mermaid
 flowchart TD
-    Client["External Client"] -->|Request to 192.168.1.200:80| Speaker["MetalLB Speaker<br/>(on elected node)"]
-    Speaker --> KP["kube-proxy"]
+    Client["External Client"] -->|Request to 192.168.1.200:80| Node["Elected node<br/>(IP advertised by MetalLB Speaker)"]
+    Node --> KP["kube-proxy"]
     KP --> Pod1["Pod 1"]
     KP --> Pod2["Pod 2"]
     KP --> Pod3["Pod 3"]
 
     subgraph Cluster["Kubernetes Cluster"]
-        Speaker
+        Node
         KP
         Pod1
         Pod2
@@ -47,7 +47,7 @@ If you have not set up MetalLB yet, here is a quick installation:
 ```bash
 # Install MetalLB using the official manifests
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
@@ -55,6 +55,8 @@ kubectl wait --namespace metallb-system \
   --selector=app=metallb \
   --timeout=120s
 ```
+
+If your cluster uses kube-proxy in IPVS mode, enable strict ARP before using Layer 2 mode.
 
 ## Step 1: Create an IPAddressPool
 
@@ -249,6 +251,7 @@ sequenceDiagram
     participant K8s as Kubernetes API
     participant MC as MetalLB Controller
     participant MS as MetalLB Speaker
+    participant KP as kube-proxy
     participant Net as Network
 
     User->>K8s: kubectl apply service.yaml
@@ -257,11 +260,11 @@ sequenceDiagram
     MC->>K8s: Assign 192.168.1.200 to Service
     K8s->>MS: Service updated with IP
     MS->>Net: Send gratuitous ARP for 192.168.1.200
-    Net-->>MS: ARP resolved
+    MS-->>Net: Respond to ARP requests for 192.168.1.200
     Note over MS,Net: Speaker now responds to<br/>ARP requests for 192.168.1.200
     User->>Net: curl 192.168.1.200
-    Net->>MS: Traffic to 192.168.1.200
-    MS->>K8s: Forward to Service endpoints
+    Net->>KP: Traffic reaches the elected node
+    KP->>KP: Forward to Service endpoints
 ```
 
 ## Exposing Multiple Ports
@@ -271,6 +274,7 @@ You can expose multiple ports on a single LoadBalancer service:
 ```yaml
 # multi-port-service.yaml
 # Expose both HTTP and HTTPS on the same LoadBalancer IP.
+# This assumes the selected pods listen on both target ports.
 apiVersion: v1
 kind: Service
 metadata:
