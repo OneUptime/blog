@@ -10,7 +10,7 @@ Description: Learn how to use Cloud DLP date shifting to de-identify date fields
 
 Dates are one of the trickiest data elements to de-identify. Birth dates, admission dates, appointment dates, transaction dates - they are everywhere in healthcare, financial, and customer data. Simple redaction destroys analytical value. Replacing with fixed values makes time-series analysis impossible. Generalizing to just the year loses too much precision.
 
-Date shifting is the sweet spot. It moves each date forward or backward by a random number of days within a range you specify. A birth date of March 15, 1985 might become April 2, 1985 or February 28, 1985. The shifted date is realistic, preserves approximate temporal relationships, but cannot be traced back to the original without knowing the shift amount.
+Date shifting is the sweet spot. It moves each date forward or backward by a random number of days within a range you specify. A birth date of March 15, 1985 might become April 2, 1985 or February 28, 1985. The shifted date is realistic, preserves approximate temporal relationships, and is not directly recoverable from the shifted value alone.
 
 Cloud DLP has built-in date shifting that you can apply to individual fields or use consistently across related records. In this post, I will show you how to set it up.
 
@@ -100,10 +100,18 @@ date_shift_text(
 For structured data where you need consistent shifts across related dates, use a context field. Records with the same context value get the same random shift.
 
 ```python
+import base64
+
+from google.cloud import dlp_v2
+
 def date_shift_with_context(project_id, wrapped_key, kms_key_name):
     """Shift dates consistently per patient using a context field."""
 
     dlp_client = dlp_v2.DlpServiceClient()
+
+    def date_value(value):
+        year, month, day = map(int, value.split("-"))
+        return {"date_value": {"year": year, "month": month, "day": day}}
 
     # Sample patient records as a DLP table
     table = {
@@ -119,27 +127,27 @@ def date_shift_with_context(project_id, wrapped_key, kms_key_name):
                 "values": [
                     {"string_value": "P001"},
                     {"string_value": "John Smith"},
-                    {"string_value": "1985-03-15"},
-                    {"string_value": "2024-01-10"},
-                    {"string_value": "2024-01-17"},
+                    date_value("1985-03-15"),
+                    date_value("2024-01-10"),
+                    date_value("2024-01-17"),
                 ]
             },
             {
                 "values": [
                     {"string_value": "P001"},
                     {"string_value": "John Smith"},
-                    {"string_value": "1985-03-15"},
-                    {"string_value": "2024-06-05"},
-                    {"string_value": "2024-06-08"},
+                    date_value("1985-03-15"),
+                    date_value("2024-06-05"),
+                    date_value("2024-06-08"),
                 ]
             },
             {
                 "values": [
                     {"string_value": "P002"},
                     {"string_value": "Jane Doe"},
-                    {"string_value": "1990-07-22"},
-                    {"string_value": "2024-02-14"},
-                    {"string_value": "2024-02-20"},
+                    date_value("1990-07-22"),
+                    date_value("2024-02-14"),
+                    date_value("2024-02-20"),
                 ]
             },
         ],
@@ -155,7 +163,7 @@ def date_shift_with_context(project_id, wrapped_key, kms_key_name):
         # Crypto key ensures the shift is deterministic for the same context
         "crypto_key": {
             "kms_wrapped": {
-                "wrapped_key": wrapped_key,
+                "wrapped_key": base64.b64decode(wrapped_key),
                 "crypto_key_name": kms_key_name,
             }
         },
@@ -203,12 +211,16 @@ def date_shift_with_context(project_id, wrapped_key, kms_key_name):
     result = response.item.table
     print("De-identified records:")
     for row in result.rows:
-        values = [v.string_value for v in row.values]
+        values = [
+            v.string_value
+            or f"{v.date_value.year:04d}-{v.date_value.month:02d}-{v.date_value.day:02d}"
+            for v in row.values
+        ]
         print(f"  {values}")
 
     return response
 
-# Run with your KMS-wrapped key
+# Run with your base64-encoded KMS-wrapped key
 kms_key = "projects/my-project/locations/global/keyRings/dlp-keyring/cryptoKeys/dlp-key"
 date_shift_with_context("my-project", "YOUR_WRAPPED_KEY", kms_key)
 ```
@@ -217,18 +229,23 @@ The important thing here is the `context` field. Both records for patient P001 w
 
 The `crypto_key` makes the shift deterministic - running the same data through the same configuration always produces the same shifts. This is critical for reproducibility and for processing data in batches.
 
-## Step 3: Date Shifting in BigQuery via DLP Jobs
+## Step 3: Date Shifting BigQuery Data in Batches
 
-For large-scale date shifting in BigQuery, create a DLP job:
+Sensitive Data Protection inspection jobs can scan BigQuery tables, but the de-identification action that creates de-identified copies is for Cloud Storage. For BigQuery data, call `deidentify_content` from a pipeline or remote function, then write the transformed rows to a destination table.
 
 ```python
-def create_date_shift_job(project_id, dataset_id, table_id,
-                           output_dataset, wrapped_key, kms_key_name):
-    """Create a DLP job that date-shifts a BigQuery table."""
+import base64
+from datetime import date
+
+from google.cloud import bigquery, dlp_v2
+
+def date_shift_bigquery_table(project_id, source_table, destination_table,
+                              wrapped_key, kms_key_name, batch_size=500):
+    """Date-shift selected BigQuery columns and write rows to another table."""
 
     dlp_client = dlp_v2.DlpServiceClient()
+    bq_client = bigquery.Client(project=project_id)
 
-    # Date columns to shift
     date_fields = ["birth_date", "admission_date", "discharge_date",
                    "appointment_date"]
 
@@ -238,63 +255,97 @@ def create_date_shift_job(project_id, dataset_id, table_id,
         "context": {"name": "patient_id"},
         "crypto_key": {
             "kms_wrapped": {
-                "wrapped_key": wrapped_key,
+                "wrapped_key": base64.b64decode(wrapped_key),
                 "crypto_key_name": kms_key_name,
             }
         },
     }
 
-    field_transformations = [
-        {
-            "fields": [{"name": f} for f in date_fields],
-            "primitive_transformation": {
-                "date_shift_config": date_shift_config
-            },
-        }
-    ]
-
     deidentify_config = {
         "record_transformations": {
-            "field_transformations": field_transformations,
+            "field_transformations": [
+                {
+                    "fields": [{"name": f} for f in date_fields],
+                    "primitive_transformation": {
+                        "date_shift_config": date_shift_config
+                    },
+                }
+            ],
         }
     }
 
-    storage_config = {
-        "big_query_options": {
-            "table_reference": {
-                "project_id": project_id,
-                "dataset_id": dataset_id,
-                "table_id": table_id,
-            }
-        }
-    }
-
-    job = {
-        "deidentify_config": deidentify_config,
-        "storage_config": storage_config,
-        "actions": [
-            {
-                "deidentify": {
-                    "transformation_details_storage_config": {
-                        "table": {
-                            "project_id": project_id,
-                            "dataset_id": output_dataset,
-                            "table_id": f"{table_id}_transform_log",
-                        }
-                    }
+    def to_dlp_value(value):
+        if isinstance(value, date):
+            return {
+                "date_value": {
+                    "year": value.year,
+                    "month": value.month,
+                    "day": value.day,
                 }
             }
-        ],
-    }
+        return {"string_value": "" if value is None else str(value)}
 
-    parent = f"projects/{project_id}/locations/global"
-    response = dlp_client.create_dlp_job(
-        parent=parent,
-        inspect_job=job,
+    def from_dlp_value(value):
+        if value.date_value.year:
+            return (
+                f"{value.date_value.year:04d}-"
+                f"{value.date_value.month:02d}-"
+                f"{value.date_value.day:02d}"
+            )
+        return value.string_value
+
+    columns = ["patient_id", "name"] + date_fields
+    rows = bq_client.query(
+        f"SELECT {', '.join(columns)} FROM `{source_table}`"
+    ).result()
+
+    def deidentify_batch(dlp_rows):
+        table = {
+            "headers": [{"name": column} for column in columns],
+            "rows": dlp_rows,
+        }
+
+        parent = f"projects/{project_id}/locations/global"
+        response = dlp_client.deidentify_content(
+            request={
+                "parent": parent,
+                "deidentify_config": deidentify_config,
+                "item": {"table": table},
+            }
+        )
+
+        return [
+            {
+                column: from_dlp_value(value)
+                for column, value in zip(columns, row.values)
+            }
+            for row in response.item.table.rows
+        ]
+
+    output_rows = []
+    batch = []
+    for row in rows:
+        batch.append({
+            "values": [to_dlp_value(row[column]) for column in columns]
+        })
+        if len(batch) == batch_size:
+            output_rows.extend(deidentify_batch(batch))
+            batch = []
+
+    if batch:
+        output_rows.extend(deidentify_batch(batch))
+
+    job_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
     )
+    load_job = bq_client.load_table_from_json(
+        output_rows,
+        destination_table,
+        job_config=job_config,
+    )
+    load_job.result()
 
-    print(f"Date shift job created: {response.name}")
-    return response
+    print(f"Wrote {len(output_rows)} de-identified rows to {destination_table}")
 ```
 
 ## Step 4: Choosing the Right Shift Range
@@ -308,7 +359,7 @@ The shift range is a trade-off between privacy and utility:
 | 100 days | High | Lower | Research datasets shared externally |
 | 365 days | Very high | Low | Highly sensitive data, rare diseases |
 
-For HIPAA Safe Harbor compliance, the guidance suggests that dates should be shifted enough that the original cannot be reasonably determined. A range of 30-100 days is commonly used in healthcare.
+For HIPAA Safe Harbor compliance, dates directly related to an individual generally must be reduced to the year, not merely shifted. Date shifting can be useful in healthcare datasets, but HIPAA compliance depends on your de-identification method and risk analysis.
 
 ## Step 5: Verify Temporal Relationships
 
@@ -358,4 +409,4 @@ FROM `my-project.clean_data.patients_deidentified`
 
 ## Summary
 
-Date shifting is the go-to de-identification method for temporal data. It preserves the analytical utility of dates - time intervals, seasonal patterns, ordering - while making it impossible to identify individuals from their specific dates. Use context fields and crypto keys for consistent shifting across related records, choose a shift range that balances privacy and utility for your use case, and always verify that temporal relationships are preserved after shifting.
+Date shifting is the go-to de-identification method for temporal data. It preserves the analytical utility of dates - time intervals, seasonal patterns, ordering - while making it harder to identify individuals from their specific dates. Use context fields and crypto keys for consistent shifting across related records, choose a shift range that balances privacy and utility for your use case, and always verify that temporal relationships are preserved after shifting.
