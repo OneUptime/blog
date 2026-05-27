@@ -32,7 +32,7 @@ Total Executor Memory
 +-- spark.executor.memoryOverhead (off-heap, native memory)
 ```
 
-The key insight is that execution and storage memory share a unified region (controlled by `spark.memory.fraction`, default 0.6). When one side needs more memory and the other has free space, it borrows from the other.
+The key insight is that execution and storage memory share a unified region (controlled by `spark.memory.fraction`, default 0.6). When no execution memory is in use, storage can use the available unified memory, and when execution needs memory it can evict storage down to the protected storage region.
 
 ## Step 1: Calculate Executor Settings Based on Machine Type
 
@@ -90,7 +90,7 @@ spark:spark.driver.cores=2,\
 spark:spark.sql.shuffle.partitions=200,\
 spark:spark.dynamicAllocation.enabled=true,\
 spark:spark.dynamicAllocation.minExecutors=2,\
-spark:spark.dynamicAllocation.maxExecutors=16"
+spark:spark.dynamicAllocation.maxExecutors=8"
 ```
 
 ## Step 3: Override Settings Per Job
@@ -135,7 +135,7 @@ print(f"Recommended shuffle partitions: {recommended_partitions}")
 spark.conf.set("spark.sql.shuffle.partitions", str(recommended_partitions))
 ```
 
-Better yet, enable Adaptive Query Execution which adjusts partitions automatically:
+Better yet, enable Adaptive Query Execution, which can coalesce post-shuffle partitions automatically. Start with a high enough shuffle partition count for the workload so AQE has partitions to coalesce:
 
 ```bash
 # Enable Adaptive Query Execution for automatic partition tuning
@@ -145,7 +145,8 @@ gcloud dataproc jobs submit pyspark gs://my-bucket/scripts/job.py \
   --properties="\
 spark.sql.adaptive.enabled=true,\
 spark.sql.adaptive.coalescePartitions.enabled=true,\
-spark.sql.adaptive.skewJoin.enabled=true"
+spark.sql.adaptive.skewJoin.enabled=true,\
+spark.sql.shuffle.partitions=800"
 ```
 
 ## Step 5: Handle Skewed Data
@@ -167,7 +168,8 @@ key_distribution = df.groupBy("customer_id") \
 key_distribution.show(20)
 
 # Calculate skew metrics
-stats = key_distribution.select("row_count").describe().show()
+stats = key_distribution.select("row_count").describe()
+stats.show()
 ```
 
 Fix skew with salting or AQE:
@@ -252,7 +254,7 @@ spark.executor.memory=12g"
 | Small (2 workers) | n2-standard-4 | 6g | 2 | 4 |
 | Medium (4 workers) | n2-standard-8 | 13g | 3 | 8 |
 | Large (8 workers) | n2-highmem-16 | 25g | 4 | 24 |
-| XL (16 workers) | n2-highmem-32 | 50g | 5 | 80 |
+| XL (16 workers) | n2-highmem-32 | 40g | 5 | 80 |
 
 ## Wrapping Up
 
