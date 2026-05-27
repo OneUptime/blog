@@ -10,7 +10,7 @@ Description: Handle complex argument types like nested dictionaries and lists of
 
 Complex modules need nested structures, lists of objects, and conditional requirements.
 
-## Nested Dictionaries with Suboptions
+## Nested Dictionaries with Options
 
 ```python
 module_args = dict(
@@ -66,6 +66,15 @@ Usage:
 ## Conditional Requirements
 
 ```python
+module_args = dict(
+    auth_type=dict(type='str', choices=['password', 'token', 'certificate'], required=True),
+    username=dict(type='str'),
+    password=dict(type='str', no_log=True),
+    api_token=dict(type='str', no_log=True),
+    cert_path=dict(type='path'),
+    key_path=dict(type='path'),
+)
+
 module = AnsibleModule(
     argument_spec=module_args,
     required_if=[
@@ -78,4 +87,4 @@ module = AnsibleModule(
 
 ## Key Takeaways
 
-Use suboptions for nested dicts. Use elements='dict' with options for lists of structured objects. Use required_if for conditional parameter requirements. This provides automatic validation and helpful error messages.
+Use options for nested dicts. Use elements='dict' with options for lists of structured objects. Use required_if for conditional parameter requirements. This provides automatic validation and helpful error messages.
