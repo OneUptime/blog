@@ -77,7 +77,7 @@ This works but it gets messy fast. Regex patterns are fragile and hard to mainta
 
 ## Method 2 - The parse_cli Filter
 
-Ansible ships with a `parse_cli` filter that uses spec files to define how output should be parsed. You write a YAML spec that describes the expected format, and the filter extracts matching values.
+The `ansible.netcommon` collection includes a `parse_cli` filter that uses spec files to define how output should be parsed. You write a YAML spec that describes the expected format, and the filter extracts matching values. This filter is deprecated in current `ansible.netcommon` releases, so use `ansible.utils.cli_parse` for new playbooks.
 
 First, create a parser spec file.
 
@@ -95,13 +95,7 @@ keys:
   interfaces:
     type: list
     value: "{{ interfaces }}"
-    items: "{{ item }}"
-    regexp: "^(\\S+)\\s+(\\S+)\\s+\\w+\\s+\\w+\\s+(\\S+)\\s+(\\S+)"
-    group:
-      name: "\\1"
-      ip: "\\2"
-      status: "\\5"
-      proto: "\\6"
+    items: "^(?P<name>\\S+)\\s+(?P<ip>\\S+)\\s+\\w+\\s+\\w+\\s+(?P<status>administratively down|up|down|deleted)\\s+(?P<proto>up|down)"
 ```
 
 Then use it in a playbook.
@@ -123,7 +117,7 @@ Then use it in a playbook.
 
     - name: Parse with spec file
       ansible.builtin.set_fact:
-        parsed_interfaces: "{{ interface_output.stdout[0] | parse_cli('templates/show_ip_interface_brief.yml') }}"
+        parsed_interfaces: "{{ interface_output.stdout[0] | ansible.netcommon.parse_cli('templates/show_ip_interface_brief.yml') }}"
 
     - name: Show parsed data
       ansible.builtin.debug:
@@ -132,7 +126,7 @@ Then use it in a playbook.
 
 ## Method 3 - The parse_cli_textfsm Filter
 
-TextFSM is a Python library originally developed by Google for parsing semi-structured text. It uses template files that define a state machine for extracting data. This is probably the most popular parsing approach in the network automation community because of the NTC Templates project, which provides pre-built templates for hundreds of network commands.
+TextFSM is a Python library originally developed by Google for parsing semi-structured text. It uses template files that define a state machine for extracting data. This is probably the most popular parsing approach in the network automation community because of the NTC Templates project, which provides pre-built templates for hundreds of network commands. The `parse_cli_textfsm` filter is deprecated in current `ansible.netcommon` releases, so use `ansible.utils.cli_parse` for new playbooks.
 
 ```yaml
 # parse_with_textfsm.yml - Use TextFSM templates for parsing
@@ -149,10 +143,10 @@ TextFSM is a Python library originally developed by Google for parsing semi-stru
           - show interfaces
       register: interfaces_output
 
-    # parse_cli_textfsm uses NTC templates by default if installed
+    # Pass the TextFSM template path explicitly
     - name: Parse output with TextFSM
       ansible.builtin.set_fact:
-        parsed_interfaces: "{{ interfaces_output.stdout[0] | parse_cli_textfsm('cisco_ios_show_interfaces.textfsm') }}"
+        parsed_interfaces: "{{ interfaces_output.stdout[0] | ansible.netcommon.parse_cli_textfsm('~/ntc-templates/templates/cisco_ios_show_interfaces.textfsm') }}"
 
     - name: Display parsed interface data
       ansible.builtin.debug:
@@ -186,7 +180,7 @@ The `cli_parse` module from the `ansible.utils` collection is the newer, unified
       ansible.utils.cli_parse:
         command: show ip route
         parser:
-          name: ansible.netcommon.textfsm
+          name: ansible.utils.textfsm
           template_path: templates/cisco_ios_show_ip_route.textfsm
       register: route_data
 
@@ -200,11 +194,11 @@ The `cli_parse` module from the `ansible.utils` collection is the newer, unified
 
     - name: Display routes
       ansible.builtin.debug:
-        msg: "Route to {{ item.NETWORK }}/{{ item.MASK }} via {{ item.NEXTHOP }}"
+        msg: "Route to {{ item.network }}/{{ item.prefix_length }} via {{ item.nexthop_ip | default(item.nexthop_if, true) }}"
       loop: "{{ route_data_ntc.parsed }}"
 ```
 
-## Method 5 - Using xmltodict for Structured Output
+## Method 5 - Using Structured Output
 
 Some devices support structured output formats natively. Juniper devices return XML, and modern Cisco NX-OS supports JSON. When available, these are far better than parsing CLI text.
 
@@ -236,16 +230,17 @@ Some devices support structured output formats natively. Juniper devices return 
   connection: network_cli
 
   tasks:
-    # NX-OS supports piping to JSON
+    # NX-OS supports JSON output
     - name: Get VLANs as JSON
       cisco.nxos.nxos_command:
         commands:
-          - show vlan brief | json
+          - command: show vlan brief
+            output: json
       register: vlan_output
 
     - name: Work with the JSON data directly
       ansible.builtin.debug:
-        msg: "VLAN {{ item.vlanshowbr-vlanid }} - {{ item.vlanshowbr-vlanname }}"
+        msg: "VLAN {{ item['vlanshowbr-vlanid'] }} - {{ item['vlanshowbr-vlanname'] }}"
       loop: "{{ vlan_output.stdout[0]['TABLE_vlanbriefxbrief']['ROW_vlanbriefxbrief'] }}"
 ```
 
@@ -256,8 +251,8 @@ Here is a quick comparison to help you decide which method to use.
 | Method | Complexity | Maintainability | Best For |
 |---|---|---|---|
 | regex_search | Low | Low | One-off extractions |
-| parse_cli | Medium | Medium | Custom spec-based parsing |
-| parse_cli_textfsm | Medium | High | Standard show commands |
+| parse_cli | Medium | Medium | Existing spec-based parsing |
+| parse_cli_textfsm | Medium | High | Existing TextFSM filter usage |
 | cli_parse module | Medium | High | New projects, multi-engine |
 | Structured output | Low | High | Devices that support XML/JSON |
 
@@ -292,11 +287,11 @@ Let me put this together in a real scenario. Say you want to build a network inv
     - name: Compile device inventory
       ansible.builtin.set_fact:
         device_inventory:
-          hostname: "{{ version_facts.parsed[0].HOSTNAME }}"
-          software: "{{ version_facts.parsed[0].VERSION }}"
-          serial: "{{ version_facts.parsed[0].SERIAL | default('N/A') }}"
-          interfaces: "{{ interface_facts.parsed | map(attribute='INTF') | list }}"
-          active_interfaces: "{{ interface_facts.parsed | selectattr('STATUS', 'equalto', 'up') | list }}"
+          hostname: "{{ version_facts.parsed[0].hostname }}"
+          software: "{{ version_facts.parsed[0].version }}"
+          serial: "{{ version_facts.parsed[0].serial | default(['N/A']) | first }}"
+          interfaces: "{{ interface_facts.parsed | map(attribute='interface') | list }}"
+          active_interfaces: "{{ interface_facts.parsed | selectattr('status', 'equalto', 'up') | list }}"
 
     # Write the inventory to a JSON file for later use
     - name: Save inventory to file
