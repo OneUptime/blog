@@ -34,7 +34,7 @@ Add a start script to your package.json:
     "start": "npx functions-framework --target=myFunction --port=8080"
   },
   "dependencies": {
-    "@google-cloud/functions-framework": "^3.0.0"
+    "@google-cloud/functions-framework": "^5.0.0"
   }
 }
 ```
@@ -57,7 +57,7 @@ Let us start with a simple HTTP function. Create your function file:
 const functions = require('@google-cloud/functions-framework');
 
 functions.http('helloWorld', (req, res) => {
-  const name = req.query.name || req.body.name || 'World';
+  const name = req.query.name || req.body?.name || 'World';
   console.log(`Received request for name: ${name}`);
   res.json({
     message: `Hello, ${name}!`,
@@ -369,6 +369,6 @@ Now you can set breakpoints, step through code, and inspect variables - a much b
 
 ## Tips for Effective Local Testing
 
-Keep your local testing environment as close to production as possible. If your function connects to a database, use a local database or Cloud SQL Auth Proxy. If it reads from Cloud Storage, you can use the storage emulator or a test bucket. The closer your local setup mirrors production, the fewer surprises you will get after deployment.
+Keep your local testing environment as close to production as possible. If your function connects to a database, use a local database or Cloud SQL Auth Proxy. If it reads from Cloud Storage, use a dedicated test bucket. The closer your local setup mirrors production, the fewer surprises you will get after deployment.
 
 Tools like OneUptime can help you monitor the function after it goes live, but catching bugs during local development is always cheaper and faster. Invest time in your local testing setup early, and you will save hours of debugging in production later.
