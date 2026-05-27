@@ -36,7 +36,7 @@ gcloud dataflow jobs describe JOB_ID \
 Key fields:
 - `algorithm`: Should be `AUTOSCALING_ALGORITHM_BASIC` for the default autoscaler
 - `maxNumWorkers`: The upper bound on worker count
-- `numWorkers`: The initial (and current minimum) worker count
+- `numWorkers`: The initial worker count
 
 If `maxNumWorkers` is set too low, the autoscaler hits the ceiling before meeting demand.
 
@@ -45,16 +45,16 @@ If `maxNumWorkers` is set too low, the autoscaler hits the ceiling before meetin
 The most common reason the autoscaler "stops scaling" is that it has reached `maxNumWorkers`:
 
 ```bash
-# Check current worker count vs max
+# Check the configured autoscaling ceiling
 gcloud dataflow jobs describe JOB_ID \
     --region=us-central1 \
-    --format="json(currentNumWorkers, environment.workerPools[0].autoscalingSettings.maxNumWorkers)"
+    --format="json(environment.workerPools[0].autoscalingSettings.maxNumWorkers)"
 ```
 
-If the current count equals the max, increase it:
+Compare this value with the current worker count in the Dataflow Autoscaling tab. If the current count equals the max, increase it:
 
 ```bash
-# Update max workers on a running job (streaming only)
+# Update max workers on a running Streaming Engine job
 gcloud dataflow jobs update-options JOB_ID \
     --region=us-central1 \
     --max-num-workers=100
@@ -79,10 +79,11 @@ gcloud dataflow jobs run your-job \
     --gcs-location=gs://your-bucket/templates/your-template \
     --region=us-central1 \
     --num-workers=10 \
-    --max-workers=50
+    --max-workers=50 \
+    --additional-experiments=min_num_workers=10
 ```
 
-The `num-workers` value acts as the starting point and effective minimum.
+The `num-workers` value sets the starting point. The `min_num_workers` service option sets the lower bound that autoscaling does not scale below.
 
 ## Step 4: Check for Quota Limitations
 
@@ -132,12 +133,12 @@ for q in data.get('quotas', []):
 Reduce per-worker disk size if you do not need large disks:
 
 ```bash
-# Launch with smaller disk size
-gcloud dataflow jobs run your-job \
-    --gcs-location=gs://your-bucket/templates/your-template \
+# Launch a Flex Template with smaller disk size
+gcloud dataflow flex-template run your-job \
+    --template-file-gcs-location=gs://your-bucket/templates/your-template.json \
     --region=us-central1 \
-    --disk-size-gb=30 \
-    --max-workers=50
+    --max-workers=50 \
+    --additional-pipeline-options=disk_size_gb=30
 ```
 
 ## Step 6: Investigate the Autoscaler Decision Log
@@ -177,29 +178,25 @@ class SlowExternalCallDoFn(beam.DoFn):
 Solutions:
 - Use async I/O if supported by your runner
 - Batch external calls to improve throughput per worker
-- Increase the number of threads per worker
+- Tune the number of worker harness threads
 
 ```bash
-# Increase SDK harness threads to improve utilization
-gcloud dataflow jobs run your-job \
-    --gcs-location=gs://your-bucket/templates/your-template \
+# Tune SDK harness threads for a Flex Template
+gcloud dataflow flex-template run your-job \
+    --template-file-gcs-location=gs://your-bucket/templates/your-template.json \
     --region=us-central1 \
-    --additional-experiments=use_runner_v2 \
-    --number-of-worker-harness-threads=24
+    --additional-pipeline-options=number_of_worker_harness_threads=24
 ```
 
 ## Step 8: Use Horizontal Autoscaling Hints
 
-For streaming jobs, you can provide hints to the autoscaler by setting the target throughput:
+For Streaming Engine jobs, you can provide a target CPU utilization hint to the autoscaler:
 
 ```bash
-# Set autoscaling algorithm parameters
-gcloud dataflow jobs run your-job \
-    --gcs-location=gs://your-bucket/templates/your-template \
+# Set the target worker utilization hint on a running job
+gcloud dataflow jobs update-options JOB_ID \
     --region=us-central1 \
-    --num-workers=5 \
-    --max-workers=100 \
-    --additional-experiments=min_num_workers=5
+    --worker-utilization-hint=0.7
 ```
 
 ## Scaling Decision Flowchart
