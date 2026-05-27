@@ -18,12 +18,12 @@ APIs are the backbone of modern applications, but they are also a prime target f
 graph TD
     A[OWASP API Security Top 10] --> B1[API1: Broken Object Level Auth]
     A --> B2[API2: Broken Authentication]
-    A --> B3[API3: Broken Object Property Auth]
+    A --> B3[API3: Broken Object Property Level Authorization]
     A --> B4[API4: Unrestricted Resource Consumption]
-    A --> B5[API5: Broken Function Level Auth]
-    A --> B6[API6: Server Side Request Forgery]
-    A --> B7[API7: Security Misconfiguration]
-    A --> B8[API8: Lack of Protection from Automated Threats]
+    A --> B5[API5: Broken Function Level Authorization]
+    A --> B6[API6: Unrestricted Access to Sensitive Business Flows]
+    A --> B7[API7: Server Side Request Forgery]
+    A --> B8[API8: Security Misconfiguration]
     A --> B9[API9: Improper Inventory Management]
     A --> B10[API10: Unsafe Consumption of APIs]
 ```
@@ -158,7 +158,7 @@ class CreateUserRequest(BaseModel):
 @router.post("/api/v1/users")
 async def create_user(request: CreateUserRequest):
     """Create user with validated input - Pydantic rejects invalid data."""
-    # At this point, all input has been validated and sanitized
+    # At this point, all input has been validated
     return await user_service.create(request)
 ```
 
@@ -186,7 +186,6 @@ class RateLimiter:
     ) -> bool:
         """Check if request is within rate limits using token bucket."""
         now = time.time()
-        pipe = self.redis.pipeline()
 
         # Lua script for atomic token bucket operations
         lua_script = """
@@ -207,7 +206,7 @@ class RateLimiter:
         -- Try to consume one token
         if tokens >= 1 then
             tokens = tokens - 1
-            redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+            redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
             redis.call('EXPIRE', key, 3600)
             return 1
         else
@@ -279,7 +278,7 @@ graph TD
     WAF -->|Rate Limiting| Auth[Authentication]
     Auth -->|JWT Validation| Authz[Authorization]
     Authz -->|RBAC / ABAC| Validation[Input Validation]
-    Validation -->|Sanitized Input| Logic[Business Logic]
+    Validation -->|Validated Input| Logic[Business Logic]
     Logic -->|Parameterized Queries| DB[(Database)]
     Logic -->|Audit Events| Audit[Audit Log]
     Logic -->|Metrics| Monitor[Monitoring]
@@ -289,6 +288,7 @@ graph TD
 
 ```python
 # Structured audit logging for security events
+from fastapi import Depends, HTTPException, Request
 import structlog
 from datetime import datetime, timezone
 
@@ -315,13 +315,13 @@ async def log_security_event(
         client_ip=request.client.host,
         user_agent=request.headers.get("user-agent", "unknown"),
         timestamp=datetime.now(timezone.utc).isoformat(),
-        request_id=request.state.request_id,
+        request_id=getattr(request.state, "request_id", None),
         details=details or {},
     )
 
 # Usage in route handlers
 @router.delete("/api/v1/users/{user_id}")
-async def delete_user(user_id: str, claims: dict = Depends(validate_token), request: Request = None):
+async def delete_user(user_id: str, request: Request, claims: dict = Depends(validate_token)):
     """Delete a user with full audit logging."""
     # Check admin permissions
     if "admin" not in claims.get("roles", []):
