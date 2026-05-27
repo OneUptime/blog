@@ -23,7 +23,7 @@ graph LR
     A[Update Code] -->|Success| B[Deploy Staging]
     B -->|Success| C[Run Tests]
     C -->|Success| D[Approval Gate]
-    D -->|Approved| E[Deploy Production]
+    D -->|Success| E[Deploy Production]
     C -->|Failure| F[Notify Team]
     B -->|Failure| F
     E -->|Always| G[Send Report]
@@ -235,7 +235,7 @@ Now connect the nodes with success, failure, and always links.
 
 ## Parallel Execution
 
-Workflow nodes that do not depend on each other can run in parallel. Just link them from the same parent node.
+Workflow nodes that do not depend on each other can run in parallel. Just link the existing child nodes from the same parent node.
 
 ```yaml
     # After staging deploy succeeds, run tests and security scan in parallel
@@ -250,6 +250,16 @@ Workflow nodes that do not depend on each other can run in parallel. Just link t
           - "security_scan"    # Runs in parallel with tests
           - "performance_test" # Also runs in parallel
         state: present
+
+    # Require every parallel test path to succeed before approval runs
+    - name: Require all test paths before approval
+      awx.awx.workflow_job_template_node:
+        controller_host: "{{ awx_host }}"
+        controller_oauthtoken: "{{ awx_token }}"
+        workflow_job_template: "Full Deployment Pipeline"
+        identifier: "production_approval"
+        all_parents_must_converge: true
+        state: present
 ```
 
 ```mermaid
@@ -262,16 +272,17 @@ graph LR
     D -->|Success| E
 ```
 
-All three tests run simultaneously, and the approval node waits for all of them to complete before proceeding.
+All three tests run simultaneously. With `all_parents_must_converge` enabled on the approval node, the approval waits for all of them to complete successfully before proceeding.
 
 ## Convergence Points
 
-When multiple parallel paths need to converge before continuing, AWX handles this automatically. If a node has multiple parent nodes, it waits for all parents to complete before running.
+When multiple parallel paths need to converge before continuing, AWX uses the convergence setting on the child node. If a node has multiple parent nodes, the default "Any" behavior waits for parent nodes to complete but only requires one parent to meet its expected outcome. Set `all_parents_must_converge: true` for "All" behavior.
 
-The convergence behavior depends on the link types:
+The convergence behavior depends on the link types and the convergence setting:
 
-- If all parents are linked via "success", the convergence node runs only if all parents succeed
-- If any parent is linked via "always", the convergence node runs regardless of that parent's outcome
+- With "All" convergence, if all parents are linked via "success", the convergence node runs only if all parents succeed
+- With "Any" convergence, the convergence node runs when at least one parent meets its expected outcome after the relevant parent paths have completed
+- If any parent is linked via "always", that parent can satisfy its expected outcome regardless of success or failure
 
 ## Creating Workflows via the API
 
