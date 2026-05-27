@@ -76,7 +76,7 @@ import time
 import threading
 from enum import Enum
 from typing import Callable, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 class CircuitState(Enum):
@@ -89,14 +89,12 @@ class CircuitState(Enum):
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for the circuit breaker."""
-    # Number of failures before opening the circuit
+    # Number of consecutive failures before opening the circuit
     failure_threshold: int = 5
     # How long to wait before testing (seconds)
     recovery_timeout: int = 30
     # Number of test requests allowed in half-open state
     half_open_max_calls: int = 3
-    # Sliding window size for tracking failures (seconds)
-    window_size: int = 60
 
 
 class CircuitBreaker:
@@ -126,6 +124,7 @@ class CircuitBreaker:
                     # Transition to half-open to test recovery
                     self._state = CircuitState.HALF_OPEN
                     self._half_open_calls = 0
+                    self._success_count = 0
                     print(f"[{self.name}] Circuit half-open, testing recovery")
             return self._state
 
@@ -185,6 +184,8 @@ class CircuitBreaker:
             if self._state == CircuitState.HALF_OPEN:
                 # Any failure in half-open state reopens the circuit
                 self._state = CircuitState.OPEN
+                self._success_count = 0
+                self._half_open_calls = 0
                 print(f"[{self.name}] Circuit reopened, service still failing")
             elif self._failure_count >= self.config.failure_threshold:
                 # Threshold exceeded, open the circuit
