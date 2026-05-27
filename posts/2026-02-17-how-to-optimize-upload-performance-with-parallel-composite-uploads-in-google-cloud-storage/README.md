@@ -64,7 +64,7 @@ Add or update these settings in `~/.boto`:
 # Enable parallel composite uploads for files larger than this threshold
 parallel_composite_upload_threshold = 150M
 
-# Number of components to split the file into
+# Maximum size of each temporary component
 parallel_composite_upload_component_size = 50M
 ```
 
@@ -86,15 +86,19 @@ The newer `gcloud storage` command handles parallelism automatically:
 # gcloud storage uses optimized parallel uploads by default
 gcloud storage cp large-database-dump.sql.gz gs://my-bucket/backups/
 
-# Explicit parallel thread configuration
-gcloud storage cp large-file.zip gs://my-bucket/uploads/ \
-  --process-count=8 \
-  --thread-count=4
+# Explicit parallel configuration
+gcloud config set storage/process_count 8
+gcloud config set storage/thread_count 4
+gcloud config set storage/parallel_composite_upload_enabled True
+gcloud config set storage/parallel_composite_upload_threshold 150M
+gcloud config set storage/parallel_composite_upload_component_size 50M
+
+gcloud storage cp large-file.zip gs://my-bucket/uploads/
 ```
 
 ## Implementing Parallel Uploads in Python
 
-For programmatic uploads, you can implement parallel composite uploads using the Python client library:
+For programmatic uploads, you can build the same pattern using the Python client library's compose operation:
 
 ```python
 from google.cloud import storage
@@ -126,8 +130,6 @@ def parallel_composite_upload(
     print(f"Splitting into {num_chunks} chunks of {chunk_size_mb} MB")
 
     # Step 1: Upload chunks in parallel
-    temp_blob_names = []
-
     def upload_chunk(chunk_index):
         """Upload a single chunk of the file."""
         offset = chunk_index * chunk_size
@@ -135,8 +137,6 @@ def parallel_composite_upload(
 
         # Name for the temporary object
         temp_name = f"{destination_blob_name}_temp_chunk_{chunk_index:04d}"
-        temp_blob_names.append((chunk_index, temp_name))
-
         blob = bucket.blob(temp_name)
 
         # Read and upload just this chunk
@@ -173,17 +173,22 @@ def parallel_composite_upload(
 
     if len(temp_blobs) <= 32:
         # Single compose operation
+        final_blob.content_type = 'application/octet-stream'
         final_blob.compose(temp_blobs)
+        cleanup_blobs = temp_blobs
     else:
         # Multi-stage compose for more than 32 chunks
-        stage_blobs = compose_in_stages(bucket, temp_blobs, destination_blob_name)
-        final_blob = stage_blobs
+        final_blob, cleanup_blobs = compose_in_stages(
+            bucket,
+            temp_blobs,
+            destination_blob_name
+        )
 
     print(f"Composed {len(temp_blobs)} chunks into {destination_blob_name}")
 
     # Step 3: Clean up temporary objects
-    for _, temp_name in uploaded_chunks:
-        bucket.blob(temp_name).delete()
+    for blob in cleanup_blobs:
+        blob.delete()
 
     print(f"Cleaned up {len(uploaded_chunks)} temporary objects")
     print(f"Upload complete: gs://{bucket_name}/{destination_blob_name}")
@@ -192,6 +197,7 @@ def compose_in_stages(bucket, blobs, final_name):
     """Compose more than 32 blobs by doing it in stages."""
     stage = 0
     current_blobs = blobs
+    cleanup_blobs = []
 
     while len(current_blobs) > 32:
         next_stage_blobs = []
@@ -203,24 +209,18 @@ def compose_in_stages(bucket, blobs, final_name):
             stage_blob.compose(group)
             next_stage_blobs.append(stage_blob)
 
-        # Clean up previous stage temporary blobs
-        for blob in current_blobs:
-            if '_compose_stage_' in blob.name or '_temp_chunk_' in blob.name:
-                blob.delete()
+        cleanup_blobs.extend(current_blobs)
 
         current_blobs = next_stage_blobs
         stage += 1
 
     # Final compose
     final_blob = bucket.blob(final_name)
+    final_blob.content_type = 'application/octet-stream'
     final_blob.compose(current_blobs)
+    cleanup_blobs.extend(current_blobs)
 
-    # Clean up last stage temporary blobs
-    for blob in current_blobs:
-        if '_compose_stage_' in blob.name:
-            blob.delete()
-
-    return final_blob
+    return final_blob, cleanup_blobs
 
 # Upload a large file
 parallel_composite_upload(
@@ -237,8 +237,6 @@ parallel_composite_upload(
 ```javascript
 const { Storage } = require('@google-cloud/storage');
 const fs = require('fs');
-const path = require('path');
-const pLimit = require('p-limit');
 
 const storage = new Storage();
 
@@ -249,6 +247,7 @@ async function parallelCompositeUpload(
   chunkSizeMB = 50,
   concurrency = 8
 ) {
+  const { default: pLimit } = await import('p-limit');
   const bucket = storage.bucket(bucketName);
   const fileSize = fs.statSync(filePath).size;
   const chunkSize = chunkSizeMB * 1024 * 1024;
@@ -290,15 +289,16 @@ async function parallelCompositeUpload(
   await Promise.all(uploadPromises);
 
   // Step 2: Compose chunks into the final object
-  const tempFiles = tempNames.map(name => bucket.file(name));
   const destFile = bucket.file(destName);
+  const metadata = { contentType: 'application/octet-stream' };
 
   // Compose in groups of 32 (API limit)
-  if (tempFiles.length <= 32) {
-    await destFile.compose(tempFiles);
+  if (tempNames.length <= 32) {
+    await bucket.combine(tempNames, destName);
+    await destFile.setMetadata(metadata);
   } else {
     // Multi-stage compose needed
-    await multiStageCompose(bucket, tempFiles, destName);
+    await multiStageCompose(bucket, tempNames, destName, metadata);
   }
 
   console.log(`Composed into ${destName}`);
@@ -312,8 +312,8 @@ async function parallelCompositeUpload(
   console.log(`Upload finished: gs://${bucketName}/${destName}`);
 }
 
-async function multiStageCompose(bucket, files, finalName) {
-  let current = files;
+async function multiStageCompose(bucket, fileNames, finalName, metadata) {
+  let current = fileNames;
   let stage = 0;
 
   while (current.length > 32) {
@@ -322,31 +322,30 @@ async function multiStageCompose(bucket, files, finalName) {
     for (let i = 0; i < current.length; i += 32) {
       const group = current.slice(i, i + 32);
       const stageName = `${finalName}_stage_${stage}_${i}`;
-      const stageFile = bucket.file(stageName);
 
-      await stageFile.compose(group);
-      nextStage.push(stageFile);
+      await bucket.combine(group, stageName);
+      nextStage.push(stageName);
     }
 
     // Delete previous stage files
     await Promise.all(
       current
-        .filter(f => f.name.includes('_stage_') || f.name.includes('_temp_'))
-        .map(f => f.delete().catch(() => {}))
+        .filter(name => name.includes('_stage_') || name.includes('_temp_'))
+        .map(name => bucket.file(name).delete().catch(() => {}))
     );
 
     current = nextStage;
     stage++;
   }
 
-  const finalFile = bucket.file(finalName);
-  await finalFile.compose(current);
+  await bucket.combine(current, finalName);
+  await bucket.file(finalName).setMetadata(metadata);
 
   // Clean up last stage
   await Promise.all(
     current
-      .filter(f => f.name.includes('_stage_'))
-      .map(f => f.delete().catch(() => {}))
+      .filter(name => name.includes('_stage_'))
+      .map(name => bucket.file(name).delete().catch(() => {}))
   );
 }
 
@@ -379,12 +378,12 @@ Results vary based on network bandwidth, latency, and the GCS region.
 
 **Maximum 32 source objects per compose.** If you have more than 32 chunks, you need multi-stage composition (as shown in the code above).
 
-**Maximum 10,240 components total.** An object can be the result of composing at most 10,240 components throughout its lifetime.
+**No fixed component-count limit.** Cloud Storage no longer sets a fixed limit on the number of components in a composite object, but the final object must still fit within the 5 TiB object size limit.
 
 **Temporary objects incur charges.** During the upload, you are storing both the chunks and eventually the final object. Clean up temp objects promptly.
 
 **Not beneficial for small files.** The overhead of splitting, parallel uploading, and composing only pays off for files over roughly 100 MB. For smaller files, a standard upload is faster.
 
-**Content-Type must be set explicitly.** The compose operation does not automatically detect content types. Set it on the final object after composition.
+**Content-Type must be set explicitly.** The compose operation does not automatically detect content types. Set it on the destination object as part of composition, or update the final object's metadata after composition.
 
 Parallel composite uploads are one of the most effective ways to speed up large file uploads to Cloud Storage. The implementation is a bit more involved than a simple upload, but the 3-4x speedup is well worth it for regular large file operations.

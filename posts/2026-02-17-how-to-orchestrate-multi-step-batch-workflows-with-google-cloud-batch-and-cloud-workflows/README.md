@@ -18,13 +18,12 @@ In this post, I will build a complete multi-step batch pipeline using Cloud Work
 graph TD
     A[Cloud Scheduler<br/>Daily Trigger] --> B[Cloud Workflows<br/>Orchestrator]
     B --> C[Step 1: Ingest<br/>Cloud Batch Job]
-    C --> D{Validation<br/>Check}
-    D -->|Pass| E[Step 2: Transform<br/>Cloud Batch Job]
-    D -->|Fail| F[Send Alert<br/>Stop Pipeline]
-    E --> G[Step 3: Process<br/>Cloud Batch Job<br/>GPU]
-    G --> H[Step 4: Aggregate<br/>Cloud Batch Job]
-    H --> I[Step 5: Report<br/>Cloud Function]
-    I --> J[Pipeline Complete]
+    C --> D[Step 2: Validate<br/>Cloud Batch Job]
+    D --> E{Validation<br/>Check}
+    E -->|Pass| F[Step 3: Process<br/>Cloud Batch Job]
+    E -->|Fail| G[Send Alert<br/>Stop Pipeline]
+    F --> H[Step 4: Aggregate<br/>Cloud Batch Job]
+    H --> I[Pipeline Complete]
 ```
 
 ## Prerequisites
@@ -42,6 +41,7 @@ This Cloud Function creates a batch job and returns the job name for status poll
 ```python
 import functions_framework
 from google.cloud import batch_v1
+from google.protobuf.duration_pb2 import Duration
 import json
 
 @functions_framework.http
@@ -82,7 +82,9 @@ def submit_batch_job(request):
         memory_mib=job_config.get("memory_mib", 4096),
     )
     task.max_retry_count = job_config.get("max_retries", 3)
-    task.max_run_duration = f"{job_config.get('timeout_seconds', 3600)}s"
+    task.max_run_duration = Duration(
+        seconds=job_config.get("timeout_seconds", 3600)
+    )
 
     group = batch_v1.TaskGroup()
     group.task_spec = task
@@ -142,8 +144,8 @@ main:
         assign:
           - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - region: "us-central1"
-          - processing_date: ${default(map.get(args, "date"), time.format(sys.now(), "2006-01-02"))}
-          - pipeline_id: ${"pipeline-" + text.replace_all(processing_date, "-", "") + "-" + string(int(sys.now()))}
+          - processing_date: ${default(map.get(args, "date"), text.split(time.format(sys.now()), "T")[0])}
+          - pipeline_id: ${"pipeline-" + text.replace_all(processing_date, "-", "") + "-" + text.substring(uuid.generate(), 0, 8)}
 
     - log_start:
         call: sys.log
@@ -155,7 +157,7 @@ main:
     - submit_ingest_job:
         call: http.post
         args:
-          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?job_id=" + pipeline_id + "-ingest"}
+          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?jobId=" + pipeline_id + "-ingest"}
           auth:
             type: OAuth2
           body:
@@ -166,12 +168,12 @@ main:
                         imageUri: ${"gcr.io/" + project_id + "/data-ingest:latest"}
                         commands: ["python", "ingest.py", "--date", "${processing_date}"]
                   computeResource:
-                    cpuMilli: 4000
-                    memoryMib: 8192
+                    cpuMilli: "4000"
+                    memoryMib: "8192"
                   maxRetryCount: 3
                   maxRunDuration: "3600s"
-                taskCount: 10
-                parallelism: 10
+                taskCount: "10"
+                parallelism: "10"
             allocationPolicy:
               instances:
                 - policy:
@@ -204,7 +206,7 @@ main:
     - submit_validation_job:
         call: http.post
         args:
-          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?job_id=" + pipeline_id + "-validate"}
+          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?jobId=" + pipeline_id + "-validate"}
           auth:
             type: OAuth2
           body:
@@ -215,12 +217,12 @@ main:
                         imageUri: ${"gcr.io/" + project_id + "/data-validator:latest"}
                         commands: ["python", "validate.py", "--date", "${processing_date}"]
                   computeResource:
-                    cpuMilli: 2000
-                    memoryMib: 4096
+                    cpuMilli: "2000"
+                    memoryMib: "4096"
                   maxRetryCount: 2
                   maxRunDuration: "1800s"
-                taskCount: 1
-                parallelism: 1
+                taskCount: "1"
+                parallelism: "1"
             allocationPolicy:
               instances:
                 - policy:
@@ -235,11 +237,24 @@ main:
           job_name: ${validation_response.body.name}
         result: validation_status
 
-    # Step 3: Main Processing (with GPU if needed)
+    - check_validation_status:
+        switch:
+          - condition: ${validation_status == "FAILED"}
+            steps:
+              - send_validation_alert:
+                  call: http.post
+                  args:
+                    url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+                    body:
+                      text: ${"Pipeline " + pipeline_id + " failed at validation step"}
+              - fail_validation:
+                  raise: ${"Validation job failed for " + processing_date}
+
+    # Step 3: Main Processing
     - submit_processing_job:
         call: http.post
         args:
-          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?job_id=" + pipeline_id + "-process"}
+          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?jobId=" + pipeline_id + "-process"}
           auth:
             type: OAuth2
           body:
@@ -250,12 +265,12 @@ main:
                         imageUri: ${"gcr.io/" + project_id + "/data-processor:latest"}
                         commands: ["python", "process.py", "--date", "${processing_date}"]
                   computeResource:
-                    cpuMilli: 8000
-                    memoryMib: 32768
+                    cpuMilli: "8000"
+                    memoryMib: "32768"
                   maxRetryCount: 3
                   maxRunDuration: "14400s"
-                taskCount: 50
-                parallelism: 10
+                taskCount: "50"
+                parallelism: "10"
             allocationPolicy:
               instances:
                 - policy:
@@ -270,11 +285,24 @@ main:
           job_name: ${process_response.body.name}
         result: process_status
 
+    - check_processing_status:
+        switch:
+          - condition: ${process_status == "FAILED"}
+            steps:
+              - send_processing_alert:
+                  call: http.post
+                  args:
+                    url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+                    body:
+                      text: ${"Pipeline " + pipeline_id + " failed at processing step"}
+              - fail_processing:
+                  raise: ${"Processing job failed for " + processing_date}
+
     # Step 4: Aggregation
     - submit_aggregation_job:
         call: http.post
         args:
-          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?job_id=" + pipeline_id + "-aggregate"}
+          url: ${"https://batch.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/jobs?jobId=" + pipeline_id + "-aggregate"}
           auth:
             type: OAuth2
           body:
@@ -285,12 +313,12 @@ main:
                         imageUri: ${"gcr.io/" + project_id + "/data-aggregator:latest"}
                         commands: ["python", "aggregate.py", "--date", "${processing_date}"]
                   computeResource:
-                    cpuMilli: 4000
-                    memoryMib: 16384
+                    cpuMilli: "4000"
+                    memoryMib: "16384"
                   maxRetryCount: 2
                   maxRunDuration: "3600s"
-                taskCount: 1
-                parallelism: 1
+                taskCount: "1"
+                parallelism: "1"
             allocationPolicy:
               instances:
                 - policy:
@@ -304,6 +332,19 @@ main:
         args:
           job_name: ${aggregate_response.body.name}
         result: aggregate_status
+
+    - check_aggregation_status:
+        switch:
+          - condition: ${aggregate_status == "FAILED"}
+            steps:
+              - send_aggregation_alert:
+                  call: http.post
+                  args:
+                    url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+                    body:
+                      text: ${"Pipeline " + pipeline_id + " failed at aggregation step"}
+              - fail_aggregation:
+                  raise: ${"Aggregation job failed for " + processing_date}
 
     - log_complete:
         call: sys.log
@@ -362,7 +403,7 @@ gcloud scheduler jobs create http daily-batch-pipeline \
   --schedule="0 2 * * *" \
   --uri="https://workflowexecutions.googleapis.com/v1/projects/MY_PROJECT/locations/us-central1/workflows/batch-pipeline/executions" \
   --http-method=POST \
-  --message-body='{"argument": "{\"date\": \"today\"}"}' \
+  --message-body='{"argument": "{}"}' \
   --oauth-service-account-email=scheduler@MY_PROJECT.iam.gserviceaccount.com
 
 # Manually trigger the pipeline for testing
@@ -394,7 +435,7 @@ gcloud batch jobs list \
 
 ## Step 5: Add Error Recovery and Cleanup
 
-Enhance the workflow with try/catch blocks for error handling and cleanup of failed batch jobs:
+Enhance the workflow with try/catch blocks for error handling and cancellation of failed batch jobs:
 
 ```yaml
 # Error handling wrapper
@@ -412,20 +453,24 @@ Enhance the workflow with try/catch blocks for error handling and cleanup of fai
         - log_error:
             call: sys.log
             args:
-              text: ${"Pipeline failed: " + e.message}
+              text: '${"Pipeline failed: " + json.encode_to_string(e)}'
               severity: ERROR
-        - cleanup_failed_jobs:
-            call: http.delete
-            args:
-              url: ${"https://batch.googleapis.com/v1/" + e.failed_job_name}
-              auth:
-                type: OAuth2
+        - cancel_failed_job:
+            switch:
+              - condition: ${"failed_job_name" in e}
+                steps:
+                  - cancel_batch_job:
+                      call: http.post
+                      args:
+                        url: ${"https://batch.googleapis.com/v1/" + e.failed_job_name + ":cancel"}
+                        auth:
+                          type: OAuth2
         - notify_on_failure:
             call: http.post
             args:
               url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
               body:
-                text: ${"Batch pipeline failed: " + e.message}
+                text: '${"Batch pipeline failed: " + json.encode_to_string(e)}'
         - raise_error:
             raise: ${e}
 ```
