@@ -19,7 +19,7 @@ Before jumping in, make sure you have:
 - A Google Cloud project with billing enabled
 - Firebase initialized in your project (you can do this from the Firebase console)
 - The Firebase CLI and Google Cloud SDK installed locally
-- Node.js 18 or later
+- Node.js 20 or 22
 
 If you have not linked your GCP project to Firebase yet, head to the Firebase console, click "Add Project," and select your existing GCP project.
 
@@ -165,12 +165,14 @@ Then, in your frontend app (or using the emulator UI at `localhost:4000`), creat
 
 ## Using Cloud Functions Gen 2
 
-If you are using Cloud Functions Gen 2 (which runs on Cloud Run under the hood), the syntax changes slightly. Gen 2 uses the `firebase-functions/v2` module.
+Cloud Functions for Firebase Gen 2 does not support the same after-creation Firebase Auth trigger shown above. For onboarding workflows that should run after a user is created, use the 1st gen `functions.auth.user().onCreate()` trigger. If you need to validate, block, or modify a user before creation completes, Gen 2 supports blocking functions through the `firebase-functions/v2/identity` module. Blocking functions require Firebase Authentication with Identity Platform.
 
 ```javascript
-// Gen 2 version of the auth trigger
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { beforeUserCreated } = require("firebase-functions/v2/identity");
+// Gen 2 blocking function that runs before user creation completes
+const {
+  beforeUserCreated,
+  HttpsError,
+} = require("firebase-functions/v2/identity");
 
 // This is a blocking function that runs BEFORE user creation completes
 // Useful for validation or enrichment
@@ -179,7 +181,7 @@ exports.validateNewUser = beforeUserCreated((event) => {
 
   // Example: Block signups from certain email domains
   if (user.email && user.email.endsWith("@blocked-domain.com")) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "permission-denied",
       "Signups from this domain are not allowed."
     );
@@ -187,37 +189,43 @@ exports.validateNewUser = beforeUserCreated((event) => {
 
   // You can also modify the user record before it is saved
   return {
-    displayName: user.displayName || user.email.split("@")[0],
+    displayName:
+      user.displayName || (user.email ? user.email.split("@")[0] : "New User"),
   };
 });
 ```
 
 ## Error Handling and Retries
 
-Cloud Functions triggered by auth events are background functions, which means they support automatic retries. If your function throws an error, Cloud Functions will retry it. This is great for transient failures (like a Firestore timeout) but dangerous for non-idempotent operations.
+Cloud Functions triggered by auth events are background functions, which means they can be configured to retry failed executions. Retries are not enabled by default. If you enable retries and your function throws an error, Cloud Functions will retry it. This is great for transient failures (like a Firestore timeout) but dangerous for non-idempotent operations.
 
 To handle this properly, make your function idempotent. One approach is to check if the user profile already exists before creating it.
 
 ```javascript
-// Idempotent version that safely handles retries
-exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
-  const uid = user.uid;
+// Idempotent version that safely handles retry scenarios
+exports.onUserCreated = functions
+  .runWith({
+    failurePolicy: true,
+  })
+  .auth.user()
+  .onCreate(async (user) => {
+    const uid = user.uid;
 
-  // Check if we already processed this user (handles retry scenarios)
-  const existingDoc = await admin.firestore().collection("users").doc(uid).get();
+    // Check if we already processed this user
+    const existingDoc = await admin.firestore().collection("users").doc(uid).get();
 
-  if (existingDoc.exists) {
-    console.log(`User ${uid} already processed, skipping.`);
-    return;
-  }
+    if (existingDoc.exists) {
+      console.log(`User ${uid} already processed, skipping.`);
+      return;
+    }
 
-  await admin.firestore().collection("users").doc(uid).set({
-    email: user.email,
-    displayName: user.displayName || "New User",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    plan: "free",
+    await admin.firestore().collection("users").doc(uid).set({
+      email: user.email,
+      displayName: user.displayName || "New User",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      plan: "free",
+    });
   });
-});
 ```
 
 ## Monitoring and Debugging
@@ -229,7 +237,7 @@ Once deployed, you can monitor your function through the Google Cloud Console un
 gcloud functions logs read onUserCreated --limit 50
 
 # View logs with a specific severity level
-gcloud functions logs read onUserCreated --min-log-level ERROR
+gcloud functions logs read onUserCreated --min-log-level error
 ```
 
 You can also set up alerts in Cloud Monitoring to notify you if the function starts failing frequently, which is something I would strongly recommend for any production auth workflow.
@@ -248,6 +256,6 @@ A few things I have run into that are worth calling out:
 
 ## Wrapping Up
 
-Setting up a Cloud Function that triggers on Firebase Authentication user creation events gives you a clean, reliable way to handle user onboarding logic without coupling it to your frontend. The function runs automatically, supports retries, and scales with your user base. Whether you need to create Firestore profiles, send welcome emails, or integrate with third-party services, this pattern keeps your auth flow simple and your backend logic centralized.
+Setting up a Cloud Function that triggers on Firebase Authentication user creation events gives you a clean, reliable way to handle user onboarding logic without coupling it to your frontend. The function runs automatically, can be configured for retries, and scales with your user base. Whether you need to create Firestore profiles, send welcome emails, or integrate with third-party services, this pattern keeps your auth flow simple and your backend logic centralized.
 
 For production systems, remember to enable retries, make your functions idempotent, and set up monitoring. And if you need to validate or block users before they are actually created, look into the blocking functions available in Gen 2 - they are a powerful addition to the toolkit.
