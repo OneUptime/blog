@@ -8,7 +8,7 @@ Description: Learn how to scale Node.js applications using cluster mode and PM2 
 
 ---
 
-Node.js runs JavaScript on a single thread. On a modern server with 8, 16, or more CPU cores, a single Node.js process uses only one core while the rest sit idle. Clustering solves this by running multiple instances of your application, one per core, behind a shared port. In this guide, we will explore both the built-in cluster module and PM2 for production process management.
+Node.js runs JavaScript on a single event-loop thread per process. On a modern server with 8, 16, or more CPU cores, a single Node.js process does not run JavaScript across all cores by itself. Clustering solves this by running multiple instances of your application, typically one per available CPU, behind a shared port. In this guide, we will explore both the built-in cluster module and PM2 for production process management.
 
 ## The Single-Thread Problem
 
@@ -40,8 +40,8 @@ Node.js includes a cluster module that forks worker processes:
 const cluster = require('node:cluster');
 const os = require('node:os');
 
-// Number of CPU cores available
-const numCPUs = os.cpus().length;
+// Recommended number of parallel workers for this process
+const numCPUs = os.availableParallelism();
 
 if (cluster.isPrimary) {
     // This block runs only in the primary (master) process
@@ -91,7 +91,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Each worker can handle requests on the same port
-// The OS distributes incoming connections across workers
+// The cluster primary distributes incoming connections across workers
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'healthy',
@@ -152,7 +152,7 @@ const cluster = require('node:cluster');
 const os = require('node:os');
 
 if (cluster.isPrimary) {
-    const numCPUs = os.cpus().length;
+    const numCPUs = os.availableParallelism();
 
     for (let i = 0; i < numCPUs; i++) {
         cluster.fork();
@@ -162,18 +162,22 @@ if (cluster.isPrimary) {
     function shutdownCluster() {
         console.log('Primary received shutdown signal');
 
-        // Tell each worker to finish current requests and exit
+        // Disconnect each worker so it stops accepting new connections
+        // and exits after existing connections close
         for (const id in cluster.workers) {
             const worker = cluster.workers[id];
             if (worker) {
-                worker.send('shutdown');
+                worker.disconnect();
                 // Force kill after 30 seconds
-                setTimeout(() => {
+                const timeout = setTimeout(() => {
                     if (!worker.isDead()) {
                         console.log(`Force killing worker ${worker.process.pid}`);
                         worker.kill('SIGKILL');
                     }
                 }, 30000);
+                worker.on('disconnect', () => {
+                    clearTimeout(timeout);
+                });
             }
         }
     }
@@ -199,17 +203,22 @@ if (cluster.isPrimary) {
 
                 // Fork a new worker before killing the old one
                 const newWorker = cluster.fork();
-                newWorker.on('online', () => {
+                newWorker.on('listening', () => {
                     worker.disconnect();
                     index++;
                     // Wait a moment before restarting the next worker
                     setTimeout(restartNext, 1000);
                 });
+            } else {
+                index++;
+                restartNext();
             }
         }
 
         restartNext();
     });
+} else {
+    require('./app');
 }
 ```
 
@@ -332,7 +341,7 @@ const server = app.listen(PORT, () => {
     }
 });
 
-// Handle graceful shutdown message from PM2
+// Handle graceful shutdown signal from PM2
 process.on('SIGINT', () => {
     console.log(`Worker ${process.pid} shutting down gracefully`);
     server.close(() => {
