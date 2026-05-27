@@ -55,10 +55,10 @@ First, install the GlusterFS server on all cluster nodes and the client on machi
   become: true
 
   tasks:
-    # Add the GlusterFS repository for the latest stable release
+    # Add the CentOS Storage SIG repository for GlusterFS 11.x
     - name: Install GlusterFS repo (CentOS/RHEL)
       ansible.builtin.yum:
-        name: centos-release-gluster10
+        name: centos-release-gluster11
         state: present
       when: ansible_os_family == "RedHat"
 
@@ -183,7 +183,7 @@ GlusterFS requires nodes to be part of a "trusted storage pool" before they can 
     - name: Probe peer nodes
       gluster.gluster.gluster_peer:
         state: present
-        nodes: "{{ groups['gluster_nodes'] | map('extract', hostvars, 'gluster_ip') | list }}"
+        nodes: "{{ groups['gluster_nodes'][1:] | map('extract', hostvars, 'gluster_ip') | list }}"
 
     # Wait for peers to connect
     - name: Wait for peer connections
@@ -244,13 +244,14 @@ Now we create the actual GlusterFS volume across the bricks:
 
     # Apply volume tuning options
     - name: Set volume options
-      ansible.builtin.command:
-        cmd: "gluster volume set {{ item.0.name }} {{ item.1.key }} {{ item.1.value }}"
-      loop: "{{ volumes | subelements('options') | list }}"
+      gluster.gluster.gluster_volume:
+        state: present
+        name: "{{ item.name }}"
+        options: "{{ item.options }}"
+      loop: "{{ volumes }}"
       loop_control:
-        label: "{{ item.0.name }}: {{ item.1.key }}={{ item.1.value }}"
-      changed_when: true
-      when: item.0.options is defined
+        label: "{{ item.name }}"
+      when: item.options is defined
 
     # Verify the volume is healthy
     - name: Get volume info
