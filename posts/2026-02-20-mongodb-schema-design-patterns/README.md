@@ -8,7 +8,7 @@ Description: Learn MongoDB schema design patterns including embedding, referenci
 
 ---
 
-MongoDB does not enforce a schema at the database level, but that does not mean you should skip schema design. In fact, poor schema design in MongoDB leads to worse performance problems than in relational databases, because there is no query optimizer to save you from bad data layouts.
+MongoDB uses a flexible schema model by default, but that does not mean you should skip schema design. In fact, poor schema design in MongoDB can lead to serious performance problems, because even a good query plan cannot fully compensate for data that is not modeled around your access patterns.
 
 This post covers the fundamental MongoDB schema design patterns: embedding, referencing, and several real-world patterns that help you model data for how your application actually uses it.
 
@@ -114,7 +114,7 @@ def get_user_with_orders(user_id):
 def get_user_with_orders_aggregation(user_id):
     """
     Use $lookup to join users and orders in a single query.
-    This is MongoDB's equivalent of a SQL JOIN.
+    $lookup performs a left outer join in the aggregation pipeline.
     """
     pipeline = [
         # Match the specific user
@@ -155,7 +155,7 @@ graph LR
 ```javascript
 // Product document with the 10 most recent reviews embedded
 {
-    "_id": ObjectId("product_123"),
+    "_id": ObjectId("64f000000000000000000123"),
     "name": "Wireless Keyboard",
     "price": 79.99,
     "rating_avg": 4.5,
@@ -180,8 +180,8 @@ graph LR
 
 // Separate reviews collection for full history
 {
-    "_id": ObjectId("review_456"),
-    "product_id": ObjectId("product_123"),
+    "_id": ObjectId("64f000000000000000000456"),
+    "product_id": ObjectId("64f000000000000000000123"),
     "user": "Bob",
     "rating": 5,
     "text": "Great keyboard!",
