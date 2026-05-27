@@ -16,11 +16,12 @@ I use metadata extensively for things like feature flags, database endpoints, an
 
 Every Compute Engine VM has access to a metadata server at a well-known IP address: `169.254.169.254`. Your application can query this server over HTTP to get configuration values. No authentication is needed from within the VM - the metadata server is only accessible from the instance itself.
 
-There are two levels of metadata:
+There are three scopes of metadata:
 - **Project metadata** - shared across all instances in the project
+- **Zonal metadata** - shared across instances in a specific zone
 - **Instance metadata** - specific to a single VM
 
-Instance metadata takes precedence when both define the same key.
+Project and zonal metadata are exposed through the project metadata path. If project and zonal metadata define the same key, the zonal value takes precedence for VMs in that zone. Instance-specific values are exposed through the instance metadata path.
 
 ## Setting Metadata When Creating an Instance
 
@@ -131,15 +132,24 @@ function getMetadata(key) {
     const options = {
       hostname: 'metadata.google.internal',
       path: `/computeMetadata/v1/instance/attributes/${key}`,
-      headers: { 'Metadata-Flavor': 'Google' },
-      timeout: 5000
+      headers: { 'Metadata-Flavor': 'Google' }
     };
 
-    http.get(options, (res) => {
+    const req = http.get(options, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
-      res.on('end', () => resolve(data));
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve(data);
+        } else {
+          reject(new Error(`Metadata request failed with status ${res.statusCode}`));
+        }
+      });
     }).on('error', reject);
+
+    req.setTimeout(5000, () => {
+      req.destroy(new Error('Metadata request timed out'));
+    });
   });
 }
 
@@ -174,7 +184,7 @@ This changes the `log-level` metadata immediately. But your application needs to
 
 ## Watching for Metadata Changes
 
-The metadata server supports long-polling through the `wait-for-change` parameter. Your application can block on this endpoint and get notified the instant metadata changes:
+The metadata server supports long-polling through the `wait_for_change` parameter. Your application can block on this endpoint and get notified when metadata changes:
 
 ```bash
 # Wait for metadata changes using long polling (blocks until a change occurs)
@@ -272,9 +282,9 @@ curl -s "http://metadata.google.internal/computeMetadata/v1/instance/service-acc
 
 A few things I have learned the hard way:
 
-1. Do not store secrets in metadata. Use Secret Manager instead. Metadata is not encrypted at rest and is visible to anyone with instance read permissions.
+1. Do not store secrets in metadata. Use Secret Manager instead. Any process on the VM that can query the metadata URL can access metadata values, and metadata is visible to users with the required instance read permissions.
 
-2. Keep metadata values short. There is a 256KB limit for all custom metadata combined. For large configurations, store them in Cloud Storage and put the bucket path in metadata.
+2. Keep metadata values short. Compute Engine enforces a 512KB combined limit for all metadata entries, and each metadata value can be up to 256KB. For large configurations, store them in Cloud Storage and put the bucket path in metadata.
 
 3. Always set a timeout when querying the metadata server from your application. If you are not running on GCE (like in local development), the request will hang without a timeout.
 
