@@ -61,6 +61,20 @@ The first step is getting Samba installed and the services running:
         enabled: true
       when: ansible_os_family == "RedHat"
 
+    - name: Enable smbd service
+      ansible.builtin.systemd:
+        name: smbd
+        state: started
+        enabled: true
+      when: ansible_os_family == "Debian"
+
+    - name: Enable nmbd service
+      ansible.builtin.systemd:
+        name: nmbd
+        state: started
+        enabled: true
+      when: ansible_os_family == "Debian"
+
     # Open firewall for Samba
     - name: Open Samba firewall ports
       ansible.posix.firewalld:
@@ -88,6 +102,13 @@ The main configuration happens in `/etc/samba/smb.conf`. Here is a template-driv
     samba_server_string: "File Server managed by Ansible"
     samba_log_level: 1
     samba_max_log_size: 5000
+    samba_services:
+      RedHat:
+        - smb
+        - nmb
+      Debian:
+        - smbd
+        - nmbd
 
     samba_shares:
       - name: public
@@ -158,9 +179,7 @@ The main configuration happens in `/etc/samba/smb.conf`. Here is a template-driv
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: restarted
-      loop:
-        - smb
-        - nmb
+      loop: "{{ samba_services[ansible_os_family] }}"
 ```
 
 The Jinja2 template for smb.conf:
@@ -181,7 +200,6 @@ The Jinja2 template for smb.conf:
     log level = {{ samba_log_level }}
 
     # Performance tuning
-    socket options = TCP_NODELAY IPTOS_LOWDELAY
     read raw = yes
     write raw = yes
     use sendfile = yes
@@ -287,19 +305,41 @@ For enterprise environments, joining Samba to an Active Directory domain is the 
     ad_realm: CORP.EXAMPLE.COM
     ad_admin_user: administrator
     ad_admin_password: "{{ vault_ad_admin_password }}"
+    ad_workgroup: "{{ ad_domain.split('.')[0] | upper }}"
+    samba_ad_services:
+      RedHat:
+        - smb
+        - winbind
+      Debian:
+        - smbd
+        - winbind
 
   tasks:
     # Install required packages for AD integration
-    - name: Install AD integration packages
+    - name: Install AD integration packages (RedHat)
       ansible.builtin.yum:
         name:
           - samba-winbind
           - samba-winbind-clients
           - krb5-workstation
+          - oddjob
           - oddjob-mkhomedir
           - realmd
-          - sssd
         state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install AD integration packages (Debian)
+      ansible.builtin.apt:
+        name:
+          - samba
+          - winbind
+          - libnss-winbind
+          - libpam-winbind
+          - krb5-user
+          - realmd
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
 
     # Configure Kerberos for AD authentication
     - name: Configure krb5.conf
@@ -317,25 +357,29 @@ For enterprise environments, joining Samba to an Active Directory domain is the 
 
     - name: Join Active Directory domain
       ansible.builtin.shell:
-        cmd: "echo '{{ ad_admin_password }}' | realm join --user={{ ad_admin_user }} {{ ad_domain }}"
+        cmd: "echo '{{ ad_admin_password }}' | realm join --membership-software=samba --client-software=winbind --user={{ ad_admin_user }} {{ ad_domain }}"
       when: ad_domain not in realm_status.stdout
       no_log: true
 
     # Update smb.conf for AD integration
-    - name: Configure Samba for AD auth
-      ansible.builtin.blockinfile:
+    - name: Set Samba AD auth parameters
+      ansible.builtin.lineinfile:
         path: /etc/samba/smb.conf
-        insertafter: '\[global\]'
-        block: |
-            # Active Directory integration
-            security = ads
-            realm = {{ ad_realm }}
-            workgroup = {{ ad_domain.split('.')[0] | upper }}
-            idmap config * : backend = tdb
-            idmap config * : range = 10000-20000
-            winbind use default domain = yes
-            winbind enum users = yes
-            winbind enum groups = yes
+        regexp: "^\\s*{{ item.key | regex_escape }}\\s*="
+        line: "    {{ item.key }} = {{ item.value }}"
+        insertafter: '^\[global\]'
+        validate: "testparm -s %s"
+      loop:
+        - { key: "security", value: "ads" }
+        - { key: "realm", value: "{{ ad_realm }}" }
+        - { key: "workgroup", value: "{{ ad_workgroup }}" }
+        - { key: "idmap config * : backend", value: "tdb" }
+        - { key: "idmap config * : range", value: "3000-7999" }
+        - { key: "idmap config {{ ad_workgroup }} : backend", value: "rid" }
+        - { key: "idmap config {{ ad_workgroup }} : range", value: "10000-999999" }
+        - { key: "winbind use default domain", value: "yes" }
+        - { key: "winbind enum users", value: "yes" }
+        - { key: "winbind enum groups", value: "yes" }
       notify: restart samba
 
   handlers:
@@ -343,10 +387,7 @@ For enterprise environments, joining Samba to an Active Directory domain is the 
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: restarted
-      loop:
-        - smb
-        - nmb
-        - winbind
+      loop: "{{ samba_ad_services[ansible_os_family] }}"
 ```
 
 ## Monitoring and Auditing Samba
@@ -421,6 +462,13 @@ For compliance requirements, you can enable detailed audit logging of file acces
   hosts: samba_servers
   become: true
 
+  vars:
+    samba_services:
+      RedHat:
+        - smb
+      Debian:
+        - smbd
+
   tasks:
     # Add VFS audit module to shares that need auditing
     - name: Add audit VFS object to finance share
@@ -450,8 +498,9 @@ For compliance requirements, you can enable detailed audit logging of file acces
   handlers:
     - name: restart samba
       ansible.builtin.systemd:
-        name: smb
+        name: "{{ item }}"
         state: restarted
+      loop: "{{ samba_services[ansible_os_family] }}"
 
     - name: restart rsyslog
       ansible.builtin.systemd:
