@@ -106,11 +106,11 @@ Instead of switching the global active configuration, you can set the configurat
 
 ```bash
 # In terminal 1: work on production
-export CLOUDSDK_ACTIVE_NAMED_CONFIG=prod
+export CLOUDSDK_ACTIVE_CONFIG_NAME=prod
 gcloud compute instances list  # Lists production VMs
 
 # In terminal 2: work on staging
-export CLOUDSDK_ACTIVE_NAMED_CONFIG=staging
+export CLOUDSDK_ACTIVE_CONFIG_NAME=staging
 gcloud compute instances list  # Lists staging VMs
 ```
 
@@ -247,8 +247,8 @@ gcloud config list
 gcloud config list --configuration=prod
 
 # See a specific property
-gcloud config get-value project
-gcloud config get-value compute/region
+gcloud config get project
+gcloud config get compute/region
 ```
 
 ### Update a Configuration
@@ -273,25 +273,15 @@ You cannot delete the active configuration. Switch to another one first.
 
 ### Rename a Configuration
 
-gcloud does not support renaming directly. The workaround is:
+Use the rename command with the new name:
 
 ```bash
-# Create a new configuration with the desired name
-gcloud config configurations create new-name
-
-# Copy the properties from the old configuration
-gcloud config set project $(gcloud config get-value project --configuration=old-name)
-gcloud config set compute/region $(gcloud config get-value compute/region --configuration=old-name)
-gcloud config set compute/zone $(gcloud config get-value compute/zone --configuration=old-name)
-gcloud config set account $(gcloud config get-value account --configuration=old-name)
-
-# Delete the old configuration
-gcloud config configurations delete old-name
+gcloud config configurations rename old-name --new-name=new-name
 ```
 
 ## Configuration Files on Disk
 
-Configurations are stored in `~/.config/gcloud/configurations/`. Each configuration is a separate file:
+On macOS and Linux, configurations are typically stored under `~/.config/gcloud/configurations/`. Each configuration is a separate file:
 
 ```text
 ~/.config/gcloud/configurations/
@@ -309,7 +299,7 @@ These are plain text INI-format files. You can edit them directly if needed, tho
 
 2. **Always show the active config in your prompt** - This is the single best protection against deploying to the wrong environment.
 
-3. **Use environment variables for parallel work** - When you need two terminals targeting different projects, use `CLOUDSDK_ACTIVE_NAMED_CONFIG`.
+3. **Use environment variables for parallel work** - When you need two terminals targeting different projects, use `CLOUDSDK_ACTIVE_CONFIG_NAME`.
 
 4. **Be explicit in scripts** - Never rely on the active configuration in automated scripts. Always pass `--configuration` or `--project`.
 
