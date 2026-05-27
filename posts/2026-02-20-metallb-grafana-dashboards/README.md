@@ -19,6 +19,8 @@ You need Prometheus scraping MetalLB metrics and Grafana connected to Prometheus
 
 # Create a ServiceMonitor to tell Prometheus to scrape MetalLB metrics
 # This assumes you are using the Prometheus Operator
+# If you run the default FRR-K8s mode, also scrape the frr-k8s metrics
+# ServiceMonitor that ships with MetalLB so frrk8s_ BGP/BFD metrics are available.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -28,13 +30,21 @@ metadata:
     app: metallb
 spec:
   selector:
-    matchLabels:
-      app: metallb
+    matchExpressions:
+      - key: name
+        operator: In
+        values:
+          - controller-monitor-service
+          - speaker-monitor-service
   endpoints:
-    # Controller metrics endpoint
-    - port: monitoring
+    # Controller and speaker metrics endpoints
+    - port: metricshttps
       interval: 30s
       path: /metrics
+      scheme: https
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 ```bash
@@ -45,7 +55,7 @@ kubectl port-forward -n monitoring svc/prometheus 9090:9090
 # Verify MetalLB metrics are available
 curl -s http://localhost:9090/api/v1/label/__name__/values \
   | jq '.data[]' \
-  | grep metallb
+  | grep -E 'metallb|frrk8s'
 ```
 
 ## MetalLB Metrics Overview
@@ -63,9 +73,9 @@ flowchart TD
     C --> C1[metallb_speaker_announced]
     D --> D1[metallb_bgp_session_up]
     D --> D2[metallb_bgp_updates_total]
-    D --> D3[metallb_bgp_opens_sent]
-    E --> E1[metallb_bfd_session_up]
-    E --> E2[metallb_bfd_session_down_events]
+    D --> D3[frrk8s_bgp_opens_sent]
+    E --> E1[frrk8s_bfd_session_up]
+    E --> E2[frrk8s_bfd_session_down_events]
 ```
 
 ## Dashboard 1: IP Pool Utilization
@@ -124,18 +134,23 @@ For BGP mode, the session status is the most critical metric. Each BGP peer shou
 # 1 = up, 0 = down
 metallb_bgp_session_up
 
+# Default FRR-K8s mode exposes the same session state with the frrk8s_ prefix
+frrk8s_bgp_session_up
+
 # Count of total BGP sessions that are up
 count(metallb_bgp_session_up == 1)
+count(frrk8s_bgp_session_up == 1)
 
 # Count of BGP sessions that are down (should be 0)
 count(metallb_bgp_session_up == 0) or vector(0)
+count(frrk8s_bgp_session_up == 0) or vector(0)
 
-# BGP session uptime - time since last session reset
-# Use rate to detect frequent session flapping
-rate(metallb_bgp_opens_sent[5m])
+# BGP open-message rate - use this to detect frequent session resets or flapping
+# This metric is available in FRR-K8s mode with the frrk8s_ prefix
+rate(frrk8s_bgp_opens_sent[5m])
 ```
 
-Create a status panel:
+Create a status panel. Use `frrk8s_bgp_session_up` instead of `metallb_bgp_session_up` when you run the default FRR-K8s mode:
 
 ```json
 {
@@ -206,13 +221,16 @@ Monitor the rate of BGP updates to detect configuration churn or network instabi
 # High rates indicate instability or frequent configuration changes
 rate(metallb_bgp_updates_total[5m])
 
+# In default FRR-K8s mode, use the frrk8s_ prefix instead
+rate(frrk8s_bgp_updates_total[5m])
+
 # Total BGP messages by type
 # Useful for understanding BGP session behavior
-rate(metallb_bgp_opens_sent[5m])
-rate(metallb_bgp_notifications_sent[5m])
+rate(frrk8s_bgp_opens_sent[5m])
+rate(frrk8s_bgp_notifications_sent[5m])
 
 # BGP keepalive rate - should be steady
-rate(metallb_bgp_keepalives_sent[5m])
+rate(frrk8s_bgp_keepalives_sent[5m])
 ```
 
 ## Dashboard 5: BFD Session Monitoring
@@ -222,15 +240,15 @@ If you use BFD (Bidirectional Forwarding Detection) with BGP, monitor the BFD se
 ```promql
 # BFD session status
 # 1 = up, 0 = down
-metallb_bfd_session_up
+frrk8s_bfd_session_up
 
 # BFD session down events over time
 # Spikes indicate network instability
-rate(metallb_bfd_session_down_events[5m])
+rate(frrk8s_bfd_session_down_events[5m])
 
 # BFD echo packet statistics
-rate(metallb_bfd_echo_packets_sent[5m])
-rate(metallb_bfd_echo_packets_received[5m])
+rate(frrk8s_bfd_echo_packet_output[5m])
+rate(frrk8s_bfd_echo_packet_input[5m])
 ```
 
 ## Conclusion
