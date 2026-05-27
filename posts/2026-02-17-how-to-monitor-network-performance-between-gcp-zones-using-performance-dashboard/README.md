@@ -16,26 +16,26 @@ This post covers how to use the Performance Dashboard to monitor network perform
 
 The Performance Dashboard provides two key metrics for network paths between GCP zones:
 
-- **Latency** - Round-trip time between zones, measured at the network layer.
-- **Packet loss** - Percentage of packets dropped between zones.
+- **Latency** - Round-trip time between zones, measured from sampled TCP traffic.
+- **Packet loss** - Percentage of failed probes between zones.
 
-These metrics are collected by Google's infrastructure, not by agents running on your VMs. This means the data reflects the underlying network performance, not application-level issues. It also means you do not need to set anything up on your instances.
+These metrics are collected by Google's infrastructure, not by agents running on your VMs. Packet-loss probes do not consume VM resources, and latency uses sampled TCP traffic rather than application instrumentation. This means you do not need to set anything up on your instances, but application behavior can still influence some RTT samples.
 
 ## Accessing the Performance Dashboard
 
 You can find the Performance Dashboard in the GCP Console under Network Intelligence Center. But you can also query the data programmatically.
 
-First, make sure the API is enabled:
+First, make sure the Cloud Monitoring API is enabled:
 
 ```bash
-# Enable the Network Management API (required for Performance Dashboard data)
+# Enable the Cloud Monitoring API for programmatic queries
 
-gcloud services enable networkmanagement.googleapis.com --project=my-project
+gcloud services enable monitoring.googleapis.com --project=my-project
 ```
 
 ## Viewing Performance Data in the Console
 
-Navigate to Network Intelligence Center in the GCP Console, then click Performance Dashboard. You will see a matrix view showing latency and packet loss between all zone pairs where you have resources.
+Navigate to Network Intelligence Center in the GCP Console, then click Performance Dashboard. You will see a matrix view showing latency and packet loss between zone pairs where there is enough data to report a meaningful value.
 
 The dashboard lets you:
 - Filter by specific regions or zones
@@ -47,32 +47,37 @@ The dashboard lets you:
 
 For automation and custom dashboards, you can query the performance metrics through Cloud Monitoring. The relevant metric types are under the `networking.googleapis.com` namespace.
 
-Here is how to query inter-zone latency using gcloud:
+Here is how to query inter-zone latency using the Cloud Monitoring API:
 
 ```bash
-# Query the median latency between two specific zones over the last hour
-gcloud monitoring time-series list \
-  --project=my-project \
-  --filter='metric.type="networking.googleapis.com/vm_flow/rtt" AND
-            metric.labels.source_zone="us-central1-a" AND
-            metric.labels.destination_zone="us-east1-b"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(points.interval.endTime,points.value.doubleValue)"
+# Query median latency between two specific zones over the last hour
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?\
+filter=metric.type%3D%22networking.googleapis.com%2Fvm_flow%2Frtt%22%20AND%20\
+resource.type%3D%22gce_instance%22%20AND%20\
+resource.labels.zone%3D%22us-central1-a%22%20AND%20\
+metric.labels.remote_zone%3D%22us-east1-b%22&\
+interval.startTime=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)&\
+interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)&\
+aggregation.alignmentPeriod=60s&\
+aggregation.perSeriesAligner=ALIGN_PERCENTILE_50&\
+view=FULL"
 ```
 
-For packet loss:
+For packet loss, Performance Dashboard exports probe counts rather than a direct packet-loss percentage metric. Packet loss is the ratio of failed probes to total probes:
 
 ```bash
-# Query packet loss between zones over the last 24 hours
-gcloud monitoring time-series list \
-  --project=my-project \
-  --filter='metric.type="networking.googleapis.com/vm_flow/packet_loss" AND
-            metric.labels.source_zone="us-central1-a" AND
-            metric.labels.destination_zone="us-east1-b"' \
-  --interval-start-time=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(points.interval.endTime,points.value.doubleValue)"
+# Query failed packet-loss probes between zones over the last 24 hours
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?\
+filter=metric.type%3D%22networking.googleapis.com%2Fcloud_netslo%2Factive_probing%2Fprobe_count%22%20AND%20\
+resource.type%3D%22gce_zone_network_health%22%20AND%20\
+resource.labels.zone%3D%22us-central1-a%22%20AND%20\
+metric.labels.remote_zone%3D%22us-east1-b%22%20AND%20\
+metric.labels.result%3D%22failure%22&\
+interval.startTime=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)&\
+interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)&\
+view=FULL"
 ```
 
 ## Setting Up Alerts for Network Degradation
@@ -88,11 +93,12 @@ gcloud monitoring policies create \
   --display-name="High Inter-Zone Latency Alert" \
   --condition-display-name="Latency exceeds 5ms between zones" \
   --condition-filter='metric.type="networking.googleapis.com/vm_flow/rtt" AND
-                      metric.labels.source_zone="us-central1-a" AND
-                      metric.labels.destination_zone="us-central1-b"' \
-  --condition-threshold-value=0.005 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
+                      resource.type="gce_instance" AND
+                      resource.labels.zone="us-central1-a" AND
+                      metric.labels.remote_zone="us-central1-b"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_50"}' \
+  --if='> 5' \
+  --duration=300s \
   --combiner=OR \
   --project=my-project
 ```
@@ -129,7 +135,11 @@ gcloud monitoring dashboards create --config='{
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"networking.googleapis.com/vm_flow/rtt\" AND metric.labels.source_zone=\"us-central1-a\" AND metric.labels.destination_zone=\"us-east1-b\""
+                  "filter": "metric.type=\"networking.googleapis.com/vm_flow/rtt\" AND resource.type=\"gce_instance\" AND resource.labels.zone=\"us-central1-a\" AND metric.labels.remote_zone=\"us-east1-b\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_50"
+                  }
                 }
               }
             }]
@@ -141,12 +151,12 @@ gcloud monitoring dashboards create --config='{
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Packet Loss (us-central1-a to us-east1-b)",
+          "title": "Failed Packet-Loss Probes (us-central1-a to us-east1-b)",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "metric.type=\"networking.googleapis.com/vm_flow/packet_loss\" AND metric.labels.source_zone=\"us-central1-a\" AND metric.labels.destination_zone=\"us-east1-b\""
+                  "filter": "metric.type=\"networking.googleapis.com/cloud_netslo/active_probing/probe_count\" AND resource.type=\"gce_zone_network_health\" AND resource.labels.zone=\"us-central1-a\" AND metric.labels.remote_zone=\"us-east1-b\" AND metric.labels.result=\"failure\""
                 }
               }
             }]
@@ -190,7 +200,7 @@ The Performance Dashboard shows aggregate network-level metrics. It does not sho
 
 The data has some granularity limitations - it is aggregated over 1-minute intervals and there can be a few minutes of delay before data appears.
 
-Performance data is only available for zone pairs where you have active VMs exchanging traffic. You will not see data for zones where you have no resources.
+Project-specific latency data is only available when there is enough TCP traffic for the zone pair. Packet-loss data requires enough VMs and probes for Google Cloud to report a meaningful value. You will not see project-specific data for zones where you have no resources.
 
 ## Summary
 
