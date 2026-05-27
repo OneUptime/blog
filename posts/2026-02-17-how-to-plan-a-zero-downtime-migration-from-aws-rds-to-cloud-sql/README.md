@@ -21,7 +21,7 @@ Before you start, make sure you have these pieces in place:
 - Google Cloud Database Migration Service (DMS) enabled in your project
 - Sufficient storage and compute allocated on the Cloud SQL side
 
-The network piece is critical. Your AWS RDS instance needs to be reachable from GCP, either through a VPN tunnel or via public IP with proper security group rules.
+The network piece is critical. Your AWS RDS instance needs to be reachable from the Cloud SQL destination instance, either through a private connectivity option such as VPC peering or via public IP with proper security group rules.
 
 ## Architecture Overview
 
@@ -39,7 +39,7 @@ The idea is simple: DMS reads the binary log (MySQL) or WAL (PostgreSQL) from yo
 
 ## Step 1: Prepare Your RDS Instance
 
-First, make sure your RDS instance is configured for logical replication. For MySQL, you need binlog enabled in ROW format. For PostgreSQL, you need logical replication enabled.
+First, make sure your RDS instance is configured for logical replication. For MySQL, you need automated backups enabled, binary logs retained long enough for the migration, and binlog in ROW format. For PostgreSQL, you need logical replication enabled.
 
 This shows how to check and enable the required settings for MySQL on RDS:
 
@@ -53,10 +53,17 @@ mysql -h your-rds-endpoint.amazonaws.com -u admin -p -e "
   SHOW VARIABLES LIKE 'binlog_row_image';
 "
 
-# If binlog_format is not ROW, update the RDS parameter group
+# Retain enough binary log history for the migration window
+mysql -h your-rds-endpoint.amazonaws.com -u admin -p -e "
+  CALL mysql.rds_set_configuration('binlog retention hours', 168);
+"
+
+# If binlog_format is not ROW, update the RDS parameter group.
+# For RDS for MySQL this parameter is dynamic, but existing sessions might need
+# to reconnect before they use the new value.
 aws rds modify-db-parameter-group \
     --db-parameter-group-name your-param-group \
-    --parameters "ParameterName=binlog_format,ParameterValue=ROW,ApplyMethod=pending-reboot"
+    --parameters "ParameterName=binlog_format,ParameterValue=ROW,ApplyMethod=immediate"
 ```
 
 For PostgreSQL, update the RDS parameter group:
@@ -72,7 +79,7 @@ aws rds modify-db-parameter-group \
 aws rds reboot-db-instance --db-instance-identifier your-rds-instance
 ```
 
-Note that the reboot is required, but it is a brief operation - typically under a minute for most RDS instances.
+Note that the PostgreSQL reboot is required and should be scheduled in a maintenance window. The interruption is usually brief, but the exact duration depends on your instance size, engine state, and Multi-AZ failover behavior.
 
 ## Step 2: Set Up Cloud SQL
 
@@ -85,14 +92,13 @@ gcloud sql instances create my-cloud-sql \
     --database-version=POSTGRES_15 \
     --tier=db-custom-4-16384 \
     --region=us-central1 \
-    --storage-size=100GB \
+    --storage-size=100 \
     --storage-type=SSD \
     --availability-type=REGIONAL \
     --backup-start-time=04:00
 
-# Create the target database
-gcloud sql databases create myapp_production \
-    --instance=my-cloud-sql
+# For DMS migrations to an existing Cloud SQL for PostgreSQL instance,
+# keep the destination empty except for system configuration data.
 ```
 
 ## Step 3: Configure Database Migration Service
@@ -100,21 +106,20 @@ gcloud sql databases create myapp_production \
 DMS is the glue that makes this work. Create a connection profile for both the source and destination.
 
 ```bash
-# Create a connection profile for the source (AWS RDS)
-gcloud database-migration connection-profiles create source-rds \
+# Create a PostgreSQL connection profile for the source (AWS RDS)
+gcloud database-migration connection-profiles create postgresql source-rds \
     --region=us-central1 \
     --display-name="AWS RDS Source" \
-    --provider=RDS \
     --host=your-rds-endpoint.amazonaws.com \
     --port=5432 \
+    --database=myapp_production \
     --username=migration_user \
     --password=your-password
 
-# Create a connection profile for the destination (Cloud SQL)
-gcloud database-migration connection-profiles create dest-cloudsql \
+# Create a PostgreSQL connection profile for the existing destination (Cloud SQL)
+gcloud database-migration connection-profiles create postgresql dest-cloudsql \
     --region=us-central1 \
     --display-name="Cloud SQL Destination" \
-    --provider=CLOUDSQL \
     --cloudsql-instance=my-cloud-sql
 ```
 
@@ -129,6 +134,10 @@ gcloud database-migration migration-jobs create rds-to-cloudsql \
     --source=source-rds \
     --destination=dest-cloudsql \
     --type=CONTINUOUS
+
+# For an existing Cloud SQL destination, demote it to a replica before starting
+gcloud database-migration migration-jobs demote-destination rds-to-cloudsql \
+    --region=us-central1
 ```
 
 ## Step 4: Run the Initial Data Load
@@ -153,14 +162,13 @@ The initial load time depends on your database size. For a 100GB database, expec
 Once the initial load completes, DMS switches to continuous replication mode. Monitor the replication lag to make sure it stays close to zero.
 
 ```bash
-# Monitor replication lag in seconds
-# Run this periodically to confirm the replica is caught up
+# Check the migration job state and phase
 gcloud database-migration migration-jobs describe rds-to-cloudsql \
     --region=us-central1 \
     --format="value(state,phase)"
 ```
 
-You want to see the lag consistently under 1 second before you attempt cutover. If it is spiking, investigate whether your Cloud SQL instance has enough resources or if there are particularly heavy write patterns on the source.
+For the actual lag value, use the DMS migration job Monitoring tab or Cloud Monitoring metrics such as `datamigration.googleapis.com/migration_job/max_replica_sec_lag` and `datamigration.googleapis.com/migration_job/max_replica_bytes_lag`. You want the lag to be zero before you attempt cutover. If it is spiking, investigate whether your Cloud SQL instance has enough resources or if there are particularly heavy write patterns on the source.
 
 ## Step 6: Validate Data Integrity
 
@@ -213,7 +221,7 @@ In practice, the cutover steps are:
 
 1. Put your application in maintenance mode (stop writes, or queue them)
 2. Wait for replication lag to hit zero
-3. Promote the Cloud SQL instance using DMS
+3. Promote the Cloud SQL destination using DMS
 4. Update your application connection strings to point to Cloud SQL
 5. Take the application out of maintenance mode
 
@@ -236,6 +244,6 @@ After cutover, monitor your application closely for the first few hours:
 
 ## Rollback Plan
 
-Always have a rollback plan. If something goes wrong after cutover, you need a way to switch back to RDS. The simplest approach is to keep the RDS instance running and have a reverse replication path ready. You can set up a Cloud SQL read replica that streams changes to an external destination, but honestly, the simpler approach is to keep the RDS instance in read-only mode for a few days and be prepared to switch the connection string back if needed.
+Always have a rollback plan. If something goes wrong after cutover, you need a way to switch back to RDS without losing writes that were accepted by Cloud SQL. The safest approach is to keep the RDS instance running and either keep the application in a no-write mode until the cutover is verified, or have a tested reverse replication or resynchronization path ready before production cutover. Do not simply switch the connection string back to RDS after Cloud SQL has accepted writes unless those writes have been copied back.
 
 Zero-downtime database migration is achievable with careful planning. The tools are there - DMS handles the heavy lifting of continuous replication. Your job is to plan the cutover choreography and test it in a staging environment before doing it in production.
