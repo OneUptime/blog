@@ -33,7 +33,7 @@ graph TD
 ```yaml
 # DestinationRule defines subsets (versions) of a service
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -42,16 +42,16 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        maxConnections: 100     # Max TCP connections per pod
+        maxConnections: 100     # Max TCP connections to the upstream service
       http:
         h2UpgradePolicy: DEFAULT
         http1MaxPendingRequests: 100  # Max queued requests
         http2MaxRequests: 1000       # Max concurrent HTTP/2 requests
     outlierDetection:
-      consecutive5xxErrors: 5   # Eject pod after 5 consecutive 5xx errors
+      consecutive5xxErrors: 5   # Eject endpoint after 5 consecutive 5xx errors
       interval: 10s             # Check every 10 seconds
       baseEjectionTime: 30s     # Eject for at least 30 seconds
-      maxEjectionPercent: 50    # Never eject more than 50% of pods
+      maxEjectionPercent: 50    # Never eject more than 50% of endpoints
   subsets:
     - name: v1
       labels:
@@ -122,7 +122,7 @@ spec:
 
 ```yaml
 # VirtualService for canary deployment - start with 10% traffic to v2
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-canary
@@ -161,7 +161,7 @@ graph LR
 
 ```yaml
 # Phase 2: Increase canary to 25%
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-canary
@@ -185,7 +185,7 @@ spec:
 ```yaml
 # Blue-Green: instant switch from v1 (blue) to v2 (green)
 # Step 1: All traffic to blue (v1)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-blue-green
@@ -203,7 +203,7 @@ spec:
 
 # Step 2: Switch all traffic to green (v2)
 # Apply this when v2 is validated and ready
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-blue-green
@@ -233,7 +233,7 @@ graph LR
 
 ```yaml
 # Route specific users to the canary version using headers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-header-routing
@@ -272,7 +272,7 @@ spec:
 
 ```yaml
 # Inject faults to test resilience of upstream services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-fault-injection
@@ -301,7 +301,7 @@ spec:
 
 ```yaml
 # Configure timeouts and automatic retries
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-resilience
@@ -353,8 +353,8 @@ spec:
   analysis:
     # Run canary analysis every 60 seconds
     interval: 1m
-    # Maximum number of analysis iterations
-    iterations: 10
+    # Maximum number of failed metric checks before rollback
+    threshold: 10
     # Percentage of traffic to increase on each step
     stepWeight: 10
     # Maximum traffic percentage for canary
