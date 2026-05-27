@@ -14,7 +14,7 @@ DNS peering in Google Cloud lets one VPC network forward DNS queries to another 
 
 This is the first thing to clarify because people confuse the two constantly. VPC network peering connects two VPCs so instances can communicate using internal IPs. DNS peering is a separate configuration that lets one VPC use another VPC's DNS resolution. You can have DNS peering without VPC peering, and you can have VPC peering without DNS peering.
 
-DNS peering creates a peering zone in the consumer VPC that forwards queries for a specific domain to the producer VPC's Cloud DNS. The producer VPC then resolves the query using its own private DNS zones, forwarding zones, or any other DNS configuration it has.
+DNS peering creates a peering zone in the consumer VPC that forwards queries for a specific domain to the producer VPC's Cloud DNS. The producer VPC then resolves the query using its own VPC name resolution order, including private DNS zones, forwarding zones, Compute Engine internal DNS, or an outbound server policy if one is configured.
 
 ## Step 1: Verify the DNS Peering Zone Configuration
 
@@ -49,11 +49,11 @@ gcloud dns managed-zones create your-peering-zone \
     --target-project=hub-project-id
 ```
 
-Note the trailing dot on the DNS name - it is required.
+Note the trailing dot on the DNS name - it makes the suffix a fully qualified DNS name and avoids ambiguity.
 
-## Step 2: Check That the Target VPC Has the DNS Records
+## Step 2: Check That the Target VPC Can Resolve the Records
 
-DNS peering forwards queries to the target VPC, but the target VPC still needs to be able to resolve those queries. If the target VPC does not have a private zone with the records you are looking for, the query will fail.
+DNS peering forwards queries to the target VPC, but the target VPC still needs to be able to resolve those queries. The answer can come from a private zone, a forwarding zone, Compute Engine internal DNS, or an outbound server policy. If the target VPC cannot resolve the name through its own VPC name resolution order, the query will fail.
 
 ```bash
 # List private zones in the target (hub) VPC project
@@ -68,7 +68,7 @@ gcloud dns record-sets list \
     --format="table(name, type, rrdatas)"
 ```
 
-Make sure the domain you are querying matches the zone in the target VPC.
+Make sure the domain you are querying matches a zone or resolver path in the target VPC.
 
 ## Step 3: Verify Network Authorization on the Target Zone
 
@@ -87,34 +87,41 @@ The output should list the hub VPC network. If it does not, update the zone:
 # Update the private zone to include the hub VPC network
 gcloud dns managed-zones update hub-private-zone \
     --project=hub-project-id \
-    --networks=hub-vpc-network
+    --networks=hub-vpc-network,any-other-existing-network
 ```
 
-## Step 4: Understand the DNS Peering Chain Limitation
+Include any networks that should keep access to the zone when you update the network list.
 
-Here is a critical limitation that the documentation mentions but people still miss: DNS peering does not support chaining. If VPC-A peers to VPC-B, and VPC-B has a peering zone that forwards to VPC-C, VPC-A cannot resolve records through that chain. The query stops at VPC-B.
+## Step 4: Understand the DNS Peering Transitive Hop Limitation
 
-This means if your hub VPC uses DNS peering to reach another VPC, spoke VPCs that peer to the hub will not be able to use that transitive resolution.
+Here is a critical limitation that the documentation mentions but people still miss: DNS peering supports transitive resolution, but only through a single transitive hop. If VPC-A has a peering zone that targets VPC-B, and VPC-B has a peering zone that targets VPC-C, VPC-A can resolve through that chain. You cannot extend the chain beyond three VPC networks.
+
+This means if your hub VPC uses DNS peering to reach another VPC, spoke VPCs that peer to the hub can use that single transitive hop, but they cannot use longer peering chains.
 
 ```mermaid
 flowchart LR
     A[Spoke VPC] -->|DNS Peering| B[Hub VPC]
     B -->|DNS Peering| C[Another VPC]
-    A -.->|Does NOT work| C
+    C -->|DNS Peering| D[Fourth VPC]
+    A -->|Works through one hop| C
+    A -.->|Does NOT work through two hops| D
 ```
 
-The workaround is to set up DNS forwarding zones in the hub VPC that forward to an actual DNS server (like an on-premises resolver) rather than using DNS peering chains.
+The workaround for longer chains is to redesign the DNS topology so each consumer targets a network that can resolve the name directly, or to use a forwarding zone that points to an actual DNS server (like an on-premises resolver) in a supported network path.
 
 ## Step 5: Check for Conflicting DNS Zones
 
-If the consumer VPC has its own private zone for the same domain that the peering zone covers, the local private zone takes precedence over the peering zone. This is the resolution order in Cloud DNS:
+If the consumer VPC has its own private zone that overlaps with the peering zone, Cloud DNS uses longest-suffix matching across VPC network-scoped private, forwarding, and peering zones. Two private zones authorized for the same VPC network cannot have identical origins unless one is a subdomain of the other, so the issue is usually a more-specific local private zone shadowing a broader peering zone.
 
-1. Private zones authorized for the VPC
-2. Peering zones
-3. Forwarding zones
-4. Public DNS
+The relevant part of the VPC name resolution order is:
 
-So if your spoke VPC has a private zone for `internal.example.com.` and also a peering zone for the same domain pointing to the hub, the local private zone wins and the peering zone is never consulted.
+1. Outbound server policy, if configured
+2. Response policies
+3. VPC network-scoped private, forwarding, and peering zones, using the most specific matching zone
+4. Compute Engine internal DNS
+5. Public DNS
+
+So if your spoke VPC has a private zone for `service.internal.example.com.` and a peering zone for `internal.example.com.` pointing to the hub, queries under `service.internal.example.com.` use the local private zone.
 
 ```bash
 # Check for conflicting zones in the consumer VPC
@@ -140,7 +147,7 @@ dig @169.254.169.254 internal-service.internal.example.com
 cat /etc/resolv.conf
 ```
 
-The metadata server at `169.254.169.254` is the DNS resolver for GCE instances. All DNS queries from VMs go through this server, which then applies the Cloud DNS configuration (private zones, peering zones, forwarding zones).
+The metadata server at `169.254.169.254` is the default DNS resolver for Compute Engine instances. When a VM is configured to use it as its name server, Cloud DNS applies the VPC name resolution order, including private zones, peering zones, and forwarding zones.
 
 If `dig` against `169.254.169.254` does not resolve but the record exists in the target VPC, the peering configuration is the issue.
 
@@ -170,7 +177,7 @@ Look at the `responseCode` field. An `NXDOMAIN` means the name was not found, wh
 
 ## Step 8: Verify Cross-Project Permissions
 
-If the consumer and producer VPCs are in different projects, the account creating the peering zone needs the `dns.peer` role on the target project, or more specifically, the `dns.networks.targetWithPeeringZone` permission.
+If the consumer and producer VPCs are in different projects, the IAM member or service account creating the peering zone needs the `dns.peer` role on the target project, or more specifically, the `dns.networks.targetWithPeeringZone` permission.
 
 ```bash
 # Check IAM permissions on the target project
@@ -183,9 +190,9 @@ gcloud projects get-iam-policy hub-project-id \
 If the permission is missing, grant it:
 
 ```bash
-# Grant DNS peer role for the spoke project's service account
+# Grant DNS peer role for the IAM member or service account that creates the peering zone
 gcloud projects add-iam-policy-binding hub-project-id \
-    --member="serviceAccount:service-SPOKE_PROJECT_NUMBER@gcp-sa-dns.iam.gserviceaccount.com" \
+    --member="serviceAccount:dns-peering@spoke-project-id.iam.gserviceaccount.com" \
     --role="roles/dns.peer"
 ```
 
@@ -194,10 +201,10 @@ gcloud projects add-iam-policy-binding hub-project-id \
 Run through this when DNS peering is not resolving:
 
 1. Does the peering zone exist with the correct target network?
-2. Does the target VPC have a private zone with the records?
+2. Can the target VPC resolve the records through its VPC name resolution order?
 3. Is the target VPC network authorized for that private zone?
 4. Are there conflicting local private zones in the consumer VPC?
-5. Is there a DNS peering chain (which is not supported)?
+5. Is there a DNS peering chain longer than one transitive hop?
 6. Are cross-project IAM permissions in place?
 7. What do DNS query logs show for the failed resolution?
 
