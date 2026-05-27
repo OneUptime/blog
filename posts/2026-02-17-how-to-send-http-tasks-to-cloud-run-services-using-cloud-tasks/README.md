@@ -73,9 +73,9 @@ app.post("/process-order", async (req, res) => {
     const { orderId, action, customerEmail } = req.body;
 
     if (!orderId || !action) {
-      // Return 400 for bad requests - Cloud Tasks will NOT retry 4xx errors by default
+      // Return 2xx for permanent bad requests so Cloud Tasks will not retry them
       console.error("Missing required fields");
-      res.status(400).json({ error: "Missing orderId or action" });
+      res.status(200).json({ status: "ignored", error: "Missing orderId or action" });
       return;
     }
 
@@ -92,7 +92,7 @@ app.post("/process-order", async (req, res) => {
         break;
       default:
         console.error(`Unknown action: ${action}`);
-        res.status(400).json({ error: `Unknown action: ${action}` });
+        res.status(200).json({ status: "ignored", error: `Unknown action: ${action}` });
         return;
     }
 
@@ -136,7 +136,7 @@ FROM node:20-slim
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 CMD ["node", "server.js"]
@@ -172,6 +172,12 @@ gcloud run services add-iam-policy-binding task-handler \
   --region=us-central1 \
   --member="serviceAccount:cloud-tasks-invoker@YOUR_PROJECT.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
+
+# Let the Cloud Tasks service agent create OIDC tokens with this service account
+gcloud iam service-accounts add-iam-policy-binding \
+  cloud-tasks-invoker@YOUR_PROJECT.iam.gserviceaccount.com \
+  --member="serviceAccount:service-YOUR_PROJECT_NUMBER@gcp-sa-cloudtasks.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 ## Step 4: Create Tasks from Your Application
@@ -374,4 +380,4 @@ gcloud logging read \
 
 ## Wrapping Up
 
-Cloud Tasks with Cloud Run gives you a reliable, scalable pattern for asynchronous processing. Your main application stays fast by creating tasks instead of doing the work inline, and Cloud Tasks handles delivery, rate limiting, and retries. The key things to remember are: use OIDC authentication (not OAuth) when targeting Cloud Run, return 2xx for success and 5xx for retriable failures, and use Cloud Tasks headers to track retry behavior in your handler.
+Cloud Tasks with Cloud Run gives you a reliable, scalable pattern for asynchronous processing. Your main application stays fast by creating tasks instead of doing the work inline, and Cloud Tasks handles delivery, rate limiting, and retries. The key things to remember are: use OIDC authentication (not OAuth) when targeting Cloud Run, return 2xx for success and permanent failures you do not want retried, return non-2xx only for failures that should be retried, and use Cloud Tasks headers to track retry behavior in your handler.
