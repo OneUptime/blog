@@ -31,11 +31,10 @@ docker pull google/alloydbomni:latest
 mkdir -p /data/alloydb-omni
 
 # Run AlloyDB Omni as a Docker container
-# The PG_PASSWORD environment variable sets the postgres user password
+# The POSTGRES_PASSWORD environment variable sets the postgres user password
 docker run -d \
   --name alloydb-omni \
   -e POSTGRES_PASSWORD=your-secure-password \
-  -e PG_DATABASE=myapp \
   -v /data/alloydb-omni:/var/lib/postgresql/data \
   -p 5432:5432 \
   google/alloydbomni:latest
@@ -44,12 +43,15 @@ docker run -d \
 Wait about 30 seconds for the database to initialize, then connect:
 
 ```bash
+# Create the application database
+docker exec -it alloydb-omni createdb -U postgres myapp
+
 # Connect using psql
 psql -h localhost -U postgres -d myapp
 
 # Verify AlloyDB Omni is running
 SELECT version();
-# Should show something like: PostgreSQL 15.x (AlloyDB Omni ...)
+# Should show something like: PostgreSQL <major-version> (AlloyDB Omni ...)
 ```
 
 ## Deploying on Kubernetes
@@ -58,94 +60,39 @@ For production workloads, deploy AlloyDB Omni on Kubernetes with proper resource
 
 ```yaml
 # alloydb-omni-deployment.yaml
-# This deployment runs AlloyDB Omni with persistent storage
-# and resource limits appropriate for a production workload
+# This DBCluster manifest assumes the AlloyDB Omni Kubernetes operator
+# is already installed in the cluster.
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Namespace
 metadata:
-  name: alloydb-omni-data
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Gi
-  storageClassName: fast-ssd
+  name: alloydb-omni
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: alloydb-omni-secret
+  name: db-pw-alloydb-omni
+  namespace: alloydb-omni
 type: Opaque
-stringData:
-  POSTGRES_PASSWORD: "your-secure-password"
+data:
+  alloydb-omni: "eW91ci1zZWN1cmUtcGFzc3dvcmQ="
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: alloydbomni.dbadmin.goog/v1
+kind: DBCluster
 metadata:
   name: alloydb-omni
-  labels:
-    app: alloydb-omni
+  namespace: alloydb-omni
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: alloydb-omni
-  template:
-    metadata:
-      labels:
-        app: alloydb-omni
-    spec:
-      containers:
-        - name: alloydb-omni
-          image: google/alloydbomni:latest
-          ports:
-            - containerPort: 5432
-          envFrom:
-            - secretRef:
-                name: alloydb-omni-secret
-          resources:
-            requests:
-              cpu: "4"
-              memory: "16Gi"
-            limits:
-              cpu: "8"
-              memory: "32Gi"
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
-          readinessProbe:
-            exec:
-              command:
-                - pg_isready
-                - -U
-                - postgres
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command:
-                - pg_isready
-                - -U
-                - postgres
-            initialDelaySeconds: 60
-            periodSeconds: 30
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: alloydb-omni-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: alloydb-omni
-spec:
-  selector:
-    app: alloydb-omni
-  ports:
-    - port: 5432
-      targetPort: 5432
-  type: ClusterIP
+  databaseVersion: "17.5.0"
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-alloydb-omni
+    resources:
+      cpu: 4
+      memory: 32Gi
+      disks:
+      - name: DataDisk
+        size: 100Gi
 ```
 
 Deploy it:
@@ -154,38 +101,45 @@ Deploy it:
 # Apply the Kubernetes manifests
 kubectl apply -f alloydb-omni-deployment.yaml
 
-# Wait for the pod to be ready
-kubectl wait --for=condition=ready pod -l app=alloydb-omni --timeout=120s
+# Check the database cluster status
+kubectl get dbclusters.alloydbomni.dbadmin.goog alloydb-omni -n alloydb-omni
 
-# Connect to the database from within the cluster
-kubectl exec -it deploy/alloydb-omni -- psql -U postgres -d myapp
+# Connect to the database from the database pod
+export DBPOD=$(kubectl get pod \
+  --selector=alloydbomni.internal.dbadmin.goog/dbcluster=alloydb-omni,alloydbomni.internal.dbadmin.goog/task-type=database \
+  -n alloydb-omni \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -ti "$DBPOD" -n alloydb-omni -c database -- psql -h localhost -U postgres
 ```
 
 ## Enabling the Columnar Engine
 
 The columnar engine works in AlloyDB Omni just like it does in the managed service. Enable it through configuration:
 
-```bash
-# If running with Docker, pass additional configuration
-docker run -d \
-  --name alloydb-omni \
-  -e POSTGRES_PASSWORD=your-secure-password \
-  -e ALLOYDB_OMNI_COLUMNAR_ENGINE_ENABLED=true \
-  -e ALLOYDB_OMNI_COLUMNAR_ENGINE_MEMORY_SIZE=4294967296 \
-  -v /data/alloydb-omni:/var/lib/postgresql/data \
-  -p 5432:5432 \
-  google/alloydbomni:latest
+```yaml
+# If running on Kubernetes, add parameters to the DBCluster manifest
+apiVersion: alloydbomni.dbadmin.goog/v1
+kind: DBCluster
+metadata:
+  name: alloydb-omni
+  namespace: alloydb-omni
+spec:
+  databaseVersion: "17.5.0"
+  primarySpec:
+    parameters:
+      google_columnar_engine.enabled: "on"
+      google_columnar_engine.memory_size_in_mb: "4096"
 ```
 
 Or configure it through postgresql.conf:
 
 ```sql
 -- Connect to the database and enable the columnar engine
-ALTER SYSTEM SET google_columnar_engine.enabled = on;
-ALTER SYSTEM SET google_columnar_engine.memory_size_in_bytes = 4294967296;
+ALTER SYSTEM SET google_columnar_engine.enabled = 'on';
+ALTER SYSTEM SET google_columnar_engine.memory_size_in_mb = 4096;
 
--- Reload the configuration
-SELECT pg_reload_conf();
+-- Restart the AlloyDB Omni container for the changes to take effect
+-- docker restart alloydb-omni
 
 -- Verify the columnar engine is active
 SHOW google_columnar_engine.enabled;
@@ -211,6 +165,7 @@ sudo yum install -y docker
 sudo systemctl start docker
 
 # Run AlloyDB Omni
+sudo mkdir -p /data/alloydb
 sudo docker run -d \
   --name alloydb-omni \
   -e POSTGRES_PASSWORD=your-secure-password \
@@ -225,28 +180,30 @@ sudo docker run -d \
 Since AlloyDB Omni is self-managed, you need to handle your own backup strategy:
 
 ```bash
-# Set up automated backups using pg_basebackup
+#!/bin/bash
+# Set up automated backups using pgBackRest
+# After completing the one-time pgBackRest setup and stanza-create step,
 # Run this as a cron job for regular backups
 
-#!/bin/bash
 # backup-alloydb.sh
 # Creates a full physical backup and uploads to object storage
 
 BACKUP_DIR="/backups/alloydb/$(date +%Y-%m-%d)"
 mkdir -p "$BACKUP_DIR"
 
-# Take a physical backup using pg_basebackup
-docker exec alloydb-omni pg_basebackup \
-  -U postgres \
-  -D /tmp/backup \
-  -Ft -z -P
+# Take a full physical backup using the pgBackRest utility included in the container
+docker exec -u postgres alloydb-omni pgbackrest \
+  --config-path=/var/lib/postgresql/backups \
+  --stanza=omni \
+  --type=full \
+  backup
 
 # Copy the backup out of the container
-docker cp alloydb-omni:/tmp/backup/base.tar.gz "$BACKUP_DIR/"
+docker cp alloydb-omni:/var/lib/postgresql/backups/. "$BACKUP_DIR/"
 
 # Upload to object storage (works with any S3-compatible storage)
-aws s3 cp "$BACKUP_DIR/base.tar.gz" \
-  "s3://my-backups/alloydb/$(date +%Y-%m-%d)/base.tar.gz"
+aws s3 sync "$BACKUP_DIR/" \
+  "s3://my-backups/alloydb/$(date +%Y-%m-%d)/"
 
 echo "Backup completed: $BACKUP_DIR"
 ```
@@ -255,8 +212,9 @@ For continuous archiving with WAL:
 
 ```sql
 -- Enable WAL archiving for point-in-time recovery
+ALTER SYSTEM SET archive_command = 'pgbackrest --config-path=/var/lib/postgresql/backups --stanza=omni archive-push %p';
 ALTER SYSTEM SET archive_mode = on;
-ALTER SYSTEM SET archive_command = 'cp %p /backups/wal/%f';
+ALTER SYSTEM SET max_wal_senders = 10;
 ALTER SYSTEM SET wal_level = replica;
 
 -- Restart required for archive_mode change
