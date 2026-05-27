@@ -17,16 +17,16 @@ In this post, I will show you how to connect Cloud Scheduler to Cloud Workflows 
 You will need:
 
 - A Google Cloud project with billing enabled
-- The Workflows and Cloud Scheduler APIs enabled
+- The Workflows, Workflow Executions, and Cloud Scheduler APIs enabled
 - A deployed Cloud Workflow
 - A service account with the right permissions
 
-Start by enabling both APIs.
+Start by enabling the APIs.
 
 ```bash
-# Enable both required APIs
+# Enable the required APIs
 
-gcloud services enable workflows.googleapis.com cloudscheduler.googleapis.com
+gcloud services enable workflows.googleapis.com workflowexecutions.googleapis.com cloudscheduler.googleapis.com
 ```
 
 ## Setting Up the Service Account
@@ -42,6 +42,16 @@ gcloud iam service-accounts create workflow-scheduler \
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:workflow-scheduler@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/workflows.invoker"
+
+# Grant it permission to read Monitoring metrics used by the sample workflow
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:workflow-scheduler@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/monitoring.viewer"
+
+# Grant it permission to write custom logs from sys.log
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:workflow-scheduler@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
 ```
 
 ## Creating a Simple Workflow to Schedule
