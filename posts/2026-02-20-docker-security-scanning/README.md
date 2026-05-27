@@ -39,14 +39,16 @@ Trivy is the most popular open-source container scanner. It is fast, comprehensi
 brew install trivy
 
 # Linux (Debian/Ubuntu)
-sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" \
-  | sudo tee /etc/apt/sources.list.d/trivy.list
+sudo apt-get install -y wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+  | gpg --dearmor \
+  | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+  | sudo tee -a /etc/apt/sources.list.d/trivy.list
 sudo apt-get update && sudo apt-get install -y trivy
 
 # Docker (no install needed)
-docker run aquasec/trivy image myapp:latest
+docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image myapp:latest
 ```
 
 ### Scan an Image
@@ -105,12 +107,12 @@ Grype is another excellent scanner from the Anchore project:
 # Install Grype
 brew install grype    # macOS
 # or
-curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s
+curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
 
 # Scan an image
 grype myapp:latest
 
-# Only show high and critical vulnerabilities
+# Fail if fixable high or critical vulnerabilities are found
 grype myapp:latest --only-fixed --fail-on high
 
 # Output as JSON
@@ -178,7 +180,7 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -251,13 +253,15 @@ severity:
   - CRITICAL
   - HIGH
 
-# Ignore unfixed vulnerabilities (no patch available yet)
-ignore-unfixed: true
+vulnerability:
+  # Ignore unfixed vulnerabilities (no patch available yet)
+  ignore-unfixed: true
 
-# Skip scanning dev dependencies
-skip-dirs:
-  - test
-  - docs
+scan:
+  # Skip scanning selected directories
+  skip-dirs:
+    - test
+    - docs
 
 # Set a timeout for large images
 timeout: 10m
