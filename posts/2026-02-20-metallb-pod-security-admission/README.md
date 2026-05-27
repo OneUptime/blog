@@ -83,15 +83,15 @@ The speaker is the component that needs elevated privileges. Here is why:
 graph TD
     A[MetalLB Speaker Pod] --> B[hostNetwork: true]
     A --> C[NET_RAW capability]
-    A --> D[SYS_ADMIN capability - BGP mode]
+    A --> D[Additional capabilities - in-pod FRR mode]
     B --> E[Binds to node IP for ARP/BGP]
     C --> F[Sends raw ARP packets]
-    D --> G[Manages BGP sessions]
+    D --> G[Runs the FRR routing stack]
 ```
 
 - **hostNetwork: true** - The speaker binds directly to the node's network stack to send gratuitous ARP replies or establish BGP sessions. This violates the "restricted" and "baseline" profiles.
 - **NET_RAW capability** - Required to craft and send raw ARP packets in Layer 2 mode.
-- **SYS_ADMIN capability** - Needed in some BGP configurations for advanced networking.
+- **Additional capabilities** - If you enable MetalLB's deprecated in-pod FRR mode, the FRR sidecar requests additional capabilities such as `NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`, and `NET_BIND_SERVICE`.
 
 Because of these requirements, the `metallb-system` namespace **cannot** use the "restricted" or "baseline" enforce profile. Attempting to do so will block the speaker pods from starting.
 
@@ -131,6 +131,9 @@ kubectl label namespace metallb-system \
   pod-security.kubernetes.io/enforce=privileged \
   pod-security.kubernetes.io/audit=privileged \
   pod-security.kubernetes.io/warn=privileged \
+  pod-security.kubernetes.io/enforce-version=v1.30 \
+  pod-security.kubernetes.io/audit-version=v1.30 \
+  pod-security.kubernetes.io/warn-version=v1.30 \
   --overwrite
 ```
 
@@ -138,12 +141,15 @@ If you want stricter visibility (recommended for security-conscious teams):
 
 ```bash
 # Enforce privileged (required for speaker pods to start).
-# Audit at baseline level to log any violations beyond what MetalLB needs.
-# Warn at baseline level to surface unexpected privilege usage.
+# Audit and warn at baseline level to surface the speaker's expected violations
+# and any other privileged behavior in this namespace.
 kubectl label namespace metallb-system \
   pod-security.kubernetes.io/enforce=privileged \
   pod-security.kubernetes.io/audit=baseline \
   pod-security.kubernetes.io/warn=baseline \
+  pod-security.kubernetes.io/enforce-version=v1.30 \
+  pod-security.kubernetes.io/audit-version=v1.30 \
+  pod-security.kubernetes.io/warn-version=v1.30 \
   --overwrite
 ```
 
@@ -178,32 +184,30 @@ Apply it:
 ```bash
 # Apply the namespace manifest
 # Use --server-side to avoid conflicts with existing resources
-kubectl apply -f metallb-namespace.yaml
+kubectl apply --server-side -f metallb-namespace.yaml
 ```
 
-### Option 3: Helm Values Override
+### Option 3: Helm Install
 
-If you install MetalLB via Helm, you can set the labels in your values file:
-
-```yaml
-# helm-values.yaml
-# Override namespace labels when installing MetalLB with Helm.
-# This ensures PSA labels are applied automatically during install.
-namespace:
-  labels:
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/audit: baseline
-    pod-security.kubernetes.io/warn: baseline
-```
+If you install MetalLB via Helm, label the namespace before installing the chart. The upstream MetalLB chart does not expose a `namespace.labels` value for setting PSA labels during `helm upgrade --install`.
 
 Install or upgrade with:
 
 ```bash
-# Install MetalLB with custom namespace labels via Helm
+# Create and label the namespace before installing MetalLB with Helm.
+kubectl create namespace metallb-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace metallb-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=baseline \
+  pod-security.kubernetes.io/warn=baseline \
+  pod-security.kubernetes.io/enforce-version=v1.30 \
+  pod-security.kubernetes.io/audit-version=v1.30 \
+  pod-security.kubernetes.io/warn-version=v1.30 \
+  --overwrite
+
 helm upgrade --install metallb metallb/metallb \
   --namespace metallb-system \
-  --create-namespace \
-  -f helm-values.yaml
+  --create-namespace
 ```
 
 ---
@@ -217,13 +221,16 @@ After applying the labels, confirm everything is working:
 kubectl get namespace metallb-system -o jsonpath='{.metadata.labels}' | jq .
 ```
 
-Expected output:
+Expected relevant labels:
 
 ```json
 {
   "pod-security.kubernetes.io/enforce": "privileged",
+  "pod-security.kubernetes.io/enforce-version": "v1.30",
   "pod-security.kubernetes.io/audit": "baseline",
-  "pod-security.kubernetes.io/warn": "baseline"
+  "pod-security.kubernetes.io/audit-version": "v1.30",
+  "pod-security.kubernetes.io/warn": "baseline",
+  "pod-security.kubernetes.io/warn-version": "v1.30"
 }
 ```
 
@@ -265,7 +272,7 @@ kubectl run psa-test \
   --dry-run=server
 ```
 
-If the namespace labels are correct, the dry-run should succeed with:
+If the namespace labels are correct, the dry-run should succeed. If `warn` is set to `baseline` or `restricted`, you may also see a Pod Security warning before the dry-run result:
 
 ```text
 pod/psa-test created (server dry run)
@@ -275,13 +282,16 @@ pod/psa-test created (server dry run)
 
 ## Common Errors and How to Fix Them
 
-### Error: Pods Stuck in CreateContainerError
+### Error: Pods Rejected by Pod Security Admission
 
 ```text
-Error: container has runAsNonRoot and image will run as root
+Error from server (Forbidden): pods "speaker-abc12" is forbidden:
+violates PodSecurity "baseline:latest": host namespaces (hostNetwork=true),
+unrestricted capabilities (container "speaker" must not include "NET_RAW"
+in securityContext.capabilities.add)
 ```
 
-**Cause:** The namespace enforce label is set to `restricted` or `baseline`, which blocks the speaker's security context.
+**Cause:** The namespace enforce label is set to `restricted` or `baseline`, which blocks the speaker's host networking and capability settings.
 
 **Fix:** Change the enforce label to `privileged`:
 
