@@ -44,20 +44,19 @@ gcloud container clusters update my-cluster \
 
 GKE sends several types of notifications:
 
-- **UpgradeEvent**: When a cluster or node pool upgrade starts or finishes
+- **UpgradeEvent**: When a cluster or node pool upgrade starts
 - **UpgradeAvailableEvent**: When a new version is available for your cluster
 - **SecurityBulletinEvent**: When a security vulnerability affects your cluster version
-- **AutoUpgradeEvent**: When an automatic upgrade is scheduled or in progress
+- **UpgradeInfoEvent**: When an upgrade is scheduled, completes, or needs attention
 
-Each notification type provides different information. Here is what an upgrade event looks like in JSON:
+Each notification type provides different information. GKE sends the notification details in the Pub/Sub message attributes. Here is what an upgrade event payload looks like in JSON:
 
 ```json
 {
-  "type": "UpgradeEvent",
-  "cluster": "projects/my-project/locations/us-central1-a/clusters/my-cluster",
+  "resourceType": "MASTER",
+  "operation": "operation-1771279200000-87b7254a",
   "currentVersion": "1.28.5-gke.1200",
   "targetVersion": "1.28.6-gke.1000",
-  "resource": "MASTER",
   "operationStartTime": "2026-02-17T02:00:00Z"
 }
 ```
@@ -92,28 +91,29 @@ Here is a Cloud Function that formats and sends GKE notifications to Slack:
 
 ```python
 # main.py - Cloud Function to forward GKE notifications to Slack
-import base64
 import json
 import os
 import urllib.request
 
 def gke_notification_to_slack(event, context):
     """Process GKE notification from Pub/Sub and send to Slack."""
-    # Decode the Pub/Sub message
-    message_data = base64.b64decode(event['data']).decode('utf-8')
-    notification = json.loads(message_data)
+    # GKE sends human-readable text in data and structured details in attributes.payload.
+    attributes = event.get('attributes', {})
+    payload = attributes.get('payload', '{}')
+    notification = json.loads(payload)
 
     # Format the message based on notification type
-    notification_type = notification.get('type', 'Unknown')
+    type_url = attributes.get('type_url', '')
+    notification_type = type_url.rsplit('.', 1)[-1] if type_url else 'Unknown'
 
     if notification_type == 'UpgradeEvent':
-        text = format_upgrade_event(notification)
+        text = format_upgrade_event(notification, attributes)
         color = '#36a64f'  # green
     elif notification_type == 'SecurityBulletinEvent':
-        text = format_security_event(notification)
+        text = format_security_event(notification, attributes)
         color = '#ff0000'  # red
     elif notification_type == 'UpgradeAvailableEvent':
-        text = format_available_event(notification)
+        text = format_available_event(notification, attributes)
         color = '#2196f3'  # blue
     else:
         text = f"GKE Notification: {notification_type}"
@@ -139,26 +139,26 @@ def gke_notification_to_slack(event, context):
     urllib.request.urlopen(req)
 
 
-def format_upgrade_event(notification):
+def format_upgrade_event(notification, attributes):
     """Format an upgrade event for Slack."""
-    cluster = notification.get('cluster', '').split('/')[-1]
+    cluster = attributes.get('cluster_name', 'unknown')
     current = notification.get('currentVersion', 'unknown')
     target = notification.get('targetVersion', 'unknown')
-    resource = notification.get('resource', 'unknown')
+    resource = notification.get('resourceType', 'unknown')
     return f"Cluster *{cluster}* {resource} upgrading from `{current}` to `{target}`"
 
 
-def format_security_event(notification):
+def format_security_event(notification, attributes):
     """Format a security bulletin for Slack."""
-    cluster = notification.get('cluster', '').split('/')[-1]
+    cluster = attributes.get('cluster_name', 'unknown')
     bulletin_id = notification.get('bulletinId', 'unknown')
     severity = notification.get('severity', 'unknown')
     return f"Security bulletin *{bulletin_id}* ({severity}) affects cluster *{cluster}*"
 
 
-def format_available_event(notification):
+def format_available_event(notification, attributes):
     """Format an upgrade available event for Slack."""
-    cluster = notification.get('cluster', '').split('/')[-1]
+    cluster = attributes.get('cluster_name', 'unknown')
     version = notification.get('version', 'unknown')
     return f"New version `{version}` available for cluster *{cluster}*"
 ```
@@ -168,7 +168,7 @@ Deploy the function:
 ```bash
 # Deploy the Cloud Function triggered by the Pub/Sub topic
 gcloud functions deploy gke-slack-notifier \
-  --runtime python39 \
+  --runtime python312 \
   --trigger-topic gke-cluster-notifications \
   --entry-point gke_notification_to_slack \
   --set-env-vars SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL \
@@ -195,21 +195,22 @@ For critical security bulletins, route to PagerDuty:
 
 ```python
 # pagerduty_handler.py - Route critical GKE events to PagerDuty
-import base64
 import json
 import urllib.request
 import os
 
 def gke_to_pagerduty(event, context):
     """Send critical GKE notifications to PagerDuty."""
-    message_data = base64.b64decode(event['data']).decode('utf-8')
-    notification = json.loads(message_data)
+    attributes = event.get('attributes', {})
+    payload = attributes.get('payload', '{}')
+    notification = json.loads(payload)
 
     # Only page for security bulletins
-    if notification.get('type') != 'SecurityBulletinEvent':
+    type_url = attributes.get('type_url', '')
+    if not type_url.endswith('.SecurityBulletinEvent'):
         return
 
-    severity = notification.get('severity', 'LOW')
+    severity = notification.get('severity', 'LOW').upper()
     # Only page for HIGH and CRITICAL severity
     if severity not in ('HIGH', 'CRITICAL'):
         return
@@ -220,7 +221,7 @@ def gke_to_pagerduty(event, context):
         'payload': {
             'summary': f"GKE Security Bulletin: {notification.get('bulletinId')}",
             'severity': 'critical' if severity == 'CRITICAL' else 'error',
-            'source': notification.get('cluster', 'unknown'),
+            'source': attributes.get('cluster_name', 'unknown'),
         }
     }
 
@@ -277,7 +278,7 @@ for cluster in $(gcloud container clusters list --format="value(name,location)" 
   name=$(echo $cluster | cut -d, -f1)
   location=$(echo $cluster | cut -d, -f2)
   gcloud container clusters update "$name" \
-    --zone "$location" \
+    --location "$location" \
     --notification-config=pubsub=ENABLED,pubsub-topic=projects/my-project/topics/gke-cluster-notifications
 done
 ```
