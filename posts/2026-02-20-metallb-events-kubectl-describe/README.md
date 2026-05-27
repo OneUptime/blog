@@ -20,10 +20,9 @@ flowchart LR
     A -->|Emits| C[Kubernetes Events]
     C --> D[Success Events]
     C --> E[Warning Events]
-    C --> F[Error Events]
     D --> G[IPAllocated]
     E --> H[AllocationFailed]
-    F --> I[ConfigurationError]
+    E --> I[LoadBalancerFailed]
 ```
 
 ## Checking Events with kubectl describe
@@ -93,7 +92,7 @@ If your MetalLB configuration has issues:
 Type: Warning
 Reason: AllocationFailed
 From: metallb-controller
-Message: Failed to allocate IP for "default/my-service": no matching IPAddressPool
+Message: Failed to allocate IP for "default/my-service": unknown pool "production"
 ```
 
 ## Event Flow Diagram
@@ -130,9 +129,9 @@ kubectl get events -A --field-selector source=metallb-controller
 kubectl get events -A --field-selector source=metallb-speaker
 ```
 
-## Filtering Events by Type
+## Filtering Warning Events
 
-To find only warning or error events:
+To find only warning events:
 
 ```bash
 # Show only warning events from MetalLB - these indicate problems
@@ -172,10 +171,10 @@ kubectl get svc -A -o json | jq '[
 ### Pattern: No Matching Pool
 
 ```text
-Warning  AllocationFailed  metallb-controller  no matching IPAddressPool
+Warning  AllocationFailed  metallb-controller  Failed to allocate IP for "default/my-service": unknown pool "production"
 ```
 
-**Fix**: Check that your `IPAddressPool` resources exist and that any `metallb.io/address-pool` annotation on your service matches a real pool name.
+**Fix**: Check that your `IPAddressPool` resources exist and that any `metallb.io/address-pool` annotation on your service matches a real pool name. If the service requests a pool that does not exist, the event message includes `unknown pool`.
 
 ```bash
 # List all configured IP address pools
@@ -188,10 +187,10 @@ kubectl get svc my-service -o jsonpath='{.metadata.annotations}'
 ### Pattern: IP Already In Use
 
 ```text
-Warning  AllocationFailed  metallb-controller  "192.168.1.100" is already in use
+Warning  AllocationFailed  metallb-controller  Failed to allocate IP for "default/my-service": port TCP/80 is already in use on "192.168.1.100"
 ```
 
-**Fix**: Another service holds this IP. Find and release it, or choose a different IP.
+**Fix**: Another service is using the same IP and port without compatible sharing settings. Find and release it, configure sharing correctly, or choose a different IP.
 
 ```bash
 # Find the service currently using the contested IP address
