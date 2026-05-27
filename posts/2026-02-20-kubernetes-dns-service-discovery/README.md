@@ -10,7 +10,7 @@ Description: Deep dive into how Kubernetes uses DNS for service discovery, inclu
 
 ## Why DNS for Service Discovery?
 
-In Kubernetes, pods and services are constantly being created and destroyed. Hard-coding IP addresses is impractical because IPs change with every pod restart. DNS provides a dynamic name resolution layer that lets pods find services by name rather than by IP.
+In Kubernetes, pods and services are constantly being created and destroyed. Hard-coding pod IP addresses is impractical because pod IPs can change when pods are replaced. DNS provides a dynamic name resolution layer that lets pods find services by name rather than by IP.
 
 Every Kubernetes cluster runs a DNS server (typically CoreDNS) that automatically creates DNS records for every service. When a pod needs to talk to a service, it resolves the service name via DNS and gets back the current IP address.
 
@@ -66,10 +66,13 @@ The search domains allow short-name resolution:
 ```bash
 # All of these resolve to the same ClusterIP:
 
-# Full qualified domain name (1 DNS query)
+# Fully qualified service name (still affected by ndots:5 unless you add a trailing dot)
 curl http://user-api.production.svc.cluster.local
 
-# Namespace-scoped short name (2 DNS queries)
+# Absolute service FQDN (1 DNS query)
+curl http://user-api.production.svc.cluster.local.
+
+# Namespace-scoped short name (resolved through the search list)
 curl http://user-api.production
 
 # Same-namespace short name (1 DNS query if pod is in production)
@@ -113,7 +116,7 @@ Default CoreDNS Corefile:
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     # kubernetes plugin handles service discovery DNS
@@ -182,7 +185,7 @@ kubectl exec -it debug-pod -- nslookup -type=SRV \
 ### Pod A Records
 
 ```bash
-# Pods get DNS records based on their IP address
+# Some DNS implementations, including CoreDNS with pods insecure or verified, provide pod IP records
 # Format: <pod-ip-dashed>.<namespace>.pod.cluster.local
 kubectl exec -it debug-pod -- nslookup \
   172-16-0-15.production.pod.cluster.local
@@ -247,7 +250,7 @@ kubectl exec -it dns-debug -- cat /etc/resolv.conf
 # coredns_dns_request_duration_seconds_bucket
 
 # Cache hit rate
-# coredns_cache_hits_total / coredns_dns_requests_total
+# coredns_cache_hits_total / coredns_cache_requests_total
 
 # Check metrics directly
 kubectl exec -it dns-debug -- curl -s \
@@ -267,7 +270,7 @@ kubectl scale deployment coredns -n kube-system --replicas=3
 
 # Or use the DNS autoscaler addon
 # It automatically scales CoreDNS based on cluster size
-kubectl get configmap dns-autoscaler -n kube-system -o yaml
+kubectl get configmap kube-dns-autoscaler -n kube-system -o yaml
 ```
 
 ## Custom DNS Policies
