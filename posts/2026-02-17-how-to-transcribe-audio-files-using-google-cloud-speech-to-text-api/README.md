@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Speech-to-Text, Audio Transcription, Machine Learning, Cloud API
 
-Description: A practical guide to transcribing audio files of any length using Google Cloud Speech-to-Text API with support for multiple languages and audio formats.
+Description: A practical guide to transcribing short and long audio files using Google Cloud Speech-to-Text API with support for multiple languages and audio formats.
 
 ---
 
@@ -18,7 +18,7 @@ Speech-to-Text offers three methods depending on your audio length:
 
 **Synchronous Recognition**: For audio up to 1 minute. You send the audio, wait, and get the result. Simple but limited.
 
-**Asynchronous Recognition**: For audio up to 480 minutes (8 hours). The API processes the audio in the background and you poll for results or get notified when complete.
+**Asynchronous Recognition**: For audio up to 480 minutes (8 hours). The API processes the audio in the background and you poll for results or write results to Cloud Storage when complete.
 
 **Streaming Recognition**: For real-time transcription. You stream audio in and get results back as the audio is processed. Covered in a separate post.
 
@@ -33,8 +33,8 @@ Get set up with the API and client library:
 
 gcloud services enable speech.googleapis.com
 
-# Install the Python client
-pip install google-cloud-speech
+# Install the Python clients
+pip install google-cloud-speech google-cloud-storage
 
 # If your audio needs conversion, install ffmpeg
 # macOS: brew install ffmpeg
@@ -58,10 +58,9 @@ def transcribe_short_audio(audio_path, language_code="en-US"):
 
     audio = speech.RecognitionAudio(content=content)
 
-    # Configure recognition settings
+    # Configure recognition settings. WAV and FLAC headers let the API detect
+    # the encoding and sample rate automatically.
     config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=16000,
         language_code=language_code,
         enable_automatic_punctuation=True,  # Add periods, commas, etc.
         model="latest_long",  # Best accuracy for most use cases
@@ -96,13 +95,10 @@ def transcribe_long_audio(gcs_uri, language_code="en-US"):
 
     # Configuration for long audio transcription
     config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.FLAC,
-        sample_rate_hertz=44100,
         language_code=language_code,
         enable_automatic_punctuation=True,
         enable_word_time_offsets=True,  # Get timestamps for each word
         model="latest_long",
-        use_enhanced=True,  # Use the enhanced model for better accuracy
     )
 
     # Start the long-running operation
@@ -146,18 +142,8 @@ def get_config_for_format(file_path, language_code="en-US"):
 
     # Map file extensions to encoding configs
     format_configs = {
-        "wav": {
-            "encoding": speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            "sample_rate_hertz": 16000,
-        },
-        "flac": {
-            "encoding": speech.RecognitionConfig.AudioEncoding.FLAC,
-            "sample_rate_hertz": 44100,
-        },
-        "mp3": {
-            "encoding": speech.RecognitionConfig.AudioEncoding.MP3,
-            "sample_rate_hertz": 16000,
-        },
+        "wav": {},
+        "flac": {},
         "ogg": {
             "encoding": speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
             "sample_rate_hertz": 16000,
@@ -174,11 +160,10 @@ def get_config_for_format(file_path, language_code="en-US"):
     fmt = format_configs[extension]
 
     config = speech.RecognitionConfig(
-        encoding=fmt["encoding"],
-        sample_rate_hertz=fmt["sample_rate_hertz"],
         language_code=language_code,
         enable_automatic_punctuation=True,
         model="latest_long",
+        **fmt,
     )
 
     return config
@@ -198,8 +183,6 @@ def transcribe_multilingual(gcs_uri, primary_language="en-US", additional_langua
     audio = speech.RecognitionAudio(uri=gcs_uri)
 
     config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.FLAC,
-        sample_rate_hertz=44100,
         language_code=primary_language,
         # Provide alternative languages the audio might contain
         alternative_language_codes=additional_languages or [],
@@ -286,8 +269,6 @@ def transcription_pipeline(audio_path, bucket_name, language="en-US"):
     # Step 2: Configure and start transcription
     audio = speech.RecognitionAudio(uri=gcs_uri)
     config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.FLAC,
-        sample_rate_hertz=16000,
         language_code=language,
         enable_automatic_punctuation=True,
         enable_word_time_offsets=True,
