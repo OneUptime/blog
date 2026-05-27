@@ -65,30 +65,35 @@ gcloud compute project-info describe \
 
 ## Common Quota Types
 
-Here are the quotas that most frequently cause issues:
+Here are the quotas that most frequently cause issues. Default limits vary by project, billing history, and rollout, so treat these as common starting points or examples rather than guarantees:
 
 | Quota Metric | Default Limit | What It Controls |
 |---|---|---|
-| CPUS | 24 per region | Total vCPUs across all VMs |
-| CPUS_ALL_REGIONS | 24 globally | Total vCPUs across all regions |
+| CPUS | Varies per region | Total vCPUs across running VMs and reservations |
+| CPUS_ALL_REGIONS | Varies globally | Total vCPUs across all regions for projects that have this quota |
 | NVIDIA_T4_GPUS | 0 | T4 GPU accelerators |
 | NVIDIA_A100_GPUS | 0 | A100 GPU accelerators |
-| NVIDIA_L4_GPUS | 0 | L4 GPU accelerators |
-| IN_USE_ADDRESSES | 8 | External IP addresses |
-| SSD_TOTAL_GB | 2048 | Total SSD persistent disk |
-| INSTANCES | 128 | Total VM instances |
-| PREEMPTIBLE_CPUS | 24 | Preemptible/Spot VM vCPUs |
+| GPU_FAMILY:NVIDIA_L4 | 0 | L4 GPU accelerators |
+| IN_USE_ADDRESSES | Varies | External IP addresses |
+| SSD_TOTAL_GB | Varies | Total SSD persistent disk |
+| INSTANCES | 10x regular CPU quota | Total VM instances in a region |
+| PREEMPTIBLE_CPUS | Varies | Preemptible/Spot VM vCPUs after preemptible quota is granted |
 
 ## Requesting a Quota Increase
 
-You can request quota increases through the gcloud CLI or the Console. The CLI approach is faster:
+You can request quota increases through the gcloud CLI or the Console. With the CLI, use the Cloud Quotas beta commands to create a quota preference:
 
 ```bash
 # Request a CPU quota increase for a specific region
-# This sends a request to GCP that is typically reviewed within 24-48 hours
-gcloud compute regions update us-central1 \
+# This sends a request to Google Cloud for review
+gcloud beta quotas preferences create \
     --project=my-project \
-    --update-quota CPUS=96
+    --service=compute.googleapis.com \
+    --quota-id=CPUS-per-project-region \
+    --dimensions=region=us-central1 \
+    --preferred-value=96 \
+    --email=you@example.com \
+    --justification="Need additional vCPU capacity for production workers"
 ```
 
 For GPU quotas, you typically need to go through the Console because GPU requests often require additional review:
@@ -115,11 +120,11 @@ Based on my experience, here is what helps:
 
 While waiting for a quota increase, there are strategies to work within your current limits.
 
-Use Spot VMs to get separate quota:
+Use Spot VMs to get separate quota if Compute Engine has granted preemptible quota for your project:
 
 ```bash
-# Spot VMs use PREEMPTIBLE_CPUS quota, separate from regular CPUS
-# This lets you run more workloads within your regular CPU quota
+# After preemptible quota is granted, Spot VMs use PREEMPTIBLE_CPUS quota.
+# If you have never requested preemptible quota, Spot VMs can consume standard quota.
 gcloud compute instances create spot-worker \
     --zone=us-central1-a \
     --machine-type=n1-standard-8 \
@@ -159,13 +164,21 @@ Set up alerts so you know when you are approaching quota limits before they beco
 ```bash
 # Create a monitoring alert policy for quota usage
 # This alerts when CPU quota usage exceeds 80%
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
+    --project=my-project \
     --notification-channels=projects/my-project/notificationChannels/12345 \
-    --display-name="CPU Quota Alert" \
-    --condition-display-name="CPU quota above 80%" \
-    --condition-filter='resource.type="compute.googleapis.com/Location" AND metric.type="compute.googleapis.com/quota/cpus_per_region/usage"' \
-    --condition-threshold-value=0.8 \
-    --condition-threshold-comparison=COMPARISON_GT
+    --policy='{
+      "displayName": "CPU Quota Alert",
+      "combiner": "OR",
+      "conditions": [{
+        "displayName": "CPU quota above 80%",
+        "conditionPrometheusQueryLanguage": {
+          "query": "(\n  max by (project_id, quota_metric, location) ({\"serviceruntime.googleapis.com/quota/allocation/usage\", monitored_resource=\"consumer_quota\", service=\"compute.googleapis.com\"})\n  /\n  min by (project_id, quota_metric, location) ({\"serviceruntime.googleapis.com/quota/limit\", monitored_resource=\"consumer_quota\", service=\"compute.googleapis.com\", limit_name=\"CPUS-per-project-region\"})\n) > 0.8",
+          "duration": "300s",
+          "evaluationInterval": "60s"
+        }
+      }]
+    }'
 ```
 
 You can also view quota usage trends in the Cloud Console under IAM and Admin, then Quotas. This helps you plan ahead and request increases before you actually hit the wall.
