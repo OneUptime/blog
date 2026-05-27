@@ -152,6 +152,7 @@ db_password: "{{ vault_db_password }}"
 - name: Enable and start the Spring Boot service
   systemd:
     name: "{{ app_name }}"
+    daemon_reload: yes
     enabled: yes
     state: started
 
@@ -361,7 +362,7 @@ To keep previous versions and enable quick rollbacks, modify the JAR management:
   file:
     path: "{{ item.path }}"
     state: absent
-  loop: "{{ old_jars.files | sort(attribute='mtime') | list }}"
+  loop: "{{ (old_jars.files | sort(attribute='mtime') | list)[:-5] }}"
   when: old_jars.files | length > 5
 ```
 
