@@ -52,7 +52,7 @@ Here is a playbook that uses all three task sections.
 
   tasks:
     - name: Deploy new application version
-      synchronize:
+      ansible.posix.synchronize:
         src: /opt/releases/v2.5.0/
         dest: /var/www/myapp/
 
@@ -99,17 +99,17 @@ Pre-tasks run before everything else (except fact gathering). They are the right
 
   pre_tasks:
     - name: Disable host in HAProxy
-      haproxy:
+      community.general.haproxy:
         state: disabled
         host: "{{ inventory_hostname }}"
         socket: /var/run/haproxy/admin.sock
         backend: web_backend
+        wait: true
+        drain: true
+        wait_interval: 5
+        wait_retries: 6
       delegate_to: "{{ item }}"
       loop: "{{ groups['loadbalancers'] }}"
-
-    - name: Wait for connections to drain
-      wait_for:
-        timeout: 30
 
   tasks:
     - name: Pull latest code
@@ -132,7 +132,7 @@ Pre-tasks run before everything else (except fact gathering). They are the right
       delay: 5
 
     - name: Re-enable host in HAProxy
-      haproxy:
+      community.general.haproxy:
         state: enabled
         host: "{{ inventory_hostname }}"
         socket: /var/run/haproxy/admin.sock
@@ -167,7 +167,7 @@ One of the most useful aspects of `pre_tasks` and `post_tasks` is the automatic 
 
   tasks:
     - name: Deploy application
-      synchronize:
+      ansible.posix.synchronize:
         src: /opt/releases/current/
         dest: /var/www/myapp/
 
@@ -234,7 +234,7 @@ Post-tasks run after all tasks and their handlers have completed. They are the r
       run_once: true
 
     - name: Back up current version
-      archive:
+      community.general.archive:
         path: /var/www/myapp/
         dest: "/var/backups/myapp-{{ ansible_date_time.iso8601_basic }}.tar.gz"
 
