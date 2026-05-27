@@ -125,7 +125,7 @@ spec:
 
 ## Requesting an IP from a Specific Pool
 
-Use the `metallb.universe.tf/address-pool` annotation on your Service to request an IP from a specific pool:
+Use the `metallb.io/address-pool` annotation on your Service to request an IP from a specific pool:
 
 ```yaml
 # public-web-service.yaml
@@ -138,7 +138,7 @@ metadata:
   namespace: default
   annotations:
     # Direct MetalLB to use the public pool for this service
-    metallb.universe.tf/address-pool: public-pool
+    metallb.io/address-pool: public-pool
 spec:
   type: LoadBalancer
   selector:
@@ -166,7 +166,7 @@ metadata:
   namespace: default
   annotations:
     # Direct MetalLB to use the internal pool
-    metallb.universe.tf/address-pool: internal-pool
+    metallb.io/address-pool: internal-pool
 spec:
   type: LoadBalancer
   selector:
@@ -196,9 +196,9 @@ kubectl get svc internal-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 Expected output:
 
 ```text
-NAME            TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
-web-frontend    LoadBalancer   10.96.10.5     203.0.113.10    80:31001/TCP,443:31002/TCP
-internal-api    LoadBalancer   10.96.10.8     10.0.50.10      9090:31003/TCP
+NAMESPACE   NAME            TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
+default     web-frontend    LoadBalancer   10.96.10.5     203.0.113.10    80:31001/TCP,443:31002/TCP
+default     internal-api    LoadBalancer   10.96.10.8     10.0.50.10      9090:31003/TCP
 ```
 
 ## What Happens with an Invalid Pool Name
@@ -214,7 +214,7 @@ metadata:
   name: broken-service
   namespace: default
   annotations:
-    metallb.universe.tf/address-pool: nonexistent-pool
+    metallb.io/address-pool: nonexistent-pool
 spec:
   type: LoadBalancer
   selector:
@@ -279,11 +279,10 @@ metadata:
   name: critical-service
   namespace: default
   annotations:
-    metallb.universe.tf/address-pool: public-pool
+    metallb.io/address-pool: public-pool
+    metallb.io/loadBalancerIPs: 203.0.113.25
 spec:
   type: LoadBalancer
-  # Request a specific IP from within the public pool range
-  loadBalancerIP: 203.0.113.25
   selector:
     app: critical-service
   ports:
