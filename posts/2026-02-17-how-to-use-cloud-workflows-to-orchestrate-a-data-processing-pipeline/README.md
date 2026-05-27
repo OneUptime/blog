@@ -176,7 +176,7 @@ validate_source_file:
     - check_file_exists:
         call: http.get
         args:
-          url: ${"https://storage.googleapis.com/storage/v1/b/" + bucket + "/o/" + file}
+          url: ${"https://storage.googleapis.com/storage/v1/b/" + bucket + "/o/" + text.url_encode(file)}
           auth:
             type: OAuth2
         result: file_metadata
@@ -191,6 +191,8 @@ validate_source_file:
     - validate_extension:
         assign:
           - file_lower: ${text.to_lower(file)}
+
+    - check_extension:
         switch:
           - condition: ${not(text.match_regex(file_lower, ".*\\.csv$"))}
             raise: "File is not a CSV"
@@ -249,7 +251,7 @@ load_data_to_bq:
                   tableId: ${staging_table}
                 sourceFormat: "NEWLINE_DELIMITED_JSON"
                 writeDisposition: "WRITE_TRUNCATE"
-                autodetect: false
+                autodetect: true
         result: job_response
 
     - extract_job_id:
@@ -396,13 +398,23 @@ promote_staging_to_production:
 move_to_quarantine:
   params: [bucket, file, reason]
   steps:
+    - encode_names:
+        assign:
+          - encoded_file: ${text.url_encode(file)}
+          - quarantine_file: ${"quarantine/" + file}
     - copy_to_quarantine:
         call: http.post
         args:
-          url: ${"https://storage.googleapis.com/storage/v1/b/" + bucket + "/o/" + file + "/copyTo/b/" + bucket + "/o/quarantine%2F" + file}
+          url: ${"https://storage.googleapis.com/storage/v1/b/" + bucket + "/o/" + encoded_file + "/copyTo/b/" + bucket + "/o/" + text.url_encode(quarantine_file)}
           auth:
             type: OAuth2
         result: copy_result
+    - delete_original:
+        call: http.delete
+        args:
+          url: ${"https://storage.googleapis.com/storage/v1/b/" + bucket + "/o/" + encoded_file}
+          auth:
+            type: OAuth2
     - log_quarantine:
         call: sys.log
         args:
