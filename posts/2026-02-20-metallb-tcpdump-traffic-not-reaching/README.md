@@ -8,7 +8,7 @@ Description: Learn how to use tcpdump to trace traffic from MetalLB through kube
 
 ---
 
-When a MetalLB LoadBalancer service is not responding, the problem could be anywhere in the packet path. Traffic flows from the external client through the node running the MetalLB speaker, into kube-proxy or IPVS rules, and finally to the backend pod. Using tcpdump at each hop lets you pinpoint exactly where packets are being dropped.
+When a MetalLB LoadBalancer service is not responding, the problem could be anywhere in the packet path. Traffic flows from the external client through the node currently advertising the LoadBalancer IP, into kube-proxy rules, and finally to the backend pod. Using tcpdump at each hop lets you pinpoint exactly where packets are being dropped.
 
 This guide walks you through a systematic approach to tracing packets with tcpdump so you can isolate whether the issue is at the MetalLB layer, the kube-proxy layer, or the pod itself.
 
@@ -19,12 +19,12 @@ Before diving into tcpdump commands, it helps to understand the full packet path
 ```mermaid
 flowchart LR
     A[External Client] -->|ARP / Traffic| B[Node with MetalLB Speaker]
-    B -->|iptables / IPVS| C[kube-proxy Rules]
+    B -->|iptables / IPVS / nftables| C[kube-proxy Rules]
     C -->|DNAT| D[Backend Pod on Same Node]
     C -->|DNAT + SNAT| E[Backend Pod on Different Node]
 ```
 
-In Layer 2 mode, the MetalLB speaker on one node responds to ARP requests for the LoadBalancer IP. All traffic for that IP arrives at that node. kube-proxy then uses iptables or IPVS rules to forward traffic to one of the backend pods, which might be on a different node entirely.
+In Layer 2 mode, the MetalLB speaker on one node responds to ARP requests for the LoadBalancer IP. All traffic for that IP arrives at that node. kube-proxy then uses iptables, IPVS, or nftables rules to forward traffic to one of the backend pods, which might be on a different node entirely.
 
 ## Step 1: Identify the Active MetalLB Speaker Node
 
@@ -33,24 +33,22 @@ First, figure out which node is currently handling the LoadBalancer IP. MetalLB 
 ```bash
 # List all MetalLB speaker pods and their node assignments
 
-# This helps identify which node is answering ARP for your LB IP
+# This shows which nodes are running speakers; use the Service event below for the active announcer
 kubectl get pods -n metallb-system \
   -l app=metallb,component=speaker \
   -o wide
 ```
 
-You can also check the MetalLB speaker logs to see which node won the election:
+You can also check the Service events to see which node is announcing the service:
 
 ```bash
-# Search speaker logs for the service assignment
+# Search Service events for the announcement
 # Replace "my-service" with your actual service name
-kubectl logs -n metallb-system \
-  -l app=metallb,component=speaker \
-  --all-containers \
-  | grep "my-service"
+kubectl describe svc my-service \
+  | grep "announcing from node"
 ```
 
-Look for a log line like `"announcing from node"` which tells you which node is the active speaker.
+Look for an event like `"announcing from node"` which tells you which node is the active speaker.
 
 ## Step 2: Capture Traffic on the Node Interface
 
@@ -75,13 +73,12 @@ If you see incoming SYN packets but no SYN-ACK replies, the problem is downstrea
 If no packets are arriving, the upstream router or client might not know the MAC address for the LoadBalancer IP. Verify ARP is working:
 
 ```bash
-# Check the ARP table on the node for the LoadBalancer IP
-# This shows whether the node is correctly advertising its MAC
-arp -an | grep "192.168.1.240"
+# Check the neighbor table on the client or upstream router for the LoadBalancer IP
+# This shows which MAC address the client is using for the LoadBalancer IP
+ip neigh show 192.168.1.240
 
 # Capture ARP traffic specifically to see if requests and replies are flowing
-sudo tcpdump -i eth0 arp -nn \
-  | grep "192.168.1.240"
+sudo tcpdump -i eth0 "arp and host 192.168.1.240" -nn -e
 ```
 
 ```mermaid
@@ -111,12 +108,19 @@ sudo iptables -t nat -L KUBE-SERVICES -n \
 sudo iptables -t nat -L KUBE-SVC-XXXXX -n -v
 ```
 
-If you are using IPVS mode instead of iptables, check the virtual server table:
+If you are using IPVS mode instead of iptables, check the virtual server table. IPVS mode is deprecated in newer Kubernetes releases, so prefer your cluster's configured kube-proxy mode when choosing which rules to inspect.
 
 ```bash
 # List IPVS virtual servers and their real server backends
 # This is the equivalent of iptables chains for IPVS mode
 sudo ipvsadm -Ln | grep -A 5 "192.168.1.240"
+```
+
+If you are using nftables mode, inspect the nftables ruleset instead:
+
+```bash
+# Search nftables rules for the LoadBalancer IP
+sudo nft list ruleset | grep -A 5 "192.168.1.240"
 ```
 
 ## Step 5: Capture Traffic on the Pod Network
@@ -128,8 +132,8 @@ Now capture traffic on the pod's virtual ethernet interface to see if packets ar
 # This gives you the target IP to filter on in tcpdump
 kubectl get pod my-app-pod -o wide
 
-# Capture traffic on the cbr0 or cni0 bridge interface
-# This bridge connects pod veth interfaces to the node network
+# Capture traffic on the cbr0 or cni0 bridge interface if your CNI uses one
+# In bridge-based CNIs, this bridge connects pod veth interfaces to the node network
 sudo tcpdump -i cni0 host 10.244.1.15 -nn
 
 # Alternatively capture on all interfaces to find where packets appear
@@ -143,7 +147,8 @@ If packets are reaching the pod network but the application is not responding, c
 
 ```bash
 # Attach an ephemeral container with tcpdump to the target pod
-# The --target flag shares the network namespace with the app container
+# Ephemeral containers run in the pod's network namespace
+# The --target flag targets the app container's process namespace when supported
 kubectl debug -it my-app-pod \
   --image=nicolaka/netshoot \
   --target=my-app-container \
@@ -155,7 +160,7 @@ flowchart TD
     A[No traffic on node interface?] -->|Yes| B[Check ARP and MAC]
     A -->|No| C[Traffic arrives at node]
     C --> D[No traffic after kube-proxy?]
-    D -->|Yes| E[Check iptables / IPVS rules]
+    D -->|Yes| E[Check iptables / IPVS / nftables rules]
     D -->|No| F[Traffic forwarded to pod network]
     F --> G[No traffic in pod?]
     G -->|Yes| H[Check CNI plugin and network policies]
@@ -200,7 +205,7 @@ Here are the most frequent causes of MetalLB traffic not reaching pods:
 
 1. **Firewall rules** on the node blocking traffic on the service port. Check with `iptables -L INPUT -n`.
 2. **NetworkPolicy** resources in Kubernetes blocking ingress to the pod. Check with `kubectl get networkpolicy -A`.
-3. **Wrong externalTrafficPolicy** setting. When set to `Local`, traffic only goes to pods on the same node as the speaker.
+3. **Wrong externalTrafficPolicy** setting. When set to `Local`, kube-proxy only sends external traffic to ready node-local endpoints.
 4. **CNI plugin issues** where the pod network overlay is not routing correctly between nodes.
 5. **MTU mismatches** between the node interface and the pod network causing large packets to be silently dropped.
 
@@ -212,13 +217,13 @@ Here are the most frequent causes of MetalLB traffic not reaching pods:
 echo "=== LoadBalancer IP Assignment ==="
 kubectl get svc -A | grep LoadBalancer
 
-# Check 2: Verify endpoints exist for the service
-echo "=== Service Endpoints ==="
-kubectl get endpoints my-service
+# Check 2: Verify EndpointSlices exist for the service
+echo "=== Service EndpointSlices ==="
+kubectl get endpointslice -l kubernetes.io/service-name=my-service
 
 # Check 3: Verify the speaker pod is running on this node
 echo "=== Speaker Pod Status ==="
-kubectl get pods -n metallb-system -l component=speaker -o wide
+kubectl get pods -n metallb-system -l app=metallb,component=speaker -o wide
 
 # Check 4: Check for network policies that might block traffic
 echo "=== Network Policies ==="
