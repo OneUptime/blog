@@ -26,12 +26,12 @@ Cloud Build pulls the `gcr.io/cloud-builders/docker` image and runs it with the 
 
 Before building your own, check if someone has already created what you need. There are several sources:
 
-### Community Cloud Builders
+### Supported Cloud Builders
 
-Google maintains a repository of community builders at `gcr.io/cloud-builders/`. Some useful ones:
+Google maintains supported builder images at `gcr.io/cloud-builders/`. Some useful ones:
 
 ```yaml
-# Some popular community and official builders
+# Some popular supported and public builder images
 
 steps:
   # kubectl for Kubernetes operations
@@ -40,7 +40,8 @@ steps:
 
   # gcloud SDK for any GCP operations
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    args: ['gcloud', 'run', 'deploy', 'my-app']
+    entrypoint: 'gcloud'
+    args: ['run', 'deploy', 'my-app']
 
   # Git for repository operations
   - name: 'gcr.io/cloud-builders/git'
@@ -55,7 +56,7 @@ Any public Docker image works as a builder:
 # Using standard Docker Hub images as builders
 steps:
   # Node.js for running JavaScript builds and tests
-  - name: 'node:20'
+  - name: 'node:22'
     args: ['npm', 'test']
 
   # Python for running scripts
@@ -63,15 +64,15 @@ steps:
     args: ['python', 'setup.py', 'test']
 
   # Go for building Go applications
-  - name: 'golang:1.22'
+  - name: 'golang:1.26'
     args: ['go', 'build', '-o', '/workspace/app', '.']
 
   # Terraform for infrastructure deployment
-  - name: 'hashicorp/terraform:1.7'
+  - name: 'hashicorp/terraform:1.15'
     args: ['apply', '-auto-approve']
 
   # Helm for Kubernetes package management
-  - name: 'alpine/helm:3.14'
+  - name: 'alpine/helm:3.20'
     args: ['upgrade', '--install', 'my-release', './chart']
 ```
 
@@ -89,15 +90,11 @@ FROM gcr.io/google.com/cloudsdktool/cloud-sdk:slim
 
 # Install AWS CLI
 RUN apt-get update && apt-get install -y \
-    python3-pip \
-    unzip \
-    && pip3 install awscli \
+    awscli \
+    jq \
     && apt-get clean
 
-# Install jq for JSON processing
-RUN apt-get install -y jq
-
-# Set gcloud as the default entrypoint
+# Set bash as the default entrypoint
 ENTRYPOINT ["bash"]
 ```
 
@@ -140,7 +137,7 @@ For a team that needs to run database migrations in multiple pipelines:
 
 ```dockerfile
 # Dockerfile for a database migration builder
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Install database migration tools
 RUN npm install -g prisma
@@ -148,8 +145,9 @@ RUN npm install -g knex
 
 # Install database clients
 RUN apk add --no-cache \
-    postgresql-client \
-    mysql-client
+    bash \
+    postgresql17-client \
+    mariadb-client
 
 # Copy migration scripts
 COPY scripts/ /scripts/
@@ -242,6 +240,11 @@ steps:
     args:
       - 'slack'
       - 'Deployed $SHORT_SHA to production successfully'
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/slack-token/versions/latest
+      env: 'SLACK_TOKEN'
 ```
 
 ## Managing Custom Builder Images
@@ -299,7 +302,7 @@ Sometimes you want to use a builder image but with a different command than its 
 # Override the entrypoint of a builder image
 steps:
   # Run bash instead of the default node entrypoint
-  - name: 'node:20'
+  - name: 'node:22'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -309,7 +312,7 @@ steps:
         npm ci && npm test
 
   # Run a specific binary from the Go image
-  - name: 'golang:1.22'
+  - name: 'golang:1.26'
     entrypoint: 'go'
     args: ['test', './...']
 ```
@@ -320,12 +323,12 @@ Keep builder images small. Every build step needs to pull the builder image if i
 
 ```dockerfile
 # Use multi-stage build to keep the final image small
-FROM golang:1.22 AS build
+FROM golang:1.26 AS build
 WORKDIR /src
 COPY . .
 RUN go build -o /tool ./cmd/tool
 
-FROM alpine:3.19
+FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
 COPY --from=build /tool /usr/local/bin/tool
 ENTRYPOINT ["tool"]
@@ -344,7 +347,7 @@ Test your builders. Include a simple smoke test in the builder's own build pipel
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build'
-    args: ['build', '-t', 'my-builder:test', '.']
+    args: ['build', '-t', 'my-builder:test', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/builders/my-builder:latest', '.']
 
   # Smoke test the builder
   - name: 'my-builder:test'
