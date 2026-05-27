@@ -18,7 +18,8 @@ Forks determines the maximum number of worker processes Ansible spawns. Each wor
 # ansible.cfg - Set the forks value
 
 [defaults]
-forks = 5  # Default
+# Default
+forks = 5
 ```
 
 Override on the command line:
@@ -120,7 +121,7 @@ Each fork processes all tasks for its assigned host before picking up a new host
 
 The optimal forks value depends on several factors:
 
-**Control node resources.** Each fork is a process that uses memory and CPU. A typical fork uses 50-100 MB of RAM. With `forks: 50`, you need 2.5-5 GB of RAM on the control node just for Ansible workers.
+**Control node resources.** Each fork is a process that uses memory and CPU. Memory use varies by Ansible version, Python environment, modules, facts, callbacks, and inventory size. Test with your own playbooks before raising `forks` aggressively.
 
 ```bash
 # Check available memory on the control node
@@ -130,7 +131,7 @@ free -h
 watch -n 1 "ps aux | grep ansible | wc -l"
 ```
 
-**Network bandwidth.** If tasks transfer files, more forks means more simultaneous transfers. With `forks: 50` copying a 100 MB file, you need 5 GB of bandwidth simultaneously.
+**Network bandwidth.** If tasks transfer files, more forks means more simultaneous transfers. With `forks: 50` copying a 100 MB file, Ansible may try to transfer up to 5 GB of data across 50 concurrent connections.
 
 **Target infrastructure.** External APIs, databases, and load balancers have concurrency limits. More forks means more concurrent hits.
 
@@ -215,7 +216,7 @@ Measure the impact of different fork values:
 # benchmark-forks.sh - Test different forks values
 for forks in 5 10 20 50; do
     echo "Testing forks=$forks"
-    time ansible-playbook -f $forks site.yml 2>&1 | grep "Playbook run took"
+    /usr/bin/time -p ansible-playbook -f "$forks" site.yml
 done
 ```
 
@@ -230,7 +231,7 @@ forks = 50
 # Enable pipelining (reduces SSH round trips)
 pipelining = True
 # Use ControlMaster for SSH connection reuse
-ssh_args = -o ControlMaster=auto -o ControlPersist=60s
+ssh_args = -C -o ControlMaster=auto -o ControlPersist=60s
 ```
 
 ## Monitoring Fork Usage
