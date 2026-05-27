@@ -46,8 +46,7 @@ az aks nodepool add \
   --node-count 2 \
   --os-type Windows \
   --os-sku Windows2022 \
-  --node-vm-size Standard_D4s_v3 \
-  --kubernetes-version 1.30.0
+  --node-vm-size Standard_D4s_v3
 
 # Verify the nodes are ready
 kubectl get nodes -o wide
@@ -60,36 +59,15 @@ kubectl get nodes -o wide
 # Prepare a Windows Server 2022 node to join a Kubernetes cluster
 
 # Install container runtime (containerd)
-# Download and extract containerd
-$Version = "1.7.11"
-curl.exe -LO "https://github.com/containerd/containerd/releases/download/v$Version/containerd-$Version-windows-amd64.tar.gz"
-tar xvf "containerd-$Version-windows-amd64.tar.gz"
-
-# Create containerd configuration directory
-mkdir -Force "C:\Program Files\containerd"
-Copy-Item -Path ".\bin\*" -Destination "C:\Program Files\containerd\" -Force
-
-# Generate default containerd config
-cd "C:\Program Files\containerd"
-.\containerd.exe config default | Out-File config.toml -Encoding ascii
-
-# Register containerd as a Windows service
-.\containerd.exe --register-service
-Start-Service containerd
+curl.exe -LO https://raw.githubusercontent.com/kubernetes-sigs/sig-windows-tools/master/hostprocess/Install-Containerd.ps1
+.\Install-Containerd.ps1 -ContainerDVersion 1.7.22
 
 # Install kubelet and kubeadm
-$KubeVersion = "1.30.0"
-curl.exe -LO "https://dl.k8s.io/release/v$KubeVersion/bin/windows/amd64/kubelet.exe"
-curl.exe -LO "https://dl.k8s.io/release/v$KubeVersion/bin/windows/amd64/kubeadm.exe"
-curl.exe -LO "https://dl.k8s.io/release/v$KubeVersion/bin/windows/amd64/kubectl.exe"
-
-# Move binaries to a directory in PATH
-mkdir -Force "C:\k"
-Move-Item -Path "*.exe" -Destination "C:\k\" -Force
-$env:Path += ";C:\k"
+curl.exe -LO https://raw.githubusercontent.com/kubernetes-sigs/sig-windows-tools/master/hostprocess/PrepareNode.ps1
+.\PrepareNode.ps1 -KubernetesVersion v1.36.0
 
 # Join the cluster using the token from the Linux control plane
-kubeadm join 10.0.1.10:6443 --token <token> --discovery-token-ca-cert-hash <hash>
+kubeadm join 10.0.1.10:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
 ```
 
 ## Node Labels and Taints
@@ -128,6 +106,8 @@ spec:
       labels:
         app: dotnet-app
     spec:
+      os:
+        name: windows
       # Target Windows nodes using node selector
       nodeSelector:
         kubernetes.io/os: windows
@@ -138,8 +118,8 @@ spec:
           effect: NoSchedule
       containers:
         - name: dotnet-app
-          # Use Windows Server Core base image
-          image: mcr.microsoft.com/dotnet/framework/aspnet:4.8
+          # Use a Windows Server Core base image that matches the node OS
+          image: mcr.microsoft.com/dotnet/framework/aspnet:4.8-windowsservercore-ltsc2022
           ports:
             - containerPort: 80
           resources:
@@ -149,7 +129,7 @@ spec:
             limits:
               cpu: "1"
               memory: "2Gi"
-          # Windows containers use different health check paths
+          # Use the health check path exposed by your application
           readinessProbe:
             httpGet:
               path: /health
@@ -177,7 +157,13 @@ metadata:
   name: fluentd
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: fluentd
   template:
+    metadata:
+      labels:
+        app: fluentd
     spec:
       # Restrict to Linux nodes
       nodeSelector:
@@ -255,6 +241,7 @@ graph TD
     A --> E[Different volume mount behavior]
     A --> F[No Linux-based init containers]
     A --> G[Limited securityContext options]
+    A --> H[HostProcess pods require Windows-specific configuration]
 ```
 
 Key differences to keep in mind:
@@ -263,20 +250,29 @@ Key differences to keep in mind:
 - **No hostNetwork** - Pods cannot share the host network namespace on Windows.
 - **Volume mounts** - Windows uses backslash paths and does not support all Linux volume types.
 - **Container images** - The Windows Server version of the node OS must match the container base image version.
-- **No HostProcess pods** - These are supported only on Windows Server 2019 and later with specific configuration.
+- **HostProcess pods** - These are supported for Windows host administration use cases, but require Windows-specific configuration and are not the same as ordinary process-isolated application containers.
 
 ## Image Version Matching
 
 ```yaml
 # multi-arch-deployment.yaml
-# Use runtime class or node affinity to match OS versions
+# Use a Windows build node selector to match OS versions
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dotnet-app
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dotnet-app
   template:
+    metadata:
+      labels:
+        app: dotnet-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
         # Match the specific Windows build version
