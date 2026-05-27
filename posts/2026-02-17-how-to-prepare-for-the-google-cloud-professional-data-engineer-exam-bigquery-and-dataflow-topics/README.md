@@ -20,7 +20,7 @@ BigQuery separates storage and compute. This is fundamental - you pay for storag
 
 Key implications:
 - You can store petabytes of data cheaply and only pay for the compute when you query it
-- Different teams can query the same data without affecting each other's performance
+- Different teams can query the same data without duplicating it, and reservations can isolate workloads when needed
 - You can use external data sources (Cloud Storage, Bigtable) without importing data
 
 ### Partitioning and Clustering
@@ -30,7 +30,7 @@ This is one of the most tested BigQuery topics. Know the difference:
 **Partitioning** divides a table into segments based on a column value (usually a date). Queries that filter on the partition column only scan relevant partitions.
 
 ```sql
--- Create a partitioned table by ingestion time
+-- Create a table partitioned by the created_at timestamp column
 CREATE TABLE my_dataset.events
 (
   event_id STRING,
@@ -39,7 +39,7 @@ CREATE TABLE my_dataset.events
   event_data JSON,
   created_at TIMESTAMP
 )
-PARTITION BY DATE(created_at)
+PARTITION BY TIMESTAMP_TRUNC(created_at, DAY)
 OPTIONS(
   -- Expire partitions older than 90 days
   partition_expiration_days=90,
@@ -71,7 +71,7 @@ Exam tip: If a question asks how to reduce query costs for a large table, the an
 
 ### Pricing Models
 
-**On-demand pricing**: You pay per TB of data scanned. Good for unpredictable workloads. Currently $6.25 per TB scanned.
+**On-demand pricing**: You pay per TiB of data scanned. Good for unpredictable workloads. Currently $6.25 per TiB scanned in many regions.
 
 **Capacity pricing (editions)**: You buy dedicated compute slots. Good for predictable, heavy workloads. Available as Standard, Enterprise, and Enterprise Plus editions.
 
@@ -92,7 +92,7 @@ SELECT
   DATE(created_at) as event_date,
   user_id,
   COUNT(*) as event_count,
-  COUNT(DISTINCT event_type) as distinct_events
+  APPROX_COUNT_DISTINCT(event_type) as distinct_events
 FROM my_dataset.events
 GROUP BY event_date, user_id;
 ```
@@ -102,9 +102,9 @@ GROUP BY event_date, user_id;
 Know the different ways to get data into BigQuery:
 
 - **Batch loading**: Load from Cloud Storage files (CSV, JSON, Avro, Parquet, ORC). Free for batch loads.
-- **Streaming inserts**: Real-time data ingestion via the streaming API. Charged per row.
+- **Streaming inserts**: Real-time data ingestion via the legacy `tabledata.insertAll` streaming API. Charged by data volume, with successfully inserted rows calculated using a 1 KB minimum.
 - **BigQuery Data Transfer Service**: Scheduled transfers from SaaS applications and other sources.
-- **Storage Write API**: Recommended replacement for streaming inserts with exactly-once semantics.
+- **Storage Write API**: Recommended replacement for streaming inserts. It supports exactly-once write semantics when you use application-created streams and provide stream offsets.
 
 ```bash
 # Load a CSV file from Cloud Storage into BigQuery
@@ -176,7 +176,9 @@ with beam.Pipeline(options=options) as pipeline:
 
 ```python
 # streaming_pipeline.py - Read from Pub/Sub and write to BigQuery
+import json
 import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
 
 options = PipelineOptions([
     '--runner=DataflowRunner',
@@ -199,9 +201,17 @@ with beam.Pipeline(options=options) as pipeline:
         | 'Window' >> beam.WindowInto(
             beam.window.FixedWindows(300)  # 5 minutes
         )
+        | 'PairWithOne' >> beam.Map(lambda row: (row['user_id'], 1))
         | 'CountPerUser' >> beam.CombinePerKey(sum)
+        | 'FormatForBQ' >> beam.Map(
+            lambda user_count: {
+                'user_id': user_count[0],
+                'event_count': user_count[1],
+            }
+        )
         | 'WriteToBQ' >> beam.io.WriteToBigQuery(
             'my_dataset.user_event_counts',
+            schema='user_id:STRING,event_count:INTEGER',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
         )
     )
@@ -286,7 +296,7 @@ Answer: Partition the table by date and add `require_partition_filter=true`. Clu
 
 "Ensure each event is processed exactly once in a streaming pipeline, even if there are retries."
 
-Answer: Use Dataflow with the Pub/Sub I/O connector, which provides exactly-once processing guarantees. Use Dataflow's built-in deduplication with message IDs.
+Answer: Use Dataflow with the Pub/Sub I/O connector, which provides exactly-once processing for pipeline results by default. Rely on Pub/Sub message IDs or a custom ID attribute for source deduplication, and make any external side effects idempotent.
 
 ## Study Tips
 
