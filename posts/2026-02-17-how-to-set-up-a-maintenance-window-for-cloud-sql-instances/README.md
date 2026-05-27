@@ -8,14 +8,14 @@ Description: Learn how to configure maintenance windows for Cloud SQL instances 
 
 ---
 
-Google periodically applies maintenance updates to Cloud SQL instances - things like minor version upgrades, security patches, and infrastructure updates. By default, these can happen at any time, which is fine for development but a problem for production. Setting up a maintenance window lets you control when these updates occur. This guide covers how to configure it, what to expect during maintenance, and how to minimize the impact.
+Google periodically applies maintenance updates to Cloud SQL instances - things like minor version upgrades, security patches, and infrastructure updates. If you do not set a maintenance window, Cloud SQL uses its default maintenance windows, which might not match your application's lowest-traffic period. Setting up a maintenance window lets you control when these updates occur. This guide covers how to configure it, what to expect during maintenance, and how to minimize the impact.
 
 ## What Happens During Maintenance
 
 During a maintenance event, Google updates the underlying infrastructure or database software. Here is what typically happens:
 
-1. The instance becomes unavailable briefly (usually 1-5 minutes for a non-HA instance)
-2. For HA instances, a failover occurs to the standby, which reduces downtime to seconds
+1. The instance becomes unavailable briefly while Cloud SQL moves it to updated infrastructure
+2. For Cloud SQL Enterprise edition instances, connectivity loss is typically less than 30 seconds on average; Cloud SQL Enterprise Plus edition can provide sub-second downtime for planned maintenance
 3. The instance restarts with the updated software
 4. Existing connections are dropped and must be re-established
 
@@ -25,7 +25,7 @@ Maintenance is mandatory - you cannot skip it indefinitely. What you can control
 
 Cloud SQL has two maintenance categories:
 
-**Scheduled maintenance** includes planned updates like minor database version upgrades and security patches. These respect your maintenance window.
+**Scheduled maintenance** includes planned updates like minor database version upgrades and security patches. These respect your maintenance window unless the update is time-sensitive.
 
 **Emergency maintenance** is for critical security fixes that cannot wait. These are rare but can happen outside your maintenance window.
 
@@ -33,7 +33,7 @@ Cloud SQL has two maintenance categories:
 
 ### Using gcloud CLI
 
-Set a maintenance window to occur on Sundays at 3 AM:
+Set a maintenance window to occur on Sundays at 3 AM UTC:
 
 ```bash
 # Set the maintenance window to Sunday at 3 AM UTC
@@ -62,7 +62,7 @@ resource "google_sql_database_instance" "main" {
     maintenance_window {
       day          = 7  # Sunday (1=Monday, 7=Sunday)
       hour         = 3  # 3 AM UTC
-      update_track = "stable"  # or "canary"
+      update_track = "stable"  # or "canary" or "week5"
     }
   }
 }
@@ -93,39 +93,50 @@ For a US-focused application, Sunday 3-5 AM UTC (Saturday 10 PM - midnight EST) 
 ```bash
 # Check your instance's recent connection patterns
 # Look at the Cloud Monitoring console for the metric:
-# cloudsql.googleapis.com/database/network/connections
+# MySQL / SQL Server: cloudsql.googleapis.com/database/network/connections
+# PostgreSQL: cloudsql.googleapis.com/database/postgresql/num_backends
 # Find the time with consistently lowest connection counts
 ```
 
 ## Update Tracks
 
-Cloud SQL offers two update tracks:
+Cloud SQL offers three maintenance timing options. In Terraform and the REST API these are called update tracks:
 
-### Stable Track (Default)
+### Stable Track
 
-- Receives updates after they have been validated on the canary track
+- Receives updates in Week 2 of the rollout, after the canary track
 - More conservative - lower risk of issues
 - Recommended for production
 
 ### Canary Track
 
-- Receives updates first, before the stable track
+- Receives updates in Week 1 of the rollout, before the stable track
 - Gets new features and patches sooner
 - Slightly higher risk since updates are newer
 
-Configure the update track:
+### Week 5 Track
+
+- Receives updates in Week 5 of the rollout
+- Gives you more time after the maintenance notification to prepare
+- Useful for production environments that need a longer validation period
+
+Configure the maintenance timing with gcloud:
 
 ```bash
-# Set the update track to stable (recommended for production)
+# Set the maintenance timing to production / Week 2 (recommended for production)
 gcloud sql instances patch my-instance \
     --maintenance-release-channel=production
 
-# Or use the preview channel to get updates sooner
+# Or use the preview / Week 1 channel to get updates sooner
 gcloud sql instances patch my-instance \
     --maintenance-release-channel=preview
+
+# Or use Week 5 to receive updates later in the rollout
+gcloud sql instances patch my-instance \
+    --maintenance-release-channel=week5
 ```
 
-For most production databases, stick with the stable track. Use canary only for staging or development environments where you want to validate updates before they hit production.
+For most production databases, use production / stable timing. Use preview / canary for staging or development environments where you want to validate updates before they hit production.
 
 ## Maintenance Denial Periods
 
@@ -146,15 +157,15 @@ Deny periods can be up to 90 days. Use them sparingly - delaying maintenance too
 
 ### Enable High Availability
 
-HA instances experience much less downtime during maintenance. The update is applied to the standby first, then a failover occurs:
+High availability helps protect against zonal and instance failures, and is still recommended for production databases. For planned maintenance downtime, the edition matters: Cloud SQL Enterprise edition instances typically lose connectivity for less than 30 seconds on average, while Enterprise Plus edition supports near-zero downtime planned maintenance.
 
 ```bash
-# Enable HA to reduce maintenance downtime
+# Enable HA for regional availability
 gcloud sql instances patch my-instance \
     --availability-type=REGIONAL
 ```
 
-With HA, maintenance downtime drops from minutes to seconds.
+Applications should still be prepared for dropped connections during maintenance and failover events.
 
 ### Implement Connection Retry Logic
 
@@ -228,17 +239,18 @@ gcloud sql instances describe my-instance \
 
 ### Set Up Notifications
 
-Configure notification channels to get alerts before maintenance occurs:
+Opt in to notifications and check upcoming maintenance before it occurs:
 
 ```bash
-# Cloud SQL sends maintenance notifications via Cloud Logging
-# Create a log-based alert for maintenance events
+# Maintenance notifications are email opt-in.
+# You can also view upcoming maintenance events in Logs Explorer
+# by selecting the maintenance-events log name.
 gcloud logging read \
-    'resource.type="cloudsql_database" AND protoPayload.methodName="cloudsql.instances.update" AND protoPayload.metadata.@type="type.googleapis.com/google.cloud.sql.audit.v1.SqlAdminAuditLog"' \
+    'logName:"maintenance-events" AND resource.type="cloudsql_database"' \
     --limit=10
 ```
 
-You can also subscribe to Cloud SQL maintenance notifications in the Google Cloud Console under your instance's settings.
+You can opt in to Cloud SQL maintenance emails from the Google Cloud Console Communication page. Each user who needs email notifications must opt in separately, and the instance must have a maintenance window.
 
 ### Review Past Maintenance
 
@@ -254,31 +266,32 @@ gcloud sql operations list \
 
 ## Maintenance for Read Replicas
 
-Read replicas have their own maintenance windows. They are updated independently of the primary:
+Cloud SQL maintains read replicas before the primary instance. If the primary has a maintenance window, read replicas observe the same maintenance window:
 
 ```bash
-# Set maintenance window for a read replica
+# Set a maintenance window for a read replica instance
 gcloud sql instances patch my-replica-1 \
     --maintenance-window-day=SUN \
     --maintenance-window-hour=4
 ```
 
-Stagger replica maintenance windows so that not all replicas go down at the same time. If you have three replicas, schedule them an hour apart:
+If a primary has multiple read replicas, Cloud SQL might update some of the replicas at the same time. Do not rely on staggered replica windows to guarantee that only one replica is maintained at once; make sure the application can tolerate individual replica unavailability.
 
 ```bash
-# Stagger maintenance windows across replicas
-gcloud sql instances patch replica-1 --maintenance-window-day=SUN --maintenance-window-hour=2
-gcloud sql instances patch replica-2 --maintenance-window-day=SUN --maintenance-window-hour=3
-gcloud sql instances patch replica-3 --maintenance-window-day=SUN --maintenance-window-hour=4
+# Check recent maintenance operations
+gcloud sql operations list \
+    --instance=my-instance \
+    --filter="operationType=MAINTENANCE" \
+    --limit=10
 ```
 
 ## Maintenance Window Best Practices
 
-1. **Always set a maintenance window for production instances**. Do not leave it at the default "any time" setting.
+1. **Always set a maintenance window for production instances**. Do not rely on the default maintenance windows.
 
-2. **Use the stable update track** for production databases. Let canary track catch issues first.
+2. **Use production / stable maintenance timing** for production databases. Let preview / canary environments catch issues first.
 
-3. **Enable HA** if maintenance downtime is unacceptable. The failover during maintenance is nearly seamless.
+3. **Enable HA** for production availability. Still plan for maintenance-related connection drops.
 
 4. **Test maintenance behavior in staging** by triggering a manual restart during your maintenance window.
 
@@ -286,8 +299,8 @@ gcloud sql instances patch replica-3 --maintenance-window-day=SUN --maintenance-
 
 6. **Plan for maintenance in your SLO budget**. Cloud SQL maintenance is predictable, so factor it into your availability calculations.
 
-7. **Stagger windows across related instances**. Primary and replicas should not have overlapping maintenance windows.
+7. **Avoid overlapping windows across unrelated critical instances**. Primary read replicas observe the primary instance's maintenance window.
 
 ## Summary
 
-Setting up a maintenance window for Cloud SQL is a simple configuration change that gives you control over when updates happen. Pick a low-traffic time, use the stable update track, enable HA to minimize downtime, and make sure your application has retry logic for connection drops. Maintenance is inevitable, but with the right setup, it should be invisible to your users.
+Setting up a maintenance window for Cloud SQL is a simple configuration change that gives you control over when updates happen. Pick a low-traffic time, use production / stable maintenance timing, enable HA for production availability, and make sure your application has retry logic for connection drops. Maintenance is inevitable, but with the right setup, it should be invisible to your users.
