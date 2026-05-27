@@ -26,16 +26,17 @@ Here is how to create an uptime check using the gcloud CLI:
 # Create an HTTPS uptime check for your production website
 
 gcloud monitoring uptime create \
-  --display-name="Production Website - HTTPS" \
-  --monitored-resource-type="uptime-url" \
-  --hostname="www.example.com" \
+  "Production Website - HTTPS" \
+  --resource-type=uptime-url \
+  --resource-labels=host=www.example.com,project_id=my-project \
   --path="/" \
   --port=443 \
-  --protocol=HTTPS \
-  --period=60 \
-  --timeout=10s \
-  --content-type=UNSPECIFIED \
-  --checker-regions=USA,EUROPE,SOUTH_AMERICA,ASIA_PACIFIC \
+  --protocol=https \
+  --validate-ssl=true \
+  --period=1 \
+  --timeout=10 \
+  --content-type=unspecified \
+  --regions=usa-iowa,usa-oregon,usa-virginia,europe,asia-pacific,south-america \
   --project=my-project
 ```
 
@@ -58,21 +59,20 @@ def create_uptime_check(project_id, display_name, hostname, path="/"):
     config.display_name = display_name
 
     # Set the monitored resource
-    config.monitored_resource = monitoring_v3.MonitoredResource()
-    config.monitored_resource.type = "uptime_url"
-    config.monitored_resource.labels = {
-        "project_id": project_id,
-        "host": hostname,
+    config.monitored_resource = {
+        "type": "uptime_url",
+        "labels": {
+            "host": hostname,
+        },
     }
 
     # Configure the HTTP check
-    config.http_check = monitoring_v3.UptimeCheckConfig.HttpCheck()
-    config.http_check.path = path
-    config.http_check.port = 443
-    config.http_check.use_ssl = True
-
-    # Validate the SSL certificate
-    config.http_check.validate_ssl = True
+    config.http_check = {
+        "path": path,
+        "port": 443,
+        "use_ssl": True,
+        "validate_ssl": True,
+    }
 
     # Set accepted response codes
     config.http_check.accepted_response_status_codes = [
@@ -122,17 +122,42 @@ When you enable SSL validation on an uptime check, Cloud Monitoring tracks the `
 
 ```bash
 # Alert when SSL certificate expires within 30 days
-gcloud alpha monitoring policies create \
-  --display-name="SSL Certificate Expiring Soon" \
-  --condition-display-name="SSL cert expires within 30 days" \
-  --condition-filter='metric.type="monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires" AND resource.type="uptime_url"' \
-  --condition-threshold-value=2592000 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=600s \
-  --condition-threshold-aggregation-alignment-period=300s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_NEXT_OLDER \
-  --notification-channels=projects/my-project/notificationChannels/12345 \
-  --documentation-content="An SSL certificate is expiring within 30 days. Renew it immediately." \
+cat > ssl-cert-expiring-30-days.json <<'EOF'
+{
+  "displayName": "SSL Certificate Expiring Soon",
+  "documentation": {
+    "content": "An SSL certificate is expiring within 30 days. Renew it immediately.",
+    "mimeType": "text/markdown"
+  },
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/12345"
+  ],
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "SSL cert expires within 30 days",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\" AND resource.type=\"uptime_url\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 30,
+        "duration": "600s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ]
+}
+EOF
+
+gcloud monitoring policies create \
+  --policy-from-file=ssl-cert-expiring-30-days.json \
   --project=my-project
 ```
 
@@ -144,16 +169,38 @@ It is a good practice to set up multiple alerts at different thresholds:
 
 ```bash
 # Critical alert: SSL certificate expires within 7 days
-gcloud alpha monitoring policies create \
-  --display-name="CRITICAL: SSL Certificate Expiring in 7 Days" \
-  --condition-display-name="SSL cert expires within 7 days" \
-  --condition-filter='metric.type="monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires" AND resource.type="uptime_url"' \
-  --condition-threshold-value=604800 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=600s \
-  --condition-threshold-aggregation-alignment-period=300s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_NEXT_OLDER \
-  --notification-channels=projects/my-project/notificationChannels/PAGERDUTY_CHANNEL \
+cat > ssl-cert-expiring-7-days.json <<'EOF'
+{
+  "displayName": "CRITICAL: SSL Certificate Expiring in 7 Days",
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/PAGERDUTY_CHANNEL"
+  ],
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "SSL cert expires within 7 days",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\" AND resource.type=\"uptime_url\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 7,
+        "duration": "600s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ]
+}
+EOF
+
+gcloud monitoring policies create \
+  --policy-from-file=ssl-cert-expiring-7-days.json \
   --project=my-project
 ```
 
@@ -163,17 +210,39 @@ Besides SSL monitoring, configure alerts for actual downtime:
 
 ```bash
 # Alert when uptime check fails from multiple regions
-gcloud alpha monitoring policies create \
-  --display-name="Website Down" \
-  --condition-display-name="Uptime check failing" \
-  --condition-filter='metric.type="monitoring.googleapis.com/uptime_check/check_passed" AND resource.type="uptime_url" AND metric.labels.host="www.example.com"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_LT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation-alignment-period=60s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_NEXT_OLDER \
-  --condition-threshold-aggregation-cross-series-reducer=REDUCE_COUNT_FALSE \
-  --notification-channels=projects/my-project/notificationChannels/12345 \
+cat > website-down.json <<'EOF'
+{
+  "displayName": "Website Down",
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/12345"
+  ],
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Uptime check failing",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND resource.labels.host=\"www.example.com\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1,
+        "duration": "300s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ]
+}
+EOF
+
+gcloud monitoring policies create \
+  --policy-from-file=website-down.json \
   --project=my-project
 ```
 
@@ -208,7 +277,7 @@ Create a dashboard that shows the SSL certificate status for all your monitored 
               }
             ],
             "yAxis": {
-              "label": "Seconds until expiry",
+              "label": "Days until expiry",
               "scale": "LINEAR"
             }
           }
@@ -246,13 +315,12 @@ Create a dashboard that shows the SSL certificate status for all your monitored 
 
 ## Checking Uptime Check Status Programmatically
 
-Build a script that reports on all your uptime checks and their SSL status:
+Build a script that reports on all your uptime checks and their SSL validation settings:
 
 ```python
 def list_uptime_checks_with_ssl_status(project_id):
-    """List all uptime checks and their SSL certificate status."""
+    """List all uptime checks and their SSL validation settings."""
     client = monitoring_v3.UptimeCheckServiceClient()
-    query_client = monitoring_v3.MetricServiceClient()
 
     project_name = f"projects/{project_id}"
 
@@ -276,7 +344,7 @@ You can also configure uptime checks to verify that the response body contains e
 
 ```python
 # Add content matching to the uptime check
-config.http_check.content_matchers = [
+config.content_matchers = [
     monitoring_v3.UptimeCheckConfig.ContentMatcher(
         content="Welcome to Example",
         matcher=monitoring_v3.UptimeCheckConfig.ContentMatcher.ContentMatcherOption.CONTAINS_STRING,
