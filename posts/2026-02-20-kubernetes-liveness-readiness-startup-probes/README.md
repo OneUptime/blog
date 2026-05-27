@@ -31,7 +31,7 @@ graph TD
 
 ## Probe Mechanisms
 
-Kubernetes supports three ways to check health:
+Kubernetes supports four ways to check health:
 
 ### HTTP GET
 
@@ -168,13 +168,14 @@ Your health endpoints should check the right things for each probe type.
 # The readiness endpoint checks dependencies.
 from fastapi import FastAPI, Response
 import asyncpg
-import aioredis
+import redis.asyncio as redis
+from typing import Optional
 
 app = FastAPI()
 
 # Global connection references
-db_pool = None
-redis_client = None
+db_pool: Optional[asyncpg.Pool] = None
+redis_client: Optional[redis.Redis] = None
 
 @app.get("/healthz")
 async def liveness():
@@ -194,6 +195,8 @@ async def readiness(response: Response):
 
     # Check database connectivity
     try:
+        if db_pool is None:
+            raise RuntimeError("database pool is not initialized")
         async with db_pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
         checks["database"] = "ok"
@@ -203,6 +206,8 @@ async def readiness(response: Response):
 
     # Check Redis connectivity
     try:
+        if redis_client is None:
+            raise RuntimeError("Redis client is not initialized")
         await redis_client.ping()
         checks["redis"] = "ok"
     except Exception as e:
