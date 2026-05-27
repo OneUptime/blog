@@ -46,8 +46,8 @@ rails db:create
 Rails generators scaffold out models, controllers, and migrations in one command.
 
 ```bash
-# Generate a Post resource with title and body fields
-rails generate scaffold Post title:string body:text published:boolean
+# Generate a Post resource with title, body, published, and user fields
+rails generate scaffold Post title:string body:text published:boolean user:references
 
 # Run the migration
 rails db:migrate
@@ -76,6 +76,11 @@ end
 ## Building the Controller
 
 Here is a well-structured API controller with proper error handling:
+
+```ruby
+# Gemfile
+gem 'kaminari'
+```
 
 ```ruby
 # app/controllers/api/v1/posts_controller.rb
@@ -180,7 +185,7 @@ class PostSerializer
   attributes :title, :body, :published, :created_at, :updated_at
 
   # Include the author relationship
-  belongs_to :user, serializer: UserSerializer
+  belongs_to :user
 
   # Add a computed attribute for reading time
   attribute :reading_time do |post|
@@ -196,6 +201,11 @@ end
 Secure your API with JSON Web Tokens:
 
 ```ruby
+# Gemfile
+gem 'jwt'
+```
+
+```ruby
 # app/controllers/concerns/authenticatable.rb
 module Authenticatable
   extend ActiveSupport::Concern
@@ -207,7 +217,7 @@ module Authenticatable
 
     begin
       # Decode the token using the application secret
-      decoded = JWT.decode(token, Rails.application.credentials.secret_key_base, true, algorithm: 'HS256')
+      decoded = JWT.decode(token, Rails.application.secret_key_base, true, algorithm: 'HS256')
       @current_user = User.find(decoded[0]['user_id'])
     rescue JWT::DecodeError, ActiveRecord::RecordNotFound
       render json: { error: 'Unauthorized' }, status: :unauthorized
@@ -226,7 +236,7 @@ end
 sequenceDiagram
     participant C as Client
     participant R as Router
-    participant A as Auth Middleware
+    participant A as Auth Concern
     participant Ctrl as Controller
     participant M as Model
 
@@ -341,6 +351,11 @@ end
 ## Rate Limiting
 
 Add rate limiting with the `rack-attack` gem:
+
+```ruby
+# Gemfile
+gem 'rack-attack'
+```
 
 ```ruby
 # config/initializers/rack_attack.rb
