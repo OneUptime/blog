@@ -10,23 +10,26 @@ Description: Learn how to use Google Cloud Data Catalog to search, discover, and
 
 Finding the right data in a large organization is surprisingly hard. You know the data exists somewhere - a table with customer purchase history, a dataset of server metrics, a view that joins orders with shipments. But which project is it in? What is the table called? Is it still being updated? Who can tell you what the columns mean?
 
-Google Cloud Data Catalog is built to solve this problem. It automatically catalogs data assets across your GCP projects and provides a unified search interface to find them. Think of it as a search engine for your data. You type what you are looking for, and it returns matching tables, datasets, views, and other data assets with their metadata.
+Google Cloud Data Catalog was built to solve this problem. It automatically catalogs data assets across your GCP projects and provides a unified search interface to find them. Think of it as a search engine for your data. You type what you are looking for, and it returns matching tables, datasets, views, and other data assets with their metadata.
+
+Note: Data Catalog is deprecated and is scheduled to be discontinued on June 1, 2026. For new deployments, use Knowledge Catalog (formerly Dataplex Universal Catalog); use the Data Catalog examples below only for existing Data Catalog environments during the transition.
 
 ## What Data Catalog Discovers Automatically
 
 Data Catalog automatically indexes metadata from several GCP services:
 
-- **BigQuery**: Tables, views, datasets, routines
-- **Pub/Sub**: Topics and subscriptions
-- **Cloud Storage**: Buckets (with Dataplex integration)
-- **Cloud Spanner**: Databases and tables
-- **Cloud Bigtable**: Instances and tables
+- **BigQuery**: Datasets, tables, views, and models
+- **Pub/Sub**: Data streams
+- **Cloud Spanner**: Instances, databases, tables, and views
+- **Cloud Bigtable**: Instances and tables, including column family details
+- **Dataproc Metastore**: Services, databases, and tables
+- **Vertex AI**: Models, datasets, and Feature Store resources
 
-For BigQuery, the indexing includes table schemas (column names, types, descriptions), dataset metadata, and access policies. This happens automatically - you do not need to set up any crawlers or sync jobs.
+For BigQuery, the indexing includes table schemas (column names, types, descriptions), dataset metadata, labels, and other source metadata. This happens automatically - you do not need to set up any crawlers or sync jobs.
 
 ## Searching with the Console
 
-The simplest way to search is through the Google Cloud Console. Navigate to Data Catalog and use the search bar at the top. You can search by:
+The simplest way to search is through the Google Cloud Console. Go to the Knowledge Catalog Search page, select Data Catalog as the search mode, and use the search bar at the top. You can search by:
 
 - Table or dataset name
 - Column name
@@ -93,13 +96,13 @@ search_data_assets(query="orders")
 
 ```python
 # Only search BigQuery tables
-search_data_assets(query="type=TABLE orders")
+search_data_assets(query="type=table orders")
 
 # Only search BigQuery datasets
-search_data_assets(query="type=DATASET analytics")
+search_data_assets(query="type=dataset analytics")
 
 # Only search BigQuery views
-search_data_assets(query="type=TABLE_VIEW customer_summary")
+search_data_assets(query="type=view customer_summary")
 ```
 
 ### Filter by Project or Dataset
@@ -109,7 +112,7 @@ search_data_assets(query="type=TABLE_VIEW customer_summary")
 search_data_assets(query="projectid:analytics-prod orders")
 
 # Search within a specific dataset
-search_data_assets(query="parent:projects/analytics-prod/datasets/warehouse orders")
+search_data_assets(query="parent:analytics-prod.warehouse orders")
 ```
 
 ### Search by Column Name
@@ -129,7 +132,7 @@ search_data_assets(query="column:email")
 search_data_assets(query="tag:data_classification.sensitivity=RESTRICTED")
 
 # Find tables owned by a specific team
-search_data_assets(query='tag:data_classification.data_owner="analytics-team@company.com"')
+search_data_assets(query="tag:data_classification.data_owner:analytics-team@company.com")
 
 # Find tables that contain PII
 search_data_assets(query="tag:data_classification.contains_pii=true")
@@ -140,7 +143,7 @@ search_data_assets(query="tag:data_classification.contains_pii=true")
 ```python
 # Find RESTRICTED BigQuery tables in the analytics project
 search_data_assets(
-    query="type=TABLE projectid:analytics-prod tag:data_classification.sensitivity=RESTRICTED"
+    query="type=table projectid:analytics-prod tag:data_classification.sensitivity=RESTRICTED"
 )
 ```
 
@@ -188,17 +191,15 @@ from google.cloud import datacatalog_lineage_v1
 
 client = datacatalog_lineage_v1.LineageClient()
 
-# Search for lineage links related to a specific table
-target_resource = (
-    "//bigquery.googleapis.com/projects/my-project"
-    "/datasets/analytics/tables/customer_summary"
-)
+# Search for lineage links related to a specific BigQuery table.
+# Data Lineage API entity references use fully qualified names.
+target_fqn = "bigquery:my-project.analytics.customer_summary"
 
-# List processes that write to this table
+# List upstream links that write to this table
 request = datacatalog_lineage_v1.SearchLinksRequest(
     parent=f"projects/my-project/locations/us-central1",
     target=datacatalog_lineage_v1.EntityReference(
-        fully_qualified_name=target_resource
+        fully_qualified_name=target_fqn
     ),
 )
 
@@ -207,7 +208,7 @@ results = client.search_links(request=request)
 print("Data sources for customer_summary:")
 for link in results:
     print(f"  Source: {link.source.fully_qualified_name}")
-    print(f"  Process: {link.name}")
+    print(f"  Link: {link.name}")
 ```
 
 ## Building a Data Discovery Dashboard
@@ -290,14 +291,19 @@ def table_details(project, dataset, table):
     for tag in tags:
         fields = {}
         for field_id, field in tag.fields.items():
-            if field.string_value:
+            field_kind = datacatalog_v1.TagField.pb(field).WhichOneof("kind")
+            if field_kind == "string_value":
                 fields[field_id] = field.string_value
-            elif field.enum_value:
+            elif field_kind == "enum_value":
                 fields[field_id] = field.enum_value.display_name
-            elif field.bool_value is not None:
+            elif field_kind == "bool_value":
                 fields[field_id] = field.bool_value
-            elif field.double_value:
+            elif field_kind == "double_value":
                 fields[field_id] = field.double_value
+            elif field_kind == "richtext_value":
+                fields[field_id] = field.richtext_value
+            elif field_kind == "timestamp_value":
+                fields[field_id] = field.timestamp_value.isoformat()
         tag_data.append(fields)
 
     return jsonify({
@@ -349,7 +355,7 @@ project-analytics/
   reporting/     # Aggregated views for dashboards
 ```
 
-This structure makes it easy to search by layer: `projectid:project-analytics parent:raw` finds all raw tables.
+This structure makes it easy to search by layer: `projectid:project-analytics parent:project-analytics.raw` finds all raw tables.
 
 ## IAM for Data Catalog
 
