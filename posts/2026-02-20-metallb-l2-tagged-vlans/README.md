@@ -161,7 +161,7 @@ kubectl apply -f metallb-pools.yaml
 
 ## Step 4: Create L2Advertisements with Interface Selectors
 
-This is the key step. Each L2Advertisement binds an IP pool to a specific VLAN interface using the `interfaces` field. Without this, MetalLB would announce the IPs on all interfaces, which breaks VLAN isolation.
+This is the key step. Each L2Advertisement binds an IP pool to a specific VLAN interface using the `interfaces` field. Without this, MetalLB advertises from all interfaces on the host; constraining the interface keeps the VLAN-specific intent explicit.
 
 ```yaml
 # metallb-l2-vlans.yaml
@@ -213,7 +213,7 @@ metadata:
   name: my-production-app
   annotations:
     # Allocate an IP from prod-pool, reachable only on VLAN 100
-    metallb.universe.tf/address-pool: prod-pool
+    metallb.io/address-pool: prod-pool
 spec:
   type: LoadBalancer
   selector:
