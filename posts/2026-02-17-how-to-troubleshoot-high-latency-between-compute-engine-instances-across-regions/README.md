@@ -64,7 +64,7 @@ curl -o /dev/null -s -w "time_connect: %{time_connect}s\ntime_starttransfer: %{t
 
 ```bash
 # Measure full HTTP request/response cycle
-curl -o /dev/null -s -w "DNS: %{time_namelookup}s\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTTFB: %{time_starttransfer}s\nTotal: %{time_total}s\n" https://<remote-instance-ip>/api/health
+curl -o /dev/null -s -w "DNS: %{time_namelookup}s\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTTFB: %{time_starttransfer}s\nTotal: %{time_total}s\n" https://<remote-hostname>/api/health
 ```
 
 If TCP latency is much higher than ICMP latency, the issue is likely at the application or load balancer level, not the network.
@@ -82,22 +82,22 @@ sudo mtr -n -c 50 --report <remote-instance-ip>
 
 MTR output shows you packet loss and latency at each hop. Look for:
 - Large latency jumps between specific hops (indicates that hop is adding delay)
-- Packet loss at intermediate hops (might indicate congestion)
+- Packet loss that continues to the destination (loss shown only at intermediate hops can be ICMP rate limiting)
 - Unexpected routing through external networks
 
 ## Step 3: Check If Traffic Is Taking an Unexpected Route
 
-Within Google Cloud, traffic between instances should stay on Google's private network. But misconfigurations can cause traffic to exit to the public internet and come back in.
+Within Google Cloud, traffic between instances using internal IP addresses in the same VPC or peered VPCs is routed within the VPC network. But if you use external IP addresses, the network tier and routing path matter.
 
 ```bash
-# Check if the instance is using Premium or Standard network tier
+# Check if the instance's external IP is using Premium or Standard network tier
 gcloud compute instances describe my-instance \
     --zone=us-central1-a \
     --format="json(networkInterfaces[0].accessConfigs[0].networkTier)" \
     --project=my-project
 ```
 
-Premium tier routes traffic over Google's private backbone. Standard tier uses the public internet for cross-region traffic, which adds latency.
+For external IP traffic, Premium tier routes traffic over Google's private backbone for as much of the path as possible. Standard tier normally sends outbound traffic out of Google's network from the same region as the VM, which can add latency for cross-region or internet paths.
 
 ```bash
 # Ensure Premium tier is used (check at the project level)
@@ -127,7 +127,7 @@ gcloud compute vpn-tunnels list \
     --format="table(name, region, status, peerIp)"
 ```
 
-VPN tunnels add encryption overhead and route through VPN gateways, which can add 2-10ms of latency. If low latency is critical, consider using VPC peering or Shared VPC instead of VPN.
+VPN tunnels add IPsec encapsulation and encryption overhead and route through VPN gateways. If low latency is critical for VM-to-VM traffic, consider using VPC peering or Shared VPC instead of VPN.
 
 ## Step 5: Check Instance-Level Issues
 
@@ -135,11 +135,15 @@ High CPU or network saturation on either instance can increase latency.
 
 ```bash
 # Check network throughput on the instance
-gcloud monitoring time-series list \
-    --filter='resource.type="gce_instance" AND resource.labels.instance_id="1234567890" AND metric.type="compute.googleapis.com/instance/network/sent_bytes_count"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-    --format="table(points.value.int64Value, points.interval.endTime)" \
-    --project=my-project
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -G \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    --data-urlencode 'filter=resource.type="gce_instance" AND resource.labels.instance_id="1234567890" AND metric.type="compute.googleapis.com/instance/network/sent_bytes_count"' \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries"
 ```
 
 Check if the instance is hitting its network bandwidth limit. Each machine type has a maximum egress bandwidth:
@@ -153,11 +157,15 @@ If you are saturating the network interface, latency will increase significantly
 
 ```bash
 # Check CPU utilization - high CPU can cause network processing delays
-gcloud monitoring time-series list \
-    --filter='resource.type="gce_instance" AND resource.labels.instance_id="1234567890" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
-    --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-    --format="table(points.value.doubleValue)" \
-    --project=my-project
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -G \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    --data-urlencode 'filter=resource.type="gce_instance" AND resource.labels.instance_id="1234567890" AND metric.type="compute.googleapis.com/instance/cpu/utilization"' \
+    --data-urlencode "interval.startTime=${START_TIME}" \
+    --data-urlencode "interval.endTime=${END_TIME}" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries"
 ```
 
 ## Step 6: Optimize for Low Latency
@@ -169,7 +177,7 @@ If both instances can be in the same region, use placement policies:
 ```bash
 # Create a compact placement policy
 gcloud compute resource-policies create group-placement low-latency-policy \
-    --collocation=COLLOCATED \
+    --collocation=collocated \
     --region=us-central1 \
     --project=my-project
 ```
@@ -209,14 +217,13 @@ Set up a synthetic monitoring probe to track cross-region latency over time:
 
 ```bash
 # Use Cloud Monitoring uptime checks for continuous latency measurement
-gcloud monitoring uptime create my-latency-check \
-    --display-name="Cross-region latency check" \
+gcloud monitoring uptime create "Cross-region latency check" \
     --resource-type=gce-instance \
     --resource-labels="project_id=my-project,instance_id=1234567890,zone=europe-west1-b" \
-    --protocol=TCP \
+    --protocol=tcp \
     --port=443 \
-    --timeout=10s \
-    --period=60s \
+    --timeout=10 \
+    --period=1 \
     --project=my-project
 ```
 
