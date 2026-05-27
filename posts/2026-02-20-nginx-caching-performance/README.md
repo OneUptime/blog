@@ -123,7 +123,7 @@ server {
     location / {
         proxy_cache app_cache;
 
-        # Bypass cache for non-GET requests
+        # Cache only GET and HEAD requests
         proxy_cache_methods GET HEAD;
 
         proxy_cache_valid 200 5m;
@@ -133,25 +133,25 @@ server {
 }
 ```
 
-## Cache Bypass and Purging
+## Cache Bypass
 
-Allow certain requests to bypass or refresh the cache.
+Allow certain requests to bypass the cache.
 
 ```nginx
 server {
     listen 80;
     server_name app.example.com;
 
-    # Map to determine when to bypass the cache
+    # Set a variable to determine when to bypass the cache
     # Bypass if the request has a Cache-Control: no-cache header
-    # or if there is a custom X-Purge-Cache header
+    # or if there is a custom X-Bypass-Cache header
     set $bypass_cache 0;
 
     if ($http_cache_control = "no-cache") {
         set $bypass_cache 1;
     }
 
-    if ($http_x_purge_cache) {
+    if ($http_x_bypass_cache) {
         set $bypass_cache 1;
     }
 
@@ -172,11 +172,11 @@ server {
 ```
 
 ```bash
-# Force a cache refresh for a specific URL
+# Bypass the cache for a specific URL
 curl -H "Cache-Control: no-cache" http://app.example.com/api/products
 
-# Use a custom purge header
-curl -H "X-Purge-Cache: true" http://app.example.com/api/products
+# Use a custom bypass header
+curl -H "X-Bypass-Cache: true" http://app.example.com/api/products
 ```
 
 ## Serving Stale Content
@@ -255,7 +255,7 @@ server {
 }
 ```
 
-A 1-second microcache means that under 1000 requests per second, only 1 request actually hits the backend. The other 999 are served from cache.
+A 1-second microcache means that, for the same cache key after the cache is warm, roughly one request per second needs to refresh the cache. Many other requests can be served from cache.
 
 ## Monitoring Cache Performance
 
@@ -266,7 +266,7 @@ Check cache hit rates to verify your configuration is working.
 curl -I http://app.example.com/api/products
 # Look for: X-Cache-Status: HIT
 
-# Count cache hits vs misses from access logs
+# Count cache hits vs misses if your log format writes cache status as the final field
 awk '{print $NF}' /var/log/nginx/access.log | sort | uniq -c | sort -rn
 
 # Check cache directory disk usage
