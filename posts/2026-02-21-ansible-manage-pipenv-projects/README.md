@@ -86,17 +86,21 @@ First, install the required system packages:
       become_user: "{{ app_user }}"
       notify: restart application
 
-    - name: Create virtual environment
+    - name: Install Pipenv
       ansible.builtin.pip:
-        virtualenv: "{{ app_dir }}/venv"
+        virtualenv: "{{ app_dir }}/pipenv-venv"
         virtualenv_command: python3 -m venv
-        name: pip
-        state: latest
+        name: pipenv
+        state: present
 
-    - name: Install application dependencies
-      ansible.builtin.pip:
-        virtualenv: "{{ app_dir }}/venv"
-        requirements: "{{ app_dir }}/src/requirements.txt"
+    - name: Install application dependencies from Pipfile.lock
+      ansible.builtin.command:
+        cmd: "{{ app_dir }}/pipenv-venv/bin/pipenv install --deploy"
+        chdir: "{{ app_dir }}/src"
+      environment:
+        PIPENV_VENV_IN_PROJECT: "1"
+        PIPENV_IGNORE_VIRTUALENVS: "1"
+      become_user: "{{ app_user }}"
       notify: restart application
 
     - name: Deploy environment configuration
@@ -124,7 +128,7 @@ First, install the required system packages:
           Group={{ app_user }}
           WorkingDirectory={{ app_dir }}/src
           EnvironmentFile={{ app_dir }}/.env
-          ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}.main
+          ExecStart={{ app_dir }}/src/.venv/bin/python -m {{ app_name }}.main
           Restart=always
           RestartSec=5
 
@@ -229,16 +233,16 @@ ansible-playbook -i inventory/hosts deploy.yml --limit app01
 
 ## Summary
 
-This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. Each task is idempotent and can be run repeatedly. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
+This playbook provides a complete deployment pipeline: system preparation, code deployment, virtual environment management, service configuration, and reverse proxy setup. The Ansible module tasks are idempotent, and the Pipenv installation step can be run repeatedly against the committed `Pipfile.lock`. Extend it with additional steps like database migrations, cache warming, or load balancer integration based on your specific application requirements.
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where these patterns prove essential in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow incorporating these patterns
 - name: Infrastructure provisioning
   hosts: all
   become: true
@@ -352,7 +356,7 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling with these patterns
 - name: Robust task execution
   hosts: all
   tasks:
@@ -414,4 +418,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
