@@ -54,7 +54,7 @@ logrotate-setup/
 ```yaml
 # group_vars/all.yml
 
-log_retention_days: 14
+log_rotate_count: 14
 log_rotation_frequency: daily  # daily, weekly, monthly
 log_compress: true
 log_max_size: "100M"
@@ -98,6 +98,10 @@ disk_alert_threshold: 85
     state: present
     update_cache: yes
 
+- name: Gather installed package facts
+  package_facts:
+    manager: auto
+
 - name: Deploy Nginx logrotate configuration
   template:
     src: nginx-logrotate.conf.j2
@@ -134,6 +138,14 @@ disk_alert_threshold: 85
     mode: '0755'
   loop: "{{ apps }}"
 
+- name: Ensure script directory exists
+  file:
+    path: /opt/scripts
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Deploy disk space monitoring script
   copy:
     content: |
@@ -162,7 +174,7 @@ disk_alert_threshold: 85
   command: logrotate -d /etc/logrotate.conf
   register: logrotate_test
   changed_when: false
-  failed_when: "'error' in logrotate_test.stderr | lower"
+  failed_when: "'error' in (logrotate_test.stderr | lower)"
 
 - name: Force initial rotation if logs are already large
   command: logrotate -f /etc/logrotate.d/{{ item.name }}
@@ -201,7 +213,7 @@ disk_alert_threshold: 85
 /var/log/apache2/*.log {
     {{ log_rotation_frequency }}
     missingok
-    rotate {{ log_retention_days }}
+    rotate {{ apache_rotate_count | default(log_rotate_count) }}
 {% if log_compress %}
     compress
     delaycompress
@@ -227,7 +239,7 @@ This is the flexible template that works for any application.
 {{ item.log_dir }}/{{ item.log_pattern | default('*.log') }} {
     {{ log_rotation_frequency }}
     missingok
-    rotate {{ item.rotate_count | default(log_retention_days) }}
+    rotate {{ item.rotate_count | default(log_rotate_count) }}
 {% if log_compress %}
     compress
     delaycompress
@@ -271,9 +283,9 @@ This is the flexible template that works for any application.
     create 0640 appuser appuser
     sharedscripts
     postrotate
-        # Send HUP signal to Gunicorn master to reopen log files
+        # Send USR1 signal to Gunicorn master to reopen log files
         if [ -f /run/gunicorn/gunicorn.pid ]; then
-            kill -HUP $(cat /run/gunicorn/gunicorn.pid)
+            kill -USR1 $(cat /run/gunicorn/gunicorn.pid)
         fi
     endscript
 }
@@ -281,7 +293,7 @@ This is the flexible template that works for any application.
 
 ## Size-Based Rotation
 
-Sometimes you want to rotate based on file size rather than time:
+Sometimes you want to cap log file size in addition to the regular time-based schedule:
 
 ```yaml
 # Application that generates large logs
@@ -296,7 +308,7 @@ Sometimes you want to rotate based on file size rather than time:
   create_group: apiuser
 ```
 
-The `maxsize` directive in the logrotate config will rotate the log when it exceeds the specified size, regardless of the time-based schedule.
+The `maxsize` directive in the logrotate config will rotate the log when it exceeds the specified size, even before the next scheduled daily, weekly, or monthly rotation interval.
 
 ## Emergency Log Cleanup
 
