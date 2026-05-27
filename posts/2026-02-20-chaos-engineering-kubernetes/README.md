@@ -56,8 +56,9 @@ Install the chaos experiments for your target namespace:
 
 ```bash
 # Install generic Kubernetes chaos experiments
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/experiments.yaml \
-  -n your-app-namespace
+tar -zxvf <(curl -sL https://github.com/litmuschaos/chaos-charts/archive/3.0.0.tar.gz)
+find chaos-charts-3.0.0 -name experiments.yaml | grep kubernetes | \
+  xargs kubectl apply -n your-app-namespace -f
 ```
 
 ## Pod Delete Experiment
@@ -119,7 +120,7 @@ kubectl get chaosresult pod-delete-test-pod-delete -n your-app-namespace -o yaml
 
 ## Network Chaos Experiment
 
-Simulate network issues: latency, packet loss, and DNS failures.
+Simulate network latency. Litmus also provides separate faults for packet loss and DNS failures.
 
 ```yaml
 # network-chaos-experiment.yaml
@@ -143,7 +144,7 @@ spec:
       spec:
         components:
           env:
-            # Add 200ms of latency to all network traffic
+            # Add 200ms of latency to egress network traffic
             - name: NETWORK_LATENCY
               value: "200"
 
@@ -209,9 +210,9 @@ spec:
       spec:
         components:
           env:
-            # Number of CPU cores to consume
+            # Use 0 when controlling stress with CPU_LOAD
             - name: CPU_CORES
-              value: "2"
+              value: "0"
 
             # Duration in seconds
             - name: TOTAL_CHAOS_DURATION
@@ -277,6 +278,8 @@ spec:
                 type: int
                 criteria: ">="
                 value: "2"
+              source:
+                image: "litmuschaos/k8s:latest"
             runProperties:
               probeTimeout: 10
               interval: 10
@@ -304,6 +307,7 @@ spec:
 
   workflowSpec:
     entrypoint: chaos-test
+    serviceAccountName: argo-chaos
     templates:
       - name: chaos-test
         steps:
@@ -311,12 +315,42 @@ spec:
               template: pod-delete-step
 
       - name: pod-delete-step
+        inputs:
+          artifacts:
+            - name: pod-delete
+              path: /tmp/chaosengine.yaml
+              raw:
+                data: |
+                  apiVersion: litmuschaos.io/v1alpha1
+                  kind: ChaosEngine
+                  metadata:
+                    generateName: pod-delete-test-
+                    namespace: your-app-namespace
+                  spec:
+                    appinfo:
+                      appns: your-app-namespace
+                      applabel: "app=api-server"
+                      appkind: deployment
+                    engineState: active
+                    chaosServiceAccount: litmus-admin
+                    experiments:
+                      - name: pod-delete
+                        spec:
+                          components:
+                            env:
+                              - name: TOTAL_CHAOS_DURATION
+                                value: "30"
+                              - name: CHAOS_INTERVAL
+                                value: "10"
+                              - name: FORCE
+                                value: "false"
+                              - name: PODS_AFFECTED_PERC
+                                value: "50"
         container:
           image: litmuschaos/litmus-checker:latest
-          command: ["./checker"]
           args:
-            - "-name=pod-delete"
-            - "-namespace=your-app-namespace"
+            - "-file=/tmp/chaosengine.yaml"
+            - "-saveName=/tmp/engine-name"
 ```
 
 ```mermaid
