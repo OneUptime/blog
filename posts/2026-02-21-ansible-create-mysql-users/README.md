@@ -15,9 +15,9 @@ This post covers creating MySQL users with Ansible, managing passwords securely,
 ## Prerequisites
 
 ```bash
-# Install the required Ansible collection and Python library
+# Install the Ansible collection on the control node and PyMySQL on hosts that run the modules
 
-ansible-galaxy collection install community.mysql
+ansible-galaxy collection install ansible.mysql
 pip install PyMySQL
 ```
 
@@ -33,7 +33,7 @@ pip install PyMySQL
 
   tasks:
     - name: Create application user
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: myapp_user
         password: "{{ vault_myapp_user_password }}"
         host: "%"
@@ -80,7 +80,7 @@ Most applications need several users with different levels of access.
 
   tasks:
     - name: Create MySQL users
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: "{{ item.name }}"
         password: "{{ item.password }}"
         host: "{{ item.host }}"
@@ -126,7 +126,7 @@ If a user needs to connect from multiple hosts, create separate entries.
 ```yaml
 # Create the same user for multiple source hosts
 - name: Create app user for web servers
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: myapp_user
     password: "{{ vault_myapp_user_password }}"
     host: "{{ item }}"
@@ -143,12 +143,12 @@ If a user needs to connect from multiple hosts, create separate entries.
 
 ## MySQL 8.0 Authentication Plugins
 
-MySQL 8.0 changed the default authentication plugin to `caching_sha2_password`. Some applications still require the older `mysql_native_password` plugin. Here is how to handle this.
+MySQL 8.0 changed the default authentication plugin to `caching_sha2_password`. Some applications still require the older `mysql_native_password` plugin, which is deprecated in MySQL 8.0.34 and later. Here is how to handle this.
 
 ```yaml
 # Create user with specific authentication plugin
 - name: Create user with mysql_native_password (for legacy app compatibility)
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: legacy_app_user
     password: "{{ vault_legacy_password }}"
     host: "10.0.1.%"
@@ -160,12 +160,13 @@ MySQL 8.0 changed the default authentication plugin to `caching_sha2_password`. 
 
 # Create user with caching_sha2_password (MySQL 8.0 default)
 - name: Create user with caching_sha2_password
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: modern_app_user
-    password: "{{ vault_modern_password }}"
     host: "10.0.1.%"
     priv: "myapp_production.*:SELECT,INSERT,UPDATE,DELETE"
     plugin: caching_sha2_password
+    plugin_auth_string: "{{ vault_modern_password }}"
+    salt: "{{ vault_modern_password_salt }}"
     state: present
     login_unix_socket: /var/run/mysqld/mysqld.sock
   no_log: true
@@ -187,6 +188,8 @@ vault_myapp_user_password: "AppUs3rS3cure#"
 vault_myapp_readonly_password: "R3adOnlyP@ss99"
 vault_myapp_backup_password: "B@ckupS3cret!"
 vault_myapp_monitoring_password: "M0n1torP@ss!"
+vault_modern_password: "M0dernS3cure#"
+vault_modern_password_salt: "1234567890abcdefghij"
 ```
 
 ## User Creation Role
@@ -196,12 +199,14 @@ vault_myapp_monitoring_password: "M0n1torP@ss!"
 # Reusable role for MySQL user management
 ---
 - name: Create MySQL users
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ item.name }}"
-    password: "{{ item.password }}"
+    password: "{{ item.password | default(omit) }}"
     host: "{{ item.host | default('%') }}"
     priv: "{{ item.priv | default(omit) }}"
     plugin: "{{ item.plugin | default(omit) }}"
+    plugin_auth_string: "{{ item.plugin_auth_string | default(omit) }}"
+    salt: "{{ item.salt | default(omit) }}"
     resource_limits: "{{ item.resource_limits | default(omit) }}"
     state: "{{ item.state | default('present') }}"
     login_unix_socket: "{{ mysql_socket }}"
@@ -209,7 +214,7 @@ vault_myapp_monitoring_password: "M0n1torP@ss!"
   no_log: true
 
 - name: Verify users were created
-  community.mysql.mysql_query:
+  ansible.mysql.mysql_query:
     query: "SELECT user, host, plugin FROM mysql.user WHERE user = %s"
     positional_args:
       - "{{ item.name }}"
@@ -226,7 +231,7 @@ MySQL lets you limit resources per user to prevent any single user from consumin
 ```yaml
 # Create user with resource limits
 - name: Create user with resource restrictions
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: reporting_user
     password: "{{ vault_reporting_password }}"
     host: "10.0.%"
@@ -265,7 +270,7 @@ flowchart TD
 
   tasks:
     - name: Update user password
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: myapp_user
         password: "{{ new_myapp_user_password }}"
         host: "10.0.1.%"
@@ -273,12 +278,13 @@ flowchart TD
         login_unix_socket: /var/run/mysqld/mysqld.sock
       no_log: true
 
-    - name: Verify new password works
-      community.mysql.mysql_query:
+    - name: Verify new password works from an allowed client host
+      ansible.mysql.mysql_query:
         query: "SELECT 1"
         login_user: myapp_user
         login_password: "{{ new_myapp_user_password }}"
-        login_host: "127.0.0.1"
+        login_host: "{{ mysql_server_host }}"
+      delegate_to: "{{ allowed_mysql_client_host }}"
       register: auth_test
       no_log: true
 
@@ -293,7 +299,7 @@ flowchart TD
 ```yaml
 # Remove a MySQL user safely
 - name: Remove decommissioned user
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: old_user
     host: "%"
     state: absent
@@ -317,4 +323,4 @@ ansible-playbook playbooks/create-mysql-users.yml \
 
 ## Conclusion
 
-Automating MySQL user creation with Ansible ensures consistent user accounts across all your database servers. Define users in variables, encrypt passwords with Ansible Vault, and use the `community.mysql.mysql_user` module for idempotent creation. The combination of host restrictions, authentication plugins, and resource limits gives you fine-grained control over who can connect and what they can do. The `no_log: true` directive keeps sensitive information out of your CI/CD logs. With users defined as code, you have a full audit trail of every access change.
+Automating MySQL user creation with Ansible ensures consistent user accounts across all your database servers. Define users in variables, encrypt passwords with Ansible Vault, and use the `ansible.mysql.mysql_user` module for idempotent creation. The combination of host restrictions, authentication plugins, and resource limits gives you fine-grained control over who can connect and what they can do. The `no_log: true` directive keeps sensitive information out of your CI/CD logs. With users defined as code, you have a full audit trail of every access change.
