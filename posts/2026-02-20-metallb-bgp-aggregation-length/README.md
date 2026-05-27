@@ -150,8 +150,8 @@ spec:
   # MetalLB will advertise 10.50.0.0/24 as a single route
   aggregationLength: 24
 
-  # Optional: set localpref to influence inbound path selection
-  # Higher values are preferred by BGP routers
+  # Optional: set localpref to influence iBGP path selection
+  # Higher values are preferred by routers within the local AS
   localPref: 100
 ```
 
@@ -263,7 +263,7 @@ spec:
     - bgp-pool
   # Summarize to /24
   aggregationLength: 24
-  # Set local preference for path selection
+  # Set local preference for iBGP path selection
   localPref: 200
   # Attach BGP communities to the aggregated route
   # These can be used by upstream routers for policy decisions
