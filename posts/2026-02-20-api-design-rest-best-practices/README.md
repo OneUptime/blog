@@ -211,7 +211,7 @@ def list_users():
     limit = min(int(request.args.get("limit", 20)), 100)  # Cap at 100
 
     # Fetch one extra record to determine if there is a next page
-    users, next_cursor = fetch_users_after_cursor(cursor, limit)
+    users, next_cursor = fetch_users_after_cursor(cursor, limit + 1)
 
     return jsonify({
         "data": users,
