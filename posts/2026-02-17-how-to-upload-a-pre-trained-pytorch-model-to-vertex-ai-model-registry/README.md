@@ -14,7 +14,7 @@ This guide walks through the entire process of preparing a PyTorch model and get
 
 ## Preparing Your PyTorch Model
 
-Before uploading, you need to save your model in a format that the Vertex AI serving container understands. For PyTorch, this means either using TorchScript or saving the model archive using the standard PyTorch save convention.
+Before uploading, you need to save your model in a format that the Vertex AI serving container understands. For PyTorch pre-built prediction containers, this means packaging the model into a TorchServe model archive.
 
 Here is how to save a model using TorchScript, which is the recommended approach for production:
 
@@ -150,14 +150,14 @@ pip install torch-model-archiver
 
 # Create the model archive
 torch-model-archiver \
-  --model-name image-classifier \
+  --model-name model \
   --version 1.0 \
   --serialized-file model.pt \
   --handler handler.py \
   --export-path model-store/ \
   --force
 
-# This creates model-store/image-classifier.mar
+# This creates model-store/model.mar
 ```
 
 ## Uploading Model Artifacts to GCS
@@ -165,11 +165,8 @@ torch-model-archiver \
 Upload the model archive to a GCS bucket:
 
 ```bash
-# Create the GCS directory structure
-gsutil mkdir gs://your-bucket/models/image-classifier/1/
-
 # Upload the model archive file
-gsutil cp model-store/image-classifier.mar gs://your-bucket/models/image-classifier/1/
+gcloud storage cp model-store/model.mar gs://your-bucket/models/image-classifier/1/model.mar
 ```
 
 ## Registering in Vertex AI Model Registry
@@ -194,7 +191,7 @@ model = aiplatform.Model.upload(
     # GCS path containing the model archive
     artifact_uri='gs://your-bucket/models/image-classifier/1/',
     # Pre-built PyTorch serving container
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.2-1:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.2-4:latest',
     # TorchServe specific configuration
     serving_container_environment_variables={
         'TS_DEFAULT_WORKERS_PER_MODEL': '1',
@@ -212,7 +209,7 @@ print(f"Model ID: {model.name}")
 
 ## Alternative: Using the Simple PyTorch Save Format
 
-If you do not want to deal with TorchServe and model archives, you can use a simpler approach with a custom container. Save your model using PyTorch's standard save:
+If you do not want to deal with TorchServe and model archives, you can use a simpler approach with a custom container. Put your `ImageClassifier` class in `model_definition.py`, then save your model using PyTorch's standard save:
 
 ```python
 # simple_save.py
@@ -241,7 +238,7 @@ Then create a simple Flask serving application:
 
 from flask import Flask, request, jsonify
 import torch
-import numpy as np
+from model_definition import ImageClassifier
 
 app = Flask(__name__)
 
@@ -274,6 +271,8 @@ def health():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 ```
+
+When uploading this custom container image to Vertex AI, set `serving_container_predict_route='/predict'`, `serving_container_health_route='/health'`, and `serving_container_ports=[8080]` so Vertex AI sends traffic to the routes defined by the Flask app.
 
 ## Deploying the Registered Model
 
@@ -325,7 +324,7 @@ new_version = aiplatform.Model.upload(
     display_name='image-classifier-pytorch',
     parent_model='projects/your-project-id/locations/us-central1/models/MODEL_ID',
     artifact_uri='gs://your-bucket/models/image-classifier/2/',
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.2-1:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.2-4:latest',
     version_description='Retrained with data augmentation, +3% accuracy improvement',
     labels={
         'framework': 'pytorch',
