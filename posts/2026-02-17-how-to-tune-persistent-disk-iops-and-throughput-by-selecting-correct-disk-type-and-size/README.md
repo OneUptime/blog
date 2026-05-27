@@ -21,7 +21,7 @@ Each disk type has a per-GB rate and a maximum cap:
 | pd-standard | 0.75 | 1.5 | 7,500 | 15,000 | 1,200 MB/s | 400 MB/s |
 | pd-balanced | 6 | 6 | 80,000 | 80,000 | 1,200 MB/s | 1,200 MB/s |
 | pd-ssd | 30 | 30 | 100,000 | 100,000 | 1,200 MB/s | 1,200 MB/s |
-| pd-extreme | Configurable | Configurable | 120,000 | 120,000 | 2,400 MB/s | 2,400 MB/s |
+| pd-extreme | Configurable | Configurable | 120,000 | 120,000 | 4,000 MB/s | 3,000 MB/s |
 
 Note: These numbers are approximate and can vary. Always check the current documentation for exact values.
 
@@ -61,23 +61,31 @@ Compare the results with the expected performance for your disk type and size.
 
 ## Step 2: Calculate the Disk Size You Need for Target IOPS
 
-Given the per-GB rates, you can calculate the minimum disk size to reach your target IOPS.
+Given the per-GB rates, you can calculate the minimum disk size to reach your target IOPS. For pd-balanced and pd-ssd, include the baseline IOPS that Google Cloud provides in addition to the per-GB rate.
 
 For example, if you need 30,000 random read IOPS:
 - pd-standard: 30,000 / 0.75 = 40,000 GB (impractical)
-- pd-balanced: 30,000 / 6 = 5,000 GB
-- pd-ssd: 30,000 / 30 = 1,000 GB
+- pd-balanced: (30,000 - 3,000 baseline) / 6 = 4,500 GB
+- pd-ssd: (30,000 - 6,000 baseline) / 30 = 800 GB
 
 Here is a script to calculate the disk size for your needs:
 
 ```python
 # Calculate minimum disk size for target IOPS
+import math
+
+
 def calc_disk_size(target_iops, disk_type):
     """Calculate minimum disk size in GB for target IOPS."""
     rates = {
         'pd-standard': {'read': 0.75, 'write': 1.5},
         'pd-balanced': {'read': 6, 'write': 6},
         'pd-ssd': {'read': 30, 'write': 30},
+    }
+    baselines = {
+        'pd-standard': {'read': 0, 'write': 0},
+        'pd-balanced': {'read': 3000, 'write': 3000},
+        'pd-ssd': {'read': 6000, 'write': 6000},
     }
     maxes = {
         'pd-standard': {'read': 7500, 'write': 15000},
@@ -93,14 +101,14 @@ def calc_disk_size(target_iops, disk_type):
         if target_iops > maxes[disk_type][op]:
             results[op] = f"Exceeds max ({maxes[disk_type][op]})"
         else:
-            size_gb = target_iops / rates[disk_type][op]
-            results[op] = f"{int(size_gb)} GB"
+            size_gb = max(0, target_iops - baselines[disk_type][op]) / rates[disk_type][op]
+            results[op] = f"{math.ceil(size_gb)} GB"
 
     return results
 
 # Example: Need 30,000 IOPS
 print(calc_disk_size(30000, 'pd-ssd'))
-# Output: {'read': '1000 GB', 'write': '1000 GB'}
+# Output: {'read': '800 GB', 'write': '800 GB'}
 ```
 
 ## Step 3: Choose the Right Disk Type for Your Workload
@@ -150,13 +158,12 @@ gcloud compute disks create high-iops-disk \
     --zone=us-central1-a \
     --type=pd-extreme \
     --size=500GB \
-    --provisioned-iops=50000 \
-    --provisioned-throughput=1200
+    --provisioned-iops=50000
 ```
 
 With pd-extreme, a 500 GB disk can provide 50,000 IOPS, whereas a 500 GB pd-ssd only provides 15,000 IOPS.
 
-Note that pd-extreme is only available on certain machine types (typically N2 and C3 with sufficient vCPUs).
+Note that pd-extreme is only available on certain machine types, including N2, M2, and M3. N2 VMs require at least 64 vCPUs.
 
 ## Step 6: Account for Instance-Level Bandwidth Limits
 
@@ -177,13 +184,13 @@ If your disk can do 1,200 MB/s but your instance only supports 800 MB/s, the ins
 
 ## Step 7: Use Local SSDs for Maximum Performance
 
-If you need the absolute highest IOPS and lowest latency, Local SSDs provide up to 2,400,000 read IOPS per instance (with multiple disks). The tradeoff is that Local SSD data is ephemeral - it is lost when the instance stops.
+If you need the absolute highest IOPS and lowest latency, Local SSDs provide up to millions of read IOPS per instance depending on the machine type and number of disks. The tradeoff is that Local SSD data is ephemeral - by default, it is lost when the instance stops.
 
 ```bash
 # Create an instance with Local SSDs
 gcloud compute instances create high-perf-vm \
     --zone=us-central1-a \
-    --machine-type=c3-standard-44 \
+    --machine-type=m3-ultramem-64 \
     --local-ssd=interface=NVME \
     --local-ssd=interface=NVME \
     --local-ssd=interface=NVME \
@@ -197,7 +204,10 @@ Each Local SSD provides 375 GB and approximately 170,000 read IOPS. Combine them
 ```bash
 # Create a RAID 0 array from Local SSDs for maximum throughput
 sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 \
-    /dev/nvme0n1 /dev/nvme0n2 /dev/nvme0n3 /dev/nvme0n4
+    /dev/disk/by-id/google-local-nvme-ssd-0 \
+    /dev/disk/by-id/google-local-nvme-ssd-1 \
+    /dev/disk/by-id/google-local-nvme-ssd-2 \
+    /dev/disk/by-id/google-local-nvme-ssd-3
 
 # Format and mount
 sudo mkfs.ext4 -F /dev/md0
@@ -221,7 +231,7 @@ gcloud monitoring time-series list \
 Key metrics:
 - `disk/read_ops_count` and `disk/write_ops_count` - IOPS
 - `disk/read_bytes_count` and `disk/write_bytes_count` - Throughput
-- `disk/queue_depth` - I/O queue depth (high values indicate saturation)
+- `disk/average_io_queue_depth` - average I/O queue depth (high values indicate saturation)
 
 ## Performance Decision Guide
 
