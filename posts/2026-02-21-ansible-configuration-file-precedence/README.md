@@ -37,7 +37,7 @@ The key thing to remember is that Ansible uses **one** configuration file, not a
 
 ## Level 1: System-Wide Configuration (/etc/ansible/ansible.cfg)
 
-This file sets defaults for every user on the system. It is created automatically when you install Ansible from a package manager.
+This file sets defaults for every user on the system. Some OS package installations include a default file here, but Ansible can run without it.
 
 ```ini
 # /etc/ansible/ansible.cfg
@@ -94,7 +94,7 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = .cache/facts
 fact_caching_timeout = 1800
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = timer, profile_tasks
 
 [privilege_escalation]
 become = True
@@ -125,7 +125,7 @@ This is the most flexible level because you can switch configurations without ch
 
 ## Individual Setting Overrides with Environment Variables
 
-Beyond the ANSIBLE_CONFIG variable that selects the entire config file, every individual Ansible setting can be overridden with its own environment variable. These override the value from whatever config file is active:
+Beyond the ANSIBLE_CONFIG variable that selects the entire config file, many individual Ansible settings can be overridden with their own environment variable. These override the value from whatever config file is active:
 
 ```bash
 # Override individual settings regardless of which config file is loaded
@@ -136,7 +136,7 @@ export ANSIBLE_STDOUT_CALLBACK=json
 export ANSIBLE_PIPELINING=True
 ```
 
-The naming pattern is `ANSIBLE_` plus the setting name in uppercase. For settings in specific sections, the section name is included, like `ANSIBLE_SSH_ARGS` for `ssh_args` in the `[ssh_connection]` section.
+Many environment variables use `ANSIBLE_` plus a setting name in uppercase, but some names are not a direct conversion from the `ansible.cfg` key. For example, `interpreter_python` uses `ANSIBLE_PYTHON_INTERPRETER`, and `ssh_args` in the `[ssh_connection]` section uses `ANSIBLE_SSH_ARGS`. Check `ansible-config list` or the configuration reference when you are not sure.
 
 ## How to Check Which Config is Active
 
@@ -162,11 +162,11 @@ ansible-config dump
 # Show only settings that differ from the defaults
 ansible-config dump --only-changed
 
-# Show settings and where each value came from
+# Show changed settings with additional verbose output
 ansible-config dump --only-changed -v
 ```
 
-The verbose flag (`-v`) is especially useful because it tells you whether each setting came from the config file, an environment variable, or the default.
+The `ansible-config dump` output includes the current values and their origins, and `--only-changed` is especially useful for narrowing the output to non-default settings.
 
 ## A Practical Multi-Environment Strategy
 
