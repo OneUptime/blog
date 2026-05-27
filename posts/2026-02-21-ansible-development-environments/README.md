@@ -79,11 +79,14 @@ devenv_git_config:
   become: yes
 
 - name: Configure Git global settings
-  git_config:
+  community.general.git_config:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
     scope: global
   loop: "{{ devenv_git_config | dict2items }}"
+
+- name: Configure shell aliases
+  include_tasks: shell.yml
 
 - name: Install Python {{ devenv_python_version }}
   include_tasks: python.yml
@@ -122,16 +125,15 @@ devenv_git_config:
   become: yes
 
 - name: Install common Python tools via pipx
-  command: "pipx install {{ item }}"
+  community.general.pipx:
+    name: "{{ item }}"
+    state: present
   loop:
     - poetry
     - black
     - flake8
     - mypy
     - pre-commit
-  register: pipx_result
-  changed_when: "'installed package' in pipx_result.stdout"
-  failed_when: false
 ```
 
 ## Node.js Setup
@@ -153,7 +155,8 @@ devenv_git_config:
     nvm alias default {{ devenv_node_version }}
   args:
     executable: /bin/bash
-    creates: "{{ devenv_home }}/.nvm/versions/node"
+  register: nvm_node_install
+  changed_when: "'is already installed' not in (nvm_node_install.stdout ~ nvm_node_install.stderr)"
 
 - name: Install global npm packages
   shell: |
@@ -180,6 +183,19 @@ devenv_git_config:
     url: "https://go.dev/dl/go{{ devenv_go_version }}.linux-amd64.tar.gz"
     dest: /tmp/go.tar.gz
   become: yes
+
+- name: Check current Go version
+  command: /usr/local/go/bin/go version
+  register: go_current_version
+  changed_when: false
+  failed_when: false
+
+- name: Remove existing Go installation when version differs
+  file:
+    path: /usr/local/go
+    state: absent
+  become: yes
+  when: go_current_version.rc == 0 and ('go' ~ devenv_go_version) not in go_current_version.stdout
 
 - name: Extract Go to /usr/local
   unarchive:
@@ -261,6 +277,9 @@ devenv_git_config:
 ## Running the Playbook
 
 ```bash
+# Install required community collections
+ansible-galaxy collection install community.general community.docker
+
 # Set up development environment (run as the developer user)
 ansible-playbook -i "localhost," -c local playbook.yml
 
