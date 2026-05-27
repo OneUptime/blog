@@ -52,8 +52,15 @@ groups:
       - alert: OrderServiceCPUSaturation
         expr: |
           (
-            rate(container_cpu_usage_seconds_total{service="order-service"}[5m])
-            / container_spec_cpu_quota{service="order-service"}
+            sum by (service) (
+              rate(container_cpu_usage_seconds_total{service="order-service"}[5m])
+            )
+            /
+            sum by (service) (
+              (container_spec_cpu_quota{service="order-service"} > 0)
+              /
+              container_spec_cpu_period{service="order-service"}
+            )
           ) > 0.85
         for: 10m
         labels:
@@ -184,7 +191,9 @@ groups:
       - alert: CheckoutLatencyHigh
         expr: |
           histogram_quantile(0.95,
-            rate(http_request_duration_seconds_bucket{endpoint="/api/checkout"}[5m])
+            sum by (endpoint, le) (
+              rate(http_request_duration_seconds_bucket{endpoint="/api/checkout"}[5m])
+            )
           ) > 3.0
         for: 5m
         labels:
