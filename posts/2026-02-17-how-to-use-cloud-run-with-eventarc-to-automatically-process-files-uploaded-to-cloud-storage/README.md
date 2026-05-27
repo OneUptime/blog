@@ -51,6 +51,7 @@ gcloud services enable run.googleapis.com \
   eventarc.googleapis.com \
   storage.googleapis.com \
   cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
   logging.googleapis.com
 ```
 
@@ -100,6 +101,7 @@ Here is a Cloud Run service that receives Eventarc events and processes the uplo
 # main.py - Cloud Run service that processes Cloud Storage upload events
 import os
 import json
+from urllib.parse import unquote
 from flask import Flask, request
 from google.cloud import storage
 from cloudevents.http import from_http
@@ -116,8 +118,10 @@ def handle_event():
 
     # Extract file information from the event data
     data = event.data
-    bucket_name = data["resourceName"].split("/")[3]
-    object_name = data["resourceName"].split("objects/")[1]
+    resource_name = data["resourceName"]
+    bucket_and_object = resource_name.split("/buckets/", 1)[1]
+    bucket_name, object_name = bucket_and_object.split("/objects/", 1)
+    object_name = unquote(object_name)
 
     print(f"Processing file: gs://{bucket_name}/{object_name}")
 
@@ -194,6 +198,12 @@ gunicorn==21.2.0
 Build and push the image:
 
 ```bash
+# Create an Artifact Registry repository for the container image
+gcloud artifacts repositories create cloud-run-images \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Cloud Run container images"
+
 # Build and push the file processor image
 gcloud builds submit \
   --tag us-central1-docker.pkg.dev/$(gcloud config get-value project)/cloud-run-images/file-processor:latest
@@ -222,12 +232,12 @@ Eventarc needs a service account with permission to invoke your Cloud Run servic
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) \
   --format='value(projectNumber)')
 
-# Grant the Eventarc service agent the ability to invoke Cloud Run
+# Grant the trigger service account the ability to invoke Cloud Run
 gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
-  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-eventarc.iam.gserviceaccount.com" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/run.invoker"
 
-# Grant the Eventarc service agent the eventReceiver role
+# Grant the trigger service account the eventReceiver role
 gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/eventarc.eventReceiver"
@@ -311,11 +321,10 @@ def is_duplicate(event_id):
 
 ## Error Handling and Retries
 
-If your Cloud Run service returns a non-2xx response, Eventarc will retry the delivery. The default retry period is 24 hours with exponential backoff. Make sure your service returns appropriate status codes:
+If your Cloud Run service does not acknowledge the event with a success response, Eventarc will retry the delivery using Pub/Sub's retry behavior. By default, Pub/Sub retains unacknowledged messages for 7 days and uses exponential backoff, starting at 10 seconds and increasing up to 600 seconds. Make sure your service returns appropriate status codes:
 
-- 200-299: Success, event is acknowledged
-- 400-499: Client error, event will not be retried (except 429)
-- 500-599: Server error, event will be retried
+- 102, 200, 201, 202, or 204: Success, event is acknowledged
+- Any other status code: Negative acknowledgment, event can be retried
 
 ## Summary
 
