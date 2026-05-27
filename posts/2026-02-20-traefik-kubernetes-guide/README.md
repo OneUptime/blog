@@ -52,8 +52,10 @@ helm install traefik traefik/traefik \
   --set providers.kubernetesCRD.enabled=true \
   --set logs.general.level=INFO \
   --set logs.access.enabled=true \
-  --set ports.web.redirectTo.port=websecure \
-  --set ports.websecure.tls.enabled=true
+  --set ports.web.http.redirections.entryPoint.to=websecure \
+  --set ports.web.http.redirections.entryPoint.scheme=https \
+  --set ports.web.http.redirections.entryPoint.permanent=true \
+  --set ports.websecure.http.tls.enabled=true
 ```
 
 ## Configuring TLS with Let's Encrypt
@@ -110,7 +112,7 @@ spec:
         - name: api-service
           port: 8080
           # Use round-robin load balancing
-          strategy: RoundRobin
+          strategy: wrr
       middlewares:
         # Apply rate limiting and security headers
         - name: rate-limit
@@ -179,7 +181,6 @@ spec:
   stripPrefix:
     prefixes:
       - /api
-    forceSlash: false
 ```
 
 ## Request Flow
@@ -260,11 +261,11 @@ spec:
 
 ```yaml
 # ingressroute-healthcheck.yaml
-# Configure health checks so Traefik removes unhealthy backends
+# Configure health checks for an ExternalName backend
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: app-with-healthcheck
+  name: external-app-with-healthcheck
   namespace: production
 spec:
   entryPoints:
@@ -273,7 +274,7 @@ spec:
     - match: Host(`app.example.com`)
       kind: Rule
       services:
-        - name: app-service
+        - name: external-app-service
           port: 8080
           # Health check configuration
           healthCheck:
@@ -296,9 +297,9 @@ graph TD
     F -->|No| G[Default Backend]
     F -->|Yes| H[Apply Middleware Chain]
     H --> I[Forward to Service]
-    I --> J{Health Check Passes?}
-    J -->|Yes| K[Select Pod]
-    J -->|No| L[Try Next Pod]
+    I --> J{Endpoint Available?}
+    J -->|Yes| K[Select Endpoint]
+    J -->|No| L[Try Next Endpoint]
 ```
 
 ## Key Takeaways
@@ -307,6 +308,6 @@ graph TD
 - Enable automatic TLS with Let's Encrypt by configuring a certificate resolver.
 - Use path-based routing with priorities to direct traffic to different backends from a single domain.
 - Implement canary deployments with weighted services, no additional tooling required.
-- Configure health checks on services so Traefik automatically removes unhealthy pods from rotation.
+- Use Kubernetes readiness probes for pod health, and configure Traefik health checks for ExternalName services.
 
 Traefik simplifies ingress management in Kubernetes, but you still need visibility into routing errors, certificate expiration, and backend health. Use [OneUptime](https://oneuptime.com) to monitor your Traefik instances and get alerted before a misconfigured route or an expired certificate causes downtime.
