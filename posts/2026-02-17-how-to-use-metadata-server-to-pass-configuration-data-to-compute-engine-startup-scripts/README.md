@@ -19,7 +19,7 @@ Every Compute Engine instance has access to a metadata server at `http://metadat
 The metadata server provides:
 - Instance-level metadata (name, zone, machine type, network interfaces)
 - Project-level metadata (project ID, project number)
-- Custom metadata that you set (configuration values, feature flags, secrets)
+- Custom metadata that you set (configuration values, feature flags, secret names)
 - Service account tokens (for authenticating to GCP APIs)
 
 ## Setting Custom Metadata
@@ -209,25 +209,31 @@ def watch_metadata(key, last_etag=None):
         params["last_etag"] = last_etag
 
     response = requests.get(url, headers=HEADERS, params=params, timeout=300)
+    if response.status_code == 503:
+        raise requests.exceptions.HTTPError("Metadata server returned 503")
+    response.raise_for_status()
     new_etag = response.headers.get("ETag")
     return response.text, new_etag
 
 
 def main():
     """Continuously watch for configuration changes."""
-    etag = None
+    etag = "0"
     while True:
         try:
             value, etag = watch_metadata("app-version", etag)
             logger.info(f"Configuration changed: app-version = {value}")
             # Trigger application reload here
-            reload_application(value)
         except requests.exceptions.Timeout:
             # No change within timeout, loop and try again
             continue
         except Exception as e:
             logger.error(f"Error watching metadata: {e}")
             time.sleep(10)
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## Updating Metadata on a Running VM
@@ -307,7 +313,7 @@ variable "feature_flags" {
 The metadata server is accessible to any process running on the VM, so be thoughtful about what you store there:
 
 1. **Do not store secrets in metadata.** Use Secret Manager instead. Metadata is visible to anyone who can access the instance.
-2. **Restrict metadata access** by using the metadata concealment feature for GKE nodes.
+2. **Restrict metadata access** by using Workload Identity Federation for GKE if you run workloads on GKE nodes.
 3. **Be aware that metadata is visible** through the `gcloud compute instances describe` command to anyone with the `compute.instances.get` permission.
 4. **Use project-level metadata sparingly** since it applies to all VMs in the project.
 
@@ -317,14 +323,14 @@ For secrets, the pattern looks like this:
 # Store the secret name in metadata, not the secret value
 gcloud compute instances add-metadata my-vm \
     --zone=us-central1-a \
-    --metadata=db-password-secret=projects/my-project/secrets/db-password/versions/latest
+    --metadata=db-password-secret=db-password
 
 # In the startup script, use the metadata to know which secret to fetch
 SECRET_NAME=$(curl -s -H "Metadata-Flavor: Google" \
     http://metadata.google.internal/computeMetadata/v1/instance/attributes/db-password-secret)
 
 # Fetch the actual secret from Secret Manager
-DB_PASSWORD=$(gcloud secrets versions access latest --secret=db-password)
+DB_PASSWORD=$(gcloud secrets versions access latest --secret="$SECRET_NAME")
 ```
 
 ## Wrapping Up
