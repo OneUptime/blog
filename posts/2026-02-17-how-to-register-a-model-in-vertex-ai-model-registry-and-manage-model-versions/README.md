@@ -45,7 +45,7 @@ model = aiplatform.Model.upload(
     # GCS path to your saved model directory
     artifact_uri='gs://your-bucket/models/churn-predictor/v1/',
     # Pre-built serving container for TensorFlow
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-14:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest',
     # Add labels for organization
     labels={
         'team': 'data-science',
@@ -79,7 +79,7 @@ new_version = aiplatform.Model.upload(
     # Reference the parent model's resource name
     parent_model='projects/your-project-id/locations/us-central1/models/MODEL_ID',
     artifact_uri='gs://your-bucket/models/churn-predictor/v2/',
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-14:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest',
     # Version-specific description
     version_description='Improved model with additional features and larger training set',
     labels={
@@ -101,21 +101,26 @@ Version aliases let you tag specific versions with meaningful names like "produc
 # Add aliases to model versions for easy reference
 
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
 
 aiplatform.init(
     project='your-project-id',
     location='us-central1',
 )
 
-# Get the model
-model = aiplatform.Model('projects/your-project-id/locations/us-central1/models/MODEL_ID')
+# Add aliases to a specific version
+client = aiplatform_v1.ModelServiceClient(
+    client_options={'api_endpoint': 'us-central1-aiplatform.googleapis.com'}
+)
+model = client.merge_version_aliases(
+    name='projects/your-project-id/locations/us-central1/models/MODEL_ID@VERSION_ID',
+    version_aliases=['production', 'champion'],
+)
 
-# Add an alias to a specific version
-model.version_aliases = ['production', 'champion']
+print(f"Aliases for version {model.version_id}: {model.version_aliases}")
 
-# You can also reference a model by its alias when deploying
-# This makes it easy to update which version is in production
-# without changing deployment configurations
+# You can also reference a model by its alias in deployment scripts
+# without hard-coding the auto-generated version ID
 ```
 
 ## Listing All Models and Versions
@@ -154,17 +159,20 @@ To list all versions of a specific model:
 # List all versions of a specific model
 
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
 
 aiplatform.init(
     project='your-project-id',
     location='us-central1',
 )
 
-# Get the model
-model = aiplatform.Model('projects/your-project-id/locations/us-central1/models/MODEL_ID')
-
 # List all versions
-versions = model.list_versions()
+client = aiplatform_v1.ModelServiceClient(
+    client_options={'api_endpoint': 'us-central1-aiplatform.googleapis.com'}
+)
+versions = client.list_model_versions(
+    name='projects/your-project-id/locations/us-central1/models/MODEL_ID'
+)
 
 for version in versions:
     print(f"Version: {version.version_id}")
@@ -186,7 +194,7 @@ gcloud ai models list --region=us-central1
 gcloud ai models describe MODEL_ID --region=us-central1
 
 # List versions of a model
-gcloud ai models list-versions MODEL_ID --region=us-central1
+gcloud ai models list-version MODEL_ID --region=us-central1
 
 # Delete a specific model version
 gcloud ai models delete-version MODEL_ID@VERSION_ID --region=us-central1
@@ -204,7 +212,7 @@ sklearn_model = aiplatform.Model.upload(
     display_name='fraud-detector-sklearn',
     artifact_uri='gs://your-bucket/models/fraud-detector/',
     # Use the scikit-learn serving container
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1.3:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-5:latest',
     labels={'framework': 'sklearn'},
 )
 ```
@@ -217,7 +225,7 @@ xgb_model = aiplatform.Model.upload(
     display_name='demand-forecaster-xgboost',
     artifact_uri='gs://your-bucket/models/demand-forecaster/',
     # Use the XGBoost serving container
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/xgboost-cpu.1-7:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/xgboost-cpu.2-1:latest',
     labels={'framework': 'xgboost'},
 )
 ```
@@ -252,7 +260,7 @@ Good organization makes the registry useful. Use labels consistently across your
 model = aiplatform.Model.upload(
     display_name='recommendation-engine-v3',
     artifact_uri='gs://your-bucket/models/rec-engine-v3/',
-    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-14:latest',
+    serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest',
     labels={
         'team': 'recommendations',
         'project': 'product-recs',
@@ -270,9 +278,23 @@ model = aiplatform.Model.upload(
 Clean up old models you no longer need:
 
 ```python
+from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
+
+aiplatform.init(
+    project='your-project-id',
+    location='us-central1',
+)
+
+client = aiplatform_v1.ModelServiceClient(
+    client_options={'api_endpoint': 'us-central1-aiplatform.googleapis.com'}
+)
+
 # Delete a specific version
-model = aiplatform.Model('projects/your-project-id/locations/us-central1/models/MODEL_ID@2')
-model.delete()
+operation = client.delete_model_version(
+    name='projects/your-project-id/locations/us-central1/models/MODEL_ID@2'
+)
+operation.result()
 
 # Delete the entire model and all its versions
 model = aiplatform.Model('projects/your-project-id/locations/us-central1/models/MODEL_ID')
@@ -285,7 +307,7 @@ Be careful - you cannot delete a model version that is currently deployed to an 
 
 Always add meaningful descriptions and labels when registering models. Six months from now, you will not remember what "model-v7-final-final" was about.
 
-Use version aliases to track which model is in production, staging, and being evaluated. Update aliases instead of changing deployment configurations.
+Use version aliases to track which model is in production, staging, and being evaluated. Reference aliases in deployment scripts so you do not need to hard-code auto-generated version IDs.
 
 Set up a naming convention for your team. Something like `{team}-{project}-{model-type}` works well, for example, `data-science-churn-random-forest`.
 
