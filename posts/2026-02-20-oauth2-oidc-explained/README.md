@@ -42,7 +42,7 @@ graph TD
     B -->|Provides| C[ID Token - JWT]
     B -->|Provides| D[UserInfo Endpoint]
     A -->|Provides| E[Access Token]
-    A -->|Provides| F[Refresh Token]
+    A -->|Can Provide| F[Refresh Token]
 ```
 
 ## OAuth 2.0 Grant Types
@@ -64,7 +64,7 @@ sequenceDiagram
     User->>Auth: 4. Enter credentials
     Auth->>App: 5. Redirect with auth code
     App->>Auth: 6. Exchange code for tokens
-    Auth->>App: 7. Return access + ID tokens
+    Auth->>App: 7. Return tokens
     App->>API: 8. Call API with access token
     API->>App: 9. Return protected data
 ```
@@ -133,7 +133,8 @@ async def exchange_code_for_tokens(auth_code: str) -> dict:
         response.raise_for_status()
         return response.json()
 
-# Response contains: access_token, id_token, refresh_token, expires_in
+# Response contains: access_token, expires_in, and, for OIDC, id_token.
+# It may also contain a refresh_token.
 ```
 
 ### Client Credentials Flow
@@ -150,13 +151,15 @@ async def get_machine_token() -> str:
 
     payload = {
         "grant_type": "client_credentials",
-        "client_id": "service-a-client-id",
-        "client_secret": "service-a-secret",
         "scope": "api:read api:write",
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(token_url, data=payload)
+        response = await client.post(
+            token_url,
+            data=payload,
+            auth=("service-a-client-id", "service-a-secret"),
+        )
         response.raise_for_status()
         data = response.json()
         return data["access_token"]
@@ -176,10 +179,15 @@ import httpx
 async def validate_id_token(id_token: str, client_id: str) -> dict:
     """Validate an OIDC ID token and return its claims."""
 
-    # Fetch the JWKS (JSON Web Key Set) from the auth server
-    jwks_url = "https://auth.example.com/.well-known/jwks.json"
+    # Fetch the provider metadata and JWKS (JSON Web Key Set)
+    discovery_url = "https://auth.example.com/.well-known/openid-configuration"
     async with httpx.AsyncClient() as client:
-        response = await client.get(jwks_url)
+        response = await client.get(discovery_url)
+        response.raise_for_status()
+        metadata = response.json()
+
+        response = await client.get(metadata["jwks_uri"])
+        response.raise_for_status()
         jwks = response.json()
 
     # Get the signing key from JWKS
@@ -246,13 +254,21 @@ import time
 class TokenManager:
     """Manages OAuth tokens with automatic refresh."""
 
-    def __init__(self, token_url: str, client_id: str, client_secret: str):
+    def __init__(
+        self,
+        token_url: str,
+        client_id: str,
+        client_secret: str,
+        access_token: str,
+        refresh_token: str,
+        expires_in: int,
+    ):
         self.token_url = token_url
         self.client_id = client_id
         self.client_secret = client_secret
-        self._access_token = None
-        self._refresh_token = None
-        self._expires_at = 0
+        self._access_token = access_token
+        self._refresh_token = refresh_token
+        self._expires_at = time.time() + expires_in
 
     async def get_access_token(self) -> str:
         """Return a valid access token, refreshing if expired."""
@@ -266,12 +282,14 @@ class TokenManager:
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": self._refresh_token,
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(self.token_url, data=payload)
+            response = await client.post(
+                self.token_url,
+                data=payload,
+                auth=(self.client_id, self.client_secret),
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -304,10 +322,10 @@ async def discover_oidc_config(issuer: str) -> dict:
     # The discovery document contains all endpoints you need:
     print(f"Authorization endpoint: {config['authorization_endpoint']}")
     print(f"Token endpoint: {config['token_endpoint']}")
-    print(f"UserInfo endpoint: {config['userinfo_endpoint']}")
+    print(f"UserInfo endpoint: {config.get('userinfo_endpoint')}")
     print(f"JWKS URI: {config['jwks_uri']}")
-    print(f"Supported scopes: {config['scopes_supported']}")
-    print(f"Supported grant types: {config['grant_types_supported']}")
+    print(f"Supported scopes: {config.get('scopes_supported', [])}")
+    print(f"Supported grant types: {config.get('grant_types_supported', [])}")
 
     return config
 ```
