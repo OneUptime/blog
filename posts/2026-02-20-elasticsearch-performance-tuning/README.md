@@ -22,12 +22,13 @@ Elasticsearch runs on the JVM, and heap configuration is the single most importa
 graph TD
     A[JVM Heap Size Rules] --> B[Set Xms = Xmx<br/>Avoid heap resizing]
     A --> C[Max 50% of RAM<br/>Leave rest for OS cache]
-    A --> D[Max 31GB<br/>Stay under compressed oops limit]
+    A --> D[Stay under compressed oops limit<br/>26GB is safe on most systems]
     A --> E[Min 1GB<br/>For small clusters]
 ```
 
 ```bash
-# jvm.options - located at /etc/elasticsearch/jvm.options
+# heap.options - add as /etc/elasticsearch/jvm.options.d/heap.options
+# Do not modify the root /etc/elasticsearch/jvm.options file
 
 # Set initial and maximum heap to the same value
 
@@ -36,35 +37,37 @@ graph TD
 -Xmx16g
 
 # If your machine has 64GB RAM:
-#   - Set heap to 31GB (stay under compressed oops threshold)
-#   - The remaining 33GB is used by the OS for file system cache
+#   - Set heap to 26GB (safe under the compressed oops threshold on most systems)
+#   - The remaining memory is used by the OS for file system cache
 #   - Lucene (the search engine inside Elasticsearch) relies heavily
 #     on the OS file cache for performance
+#   - You may be able to use up to about 30GB, but verify
+#     compressed ordinary object pointers are enabled in the node logs
 
 # For machines with less RAM:
 # 8GB RAM  -> -Xms4g -Xmx4g
 # 16GB RAM -> -Xms8g -Xmx8g
 # 32GB RAM -> -Xms16g -Xmx16g
-# 64GB RAM -> -Xms31g -Xmx31g
+# 64GB RAM -> -Xms26g -Xmx26g
 ```
 
 ### Garbage Collection
 
 ```bash
-# Elasticsearch 8.x uses G1GC by default
-# These settings are good starting points for most workloads
+# Elasticsearch ships with JVM and GC defaults that are recommended
+# for most workloads. Avoid overriding them unless you have benchmarked
+# the change for your workload.
+#
+# To customize GC log output, add a file such as:
+# /etc/elasticsearch/jvm.options.d/gc.options
 
-# Use G1 garbage collector
--XX:+UseG1GC
+# Turn off the default JVM logging configuration before replacing it
+-Xlog:disable
 
-# Set the pause time target (in milliseconds)
-# Lower values mean shorter GC pauses but more frequent collections
--XX:MaxGCPauseMillis=200
+# Keep default warning logging on stderr
+-Xlog:all=warning:stderr:utctime,level,tags
 
-# Initial and min percentage of heap free after GC
--XX:G1HeapRegionSize=16m
-
-# Log GC activity for troubleshooting
+# Enable GC activity logs for troubleshooting
 -Xlog:gc*,gc+age=trace,safepoint:file=/var/log/elasticsearch/gc.log:utctime,pid,tags:filecount=32,filesize=64m
 ```
 
@@ -75,14 +78,16 @@ Shard configuration directly affects cluster performance and stability. Too many
 ```mermaid
 graph TD
     A[Shard Sizing Guidelines] --> B[Target: 10-50GB per shard]
-    A --> C[Max shards per node:<br/>shards < 20 per GB heap]
-    A --> D[Time-based indexes:<br/>one shard per day index]
+    A --> C[Shard limit:<br/>1000 non-frozen shards per node]
+    A --> D[Time-based data:<br/>use data streams and ILM rollover]
     A --> E[Small indexes:<br/>1 shard is fine]
 ```
 
 ### Calculating Shard Count
 
 ```python
+import math
+
 def calculate_shards(
     daily_data_gb: float,
     retention_days: int,
@@ -94,27 +99,21 @@ def calculate_shards(
     total_data_gb = daily_data_gb * retention_days
 
     # For daily indexes
-    shards_per_day = max(1, int(daily_data_gb / target_shard_size_gb) + 1)
-    total_shards = shards_per_day * retention_days
-
-    # Each shard has overhead - estimate memory needed
-    # Rule of thumb: each shard uses about 25MB of heap
-    heap_overhead_gb = (total_shards * 25) / 1024
+    shards_per_day = max(1, math.ceil(daily_data_gb / target_shard_size_gb))
+    total_primary_shards = shards_per_day * retention_days
 
     return {
         "daily_data_gb": daily_data_gb,
         "retention_days": retention_days,
         "total_data_gb": total_data_gb,
         "shards_per_daily_index": shards_per_day,
-        "total_shards": total_shards,
-        "estimated_heap_overhead_gb": round(heap_overhead_gb, 2),
+        "total_primary_shards": total_primary_shards,
     }
 
 # Example: 20GB of logs per day, 30 days retention
 config = calculate_shards(20, 30)
 print(f"Shards per daily index: {config['shards_per_daily_index']}")
-print(f"Total shards: {config['total_shards']}")
-print(f"Heap overhead: {config['estimated_heap_overhead_gb']} GB")
+print(f"Total primary shards: {config['total_primary_shards']}")
 ```
 
 ### Index Template for Optimal Shards
@@ -142,7 +141,8 @@ def create_optimized_template(es):
                 "refresh_interval": "30s",
                 # Transaction log settings for durability vs speed
                 "translog": {
-                    # async flush is faster but risks losing last 5s of data
+                    # async durability is faster but can lose acknowledged writes
+                    # since the last automatic translog commit if a node fails
                     "durability": "async",
                     "sync_interval": "5s",
                     "flush_threshold_size": "512mb"
@@ -173,7 +173,8 @@ def create_optimized_template(es):
 
     es.indices.put_index_template(
         name="logs-template",
-        body=template
+        index_patterns=template["index_patterns"],
+        template=template["template"]
     )
     print("Index template 'logs-template' created")
 ```
@@ -234,7 +235,7 @@ def create_optimized_mapping():
 
 ### Use Filters Instead of Queries
 
-Filters are faster because they do not calculate relevance scores and can be cached.
+Filters are faster because they do not calculate relevance scores and are eligible for query caching.
 
 ```python
 def efficient_search(es, service: str, level: str, hours: int = 24):
@@ -242,26 +243,27 @@ def efficient_search(es, service: str, level: str, hours: int = 24):
     Use filter context for exact matches (no scoring needed).
     Use query context only for full-text search where scoring matters.
     """
-    body = {
-        "query": {
-            "bool": {
-                # Filters: cached, no scoring, faster
-                "filter": [
-                    {"term": {"service": service}},
-                    {"term": {"level": level}},
-                    {"range": {
-                        "timestamp": {"gte": f"now-{hours}h"}
-                    }}
-                ]
-                # Only add "must" for full-text search:
-                # "must": [{"match": {"message": "error timeout"}}]
-            }
-        },
-        "sort": [{"timestamp": "desc"}],
-        "size": 100
+    query = {
+        "bool": {
+            # Filters: cached, no scoring, faster
+            "filter": [
+                {"term": {"service": service}},
+                {"term": {"level": level}},
+                {"range": {
+                    "timestamp": {"gte": f"now-{hours}h"}
+                }}
+            ]
+            # Only add "must" for full-text search:
+            # "must": [{"match": {"message": "error timeout"}}]
+        }
     }
 
-    return es.search(index="logs-*", body=body)
+    return es.search(
+        index="logs-*",
+        query=query,
+        sort=[{"timestamp": "desc"}],
+        size=100
+    )
 ```
 
 ### Avoid Expensive Queries
@@ -305,7 +307,7 @@ good_range = {
 ## Bulk Indexing Optimization
 
 ```python
-from elasticsearch.helpers import bulk, parallel_bulk
+from elasticsearch.helpers import parallel_bulk
 
 def optimized_bulk_index(es, documents: list, index: str):
     """
@@ -314,7 +316,7 @@ def optimized_bulk_index(es, documents: list, index: str):
     # Temporarily increase refresh interval for bulk loads
     es.indices.put_settings(
         index=index,
-        body={"index": {"refresh_interval": "-1"}}  # Disable refresh
+        settings={"index": {"refresh_interval": "-1"}}  # Disable refresh
     )
 
     try:
@@ -337,7 +339,7 @@ def optimized_bulk_index(es, documents: list, index: str):
         # Restore refresh interval
         es.indices.put_settings(
             index=index,
-            body={"index": {"refresh_interval": "30s"}}
+            settings={"index": {"refresh_interval": "30s"}}
         )
         # Force a refresh to make data searchable
         es.indices.refresh(index=index)
@@ -357,10 +359,10 @@ sudo sysctl vm.swappiness=1
 # elasticsearch  -  nofile  65535
 
 # 3. Increase virtual memory areas
-sudo sysctl -w vm.max_map_count=262144
+sudo sysctl -w vm.max_map_count=1048576
 
 # 4. For persistent setting, add to /etc/sysctl.conf:
-# vm.max_map_count=262144
+# vm.max_map_count=1048576
 
 # 5. Use SSD storage for hot nodes
 # Elasticsearch is heavily I/O bound
@@ -417,12 +419,12 @@ for key, value in health.items():
 
 | Setting | Development | Production |
 |---------|------------|------------|
-| Heap Size | 1GB | 50% RAM (max 31GB) |
+| Heap Size | 1GB | 50% RAM and under compressed oops threshold |
 | Refresh Interval | 1s | 30s for write-heavy |
 | Replicas | 0 | 1-2 |
 | Swapping | Default | Disabled |
 | File Descriptors | Default | 65535 |
-| vm.max_map_count | Default | 262144 |
+| vm.max_map_count | Default | 1048576 |
 | Translog Durability | request | async (if acceptable) |
 | Dynamic Mapping | true | strict |
 
