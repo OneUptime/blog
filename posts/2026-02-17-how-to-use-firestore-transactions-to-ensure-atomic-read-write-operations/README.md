@@ -144,7 +144,7 @@ await runTransaction(db, async (transaction) => {
 // });
 ```
 
-Second, a transaction can read and write up to 500 documents. If you need to touch more than that, you will need to split the work into multiple transactions or use batch writes for the write-only portion.
+Second, a transaction has request-size and time limits, not a simple document-count limit. The request must fit within Firestore's 10 MiB API request size limit, and the transaction must complete within 270 seconds with no more than 60 seconds of idle time. If you need to touch hundreds of documents, you may need to split the work into smaller transactions or use batch writes for the write-only portion.
 
 Third, transactions must be idempotent. Since they can be retried, your transaction function might run multiple times. Do not include side effects like sending emails or making API calls inside a transaction.
 
@@ -154,7 +154,7 @@ Transactions on the server (in Cloud Functions or the Admin SDK) work slightly d
 
 ```javascript
 // Server-side transaction using the Admin SDK
-// These use pessimistic locking instead of optimistic retries
+// These use pessimistic locks and still retry on contention
 const admin = require('firebase-admin');
 const db = admin.firestore();
 
@@ -186,11 +186,11 @@ async function processOrder(orderId) {
 }
 ```
 
-Server-side transactions also have a higher retry limit (up to 25 times by default) and can hold locks for longer, making them better suited for high-contention scenarios.
+Server-side transactions can use pessimistic locks, which makes them better suited to low-latency backend environments. In the Node.js server client used by the Admin SDK, read-write transactions retry up to five times by default when they fail due to contention.
 
 ## When Not to Use Transactions
 
-Transactions are powerful but not always necessary. If you are just incrementing a counter and do not need to read the current value first, use `FieldValue.increment()` instead:
+Transactions are powerful but not always necessary. If you are just incrementing a counter and do not need to read the current value first, use `increment()` instead:
 
 ```javascript
 // For simple increments, FieldValue.increment is simpler and more efficient
@@ -242,4 +242,4 @@ async function safeTransaction(docId) {
 
 ## Wrapping Up
 
-Firestore transactions are your go-to tool for maintaining data consistency when you need to read and then write based on what you read. They handle concurrency automatically through retries, and they guarantee that your writes are based on the freshest data. Just remember the rules: reads before writes, keep transactions idempotent, and use simpler alternatives (increment, batch writes) when you do not need the full power of a transaction. For high-contention scenarios, consider running transactions server-side where you get pessimistic locking and more retries.
+Firestore transactions are your go-to tool for maintaining data consistency when you need to read and then write based on what you read. They handle concurrency automatically through retries, and they guarantee that your writes are based on the freshest data. Just remember the rules: reads before writes, keep transactions idempotent, and use simpler alternatives (increment, batch writes) when you do not need the full power of a transaction. For backend scenarios, consider running transactions server-side where server client libraries can use pessimistic locking.
