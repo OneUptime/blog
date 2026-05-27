@@ -8,7 +8,7 @@ Description: Learn how to install, configure, and manage Snap packages on Ubuntu
 
 ---
 
-Snap packages have become a standard part of the Ubuntu ecosystem, and they are available on many other Linux distributions too. Snaps bundle an application with all its dependencies into a single package that auto-updates and runs in a sandboxed environment. While some people have strong opinions about snaps versus traditional packages, the reality is that many applications (like VS Code, Slack, and certain server tools) are now distributed primarily as snaps.
+Snap packages have become a standard part of the Ubuntu ecosystem, and they are available on many other Linux distributions too. Snaps bundle an application with its dependencies into a single package that auto-updates and usually runs in a sandboxed environment. While some people have strong opinions about snaps versus traditional packages, the reality is that many applications (like VS Code, Slack, and certain server tools) are available as snaps.
 
 If you are managing Ubuntu servers or desktops with Ansible, knowing how to handle Snap packages is essential. Let us walk through the `community.general.snap` module and see how to put it to practical use.
 
@@ -109,7 +109,7 @@ You can install multiple snaps in a single task by passing a list to the `name` 
     state: present
 ```
 
-However, there is a catch. If some of these snaps need classic confinement and others do not, you cannot mix them in a single task. Split them into separate tasks.
+However, there is a catch. The `classic` option can only be used when a task installs a single snap, so if some of these snaps need classic confinement, install them one at a time.
 
 ```yaml
 # Separate tasks for strict and classic snaps
@@ -122,11 +122,12 @@ However, there is a catch. If some of these snaps need classic confinement and o
 
 - name: Install classic snaps
   community.general.snap:
-    name:
-      - code
-      - terraform
+    name: "{{ item }}"
     classic: true
     state: present
+  loop:
+    - code
+    - terraform
 ```
 
 ## Removing Snap Packages
@@ -201,19 +202,16 @@ The `snap wait system seed.loaded` command is important. On freshly provisioned 
 
 ## Managing Snap Options
 
-Some snaps have configuration options you can set. While the `snap` module does not directly support `snap set`, you can use the `command` module for this.
+Some snaps have configuration options you can set. The `snap` module supports this through the `options` parameter, which applies snap configuration after installation or refresh.
 
 ```yaml
 # Configure snap options after installation
 - name: Install nextcloud snap
   community.general.snap:
     name: nextcloud
+    options:
+      - ports.http=8080
     state: present
-
-- name: Configure nextcloud snap port
-  ansible.builtin.command:
-    cmd: snap set nextcloud ports.http=8080
-  changed_when: true
 ```
 
 ## Controlling Snap Refreshes
@@ -291,7 +289,7 @@ In air-gapped or restricted environments, you can download snaps on a connected 
   changed_when: "'installed' in snap_install.stdout"
 ```
 
-The `--dangerous` flag is needed because the snap is not coming from the store and therefore is not signed.
+The `--dangerous` flag is needed when you do not have pre-acknowledged assertions for the local snap file, so snapd cannot verify its store signatures.
 
 ## Wrapping Up
 
