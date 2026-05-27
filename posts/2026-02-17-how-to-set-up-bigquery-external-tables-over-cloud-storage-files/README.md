@@ -233,7 +233,7 @@ resource "google_bigquery_table" "external_orders" {
     source_format = "PARQUET"
 
     source_uris = [
-      "gs://my-data-bucket/orders/*.parquet",
+      "gs://my-data-bucket/orders/*",
     ]
 
     # Hive partitioning configuration
@@ -263,14 +263,14 @@ resource "google_bigquery_table" "external_logs" {
       quote             = "\""
       field_delimiter   = ","
     }
-  }
 
-  schema = jsonencode([
-    { name = "timestamp", type = "TIMESTAMP" },
-    { name = "level", type = "STRING" },
-    { name = "service", type = "STRING" },
-    { name = "message", type = "STRING" },
-  ])
+    schema = jsonencode([
+      { name = "timestamp", type = "TIMESTAMP" },
+      { name = "level", type = "STRING" },
+      { name = "service", type = "STRING" },
+      { name = "message", type = "STRING" },
+    ])
+  }
 }
 ```
 
@@ -291,22 +291,29 @@ SET OPTIONS (
 To create and query external tables, you need:
 
 - `bigquery.tables.create` on the dataset (to create the external table definition)
+- `storage.buckets.get` on the Cloud Storage bucket
 - `storage.objects.get` on the Cloud Storage bucket (to read the files)
+- `storage.objects.list` on the Cloud Storage bucket if you use wildcard URIs
 
-If using a service account for BigQuery, make sure it has Cloud Storage read access:
+For non-BigLake external tables, the user or service account that runs the query needs Cloud Storage read access. For BigLake tables, grant read access to the Cloud Resource connection's service account.
 
 ```bash
-# Grant BigQuery service account read access to the storage bucket
-gsutil iam ch \
-    serviceAccount:bq-PROJECT_NUMBER@bigquery-encryption.iam.gserviceaccount.com:objectViewer \
-    gs://my-data-bucket
+# Grant a querying service account read access to the storage bucket
+gcloud storage buckets add-iam-policy-binding gs://my-data-bucket \
+    --member="serviceAccount:analytics-reader@my-project-id.iam.gserviceaccount.com" \
+    --role="roles/storage.objectViewer"
+
+# For BigLake, grant the connection service account read access instead
+gcloud storage buckets add-iam-policy-binding gs://my-data-bucket \
+    --member="serviceAccount:CONNECTION_SERVICE_ACCOUNT" \
+    --role="roles/storage.objectViewer"
 ```
 
 ## Common Issues
 
 **Schema detection failures with CSV**: CSV files do not carry schema information. Use explicit schemas or ensure the first row contains headers and use `skipLeadingRows`.
 
-**"Not found: Table" after creating**: Make sure the Cloud Storage URIs are accessible and the files exist. Check bucket permissions.
+**"Not found: Table" after creating**: Make sure you are querying the correct project, dataset, table name, and location, and check that the create command completed successfully. If the table exists but the Cloud Storage files are inaccessible, you usually get a permission error when querying it.
 
 **Slow query performance**: External tables are inherently slower. For better performance, use Parquet format, enable Hive partitioning, and minimize the number of files BigQuery needs to read.
 
