@@ -17,8 +17,8 @@ In this post, I will walk through building a Spring Boot REST API and deploying 
 Use Spring Initializr to create the project or set it up manually with Maven.
 
 ```xml
-<!-- pom.xml - Spring Boot project with dependencies -->
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- pom.xml - Spring Boot project with dependencies -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
@@ -150,6 +150,21 @@ logging:
 ```
 
 ## Building the REST API
+
+```java
+// src/main/java/com/example/cloudrunapi/CloudrunApiApplication.java
+package com.example.cloudrunapi;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class CloudrunApiApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(CloudrunApiApplication.class, args);
+    }
+}
+```
 
 ```java
 // src/main/java/com/example/cloudrunapi/model/Task.java
@@ -354,7 +369,7 @@ For local testing without pushing to a registry, build to the local Docker daemo
 
 ```bash
 # Build to local Docker daemon
-mvn compile jib:dockerBuild
+mvn compile jib:dockerBuild -Djib.to.image=cloudrun-api:latest
 
 # Test locally
 docker run -p 8080:8080 -e PORT=8080 cloudrun-api:latest
@@ -398,7 +413,7 @@ spring:
       - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 ```
 
-In your Jib configuration, use AppCDS (Application Class Data Sharing) for faster class loading.
+In your Jib configuration, add startup-focused JVM flags.
 
 ```xml
 <!-- Additional JVM flags for faster startup -->
