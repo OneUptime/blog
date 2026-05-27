@@ -8,11 +8,11 @@ Description: Automate PostgreSQL installation on Ubuntu and RHEL-based systems u
 
 ---
 
-Installing PostgreSQL by hand on a single server is easy. Installing it consistently across 10 or 50 servers with the same version, the same configuration, and the same security settings is where Ansible shines. This post walks through a complete Ansible role that installs PostgreSQL from the official repositories on both Ubuntu/Debian and RHEL/Rocky systems.
+Installing PostgreSQL by hand on a single server is easy. Installing it consistently across 10 or 50 servers with the same version and the same basic service configuration is where Ansible shines. This post walks through a complete Ansible role that installs PostgreSQL from the official repositories on both Ubuntu/Debian and RHEL/Rocky systems.
 
 ## Why Not Just Use the Distro Package?
 
-Distribution packages are often several major versions behind. Ubuntu 22.04 ships PostgreSQL 14, but PostgreSQL 16 has been out for a while. The official PostgreSQL Global Development Group (PGDG) repository always has the latest stable releases. Our Ansible role will add the PGDG repo and install from there.
+Distribution packages are often several major versions behind. Ubuntu 22.04 ships PostgreSQL 14, but PostgreSQL 16 has been out for a while. The official PostgreSQL Global Development Group (PGDG) repository provides supported PostgreSQL releases for supported distributions. Our Ansible role will add the PGDG repo and install from there.
 
 ## The PostgreSQL Install Role
 
@@ -56,11 +56,42 @@ postgresql_shared_buffers: "128MB"
 - name: Include OS-specific tasks
   include_tasks: "{{ ansible_os_family | lower }}.yml"
 
+- name: Configure PostgreSQL listen address
+  lineinfile:
+    path: "{{ postgresql_config_dir }}/postgresql.conf"
+    regexp: "^#?listen_addresses\\s*="
+    line: "listen_addresses = '{{ postgresql_listen_addresses }}'"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL port
+  lineinfile:
+    path: "{{ postgresql_config_dir }}/postgresql.conf"
+    regexp: "^#?port\\s*="
+    line: "port = {{ postgresql_port }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL max connections
+  lineinfile:
+    path: "{{ postgresql_config_dir }}/postgresql.conf"
+    regexp: "^#?max_connections\\s*="
+    line: "max_connections = {{ postgresql_max_connections }}"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL shared buffers
+  lineinfile:
+    path: "{{ postgresql_config_dir }}/postgresql.conf"
+    regexp: "^#?shared_buffers\\s*="
+    line: "shared_buffers = {{ postgresql_shared_buffers }}"
+  notify: restart postgresql
+
 - name: Ensure PostgreSQL service is running
   systemd:
     name: "{{ postgresql_service_name }}"
     state: started
     enabled: true
+
+- name: Apply PostgreSQL configuration changes before checking the port
+  meta: flush_handlers
 
 - name: Wait for PostgreSQL to accept connections
   wait_for:
@@ -79,22 +110,22 @@ postgresql_shared_buffers: "128MB"
 - name: Install prerequisite packages
   apt:
     name:
+      - python3-debian
       - gnupg2
       - python3-psycopg2
       - acl
     state: present
     update_cache: true
 
-- name: Add PostgreSQL GPG key
-  apt_key:
-    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    state: present
-
 - name: Add PostgreSQL APT repository
-  apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+  deb822_repository:
+    name: pgdg
+    types: deb
+    uris: https://apt.postgresql.org/pub/repos/apt
+    suites: "{{ ansible_distribution_release }}-pgdg"
+    components: main
+    signed_by: https://www.postgresql.org/media/keys/ACCC4CF8.asc
     state: present
-    filename: pgdg
 
 - name: Install PostgreSQL packages
   apt:
@@ -123,17 +154,16 @@ postgresql_shared_buffers: "128MB"
       - python3-psycopg2
     state: present
 
-- name: Disable the built-in PostgreSQL module
-  command: dnf module disable postgresql -y
-  args:
-    warn: false
-  changed_when: false
-
 - name: Install PGDG repository RPM
   dnf:
     name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
     state: present
     disable_gpg_check: true
+
+- name: Disable the built-in PostgreSQL module
+  command: dnf module disable postgresql -y
+  register: dnf_module_disable
+  changed_when: "'Disabling modules:' in dnf_module_disable.stdout"
 
 - name: Install PostgreSQL packages
   dnf:
@@ -284,7 +314,7 @@ all:
 
 ## Common Issues and Fixes
 
-One issue I have run into is the `python3-psycopg2` package not being available on older distributions. In that case, install it via pip instead.
+One issue I have run into is the `python3-psycopg2` package not being available on older Ubuntu distributions. In that case, install it via pip instead.
 
 ```yaml
 # Fallback: install psycopg2 via pip if the system package is not available
@@ -292,7 +322,7 @@ One issue I have run into is the `python3-psycopg2` package not being available 
   pip:
     name: psycopg2-binary
     state: present
-  when: ansible_os_family == "Debian" and ansible_distribution_major_version | int < 20
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_major_version | int < 20
 ```
 
 Another common issue is the locale not being set correctly, which causes PostgreSQL initialization to fail.
