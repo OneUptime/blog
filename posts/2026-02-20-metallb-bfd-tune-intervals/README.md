@@ -12,7 +12,7 @@ BFD (Bidirectional Forwarding Detection) achieves fast failure detection by exch
 
 ## Understanding Receive and Transmit Intervals
 
-The BFD protocol negotiates intervals between the two endpoints. Each side advertises the minimum interval at which it can send packets and the minimum interval at which it can receive them. The final operating intervals are the higher of the two sides' requirements.
+The BFD protocol negotiates intervals between the two endpoints. Each side advertises the minimum interval at which it wants to send packets and the minimum interval at which it can receive them. The final operating intervals are the higher of the two sides' requirements, with protocol jitter applied to avoid synchronization.
 
 ```mermaid
 sequenceDiagram
@@ -38,7 +38,7 @@ This means the slower side always wins. If your router requires a minimum receiv
 
 Each BFD packet is small (about 24 bytes of BFD payload plus UDP/IP headers), but the processing cost is in the scheduling and handling. Here is how different intervals affect CPU and detection time:
 
-| TX/RX Interval | Packets per Second | Detection Time (multiplier=3) | CPU Impact |
+| TX/RX Interval | Packets per Second | Approximate Detection Time (symmetric multiplier=3) | CPU Impact |
 |---|---|---|---|
 | 50ms | 20 pps per peer | 150ms | High |
 | 100ms | 10 pps per peer | 300ms | Moderate |
@@ -56,7 +56,7 @@ For a cluster with 10 BGP peers, the packet rates multiply by 10. At 50ms interv
 
 ## Step 1: Measure Your Network Baseline
 
-Before tuning BFD intervals, measure the round-trip latency and jitter between MetalLB speakers and the router. The intervals must be larger than the worst-case latency to avoid false positives.
+Before tuning BFD intervals, measure the round-trip latency and jitter between MetalLB speakers and the router. The detection time must be large enough to cover worst-case delay, jitter, and processing pauses to avoid false positives.
 
 ```bash
 # Measure round-trip time to the router from a Kubernetes node
@@ -73,11 +73,11 @@ ping -c 100 10.0.0.1 | tail -1
 # - Standard deviation (jitter): 0.187ms
 ```
 
-The BFD interval should be significantly larger than the maximum RTT. A good rule of thumb:
+The BFD detection time should be significantly larger than the maximum RTT. A good rule of thumb:
 
-$$\text{Minimum safe interval} = \text{max RTT} \times 3$$
+$$\text{Minimum safe detection time} = \text{max RTT} \times 3$$
 
-For the example above: $1.892\text{ms} \times 3 \approx 6\text{ms}$. However, this ignores processing delays, so practical minimums are typically 50ms or higher.
+For the example above: $1.892\text{ms} \times 3 \approx 6\text{ms}$. However, this ignores processing delays, scheduling delays, and router BFD limits, so practical intervals are typically 50ms or higher.
 
 ## Step 2: Start with the Default Profile
 
@@ -95,7 +95,7 @@ spec:
   # 300ms is a safe starting point for most networks
   receiveInterval: 300
   transmitInterval: 300
-  # 3 is the standard multiplier
+  # 3 is the common default multiplier
   detectMultiplier: 3
   echoMode: false
   passiveMode: false
@@ -136,7 +136,7 @@ kubectl exec -n metallb-system <speaker-pod> -c frr -- \
   vtysh -c "show bfd peers counters"
 ```
 
-The packet rate should match your configured interval. At 300ms intervals, you should see roughly 200 packets per minute (3.33 per second).
+The packet rate should roughly match your configured interval. FRR jitters BFD control packet transmission, so at 300ms intervals you should see roughly 200 to 230 packets per minute per direction.
 
 ## Step 4: Reduce Intervals for Faster Detection
 
@@ -176,7 +176,7 @@ kubectl exec -n metallb-system <speaker-pod> -c frr -- \
 
 ## Step 5: Increase the Multiplier Instead of the Interval
 
-An alternative to increasing the interval is increasing the detect multiplier. This gives you the same detection time but with higher packet rates, which can be useful for catching intermittent issues.
+An alternative to increasing the interval is increasing the detect multiplier. This gives you the same detection time but with higher packet rates, which can be useful when you want to tolerate brief bursts of packet loss without declaring the session down.
 
 ```mermaid
 flowchart TD
@@ -226,7 +226,7 @@ MetalLB allows you to set different receive and transmit intervals. This is usef
 
 ```yaml
 # Asymmetric BFDProfile
-# MetalLB sends slowly (saves CPU) but expects fast packets from router
+# MetalLB sends slowly (saves CPU) but allows fast packets from router
 # Useful when the router has more CPU headroom than the speaker pods
 apiVersion: metallb.io/v1beta1
 kind: BFDProfile
@@ -234,7 +234,7 @@ metadata:
   name: asymmetric-bfd
   namespace: metallb-system
 spec:
-  # MetalLB expects packets from the router every 100ms
+  # MetalLB can receive packets from the router every 100ms
   receiveInterval: 100
   # MetalLB sends packets every 500ms (saves CPU on speaker pods)
   transmitInterval: 500
@@ -244,12 +244,12 @@ spec:
   minimumTtl: 254
 ```
 
-With this configuration:
+Assuming the router is also configured to transmit at 100ms or faster and uses a detect multiplier of 3, this configuration gives:
 
 - MetalLB detects router failure in: $100\text{ms} \times 3 = 300\text{ms}$
 - The router detects MetalLB failure in: $500\text{ms} \times 3 = 1500\text{ms}$
 
-This asymmetry is acceptable if fast detection of router failures is more important than fast detection of speaker failures (which is common when you have multiple speaker nodes).
+The exact values depend on the router's advertised transmit interval, receive interval, and detect multiplier. This asymmetry is acceptable if fast detection of router failures is more important than fast detection of speaker failures (which is common when you have multiple speaker nodes).
 
 ## Step 7: Measure the Impact
 
@@ -302,6 +302,6 @@ flowchart TD
 
 ## Summary
 
-Tuning BFD intervals in MetalLB is a process of measuring your network baseline, setting conservative initial values, and iteratively reducing intervals while monitoring for stability. The key formula is $T_{detect} = \text{interval} \times \text{multiplier}$, and the negotiated interval is always the maximum of both sides' requirements. Always test changes for at least 24 hours before considering them stable.
+Tuning BFD intervals in MetalLB is a process of measuring your network baseline, setting conservative initial values, and iteratively reducing intervals while monitoring for stability. In asynchronous BFD, the local detection time is the peer's detect multiplier multiplied by the peer's agreed transmit interval; in symmetric configurations this is commonly approximated as $T_{detect} = \text{interval} \times \text{multiplier}$. The negotiated interval is always based on the maximum of both sides' requirements. Always test changes for at least 24 hours before considering them stable.
 
 For comprehensive monitoring of your MetalLB BFD sessions, BGP peering health, and Kubernetes service uptime, consider using [OneUptime](https://oneuptime.com). OneUptime can track your infrastructure health, alert on BFD session flaps, and provide dashboards that show the state of your network in real time.
