@@ -10,18 +10,18 @@ Description: Learn how to translate entire documents while preserving their orig
 
 Translating documents is not just about converting text from one language to another. You need the translated output to look like the original - same layout, same fonts, same images, same tables. If you extract the text, translate it, and try to reassemble the document, you end up spending more time on formatting than on the actual translation.
 
-Cloud Translation API's document translation feature handles this by processing entire documents and preserving their formatting. It supports PDF, DOCX, PPTX, and XLSX files, translating the text content while keeping the layout intact. Let me show you how to use it.
+Cloud Translation API's document translation feature handles this by processing entire documents and preserving their formatting. It supports PDF, DOC, DOCX, PPT, PPTX, XLS, and XLSX files, translating the text content while keeping the layout intact. Let me show you how to use it.
 
 ## Supported Document Formats
 
 The document translation feature supports:
 
-- **PDF**: Scanned PDFs are not supported, only PDFs with selectable text
-- **DOCX**: Microsoft Word documents
-- **PPTX**: Microsoft PowerPoint presentations
-- **XLSX**: Microsoft Excel spreadsheets
+- **PDF**: Native PDFs are supported, and scanned PDFs are supported with lower page limits and more formatting loss
+- **DOC and DOCX**: Microsoft Word documents
+- **PPT and PPTX**: Microsoft PowerPoint presentations
+- **XLS and XLSX**: Microsoft Excel spreadsheets
 
-The output is a translated document in the same format as the input. A DOCX in, DOCX out. A PDF in, PDF out.
+By default, the output is a translated document in the same format as the input. A DOCX in, DOCX out. A PDF in, PDF out.
 
 ## Basic Document Translation
 
@@ -42,7 +42,10 @@ def translate_document(project_id, location, input_path, output_path, source_lan
 
     # Determine MIME type based on file extension
     mime_types = {
+        ".doc": "application/msword",
         ".pdf": "application/pdf",
+        ".ppt": "application/vnd.ms-powerpoint",
+        ".xls": "application/vnd.ms-excel",
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -104,14 +107,18 @@ def translate_document_gcs(project_id, location, input_gcs_uri, output_gcs_uri, 
     parent = f"projects/{project_id}/locations/{location}"
 
     # Determine MIME type from the file extension
-    if input_gcs_uri.endswith(".pdf"):
-        mime_type = "application/pdf"
-    elif input_gcs_uri.endswith(".docx"):
-        mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    elif input_gcs_uri.endswith(".pptx"):
-        mime_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    else:
-        mime_type = "application/pdf"
+    mime_types = {
+        ".doc": "application/msword",
+        ".pdf": "application/pdf",
+        ".ppt": "application/vnd.ms-powerpoint",
+        ".xls": "application/vnd.ms-excel",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+
+    extension = "." + input_gcs_uri.rsplit(".", 1)[-1].lower()
+    mime_type = mime_types.get(extension, "application/pdf")
 
     # Configure input from GCS
     document_input_config = translate.DocumentInputConfig(
@@ -171,9 +178,13 @@ def translate_document_with_glossary(
 
     extension = "." + input_path.rsplit(".", 1)[-1].lower()
     mime_types = {
+        ".doc": "application/msword",
         ".pdf": "application/pdf",
+        ".ppt": "application/vnd.ms-powerpoint",
+        ".xls": "application/vnd.ms-excel",
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
     mime_type = mime_types.get(extension, "application/pdf")
 
@@ -227,7 +238,7 @@ def batch_translate_documents(
     parent = f"projects/{project_id}/locations/{location}"
 
     # Find all translatable documents
-    supported_extensions = (".pdf", ".docx", ".pptx", ".xlsx")
+    supported_extensions = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx")
     documents = [
         f for f in os.listdir(input_dir)
         if f.lower().endswith(supported_extensions)
@@ -245,7 +256,10 @@ def batch_translate_documents(
 
         extension = "." + doc_name.rsplit(".", 1)[-1].lower()
         mime_types = {
+            ".doc": "application/msword",
             ".pdf": "application/pdf",
+            ".ppt": "application/vnd.ms-powerpoint",
+            ".xls": "application/vnd.ms-excel",
             ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -324,17 +338,20 @@ def get_translation_tips(file_extension):
     tips = {
         ".pdf": {
             "notes": [
-                "Only PDFs with selectable text are supported",
-                "Scanned PDFs need OCR first (use Vision API)",
+                "Native PDFs preserve formatting better than scanned PDFs",
+                "Online native PDF translation supports up to 300 pages only when is_translate_native_pdf_only is true",
+                "Scanned PDFs are limited to 20 pages for online translation",
                 "Complex layouts may have minor formatting shifts",
-                "Embedded fonts may be substituted",
+                "Hyperlinks, font size, and font color are preserved for native PDFs only",
             ],
-            "max_pages": 300,
+            "max_native_pdf_pages_online": 300,
+            "max_scanned_pdf_pages_online": 20,
         },
         ".docx": {
             "notes": [
                 "Headers, footers, and footnotes are translated",
                 "Tables and text boxes are preserved",
+                "Content inside text boxes may remain in the source language",
                 "Track changes may cause issues - accept all changes first",
                 "Embedded images are kept but not translated",
             ],
@@ -352,9 +369,9 @@ def get_translation_tips(file_extension):
         ".xlsx": {
             "notes": [
                 "Formulas are preserved but cell references stay the same",
-                "Sheet names are translated",
+                "Review sheet names and text in charts after translation",
                 "Charts and pivot tables may need review",
-                "Number formats follow the target locale",
+                "Number formats and locale-specific values may need manual review",
             ],
             "max_size_mb": 20,
         },
@@ -375,6 +392,6 @@ A few things to keep in mind for production document translation:
 
 ## Wrapping Up
 
-Document translation in Cloud Translation API saves enormous amounts of time compared to extracting text, translating it, and reformatting it manually. The ability to process PDFs, Word documents, PowerPoint presentations, and Excel spreadsheets while preserving formatting makes it practical for real-world document localization workflows.
+Document translation in Cloud Translation API saves enormous amounts of time compared to extracting text, translating it, and reformatting it manually. The ability to process PDFs, Word documents, PowerPoint presentations, and Excel spreadsheets while preserving much of the original formatting makes it practical for real-world document localization workflows.
 
 For monitoring the health of your document translation pipeline and tracking job success rates, [OneUptime](https://oneuptime.com) provides the monitoring tools you need to keep your localization infrastructure running smoothly.
