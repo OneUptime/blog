@@ -14,7 +14,7 @@ ExternalDNS solves this by watching your Kubernetes Ingress (and Service) resour
 
 ## How It Works
 
-ExternalDNS runs as a pod in your GKE cluster. It watches for Ingress resources (and optionally Services of type LoadBalancer) that have hostname annotations. When it finds one, it creates the corresponding DNS record in Cloud DNS. When the Ingress is deleted, ExternalDNS removes the DNS record.
+ExternalDNS runs as a pod in your GKE cluster. It watches for Ingress resources (and optionally Services of type LoadBalancer) that have hostname annotations. When it finds one, it creates the corresponding DNS record in Cloud DNS. When the Ingress is deleted, ExternalDNS removes the DNS record if the sync policy is enabled.
 
 ```mermaid
 sequenceDiagram
@@ -35,7 +35,7 @@ sequenceDiagram
 
 - A GKE cluster (standard or Autopilot)
 - A Cloud DNS managed zone for your domain
-- Workload Identity enabled on the cluster (recommended)
+- Workload Identity Federation for GKE enabled on the cluster and node pool (recommended)
 - kubectl configured to access the cluster
 - Helm v3 installed
 
@@ -55,7 +55,7 @@ gcloud dns managed-zones create my-domain-zone \
 
 ## Step 2: Set Up IAM for ExternalDNS
 
-ExternalDNS needs permission to read and write Cloud DNS records. The recommended approach is to use Workload Identity, which maps a Kubernetes service account to a Google service account.
+ExternalDNS needs permission to read and write Cloud DNS records. The recommended approach is to use Workload Identity Federation for GKE, which maps a Kubernetes service account to a Google service account.
 
 ```bash
 # Create a Google service account for ExternalDNS
@@ -88,10 +88,11 @@ Create a values file for the Helm chart.
 
 ```yaml
 # external-dns-values.yaml - Helm values for ExternalDNS on GKE with Cloud DNS
-provider: google
+provider:
+  name: google
 
-google:
-  project: my-project
+extraArgs:
+  google-project: my-project
 
 domainFilters:
   - example.com
@@ -171,7 +172,7 @@ spec:
     spec:
       containers:
         - name: hello
-          image: gcr.io/google-samples/hello-app:1.0
+          image: us-docker.pkg.dev/google-samples/containers/gke/hello-app:1.0
           ports:
             - containerPort: 8080
 ---
@@ -299,7 +300,7 @@ If you are using the Gateway API instead of traditional Ingress, ExternalDNS sup
 
 ```yaml
 # gateway-httproute.yaml - HTTPRoute with ExternalDNS annotation
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: hello-route
