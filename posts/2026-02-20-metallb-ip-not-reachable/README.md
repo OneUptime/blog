@@ -53,7 +53,7 @@ First, check if MetalLB is actually advertising the IP.
 
 ```bash
 # Check which node is announcing the service
-kubectl get servicel2status -A -l metallb.io/service-name=my-service
+kubectl get servicel2statuses -n metallb-system -l metallb.io/service-name=my-service
 
 # Check speaker logs for announcement activity
 kubectl logs -n metallb-system -l component=speaker --tail=50 | grep "my-service"
@@ -63,7 +63,7 @@ kubectl logs -n metallb-system -l component=speaker --tail=50 | grep "my-service
 
 ```bash
 # Check BGP session status
-kubectl get servicebgpstatus -A -l metallb.io/service-name=my-service
+kubectl get servicebgpstatuses -n metallb-system -l metallb.io/service-name=my-service
 
 # Verify BGP peers are established
 kubectl logs -n metallb-system -l component=speaker --tail=50 | grep -i "bgp\|session\|peer"
@@ -120,14 +120,17 @@ If you see no packets at all, the issue is in the network between the client and
 
 ## Layer 4: Is kube-proxy Forwarding Traffic?
 
-kube-proxy creates iptables or IPVS rules to forward LoadBalancer traffic to pods. Verify these rules exist:
+kube-proxy creates iptables, nftables, or IPVS rules to forward LoadBalancer traffic to pods. Verify these rules exist:
 
 ```bash
 # Check iptables rules for the service (iptables mode)
-# Look for DNAT rules that forward traffic to pod IPs
+# Look for rules that match the LoadBalancer IP and jump to service chains
 sudo iptables -t nat -L KUBE-SERVICES -n | grep 192.168.1.150
 
-# For IPVS mode, check virtual server entries
+# For nftables mode, check rules that match the LoadBalancer IP
+sudo nft list ruleset | grep 192.168.1.150
+
+# For older/deprecated IPVS mode, check virtual server entries
 sudo ipvsadm -ln | grep -A 5 192.168.1.150
 ```
 
@@ -143,22 +146,20 @@ kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=30
 
 ## Layer 5: Are Pods Healthy?
 
-The service endpoints must have healthy pods:
+The service EndpointSlices must have healthy pods:
 
 ```bash
-# Check if the service has endpoints
-kubectl get endpoints my-service
+# Check if the service has EndpointSlices
+kubectl get endpointslices -l kubernetes.io/service-name=my-service
 
 # Check if pods backing the service are running
 kubectl get pods -l app=my-app
 
 # Check pod readiness - unready pods are removed from endpoints
-kubectl get pods -l app=my-app -o custom-columns=\
-NAME:.metadata.name,\
-READY:.status.conditions[?(@.type==\"Ready\")].status
+kubectl get pods -l app=my-app -o 'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
 ```
 
-If there are no endpoints, the service selector does not match any pods or all pods are unready.
+If there are no ready endpoints in the EndpointSlices, the service selector does not match any pods or all pods are unready.
 
 ```bash
 # Verify the service selector matches pod labels
@@ -216,11 +217,11 @@ kubectl get svc "$SVC_NAME" -n "$SVC_NS" -o wide
 
 echo ""
 echo "=== L2 Status ==="
-kubectl get servicel2status -n "$SVC_NS" -l "metallb.io/service-name=$SVC_NAME"
+kubectl get servicel2statuses -n metallb-system -l "metallb.io/service-name=$SVC_NAME,metallb.io/service-namespace=$SVC_NS"
 
 echo ""
-echo "=== Endpoints ==="
-kubectl get endpoints "$SVC_NAME" -n "$SVC_NS"
+echo "=== EndpointSlices ==="
+kubectl get endpointslices -n "$SVC_NS" -l "kubernetes.io/service-name=$SVC_NAME"
 
 echo ""
 echo "=== Pod Status ==="
