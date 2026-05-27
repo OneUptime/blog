@@ -21,8 +21,8 @@ Cloud Batch automatically sets several environment variables in every task. Thes
 
 # BATCH_TASK_INDEX   - Zero-based index of this task (0, 1, 2, ...)
 # BATCH_TASK_COUNT   - Total number of tasks in the task group
-# CLOUD_RUN_TASK_INDEX - Same as BATCH_TASK_INDEX (for compatibility)
-# CLOUD_RUN_TASK_COUNT - Same as BATCH_TASK_COUNT
+# BATCH_TASK_RETRY_ATTEMPT - Retry attempt number for this task
+# BATCH_HOSTS_FILE   - Path to the hosts file when requireHostsFile is enabled
 
 # Example: Use BATCH_TASK_INDEX to partition work
 echo "I am task ${BATCH_TASK_INDEX} of ${BATCH_TASK_COUNT}"
@@ -270,8 +270,8 @@ def create_job_with_config_file(project_id, region):
     echo "Reading configuration from ${CONFIG_FILE}"
     cat ${CONFIG_FILE}
 
-    # Pass the config file to the processing script
-    python3 /app/process.py --config ${CONFIG_FILE} --task-index ${BATCH_TASK_INDEX}
+    # Pass the config file to your processing code
+    python3 -c 'import json, os, sys; config=json.load(open(sys.argv[1])); print("Task {} loaded {} config sections".format(os.environ["BATCH_TASK_INDEX"], len(config)))' "${CONFIG_FILE}"
     """
 
     runnable.script = script
