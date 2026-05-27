@@ -10,7 +10,7 @@ Description: Learn how to configure Google Cloud Storage to send Pub/Sub notific
 
 A lot of data pipelines start with a file landing in a Cloud Storage bucket. Someone uploads a CSV, a system exports a daily report, or an IoT device pushes sensor data. The question is: how does the rest of your pipeline know a new file has arrived?
 
-Polling the bucket on a schedule is one option, but it is wasteful and introduces latency. A better approach is to use Pub/Sub notifications on the bucket. Every time an object is created, updated, deleted, or archived, Cloud Storage publishes a notification to a Pub/Sub topic. From there, you can trigger any downstream processing in real time.
+Polling the bucket on a schedule is one option, but it is wasteful and introduces latency. A better approach is to use Pub/Sub notifications on the bucket. Every time an object is created, updated, deleted, or archived, Cloud Storage publishes a notification to a Pub/Sub topic. From there, you can trigger downstream processing as notifications arrive.
 
 ## How It Works
 
@@ -39,7 +39,7 @@ Cloud Storage uses a service account to publish notifications. You need to grant
 
 ```bash
 # Get the Cloud Storage service account for your project
-GCS_SA=$(gsutil kms serviceaccount -p my-project)
+GCS_SA=$(gcloud storage service-agent --project=my-project)
 
 # Grant publish access to the topic
 gcloud pubsub topics add-iam-policy-binding gcs-file-notifications \
@@ -51,21 +51,22 @@ gcloud pubsub topics add-iam-policy-binding gcs-file-notifications \
 
 ```bash
 # Notify on all object creation events in the bucket
-gsutil notification create -t gcs-file-notifications \
-  -f json \
-  -e OBJECT_FINALIZE \
-  gs://my-data-bucket
+gcloud storage buckets notifications create gs://my-data-bucket \
+  --topic=gcs-file-notifications \
+  --payload-format=json \
+  --event-types=OBJECT_FINALIZE \
+  --skip-topic-setup
 ```
 
-The `-f json` flag specifies that the notification payload should be in JSON format. The `-e` flag filters to specific event types. You can specify multiple event types by repeating the flag:
+The `--payload-format=json` flag specifies that the notification payload should be in JSON format. The `--event-types` flag filters to specific event types:
 
 ```bash
 # Notify on creates and deletes
-gsutil notification create -t gcs-file-notifications \
-  -f json \
-  -e OBJECT_FINALIZE \
-  -e OBJECT_DELETE \
-  gs://my-data-bucket
+gcloud storage buckets notifications create gs://my-data-bucket \
+  --topic=gcs-file-notifications \
+  --payload-format=json \
+  --event-types=OBJECT_FINALIZE,OBJECT_DELETE \
+  --skip-topic-setup
 ```
 
 ### Step 4: Create a Subscription
@@ -94,7 +95,7 @@ resource "google_storage_notification" "file_upload" {
   topic          = google_pubsub_topic.gcs_notifications.id
   event_types    = ["OBJECT_FINALIZE"]
 
-  # Optional: only notify for objects with a specific prefix
+  # Optional: attach extra attributes to each notification
   custom_attributes = {
     source = "data-pipeline"
   }
@@ -233,7 +234,7 @@ streaming_pull.result()
 
 ## Triggering Cloud Functions from Storage Events
 
-A common pattern is using a push subscription to trigger a Cloud Function:
+A common pattern is using a Pub/Sub trigger to run a Cloud Function:
 
 ```python
 # Cloud Function triggered by Cloud Storage notifications via Pub/Sub
@@ -292,11 +293,12 @@ Alternatively, you can set up prefix filtering at the notification level:
 
 ```bash
 # Only notify for objects with the "uploads/" prefix
-gsutil notification create -t gcs-file-notifications \
-  -f json \
-  -e OBJECT_FINALIZE \
-  -p uploads/ \
-  gs://my-data-bucket
+gcloud storage buckets notifications create gs://my-data-bucket \
+  --topic=gcs-file-notifications \
+  --payload-format=json \
+  --event-types=OBJECT_FINALIZE \
+  --object-prefix=uploads/ \
+  --skip-topic-setup
 ```
 
 ## Managing Notifications
@@ -305,14 +307,14 @@ List existing notifications on a bucket:
 
 ```bash
 # List all notifications configured on a bucket
-gsutil notification list gs://my-data-bucket
+gcloud storage buckets notifications list gs://my-data-bucket
 ```
 
 Remove a notification:
 
 ```bash
 # Delete a specific notification configuration
-gsutil notification delete projects/_/buckets/my-data-bucket/notificationConfigs/1
+gcloud storage buckets notifications delete projects/_/buckets/my-data-bucket/notificationConfigs/1
 ```
 
 ## Handling Duplicate Notifications
@@ -343,4 +345,4 @@ def handle_with_dedup(message):
 
 ## Wrapping Up
 
-Pub/Sub notifications for Cloud Storage are the right way to build event-driven file processing pipelines on GCP. They replace polling with real-time delivery, support filtering by event type and object prefix, and integrate naturally with Cloud Functions, Cloud Run, and custom subscribers. Set up the notification, grant the IAM permissions, and create a subscription. From there, every file upload automatically triggers your processing pipeline without any delay.
+Pub/Sub notifications for Cloud Storage are the right way to build event-driven file processing pipelines on GCP. They replace polling with event-driven delivery, support filtering by event type and object prefix, and integrate naturally with Cloud Functions, Cloud Run, and custom subscribers. Set up the notification, grant the IAM permissions, and create a subscription. From there, every file upload automatically triggers your processing pipeline as the notification is delivered, which is typically within seconds.
