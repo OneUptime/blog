@@ -278,7 +278,7 @@ playbook: full-setup.yml
       Update package cache      TAGS: [packages, update]
       Install base packages     TAGS: [packages]
       Install nginx             TAGS: [nginx, packages]
-      Deploy nginx config       TAGS: [config, nginx]
+      Deploy nginx configuration TAGS: [config, nginx]
       Configure firewall rules  TAGS: [firewall, security]
 ```
 
