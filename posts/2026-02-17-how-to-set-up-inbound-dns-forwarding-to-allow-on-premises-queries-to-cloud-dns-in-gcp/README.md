@@ -47,7 +47,7 @@ sequenceDiagram
 - A VPC with at least one subnet
 - A Cloud DNS private zone with records
 - Access to configure your on-premises DNS servers
-- Firewall rules allowing DNS traffic
+- On-premises routing and firewall rules allowing DNS traffic to the inbound forwarder IPs
 
 ## Step 1: Create a DNS Server Policy with Inbound Forwarding
 
@@ -72,7 +72,7 @@ gcloud dns policies update existing-policy \
 
 ## Step 2: Find the Inbound Forwarder IP Addresses
 
-When you enable inbound forwarding, Cloud DNS allocates IP addresses from your VPC subnets. These are the IPs your on-premises DNS will forward to.
+When you enable inbound forwarding, Cloud DNS allocates IP addresses from the primary IPv4 ranges of eligible VPC subnets. These are the IPs your on-premises DNS will forward to.
 
 ```bash
 # List the inbound forwarder IP addresses
@@ -81,7 +81,7 @@ gcloud compute addresses list \
     --format="table(name,address,region,subnetwork)"
 ```
 
-You will see one IP per subnet in the VPC. For example:
+You will see one IP per eligible subnet in the VPC. For example:
 
 ```text
 NAME                    ADDRESS       REGION        SUBNETWORK
@@ -91,21 +91,9 @@ dns-resolver-2          10.200.0.2    europe-west1  my-subnet-eu
 
 These IPs are automatically created and managed by Cloud DNS. You do not create them manually.
 
-## Step 3: Configure GCP Firewall Rules
+## Step 3: Verify Routing and Firewall Access
 
-Allow inbound DNS traffic from your on-premises network to the forwarder IPs:
-
-```bash
-# Allow DNS queries from on-premises to reach Cloud DNS forwarders
-gcloud compute firewall-rules create allow-inbound-dns \
-    --network=my-vpc \
-    --action=allow \
-    --direction=ingress \
-    --source-ranges=192.168.0.0/16 \
-    --rules=tcp:53,udp:53
-```
-
-Replace `192.168.0.0/16` with your actual on-premises IP range.
+Make sure your on-premises network can route to the inbound forwarder IPs through Cloud VPN or Cloud Interconnect, and that your on-premises firewall allows TCP and UDP traffic on port 53 to those IPs. Google Cloud firewall rules do not apply to the regional internal addresses used as inbound forwarder entry points; Cloud DNS accepts TCP and UDP DNS traffic on port 53 automatically.
 
 ## Step 4: Configure On-Premises DNS
 
@@ -193,15 +181,15 @@ dig -x 10.128.0.60
 
 ## Multi-Region Considerations
 
-Cloud DNS creates a forwarder IP in every subnet of the VPC. For optimal performance, configure your on-premises DNS to forward to the forwarder IP in the closest region:
+Cloud DNS creates a forwarder IP in each eligible subnet of the VPC. For best results, configure your on-premises DNS to forward to an inbound forwarder IP in the same region as the Cloud VPN tunnel or Cloud Interconnect VLAN attachment that receives the query:
 
 ```bash
-# If on-premises is closer to us-central1, prioritize that forwarder
+# If the hybrid connection is in us-central1, prioritize that forwarder
 # Windows DNS allows ordering of forwarder IPs by preference
 # BIND and Unbound try forwarders in order and fall back on failure
 ```
 
-For redundancy, include forwarder IPs from multiple regions. If one region's forwarder becomes unreachable (VPN tunnel down in that region), the on-premises DNS falls back to another.
+For redundancy, include forwarder IPs from multiple regions only when you also have hybrid connectivity in those regions. If one region's tunnel or VLAN attachment becomes unreachable, the on-premises DNS can fall back to a forwarder reachable through another regional connection.
 
 ## Configuring for Multiple Cloud DNS Zones
 
@@ -283,7 +271,7 @@ gcloud dns policies update inbound-policy \
 
 # View inbound DNS query logs
 gcloud logging read 'resource.type="dns_query" AND
-    jsonPayload.sourceType="inbound-forwarding"' \
+    jsonPayload.source_type="inbound-forwarding"' \
     --limit=20 \
     --format="table(timestamp,jsonPayload.queryName,jsonPayload.sourceIP)"
 ```
@@ -292,8 +280,8 @@ gcloud logging read 'resource.type="dns_query" AND
 
 **On-premises queries timing out**: Verify that:
 1. VPN/Interconnect is up and routing works
-2. GCP firewall allows DNS traffic from on-premises IP ranges
-3. On-premises firewall allows DNS traffic to GCP subnet IPs
+2. Cloud Router is advertising the subnet ranges that contain the inbound forwarder IPs, or explicitly advertising those IPs if you use custom advertisements
+3. On-premises firewall allows TCP and UDP DNS traffic to the forwarder IPs
 4. The forwarder IP exists (check with `gcloud compute addresses list --filter="purpose=DNS_RESOLVER"`)
 
 **SERVFAIL responses**: The inbound forwarder is reachable but Cloud DNS cannot answer the query. Check that:
@@ -308,7 +296,7 @@ gcloud dns managed-zones describe internal-zone \
     --format="yaml(privateVisibilityConfig)"
 ```
 
-**Forwarder IP not showing up**: Inbound forwarding creates IPs in subnets, but only in subnets with available IP addresses. If a subnet is fully allocated, the forwarder cannot get an IP. Check subnet utilization.
+**Forwarder IP not showing up**: Inbound forwarding creates IPs from primary IPv4 subnet ranges, except for special-purpose subnets such as proxy-only subnets and subnets used by Cloud NAT for Private NAT. Check that the VPC has eligible subnets with available IP addresses.
 
 ## Terraform Configuration
 
