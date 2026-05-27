@@ -24,7 +24,7 @@ Each version has a state:
 - **DISABLED** - the version exists but cannot be accessed (returns an error)
 - **DESTROYED** - the version's data is permanently deleted
 
-The special alias `latest` always points to the most recent enabled version.
+The special alias `latest` always points to the most recently created version.
 
 ```mermaid
 stateDiagram-v2
@@ -68,7 +68,7 @@ The safest approach is to always reference secrets by their specific version num
 # Deploy Cloud Run with a pinned secret version
 gcloud run deploy my-service \
   --image=us-docker.pkg.dev/my-project-id/repo/app:latest \
-  --set-secrets="DB_PASSWORD=db-password:3" \
+  --update-secrets="DB_PASSWORD=db-password:3" \
   --region=us-central1 \
   --project=my-project-id
 ```
@@ -79,32 +79,38 @@ To roll back, simply redeploy with the previous version number:
 # Roll back to version 2
 gcloud run deploy my-service \
   --image=us-docker.pkg.dev/my-project-id/repo/app:latest \
-  --set-secrets="DB_PASSWORD=db-password:2" \
+  --update-secrets="DB_PASSWORD=db-password:2" \
   --region=us-central1 \
   --project=my-project-id
 ```
 
 This approach works well for Cloud Run, GKE, and Compute Engine deployments. The downside is that every secret rotation requires a deployment update.
 
-## Rollback Strategy 2: Use "latest" with Disable
+## Rollback Strategy 2: Use "latest" with a New Rollback Version
 
-If your application references the `latest` version alias, you can perform a rollback by disabling the bad version. When the newest enabled version is disabled, `latest` falls back to the most recent version that is still enabled.
+If your application references the `latest` version alias, do not rely on disabling the bad version to roll back. In Secret Manager, `latest` points to the most recently created version, not the most recent enabled version. To roll back `latest`, create a new version that contains the last known good value.
 
 ```bash
 # Current state: version 3 is latest and broken
-# Disable version 3
-gcloud secrets versions disable 3 \
-  --secret=db-password \
-  --project=my-project-id
+# Create version 4 with the value from version 2
+gcloud secrets versions access 2 --secret=db-password --project=my-project-id | \
+  gcloud secrets versions add db-password --data-file=- --project=my-project-id
 
-# Now "latest" points to version 2 (the most recent enabled version)
+# Now "latest" points to version 4
 # Verify
 gcloud secrets versions access latest --secret=db-password --project=my-project-id
 ```
 
-This is a faster rollback because you do not need to redeploy the application. However, running instances might still have the old value cached in memory. You may need to restart instances to pick up the change.
+This is a faster rollback for applications that resolve `latest` at runtime because you do not need to redeploy the application. However, running instances might still have the old value cached in memory. You may need to restart instances to pick up the change. After creating the rollback version, you can disable the bad version to prevent direct access to it:
 
-To re-enable the version after fixing the issue:
+```bash
+# Disable version 3 after creating the rollback version
+gcloud secrets versions disable 3 \
+  --secret=db-password \
+  --project=my-project-id
+```
+
+To re-enable the bad version after fixing the issue:
 
 ```bash
 # Re-enable the version once the issue is resolved
@@ -115,7 +121,7 @@ gcloud secrets versions enable 3 \
 
 ## Rollback Strategy 3: Create a New Version with the Old Value
 
-If you need to roll back and cannot simply disable the bad version (perhaps because other systems reference it by version number), you can create a new version with the old value:
+If you need to roll back and cannot simply disable the bad version (perhaps because you need to keep it available for investigation or a canary environment), you can create a new version with the old value:
 
 ```bash
 # Read the old version's value and create it as a new version
@@ -156,10 +162,9 @@ gcloud secrets versions add "$SECRET_NAME" \
   --project="$PROJECT_ID"
 
 # Get the new version number
-NEW_VERSION=$(gcloud secrets versions list "$SECRET_NAME" \
+NEW_VERSION=$(gcloud secrets versions describe latest \
+  --secret="$SECRET_NAME" \
   --project="$PROJECT_ID" \
-  --sort-by="~name" \
-  --limit=1 \
   --format="get(name)" | awk -F'/' '{print $NF}')
 
 echo "Created new version $NEW_VERSION with value from version $ROLLBACK_VERSION"
@@ -224,7 +229,7 @@ Set up alerts for secret access failures, which often indicate a bad version:
 
 ```bash
 # Search for secret access failures in the past hour
-gcloud logging read 'resource.type="secretmanager.googleapis.com/Secret" AND protoPayload.status.code!=0' \
+gcloud logging read 'protoPayload.serviceName="secretmanager.googleapis.com" AND protoPayload.methodName="google.cloud.secretmanager.v1.SecretManagerService.AccessSecretVersion" AND protoPayload.status.code!=0' \
   --project=my-project-id \
   --freshness=1h \
   --format="table(timestamp, protoPayload.resourceName, protoPayload.status.message)"
