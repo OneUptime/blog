@@ -23,27 +23,21 @@ This is different from Dataproc Serverless batch jobs, which are fire-and-forget
 Before you can start using interactive sessions, you need a few things in place:
 
 - A GCP project with billing enabled
-- BigQuery API and Dataproc API enabled
+- BigQuery API, Dataproc API, and Cloud Storage API enabled
 - Appropriate IAM roles assigned to your user account
 - A network configuration that allows Dataproc Serverless to run (default VPC works fine for getting started)
+- A Cloud Storage bucket available in your project
 
 ## Step 1: Enable the Required APIs
 
-First, make sure both the BigQuery and Dataproc APIs are active in your project. You can do this from the Cloud Shell or your local terminal.
+First, make sure the BigQuery, Dataproc, and Cloud Storage APIs are active in your project. You can do this from the Cloud Shell or your local terminal.
 
-This command enables the Dataproc and BigQuery APIs in one shot:
-
-```bash
-# Enable Dataproc and BigQuery APIs for your project
-
-gcloud services enable dataproc.googleapis.com bigquery.googleapis.com
-```
-
-You also need the BigQuery Connection API if you plan to connect to external data sources from your sessions:
+This command enables the Dataproc, BigQuery, and Cloud Storage APIs in one shot:
 
 ```bash
-# Enable the BigQuery Connection API
-gcloud services enable bigqueryconnection.googleapis.com
+# Enable Dataproc, BigQuery, and Cloud Storage APIs for your project
+
+gcloud services enable dataproc.googleapis.com bigquery.googleapis.com storage.googleapis.com
 ```
 
 ## Step 2: Configure IAM Permissions
@@ -51,8 +45,10 @@ gcloud services enable bigqueryconnection.googleapis.com
 Your user account (or the service account running the session) needs certain roles. At minimum, you need:
 
 - `roles/dataproc.editor` - to create and manage Dataproc Serverless sessions
-- `roles/bigquery.user` - to access BigQuery Studio
+- `roles/bigquery.studioUser` - to access BigQuery Studio notebooks
 - `roles/iam.serviceAccountUser` - to act as the service account running the session
+
+If you use service account credentials for the notebook session, the session service account also needs `roles/dataproc.worker`.
 
 Here is how to grant these roles to a user:
 
@@ -67,7 +63,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="user:$USER_EMAIL" \
-  --role="roles/bigquery.user"
+  --role="roles/bigquery.studioUser"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="user:$USER_EMAIL" \
@@ -76,9 +72,9 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 ## Step 3: Set Up Networking
 
-Dataproc Serverless requires a VPC subnetwork with Private Google Access enabled. If you are using the default VPC, you might need to turn this on.
+Dataproc Serverless runs on VMs with internal IP addresses in a regional VPC subnetwork. Private Google Access is enabled automatically on the subnet. If you do not specify a subnet, Dataproc Serverless uses the default subnet in the session region.
 
-The following command enables Private Google Access on the default subnet in us-central1:
+If you are configuring the subnet yourself, the following command enables Private Google Access on the default subnet in us-central1:
 
 ```bash
 # Enable Private Google Access on the default subnet
@@ -97,7 +93,7 @@ Here is an example of creating a session template using the gcloud CLI:
 
 ```bash
 # Create a Dataproc Serverless runtime template
-gcloud dataproc session-templates import my-spark-template \
+gcloud beta dataproc session-templates import my-spark-template \
   --source=template.yaml \
   --location=us-central1
 ```
@@ -107,7 +103,7 @@ And here is a sample `template.yaml` file:
 ```yaml
 # Runtime template for interactive Spark sessions
 runtimeConfig:
-  version: "2.1"
+  version: "2.3"
   properties:
     spark.executor.instances: "4"
     spark.executor.memory: "4g"
@@ -115,18 +111,20 @@ runtimeConfig:
 environmentConfig:
   executionConfig:
     subnetworkUri: "default"
+sparkConnectSession: {}
 ```
+
+BigQuery Studio notebook sessions require templates to use runtime version 2.3 or later and the Spark Connect session type.
 
 ## Step 5: Launch an Interactive Session in BigQuery Studio
 
 Now for the fun part. Open BigQuery Studio in the Google Cloud Console:
 
 1. Navigate to **BigQuery** in the Cloud Console
-2. Click on **BigQuery Studio** in the left navigation panel
-3. Click **Create** and select **PySpark notebook**
-4. Choose your runtime configuration (or use the template you created)
-5. Select the region where you want the session to run
-6. Click **Create** to start the session
+2. In the editor pane, click the arrow next to the **+** button and select **Notebook**
+3. For a template-based session, choose **Query using Spark** under **Start with a template**
+4. Enter your project, region, and session template details
+5. Run the generated setup cell to start the Spark Connect session
 
 The session takes roughly 30 to 60 seconds to initialize. Once it is ready, you will see a Jupyter-style notebook interface.
 
@@ -136,9 +134,17 @@ With the session running, you can start writing PySpark code right away. Here is
 
 ```python
 # Read a public BigQuery dataset into a Spark DataFrame
-from pyspark.sql import SparkSession
+from google.cloud.dataproc_spark_connect import DataprocSparkSession
+from google.cloud.dataproc_v1 import Session
 
-spark = SparkSession.builder.getOrCreate()
+session = Session()
+
+spark = (
+    DataprocSparkSession.builder
+    .appName("shakespeare-example")
+    .dataprocSessionConfig(session)
+    .getOrCreate()
+)
 
 # Load the public Shakespeare dataset from BigQuery
 df = spark.read.format("bigquery") \
@@ -156,6 +162,18 @@ You can also run SQL queries against BigQuery tables directly:
 
 ```python
 # Use Spark SQL to query BigQuery data
+from google.cloud.dataproc_spark_connect import DataprocSparkSession
+from google.cloud.dataproc_v1 import Session
+
+session = Session()
+
+spark = (
+    DataprocSparkSession.builder
+    .appName("shakespeare-sql-example")
+    .dataprocSessionConfig(session)
+    .getOrCreate()
+)
+
 df = spark.read.format("bigquery") \
     .option("table", "bigquery-public-data.samples.shakespeare") \
     .load()
@@ -180,9 +198,9 @@ By default, interactive sessions have an idle timeout. You can adjust this to ma
 
 ```bash
 # Create a session with a 2-hour idle timeout
-gcloud dataproc sessions create spark my-session \
+gcloud beta dataproc sessions create spark my-session \
   --location=us-central1 \
-  --property="spark.dataproc.session.idle.timeout=7200s" \
+  --max-idle=2h \
   --subnet=default
 ```
 
@@ -192,15 +210,15 @@ You can check the status of your active sessions using the gcloud CLI:
 
 ```bash
 # List all active Dataproc Serverless sessions
-gcloud dataproc sessions list --location=us-central1
+gcloud beta dataproc sessions list --location=us-central1
 
 # Get details about a specific session
-gcloud dataproc sessions describe my-session --location=us-central1
+gcloud beta dataproc sessions describe my-session --location=us-central1
 ```
 
 ## Cost Considerations
 
-Dataproc Serverless charges based on the Data Compute Units (DCUs) consumed during your session. You are billed per second of compute time. There is no charge when the session is idle (after the idle timeout kicks in and the session is terminated). This makes it significantly cheaper than running a persistent Dataproc cluster for ad-hoc analysis work.
+Dataproc Serverless charges based on the Data Compute Units (DCUs), shuffle storage, and any attached accelerators consumed during your session. You are billed per second with a one-minute minimum. Scale-to-zero means there is no charge for idle capacity after the session is terminated. This can make it significantly cheaper than running a persistent Dataproc cluster for ad-hoc analysis work.
 
 For teams doing occasional exploration or prototyping, the cost savings compared to keeping a cluster running 24/7 can be substantial.
 
