@@ -85,7 +85,7 @@ graph LR
         ref:
           branch: "{{ item.branch | default('main') }}"
         secretRef:
-          name: "{{ item.secret | default('flux-system') }}"
+          name: "{{ item.secret }}"
   loop: "{{ flux_git_sources }}"
 
 - name: Create HelmRepository source
@@ -142,6 +142,7 @@ flux_git_sources:
   - name: app-manifests
     url: ssh://git@github.com/myorg/k8s-manifests.git
     branch: main
+    secret: app-manifests-auth
 
 flux_helm_repos:
   - { name: bitnami, url: "https://charts.bitnami.com/bitnami" }
@@ -185,9 +186,12 @@ flux_kustomizations:
 
     - name: Report any failed reconciliations
       ansible.builtin.debug:
-        msg: "{{ item.metadata.name }}: {{ item.status.conditions[-1].message }}"
+        msg: "{{ item.metadata.name }}: {{ (item.status.conditions | selectattr('type', 'equalto', 'Ready') | first).message }}"
       loop: "{{ kustomizations.resources }}"
-      when: item.status.conditions[-1].status != 'True'
+      when:
+        - item.status.conditions is defined
+        - item.status.conditions | selectattr('type', 'equalto', 'Ready') | list | length > 0
+        - (item.status.conditions | selectattr('type', 'equalto', 'Ready') | first).status != 'True'
 ```
 
 ## Key Takeaways
@@ -233,7 +237,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -377,4 +381,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
