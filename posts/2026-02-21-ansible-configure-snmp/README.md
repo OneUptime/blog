@@ -40,7 +40,7 @@ The first step is getting the SNMP daemon installed on all target hosts:
       when: ansible_os_family == "Debian"
 
     - name: Install SNMP on RHEL/CentOS
-      ansible.builtin.yum:
+      ansible.builtin.package:
         name:
           - net-snmp
           - net-snmp-utils
@@ -160,38 +160,6 @@ SNMPv3 adds authentication and encryption, making it much more secure than v2c. 
         name: snmpd
         state: stopped
 
-    - name: Deploy base snmpd.conf for v3
-      ansible.builtin.template:
-        src: templates/snmpd-v3.conf.j2
-        dest: /etc/snmp/snmpd.conf
-        owner: root
-        group: root
-        mode: '0600'
-
-    - name: Remove existing SNMPv3 users file
-      ansible.builtin.file:
-        path: /var/lib/snmp/snmpd.conf
-        state: absent
-
-    - name: Start snmpd to initialize
-      ansible.builtin.service:
-        name: snmpd
-        state: started
-
-    - name: Create SNMPv3 user
-      ansible.builtin.command: >
-        snmpusm -v3 -u initial -n "" -l noAuthNoPriv localhost
-        create {{ snmpv3_user }} initial
-      changed_when: true
-      ignore_errors: true
-
-    - name: Set SNMPv3 user authentication password
-      ansible.builtin.command: >
-        snmpusm -v3 -u {{ snmpv3_user }} -n "" -l noAuthNoPriv localhost
-        passwd "" "{{ snmpv3_auth_pass }}" -Ca
-      changed_when: true
-      ignore_errors: true
-
     - name: Create SNMPv3 user using net-snmp-create-v3-user
       ansible.builtin.command: >
         net-snmp-create-v3-user
@@ -203,6 +171,14 @@ SNMPv3 adds authentication and encryption, making it much more secure than v2c. 
         {{ snmpv3_user }}
       changed_when: true
       notify: Restart snmpd
+
+    - name: Deploy base snmpd.conf for v3
+      ansible.builtin.template:
+        src: templates/snmpd-v3.conf.j2
+        dest: /etc/snmp/snmpd.conf
+        owner: root
+        group: root
+        mode: '0600'
 
   handlers:
     - name: Restart snmpd
@@ -383,7 +359,7 @@ Besides polling, SNMP also supports traps (push-based notifications). Configure 
           authtrapenable 1
 
           # Monitor disk usage and send trap if over threshold
-          monitor -r 60 -o dskPath -o dskTotal -o dskAvail dskPercent dskPercent < 90
+          monitor -r 60 -o dskPath -o dskTotal -o dskAvail dskPercent dskPercent > 90
         mode: '0600'
       notify: Restart snmpd
 
