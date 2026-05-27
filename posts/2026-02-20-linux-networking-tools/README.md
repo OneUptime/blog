@@ -37,7 +37,7 @@ The `ip` command replaces the older `ifconfig` and `route` commands.
 ip addr show
 
 # Show only IPv4 addresses in a compact format
-ip -4 addr show
+ip -br -4 addr show
 
 # Show a specific interface
 ip addr show eth0
@@ -51,7 +51,7 @@ ip route show default
 # Find which interface and route is used to reach a host
 ip route get 8.8.8.8
 
-# Show neighbor (ARP) table
+# Show neighbor (ARP/NDP) table
 ip neigh show
 
 # Show link-level statistics (errors, drops)
@@ -95,7 +95,7 @@ ss -tn src 192.168.1.0/24
 # Show connections in ESTABLISHED state
 ss -t state established
 
-# Show connections in TIME-WAIT state (common connection leak indicator)
+# Show connections in TIME-WAIT state (useful when investigating connection churn)
 ss -t state time-wait | wc -l
 
 # Show detailed TCP socket info including congestion control
@@ -161,9 +161,9 @@ sequenceDiagram
     Res->>TLD: Query for oneuptime.com
     TLD-->>Res: Refer to authoritative NS
     Res->>Auth: Query for oneuptime.com
-    Auth-->>Res: A record: 93.184.216.34
+    Auth-->>Res: A record: current IP address
     Res->>Cache: Store with TTL
-    Res-->>App: 93.184.216.34
+    Res-->>App: current IP address
 ```
 
 ## curl - HTTP Client
@@ -212,7 +212,7 @@ curl --resolve api.example.com:443:10.0.0.5 https://api.example.com/health
 # Show the network path to a host
 traceroute oneuptime.com
 
-# Use TCP instead of ICMP (works when ICMP is blocked)
+# Use TCP SYN probes instead of the default UDP probes
 traceroute -T -p 443 oneuptime.com
 
 # mtr combines ping and traceroute for continuous monitoring
@@ -316,7 +316,7 @@ ping -c 3 db.internal.example.com
 nc -zv db.internal.example.com 5432
 
 # Step 4: Check local connections
-ss -tn dst db.internal.example.com:5432
+ss -tn dport = :5432
 
 # Scenario: Slow API responses
 # Step 1: Measure where time is spent
