@@ -12,7 +12,7 @@ Port mapping connects container ports to host ports, making your containerized s
 
 ## How Docker Port Mapping Works
 
-When a container runs, its services listen on ports inside the container's network namespace. Without port mapping, these ports are only accessible from other containers on the same Docker network. Port mapping creates a forwarding rule from the host's network stack to the container's internal port.
+When a container runs, its services listen on ports inside the container's network namespace. Without port mapping, these ports are not published on the host's network interfaces, though they can still be reached from the Docker host or from other containers on the same Docker network. Port mapping creates a forwarding rule from the host's network stack to the container's internal port.
 
 ```mermaid
 flowchart LR
@@ -206,7 +206,7 @@ When you need to map a range of ports, Docker supports range syntax:
 
 ## Using the Published Ports Parameter
 
-For more control, use the `published_ports` parameter with the `all` keyword to publish all exposed ports:
+For more control, use the `publish_all_ports` parameter to publish all exposed ports:
 
 ```yaml
 # publish_all.yml - Publish all ports exposed in the Dockerfile
@@ -221,8 +221,7 @@ For more control, use the `published_ports` parameter with the `all` keyword to 
         name: full-app
         image: myapp:latest
         state: started
-        published_ports:
-          - all
+        publish_all_ports: true
 ```
 
 This maps every port listed in the image's `EXPOSE` directive to a random host port. It is equivalent to `docker run -P`.
