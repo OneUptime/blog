@@ -18,15 +18,15 @@ The core idea is simple:
 
 1. Encrypt each user's personal data with a unique encryption key (or a key shared by a small group of users)
 2. Store the encrypted data wherever you need it
-3. When a user requests erasure, destroy their encryption key
-4. The encrypted data becomes permanently unrecoverable
+3. When a user requests erasure, schedule destruction of their encryption key versions
+4. After Cloud KMS completes the scheduled destruction, the encrypted data becomes permanently unrecoverable
 
 ```mermaid
 graph TD
     A[User Data] --> B[Encrypt with User-Specific Key]
     B --> C[Store Encrypted Data]
     C --> D[BigQuery / Cloud Storage / Cloud SQL]
-    E[Erasure Request] --> F[Destroy User's Key in Cloud KMS]
+    E[Erasure Request] --> F[Schedule Key Destruction in Cloud KMS]
     F --> G[Data is Cryptographically Unrecoverable]
     style F fill:#ff6b6b,color:#fff
     style G fill:#868e96,color:#fff
@@ -155,7 +155,7 @@ class CryptoShredder:
         return fernet.decrypt(encrypted_data).decode('utf-8')
 
     def shred_user_data(self, user_id):
-        """Destroy all key versions for a user, making their data unrecoverable."""
+        """Schedule destruction for all usable key versions for a user."""
         key_name = self._key_name(user_id)
 
         # List all key versions
@@ -163,13 +163,16 @@ class CryptoShredder:
             request={"parent": key_name}
         )
 
-        # Destroy each version
+        # Schedule each enabled or disabled version for destruction
         for version in versions:
-            if version.state != kms.CryptoKeyVersion.CryptoKeyVersionState.DESTROYED:
+            if version.state in [
+                kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED,
+                kms.CryptoKeyVersion.CryptoKeyVersionState.DISABLED,
+            ]:
                 self.client.destroy_crypto_key_version(
                     request={"name": version.name}
                 )
-                print(f"Destroyed key version: {version.name}")
+                print(f"Scheduled key version for destruction: {version.name}")
 ```
 
 ## Storing Encrypted Data in BigQuery
@@ -197,12 +200,12 @@ Note that encrypted columns cannot be used in WHERE clauses or joins. Structure 
 When a GDPR erasure request comes in, the process is:
 
 1. Verify the request is legitimate
-2. Destroy the user's KEK in Cloud KMS
+2. Schedule destruction for all versions of the user's KEK in Cloud KMS
 3. Log the erasure action for compliance records
-4. Optionally delete the encrypted (now unreadable) data to reclaim storage
+4. Optionally delete the encrypted data to reclaim storage after key destruction completes
 
 ```bash
-# Destroy all versions of a user's KEK
+# Schedule destruction for all versions of a user's KEK
 # First, list all key versions
 gcloud kms keys versions list \
   --key=user-12345-kek \
@@ -210,7 +213,7 @@ gcloud kms keys versions list \
   --location=us-central1 \
   --project=my-kms-project
 
-# Destroy each active version
+# Schedule each enabled or disabled version for destruction
 gcloud kms keys versions destroy 1 \
   --key=user-12345-kek \
   --keyring=user-data-keys \
@@ -218,7 +221,7 @@ gcloud kms keys versions destroy 1 \
   --project=my-kms-project
 ```
 
-Important: Cloud KMS has a 24-hour delay before key destruction is final. During this window, the destruction can be reversed. After 24 hours, the key material is permanently deleted and the data is unrecoverable.
+Important: Cloud KMS does not destroy key versions immediately. Key versions remain in the scheduled for destruction state for the key's configured duration, which defaults to 30 days and can be set as low as 24 hours when the key is created, subject to organization policy. During this window, the destruction can be reversed. After the configured duration, the key material is no longer recoverable by the customer and the data cannot be decrypted.
 
 ## Automating the Erasure Pipeline
 
@@ -233,7 +236,7 @@ from google.cloud import bigquery
 import datetime
 
 def process_erasure_request(event, context):
-    """Handle a GDPR erasure request by destroying the user's KEK."""
+    """Handle a GDPR erasure request by scheduling destruction of the user's KEK."""
     # Parse the erasure request
     message = base64.b64decode(event['data']).decode('utf-8')
     request = json.loads(message)
@@ -249,35 +252,35 @@ def process_erasure_request(event, context):
         "user-data-keys", f"user-{user_id}-kek"
     )
 
-    # Destroy all key versions
+    # Schedule all usable key versions for destruction
     versions = kms_client.list_crypto_key_versions(
         request={"parent": key_path}
     )
 
-    destroyed_count = 0
+    scheduled_count = 0
     for version in versions:
-        if version.state not in [
-            kms.CryptoKeyVersion.CryptoKeyVersionState.DESTROYED,
-            kms.CryptoKeyVersion.CryptoKeyVersionState.DESTROY_SCHEDULED
+        if version.state in [
+            kms.CryptoKeyVersion.CryptoKeyVersionState.ENABLED,
+            kms.CryptoKeyVersion.CryptoKeyVersionState.DISABLED,
         ]:
             kms_client.destroy_crypto_key_version(
                 request={"name": version.name}
             )
-            destroyed_count += 1
+            scheduled_count += 1
 
     # Log the erasure action for compliance audit trail
     audit_row = {
         "request_id": request_id,
         "user_id": user_id,
-        "action": "KEY_DESTROYED",
-        "key_versions_destroyed": destroyed_count,
+        "action": "KEY_DESTRUCTION_SCHEDULED",
+        "key_versions_scheduled_for_destruction": scheduled_count,
         "timestamp": datetime.datetime.utcnow().isoformat(),
     }
 
     table_ref = bq_client.dataset("compliance").table("erasure_audit_log")
     bq_client.insert_rows_json(table_ref, [audit_row])
 
-    print(f"Erasure complete for user {user_id}: {destroyed_count} key versions destroyed")
+    print(f"Erasure scheduled for user {user_id}: {scheduled_count} key versions scheduled for destruction")
 ```
 
 ## Limitations and Considerations
@@ -292,6 +295,6 @@ Crypto-shredding is powerful but not without trade-offs:
 
 4. **Backup complexity** - backups contain encrypted data. Restoring a backup after key destruction means the restored data for erased users is still unreadable, which is the desired outcome.
 
-5. **Key destruction delay** - the 24-hour window before destruction is final is a safety feature, but it means erasure is not instantaneous. Document this in your privacy policy.
+5. **Key destruction delay** - the scheduled destruction window is a safety feature, but it means final key destruction is not instantaneous. The default window is 30 days, and the minimum configurable window is 24 hours. Document this in your privacy policy.
 
 Crypto-shredding is not a replacement for good data architecture - you should still minimize what personal data you collect and where you store it. But when data does spread across multiple systems, crypto-shredding gives you a reliable way to render it unrecoverable without tracking down every last copy.
