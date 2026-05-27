@@ -76,6 +76,19 @@ We use rbenv to manage Ruby versions, which gives us fine-grained control.
 ```yaml
 # roles/rails_app/tasks/ruby.yml
 ---
+- name: Ensure application group exists
+  group:
+    name: "{{ app_group }}"
+    state: present
+
+- name: Ensure application user exists
+  user:
+    name: "{{ app_user }}"
+    group: "{{ app_group }}"
+    home: "/home/{{ app_user }}"
+    shell: /bin/bash
+    create_home: yes
+
 - name: Install Ruby build dependencies
   apt:
     name:
@@ -208,7 +221,9 @@ We use rbenv to manage Ruby versions, which gives us fine-grained control.
   shell: |
     export PATH="$HOME/.rbenv/bin:$PATH"
     eval "$(rbenv init -)"
-    bundle install --deployment --without development test
+    bundle config set --local deployment 'true'
+    bundle config set --local without 'development test'
+    bundle install
   args:
     chdir: "{{ app_dir }}/current"
   become_user: "{{ app_user }}"
@@ -292,6 +307,7 @@ Group={{ app_group }}
 WorkingDirectory={{ app_dir }}/current
 Environment=RAILS_ENV={{ rails_env }}
 Environment=PATH=/home/{{ app_user }}/.rbenv/shims:/home/{{ app_user }}/.rbenv/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile={{ app_dir }}/current/.env
 ExecStart=/home/{{ app_user }}/.rbenv/shims/bundle exec puma -C config/puma.rb -p {{ puma_port }}
 Restart=on-failure
 RestartSec=5
@@ -307,7 +323,7 @@ Environment file:
 RAILS_ENV={{ rails_env }}
 SECRET_KEY_BASE={{ vault_secret_key_base }}
 RAILS_SERVE_STATIC_FILES=true
-RAILS_LOG_TO_STDOUT=false
+RAILS_LOG_TO_STDOUT=true
 DATABASE_URL=postgres://{{ db_user }}:{{ vault_db_password }}@{{ db_host }}/{{ db_name }}
 ```
 
@@ -414,7 +430,7 @@ For initial deployments, you might want to seed the database:
   when: seed_database | default(false) | bool
 ```
 
-Run it with: `ansible-playbook deploy.yml -e "seed_database=true"`
+Run it with: `ansible-playbook -i inventory/production.yml deploy.yml --ask-vault-pass -e "seed_database=true"`
 
 ## Wrapping Up
 
