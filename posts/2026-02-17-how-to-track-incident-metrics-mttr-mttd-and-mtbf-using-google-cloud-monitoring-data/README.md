@@ -34,56 +34,68 @@ graph LR
 
 ## Extracting Incident Data from Cloud Monitoring
 
-Cloud Monitoring stores incident data that you can access through the API. Each incident has a start time, an acknowledgment time, and an end time. These timestamps are what you need for calculating MTTR and MTTD.
+Cloud Monitoring stores incident data that you can access through the API. In the API these records are exposed as alerts, with an open time and, for closed alerts, a close time. The alerts API is currently in Public Preview, and these timestamps are what you need for calculating MTTR and MTBF.
 
 Here is a Python script that pulls incident data from the Cloud Monitoring API:
 
 ```python
-from google.cloud import monitoring_v3
-from datetime import datetime, timedelta
+import google.auth
+import re
+from google.auth.transport.requests import AuthorizedSession
+from datetime import datetime, timedelta, timezone
 import statistics
+
+def parse_rfc3339(timestamp):
+    """Parse the RFC 3339 timestamps returned by the Monitoring API."""
+    if not timestamp:
+        return None
+    timestamp = re.sub(r"(\.\d{6})\d+(Z|[+-]\d{2}:\d{2})$", r"\1\2", timestamp)
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
 
 def get_incidents(project_id, days_back=30):
     """Fetch all incidents from the last N days."""
-    client = monitoring_v3.AlertPolicyServiceClient()
-    project_name = f"projects/{project_id}"
-
-    # List all alert policies to get their incidents
-    policies = client.list_alert_policies(name=project_name)
-
-    # Use the incidents API to fetch incident history
-    # Note: incidents are accessed through the monitoring API
-    query_client = monitoring_v3.QueryServiceClient()
-
-    # Fetch incident data from Cloud Logging instead
-    # Incidents generate log entries in Cloud Audit Logs
-    from google.cloud import logging as cloud_logging
-
-    logging_client = cloud_logging.Client(project=project_id)
-
-    # Query for incident state changes
-    filter_str = (
-        'resource.type="monitoring_alert_policy" '
-        f'timestamp>="{(datetime.utcnow() - timedelta(days=days_back)).isoformat()}Z"'
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/monitoring.read"]
     )
+    session = AuthorizedSession(credentials)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
 
+    # Alerts are the API representation of alerting incidents.
     incidents = {}
-    for entry in logging_client.list_entries(filter_=filter_str):
-        payload = entry.payload
-        if isinstance(payload, dict):
-            incident_id = payload.get("incident", {}).get("incident_id")
-            state = payload.get("incident", {}).get("state")
-            timestamp = entry.timestamp
 
-            if incident_id not in incidents:
-                incidents[incident_id] = {}
+    url = f"https://monitoring.googleapis.com/v3/projects/{project_id}/alerts"
+    params = {
+        "orderBy": "openTime desc",
+        "pageSize": 1000,
+    }
 
-            if state == "open":
-                incidents[incident_id]["opened"] = timestamp
-            elif state == "closed":
-                incidents[incident_id]["closed"] = timestamp
-            elif state == "acknowledged":
-                incidents[incident_id]["acknowledged"] = timestamp
+    while True:
+        response = session.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        for alert in data.get("alerts", []):
+            opened = parse_rfc3339(alert.get("openTime"))
+            if not opened or opened < cutoff:
+                continue
+
+            incident_id = alert["name"].rsplit("/", 1)[-1]
+            incidents[incident_id] = {
+                "opened": opened,
+                "closed": parse_rfc3339(alert.get("closeTime")),
+                "state": alert.get("state"),
+                "policy": alert.get("policy", {}).get("displayName"),
+            }
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+
+        params = {
+            "orderBy": "openTime desc",
+            "pageSize": 1000,
+            "pageToken": page_token,
+        }
 
     return incidents
 ```
@@ -126,28 +138,17 @@ I recommend tracking both the mean and the median. A single multi-hour incident 
 
 ## Calculating MTTD
 
-MTTD is harder to measure because you need to know when the issue actually started, not just when it was detected. One practical approach is to use the gap between when a metric crossed its threshold and when the alert actually fired. Cloud Monitoring alerting policies have a duration parameter that introduces a deliberate delay, but there can also be additional detection latency.
+MTTD is harder to measure because you need to know when the issue actually started, not just when it was detected. Cloud Monitoring gives you the alert open time, but it does not automatically know the first user-impacting moment for every outage. One practical approach is to store that issue start time from logs, synthetic checks, SLO burn data, or incident reports, then compare it with the alert open time. Cloud Monitoring alerting policies have a duration parameter that introduces a deliberate delay, but there can also be additional detection latency.
 
 ```python
-def calculate_mttd(project_id, days_back=30):
-    """Estimate MTTD by analyzing the gap between metric threshold crossing and alert firing."""
-    from google.cloud import monitoring_v3
-    from datetime import datetime, timedelta
-
-    client = monitoring_v3.QueryServiceClient()
-
-    # For each incident, compare the alert fire time to when the metric
-    # first crossed the threshold
-    # This requires querying the raw metrics for the incident period
-
+def calculate_mttd(incidents, issue_start_times):
+    """Calculate MTTD when you have an issue start timestamp for each incident."""
     detection_times = []
-
-    # Get incidents
-    incidents = get_incidents(project_id, days_back)
 
     for incident_id, times in incidents.items():
         opened = times.get("opened")
-        if not opened:
+        issue_started = issue_start_times.get(incident_id)
+        if not opened or not issue_started:
             continue
 
         # The actual detection delay includes:
@@ -156,16 +157,8 @@ def calculate_mttd(project_id, days_back=30):
         # 3. Alerting policy duration (waiting for condition to persist)
         # 4. Notification delivery time
 
-        # A practical estimate: subtract the policy duration from the alert time
-        # to estimate when the issue actually started
-        # For a more precise MTTD, log the first user-reported error time
-
-        # Here we track time from incident open to acknowledgment
-        # as a proxy for detection-to-human-awareness time
-        acknowledged = times.get("acknowledged")
-        if acknowledged:
-            detect_to_ack = (acknowledged - opened).total_seconds() / 60
-            detection_times.append(detect_to_ack)
+        detection_time = (opened - issue_started).total_seconds() / 60
+        detection_times.append(detection_time)
 
     if detection_times:
         mttd = statistics.mean(detection_times)
@@ -213,7 +206,7 @@ Cloud Monitoring retains incident data for a limited time. For long-term trend a
 
 ```python
 from google.cloud import bigquery
-from datetime import datetime
+from datetime import datetime, timezone
 
 def export_incident_metrics(request):
     """Weekly Cloud Function to calculate and store incident metrics."""
@@ -222,6 +215,7 @@ def export_incident_metrics(request):
     # Calculate metrics
     incidents = get_incidents(project_id, days_back=7)
     mttr = calculate_mttr(incidents)
+    mttd = calculate_mttd(incidents, issue_start_times={})
     mtbf = calculate_mtbf(incidents)
 
     # Store in BigQuery
@@ -230,8 +224,9 @@ def export_incident_metrics(request):
 
     rows = [
         {
-            "week_ending": datetime.utcnow().isoformat(),
+            "week_ending": datetime.now(timezone.utc).isoformat(),
             "mttr_minutes": mttr,
+            "mttd_minutes": mttd,
             "mtbf_hours": mtbf,
             "total_incidents": len(incidents),
         }
@@ -254,7 +249,7 @@ Create the BigQuery table to hold the data:
 bq mk --dataset my-project:incident_metrics
 
 bq mk --table my-project:incident_metrics.weekly_metrics \
-  week_ending:TIMESTAMP,mttr_minutes:FLOAT,mtbf_hours:FLOAT,total_incidents:INTEGER
+  week_ending:TIMESTAMP,mttr_minutes:FLOAT,mttd_minutes:FLOAT,mtbf_hours:FLOAT,total_incidents:INTEGER
 ```
 
 ## Building a Metrics Dashboard
@@ -265,6 +260,7 @@ You can also build a simpler dashboard directly in Cloud Monitoring using custom
 
 ```python
 from google.cloud import monitoring_v3
+from datetime import datetime, timezone
 
 def write_custom_metric(project_id, metric_type, value):
     """Write a custom metric value to Cloud Monitoring."""
@@ -278,7 +274,7 @@ def write_custom_metric(project_id, metric_type, value):
 
     point = monitoring_v3.Point()
     point.value.double_value = value
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     point.interval.end_time.seconds = int(now.timestamp())
 
     series.points = [point]
@@ -297,4 +293,4 @@ Once you are tracking these metrics, set targets and create alerts when they reg
 
 ## Summary
 
-MTTR, MTTD, and MTBF are the three metrics that tell you how well your incident response is working. Google Cloud Monitoring provides the raw incident data, and with a bit of scripting you can calculate these metrics, store them in BigQuery for trend analysis, and even write them back as custom metrics for dashboarding and alerting. Track these numbers weekly, review them in your team meetings, and use them to drive targeted improvements in your monitoring, runbooks, and reliability practices.
+MTTR, MTTD, and MTBF are the three metrics that tell you how well your incident response is working. Google Cloud Monitoring provides the alert open and close times you need for MTTR and MTBF, and with an additional source for issue start times you can calculate MTTD as well. Store these metrics in BigQuery for trend analysis, and even write them back as custom metrics for dashboarding and alerting. Track these numbers weekly, review them in your team meetings, and use them to drive targeted improvements in your monitoring, runbooks, and reliability practices.
