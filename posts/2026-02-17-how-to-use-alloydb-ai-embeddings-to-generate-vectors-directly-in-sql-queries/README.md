@@ -8,7 +8,7 @@ Description: Learn how to use AlloyDB AI to generate text embeddings directly in
 
 ---
 
-Vector embeddings are everywhere in modern applications - powering semantic search, recommendation systems, and RAG (Retrieval Augmented Generation) pipelines. Typically, generating these embeddings requires calling an external API from your application, storing the results, and then using a vector database for similarity search. AlloyDB AI simplifies this by letting you generate embeddings directly inside SQL queries using Vertex AI models. No external API calls, no separate vector database, no extra infrastructure.
+Vector embeddings are everywhere in modern applications - powering semantic search, recommendation systems, and RAG (Retrieval Augmented Generation) pipelines. Typically, generating these embeddings requires calling an external API from your application, storing the results, and then using a vector database for similarity search. AlloyDB AI simplifies this by letting you generate embeddings directly inside SQL queries using Vertex AI models. No external API calls from your application, no separate vector database, no extra infrastructure.
 
 I found this particularly useful when building a search feature that needed semantic understanding. Instead of setting up a whole embedding pipeline, I could generate and query vectors in a few SQL statements. Here is how it works.
 
@@ -20,7 +20,7 @@ The connection between AlloyDB and Vertex AI is handled through a service accoun
 
 ## Prerequisites
 
-You need an AlloyDB cluster with the google_ml_integration extension enabled and a Vertex AI endpoint configured.
+You need an AlloyDB cluster with the google_ml_integration extension enabled, the Vertex AI API enabled, and IAM permission for AlloyDB to call Vertex AI.
 
 ```bash
 # Enable the required APIs
@@ -49,7 +49,7 @@ Grant the AlloyDB service account access to Vertex AI:
 # Get the AlloyDB service account
 gcloud alloydb clusters describe ml-cluster \
   --region=us-central1 \
-  --format="value(serviceAccountEmailAddress)"
+  --format="value(serviceAccountEmail)"
 
 # Grant it the Vertex AI User role
 gcloud projects add-iam-policy-binding my-project \
@@ -64,15 +64,20 @@ Connect to your AlloyDB instance and configure the embedding model:
 ```sql
 -- Enable the required extensions
 CREATE EXTENSION IF NOT EXISTS google_ml_integration;
+ALTER EXTENSION google_ml_integration UPDATE;
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Register the Vertex AI text embedding model
 -- This tells AlloyDB where to find the embedding service
 CALL google_ml.create_model(
   model_id => 'text-embedding-model',
+  model_request_url => 'publishers/google/models/text-multilingual-embedding-002',
   model_provider => 'google',
-  model_qualified_name => 'textembedding-gecko@003',
-  model_type => 'cloud_ai'
+  model_qualified_name => 'text-multilingual-embedding-002',
+  model_type => 'text_embedding',
+  model_auth_type => 'alloydb_service_agent_iam',
+  model_in_transform_fn => 'google_ml.vertexai_text_embedding_input_transform',
+  model_out_transform_fn => 'google_ml.vertexai_text_embedding_output_transform'
 );
 ```
 
