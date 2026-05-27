@@ -21,10 +21,10 @@ graph LR
     D[--set flags] --> C
     E[-f overrides.yaml] --> C
     C --> F[Rendered Kubernetes YAML]
-    F --> G[kubectl apply]
+    F --> G[Kubernetes API]
 ```
 
-When you run `helm install`, the template engine merges your values with the templates to produce valid Kubernetes manifests.
+When you run `helm install`, Helm's template engine merges your values with the templates to produce Kubernetes manifests, then sends those manifests to the Kubernetes API.
 
 ## Values Hierarchy and Merging
 
