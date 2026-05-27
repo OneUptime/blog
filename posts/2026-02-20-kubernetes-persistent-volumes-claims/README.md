@@ -8,7 +8,7 @@ Description: A comprehensive guide to Kubernetes persistent storage including PV
 
 ---
 
-Containers are ephemeral by default. When a pod restarts, any data written to its local filesystem is lost. For stateful workloads like databases, message queues, and file stores, you need persistent storage that survives pod restarts and rescheduling. Kubernetes solves this with Persistent Volumes (PV) and Persistent Volume Claims (PVC).
+Containers are ephemeral by default. When a container restarts, data written to that container's writable layer is lost. For stateful workloads like databases, message queues, and file stores, you need persistent storage that survives pod replacement and rescheduling. Kubernetes solves this with Persistent Volumes (PV) and Persistent Volume Claims (PVC).
 
 ## How Kubernetes Storage Works
 
@@ -175,6 +175,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:16
+          env:
+            - name: POSTGRES_PASSWORD
+              value: change-me
           ports:
             - containerPort: 5432
           volumeMounts:
