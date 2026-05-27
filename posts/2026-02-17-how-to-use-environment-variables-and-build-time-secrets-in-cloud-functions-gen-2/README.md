@@ -23,7 +23,7 @@ Environment variables are the simplest configuration mechanism. They are set at 
 
 gcloud functions deploy my-function \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -47,7 +47,7 @@ FEATURE_FLAG_NEW_UI: "true"
 # Deploy using the env vars file
 gcloud functions deploy my-function \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -135,17 +135,17 @@ echo -n "super-secret-password" | gcloud secrets create db-password --data-file=
 
 # Grant the function's service account access
 gcloud secrets add-iam-policy-binding stripe-key \
-  --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
 gcloud secrets add-iam-policy-binding db-password \
-  --member="serviceAccount:my-project@appspot.gserviceaccount.com" \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
 # Deploy with secrets mounted as env vars
 gcloud functions deploy my-function \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -162,7 +162,7 @@ const stripeKey = process.env.STRIPE_KEY;
 const dbPassword = process.env.DB_PASSWORD;
 ```
 
-The difference is that these values are fetched from Secret Manager at instance startup, not stored in the function's metadata. They are not visible in the Cloud Console's function configuration.
+The difference is that the secret values are fetched from Secret Manager at instance startup, not stored as plain environment variable values in the function's configuration. The secret references are visible in the function configuration, but the secret values are not.
 
 ### Mounting Secrets as Files
 
@@ -172,7 +172,7 @@ For multi-line secrets like TLS certificates or JSON service account keys, mount
 # Mount a secret as a file at a specific path
 gcloud functions deploy my-function \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -220,7 +220,7 @@ This is useful for:
 # Set build environment variables
 gcloud functions deploy my-function \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -237,22 +237,34 @@ Create a `.npmrc` file in your function source:
 @mycompany:registry=https://npm.pkg.github.com
 ```
 
-Then set the `NPM_TOKEN` as a build-time variable. The token is available when `npm install` runs during the build, but it is not present at runtime.
+Then set the `NPM_TOKEN` as a build-time variable. The token is available when `npm install` runs during the build, but it is not present at runtime. For a real private registry token, avoid putting the token value directly in a deploy command and use a CI/CD system or Cloud Build secret instead.
 
 ### Build-Time Secrets
 
-For sensitive build-time values, you can reference Secret Manager secrets:
+For sensitive build-time values, `--set-build-env-vars` does not dereference Secret Manager resource names. If the build needs a private registry token or another secret, use Secret Manager with Cloud Build's `availableSecrets` and `secretEnv` fields to inject the value into the deployment step. The value passed to `--set-build-env-vars` is still a literal build environment variable, so prefer short-lived tokens and avoid using this pattern for secrets that should only ever be referenced from Secret Manager:
 
-```bash
-# Use Secret Manager for build-time secrets
-gcloud functions deploy my-function \
-  --gen2 \
-  --runtime=nodejs20 \
-  --region=us-central1 \
-  --source=. \
-  --entry-point=handler \
-  --trigger-http \
-  --set-build-env-vars="NPM_TOKEN=projects/my-project/secrets/npm-token/versions/latest"
+```yaml
+# cloudbuild.yaml
+steps:
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  entrypoint: bash
+  secretEnv: ["NPM_TOKEN"]
+  args:
+  - -c
+  - |
+    gcloud functions deploy my-function \
+      --gen2 \
+      --runtime=nodejs22 \
+      --region=us-central1 \
+      --source=. \
+      --entry-point=handler \
+      --trigger-http \
+      --set-build-env-vars="NPM_TOKEN=$$NPM_TOKEN"
+
+availableSecrets:
+  secretManager:
+  - versionName: projects/my-project/secrets/npm-token/versions/latest
+    env: NPM_TOKEN
 ```
 
 ## Managing Configuration Across Environments
@@ -293,7 +305,7 @@ Deploy with the appropriate config file:
 # Deploy to production
 gcloud functions deploy my-function \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -304,7 +316,7 @@ gcloud functions deploy my-function \
 # Deploy to staging
 gcloud functions deploy my-function-staging \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=. \
   --entry-point=handler \
@@ -323,7 +335,7 @@ resource "google_cloudfunctions2_function" "api" {
   location = "us-central1"
 
   build_config {
-    runtime     = "nodejs20"
+    runtime     = "nodejs22"
     entry_point = "handler"
 
     # Build-time environment variables
