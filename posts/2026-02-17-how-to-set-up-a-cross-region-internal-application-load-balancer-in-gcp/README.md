@@ -8,7 +8,7 @@ Description: A hands-on guide to setting up a cross-region internal application 
 
 ---
 
-When your internal services span multiple regions and you need intelligent Layer 7 routing between them, the cross-region internal application load balancer is the tool for the job. It gives you a single internal IP address that routes traffic to backends in different regions, with automatic failover if a region goes down. This is especially useful for disaster recovery setups and globally distributed internal applications.
+When your internal services span multiple regions and you need intelligent Layer 7 routing between them, the cross-region internal application load balancer is the tool for the job. It gives you one or more regional internal IP addresses that route traffic to backends in different regions, with automatic failover if a region goes down. This is especially useful for disaster recovery setups and globally distributed internal applications.
 
 This post walks through the entire setup, including the global resources and region-specific pieces you need to wire together.
 
@@ -18,7 +18,7 @@ The standard regional internal application load balancer is scoped to a single r
 
 The cross-region internal application load balancer changes this. It uses global backend services that can reference instance groups in multiple regions. Traffic is routed to the closest healthy backend, and if all backends in one region fail, traffic automatically shifts to another region.
 
-Under the hood, it still uses Envoy proxies, so you need proxy-only subnets in every region where you have backends.
+Under the hood, it still uses Envoy proxies, so you need proxy-only subnets in every region where the load balancer is configured.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ Under the hood, it still uses Envoy proxies, so you need proxy-only subnets in e
 
 ## Step 1: Create Proxy-Only Subnets in Each Region
 
-You need a proxy-only subnet with `GLOBAL_MANAGED_PROXY` purpose in every region where you have backends or expect clients.
+You need a proxy-only subnet with `GLOBAL_MANAGED_PROXY` purpose in every region where you configure the load balancer, such as regions where you create frontend VIPs and run backends.
 
 ```bash
 # Create proxy-only subnet in us-central1
@@ -77,6 +77,7 @@ The backend service must be global with the `INTERNAL_MANAGED` load balancing sc
 gcloud compute backend-services create cross-region-backend \
     --protocol=HTTP \
     --health-checks=cross-region-health-check \
+    --global-health-checks \
     --load-balancing-scheme=INTERNAL_MANAGED \
     --global
 ```
@@ -88,12 +89,14 @@ Now add instance groups from different regions:
 gcloud compute backend-services add-backend cross-region-backend \
     --instance-group=us-backend-group \
     --instance-group-zone=us-central1-a \
+    --balancing-mode=UTILIZATION \
     --global
 
 # Add the EU backend group
 gcloud compute backend-services add-backend cross-region-backend \
     --instance-group=eu-backend-group \
     --instance-group-zone=europe-west1-b \
+    --balancing-mode=UTILIZATION \
     --global
 ```
 
@@ -141,7 +144,7 @@ gcloud compute target-http-proxies create cross-region-http-proxy \
 
 ## Step 6: Create Forwarding Rules
 
-For the cross-region internal load balancer, you create forwarding rules in each region where you want the load balancer to be accessible. Each forwarding rule gets a different internal IP in that region's subnet.
+For the cross-region internal load balancer, you create global forwarding rules that use regional internal IP addresses. You can create one forwarding rule, or multiple forwarding rules with VIPs in different regions when you want clients to use the closest VIP through DNS routing policies. Each forwarding rule gets a different internal IP in that region's subnet.
 
 ```bash
 # Create a forwarding rule in us-central1
@@ -149,20 +152,20 @@ gcloud compute forwarding-rules create cross-region-rule-us \
     --load-balancing-scheme=INTERNAL_MANAGED \
     --network=my-vpc \
     --subnet=us-subnet \
-    --region=us-central1 \
+    --subnet-region=us-central1 \
     --ports=80 \
     --target-http-proxy=cross-region-http-proxy \
-    --target-http-proxy-region=us-central1
+    --global
 
 # Create a forwarding rule in europe-west1
 gcloud compute forwarding-rules create cross-region-rule-eu \
     --load-balancing-scheme=INTERNAL_MANAGED \
     --network=my-vpc \
     --subnet=eu-subnet \
-    --region=europe-west1 \
+    --subnet-region=europe-west1 \
     --ports=80 \
     --target-http-proxy=cross-region-http-proxy \
-    --target-http-proxy-region=europe-west1
+    --global
 ```
 
 ## Step 7: Set Up Firewall Rules
@@ -194,13 +197,13 @@ gcloud compute firewall-rules create allow-cross-region-health \
 ```mermaid
 graph TD
     subgraph us-central1
-        A1[Client VM - US] --> F1[Forwarding Rule US]
+        A1[Client VM - US] --> F1[Global Forwarding Rule US VIP]
         B1[US Backend Group]
         P1[Proxy-Only Subnet US]
     end
 
     subgraph europe-west1
-        A2[Client VM - EU] --> F2[Forwarding Rule EU]
+        A2[Client VM - EU] --> F2[Global Forwarding Rule EU VIP]
         B2[EU Backend Group]
         P2[Proxy-Only Subnet EU]
     end
@@ -218,19 +221,21 @@ graph TD
 
 The cross-region internal load balancer uses proximity-based routing by default. A client in us-central1 will have its traffic routed to backends in us-central1 first. If those backends are unhealthy or overloaded, traffic spills over to europe-west1.
 
-You can also configure traffic splitting if you want to explicitly control the distribution:
+You can also influence distribution by setting backend capacity targets. For example, with `RATE` balancing mode, different `max-rate-per-instance` values tell the load balancer how much request capacity each backend group should contribute. This is capacity weighting, not a guaranteed fixed 70/30 split:
 
 ```bash
-# Configure 70/30 traffic split between regions
+# Configure different request capacity targets between regions
 gcloud compute backend-services update-backend cross-region-backend \
     --instance-group=us-backend-group \
     --instance-group-zone=us-central1-a \
+    --balancing-mode=RATE \
     --max-rate-per-instance=100 \
     --global
 
 gcloud compute backend-services update-backend cross-region-backend \
     --instance-group=eu-backend-group \
     --instance-group-zone=europe-west1-b \
+    --balancing-mode=RATE \
     --max-rate-per-instance=50 \
     --global
 ```
@@ -260,10 +265,10 @@ gcloud compute instance-groups managed resize us-backend-group \
 
 **Cost**: Cross-region data transfer between backends incurs egress charges. This is the same cost as any other cross-region traffic within GCP.
 
-**DNS**: Since each region has its own forwarding rule with a different IP, you may want to use Cloud DNS with a private zone to give the load balancer a hostname. Clients can then use DNS rather than hardcoding IPs.
+**DNS**: If you create multiple forwarding rules with VIPs in different regions, you may want to use Cloud DNS with a private zone and a geolocation routing policy to give the load balancer a hostname. Clients can then use DNS rather than hardcoding IPs.
 
 **Session Affinity**: Session affinity works within a region but does not guarantee cross-region stickiness. If a region fails and traffic moves to another region, sessions will be re-established.
 
 ## Wrapping Up
 
-The cross-region internal application load balancer fills an important gap in GCP networking. It gives you a single logical load balancer that spans regions, with automatic failover and proximity-based routing. The setup involves more pieces than a regional load balancer - global backend services, proxy-only subnets in each region, and forwarding rules per region - but the result is a resilient internal networking layer that can survive regional outages.
+The cross-region internal application load balancer fills an important gap in GCP networking. It gives you a single logical load balancer that spans regions, with automatic failover and proximity-based routing. The setup involves more pieces than a regional load balancer - global backend services, proxy-only subnets in each configured region, and global forwarding rules with regional VIPs - but the result is a resilient internal networking layer that can survive regional outages.
