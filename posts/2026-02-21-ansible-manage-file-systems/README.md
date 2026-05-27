@@ -120,7 +120,7 @@ This playbook creates an ext4 filesystem with optimized parameters and tunes it 
       register: mount_count_result
       changed_when: "'Setting maximal mount count' in mount_count_result.stdout"
 
-    - name: Enable journal checksumming for data integrity
+    - name: Ensure metadata checksumming for data integrity
       ansible.builtin.command:
         cmd: "tune2fs -O metadata_csum {{ ext4_device }}"
       register: csum_result
@@ -178,21 +178,16 @@ This playbook creates and configures xfs for database workloads:
         src: "{{ xfs_device }}"
         fstype: xfs
         # inode64 allows inodes throughout the volume
-        # nobarrier can improve perf with battery-backed RAID
-        opts: defaults,noatime,inode64,logbufs=8,logbsize=256k
+        # prjquota enables project quotas for directory trees
+        opts: defaults,noatime,inode64,logbufs=8,logbsize=256k,prjquota
         state: mounted
 
-    - name: Set xfs project quotas for directories
+    - name: Verify xfs project quota support
       ansible.builtin.shell: |
-        # Enable project quotas if not already active
-        if ! xfs_quota -x -c 'report -p' {{ xfs_mount }} 2>/dev/null | grep -q "Project"; then
-          # Remount with project quota support
-          mount -o remount,pquota {{ xfs_mount }}
-        fi
+        xfs_quota -x -c 'report -p' {{ xfs_mount }} 2>/dev/null | grep -q "Project"
       changed_when: false
-      failed_when: false
 
-    - name: Configure xfs real-time settings
+    - name: Set xfs inherited extent size hint
       ansible.builtin.command:
         cmd: "xfs_io -x -c 'extsize 1m' {{ xfs_mount }}"
       changed_when: false
@@ -237,7 +232,7 @@ This playbook sets up btrfs with subvolumes and compression:
       community.general.filesystem:
         fstype: btrfs
         dev: "{{ btrfs_device }}"
-        opts: "-L BTRFS_DATA -M"
+        opts: "-L BTRFS_DATA -m dup"
 
     - name: Create temporary mount point for subvolume creation
       ansible.builtin.file:
