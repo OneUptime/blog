@@ -191,6 +191,7 @@ A shared in-memory cache is one of the benefits of concurrency - multiple reques
 // In-memory cache shared across concurrent requests
 const cache = new Map();
 const CACHE_TTL = 60 * 1000; // 60 seconds
+let configFetchPromise;
 
 function getCached(key) {
   const entry = cache.get(key);
@@ -210,10 +211,15 @@ functions.http('handler', async (req, res) => {
   let config = getCached(configKey);
 
   if (!config) {
-    // Only one request fetches the config; subsequent concurrent requests
-    // will find it in the cache
-    config = await fetchConfigFromDatabase();
-    setCache(configKey, config);
+    // Share the in-flight fetch so concurrent cache misses do not all hit
+    // the database at once.
+    configFetchPromise ||= fetchConfigFromDatabase();
+    try {
+      config = await configFetchPromise;
+      setCache(configKey, config);
+    } finally {
+      configFetchPromise = undefined;
+    }
   }
 
   res.json({ features: config.features });
@@ -222,27 +228,25 @@ functions.http('handler', async (req, res) => {
 
 ## CPU Allocation and Concurrency
 
-With Gen 2, you can choose between two CPU allocation models:
+With Gen 2, CPU allocation is controlled by the Cloud Run service's billing setting:
 
-**CPU allocated during request processing only** (default): You only pay for CPU when requests are being processed. Idle instances use no CPU. This is cheaper but means that background tasks between requests will not execute.
+**Request-based billing** (default): CPU is only allocated when requests are being processed, during instance startup, and during shutdown. Idle instances use no CPU. This is cheaper for bursty traffic but means that background tasks between requests will not execute reliably.
 
-**CPU always allocated**: CPU is available even when the instance is idle. More expensive but needed if your function does background work.
+**Instance-based billing**: CPU is available for the whole container instance lifecycle. More expensive for idle time, but needed if your function does background work.
 
 ```bash
-# CPU allocated only during requests (cheaper)
-gcloud functions deploy my-api \
-  --gen2 \
+# Request-based billing (cheaper for bursty traffic)
+gcloud run services update my-api \
   --cpu-throttling \
-  --concurrency=80
+  --region=us-central1
 
-# CPU always allocated (for background processing)
-gcloud functions deploy my-api \
-  --gen2 \
+# Instance-based billing (for background processing)
+gcloud run services update my-api \
   --no-cpu-throttling \
-  --concurrency=80
+  --region=us-central1
 ```
 
-For most API-style functions, "CPU during request" is the right choice. Use "CPU always allocated" if your function maintains persistent connections, runs background cleanup, or uses WebSockets.
+For most API-style functions, request-based billing is the right choice. Use instance-based billing if your function maintains persistent connections, runs background cleanup, or uses WebSockets.
 
 ## Scaling Behavior with Concurrency
 
@@ -276,9 +280,9 @@ gcloud functions deploy my-api \
 Track how your instances are handling concurrent requests to find the optimal setting:
 
 ```bash
-# Check concurrent requests per instance
+# Find the Cloud Run metric for concurrent requests per instance
 gcloud monitoring metrics list \
-  --filter="metric.type=run.googleapis.com/container/instance_count"
+  --filter="metric.type=run.googleapis.com/container/max_request_concurrencies"
 ```
 
 Key metrics to watch:
