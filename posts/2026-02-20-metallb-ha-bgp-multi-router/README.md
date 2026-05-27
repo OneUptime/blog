@@ -20,8 +20,8 @@ Adding multiple routers takes this further. If a single router fails, the surviv
 
 ```mermaid
 flowchart TD
-    Internet[Internet / Upstream] --> Router1[Router A\nASN 64500\n10.0.0.1]
-    Internet --> Router2[Router B\nASN 64500\n10.0.0.2]
+    Internet[Internet / Upstream] --> Router1[Router A\nASN 64512\n10.0.0.1]
+    Internet --> Router2[Router B\nASN 64512\n10.0.0.2]
 
     Router1 --> Node1[K8s Node 1\nSpeaker]
     Router1 --> Node2[K8s Node 2\nSpeaker]
@@ -49,7 +49,7 @@ In this setup:
 - Kubernetes cluster with at least 3 nodes
 - MetalLB v0.13+ installed
 - Two BGP-capable routers (physical or virtual)
-- Private ASN numbers allocated (64512-65534 range)
+- Private ASN numbers allocated (for example, 64512-65534 or 4200000000-4294967294)
 - Network connectivity between all nodes and both routers
 
 ## Step 1: Configure the Upstream Routers
@@ -61,14 +61,14 @@ Configure both routers to accept BGP peering from your Kubernetes nodes. Here is
 ```text
 ! /etc/frr/frr.conf on Router A
 ! Router A peers with all Kubernetes nodes
-router bgp 64500
+router bgp 64512
   bgp router-id 10.0.0.1
   no bgp ebgp-requires-policy
 
   ! Peer with each Kubernetes node
-  neighbor 10.0.0.11 remote-as 64501
-  neighbor 10.0.0.12 remote-as 64501
-  neighbor 10.0.0.13 remote-as 64501
+  neighbor 10.0.0.11 remote-as 64513
+  neighbor 10.0.0.12 remote-as 64513
+  neighbor 10.0.0.13 remote-as 64513
 
   ! Enable ECMP with up to 8 equal-cost paths
   maximum-paths 8
@@ -88,13 +88,13 @@ route-map ACCEPT-ALL permit 10
 ```text
 ! /etc/frr/frr.conf on Router B
 ! Identical peering setup, different router-id
-router bgp 64500
+router bgp 64512
   bgp router-id 10.0.0.2
   no bgp ebgp-requires-policy
 
-  neighbor 10.0.0.11 remote-as 64501
-  neighbor 10.0.0.12 remote-as 64501
-  neighbor 10.0.0.13 remote-as 64501
+  neighbor 10.0.0.11 remote-as 64513
+  neighbor 10.0.0.12 remote-as 64513
+  neighbor 10.0.0.13 remote-as 64513
 
   maximum-paths 8
 
@@ -121,8 +121,8 @@ metadata:
   name: router-a
   namespace: metallb-system
 spec:
-  myASN: 64501
-  peerASN: 64500
+  myASN: 64513
+  peerASN: 64512
   peerAddress: 10.0.0.1
   # Timers control how quickly failures are detected
   holdTime: 90s
@@ -135,8 +135,8 @@ metadata:
   name: router-b
   namespace: metallb-system
 spec:
-  myASN: 64501
-  peerASN: 64500
+  myASN: 64513
+  peerASN: 64512
   peerAddress: 10.0.0.2
   holdTime: 90s
   keepaliveTime: 30s
@@ -166,7 +166,7 @@ metadata:
 spec:
   ipAddressPools:
     - production-pool
-  # Aggregate routes to reduce routing table size
+  # Advertise each service IP as a /32 route
   aggregationLength: 32
 ```
 
@@ -191,8 +191,8 @@ metadata:
   name: router-a-fast
   namespace: metallb-system
 spec:
-  myASN: 64501
-  peerASN: 64500
+  myASN: 64513
+  peerASN: 64512
   peerAddress: 10.0.0.1
   # Detect failures in 9 seconds instead of 90
   holdTime: 9s
@@ -204,8 +204,8 @@ metadata:
   name: router-b-fast
   namespace: metallb-system
 spec:
-  myASN: 64501
-  peerASN: 64500
+  myASN: 64513
+  peerASN: 64512
   peerAddress: 10.0.0.2
   holdTime: 9s
   keepaliveTime: 3s
@@ -227,9 +227,9 @@ vtysh -c "show bgp summary"
 
 # Expected output shows Established state for all peers:
 # Neighbor     AS  MsgRcvd  MsgSent  Up/Down  State/PfxRcd
-# 10.0.0.11 64501      120      115 01:00:00             5
-# 10.0.0.12 64501      118      114 01:00:00             5
-# 10.0.0.13 64501      119      116 01:00:00             5
+# 10.0.0.11 64513      120      115 01:00:00             5
+# 10.0.0.12 64513      118      114 01:00:00             5
+# 10.0.0.13 64513      119      116 01:00:00             5
 ```
 
 ## Failover Scenarios
@@ -275,14 +275,20 @@ curl -s -o /dev/null -w "%{http_code}" http://203.0.113.10
 kubectl uncordon node-2
 
 # Test 2: Router failure simulation
-# On Router A, shut down BGP
-vtysh -c "configure terminal" -c "router bgp 64500" -c "neighbor 10.0.0.11 shutdown"
+# On Router A, shut down all MetalLB BGP peers
+vtysh -c "configure terminal" -c "router bgp 64512" \
+  -c "neighbor 10.0.0.11 shutdown" \
+  -c "neighbor 10.0.0.12 shutdown" \
+  -c "neighbor 10.0.0.13 shutdown"
 
 # Verify traffic routes through Router B
 traceroute 203.0.113.10
 
-# Re-enable Router A
-vtysh -c "configure terminal" -c "router bgp 64500" -c "no neighbor 10.0.0.11 shutdown"
+# Re-enable Router A peers
+vtysh -c "configure terminal" -c "router bgp 64512" \
+  -c "no neighbor 10.0.0.11 shutdown" \
+  -c "no neighbor 10.0.0.12 shutdown" \
+  -c "no neighbor 10.0.0.13 shutdown"
 
 # Test 3: Speaker pod failure
 # Delete a speaker pod to simulate crash
@@ -294,7 +300,7 @@ kubectl get pods -n metallb-system -w
 
 ## BFD for Sub-Second Failover
 
-For even faster failover, enable BFD (Bidirectional Forwarding Detection). BFD runs alongside BGP and can detect link failures in milliseconds:
+For even faster failover with FRR-backed MetalLB BGP mode, enable BFD (Bidirectional Forwarding Detection) on MetalLB and on your routers. BFD runs alongside BGP and can detect link failures in milliseconds:
 
 ```yaml
 # metallb-bfd-profile.yaml
@@ -317,8 +323,8 @@ metadata:
   name: router-a-bfd
   namespace: metallb-system
 spec:
-  myASN: 64501
-  peerASN: 64500
+  myASN: 64513
+  peerASN: 64512
   peerAddress: 10.0.0.1
   # Link the BFD profile for sub-second detection
   bfdProfile: fast-detect
