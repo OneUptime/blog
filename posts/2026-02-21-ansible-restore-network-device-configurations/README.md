@@ -14,7 +14,7 @@ This post covers the different approaches to restoring network device configurat
 
 ## Full Configuration Restore
 
-The most straightforward restore replaces the entire running configuration with a backup file. On Cisco IOS, you use `ios_config` with the `src` parameter.
+The most straightforward restore loads a backup file into the running configuration. On Cisco IOS, you use `ios_config` with the `src` parameter. This applies the supplied configuration lines, but it does not remove configuration that is missing from the file. Use `configure replace` when you need a true full replacement with deletions.
 
 ```yaml
 # full_restore.yml - Replace running config with a backup file
@@ -41,7 +41,7 @@ The most straightforward restore replaces the entire running configuration with 
     - name: Restore configuration from backup
       cisco.ios.ios_config:
         src: "{{ backup_file }}"
-        replace: config
+        replace: block
       register: restore_result
 
     - name: Display restore results
@@ -84,7 +84,7 @@ Cisco IOS supports `configure replace`, which is a more surgical approach. It co
         commands:
           - command: "configure replace flash:/restore_config.cfg force"
         wait_for:
-          - result[0] contains "successfully"
+          - result[0] contains "Rollback Done"
       register: replace_result
 
     - name: Show replace output
@@ -95,8 +95,9 @@ Cisco IOS supports `configure replace`, which is a more surgical approach. It co
     - name: Remove temporary config from flash
       cisco.ios.ios_command:
         commands:
-          - "delete flash:/restore_config.cfg"
-          - ""
+          - command: "delete flash:/restore_config.cfg"
+            prompt: "[confirm]"
+            answer: "\r"
 ```
 
 ## Selective Section Restore
@@ -123,7 +124,7 @@ Sometimes you do not want to restore the entire config. Maybe just the routing s
     # Extract the OSPF section from the backup
     - name: Extract OSPF configuration
       ansible.builtin.set_fact:
-        ospf_config: "{{ backup_config | regex_search('router ospf 1[\\s\\S]*?(?=\\n!)', multiline=True) }}"
+        ospf_config: "{{ backup_config | regex_search('router ospf 1[\\s\\S]*?(?=\\n!)', multiline=True) | default('', true) }}"
 
     # Remove current OSPF config and apply the backup version
     - name: Remove current OSPF configuration
@@ -218,6 +219,13 @@ Build a rollback mechanism into your change playbooks. Take a snapshot before th
           - show running-config
       register: pre_change_config
 
+    - name: Ensure rollback directory exists
+      ansible.builtin.file:
+        path: "{{ rollback_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+
     - name: Save pre-change config
       ansible.builtin.copy:
         content: "{{ pre_change_config.stdout[0] }}"
@@ -258,8 +266,7 @@ Build a rollback mechanism into your change playbooks. Take a snapshot before th
         - name: ROLLBACK - Restore previous configuration
           cisco.ios.ios_config:
             src: "{{ rollback_dir }}/{{ inventory_hostname }}_rollback.cfg"
-            replace: config
-          delegate_to: localhost
+            replace: block
 
         - name: ROLLBACK - Notify about rollback
           ansible.builtin.debug:
