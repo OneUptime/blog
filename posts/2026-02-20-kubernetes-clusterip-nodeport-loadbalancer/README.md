@@ -10,7 +10,7 @@ Description: A comprehensive guide to Kubernetes service types, when to use each
 
 ## What Are Kubernetes Services?
 
-Pods in Kubernetes are ephemeral. They get created, destroyed, and rescheduled constantly. Each pod gets a unique IP address, but that IP changes every time the pod restarts. Services provide a stable network identity for a group of pods, giving clients a single address that never changes.
+Pods in Kubernetes are ephemeral. They get created, destroyed, and rescheduled constantly. Each pod gets a unique IP address, but that IP is not stable across pod replacement or rescheduling. Services provide a stable network identity for a group of pods, giving clients a single address that stays stable for the lifetime of the Service.
 
 Kubernetes offers several service types, each designed for different access patterns. Understanding when to use each type is fundamental to building reliable applications on Kubernetes.
 
@@ -86,12 +86,12 @@ sequenceDiagram
     Client->>DNS: Resolve user-api.production.svc.cluster.local
     DNS-->>Client: 10.96.0.10
     Client->>IPTables: TCP connect to 10.96.0.10:80
-    IPTables->>IPTables: DNAT to pod IP (round-robin)
+    IPTables->>IPTables: DNAT to a ready pod IP
     IPTables->>Pod: Forward to 172.16.0.15:8080
     Pod-->>Client: Response
 ```
 
-When a client pod connects to the ClusterIP, kube-proxy's iptables (or IPVS) rules intercept the packet and perform DNAT (Destination Network Address Translation) to a randomly selected backend pod IP.
+When a client pod connects to the ClusterIP, kube-proxy's iptables (or IPVS) rules intercept the packet and perform DNAT (Destination Network Address Translation) to one of the ready backend pod IPs.
 
 ### Accessing ClusterIP Services
 
@@ -155,20 +155,25 @@ sequenceDiagram
     Node->>IPTables: Match NodePort rule
     IPTables->>IPTables: DNAT to ClusterIP or direct to pod
     IPTables->>Pod: Forward to 172.16.0.15:8080
-    Pod-->>External: Response (via SNAT)
+    Pod-->>External: Response via node path
 ```
 
 ### NodePort Caveats
 
 ```bash
 # List all NodePort services and their assigned ports
-kubectl get svc -A --field-selector spec.type=NodePort
+kubectl get svc -A -o custom-columns=\
+NAMESPACE:.metadata.namespace,\
+NAME:.metadata.name,\
+TYPE:.spec.type,\
+NODE-PORTS:.spec.ports[*].nodePort \
+  | awk '$3 == "NodePort"'
 
 # Important: NodePort range is limited (default 30000-32767)
-# Check your cluster's configured range:
+# Check your cluster's configured range on kubeadm-style static control planes:
 kubectl get pods -n kube-system -l component=kube-apiserver \
-  -o jsonpath='{.items[0].spec.containers[0].command}' \
-  | tr ',' '\n' | grep service-node-port-range
+  -o jsonpath='{range .items[0].spec.containers[0].command[*]}{.}{"\n"}{end}' \
+  | grep -- --service-node-port-range
 ```
 
 Key limitations:
@@ -180,7 +185,7 @@ Key limitations:
 
 ## LoadBalancer: Production External Access
 
-LoadBalancer extends NodePort by provisioning an external load balancer. On cloud providers, this creates a cloud load balancer (AWS ELB, GCP LB, etc.). On bare metal, MetalLB assigns a real IP and announces it via ARP or BGP.
+LoadBalancer typically extends NodePort by provisioning an external load balancer. On cloud providers, this creates a cloud load balancer (AWS ELB, GCP LB, etc.). On bare metal, MetalLB assigns a real IP and announces it via ARP or BGP.
 
 ### When to Use LoadBalancer
 
@@ -200,7 +205,7 @@ metadata:
   namespace: production
   annotations:
     # MetalLB-specific: choose which pool to allocate from
-    metallb.universe.tf/address-pool: web-pool
+    metallb.io/address-pool: web-pool
 spec:
   type: LoadBalancer
   selector:
@@ -227,7 +232,7 @@ sequenceDiagram
     participant Pod as Backend Pod
 
     Client->>LB: TCP connect to 203.0.113.10:80
-    LB->>Node: Forward to NodeIP:NodePort
+    LB->>Node: Forward to NodeIP:NodePort, if node ports are allocated
     Node->>IPTables: Match service rules
     IPTables->>Pod: DNAT to pod 172.16.0.15:8080
     Pod-->>Client: Response
@@ -292,6 +297,6 @@ kubectl get endpoints public-web -n production
 
 ## Summary
 
-ClusterIP is for internal communication between pods. NodePort exposes services on a static port across all nodes for basic external access. LoadBalancer provisions a dedicated external IP for production-grade external access. Each type builds on the previous one: LoadBalancer creates a NodePort, which creates a ClusterIP.
+ClusterIP is for internal communication between pods. NodePort exposes services on a static port across all nodes for basic external access. LoadBalancer provisions a dedicated external IP for production-grade external access. The types generally build on each other: NodePort creates a ClusterIP, and LoadBalancer usually creates a NodePort unless node port allocation is disabled.
 
 For monitoring the availability and performance of all your Kubernetes services regardless of type, [OneUptime](https://oneuptime.com) provides HTTP, TCP, and ping monitors that can track both internal and external service endpoints with alerting and status pages.
