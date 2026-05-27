@@ -137,7 +137,7 @@ def main():
                     PARTITION BY customer_id
                     ORDER BY order_date
                     ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-                ) AS orders_last_30_days,
+                ) AS orders_last_30_orders,
                 LAG(order_date, 1) OVER (
                     PARTITION BY customer_id ORDER BY order_date
                 ) AS previous_order_date
@@ -156,7 +156,7 @@ def main():
             oh.order_date,
             oh.total_amount,
             oh.cumulative_spend,
-            oh.orders_last_30_days,
+            oh.orders_last_30_orders,
             DATEDIFF(oh.order_date, oh.previous_order_date) AS days_since_last_order,
             rr.return_rate,
             CASE
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Submit with the BigQuery connector.
+Supported Dataproc Serverless runtimes include the BigQuery connector. If you need to pin or upgrade the connector version, use the `dataproc.sparkBqConnector.version` property.
 
 ```bash
 # Submit BigQuery Spark SQL job
@@ -193,8 +193,8 @@ gcloud dataproc batches submit pyspark \
   --region=us-central1 \
   --subnet=default \
   --service-account=my-sa@my-project.iam.gserviceaccount.com \
-  --jars=gs://spark-lib/bigquery/spark-bigquery-with-dependencies_2.12-0.32.2.jar \
   --properties="\
+dataproc.sparkBqConnector.version=0.44.2,\
 spark.executor.memory=8g,\
 spark.driver.memory=4g"
 ```
@@ -381,7 +381,7 @@ For pure SQL workloads, you might wonder whether to use Dataproc Serverless or j
 
 BigQuery is better for ad-hoc queries, simple transformations, and when your data is already in BigQuery. Its serverless model charges per TB scanned.
 
-Dataproc Serverless Spark SQL is better when you need complex multi-step transformations, custom UDFs, integration with non-BigQuery data sources, or when you want to use Spark-specific SQL features like window functions with custom frame specifications.
+Dataproc Serverless Spark SQL is better when you need complex multi-step transformations, custom UDFs, integration with non-BigQuery data sources, or when you want to use Spark-specific SQL features and execution behavior.
 
 For many teams, the best approach is using both: BigQuery for interactive analytics and simple ETL, and Dataproc Serverless for complex batch transformations.
 
