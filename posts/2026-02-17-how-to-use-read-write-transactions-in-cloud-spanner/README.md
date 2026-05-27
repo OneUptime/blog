@@ -106,13 +106,13 @@ send_email("Transfer completed")
 
 ## Locking Behavior
 
-Read-write transactions acquire shared locks on rows that are read and exclusive locks on rows that are written. This means:
+In the default serializable isolation level, read-write transactions acquire shared locks on the row-and-column data that is read and acquire stronger locks when writing the affected cells at commit time. This means:
 
 - Multiple read-write transactions can read the same rows concurrently
-- Only one transaction can write to a given row at a time
-- If transaction A reads a row and transaction B tries to write to it, one of them will be aborted and retried
+- Transactions that write the same cells can conflict, especially when a transaction first reads the data it later writes
+- If transaction A reads a row and transaction B tries to write to the same data, one of them might wait, be aborted, and then be retried
 
-This locking is row-level, so transactions that touch different rows will not interfere with each other.
+This locking is at row-and-column granularity, so transactions that touch different rows or different columns of the same row are less likely to interfere with each other.
 
 ## Writing Without Reading First
 
@@ -138,9 +138,9 @@ For bulk inserts where you do not need to read existing data, this is more effic
 
 ## Transaction Timeouts
 
-Read-write transactions have a maximum lifetime of 10 seconds from the first read or write to the commit. If your transaction takes longer than this, it will be aborted. This is by design - long-running transactions hold locks and can cause contention.
+Read-write transactions should be kept short, and Spanner can abort idle transactions. A transaction is considered idle if it has no outstanding reads or SQL queries and has not started one in the last 10 seconds. This is by design - long-running or idle transactions hold locks and can cause contention.
 
-If you find yourself hitting the 10-second limit, it is a sign that your transaction is doing too much work. Break it into smaller transactions, or move non-transactional work outside the transaction boundary.
+If you find yourself hitting idle transaction aborts or frequent contention, it is a sign that your transaction is doing too much work or waiting too long between operations. Break it into smaller transactions, or move non-transactional work outside the transaction boundary.
 
 ## Handling Contention
 
@@ -153,6 +153,8 @@ Minimize the rows touched. Read only the rows you need, and write only the rows 
 Use commit timestamps wisely. Instead of reading a counter and incrementing it, consider append-only patterns with timestamps.
 
 ```python
+import uuid
+
 def add_event(transaction):
     """Append-only pattern avoids contention on a counter."""
 
@@ -180,7 +182,7 @@ sequenceDiagram
 
     App->>Spanner: Begin Transaction
     Spanner-->>App: Transaction ID
-    App->>Spanner: Read rows (acquires shared locks)
+    App->>Spanner: Read rows and columns (acquires shared locks)
     Spanner-->>App: Row data
     App->>App: Compute new values
     App->>Spanner: Write mutations
@@ -198,6 +200,8 @@ Mutations are buffered and applied atomically at commit time. They are simpler a
 DML statements execute immediately within the transaction. They are better when you need the results of a write to be visible within the same transaction.
 
 ```python
+import uuid
+
 def update_with_dml(transaction):
     """Using DML inside a transaction for more complex logic."""
 
