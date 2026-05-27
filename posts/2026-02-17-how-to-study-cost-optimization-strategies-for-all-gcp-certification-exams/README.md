@@ -42,15 +42,15 @@ For exams, remember these key points:
 
 This is a frequent exam topic. Know the difference:
 
-**Sustained Use Discounts (SUDs)** - Automatic discounts applied when you run a VM for more than 25% of the month. No commitment required. Applies to N1, N2, and N2D machine types. You get up to a 30% discount for running a VM the entire month.
+**Sustained Use Discounts (SUDs)** - Automatic discounts applied when you run eligible Compute Engine resources for more than 25% of the month. No commitment required. Applies to eligible resources including N1, N2, and N2D machine types. Depending on the resource and machine type, you get up to a 20% or 30% discount for running a VM the entire month.
 
-**Committed Use Discounts (CUDs)** - You commit to a 1-year or 3-year usage level in exchange for a discount. 1-year commitments give about 37% discount, and 3-year commitments give about 55% discount. These apply to vCPU and memory usage across a project.
+**Committed Use Discounts (CUDs)** - You commit to a 1-year or 3-year usage level in exchange for a discount. Discount rates vary by resource and commitment type, and 3-year commitments can give up to about 55% off for many Compute Engine resources. Resource-based commitments apply to specific resources such as vCPU and memory, typically scoped to a project and region unless discount sharing is configured.
 
 **Key exam tip:** CUDs and SUDs do not stack. If you have a CUD, the committed usage does not also get a sustained use discount. CUDs apply first, and any remaining usage gets SUDs.
 
 ### Preemptible VMs and Spot VMs
 
-Preemptible VMs cost up to 80% less than regular VMs but can be terminated at any time with 30 seconds notice. Spot VMs are the newer version with similar pricing but without the 24-hour maximum lifetime.
+Preemptible VMs and Spot VMs cost significantly less than regular VMs, with Spot VM discounts up to 91% for many resources, but they can be terminated at any time with up to 30 seconds of best-effort notice. Spot VMs are the newer version with similar behavior but without the 24-hour maximum lifetime.
 
 Good use cases for exam questions:
 - Batch processing jobs
@@ -161,9 +161,9 @@ For Compute Engine and GKE:
 
 ### BigQuery
 
-BigQuery pricing has two models:
-- **On-demand** - pay per query based on bytes scanned ($5 per TB)
-- **Flat-rate** - pay for dedicated slot capacity
+BigQuery compute pricing has two models:
+- **On-demand** - pay per query based on bytes processed. In many US regions, this is $6.25 per TiB after the free monthly tier.
+- **Capacity pricing** - pay for slot capacity over time using BigQuery editions, with optional slot commitments for predictable workloads
 
 For exam questions, remember these cost optimization techniques:
 
@@ -185,7 +185,7 @@ AS SELECT * FROM `project.dataset.raw_events`;
 
 Other BigQuery cost tips for exams:
 - Preview queries before running them to estimate cost
-- Use LIMIT does not reduce cost since BigQuery scans columns regardless
+- Using LIMIT does not reduce cost for non-clustered tables, because BigQuery still processes the bytes required by the query
 - Materialize intermediate results for frequently used subqueries
 - Use BI Engine for sub-second dashboard queries instead of repeated full scans
 
@@ -197,7 +197,7 @@ Networking costs on GCP can be surprisingly high. Key concepts:
 - **Ingress is free** - data coming into GCP does not cost anything
 - **Same-zone traffic is free** - keep communicating services in the same zone when possible
 - **Cloud CDN** reduces egress by caching content closer to users
-- **Private Google Access** avoids egress charges for accessing Google APIs from VMs without external IPs
+- **Private Google Access** lets VMs without external IPs access Google APIs and services through Google's network, though product-specific data transfer charges can still apply
 
 ## Using the Billing Tools
 
