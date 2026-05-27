@@ -134,11 +134,12 @@ class APIKeyStore:
             CREATE TABLE IF NOT EXISTS api_keys (
                 key_id VARCHAR(16) PRIMARY KEY,
                 prefix VARCHAR(10) NOT NULL,
-                key_hash VARCHAR(64) NOT NULL UNIQUE,
+                key_hash VARCHAR(64) NOT NULL,
                 name VARCHAR(255) NOT NULL,
                 scopes JSONB NOT NULL DEFAULT '[]',
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 expires_at TIMESTAMP,
+                scheduled_deactivation_at TIMESTAMP,
                 last_used_at TIMESTAMP,
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_by VARCHAR(255),
@@ -153,6 +154,11 @@ class APIKeyStore:
             -- Index for finding expired keys
             CREATE INDEX IF NOT EXISTS idx_api_keys_expires
                 ON api_keys(expires_at)
+                WHERE is_active = TRUE;
+
+            -- Index for keys scheduled for rotation cleanup
+            CREATE INDEX IF NOT EXISTS idx_api_keys_scheduled_deactivation
+                ON api_keys(scheduled_deactivation_at)
                 WHERE is_active = TRUE;
         """)
         self.conn.commit()
@@ -216,6 +222,30 @@ class APIKeyStore:
         """, (key_id,))
         self.conn.commit()
         logger.warning(f"Revoked API key {key_id}")
+
+    def schedule_deactivation(self, key_id, deactivation_time):
+        """Schedule an API key for deactivation after a grace period."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE api_keys
+            SET scheduled_deactivation_at = TO_TIMESTAMP(%s)
+            WHERE key_id = %s
+        """, (deactivation_time, key_id))
+        self.conn.commit()
+
+    def deactivate_expired_keys(self):
+        """Deactivate keys whose scheduled deactivation time has passed."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE api_keys
+            SET is_active = FALSE
+            WHERE is_active = TRUE
+              AND scheduled_deactivation_at IS NOT NULL
+              AND scheduled_deactivation_at <= NOW()
+        """)
+        count = cursor.rowcount
+        self.conn.commit()
+        return count
 ```
 
 ## Key Rotation Strategy
