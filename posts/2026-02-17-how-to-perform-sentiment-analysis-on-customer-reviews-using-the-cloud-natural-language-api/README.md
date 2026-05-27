@@ -8,7 +8,7 @@ Description: Learn how to analyze customer review sentiment using Google Cloud N
 
 ---
 
-Reading customer reviews manually works when you have a dozen of them. When you have thousands pouring in daily across multiple platforms, you need automated sentiment analysis. Google Cloud Natural Language API can analyze text and tell you whether it is positive, negative, or neutral, along with a confidence score and the emotional magnitude.
+Reading customer reviews manually works when you have a dozen of them. When you have thousands pouring in daily across multiple platforms, you need automated sentiment analysis. Google Cloud Natural Language API can analyze text and tell you whether it is positive, negative, or neutral, along with a sentiment score and the emotional magnitude.
 
 This is genuinely useful for understanding customer satisfaction trends, identifying unhappy customers who need attention, sorting feedback by sentiment, and tracking how sentiment changes over time. Let me show you how to set it up.
 
@@ -199,7 +199,9 @@ reviews = [
 
 results = analyze_reviews_batch(reviews)
 for r in sorted(results, key=lambda x: x.get("score", 0), reverse=True):
-    print(f"  [{r.get('label', 'error'):8s}] (score: {r.get('score', 'N/A'):+.2f}) {r['text']}")
+    score = r.get("score")
+    score_text = f"{score:+.2f}" if isinstance(score, (int, float)) else "N/A"
+    print(f"  [{r.get('label', 'error'):8s}] (score: {score_text}) {r['text']}")
 ```
 
 ## Building a Sentiment Dashboard
@@ -209,7 +211,7 @@ Track sentiment trends over time:
 ```python
 from google.cloud import language_v1
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 class SentimentTracker:
     """Track sentiment trends across reviews over time."""
@@ -229,7 +231,7 @@ class SentimentTracker:
         sentiment = response.document_sentiment
 
         record = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "score": sentiment.score,
             "magnitude": sentiment.magnitude,
             "label": interpret_score(sentiment.score),
