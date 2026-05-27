@@ -20,9 +20,11 @@ With signed cookies, the authentication flow is:
 2. Your application generates a signed cookie that grants access to a URL prefix
 3. The browser stores the cookie and sends it with every request to that domain
 4. Cloud CDN validates the cookie signature and expiration on each request
-5. Valid cookies get content, invalid cookies get 403 Forbidden
+5. Valid cookies get content, invalid signed cookies get 403 Forbidden
 
 The big advantage over signed URLs is that the cookie covers an entire URL prefix. One cookie can authorize access to `/premium/video-123/*`, which includes the video file, thumbnails, subtitles, and any other assets under that path.
+
+Cloud CDN validates requests that include a signed URL or `Cloud-CDN-Cookie`, but it does not reject unsigned requests by itself. Your origin must reject requests that should be protected but arrive without a valid signed cookie, especially on cache misses or if clients can reach the origin directly.
 
 ```mermaid
 sequenceDiagram
@@ -49,9 +51,9 @@ sequenceDiagram
 If you already have a signing key from a signed URL setup, you can reuse it. Otherwise, create one.
 
 ```bash
-# Generate a 128-bit signing key
+# Generate a 128-bit signing key in base64url format
 
-head -c 16 /dev/urandom | base64 > cdn-signing-key.txt
+head -c 16 /dev/urandom | base64 | tr +/ -_ > cdn-signing-key.txt
 
 # Add the key to your backend service
 gcloud compute backend-services \
@@ -62,9 +64,9 @@ gcloud compute backend-services \
     --project=my-project
 ```
 
-## Step 2: Configure the Backend for Signed Cookies
+## Step 2: Configure the Signed Request Cache Max Age
 
-Enable signed request handling on the backend service.
+Adding the signing key enables signed request handling. You can also configure how long Cloud CDN can cache responses to signed requests.
 
 ```bash
 # Set the signed URL/cookie cache max age
@@ -86,7 +88,6 @@ import base64
 import hashlib
 import hmac
 import datetime
-from urllib.parse import quote
 
 def generate_signed_cookie(url_prefix, key_name, key_base64, expiration_time):
     """Generate a signed cookie value for Cloud CDN.
@@ -101,7 +102,7 @@ def generate_signed_cookie(url_prefix, key_name, key_base64, expiration_time):
         A dictionary with the cookie name and value
     """
     # Convert expiration to Unix timestamp
-    epoch = datetime.datetime(1970, 1, 1)
+    epoch = datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
     expiration_timestamp = int((expiration_time - epoch).total_seconds())
 
     # Base64url encode the URL prefix
@@ -131,7 +132,7 @@ key_name = "cookie-signing-key"
 key_base64 = "YOUR_BASE64_KEY_HERE"
 
 # Cookie expires in 2 hours
-expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
+expiration = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=2)
 
 cookie = generate_signed_cookie(url_prefix, key_name, key_base64, expiration)
 print(f"Cookie name: {cookie['name']}")
@@ -201,7 +202,7 @@ app.get('/authorize-content', (req, res) => {
     path: '/',
     httpOnly: true,
     secure: true,
-    sameSite: 'None',        // Required for cross-origin cookie
+    sameSite: 'None',        // Required for cross-site cookie use
     maxAge: 2 * 60 * 60 * 1000
   });
 
@@ -272,11 +273,11 @@ func authorizeHandler(w http.ResponseWriter, r *http.Request) {
 
 ## Step 4: Cookie Domain Configuration
 
-For signed cookies to work, the cookie domain must cover both your application domain and the CDN domain. There are two approaches:
+For signed cookies to work, the browser must send the cookie to the CDN domain. If your application sets the cookie directly from a different subdomain, the cookie domain must cover both your application domain and the CDN domain. There are two approaches:
 
 **Same domain**: If your app is at `app.example.com` and CDN is at `cdn.example.com`, set the cookie domain to `.example.com`.
 
-**Different domains**: If the domains are completely different, you need a redirect flow. Your app redirects the user to the CDN domain with a one-time token, the CDN domain sets the cookie, then redirects back.
+**Different domains**: If the domains are completely different, you need a redirect flow. Your app redirects the user to an application endpoint on the CDN/content domain with a one-time token, that endpoint sets the cookie, then redirects back.
 
 ```python
 # Example redirect flow for cross-domain cookie setting
@@ -297,7 +298,7 @@ Test the cookie by setting it manually with curl.
 # Generate a test cookie value using your application
 # Then test with curl
 
-# Test without cookie - should get 403
+# Test without cookie - should get 403 if your origin rejects unsigned protected requests
 curl -I https://cdn.example.com/premium/video.mp4
 
 # Test with valid cookie - should get 200
@@ -311,7 +312,7 @@ curl -I -b "Cloud-CDN-Cookie=URLPrefix=aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vcHJlbWl1b
 
 **Set Secure flag**: Ensures the cookie is only sent over HTTPS.
 
-**Use SameSite=None with Secure**: Required for cross-origin cookie sending in modern browsers.
+**Use SameSite=None with Secure when needed**: Required for cross-site cookie sending in modern browsers.
 
 **Keep expiration times reasonable**: Match the cookie expiration to the user's session or content access duration.
 
@@ -321,4 +322,4 @@ curl -I -b "Cloud-CDN-Cookie=URLPrefix=aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vcHJlbWl1b
 
 ## Wrapping Up
 
-Signed cookies provide a smoother experience than signed URLs when users need access to multiple assets under the same path. Set the cookie once after authentication, and all subsequent requests to content under that URL prefix are automatically validated by Cloud CDN at the edge. The implementation requires a bit more work on the cookie domain setup, but the result is a cleaner integration between your application's authentication and CDN content protection.
+Signed cookies provide a smoother experience than signed URLs when users need access to multiple assets under the same path. Set the cookie once after authentication, and all subsequent signed requests to content under that URL prefix are validated by Cloud CDN at the edge. The implementation requires a bit more work on the cookie domain setup and origin-side rejection of unsigned protected requests, but the result is a cleaner integration between your application's authentication and CDN content protection.
