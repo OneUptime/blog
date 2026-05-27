@@ -128,11 +128,11 @@ sysServices    72
 
 # Access control - read-only community
 {% for network in snmp_allowed_networks %}
-rocommunity {{ snmp_community_ro }} {{ network }}
+rocommunity {{ snmp_community_ro }} {{ network }} -V allview
 {% endfor %}
 
 # Read-write community (restricted to localhost by default)
-rwcommunity {{ snmp_community_rw }} 127.0.0.1
+rwcommunity {{ snmp_community_rw }} 127.0.0.1 -V systemview
 
 # View definitions
 view    systemview    included   .1.3.6.1.2.1.1
@@ -161,7 +161,7 @@ proc    mysqld
 
 # Extend with custom scripts
 extend  hardware   /bin/cat /sys/class/dmi/id/product_name
-extend  osversion  /bin/cat /etc/redhat-release
+extend  osversion  /bin/cat /etc/os-release
 
 # Logging
 dontLogTCPWrappersConnects yes
@@ -213,7 +213,7 @@ SNMPv3 provides proper authentication and encryption. This is what you should us
           # No rocommunity or rwcommunity lines
 
           # SNMPv3 user with authPriv (authentication + encryption)
-          rouser {{ snmpv3_user }} priv
+          rouser {{ snmpv3_user }} priv -V allview
 
           # View for the monitoring user
           view allview included .1
@@ -229,15 +229,20 @@ SNMPv3 provides proper authentication and encryption. This is what you should us
     # Create the SNMPv3 user
     - name: Check if SNMPv3 user exists
       ansible.builtin.shell:
-        cmd: "grep '{{ snmpv3_user }}' /var/lib/snmp/snmpd.conf 2>/dev/null || echo 'not found'"
+        cmd: >
+          for file in /var/lib/snmp/snmpd.conf /var/lib/net-snmp/snmpd.conf; do
+            [ -f "$file" ] && grep -q -- '{{ snmpv3_user }}' "$file" && exit 0;
+          done;
+          exit 1
       register: user_check
       changed_when: false
+      failed_when: false
 
     - name: Stop snmpd for user creation
       ansible.builtin.systemd:
         name: snmpd
         state: stopped
-      when: "'not found' in user_check.stdout"
+      when: user_check.rc != 0
 
     - name: Create SNMPv3 user
       ansible.builtin.shell:
@@ -248,7 +253,7 @@ SNMPv3 provides proper authentication and encryption. This is what you should us
           -X '{{ snmpv3_priv_pass }}'
           -x {{ snmpv3_priv_protocol }}
           {{ snmpv3_user }}
-      when: "'not found' in user_check.stdout"
+      when: user_check.rc != 0
       no_log: true
 
     # Start snmpd with new configuration
@@ -306,8 +311,38 @@ SNMP traps allow servers to proactively notify the monitoring system about issue
   vars:
     trap_receiver: "10.0.1.100"
     trap_community: "{{ vault_snmp_community_ro }}"
+    trap_monitor_user: "snmpd-internal"
+    trap_monitor_auth_pass: "{{ vault_snmp_monitor_auth_pass }}"
 
   tasks:
+    # Create an internal SNMPv3 user for DisMan Event MIB monitors
+    - name: Check if internal monitor user exists
+      ansible.builtin.shell:
+        cmd: >
+          for file in /var/lib/snmp/snmpd.conf /var/lib/net-snmp/snmpd.conf; do
+            [ -f "$file" ] && grep -q -- '{{ trap_monitor_user }}' "$file" && exit 0;
+          done;
+          exit 1
+      register: monitor_user_check
+      changed_when: false
+      failed_when: false
+
+    - name: Stop snmpd for internal user creation
+      ansible.builtin.systemd:
+        name: snmpd
+        state: stopped
+      when: monitor_user_check.rc != 0
+
+    - name: Create internal monitor user
+      ansible.builtin.shell:
+        cmd: >
+          net-snmp-create-v3-user -ro
+          -A '{{ trap_monitor_auth_pass }}'
+          -a SHA
+          {{ trap_monitor_user }}
+      when: monitor_user_check.rc != 0
+      no_log: true
+
     # Configure trap destination in snmpd.conf
     - name: Configure SNMP trap receiver
       ansible.builtin.blockinfile:
@@ -318,6 +353,10 @@ SNMP traps allow servers to proactively notify the monitoring system about issue
           trap2sink    {{ trap_receiver }} {{ trap_community }}
           informsink   {{ trap_receiver }} {{ trap_community }}
 
+          # Internal SNMPv3 user for DisMan Event MIB monitor queries
+          iquerySecName {{ trap_monitor_user }}
+          rouser {{ trap_monitor_user }} auth
+
           # Authentication failure traps
           authtrapenable 1
 
@@ -325,14 +364,15 @@ SNMP traps allow servers to proactively notify the monitoring system about issue
           linkUpDownNotifications yes
 
           # Monitor disk space and send trap when threshold exceeded
-          monitor -r 300 diskCheck includeAllDisks 10%
+          monitor -r 300 -o dskPath -o dskErrorMsg diskCheck dskErrorFlag != 0
 
           # Monitor process and send trap if not running
-          monitor -r 60 sshd_proc prTable.1.1 != 0
+          monitor -r 60 -o prNames -o prErrMessage sshd_proc prErrorFlag != 0
 
           # Default monitors for standard thresholds
           defaultMonitors yes
       notify: restart snmpd
+      no_log: true
 
   handlers:
     - name: restart snmpd
