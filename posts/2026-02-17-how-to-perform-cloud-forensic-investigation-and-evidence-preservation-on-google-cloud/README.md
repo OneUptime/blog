@@ -36,25 +36,32 @@ gcloud compute disks snapshot compromised-vm-data \
   --snapshot-names=forensic-data-$(date +%Y%m%d-%H%M%S) \
   --description="Forensic snapshot - incident INC-2026-001"
 
-# Step 1b: Isolate the VM by removing all network tags
-# and moving it to an isolated network
+# Step 1b: Isolate the VM by replacing its network tags
 gcloud compute instances remove-tags compromised-vm \
   --zone=us-central1-a \
   --all
-
-# Create an isolated firewall rule that blocks all traffic
-gcloud compute firewall-rules create forensic-isolate \
-  --network=default \
-  --action=DENY \
-  --direction=BOTH \
-  --rules=all \
-  --target-tags=forensic-isolated \
-  --priority=0
 
 # Add the isolation tag to the VM
 gcloud compute instances add-tags compromised-vm \
   --zone=us-central1-a \
   --tags=forensic-isolated
+
+# Create isolated firewall rules that block ingress and egress
+gcloud compute firewall-rules create forensic-isolate-ingress \
+  --network=default \
+  --action=DENY \
+  --direction=INGRESS \
+  --rules=all \
+  --target-tags=forensic-isolated \
+  --priority=0
+
+gcloud compute firewall-rules create forensic-isolate-egress \
+  --network=default \
+  --action=DENY \
+  --direction=EGRESS \
+  --rules=all \
+  --target-tags=forensic-isolated \
+  --priority=0
 ```
 
 ## Step 2: Preserve Cloud Audit Logs
@@ -62,12 +69,13 @@ gcloud compute instances add-tags compromised-vm \
 Audit logs are your most important evidence source in the cloud. Export them immediately before any retention period expires.
 
 ```bash
-# Export all audit logs for the affected project
-# Include Admin Activity, Data Access, and System Event logs
+# Export available audit logs for the affected project
+# Data Access logs must already be enabled for most services
 gcloud logging read '
-  logName:("cloudaudit.googleapis.com/activity" OR
-           "cloudaudit.googleapis.com/data_access" OR
-           "cloudaudit.googleapis.com/system_event")
+  (log_id("cloudaudit.googleapis.com/activity") OR
+   log_id("cloudaudit.googleapis.com/data_access") OR
+   log_id("cloudaudit.googleapis.com/system_event") OR
+   log_id("cloudaudit.googleapis.com/policy"))
   AND timestamp>="2026-02-10T00:00:00Z"
   AND timestamp<="2026-02-17T23:59:59Z"
 ' --project=PROJECT_ID \
@@ -78,7 +86,7 @@ gcloud logging read '
 # Export VPC Flow Logs for network analysis
 gcloud logging read '
   resource.type="gce_subnetwork"
-  AND logName:"compute.googleapis.com/vpc_flows"
+  AND log_id("compute.googleapis.com/vpc_flows")
   AND timestamp>="2026-02-10T00:00:00Z"
 ' --project=PROJECT_ID \
   --format=json \
@@ -86,9 +94,9 @@ gcloud logging read '
 
 # Create a long-term log sink to prevent future log loss
 gcloud logging sinks create forensic-preservation \
+  storage.googleapis.com/forensic-evidence-bucket \
   --project=PROJECT_ID \
-  --log-filter='logName:("cloudaudit.googleapis.com")' \
-  --destination="storage.googleapis.com/forensic-evidence-bucket"
+  --log-filter='log_id("cloudaudit.googleapis.com/activity") OR log_id("cloudaudit.googleapis.com/data_access") OR log_id("cloudaudit.googleapis.com/system_event") OR log_id("cloudaudit.googleapis.com/policy")'
 ```
 
 ## Step 3: Create a Forensic Analysis Environment
@@ -105,15 +113,9 @@ gcloud projects create forensic-analysis-$(date +%Y%m%d) \
 gcloud services enable compute.googleapis.com \
   --project=forensic-analysis-20260217
 
-# Copy the disk snapshot to the forensic project
-gcloud compute snapshots create forensic-copy-boot \
-  --source-snapshot=forensic-boot-20260217-143022 \
-  --source-snapshot-project=PROJECT_ID \
-  --project=forensic-analysis-20260217
-
-# Create a disk from the snapshot for analysis
+# Create a disk from the snapshot in the forensic project
 gcloud compute disks create analysis-disk \
-  --source-snapshot=forensic-copy-boot \
+  --source-snapshot=projects/PROJECT_ID/global/snapshots/forensic-boot-20260217-143022 \
   --zone=us-central1-a \
   --project=forensic-analysis-20260217
 
@@ -138,7 +140,7 @@ import datetime
 from google.cloud import compute_v1
 from google.cloud import logging_v2
 from google.cloud import storage
-from google.cloud import asset_v1
+from google.protobuf.json_format import MessageToDict
 
 class ForensicCollector:
     """Automated forensic evidence collection for GCP incidents."""
@@ -189,16 +191,19 @@ class ForensicCollector:
 
         filter_str = (
             f'timestamp>="{start_time}" AND timestamp<="{end_time}" AND '
-            f'logName:("cloudaudit.googleapis.com")'
+            f'(log_id("cloudaudit.googleapis.com/activity") OR '
+            f'log_id("cloudaudit.googleapis.com/data_access") OR '
+            f'log_id("cloudaudit.googleapis.com/system_event") OR '
+            f'log_id("cloudaudit.googleapis.com/policy"))'
         )
 
         entries = []
-        for entry in client.list_entries(filter_=filter_str, order_by="timestamp"):
+        for entry in client.list_entries(filter_=filter_str, order_by="timestamp asc"):
             entries.append({
                 "timestamp": str(entry.timestamp),
                 "severity": entry.severity,
                 "log_name": entry.log_name,
-                "payload": entry.payload if isinstance(entry.payload, dict) else str(entry.payload),
+                "payload": self._payload_to_dict(entry.payload),
             })
 
         self._save_evidence("audit_logs.json", entries)
@@ -208,8 +213,7 @@ class ForensicCollector:
         client = compute_v1.InstancesClient()
         instances = []
 
-        for zone_url in self._list_zones():
-            zone = zone_url.split("/")[-1]
+        for zone in self._list_zones():
             try:
                 for instance in client.list(
                     project=self.project_id, zone=zone
@@ -242,6 +246,49 @@ class ForensicCollector:
 
         self._save_evidence("compute_instances.json", instances)
 
+    def collect_network_config(self):
+        """Capture VPC network and firewall rule configuration."""
+        networks_client = compute_v1.NetworksClient()
+        firewalls_client = compute_v1.FirewallsClient()
+
+        networks = [
+            {
+                "name": network.name,
+                "self_link": network.self_link,
+                "auto_create_subnetworks": network.auto_create_subnetworks,
+                "routing_mode": network.routing_config.routing_mode
+                    if network.routing_config else None,
+            }
+            for network in networks_client.list(project=self.project_id)
+        ]
+
+        firewall_rules = [
+            {
+                "name": rule.name,
+                "network": rule.network,
+                "direction": rule.direction,
+                "priority": rule.priority,
+                "disabled": rule.disabled,
+                "source_ranges": list(rule.source_ranges),
+                "destination_ranges": list(rule.destination_ranges),
+                "target_tags": list(rule.target_tags),
+                "allowed": [
+                    {"protocol": a.I_p_protocol, "ports": list(a.ports)}
+                    for a in rule.allowed
+                ],
+                "denied": [
+                    {"protocol": d.I_p_protocol, "ports": list(d.ports)}
+                    for d in rule.denied
+                ],
+            }
+            for rule in firewalls_client.list(project=self.project_id)
+        ]
+
+        self._save_evidence("network_config.json", {
+            "networks": networks,
+            "firewall_rules": firewall_rules,
+        })
+
     def collect_service_account_activity(self, start_time, end_time):
         """Collect activity for all service accounts in the project."""
         client = logging_v2.Client(project=self.project_id)
@@ -252,19 +299,40 @@ class ForensicCollector:
         )
 
         activities = []
-        for entry in client.list_entries(filter_=filter_str, order_by="timestamp"):
+        for entry in client.list_entries(filter_=filter_str, order_by="timestamp asc"):
+            payload = self._payload_to_dict(entry.payload)
             activities.append({
                 "timestamp": str(entry.timestamp),
-                "principal": entry.payload.get("authenticationInfo", {}).get(
+                "principal": payload.get("authenticationInfo", {}).get(
                     "principalEmail", "unknown"
-                ) if isinstance(entry.payload, dict) else "unknown",
-                "method": entry.payload.get("methodName", "unknown")
-                    if isinstance(entry.payload, dict) else "unknown",
-                "resource": entry.payload.get("resourceName", "unknown")
-                    if isinstance(entry.payload, dict) else "unknown",
+                ),
+                "method": payload.get("methodName", "unknown"),
+                "resource": payload.get("resourceName", "unknown"),
             })
 
         self._save_evidence("service_account_activity.json", activities)
+
+    def _list_zones(self):
+        """List zone names in the project."""
+        client = compute_v1.ZonesClient()
+        return [zone.name for zone in client.list(project=self.project_id)]
+
+    def _extract_metadata(self, metadata):
+        """Convert instance metadata items into a dictionary."""
+        if not metadata or not metadata.items:
+            return {}
+
+        return {item.key: item.value for item in metadata.items}
+
+    def _payload_to_dict(self, payload):
+        """Convert Cloud Logging payloads to JSON-serializable dictionaries."""
+        if isinstance(payload, dict):
+            return payload
+
+        if hasattr(payload, "DESCRIPTOR"):
+            return MessageToDict(payload, preserving_proto_field_name=True)
+
+        return {"text": str(payload)}
 
     def _save_evidence(self, filename, data):
         """Save evidence to GCS with integrity hash."""
@@ -279,7 +347,9 @@ class ForensicCollector:
         self.evidence_log.append({
             "filename": filename,
             "sha256": content_hash,
-            "collected_at": datetime.datetime.utcnow().isoformat(),
+            "collected_at": datetime.datetime.now(
+                datetime.timezone.utc
+            ).isoformat(),
             "gcs_path": f"gs://{self.evidence_bucket}/{blob_name}",
         })
 
@@ -320,7 +390,7 @@ def build_incident_timeline(audit_logs):
 
 ## Chain of Custody
 
-Every piece of evidence needs a documented chain of custody. The SHA-256 hashes in the evidence manifest prove that evidence has not been tampered with after collection. Store the manifest separately from the evidence, ideally in a write-once storage bucket with retention policies.
+Every piece of evidence needs a documented chain of custody. The SHA-256 hashes in the evidence manifest help verify that evidence has not been tampered with after collection. Store the manifest separately from the evidence, ideally in a bucket with a locked retention policy.
 
 ```bash
 # Create a write-once evidence bucket
@@ -329,6 +399,10 @@ gcloud storage buckets create gs://forensic-evidence-INC-2026-001 \
   --uniform-bucket-level-access \
   --retention-period=31536000 \
   --default-storage-class=ARCHIVE
+
+# Locking a retention policy is irreversible
+gcloud storage buckets update gs://forensic-evidence-INC-2026-001 \
+  --lock-retention-period
 ```
 
 Cloud forensics requires speed, thoroughness, and meticulous documentation. The automated collection scripts save time during the critical early hours of an incident, while the integrity hashes and evidence manifests ensure that what you collected can stand up to legal scrutiny. Build these tools before you need them - during an active incident is the worst time to be writing scripts.
