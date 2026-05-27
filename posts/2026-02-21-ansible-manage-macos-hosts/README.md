@@ -18,18 +18,27 @@ macOS needs the Xcode command line tools and Homebrew installed:
 ---
 - name: Bootstrap macOS
   hosts: macos
-  gather_facts: false
+  gather_facts: true
+  vars:
+    homebrew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/local' }}"
   tasks:
+    - name: Check Xcode command line tools
+      ansible.builtin.command: xcode-select -p
+      register: xcode_select
+      failed_when: false
+      changed_when: false
+
     - name: Install Xcode command line tools
       ansible.builtin.command: xcode-select --install
-      failed_when: false
-      changed_when: true
+      when: xcode_select.rc != 0
 
     - name: Install Homebrew
       ansible.builtin.shell: |
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      environment:
+        NONINTERACTIVE: "1"
       args:
-        creates: /opt/homebrew/bin/brew
+        creates: "{{ homebrew_prefix }}/bin/brew"
 ```
 
 ## Inventory
@@ -52,6 +61,8 @@ ansible_become_method=sudo
   hosts: macos
 
   vars:
+    homebrew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/local' }}"
+
     homebrew_packages:
       - git
       - vim
@@ -116,10 +127,10 @@ Use the `defaults` command to configure system preferences:
         type: "{{ item.type }}"
         value: "{{ item.value }}"
       loop:
-        - { key: AppleShowAllFiles, type: bool, value: 'true' }
-        - { key: ShowPathbar, type: bool, value: 'true' }
-        - { key: ShowStatusBar, type: bool, value: 'true' }
-        - { key: _FXShowPosixPathInTitle, type: bool, value: 'true' }
+        - { key: AppleShowAllFiles, type: bool, value: true }
+        - { key: ShowPathbar, type: bool, value: true }
+        - { key: ShowStatusBar, type: bool, value: true }
+        - { key: _FXShowPosixPathInTitle, type: bool, value: true }
 
     - name: Configure Dock preferences
       community.general.osx_defaults:
@@ -128,9 +139,9 @@ Use the `defaults` command to configure system preferences:
         type: "{{ item.type }}"
         value: "{{ item.value }}"
       loop:
-        - { key: autohide, type: bool, value: 'true' }
-        - { key: minimize-to-application, type: bool, value: 'true' }
-        - { key: tilesize, type: int, value: '48' }
+        - { key: autohide, type: bool, value: true }
+        - { key: minimize-to-application, type: bool, value: true }
+        - { key: tilesize, type: int, value: 48 }
       notify: restart dock
 
     - name: Disable auto-correct
@@ -138,7 +149,7 @@ Use the `defaults` command to configure system preferences:
         domain: NSGlobalDomain
         key: NSAutomaticSpellingCorrectionEnabled
         type: bool
-        value: 'false'
+        value: false
 
     - name: Enable firewall
       become: true
@@ -168,6 +179,7 @@ Use the `defaults` command to configure system preferences:
       loop:
         - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
         - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+      notify: restart sshd
 ```
 
 ## Developer Environment Setup
@@ -186,7 +198,7 @@ Use the `defaults` command to configure system preferences:
         marker: "# {mark} ANSIBLE MANAGED BLOCK"
         block: |
           # Homebrew
-          eval "$(/opt/homebrew/bin/brew shellenv)"
+          eval "$({{ homebrew_prefix }}/bin/brew shellenv)"
 
           # pyenv
           export PYENV_ROOT="$HOME/.pyenv"
@@ -216,6 +228,13 @@ Use the `defaults` command to configure system preferences:
   handlers:
     - name: restart dock
       ansible.builtin.command: killall Dock
+
+    - name: restart sshd
+      become: true
+      community.general.launchd:
+        name: com.openssh.sshd
+        plist: ssh.plist
+        state: restarted
 ```
 
 ## Summary
@@ -224,16 +243,15 @@ macOS management with Ansible uses Homebrew (`community.general.homebrew`) for p
 
 ## Common Use Cases
 
-Here are several practical scenarios where this module proves essential in real-world playbooks.
+Here are several practical scenarios where this guide proves useful in real-world playbooks.
 
 ### Infrastructure Provisioning Workflow
 
 ```yaml
-# Complete workflow incorporating this module
+# Complete workflow for macOS provisioning
 
 - name: Infrastructure provisioning
-  hosts: all
-  become: true
+  hosts: macos
   gather_facts: true
   tasks:
     - name: Gather system information
@@ -251,7 +269,7 @@ Here are several practical scenarios where this module proves essential in real-
           running {{ ansible_distribution }} {{ ansible_distribution_version }}
 
     - name: Install required packages
-      ansible.builtin.package:
+      community.general.homebrew:
         name:
           - curl
           - wget
@@ -262,20 +280,25 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
-        name: "{{ system_timezone | default('UTC') }}"
+      become: true
+      ansible.builtin.command: "systemsetup -settimezone {{ system_timezone | default('UTC') | quote }}"
+      changed_when: true
 
     - name: Configure hostname
+      become: true
       ansible.builtin.hostname:
         name: "{{ inventory_hostname }}"
+        use: macos
 
     - name: Update /etc/hosts
+      become: true
       ansible.builtin.lineinfile:
         path: /etc/hosts
-        regexp: '^127\.0\.1\.1'
-        line: "127.0.1.1 {{ inventory_hostname }}"
+        regexp: "^127\\.0\\.0\\.1\\s+{{ inventory_hostname }}$"
+        line: "127.0.0.1 {{ inventory_hostname }}"
 
     - name: Configure SSH hardening
+      become: true
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: "{{ item.regexp }}"
@@ -285,25 +308,17 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
-
     - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+      become: true
+      ansible.builtin.command: /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
+      changed_when: true
 
   handlers:
     - name: restart sshd
-      ansible.builtin.service:
-        name: sshd
+      become: true
+      community.general.launchd:
+        name: com.openssh.sshd
+        plist: ssh.plist
         state: restarted
 ```
 
@@ -312,9 +327,15 @@ Here are several practical scenarios where this module proves essential in real-
 ```yaml
 # Using gathered facts to configure monitoring thresholds
 - name: Configure monitoring based on system specs
-  hosts: all
+  hosts: macos
   become: true
   tasks:
+    - name: Create monitoring configuration directory
+      ansible.builtin.file:
+        path: /etc/monitoring
+        state: directory
+        mode: '0755'
+
     - name: Set monitoring thresholds based on hardware
       ansible.builtin.template:
         src: monitoring_config.yml.j2
@@ -344,17 +365,17 @@ Here are several practical scenarios where this module proves essential in real-
 ### Error Handling Patterns
 
 ```yaml
-# Robust error handling with this module
+# Robust error handling in macOS playbooks
 - name: Robust task execution
-  hosts: all
+  hosts: macos
   tasks:
     - name: Attempt primary operation
-      ansible.builtin.command: /opt/app/primary-task.sh
+      ansible.builtin.command: /usr/bin/profiles status -type enrollment
       register: primary_result
       failed_when: false
 
     - name: Handle primary failure with fallback
-      ansible.builtin.command: /opt/app/fallback-task.sh
+      ansible.builtin.command: /usr/bin/sw_vers
       when: primary_result.rc != 0
       register: fallback_result
 
@@ -378,9 +399,15 @@ Here are several practical scenarios where this module proves essential in real-
 ```yaml
 # Set up scheduled compliance scans using cron
 - name: Configure automated scans
-  hosts: all
+  hosts: macos
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -404,6 +431,5 @@ Here are several practical scenarios where this module proves essential in real-
         hour: "3"
         weekday: "1"
         job: "/opt/scripts/compliance_scan.sh"
-        user: ansible
+        user: "{{ ansible_user }}"
 ```
-
