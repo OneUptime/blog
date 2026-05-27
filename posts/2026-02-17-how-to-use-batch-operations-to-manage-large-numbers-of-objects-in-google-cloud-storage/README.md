@@ -304,11 +304,11 @@ copy_objects_filtered(
 
 ```javascript
 const { Storage } = require('@google-cloud/storage');
-const pLimit = require('p-limit');
 
 const storage = new Storage();
 
 async function batchDeleteByPrefix(bucketName, prefix, concurrency = 20) {
+  const { default: pLimit } = await import('p-limit');
   const bucket = storage.bucket(bucketName);
 
   // List all files with the prefix
@@ -344,7 +344,7 @@ batchDeleteByPrefix('my-bucket', 'tmp/', 30);
 
 **Batch API requests where possible.** The JSON API batch endpoint reduces HTTP overhead by combining up to 100 operations per request.
 
-**Monitor API quotas.** Cloud Storage has per-project rate limits. For very large operations, you might need to add rate limiting to avoid hitting 429 (Too Many Requests) errors.
+**Monitor request limits.** Cloud Storage has request-rate guidelines and quotas. For very large operations, you might need to add rate limiting or ramp up gradually to avoid hitting 429 (Too Many Requests) errors.
 
 **Use exponential backoff.** When processing many objects, some requests will fail temporarily. Implement retry logic with exponential backoff.
 
