@@ -300,10 +300,9 @@ resource "google_compute_instance" "app" {
     network = google_compute_network.main.id
   }
 
-  lifecycle {
-    # Prevent destroy in production
-    prevent_destroy = false  # Set to true in production module
-  }
+  # If you also use a separate production module or configuration,
+  # add lifecycle { prevent_destroy = true } there. Lifecycle values
+  # must be literal and cannot depend on terraform.workspace.
 }
 ```
 
