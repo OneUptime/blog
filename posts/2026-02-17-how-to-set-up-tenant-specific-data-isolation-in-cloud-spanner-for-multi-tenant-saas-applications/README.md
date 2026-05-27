@@ -20,7 +20,7 @@ Spanner handles sharding automatically. It distributes data across nodes based o
 
 ## Schema Design: The Interleaved Table Pattern
 
-The most important Spanner-specific concept for multi-tenancy is interleaved tables. Interleaving tells Spanner to physically co-locate child rows with their parent row. For multi-tenant applications, this means all of a tenant's data can be stored together on the same splits, which dramatically improves query performance.
+The most important Spanner-specific concept for multi-tenancy is interleaved tables. Interleaving tells Spanner to physically co-locate child rows with their parent row. For multi-tenant applications, this means a tenant's related rows can be stored near the tenant row in primary-key order, which improves tenant-scoped query performance.
 
 ```sql
 -- Parent table: each row represents a tenant
@@ -64,7 +64,7 @@ CREATE INDEX OrdersByTenantAndStatus
     ON Orders (TenantId, Status);
 ```
 
-The key insight here is that TenantId is always the first part of the primary key. This ensures that all data for a single tenant is stored in the same Spanner splits, making tenant-scoped queries fast and efficient.
+The key insight here is that TenantId is always the first part of the primary key. This keeps each tenant's rows in a contiguous key range and lets Spanner split and move those ranges as needed, making tenant-scoped queries fast and efficient.
 
 ## Implementing Data Access with Tenant Isolation
 
@@ -158,8 +158,8 @@ class TenantScopedSpannerClient:
 One challenge with tenant-scoped data in Spanner is hot spots. If a large tenant generates heavy write traffic, the splits holding that tenant's data can become overloaded. There are several strategies to handle this.
 
 ```sql
--- Use a ShardId to distribute writes across splits for large tenants
--- The ShardId is a hash of the TenantId and a timestamp component
+-- Use a ShardId to give Spanner split points within a large tenant's event stream
+-- The ShardId is a hash of the TenantId and EventId
 CREATE TABLE HighVolumeEvents (
     TenantId     STRING(36) NOT NULL,
     ShardId      INT64 NOT NULL,
@@ -174,20 +174,18 @@ CREATE TABLE HighVolumeEvents (
 ```python
 # Generate a shard ID that distributes writes for high-volume tenants
 import hashlib
-import time
 
-def get_shard_id(tenant_id, num_shards=10):
+def get_shard_id(tenant_id, event_id, num_shards=10):
     """Generate a shard ID to distribute writes across splits.
-    Uses a combination of tenant ID and current time to spread load."""
-    current_second = int(time.time())
-    shard_input = f"{tenant_id}:{current_second}"
+    Uses a combination of tenant ID and event ID to spread load."""
+    shard_input = f"{tenant_id}:{event_id}"
     hash_value = int(hashlib.md5(shard_input.encode()).hexdigest(), 16)
     return hash_value % num_shards
 ```
 
-## Per-Tenant Read Replicas
+## Per-Tenant Read-Heavy Queries
 
-For tenants with read-heavy workloads, you can configure Spanner to use stale reads, which can be served from any replica and are cheaper.
+For tenants with read-heavy workloads, you can use stale reads. In multi-region instances, stale reads can often be served by a nearby replica, reducing latency and load on the leader region when the application can tolerate slightly older data.
 
 ```python
 def get_tenant_analytics(self, tenant_id, days=30):
@@ -219,7 +217,7 @@ def get_tenant_analytics(self, tenant_id, days=30):
 
 ## Fine-Grained Access Control
 
-Spanner supports fine-grained access control (FGAC) through database roles. You can create roles that restrict access to specific tables or even rows.
+Spanner supports fine-grained access control (FGAC) through database roles. You can create roles that restrict access to specific tables, columns, views, and change streams. If you need row-filtered access, expose a filtered view and grant access to the view instead of the base table.
 
 ```sql
 -- Create a database role for tenant data access
@@ -251,6 +249,11 @@ SELECT
 FROM
     SPANNER_SYS.QUERY_STATS_TOP_HOUR
 WHERE
+    interval_end = (
+        SELECT MAX(interval_end)
+        FROM SPANNER_SYS.QUERY_STATS_TOP_HOUR
+    )
+    AND
     text LIKE '%TenantId%'
 ORDER BY
     avg_latency_seconds DESC
