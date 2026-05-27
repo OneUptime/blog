@@ -23,10 +23,10 @@ ON target.customer_id = source.customer_id
 -- When a matching row exists in both source and target, update it
 WHEN MATCHED THEN
   UPDATE SET
-    target.name = source.name,
-    target.email = source.email,
-    target.phone = source.phone,
-    target.updated_at = CURRENT_TIMESTAMP()
+    name = source.name,
+    email = source.email,
+    phone = source.phone,
+    updated_at = CURRENT_TIMESTAMP()
 
 -- When a row exists in source but not in target, insert it
 WHEN NOT MATCHED THEN
@@ -42,7 +42,7 @@ This single statement does what would otherwise require separate UPDATE and INSE
 You can also delete rows from the target when they match certain conditions:
 
 ```sql
--- Full sync: insert new, update existing, delete removed records
+-- Full sync: insert new, update existing, delete inactive records
 MERGE `my_project.inventory.products` AS target
 USING `my_project.staging.product_feed` AS source
 ON target.product_id = source.product_id
@@ -50,10 +50,10 @@ ON target.product_id = source.product_id
 -- Update products that exist in both source and target
 WHEN MATCHED AND source.is_active = TRUE THEN
   UPDATE SET
-    target.name = source.name,
-    target.price = source.price,
-    target.stock_quantity = source.stock_quantity,
-    target.updated_at = CURRENT_TIMESTAMP()
+    name = source.name,
+    price = source.price,
+    stock_quantity = source.stock_quantity,
+    updated_at = CURRENT_TIMESTAMP()
 
 -- Delete products that are marked as inactive in the source
 WHEN MATCHED AND source.is_active = FALSE THEN
@@ -78,10 +78,10 @@ ON target.contact_id = source.contact_id
 
 WHEN MATCHED THEN
   UPDATE SET
-    target.name = source.name,
-    target.email = source.email,
-    target.is_deleted = FALSE,
-    target.updated_at = CURRENT_TIMESTAMP()
+    name = source.name,
+    email = source.email,
+    is_deleted = FALSE,
+    updated_at = CURRENT_TIMESTAMP()
 
 WHEN NOT MATCHED BY TARGET THEN
   INSERT (contact_id, name, email, is_deleted, created_at, updated_at)
@@ -91,8 +91,8 @@ WHEN NOT MATCHED BY TARGET THEN
 -- Rows in target that do not exist in source are soft-deleted
 WHEN NOT MATCHED BY SOURCE THEN
   UPDATE SET
-    target.is_deleted = TRUE,
-    target.updated_at = CURRENT_TIMESTAMP();
+    is_deleted = TRUE,
+    updated_at = CURRENT_TIMESTAMP();
 ```
 
 ## Incremental Loading Pattern
@@ -122,10 +122,10 @@ ON target.order_id = source.order_id
 
 WHEN MATCHED AND source.modified_at > target.modified_at THEN
   UPDATE SET
-    target.status = source.status,
-    target.amount = source.amount,
-    target.shipping_address = source.shipping_address,
-    target.modified_at = source.modified_at
+    status = source.status,
+    amount = source.amount,
+    shipping_address = source.shipping_address,
+    modified_at = source.modified_at
 
 WHEN NOT MATCHED THEN
   INSERT (order_id, customer_id, status, amount, shipping_address,
@@ -163,9 +163,9 @@ ON target.account_id = source.account_id
 -- Apply updates from U events
 WHEN MATCHED AND source.operation = 'U' THEN
   UPDATE SET
-    target.account_name = source.account_name,
-    target.balance = source.balance,
-    target.updated_at = source.event_timestamp
+    account_name = source.account_name,
+    balance = source.balance,
+    updated_at = source.event_timestamp
 
 -- Apply deletes from D events
 WHEN MATCHED AND source.operation = 'D' THEN
@@ -193,8 +193,8 @@ ON target.customer_id = source.customer_id
 WHEN MATCHED
   AND (target.name != source.name OR target.email != source.email) THEN
   UPDATE SET
-    target.is_current = FALSE,
-    target.valid_to = CURRENT_TIMESTAMP()
+    is_current = FALSE,
+    valid_to = CURRENT_TIMESTAMP()
 
 -- When there is no current record, insert a new one
 WHEN NOT MATCHED THEN
@@ -214,14 +214,19 @@ First, the ON clause should be as selective as possible. BigQuery needs to join 
 Second, partition pruning applies to MERGE. If your target table is partitioned, include the partition column in the ON clause or in a WHERE filter to avoid scanning the entire table:
 
 ```sql
--- Partition-pruned MERGE - only scans today's partition
+-- Partition-pruned MERGE - restricts the target scan to today's partition
 MERGE `my_project.warehouse.events` AS target
-USING `my_project.staging.new_events` AS source
+USING (
+  SELECT *
+  FROM `my_project.staging.new_events`
+  WHERE event_date = CURRENT_DATE()
+) AS source
 ON target.event_id = source.event_id
-   AND target.event_date = CURRENT_DATE()  -- Prunes partitions
+   AND target.event_date = source.event_date
+   AND target.event_date = CURRENT_DATE()  -- Prunes target partitions
 
 WHEN MATCHED THEN
-  UPDATE SET target.status = source.status
+  UPDATE SET status = source.status
 
 WHEN NOT MATCHED THEN
   INSERT (event_id, event_date, user_id, event_type, status)
