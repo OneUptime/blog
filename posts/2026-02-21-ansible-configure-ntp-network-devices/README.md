@@ -260,7 +260,7 @@ After deploying NTP, verify that devices are syncing correctly.
     - name: Verify NTP is synchronized
       ansible.builtin.assert:
         that:
-          - "'synchronized' in ntp_status.stdout[0] | lower"
+          - "'clock is synchronized' in ntp_status.stdout[0] | lower"
         fail_msg: "NTP is NOT synchronized on {{ inventory_hostname }}!"
         success_msg: "NTP is synchronized on {{ inventory_hostname }}"
 
@@ -301,7 +301,7 @@ For ongoing monitoring, you can periodically check NTP offset across all devices
     # Parse the offset value from NTP associations
     - name: Extract NTP offset
       ansible.builtin.set_fact:
-        ntp_offset: "{{ ntp_detail.stdout[0] | regex_search('offset\\s+([\\d.-]+)', '\\1') | first | default('unknown') }}"
+        ntp_offset: "{{ ntp_detail.stdout[0] | regex_search('offset\\s+([\\d.-]+)\\s+msec', '\\1') | default(['unknown'], true) | first }}"
 
     - name: Report devices with excessive drift
       ansible.builtin.debug:
@@ -317,6 +317,14 @@ For ongoing monitoring, you can periodically check NTP offset across all devices
           hostname: "{{ inventory_hostname }}"
           offset_ms: "{{ ntp_offset }}"
           status: "{{ 'OK' if (ntp_offset | float | abs <= max_offset_ms | float) else 'DRIFT' }}"
+
+    - name: Ensure report directory exists
+      ansible.builtin.file:
+        path: reports
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
 
     - name: Save drift report
       ansible.builtin.copy:
@@ -364,7 +372,7 @@ When migrating to new NTP infrastructure, clean up the old server references.
         commands:
           - show ntp status
       register: sync_check
-      until: "'synchronized' in sync_check.stdout[0] | lower"
+      until: "'clock is synchronized' in sync_check.stdout[0] | lower"
       retries: 12
       delay: 30
 ```
