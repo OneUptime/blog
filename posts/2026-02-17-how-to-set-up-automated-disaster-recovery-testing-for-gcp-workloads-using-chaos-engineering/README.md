@@ -33,15 +33,16 @@ graph TD
 I will use Litmus Chaos for GKE workloads and custom scripts for GCP-managed services. Start by installing Litmus on your GKE cluster.
 
 ```bash
-# Install Litmus Chaos on GKE
+# Install the Litmus Chaos operator on GKE
 
-kubectl apply -f https://litmuschaos.github.io/litmus/3.0.0/litmus-3.0.0.yaml
+kubectl apply -f https://litmuschaos.github.io/litmus/litmus-operator-latest.yaml
 
 # Verify the installation
 kubectl get pods -n litmus
 
-# Install the chaos experiments library
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/experiments.yaml -n litmus
+# Install the Kubernetes experiment definitions in the namespace
+# where you will create ChaosEngine resources
+kubectl apply -f https://raw.githubusercontent.com/litmuschaos/chaos-charts/master/faults/kubernetes/experiments.yaml -n production
 ```
 
 ## Experiment 1: Database Failover Test
@@ -50,21 +51,18 @@ Test that your Cloud SQL failover works within your RTO target.
 
 ```python
 # experiments/database_failover.py
-import os
 import time
-import json
-from google.cloud import sqladmin_v1beta4
-from google.cloud import monitoring_v3
+from googleapiclient.discovery import build
 import requests
 
 class DatabaseFailoverExperiment:
-    """Chaos experiment: Test Cloud SQL automatic failover."""
+    """Chaos experiment: Test Cloud SQL manual failover."""
 
     def __init__(self, project_id, instance_name, app_endpoint):
         self.project_id = project_id
         self.instance_name = instance_name
         self.app_endpoint = app_endpoint
-        self.sql_client = sqladmin_v1beta4.SqlAdminServiceClient()
+        self.sql_client = build('sqladmin', 'v1beta4', cache_discovery=False)
         self.results = {
             'experiment': 'database_failover',
             'started_at': None,
@@ -83,11 +81,11 @@ class DatabaseFailoverExperiment:
         assert response.status_code == 200, 'App is not healthy'
 
         # Verify the database is available
-        instance = self.sql_client.get(
+        instance = self.sql_client.instances().get(
             project=self.project_id,
             instance=self.instance_name,
-        )
-        assert instance.state == 'RUNNABLE', 'Database is not running'
+        ).execute()
+        assert instance['state'] == 'RUNNABLE', 'Database is not running'
 
         # Write a marker record for data loss detection
         marker_id = f'chaos-marker-{int(time.time())}'
@@ -107,15 +105,15 @@ class DatabaseFailoverExperiment:
         self.results['started_at'] = time.time()
 
         # Trigger a manual failover
-        self.sql_client.failover(
+        self.sql_client.instances().failover(
             project=self.project_id,
             instance=self.instance_name,
-            body=sqladmin_v1beta4.InstancesFailoverRequest(
-                failover_context=sqladmin_v1beta4.FailoverContext(
-                    kind='sql#failoverContext',
-                )
-            ),
-        )
+            body={
+                'failoverContext': {
+                    'kind': 'sql#failoverContext',
+                },
+            },
+        ).execute()
 
         # Monitor the app health during failover
         downtime_start = None
@@ -223,7 +221,7 @@ spec:
     appns: 'production'
     applabel: 'app=payment-service'
     appkind: 'deployment'
-  chaosServiceAccount: litmus-admin
+  chaosServiceAccount: pod-delete-sa
   experiments:
     - name: pod-delete
       spec:
@@ -248,7 +246,7 @@ import subprocess
 import time
 import requests
 
-def run_pod_failure_experiment(app_url, namespace, deployment):
+def run_pod_failure_experiment(app_url, namespace, deployment, target_error_rate_percent=1.0):
     """Test pod failure resilience and measure impact."""
     print(f'Testing pod failure for {deployment} in {namespace}')
 
@@ -290,6 +288,7 @@ def run_pod_failure_experiment(app_url, namespace, deployment):
         'error_rate_percent': error_rate,
         'avg_response_time_ms': avg_response_time * 1000,
         'max_response_time_ms': max(response_times) * 1000 if response_times else 0,
+        'hypothesis_confirmed': error_rate <= target_error_rate_percent,
     }
 
     print(f'Results: {error_rate:.1f}% error rate, {avg_response_time*1000:.0f}ms avg response')
@@ -319,7 +318,7 @@ spec:
     appns: 'production'
     applabel: 'app=order-service'
     appkind: 'deployment'
-  chaosServiceAccount: litmus-admin
+  chaosServiceAccount: pod-network-loss-sa
   experiments:
     - name: pod-network-loss
       spec:
@@ -332,7 +331,7 @@ spec:
               value: 'eth0'
             - name: NETWORK_PACKET_LOSS_PERCENTAGE
               value: '100'
-            - name: DESTINATION_IPS
+            - name: DESTINATION_HOSTS
               value: 'payment-service.production.svc.cluster.local'
 ```
 
@@ -344,12 +343,17 @@ Test your ability to evacuate traffic from an entire region.
 # experiments/region_evacuation.py
 import time
 import requests
-from google.cloud import compute_v1
 
-def test_region_evacuation(project_id, backend_service, primary_neg, secondary_neg):
+def check_endpoints(project_id, backend_service):
+    """Verify backend health before changing traffic distribution."""
+    import subprocess
+    subprocess.run([
+        'gcloud', 'compute', 'backend-services', 'get-health',
+        backend_service, '--global', f'--project={project_id}',
+    ], check=True)
+
+def test_region_evacuation(project_id, backend_service, primary_neg, primary_neg_zone, app_url):
     """Simulate evacuating traffic from the primary region."""
-    client = compute_v1.BackendServicesClient()
-
     print('Step 1: Verify both backends are healthy')
     check_endpoints(project_id, backend_service)
 
@@ -357,15 +361,15 @@ def test_region_evacuation(project_id, backend_service, primary_neg, secondary_n
     start_time = time.time()
 
     # Set primary capacity to 0 (simulating region evacuation)
-    # This is the gcloud equivalent in Python
+    # Use gcloud from the script so the same command can be run manually.
     import subprocess
     subprocess.run([
         'gcloud', 'compute', 'backend-services', 'update-backend',
         backend_service, '--global',
         f'--network-endpoint-group={primary_neg}',
-        f'--network-endpoint-group-region=us-central1',
+        f'--network-endpoint-group-zone={primary_neg_zone}',
         '--capacity-scaler=0.0',
-    ])
+    ], check=True)
 
     print('Step 3: Monitor application availability during evacuation')
     errors = 0
@@ -373,7 +377,7 @@ def test_region_evacuation(project_id, backend_service, primary_neg, secondary_n
     while time.time() - start_time < 120:
         checks += 1
         try:
-            r = requests.get('https://app.example.com/health', timeout=5)
+            r = requests.get(f'{app_url}/health', timeout=5)
             if r.status_code != 200:
                 errors += 1
         except Exception:
@@ -391,9 +395,9 @@ def test_region_evacuation(project_id, backend_service, primary_neg, secondary_n
         'gcloud', 'compute', 'backend-services', 'update-backend',
         backend_service, '--global',
         f'--network-endpoint-group={primary_neg}',
-        f'--network-endpoint-group-region=us-central1',
+        f'--network-endpoint-group-zone={primary_neg_zone}',
         '--capacity-scaler=1.0',
-    ])
+    ], check=True)
 
     return {
         'evacuation_time_seconds': evacuation_time,
@@ -438,6 +442,7 @@ spec:
 ```python
 # run_experiments.py - Orchestrate multiple chaos experiments
 import json
+import os
 import requests
 from experiments.database_failover import DatabaseFailoverExperiment
 from experiments.pod_failure_test import run_pod_failure_experiment
