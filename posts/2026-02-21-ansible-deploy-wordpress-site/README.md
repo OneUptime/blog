@@ -69,6 +69,14 @@ wp_locale: en_US
 vault_wp_db_password: "strong-db-password-here"
 vault_wp_admin_password: "strong-admin-password-here"
 vault_mysql_root_password: "strong-root-password-here"
+vault_auth_key: "generate-a-unique-auth-key"
+vault_secure_auth_key: "generate-a-unique-secure-auth-key"
+vault_logged_in_key: "generate-a-unique-logged-in-key"
+vault_nonce_key: "generate-a-unique-nonce-key"
+vault_auth_salt: "generate-a-unique-auth-salt"
+vault_secure_auth_salt: "generate-a-unique-secure-auth-salt"
+vault_logged_in_salt: "generate-a-unique-logged-in-salt"
+vault_nonce_salt: "generate-a-unique-nonce-salt"
 ```
 
 ## MySQL Tasks
@@ -97,13 +105,13 @@ vault_mysql_root_password: "strong-root-password-here"
     login_unix_socket: /var/run/mysqld/mysqld.sock
     host: localhost
     state: present
+  no_log: true
 
 - name: Create WordPress database
   mysql_db:
     name: "{{ wp_db_name }}"
     state: present
-    login_user: root
-    login_password: "{{ vault_mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
     encoding: utf8mb4
     collation: utf8mb4_unicode_ci
 
@@ -113,23 +121,21 @@ vault_mysql_root_password: "strong-root-password-here"
     password: "{{ vault_wp_db_password }}"
     priv: "{{ wp_db_name }}.*:ALL"
     state: present
-    login_user: root
-    login_password: "{{ vault_mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  no_log: true
 
 - name: Remove anonymous MySQL users
   mysql_user:
     name: ""
     host_all: yes
     state: absent
-    login_user: root
-    login_password: "{{ vault_mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
 
 - name: Remove MySQL test database
   mysql_db:
     name: test
     state: absent
-    login_user: root
-    login_password: "{{ vault_mysql_root_password }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
 ```
 
 ## PHP Tasks
@@ -214,7 +220,7 @@ vault_mysql_root_password: "strong-root-password-here"
 - name: Install WordPress using WP-CLI
   command: >
     wp core install
-    --url=https://{{ wp_domain }}
+    --url=http://{{ wp_domain }}
     --title="{{ wp_site_title }}"
     --admin_user={{ wp_admin_user }}
     --admin_password={{ vault_wp_admin_password }}
@@ -222,6 +228,7 @@ vault_mysql_root_password: "strong-root-password-here"
     --path={{ wp_dir }}
   become_user: "{{ wp_user }}"
   when: not wp_installed.stat.exists
+  no_log: true
 
 - name: Set secure file permissions for WordPress files
   file:
@@ -282,14 +289,13 @@ define( 'WP_DEBUG', false );
 define( 'WP_DEBUG_LOG', false );
 define( 'WP_DEBUG_DISPLAY', false );
 
-// Force HTTPS for admin and logins
-define( 'FORCE_SSL_ADMIN', true );
-
 // Limit post revisions to save database space
 define( 'WP_POST_REVISIONS', 5 );
 
 // Auto-save interval in seconds
 define( 'AUTOSAVE_INTERVAL', 120 );
+
+/* That's all, stop editing! Happy publishing. */
 
 if ( ! defined( 'ABSPATH' ) ) {
     define( 'ABSPATH', __DIR__ . '/' );
@@ -412,4 +418,4 @@ ansible-playbook -i inventory/hosts.yml site.yml --ask-vault-pass
 
 ## Wrapping Up
 
-This Ansible playbook provides a production-ready WordPress deployment that goes beyond just installing WordPress. It handles MySQL hardening, PHP tuning, Nginx optimization, file permission security, and blocks common attack vectors like xmlrpc.php. By using WP-CLI for the installation, you avoid the web-based installer entirely, which is cleaner for automated deployments. From here, you can add SSL with Let's Encrypt, Redis object caching, or automated backup tasks.
+This Ansible playbook provides an automated WordPress deployment that goes beyond just installing WordPress. It handles MySQL hardening, PHP tuning, Nginx optimization, file permission security, and blocks common attack vectors like xmlrpc.php. By using WP-CLI for the installation, you avoid the web-based installer entirely, which is cleaner for automated deployments. From here, you can add SSL with Let's Encrypt, enable `FORCE_SSL_ADMIN`, add Redis object caching, or automated backup tasks.
