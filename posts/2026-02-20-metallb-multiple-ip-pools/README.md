@@ -20,7 +20,7 @@ A single flat pool works for small clusters, but real-world deployments often ne
 
 | Use Case | Pool Example | Reason |
 |----------|-------------|--------|
-| Public services | 203.0.113.0/28 | Internet-routable IPs |
+| Public services | 203.0.113.0/28 | Documentation example for your internet-routable IPs |
 | Internal tools | 10.10.50.0/24 | Private network only |
 | Premium tier | 198.51.100.10-198.51.100.15 | Low-latency, limited supply |
 | Development | 192.168.200.0/24 | Sandbox addresses |
@@ -41,7 +41,7 @@ graph TD
 
 ## Creating Your First Pool
 
-Start with the most common pool - public-facing IPs that MetalLB can hand out to any LoadBalancer service.
+Start with the most common pool - public-facing IPs that MetalLB can hand out to any LoadBalancer service. The `203.0.113.0/28` range below is a documentation-only example; replace it with addresses assigned to your network.
 
 ```yaml
 # pool-public.yaml
@@ -52,7 +52,7 @@ kind: IPAddressPool
 metadata:
   # Descriptive name helps operators identify the pool's purpose
   name: public-ips
-  # All MetalLB resources live in the metallb-system namespace
+  # Use the namespace where MetalLB is deployed
   namespace: metallb-system
 spec:
   addresses:
@@ -91,7 +91,7 @@ spec:
 
 ## Adding a Premium Pool
 
-Premium pools hold a small number of high-value IPs. You will usually want to disable automatic assignment on these so they are only used when explicitly requested.
+Premium pools hold a small number of high-value IPs. You will usually want to disable automatic assignment on these so they are only used when explicitly requested. The range below is also a documentation-only example; replace it with your assigned premium block.
 
 ```yaml
 # pool-premium.yaml
@@ -124,7 +124,7 @@ metadata:
   name: trading-api
   annotations:
     # Tell MetalLB to allocate from the premium-ips pool
-    metallb.universe.tf/address-pool: premium-ips
+    metallb.io/address-pool: premium-ips
 spec:
   type: LoadBalancer
   selector:
@@ -150,7 +150,7 @@ kubectl get svc -A -o wide | grep LoadBalancer
 kubectl describe svc trading-api
 
 # Check MetalLB controller logs for allocation decisions
-kubectl logs -n metallb-system -l app=metallb,component=controller | grep "assigned"
+kubectl logs -n metallb-system -l app=metallb,component=controller | grep -i "assigned"
 ```
 
 ---
@@ -185,11 +185,12 @@ flowchart LR
 
 ## Allocation Precedence
 
-When a service does not specify a pool, MetalLB picks the first pool (alphabetically by name) that has available addresses and where `autoAssign` is not `false`. Keep this in mind when naming pools:
+When a service does not specify a pool, MetalLB can allocate from any compatible pool with available addresses where `autoAssign` is not `false`. If you need deterministic ordering between matching pools, set `spec.serviceAllocation.priority` on the `IPAddressPool` resources:
 
 1. Pools with `autoAssign: false` are skipped for unannotated services.
-2. Among eligible pools, alphabetical order of the pool name determines priority.
+2. Among eligible pools with `serviceAllocation.priority`, lower priority numbers are tried first.
 3. If no eligible pool has free addresses, the service stays in `Pending` state.
+4. If multiple matching pools have the same priority, MetalLB may choose randomly between them.
 
 ---
 
@@ -199,7 +200,7 @@ When a service does not specify a pool, MetalLB picks the first pool (alphabetic
 |---------|---------|-----|
 | Overlapping CIDRs across pools | Unpredictable assignment | Ensure every IP appears in only one pool |
 | Forgetting `autoAssign: false` on premium pools | Expensive IPs consumed by random services | Set `autoAssign: false` on limited pools |
-| Mismatched namespace | Pool not found by MetalLB | Always use `metallb-system` namespace |
+| Mismatched namespace | Pool not found by MetalLB | Use the same namespace where MetalLB is deployed, usually `metallb-system` |
 | No L2Advertisement or BGPAdvertisement | IP assigned but unreachable | Create a matching advertisement resource |
 
 ---
