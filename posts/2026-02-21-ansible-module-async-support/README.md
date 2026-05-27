@@ -17,14 +17,14 @@ Ansible's async feature runs tasks in the background and polls for completion. C
   my_long_module:
     name: big-migration
   async: 3600  # Max runtime: 1 hour
-  poll: 30     # Check every 30 seconds
+  poll: 0      # Start in the background
   register: job
 
 - name: Wait for completion
   ansible.builtin.async_status:
     jid: '{{ job.ansible_job_id }}'
   register: result
-  until: result.finished
+  until: result is finished
   retries: 120
   delay: 30
 ```
