@@ -118,7 +118,18 @@ On the client side, you fetch the bundle and load it into Firestore's local cach
 
 ```javascript
 // client-app.js - Load a Firestore bundle in a web application
-import { getFirestore, loadBundle, namedQuery, getDocsFromCache } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  getDocsFromCache,
+  getFirestore,
+  limit,
+  loadBundle,
+  namedQuery,
+  orderBy,
+  query as firestoreQuery,
+  where,
+} from 'firebase/firestore';
 
 const db = getFirestore();
 
@@ -160,12 +171,13 @@ async function getProducts() {
 
   // Fallback: query the server if bundle is not available
   console.log('Bundle not available, querying server');
-  const fallbackSnapshot = await getDocs(
+  const fallbackQuery = firestoreQuery(
     collection(db, 'products'),
     where('active', '==', true),
     orderBy('name'),
     limit(500)
   );
+  const fallbackSnapshot = await getDocs(fallbackQuery);
   return fallbackSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 ```
@@ -176,7 +188,7 @@ You probably do not want to generate bundles manually. Here is a Cloud Function 
 
 ```javascript
 // functions/index.js - Auto-regenerate bundles when data changes
-const functions = require('firebase-functions');
+const {onDocumentWritten} = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 const {Storage} = require('@google-cloud/storage');
 
@@ -185,58 +197,56 @@ const db = admin.firestore();
 const storage = new Storage();
 
 // Regenerate the bundle when any product changes
-exports.regenerateProductBundle = functions.firestore
-  .document('products/{productId}')
-  .onWrite(async (change, context) => {
-    // Debounce: check if we regenerated recently
-    const metaDoc = await db.collection('_meta').doc('bundle-status').get();
-    if (metaDoc.exists) {
-      const lastGenerated = metaDoc.data().lastGenerated?.toDate();
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      if (lastGenerated > fiveMinutesAgo) {
-        console.log('Bundle regenerated recently, skipping');
-        return;
-      }
+exports.regenerateProductBundle = onDocumentWritten('products/{productId}', async () => {
+  // Debounce: check if we regenerated recently
+  const metaDoc = await db.collection('_meta').doc('bundle-status').get();
+  if (metaDoc.exists) {
+    const lastGenerated = metaDoc.data().lastGenerated?.toDate();
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    if (lastGenerated > fiveMinutesAgo) {
+      console.log('Bundle regenerated recently, skipping');
+      return;
     }
+  }
 
-    // Generate the bundle
-    const bundle = db.bundle('product-catalog');
+  // Generate the bundle
+  const bundle = db.bundle('product-catalog');
 
-    const productsSnapshot = await db.collection('products')
-      .where('active', '==', true)
-      .orderBy('name')
-      .get();
+  const productsSnapshot = await db.collection('products')
+    .where('active', '==', true)
+    .orderBy('name')
+    .get();
 
-    bundle.add('active-products', productsSnapshot);
+  bundle.add('active-products', productsSnapshot);
 
-    const categoriesSnapshot = await db.collection('categories')
-      .orderBy('sortOrder')
-      .get();
+  const categoriesSnapshot = await db.collection('categories')
+    .orderBy('sortOrder')
+    .get();
 
-    bundle.add('all-categories', categoriesSnapshot);
+  bundle.add('all-categories', categoriesSnapshot);
 
-    const bundleBuffer = bundle.build();
+  const bundleBuffer = bundle.build();
 
-    // Upload to Cloud Storage
-    const bucket = storage.bucket('my-app-bundles');
-    const file = bucket.file('bundles/product-catalog.bundle');
+  // Upload to Cloud Storage
+  const bucket = storage.bucket('my-app-bundles');
+  const file = bucket.file('bundles/product-catalog.bundle');
 
-    await file.save(bundleBuffer, {
-      metadata: {
-        contentType: 'application/octet-stream',
-        cacheControl: 'public, max-age=300',
-      },
-    });
-
-    // Update metadata
-    await db.collection('_meta').doc('bundle-status').set({
-      lastGenerated: admin.firestore.FieldValue.serverTimestamp(),
-      documentCount: productsSnapshot.size + categoriesSnapshot.size,
-      bundleSize: bundleBuffer.length,
-    });
-
-    console.log(`Bundle regenerated with ${productsSnapshot.size} products`);
+  await file.save(bundleBuffer, {
+    metadata: {
+      contentType: 'application/octet-stream',
+      cacheControl: 'public, max-age=300',
+    },
   });
+
+  // Update metadata
+  await db.collection('_meta').doc('bundle-status').set({
+    lastGenerated: admin.firestore.FieldValue.serverTimestamp(),
+    documentCount: productsSnapshot.size + categoriesSnapshot.size,
+    bundleSize: bundleBuffer.length,
+  });
+
+  console.log(`Bundle regenerated with ${productsSnapshot.size} products`);
+});
 ```
 
 ## Serving Bundles Through Cloud CDN
@@ -301,7 +311,7 @@ async function generateVersionedBundle() {
 
 ## Cost Impact
 
-The math on bundles is compelling. If you have 10,000 daily active users and each loads 500 product documents on startup, that is 5 million Firestore reads per day, which costs about $3 per day or $90 per month just for that one query. With bundles, you generate the data once and serve it from Cloud Storage, which costs a fraction of a cent per day in storage and bandwidth.
+The math on bundles is compelling. If you have 10,000 daily active users and each loads 500 product documents on startup, that is 5 million Firestore reads per day, which costs about $1.50 per day at $0.03 per 100,000 reads in many regional locations, or more in higher-priced locations, just for that one query. With bundles, you generate the data once and serve it from Cloud Storage, which costs a fraction of a cent per day in storage plus bandwidth.
 
 Even accounting for the CDN costs, you are looking at 95% or more savings on read-heavy workloads with data that updates infrequently.
 
