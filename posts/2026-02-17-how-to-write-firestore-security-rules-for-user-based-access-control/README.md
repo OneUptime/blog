@@ -67,9 +67,13 @@ service cloud.firestore {
     // Anyone can read posts, only authenticated users can create them
     match /posts/{postId} {
       allow read: if true;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null
-                            && request.auth.uid == resource.data.authorId;
+      allow create: if request.auth != null
+                    && request.resource.data.authorId == request.auth.uid;
+      allow update: if request.auth != null
+                    && request.auth.uid == resource.data.authorId
+                    && request.resource.data.authorId == resource.data.authorId;
+      allow delete: if request.auth != null
+                    && request.auth.uid == resource.data.authorId;
     }
 
   }
@@ -78,8 +82,8 @@ service cloud.firestore {
 
 Here we split the permissions:
 - `read` is allowed for everyone (including unauthenticated users)
-- `create` requires authentication
-- `update` and `delete` require that the authenticated user is the post's author
+- `create` requires authentication and stores the authenticated user as the author
+- `update` and `delete` require that the authenticated user is the post's author, and updates cannot change the author ID
 
 ## Rule 3: Validating Data on Write
 
@@ -219,12 +223,20 @@ service cloud.firestore {
       // Team documents within the team
       match /documents/{docId} {
         // Team members can read and create documents
-        allow read, create: if request.auth != null
-                            && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+        allow read: if request.auth != null
+                    && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+        allow create: if request.auth != null
+                      && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members
+                      && request.resource.data.authorId == request.auth.uid;
 
         // Only the document author can update or delete
-        allow update, delete: if request.auth != null
-                              && request.auth.uid == resource.data.authorId;
+        allow update: if request.auth != null
+                      && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members
+                      && request.auth.uid == resource.data.authorId
+                      && request.resource.data.authorId == resource.data.authorId;
+        allow delete: if request.auth != null
+                      && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members
+                      && request.auth.uid == resource.data.authorId;
       }
     }
 
@@ -232,11 +244,11 @@ service cloud.firestore {
 }
 ```
 
-The `get()` function reads another document within the rules. This lets you check team membership by reading the team document. Be aware that each `get()` call counts toward your Firestore reads and adds latency to rule evaluation.
+The `get()` function reads another document within the rules. This lets you check team membership by reading the team document. Be aware that document access calls such as `get()` can count toward your Firestore reads, are subject to per-request limits, and can add latency to rule evaluation.
 
-## Rule 7: Rate Limiting with Timestamps
+## Rule 7: Validating Server Timestamps
 
-Prevent users from creating too many documents too quickly:
+Prevent users from forging creation timestamps:
 
 ```text
 rules_version = '2';
@@ -246,7 +258,7 @@ service cloud.firestore {
     match /comments/{commentId} {
       allow read: if true;
 
-      // Users can create comments but must wait between posts
+      // Users can create comments with a server-verified timestamp
       allow create: if request.auth != null
                     && request.resource.data.authorId == request.auth.uid
                     && request.resource.data.createdAt == request.time
@@ -272,12 +284,12 @@ flowchart TD
     B -->|Yes| C[Allow - Admin SDK bypasses rules]
     B -->|No| D{Does any rule match the path?}
     D -->|No| E[Deny - no matching rule]
-    D -->|Yes| F{Does the allow condition evaluate to true?}
+    D -->|Yes| F{Does any matching allow condition evaluate to true?}
     F -->|Yes| G[Allow the request]
     F -->|No| H[Deny the request]
 ```
 
-Important: if no rule matches a path, access is denied by default. You must explicitly allow access.
+Important: if no rule matches a path, access is denied by default. If multiple rules match the same request, access is allowed when any matching `allow` condition is true. You must explicitly allow access.
 
 ## Testing Security Rules
 
@@ -292,6 +304,7 @@ firebase emulators:start --only firestore
 Write tests using the rules testing library:
 
 ```javascript
+const fs = require('fs');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 
 let testEnv;
@@ -362,7 +375,7 @@ Rules deployment is atomic and takes effect within a few seconds.
 
 **Not validating data on write.** Rules are your last line of defense against malformed data. Validate field types, required fields, and value ranges.
 
-**Over-using get() calls.** Each `get()` in your rules adds latency and counts as a read. If you find yourself chaining multiple `get()` calls, consider restructuring your data model.
+**Over-using get() calls.** Document access calls such as `get()` can add latency, count as reads, and hit per-request limits. If you find yourself chaining multiple `get()` calls, consider restructuring your data model.
 
 **Not testing rules.** Treat security rules like application code. Write tests, run them in CI, and catch permission issues before they reach production.
 
