@@ -12,7 +12,7 @@ You set up Kaniko in Cloud Build to cache Docker layers and speed up your builds
 
 ## How Kaniko Caching Works
 
-Kaniko builds Docker images without needing a Docker daemon. It builds each layer, hashes it, and stores the result in a container registry (your cache repo). On subsequent builds, Kaniko checks the cache repo for each layer hash before building. If a cached layer matches, it pulls it instead of rebuilding.
+Kaniko builds Docker images without needing a Docker daemon. It builds each layer, hashes it, and stores the result in a container registry (your cache repo). Before executing a cacheable `RUN` or `COPY` command, Kaniko checks the cache repo for the layer. If a cached layer matches, it pulls it instead of rebuilding. After a cache miss, Kaniko builds the remaining layers locally without consulting the cache again for that build stage.
 
 The cache key for each layer is derived from the Dockerfile instruction and the files it references. If anything about the instruction or its inputs changes, the cache key changes and the layer is rebuilt.
 
@@ -41,8 +41,7 @@ After a build, verify that cache layers were actually pushed:
 ```bash
 # List images in the cache repo path
 gcloud artifacts docker images list \
-    us-central1-docker.pkg.dev/your-project/your-repo/your-image/cache \
-    --format="table(package, version, createTime)"
+    us-central1-docker.pkg.dev/your-project/your-repo/your-image/cache
 ```
 
 If no cache layers exist, the first build did not push them. Check the build logs for Kaniko output:
@@ -54,14 +53,17 @@ gcloud builds log BUILD_ID 2>&1 | grep -i "cache"
 
 Look for messages like:
 - "Pushing layer to cache"
-- "Using cacheFrom"
-- "No cached layer found"
+- "Using caching version of cmd"
+- "No cached layer found for cmd"
 
 ## Step 3: Check Cache Repo Permissions
 
-Kaniko needs both read and write access to the cache repo. The Cloud Build service account needs `roles/artifactregistry.writer` on the repository:
+Kaniko needs both read and write access to the cache repo. The service account running the Cloud Build build needs `roles/artifactregistry.writer` on the repository. Check the service account first, because Cloud Build might use the Compute Engine default service account, the legacy Cloud Build service account, or a user-specified service account:
 
 ```bash
+# Check which default service account Cloud Build uses
+gcloud builds get-default-service-account
+
 # Check permissions on the artifact registry repo
 gcloud artifacts repositories get-iam-policy your-repo \
     --location=us-central1 \
@@ -70,7 +72,7 @@ gcloud artifacts repositories get-iam-policy your-repo \
 # Grant writer access if missing
 gcloud artifacts repositories add-iam-policy-binding your-repo \
     --location=us-central1 \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.writer"
 ```
 
@@ -78,11 +80,11 @@ If Kaniko can build and push the final image but cannot write cache layers, it m
 
 ## Step 4: Understand Cache Invalidation
 
-The most common reason for cache misses is unintentional cache invalidation. Every Dockerfile instruction creates a layer, and the cache key depends on:
+The most common reason for cache misses is unintentional cache invalidation. Most Dockerfile instructions that change the filesystem create layers, and the cache key depends on:
 
 1. The instruction text itself
 2. Any files referenced by ADD or COPY instructions (content hash)
-3. All preceding layers (a chain - if layer N changes, layers N+1 onward are invalidated)
+3. Preceding instructions in the stage (a chain - if layer N changes, layers N+1 onward are usually rebuilt)
 
 Here is a Dockerfile that accidentally invalidates cache every time:
 
@@ -116,17 +118,17 @@ With this structure, if only your application code changes, Kaniko reuses cached
 
 ## Step 5: Check for Non-Deterministic Instructions
 
-Some Dockerfile instructions produce different results each time, which prevents cache hits:
+Some Dockerfile instructions produce different results over time. Kaniko may reuse the old cached result until the cache TTL expires, then rebuild a different layer:
 
 ```dockerfile
-# Bad: These instructions produce different output every build
+# Risky: These instructions can produce different output over time
 RUN apt-get update                           # Package lists change daily
 RUN pip install some-package                  # Version can change
 RUN echo "Build time: $(date)" > /build-info # Always different
 RUN curl -O https://example.com/data.tar.gz  # Content might change
 ```
 
-Fix by pinning versions and avoiding time-dependent commands:
+Fix by pinning versions and avoiding time-dependent commands when you expect cache reuse:
 
 ```dockerfile
 # Good: Deterministic instructions that produce consistent cache keys
@@ -142,7 +144,7 @@ Note that `apt-get update` combined with `apt-get install` in a single RUN instr
 
 ## Step 6: Check the Cache TTL
 
-Cache layers have a time-to-live (TTL). The default Kaniko cache TTL is 6 hours. If your builds are more than 6 hours apart, the cache expires:
+Cache layers have a time-to-live (TTL). When you run the Kaniko executor directly, the default cache TTL is two weeks. When you use `gcloud builds submit --tag` with Cloud Build's Kaniko integration, the default cache TTL is 6 hours. If your builds are farther apart than the active TTL, the cache expires:
 
 ```yaml
 # Set a longer cache TTL
@@ -159,12 +161,12 @@ Set the TTL based on how often your base layers change. If your requirements fil
 
 ## Step 7: Verify the Kaniko Version
 
-Older Kaniko versions had bugs with caching. Use the latest version:
+Older Kaniko versions had bugs with caching. The original Kaniko project was archived in June 2025 and is no longer maintained, so pin the final upstream release instead of an older tag:
 
 ```yaml
-# Pin to a specific recent Kaniko version
+# Pin to the final upstream Kaniko release
 steps:
-  - name: 'gcr.io/kaniko-project/executor:v1.23.0'
+  - name: 'gcr.io/kaniko-project/executor:v1.24.0'
     args:
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-image:$COMMIT_SHA'
       - '--cache=true'
@@ -210,8 +212,8 @@ steps:
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-image:$COMMIT_SHA'
       - '--cache=true'
       - '--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-image/cache'
-      - '--snapshotMode=redo'  # Faster filesystem snapshots
-      - '--use-new-run'        # Optimized RUN instruction handling
+      - '--snapshot-mode=redo' # Faster filesystem snapshots
+      - '--use-new-run'        # Experimental RUN handling; faster but can miss file changes
 ```
 
 ## Caching Troubleshooting Checklist
