@@ -285,11 +285,15 @@ build:
       docker:
         dockerfile: Dockerfile
 
-# Default deploy uses the base kustomization
-deploy:
+# Default render uses the base kustomization
+manifests:
   kustomize:
     paths:
       - k8s/base
+
+# Default deploy uses kubectl
+deploy:
+  kubectl: {}
 
 # Environment-specific profiles
 profiles:
@@ -306,13 +310,16 @@ profiles:
                 dest: /app
       local:
         push: false
-    deploy:
+    manifests:
       kustomize:
         paths:
           - k8s/overlays/dev
+    deploy:
+      kubectl: {}
     portForward:
-      - resourceType: service
+      - resourceType: Service
         resourceName: my-service-dev
+        namespace: development
         port: 80
         localPort: 8080
 
@@ -323,13 +330,15 @@ profiles:
         projectId: my-project
         machineType: E2_HIGHCPU_8
       artifacts:
-        - image: us-central1-docker.pkg.dev/my-project/my-repo/my-service
+        - image: my-service
           docker:
             dockerfile: Dockerfile
-    deploy:
+    manifests:
       kustomize:
         paths:
           - k8s/overlays/staging
+    deploy:
+      kubectl: {}
 
   # Production profile - Cloud Build, production overlay
   - name: production
@@ -338,13 +347,15 @@ profiles:
         projectId: my-project
         machineType: E2_HIGHCPU_8
       artifacts:
-        - image: us-central1-docker.pkg.dev/my-project/my-repo/my-service
+        - image: my-service
           docker:
             dockerfile: Dockerfile
-    deploy:
+    manifests:
       kustomize:
         paths:
           - k8s/overlays/production
+    deploy:
+      kubectl: {}
 ```
 
 ## Using the Profiles
@@ -354,10 +365,10 @@ profiles:
 skaffold dev -p dev
 
 # Staging - build with Cloud Build, deploy staging overlay
-skaffold run -p staging --kube-context=gke_my-project_us-central1_staging-cluster
+skaffold run -p staging --default-repo=us-central1-docker.pkg.dev/my-project/my-repo --kube-context=gke_my-project_us-central1_staging-cluster
 
 # Production - build with Cloud Build, deploy production overlay
-skaffold run -p production --kube-context=gke_my-project_us-central1_production-cluster
+skaffold run -p production --default-repo=us-central1-docker.pkg.dev/my-project/my-repo --kube-context=gke_my-project_us-central1_production-cluster
 ```
 
 ## The Development Dockerfile
@@ -366,10 +377,10 @@ The development Dockerfile includes extra tools for debugging and hot reloading.
 
 ```dockerfile
 # Dockerfile.dev - Development image with hot reload
-FROM golang:1.22-alpine
+FROM golang:1.25-alpine
 
 # Install air for hot reloading
-RUN go install github.com/cosmtrek/air@latest
+RUN go install github.com/air-verse/air@latest
 
 WORKDIR /app
 
@@ -408,6 +419,18 @@ Here is how to use Skaffold profiles in a Cloud Build CI/CD pipeline.
 ```yaml
 # cloudbuild.yaml - Deploy to staging and production
 steps:
+  # Configure access to the staging cluster
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'staging-credentials'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        mkdir -p /workspace/.kube
+        gcloud container clusters get-credentials staging-cluster --region us-central1 --project ${PROJECT_ID}
+    env:
+      - 'KUBECONFIG=/workspace/.kube/config'
+
   # Deploy to staging
   - name: 'gcr.io/k8s-skaffold/skaffold:v2.10.0'
     id: 'deploy-staging'
@@ -416,8 +439,10 @@ steps:
       - 'run'
       - '-p'
       - 'staging'
+      - '--default-repo=us-central1-docker.pkg.dev/${PROJECT_ID}/my-repo'
       - '--kube-context=gke_${PROJECT_ID}_us-central1_staging-cluster'
     env:
+      - 'KUBECONFIG=/workspace/.kube/config'
       - 'CLOUDSDK_COMPUTE_REGION=us-central1'
 
   # Run integration tests against staging
@@ -431,6 +456,19 @@ steps:
         kubectl rollout status deployment/my-service-staging -n staging
         # Run tests against staging
         curl -f https://staging.example.com/health || exit 1
+    env:
+      - 'KUBECONFIG=/workspace/.kube/config'
+
+  # Configure access to the production cluster
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'production-credentials'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud container clusters get-credentials production-cluster --region us-central1 --project ${PROJECT_ID}
+    env:
+      - 'KUBECONFIG=/workspace/.kube/config'
 
   # Deploy to production (only after staging tests pass)
   - name: 'gcr.io/k8s-skaffold/skaffold:v2.10.0'
@@ -440,7 +478,10 @@ steps:
       - 'run'
       - '-p'
       - 'production'
+      - '--default-repo=us-central1-docker.pkg.dev/${PROJECT_ID}/my-repo'
       - '--kube-context=gke_${PROJECT_ID}_us-central1_production-cluster'
+    env:
+      - 'KUBECONFIG=/workspace/.kube/config'
 ```
 
 ## Wrapping Up
