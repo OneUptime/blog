@@ -41,8 +41,8 @@ SELECT
   (1 - (
     (SELECT VARIABLE_VALUE FROM performance_schema.global_status
      WHERE VARIABLE_NAME = 'Innodb_buffer_pool_reads') /
-    (SELECT VARIABLE_VALUE FROM performance_schema.global_status
-     WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_requests')
+    NULLIF((SELECT VARIABLE_VALUE FROM performance_schema.global_status
+     WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_requests'), 0)
   )) * 100 AS buffer_pool_hit_ratio;
 ```
 
@@ -62,23 +62,23 @@ SELECT
    WHERE VARIABLE_NAME = 'Innodb_buffer_pool_pages_dirty') AS dirty_pages;
 ```
 
-If `free_pages` is 0, the buffer pool is full and evicting data. You likely need more memory.
+If `free_pages` is 0, the buffer pool is fully in use. Combine this with the hit ratio and disk read counters before deciding whether you need more memory.
 
 ## Step 2: Size the Buffer Pool
 
-The general guideline is to set the buffer pool to 70-80% of available RAM. On Cloud SQL, the available RAM depends on your machine type.
+For self-managed MySQL, a common guideline is to set the buffer pool to 70-80% of available RAM. On Cloud SQL, use the Cloud SQL default or maximum allowed value for your machine type, because Cloud SQL reserves memory for the OS and MySQL overhead and caps the flag by instance memory.
 
 | Machine Type | RAM | Recommended Buffer Pool |
 |---|---|---|
-| db-n1-standard-1 | 3.75 GB | 2.5 GB |
-| db-n1-standard-2 | 7.5 GB | 5.5 GB |
-| db-n1-standard-4 | 15 GB | 11 GB |
+| db-n1-standard-1 | 3.75 GB | 1.375 GB |
+| db-n1-standard-2 | 7.5 GB | 4 GB |
+| db-n1-standard-4 | 15 GB | 10.5 GB |
 | db-n1-standard-8 | 30 GB | 22 GB |
-| db-n1-standard-16 | 60 GB | 45 GB |
-| db-n1-highmem-8 | 52 GB | 40 GB |
-| db-n1-highmem-16 | 104 GB | 80 GB |
+| db-n1-standard-16 | 60 GB | 44 GB |
+| db-n1-highmem-8 | 52 GB | 38 GB |
+| db-n1-highmem-16 | 104 GB | 75 GB |
 
-Cloud SQL reserves some memory for the OS and MySQL overhead. Do not set the buffer pool to 100% of RAM - leave room for connection buffers, temporary tables, and OS caches.
+Do not set the buffer pool to 100% of RAM - leave room for connection buffers, temporary tables, and OS caches. Also note that `gcloud sql instances patch --database-flags` replaces the full database flag list, so include any existing flags you want to keep when you run these commands.
 
 ```bash
 # Set the buffer pool size to 22 GB on a db-n1-standard-8
@@ -101,7 +101,7 @@ gcloud sql instances patch MY_INSTANCE \
 
 The recommended formula is 1 instance per 1-2 GB of buffer pool. For a 22 GB buffer pool, 8-16 instances is appropriate.
 
-Note: This flag requires a restart in some Cloud SQL configurations.
+Note: This flag requires a restart on Cloud SQL.
 
 ## Step 4: Tune the Redo Log
 
@@ -116,15 +116,15 @@ gcloud sql instances patch MY_INSTANCE \
 
 This sets the total redo log capacity to 4 GB. For high-write workloads, this prevents frequent checkpoint flushes.
 
-For older MySQL versions (before 8.0.30), use the two-parameter approach:
+For older MySQL versions (before 8.0.30), set `innodb_log_file_size`:
 
 ```bash
 # For MySQL versions before 8.0.30
 gcloud sql instances patch MY_INSTANCE \
-  --database-flags=innodb_log_file_size=1073741824,innodb_log_files_in_group=4
+  --database-flags=innodb_log_file_size=2147483648
 ```
 
-This creates 4 log files of 1 GB each, for 4 GB total.
+Cloud SQL calculates total redo log size from `innodb_log_file_size` and the log file group count. With the default group count of 2, this gives 4 GB total.
 
 ### How to Size the Redo Log
 
@@ -146,20 +146,20 @@ If you write 500 MB per hour, a 2 GB redo log gives you about 4 hours of headroo
 InnoDB periodically flushes dirty pages from the buffer pool to disk. How aggressively it does this affects both write performance and recovery time.
 
 ```bash
-# Configure flushing behavior
+# Configure flushing behavior if you need values different from the Cloud SQL defaults
 gcloud sql instances patch MY_INSTANCE \
   --database-flags=\
 innodb_flush_method=O_DIRECT,\
-innodb_io_capacity=2000,\
-innodb_io_capacity_max=4000,\
+innodb_io_capacity=5000,\
+innodb_io_capacity_max=10000,\
 innodb_flush_neighbors=0
 ```
 
 Explanation of each setting:
 
-- **innodb_flush_method=O_DIRECT**: Bypasses the OS file cache, reducing double buffering. This is usually the best choice on Cloud SQL.
-- **innodb_io_capacity=2000**: Tells InnoDB the IOPS available for background operations like flushing. Cloud SQL SSDs can handle thousands of IOPS.
-- **innodb_io_capacity_max=4000**: Upper limit for aggressive flushing during heavy write periods.
+- **innodb_flush_method=O_DIRECT**: Bypasses the OS file cache, reducing double buffering. This is the Cloud SQL default and requires a restart if changed.
+- **innodb_io_capacity=5000**: Tells InnoDB the IOPS available for background operations like flushing. Cloud SQL defaults this flag to 5000.
+- **innodb_io_capacity_max=10000**: Upper limit for aggressive flushing during heavy write periods. Cloud SQL defaults this flag to 10000.
 - **innodb_flush_neighbors=0**: Do not flush neighboring pages. This is an optimization for spinning disks that hurts SSD performance.
 
 ## Step 6: Optimize the Change Buffer
@@ -214,7 +214,7 @@ SELECT
   )
 UNION ALL
 SELECT
-  'Log Writes/sec',
+  'Log Writes (cumulative)',
   (SELECT VARIABLE_VALUE FROM performance_schema.global_status
    WHERE VARIABLE_NAME = 'Innodb_log_writes');
 ```
@@ -226,8 +226,8 @@ A few things specific to Cloud SQL:
 - **Not all flags are available.** Cloud SQL restricts some InnoDB settings. Check the supported flags documentation before trying to set a flag.
 - **Flag changes may require restart.** Some flags (like buffer pool instances) require a restart. Cloud SQL handles this automatically but you will see a brief outage.
 - **Scaling the instance is sometimes easier.** If your buffer pool hit ratio is low, sometimes upgrading to a larger machine type (more RAM) is simpler than aggressive tuning.
-- **Use Cloud Monitoring.** Cloud SQL exports InnoDB metrics to Cloud Monitoring. Set up dashboards and alerts for buffer pool hit ratio and disk I/O.
+- **Use Cloud Monitoring.** Cloud SQL exports InnoDB metrics to Cloud Monitoring. Set up dashboards and alerts for buffer pool reads, buffer pool pages, and disk I/O.
 
 ## Wrapping Up
 
-The InnoDB buffer pool is the foundation of MySQL performance. Size it as large as practical (70-80% of RAM), split it into multiple instances for concurrency, and configure the redo log large enough to avoid frequent checkpoints. On Cloud SQL, these settings are controlled through database flags and can be adjusted without data loss. The most important metric to track is the buffer pool hit ratio - keep it above 99%, and your database will handle its workload with room to spare. Let it drop significantly, and every query pays the price of disk I/O.
+The InnoDB buffer pool is the foundation of MySQL performance. Size it as large as practical within Cloud SQL's allowed range, split it into multiple instances for concurrency, and configure the redo log large enough to avoid frequent checkpoints. On Cloud SQL, these settings are controlled through database flags and can be adjusted without data loss. The most important metric to track is the buffer pool hit ratio - keep it above 99%, and your database will handle its workload with room to spare. Let it drop significantly, and every query pays the price of disk I/O.
