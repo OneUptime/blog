@@ -72,7 +72,7 @@ sudo tcpdump -i eth0 -e -n arp
 Sample output when MetalLB is healthy:
 
 ```text
-14:32:01.123456 aa:bb:cc:dd:ee:01 > ff:ff:ff:ff:ff:ff, ARP, length 42: Request who-has 192.168.1.100 tell 192.168.1.1
+14:32:01.123456 aa:bb:cc:dd:ee:99 > ff:ff:ff:ff:ff:ff, ARP, length 42: Request who-has 192.168.1.100 tell 192.168.1.1
 14:32:01.123789 aa:bb:cc:dd:ee:01 > aa:bb:cc:dd:ee:99, ARP, length 42: Reply 192.168.1.100 is-at aa:bb:cc:dd:ee:01
 ```
 
@@ -168,7 +168,7 @@ kubectl logs -n metallb-system -l component=speaker --tail=50 | grep -i "leader"
 
 ```bash
 # Count ARP replies per second for a specific IP.
-# A healthy cluster sends one gratuitous ARP during failover.
+# A healthy cluster sends a small burst of gratuitous packets during failover.
 # More than a few per second indicates a problem.
 sudo tcpdump -i eth0 -e -n arp and host 192.168.1.100 2>/dev/null \
   | head -100 \
@@ -229,7 +229,7 @@ You should see one Request and one Reply. If you see more, keep debugging.
 | Capture all ARP | `sudo tcpdump -i eth0 -e -n arp` |
 | Filter by IP | `sudo tcpdump -i eth0 -e -n arp and host 192.168.1.100` |
 | Save to pcap file | `sudo tcpdump -i eth0 -e -n arp -w /tmp/arp.pcap` |
-| Gratuitous ARPs only | `sudo tcpdump -i eth0 -e -n 'arp[6:2] = 2'` |
+| Gratuitous ARPs for an IP | `sudo tcpdump -i eth0 -e -n 'arp and src host 192.168.1.100 and dst host 192.168.1.100'` |
 | All interfaces | `sudo tcpdump -i any -e -n arp` |
 
 ---
