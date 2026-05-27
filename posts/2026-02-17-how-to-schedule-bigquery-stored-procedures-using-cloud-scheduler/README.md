@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Scheduler to trigger BigQuery stored 
 
 ---
 
-BigQuery scheduled queries are convenient, but they have limitations. They cannot call stored procedures directly, and they lack the flexibility of a full scheduling system. If you have complex stored procedures that need to run on a schedule, Cloud Scheduler paired with BigQuery gives you much more control.
+BigQuery scheduled queries are convenient, and they can run GoogleSQL such as stored procedure calls, DDL, and DML. However, they lack the flexibility of a full scheduling system. If you have complex stored procedures that need retry policies, custom authentication, or integration with other GCP services, Cloud Scheduler paired with BigQuery gives you much more control.
 
 I have used this pattern in production for data pipelines that need retry logic, conditional execution, and integration with other GCP services. Let me show you how to set it up.
 
@@ -79,25 +79,36 @@ def trigger_daily_etl(request):
 
     # Parse the request for optional date override
     request_json = request.get_json(silent=True)
-    if request_json and 'process_date' in request_json:
-        process_date = request_json['process_date']
-    else:
-        # Default to yesterday
-        process_date = (date.today() - timedelta(days=1)).isoformat()
+    try:
+        if request_json and 'process_date' in request_json:
+            process_date = date.fromisoformat(request_json['process_date'])
+        else:
+            # Default to yesterday
+            process_date = date.today() - timedelta(days=1)
+    except (TypeError, ValueError):
+        return json.dumps({
+            'status': 'error',
+            'error': 'process_date must be in YYYY-MM-DD format'
+        }), 400
 
     # Build the SQL to call the stored procedure
-    query = f"""
+    query = """
     DECLARE rows_out INT64;
     CALL `my_project.my_dataset.daily_etl`(
-        DATE('{process_date}'),
+        @process_date,
         rows_out
     );
     SELECT rows_out;
     """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter('process_date', 'DATE', process_date)
+        ]
+    )
 
     try:
         # Execute the query and wait for results
-        query_job = client.query(query)
+        query_job = client.query(query, job_config=job_config)
         results = query_job.result()
 
         # Get the output parameter value
@@ -106,14 +117,14 @@ def trigger_daily_etl(request):
 
         return json.dumps({
             'status': 'success',
-            'process_date': process_date,
+            'process_date': process_date.isoformat(),
             'rows_processed': rows_processed
         }), 200
 
     except Exception as e:
         return json.dumps({
             'status': 'error',
-            'process_date': process_date,
+            'process_date': process_date.isoformat(),
             'error': str(e)
         }), 500
 ```
@@ -131,6 +142,7 @@ Deploy the Cloud Function.
 ```bash
 # Deploy the Cloud Function
 gcloud functions deploy trigger-daily-etl \
+  --gen2 \
   --runtime python311 \
   --trigger-http \
   --entry-point trigger_daily_etl \
@@ -229,7 +241,8 @@ Deploy and schedule the workflow.
 # Deploy the workflow
 gcloud workflows deploy daily-etl-workflow \
   --source=workflow.yaml \
-  --location=us-central1
+  --location=us-central1 \
+  --service-account=my-etl-sa@my_project.iam.gserviceaccount.com
 
 # Create a scheduler job to trigger the workflow
 gcloud scheduler jobs create http daily-etl-workflow-trigger \
@@ -256,11 +269,17 @@ gcloud projects add-iam-policy-binding my_project \
   --member="serviceAccount:my-etl-sa@my_project.iam.gserviceaccount.com" \
   --role="roles/bigquery.dataEditor"
 
-# Grant Cloud Functions Invoker to the scheduler service account
-gcloud functions add-iam-policy-binding trigger-daily-etl \
+# Grant Cloud Run Invoker to the scheduler service account for the 2nd gen HTTP function
+gcloud run services add-iam-policy-binding trigger-daily-etl \
   --member="serviceAccount:my-scheduler-sa@my_project.iam.gserviceaccount.com" \
-  --role="roles/cloudfunctions.invoker" \
+  --role="roles/run.invoker" \
   --region=us-central1
+
+# Grant Workflows Invoker to the service account that triggers the workflow
+gcloud workflows add-iam-policy-binding daily-etl-workflow \
+  --member="serviceAccount:my-etl-sa@my_project.iam.gserviceaccount.com" \
+  --role="roles/workflows.invoker" \
+  --location=us-central1
 ```
 
 ## Adding Retry Logic
