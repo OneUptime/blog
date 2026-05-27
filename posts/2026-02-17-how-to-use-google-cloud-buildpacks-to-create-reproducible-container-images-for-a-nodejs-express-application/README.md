@@ -101,7 +101,7 @@ The `package.json` needs to specify the Node.js version and the start script.
 }
 ```
 
-The `engines.node` field is important. Buildpacks uses it to determine which Node.js version to install. Pinning this ensures consistent Node.js versions across builds.
+The `engines.node` field is important. Buildpacks uses it to determine which Node.js version to install. Constraining this keeps Node.js versions consistent across builds.
 
 ## Building with Buildpacks Locally
 
@@ -117,7 +117,7 @@ pack build express-demo \
 docker run -p 8080:8080 express-demo
 ```
 
-Buildpacks detects the `package.json`, identifies it as a Node.js application, installs the correct Node.js version, runs `npm install`, and configures the image to use `npm start` as the entrypoint.
+Buildpacks detects the `package.json`, identifies it as a Node.js application, installs the correct Node.js version, installs production dependencies with npm by default, and configures the image to use the `scripts.start` command as the entrypoint.
 
 ## Ensuring Reproducibility
 
@@ -125,7 +125,7 @@ Several factors contribute to reproducible builds.
 
 ### Pin Your Dependencies
 
-Use `package-lock.json` and make sure it is committed to your repository. Buildpacks runs `npm ci` (which uses the lockfile) rather than `npm install` when a lockfile is present.
+Use `package-lock.json` and make sure it is committed to your repository. Google recommends using `package-lock.json` with the Node.js buildpack to improve cache performance, and it locks the resolved package versions for npm-based builds.
 
 ```bash
 # Generate a fresh lockfile
@@ -142,6 +142,7 @@ Instead of using `gcr.io/buildpacks/builder:v1` (which is a moving tag), use a s
 
 ```bash
 # Get the current digest
+docker pull gcr.io/buildpacks/builder:v1
 docker inspect gcr.io/buildpacks/builder:v1 --format='{{index .RepoDigests 0}}'
 
 # Use the digest in builds
@@ -157,11 +158,13 @@ For team builds, use Cloud Build to ensure everyone builds on the same infrastru
 # cloudbuild.yaml - Reproducible build with Cloud Build
 steps:
   - name: 'gcr.io/k8s-skaffold/pack'
+    entrypoint: 'pack'
     args:
       - 'build'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/express-demo:$SHORT_SHA'
       - '--builder=gcr.io/buildpacks/builder:v1'
-      - '--env=BP_NODE_RUN_SCRIPTS=false'
+      - '--env=GOOGLE_NODE_RUN_SCRIPTS='
+      - '--network=cloudbuild'
       - '--publish'
 ```
 
@@ -198,17 +201,16 @@ Buildpacks accepts environment variables to control the build process.
 # Build with custom environment variables
 pack build express-demo \
     --builder=gcr.io/buildpacks/builder:v1 \
-    --env GOOGLE_RUNTIME_VERSION=20.11.0 \
     --env GOOGLE_NODEJS_VERSION=20.11.0 \
     --env NODE_ENV=production \
-    --env BP_NODE_RUN_SCRIPTS=false
+    --env GOOGLE_NODE_RUN_SCRIPTS=
 ```
 
 Key environment variables:
-- `GOOGLE_RUNTIME_VERSION`: Pin the exact Node.js version
-- `GOOGLE_NODEJS_VERSION`: Alternative way to set Node.js version
-- `NODE_ENV`: Set to `production` to skip devDependency installation
-- `BP_NODE_RUN_SCRIPTS`: Disable lifecycle scripts for faster builds
+- `GOOGLE_NODEJS_VERSION`: Pin the exact Node.js version
+- `GOOGLE_RUNTIME_VERSION`: Generic runtime version setting for Google Cloud Buildpacks
+- `NODE_ENV`: Set to `production` to install production dependencies
+- `GOOGLE_NODE_RUN_SCRIPTS`: Set to an empty value to prevent the default `npm run build` behavior
 
 ## Using project.toml for Configuration
 
@@ -216,19 +218,24 @@ Instead of passing environment variables on every build, create a `project.toml`
 
 ```toml
 # project.toml - Buildpack configuration
-[project]
+[_]
+schema-version = "0.2"
 id = "express-buildpacks-demo"
 version = "1.0.0"
 
-[[build.env]]
-name = "GOOGLE_RUNTIME_VERSION"
+[[io.buildpacks.build.env]]
+name = "GOOGLE_NODEJS_VERSION"
 value = "20.11.0"
 
-[[build.env]]
+[[io.buildpacks.build.env]]
 name = "NODE_ENV"
 value = "production"
 
-[build]
+[[io.buildpacks.build.env]]
+name = "GOOGLE_NODE_RUN_SCRIPTS"
+value = ""
+
+[io.buildpacks]
 exclude = [
     "*.md",
     ".git",
@@ -242,7 +249,7 @@ exclude = [
 
 ## Verifying Build Reproducibility
 
-To verify that builds are reproducible, build twice and compare the digests.
+To verify that builds are reproducible, build twice and compare the image IDs.
 
 ```bash
 # Build twice
@@ -254,7 +261,7 @@ docker inspect express-demo:build1 --format='{{.Id}}'
 docker inspect express-demo:build2 --format='{{.Id}}'
 ```
 
-If both digests match, your builds are reproducible.
+If both image IDs match, your builds are reproducible.
 
 ## Inspecting the Built Image
 
@@ -262,7 +269,7 @@ You can inspect what Buildpacks created.
 
 ```bash
 # View the image structure
-pack inspect express-demo
+pack inspect-image express-demo
 
 # Check the bill of materials (SBOM)
 pack sbom download express-demo --output-dir ./sbom
@@ -304,10 +311,12 @@ gcloud builds triggers create github \
 # cloudbuild.yaml - Build with Buildpacks and deploy to Cloud Run
 steps:
   - name: 'gcr.io/k8s-skaffold/pack'
+    entrypoint: 'pack'
     args:
       - 'build'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/express-demo:$SHORT_SHA'
       - '--builder=gcr.io/buildpacks/builder:v1'
+      - '--network=cloudbuild'
       - '--publish'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
