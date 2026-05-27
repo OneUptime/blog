@@ -125,7 +125,7 @@ The trade-off is that the first request to use a particular bean will be slower,
 
 ## Technique 3 - Use Spring Boot AOT (Ahead of Time) Processing
 
-Spring Boot 3.x includes AOT processing that generates optimized code at build time instead of using reflection at runtime.
+Spring Boot 3.x includes AOT processing that generates optimized initialization code at build time. For JVM deployments, build the JAR with AOT processing and run it with `spring.aot.enabled=true`.
 
 ```xml
 <!-- pom.xml - enable AOT processing in the Spring Boot Maven plugin -->
@@ -143,13 +143,18 @@ Spring Boot 3.x includes AOT processing that generates optimized code at build t
 </plugin>
 ```
 
+```bash
+mvn package
+java -Dspring.aot.enabled=true -jar target/my-service.jar
+```
+
 ## Technique 4 - GraalVM Native Images
 
 This is the most impactful optimization. GraalVM compiles your Java application ahead of time into a native binary, eliminating JVM startup entirely.
 
 ```dockerfile
 # Multi-stage build for GraalVM native image
-FROM ghcr.io/graalvm/graalvm-community:17 AS builder
+FROM ghcr.io/graalvm/native-image-community:17 AS builder
 WORKDIR /app
 COPY . .
 
@@ -204,7 +209,7 @@ gcloud run services update my-java-service \
     --region=us-central1
 ```
 
-This is free - you do not pay extra for the boosted CPU during startup. It can reduce cold start time by 30-50% for CPU-bound startup operations like class loading and Spring context initialization.
+You are charged for the boosted CPU during container startup and for 10 seconds after the instance starts, but it can still be a good trade-off for CPU-bound startup operations like class loading and Spring context initialization.
 
 ## Putting It All Together
 
@@ -239,6 +244,8 @@ Here is the Dockerfile I use for production Spring Boot services on Cloud Run wh
 FROM eclipse-temurin:17-jdk-alpine AS builder
 WORKDIR /app
 COPY pom.xml .
+COPY mvnw .
+COPY .mvn .mvn
 COPY src ./src
 
 # Build with dependency caching for faster rebuilds
@@ -264,4 +271,4 @@ CMD ["sh", "-c", "java $JAVA_OPTS $SPRING_OPTS -jar app.jar"]
 
 ## Summary
 
-Java cold starts on Cloud Run are a real problem, but they are a solvable one. Start with JVM flag tuning and lazy initialization for quick wins, then consider GraalVM native images if you need sub-second startup. The startup CPU boost feature is free and should always be enabled. And if your SLA cannot tolerate any cold starts, use min-instances as a safety net while continuing to optimize.
+Java cold starts on Cloud Run are a real problem, but they are a solvable one. Start with JVM flag tuning and lazy initialization for quick wins, then consider GraalVM native images if you need sub-second startup. Startup CPU boost is usually worth enabling for CPU-bound startup paths, but include its startup-period CPU charges in your cost estimates. And if your SLA cannot tolerate any cold starts, use min-instances as a safety net while continuing to optimize.
