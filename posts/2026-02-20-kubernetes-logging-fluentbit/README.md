@@ -84,36 +84,17 @@ serviceAccount:
 rbac:
   create: true
 
-# Volume mounts for accessing container logs
-extraVolumes:
-  - name: varlog
-    hostPath:
-      path: /var/log
-  - name: varlibcontainers
-    hostPath:
-      path: /var/lib/docker/containers
-
-extraVolumeMounts:
-  - name: varlog
-    mountPath: /var/log
-    readOnly: true
-  - name: varlibcontainers
-    mountPath: /var/lib/docker/containers
-    readOnly: true
+# The official chart mounts /var/log and /var/lib/docker/containers
+# for DaemonSet deployments by default.
 ```
 
 ## Step 2: Configure the Fluent Bit Pipeline
 
 ```yaml
-# fluent-bit-config.yaml - ConfigMap with the full pipeline configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fluent-bit-config
-  namespace: logging
-data:
+# Add to fluent-bit-values.yaml - Full pipeline configuration
+config:
   # Main service configuration
-  fluent-bit.conf: |
+  service: |
     [SERVICE]
         # Flush logs every 5 seconds
         Flush         5
@@ -123,9 +104,11 @@ data:
         HTTP_Server   On
         HTTP_Listen   0.0.0.0
         HTTP_Port     2020
+        Health_Check  On
         # Parse configuration files
-        Parsers_File  parsers.conf
+        Parsers_File  /fluent-bit/etc/conf/custom_parsers.conf
 
+  inputs: |
     # Input: Tail container log files from the node
     [INPUT]
         Name              tail
@@ -145,11 +128,12 @@ data:
         Read_from_Head    false
         # Buffer size for reading log lines
         Buffer_Max_Size   1MB
-        # Rotate the database file to prevent it from growing too large
+        # Use exclusive database access for better performance
         DB.locking        true
         # Memory buffer limit per monitored file
         Mem_Buf_Limit     10MB
 
+  filters: |
     # Filter: Add Kubernetes metadata to each log record
     [FILTER]
         Name                kubernetes
@@ -187,7 +171,7 @@ data:
         Exclude       log /healthz|/readyz|/livez/
 
   # Parser definitions
-  parsers.conf: |
+  customParsers: |
     # CRI log format parser (used by containerd)
     [PARSER]
         Name        cri
@@ -209,8 +193,9 @@ data:
 ### Output to Elasticsearch
 
 ```yaml
-  # Add to fluent-bit.conf
-  output-elasticsearch.conf: |
+# Add to fluent-bit-values.yaml
+config:
+  outputs: |
     [OUTPUT]
         Name            es
         Match           kube.*
@@ -224,7 +209,7 @@ data:
         Logstash_Prefix kubernetes
         # Retry on failure
         Retry_Limit     5
-        # Replace dots in field names (ES does not allow dots)
+        # Replace dots in field names for compatibility with older Elasticsearch mappings
         Replace_Dots    On
         # Suppress type name (required for ES 8+)
         Suppress_Type_Name On
@@ -236,8 +221,9 @@ data:
 ### Output to OpenTelemetry Collector
 
 ```yaml
-  # Add to fluent-bit.conf
-  output-otel.conf: |
+# Add to fluent-bit-values.yaml
+config:
+  outputs: |
     [OUTPUT]
         Name                 opentelemetry
         Match                kube.*
@@ -246,9 +232,6 @@ data:
         Port                 4318
         # Use the logs signal
         Logs_uri             /v1/logs
-        # Add resource attributes
-        Add_label            cluster my-cluster
-        Add_label            environment production
         # TLS configuration
         tls                  Off
 ```
@@ -256,8 +239,9 @@ data:
 ### Output to S3 for Long-Term Storage
 
 ```yaml
-  # Add to fluent-bit.conf
-  output-s3.conf: |
+# Add to fluent-bit-values.yaml
+config:
+  outputs: |
     [OUTPUT]
         Name                 s3
         Match                kube.*
@@ -265,8 +249,8 @@ data:
         bucket               my-kubernetes-logs
         # Region
         region               us-east-1
-        # Organize logs by date and namespace
-        s3_key_format        /logs/$TAG[4]/%Y/%m/%d/$UUID.gz
+        # Organize logs by date
+        s3_key_format        /logs/%Y/%m/%d/$UUID.gz
         # Total file size before uploading
         total_file_size      50M
         # Upload timeout
