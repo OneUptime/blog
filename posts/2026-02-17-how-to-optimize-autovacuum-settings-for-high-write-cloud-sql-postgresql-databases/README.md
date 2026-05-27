@@ -49,14 +49,15 @@ If you see tables with a high dead tuple percentage (above 10-20%) or tables whe
 -- Check for tables approaching transaction ID wraparound
 SELECT
   c.oid::regclass AS table_name,
-  age(c.relfrozenxid) AS xid_age,
+  GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) AS xid_age,
   pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
-  ROUND(age(c.relfrozenxid)::numeric / 2000000000 * 100, 2) AS pct_to_wraparound
+  ROUND(GREATEST(age(c.relfrozenxid), age(t.relfrozenxid))::numeric / 2000000000 * 100, 2) AS pct_to_wraparound
 FROM pg_class c
+LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
 JOIN pg_namespace n ON c.relnamespace = n.oid
-WHERE c.relkind = 'r'
+WHERE c.relkind IN ('r', 'm')
   AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY age(c.relfrozenxid) DESC
+ORDER BY GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) DESC
 LIMIT 20;
 ```
 
@@ -78,6 +79,8 @@ Here are the parameters that matter most, with their defaults and recommended va
 ## Tuning the Settings on Cloud SQL
 
 In Cloud SQL, you set these as database flags through the console or gcloud CLI.
+
+Important: `gcloud sql instances patch --database-flags` replaces the instance's full database flag list. If you apply these examples one at a time, include any existing flags you want to keep, or use the combined command below.
 
 ### Step 1: Increase Autovacuum Workers
 
@@ -104,7 +107,7 @@ With a scale factor of 0.02, vacuum triggers after 2% of rows are dead - 200,000
 
 ### Step 3: Increase the Cost Limit
 
-The cost limit controls how much I/O autovacuum can do before pausing. The default is quite conservative. For instances on SSD storage (which all Cloud SQL instances use), you can safely increase this.
+The cost limit controls how much I/O autovacuum can do before pausing. The default is quite conservative. For write-heavy instances on SSD or Hyperdisk Balanced storage, you can usually increase this after checking available I/O headroom.
 
 ```bash
 # Increase the I/O budget for autovacuum
@@ -193,7 +196,7 @@ SELECT
   schemaname || '.' || relname AS table_name,
   n_dead_tup,
   n_live_tup,
-  ROUND(n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2) AS bloat_pct,
+  ROUND(n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2) AS dead_tuple_pct,
   last_autovacuum,
   EXTRACT(EPOCH FROM (now() - last_autovacuum)) / 3600 AS hours_since_vacuum,
   autovacuum_count
@@ -208,13 +211,14 @@ ORDER BY n_dead_tup DESC;
 -- Check transaction ID age and alert if approaching danger zone
 SELECT
   c.oid::regclass AS table_name,
-  age(c.relfrozenxid) AS xid_age,
+  GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) AS xid_age,
   -- PostgreSQL forces a vacuum at 200 million by default
-  200000000 - age(c.relfrozenxid) AS headroom
+  200000000 - GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) AS headroom
 FROM pg_class c
-WHERE c.relkind = 'r'
-  AND age(c.relfrozenxid) > 150000000
-ORDER BY age(c.relfrozenxid) DESC;
+LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
+WHERE c.relkind IN ('r', 'm')
+  AND GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) > 150000000
+ORDER BY GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) DESC;
 ```
 
 If the headroom drops below 50 million, run a manual vacuum freeze:
@@ -226,21 +230,21 @@ VACUUM (FREEZE, VERBOSE) events;
 
 ## Dealing with Table Bloat
 
-If autovacuum has already fallen behind and tables are bloated, you need to reclaim space.
+If autovacuum has already fallen behind and tables are bloated, you need to identify the largest tables and indexes before reclaiming space.
 
 ```sql
--- Check table bloat
+-- Check table and index sizes
 SELECT
-  tablename,
-  pg_size_pretty(pg_total_relation_size(quote_ident(tablename)::regclass)) AS total_size,
-  pg_size_pretty(pg_relation_size(quote_ident(tablename)::regclass)) AS table_size,
+  schemaname || '.' || tablename AS table_name,
+  pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+  pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS table_size,
   pg_size_pretty(
-    pg_total_relation_size(quote_ident(tablename)::regclass) -
-    pg_relation_size(quote_ident(tablename)::regclass)
+    pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) -
+    pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)
   ) AS index_size
 FROM pg_tables
 WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(quote_ident(tablename)::regclass) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 10;
 ```
 
