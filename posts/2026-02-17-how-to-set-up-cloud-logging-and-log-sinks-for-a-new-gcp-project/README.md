@@ -14,7 +14,7 @@ Here is a practical walkthrough of setting up logging infrastructure for a new p
 
 ## How Cloud Logging Works
 
-Every GCP service generates logs automatically. These flow into Cloud Logging where they are stored in log buckets. By default, all logs go to the `_Default` log bucket with a 30-day retention period, and admin activity audit logs go to the `_Required` log bucket with a 400-day retention.
+Many GCP services generate logs automatically. These flow into Cloud Logging where they are stored in log buckets. By default, logs that are not required audit logs go to the `_Default` log bucket with a 30-day retention period, and required audit logs such as Admin Activity and System Event audit logs go to the `_Required` log bucket with a 400-day retention.
 
 You can route logs to different destinations using log sinks:
 
@@ -95,10 +95,10 @@ SINK_SA=$(gcloud logging sinks describe cloudrun-logs-to-bq \
   --project=my-project)
 
 # Grant write access to the BigQuery dataset
-bq add-iam-policy-binding \
-  --member="$SINK_SA" \
-  --role="roles/bigquery.dataEditor" \
-  my-project:gcp_logs
+bq query --use_legacy_sql=false \
+  "GRANT \`roles/bigquery.dataEditor\`
+   ON SCHEMA \`my-project.gcp_logs\`
+   TO \"$SINK_SA\""
 ```
 
 ### Sink to Cloud Storage for Archival
@@ -135,6 +135,14 @@ gcloud logging sinks create audit-logs-to-gcs \
   --log-filter='logName:"cloudaudit.googleapis.com"' \
   --project=my-project \
   --description="Archive all audit logs to Cloud Storage"
+
+SINK_SA=$(gcloud logging sinks describe audit-logs-to-gcs \
+  --format='value(writerIdentity)' \
+  --project=my-project)
+
+gcloud storage buckets add-iam-policy-binding gs://my-project-log-archive \
+  --member="$SINK_SA" \
+  --role="roles/storage.objectCreator"
 ```
 
 ### Sink to Pub/Sub for Real-Time Processing
@@ -151,6 +159,15 @@ gcloud logging sinks create security-events-to-pubsub \
   --log-filter='protoPayload.methodName=~"SetIamPolicy|CreateServiceAccountKey|DeleteFirewallRule"' \
   --project=my-project \
   --description="Stream security-sensitive events to Pub/Sub"
+
+SINK_SA=$(gcloud logging sinks describe security-events-to-pubsub \
+  --format='value(writerIdentity)' \
+  --project=my-project)
+
+gcloud pubsub topics add-iam-policy-binding security-log-events \
+  --member="$SINK_SA" \
+  --role="roles/pubsub.publisher" \
+  --project=my-project
 ```
 
 You can then have a Cloud Function process these events:
@@ -163,6 +180,10 @@ import logging
 from google.cloud import firestore
 
 db = firestore.Client()
+
+def send_security_alert(method, actor, timestamp):
+    """Send the alert through your paging, email, or chat integration."""
+    logging.error(f'Security alert: {method} by {actor} at {timestamp}')
 
 def process_security_event(event, context):
     """Process security-related log events in real-time."""
@@ -241,11 +262,27 @@ gcloud logging metrics create auth-failures \
   --project=my-project
 
 # Distribution metric for request latency
+cat > request-latency-metric.yaml << 'EOF'
+description: Request latency distribution from logs
+filter: 'httpRequest.latency!=""'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: s
+valueExtractor: 'REGEXP_EXTRACT(httpRequest.latency, "([0-9.]+)s")'
+bucketOptions:
+  explicitBuckets:
+    bounds:
+    - 0.1
+    - 0.5
+    - 1.0
+    - 2.0
+    - 5.0
+    - 10.0
+EOF
+
 gcloud logging metrics create request-latency \
-  --description="Request latency distribution from logs" \
-  --log-filter='httpRequest.latency!=""' \
-  --bucket-boundaries="0.1,0.5,1.0,2.0,5.0,10.0" \
-  --value-extractor='EXTRACT(httpRequest.latency)' \
+  --config-from-file=request-latency-metric.yaml \
   --project=my-project
 ```
 
@@ -256,26 +293,46 @@ Create alerting policies based on your log-based metrics:
 ```bash
 # Alert when error rate exceeds threshold
 gcloud monitoring policies create \
-  --display-name="High Application Error Rate" \
-  --condition-display-name="Error count > 50 in 5 minutes" \
-  --condition-filter='metric.type="logging.googleapis.com/user/app-error-count" resource.type="cloud_run_revision"' \
-  --condition-threshold-value=50 \
-  --condition-comparison=COMPARISON_GT \
-  --aggregation-alignment-period=300s \
-  --aggregation-per-series-aligner=ALIGN_RATE \
-  --notification-channels=CHANNEL_ID \
+  --policy='{
+    "displayName": "High Application Error Rate",
+    "combiner": "OR",
+    "notificationChannels": ["projects/my-project/notificationChannels/CHANNEL_ID"],
+    "conditions": [{
+      "displayName": "Error count > 50 in 5 minutes",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/app-error-count\" AND resource.type=\"cloud_run_revision\"",
+        "aggregations": [{
+          "alignmentPeriod": "300s",
+          "perSeriesAligner": "ALIGN_SUM"
+        }],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 50,
+        "duration": "0s"
+      }
+    }]
+  }' \
   --project=my-project
 
 # Alert on authentication failure spike
 gcloud monitoring policies create \
-  --display-name="Authentication Failure Spike" \
-  --condition-display-name="Auth failures > 20 in 10 minutes" \
-  --condition-filter='metric.type="logging.googleapis.com/user/auth-failures"' \
-  --condition-threshold-value=20 \
-  --condition-comparison=COMPARISON_GT \
-  --aggregation-alignment-period=600s \
-  --aggregation-per-series-aligner=ALIGN_SUM \
-  --notification-channels=CHANNEL_ID \
+  --policy='{
+    "displayName": "Authentication Failure Spike",
+    "combiner": "OR",
+    "notificationChannels": ["projects/my-project/notificationChannels/CHANNEL_ID"],
+    "conditions": [{
+      "displayName": "Auth failures > 20 in 10 minutes",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/auth-failures\"",
+        "aggregations": [{
+          "alignmentPeriod": "600s",
+          "perSeriesAligner": "ALIGN_SUM"
+        }],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 20,
+        "duration": "0s"
+      }
+    }]
+  }' \
   --project=my-project
 ```
 
@@ -286,18 +343,14 @@ Configure your applications to emit structured logs for better searchability:
 ```python
 # structured_logging.py - Application logging setup
 import google.cloud.logging
-import logging
-import json
 
 # Set up Cloud Logging integration
 client = google.cloud.logging.Client()
-client.setup_logging()
-
-logger = logging.getLogger('my-app')
+logger = client.logger('my-app')
 
 def log_request(request_id, user_id, method, path, status, duration_ms):
     """Log a structured request entry."""
-    logger.info(json.dumps({
+    logger.log_struct({
         'message': 'Request processed',
         'request_id': request_id,
         'user_id': user_id,
@@ -307,17 +360,17 @@ def log_request(request_id, user_id, method, path, status, duration_ms):
         'duration_ms': duration_ms,
         # These fields enable correlation in Cloud Trace
         'logging.googleapis.com/trace': f'projects/my-project/traces/{request_id}',
-    }))
+    }, severity='INFO')
 
 def log_error(request_id, error_type, error_message, stack_trace=None):
     """Log a structured error entry."""
-    logger.error(json.dumps({
+    logger.log_struct({
         'message': f'Error: {error_type}',
         'request_id': request_id,
         'error_type': error_type,
         'error_message': error_message,
         'stack_trace': stack_trace,
-    }))
+    }, severity='ERROR')
 ```
 
 ## Step 7: Query and Explore Logs
