@@ -8,11 +8,11 @@ Description: Automate Debian 12 Bookworm server configuration with Ansible inclu
 
 ---
 
-Debian 12 (Bookworm) is the stable foundation that Ubuntu and many other distributions are built on. It is known for its rock-solid stability and conservative approach to package versions. Configuring Debian 12 with Ansible requires understanding a few Debian-specific details: the non-free firmware repository changes, the absence of sudo by default, and the different package names compared to Ubuntu.
+Debian 12 (Bookworm) is the stable foundation that Ubuntu and many other distributions are built on. It is known for its rock-solid stability and conservative approach to package versions. Configuring Debian 12 with Ansible requires understanding a few Debian-specific details: the non-free firmware repository changes, sudo may not be installed if a root password was configured during installation, and the different package names compared to Ubuntu.
 
 ## Initial Access Setup
 
-Fresh Debian 12 installations often only have root access via SSH with a password. Your first Ansible run may need to use root directly:
+Some fresh Debian 12 installations or provider images may only have root access available before an admin user is created. Your first Ansible run may need to use root directly:
 
 ```ini
 # inventory/hosts
@@ -52,6 +52,7 @@ The first playbook installs sudo and sets up a regular admin user:
       ansible.builtin.user:
         name: "{{ admin_user }}"
         groups: sudo
+        append: true
         shell: /bin/bash
         create_home: true
 
@@ -71,7 +72,7 @@ The first playbook installs sudo and sets up a regular admin user:
 
 ## Repository Configuration
 
-Debian 12 changed the repository format. Non-free firmware moved to a new component:
+Debian 12 changed the repository components. Non-free firmware moved to a new component:
 
 ```yaml
 ---
@@ -146,7 +147,7 @@ Debian 12 minimal installations are very minimal. Install the tools you need:
 
 ## Network Configuration
 
-Debian 12 uses ifupdown by default (not Netplan like Ubuntu):
+Debian 12 server and minimal installations commonly use ifupdown (not Netplan like Ubuntu), while desktop installations may use NetworkManager:
 
 ```yaml
     - name: Configure network interfaces
@@ -198,7 +199,7 @@ iface {{ ansible_default_ipv4.interface }} inet static
       notify: restart chrony
 
     - name: Enable chrony
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: chrony
         enabled: true
         state: started
@@ -212,13 +213,13 @@ iface {{ ansible_default_ipv4.interface }} inet static
         path: /etc/ssh/sshd_config
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
-        validate: 'sshd -t -f %s'
+        validate: '/usr/sbin/sshd -t -f %s'
       loop:
         - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
         - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
         - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
         - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 3' }
-      notify: restart sshd
+      notify: restart ssh
 
     - name: Configure nftables firewall
       ansible.builtin.copy:
@@ -246,7 +247,7 @@ iface {{ ansible_default_ipv4.interface }} inet static
       notify: restart nftables
 
     - name: Enable nftables
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: nftables
         enabled: true
         state: started
@@ -271,26 +272,26 @@ iface {{ ansible_default_ipv4.interface }} inet static
 ```yaml
   handlers:
     - name: restart networking
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: networking
         state: restarted
 
     - name: restart chrony
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: chrony
         state: restarted
 
-    - name: restart sshd
-      ansible.builtin.systemd:
-        name: sshd
+    - name: restart ssh
+      ansible.builtin.systemd_service:
+        name: ssh
         state: restarted
 
     - name: restart nftables
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: nftables
         state: restarted
 ```
 
 ## Summary
 
-Debian 12 Bookworm is a lean, stable server platform. Key differences from Ubuntu that affect Ansible automation: sudo is not installed by default, networking uses ifupdown instead of Netplan, the `non-free-firmware` repository component is new, and the firewall uses nftables. This playbook covers bootstrapping from root access, configuring repositories, installing essentials, networking, time sync, and security hardening. Once the base is configured, you can layer on application-specific roles.
+Debian 12 Bookworm is a lean, stable server platform. Key differences from Ubuntu that affect Ansible automation: sudo may not be installed when the system was installed with a root password, server networking commonly uses ifupdown instead of Netplan, the `non-free-firmware` repository component is new, and the firewall uses nftables. This playbook covers bootstrapping from root access, configuring repositories, installing essentials, networking, time sync, and security hardening. Once the base is configured, you can layer on application-specific roles.
