@@ -10,7 +10,7 @@ Description: Write Java Cloud Functions using the Spring Cloud Function adapter 
 
 Cloud Functions is Google's serverless compute platform for event-driven workloads. While most Cloud Functions examples use Node.js or Python, Java is a first-class runtime. The Spring Cloud Function adapter for GCP lets you write Cloud Functions using the Spring programming model - with dependency injection, configuration management, and all the Spring Boot features you are used to.
 
-This means you can share code, configuration patterns, and dependencies between your Spring Boot microservices and your Cloud Functions. In this post, I will show you how to set up Spring Cloud Function for GCP, write HTTP and event-driven functions, handle dependency injection, and deploy to Cloud Functions Gen2.
+This means you can share code, configuration patterns, and dependencies between your Spring Boot microservices and your Cloud Functions. In this post, I will show you how to set up Spring Cloud Function for GCP, write HTTP and event-driven functions, handle dependency injection, and deploy HTTP functions to Cloud Functions Gen2.
 
 ## Project Setup
 
@@ -36,8 +36,9 @@ Start with a Spring Boot project and add the Cloud Function adapter.
   <version>1.0.0</version>
 
   <properties>
-    <java.version>21</java.version>
+    <java.version>17</java.version>
     <spring-cloud.version>2023.0.0</spring-cloud.version>
+    <spring-cloud-function.version>4.1.0</spring-cloud-function.version>
   </properties>
 
   <dependencies>
@@ -90,30 +91,24 @@ Start with a Spring Boot project and add the Cloud Function adapter.
           <!-- Required for Cloud Functions deployment -->
           <outputDirectory>target/deploy</outputDirectory>
         </configuration>
-        <executions>
-          <execution>
-            <id>generate-classpath</id>
-            <goals>
-              <goal>repackage</goal>
-            </goals>
-          </execution>
-        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-function-adapter-gcp</artifactId>
+            <version>${spring-cloud-function.version}</version>
+          </dependency>
+        </dependencies>
       </plugin>
-      <!-- Copy dependencies for Cloud Functions -->
+
+      <!-- Run the function locally with the Google Functions Framework -->
       <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-            <configuration>
-              <createDependencyReducedPom>false</createDependencyReducedPom>
-            </configuration>
-          </execution>
-        </executions>
+        <groupId>com.google.cloud.functions</groupId>
+        <artifactId>function-maven-plugin</artifactId>
+        <version>0.11.0</version>
+        <configuration>
+          <functionTarget>org.springframework.cloud.function.adapter.gcp.GcfJarLauncher</functionTarget>
+          <port>8080</port>
+        </configuration>
       </plugin>
     </plugins>
   </build>
@@ -159,6 +154,8 @@ public class Application {
     }
 }
 ```
+
+If you add the dependency-injected `processOrder` bean below, remove this first `processOrder` bean so the application has only one bean with that name.
 
 ## Defining Request and Response Types
 
@@ -337,17 +334,32 @@ public class OrderFunctions {
 }
 ```
 
+```java
+// src/main/java/com/example/functions/ShippingEvent.java
+package com.example.functions;
+
+public class ShippingEvent {
+    private String customerEmail;
+    private String trackingNumber;
+
+    public ShippingEvent() {}
+
+    public String getCustomerEmail() { return customerEmail; }
+    public void setCustomerEmail(String customerEmail) { this.customerEmail = customerEmail; }
+    public String getTrackingNumber() { return trackingNumber; }
+    public void setTrackingNumber(String trackingNumber) { this.trackingNumber = trackingNumber; }
+}
+```
+
 ## Configuration
 
 ```yaml
 # src/main/resources/application.yml
 
-spring:
-  cloud:
-    function:
-      # Specify which function to activate
-      # This can be overridden by the SPRING_CLOUD_FUNCTION_DEFINITION env var
-      definition: processOrder
+# Specify which function to activate in the GCP adapter
+# This can be overridden by the FUNCTION_NAME env var
+function:
+  name: processOrder
 
 # Custom configuration
 order:
@@ -373,24 +385,47 @@ gcloud functions deploy process-order \
   --timeout 60 \
   --entry-point org.springframework.cloud.function.adapter.gcp.GcfJarLauncher \
   --source target/deploy \
-  --set-env-vars "SPRING_CLOUD_FUNCTION_DEFINITION=processOrder"
+  --set-env-vars "FUNCTION_NAME=processOrder"
 
-# Deploy the handleShipping function (Pub/Sub triggered)
+# Deploy the handleShipping function as a background Pub/Sub function
 gcloud functions deploy handle-shipping \
-  --gen2 \
-  --runtime java21 \
+  --no-gen2 \
+  --runtime java17 \
   --trigger-topic shipping-events \
   --region us-central1 \
   --memory 512MB \
   --timeout 120 \
   --entry-point org.springframework.cloud.function.adapter.gcp.GcfJarLauncher \
   --source target/deploy \
-  --set-env-vars "SPRING_CLOUD_FUNCTION_DEFINITION=handleShipping"
+  --set-env-vars "FUNCTION_NAME=handleShipping"
 ```
 
 ## Event-Driven Functions with Pub/Sub
 
-Spring Cloud Function handles Pub/Sub messages transparently. The message data is deserialized into your function's input type.
+With the GCP adapter's background-function support, Spring Cloud Function receives the Pub/Sub event JSON and can deserialize it into your function's input type.
+
+```java
+// src/main/java/com/example/functions/PubSubMessage.java
+package com.example.functions;
+
+import java.util.Map;
+
+public class PubSubMessage {
+    private String data;
+    private Map<String, String> attributes;
+    private String messageId;
+    private String publishTime;
+
+    public String getData() { return data; }
+    public void setData(String data) { this.data = data; }
+    public Map<String, String> getAttributes() { return attributes; }
+    public void setAttributes(Map<String, String> attributes) { this.attributes = attributes; }
+    public String getMessageId() { return messageId; }
+    public void setMessageId(String messageId) { this.messageId = messageId; }
+    public String getPublishTime() { return publishTime; }
+    public void setPublishTime(String publishTime) { this.publishTime = publishTime; }
+}
+```
 
 ```java
 // Pub/Sub triggered function
@@ -446,10 +481,8 @@ public Function<OrderRequest, OrderResponse> confirm() {
 
 ```yaml
 # Compose functions with the pipe operator
-spring:
-  cloud:
-    function:
-      definition: validate|enrich|confirm
+function:
+  name: validate|enrich|confirm
 ```
 
 ## Building for Deployment
@@ -464,11 +497,11 @@ ls target/deploy/
 
 ## Testing Locally
 
-Run the function locally using the Spring Boot embedded server.
+Run the function locally using the Google Functions Framework.
 
 ```bash
 # Run locally for testing
-mvn spring-boot:run
+mvn function:run
 
 # Test with curl
 curl -X POST http://localhost:8080 \
@@ -502,8 +535,11 @@ gcloud functions deploy process-order \
   --gen2 \
   --min-instances 1 \
   --runtime java21 \
+  --trigger-http \
+  --region us-central1 \
   --entry-point org.springframework.cloud.function.adapter.gcp.GcfJarLauncher \
-  --source target/deploy
+  --source target/deploy \
+  --set-env-vars "FUNCTION_NAME=processOrder"
 ```
 
 Spring Cloud Function for GCP gives you the best of both worlds - the productivity and ecosystem of Spring Boot with the operational simplicity of Cloud Functions. You can share code and patterns between your microservices and your serverless functions, use dependency injection for clean architecture, and leverage the full Spring configuration system. The cold start trade-off is real for Java, but keeping minimum instances warm handles that for latency-sensitive functions.
