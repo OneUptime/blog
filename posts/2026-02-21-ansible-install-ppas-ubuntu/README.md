@@ -30,18 +30,21 @@ This does three things: imports the PPA's GPG key, adds the repository to the sy
 
 ## Prerequisites
 
-On minimal Ubuntu installations, the `add-apt-repository` command (which Ansible uses internally) might not be available. Make sure the prerequisites are installed.
+On minimal Ubuntu installations, the Python APT library and PPA management tools might not be available. Make sure the prerequisites are installed.
 
 ```yaml
 # Ensure PPA management tools are installed
 - name: Install software-properties-common
   ansible.builtin.apt:
-    name: software-properties-common
+    name:
+      - software-properties-common
+      - python3-apt
+      - gpg
     state: present
     update_cache: true
 ```
 
-The `software-properties-common` package provides `add-apt-repository` and is needed for PPA support.
+The `software-properties-common` package provides `add-apt-repository`, and Ansible's `apt_repository` module also requires the Python APT library and either `apt-key` or `gpg`.
 
 ## Adding Common PPAs
 
@@ -53,21 +56,25 @@ Here are practical examples of adding PPAs for commonly needed software.
   ansible.builtin.apt_repository:
     repo: ppa:ondrej/php
     state: present
+    update_cache: false
 
 - name: Add Ondrej Apache2 PPA
   ansible.builtin.apt_repository:
     repo: ppa:ondrej/apache2
     state: present
+    update_cache: false
 
 - name: Add Ondrej Nginx PPA
   ansible.builtin.apt_repository:
     repo: ppa:ondrej/nginx
     state: present
+    update_cache: false
 
 - name: Add deadsnakes PPA (multiple Python versions)
   ansible.builtin.apt_repository:
     repo: ppa:deadsnakes/ppa
     state: present
+    update_cache: false
 
 - name: Update APT cache after adding all PPAs
   ansible.builtin.apt:
@@ -84,6 +91,7 @@ When you need several PPAs, use a loop to keep things organized.
   ansible.builtin.apt_repository:
     repo: "{{ item }}"
     state: present
+    update_cache: false
   loop:
     - ppa:git-core/ppa
     - ppa:deadsnakes/ppa
@@ -126,7 +134,10 @@ Here is a realistic playbook that uses PPAs to install a modern PHP stack on Ubu
   tasks:
     - name: Install prerequisites
       ansible.builtin.apt:
-        name: software-properties-common
+        name:
+          - software-properties-common
+          - python3-apt
+          - gpg
         state: present
 
     - name: Add Ondrej PHP PPA
@@ -155,7 +166,10 @@ The deadsnakes PPA is the go-to source for multiple Python versions on Ubuntu.
 # Install Python 3.12 from the deadsnakes PPA
 - name: Install prerequisites
   ansible.builtin.apt:
-    name: software-properties-common
+    name:
+      - software-properties-common
+      - python3-apt
+      - gpg
     state: present
 
 - name: Add deadsnakes PPA
@@ -190,12 +204,6 @@ When you no longer need a PPA, remove it cleanly.
 Note that removing a PPA does not uninstall or downgrade packages that were installed from it. Those packages remain at their current version. If you want to revert to the Ubuntu-provided version, you need to handle that separately.
 
 ```yaml
-# Downgrade packages after removing a PPA
-- name: Remove the PPA
-  ansible.builtin.apt_repository:
-    repo: ppa:ondrej/php
-    state: absent
-
 - name: Install ppa-purge to revert packages
   ansible.builtin.apt:
     name: ppa-purge
@@ -209,7 +217,7 @@ Note that removing a PPA does not uninstall or downgrade packages that were inst
 
 ## Using the Codename Parameter
 
-By default, `apt_repository` uses the current Ubuntu release codename. You can override this if needed.
+By default, `apt_repository` uses the current Ubuntu release codename. You can override this if needed, especially when working with a PPA on a non-Ubuntu derivative.
 
 ```yaml
 # Add a PPA with a specific Ubuntu codename
@@ -220,7 +228,7 @@ By default, `apt_repository` uses the current Ubuntu release codename. You can o
     state: present
 ```
 
-This is useful when running on a newer Ubuntu version that a PPA has not been updated for yet. You can point to the most recent supported codename.
+Only point to a different Ubuntu codename when you know the packages are compatible with your target system.
 
 ## Controlling the Repository Filename
 
