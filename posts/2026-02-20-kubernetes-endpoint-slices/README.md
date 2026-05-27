@@ -10,16 +10,16 @@ Description: Learn how EndpointSlices replace Endpoints objects to improve servi
 
 ## The Problem with Endpoints
 
-In Kubernetes, every service gets an associated Endpoints object. This object lists the IP addresses of all pods that match the service's selector. When a pod is added, removed, or changes readiness, the entire Endpoints object is updated and pushed to every node running kube-proxy.
+In Kubernetes, every service with a selector gets an associated legacy Endpoints object for backward compatibility. This object lists the IP addresses of pods that match the service's selector, subject to the legacy API's 1000-endpoint limit. When a pod is added, removed, or changes readiness, the entire Endpoints object is updated and pushed to clients that still watch Endpoints.
 
-For small services, this works fine. But consider a service with 5,000 pods. The Endpoints object becomes a single large blob containing 5,000 IP addresses. Every time one pod changes, the entire object (potentially hundreds of kilobytes) is serialized, transmitted, and processed by every node in the cluster.
+For small services, this works fine. But with a large service, the Endpoints object becomes a single large blob and, beyond 1000 backends, is truncated and annotated as over capacity. Every time one pod changes, clients watching the legacy API receive the entire updated object, while EndpointSlices can represent the full backend set in smaller resources.
 
 ## Endpoints vs EndpointSlices
 
 ```mermaid
 flowchart TD
     subgraph Old["Endpoints (Legacy)"]
-        Svc1[Service] --> EP1["Single Endpoints Object\n5000 pod IPs\n~250KB per update"]
+        Svc1[Service] --> EP1["Single Endpoints Object\nup to 1000 pod IPs\nfull-object updates"]
         EP1 -->|Full update on\nany pod change| Node1[Node 1 kube-proxy]
         EP1 -->|Full update| Node2[Node 2 kube-proxy]
         EP1 -->|Full update| Node3[Node N kube-proxy]
@@ -34,7 +34,7 @@ flowchart TD
     end
 ```
 
-EndpointSlices solve this by splitting the endpoints into smaller, manageable chunks. Each EndpointSlice holds up to 100 endpoints by default. When one pod changes, only the affected slice (a few kilobytes) needs to be updated and propagated.
+EndpointSlices solve this by splitting the endpoints into smaller, manageable chunks. Each EndpointSlice holds up to 100 endpoints by default. When one pod changes, only the affected slice needs to be updated and propagated.
 
 ## The Scale Impact
 
@@ -43,9 +43,9 @@ Here is a concrete example of the difference at scale:
 | Metric | Endpoints | EndpointSlices |
 |--------|-----------|----------------|
 | Pods per service | 5,000 | 5,000 |
-| Objects per service | 1 | 50 (100 per slice) |
-| Update size per pod change | ~250 KB | ~5 KB |
-| Updates across 100 nodes | 25 MB total | 500 KB total |
+| Objects per service | 1 truncated legacy object | About 50 (100 per slice) |
+| Update per pod change | Full legacy object | Affected slice |
+| Updates across 100 nodes | Full object sent to each watcher | One slice sent to each watcher |
 | API server write load | High | Low |
 | kube-proxy processing | Full re-parse | Incremental |
 
@@ -64,7 +64,7 @@ sequenceDiagram
     ESC->>ESC: Find slice with capacity
     ESC->>API: Update EndpointSlice (add endpoint)
     API->>KP: Watch event: EndpointSlice updated
-    KP->>KP: Update only affected iptables/ipvs rules
+    KP->>KP: Update service proxy state from the changed slice
 ```
 
 ## Examining EndpointSlices
@@ -220,20 +220,20 @@ Track EndpointSlice metrics to understand your cluster's service health:
 # Count total endpoints across all slices for a service
 kubectl get endpointslices -n production \
   -l kubernetes.io/service-name=web-app \
-  -o json | jq '[.items[].endpoints[]] | length'
+  -o json | jq '[.items[].endpoints[]] | unique_by(.addresses | join(",")) | length'
 
 # Count ready vs not-ready endpoints
 kubectl get endpointslices -n production \
   -l kubernetes.io/service-name=web-app \
   -o json | jq '{
-    ready: [.items[].endpoints[] | select(.conditions.ready==true)] | length,
-    not_ready: [.items[].endpoints[] | select(.conditions.ready!=true)] | length
+    ready: [.items[].endpoints[] | select(.conditions.ready==true)] | unique_by(.addresses | join(",")) | length,
+    not_ready: [.items[].endpoints[] | select(.conditions.ready!=true)] | unique_by(.addresses | join(",")) | length
   }'
 
 # Check for endpoints in terminating state
 kubectl get endpointslices -n production \
   -l kubernetes.io/service-name=web-app \
-  -o json | jq '[.items[].endpoints[] | select(.conditions.terminating==true)] | length'
+  -o json | jq '[.items[].endpoints[] | select(.conditions.terminating==true)] | unique_by(.addresses | join(",")) | length'
 ```
 
 ### Prometheus Metrics
@@ -242,13 +242,13 @@ The EndpointSlice controller exposes metrics:
 
 ```text
 # Number of EndpointSlices managed
-endpointslice_controller_num_endpoint_slices
+endpoint_slice_controller_num_endpoint_slices
 
 # Rate of EndpointSlice changes (high rate may indicate churn)
-endpointslice_controller_changes
+endpoint_slice_controller_changes
 
-# Sync duration (high latency indicates controller overload)
-endpointslice_controller_syncs_duration_seconds
+# EndpointSlices changed on each Service sync
+endpoint_slice_controller_endpointslices_changed_per_sync
 ```
 
 ## Comparing Legacy Endpoints and EndpointSlices
@@ -261,8 +261,8 @@ kubectl get endpoints web-app -n production -o yaml
 kubectl get endpointslices -n production \
   -l kubernetes.io/service-name=web-app
 
-# Both exist simultaneously - kube-proxy uses EndpointSlices by default
-# since Kubernetes v1.21+
+# Both can exist simultaneously, but the legacy Endpoints API is deprecated
+# in Kubernetes v1.33+. kube-proxy uses EndpointSlices by default in modern clusters.
 ```
 
 ## Custom EndpointSlices
@@ -280,6 +280,8 @@ metadata:
   labels:
     # Link to the service
     kubernetes.io/service-name: external-db
+    # Identify the component responsible for managing this EndpointSlice
+    endpointslice.kubernetes.io/managed-by: example.com/manual
 addressType: IPv4
 ports:
   - name: postgres
@@ -341,6 +343,7 @@ def get_service_endpoints(namespace, service_name):
     )
 
     endpoints = []
+    seen = set()
     for ep_slice in slices.items:
         # Extract port numbers from the slice
         ports = {p.name: p.port for p in (ep_slice.ports or [])}
@@ -349,6 +352,10 @@ def get_service_endpoints(namespace, service_name):
             for address in endpoint.addresses:
                 ready = endpoint.conditions.ready if endpoint.conditions else False
                 for port_name, port_num in ports.items():
+                    key = (address, port_name, port_num)
+                    if key in seen:
+                        continue
+                    seen.add(key)
                     endpoints.append({
                         "ip": address,
                         "port": port_num,
