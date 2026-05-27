@@ -89,7 +89,7 @@ First, install the `pack` CLI tool.
 brew install buildpacks/tap/pack
 
 # Or on Linux
-curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.32.1/pack-v0.32.1-linux.tgz" | sudo tar -C /usr/local/bin/ --no-same-owner -xzv pack
+curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.40.6/pack-v0.40.6-linux.tgz" | sudo tar -C /usr/local/bin/ --no-same-owner -xzv pack
 ```
 
 Now build the image using Google Cloud Buildpacks.
@@ -97,11 +97,11 @@ Now build the image using Google Cloud Buildpacks.
 ```bash
 # Build the Flask app using Google Cloud Buildpacks
 pack build my-flask-app \
-    --builder=gcr.io/buildpacks/builder:v1 \
-    --env GOOGLE_RUNTIME_VERSION=3.12
+    --builder=gcr.io/buildpacks/builder:latest \
+    --env GOOGLE_PYTHON_VERSION=3.12
 ```
 
-The `--builder` flag specifies Google's buildpack builder. The `GOOGLE_RUNTIME_VERSION` environment variable tells it to use Python 3.12.
+The `--builder` flag specifies Google's buildpack builder. The `GOOGLE_PYTHON_VERSION` environment variable tells it to use Python 3.12.
 
 ## Custom Build Environment Variables
 
@@ -110,43 +110,32 @@ This is where things get interesting. You can pass environment variables to cust
 ```bash
 # Build with custom environment variables
 pack build my-flask-app \
-    --builder=gcr.io/buildpacks/builder:v1 \
-    --env GOOGLE_RUNTIME_VERSION=3.12 \
-    --env GOOGLE_ENTRYPOINT="gunicorn --bind :8080 --workers 2 --threads 4 app:app" \
-    --env PIP_NO_CACHE_DIR=true \
-    --env APP_ENV=production \
-    --env APP_VERSION=1.0.0
+    --builder=gcr.io/buildpacks/builder:latest \
+    --env GOOGLE_PYTHON_VERSION=3.12 \
+    --env 'GOOGLE_ENTRYPOINT=gunicorn --bind :$PORT --workers 2 --threads 4 --timeout 0 app:app' \
+    --env PIP_NO_CACHE_DIR=true
 ```
 
 Here is what each variable does:
 
-- `GOOGLE_RUNTIME_VERSION`: Sets the Python version
+- `GOOGLE_PYTHON_VERSION`: Sets the Python version
 - `GOOGLE_ENTRYPOINT`: Overrides the default start command
-- `PIP_NO_CACHE_DIR`: Reduces image size by not caching pip downloads
-- `APP_ENV` and `APP_VERSION`: Custom variables available at runtime
+- `PIP_NO_CACHE_DIR`: Disables pip's download cache during dependency installation
+
+Use runtime environment variables, such as `APP_ENV` and `APP_VERSION`, when you run or deploy the container.
 
 ## Using a project.toml File
 
 Instead of passing environment variables on the command line every time, you can define them in a `project.toml` file.
 
 ```toml
-# project.toml - Buildpack configuration
-[project]
+[_]
+schema-version = "0.2"
 id = "my-flask-app"
 name = "My Flask Application"
 version = "1.0.0"
 
-# Build environment variables
-[[build.env]]
-name = "GOOGLE_RUNTIME_VERSION"
-value = "3.12"
-
-[[build.env]]
-name = "GOOGLE_ENTRYPOINT"
-value = "gunicorn --bind :$PORT --workers 2 --threads 4 --timeout 0 app:app"
-
-# Exclude unnecessary files from the build context
-[build]
+[io.buildpacks]
 exclude = [
     "*.md",
     ".git",
@@ -155,13 +144,21 @@ exclude = [
     "tests/",
     "*.pyc"
 ]
+
+[[io.buildpacks.build.env]]
+name = "GOOGLE_PYTHON_VERSION"
+value = "3.12"
+
+[[io.buildpacks.build.env]]
+name = "GOOGLE_ENTRYPOINT"
+value = "gunicorn --bind :$PORT --workers 2 --threads 4 --timeout 0 app:app"
 ```
 
 With this file in place, the build command is much simpler.
 
 ```bash
 # Build using configuration from project.toml
-pack build my-flask-app --builder=gcr.io/buildpacks/builder:v1
+pack build my-flask-app --builder=gcr.io/buildpacks/builder:latest
 ```
 
 ## Deploying to Cloud Run
@@ -187,11 +184,13 @@ If you want more control, you can build with Cloud Build explicitly and then dep
 steps:
   # Use pack to build with Buildpacks
   - name: 'gcr.io/k8s-skaffold/pack'
+    entrypoint: 'pack'
     args:
       - 'build'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-flask-app:$SHORT_SHA'
-      - '--builder=gcr.io/buildpacks/builder:v1'
-      - '--env=GOOGLE_RUNTIME_VERSION=3.12'
+      - '--builder=gcr.io/buildpacks/builder:latest'
+      - '--env=GOOGLE_PYTHON_VERSION=3.12'
+      - '--network=cloudbuild'
       - '--publish'
 ```
 
@@ -202,20 +201,18 @@ If your Flask app depends on private packages from a private PyPI server, you ca
 ```bash
 # Build with a custom pip index URL
 pack build my-flask-app \
-    --builder=gcr.io/buildpacks/builder:v1 \
-    --env GOOGLE_RUNTIME_VERSION=3.12 \
+    --builder=gcr.io/buildpacks/builder:latest \
+    --env GOOGLE_PYTHON_VERSION=3.12 \
     --env PIP_EXTRA_INDEX_URL=https://username:token@my-private-pypi.example.com/simple/
 ```
 
-For Artifact Registry Python repositories, you can use the service account credentials automatically.
+For Artifact Registry Python repositories, builds that run in Cloud Build or Cloud Run can use the Cloud Build service account credentials automatically.
 
-```bash
-# Create a pip.conf for Artifact Registry
-# pip.conf - Configure pip to use Artifact Registry
-cat > pip.conf << 'EOF'
-[global]
-extra-index-url = https://us-central1-python.pkg.dev/my-project/my-python-repo/simple/
-EOF
+```text
+# requirements.txt - Configure pip to use Artifact Registry
+--extra-index-url https://us-central1-python.pkg.dev/my-project/my-python-repo/simple/
+Flask==3.0.0
+gunicorn==21.2.0
 ```
 
 ## Adding Health Checks and Startup Probes
@@ -266,7 +263,9 @@ gcloud run deploy my-flask-app \
     --platform=managed \
     --allow-unauthenticated \
     --set-env-vars="APP_ENV=production" \
-    --startup-cpu-boost \
+    --startup-probe=httpGet.path=/startup,httpGet.port=8080 \
+    --liveness-probe=httpGet.path=/health,httpGet.port=8080 \
+    --cpu-boost \
     --min-instances=1
 ```
 
@@ -276,7 +275,7 @@ Here is a quick comparison:
 
 **Buildpacks advantages:**
 - No Dockerfile to write or maintain
-- Automatic security patching of base images
+- Managed base images with regular security updates
 - Consistent image structure across projects
 - Built-in best practices for the language
 
@@ -286,7 +285,7 @@ Here is a quick comparison:
 - More transparency about what is in the image
 - Easier to debug build issues
 
-For most Flask applications, Buildpacks are the faster path to production. You save time on Dockerfile maintenance and get security updates automatically.
+For most Flask applications, Buildpacks are the faster path to production. You save time on Dockerfile maintenance and can pick up managed base image security updates when you rebuild or redeploy.
 
 ## Wrapping Up
 
