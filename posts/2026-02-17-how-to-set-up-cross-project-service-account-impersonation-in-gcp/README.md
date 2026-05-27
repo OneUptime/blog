@@ -14,9 +14,9 @@ Think of it like a controlled delegation. Service account A in Project Alpha say
 
 ## How Impersonation Works Under the Hood
 
-Service account impersonation uses the IAM Service Account Credentials API. When a principal needs to act as another service account, it calls `generateAccessToken` or `generateIdToken` on the target service account. GCP checks whether the caller has the `iam.serviceAccounts.getAccessToken` permission on the target, and if so, returns a short-lived OAuth 2.0 access token.
+Service account impersonation uses the IAM Service Account Credentials API. When a principal needs to act as another service account, it calls `generateAccessToken` or `generateIdToken` on the target service account. For access tokens, GCP checks whether the caller has the `iam.serviceAccounts.getAccessToken` permission on the target, and if so, returns a short-lived OAuth 2.0 access token. For ID tokens, the caller needs `iam.serviceAccounts.getOpenIdToken`.
 
-The token is valid for a maximum of one hour by default. There is no long-lived credential involved, no key file to store, and the activity is fully logged in Cloud Audit Logs.
+The token is valid for a maximum of one hour by default. There is no long-lived credential involved, no key file to store, and credential-generation activity can be logged in Cloud Audit Logs when IAM Data Access audit logs are enabled.
 
 ```mermaid
 sequenceDiagram
@@ -39,14 +39,14 @@ Before setting this up, you need:
 - Two GCP projects (the calling project and the target project)
 - A service account in the target project that has the roles you need for resource access
 - The `roles/iam.serviceAccountAdmin` role on the target project, or at least permission to modify IAM on the target service account
-- The IAM Service Account Credentials API enabled on the target project
+- The IAM Service Account Credentials API enabled in the calling project, or in the project used as the quota project for the impersonation request
 
 Enable the API first:
 
 ```bash
-# Enable the IAM Credentials API on the target project
+# Enable the IAM Credentials API on the calling project
 
-gcloud services enable iamcredentials.googleapis.com --project=target-project-id
+gcloud services enable iamcredentials.googleapis.com --project=calling-project-id
 ```
 
 ## Step 1 - Create the Target Service Account
@@ -63,6 +63,10 @@ gcloud iam service-accounts create cross-project-reader \
 gcloud projects add-iam-policy-binding target-project-id \
   --member="serviceAccount:cross-project-reader@target-project-id.iam.gserviceaccount.com" \
   --role="roles/bigquery.dataViewer"
+
+gcloud projects add-iam-policy-binding target-project-id \
+  --member="serviceAccount:cross-project-reader@target-project-id.iam.gserviceaccount.com" \
+  --role="roles/bigquery.jobUser"
 ```
 
 ## Step 2 - Grant the Token Creator Role
@@ -84,7 +88,7 @@ This is a resource-level IAM binding on the service account itself, not on the p
 The simplest way to test impersonation is with the gcloud CLI. Use the `--impersonate-service-account` flag:
 
 ```bash
-# Run a BigQuery query while impersonating the target service account
+# Print an access token while impersonating the target service account
 gcloud auth print-access-token \
   --impersonate-service-account=cross-project-reader@target-project-id.iam.gserviceaccount.com
 ```
@@ -120,7 +124,7 @@ source_credentials, project = default()
 target_credentials = impersonated_credentials.Credentials(
     source_credentials=source_credentials,
     target_principal="cross-project-reader@target-project-id.iam.gserviceaccount.com",
-    target_scopes=["https://www.googleapis.com/auth/bigquery.readonly"],
+    target_scopes=["https://www.googleapis.com/auth/bigquery"],
     lifetime=3600,  # Token valid for 1 hour
 )
 
@@ -147,8 +151,8 @@ provider "google" {
   project = "target-project-id"
   region  = "us-central1"
 
-  # Impersonate the target service account for all operations
-  impersonate_service_account = "cross-project-reader@target-project-id.iam.gserviceaccount.com"
+  # Impersonate a target service account with infrastructure-management roles
+  impersonate_service_account = "terraform-deployer@target-project-id.iam.gserviceaccount.com"
 }
 
 # Resources created with this provider will use the impersonated identity
@@ -160,7 +164,7 @@ resource "google_storage_bucket" "example" {
 
 ## Chained Impersonation
 
-In some architectures, you may need to chain impersonation - Service Account A impersonates Service Account B, which then impersonates Service Account C. GCP supports delegation chains of up to four service accounts.
+In some architectures, you may need to chain impersonation - Service Account A impersonates Service Account B, which then impersonates Service Account C. GCP supports delegation chains through intermediate service accounts.
 
 ```python
 # Chained impersonation through a delegate
@@ -170,7 +174,7 @@ target_credentials = impersonated_credentials.Credentials(
     target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
     # The intermediate service account in the chain
     delegates=[
-        "intermediate-sa@project-b.iam.gserviceaccount.com"
+        "projects/-/serviceAccounts/intermediate-sa@project-b.iam.gserviceaccount.com"
     ],
 )
 ```
@@ -179,7 +183,7 @@ Each service account in the chain needs the Token Creator role on the next one.
 
 ## Auditing Impersonation Events
 
-Every impersonation event is logged in Cloud Audit Logs. You can find them by searching for `GenerateAccessToken` or `GenerateIdToken` activities:
+After you enable IAM Data Access audit logs, credential-generation events are logged in Cloud Audit Logs. You can find them by searching for `GenerateAccessToken` or `GenerateIdToken` activities:
 
 ```bash
 # Search audit logs for impersonation events in the target project
@@ -195,7 +199,7 @@ This shows you who impersonated which service account and when.
 
 Be deliberate about who can impersonate what. The Token Creator role is powerful - if someone can impersonate a service account, they effectively have all of that service account's permissions.
 
-Use IAM Conditions to restrict impersonation to specific times, IP ranges, or resource attributes. For example, you can limit impersonation to only work during business hours or from specific VPC networks.
+Use IAM Conditions to restrict impersonation to supported attributes, such as specific times or target resource attributes. For example, you can limit impersonation to only work during business hours.
 
 Never grant Token Creator at the project level. Always grant it on individual service accounts. Project-level grants would allow impersonation of every service account in that project.
 
