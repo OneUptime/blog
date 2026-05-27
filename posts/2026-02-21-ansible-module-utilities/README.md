@@ -17,6 +17,7 @@ Module utilities (module_utils) let you share code between multiple custom modul
 
 # Shared API client for custom modules
 import json
+from ansible.module_utils.common.text.converters import to_bytes
 from ansible.module_utils.urls import open_url
 
 class MyAPIClient:
@@ -37,7 +38,7 @@ class MyAPIClient:
         url = f'{self.base_url}{path}'
         response = open_url(
             url, headers=self.headers, method='POST',
-            data=json.dumps(data)
+            data=to_bytes(json.dumps(data), errors='surrogate_or_strict')
         )
         return json.loads(response.read())
 
@@ -78,6 +79,9 @@ def run_module():
         module.exit_json(changed=True)
     else:
         module.exit_json(changed=False)
+
+if __name__ == '__main__':
+    run_module()
 ```
 
 ## Built-in Module Utilities
