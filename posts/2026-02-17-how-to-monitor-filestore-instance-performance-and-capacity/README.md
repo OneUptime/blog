@@ -27,33 +27,47 @@ Filestore exposes several categories of metrics through the Cloud Monitoring API
 - `file.googleapis.com/nfs/server/write_ops_count` - Write operations per interval
 
 **Latency metrics:**
-- `file.googleapis.com/nfs/server/average_read_latency` - Average read latency
-- `file.googleapis.com/nfs/server/average_write_latency` - Average write latency
+- `file.googleapis.com/nfs/server/read_milliseconds_count` - Time spent on read operations
+- `file.googleapis.com/nfs/server/write_milliseconds_count` - Time spent on write operations
 
 ## Checking Metrics from the Command Line
 
-You can query metrics directly with gcloud:
+You can query metrics from the command line with the Cloud Monitoring API and `gcloud` for authentication:
 
 ```bash
 # Check current capacity usage percentage for the last hour
+PROJECT_ID=$(gcloud config get-value project)
+START=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-gcloud monitoring time-series list \
-  --filter='resource.type="filestore.googleapis.com/Instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
-  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(resource.labels.instance_name,points[0].value.doubleValue)"
+curl -s -G \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=resource.type="filestore_instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
+  --data-urlencode "interval.startTime=${START}" \
+  --data-urlencode "interval.endTime=${END}" \
+  --data-urlencode "view=FULL" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+  | jq -r '.timeSeries[] | [.resource.labels.instance_name, .points[0].value.doubleValue] | @tsv'
 ```
 
 For a quick throughput check:
 
 ```bash
 # Get read throughput over the last hour
-gcloud monitoring time-series list \
-  --filter='resource.type="filestore.googleapis.com/Instance" AND metric.type="file.googleapis.com/nfs/server/read_bytes_count"' \
-  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --per-series-aligner=ALIGN_RATE \
-  --format="table(resource.labels.instance_name,points[0].value.doubleValue)"
+PROJECT_ID=$(gcloud config get-value project)
+START=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -s -G \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode 'filter=resource.type="filestore_instance" AND metric.type="file.googleapis.com/nfs/server/read_bytes_count"' \
+  --data-urlencode "interval.startTime=${START}" \
+  --data-urlencode "interval.endTime=${END}" \
+  --data-urlencode "aggregation.alignmentPeriod=60s" \
+  --data-urlencode "aggregation.perSeriesAligner=ALIGN_RATE" \
+  --data-urlencode "view=FULL" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+  | jq -r '.timeSeries[] | [.resource.labels.instance_name, .points[0].value.doubleValue] | @tsv'
 ```
 
 ## Setting Up Capacity Alerts
@@ -70,13 +84,12 @@ gcloud alpha monitoring channels create \
   --channel-labels=email_address=team@example.com
 
 # Create the alert policy for high capacity usage
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Filestore Capacity Over 80%" \
   --condition-display-name="Filestore usage above 80%" \
-  --condition-filter='resource.type="filestore.googleapis.com/Instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
-  --condition-threshold-value=80 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --condition-filter='resource.type="filestore_instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
+  --if='> 80' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID \
   --combiner=OR
 ```
@@ -108,7 +121,7 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
           "dataSets": [{
             "timeSeriesQuery": {
               "timeSeriesFilter": {
-                "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/used_bytes_percent\"",
+                "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/used_bytes_percent\"",
                 "aggregation": {
                   "alignmentPeriod": "300s",
                   "perSeriesAligner": "ALIGN_MEAN"
@@ -125,7 +138,7 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_bytes_count\"",
+                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_bytes_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
@@ -136,7 +149,7 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/write_bytes_count\"",
+                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/write_bytes_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
@@ -154,7 +167,7 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_ops_count\"",
+                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_ops_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
@@ -165,7 +178,7 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/write_ops_count\"",
+                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/write_ops_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
                     "perSeriesAligner": "ALIGN_RATE"
@@ -177,16 +190,16 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
         }
       },
       {
-        "title": "Average Read/Write Latency",
+        "title": "Read/Write Operation Time",
         "xyChart": {
           "dataSets": [
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/average_read_latency\"",
+                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_milliseconds_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_MEAN"
+                    "perSeriesAligner": "ALIGN_RATE"
                   }
                 }
               }
@@ -194,10 +207,10 @@ Here is a dashboard configuration that covers the essential metrics. Save this a
             {
               "timeSeriesQuery": {
                 "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore.googleapis.com/Instance\" AND metric.type=\"file.googleapis.com/nfs/server/average_write_latency\"",
+                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/write_milliseconds_count\"",
                   "aggregation": {
                     "alignmentPeriod": "60s",
-                    "perSeriesAligner": "ALIGN_MEAN"
+                    "perSeriesAligner": "ALIGN_RATE"
                   }
                 }
               }
@@ -224,7 +237,7 @@ nfsstat -c
 nfsstat -m
 ```
 
-For continuous monitoring, you can export client-side NFS metrics to Cloud Monitoring using the Ops Agent:
+For continuous VM-level monitoring alongside those checks, install the Ops Agent on the VM:
 
 ```bash
 # Install the Ops Agent on the VM
@@ -273,8 +286,8 @@ scrape_configs:
       - targets: ['localhost:9255']
     metrics_path: /metrics
     params:
-      match[]:
-        - '{__name__=~"filestore.*"}'
+      collect:
+        - file.googleapis.com/nfs/server
 ```
 
 This lets you combine Filestore metrics with your application metrics in a single Grafana dashboard.
