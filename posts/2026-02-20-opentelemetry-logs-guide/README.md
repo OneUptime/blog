@@ -76,11 +76,11 @@ When you emit a log while a span is active, the OpenTelemetry SDK automatically 
 import logging
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import (
     BatchLogRecordProcessor,
-    ConsoleLogExporter,
+    ConsoleLogRecordExporter,
 )
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
     OTLPLogExporter,
@@ -119,7 +119,7 @@ logger_provider.add_log_record_processor(
 
 # Also export to console for debugging
 logger_provider.add_log_record_processor(
-    BatchLogRecordProcessor(ConsoleLogExporter())
+    BatchLogRecordProcessor(ConsoleLogRecordExporter())
 )
 
 # Create a logging handler that bridges Python logging to OTel
@@ -210,30 +210,42 @@ def validate_order(order_id: str) -> None:
 
 ```javascript
 // Install: npm install @opentelemetry/api @opentelemetry/sdk-logs
-// npm install @opentelemetry/exporter-logs-otlp-grpc winston
+// npm install @opentelemetry/exporter-logs-otlp-grpc @opentelemetry/resources
+// npm install @opentelemetry/sdk-trace-node @opentelemetry/sdk-trace-base winston
 
-const { logs, SeverityNumber } = require("@opentelemetry/api-logs");
+const { SeverityNumber } = require("@opentelemetry/api-logs");
 const { LoggerProvider, BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
 const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-grpc");
-const { Resource } = require("@opentelemetry/resources");
-const { trace, context } = require("@opentelemetry/api");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
+const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
+const { BatchSpanProcessor, ConsoleSpanExporter } = require("@opentelemetry/sdk-trace-base");
+const { trace } = require("@opentelemetry/api");
 
-// Set up the logger provider
-const resource = new Resource({
+const resource = resourceFromAttributes({
   "service.name": "order-service",
   "service.version": "1.2.0",
 });
 
-const loggerProvider = new LoggerProvider({ resource });
+// Set up tracing so active spans can be correlated with logs
+const traceProvider = new NodeTracerProvider({
+  resource,
+  spanProcessors: [
+    new BatchSpanProcessor(new ConsoleSpanExporter()),
+  ],
+});
+traceProvider.register();
 
 // Export logs via OTLP
-loggerProvider.addLogRecordProcessor(
-  new BatchLogRecordProcessor(
-    new OTLPLogExporter({
-      url: "http://otel-collector:4317",
-    })
-  )
-);
+const loggerProvider = new LoggerProvider({
+  resource,
+  processors: [
+    new BatchLogRecordProcessor(
+      new OTLPLogExporter({
+        url: "http://otel-collector:4317",
+      })
+    ),
+  ],
+});
 
 // Get a logger instance
 const logger = loggerProvider.getLogger("order-service");
@@ -301,10 +313,10 @@ processors:
 
   # Filter out noisy logs
   filter:
-    logs:
-      # Drop debug logs
-      log_record:
-        - severity_number < 9
+    error_mode: ignore
+    # Drop debug and trace logs
+    log_conditions:
+      - log.severity_number < SEVERITY_NUMBER_INFO
 
 exporters:
   # Export to a log backend
@@ -312,15 +324,15 @@ exporters:
     endpoint: "https://logs-backend.example.com:4317"
 
   # Also export to stdout for debugging
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
       processors: [batch, resource, filter]
-      exporters: [otlp/backend, logging]
+      exporters: [otlp/backend, debug]
 ```
 
 ## Log Pipeline Architecture
