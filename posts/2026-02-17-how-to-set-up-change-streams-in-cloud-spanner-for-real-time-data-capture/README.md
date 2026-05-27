@@ -74,11 +74,12 @@ CREATE CHANGE STREAM OrderChanges
 
 The `retention_period` controls how long change records are kept. The default is 1 day, and you can set it up to 7 days. After the retention period, old records are automatically cleaned up.
 
-The `value_capture_type` has three options:
+The `value_capture_type` has four options:
 
 - `OLD_AND_NEW_VALUES` - Captures both the old and new values of tracked columns. Most useful for audit trails.
 - `NEW_ROW` - Captures all columns of the row after the change. Good for replication scenarios.
 - `NEW_VALUES` - Captures only the new values of tracked columns. Most storage-efficient.
+- `NEW_ROW_AND_OLD_VALUES` - Captures all new values of watched columns, and old values for modified columns.
 
 ## Reading Change Streams with Dataflow
 
@@ -88,9 +89,12 @@ Here is a Java-based Dataflow pipeline that reads from a change stream and write
 
 ```java
 import org.apache.beam.sdk.Pipeline;
+import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
+import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.WriteDisposition;
 import org.apache.beam.sdk.io.gcp.spanner.SpannerConfig;
 import org.apache.beam.sdk.io.gcp.spanner.SpannerIO;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.transforms.ParDo;
 
 public class ChangeStreamPipeline {
     public static void main(String[] args) {
@@ -144,11 +148,11 @@ FROM READ_OrderChanges(
 );
 ```
 
-Setting `end_timestamp` to NULL means the stream will remain open and continuously return new records. The `heartbeat_milliseconds` parameter controls how often Spanner sends heartbeat records when there are no data changes.
+Setting `end_timestamp` to NULL means the query keeps returning changes for that partition until the partition ends or the connection is terminated. A production reader must also process child partition records and start follow-up reads for those partition tokens. The `heartbeat_milliseconds` parameter controls how often Spanner sends heartbeat records when there are no data changes.
 
 ## Change Record Structure
 
-Each change record contains rich information about the modification. Here is what a typical record looks like:
+Each change record contains rich information about the modification. Here is what a typical data change record looks like:
 
 ```json
 {
@@ -166,7 +170,12 @@ Each change record contains rich information about the modification. Here is wha
         "old_values": {"Status": "PENDING", "UpdatedAt": "2026-02-16T08:00:00Z"}
       }
     ],
-    "mod_type": "UPDATE"
+    "mod_type": "UPDATE",
+    "value_capture_type": "OLD_AND_NEW_VALUES",
+    "number_of_records_in_transaction": 1,
+    "number_of_partitions_in_transaction": 1,
+    "transaction_tag": "",
+    "is_system_transaction": false
   }
 }
 ```
@@ -231,4 +240,4 @@ A few tips for production deployments:
 
 ## Wrapping Up
 
-Change streams turn Cloud Spanner from a transactional database into the source of truth for an event-driven architecture. Instead of building custom polling mechanisms or maintaining dual-write logic, you let Spanner track changes natively and feed them to wherever they need to go. The combination of change streams with Dataflow gives you a production-grade CDC pipeline with minimal custom code. Whether you are replicating to BigQuery for analytics, feeding events to Pub/Sub, or maintaining a search index, change streams provide a reliable, ordered, exactly-once foundation to build on.
+Change streams turn Cloud Spanner from a transactional database into the source of truth for an event-driven architecture. Instead of building custom polling mechanisms or maintaining dual-write logic, you let Spanner track changes natively and feed them to wherever they need to go. The combination of change streams with Dataflow gives you a production-grade CDC pipeline with minimal custom code. Whether you are replicating to BigQuery for analytics, feeding events to Pub/Sub, or maintaining a search index, change streams provide a reliable CDC foundation with ordered, exactly-once records within each change stream partition.
