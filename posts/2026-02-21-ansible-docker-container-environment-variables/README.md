@@ -37,7 +37,7 @@ The simplest way to pass environment variables is through the `env` parameter, w
           WORKERS: "4"
 ```
 
-One thing to watch out for: all environment variable values must be strings. If you pass an integer like `WORKERS: 4` without quotes, Ansible will throw an error. Always quote numeric values.
+One thing to watch out for: environment variable values should be strings. Values that YAML might parse as numbers, booleans, or other types must be quoted to avoid data loss, so use `WORKERS: "4"` instead of `WORKERS: 4`. When a value comes from a Jinja2 expression, add `| string` if it might evaluate to a non-string value.
 
 ## Using Variables from Ansible
 
@@ -64,11 +64,11 @@ Hardcoding values in the playbook is fine for testing but not practical for real
         image: "myapp:{{ app_version }}"
         state: started
         env:
-          DATABASE_HOST: "{{ app_config.database_host }}"
-          DATABASE_PORT: "{{ app_config.database_port }}"
-          REDIS_HOST: "{{ app_config.redis_host }}"
-          APP_ENV: "{{ app_config.app_env }}"
-          LOG_LEVEL: "{{ app_config.log_level }}"
+          DATABASE_HOST: "{{ app_config.database_host | string }}"
+          DATABASE_PORT: "{{ app_config.database_port | string }}"
+          REDIS_HOST: "{{ app_config.redis_host | string }}"
+          APP_ENV: "{{ app_config.app_env | string }}"
+          LOG_LEVEL: "{{ app_config.log_level | string }}"
 ```
 
 ## Secrets with Ansible Vault
@@ -109,13 +109,13 @@ Then reference them in your playbook:
         state: started
         env:
           DATABASE_URL: "postgres://appuser:{{ db_password }}@db:5432/mydb"
-          API_KEY: "{{ api_key }}"
-          JWT_SECRET: "{{ vault_jwt_secret }}"
+          API_KEY: "{{ api_key | string }}"
+          JWT_SECRET: "{{ vault_jwt_secret | string }}"
           PUBLIC_URL: "https://api.example.com"
       no_log: true  # Prevents secrets from appearing in Ansible output
 ```
 
-The `no_log: true` directive is important. Without it, Ansible prints the full task parameters, including your secrets, to stdout.
+The `no_log: true` directive is important. Without it, task output and logs can expose parameters that include your secrets.
 
 ## Loading Environment from a File
 
@@ -137,21 +137,15 @@ If your application uses `.env` files, you can load them into a dictionary and p
 
     - name: Parse env file into dictionary
       ansible.builtin.set_fact:
-        app_env_vars: >-
-          {{
-            (env_file_content.content | b64decode).split('\n')
-            | select('match', '^[A-Z]')
-            | map('regex_replace', '([^=]+)=(.*)', '\1=\2')
-            | map('split', '=', 1)
-            | items2dict(key_name=0, value_name=1)
-          }}
+        app_env_vars: "{{ app_env_vars | default({}) | combine({item.split('=', 1)[0]: item.split('=', 1)[1]}) }}"
+      loop: "{{ (env_file_content.content | b64decode).splitlines() | select('match', '^[A-Za-z_][A-Za-z0-9_]*=') | list }}"
 
     - name: Run container with loaded env vars
       community.docker.docker_container:
         name: myapp
         image: myapp:latest
         state: started
-        env: "{{ app_env_vars }}"
+        env: "{{ app_env_vars | default({}) }}"
 ```
 
 Alternatively, use the `env_file` parameter, which reads a file directly on the remote host:
@@ -191,15 +185,15 @@ In practice, you often need to combine environment variables from multiple sourc
 
     # Environment-specific overrides (from group_vars)
     env_overrides:
-      APP_ENV: "{{ deploy_environment }}"
-      LOG_LEVEL: "{{ log_level | default('info') }}"
-      WORKERS: "{{ worker_count | default('2') }}"
-      DATABASE_HOST: "{{ db_host }}"
+      APP_ENV: "{{ deploy_environment | string }}"
+      LOG_LEVEL: "{{ log_level | default('info') | string }}"
+      WORKERS: "{{ worker_count | default('2') | string }}"
+      DATABASE_HOST: "{{ db_host | string }}"
 
     # Secrets from Vault
     secret_env:
-      DATABASE_PASSWORD: "{{ vault_db_password }}"
-      SECRET_KEY: "{{ vault_secret_key }}"
+      DATABASE_PASSWORD: "{{ vault_db_password | string }}"
+      SECRET_KEY: "{{ vault_secret_key | string }}"
 
   tasks:
     - name: Merge all environment sources
@@ -306,9 +300,9 @@ After deploying a container, you might want to verify the environment variables 
 
 A few things that trip people up when working with environment variables in the `docker_container` module:
 
-1. **Values must be strings.** Even boolean-looking values need quotes: `ENABLE_CACHE: "true"`, not `ENABLE_CACHE: true`.
+1. **Values must be strings.** Even boolean-looking values need quotes, or `| string` when templated: `ENABLE_CACHE: "true"`, not `ENABLE_CACHE: true`.
 
-2. **Updating env vars requires container recreation.** If you change an environment variable, the container needs to be recreated. Use `recreate: true` or `restart: true` to force this.
+2. **Updating env vars requires container recreation.** If you change an environment variable, the container needs to be created with the new configuration. Use `recreate: true` when you need to force re-creation.
 
 3. **Variable precedence matters when merging.** The `combine` filter uses the rightmost dict for conflicts. Put your overrides and secrets last.
 
