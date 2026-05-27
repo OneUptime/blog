@@ -101,6 +101,8 @@ Before deploying, we build the static site locally. This pre-task runs on the co
   hosts: localhost
   connection: local
   gather_facts: no
+  vars_files:
+    - "group_vars/{{ env_name }}.yml"
   tasks:
     - name: Install npm dependencies
       command: npm ci
@@ -128,6 +130,8 @@ Before deploying, we build the static site locally. This pre-task runs on the co
   hosts: all
   become: yes
   serial: 1
+  vars_files:
+    - "group_vars/{{ env_name }}.yml"
   roles:
     - static_site
 ```
@@ -142,6 +146,12 @@ Before deploying, we build the static site locally. This pre-task runs on the co
     name: nginx
     state: present
     update_cache: yes
+
+- name: Ensure Nginx is running and enabled
+  systemd:
+    name: nginx
+    state: started
+    enabled: yes
 
 - name: Create site directory
   file:
@@ -190,6 +200,9 @@ Before deploying, we build the static site locally. This pre-task runs on the co
     path: /etc/nginx/sites-enabled/default
     state: absent
   notify: reload nginx
+
+- name: Apply Nginx changes before verification
+  meta: flush_handlers
 
 - name: Verify site is accessible
   uri:
@@ -242,19 +255,16 @@ server {
     # HTML files should not be cached aggressively
     location ~* \.html$ {
         expires 1h;
-        add_header Cache-Control "public, must-revalidate";
     }
 
     # CSS, JS, and font files with hashed filenames can be cached long-term
     location ~* \.(css|js|woff|woff2|ttf|eot)$ {
         expires {{ cache_max_age }};
-        add_header Cache-Control "public, immutable";
     }
 
     # Image files
     location ~* \.(png|jpg|jpeg|gif|ico|svg|webp|avif)$ {
         expires {{ cache_max_age }};
-        add_header Cache-Control "public";
     }
 
     # SPA fallback: serve index.html for all routes that do not match a file
@@ -330,6 +340,8 @@ In a CI/CD pipeline, the build step happens in the pipeline and Ansible only han
   hosts: all
   become: yes
   serial: 1
+  vars_files:
+    - "group_vars/{{ env_name }}.yml"
   vars:
     build_dir: "{{ lookup('env', 'BUILD_ARTIFACT_PATH') }}"
   roles:
