@@ -57,17 +57,14 @@ Here is a playbook that sets up a complete development environment on macOS or L
     - name: Include OS-specific tasks
       ansible.builtin.include_tasks: "tasks/{{ ansible_os_family | lower }}.yml"
 
-    - name: Install common development tools
-      ansible.builtin.include_tasks: tasks/common-tools.yml
-
     - name: Setup project dependencies
       ansible.builtin.include_tasks: tasks/project-setup.yml
 
+    - name: Configure IDE settings
+      ansible.builtin.include_tasks: tasks/ide-config.yml
+
     - name: Configure local services
       ansible.builtin.include_tasks: tasks/services.yml
-
-    - name: Setup git hooks
-      ansible.builtin.include_tasks: tasks/git-hooks.yml
 
     - name: Display setup complete message
       ansible.builtin.debug:
@@ -84,14 +81,15 @@ Here is a playbook that sets up a complete development environment on macOS or L
 # macOS-specific development setup
 ---
 - name: Check if Homebrew is installed
-  ansible.builtin.stat:
-    path: /opt/homebrew/bin/brew
+  ansible.builtin.command: /bin/bash -lc 'command -v brew'
   register: brew_check
+  changed_when: false
+  failed_when: false
 
 - name: Install Homebrew
   ansible.builtin.shell: |
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  when: not brew_check.stat.exists
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  when: brew_check.rc != 0
   changed_when: true
 
 - name: Install development packages via Homebrew
@@ -102,8 +100,6 @@ Here is a playbook that sets up a complete development environment on macOS or L
       - node@{{ node_version }}
       - postgresql@{{ postgres_version }}
       - redis
-      - docker
-      - docker-compose
       - jq
       - curl
       - wget
@@ -111,15 +107,20 @@ Here is a playbook that sets up a complete development environment on macOS or L
       - pre-commit
     state: present
 
+- name: Install Docker Desktop via Homebrew Cask
+  community.general.homebrew_cask:
+    name: docker
+    state: present
+
 - name: Start PostgreSQL service
-  community.general.homebrew_service:
+  community.general.homebrew_services:
     name: postgresql@{{ postgres_version }}
-    state: started
+    state: present
 
 - name: Start Redis service
-  community.general.homebrew_service:
+  community.general.homebrew_services:
     name: redis
-    state: started
+    state: present
 ```
 
 ## Linux-Specific Setup
@@ -251,9 +252,10 @@ Standardize IDE settings across the team:
     content: |
       {
         "python.defaultInterpreterPath": ".venv/bin/python",
-        "python.linting.enabled": true,
-        "python.linting.pylintEnabled": true,
-        "python.formatting.provider": "black",
+        "pylint.enabled": true,
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        },
         "editor.formatOnSave": true,
         "editor.rulers": [88],
         "files.trimTrailingWhitespace": true,
@@ -270,6 +272,8 @@ Standardize IDE settings across the team:
         "recommendations": [
           "ms-python.python",
           "ms-python.vscode-pylance",
+          "ms-python.pylint",
+          "ms-python.black-formatter",
           "dbaeumer.vscode-eslint",
           "esbenp.prettier-vscode",
           "redhat.vscode-yaml"
@@ -304,7 +308,6 @@ For services that are complex to install locally, use Docker:
 ```yaml
 # dev-setup/templates/docker-compose.dev.yml.j2
 # Local development services
-version: "3.8"
 services:
   mailhog:
     image: mailhog/mailhog:latest
@@ -340,6 +343,10 @@ After setup, verify everything works:
 - name: Verify development environment
   hosts: localhost
   connection: local
+
+  vars:
+    project_name: myapp
+    python_version: "3.11"
 
   tasks:
     - name: Check Python version
