@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, VPA, Autoscaling, Resource Management, Optimization
 
-Description: Learn how to use Kubernetes VPA to automatically adjust pod resource requests and limits based on actual usage patterns.
+Description: Learn how to use Kubernetes VPA to automatically adjust pod resource requests and, when configured, limits based on actual usage patterns.
 
 ---
 
-Setting resource requests and limits correctly is one of the hardest parts of running Kubernetes. Request too little and your pods get OOMKilled or CPU throttled. Request too much and you waste cluster capacity. Vertical Pod Autoscaler (VPA) solves this by watching actual resource consumption and automatically adjusting requests and limits. This post covers how to install, configure, and use VPA effectively.
+Setting resource requests and limits correctly is one of the hardest parts of running Kubernetes. Set limits too low and your pods can get OOMKilled or CPU throttled. Set requests too high and you waste cluster capacity. Vertical Pod Autoscaler (VPA) solves this by watching actual resource consumption and automatically adjusting requests and, when configured, limits. This post covers how to install, configure, and use VPA effectively.
 
 ## How VPA Differs from HPA
 
-HPA scales horizontally by adding or removing pod replicas. VPA scales vertically by changing the resource requests and limits of existing pods. They solve different problems and can be used together in some configurations.
+HPA scales horizontally by adding or removing pod replicas. VPA scales vertically by changing resource requests and, when configured, limits for pods. They solve different problems and can be used together in some configurations.
 
 ```mermaid
 flowchart LR
@@ -188,13 +188,13 @@ The output shows four recommendation levels:
 - **uncappedTarget** - The recommendation ignoring min/max constraints
 - **upperBound** - Above this, resources are likely wasted
 
-## Step 5: Enable Auto Mode
+## Step 5: Enable Recreate Mode
 
-Once you trust the recommendations, switch to `Auto` mode so VPA applies changes.
+Once you trust the recommendations, switch to `Recreate` mode so VPA applies changes by evicting pods and letting the workload controller recreate them with updated resources.
 
 ```yaml
-# vpa-auto.yaml
-# VPA in Auto mode - automatically adjusts pod resources
+# vpa-recreate.yaml
+# VPA in Recreate mode - automatically adjusts pod resources through pod recreation
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -205,8 +205,8 @@ spec:
     kind: Deployment
     name: api-server
   updatePolicy:
-    updateMode: "Auto"  # Automatically apply recommendations
-    minReplicas: 2      # Keep at least 2 replicas running during updates
+    updateMode: "Recreate"  # Apply recommendations by recreating pods
+    minReplicas: 2          # Need at least 2 live replicas before eviction
   resourcePolicy:
     containerPolicies:
       - containerName: api-server
@@ -228,13 +228,16 @@ spec:
 flowchart TD
     A[VPA Update Modes] --> B[Off]
     A --> C[Initial]
-    A --> D[Auto]
+    A --> D[Recreate]
+    A --> E[InPlaceOrRecreate]
     B --> B1[Only provides recommendations]
     B --> B2[No changes to pods]
     C --> C1[Sets resources only at pod creation]
     C --> C2[No eviction of running pods]
     D --> D1[Sets resources at pod creation]
     D --> D2[Evicts and recreates running pods]
+    E --> E1[Tries in-place updates first]
+    E --> E2[Falls back to recreation when needed]
 ```
 
 ## Using VPA with HPA
@@ -254,7 +257,7 @@ spec:
     kind: Deployment
     name: api-server
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: api-server
@@ -282,6 +285,6 @@ kubectl get vpa api-server-vpa -o jsonpath='{.status.recommendation}'
 
 ## Summary
 
-VPA takes the guesswork out of setting resource requests and limits. Start in recommend-only mode to build confidence, then switch to auto mode once you are comfortable. Combine it with HPA for a complete autoscaling strategy that handles both horizontal and vertical scaling.
+VPA takes the guesswork out of setting resource requests and limits. Start in recommend-only mode to build confidence, then switch to an automatic update mode once you are comfortable. Combine it with HPA for a complete autoscaling strategy that handles both horizontal and vertical scaling.
 
 To track your VPA recommendations, resource utilization trends, and pod restarts in one dashboard, use [OneUptime](https://oneuptime.com). OneUptime gives you full observability into your Kubernetes clusters, so you can verify that VPA is right-sizing your workloads and catch resource issues before they cause outages.
