@@ -19,8 +19,8 @@ Cloud Tasks integrates natively with App Engine. You create a task queue, enqueu
 ```mermaid
 graph LR
     A[User Request] --> B[App Engine Handler]
-    B --> C[Return 200 OK immediately]
     B --> D[Enqueue Task]
+    B --> C[Return 202 Accepted]
     D --> E[Cloud Tasks Queue]
     E --> F[App Engine Worker Handler]
     F --> G[Process in background]
@@ -64,7 +64,9 @@ Here is how to create tasks from your request handler. When a user places an ord
 # main.py - Order handler that enqueues background tasks
 from flask import Flask, request, jsonify
 from google.cloud import tasks_v2
+from google.api_core.exceptions import AlreadyExists
 import json
+import logging
 
 app = Flask(__name__)
 
@@ -208,13 +210,13 @@ You can schedule tasks to run at a specific time in the future. This is useful f
 
 ```python
 # Schedule a task to run in the future
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.protobuf import timestamp_pb2
 
 def enqueue_delayed_task(handler_url, payload, delay_seconds):
     """Create a task that executes after a delay."""
     # Calculate the execution time
-    execute_time = datetime.utcnow() + timedelta(seconds=delay_seconds)
+    execute_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
     timestamp = timestamp_pb2.Timestamp()
     timestamp.FromDatetime(execute_time)
 
@@ -261,14 +263,11 @@ def enqueue_unique_task(handler_url, payload, task_id):
 
     try:
         tasks_client.create_task(parent=get_queue_path(), task=task)
-    except Exception as e:
-        if 'ALREADY_EXISTS' in str(e):
-            logging.info(f"Task {task_id} already exists, skipping")
-        else:
-            raise
+    except AlreadyExists:
+        logging.info(f"Task {task_id} already exists, skipping")
 ```
 
-Be aware that task names are reserved for about an hour after the task completes or is deleted. If you need to re-enqueue a task with the same name, wait or use a different naming scheme.
+Be aware that task names can be reserved for up to 24 hours after the task completes or is deleted. If you need to re-enqueue a task with the same name, wait or use a different naming scheme.
 
 ## Queue Rate Limiting
 
@@ -318,7 +317,7 @@ gcloud tasks queues update order-processing \
   --max-doublings=4
 ```
 
-The `max-doublings` parameter controls how quickly the backoff increases. With `min-backoff=5s` and `max-doublings=4`, the retry delays would be: 5s, 10s, 20s, 40s, 80s, then capped at the max-backoff for remaining attempts.
+The `max-doublings` parameter controls how quickly the backoff increases. With `min-backoff=5s` and `max-doublings=4`, the retry delays start as: 5s, 10s, 20s, 40s, 80s. After that, they increase linearly by 80 seconds until they reach `max-backoff`.
 
 In your handler, you can check which retry attempt is current:
 
@@ -362,9 +361,10 @@ Set up monitoring alerts for queue depth:
 # Alert when tasks are piling up (queue depth > 1000)
 gcloud alpha monitoring policies create \
   --display-name="Cloud Tasks Queue Depth" \
+  --condition-display-name="Queue depth above 1000" \
   --condition-filter='resource.type="cloud_tasks_queue" AND metric.type="cloudtasks.googleapis.com/queue/depth"' \
-  --condition-threshold-value=1000 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --duration=300s \
+  --if='> 1000'
 ```
 
 ## Targeting Specific Services and Versions
