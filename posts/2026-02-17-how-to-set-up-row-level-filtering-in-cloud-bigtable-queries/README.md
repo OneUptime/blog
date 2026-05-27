@@ -18,7 +18,7 @@ Bigtable filters are applied server-side during a read operation. The server eva
 
 - Less data is transferred over the network
 - Your client uses less memory
-- Query latency decreases for filtered reads
+- Query latency can decrease for filtered reads
 - You are not charged for the filtered-out data transfer
 
 Filters are passed as a parameter to the `read_row` or `read_rows` methods in the client library.
@@ -97,7 +97,9 @@ import datetime
 start = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
 end = datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc)
 
-ts_filter = row_filters.TimestampRangeFilter(start=start, end=end)
+ts_filter = row_filters.TimestampRangeFilter(
+    row_filters.TimestampRange(start=start, end=end)
+)
 
 rows = table.read_rows(
     start_key=b"events#",
@@ -187,7 +189,7 @@ row = table.read_row(b"user#12345", filter_=condition)
 
 Let me show some real-world filter combinations that I use regularly.
 
-### Get Latest User Profile with Activity Count
+### Get Latest User Profile with Activity Entry
 
 ```python
 # Retrieve latest profile data and the most recent activity entry
@@ -222,7 +224,9 @@ one_hour_ago = now - datetime.timedelta(hours=1)
 
 time_and_columns = row_filters.RowFilterChain(filters=[
     # Only cells from the last hour
-    row_filters.TimestampRangeFilter(start=one_hour_ago, end=now),
+    row_filters.TimestampRangeFilter(
+        row_filters.TimestampRange(start=one_hour_ago, end=now)
+    ),
     # Only temperature and humidity columns
     row_filters.RowFilterUnion(filters=[
         row_filters.ColumnQualifierRegexFilter(b"temperature"),
