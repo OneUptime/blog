@@ -8,7 +8,7 @@ Description: Configure Elastic SIEM to ingest Google Cloud Audit Logs for real-t
 
 ---
 
-Google Cloud Audit Logs record every administrative action, data access, and system event across your GCP environment. These logs are a goldmine for security monitoring, but they need a SIEM to turn raw log data into actionable security intelligence. Elastic SIEM (part of the Elastic Security solution) gives you detection rules, investigation tools, and compliance dashboards that work natively with GCP audit data.
+Google Cloud Audit Logs record administrative activity, system events, policy denials, and enabled data access events across your GCP environment. These logs are a goldmine for security monitoring, but they need a SIEM to turn raw log data into actionable security intelligence. Elastic SIEM (part of the Elastic Security solution) gives you detection rules, investigation tools, and compliance dashboards that work natively with GCP audit data.
 
 This guide covers the end-to-end setup of ingesting GCP Audit Logs into Elastic SIEM and configuring security detections.
 
@@ -46,7 +46,7 @@ gcloud pubsub subscriptions create elastic-audit-logs-sub \
 
 ### Create Log Sinks for Audit Logs
 
-GCP generates three types of audit logs. You want all of them for comprehensive security monitoring.
+GCP generates four types of audit logs. You want all of them for comprehensive security monitoring. Data Access logs are disabled by default for most services, so enable the required Data Access audit log types before creating the sink if you need those events.
 
 ```bash
 # Export Admin Activity audit logs (who changed what)
@@ -67,8 +67,14 @@ gcloud logging sinks create elastic-system-event-sink \
   --log-filter='logName:"cloudaudit.googleapis.com%2Fsystem_event"' \
   --project=my-project
 
+# Export Policy Denied audit logs (access denied by security policies)
+gcloud logging sinks create elastic-policy-denied-sink \
+  pubsub.googleapis.com/projects/my-project/topics/gcp-audit-logs-elastic \
+  --log-filter='logName:"cloudaudit.googleapis.com%2Fpolicy"' \
+  --project=my-project
+
 # Grant each sink's writer identity permission to publish to the topic
-for SINK in elastic-admin-activity-sink elastic-data-access-sink elastic-system-event-sink; do
+for SINK in elastic-admin-activity-sink elastic-data-access-sink elastic-system-event-sink elastic-policy-denied-sink; do
   WRITER=$(gcloud logging sinks describe ${SINK} --project=my-project --format='value(writerIdentity)')
   gcloud pubsub topics add-iam-policy-binding gcp-audit-logs-elastic \
     --member="${WRITER}" \
@@ -109,27 +115,16 @@ In Kibana, navigate to Management > Integrations and search for "Google Cloud Pl
 The key configuration parameters are:
 
 ```yaml
-# Elastic Agent GCP integration configuration
-- id: gcp-audit-logs
-  name: GCP Audit Logs
-  type: gcp-pubsub
-  streams:
-    - input: gcp-pubsub
-      vars:
-        # GCP project and Pub/Sub configuration
-        project_id: my-project
-        topic: gcp-audit-logs-elastic
-        subscription_name: elastic-audit-logs-sub
-
-        # Authentication using service account key
-        credentials_file: /etc/elastic-agent/gcp-credentials.json
-
-        # Processing configuration
-        max_outstanding_messages: 1000
-
-      data_stream:
-        dataset: gcp.audit
-        type: logs
+# Elastic Agent GCP integration key settings
+project_id: my-project
+credentials_file: /etc/elastic-agent/gcp-credentials.json
+audit_logs:
+  input: gcp-pubsub
+  topic: gcp-audit-logs-elastic
+  subscription_name: elastic-audit-logs-sub
+  data_stream:
+    dataset: gcp.audit
+    type: logs
 ```
 
 ### Deploy Elastic Agent
@@ -201,7 +196,7 @@ Here is an EQL rule for detecting a sequence of suspicious activities.
 # EQL rule: Detect service account key creation followed by immediate use from external IP
 sequence by gcp.audit.authentication_info.principal_email with maxspan=1h
   [any where event.action == "google.iam.admin.v1.CreateServiceAccountKey"]
-  [any where source.ip != null and not cidrmatch(source.ip, "10.0.0.0/8", "172.16.0.0/12")]
+  [any where source.ip != null and not cidrmatch(source.ip, "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
 ```
 
 ### Alert Actions
@@ -216,10 +211,12 @@ Configure the detection rules to create alerts in Elastic SIEM and optionally no
   "severity": "high",
   "risk_score": 73,
   "type": "eql",
-  "query": "sequence by gcp.audit.authentication_info.principal_email with maxspan=1h [any where event.action == 'google.iam.admin.v1.CreateServiceAccountKey'] [any where source.ip != null and not cidrmatch(source.ip, '10.0.0.0/8')]",
+  "query": "sequence by gcp.audit.authentication_info.principal_email with maxspan=1h [any where event.action == 'google.iam.admin.v1.CreateServiceAccountKey'] [any where source.ip != null and not cidrmatch(source.ip, '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')]",
   "actions": [
     {
+      "id": "YOUR_SLACK_CONNECTOR_ID",
       "action_type_id": ".slack",
+      "group": "default",
       "params": {
         "message": "SIEM Alert: Suspicious service account key usage detected. Principal: {{context.rule.name}}"
       }
