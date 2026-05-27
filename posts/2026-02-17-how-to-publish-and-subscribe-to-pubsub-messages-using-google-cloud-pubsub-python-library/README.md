@@ -283,7 +283,7 @@ if ack_ids:
 
 ## Message Ordering
 
-If message order matters - for example, processing events for the same entity in sequence - you can use ordering keys.
+If message order matters - for example, processing events for the same entity in sequence - you can use ordering keys. The subscription that receives these messages must be created with message ordering enabled.
 
 ```python
 from google.cloud import pubsub_v1
@@ -296,7 +296,7 @@ publisher_options = pubsub_v1.types.PublisherOptions(
 publisher = pubsub_v1.PublisherClient(publisher_options=publisher_options)
 topic_path = publisher.topic_path("my-project", "ordered-events")
 
-# Messages with the same ordering key are delivered in order
+# Subscriptions with message ordering enabled receive messages with the same ordering key in order
 for i in range(5):
     data = json.dumps({"step": i, "order_id": "ORD-100"}).encode("utf-8")
     future = publisher.publish(
