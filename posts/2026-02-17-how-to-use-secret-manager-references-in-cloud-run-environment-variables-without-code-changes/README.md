@@ -14,12 +14,14 @@ This guide shows you how to wire up Secret Manager references in Cloud Run so yo
 
 ## How It Works
 
-When you configure a Cloud Run service to reference a secret, here is what happens at startup:
+When you configure a Cloud Run service to reference a secret as an environment variable, here is what happens at startup:
 
 1. Cloud Run reads the service configuration and sees secret references
 2. It calls Secret Manager to fetch the specified secret versions
-3. It injects the secret values as environment variables (or mounts them as files)
+3. It injects the secret values as environment variables
 4. Your container starts with the secrets already available
+
+When you mount secrets as files, Cloud Run makes the secret available as a volume and fetches the value when the file is read.
 
 Your application just reads `os.environ["DATABASE_URL"]` like normal. It has no idea the value came from Secret Manager.
 
@@ -217,10 +219,10 @@ spec:
         - image: us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-app:latest
           volumeMounts:
             - name: db-secret
-              mountPath: /secrets/db-password
+              mountPath: /secrets/db
               readOnly: true
             - name: creds-secret
-              mountPath: /secrets/credentials.json
+              mountPath: /secrets/creds
               readOnly: true
       volumes:
         - name: db-secret
@@ -242,9 +244,9 @@ spec:
 There is a tradeoff between using `latest` and pinning to a specific version number.
 
 **Using `latest`:**
-- Automatically picks up new secret values
-- Requires deploying a new revision for the change to take effect (Cloud Run caches the value at startup)
-- Good for secrets that rotate frequently
+- Environment variables use the latest version when a new instance starts, so different instances of the same revision can temporarily see different values
+- Mounted secret volumes fetch the latest value when the file is read
+- Good for development or for file-mounted secrets that rotate frequently
 
 **Pinning a version:**
 - Predictable - you know exactly which value is in use
@@ -304,7 +306,7 @@ resource "google_cloud_run_v2_service" "my_service" {
 Make sure the Cloud Run service account has the `roles/secretmanager.secretAccessor` role on each secret. The error usually includes the service account email and the secret name.
 
 **Secrets not updating after rotation:**
-Secret values are fetched when a new revision starts. If you update a secret in Secret Manager, you need to deploy a new revision for Cloud Run to pick up the change. You can force a new revision with no other changes:
+For environment variables pinned to a specific version, update the Cloud Run service configuration to reference the new version. If you use `latest`, newly started instances use the current latest version, but already running instances keep the value they received at startup. You can force a new revision with no other changes:
 
 ```bash
 # Force a new revision to pick up updated secrets
