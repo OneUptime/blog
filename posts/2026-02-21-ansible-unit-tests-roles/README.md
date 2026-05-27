@@ -51,7 +51,8 @@ Install the required testing tools:
 ```bash
 # Install testing tools
 
-pip install ansible-core molecule molecule-docker ansible-lint yamllint pytest testinfra
+pip install ansible-core molecule "molecule-plugins[docker]" ansible-lint yamllint pytest testinfra
+ansible-galaxy collection install community.general
 ```
 
 ## Writing Tests
@@ -66,17 +67,17 @@ driver:
   name: docker
 platforms:
   - name: ubuntu2404
-    image: ubuntu:24.04
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
     pre_build_image: true
-    command: /bin/systemd
     privileged: true
+    cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
   - name: rocky9
-    image: rockylinux:9
+    image: geerlingguy/docker-rockylinux9-ansible:latest
     pre_build_image: true
-    command: /usr/sbin/init
     privileged: true
+    cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
 provisioner:
@@ -112,8 +113,8 @@ verifier:
     - name: Assert service is active
       ansible.builtin.assert:
         that:
-          - "'my_service' in ansible_facts.services"
-          - "ansible_facts.services['my_service'].state == 'running'"
+          - "'my_service.service' in ansible_facts.services"
+          - "ansible_facts.services['my_service.service'].state == 'running'"
         fail_msg: "Service my_service is not running"
 
     - name: Check configuration file exists
@@ -178,16 +179,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        distro: [ubuntu2404, rocky9, debian12]
+        platform: [ubuntu2404, rocky9]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install ansible molecule molecule-docker
-      - run: molecule test
-        env:
-          MOLECULE_DISTRO: ${{ matrix.distro }}
+      - run: pip install ansible-core molecule "molecule-plugins[docker]"
+      - run: ansible-galaxy collection install community.general
+      - run: molecule test -- --limit ${{ matrix.platform }}
 ```
 
 ### GitLab CI
@@ -211,9 +211,13 @@ molecule:
   image: docker:latest
   services:
     - docker:dind
+  before_script:
+    - apk add --no-cache python3 py3-pip py3-virtualenv gcc musl-dev python3-dev libffi-dev openssl-dev
+    - python3 -m venv /tmp/ansible-test
   script:
-    - pip install ansible molecule molecule-docker
-    - molecule test
+    - /tmp/ansible-test/bin/python3 -m pip install ansible-core molecule "molecule-plugins[docker]"
+    - /tmp/ansible-test/bin/ansible-galaxy collection install community.general
+    - /tmp/ansible-test/bin/molecule test
 ```
 
 ## Advanced Testing Patterns
@@ -303,7 +307,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -447,4 +451,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
