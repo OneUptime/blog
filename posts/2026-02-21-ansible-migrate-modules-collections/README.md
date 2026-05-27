@@ -47,7 +47,7 @@ collections/
 1. Create collection skeleton:
 
 ```bash
-ansible-galaxy collection init my_namespace.my_collection
+ansible-galaxy collection init my_namespace.my_collection --init-path collections/ansible_collections
 ```
 
 2. Move modules:
@@ -85,12 +85,13 @@ from ansible_collections.my_namespace.my_collection.plugins.module_utils.helpers
     name: test
 ```
 
-6. Create galaxy.yml:
+6. Create or update galaxy.yml:
 
 ```yaml
 namespace: my_namespace
 name: my_collection
 version: 1.0.0
+readme: README.md
 authors:
   - Your Name
 description: My custom modules
