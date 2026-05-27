@@ -89,7 +89,7 @@ A few things to note about the CIDR ranges. The primary range `/20` gives you 4,
 
 ## Setting Up Cloud Router
 
-Cloud NAT requires a Cloud Router to function. The router handles the BGP routing that Cloud NAT uses under the hood.
+Cloud NAT requires a Cloud Router to function. The router provides the control plane for the NAT configuration, but Cloud NAT does not use Cloud Router for BGP session management.
 
 ```hcl
 # router.tf - Cloud Router that Cloud NAT uses for routing
@@ -218,6 +218,18 @@ variable "master_ipv4_cidr_block" {
   type        = string
   default     = "172.16.0.0/28"
 }
+
+variable "node_count" {
+  description = "Number of nodes in the GKE node pool"
+  type        = number
+  default     = 1
+}
+
+variable "machine_type" {
+  description = "Machine type for GKE nodes"
+  type        = string
+  default     = "e2-medium"
+}
 ```
 
 ## Outputs for GKE
@@ -275,7 +287,7 @@ resource "google_container_cluster" "primary" {
   private_cluster_config {
     enable_private_nodes    = true
     enable_private_endpoint = false
-    master_ipv4_cidr_block  = "172.16.0.0/28"
+    master_ipv4_cidr_block  = var.master_ipv4_cidr_block
   }
 
   # Start with a default node pool then remove it
@@ -300,7 +312,7 @@ resource "google_container_node_pool" "primary" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
 
-    # No external IP on nodes - this is what makes them private
+    # Harden node metadata access
     metadata = {
       disable-legacy-endpoints = "true"
     }
