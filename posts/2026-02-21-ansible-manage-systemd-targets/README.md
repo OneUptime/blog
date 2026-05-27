@@ -83,11 +83,10 @@ Sometimes you need to switch a running system to a different target without rebo
   tasks:
     # Isolate the target - this stops services not needed by the target
     - name: Switch to multi-user target (stop GUI services)
-      ansible.builtin.systemd:
-        name: multi-user.target
-        state: started
-        no_block: false
+      ansible.builtin.command:
+        cmd: systemctl isolate multi-user.target
       register: target_switch
+      changed_when: true
 
     # Verify the switch happened correctly
     - name: Verify active target
@@ -143,6 +142,7 @@ Before making changes, you typically want to audit what targets are in use acros
           os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
           default_target: "{{ default_target.stdout }}"
           active_targets: "{{ active_targets.stdout_lines }}"
+          available_targets: "{{ available_targets.stdout_lines }}"
 
     - name: Display report
       ansible.builtin.debug:
@@ -159,7 +159,7 @@ Before making changes, you typically want to audit what targets are in use acros
 
 ## Creating Custom SystemD Targets
 
-This is where it gets really interesting. You can create custom targets that group your application services together. For example, a `webapp.target` that depends on nginx, your app server, and Redis all being up.
+This is where it gets really interesting. You can create custom targets that group your application services together. For example, a `webapp.target` that pulls in nginx, your app server, and Redis when the target starts.
 
 ```yaml
 # create-custom-target.yml - Deploy a custom systemd target for web applications
@@ -180,26 +180,22 @@ This is where it gets really interesting. You can create custom targets that gro
           Requires=network-online.target
           After=network-online.target
           # This target pulls in all webapp-related services
-          # Services bind to this target using WantedBy=webapp.target
+          # Services can be attached with systemctl add-wants webapp.target
 
           [Install]
           WantedBy=multi-user.target
       notify: reload systemd
 
-    # Make nginx part of the webapp target
-    - name: Create nginx override to bind to webapp target
-      ansible.builtin.file:
-        path: /etc/systemd/system/nginx.service.d
-        state: directory
-        mode: '0755'
+    # Reload systemd so it can see the new target before dependencies are added
+    - name: Reload systemd after deploying target
+      ansible.builtin.systemd:
+        daemon_reload: true
 
-    - name: Add webapp target dependency to nginx
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/nginx.service.d/webapp-target.conf
-        mode: '0644'
-        content: |
-          [Install]
-          WantedBy=webapp.target
+    # Make nginx part of the webapp target
+    - name: Add nginx to webapp target
+      ansible.builtin.command:
+        cmd: systemctl add-wants webapp.target nginx.service
+        creates: /etc/systemd/system/webapp.target.wants/nginx.service
       notify: reload systemd
 
     # Enable the custom target so it starts at boot
@@ -230,7 +226,6 @@ When working with targets, the dependency chain matters a lot. Here is a playboo
     required_dependencies:
       multi-user.target:
         - basic.target
-        - network.target
       webapp.target:
         - network-online.target
 
@@ -248,8 +243,8 @@ When working with targets, the dependency chain matters a lot. Here is a playboo
       ansible.builtin.assert:
         that:
           - item.1 in dep_check.stdout
-        fail_msg: "Missing dependency {{ item.1 }} in target {{ item.0.key }}"
-        success_msg: "Dependency {{ item.1 }} found in {{ item.0.key }}"
+        fail_msg: "Missing dependency {{ item.1 }} in target {{ item.0.item.key }}"
+        success_msg: "Dependency {{ item.1 }} found in {{ item.0.item.key }}"
       loop: "{{ dep_results.results | subelements('item.value') }}"
       loop_control:
         label: "{{ item.0.item.key }} -> {{ item.1 }}"
