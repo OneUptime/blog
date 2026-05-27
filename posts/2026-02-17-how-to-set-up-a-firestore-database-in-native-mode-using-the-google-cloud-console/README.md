@@ -18,7 +18,7 @@ Before creating your Firestore database, you need to choose between two modes:
 
 **Datastore Mode** is backward-compatible with the older Cloud Datastore product. It uses Firestore's storage engine but exposes the Datastore API. Choose this only if you are migrating from an existing Datastore application.
 
-This choice cannot be changed after creation, so pick carefully. For this post, we will use Native mode.
+You can change this choice only while the database is empty, so pick carefully before adding data. For this post, we will use Native mode.
 
 ## Step 1: Navigate to Firestore
 
@@ -26,11 +26,11 @@ Open the Google Cloud Console at console.cloud.google.com. Make sure you have se
 
 In the left navigation menu, scroll down to "Databases" under the "Serverless" section, or search for "Firestore" in the top search bar. Click on "Firestore" to open the Firestore console.
 
-If this is your first time using Firestore in this project, you will see a welcome screen asking you to choose a mode and location.
+If this is your first time using Firestore in this project, you will see a setup flow asking you to create a database and configure its basic settings.
 
 ## Step 2: Select Native Mode
 
-On the setup screen, you will see two options: "Native mode" and "Datastore mode." Select "Native mode."
+On the setup screen, enter a database ID, select a Firestore edition, and choose the data access mode. Select "Native mode."
 
 The screen will show you a brief description of each mode's capabilities. Native mode includes:
 
@@ -49,6 +49,7 @@ Available locations include:
 **Multi-region locations** for maximum availability:
 - nam5 (United States)
 - eur3 (Europe)
+- nam7 (United States)
 
 **Regional locations** for lower latency when your users are concentrated in one area:
 - us-central1 (Iowa)
@@ -67,7 +68,7 @@ Some things to consider when choosing:
 
 ## Step 4: Create the Database
 
-Click the "Create Database" button. Firestore will provision your database, which usually takes less than a minute.
+Choose your initial security rules, then click the "Create Database" button. Firestore will provision your database, which usually takes less than a minute.
 
 Once provisioned, you will see the Firestore console with an empty database ready for data.
 
@@ -262,11 +263,11 @@ Firestore automatically creates indexes for single-field queries. For queries th
 You can also manage indexes from the console or the command line:
 
 ```bash
-# Deploy indexes from an index configuration file
+# Create a composite index
 gcloud firestore indexes composite create \
     --collection-group=users \
-    --field-config=field-path=active,order=ASCENDING \
-    --field-config=field-path=createdAt,order=DESCENDING
+    --field-config=field-path=active,order=ascending \
+    --field-config=field-path=createdAt,order=descending
 ```
 
 ## Wrapping Up
