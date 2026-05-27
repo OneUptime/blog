@@ -34,7 +34,7 @@ Hash-based sharding applies a hash function to the shard key and uses the result
 ```python
 # hash_shard_router.py
 
-# Routes queries to the correct shard using consistent hashing
+# Routes queries to the correct shard using modulo hashing
 
 import hashlib
 
