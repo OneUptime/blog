@@ -20,9 +20,12 @@ Make sure you have these APIs enabled in your project:
 # Enable the required APIs
 
 gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 gcloud services enable firestore.googleapis.com
 gcloud services enable eventarc.googleapis.com
 gcloud services enable run.googleapis.com
+gcloud services enable logging.googleapis.com
 ```
 
 You also need a Firestore database. If you have not created one yet:
@@ -53,14 +56,28 @@ Here is the function code for Gen 2 Cloud Functions:
 // index.js - Firestore trigger that sends welcome emails for new users
 const functions = require('@google-cloud/functions-framework');
 const { Firestore } = require('@google-cloud/firestore');
+const protobuf = require('protobufjs');
 
 // Initialize Firestore client for reading additional data if needed
 const firestore = new Firestore();
 
+let documentEventDataType;
+
+async function decodeFirestoreEvent(cloudEvent) {
+  if (!documentEventDataType) {
+    const root = await protobuf.load('data.proto');
+    documentEventDataType = root.lookupType(
+      'google.events.cloud.firestore.v1.DocumentEventData'
+    );
+  }
+
+  return documentEventDataType.decode(cloudEvent.data);
+}
+
 // Register the CloudEvent handler for Firestore triggers
 functions.cloudEvent('onUserCreated', async (cloudEvent) => {
   // Extract the Firestore event data
-  const firestoreData = cloudEvent.data;
+  const firestoreData = await decodeFirestoreEvent(cloudEvent);
 
   // The document data after the change
   // For 'created' events, oldValue will be empty
@@ -68,7 +85,7 @@ functions.cloudEvent('onUserCreated', async (cloudEvent) => {
   const oldValue = firestoreData.oldValue;
 
   // Get the document path from the event
-  const documentPath = cloudEvent.subject;
+  const documentPath = newValue.name;
   console.log(`New document created at: ${documentPath}`);
 
   // Extract field values from the document
@@ -88,13 +105,15 @@ functions.cloudEvent('onUserCreated', async (cloudEvent) => {
   // await sendWelcomeEmail(email, name);
 
   // Optionally update the document to mark the email as sent
-  const docRef = firestore.doc(documentPath.replace('/documents/', ''));
+  const docRef = firestore.doc(documentPath.split('/documents/')[1]);
   await docRef.update({
     welcomeEmailSent: true,
     welcomeEmailSentAt: Firestore.FieldValue.serverTimestamp()
   });
 });
 ```
+
+For Node.js, include the `google.events.cloud.firestore.v1` `data.proto` file in your source so `protobufjs` can decode the Eventarc payload.
 
 And the package.json:
 
@@ -104,7 +123,8 @@ And the package.json:
   "version": "1.0.0",
   "dependencies": {
     "@google-cloud/functions-framework": "^3.0.0",
-    "@google-cloud/firestore": "^7.0.0"
+    "@google-cloud/firestore": "^7.0.0",
+    "protobufjs": "^7.0.0"
   }
 }
 ```
@@ -157,7 +177,7 @@ Update triggers give you both the old and new document state, which is great for
 ```javascript
 // Handler that reacts to user profile updates
 functions.cloudEvent('onUserUpdated', async (cloudEvent) => {
-  const data = cloudEvent.data;
+  const data = await decodeFirestoreEvent(cloudEvent);
 
   // Get old and new document values
   const oldFields = data.oldValue?.fields || {};
@@ -195,11 +215,17 @@ function extractValue(field) {
 
   // Handle different Firestore value types
   if (field.stringValue !== undefined) return field.stringValue;
-  if (field.integerValue !== undefined) return parseInt(field.integerValue);
+  if (field.integerValue !== undefined) {
+    const numberValue = Number(field.integerValue);
+    return Number.isSafeInteger(numberValue) ? numberValue : BigInt(field.integerValue);
+  }
   if (field.doubleValue !== undefined) return field.doubleValue;
   if (field.booleanValue !== undefined) return field.booleanValue;
   if (field.timestampValue !== undefined) return new Date(field.timestampValue);
   if (field.nullValue !== undefined) return null;
+  if (field.bytesValue !== undefined) return Buffer.from(field.bytesValue, 'base64');
+  if (field.referenceValue !== undefined) return field.referenceValue;
+  if (field.geoPointValue) return field.geoPointValue;
   if (field.arrayValue) {
     return (field.arrayValue.values || []).map(extractValue);
   }
@@ -224,7 +250,8 @@ function fieldsToObject(fields) {
 
 // Usage in your handler
 functions.cloudEvent('onDocumentWritten', async (cloudEvent) => {
-  const newFields = cloudEvent.data.value?.fields || {};
+  const data = await decodeFirestoreEvent(cloudEvent);
+  const newFields = data.value?.fields || {};
   const doc = fieldsToObject(newFields);
 
   // Now doc is a plain JavaScript object
@@ -239,8 +266,9 @@ Delete triggers give you the old document state so you can perform cleanup:
 ```javascript
 // Clean up related data when a user document is deleted
 functions.cloudEvent('onUserDeleted', async (cloudEvent) => {
-  const deletedFields = cloudEvent.data.oldValue?.fields || {};
-  const userId = cloudEvent.subject.split('/').pop();
+  const data = await decodeFirestoreEvent(cloudEvent);
+  const deletedFields = data.oldValue?.fields || {};
+  const userId = data.oldValue.name.split('/').pop();
 
   console.log(`User ${userId} was deleted, cleaning up...`);
 
@@ -266,7 +294,8 @@ A common mistake is writing a Firestore trigger that updates the same document i
 ```javascript
 // DANGEROUS: This creates an infinite loop
 functions.cloudEvent('onUpdate', async (cloudEvent) => {
-  const docPath = cloudEvent.subject.replace('/documents/', '');
+  const data = await decodeFirestoreEvent(cloudEvent);
+  const docPath = data.value.name.split('/documents/')[1];
   const firestore = new Firestore();
 
   // This update triggers this same function again!
@@ -275,7 +304,8 @@ functions.cloudEvent('onUpdate', async (cloudEvent) => {
 
 // SAFE: Check if the update was already processed
 functions.cloudEvent('onUpdate', async (cloudEvent) => {
-  const newFields = cloudEvent.data.value?.fields || {};
+  const data = await decodeFirestoreEvent(cloudEvent);
+  const newFields = data.value?.fields || {};
 
   // Skip if we already processed this document
   if (newFields.processedAt) {
@@ -283,7 +313,7 @@ functions.cloudEvent('onUpdate', async (cloudEvent) => {
     return;
   }
 
-  const docPath = cloudEvent.subject.replace('/documents/', '');
+  const docPath = data.value.name.split('/documents/')[1];
   const firestore = new Firestore();
   await firestore.doc(docPath).update({ processedAt: new Date() });
 });
