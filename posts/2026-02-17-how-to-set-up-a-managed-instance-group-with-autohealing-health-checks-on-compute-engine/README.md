@@ -120,6 +120,10 @@ resource "google_compute_instance_template" "app" {
 
   network_interface {
     network = "default"
+
+    access_config {
+      # Ephemeral public IP so the startup script can install packages.
+    }
   }
 
   # Tag for firewall rule targeting
@@ -149,6 +153,21 @@ resource "google_compute_health_check" "autohealing" {
   http_health_check {
     port         = 80
     request_path = "/health"
+  }
+}
+
+# Firewall rule for health check probes
+resource "google_compute_firewall" "allow_health_check" {
+  name    = "allow-health-check"
+  network = "default"
+
+  direction     = "INGRESS"
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  target_tags   = ["http-server"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
   }
 }
 
@@ -183,9 +202,9 @@ gcloud compute instance-groups managed list-instances my-app-mig \
 The output shows each instance's current action (like NONE, CREATING, RECREATING) and its health status. You can also check the MIG's operations log to see when instances were recreated:
 
 ```bash
-# View recent operations for the MIG, filtered to recreate actions
+# View recent operations for the MIG, filtered to autohealing repair events
 gcloud compute operations list \
-    --filter="targetLink:my-app-mig AND operationType:recreateInstances" \
+    --filter="targetLink:my-app-mig AND operationType~compute.instances.repair.*" \
     --zones=us-central1-a \
     --limit=10
 ```
