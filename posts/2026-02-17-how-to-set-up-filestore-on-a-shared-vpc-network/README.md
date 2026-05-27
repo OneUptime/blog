@@ -30,39 +30,53 @@ Before starting, you need:
 - A host project with Shared VPC enabled
 - At least one service project attached to the host project
 - The Filestore API enabled in the project where you will create the instance
-- The `compute.networkUser` role in the host project for the service account creating the Filestore instance
+- The Service Networking API enabled and private services access configured on the Shared VPC network
 - The `file.instances.create` permission in the project where the instance will be created
 
 ## Step 1 - Enable the Filestore API
 
-Enable the API in whichever project will own the Filestore instance:
+Enable the Filestore API in whichever project will own the Filestore instance, and enable the Service Networking API in the host project if private services access is not already configured:
 
 ```bash
 # Enable Filestore API in the service project
-
 gcloud services enable file.googleapis.com --project=my-service-project
+
+# Enable Service Networking API in the host project
+gcloud services enable servicenetworking.googleapis.com --project=my-host-project
 ```
 
-## Step 2 - Configure IAM Permissions
+## Step 2 - Configure Private Services Access
 
-The service account or user creating the Filestore instance needs the ability to use the Shared VPC network. Grant the network user role in the host project:
+To create a Filestore instance in a service project on a Shared VPC network, the Shared VPC network must have private services access enabled. First check whether a private services access peering already exists:
 
 ```bash
-# Grant the Filestore service agent permission to use the shared network
-# The service agent format is: service-PROJECT_NUMBER@cloud-filer.iam.gserviceaccount.com
-gcloud projects add-iam-policy-binding my-host-project \
-  --member="serviceAccount:service-123456789@cloud-filer.iam.gserviceaccount.com" \
-  --role="roles/compute.networkUser"
+# Check for an existing private services access peering
+gcloud beta services vpc-peerings list \
+  --network=shared-vpc \
+  --project=my-host-project
 ```
 
-Replace `123456789` with the project number of your service project (not the project ID). You can find it with:
+If the peering does not exist, reserve an allocated IP range in the host project and create the private connection:
 
 ```bash
-# Get the project number for the service project
-gcloud projects describe my-service-project --format="value(projectNumber)"
+# Reserve a range for Google-managed services
+gcloud compute addresses create google-service-range \
+  --global \
+  --purpose=VPC_PEERING \
+  --prefix-length=20 \
+  --description="Peering range for Google managed services" \
+  --network=shared-vpc \
+  --project=my-host-project
+
+# Create the private services access connection
+gcloud services vpc-peerings connect \
+  --service=servicenetworking.googleapis.com \
+  --ranges=google-service-range \
+  --network=shared-vpc \
+  --project=my-host-project
 ```
 
-This is a step that people frequently miss. Without this permission, the Filestore instance creation will fail with a permissions error that does not always clearly indicate the root cause.
+This is a step that people frequently miss. Without private services access, Filestore instance creation from the service project will fail even if the Shared VPC network path is correct.
 
 ## Step 3 - Identify the Shared Network and Subnet
 
@@ -70,7 +84,9 @@ Find the network and subnet you want to use:
 
 ```bash
 # List available shared subnets from the service project
-gcloud compute networks subnets list-usable --project=my-service-project
+gcloud compute networks subnets list-usable \
+  --project=my-host-project \
+  --service-project=my-service-project
 ```
 
 This shows the subnets from the host project that the service project is authorized to use. Note the network name and subnet details.
@@ -86,11 +102,11 @@ gcloud filestore instances create shared-filestore \
   --project=my-service-project \
   --zone=us-central1-a \
   --tier=BASIC_HDD \
-  --file-share=name=data,capacity=1TB \
-  --network=name=projects/my-host-project/global/networks/shared-vpc
+  --file-share=name=data,capacity=1TiB \
+  --network=name=projects/my-host-project/global/networks/shared-vpc,connect-mode=PRIVATE_SERVICE_ACCESS
 ```
 
-The key difference from a standard VPC setup is the `--network` parameter. Instead of just `name=default`, you specify the full path to the network in the host project: `name=projects/HOST_PROJECT_ID/global/networks/NETWORK_NAME`.
+The key difference from a standard VPC setup is the `--network` parameter. Instead of just `name=default`, you specify the full path to the network in the host project and set `connect-mode=PRIVATE_SERVICE_ACCESS`: `name=projects/HOST_PROJECT_ID/global/networks/NETWORK_NAME,connect-mode=PRIVATE_SERVICE_ACCESS`.
 
 If you want the Filestore instance to use a specific IP range within the shared network:
 
@@ -100,8 +116,8 @@ gcloud filestore instances create shared-filestore \
   --project=my-service-project \
   --zone=us-central1-a \
   --tier=BASIC_HDD \
-  --file-share=name=data,capacity=1TB \
-  --network=name=projects/my-host-project/global/networks/shared-vpc,reserved-ip-range=filestore-range
+  --file-share=name=data,capacity=1TiB \
+  --network=name=projects/my-host-project/global/networks/shared-vpc,connect-mode=PRIVATE_SERVICE_ACCESS,reserved-ip-range=google-service-range
 ```
 
 ## Step 5 - Verify the Instance
@@ -142,42 +158,44 @@ This is useful for shared datasets. For example, a data engineering team in one 
 
 ## Firewall Considerations
 
-Firewall rules in a Shared VPC are managed in the host project. If you have restrictive firewall rules, make sure NFS traffic is allowed:
+Firewall rules in a Shared VPC are managed in the host project. If you have restrictive egress rules, make sure clients can reach the Filestore reserved IP range on the NFS ports:
 
 ```bash
-# Create a firewall rule in the host project to allow NFS traffic
-gcloud compute firewall-rules create allow-nfs \
-  --project=my-host-project \
-  --network=shared-vpc \
-  --direction=INGRESS \
-  --action=ALLOW \
-  --rules=tcp:2049 \
-  --source-ranges=10.0.0.0/8 \
-  --target-tags=nfs-client
-```
-
-You also need egress rules if you have default-deny egress policies:
-
-```bash
-# Allow egress to Filestore IP on NFS port
-gcloud compute firewall-rules create allow-nfs-egress \
+# Allow client egress to the Filestore reserved IP range
+gcloud compute firewall-rules create allow-filestore-egress \
   --project=my-host-project \
   --network=shared-vpc \
   --direction=EGRESS \
   --action=ALLOW \
-  --rules=tcp:2049 \
-  --destination-ranges=10.0.0.0/24
+  --rules=tcp:111,tcp:2046,tcp:2049,tcp:2050,tcp:4045 \
+  --destination-ranges=10.0.0.0/24 \
+  --target-tags=nfs-client
+```
+
+If your applications use NFS file locking and your ingress rules block traffic from Filestore back to client VMs, allow the required client-side NFS ports from the Filestore reserved IP range:
+
+```bash
+# Allow Filestore traffic back to clients for NFS locking
+gcloud compute firewall-rules create allow-filestore-locking-ingress \
+  --project=my-host-project \
+  --network=shared-vpc \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:111,tcp:2046,tcp:4045 \
+  --source-ranges=10.0.0.0/24 \
+  --target-tags=nfs-client
 ```
 
 ## Using Filestore with GKE on Shared VPC
 
-If you are running GKE clusters on a Shared VPC, the Filestore CSI driver needs additional permissions. The GKE service account needs network access, and the CSI driver service account needs to create Filestore instances.
+If you are running GKE clusters on a Shared VPC, complete the standard Shared VPC setup for the cluster, including granting the Host Service Agent User role to the service project's GKE service account on the host project and enabling private services access on the Shared VPC network.
 
 ```bash
-# Grant the GKE node service account the network user role
+# Grant the Host Service Agent User role to the service project's GKE service account
+# The service account format is: service-SERVICE_PROJECT_NUMBER@container-engine-robot.iam.gserviceaccount.com
 gcloud projects add-iam-policy-binding my-host-project \
-  --member="serviceAccount:my-service-project.svc.id.goog[kube-system/filestore-csi-controller-sa]" \
-  --role="roles/compute.networkUser"
+  --member="serviceAccount:service-123456789@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/container.hostServiceAgentUser"
 ```
 
 When creating a StorageClass for dynamic provisioning in a Shared VPC cluster, specify the network path:
@@ -190,21 +208,22 @@ metadata:
   name: filestore-shared-vpc
 provisioner: filestore.csi.storage.gke.io
 parameters:
-  tier: standard
   # Use the full network path for Shared VPC
   network: projects/my-host-project/global/networks/shared-vpc
+  connect-mode: PRIVATE_SERVICE_ACCESS
+  reserved-ip-range: google-service-range
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 ```
 
 ## Troubleshooting Common Issues
 
-**Permission denied during instance creation:** Make sure the Filestore service agent has the `compute.networkUser` role in the host project. This is the most common issue.
+**Permission denied during instance creation:** Make sure the user or service account creating the instance has Filestore permissions in the service project, and make sure private services access is configured on the Shared VPC network in the host project.
 
 **Instance created but cannot mount:** Check that the VM and Filestore instance are on the same network. Verify firewall rules allow NFS traffic (TCP 2049).
 
 **Network not found:** Double-check the full network path format: `projects/HOST_PROJECT/global/networks/NETWORK_NAME`. A typo in the host project ID or network name will cause this error.
 
-**GKE CSI driver fails to provision:** Verify that the CSI driver service account has both Filestore editor and network user permissions.
+**GKE CSI driver fails to provision:** Verify that the service project's GKE service account has the Host Service Agent User role in the host project, the cluster has the Filestore CSI driver enabled, and the StorageClass uses `connect-mode: PRIVATE_SERVICE_ACCESS`.
 
-Setting up Filestore on a Shared VPC takes a few extra IAM and network configuration steps compared to a simple VPC setup, but once it is done, it works seamlessly. The main thing to remember is that the Filestore service agent in your service project needs network access in the host project - get that right and everything else falls into place.
+Setting up Filestore on a Shared VPC takes a few extra IAM and network configuration steps compared to a simple VPC setup, but once it is done, it works seamlessly. The main thing to remember is that service-project Filestore instances need private services access on the Shared VPC network - get that right and everything else falls into place.
