@@ -39,12 +39,12 @@ Before you start applying labels, decide on a standard set of label keys. A good
 
 GCP has specific requirements for labels:
 
-- Keys and values must be lowercase
+- Keys and values can contain lowercase letters, numeric characters, hyphens, underscores, and international characters
 - Keys can be up to 63 characters
-- Values can be up to 63 characters
+- Values can be empty, or up to 63 characters
 - Maximum 64 labels per resource
-- Keys must start with a lowercase letter
-- Only lowercase letters, numbers, hyphens, and underscores are allowed
+- Keys must start with a lowercase letter or international character
+- All characters must use UTF-8 encoding
 
 ## Applying Labels to Resources
 
@@ -94,7 +94,7 @@ bq update --set_label team:data \
 
 ```bash
 # Label a Cloud SQL instance
-gcloud sql instances patch my-db-instance \
+gcloud beta sql instances patch my-db-instance \
   --update-labels=team=backend,env=production,app=user-service
 ```
 
@@ -172,12 +172,12 @@ variable "resource_labels" {
 
 ### Using Organization Policy Constraints
 
-GCP supports organization policies that can require labels:
+Google Cloud organization policies do not directly require labels. If you also use Resource Manager tags for governance, you can enforce mandatory tags on supported resources with custom organization policy constraints. For labels, rely on Terraform validation, CI/CD checks, and audits.
 
 ```bash
-# Set an organization policy to require specific labels
-# This uses a custom constraint (available with Organization Policy v2)
-gcloud org-policies set-policy policy.yaml --organization=ORGANIZATION_ID
+# Create a custom constraint, then enforce it with an organization policy
+gcloud org-policies set-custom-constraint custom-constraint.yaml
+gcloud org-policies set-policy policy.yaml
 ```
 
 ### Using a CI/CD Pre-Commit Check
@@ -186,23 +186,29 @@ Add a check in your CI/CD pipeline that fails if Terraform resources are missing
 
 ```bash
 #!/bin/bash
-# Check that all Terraform resources have required labels
+# Check that planned Google Cloud resources have required labels
 # Run this as a pre-commit hook or CI step
 
 REQUIRED_LABELS=("team" "env" "cost-center")
-ERRORS=0
 
-for label in "${REQUIRED_LABELS[@]}"; do
-  # Search for resources missing the required label
-  MISSING=$(grep -rn 'resource "google_' *.tf | \
-    grep -v "labels" | wc -l)
-  if [ "$MISSING" -gt 0 ]; then
-    echo "WARNING: Found resources potentially missing '$label' label"
-    ERRORS=$((ERRORS + 1))
-  fi
-done
+terraform plan -out=tfplan >/dev/null
 
-exit $ERRORS
+terraform show -json tfplan | jq -e --argjson required "$(printf '%s\n' "${REQUIRED_LABELS[@]}" | jq -R . | jq -s .)" '
+  def resources(m):
+    (m.resources // []),
+    ((m.child_modules // [])[] | resources(.));
+
+  [
+    resources(.planned_values.root_module)[]
+    | select(.type | startswith("google_"))
+    | select((.values.labels // .values.user_labels // .values.resource_labels // {}) as $labels
+      | ($required - ($labels | keys)) | length > 0)
+    | .address
+  ] as $missing
+  | if ($missing | length) == 0 then true
+    else "Resources missing required labels: \($missing | join(", "))" | halt_error(1)
+    end
+'
 ```
 
 ## Finding Unlabeled Resources
@@ -216,9 +222,9 @@ gcloud compute instances list \
   --filter="NOT labels.team:*"
 
 # Find Cloud SQL instances without labels
-gcloud sql instances list \
+gcloud beta sql instances list \
   --format="table(name, labels)" \
-  --filter="NOT settings.userLabels.team:*"
+  --filter="NOT labels:team"
 ```
 
 For a broader audit, use Cloud Asset Inventory:
@@ -332,7 +338,7 @@ ORDER BY
 
 2. **Document your label taxonomy** - Publish an internal document listing all approved label keys and values. This prevents typos and inconsistencies.
 
-3. **Automate enforcement** - Rely on Terraform validation, CI/CD checks, or organization policies rather than hoping people remember to add labels.
+3. **Automate enforcement** - Rely on Terraform validation, CI/CD checks, or mandatory tags where appropriate rather than hoping people remember to add labels.
 
 4. **Audit monthly** - Run a query to find unlabeled resources and assign ownership.
 
