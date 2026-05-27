@@ -15,9 +15,9 @@ When Cloud NAT starts dropping packets, the impact is immediate - outbound conne
 Cloud NAT drops packets for several reasons:
 
 1. **Port exhaustion** - No free NAT ports available for the requesting VM
-2. **Endpoint-independent conflict** - Two VMs trying to use the same NAT IP:port for connections to the same destination
+2. **Endpoint-independent conflict** - Endpoint-independent mapping assigns the same NAT IP:port tuple to more than one internal IP address and ephemeral source port tuple
 3. **NAT IP pool exhaustion** - Total ports across all NAT IPs are fully consumed
-4. **Rate limiting** - Exceeding the per-VM or per-gateway connection creation rate
+4. **Missing connection tracking entry** - Return packets arrive after the connection tracking entry expired or was removed
 5. **Misconfigured subnet ranges** - Traffic from subnets or IP ranges not covered by the NAT configuration
 
 ```mermaid
@@ -117,13 +117,14 @@ Check key fields:
 
 ### Option A: Enable Dynamic Port Allocation
 
-If you are using static allocation, switch to dynamic:
+If you are using static allocation, switch to dynamic. Dynamic port allocation requires endpoint-independent mapping to be disabled, and changing the port allocation method can disrupt existing connections if the new maximum is too low:
 
 ```bash
 # Enable dynamic port allocation
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
+  --no-enable-endpoint-independent-mapping \
   --enable-dynamic-port-allocation \
   --min-ports-per-vm=128 \
   --max-ports-per-vm=8192 \
@@ -173,7 +174,7 @@ gcloud compute routers nats update your-nat-gateway \
 
 ## Step 5: Fix Timeout-Related Drops
 
-Connections in TIME_WAIT hold ports for 120 seconds by default. Reducing this frees ports faster:
+Closed TCP connections keep their NAT mapping for the TCP TIME_WAIT timeout, which is 120 seconds by default. Reducing this can free ports faster:
 
 ```bash
 # Reduce timeouts to free ports faster
@@ -261,8 +262,8 @@ gcloud logging metrics create nat-dropped-packets \
 
 When drops are happening right now and impacting production:
 
-1. **Immediate**: Switch to auto-allocated IPs if using static IPs (adds capacity instantly)
-2. **Quick**: Enable dynamic port allocation with a high max
+1. **Immediate**: Switch to auto-allocated IPs if using static IPs (adds capacity when the gateway needs more addresses)
+2. **Quick**: Enable dynamic port allocation with a high max, after disabling endpoint-independent mapping
 3. **Fast**: Reduce TCP TIME_WAIT timeout to 15 seconds
 4. **Short-term**: Add more static NAT IPs if auto-allocation is not an option
 5. **Long-term**: Fix application connection handling (connection pooling, keep-alive)
@@ -273,6 +274,7 @@ gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
   --auto-allocate-nat-external-ips \
+  --no-enable-endpoint-independent-mapping \
   --enable-dynamic-port-allocation \
   --min-ports-per-vm=128 \
   --max-ports-per-vm=16384 \
