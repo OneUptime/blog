@@ -66,7 +66,7 @@ kubectl create configmap app-config \
 
 # Create a ConfigMap from a file
 kubectl create configmap nginx-config \
-  --from-file=nginx.conf
+  --from-file=default.conf
 
 # Create a ConfigMap from a directory of files
 kubectl create configmap app-configs \
@@ -182,8 +182,8 @@ spec:
       image: myregistry/app:latest
       volumeMounts:
         - name: config
-          mountPath: /app/config/settings.yaml
-          subPath: settings.yaml
+          mountPath: /app/config/app.properties
+          subPath: app.properties
   volumes:
     - name: config
       configMap:
@@ -192,7 +192,7 @@ spec:
 
 ## Live Configuration Updates
 
-When a ConfigMap is mounted as a volume (without `subPath`), Kubernetes automatically updates the files when the ConfigMap changes. The update delay is typically under a minute.
+When a ConfigMap is mounted as a volume (without `subPath`), Kubernetes automatically updates the files when the ConfigMap changes. The update delay depends on the kubelet sync period and its ConfigMap cache propagation delay.
 
 ```mermaid
 sequenceDiagram
@@ -278,7 +278,7 @@ immutable: true
 3. Use immutable ConfigMaps for data that should not change after deployment.
 4. Version your ConfigMaps (e.g., `app-config-v2`) so you can roll back by updating the Deployment reference.
 5. Avoid using `subPath` if you need automatic config reloading, since `subPath` mounts do not receive updates.
-6. Set resource requests on pods that watch config files to avoid unnecessary CPU usage.
+6. Use efficient file watching or a reasonable polling interval for pods that watch config files to avoid unnecessary CPU usage.
 
 ## Monitoring Configuration Changes with OneUptime
 
