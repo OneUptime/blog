@@ -8,7 +8,7 @@ Description: Automate HIPAA security rule compliance with Ansible covering acces
 
 ---
 
-HIPAA (Health Insurance Portability and Accountability Act) requires organizations handling protected health information (PHI) to implement specific security controls. The HIPAA Security Rule has 54 implementation specifications organized into administrative, physical, and technical safeguards. Ansible helps automate the technical safeguards, ensuring every server that touches PHI meets the required security baseline.
+HIPAA (Health Insurance Portability and Accountability Act) requires organizations handling protected health information (PHI) to implement specific security controls. The HIPAA Security Rule is organized into administrative, physical, and technical safeguards with required and addressable implementation specifications. Ansible helps automate checks for the technical safeguards, helping every server that touches PHI meet the required security baseline.
 
 ## Technical Safeguards
 
@@ -33,13 +33,15 @@ hipaa_auto_remediate: false
 # roles/hipaa/tasks/access_controls.yml - HIPAA access controls
 ---
 - name: "164.312(a)(1): Unique user identification"
-  command: "awk -F: '{ if ($3 >= 1000 && $3 < 65534) print $1 }' /etc/passwd"
-  register: system_users
+  command: "getent passwd {{ item }}"
+  loop: "{{ hipaa_shared_account_names | default(['admin', 'operator', 'shared']) }}"
+  register: shared_account_check
+  failed_when: false
   changed_when: false
 
 - name: Verify no shared accounts exist
   set_fact:
-    hipaa_results: "{{ hipaa_results | default([]) + [{'section': '164.312(a)(1)', 'check': 'No shared accounts', 'status': 'PASS'}] }}"
+    hipaa_results: "{{ hipaa_results | default([]) + [{'section': '164.312(a)(1)', 'check': 'No shared accounts', 'status': 'PASS' if (shared_account_check.results | selectattr('rc', 'equalto', 0) | list | length) == 0 else 'FAIL'}] }}"
 
 - name: "164.312(a)(2)(i): Emergency access procedure"
   stat:
@@ -70,10 +72,16 @@ hipaa_auto_remediate: false
 ```yaml
 # roles/hipaa/tasks/audit_controls.yml - HIPAA audit logging
 ---
-- name: "164.312(b): Ensure auditd is installed and running"
+- name: "164.312(b): Ensure auditd is installed"
   apt:
     name: auditd
     state: present
+
+- name: "164.312(b): Ensure auditd is running"
+  service:
+    name: auditd
+    state: started
+    enabled: true
 
 - name: "164.312(b): Configure audit rules for PHI access"
   template:
@@ -101,8 +109,8 @@ hipaa_auto_remediate: false
   changed_when: false
 
 - name: Check for LUKS encryption on PHI data volumes
-  command: "cryptsetup isLuks /dev/{{ item }}"
-  loop: "{{ hipaa_encrypted_volumes | default(['sda2']) }}"
+  command: "cryptsetup isLuks {{ item }}"
+  loop: "{{ hipaa_encrypted_volumes | default(['/dev/sda2']) }}"
   register: luks_check
   ignore_errors: yes
   changed_when: false
@@ -173,7 +181,7 @@ The most effective approach is creating a dedicated compliance role with tasks o
 
 - name: Check TLS certificate validity
   ansible.builtin.command: >
-    openssl x509 -in /etc/ssl/certs/app.pem -noout -dates
+    openssl x509 -in /etc/ssl/certs/app.pem -noout -checkend 0
   register: cert_dates
   changed_when: false
   failed_when: false
@@ -329,6 +337,11 @@ The real power of compliance automation is combining detection with remediation:
         checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
       when: pwquality.rc == 0
 
+    - name: Record password failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['Password minimum length NOT configured'] }}"
+      when: pwquality.rc != 0
+
     - name: Print compliance summary
       ansible.builtin.debug:
         msg: |
@@ -347,4 +360,3 @@ The real power of compliance automation is combining detection with remediation:
           ========================================
           Score: {{ (checks_passed | length * 100 / (checks_passed | length + checks_failed | length)) | round(1) }}%
 ```
-
