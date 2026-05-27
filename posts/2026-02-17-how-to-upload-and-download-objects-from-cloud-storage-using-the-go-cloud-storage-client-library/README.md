@@ -27,7 +27,7 @@ Make sure you have a bucket ready. You can create one through the console or the
 
 ```bash
 # Create a bucket in a specific region
-gsutil mb -l us-central1 gs://my-demo-bucket-12345
+gcloud storage buckets create gs://my-demo-bucket-12345 --location=us-central1
 ```
 
 ## Creating the Client
@@ -116,7 +116,7 @@ func uploadFromFile(client *storage.Client, bucket, object, filePath string) err
     defer file.Close()
 
     writer := client.Bucket(bucket).Object(object).NewWriter(ctx)
-    writer.ChunkSize = 8 * 1024 * 1024 // 8 MB chunks for resumable uploads
+    writer.ChunkSize = 8 * 1024 * 1024 // 8 MiB chunks for resumable uploads
 
     // io.Copy streams data from the file to the writer
     // without loading the entire file into memory
@@ -133,7 +133,7 @@ func uploadFromFile(client *storage.Client, bucket, object, filePath string) err
 }
 ```
 
-The `ChunkSize` setting controls how large each chunk is for resumable uploads. The client library automatically uses resumable uploads for objects larger than the chunk size. Setting this to 8 MB is a reasonable default.
+The `ChunkSize` setting controls how large each chunk is for resumable uploads. By default, the client library uses resumable uploads for objects larger than 16 MiB, and multipart uploads for smaller objects. Setting this to 8 MiB lowers the resumable upload cutoff and buffer size, which can be useful when you have several concurrent uploads.
 
 ## Downloading Objects
 
@@ -230,6 +230,8 @@ Cloud Storage operations can fail for various reasons - permissions, network iss
 ```go
 import (
     "errors"
+    "log"
+
     "cloud.google.com/go/storage"
 )
 
