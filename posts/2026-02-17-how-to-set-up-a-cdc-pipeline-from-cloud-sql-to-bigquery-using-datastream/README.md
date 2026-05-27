@@ -22,7 +22,7 @@ The architecture looks like this:
 graph LR
     A[Cloud SQL] -->|binlog / logical replication| B[Datastream]
     B -->|Streaming writes| C[BigQuery]
-    B -->|Change events| D[Cloud Storage - optional]
+    B -->|Alternative destination| D[Cloud Storage]
 ```
 
 Datastream handles schema mapping, initial backfill (copying existing data), and ongoing change capture automatically.
@@ -36,11 +36,14 @@ Before setting up Datastream, you need to configure your Cloud SQL instance for 
 Enable binary logging and set the required flags:
 
 ```bash
-# Enable binary logging on your Cloud SQL MySQL instance
-
-# This is required for CDC - Datastream reads changes from the binlog
+# Enable binary logging on your Cloud SQL MySQL instance.
+# For Cloud SQL for MySQL, binary logging is enabled through point-in-time recovery.
 gcloud sql instances patch my-mysql-instance \
-  --database-flags=log_bin=on,binlog_format=ROW,binlog_row_image=FULL
+  --enable-bin-log
+
+# Set the connection timeout flags recommended for Datastream binlog-based replication
+gcloud sql instances patch my-mysql-instance \
+  --database-flags=net_read_timeout=3600,net_write_timeout=3600,wait_timeout=86400
 
 # Create a Datastream user with replication privileges
 gcloud sql connect my-mysql-instance --user=root
@@ -54,10 +57,8 @@ CREATE USER 'datastream'@'%' IDENTIFIED BY 'strong-password-here';
 
 -- Grant the required privileges
 -- REPLICATION SLAVE and REPLICATION CLIENT are needed for binlog reading
-GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'datastream'@'%';
-
--- Grant SELECT on all databases you want to replicate
-GRANT SELECT ON my_database.* TO 'datastream'@'%';
+-- SELECT is needed on the databases and tables you want to replicate
+GRANT REPLICATION SLAVE, REPLICATION CLIENT, SELECT ON *.* TO 'datastream'@'%';
 
 FLUSH PRIVILEGES;
 ```
@@ -94,6 +95,9 @@ CREATE PUBLICATION datastream_pub FOR ALL TABLES;
 
 -- Or for specific tables only:
 -- CREATE PUBLICATION datastream_pub FOR TABLE orders, customers, products;
+
+-- Create the logical replication slot Datastream will use
+SELECT PG_CREATE_LOGICAL_REPLICATION_SLOT('datastream_slot', 'pgoutput');
 ```
 
 ## Setting Up the Datastream Connection Profile
@@ -102,6 +106,7 @@ A connection profile stores the credentials and network configuration for your s
 
 ```bash
 # Create a connection profile for Cloud SQL MySQL
+# If you use private connectivity, create the private connection in the next section first.
 gcloud datastream connection-profiles create mysql-source \
   --location=us-central1 \
   --type=MYSQL \
@@ -143,30 +148,41 @@ gcloud datastream private-connections create my-private-connection \
 The stream is the actual replication pipeline that connects source to destination:
 
 ```bash
+# Put the source configuration in a JSON file. The gcloud Datastream command expects
+# a path to a JSON or YAML file, and the field names use camelCase.
+cat > mysql-source-config.json <<'EOF'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "my_database",
+      "mysqlTables": [
+        {"table": "orders"},
+        {"table": "customers"},
+        {"table": "products"},
+        {"table": "order_items"}
+      ]
+    }]
+  }
+}
+EOF
+
+cat > bq-append-config.json <<'EOF'
+{
+  "singleTargetDataset": {
+    "datasetId": "my-project:replicated_data"
+  },
+  "appendOnly": {}
+}
+EOF
+
 # Create a Datastream stream from Cloud SQL MySQL to BigQuery
 gcloud datastream streams create mysql-to-bq \
   --location=us-central1 \
   --display-name="MySQL to BigQuery CDC" \
   --source=mysql-source \
-  --mysql-source-config='{
-    "include_objects": {
-      "mysql_databases": [{
-        "database": "my_database",
-        "mysql_tables": [
-          {"table": "orders"},
-          {"table": "customers"},
-          {"table": "products"},
-          {"table": "order_items"}
-        ]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql-source-config.json \
   --destination=bq-destination \
-  --bigquery-destination-config='{
-    "single_target_dataset": {
-      "dataset_id": "projects/my-project/datasets/replicated_data"
-    }
-  }' \
+  --bigquery-destination-config=bq-append-config.json \
   --backfill-all
 ```
 
@@ -188,9 +204,9 @@ SELECT
     -- Datastream metadata columns
     datastream_metadata.uuid AS change_uuid,
     datastream_metadata.source_timestamp AS change_timestamp,
-    datastream_metadata.is_deleted AS is_deleted
+    datastream_metadata.change_type AS change_type
 FROM `my-project.replicated_data.orders`
-WHERE datastream_metadata.is_deleted = FALSE
+WHERE datastream_metadata.change_type NOT IN ('DELETE', 'UPDATE-DELETE')
 ORDER BY datastream_metadata.source_timestamp DESC
 LIMIT 100;
 ```
@@ -198,11 +214,13 @@ LIMIT 100;
 Key metadata fields:
 - `datastream_metadata.uuid`: Unique identifier for each change event
 - `datastream_metadata.source_timestamp`: When the change happened in the source database
-- `datastream_metadata.is_deleted`: TRUE for deleted rows (Datastream uses soft deletes)
+- `datastream_metadata.change_sequence_number`: Internal sequence number for each change event
+- `datastream_metadata.change_type`: Type of change event (`INSERT`, `UPDATE-INSERT`, `UPDATE-DELETE`, or `DELETE`)
+- `datastream_metadata.sort_keys`: Values you can use to sort change events
 
 ## Handling Deletes
 
-Datastream does not physically delete rows from BigQuery when a row is deleted from the source. Instead, it marks them with `is_deleted = TRUE`. You need to filter these out in your queries:
+In append-only mode, Datastream does not physically delete rows from BigQuery when a row is deleted from the source. Instead, it writes a `DELETE` change event. You need to filter these out in your queries:
 
 ```sql
 -- Create a view that shows only active (non-deleted) records
@@ -215,7 +233,7 @@ SELECT
     created_at,
     updated_at
 FROM `my-project.replicated_data.orders`
-WHERE datastream_metadata.is_deleted = FALSE;
+WHERE datastream_metadata.change_type NOT IN ('DELETE', 'UPDATE-DELETE');
 ```
 
 For the latest version of each row (handling updates):
@@ -235,7 +253,7 @@ FROM (
     FROM `my-project.replicated_data.orders`
 )
 WHERE rn = 1
-  AND datastream_metadata.is_deleted = FALSE;
+  AND datastream_metadata.change_type NOT IN ('DELETE', 'UPDATE-DELETE');
 ```
 
 ## Configuring Merge Mode
@@ -243,33 +261,27 @@ WHERE rn = 1
 Datastream can also write to BigQuery in merge mode, which applies changes (inserts, updates, deletes) directly to the target table instead of appending change records. This gives you a clean, current-state table:
 
 ```bash
+cat > bq-merge-config.json <<'EOF'
+{
+  "singleTargetDataset": {
+    "datasetId": "my-project:replicated_data"
+  },
+  "merge": {}
+}
+EOF
+
 # Configure the stream with merge mode for BigQuery
 gcloud datastream streams create mysql-to-bq-merge \
   --location=us-central1 \
   --display-name="MySQL to BigQuery CDC (Merge)" \
   --source=mysql-source \
-  --mysql-source-config='{
-    "include_objects": {
-      "mysql_databases": [{
-        "database": "my_database",
-        "mysql_tables": [
-          {"table": "orders"},
-          {"table": "customers"}
-        ]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql-source-config.json \
   --destination=bq-destination \
-  --bigquery-destination-config='{
-    "single_target_dataset": {
-      "dataset_id": "projects/my-project/datasets/replicated_data"
-    },
-    "merge": {}
-  }' \
+  --bigquery-destination-config=bq-merge-config.json \
   --backfill-all
 ```
 
-In merge mode, the BigQuery table always reflects the current state of the source table. Deletes are physical deletes, and updates overwrite the previous values.
+In merge mode, BigQuery reflects the way your data is stored in the source database for tables with primary keys. Deletes remove the row from the replicated table, updates overwrite the previous values, and historical change events are not retained. Tables without primary keys are still append-only.
 
 ## Monitoring the Stream
 
@@ -280,7 +292,7 @@ Check the health and status of your Datastream stream:
 gcloud datastream streams describe mysql-to-bq \
   --location=us-central1
 
-# List recent stream events (errors, warnings, etc.)
+# List streams and their states
 gcloud datastream streams list \
   --location=us-central1 \
   --format="table(name, state, displayName)"
@@ -290,17 +302,18 @@ You can also set up Cloud Monitoring alerts for Datastream metrics:
 
 ```bash
 # Key metrics to monitor:
-# - datastream.googleapis.com/stream/total_latency (replication lag)
+# - datastream.googleapis.com/stream/freshness (how far behind Datastream is compared to the source)
+# - datastream.googleapis.com/stream/total_latencies (end-to-end latency distribution)
 # - datastream.googleapis.com/stream/unsupported_event_count (events Datastream cannot process)
-# - datastream.googleapis.com/stream/throughput (bytes/events per second)
+# - datastream.googleapis.com/stream/bytes_count and datastream.googleapis.com/stream/event_count (throughput)
 
 # Create an alert for high replication lag
 gcloud monitoring policies create \
   --display-name="Datastream High Lag Alert" \
   --condition-display-name="Replication lag > 5 minutes" \
-  --condition-filter='resource.type="datastream.googleapis.com/Stream" AND metric.type="datastream.googleapis.com/stream/total_latency"' \
-  --condition-threshold-value=300 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --condition-filter='resource.type="datastream.googleapis.com/Stream" AND metric.type="datastream.googleapis.com/stream/freshness"' \
+  --duration=300s \
+  --if="> 300"
 ```
 
 ## Adding Tables to an Existing Stream
@@ -308,24 +321,30 @@ gcloud monitoring policies create \
 When you need to replicate additional tables, update the stream configuration:
 
 ```bash
+# Update the JSON source configuration file to include the new tables
+cat > mysql-source-config.json <<'EOF'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "my_database",
+      "mysqlTables": [
+        {"table": "orders"},
+        {"table": "customers"},
+        {"table": "products"},
+        {"table": "order_items"},
+        {"table": "reviews"},
+        {"table": "inventory"}
+      ]
+    }]
+  }
+}
+EOF
+
 # Update the stream to include additional tables
 gcloud datastream streams update mysql-to-bq \
   --location=us-central1 \
-  --mysql-source-config='{
-    "include_objects": {
-      "mysql_databases": [{
-        "database": "my_database",
-        "mysql_tables": [
-          {"table": "orders"},
-          {"table": "customers"},
-          {"table": "products"},
-          {"table": "order_items"},
-          {"table": "reviews"},
-          {"table": "inventory"}
-        ]
-      }]
-    }
-  }' \
+  --source=mysql-source \
+  --mysql-source-config=mysql-source-config.json \
   --backfill-all
 ```
 
@@ -348,11 +367,11 @@ SELECT
     created_at,
     updated_at
 FROM {{ source('replicated', 'orders') }}
-WHERE datastream_metadata.is_deleted = FALSE
 QUALIFY ROW_NUMBER() OVER (
     PARTITION BY order_id
     ORDER BY datastream_metadata.source_timestamp DESC
 ) = 1
+AND datastream_metadata.change_type NOT IN ('DELETE', 'UPDATE-DELETE')
 ```
 
 ## Wrapping Up
