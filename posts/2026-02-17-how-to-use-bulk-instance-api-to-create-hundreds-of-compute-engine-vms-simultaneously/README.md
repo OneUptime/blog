@@ -14,20 +14,20 @@ The Bulk Instance API solves this by letting you create large numbers of identic
 
 ## What the Bulk Instance API Does
 
-The Bulk Instance API (also called `bulkInsert`) accepts a count of instances and a template, then creates them all at once. It handles name generation, zone selection, and retries internally. You tell it how many VMs you want, and it does the work.
+The Bulk Instance API (also called `bulkInsert`) accepts a count of instances and a template, then creates them all at once. It handles name generation and zone selection internally for regional requests. You tell it how many VMs you want, and it does the work.
 
 Key features:
-- Create up to 1,000 instances per request
+- Create up to 5,000 instances per request
 - Automatic name generation with configurable patterns
-- Automatic zone selection within a region (or you can specify zones)
-- Best-effort mode that creates as many as possible even if some fail
+- Automatic zone selection within a region (or you can specify a zone)
+- Best-effort mode with `--min-count=1` that creates as many as possible even if some fail
 
 ## Basic Bulk Instance Creation
 
 The simplest way to use bulk insert is through gcloud. This creates 100 instances at once:
 
 ```bash
-# Create 100 instances in bulk across us-central1
+# Create 100 instances in bulk in us-central1
 
 gcloud compute instances bulk create \
   --name-pattern="worker-####" \
@@ -45,10 +45,10 @@ The `--name-pattern` flag with `####` generates sequential names: `worker-0001`,
 
 ## Specifying Zones
 
-By default, bulk create spreads instances across all available zones in the region. You can restrict it to specific zones:
+For regional requests, Compute Engine chooses placement based on available capacity and reservations. The default target distribution shape is `ANY_SINGLE_ZONE`, so use `--target-distribution-shape=BALANCED` when you want to try to spread VMs evenly across zones. You can also restrict creation to a single zone:
 
 ```bash
-# Create instances in specific zones only
+# Create instances in a specific zone
 gcloud compute instances bulk create \
   --name-pattern="render-node-####" \
   --count=200 \
@@ -59,14 +59,15 @@ gcloud compute instances bulk create \
   --boot-disk-size=100GB
 ```
 
-Or specify multiple zones for a regional bulk insert with controlled distribution:
+Or ask Compute Engine to distribute VMs evenly across zones in the region:
 
 ```bash
-# Create instances spread across specific zones in the region
+# Create instances spread evenly across zones in the region
 gcloud compute instances bulk create \
   --name-pattern="processor-####" \
   --count=300 \
   --region=us-central1 \
+  --target-distribution-shape=BALANCED \
   --machine-type=e2-standard-4 \
   --image-family=debian-12 \
   --image-project=debian-cloud
@@ -77,7 +78,7 @@ gcloud compute instances bulk create \
 For more control, you can call the Bulk Instance API directly. This is useful when integrating with existing automation systems:
 
 ```bash
-# Bulk create using the REST API via gcloud's raw HTTP capability
+# Bulk create using the REST API
 # First, create the request body
 cat > bulk-request.json << 'EOF'
 {
@@ -91,8 +92,7 @@ cat > bulk-request.json << 'EOF'
         "autoDelete": true,
         "initializeParams": {
           "sourceImage": "projects/debian-cloud/global/images/family/debian-12",
-          "diskSizeGb": "50",
-          "diskType": "pd-standard"
+          "diskSizeGb": "50"
         }
       }
     ],
@@ -143,7 +143,7 @@ curl -X POST \
   -d @bulk-request.json
 ```
 
-For regional bulk insert (instances spread across zones):
+For regional bulk insert, where Compute Engine chooses placement within the region:
 
 ```bash
 # Send the bulk insert request at the regional level
@@ -235,7 +235,7 @@ gcloud compute operations describe OPERATION_ID \
 
 ## Handling Partial Failures
 
-Not every instance in a bulk create will necessarily succeed. Capacity constraints, quota limits, or other issues can cause some to fail while others succeed. The API provides details on what worked and what did not:
+If you set `--min-count` lower than `--count`, not every instance in a bulk create will necessarily succeed. Capacity constraints, quota limits, or other issues can cause some to fail while others succeed. The API provides details on what worked and what did not:
 
 ```bash
 # After the operation completes, check which instances were created
@@ -259,6 +259,7 @@ REGION="us-central1"
 gcloud compute instances bulk create \
   --name-pattern="${NAME_PATTERN}-####" \
   --count=${DESIRED_COUNT} \
+  --min-count=1 \
   --region=${REGION} \
   --machine-type=e2-standard-4 \
   --image-family=debian-12 \
