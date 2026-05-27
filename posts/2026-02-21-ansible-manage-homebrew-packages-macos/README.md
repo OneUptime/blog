@@ -10,7 +10,7 @@ Description: Learn how to automate Homebrew package management on macOS using An
 
 Homebrew is the de facto package manager for macOS. If you manage a team of developers or a fleet of Mac workstations, automating Homebrew with Ansible is a huge time saver. Instead of sending everyone a wiki page with "install these tools," you can run a playbook that gets every machine to the same state in minutes.
 
-Ansible provides the `community.general.homebrew` and `community.general.homebrew_cask` modules for managing Homebrew packages. Let me walk through the common patterns.
+The `community.general` Ansible collection provides the `community.general.homebrew` and `community.general.homebrew_cask` modules for managing Homebrew packages. Let me walk through the common patterns.
 
 ## Prerequisites
 
@@ -29,7 +29,10 @@ If Homebrew is not yet installed on the target machine, you can install it.
 
 - name: Check if Homebrew is installed
   ansible.builtin.stat:
-    path: /opt/homebrew/bin/brew
+    path: "{{ item }}"
+  loop:
+    - /opt/homebrew/bin/brew
+    - /usr/local/bin/brew
   register: homebrew_check
 
 - name: Install Homebrew
@@ -37,7 +40,7 @@ If Homebrew is not yet installed on the target machine, you can install it.
     cmd: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   environment:
     NONINTERACTIVE: "1"
-  when: not homebrew_check.stat.exists
+  when: homebrew_check.results | selectattr('stat.exists') | list | length == 0
 ```
 
 Note: On Apple Silicon Macs, Homebrew installs to `/opt/homebrew`. On Intel Macs, it is `/usr/local`.
@@ -142,8 +145,6 @@ Taps are third-party repositories for Homebrew. Use the `community.general.homeb
     state: present
   loop:
     - hashicorp/tap
-    - homebrew/cask-fonts
-    - aws/tap
 
 # Install packages from tapped repositories
 - name: Install Terraform from HashiCorp tap
@@ -153,7 +154,7 @@ Taps are third-party repositories for Homebrew. Use the `community.general.homeb
 
 - name: Install AWS SAM CLI
   community.general.homebrew:
-    name: aws/tap/aws-sam-cli
+    name: aws-sam-cli
     state: present
 ```
 
@@ -224,7 +225,6 @@ Here is a realistic playbook for setting up a new developer Mac from scratch.
 
     homebrew_taps:
       - hashicorp/tap
-      - aws/tap
 
   tasks:
     - name: Update Homebrew
@@ -294,7 +294,7 @@ Homebrew caches old versions of packages. Clean up periodically to free disk spa
   register: brew_cleanup
   changed_when: brew_cleanup.stdout | length > 0
 
-- name: Remove Homebrew cache directory
+- name: Scrub Homebrew cache, including downloads for installed formulae
   ansible.builtin.command:
     cmd: brew cleanup -s
   changed_when: true
