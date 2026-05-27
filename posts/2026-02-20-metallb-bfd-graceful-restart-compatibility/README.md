@@ -10,7 +10,7 @@ Description: Understand the interaction between BFD and BGP graceful restart in 
 
 BGP graceful restart and BFD are both designed to improve network resilience, but they approach the problem from opposite directions. Graceful restart tells a router to keep forwarding traffic using stale routes while a BGP session is restarting. BFD tells a router to tear down the session immediately when it detects a failure. When both features are enabled on the same peering session, they can conflict with each other if not configured carefully.
 
-This guide explains how BFD and graceful restart interact, where the conflicts arise, and how to configure MetalLB so both features work together correctly.
+This guide explains how BFD and graceful restart interact, where the conflicts arise, and how to configure MetalLB so both features can be tested together safely.
 
 ## The Fundamental Conflict
 
@@ -63,11 +63,11 @@ Not every scenario needs both features. Understanding the use case helps you dec
 
 ## How Routers Handle the Interaction
 
-Most modern routers implement RFC 5882, which defines how BFD interacts with graceful restart. The key behavior is:
+RFC 5882 defines how BFD can interact with graceful restart, but the behavior is implementation-specific. The key behavior to check on your router is:
 
-1. When BGP graceful restart is negotiated, the router enters "graceful restart helper mode" during a peer restart.
+1. When BGP graceful restart is negotiated, the router may enter "graceful restart helper mode" during a peer restart.
 2. When BFD detects a failure, the router checks whether graceful restart is active.
-3. If graceful restart is active, the router **may** ignore the BFD down signal and keep stale routes (this is vendor-specific).
+3. If graceful restart is active, the router **may** keep stale routes, or it may treat the BFD failure as a real forwarding failure and withdraw routes.
 
 ```mermaid
 sequenceDiagram
@@ -96,11 +96,24 @@ sequenceDiagram
 
 ## Configuration Strategy for MetalLB
 
-The recommended approach is to enable both features but configure them so that BFD triggers only on real failures, not on planned restarts.
+The recommended approach is to enable both features only after confirming the router's BFD and graceful restart behavior. BFD timers can reduce false positives, but BFD cannot reliably distinguish a planned speaker restart from a real failure unless the BFD and routing implementations support that interaction.
 
 ### Step 1: Enable Graceful Restart on the BGPPeer
 
-MetalLB does not expose a dedicated graceful restart field in the BGPPeer CRD. Graceful restart is controlled through the FRR configuration. However, MetalLB's FRR backend enables graceful restart by default when the peer supports it.
+MetalLB exposes graceful restart on the `BGPPeer` CRD through the `enableGracefulRestart` field. The field is immutable and is supported in the FRR-based modes.
+
+```yaml
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: tor-router
+  namespace: metallb-system
+spec:
+  myASN: 64512
+  peerASN: 64513
+  peerAddress: 10.0.0.1
+  enableGracefulRestart: true
+```
 
 Verify that your router has graceful restart enabled:
 
@@ -112,7 +125,7 @@ router bgp 64513
   bgp graceful-restart restart-time 120
   bgp graceful-restart stalepath-time 360
   neighbor 10.0.0.100 remote-as 64512
-  neighbor 10.0.0.100 fall-over bfd
+  neighbor 10.0.0.100 fall-over bfd check-control-plane-failure
 ```
 
 ```bash
@@ -122,17 +135,17 @@ router bgp 64513
   bgp graceful-restart restart-time 120
   bgp graceful-restart stalepath-time 360
   neighbor 10.0.0.100 remote-as 64512
-  neighbor 10.0.0.100 bfd
+  neighbor 10.0.0.100 bfd check-control-plane-failure
 ```
 
 ### Step 2: Configure a BFD Profile with Reasonable Timers
 
-Do not use extremely aggressive BFD timers when graceful restart is enabled. If BFD fires within a few milliseconds of a pod restart, the router may not have time to enter graceful restart helper mode.
+Do not use extremely aggressive BFD timers when graceful restart is enabled. If BFD times out before the router can apply its graceful restart behavior, the router may withdraw routes.
 
 ```yaml
 # BFDProfile tuned for compatibility with graceful restart
 # Detection time: 300ms x 3 = 900ms
-# This gives the router enough time to recognize a graceful restart
+# This avoids overly aggressive failure detection while you test GR behavior
 apiVersion: metallb.io/v1beta1
 kind: BFDProfile
 metadata:
@@ -171,6 +184,7 @@ spec:
   myASN: 64512
   peerASN: 64513
   peerAddress: 10.0.0.1
+  enableGracefulRestart: true
   # Use the GR-compatible BFD profile
   bfdProfile: gr-compatible-bfd
 ```
@@ -182,7 +196,7 @@ Check that graceful restart has been negotiated between MetalLB and the router.
 ```bash
 # Check graceful restart status from the MetalLB speaker
 kubectl exec -n metallb-system <speaker-pod> -c frr -- \
-  vtysh -c "show bgp neighbor 10.0.0.1" | grep -i graceful
+  vtysh -c "show bgp neighbors 10.0.0.1 graceful-restart"
 
 # Expected output should include:
 # Graceful restart information:
@@ -216,7 +230,7 @@ Use this matrix to decide your configuration:
 |---|---|---|---|
 | Fast failover for hard failures only | Yes | No | Simplest setup for multi-node clusters |
 | Smooth rolling upgrades, no fast failover | No | Yes | Best for single-speaker setups |
-| Both fast failover and smooth upgrades | Yes | Yes | Requires GR-aware router (RFC 5882) |
+| Both fast failover and smooth upgrades | Yes | Yes | Requires tested vendor behavior for BFD + GR |
 | Lab or non-critical environment | No | No | BGP hold timer handles failures |
 
 ## Vendor-Specific Behavior
@@ -226,31 +240,29 @@ Different router vendors handle the BFD + graceful restart interaction different
 ```mermaid
 flowchart LR
     subgraph Cisco IOS-XR
-        C1[BFD down during GR] --> C2[Keeps stale routes<br/>Honors GR]
+        C1[BFD down during GR] --> C2[Check vendor behavior<br/>and C-bit support]
     end
     subgraph Juniper JunOS
-        J1[BFD down during GR] --> J2[Configurable behavior<br/>bfd-liveness-detection<br/>minimum-interval]
+        J1[BFD down during GR] --> J2[Generally not recommended<br/>to combine on same device]
     end
     subgraph Arista EOS
-        A1[BFD down during GR] --> A2[Default: withdraws routes<br/>Override with:<br/>bgp bfd check-control-plane-failure]
+        A1[BFD down during GR] --> A2[Check EOS version<br/>and neighbor GR settings]
     end
     subgraph FRRouting
-        F1[BFD down during GR] --> F2[Keeps stale routes<br/>by default with GR]
+        F1[BFD down during GR] --> F2[BFD asks BGP<br/>to shut down the neighbor]
     end
 ```
 
 ### Arista EOS Special Case
 
-Arista EOS by default will withdraw routes when BFD goes down, even if graceful restart is active. To change this behavior:
+Arista EOS supports graceful restart per neighbor, and BFD behavior should be verified against the EOS version you run. A baseline configuration looks like this:
 
 ```bash
-# Arista EOS - honor graceful restart when BFD goes down
+# Arista EOS - enable BGP graceful restart and BFD for the neighbor
 router bgp 64513
   neighbor 10.0.0.100 remote-as 64512
   neighbor 10.0.0.100 bfd
   neighbor 10.0.0.100 graceful-restart
-  # This flag prevents BFD from overriding GR
-  no neighbor 10.0.0.100 bfd check-control-plane-failure
 ```
 
 ## Troubleshooting the Interaction
@@ -260,7 +272,7 @@ router bgp 64513
 ```bash
 # Check if graceful restart was actually negotiated
 kubectl exec -n metallb-system <speaker-pod> -c frr -- \
-  vtysh -c "show bgp neighbor 10.0.0.1" | grep -A5 "Graceful restart"
+  vtysh -c "show bgp neighbors 10.0.0.1 graceful-restart"
 
 # Check if the router honored GR or if BFD overrode it
 # On the router:
@@ -283,6 +295,6 @@ kubectl rollout status daemonset/speaker -n metallb-system
 
 ## Summary
 
-BFD and graceful restart serve different purposes and can conflict if not configured carefully. The key is to ensure your router supports RFC 5882 (BFD interaction with graceful restart) and that your BFD timers are not so aggressive that they fire before the router enters graceful restart helper mode. Test rolling upgrades in a staging environment before relying on this configuration in production.
+BFD and graceful restart serve different purposes and can conflict if not configured carefully. The key is to verify how your router implements the RFC 5882 interaction between BFD and graceful restart, then test rolling upgrades in a staging environment before relying on this configuration in production.
 
 For monitoring your MetalLB BGP sessions, BFD health, and Kubernetes service availability during rolling upgrades, [OneUptime](https://oneuptime.com) provides comprehensive infrastructure monitoring and alerting. OneUptime can notify your team when BFD sessions drop or BGP routes are withdrawn unexpectedly, helping you catch issues before they affect end users.
