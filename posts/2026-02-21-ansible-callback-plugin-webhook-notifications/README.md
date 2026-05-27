@@ -36,7 +36,7 @@ DOCUMENTATION = """
       webhook_url:
         description: The URL to send POST requests to.
         type: str
-        required: true
+        default: ''
         env:
           - name: ANSIBLE_WEBHOOK_URL
         ini:
@@ -150,7 +150,9 @@ class CallbackModule(CallbackBase):
     def _format_message(self, event, details):
         """Format the message based on the configured format."""
         env = self.get_option('environment_name')
-        timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+            '%Y-%m-%d %H:%M:%S UTC'
+        )
 
         if self._webhook_format == 'slack':
             return self._format_slack(event, details, env, timestamp)
@@ -224,7 +226,7 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_start(self, playbook):
         """Called when the playbook starts."""
         self._playbook_name = os.path.basename(playbook._file_name)
-        self._start_time = datetime.datetime.utcnow()
+        self._start_time = datetime.datetime.now(datetime.timezone.utc)
         self._failures = []
 
         if self.get_option('notify_on_start'):
@@ -260,6 +262,31 @@ class CallbackModule(CallbackBase):
                 'error': msg,
             }))
 
+    def v2_runner_on_unreachable(self, result):
+        """Called when a host is unreachable."""
+        host = result._host.get_name()
+        task = result._task.get_name()
+        msg = result._result.get('msg', 'Host unreachable')
+
+        failure = {
+            'host': host,
+            'task': task,
+            'message': msg,
+            'unreachable': True,
+        }
+        self._failures.append(failure)
+
+        if self.get_option('notify_on_failure'):
+            self._send_webhook(self._format_message('task_failed', {
+                'message': 'Host "%s" was unreachable during task "%s": %s' % (
+                    host, task, msg
+                ),
+                'host': host,
+                'task': task,
+                'error': msg,
+                'unreachable': True,
+            }))
+
     def v2_playbook_on_stats(self, stats):
         """Called at the end of the playbook with summary stats."""
         if not self.get_option('notify_on_complete'):
@@ -268,22 +295,24 @@ class CallbackModule(CallbackBase):
         hosts = sorted(stats.processed.keys())
         summary = {}
         total_failures = 0
+        total_unreachable = 0
         total_changed = 0
 
         for host in hosts:
             s = stats.summarize(host)
             summary[host] = s
             total_failures += s['failures']
+            total_unreachable += s['unreachable']
             total_changed += s['changed']
 
         duration = ''
         if self._start_time:
-            elapsed = datetime.datetime.utcnow() - self._start_time
+            elapsed = datetime.datetime.now(datetime.timezone.utc) - self._start_time
             minutes = int(elapsed.total_seconds() // 60)
             seconds = int(elapsed.total_seconds() % 60)
             duration = '%dm %ds' % (minutes, seconds)
 
-        if total_failures > 0:
+        if total_failures > 0 or total_unreachable > 0:
             event = 'playbook_failed'
             status = 'FAILED'
         else:
@@ -291,7 +320,9 @@ class CallbackModule(CallbackBase):
             status = 'SUCCESS'
 
         host_summary = ', '.join(
-            '%s (ok=%d changed=%d failed=%d)' % (h, s['ok'], s['changed'], s['failures'])
+            '%s (ok=%d changed=%d failed=%d unreachable=%d)' % (
+                h, s['ok'], s['changed'], s['failures'], s['unreachable']
+            )
             for h, s in summary.items()
         )
 
@@ -328,6 +359,7 @@ Or use environment variables:
 export ANSIBLE_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/XXX"
 export ANSIBLE_WEBHOOK_FORMAT="slack"
 export ANSIBLE_WEBHOOK_ENV="production"
+export ANSIBLE_CALLBACK_PLUGINS="./callback_plugins"
 export ANSIBLE_CALLBACKS_ENABLED="webhook_notify"
 
 ansible-playbook deploy.yml
