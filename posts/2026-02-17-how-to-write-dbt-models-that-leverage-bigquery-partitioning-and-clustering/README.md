@@ -16,7 +16,7 @@ A quick refresher on what these do.
 
 Partitioning divides a table into segments based on a column value, typically a date or timestamp. When you query with a WHERE clause on the partition column, BigQuery only scans the relevant partitions instead of the entire table. A table with 3 years of daily data has roughly 1,095 partitions - querying a single day scans 1/1,095th of the data.
 
-Clustering sorts data within each partition by up to four columns. When you filter or aggregate on clustered columns, BigQuery can skip blocks of data that do not match your filter. This reduces the amount of data scanned even further within a partition.
+Clustering sorts data within a table, or within each partition of a partitioned table, by up to four columns. When you filter or aggregate on clustered columns, BigQuery can skip blocks of data that do not match your filter. This reduces the amount of data scanned even further within a partitioned table.
 
 Together, they can reduce query costs by 90% or more on large tables.
 
@@ -57,7 +57,7 @@ FROM {{ ref('stg_orders') }}
 WHERE status != 'cancelled'
 ```
 
-The `granularity` option controls the partition size. Your options are `day`, `month`, and `year`:
+The `granularity` option controls the partition size. Your options are `hour`, `day`, `month`, and `year`, depending on the partition column type:
 
 ```sql
 -- Monthly partitioning for tables where daily granularity creates too many partitions
@@ -116,7 +116,7 @@ Add clustering on top of partitioning by specifying `cluster_by`:
 
 ```sql
 -- Partitioned by date and clustered by region and category
--- Queries that filter on order_date, region, or category are very efficient
+-- Queries that filter on order_date and the leading clustering columns are very efficient
 {{
   config(
     materialized='table',
