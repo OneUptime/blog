@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Fedora, Linux, Server Configuration, Automation
 
-Description: Automate Fedora Server configuration with Ansible covering dnf5, cockpit, modularity streams, and cutting-edge package management.
+Description: Automate Fedora Server configuration with Ansible covering dnf5, cockpit, SELinux, firewalld, and cutting-edge package management.
 
 ---
 
-Fedora Server is the upstream distribution for RHEL and CentOS. It provides the latest packages, kernel versions, and features that eventually make their way into enterprise distributions. Running Fedora Server with Ansible is great for testing next-generation configurations before they hit RHEL. This guide covers Fedora-specific automation patterns.
+Fedora Server is an upstream community distribution for technologies that may later appear in RHEL, while CentOS Stream sits closer to active RHEL development. It provides the latest packages, kernel versions, and features that eventually make their way into enterprise distributions. Running Fedora Server with Ansible is great for testing next-generation configurations before they hit RHEL. This guide covers Fedora-specific automation patterns.
 
 ## Fedora Specifics
 
@@ -16,10 +16,10 @@ Fedora moves fast. New releases come out roughly every six months, and each vers
 
 - Newer dnf versions (Fedora 41+ includes dnf5)
 - More aggressive package updates
-- Cockpit web management enabled by default
+- Cockpit web management installed by default on Fedora Server, with firewall access opened
 - SELinux enforcing by default
 - Latest Python versions
-- Btrfs as default filesystem option
+- XFS on LVM as the Fedora Server default storage layout, with Btrfs available as an option
 
 ## Inventory
 
@@ -104,7 +104,7 @@ Fedora Server ships with Cockpit for web-based management:
       when: cockpit_enabled
       block:
         - name: Enable and start Cockpit
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: cockpit.socket
             enabled: true
             state: started
@@ -131,29 +131,23 @@ Fedora Server ships with Cockpit for web-based management:
           notify: restart cockpit
 ```
 
-## Modular Package Streams
+## Versioned Packages
 
-Fedora supports module streams for installing specific versions of software:
+Fedora 39 and newer no longer ship Fedora-provided module streams. Use the normal Fedora packages, including versioned package names where Fedora provides them:
 
 ```yaml
-    - name: Enable Node.js 20 module stream
-      ansible.builtin.command: dnf module enable nodejs:20 -y
-      changed_when: true
-
-    - name: Install Node.js from module
-      ansible.builtin.dnf:
-        name: nodejs
-        state: present
-
-    - name: Enable PostgreSQL 16 module stream
-      ansible.builtin.command: dnf module enable postgresql:16 -y
-      changed_when: true
-
-    - name: Install PostgreSQL
+    - name: Install Node.js 20 package
       ansible.builtin.dnf:
         name:
-          - postgresql-server
-          - postgresql-contrib
+          - nodejs20
+          - nodejs20-npm
+        state: present
+
+    - name: Install PostgreSQL 16
+      ansible.builtin.dnf:
+        name:
+          - postgresql16-server
+          - postgresql16-contrib
         state: present
 ```
 
@@ -168,7 +162,7 @@ Fedora supports module streams for installing specific versions of software:
     - name: Configure firewalld
       block:
         - name: Enable firewalld
-          ansible.builtin.systemd:
+          ansible.builtin.systemd_service:
             name: firewalld
             enabled: true
             state: started
@@ -214,23 +208,25 @@ Fedora supports module streams for installing specific versions of software:
 ## Automatic Updates
 
 ```yaml
-    - name: Install dnf-automatic
+    - name: Install DNF5 automatic updates plugin
       ansible.builtin.dnf:
-        name: dnf-automatic
+        name: dnf5-plugin-automatic
         state: present
 
     - name: Configure automatic updates
-      ansible.builtin.lineinfile:
+      community.general.ini_file:
         path: /etc/dnf/automatic.conf
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
+        section: commands
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+        mode: '0644'
       loop:
-        - { regexp: '^upgrade_type', line: 'upgrade_type = security' }
-        - { regexp: '^apply_updates', line: 'apply_updates = yes' }
+        - { option: 'upgrade_type', value: 'security' }
+        - { option: 'apply_updates', value: 'yes' }
 
     - name: Enable auto-updates timer
-      ansible.builtin.systemd:
-        name: dnf-automatic.timer
+      ansible.builtin.systemd_service:
+        name: dnf5-automatic.timer
         enabled: true
         state: started
 ```
@@ -240,19 +236,18 @@ Fedora supports module streams for installing specific versions of software:
 ```yaml
   handlers:
     - name: restart sshd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: restarted
 
     - name: restart cockpit
-      ansible.builtin.systemd:
-        name: cockpit
-        state: restarted
+      ansible.builtin.command: systemctl try-restart cockpit
+      changed_when: true
 ```
 
 ## Summary
 
-Fedora Server provides the bleeding edge of the RHEL ecosystem. Ansible automation on Fedora uses dnf, SELinux, and firewalld just like RHEL, but you also get Cockpit web management, module streams for software versioning, and newer kernel features. This playbook is useful for development environments and for testing RHEL-targeted automation before enterprise deployment. Be aware of Fedora's shorter support lifecycle when using it in production.
+Fedora Server provides the bleeding edge of the RHEL ecosystem. Ansible automation on Fedora uses dnf, SELinux, and firewalld just like RHEL, but you also get Cockpit web management, versioned Fedora packages where available, and newer kernel features. This playbook is useful for development environments and for testing RHEL-targeted automation before enterprise deployment. Be aware of Fedora's shorter support lifecycle when using it in production.
 
 ## Common Use Cases
 
@@ -293,7 +288,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -316,20 +311,22 @@ Here are several practical scenarios where this module proves essential in real-
         - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
       notify: restart sshd
 
-    - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
-      loop:
-        - "22"
-        - "80"
-        - "443"
-
     - name: Enable firewall
-      community.general.ufw:
+      ansible.builtin.systemd_service:
+        name: firewalld
+        enabled: true
+        state: started
+
+    - name: Configure firewall rules
+      ansible.posix.firewalld:
+        service: "{{ item }}"
+        permanent: true
         state: enabled
-        policy: deny
+        immediate: true
+      loop:
+        - ssh
+        - http
+        - https
 
   handlers:
     - name: restart sshd
@@ -437,4 +434,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
