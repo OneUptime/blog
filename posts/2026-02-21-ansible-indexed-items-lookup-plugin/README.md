@@ -338,7 +338,7 @@ The index enables position-based conditionals.
 
 2. **Prefer loop_control**: In modern Ansible (2.5+), `loop_control` with `index_var` is the recommended way to get indices. It is cleaner and works with all loop sources.
 
-3. **Index is a string**: The index value `item.0` is returned as a string. Use `| int` when doing arithmetic.
+3. **Index is numeric**: The index value `item.0` is returned as a number. The examples use `| int` defensively before arithmetic, but it is not required for the index itself.
 
 4. **Flattening behavior**: Like `items`, `indexed_items` flattens one level. Nested lists get flattened before indexing.
 
