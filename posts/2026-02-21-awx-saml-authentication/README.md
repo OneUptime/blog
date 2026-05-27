@@ -39,7 +39,7 @@ Before configuring your IdP, you need to know AWX's SAML endpoints:
 
 | Endpoint | URL |
 |---|---|
-| Entity ID / Audience URI | `https://awx.example.com/sso/metadata/saml/` |
+| Entity ID / Audience URI | `https://awx.example.com` |
 | ACS URL (Assertion Consumer Service) | `https://awx.example.com/sso/complete/saml/` |
 | Metadata URL | `https://awx.example.com/sso/metadata/saml/` |
 | Login URL | `https://awx.example.com/sso/login/saml/` |
@@ -50,7 +50,7 @@ Replace `awx.example.com` with your actual AWX hostname.
 
 ### Generate or Obtain Certificates
 
-AWX needs an X.509 certificate and private key for SAML signing and encryption.
+AWX requires an X.509 certificate for its SAML service provider metadata. A matching private key is optional and is only needed when you configure AWX to sign SAML requests or decrypt encrypted assertions.
 
 ```bash
 # Generate a self-signed certificate for AWX SAML
@@ -67,13 +67,13 @@ openssl req -x509 -newkey rsa:2048 \
 
 ```bash
 # Configure SAML authentication
-curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $AWX_TOKEN" \
-  -d '{
-    "SOCIAL_AUTH_SAML_SP_ENTITY_ID": "https://awx.example.com/sso/metadata/saml/",
-    "SOCIAL_AUTH_SAML_SP_PUBLIC_CERT": "'"$(cat awx-saml.crt)"'",
-    "SOCIAL_AUTH_SAML_SP_PRIVATE_KEY": "'"$(cat awx-saml.key)"'",
+jq -n \
+  --arg sp_cert "$(cat awx-saml.crt)" \
+  --arg sp_key "$(cat awx-saml.key)" \
+  '{
+    "SOCIAL_AUTH_SAML_SP_ENTITY_ID": "https://awx.example.com",
+    "SOCIAL_AUTH_SAML_SP_PUBLIC_CERT": $sp_cert,
+    "SOCIAL_AUTH_SAML_SP_PRIVATE_KEY": $sp_key,
     "SOCIAL_AUTH_SAML_ORG_INFO": {
       "en-US": {
         "name": "Example Corp",
@@ -93,7 +93,7 @@ curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
       "okta": {
         "entity_id": "http://www.okta.com/exk12345",
         "url": "https://company.okta.com/app/ansible_awx/exk12345/sso/saml",
-        "x509cert": "MIIDpDCCAoygAwIBAgI...(IdP certificate)...",
+        "x509cert": "MIIDpDCCAoygAwIBAgI...(IdP certificate without PEM headers)...",
         "attr_user_permanent_id": "name_id",
         "attr_first_name": "first_name",
         "attr_last_name": "last_name",
@@ -101,7 +101,11 @@ curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
         "attr_email": "email"
       }
     }
-  }'
+  }' | \
+curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AWX_TOKEN" \
+  -d @-
 ```
 
 ### Apply SAML Settings with Ansible
@@ -120,7 +124,7 @@ curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
     awx_token: "{{ lookup('env', 'AWX_TOKEN') }}"
     saml_cert: "{{ lookup('file', 'awx-saml.crt') }}"
     saml_key: "{{ lookup('file', 'awx-saml.key') }}"
-    idp_cert: "{{ lookup('file', 'idp-certificate.crt') }}"
+    idp_cert: "{{ lookup('file', 'idp-certificate.crt') | regex_replace('-----BEGIN CERTIFICATE-----', '') | regex_replace('-----END CERTIFICATE-----', '') | regex_replace('\\s+', '') }}"
 
   tasks:
     - name: Set SAML SP Entity ID
@@ -128,7 +132,7 @@ curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
         controller_host: "{{ awx_host }}"
         controller_oauthtoken: "{{ awx_token }}"
         name: "SOCIAL_AUTH_SAML_SP_ENTITY_ID"
-        value: "https://awx.example.com/sso/metadata/saml/"
+        value: "https://awx.example.com"
 
     - name: Set SAML SP certificate
       awx.awx.settings:
@@ -200,7 +204,7 @@ In Okta, create a new SAML 2.0 application.
 | Field | Value |
 |---|---|
 | Single sign-on URL | `https://awx.example.com/sso/complete/saml/` |
-| Audience URI (SP Entity ID) | `https://awx.example.com/sso/metadata/saml/` |
+| Audience URI (SP Entity ID) | `https://awx.example.com` |
 | Name ID format | EmailAddress |
 | Application username | Email |
 
@@ -245,7 +249,7 @@ In Azure AD (Entra ID), create an enterprise application.
 
 | Field | Value |
 |---|---|
-| Identifier (Entity ID) | `https://awx.example.com/sso/metadata/saml/` |
+| Identifier (Entity ID) | `https://awx.example.com` |
 | Reply URL (ACS URL) | `https://awx.example.com/sso/complete/saml/` |
 | Sign-on URL | `https://awx.example.com/sso/login/saml/?idp=azure_ad` |
 
@@ -286,7 +290,7 @@ Note that Azure AD uses full URIs for attribute names, unlike Okta which uses sh
 For Keycloak, create a SAML client.
 
 1. In Keycloak, go to Clients > Create
-2. Set Client ID to `https://awx.example.com/sso/metadata/saml/`
+2. Set Client ID to `https://awx.example.com`
 3. Set Client Protocol to `saml`
 4. Configure:
 
@@ -301,7 +305,7 @@ For Keycloak, create a SAML client.
 
 ## SAML Organization and Team Mapping
 
-Map SAML attributes to AWX organizations and teams.
+Map SAML users and SAML attributes to AWX organizations and teams.
 
 ```bash
 curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
@@ -310,63 +314,58 @@ curl -X PATCH "https://awx.example.com/api/v2/settings/saml/" \
   -d '{
     "SOCIAL_AUTH_SAML_ORGANIZATION_MAP": {
       "Engineering": {
-        "admins": {
-          "attr": "groups",
-          "value": ["AWX-Eng-Admins"]
-        },
-        "users": {
-          "attr": "groups",
-          "value": ["Engineering", "DevOps"]
-        },
+        "admins": ["/^admin\\..*@example\\.com$/"],
+        "users": true,
         "remove_users": true,
         "remove_admins": true
       },
       "Operations": {
-        "admins": {
-          "attr": "groups",
-          "value": ["AWX-Ops-Admins"]
-        },
-        "users": true,
+        "users": "/^[^@]+@ops\\.example\\.com$/",
         "remove_users": false
       }
     },
     "SOCIAL_AUTH_SAML_TEAM_MAP": {
       "DevOps": {
         "organization": "Engineering",
-        "users": {
-          "attr": "groups",
-          "value": ["DevOps-Team"]
-        },
+        "users": ["/^[^@]+@example\\.com$/"],
         "remove": true
       },
       "SRE": {
         "organization": "Operations",
-        "users": {
-          "attr": "groups",
-          "value": ["SRE-Team"]
-        },
+        "users": ["/^[^@]+@ops\\.example\\.com$/"],
         "remove": true
       }
     },
     "SOCIAL_AUTH_SAML_ORGANIZATION_ATTR": {
-      "name": "groups",
+      "saml_attr": "member-of",
+      "saml_admin_attr": "admin-of",
       "remove": true,
-      "remove_admins": true
+      "remove_admins": false
     },
     "SOCIAL_AUTH_SAML_TEAM_ATTR": {
-      "name": "groups",
-      "remove": true
+      "saml_attr": "member-of",
+      "remove": true,
+      "team_org_map": [
+        {
+          "team": "DevOps",
+          "organization": "Engineering"
+        },
+        {
+          "team": "SRE",
+          "organization": "Operations"
+        }
+      ]
     }
   }'
 ```
 
-For this mapping to work, your IdP needs to send group membership as an attribute in the SAML assertion. In Okta, add a group attribute statement. In Azure AD, configure a group claim.
+For the `SOCIAL_AUTH_SAML_ORGANIZATION_ATTR` and `SOCIAL_AUTH_SAML_TEAM_ATTR` mappings to work, your IdP needs to send group membership in the SAML attribute named by `saml_attr`. In Okta, add a group attribute statement. In Azure AD, configure a group claim.
 
 ## Troubleshooting
 
 ### Check SAML Response
 
-Enable debug logging to see the raw SAML assertion.
+After enabling SAML adapter logging in AWX, check the logs for SAML errors.
 
 ```bash
 # Check AWX logs for SAML debug information
