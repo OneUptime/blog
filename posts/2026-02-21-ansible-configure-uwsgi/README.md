@@ -42,7 +42,11 @@ ansible_python_interpreter=/usr/bin/python3
     app_name: myapp
     app_dir: /opt/{{ app_name }}
     app_user: www-data
-    python_version: "3.11"
+    uwsgi_module: myapp.wsgi
+    uwsgi_callable: application
+    uwsgi_http_socket: 127.0.0.1:8000
+    uwsgi_processes: 4
+    uwsgi_threads: 2
 
   tasks:
     - name: Install system dependencies
@@ -69,9 +73,16 @@ ansible_python_interpreter=/usr/bin/python3
       ansible.builtin.pip:
         virtualenv: "{{ app_dir }}/venv"
         virtualenv_command: python3 -m venv
-        name: pip
+        name:
+          - pip
+          - uwsgi
         state: latest
       become_user: "{{ app_user }}"
+
+    - name: Check for requirements file
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
 
     - name: Install application dependencies
       ansible.builtin.pip:
@@ -86,8 +97,8 @@ ansible_python_interpreter=/usr/bin/python3
 ```yaml
     - name: Deploy application configuration
       ansible.builtin.template:
-        src: app_config.yml.j2
-        dest: "{{ app_dir }}/config.yml"
+        src: uwsgi.ini.j2
+        dest: "{{ app_dir }}/uwsgi.ini"
         owner: "{{ app_user }}"
         mode: '0600'
       notify: restart application
@@ -102,8 +113,9 @@ ansible_python_interpreter=/usr/bin/python3
         - restart application
 
     - name: Enable and start application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
+        daemon_reload: true
         enabled: true
         state: started
 ```
@@ -121,13 +133,29 @@ Type=simple
 User={{ app_user }}
 Group={{ app_user }}
 WorkingDirectory={{ app_dir }}
-ExecStart={{ app_dir }}/venv/bin/python -m {{ app_name }}
+ExecStart={{ app_dir }}/venv/bin/uwsgi --ini {{ app_dir }}/uwsgi.ini
 Restart=always
 RestartSec=5
 Environment=PYTHONPATH={{ app_dir }}
 
 [Install]
 WantedBy=multi-user.target
+```
+
+## uWSGI Configuration Template
+
+```ini
+# templates/uwsgi.ini.j2
+[uwsgi]
+http = {{ uwsgi_http_socket }}
+chdir = {{ app_dir }}
+module = {{ uwsgi_module }}
+callable = {{ uwsgi_callable }}
+master = true
+processes = {{ uwsgi_processes }}
+threads = {{ uwsgi_threads }}
+vacuum = true
+die-on-term = true
 ```
 
 ## Health Check
@@ -148,11 +176,11 @@ WantedBy=multi-user.target
 ```yaml
   handlers:
     - name: reload systemd
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
 
     - name: restart application
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: "{{ app_name }}"
         state: restarted
 ```
@@ -172,7 +200,7 @@ ansible-playbook -i inventory/hosts playbook.yml --limit app01
 
 ## Summary
 
-This playbook automates the complete setup process, from installing system dependencies through configuring the application service. Every step is idempotent, meaning you can run it repeatedly without side effects. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
+This playbook automates the complete setup process, from installing system dependencies through configuring the application service. The core setup tasks use Ansible modules designed for repeatable runs, so you can apply the configuration consistently across hosts. Extend it with additional tasks for your specific needs like database migrations, static file collection, or load balancer registration.
 
 ## Common Use Cases
 
@@ -232,9 +260,9 @@ Here are several practical scenarios where this module proves essential in real-
         regexp: "{{ item.regexp }}"
         line: "{{ item.line }}"
       loop:
-        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
-        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
-      notify: restart sshd
+        - { regexp: '^#?PermitRootLogin\s+', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication\s+', line: 'PasswordAuthentication no' }
+      notify: restart ssh
 
     - name: Configure firewall rules
       community.general.ufw:
@@ -252,9 +280,9 @@ Here are several practical scenarios where this module proves essential in real-
         policy: deny
 
   handlers:
-    - name: restart sshd
+    - name: restart ssh
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
 ```
 
@@ -332,6 +360,12 @@ Here are several practical scenarios where this module proves essential in real-
   hosts: all
   become: true
   tasks:
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
     - name: Create scan script
       ansible.builtin.copy:
         dest: /opt/scripts/compliance_scan.sh
@@ -357,4 +391,3 @@ Here are several practical scenarios where this module proves essential in real-
         job: "/opt/scripts/compliance_scan.sh"
         user: ansible
 ```
-
