@@ -10,7 +10,7 @@ Description: Learn how to use Identity-Aware Proxy to SSH into Compute Engine VM
 
 Giving every VM a public IP address is a security anti-pattern. Each public IP is an attack surface - one more endpoint that needs to be defended against brute force attempts, vulnerability scans, and other internet noise. The best practice is to keep your VMs on private networks and use Google's Identity-Aware Proxy (IAP) to tunnel SSH connections securely.
 
-IAP acts as a gatekeeper between you and your VMs. It verifies your identity through your Google account, checks your IAM permissions, and then establishes an encrypted tunnel to the VM. No public IP needed, no VPN to maintain, and full audit logging of who accessed what.
+IAP acts as a gatekeeper between you and your VMs. It verifies your identity through your Google account, checks your IAM permissions, and then establishes an encrypted tunnel to the VM. No public IP needed, no VPN to maintain, and audit logging of who accessed what when Data Access audit logs are enabled.
 
 ## How IAP TCP Forwarding Works
 
@@ -70,23 +70,28 @@ The IP range `35.235.240.0/20` is Google's IAP forwarding range. This is the onl
 
 ## Step 3: Grant IAP Tunnel Permissions
 
-Users need the `iap.tunnelResourceAccessor` role to use IAP tunneling:
+Users need the `iap.tunnelResourceAccessor` role to use IAP tunneling, plus Compute Engine permissions for `gcloud compute ssh`:
 
 ```bash
 # Grant IAP tunnel access to a user
 gcloud projects add-iam-policy-binding my-project \
     --member="user:developer@example.com" \
     --role="roles/iap.tunnelResourceAccessor"
+
+# Grant Compute Engine SSH permissions
+gcloud projects add-iam-policy-binding my-project \
+    --member="user:developer@example.com" \
+    --role="roles/compute.instanceAdmin.v1"
 ```
 
-You can also scope the permission to specific instances using IAM conditions:
+You can also scope tunnel access by port using IAM conditions:
 
 ```bash
-# Grant IAP tunnel access only to instances with a specific tag
+# Grant IAP tunnel access only for SSH
 gcloud projects add-iam-policy-binding my-project \
     --member="user:developer@example.com" \
     --role="roles/iap.tunnelResourceAccessor" \
-    --condition="expression=resource.name.startsWith('projects/my-project/iap_tunnel/zones/us-central1-a'),title=us-central1-a-only"
+    --condition="expression=destination.port == 22,title=ssh-only"
 ```
 
 ## Step 4: SSH Through IAP
@@ -138,7 +143,8 @@ If you prefer using the `ssh` command directly (or need it for tools like SCP, r
 
 ```bash
 # Add this to your ~/.ssh/config
-Host *.iap
+Host private-vm.iap
+    HostName private-vm
     ProxyCommand gcloud compute start-iap-tunnel %h %p --listen-on-stdin --zone=us-central1-a --project=my-project --quiet
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
@@ -205,6 +211,13 @@ resource "google_project_iam_member" "iap_tunnel" {
   role    = "roles/iap.tunnelResourceAccessor"
   member  = "user:developer@example.com"
 }
+
+# IAM binding for Compute Engine SSH access
+resource "google_project_iam_member" "compute_ssh" {
+  project = "my-project"
+  role    = "roles/compute.instanceAdmin.v1"
+  member  = "user:developer@example.com"
+}
 ```
 
 ## Connecting from CI/CD Pipelines
@@ -222,7 +235,7 @@ gcloud compute ssh private-vm \
     --command="echo 'Hello from CI/CD'"
 ```
 
-The service account needs both `roles/iap.tunnelResourceAccessor` and `roles/compute.instanceAdmin.v1` (or `roles/compute.osLogin` if using OS Login).
+The service account needs `roles/iap.tunnelResourceAccessor` and the Compute Engine permissions required by your SSH setup. For metadata-based SSH keys, `roles/compute.instanceAdmin.v1` covers the usual `gcloud compute ssh` flow; for OS Login, grant an OS Login role such as `roles/compute.osLogin` or `roles/compute.osAdminLogin` instead. If the workflow impersonates a service account, the caller also needs permission to act as that service account.
 
 ## RDP Through IAP for Windows VMs
 
@@ -239,11 +252,11 @@ Then connect your RDP client to `localhost:3389`.
 
 ## Audit Logging
 
-Every IAP tunnel connection is logged in Cloud Audit Logs. This gives you a complete record of who accessed which VM and when:
+IAP tunnel connection attempts are logged in Cloud Audit Logs when Data Access audit logs are enabled for the Cloud Identity-Aware Proxy API. This gives you a record of who accessed which VM and when:
 
 ```bash
 # View IAP tunnel access logs
-gcloud logging read 'resource.type="gce_instance" AND protoPayload.methodName="AuthorizeUser"' \
+gcloud logging read 'resource.type="gce_instance" AND protoPayload.serviceName="iap.googleapis.com" AND protoPayload.methodName="AuthorizeUser"' \
     --limit=20 \
     --format=json
 ```
@@ -291,4 +304,4 @@ gcloud compute instances get-serial-port-output private-vm \
 
 ## Wrapping Up
 
-IAP SSH tunneling is the recommended way to access Compute Engine VMs on GCP. It eliminates the need for public IPs, VPNs, or bastion hosts while providing identity-based access control and full audit logging. The setup is minimal - a firewall rule and an IAM binding - and it works seamlessly with gcloud SSH. If you are still giving VMs public IPs just for SSH access, make the switch to IAP. Your security posture will improve immediately.
+IAP SSH tunneling is the recommended way to access Compute Engine VMs on GCP. It eliminates the need for public IPs, VPNs, or bastion hosts while providing identity-based access control and audit logging. The setup is minimal - a firewall rule and IAM bindings - and it works seamlessly with gcloud SSH. If you are still giving VMs public IPs just for SSH access, make the switch to IAP. Your security posture will improve immediately.
