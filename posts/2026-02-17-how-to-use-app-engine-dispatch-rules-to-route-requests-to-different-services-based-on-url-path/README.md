@@ -8,15 +8,15 @@ Description: Learn how to configure App Engine dispatch rules in dispatch.yaml t
 
 ---
 
-When you run multiple services on App Engine, every request initially hits the default service. Without dispatch rules, requests to `yourapp.appspot.com/api/users` and `yourapp.appspot.com/admin/dashboard` both go to the same service. Dispatch rules let you change that behavior by routing requests to different services based on URL path patterns.
+When you run multiple services on App Engine, requests to your application's default hostname go to the default service unless you add dispatch rules. Without dispatch rules, requests to `PROJECT_ID.REGION_ID.r.appspot.com/api/users` and `PROJECT_ID.REGION_ID.r.appspot.com/admin/dashboard` both go to the same service. Dispatch rules let you change that behavior by routing requests to different services based on URL path patterns.
 
 This is a fundamental building block for microservices on App Engine. Instead of building one giant monolith that handles everything, you split your application into focused services and use dispatch rules to send traffic where it needs to go.
 
 ## How Dispatch Rules Work
 
-Dispatch rules are defined in a `dispatch.yaml` file that lives at the root of your project. When a request comes in, App Engine checks the URL against each rule in order. The first matching rule determines which service handles the request. If no rule matches, the request goes to the default service.
+Dispatch rules are defined in a `dispatch.yaml` file that lives at the root of your project, or in the root directory of your `default` service. When a request comes in, App Engine checks the URL against each rule in order. The first matching rule determines which service handles the request. If no rule matches, the request goes to the default service.
 
-Dispatch rules only affect requests that come through your application's external URL (the `*.appspot.com` domain or a custom domain). They do not affect direct service-to-service calls using the internal service URL format.
+Dispatch rules only affect requests that do not explicitly target a service or version. They do not reroute requests sent to service-specific or version-specific URLs such as `https://api-dot-PROJECT_ID.REGION_ID.r.appspot.com`.
 
 ## Basic dispatch.yaml Configuration
 
@@ -48,7 +48,7 @@ The `*` at the beginning of the URL pattern matches any hostname. This is import
 Dispatch rules use a simple pattern matching syntax. It is not full regular expressions - it is more limited but easier to reason about:
 
 - `*` matches any string of characters
-- Patterns must start with `*/` or a specific hostname
+- Patterns can start with `*/`, a specific hostname, or a supported wildcard hostname such as `*.example.com`
 - The path portion (after the hostname) must not contain `*` except at the end
 
 Here are valid patterns:
@@ -221,21 +221,22 @@ The 20-rule limit usually is not a problem, but if you are hitting it, consolida
 
 ## Testing Dispatch Rules
 
-Before deploying, you can test your routing logic locally. The local development server supports dispatch rules:
+Before deploying, you can test some routing logic locally if your services use a runtime supported by the local development server. The local development server supports dispatch rules:
 
 ```bash
-# Run the development server with dispatch rules
-dev_appserver.py dispatch.yaml frontend/app.yaml api/app.yaml
+# Run the development server from the directory containing dispatch.yaml
+python3 CLOUD_SDK_ROOT/bin/dev_appserver.py --application=PROJECT_ID frontend/app.yaml api/app.yaml
 ```
+
+The local development server only supports `dispatch.yaml` rules that use relative path patterns such as `url: "*/api/*"`. It does not support dispatch rules that include hostnames.
 
 For production testing, deploy your dispatch rules and verify by hitting different URL paths:
 
 ```bash
 # Test that API requests reach the api service
-curl -v https://your-project.appspot.com/api/health
+curl -v https://PROJECT_ID.REGION_ID.r.appspot.com/api/health
 
-# Check the response headers - they include which service handled the request
-# Look for the X-AppEngine-Service header
+# Verify the response body or check App Engine logs for the service that handled the request
 ```
 
 ## Removing Dispatch Rules
