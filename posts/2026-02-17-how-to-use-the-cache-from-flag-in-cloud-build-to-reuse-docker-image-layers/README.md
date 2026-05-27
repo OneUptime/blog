@@ -45,7 +45,7 @@ steps:
       - '-c'
       - |
         # Pull the latest image for cache; ignore failure if image does not exist yet
-        docker pull gcr.io/$PROJECT_ID/my-app:latest || true
+        docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest || true
 
   # Step 2: Build the new image using the pulled image as cache source
   - name: 'gcr.io/cloud-builders/docker'
@@ -53,16 +53,16 @@ steps:
     args:
       - 'build'
       - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '.'
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/my-app:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
 ```
 
 Let me break down what happens:
@@ -103,7 +103,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'docker pull gcr.io/$PROJECT_ID/my-app:builder || true'
+      - 'docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:builder || true'
 
   # Pull the cached runtime stage
   - name: 'gcr.io/cloud-builders/docker'
@@ -111,7 +111,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'docker pull gcr.io/$PROJECT_ID/my-app:latest || true'
+      - 'docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest || true'
 
   # Build the builder stage with cache
   - name: 'gcr.io/cloud-builders/docker'
@@ -121,9 +121,9 @@ steps:
       - '--target'
       - 'builder'
       - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:builder'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:builder'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:builder'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:builder'
       - '.'
 
   # Build the final image using both cached stages
@@ -132,19 +132,19 @@ steps:
     args:
       - 'build'
       - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:builder'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:builder'
       - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '.'
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:builder'
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/my-app:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:builder'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
 ```
 
 This pushes the builder stage as a separate image so it can be used as cache in the next build. The final build step uses both the builder cache and the previous runtime cache.
@@ -161,7 +161,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'docker pull gcr.io/$PROJECT_ID/my-app:latest || true'
+      - 'docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest || true'
 
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build'
@@ -172,19 +172,19 @@ steps:
       - '--build-arg'
       - 'BUILDKIT_INLINE_CACHE=1'
       - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'type=registry,ref=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
       - '.'
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/my-app:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
 ```
 
-The key addition is `--build-arg BUILDKIT_INLINE_CACHE=1`. This tells BuildKit to embed cache metadata directly in the built image. When this image is later used as a `--cache-from` source, BuildKit can match layers more effectively because it has richer metadata about what went into each layer.
+The key addition is `--build-arg BUILDKIT_INLINE_CACHE=1`. This tells BuildKit to embed cache metadata directly in the built image. When this image is later used as a `--cache-from type=registry,ref=...` source, BuildKit can match layers more effectively because it has richer metadata about what went into each layer.
 
 ## Branch-Based Caching Strategy
 
@@ -201,28 +201,31 @@ steps:
       - '-c'
       - |
         # Try branch-specific cache first
-        docker pull gcr.io/$PROJECT_ID/my-app:cache-$BRANCH_NAME || \
+        RAW_BRANCH="$BRANCH_NAME"
+        CACHE_TAG="cache-$${RAW_BRANCH//[^A-Za-z0-9_.-]/-}"
+        docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$$CACHE_TAG || \
         # Fall back to main branch cache
-        docker pull gcr.io/$PROJECT_ID/my-app:cache-main || true
+        docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:cache-main || true
 
   # Build with all available cache sources
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:cache-$BRANCH_NAME'
-      - '--cache-from'
-      - 'gcr.io/$PROJECT_ID/my-app:cache-main'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/my-app:cache-$BRANCH_NAME'
-      - '.'
+      - '-c'
+      - |
+        RAW_BRANCH="$BRANCH_NAME"
+        CACHE_TAG="cache-$${RAW_BRANCH//[^A-Za-z0-9_.-]/-}"
+        docker build \
+          --cache-from us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$$CACHE_TAG \
+          --cache-from us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:cache-main \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$$CACHE_TAG \
+          .
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$$CACHE_TAG
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/my-app:cache-$BRANCH_NAME'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
 ```
 
 This way, feature branch builds use their own cache when available, falling back to the main branch cache when the feature branch does not have one yet.
@@ -251,7 +254,7 @@ steps:
       - '-c'
       - |
         START=$(date +%s)
-        docker pull gcr.io/$PROJECT_ID/my-app:latest || true
+        docker pull us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest || true
         END=$(date +%s)
         echo "Cache pull took $((END-START)) seconds"
 
@@ -263,16 +266,16 @@ steps:
       - |
         START=$(date +%s)
         docker build \
-          --cache-from gcr.io/$PROJECT_ID/my-app:latest \
-          -t gcr.io/$PROJECT_ID/my-app:$SHORT_SHA \
-          -t gcr.io/$PROJECT_ID/my-app:latest \
+          --cache-from us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest \
           .
         END=$(date +%s)
         echo "Build took $((END-START)) seconds"
 
 images:
-  - 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/my-app:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:latest'
 ```
 
 Compare the total time (pull + build) against builds without cache-from to see if it is actually faster.
@@ -286,11 +289,12 @@ Over time, cache images accumulate in your registry. Set up a cleanup policy to 
 gcloud artifacts docker images list \
   us-central1-docker.pkg.dev/my-project/my-repo/my-app \
   --include-tags \
-  --filter="createTime < '2024-01-01'" \
+  --filter="createTime < -P30D" \
   --format="value(DIGEST)" | \
 while read digest; do
   gcloud artifacts docker images delete \
     "us-central1-docker.pkg.dev/my-project/my-repo/my-app@${digest}" \
+    --delete-tags \
     --quiet
 done
 ```
