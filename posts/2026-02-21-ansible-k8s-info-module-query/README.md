@@ -14,12 +14,15 @@ This guide goes deep into `k8s_info` with advanced query techniques, Jinja2 data
 
 ## Prerequisites
 
-- Ansible 2.12+ with `kubernetes.core` collection
+- ansible-core 2.16+ with the `kubernetes.core` collection
+- Python 3.9+ with `kubernetes`, `PyYAML`, and `jmespath`
+- The `community.general` collection if you use the `json_query` examples
 - A valid kubeconfig
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-pip install kubernetes
+ansible-galaxy collection install community.general
+pip install kubernetes PyYAML jmespath
 ```
 
 ## Module Parameters
@@ -182,7 +185,7 @@ Field selectors filter on actual resource fields rather than labels.
           sa_pods: "{{ sa_pods.resources | length }}"
 ```
 
-Note that field selectors are more limited than label selectors. Not all fields are indexable. The Kubernetes API supports field selectors for `metadata.name`, `metadata.namespace`, `status.phase` (for pods), and `spec.nodeName`.
+Note that field selectors are more limited than label selectors. Not all fields are selectable. All resource types support `metadata.name` and `metadata.namespace`; Pods also support fields such as `spec.nodeName`, `spec.restartPolicy`, `spec.schedulerName`, `spec.serviceAccountName`, `spec.hostNetwork`, `status.phase`, `status.podIP`, and `status.nominatedNodeName`.
 
 ## Processing Query Results with Jinja2
 
@@ -210,11 +213,11 @@ The real power of `k8s_info` comes from processing the results with Jinja2 filte
 
     - name: Find deployments with fewer ready replicas than desired
       ansible.builtin.set_fact:
-        degraded_deploys: "{{ all_deploys.resources | selectattr('status.readyReplicas', 'defined') | rejectattr('status.readyReplicas', 'equalto', none) | list | json_query('[?status.readyReplicas < spec.replicas]') }}"
+        degraded_deploys: "{{ all_deploys.resources | community.general.json_query('[?not_null(status.readyReplicas, `0`) < not_null(spec.replicas, `1`)]') }}"
 
     - name: Find deployments using a specific image registry
       ansible.builtin.set_fact:
-        internal_deploys: "{{ all_deploys.resources | selectattr('spec.template.spec.containers', 'defined') | list }}"
+        internal_deploys: "{{ all_deploys.resources | community.general.json_query('[?spec.template.spec.containers[?starts_with(image, `registry.internal.example.com/`)]]') }}"
 
     - name: Extract container images from all deployments
       ansible.builtin.set_fact:
@@ -225,6 +228,7 @@ The real power of `k8s_info` comes from processing the results with Jinja2 filte
         msg:
           total_deployments: "{{ all_deploys.resources | length }}"
           deployment_names: "{{ deploy_names }}"
+          internal_registry_deployments: "{{ internal_deploys | length }}"
           unique_images: "{{ all_images }}"
 ```
 
@@ -356,12 +360,12 @@ Query resources across all namespaces for compliance auditing.
   gather_facts: false
 
   tasks:
-    - name: Find pods running as root
+    - name: Get pods across all namespaces
       kubernetes.core.k8s_info:
         kind: Pod
       register: all_pods
 
-    - name: Identify privileged containers
+    - name: Identify containers without security context
       ansible.builtin.debug:
         msg: "WARNING: {{ item.metadata.namespace }}/{{ item.metadata.name }} has containers without security context"
       loop: "{{ all_pods.resources }}"
