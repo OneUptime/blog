@@ -92,7 +92,7 @@ The primary needs to allow replication connections and configure WAL shipping.
     - { key: "hot_standby", value: "on" }
     - { key: "synchronous_commit", value: "on" }
     - { key: "archive_mode", value: "on" }
-    - { key: "archive_command", value: "'cp %p /var/lib/postgresql/wal_archive/%f'" }
+    - { key: "archive_command", value: "'test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f'" }
   notify: restart postgresql
 
 - name: Create WAL archive directory
