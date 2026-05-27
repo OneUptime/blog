@@ -8,13 +8,13 @@ Description: Migrate your Cloud NAT gateway from static to dynamic port allocati
 
 ---
 
-When you first set up Cloud NAT, it uses static port allocation by default. Each VM gets a fixed number of ports regardless of how many it actually needs. This works fine for predictable workloads, but causes problems when some VMs need lots of outbound connections while others barely use any. Dynamic port allocation solves this by letting VMs borrow ports from a shared pool as needed. Switching over is straightforward, but there are a few things to know before you flip the switch.
+When you first set up Public NAT, it uses static port allocation by default. Each VM gets a fixed number of ports regardless of how many it actually needs. This works fine for predictable workloads, but causes problems when some VMs need lots of outbound connections while others barely use any. Dynamic port allocation solves this by letting VMs borrow ports from a shared pool as needed. Switching over is straightforward, but there are a few things to know before you flip the switch.
 
 ## Static vs Dynamic Port Allocation
 
 Here is how the two models compare:
 
-**Static allocation:** Each VM gets exactly `min-ports-per-vm` ports. If a VM needs more, it is out of luck. If a VM needs fewer, those ports sit unused.
+**Static allocation:** Each VM gets a fixed allocation based on `min-ports-per-vm`. If a VM needs more, it is out of luck. If a VM needs fewer, those ports sit unused.
 
 **Dynamic allocation:** Each VM starts with `min-ports-per-vm` ports and can grow up to `max-ports-per-vm` as needed. Unused ports are returned to the shared pool.
 
@@ -66,8 +66,8 @@ Note the current values for:
 
 For dynamic allocation, you need to set both a minimum and maximum:
 
-- **min-ports-per-vm:** The guaranteed minimum ports each VM always has. Set this to a value that covers the baseline connection needs of most VMs. Must be a power of 2.
-- **max-ports-per-vm:** The maximum ports a single VM can use. Set this high enough for your most demanding workloads. Must also be a power of 2.
+- **min-ports-per-vm:** The guaranteed minimum ports each VM always has. Set this to a value that covers the baseline connection needs of most VMs. Must be a power of 2 between 32 and 32,768.
+- **max-ports-per-vm:** The maximum ports a single VM can use. Set this high enough for your most demanding workloads. Must be a power of 2 between 64 and 65,536, and must be greater than `min-ports-per-vm`.
 
 Common configurations:
 
@@ -87,13 +87,14 @@ Run the update command:
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
+  --no-enable-endpoint-independent-mapping \
   --enable-dynamic-port-allocation \
   --min-ports-per-vm=64 \
   --max-ports-per-vm=4096 \
   --project=your-project-id
 ```
 
-This change takes effect within a few minutes. Existing connections are not disrupted - the new allocation applies to new port assignments.
+This change takes effect within a few minutes. Existing connections are not disrupted unless you set `max-ports-per-vm` below the previous static `min-ports-per-vm`, or below 1024.
 
 ## Step 3: Verify the Change
 
@@ -126,7 +127,7 @@ gcloud compute routers nats update your-nat-gateway \
 
 ## Step 5: Monitor Port Usage After the Switch
 
-Watch port allocation patterns over the next few days:
+Watch NAT errors and sample translation logs over the next few days:
 
 ```bash
 # Check for any remaining port exhaustion after switching to dynamic allocation
@@ -139,7 +140,7 @@ gcloud logging read \
 
 If you still see dropped connections, your `max-ports-per-vm` might be too low or you need more NAT IP addresses.
 
-Look at per-VM port consumption to understand the distribution:
+Look at recent NAT translations to understand which VMs are using the gateway:
 
 ```bash
 # View NAT translation logs to see port usage per VM
@@ -162,20 +163,20 @@ Understanding the internal mechanics helps you set good values:
 
 The scale-up is fast (happens when ports are needed), but scale-down is conservative (happens after a delay to avoid thrashing).
 
-## Handling the Endpoint-Independent Mapping Change
+## Handling the Endpoint-Independent Mapping Requirement
 
-There is an important behavioral difference: dynamic port allocation uses endpoint-dependent mapping, while static allocation uses endpoint-independent mapping.
+There is an important compatibility requirement: dynamic port allocation cannot be used while Endpoint-Independent Mapping is enabled. Static allocation can be used with or without Endpoint-Independent Mapping.
 
-**Endpoint-independent mapping (static):** A VM always uses the same NAT IP and port for all connections from a given internal IP and port, regardless of the destination.
+**Endpoint-independent mapping:** A VM uses the same NAT IP and port for all connections from a given internal IP and port, regardless of the destination.
 
 **Endpoint-dependent mapping (dynamic):** Different connections from the same internal IP and port can use different NAT IPs and ports depending on the destination.
 
 This matters for:
-- Applications that depend on the same external IP for all connections (some third-party allowlists)
+- Applications that depend on the same external NAT IP and port tuple for related connections
 - Protocols that establish multiple related connections (like FTP active mode)
 - WebRTC and some P2P protocols
 
-If your workload depends on endpoint-independent mapping, test thoroughly before switching to dynamic allocation in production.
+If your workload depends on Endpoint-Independent Mapping, you must keep static allocation. Otherwise, test thoroughly before switching to dynamic allocation in production.
 
 ## Rolling Back If Needed
 
@@ -190,6 +191,8 @@ gcloud compute routers nats update your-nat-gateway \
   --min-ports-per-vm=256 \
   --project=your-project-id
 ```
+
+Switching back from dynamic to static allocation breaks active NAT connections, so plan a maintenance window if that matters for your workload.
 
 ## Adjusting After the Switch
 
@@ -220,14 +223,14 @@ For the best results, combine dynamic allocation with:
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
-  --tcp-time-wait-timeout=30 \
+  --tcp-time-wait-timeout=30s \
   --project=your-project-id
 
 # Reduce idle connection timeout
 gcloud compute routers nats update your-nat-gateway \
   --router=your-router \
   --region=us-central1 \
-  --tcp-established-idle-timeout=600 \
+  --tcp-established-idle-timeout=600s \
   --project=your-project-id
 ```
 
@@ -235,4 +238,4 @@ These tweaks work together with dynamic allocation to maximize port availability
 
 ## Wrapping Up
 
-Switching from static to dynamic port allocation is one of the most impactful changes you can make to improve Cloud NAT reliability. It eliminates the waste of static allocation and adapts to your actual traffic patterns. The migration itself is a single command with no downtime. Just be aware of the endpoint-dependent mapping change and test if your applications rely on consistent NAT IP and port pairs. For most workloads, dynamic allocation is strictly better than static, and it should be the default choice for new Cloud NAT gateways.
+Switching from static to dynamic port allocation is one of the most impactful changes you can make to improve Cloud NAT reliability. It reduces the waste of static allocation and adapts to your actual traffic patterns. The migration itself is a single command and usually does not disrupt existing connections when you choose compatible port limits. Just be aware that Endpoint-Independent Mapping must be disabled and test if your applications rely on consistent NAT IP and port pairs. For many variable workloads, dynamic allocation is a better fit than static allocation.
