@@ -8,7 +8,7 @@ Description: Automate Ubuntu Server 24.04 LTS configuration with Ansible coverin
 
 ---
 
-Ubuntu Server 24.04 LTS (Noble Numbat) brings several changes compared to previous releases: updated Netplan as the default network manager, systemd-resolved for DNS, improved AppArmor profiles, and kernel 6.8. This guide covers Ansible automation tailored specifically to 24.04's defaults and tooling.
+Ubuntu Server 24.04 LTS (Noble Numbat) uses Netplan as the default network configuration abstraction, systemd-resolved for DNS, AppArmor enabled by default with updated profiles, and kernel 6.8. This guide covers Ansible automation tailored specifically to 24.04's defaults and tooling.
 
 ## Inventory Setup
 
@@ -90,7 +90,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## Netplan Network Configuration
 
-Ubuntu 24.04 uses Netplan for all network configuration. Here is how to manage it with Ansible:
+Ubuntu 24.04 uses Netplan for network configuration. Here is how to manage it with Ansible:
 
 ```yaml
     - name: Configure Netplan networking
@@ -114,11 +114,25 @@ Ubuntu 24.04 uses Netplan for all network configuration. Here is how to manage i
         mode: '0600'
       notify: apply netplan
 
+    - name: Check for cloud-init configuration directory
+      ansible.builtin.stat:
+        path: /etc/cloud/cloud.cfg.d
+      register: cloud_init_cfg_dir
+
+    - name: Disable cloud-init network configuration
+      ansible.builtin.copy:
+        content: |
+          network:
+            config: disabled
+        dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+        mode: '0644'
+      when: cloud_init_cfg_dir.stat.isdir | default(false)
+
     - name: Remove default cloud-init network config
       ansible.builtin.file:
         path: /etc/netplan/50-cloud-init.yaml
         state: absent
-      when: ansible_virtualization_type is defined
+      when: cloud_init_cfg_dir.stat.isdir | default(false)
       notify: apply netplan
 ```
 
@@ -146,12 +160,8 @@ Template for `resolved.conf.j2`:
 ```ini
 # resolved.conf.j2
 [Resolve]
-{% for dns in dns_servers %}
-DNS={{ dns }}
-{% endfor %}
-{% for domain in search_domains %}
-Domains={{ domain }}
-{% endfor %}
+DNS={{ dns_servers | join(' ') }}
+Domains={{ search_domains | join(' ') }}
 DNSSEC=allow-downgrade
 DNSOverTLS=opportunistic
 Cache=yes
@@ -169,7 +179,7 @@ Ubuntu 24.04 has AppArmor enabled by default with updated profiles:
         state: started
 
     - name: Check AppArmor status
-      ansible.builtin.command: apparmor_status --json
+      ansible.builtin.command: aa-status --json
       register: apparmor_status
       changed_when: false
 
@@ -178,17 +188,17 @@ Ubuntu 24.04 has AppArmor enabled by default with updated profiles:
         msg: "AppArmor profiles: {{ (apparmor_status.stdout | from_json).profiles | length }}"
 
     - name: Set custom profiles to enforce mode
-      ansible.builtin.command: "aa-enforce /etc/apparmor.d/{{ item }}"
+      ansible.builtin.command: "aa-enforce {{ item }}"
       loop:
-        - usr.sbin.sshd
-        - usr.sbin.chronyd
+        - /usr/sbin/sshd
+        - /usr/sbin/chronyd
       changed_when: true
       failed_when: false
 ```
 
 ## Needrestart Configuration
 
-Ubuntu 24.04 includes needrestart, which prompts for service restarts after package updates. Configure it for automated use:
+Ubuntu 24.04 server images include needrestart, which runs after APT transactions and directly restarts affected services by default. Configure the restart mode explicitly for automated use:
 
 ```yaml
     - name: Configure needrestart for automatic restarts
@@ -240,9 +250,9 @@ Ubuntu 24.04 includes needrestart, which prompts for service restarts after pack
 
 Note that Ubuntu 24.04 uses the `sshd_config.d/` include directory for drop-in configuration files. This is cleaner than editing the main config file.
 
-## Firewall with nftables
+## Firewall with UFW
 
-Ubuntu 24.04 supports both UFW and nftables. For production servers, you might want to use nftables directly:
+Ubuntu 24.04 supports both UFW and nftables. For a simple host firewall, you can configure UFW directly:
 
 ```yaml
     - name: Configure UFW firewall
@@ -293,4 +303,4 @@ ansible-playbook -i inventory/hosts configure_ubuntu_2404.yml
 
 ## Summary
 
-Ubuntu 24.04 LTS introduces several changes that affect Ansible automation: Netplan is the sole network manager, systemd-resolved handles DNS, AppArmor is enforced by default, and needrestart automates service restarts. This playbook handles all of these with Ubuntu 24.04-specific configuration. The drop-in config directory pattern (`sshd_config.d/`, `needrestart/conf.d/`) used by 24.04 is cleaner and more Ansible-friendly than editing monolithic config files.
+Ubuntu 24.04 LTS introduces several details that affect Ansible automation: Netplan is the default network configuration abstraction, systemd-resolved handles DNS, AppArmor is enforced by default, and needrestart automates service restarts. This playbook handles all of these with Ubuntu 24.04-specific configuration. The drop-in config directory pattern (`sshd_config.d/`, `needrestart/conf.d/`) used by 24.04 is cleaner and more Ansible-friendly than editing monolithic config files.
