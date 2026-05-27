@@ -8,7 +8,7 @@ Description: Learn how to troubleshoot pods stuck in Pending state due to insuff
 
 ---
 
-A pod stuck in Pending state means the Kubernetes scheduler cannot find a suitable node to run it on. Unlike CrashLoopBackOff where the container starts and fails, Pending pods never start at all. This guide covers every reason a pod might be stuck and how to fix each one.
+A pod stuck in Pending state often means the Kubernetes scheduler cannot find a suitable node to run it on. Unlike CrashLoopBackOff where the container starts and fails, pods with scheduling failures never start at all. This guide covers common scheduling-related reasons a pod might be stuck and how to fix each one.
 
 ## Why Pods Get Stuck in Pending
 
@@ -45,7 +45,7 @@ The Events section will contain a message from the scheduler explaining exactly 
 
 ## Step 2: Insufficient Resources
 
-This is the most common cause. The scheduler cannot find a node with enough free CPU or memory.
+This is the most common cause. The scheduler cannot find a node with enough allocatable CPU or memory remaining after existing pod requests are accounted for.
 
 ```bash
 # Check resource usage across all nodes
@@ -222,7 +222,7 @@ spec:
 
 ## Step 5: PersistentVolumeClaim Issues
 
-Pods that reference a PVC will stay Pending if the PVC is not bound to a PersistentVolume.
+Pods that reference a PVC can stay Pending if an immediate-binding PVC is not bound to a PersistentVolume.
 
 ```bash
 # Check PVC status
@@ -268,7 +268,7 @@ kubectl get storageclass -o custom-columns=NAME:.metadata.name,DEFAULT:.metadata
 
 ## Step 6: ResourceQuota Limits
 
-Namespace-level ResourceQuotas can prevent pods from being created.
+Namespace-level ResourceQuotas can prevent pods from being created. In that case, you may see no Pending pod at all; check the controller events for FailedCreate messages.
 
 ```bash
 # Check resource quotas in the namespace
