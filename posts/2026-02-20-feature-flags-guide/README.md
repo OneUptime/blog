@@ -184,7 +184,7 @@ class ProgressiveRollout:
 
     def advance_rollout(self, flag_name: str, current_stage: int):
         """Move to the next rollout stage if metrics are healthy."""
-        if current_stage >= len(self.STAGES):
+        if current_stage >= len(self.STAGES) - 1:
             print(f"Rollout of {flag_name} is already complete")
             return
 
@@ -236,7 +236,10 @@ class KillSwitch:
 
     def is_active(self, switch_name: str) -> bool:
         """Check if a kill switch is active (feature should be disabled)."""
-        return not self.flags.is_enabled(f"kill:{switch_name}")
+        flag_name = f"kill:{switch_name}"
+        if self.flags.redis.get(f"{self.flags.prefix}{flag_name}") is None:
+            return False
+        return not self.flags.is_enabled(flag_name)
 
     def activate(self, switch_name: str):
         """Activate kill switch - disable the feature immediately."""
@@ -255,7 +258,7 @@ class KillSwitch:
 
 # Usage in application code
 
-kill_switch = KillSwitch(flag_service)
+kill_switch = KillSwitch(flags)
 
 @app.get("/checkout")
 async def checkout(request: Request):
