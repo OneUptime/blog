@@ -10,7 +10,7 @@ Description: A practical guide to creating and using Cloud DLP inspection and de
 
 If you have more than one team using Cloud DLP, you have probably run into consistency problems. One team scans for 5 InfoTypes, another scans for 15. One uses POSSIBLE as the minimum likelihood, another uses LIKELY. De-identification methods vary from team to team. Without standardization, your data protection efforts are inconsistent and hard to audit.
 
-Cloud DLP templates solve this problem. You define your inspection and de-identification configurations once as templates, then reference them in any DLP job. When requirements change, you update the template and all future jobs automatically pick up the new settings.
+Cloud DLP templates solve this problem. You define your inspection and de-identification configurations once as templates, then reference them anywhere the API accepts an inspection or de-identification template. When requirements change, you update the template and future requests that reference it automatically pick up the new settings.
 
 ## Two Types of Templates
 
@@ -19,7 +19,7 @@ Cloud DLP supports two types of templates:
 - **Inspect templates**: Define what sensitive data to look for (InfoTypes, min likelihood, custom InfoTypes, rules)
 - **De-identify templates**: Define how to transform sensitive data (redaction, masking, tokenization, etc.)
 
-Both types live at the project or organization level and can be referenced by any DLP job.
+Both types live at the project or organization level and can be referenced by supported DLP requests.
 
 ## Step 1: Create an Inspection Template
 
@@ -120,6 +120,8 @@ create_inspect_template("my-project")
 Now create a matching de-identification template:
 
 ```python
+from google.cloud import dlp_v2
+
 def create_deidentify_template(project_id):
     """Create a reusable de-identification template for healthcare data."""
 
@@ -130,7 +132,7 @@ def create_deidentify_template(project_id):
         "info_type_transformations": {
             "transformations": [
                 {
-                    # Mask email addresses preserving domain
+                    # Mask email addresses while preserving common separators
                     "info_types": [{"name": "EMAIL_ADDRESS"}],
                     "primitive_transformation": {
                         "character_mask_config": {
@@ -205,7 +207,7 @@ def create_deidentify_template(project_id):
 
     template = {
         "display_name": "Healthcare De-Identification",
-        "description": "Standard de-id config for healthcare data - HIPAA compliant",
+        "description": "Standard de-id config for healthcare data used in HIPAA-related workflows",
         "deidentify_config": deidentify_config,
     }
 
@@ -225,17 +227,18 @@ create_deidentify_template("my-project")
 
 ## Step 3: Use Templates in Jobs
 
-Now any team can reference these templates in their DLP jobs without knowing the details of the configuration:
+Now any team can reference the inspect template in their inspection jobs without knowing the details of the configuration:
 
 ```python
+from google.cloud import dlp_v2
+
 def run_job_with_templates(project_id, dataset_id, table_id):
     """Run a DLP job using templates instead of inline configs."""
 
     dlp_client = dlp_v2.DlpServiceClient()
 
-    # Reference templates by their full resource name
+    # Reference the inspect template by its full resource name
     inspect_template = f"projects/{project_id}/locations/global/inspectTemplates/healthcare-pii-v1"
-    deidentify_template = f"projects/{project_id}/locations/global/deidentifyTemplates/healthcare-deid-v1"
 
     # Configure the BigQuery table to scan
     storage_config = {
@@ -248,7 +251,7 @@ def run_job_with_templates(project_id, dataset_id, table_id):
         }
     }
 
-    # Create the job referencing templates - no inline config needed
+    # Create the inspection job referencing the template - no inline inspect config needed
     job = {
         "inspect_template_name": inspect_template,
         "storage_config": storage_config,
@@ -290,19 +293,19 @@ resource "google_data_loss_prevention_inspect_template" "standard_pii" {
   description  = "Detects common PII types across the organization"
 
   inspect_config {
-    info_type {
+    info_types {
       name = "EMAIL_ADDRESS"
     }
-    info_type {
+    info_types {
       name = "PHONE_NUMBER"
     }
-    info_type {
+    info_types {
       name = "US_SOCIAL_SECURITY_NUMBER"
     }
-    info_type {
+    info_types {
       name = "PERSON_NAME"
     }
-    info_type {
+    info_types {
       name = "CREDIT_CARD_NUMBER"
     }
 
@@ -372,7 +375,7 @@ gcloud dlp inspect-templates list --project=PROJECT_ID
 gcloud dlp inspect-templates describe \
   projects/PROJECT_ID/locations/global/inspectTemplates/healthcare-pii-v1
 
-# Delete a template (only if no jobs reference it)
+# Delete a template (future jobs that reference it must be updated)
 gcloud dlp inspect-templates delete \
   projects/PROJECT_ID/locations/global/inspectTemplates/old-template
 ```
@@ -380,6 +383,8 @@ gcloud dlp inspect-templates delete \
 To update a template programmatically:
 
 ```python
+from google.cloud import dlp_v2
+
 def update_inspect_template(project_id, template_id):
     """Add a new InfoType to an existing inspection template."""
 
@@ -412,6 +417,8 @@ def update_inspect_template(project_id, template_id):
 For organizations with multiple projects, create templates at the organization level so every project can use them:
 
 ```python
+from google.cloud import dlp_v2
+
 # Create an org-level template
 parent = f"organizations/{org_id}/locations/global"
 response = dlp_client.create_inspect_template(
@@ -425,4 +432,4 @@ Org-level templates are ideal for enforcing company-wide scanning standards. Pro
 
 ## Summary
 
-Templates bring consistency and maintainability to your Cloud DLP setup. Define inspection and de-identification configurations once, reference them across all your jobs, and update centrally when requirements change. Use project-level templates for team-specific needs and organization-level templates for company-wide standards. Combined with Terraform, you get version-controlled, auditable data protection configurations that scale across your entire GCP environment.
+Templates bring consistency and maintainability to your Cloud DLP setup. Define inspection and de-identification configurations once, reference them from supported inspection and de-identification workflows, and update centrally when requirements change. Use project-level templates for team-specific needs and organization-level templates for company-wide standards. Combined with Terraform, you get version-controlled, auditable data protection configurations that scale across your entire GCP environment.
