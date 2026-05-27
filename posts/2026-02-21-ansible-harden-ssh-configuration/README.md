@@ -12,7 +12,7 @@ Configuring SSH is one thing. Hardening it to withstand real-world attacks is an
 
 ## Prerequisites
 
-- Ansible 2.9+ on your control node
+- ansible-core 2.11+ on your control node
 - Linux target hosts running OpenSSH 7.4+
 - Root or sudo access
 - Console access as a safety net (in case SSH gets misconfigured)
@@ -138,7 +138,7 @@ PermitRootLogin no
 PubkeyAuthentication yes
 PasswordAuthentication no
 PermitEmptyPasswords no
-ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 KerberosAuthentication no
 GSSAPIAuthentication no
 HostbasedAuthentication no
@@ -310,11 +310,18 @@ Add TOTP-based 2FA to SSH:
         line: "auth required pam_google_authenticator.so nullok"
         insertafter: "@include common-auth"
 
-    - name: Enable ChallengeResponseAuthentication
+    - name: Enable keyboard-interactive authentication
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
-        regexp: '^#?ChallengeResponseAuthentication'
-        line: 'ChallengeResponseAuthentication yes'
+        regexp: '^#?KbdInteractiveAuthentication'
+        line: 'KbdInteractiveAuthentication yes'
+        validate: 'sshd -t -f %s'
+
+    - name: Enable PAM for TOTP
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?UsePAM'
+        line: 'UsePAM yes'
         validate: 'sshd -t -f %s'
 
     - name: Configure authentication methods (key + TOTP)
@@ -411,7 +418,7 @@ Verify your hardening is effective:
 
 ```mermaid
 graph TD
-    A[SSH Connection Attempt] --> B{Port Scan?}
+    A[SSH Connection Attempt] --> B{Repeated Auth Failures?}
     B -->|Detected| C[Fail2Ban Blocks IP]
     B -->|Normal| D{AllowUsers/Groups?}
     D -->|Not Allowed| E[Access Denied]
@@ -433,6 +440,6 @@ graph TD
 
 Here is a quick reference of what each hardening measure protects against:
 
-Disabling root login prevents direct root access, forcing attackers to compromise a regular user first. Disabling password authentication eliminates brute-force password attacks entirely. Strong cipher and key exchange algorithms protect against cryptographic attacks. Fail2ban blocks automated scanning and brute-force attempts. Rate limiting with MaxAuthTries and MaxStartups prevents resource exhaustion. Verbose logging gives you visibility into SSH activity for incident response. Disabling forwarding prevents SSH from being used as a proxy by compromised accounts. And 2FA adds a second layer even if an SSH key is stolen.
+Disabling root login prevents direct root access, forcing attackers to compromise a regular user first. Disabling password authentication eliminates brute-force password attacks entirely. Strong cipher and key exchange algorithms protect against cryptographic attacks. Fail2ban blocks repeated failed SSH login attempts and brute-force attempts. Rate limiting with MaxAuthTries and MaxStartups prevents resource exhaustion. Verbose logging gives you visibility into SSH activity for incident response. Disabling forwarding prevents SSH from being used as a proxy by compromised accounts. And 2FA adds a second layer even if an SSH key is stolen.
 
 Each layer adds defense in depth. No single measure is enough by itself, but together they make your SSH infrastructure significantly harder to compromise.
