@@ -27,8 +27,8 @@ Here is how node selectors filter which nodes peer with which routers:
 flowchart TB
     subgraph Kubernetes Cluster
         direction TB
-        N1[Node 1 - edge=true]
-        N2[Node 2 - edge=true]
+        N1[Node 1 - network-role=edge]
+        N2[Node 2 - network-role=edge]
         N3[Node 3 - worker]
         N4[Node 4 - worker]
     end
@@ -41,7 +41,7 @@ flowchart TB
     N4 -.->|No Session| R1
 ```
 
-Only nodes labeled `edge=true` establish BGP sessions. Worker nodes without the label are excluded.
+Only nodes labeled `network-role=edge` establish BGP sessions. Worker nodes without the label are excluded.
 
 ### Step 1: Label Your Nodes
 
@@ -79,7 +79,7 @@ spec:
   peerAddress: 10.0.0.1
 
   # Node selectors restrict which nodes peer with this router.
-  # Only nodes matching ALL selectors will establish a session.
+  # Nodes matching any selector in this list will establish a session.
   nodeSelectors:
     - matchLabels:
         # Only nodes with this label will open a BGP session.
