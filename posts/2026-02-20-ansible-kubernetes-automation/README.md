@@ -54,6 +54,7 @@ k8s-ansible/
       handlers/main.yml
     container-runtime/
       tasks/main.yml
+      handlers/main.yml
       templates/containerd-config.toml.j2
     kubernetes-install/
       tasks/main.yml
@@ -81,12 +82,6 @@ all:
         cp-1:
           ansible_host: 192.168.1.10
           ansible_user: ubuntu
-        cp-2:
-          ansible_host: 192.168.1.11
-          ansible_user: ubuntu
-        cp-3:
-          ansible_host: 192.168.1.12
-          ansible_user: ubuntu
     workers:
       hosts:
         worker-1:
@@ -105,12 +100,12 @@ all:
 ```yaml
 # group_vars/all.yml
 # Variables shared across all nodes
-kubernetes_version: "1.30"
+kubernetes_version: "1.36"
 kubernetes_apt_key_url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key"
 kubernetes_apt_repo: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/"
 
 # Pod network CIDR for Calico
-pod_network_cidr: "10.244.0.0/16"
+pod_network_cidr: "192.168.0.0/16"
 
 # Service CIDR
 service_cidr: "10.96.0.0/12"
@@ -172,6 +167,7 @@ This role configures kernel parameters and disables swap on all nodes.
       - ca-certificates
       - curl
       - gnupg
+      - python3-debian
     state: present
     update_cache: true
 ```
@@ -217,11 +213,20 @@ Install and configure containerd as the container runtime.
   notify: restart containerd
 
 - name: Enable and start containerd
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: containerd
     state: started
     enabled: true
     daemon_reload: true
+```
+
+```yaml
+# roles/container-runtime/handlers/main.yml
+---
+- name: restart containerd
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: restarted
 ```
 
 ## Role: Kubernetes Install
@@ -232,16 +237,14 @@ Install kubeadm, kubelet, and kubectl on all nodes.
 # roles/kubernetes-install/tasks/main.yml
 # Installs Kubernetes packages from the official repository
 ---
-- name: Add Kubernetes apt signing key
-  ansible.builtin.apt_key:
-    url: "{{ kubernetes_apt_key_url }}"
-    state: present
-
 - name: Add Kubernetes apt repository
-  ansible.builtin.apt_repository:
-    repo: "deb {{ kubernetes_apt_repo }} /"
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    types: deb
+    uris: "{{ kubernetes_apt_repo }}"
+    suites: /
+    signed_by: "{{ kubernetes_apt_key_url }}"
     state: present
-    filename: kubernetes
 
 - name: Install Kubernetes packages
   ansible.builtin.apt:
@@ -262,7 +265,7 @@ Install kubeadm, kubelet, and kubectl on all nodes.
     - kubectl
 
 - name: Enable kubelet service
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: kubelet
     enabled: true
 ```
@@ -285,7 +288,6 @@ Initialize the first control plane node.
     kubeadm init
     --pod-network-cidr={{ pod_network_cidr }}
     --service-cidr={{ service_cidr }}
-    --upload-certs
   register: kubeadm_init
   when: not kubeadm_init_check.stat.exists
 
@@ -306,7 +308,7 @@ Initialize the first control plane node.
 
 - name: Install Calico pod network
   ansible.builtin.command: >
-    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
   become: false
   when: not kubeadm_init_check.stat.exists
 
@@ -379,7 +381,7 @@ sequenceDiagram
 ansible-playbook -i inventory/hosts.yml playbooks/site.yml
 
 # Verify the cluster
-ansible -i inventory/hosts.yml control_plane[0] -a "kubectl get nodes" --become-user=ubuntu
+ansible -i inventory/hosts.yml control_plane[0] -a "kubectl get nodes" --become --become-user=ubuntu
 ```
 
 ## Conclusion
