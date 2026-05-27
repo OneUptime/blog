@@ -112,6 +112,15 @@ Let me break down the flags:
 Test that your VM can now reach the internet:
 
 ```bash
+# Allow IAP TCP forwarding to reach SSH on the private VM
+gcloud compute firewall-rules create allow-ssh-ingress-from-iap \
+  --network=my-private-network \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:22 \
+  --source-ranges=35.235.240.0/20 \
+  --project=your-project-id
+
 # SSH into the private VM using IAP tunnel (since there is no external IP)
 gcloud compute ssh private-vm \
   --zone=us-central1-a \
@@ -223,10 +232,10 @@ gcloud compute routers nats describe my-nat-gateway \
   --project=your-project-id
 ```
 
-Key metrics to monitor in Cloud Monitoring:
-- `nat_allocation_failed` - indicates port exhaustion
-- `dropped_sent_packets_count` - packets dropped due to NAT issues
-- `nat_connections` - active NAT connections
+Key Cloud NAT gateway metrics to monitor in Cloud Monitoring:
+- `nat/nat_allocation_failed` - indicates NAT IP or port allocation failures
+- `nat/dropped_sent_packets_count` - packets dropped due to NAT issues
+- `nat/open_connections` - active NAT connections
 
 ## Common Issues and Fixes
 
