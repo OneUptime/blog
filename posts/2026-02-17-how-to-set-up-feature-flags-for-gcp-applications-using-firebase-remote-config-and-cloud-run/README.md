@@ -19,8 +19,8 @@ There are plenty of feature flag services out there - LaunchDarkly, Split, Unlea
 - No additional service to manage or pay for
 - Integrates with Firebase Analytics for targeting
 - Supports server-side evaluation (not just client-side)
-- Changes take effect in real time without redeploys
-- Conditions can target user segments, percentages, or custom attributes
+- Changes take effect after the service refreshes its Remote Config template, without redeploys
+- Server-side conditions can target percentages or custom signals
 
 ## Step 1: Set Up Firebase in Your Project
 
@@ -39,13 +39,14 @@ firebase init --project=my-gcp-project
 Then set up the Remote Config defaults in the Firebase console, or use the REST API:
 
 ```bash
-# Set up initial feature flags using the Firebase Admin SDK
+# Set up initial feature flags using the Remote Config REST API
 # This script creates the default feature flag configuration
 
 curl -X PUT \
   "https://firebaseremoteconfig.googleapis.com/v1/projects/my-gcp-project/remoteConfig" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
+  -H "If-Match: *" \
   -d '{
     "parameters": {
       "feature_new_dashboard": {
@@ -70,7 +71,7 @@ curl -X PUT \
 
 ## Step 2: Add Conditional Rollouts
 
-The real power of Remote Config is conditions. You can enable features for specific user percentages, regions, or custom attributes:
+The real power of Remote Config is conditions. For server-side feature flags, you can enable features for specific user percentages or custom signals:
 
 ```bash
 # Update Remote Config with conditions for gradual rollout
@@ -83,7 +84,7 @@ curl -X PUT \
     "conditions": [
       {
         "name": "beta_users",
-        "expression": "app.userProperty[\"user_tier\"] == \"beta\"",
+        "expression": "app.customSignal[\"user_tier\"].exactlyMatches([\"beta\"])",
         "tagColor": "BLUE"
       },
       {
@@ -124,8 +125,8 @@ Install the Firebase Admin SDK and create a feature flag service:
 ```python
 # feature_flags.py - Server-side feature flag evaluation
 import firebase_admin
-from firebase_admin import credentials, remote_config
-import hashlib
+from firebase_admin import remote_config
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ def get_remote_config_template():
     now = time.time()
     if _template_cache is None or (now - _cache_timestamp) > CACHE_TTL:
         try:
-            _template_cache = remote_config.get_server_template()
+            _template_cache = asyncio.run(remote_config.get_server_template())
             _cache_timestamp = now
             logger.info("Remote Config template refreshed")
         except Exception as e:
@@ -173,11 +174,12 @@ def is_feature_enabled(feature_name, user_id=None, user_properties=None):
         return False
 
     try:
-        # Create a server config with user context for targeting
-        config = template.evaluate({
+        # Create a server config with user context for percentage and custom-signal targeting
+        evaluation_context = {
             'randomizationId': user_id or 'anonymous',
-            'userProperties': user_properties or {}
-        })
+        }
+        evaluation_context.update(user_properties or {})
+        config = template.evaluate(evaluation_context)
 
         value = config.get_string(feature_name)
         return value.lower() == 'true'
@@ -275,8 +277,8 @@ Deploy the application with the necessary permissions:
 ```bash
 # Grant the Cloud Run service account access to Firebase Remote Config
 gcloud projects add-iam-policy-binding my-gcp-project \
-  --member="serviceAccount:my-project-compute@developer.gserviceaccount.com" \
-  --role="roles/firebaseremoteconfig.viewer"
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudconfig.viewer"
 
 # Deploy to Cloud Run
 gcloud run deploy my-app \
@@ -319,9 +321,15 @@ Track metrics per feature flag to understand impact:
 ```python
 # Add custom metrics for feature flag evaluation
 from google.cloud import monitoring_v3
+import os
 import time
 
 metrics_client = monitoring_v3.MetricServiceClient()
+PROJECT_ID = "my-gcp-project"
+SERVICE_NAME = "my-app"
+REVISION_NAME = os.environ["K_REVISION"]
+CONFIGURATION_NAME = os.environ["K_CONFIGURATION"]
+REGION = "us-central1"
 
 def track_feature_flag(feature_name, enabled, user_id):
     """Track feature flag evaluations for monitoring."""
@@ -329,6 +337,11 @@ def track_feature_flag(feature_name, enabled, user_id):
     series.metric.type = f'custom.googleapis.com/feature_flag/{feature_name}'
     series.metric.labels['enabled'] = str(enabled).lower()
     series.resource.type = 'cloud_run_revision'
+    series.resource.labels['project_id'] = PROJECT_ID
+    series.resource.labels['service_name'] = SERVICE_NAME
+    series.resource.labels['revision_name'] = REVISION_NAME
+    series.resource.labels['configuration_name'] = CONFIGURATION_NAME
+    series.resource.labels['location'] = REGION
 
     point = monitoring_v3.Point()
     point.value.int64_value = 1
