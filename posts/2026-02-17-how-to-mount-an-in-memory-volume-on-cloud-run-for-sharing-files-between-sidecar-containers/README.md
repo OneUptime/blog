@@ -55,30 +55,41 @@ volumes:
       sizeLimit: 128Mi        # Maximum size of the volume
 ```
 
-The `sizeLimit` is important because this volume consumes your container's memory allocation. If you set a 128Mi volume limit and your container has 512Mi of memory, the volume will eat into that total.
+The `sizeLimit` is important because data written to this volume consumes the memory allocation of the container that wrote the data. If you set a 128Mi volume limit, keep that within the total memory available to the containers and make sure the writer container has enough memory for its own process plus the data it writes.
 
 ## Step 1: Prepare Your Container Images
 
 Let us build a simple example with two containers. The main app writes files to a shared directory, and a sidecar reads and processes them.
 
-Here is the main application container. It is a simple Python script that writes a timestamp file every few seconds:
+Here is the main application container. It is a simple Python script that listens on the Cloud Run port and writes a timestamp file every few seconds:
 
 ```python
 # app.py - Main application that writes files to shared volume
 import time
 import os
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SHARED_DIR = "/shared-data"
+PORT = int(os.environ.get("PORT", "8080"))
 
-def main():
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok\n")
+
+
+def write_events():
     """Write timestamp files to the shared directory for the sidecar to pick up."""
     os.makedirs(SHARED_DIR, exist_ok=True)
     counter = 0
 
     while True:
         filename = f"{SHARED_DIR}/event_{counter}.txt"
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
 
         with open(filename, "w") as f:
             f.write(f"Event {counter} at {timestamp}\n")
@@ -86,6 +97,13 @@ def main():
         print(f"Wrote {filename}")
         counter += 1
         time.sleep(5)
+
+
+def main():
+    threading.Thread(target=write_events, daemon=True).start()
+    server = ThreadingHTTPServer(("", PORT), HealthHandler)
+    server.serve_forever()
+
 
 if __name__ == "__main__":
     main()
@@ -207,8 +225,14 @@ You can also do this entirely from the command line using `gcloud run deploy` wi
 # Alternative: deploy with gcloud flags (single command)
 gcloud run deploy shared-volume-demo \
   --region=us-central1 \
-  --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/main-app:latest \
   --add-volume=name=shared-data,type=in-memory,size-limit=64Mi \
+  --container=main-app \
+  --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/main-app:latest \
+  --port=8080 \
+  --add-volume-mount=volume=shared-data,mount-path=/shared-data \
+  --container=sidecar \
+  --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/sidecar:latest \
+  --depends-on=main-app \
   --add-volume-mount=volume=shared-data,mount-path=/shared-data
 ```
 
@@ -231,8 +255,8 @@ You should see the main app writing files and the sidecar processing them in seq
 Since in-memory volumes use RAM, you need to account for this in your memory limits. Here is a rough guideline:
 
 - Add the volume `sizeLimit` to your total memory budget
-- Each container's memory limit is separate from the volume
-- If the volume fills up, writes will fail with ENOSPC errors
+- Data written to the volume counts against the memory limit of the container that wrote it
+- If the volume reaches its size limit, further writes will fail
 - Monitor memory usage through Cloud Monitoring
 
 A practical formula: set your container memory to what the app needs, plus a buffer, and keep the volume size as small as possible for your workload.
@@ -245,7 +269,7 @@ First, the volume is scoped to a single instance. If Cloud Run scales to multipl
 
 Second, do not use in-memory volumes for data you cannot afford to lose. Instance shutdown means the data disappears. If you need persistence, use Cloud Storage or a database.
 
-Third, watch your total memory consumption. The volume size counts against the instance memory. If your containers plus volume exceed available memory, the instance will be terminated.
+Third, watch your total memory consumption. The data stored in the volume consumes memory from the container that writes it. If a writer exceeds its container memory limit, the instance can crash even if the volume size limit has not been reached.
 
 ## Wrapping Up
 
