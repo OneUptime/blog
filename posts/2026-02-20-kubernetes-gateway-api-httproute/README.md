@@ -10,7 +10,7 @@ Description: Step-by-step guide to configuring Kubernetes Gateway API with HTTPR
 
 ## What Is the Gateway API?
 
-The Gateway API is the next generation of Kubernetes traffic management. It replaces Ingress with a more expressive, role-oriented set of resources. The HTTPRoute resource is the most commonly used - it defines how HTTP traffic should be routed to your services.
+The Gateway API is the next generation of Kubernetes traffic management and the successor to Ingress, with a more expressive, role-oriented set of resources. The HTTPRoute resource is the most commonly used - it defines how HTTP traffic should be routed to your services.
 
 ```mermaid
 graph TD
@@ -45,18 +45,21 @@ kubectl get crd | grep gateway.networking.k8s.io
 Install a Gateway API controller. We will use Nginx Gateway Fabric:
 
 ```bash
-# Install Nginx Gateway Fabric
-kubectl apply -f https://github.com/nginx/nginx-gateway-fabric/releases/download/v1.5.0/nginx-gateway-fabric.yaml
+# Install Nginx Gateway Fabric CRDs and controller
+kubectl apply -f https://raw.githubusercontent.com/nginx/nginx-gateway-fabric/v1.5.0/deploy/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/nginx/nginx-gateway-fabric/v1.5.0/deploy/default/deploy.yaml
 
 # Verify the GatewayClass is available
 kubectl get gatewayclass
-# NAME    CONTROLLER                         ACCEPTED
-# nginx   gateway.nginx.org/nginx-gateway    True
+# NAME    CONTROLLER                                    ACCEPTED
+# nginx   gateway.nginx.org/nginx-gateway-controller    True
 ```
 
 ## Step 1: Create a Gateway
 
 The Gateway defines listeners that accept incoming traffic.
+
+For the HTTPS listener, create a TLS Secret named `wildcard-tls-secret` in the `default` namespace before applying the Gateway.
 
 ```yaml
 # gateway.yaml
