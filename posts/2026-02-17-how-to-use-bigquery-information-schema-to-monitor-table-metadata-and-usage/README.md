@@ -17,7 +17,7 @@ I use INFORMATION_SCHEMA views daily for cost management and data governance. Le
 BigQuery provides INFORMATION_SCHEMA views at different levels:
 
 - **Dataset level**: `my_dataset.INFORMATION_SCHEMA.*` - metadata about tables in a specific dataset
-- **Project level**: `region-us.INFORMATION_SCHEMA.*` - metadata about jobs across the project
+- **Region/project level**: `region-us.INFORMATION_SCHEMA.*` - metadata about jobs and storage across the project in a specific location
 - **Organization level**: Available for broader cross-project analysis
 
 The most commonly used views are:
@@ -46,7 +46,8 @@ SELECT
   total_rows,
   creation_time,
   TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), creation_time, DAY) AS days_old
-FROM `my_project.my_dataset.INFORMATION_SCHEMA.TABLE_STORAGE`
+FROM `my_project`.`region-us`.INFORMATION_SCHEMA.TABLE_STORAGE
+WHERE table_schema = 'my_dataset'
 ORDER BY total_logical_bytes DESC;
 ```
 
@@ -72,7 +73,8 @@ SELECT
   table_name,
   total_logical_bytes,
   total_rows
-FROM `my_project.my_dataset.INFORMATION_SCHEMA.TABLE_STORAGE`;
+FROM `my_project`.`region-us`.INFORMATION_SCHEMA.TABLE_STORAGE
+WHERE table_schema = 'my_dataset';
 ```
 
 Then query the tracking table to see growth trends.
@@ -177,9 +179,9 @@ SELECT
   job_id,
   user_email,
   query,
-  total_bytes_processed,
-  ROUND(total_bytes_processed / POW(1024, 4), 4) AS tb_processed,
-  ROUND(total_bytes_processed / POW(1024, 4) * 5, 2) AS estimated_cost_usd,
+  total_bytes_billed,
+  ROUND(total_bytes_billed / POW(1024, 4), 4) AS tib_billed,
+  ROUND(total_bytes_billed / POW(1024, 4) * 6.25, 2) AS estimated_on_demand_cost_usd,
   total_slot_ms,
   creation_time,
   TIMESTAMP_DIFF(end_time, start_time, SECOND) AS duration_seconds
@@ -187,30 +189,32 @@ FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
-  AND total_bytes_processed > 0
-ORDER BY total_bytes_processed DESC
+  AND (statement_type IS NULL OR statement_type != 'SCRIPT')
+  AND total_bytes_billed > 0
+ORDER BY total_bytes_billed DESC
 LIMIT 20;
 ```
 
 ## Cost by User
 
-See who is spending the most.
+See who is spending the most on on-demand query processing.
 
 ```sql
 -- Aggregate query costs by user over the last 30 days
 SELECT
   user_email,
   COUNT(*) AS query_count,
-  SUM(total_bytes_processed) AS total_bytes,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 2) AS total_tb,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 5, 2) AS estimated_cost_usd,
+  SUM(total_bytes_billed) AS total_billed_bytes,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4), 2) AS total_tib,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS estimated_on_demand_cost_usd,
   ROUND(AVG(total_bytes_processed) / POW(1024, 3), 2) AS avg_gb_per_query,
   MAX(creation_time) AS last_query_time
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
-ORDER BY total_bytes DESC;
+  AND (statement_type IS NULL OR statement_type != 'SCRIPT')
+ORDER BY total_billed_bytes DESC;
 ```
 
 ## Finding Unused Tables
@@ -234,43 +238,45 @@ SELECT
   ts.creation_time,
   ROUND(ts.total_logical_bytes / POW(1024, 3), 2) AS size_gb,
   ts.total_rows
-FROM `my_project.my_dataset.INFORMATION_SCHEMA.TABLE_STORAGE` ts
+FROM `my_project`.`region-us`.INFORMATION_SCHEMA.TABLE_STORAGE ts
 LEFT JOIN queried_tables qt
   ON qt.table_id = ts.table_name
   AND qt.dataset_id = 'my_dataset'
-WHERE qt.table_id IS NULL
+WHERE ts.table_schema = 'my_dataset'
+  AND qt.table_id IS NULL
 ORDER BY ts.total_logical_bytes DESC;
 ```
 
 ## Monitoring Query Patterns by Table
 
-Understand which tables are queried most and how.
+Understand which tables are queried most and which referenced tables are associated with the highest query costs.
 
 ```sql
--- Query frequency and cost by table over the last 30 days
+-- Query frequency and referenced-query cost by table over the last 30 days
 SELECT
   referenced_table.table_id AS table_name,
   COUNT(*) AS query_count,
   COUNT(DISTINCT user_email) AS unique_users,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 4) AS total_tb_scanned,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 5, 2) AS total_cost_usd
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4), 4) AS total_query_tib_billed,
+  ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS estimated_referenced_query_cost_usd
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT,
 UNNEST(referenced_tables) AS referenced_table
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
+  AND (statement_type IS NULL OR statement_type != 'SCRIPT')
+  AND total_bytes_billed > 0
   AND referenced_table.dataset_id = 'my_dataset'
 GROUP BY table_name
-ORDER BY total_cost_usd DESC;
+ORDER BY estimated_referenced_query_cost_usd DESC;
 ```
 
-## Finding Queries Without Partition Filters
+## Finding Large Queries to Inspect for Partition Filters
 
-Identify queries that scan entire partitioned tables.
+Identify large queries on partitioned tables that are candidates for partition-filter review.
 
 ```sql
--- Find queries on partitioned tables that do not use partition filters
--- These are candidates for optimization
+-- Find large queries on partitioned tables to inspect for missing partition filters
 SELECT
   job_id,
   user_email,
@@ -281,6 +287,7 @@ FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
+  AND (statement_type IS NULL OR statement_type != 'SCRIPT')
   AND total_bytes_processed > 10737418240  -- More than 10 GB
   AND query LIKE '%my_dataset.events%'
 ORDER BY total_bytes_processed DESC
@@ -303,7 +310,8 @@ UNION ALL
 SELECT
   'Total Storage (GB)',
   CAST(ROUND(SUM(total_logical_bytes) / POW(1024, 3), 2) AS STRING)
-FROM `my_project.my_dataset.INFORMATION_SCHEMA.TABLE_STORAGE`
+FROM `my_project`.`region-us`.INFORMATION_SCHEMA.TABLE_STORAGE
+WHERE table_schema = 'my_dataset'
 
 UNION ALL
 
@@ -317,12 +325,13 @@ WHERE creation_time >= TIMESTAMP(CURRENT_DATE())
 UNION ALL
 
 SELECT
-  'Estimated Cost Today (USD)',
-  CAST(ROUND(SUM(total_bytes_processed) / POW(1024, 4) * 5, 2) AS STRING)
+  'Estimated On-Demand Cost Today (USD)',
+  CAST(ROUND(SUM(total_bytes_billed) / POW(1024, 4) * 6.25, 2) AS STRING)
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time >= TIMESTAMP(CURRENT_DATE())
   AND job_type = 'QUERY'
-  AND state = 'DONE';
+  AND state = 'DONE'
+  AND (statement_type IS NULL OR statement_type != 'SCRIPT');
 ```
 
 ## Wrapping Up
