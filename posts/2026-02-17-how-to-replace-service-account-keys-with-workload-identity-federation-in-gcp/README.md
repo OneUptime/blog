@@ -40,7 +40,7 @@ There are two steps: exchanging the external token for a federated token, and op
 
 ## Prerequisites
 
-- A GCP project with the IAM, Resource Manager, and Security Token Service APIs enabled
+- A GCP project with the IAM, Resource Manager, Service Account Credentials, and Security Token Service APIs enabled
 - An external identity provider that issues tokens (AWS IAM, Azure AD, GitHub Actions, any OIDC provider)
 - A service account in GCP with the roles needed for your workload
 
@@ -51,6 +51,7 @@ Enable the required APIs:
 
 gcloud services enable \
   iam.googleapis.com \
+  cloudresourcemanager.googleapis.com \
   sts.googleapis.com \
   iamcredentials.googleapis.com \
   --project=my-project-id
@@ -82,12 +83,12 @@ gcloud iam workload-identity-pools providers create-oidc github-provider \
   --workload-identity-pool="my-external-pool" \
   --display-name="GitHub Actions" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.actor=assertion.actor" \
-  --attribute-condition="assertion.repository_owner == 'my-github-org'" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.actor=assertion.actor" \
+  --attribute-condition="assertion.repository_owner_id == '1234567'" \
   --project=my-project-id
 ```
 
-The `attribute-condition` is critical for security. Without it, any GitHub Actions workflow from any repository could potentially exchange tokens. The condition restricts it to repositories owned by your organization.
+The `attribute-condition` is critical for security. Without it, any GitHub Actions workflow from any repository could potentially exchange tokens. The condition restricts it to repositories owned by your organization. Use the numeric `repository_owner_id` instead of the organization name, because names can be reused if an organization is deleted.
 
 ### AWS
 
@@ -108,8 +109,8 @@ gcloud iam workload-identity-pools providers create-aws aws-provider \
 gcloud iam workload-identity-pools providers create-oidc azure-provider \
   --location="global" \
   --workload-identity-pool="my-external-pool" \
-  --display-name="Azure AD" \
-  --issuer-uri="https://login.microsoftonline.com/TENANT_ID/v2.0" \
+  --display-name="Microsoft Entra ID" \
+  --issuer-uri="https://sts.windows.net/TENANT_ID" \
   --allowed-audiences="api://my-app-id" \
   --attribute-mapping="google.subject=assertion.sub,attribute.tid=assertion.tid" \
   --project=my-project-id
@@ -137,7 +138,7 @@ Now allow the federated identity to impersonate this service account. The member
 # Allow GitHub Actions from a specific repo to impersonate the service account
 gcloud iam service-accounts add-iam-policy-binding \
   external-workload-sa@my-project-id.iam.gserviceaccount.com \
-  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/my-external-pool/attribute.repository/my-github-org/my-repo" \
+  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/my-external-pool/attribute.repository_id/20300177" \
   --role="roles/iam.workloadIdentityUser" \
   --project=my-project-id
 ```
@@ -168,20 +169,20 @@ jobs:
 
       # Authenticate using Workload Identity Federation
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/my-external-pool/providers/github-provider"
           service_account: "external-workload-sa@my-project-id.iam.gserviceaccount.com"
 
       # Now you can use gcloud or any Google Cloud client library
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
 
       - run: gcloud storage cp ./dist/* gs://my-deployment-bucket/
 ```
 
 ### Python Application Example
 
-For a Python application running on AWS or any environment with OIDC tokens:
+For a Python application running in an environment that can provide an OIDC token in a local file:
 
 ```python
 # Python authentication using Workload Identity Federation
@@ -244,7 +245,7 @@ gcloud iam service-accounts keys delete KEY_ID \
 
 Always use attribute conditions on your providers. Without them, any identity from the external provider could potentially exchange tokens for GCP access.
 
-Use the most specific principal identifier possible when granting service account impersonation. Instead of allowing the entire pool, restrict it to specific attributes like repository name, branch, or environment.
+Use the most specific principal identifier possible when granting service account impersonation. Instead of allowing the entire pool, restrict it to specific stable attributes like repository ID, branch, or environment.
 
 Monitor token exchange activity in Cloud Audit Logs. Look for `ExchangeToken` events from the Security Token Service to track which external identities are authenticating.
 
