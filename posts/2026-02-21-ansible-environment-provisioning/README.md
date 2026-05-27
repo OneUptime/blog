@@ -187,6 +187,11 @@ The first step is creating the network infrastructure:
     tags:
       Name: "{{ env_name }}-public-rt"
 
+- name: Save subnet IDs for compute provisioning
+  ansible.builtin.set_fact:
+    public_subnet_ids: "{{ public_subnets.results | map(attribute='subnet.id') | list }}"
+    private_subnet_ids: "{{ private_subnets.results | map(attribute='subnet.id') | list }}"
+
 - name: Create security groups
   amazon.aws.ec2_security_group:
     name: "{{ env_name }}-{{ item.name }}"
@@ -325,7 +330,7 @@ Tie everything together with a single entry point:
   tasks:
     - name: Test HTTP endpoint
       ansible.builtin.uri:
-        url: "http://{{ inventory_hostname }}/health"
+        url: "http://localhost/health"
         status_code: 200
       retries: 10
       delay: 5
@@ -366,23 +371,59 @@ For non-production environments, you need a way to tear things down:
 
     - name: Terminate all EC2 instances
       amazon.aws.ec2_instance:
+        region: "{{ aws_region }}"
         state: absent
         filters:
           "tag:Environment": "{{ env_name }}"
         wait: true
 
+    - name: Find the environment VPC
+      amazon.aws.ec2_vpc_net_info:
+        region: "{{ aws_region }}"
+        filters:
+          "tag:Name": "{{ env_name }}-vpc"
+      register: vpc_info
+
+    - name: Delete public route table
+      amazon.aws.ec2_vpc_route_table:
+        vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+        region: "{{ aws_region }}"
+        tags:
+          Name: "{{ env_name }}-public-rt"
+        state: absent
+      when: vpc_info.vpcs | length > 0
+
+    - name: Delete internet gateway
+      amazon.aws.ec2_vpc_igw:
+        vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+        region: "{{ aws_region }}"
+        state: absent
+      when: vpc_info.vpcs | length > 0
+
     - name: Delete security groups
       amazon.aws.ec2_security_group:
         name: "{{ env_name }}-{{ item }}"
+        region: "{{ aws_region }}"
         state: absent
-      loop: [web-sg, app-sg, db-sg]
+      loop: [db-sg, app-sg, web-sg]
 
-    - name: Delete VPC and all dependencies
+    - name: Delete subnets
+      amazon.aws.ec2_vpc_subnet:
+        vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+        cidr: "{{ item.cidr }}"
+        region: "{{ aws_region }}"
+        state: absent
+      loop: "{{ network.public_subnets + network.private_subnets }}"
+      when: vpc_info.vpcs | length > 0
+
+    - name: Delete VPC
       amazon.aws.ec2_vpc_net:
         name: "{{ env_name }}-vpc"
         cidr_block: "{{ network.vpc_cidr }}"
+        region: "{{ aws_region }}"
         state: absent
         purge_cidrs: true
+      when: vpc_info.vpcs | length > 0
 ```
 
 ## Key Takeaways
